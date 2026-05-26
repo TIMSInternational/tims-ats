@@ -347,7 +347,7 @@ VideoRoom              Interviews, coaching sessions              Phase 3
 ## 6. Monorepo Structure
 
 ```
-tims-platform/
+tims-ats/
 │
 ├── apps/
 │   └── web/                          # THE single Next.js app
@@ -1220,7 +1220,7 @@ FALLBACK: If TIMS API is down, queue and retry (Trigger.dev handles this)
 ENVIRONMENT    URL                        DATABASE           PURPOSE
 ───────────    ────────────────────────   ────────────────   ──────────
 Development    localhost:3000             Supabase local     Dev
-Preview        pr-{n}.tims-platform.     Supabase staging   PR review
+Preview        pr-{n}.tims-ats.     Supabase staging   PR review
                vercel.app
 Staging        staging.tims.com          Supabase staging   QA/demo
 Production     app.tims.com /            Supabase prod      Live
