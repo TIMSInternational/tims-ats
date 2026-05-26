@@ -1,0 +1,42 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# next.js
+.next/
+out/
+
+# build
+dist/
+.turbo/
+
+# env
+.env
+.env.local
+.env.*.local
+
+# ide
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# os
+.DS_Store
+Thumbs.db
+
+# debug
+npm-debug.log*
+pnpm-debug.log*
+
+# test
+coverage/
+
+# sentry
+.sentryclirc
+
+# prisma
+packages/db/prisma/migrations/*.sql
+
+# misc
+*.tsbuildinfo

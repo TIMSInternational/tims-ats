@@ -1,0 +1,24 @@
+// Phase 0 — Organization domain
+// This is the foundation schema. Additional models added per phase.
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema", "prismaSchemaFolder"]
+}
+
+model Organization {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  slug      String   @unique
+  domain    String?
+  logo      String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("organizations")
+}

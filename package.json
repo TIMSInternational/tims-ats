@@ -1,0 +1,22 @@
+{
+  "name": "tims-platform",
+  "private": true,
+  "packageManager": "pnpm@11.0.8",
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "type-check": "turbo type-check",
+    "test": "turbo test",
+    "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
+    "db:generate": "pnpm --filter @tims/db generate",
+    "db:push": "pnpm --filter @tims/db push",
+    "db:migrate": "pnpm --filter @tims/db migrate",
+    "db:studio": "pnpm --filter @tims/db studio"
+  },
+  "devDependencies": {
+    "prettier": "^3.5.0",
+    "turbo": "^2.5.0",
+    "typescript": "^5.8.0"
+  }
+}

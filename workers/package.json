@@ -1,0 +1,19 @@
+{
+  "name": "@tims/workers",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "npx trigger.dev@latest dev",
+    "deploy": "npx trigger.dev@latest deploy",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@tims/db": "workspace:*",
+    "@tims/ai": "workspace:*",
+    "@tims/email": "workspace:*",
+    "@tims/whatsapp": "workspace:*",
+    "@tims/shared": "workspace:*",
+    "@trigger.dev/sdk": "^4.4.0"
+  },
+  "devDependencies": { "typescript": "^5.8.0" }
+}

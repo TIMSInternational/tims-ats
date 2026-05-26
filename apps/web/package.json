@@ -1,0 +1,50 @@
+{
+  "name": "@tims/web",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@tims/api": "workspace:*",
+    "@tims/auth": "workspace:*",
+    "@tims/db": "workspace:*",
+    "@tims/shared": "workspace:*",
+    "@tims/ui": "workspace:*",
+    "@tims/i18n": "workspace:*",
+    "@hello-pangea/dnd": "^17.0.0",
+    "@hookform/resolvers": "^5.0.0",
+    "@supabase/ssr": "^0.7.0",
+    "@supabase/supabase-js": "^2.49.0",
+    "@tanstack/react-query": "^5.75.0",
+    "@tanstack/react-table": "^8.21.0",
+    "@trpc/client": "^11.1.0",
+    "@trpc/next": "^11.1.0",
+    "@trpc/react-query": "^11.1.0",
+    "@trpc/server": "^11.1.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.511.0",
+    "next": "^15.4.0",
+    "next-intl": "^4.1.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-hook-form": "^7.56.0",
+    "recharts": "^2.15.0",
+    "tailwind-merge": "^3.3.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "autoprefixer": "^10.4.21",
+    "postcss": "^8.5.4",
+    "tailwindcss": "^4.1.0",
+    "typescript": "^5.8.0"
+  }
+}
