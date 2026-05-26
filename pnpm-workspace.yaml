@@ -2,3 +2,11 @@ packages:
   - "apps/*"
   - "packages/*"
   - "workers"
+allowBuilds:
+  "@parcel/watcher": true
+  "@prisma/client": true
+  "@prisma/engines": true
+  "@swc/core": true
+  prisma: true
+  protobufjs: true
+  sharp: true
