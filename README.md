@@ -1,13 +1,13 @@
-# TIMS Platform
+# TIMS ATS
 
-**Human Capital Management by TIMS International**
+**Applicant Tracking System by TIMS International**
 Built by [NexaDev](https://nexadev.ai)
 
 ---
 
 ## Overview
 
-Full-cycle HCM platform connecting TIMS International's psychometric assessments (PCA, MIL, Integrity, Personality, IE) with recruitment, talent management, and workforce analytics. Single deployment serving multiple client organizations with isolated data, custom branding, and AI-powered automation.
+AI-powered ATS connecting TIMS International's psychometric assessments (PCA, MIL, Integrity, Personality, IE) with the full recruitment cycle — from vacancy creation to hire. Includes in-app video interviews, automated candidate scoring (FIT engine), and 32 AI assistants. Designed to scale into a full HCM platform post-MVP.
 
 ## Stack
 
@@ -31,7 +31,7 @@ Full-cycle HCM platform connecting TIMS International's psychometric assessments
 ## Monorepo Structure
 
 ```
-tims-platform/
+tims-ats/
 ├── apps/
 │   └── web/                    # Next.js app (admin + portal via subdomain routing)
 ├── packages/
@@ -63,8 +63,8 @@ tims-platform/
 
 ```bash
 # Clone
-git clone https://github.com/tafurfede/tims-platform.git
-cd tims-platform
+git clone https://github.com/tafurfede/tims-ats.git
+cd tims-ats
 
 # Install dependencies
 pnpm install
