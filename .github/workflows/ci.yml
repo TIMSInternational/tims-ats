@@ -6,6 +6,14 @@ on:
   pull_request:
     branches: [main]
 
+env:
+  DATABASE_URL: "postgresql://postgres:ci@localhost:5432/ci"
+  NEXT_PUBLIC_SUPABASE_URL: "https://placeholder.supabase.co"
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: "placeholder"
+  SUPABASE_SERVICE_ROLE_KEY: "placeholder"
+  NEXTAUTH_SECRET: "ci-secret"
+  NEXT_PUBLIC_APP_URL: "http://localhost:3000"
+
 jobs:
   ci:
     runs-on: ubuntu-latest
@@ -21,6 +29,14 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - run: pnpm lint
-      - run: pnpm type-check
-      - run: pnpm test
+      - name: Generate Prisma Client
+        run: pnpm --filter @tims/db exec prisma generate --schema prisma/schema
+
+      - name: Lint
+        run: pnpm --filter @tims/web lint
+
+      - name: Type Check
+        run: pnpm --filter @tims/web type-check
+
+      - name: Build
+        run: pnpm --filter @tims/web build

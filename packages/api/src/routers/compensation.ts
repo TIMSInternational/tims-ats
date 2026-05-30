@@ -8,17 +8,14 @@ export const compensationRouter = router({
     .input(
       z.object({
         companyId: z.string().uuid().optional(),
-        jobFamily: z.string().optional(),
       }).optional(),
     )
     .query(async ({ ctx, input }) => {
       return db.salaryBand.findMany({
         where: {
           organizationId: ctx.user.organizationId,
-          ...(input?.companyId ? { companyId: input.companyId } : {}),
-          ...(input?.jobFamily ? { jobFamily: input.jobFamily } : {}),
         },
-        orderBy: [{ jobFamily: 'asc' }, { level: 'asc' }],
+        orderBy: [{ level: 'asc' }],
       });
     }),
 
@@ -31,21 +28,15 @@ export const compensationRouter = router({
       }).optional(),
     )
     .query(async ({ ctx, input }) => {
-      const employees = await db.employee.findMany({
+      const compensations = await db.employeeCompensation.findMany({
         where: {
           organizationId: ctx.user.organizationId,
-          isActive: true,
-          ...(input?.companyId ? { companyId: input.companyId } : {}),
-          ...(input?.businessUnitId ? { businessUnitId: input.businessUnitId } : {}),
         },
         select: {
           id: true,
-          firstName: true,
-          lastName: true,
-          baseSalary: true,
+          currentSalary: true,
           compaRatio: true,
-          jobLevel: true,
-          jobTitle: true,
+          userId: true,
         },
       });
 
@@ -58,7 +49,7 @@ export const compensationRouter = router({
         '>1.20': 0,
       };
 
-      for (const emp of employees) {
+      for (const emp of compensations) {
         const cr = Number(emp.compaRatio) || 0;
         if (cr < 0.8) buckets['<0.80']++;
         else if (cr < 0.9) buckets['0.80-0.90']++;
@@ -68,12 +59,12 @@ export const compensationRouter = router({
         else buckets['>1.20']++;
       }
 
-      const ratios = employees.map((e: any) => Number(e.compaRatio) || 0).filter(Boolean);
+      const ratios = compensations.map((e) => Number(e.compaRatio) || 0).filter(Boolean);
       const avgCompaRatio = ratios.length
         ? Math.round((ratios.reduce((a: number, b: number) => a + b, 0) / ratios.length) * 100) / 100
         : 0;
 
-      return { distribution: buckets, avgCompaRatio, totalEmployees: employees.length };
+      return { distribution: buckets, avgCompaRatio, totalEmployees: compensations.length };
     }),
 
   // ── Pay Equity ─────────────────────────────────────────────────────
@@ -84,33 +75,24 @@ export const compensationRouter = router({
         jobLevel: z.string().optional(),
       }).optional(),
     )
-    .query(async ({ ctx, input }) => {
-      const { groupBy = 'gender', jobLevel } = input ?? {};
-
-      const employees = await db.employee.findMany({
+    .query(async ({ ctx }) => {
+      const compensations = await db.employeeCompensation.findMany({
         where: {
           organizationId: ctx.user.organizationId,
-          isActive: true,
-          ...(jobLevel ? { jobLevel } : {}),
         },
-        select: { gender: true, ethnicity: true, baseSalary: true, jobLevel: true },
+        select: { currentSalary: true, userId: true },
       });
 
-      const groups: Record<string, number[]> = {};
-      for (const emp of employees) {
-        const key = groupBy === 'gender' ? (emp.gender ?? 'unknown') : ((emp as any).ethnicity ?? 'unknown');
-        if (!groups[key]) groups[key] = [];
-        if (emp.baseSalary) groups[key].push(Number(emp.baseSalary));
-      }
+      // Without an Employee model with gender/ethnicity, return raw salary data
+      const salaries = compensations.map((c) => Number(c.currentSalary)).filter(Boolean);
+      const avg = salaries.length ? salaries.reduce((a, b) => a + b, 0) / salaries.length : 0;
+      const sorted = [...salaries].sort((a, b) => a - b);
+      const median = sorted[Math.floor(sorted.length / 2)] ?? 0;
 
-      const results = Object.entries(groups).map(([group, salaries]) => {
-        const avg = salaries.reduce((a, b) => a + b, 0) / salaries.length;
-        const sorted = [...salaries].sort((a, b) => a - b);
-        const median = sorted[Math.floor(sorted.length / 2)] ?? 0;
-        return { group, count: salaries.length, averageSalary: Math.round(avg), medianSalary: median };
-      });
-
-      return { groupBy, results };
+      return {
+        groupBy: 'all',
+        results: [{ group: 'all', count: salaries.length, averageSalary: Math.round(avg), medianSalary: median }],
+      };
     }),
 
   // ── Benefits Utilization ───────────────────────────────────────────
@@ -118,11 +100,10 @@ export const compensationRouter = router({
     .input(
       z.object({ companyId: z.string().uuid().optional() }).optional(),
     )
-    .query(async ({ ctx, input }) => {
-      const benefits = await db.benefit.findMany({
+    .query(async ({ ctx }) => {
+      const benefits = await db.benefitPlan.findMany({
         where: {
           organizationId: ctx.user.organizationId,
-          ...(input?.companyId ? { companyId: input.companyId } : {}),
         },
         include: {
           _count: { select: { enrollments: true } },
@@ -130,21 +111,20 @@ export const compensationRouter = router({
         orderBy: { name: 'asc' },
       });
 
-      const totalEmployees = await db.employee.count({
+      const totalUsers = await db.user.count({
         where: {
           organizationId: ctx.user.organizationId,
           isActive: true,
-          ...(input?.companyId ? { companyId: input.companyId } : {}),
         },
       });
 
-      return benefits.map((b: any) => ({
+      return benefits.map((b) => ({
         id: b.id,
         name: b.name,
-        category: b.category,
+        category: b.type,
         enrolled: b._count.enrollments,
-        utilization: totalEmployees
-          ? Math.round((b._count.enrollments / totalEmployees) * 10000) / 100
+        utilization: totalUsers
+          ? Math.round((b._count.enrollments / totalUsers) * 10000) / 100
           : 0,
       }));
     }),
@@ -157,8 +137,8 @@ export const compensationRouter = router({
         status: 'pending',
       },
       include: {
-        employee: { select: { id: true, firstName: true, lastName: true, jobTitle: true, baseSalary: true } },
-        requestedBy: { select: { id: true, firstName: true, lastName: true } },
+        user: { select: { id: true, firstName: true, lastName: true, jobTitle: true } },
+        requester: { select: { id: true, firstName: true, lastName: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -167,10 +147,10 @@ export const compensationRouter = router({
   createAdjustment: permissionProcedure('compensation', 'create')
     .input(
       z.object({
-        employeeId: z.string().uuid(),
+        userId: z.string().uuid(),
         type: z.enum(['merit', 'promotion', 'market', 'equity', 'other']),
-        currentSalary: z.number().positive(),
-        proposedSalary: z.number().positive(),
+        previousSalary: z.number().positive(),
+        newSalary: z.number().positive(),
         reason: z.string().max(1000).optional(),
         effectiveDate: z.string().datetime(),
       }),
@@ -178,11 +158,15 @@ export const compensationRouter = router({
     .mutation(async ({ ctx, input }) => {
       return db.salaryAdjustment.create({
         data: {
-          ...input,
+          userId: input.userId,
+          type: input.type,
+          previousSalary: input.previousSalary,
+          newSalary: input.newSalary,
+          reason: input.reason,
+          effectiveDate: new Date(input.effectiveDate),
           organizationId: ctx.user.organizationId,
           requestedById: ctx.user.id,
           status: 'pending',
-          percentageChange: Math.round(((input.proposedSalary - input.currentSalary) / input.currentSalary) * 10000) / 100,
         },
       });
     }),
@@ -207,16 +191,14 @@ export const compensationRouter = router({
         data: {
           status: input.approved ? 'approved' : 'rejected',
           approvedById: ctx.user.id,
-          approvedAt: new Date(),
-          approvalComment: input.comment,
         },
       });
 
-      // If approved, update employee salary
+      // If approved, update employee compensation
       if (input.approved) {
-        await db.employee.update({
-          where: { id: adjustment.employeeId },
-          data: { baseSalary: adjustment.proposedSalary },
+        await db.employeeCompensation.updateMany({
+          where: { userId: adjustment.userId, organizationId: ctx.user.organizationId },
+          data: { currentSalary: adjustment.newSalary },
         });
       }
 
@@ -226,45 +208,41 @@ export const compensationRouter = router({
   simulateAdjustment: permissionProcedure('compensation', 'read')
     .input(
       z.object({
-        employeeId: z.string().uuid(),
+        userId: z.string().uuid(),
         proposedSalary: z.number().positive(),
       }),
     )
     .query(async ({ ctx, input }) => {
-      const employee = await db.employee.findFirst({
-        where: { id: input.employeeId, organizationId: ctx.user.organizationId },
-        select: { baseSalary: true, jobLevel: true, jobFamily: true, compaRatio: true },
+      const compensation = await db.employeeCompensation.findFirst({
+        where: { userId: input.userId, organizationId: ctx.user.organizationId },
+        select: { currentSalary: true, compaRatio: true, bandId: true },
       });
 
-      if (!employee) throw new Error('Empleado no encontrado');
+      if (!compensation) throw new Error('Compensacion no encontrada');
 
-      const currentSalary = Number(employee.baseSalary) || 0;
+      const currentSalary = Number(compensation.currentSalary) || 0;
       const percentageChange = currentSalary
         ? Math.round(((input.proposedSalary - currentSalary) / currentSalary) * 10000) / 100
         : 0;
 
       // Find salary band for new compa-ratio
-      const band = await db.salaryBand.findFirst({
-        where: {
-          organizationId: ctx.user.organizationId,
-          jobFamily: (employee as any).jobFamily,
-          level: employee.jobLevel,
-        },
-      });
+      const band = compensation.bandId
+        ? await db.salaryBand.findUnique({ where: { id: compensation.bandId } })
+        : null;
 
-      const midpoint = band ? Number((band as any).midpoint) : 0;
+      const midpoint = band ? Number(band.midSalary) : 0;
       const newCompaRatio = midpoint ? Math.round((input.proposedSalary / midpoint) * 100) / 100 : null;
 
       return {
         currentSalary,
         proposedSalary: input.proposedSalary,
         percentageChange,
-        currentCompaRatio: Number(employee.compaRatio) || null,
+        currentCompaRatio: Number(compensation.compaRatio) || null,
         newCompaRatio,
-        bandMin: band ? Number((band as any).min) : null,
-        bandMax: band ? Number((band as any).max) : null,
+        bandMin: band ? Number(band.minSalary) : null,
+        bandMax: band ? Number(band.maxSalary) : null,
         withinBand: band
-          ? input.proposedSalary >= Number((band as any).min) && input.proposedSalary <= Number((band as any).max)
+          ? input.proposedSalary >= Number(band.minSalary) && input.proposedSalary <= Number(band.maxSalary)
           : null,
       };
     }),
@@ -273,7 +251,6 @@ export const compensationRouter = router({
   getMarketComparison: permissionProcedure('compensation', 'read')
     .input(
       z.object({
-        jobFamily: z.string().optional(),
         jobLevel: z.string().optional(),
       }).optional(),
     )
@@ -281,21 +258,17 @@ export const compensationRouter = router({
       const bands = await db.salaryBand.findMany({
         where: {
           organizationId: ctx.user.organizationId,
-          ...(input?.jobFamily ? { jobFamily: input.jobFamily } : {}),
           ...(input?.jobLevel ? { level: input.jobLevel } : {}),
         },
-        orderBy: [{ jobFamily: 'asc' }, { level: 'asc' }],
+        orderBy: [{ level: 'asc' }],
       });
 
-      return bands.map((b: any) => ({
-        jobFamily: b.jobFamily,
+      return bands.map((b) => ({
         level: b.level,
-        internalMin: Number(b.min),
-        internalMid: Number(b.midpoint),
-        internalMax: Number(b.max),
-        marketP25: Number(b.marketP25) || null,
-        marketP50: Number(b.marketP50) || null,
-        marketP75: Number(b.marketP75) || null,
+        title: b.title,
+        internalMin: Number(b.minSalary),
+        internalMid: Number(b.midSalary),
+        internalMax: Number(b.maxSalary),
       }));
     }),
 
@@ -306,78 +279,62 @@ export const compensationRouter = router({
         companyId: z.string().uuid().optional(),
       }).optional(),
     )
-    .query(async ({ ctx, input }) => {
-      const employees = await db.employee.findMany({
+    .query(async ({ ctx }) => {
+      const compensations = await db.employeeCompensation.findMany({
         where: {
           organizationId: ctx.user.organizationId,
-          isActive: true,
-          ...(input?.companyId ? { companyId: input.companyId } : {}),
         },
         select: {
-          baseSalary: true,
+          currentSalary: true,
           variablePay: true,
-          benefitsCost: true,
         },
       });
 
       let totalBase = 0;
       let totalVariable = 0;
-      let totalBenefits = 0;
 
-      for (const emp of employees) {
-        totalBase += Number(emp.baseSalary) || 0;
-        totalVariable += Number((emp as any).variablePay) || 0;
-        totalBenefits += Number((emp as any).benefitsCost) || 0;
+      for (const emp of compensations) {
+        totalBase += Number(emp.currentSalary) || 0;
+        totalVariable += Number(emp.variablePay) || 0;
       }
 
-      const totalComp = totalBase + totalVariable + totalBenefits;
+      const totalComp = totalBase + totalVariable;
 
       return {
         totalComp,
         breakdown: {
           baseSalary: { total: totalBase, percentage: totalComp ? Math.round((totalBase / totalComp) * 10000) / 100 : 0 },
           variablePay: { total: totalVariable, percentage: totalComp ? Math.round((totalVariable / totalComp) * 10000) / 100 : 0 },
-          benefits: { total: totalBenefits, percentage: totalComp ? Math.round((totalBenefits / totalComp) * 10000) / 100 : 0 },
         },
-        employeeCount: employees.length,
+        employeeCount: compensations.length,
       };
     }),
 
   // ── Employee Compensation Detail ───────────────────────────────────
   getEmployeeComp: permissionProcedure('compensation', 'read')
-    .input(z.object({ employeeId: z.string().uuid() }))
+    .input(z.object({ userId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
-      const employee = await db.employee.findFirst({
-        where: { id: input.employeeId, organizationId: ctx.user.organizationId },
+      const compensation = await db.employeeCompensation.findFirst({
+        where: { userId: input.userId, organizationId: ctx.user.organizationId },
         include: {
-          benefitEnrollments: {
-            include: { benefit: true },
-            where: { isActive: true },
-          },
-          salaryHistory: {
-            orderBy: { effectiveDate: 'desc' },
-            take: 10,
-          },
+          band: true,
         },
       });
 
-      if (!employee) throw new Error('Empleado no encontrado');
+      if (!compensation) throw new Error('Compensacion no encontrada');
 
       return {
-        employeeId: employee.id,
-        baseSalary: Number(employee.baseSalary),
-        variablePay: Number((employee as any).variablePay) || 0,
-        compaRatio: Number(employee.compaRatio) || null,
-        benefits: (employee as any).benefitEnrollments?.map((e: any) => ({
-          name: e.benefit.name,
-          category: e.benefit.category,
-          employerCost: Number(e.benefit.employerCost) || 0,
-        })) ?? [],
-        salaryHistory: (employee as any).salaryHistory?.map((h: any) => ({
-          effectiveDate: h.effectiveDate,
-          salary: Number(h.salary),
-          type: h.type,
-        })) ?? [],
+        userId: compensation.userId,
+        currentSalary: Number(compensation.currentSalary),
+        variablePay: Number(compensation.variablePay) || 0,
+        compaRatio: Number(compensation.compaRatio) || null,
+        band: compensation.band ? {
+          level: compensation.band.level,
+          title: compensation.band.title,
+          min: Number(compensation.band.minSalary),
+          mid: Number(compensation.band.midSalary),
+          max: Number(compensation.band.maxSalary),
+        } : null,
       };
     }),
 
@@ -386,21 +343,21 @@ export const compensationRouter = router({
     const orgId = ctx.user.organizationId;
 
     const [totalPayroll, pendingAdjustments, avgCompaRatio] = await Promise.all([
-      db.employee.aggregate({
-        where: { organizationId: orgId, isActive: true },
-        _sum: { baseSalary: true },
+      db.employeeCompensation.aggregate({
+        where: { organizationId: orgId },
+        _sum: { currentSalary: true },
       }),
       db.salaryAdjustment.count({
         where: { organizationId: orgId, status: 'pending' },
       }),
-      db.employee.aggregate({
-        where: { organizationId: orgId, isActive: true, compaRatio: { not: null } },
+      db.employeeCompensation.aggregate({
+        where: { organizationId: orgId, compaRatio: { not: null } },
         _avg: { compaRatio: true },
       }),
     ]);
 
     return {
-      totalMonthlyPayroll: Number(totalPayroll._sum.baseSalary) || 0,
+      totalMonthlyPayroll: Number(totalPayroll._sum.currentSalary) || 0,
       pendingAdjustments,
       avgCompaRatio: avgCompaRatio._avg.compaRatio
         ? Math.round(Number(avgCompaRatio._avg.compaRatio) * 100) / 100

@@ -42,6 +42,7 @@ export const integrationRouter = router({
       return db.connector.create({
         data: {
           ...input,
+          config: input.config as any,
           organizationId: ctx.user.organizationId,
           createdById: ctx.user.id,
         },
@@ -62,7 +63,10 @@ export const integrationRouter = router({
       const { id, ...data } = input;
       return db.connector.update({
         where: { id, organizationId: ctx.user.organizationId },
-        data,
+        data: {
+          ...data,
+          config: data.config as any,
+        },
       });
     }),
 

@@ -27,7 +27,10 @@ export const featureFlagRouter = router({
           id,
           organizationId: ctx.user.organizationId,
         },
-        data,
+        data: {
+          ...data,
+          payload: data.payload as any,
+        },
       });
     }),
 

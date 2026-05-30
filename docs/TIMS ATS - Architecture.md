@@ -1,8 +1,8 @@
 # TIMS Platform — Final Architecture (Optimized)
 
-> **Status**: LOCKED — All decisions finalized
-> **Date**: 2026-05-25 (revised cost model)
-> **Previous**: 2026-05-22 (initial architecture)
+> **Status**: LOCKED — v3.0 (gap resolution + full annexes)
+> **Date**: 2026-05-26 (v3.0 — gap resolution, annexes, data continuity, permission matrix)
+> **Previous**: 2026-05-25 (v2.0 revised cost model)
 > **Builder**: NexaDev
 > **Client**: TIMS International
 
@@ -28,6 +28,9 @@
 16. [Cost Model](#16-cost-model)
 17. [Phasing & What Ships When](#17-phasing--what-ships-when)
 18. [Migration & Scale Triggers](#18-migration--scale-triggers)
+19. [Functional Annexes — Phases 4-10](#19-functional-annexes--phases-4-10)
+20. [Data Continuity Map](#20-data-continuity-map)
+21. [Sensitive Data Permission Matrix](#21-sensitive-data-permission-matrix)
 
 ---
 
@@ -1377,8 +1380,52 @@ PHASE 1: ATS Core (5-6 weeks)
   Week 6: Buffer / testing
 
   TABLES: +14 (vacancy + candidate + pipeline)
-  SCREENS: ~20 admin + ~8 portal
-  AI AGENTS: Vacancy Writer (1 agent)
+  SCREENS: ~22 admin + ~10 portal
+  AI AGENTS: Vacancy Writer, Inclusive Language Checker (2 agents)
+
+  ── v3.0 MVP Gap Additions ──
+
+  Module 1 — Attraction (enhanced):
+    - Multichannel campaign manager: schedule, publish, and track across channels
+    - Quality-of-Hire (QoH) by source: track which channels produce best hires
+    - Cost per qualified candidate: ROI per channel and campaign
+    - Inclusive language AI check: flag biased/exclusionary terms in vacancy descriptions
+
+  Module 2 — Pipeline (enhanced):
+    - Configurable SLA per stage (not just global): each client sets thresholds per stage
+    - Recruiter productivity metrics: candidates processed, avg time per stage, SLA compliance
+    - High-FIT at-risk highlights: surface top candidates stuck or at risk of dropping out
+    - Structured next-best-action per candidate: AI recommends next step based on pipeline state
+
+  Module 5 — Communication (enhanced):
+    - Candidate NPS per stage: survey after key touchpoints (application, assessment, interview)
+    - Consent tracking: granular opt-in/out for email, WhatsApp, SMS per candidate
+    - Bulk messaging with merge tags: personalized mass communication
+    - Chatbot human escalation: auto-escalate to recruiter when chatbot confidence is low
+
+  Module 7 — Recruitment Analytics (enhanced):
+    - Robust QoH scheduler: automated 30/60/90/180/365-day check-ins (lightweight, MVP version)
+    - Time-to-fill prediction: AI estimates days remaining based on pipeline velocity
+    - Long-term source quality: track QoH by source over time (not just volume)
+    - Recruiter audit: who moved whom, when, with what justification (full audit trail)
+
+  Module 12 — Candidate Portal (enhanced):
+    - Privacy controls: candidates can request data deletion (GDPR/Habeas Data compliance)
+    - Rejection feedback: configurable auto-feedback with personalized recommendations
+    - Professional development library: public resources, courses, tips for candidates
+    - Candidate NPS: post-process satisfaction survey
+
+  Cross-cutting — DEI Fairness (partial, MVP):
+    - Language bias detection in vacancy descriptions (AI-powered)
+    - Selection rate analysis by demographic group (4/5ths rule dashboard)
+    - AI decision audit log: every AI recommendation logged with rationale
+    - Fairness report: monthly auto-generated DEI snapshot for HR Admin
+
+  Cross-cutting — Security & Sensitive Data (MVP):
+    - RBAC matrix for sensitive data: who can see psychometric scores, medical docs, etc.
+    - Consent management: explicit consent tracking before collecting sensitive data
+    - Anonymization mode: view aggregate data without identifying individuals (for analytics)
+    - Psychometric audit trail: log every access to assessment results with viewer + timestamp
 
 PHASE 2: Assessments & FIT (5-6 weeks)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1389,9 +1436,24 @@ PHASE 2: Assessments & FIT (5-6 weeks)
   Week 5: Gap analysis + comparison views
   Week 6: AI agents (CV parser, gap analyst, auto-assigner)
 
-  TABLES: +12 (assessment + fit)
-  SCREENS: ~15 admin + ~5 portal (assessment player)
+  TABLES: +14 (assessment + fit + scoring)
+  SCREENS: ~18 admin + ~6 portal (assessment player)
   AI AGENTS: +5 (CV Parser, Gap Analyst, Auto-Assigner, Comparator, chatbot)
+
+  ── v3.0 MVP Gap Additions ──
+
+  Module 3 — Assessments (enhanced):
+    - All 5 TIMS tests in MVP: PCA, MIL, Integrity, Personality, IE (not "at least 2")
+    - Score normalization: standardized 0-100 scale across all assessment types
+    - Model versioning: track which scoring model version produced each result
+    - Critical proctoring alerts: real-time escalation for high-severity events (not just log)
+    - Score explainability: AI-generated plain-language interpretation of each assessment result
+
+  Module 9 — FIT Engine (enhanced):
+    - Sub-scores visible: break FIT into dimensions (cognitive, personality, experience, etc.)
+    - Hierarchical weights: org-level defaults → position family → specific vacancy overrides
+    - Incomplete data rules: calculate partial FIT when not all assessments are complete
+    - QoH recalibration: adjust FIT weights based on QoH outcomes (feedback loop)
 
 PHASE 3: Interviews & Offers (5-6 weeks)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1402,29 +1464,121 @@ PHASE 3: Interviews & Offers (5-6 weeks)
   Week 5: Offers + approval + OpenSign e-signature + pre-hire validations
   Week 6: Candidate → employee conversion
 
-  TABLES: +12 (interview + offer + validation)
-  SCREENS: ~20 admin + ~3 portal
+  TABLES: +14 (interview + offer + validation + quality)
+  SCREENS: ~24 admin + ~4 portal
   AI AGENTS: +5 (Interview Coach, Summarizer, Bias Detector, Medical Analyzer, Offer Companion)
 
-MVP TOTAL:
-  Tables: ~50
-  Screens: ~55 admin + ~16 portal + ~8 assessment + video room = ~80 screens
-  AI Agents: 11 of 32 (core ones)
+  ── v3.0 MVP Gap Additions ──
+
+  Module 6 — Interviews (enhanced):
+    - Interview quality checker: rate interview quality (structured questions asked, evidence documented)
+    - Evaluator bias analytics: compare inter-rater reliability, flag outlier scores
+    - Required evidence per competency: enforce that evaluators provide behavioral evidence
+    - Question-to-competency traceability: map every interview question to assessed competency
+
+  Module 10 — Validations (enhanced):
+    - Blocking vs non-blocking rules: define which validations must pass before hire vs. advisory
+    - Country-specific checklists: auto-load legal requirements based on company country
+    - External verifier roles: third-party verifiers submit results directly via secure portal
+    - Validation audit trail: full history of each check (who requested, who completed, when)
+
+  Module 11 — Quality of Hire (enhanced):
+    - QoH scheduler 30/60/90/180/365: automated check-ins with configurable survey templates
+    - Performance/engagement connection: correlate QoH scores with performance reviews (when available)
+    - Leader input: direct leader provides QoH input via simple survey
+    - Source effectiveness: rank recruitment sources by long-term QoH (not just hire count)
+    - QoH algorithm: weighted formula (performance + retention + cultural fit + leader satisfaction)
+
+MVP TOTAL (v3.0):
+  Tables: ~55
+  Screens: ~64 admin + ~20 portal + ~8 assessment + video room = ~93 screens
+  AI Agents: 12 of 32 (core ones + Inclusive Language Checker)
+  Cross-cutting: DEI Fairness (partial) + Sensitive Data Controls
   Timeline: 19-23 weeks (includes in-app video)
 ```
 
 ### Post-MVP Phases (4-10): ~30-40 weeks
 
 ```
-PHASE 4:  Talent Pools + Analytics        3-4 weeks    +8 screens, +5 tables
-PHASE 5:  Onboarding                      4-5 weeks    +9 screens, +8 tables
-PHASE 6:  Performance & Coaching          5-6 weeks    +12 screens, +12 tables
-PHASE 7:  Evaluations 360 + Nine Box      4-5 weeks    +19 screens, +18 tables
-PHASE 8:  L&D + Engagement + Team Intel   6-8 weeks    +31 screens, +30 tables
-PHASE 9:  Strategic Modules + DEI         4-5 weeks    +24 screens, +19 tables
-PHASE 10: Enterprise (billing, HRIS, etc) 4-5 weeks    +16 screens, +12 tables
+PHASE 4:  Talent Pools + Advanced Analytics    3-4 weeks    +10 screens, +7 tables
+PHASE 5:  Onboarding                          4-5 weeks    +12 screens, +10 tables
+PHASE 6:  Performance + Coaching              5-6 weeks    +14 screens, +14 tables
+PHASE 7:  Eval 360 + Commitments + Nine Box   5-6 weeks    +22 screens, +22 tables
+PHASE 8:  L&D + Engagement + Team Intel       6-8 weeks    +34 screens, +32 tables
+PHASE 9:  Succession + Compensation + DEI     5-6 weeks    +28 screens, +24 tables
+          + Strategic Monitoring
+PHASE 10: HRIS/API + Enterprise               4-5 weeks    +18 screens, +14 tables
 
-FULL PLATFORM: ~52-62 weeks total (~12-15 months)
+FULL PLATFORM: ~55-65 weeks total (~13-16 months)
+
+See Section 19 for full functional annexes per phase.
+```
+
+### Post-MVP Acceptance Criteria (v3.0)
+
+```
+PHASE 4 — Talent Pools + Advanced Analytics
+  ✓ Talent pool with smart search (filters + AI tags) returning results in <2s
+  ✓ Re-engagement campaign sent to pooled candidates
+  ✓ Recruitment funnel dashboard with real-time data
+  ✓ Report builder generating PDF/Excel exports
+  ✓ Source ROI report comparing cost-per-qualified-candidate across channels
+
+PHASE 5 — Onboarding
+  ✓ Onboarding plan auto-created from offer acceptance (30/60/90 day tasks)
+  ✓ Digital document center with e-signature (contracts, NDA, policies)
+  ✓ Buddy/mentor assignment functioning with notification
+  ✓ Check-in surveys at 30/60/90 days with results visible to HRBP
+  ✓ L&D route auto-generated from assessment gap analysis
+  ✓ Onboarding completion rate dashboard
+
+PHASE 6 — Performance + Coaching
+  ✓ OKR creation with hierarchical alignment (team → unit → company)
+  ✓ OKR progress tracking with automated check-in reminders
+  ✓ Video coaching session within platform with AI summary
+  ✓ Coaching log with extracted commitments linked to OKRs
+  ✓ Peer recognition (kudos) system with leaderboard
+  ✓ Performance cycle: goal setting → mid-cycle → final review
+
+PHASE 7 — Eval 360 + Commitments + Nine Box
+  ✓ 360 evaluation cycle: configure evaluators, launch, collect, close
+  ✓ Anonymous responses with configurable anonymity threshold
+  ✓ Individual 360 report with heatmap and sentiment analysis
+  ✓ Commitment tracker with evidence upload and escalation rules
+  ✓ KPI dashboard per employee with progress tracking
+  ✓ Nine Box 3x3 grid populated from performance + potential data
+  ✓ Calibration session tool for committees
+  ✓ Nine Box simulator ("what-if" scenarios)
+
+PHASE 8 — L&D + Engagement + Team Intelligence
+  ✓ Course catalog with multimedia player (video, docs, quizzes)
+  ✓ Learning paths with prerequisites and certifications
+  ✓ Course completion tracked and linked to competency gaps
+  ✓ Climate survey: create, distribute, collect, analyze with AI sentiment
+  ✓ Pulse surveys (quick, recurring) with trend tracking
+  ✓ Action plans from climate results with owner assignment and follow-up
+  ✓ Team profile: competency balance radar, health score, composition simulator
+  ✓ Ideal hire profile generated from team gaps
+
+PHASE 9 — Succession + Compensation + DEI + Strategic Monitoring
+  ✓ Talent map: visual org chart with potential/performance overlay
+  ✓ Succession plan per critical role with readiness indicators
+  ✓ Salary bands by role family with equity analysis
+  ✓ Compensation adjustment workflow with approval chain
+  ✓ Full DEI dashboard: diversity metrics, pay equity, selection rate parity
+  ✓ AI fairness audit: automated bias detection across all AI models
+  ✓ Strategic monitoring dashboard: executive KPIs across all modules
+  ✓ Executive narrative AI: auto-generated board-ready summaries
+
+PHASE 10 — HRIS/API + Enterprise
+  ✓ REST API with OAuth2 + API key authentication
+  ✓ Webhook system for event-driven integrations
+  ✓ At least 1 HRIS connector (Workday or SAP) syncing employee data
+  ✓ Billing: subscription plans, usage metering, Stripe invoicing
+  ✓ Advanced audit log: searchable, filterable, exportable
+  ✓ Consent management portal: employees manage their data preferences
+  ✓ Data migration toolkit: CSV/JSON import with validation and rollback
+  ✓ Power BI embed (optional) for custom reporting
 ```
 
 ---
@@ -1471,6 +1625,931 @@ APPROACH:
   - Per-client migration, not big-bang
   - Validate data integrity post-import
   - Keep legacy system running in parallel during transition
+```
+
+---
+
+## 19. Functional Annexes — Phases 4-10
+
+> Full specifications for every post-MVP phase. Each annex includes: scope, key features,
+> screens, database tables, domain events, acceptance criteria, and exclusions.
+
+---
+
+### Annex 1: Onboarding (Phase 5)
+
+**Scope**: Structured new-hire onboarding from offer acceptance through probation completion.
+
+**Key Features**:
+```
+1. Onboarding plan templates (30/60/90 day, configurable per role family)
+2. Task assignment engine: auto-assign tasks to new hire, buddy, leader, HR, IT
+3. Digital document center: upload, e-sign, acknowledge policies
+4. Buddy/mentor assignment with automated introduction email
+5. Check-in surveys at configurable milestones (default: 30/60/90 days)
+6. L&D route auto-generation from assessment gap analysis
+7. Onboarding dashboard: completion rate, bottlenecks, at-risk new hires
+8. Pre-boarding: tasks assigned before day 1 (document upload, IT setup request)
+```
+
+**Screens**:
+```
+ADMIN:
+  - Onboarding dashboard (completion rates, at-risk)
+  - Plan template builder
+  - Active onboarding list (filterable by status, department, buddy)
+  - Individual onboarding detail (tasks, documents, check-ins)
+  - Check-in survey results
+  - Buddy assignment manager
+
+PORTAL (NEW HIRE):
+  - My onboarding: task list with deadlines
+  - Document upload + e-sign center
+  - Meet my buddy / team introduction
+  - Check-in survey form
+
+LEADER:
+  - My team's onboarding status
+  - Check-in survey input
+```
+
+**Database Tables** (~10):
+```
+onboarding_plans, onboarding_plan_templates, onboarding_tasks,
+onboarding_task_assignments, onboarding_documents, onboarding_checkins,
+onboarding_checkin_responses, buddy_assignments, onboarding_milestones,
+preboarding_tasks
+```
+
+**Domain Events**:
+```
+onboarding.plan_created, onboarding.task_completed, onboarding.document_signed,
+onboarding.checkin_submitted, onboarding.milestone_reached, onboarding.completed,
+onboarding.at_risk_detected
+```
+
+**Acceptance Criteria**: See Post-MVP Acceptance Criteria (Phase 5).
+
+**Exclusions**: Payroll integration (Phase 10), IT provisioning automation (future).
+
+---
+
+### Annex 2: Performance + Coaching (Phase 6)
+
+**Scope**: OKR management, coaching sessions, peer recognition, performance review cycles.
+
+**Key Features**:
+```
+1. OKR management: create, align (individual → team → unit → company), track progress
+2. Performance review cycles: goal setting → mid-cycle check → final review
+3. Coaching sessions via integrated video (Zoom Video SDK, same as interviews)
+4. AI coaching summarizer: extract commitments + action items from session
+5. Coaching log (bitacora): full history of leader-employee conversations
+6. Peer recognition (kudos): send recognition tied to company values
+7. Recognition leaderboard and history
+8. Performance dashboard: OKR completion rates, coaching frequency, recognition activity
+```
+
+**Screens** (~14):
+```
+ADMIN/HR:
+  - Performance cycle manager (create, configure, launch, close)
+  - Organization OKR alignment view (tree)
+  - Coaching analytics dashboard
+  - Recognition analytics
+
+LEADER:
+  - My team's OKRs (progress, status)
+  - Coaching scheduler + session room (video + notes)
+  - Coaching log / bitacora per employee
+  - Performance review form (mid-cycle, final)
+  - Send recognition
+
+EMPLOYEE:
+  - My OKRs (create, update progress, add evidence)
+  - My coaching sessions (history, commitments)
+  - My performance reviews (self-assessment, view feedback)
+  - Send/receive recognition
+```
+
+**Database Tables** (~14):
+```
+performance_cycles, okrs, okr_key_results, okr_progress_entries,
+coaching_sessions, coaching_session_notes, coaching_commitments,
+performance_reviews, performance_review_ratings, performance_review_comments,
+recognitions, recognition_values, recognition_reactions, performance_dashboards
+```
+
+**Domain Events**:
+```
+performance.cycle_started, okr.created, okr.progress_updated,
+coaching.session_completed, coaching.commitment_created,
+performance.review_submitted, recognition.sent, performance.cycle_closed
+```
+
+**Exclusions**: 360 evaluation (Phase 7), compensation link (Phase 9).
+
+---
+
+### Annex 3: L&D / eLearning (Phase 8)
+
+**Scope**: Course catalog, learning paths, certifications, competency development tracking.
+
+**Key Features**:
+```
+1. Course catalog: video, documents, quizzes, SCORM-compatible
+2. Multimedia player: in-app video playback with progress tracking
+3. Learning paths: ordered sequences with prerequisites
+4. Certifications: auto-issue on path completion, expiration tracking
+5. AI course recommender: suggest courses based on competency gaps
+6. Manager-assigned courses: leader assigns learning based on performance gaps
+7. Course completion dashboard: by employee, team, department
+8. Integration with competency model: courses tagged to competencies
+```
+
+**Screens** (~12):
+```
+ADMIN/HR:
+  - Course management (CRUD, content upload)
+  - Learning path builder
+  - Certification manager
+  - L&D analytics dashboard (completion rates, popular courses, gap coverage)
+  - Assign courses to employees/groups
+
+EMPLOYEE:
+  - Course catalog browser (search, filter by competency)
+  - My learning: assigned courses, progress, certifications
+  - Course player (video + quiz)
+  - My certifications
+
+LEADER:
+  - Team learning progress
+  - Assign courses to team members
+```
+
+**Database Tables** (~12):
+```
+courses, course_modules, course_content, learning_paths,
+learning_path_courses, course_enrollments, course_progress,
+quiz_questions, quiz_responses, certifications, certification_awards,
+course_competency_tags
+```
+
+**Domain Events**:
+```
+course.enrolled, course.module_completed, course.completed,
+certification.awarded, certification.expired, learning_path.completed
+```
+
+**Exclusions**: External LMS integration (future), live virtual classroom (future).
+
+---
+
+### Annex 4: Evaluation 360 (Phase 7)
+
+**Scope**: Multi-directional evaluation cycles with anonymity, heatmaps, and action plans.
+
+**Key Features**:
+```
+1. Evaluation cycle configuration: define evaluator relationships (self, boss, peers, reports, clients)
+2. Evaluator nomination: auto-suggest + manual override
+3. Configurable questionnaires per competency with rating scales
+4. Anonymity controls: configurable minimum respondents for anonymity threshold
+5. Individual 360 report: radar chart, heatmap, blind spots, strengths
+6. AI sentiment analysis on open-ended responses
+7. Team-level heatmap: aggregate competency coverage across team
+8. Action plan generation: AI suggests development actions based on 360 results
+```
+
+**Screens** (~8):
+```
+ADMIN/HR:
+  - 360 cycle manager (create, configure evaluators, launch, close)
+  - Cycle progress dashboard (response rates)
+  - Organization-wide competency heatmap
+
+EMPLOYEE:
+  - Evaluate others (questionnaire)
+  - My 360 results (report, radar, development suggestions)
+
+LEADER:
+  - Team 360 results overview
+  - Individual employee 360 detail
+```
+
+**Database Tables** (~10):
+```
+eval360_cycles, eval360_cycle_participants, eval360_evaluator_assignments,
+eval360_questionnaires, eval360_questions, eval360_responses,
+eval360_response_items, eval360_reports, eval360_action_plans,
+eval360_action_plan_items
+```
+
+**Domain Events**:
+```
+eval360.cycle_launched, eval360.evaluation_submitted, eval360.cycle_closed,
+eval360.report_generated, eval360.action_plan_created
+```
+
+**Exclusions**: External evaluation vendors (future), competency model editor (Phase 10 settings).
+
+---
+
+### Annex 5: Commitments / KPIs (Phase 7)
+
+**Scope**: Track commitments from coaching, 360, performance reviews with evidence and escalation.
+
+**Key Features**:
+```
+1. Commitment creation from any source (coaching, 360, performance review, ad-hoc)
+2. Due dates with automated reminders (configurable frequency)
+3. Evidence upload: documents, links, screenshots proving completion
+4. Escalation rules: overdue → notify leader → notify HRBP → flag in dashboard
+5. KPI dashboard per employee: commitments completed, overdue, in progress
+6. Team commitment overview for leaders
+7. Link commitments to OKRs and competency development
+8. Commitment history with audit trail
+```
+
+**Screens** (~4):
+```
+EMPLOYEE:
+  - My commitments (list, filter by source/status, upload evidence)
+
+LEADER:
+  - Team commitments dashboard (status, overdue alerts)
+  - Create/assign commitment
+
+HR:
+  - Commitment analytics (completion rates by department, escalation frequency)
+```
+
+**Database Tables** (~6):
+```
+commitments, commitment_evidence, commitment_reminders,
+commitment_escalations, commitment_okr_links, commitment_history
+```
+
+**Domain Events**:
+```
+commitment.created, commitment.evidence_uploaded, commitment.completed,
+commitment.overdue, commitment.escalated
+```
+
+**Exclusions**: Automated KPI calculation from external systems (Phase 10 HRIS).
+
+---
+
+### Annex 6: Nine Box Predictive (Phase 7)
+
+**Scope**: Interactive 3x3 potential-vs-performance grid with AI prediction and calibration.
+
+**Key Features**:
+```
+1. Nine Box 3x3 grid: visual placement based on performance + potential scores
+2. Data sources: performance reviews, 360 results, OKR achievement, coaching engagement
+3. AI movement predictor: predict likely box movement in next cycle
+4. Calibration sessions: committee can drag-and-drop to adjust placements
+5. Calibration audit trail: who moved whom, with justification
+6. "What-if" simulator: test hypothetical scenarios without affecting real data
+7. Historical tracking: see individual's box history over time
+8. Action recommendations per box: e.g., "High Potential / Low Performance → coaching plan"
+```
+
+**Screens** (~6):
+```
+HR:
+  - Nine Box grid (interactive, filterable by department/team)
+  - Calibration session (committee view with drag-and-drop)
+  - Nine Box history per employee
+  - Simulator
+
+LEADER:
+  - My team Nine Box (read-only)
+  - Individual employee detail (box history, recommendation)
+```
+
+**Database Tables** (~6):
+```
+ninebox_snapshots, ninebox_placements, ninebox_calibration_sessions,
+ninebox_calibration_moves, ninebox_predictions, ninebox_action_recommendations
+```
+
+**Domain Events**:
+```
+ninebox.snapshot_created, ninebox.placement_calibrated, ninebox.prediction_generated,
+ninebox.session_closed
+```
+
+**Exclusions**: Automated potential scoring from psychometrics (requires 500+ data points).
+
+---
+
+### Annex 7: Talent Maps & Succession (Phase 9)
+
+**Scope**: Visual talent mapping, critical role identification, succession planning with readiness.
+
+**Key Features**:
+```
+1. Critical role identification: flag roles where vacancy = high business risk
+2. Succession plan per critical role: primary, secondary, emergency successors
+3. Readiness indicators: ready now, ready in 1 year, ready in 2+ years
+4. Development plan per successor: specific actions to close readiness gap
+5. Talent map: visual org chart with performance/potential overlay
+6. Risk dashboard: critical roles without successors, successors at risk of leaving
+7. AI mobility recommender: suggest internal candidates for open critical roles
+8. Succession pipeline health: overall organizational readiness score
+```
+
+**Screens** (~8):
+```
+HR:
+  - Talent map (visual org chart with overlays)
+  - Critical roles list
+  - Succession plan per role (assign successors, set readiness)
+  - Succession risk dashboard
+  - Succession pipeline health
+
+LEADER:
+  - My team talent map
+  - Succession plans for my critical roles
+
+EXECUTIVE:
+  - Strategic succession overview
+```
+
+**Database Tables** (~8):
+```
+critical_roles, succession_plans, succession_candidates,
+succession_readiness_assessments, talent_map_snapshots,
+development_plans, development_plan_actions, succession_risk_flags
+```
+
+**Domain Events**:
+```
+succession.plan_created, succession.candidate_assigned, succession.readiness_updated,
+succession.risk_flagged, talent_map.snapshot_created
+```
+
+**Exclusions**: External assessment of successors (uses existing TIMS assessments).
+
+---
+
+### Annex 8: Team Intelligence (Phase 8)
+
+**Scope**: Team composition analysis, competency balance, and hiring recommendations.
+
+**Key Features**:
+```
+1. Team profile: aggregate competency radar from all team members
+2. Competency balance analysis: strengths, gaps, redundancies
+3. Team health score: engagement, retention risk, performance balance
+4. Composition simulator: "what happens if person X leaves / person Y joins?"
+5. Ideal hire profile: AI generates candidate profile to optimize team balance
+6. Team comparison: compare teams across the organization
+7. Leader dashboard: team-specific insights and recommendations
+8. Historical team evolution: track how team composition changed over time
+```
+
+**Screens** (~6):
+```
+HR:
+  - Team intelligence dashboard (all teams, comparison)
+  - Team detail (competency radar, health score, members)
+
+LEADER:
+  - My team profile (radar, balance, health)
+  - Composition simulator
+  - Ideal hire profile for open positions
+  - Team evolution history
+```
+
+**Database Tables** (~6):
+```
+team_profiles, team_competency_scores, team_health_metrics,
+team_composition_snapshots, ideal_hire_profiles, team_comparisons
+```
+
+**Domain Events**:
+```
+team.profile_updated, team.health_calculated, team.ideal_hire_generated,
+team.composition_changed
+```
+
+**Exclusions**: Cross-team mobility optimization (future, requires ML).
+
+---
+
+### Annex 9: Strategic Monitoring (Phase 9)
+
+**Scope**: Executive dashboard aggregating KPIs from all modules for C-suite visibility.
+
+**Key Features**:
+```
+1. Executive dashboard: top-level KPIs from recruitment, performance, talent, engagement
+2. Drill-down: click any KPI to see detailed data by company/unit/team
+3. AI executive narrator: generates board-ready summaries in natural language
+4. Alert prioritization: AI ranks alerts by business impact
+5. Trend analysis: historical KPI trends with prediction
+6. Configurable dashboards: each executive can customize their view
+7. Scheduled reports: auto-email weekly/monthly executive summary
+8. Benchmark data: compare org metrics against industry (when available)
+```
+
+**Screens** (~6):
+```
+EXECUTIVE:
+  - Strategic dashboard (configurable widgets)
+  - KPI drill-down views
+  - Alert center (prioritized by impact)
+
+HR ADMIN:
+  - Dashboard configuration
+  - Scheduled report manager
+  - AI narrative review and approval
+```
+
+**Database Tables** (~6):
+```
+strategic_dashboards, dashboard_widgets, dashboard_configurations,
+strategic_kpis, strategic_alerts, scheduled_reports
+```
+
+**Domain Events**:
+```
+strategic.dashboard_viewed, strategic.report_generated, strategic.alert_created,
+strategic.narrative_generated
+```
+
+**Exclusions**: External BI tool integration (Phase 10 optional Power BI embed).
+
+---
+
+### Annex 10: HRIS/API (Phase 10)
+
+**Scope**: Public REST API, webhook system, HRIS connectors, billing, advanced audit.
+
+**Key Features**:
+```
+1. REST API: full CRUD for all entities with OAuth2 + API key auth
+2. Webhook system: subscribe to domain events, configurable per integration
+3. HRIS connectors: Workday, SAP SuccessFactors, BambooHR (at least 1 at launch)
+4. Data sync: bi-directional employee data synchronization on schedule
+5. Billing: Stripe integration, subscription plans, usage metering, invoices
+6. Advanced audit log: searchable, filterable, exportable, retention policies
+7. Consent management: employee data preference portal (GDPR/Habeas Data)
+8. Data migration toolkit: CSV/JSON import with validation, preview, rollback
+9. API documentation: auto-generated OpenAPI spec + developer portal
+10. Rate limiting and usage analytics per API consumer
+```
+
+**Screens** (~18):
+```
+ADMIN:
+  - API key management
+  - Webhook configuration
+  - HRIS connector setup (Workday, SAP, BambooHR)
+  - Sync status dashboard (last sync, errors, records)
+  - Billing: plans, invoices, usage
+  - Audit log viewer (search, filter, export)
+  - Consent management settings
+  - Data migration wizard
+
+DEVELOPER:
+  - API documentation portal
+  - Webhook event explorer
+  - API usage analytics
+
+EMPLOYEE:
+  - My data preferences (consent portal)
+  - Data export request
+```
+
+**Database Tables** (~14):
+```
+api_keys, api_usage_logs, webhooks, webhook_deliveries,
+hris_connectors, hris_sync_logs, hris_field_mappings,
+billing_subscriptions, billing_invoices, billing_usage_records,
+audit_logs_extended, consent_records, data_migration_jobs,
+data_migration_validation_results
+```
+
+**Domain Events**:
+```
+api.key_created, webhook.delivered, hris.sync_completed, hris.sync_failed,
+billing.invoice_created, billing.subscription_changed, audit.export_requested,
+consent.updated, migration.completed
+```
+
+**Exclusions**: Custom connector SDK (future), real-time sync (batch only at launch).
+
+---
+
+### Annex 11: Security & Sensitive Data (Cross-cutting)
+
+**Scope**: Data protection, access control for sensitive data, compliance frameworks.
+
+**Key Features**:
+```
+1. RBAC matrix for sensitive data: granular permissions per data type per role
+2. Data classification: 4 levels (Public, Internal, Confidential, Restricted)
+3. Sensitive data access logging: who viewed what, when, from where
+4. Consent management: explicit consent before collecting sensitive data
+5. Data anonymization: strip PII for analytics and reporting
+6. Data retention policies: configurable per data type, auto-archive/delete
+7. Encryption: at rest (Supabase default) + in transit (TLS) + field-level for PII
+8. GDPR/Habeas Data compliance: right to access, rectification, erasure
+9. Breach notification framework: incident response playbook
+10. Psychometric data protection: additional access controls for assessment results
+```
+
+**Implementation**:
+```
+MVP (Phases 0-3):
+  - RBAC matrix for sensitive data (see Section 21)
+  - Consent tracking table
+  - Sensitive data access audit log
+  - Field-level encryption for medical documents and psychometric raw data
+
+Post-MVP (Phases 4-10):
+  - Full anonymization engine
+  - Data retention automation
+  - Consent management portal (Phase 10)
+  - Breach notification system
+```
+
+**Database Tables** (~6, added incrementally):
+```
+consent_records, data_access_logs, data_retention_policies,
+data_classification_rules, anonymization_configs, breach_incidents
+```
+
+---
+
+### Annex 12: Climate & Engagement (Phase 8)
+
+**Scope**: Climate surveys, pulse surveys, culture assessment, action plans.
+
+**Key Features**:
+```
+1. Climate survey builder: configurable questions, scales, demographic segmentation
+2. Pulse surveys: short recurring surveys (weekly/biweekly)
+3. AI sentiment analysis: extract themes and sentiment from open-ended responses
+4. Results dashboard: by team, department, company with heatmaps
+5. Trend tracking: compare results across survey cycles
+6. Action plans: create improvement actions from survey results
+7. Action plan tracking: assign owners, set deadlines, follow up
+8. Anonymity guarantees: minimum respondents per group for visibility
+9. eNPS (Employee Net Promoter Score) tracking
+10. Retention risk correlation: link engagement scores to turnover prediction
+```
+
+**Screens** (~10):
+```
+HR:
+  - Survey builder
+  - Survey distribution manager
+  - Results dashboard (heatmaps, trends, AI themes)
+  - Action plan tracker
+  - eNPS dashboard
+
+LEADER:
+  - My team's engagement results
+  - My team's action plans
+
+EMPLOYEE:
+  - Survey response form
+  - My team's results (anonymized aggregate)
+```
+
+**Database Tables** (~10):
+```
+engagement_surveys, survey_questions, survey_distributions,
+survey_responses, survey_response_items, survey_ai_analysis,
+engagement_action_plans, action_plan_items, action_plan_updates,
+enps_scores
+```
+
+**Domain Events**:
+```
+survey.launched, survey.response_submitted, survey.closed,
+survey.analysis_completed, action_plan.created, action_plan.item_completed
+```
+
+**Exclusions**: External survey tool import (future), real-time sentiment during meetings.
+
+---
+
+### Annex 13: Compensation (Phase 9)
+
+**Scope**: Salary bands, equity analysis, adjustment workflows, compensation benchmarking.
+
+**Key Features**:
+```
+1. Salary band management: define bands per role family, level, geography
+2. Compa-ratio calculation: employee salary vs. band midpoint
+3. Pay equity analysis: detect disparities by gender, age, ethnicity
+4. Adjustment workflow: request → leader approval → HR approval → execution
+5. Budget simulation: model cost impact of proposed adjustments
+6. Compensation history: full salary history per employee
+7. Total compensation view: salary + benefits + bonuses + equity
+8. Benchmark integration: compare against market data (manual upload or API)
+```
+
+**Screens** (~8):
+```
+HR:
+  - Salary band manager
+  - Pay equity dashboard
+  - Adjustment workflow (pending, approved, rejected)
+  - Budget simulator
+  - Compensation analytics
+
+LEADER:
+  - My team compensation overview (compa-ratios)
+  - Request adjustment
+
+EMPLOYEE:
+  - My total compensation summary
+```
+
+**Database Tables** (~8):
+```
+salary_bands, employee_compensation, compensation_history,
+compensation_adjustments, adjustment_approvals, budget_simulations,
+compensation_benchmarks, total_compensation_components
+```
+
+**Domain Events**:
+```
+compensation.adjustment_requested, compensation.adjustment_approved,
+compensation.adjustment_rejected, compensation.equity_alert,
+compensation.band_updated
+```
+
+**Exclusions**: Payroll execution (external system), stock option management (future).
+
+---
+
+### Annex 14: DEI Full (Phase 9)
+
+**Scope**: Comprehensive diversity, equity, and inclusion analytics and auditing.
+
+**Key Features**:
+```
+1. Diversity dashboard: workforce composition by gender, ethnicity, age, disability
+2. Hiring funnel DEI analysis: conversion rates by demographic group per stage
+3. 4/5ths rule monitoring: automated adverse impact detection with alerts
+4. Pay equity by demographic: gender pay gap, ethnicity pay gap analysis
+5. Promotion equity: promotion rates by demographic group
+6. AI fairness audit: test all AI models for bias (selection, ranking, recommendation)
+7. Inclusive language scanner: organization-wide content audit
+8. DEI goal tracking: set and monitor diversity targets
+9. Compliance reporting: auto-generate reports for regulatory requirements
+10. Intersectional analysis: cross-demographic insights (e.g., gender × ethnicity)
+```
+
+**Screens** (~8):
+```
+HR ADMIN:
+  - DEI dashboard (workforce composition, trends)
+  - Hiring funnel DEI analysis
+  - Pay equity analysis
+  - AI fairness audit results
+  - DEI goal tracker
+  - Compliance report generator
+
+EXECUTIVE:
+  - DEI executive summary
+  - Year-over-year DEI trends
+```
+
+**Database Tables** (~8):
+```
+dei_demographic_data, dei_goals, dei_goal_progress,
+dei_hiring_analysis, dei_pay_equity_snapshots, dei_ai_audit_results,
+dei_compliance_reports, dei_alerts
+```
+
+**Domain Events**:
+```
+dei.adverse_impact_detected, dei.goal_updated, dei.audit_completed,
+dei.compliance_report_generated, dei.pay_gap_alert
+```
+
+**Exclusions**: Self-identification collection (uses existing HR data), accommodation management (future).
+
+---
+
+## 20. Data Continuity Map
+
+> Shows how data flows across all modules throughout the employee lifecycle.
+> This ensures no data is orphaned and every module builds on previous insights.
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        DATA CONTINUITY — FULL LIFECYCLE                     │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+RECRUITMENT FLOW:
+  Vacancy Description
+    → AI Inclusive Language Check → Cleaned Description
+    → Publication Channels → Source Tracking
+    → Applications → Pipeline
+
+  Application
+    → CV Parser → Structured Profile
+    → Assessment Assignment → Assessment Results
+    → FIT Score Calculation → Ranking
+
+  Assessment Results
+    → FIT Score (weighted composite)
+    → Gap Analysis (vs. JCA profile)
+    → Interview Guide (personalized questions)
+
+  Interview
+    → Scorecard + AI Summary
+    → Bias Detection Results
+    → Updated FIT Score (interview component added)
+
+  Offer + Validation
+    → Pre-employment Checks
+    → Medical Review (AI-assisted)
+    → E-Signature → Hire Transition
+
+HIRE TRANSITION (candidate → employee):
+  Candidate Profile + Assessment Results + Interview Scores
+    → Employee Record
+    → Onboarding Plan (auto-generated from gap analysis)
+    → Initial L&D Route (from competency gaps)
+    → QoH Baseline (day-0 snapshot)
+
+ONBOARDING → PERFORMANCE:
+  Onboarding Completion + Check-in Results
+    → QoH 30-day Score
+    → Initial OKRs (informed by role profile)
+    → Coaching Topics (from assessment gaps)
+
+PERFORMANCE → TALENT:
+  OKR Achievement + Performance Reviews
+    → Nine Box: Performance Axis
+  360 Evaluation + Coaching Progress
+    → Nine Box: Potential Axis
+  Nine Box Placement
+    → Succession Readiness
+    → L&D Priority
+    → Compensation Adjustment Eligibility
+
+ENGAGEMENT → RETENTION:
+  Climate Survey Results + eNPS
+    → Engagement Score
+  Engagement Score + Performance Trend + Tenure
+    → Retention Risk Prediction
+  Retention Risk
+    → Strategic Monitoring Alerts
+    → Leader Action Recommendations
+
+FEEDBACK LOOPS:
+  QoH Results (30/60/90/180/365)
+    → FIT Model Recalibration (adjust weights)
+    → Source Quality Ranking (update)
+    → Assessment Predictive Validity (track)
+
+  Performance Outcomes
+    → Nine Box Movement Prediction (train)
+    → Succession Readiness Updates
+    → Compensation Equity Analysis
+
+  DEI Analysis
+    → AI Fairness Recalibration
+    → Hiring Process Adjustments
+    → Pay Equity Corrections
+
+CROSS-MODULE CONNECTIONS:
+  ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+  │  Assessment   │────▶│  FIT Score    │────▶│  Nine Box    │
+  │  Results      │     │  + Gap       │     │  (potential)  │
+  └──────────────┘     └──────┬───────┘     └──────┬───────┘
+                              │                     │
+                              ▼                     ▼
+                       ┌──────────────┐     ┌──────────────┐
+                       │  Onboarding  │     │  Succession  │
+                       │  L&D Route   │     │  Planning    │
+                       └──────┬───────┘     └──────────────┘
+                              │
+                              ▼
+                       ┌──────────────┐     ┌──────────────┐
+                       │  Coaching    │────▶│  Commitments │
+                       │  Sessions    │     │  + KPIs      │
+                       └──────────────┘     └──────┬───────┘
+                                                   │
+                              ┌─────────────────────┘
+                              ▼
+                       ┌──────────────┐     ┌──────────────┐
+                       │  Performance │────▶│  Nine Box    │
+                       │  Reviews     │     │  (perform.)  │
+                       └──────────────┘     └──────────────┘
+
+  ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+  │  Climate     │────▶│  Engagement  │────▶│  Retention   │
+  │  Surveys     │     │  Score       │     │  Risk        │
+  └──────────────┘     └──────────────┘     └──────┬───────┘
+                                                   │
+                                                   ▼
+                                            ┌──────────────┐
+                                            │  Strategic   │
+                                            │  Monitoring  │
+                                            └──────────────┘
+
+  ┌──────────────┐     ┌──────────────┐
+  │  360 Eval    │────▶│  L&D Route   │────▶  Certification
+  │  Results     │     │  + Courses   │
+  └──────────────┘     └──────────────┘
+```
+
+---
+
+## 21. Sensitive Data Permission Matrix
+
+> Defines who can access sensitive data types. Enforced via RBAC middleware + audit logging.
+> Access levels: **FULL** (read+write), **READ** (view only), **AGGREGATE** (anonymized stats only),
+> **NONE** (no access). Additional controls: **AUDIT** = access is logged, **CONSENT** = requires
+> explicit consent from data subject.
+
+```
+DATA TYPE              super_admin   hr_admin   hrbp        recruiter   leader     employee   candidate
+─────────────────────  ───────────   ────────   ─────────   ─────────   ────────   ────────   ─────────
+Health / Medical       FULL+AUDIT    READ+AUDIT READ+AUDIT  NONE        NONE       OWN        OWN
+                                                (assigned)                          +CONSENT   +CONSENT
+
+Psychometric Scores    FULL+AUDIT    READ+AUDIT READ+AUDIT  READ+AUDIT  NONE       OWN        OWN
+(assessment results)                             (assigned)  (assigned)             (summary)  (summary)
+
+Psychometric Raw Data  FULL+AUDIT    NONE       NONE        NONE        NONE       NONE       NONE
+(item-level responses)
+
+Compensation / Salary  FULL+AUDIT    FULL+AUDIT READ+AUDIT  NONE        OWN TEAM   OWN        NONE
+                                                (assigned)               +AUDIT
+
+Nine Box Placement     FULL          FULL       READ        NONE        OWN TEAM   NONE       NONE
+                                                (assigned)               (read)
+
+Potential Score        FULL          FULL       READ        NONE        NONE       NONE       NONE
+                                                (assigned)
+
+DEI Demographics       FULL+AUDIT    AGGREGATE  AGGREGATE   NONE        NONE       OWN        OWN
+                                                                                   +CONSENT   +CONSENT
+
+Integrity Test Results FULL+AUDIT    READ+AUDIT READ+AUDIT  NONE        NONE       NONE       NONE
+                                                (assigned)
+
+Interview Recordings   FULL+AUDIT    READ+AUDIT READ+AUDIT  READ+AUDIT  READ       NONE       OWN
+(if enabled)                                    (assigned)  (assigned)  (own team)
+
+Coaching Notes         FULL+AUDIT    READ+AUDIT NONE        NONE        OWN TEAM   OWN        NONE
+                                                                        (own)
+
+Performance Reviews    FULL          FULL       READ        NONE        OWN TEAM   OWN        NONE
+                                                (assigned)               (own)
+
+Engagement Responses   FULL+AUDIT    AGGREGATE  AGGREGATE   NONE        AGGREGATE  NONE       NONE
+(individual)                                    (assigned)               (team, if
+                                                                         threshold)
+
+Retention Risk Score   FULL          FULL       READ        NONE        OWN TEAM   NONE       NONE
+                                                (assigned)
+
+Background Check       FULL+AUDIT    READ+AUDIT READ+AUDIT  READ+AUDIT  NONE       NONE       OWN
+Results                                         (assigned)  (assigned)                         (status)
+```
+
+### Access Control Implementation
+
+```
+1. RBAC MIDDLEWARE (tRPC):
+   - permission check includes data_classification level
+   - Level 3-4 data (Confidential, Restricted) requires audit log entry
+   - "assigned" scope = user must be assigned to that unit/vacancy/employee
+
+2. AUDIT LOGGING:
+   - All +AUDIT access writes to data_access_logs table
+   - Fields: user_id, data_type, record_id, action, timestamp, ip_address
+   - Retention: 7 years (configurable per org)
+
+3. CONSENT ENFORCEMENT:
+   - +CONSENT data requires consent_records entry before collection
+   - Consent can be withdrawn → data is anonymized within 30 days
+   - Consent status checked at query time via middleware
+
+4. ANONYMIZATION:
+   - AGGREGATE access returns only statistical summaries (min 5 records)
+   - PII stripped: name, email, ID replaced with anonymous identifiers
+   - Implemented via database views + middleware layer
+
+5. FIELD-LEVEL ENCRYPTION:
+   - medical_documents.content → AES-256 encrypted
+   - assessment_results.raw_data → AES-256 encrypted (item-level responses)
+   - Encryption keys managed via Supabase Vault (or AWS KMS at scale)
 ```
 
 ---

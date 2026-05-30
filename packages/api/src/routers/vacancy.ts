@@ -150,8 +150,8 @@ export const vacancyRouter = router({
       return db.vacancy.create({
         data: {
           ...input,
-          salary: input.salary ?? undefined,
-          settings: input.settings ?? {},
+          salary: (input.salary ?? undefined) as any,
+          settings: (input.settings ?? {}) as any,
           organizationId: ctx.user.organizationId,
           createdBy: ctx.user.id,
         },
@@ -175,8 +175,8 @@ export const vacancyRouter = router({
         where: { id },
         data: {
           ...data,
-          salary: data.salary ?? undefined,
-          settings: data.settings ?? undefined,
+          salary: (data.salary ?? undefined) as any,
+          settings: (data.settings ?? undefined) as any,
         },
       });
     }),
@@ -234,7 +234,7 @@ export const vacancyRouter = router({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Vacante no encontrada' });
       }
 
-      const { id: _id, createdAt: _ca, updatedAt: _ua, deletedAt: _da, closedAt: _cla, closedReason: _clr, ...rest } = original;
+      const { id: _id, createdAt: _ca, updatedAt: _ua, deletedAt: _da, closedAt: _cla, closedReason: _clr, jobProfile: _jp, stages: _stg, ...rest } = original;
 
       return db.$transaction(async (tx) => {
         const newVacancy = await tx.vacancy.create({
@@ -244,7 +244,7 @@ export const vacancyRouter = router({
             status: 'draft',
             createdBy: ctx.user.id,
             settings: rest.settings as any,
-            salary: rest.salary as any ?? undefined,
+            salary: (rest.salary as any) ?? undefined,
           },
         });
 

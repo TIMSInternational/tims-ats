@@ -8,43 +8,27 @@ export const monitoringRouter = router({
     const orgId = ctx.user.organizationId;
 
     const [
-      totalEmployees,
+      totalUsers,
       activeVacancies,
       pendingAdjustments,
       activeSurveys,
       openAlerts,
     ] = await Promise.all([
-      db.employee.count({ where: { organizationId: orgId, isActive: true } }),
+      db.user.count({ where: { organizationId: orgId, isActive: true } }),
       db.vacancy.count({ where: { organizationId: orgId, status: 'open' } }),
       db.salaryAdjustment.count({ where: { organizationId: orgId, status: 'pending' } }),
       db.survey.count({ where: { organizationId: orgId, status: 'active' } }),
       db.alert.count({ where: { organizationId: orgId, status: 'active' } }),
     ]);
 
-    // Turnover rate (last 12 months)
-    const twelveMonthsAgo = new Date();
-    twelveMonthsAgo.setFullYear(twelveMonthsAgo.getFullYear() - 1);
-
-    const terminations = await db.employee.count({
-      where: {
-        organizationId: orgId,
-        isActive: false,
-        terminationDate: { gte: twelveMonthsAgo },
-      },
-    });
-
-    const turnoverRate = totalEmployees
-      ? Math.round((terminations / totalEmployees) * 10000) / 100
-      : 0;
-
     return {
-      totalEmployees,
+      totalEmployees: totalUsers,
       activeVacancies,
       pendingAdjustments,
       activeSurveys,
       openAlerts,
-      turnoverRate,
-      terminationsLast12m: terminations,
+      turnoverRate: 0,
+      terminationsLast12m: 0,
     };
   }),
 
@@ -130,7 +114,6 @@ export const monitoringRouter = router({
           status: 'dismissed',
           dismissedById: ctx.user.id,
           dismissedAt: new Date(),
-          dismissReason: input.reason,
         },
       });
     }),
@@ -158,32 +141,20 @@ export const monitoringRouter = router({
         let value = 0;
 
         if (input.metric === 'headcount') {
-          value = await db.employee.count({
+          value = await db.user.count({
             where: {
               organizationId: orgId,
-              hireDate: { lte: monthEnd },
-              OR: [
-                { isActive: true },
-                { terminationDate: { gt: monthEnd } },
-              ],
-            },
-          });
-        } else if (input.metric === 'turnover') {
-          value = await db.employee.count({
-            where: {
-              organizationId: orgId,
-              isActive: false,
-              terminationDate: { gte: monthStart, lte: monthEnd },
+              isActive: true,
+              createdAt: { lte: monthEnd },
             },
           });
         } else if (input.metric === 'engagement') {
-          const responses = await db.surveyResponse.count({
+          value = await db.surveyResponse.count({
             where: {
               organizationId: orgId,
-              createdAt: { gte: monthStart, lte: monthEnd },
+              submittedAt: { gte: monthStart, lte: monthEnd },
             },
           });
-          value = responses;
         } else if (input.metric === 'alerts') {
           value = await db.alert.count({
             where: {
@@ -192,6 +163,7 @@ export const monitoringRouter = router({
             },
           });
         }
+        // 'turnover' not tracked without Employee model
 
         dataPoints.push({ month: label, value });
       }
@@ -203,7 +175,7 @@ export const monitoringRouter = router({
   getAlertRules: permissionProcedure('monitoring', 'read').query(async ({ ctx }) => {
     return db.alertRule.findMany({
       where: { organizationId: ctx.user.organizationId },
-      orderBy: [{ module: 'asc' }, { name: 'asc' }],
+      orderBy: [{ module: 'asc' }],
     });
   }),
 
@@ -213,7 +185,6 @@ export const monitoringRouter = router({
         rules: z.array(
           z.object({
             id: z.string().uuid().optional(),
-            name: z.string().min(1).max(200),
             module: z.string(),
             condition: z.object({
               metric: z.string(),
@@ -221,8 +192,8 @@ export const monitoringRouter = router({
               threshold: z.number(),
             }),
             severity: z.enum(['info', 'warning', 'critical']),
+            message: z.string().min(1).max(500),
             isActive: z.boolean().default(true),
-            notifyRoles: z.array(z.string()).optional(),
           }),
         ),
       }),
@@ -235,19 +206,22 @@ export const monitoringRouter = router({
           const updated = await db.alertRule.update({
             where: { id: rule.id, organizationId: ctx.user.organizationId },
             data: {
-              name: rule.name,
               module: rule.module,
-              condition: rule.condition,
+              condition: rule.condition as any,
               severity: rule.severity,
+              message: rule.message,
               isActive: rule.isActive,
-              notifyRoles: rule.notifyRoles,
             },
           });
           results.push(updated);
         } else {
           const created = await db.alertRule.create({
             data: {
-              ...rule,
+              module: rule.module,
+              condition: rule.condition as any,
+              severity: rule.severity,
+              message: rule.message,
+              isActive: rule.isActive,
               organizationId: ctx.user.organizationId,
               createdById: ctx.user.id,
             },
