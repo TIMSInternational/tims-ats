@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TIMS ATS — Job Requisition Workspace</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>body{font-family:'Inter',sans-serif;margin:0;background:#F6F6F6;} .scrollbar-thin::-webkit-scrollbar{width:4px;} .scrollbar-thin::-webkit-scrollbar-thumb{background:#ccc;border-radius:4px;}</style>
+</head>
+<body>
+<div class="flex w-[1440px] h-[900px] mx-auto overflow-hidden">
+
+  <!-- SIDEBAR COMPACT -->
+  <div class="flex flex-col w-[72px] h-full bg-[#1F114C] shrink-0 items-center">
+    <div class="flex items-center justify-center h-[80px] border-b border-white/10 w-full"><div class="w-9 h-9 rounded-lg bg-[#DD0C15] flex items-center justify-center"><span class="text-white text-[13px] font-bold">T</span></div></div>
+    <nav class="flex-1 py-3 flex flex-col items-center gap-1 w-full overflow-y-auto">
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10 group relative"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></a>
+      <div class="w-8 border-t border-white/10 my-2"></div>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center bg-white/10 group relative"><svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a4 4 0 00-8 0v2"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10 relative"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg><span class="absolute -top-0.5 -right-0.5 bg-[#DD0C15] text-white text-[8px] font-bold w-3.5 h-3.5 rounded-full flex items-center justify-center">3</span></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10 relative"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z"/></svg><span class="absolute -top-0.5 -right-0.5 bg-[#DD0C15] text-white text-[8px] font-bold w-3.5 h-3.5 rounded-full flex items-center justify-center">2</span></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75z"/></svg></a>
+      <div class="w-8 border-t border-white/10 my-2"></div>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M15.59 14.37a6 6 0 01-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 006.16-12.12A14.98 14.98 0 009.631 8.41"/></svg></a>
+      <div class="w-8 border-t border-white/10 my-2"></div>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594"/><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg></a>
+    </nav>
+    <div class="py-3 border-t border-white/10 flex justify-center"><div class="w-9 h-9 rounded-full bg-[#DD0C15] flex items-center justify-center text-white text-[11px] font-bold">FT</div></div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="flex flex-col flex-1 min-w-0">
+    <!-- TOP BAR -->
+    <div class="flex items-center justify-between px-6 h-16 bg-white border-b border-[#EDEDED] shrink-0">
+      <div class="flex items-center gap-2">
+        <span class="text-[13px] text-[#8B8B8B]">Vacancies</span><svg class="w-3 h-3 text-[#ccc]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+        <span class="text-sm font-medium text-[#1F114C]">Senior Software Engineer</span>
+        <span class="bg-green-50 text-green-600 text-[11px] font-medium px-2.5 py-0.5 rounded-full border border-green-200 ml-2">Activa</span>
+        <span class="text-[11px] text-[#8B8B8B] ml-2">REQ-2026-0047</span>
+      </div>
+      <div class="flex items-center gap-3">
+        <button class="flex items-center gap-1.5 border border-[#EDEDED] text-[#585858] px-3 h-8 rounded-lg text-[12px]"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z"/></svg>Editar</button>
+        <button class="flex items-center gap-1.5 border border-[#EDEDED] text-[#585858] px-3 h-8 rounded-lg text-[12px]"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0-12.814a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0 12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z"/></svg>Compartir</button>
+        <button class="flex items-center gap-1.5 bg-[#DD0C15] text-white px-4 h-8 rounded-lg text-[12px] font-medium">Ver Pipeline</button>
+      </div>
+    </div>
+
+    <!-- CONTENT -->
+    <div class="flex-1 overflow-y-auto p-6 scrollbar-thin">
+      <div class="flex gap-6">
+
+        <!-- LEFT COL 65% -->
+        <div class="flex-[65] space-y-4">
+
+          <!-- General Info -->
+          <div class="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+            <h3 class="text-[14px] font-semibold text-[#1F114C] mb-4">Informacion General</h3>
+            <div class="grid grid-cols-3 gap-x-6 gap-y-3">
+              <div><p class="text-[11px] text-[#8B8B8B] mb-0.5">Titulo</p><p class="text-[13px] text-[#333] font-medium">Senior Software Engineer</p></div>
+              <div><p class="text-[11px] text-[#8B8B8B] mb-0.5">Departamento</p><p class="text-[13px] text-[#333]">Engineering</p></div>
+              <div><p class="text-[11px] text-[#8B8B8B] mb-0.5">Empresa</p><p class="text-[13px] text-[#333]">TIMS Colombia</p></div>
+              <div><p class="text-[11px] text-[#8B8B8B] mb-0.5">Ubicacion</p><p class="text-[13px] text-[#333]">Bogota, Colombia (Hibrido)</p></div>
+              <div><p class="text-[11px] text-[#8B8B8B] mb-0.5">Tipo Contrato</p><p class="text-[13px] text-[#333]">Indefinido — Full-time</p></div>
+              <div><p class="text-[11px] text-[#8B8B8B] mb-0.5">Banda Salarial</p><p class="text-[13px] text-[#333]">$85,000 – $95,000 USD/ano</p></div>
+              <div><p class="text-[11px] text-[#8B8B8B] mb-0.5">Nivel</p><p class="text-[13px] text-[#333]">Senior (5+ anos)</p></div>
+              <div><p class="text-[11px] text-[#8B8B8B] mb-0.5">Hiring Manager</p><p class="text-[13px] text-[#333]">Laura Garcia (Eng Lead)</p></div>
+              <div><p class="text-[11px] text-[#8B8B8B] mb-0.5">Prioridad</p><div class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-[#DD0C15]"></span><span class="text-[13px] text-[#DD0C15] font-medium">Alta</span></div></div>
+              <div><p class="text-[11px] text-[#8B8B8B] mb-0.5">Fecha Apertura</p><p class="text-[13px] text-[#333]">15 Abril 2026</p></div>
+              <div><p class="text-[11px] text-[#8B8B8B] mb-0.5">SLA Target</p><p class="text-[13px] text-[#DD0C15] font-medium">30 dias (quedan 7)</p></div>
+              <div><p class="text-[11px] text-[#8B8B8B] mb-0.5">Posiciones</p><p class="text-[13px] text-[#333]">2 vacantes (1 cubierta)</p></div>
+            </div>
+          </div>
+
+          <!-- JCA Profile + Expected PCA/MIL -->
+          <div class="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+            <div class="flex justify-between items-center mb-4">
+              <h3 class="text-[14px] font-semibold text-[#1F114C]">Perfil del Cargo (JCA)</h3>
+              <span class="text-[11px] text-[#8B8B8B] bg-[#F6F6F6] px-2 py-0.5 rounded">Codigo JCA: ENG-SR-001</span>
+            </div>
+            <!-- Expected DISC -->
+            <div class="mb-4">
+              <p class="text-[12px] text-[#585858] font-medium mb-2">PCA Esperado (DISC Target)</p>
+              <div class="flex gap-2">
+                <div class="flex-1 bg-[#F6F6F6] rounded-lg p-3 text-center"><p class="text-[10px] text-[#8B8B8B]">Dominancia</p><p class="text-[18px] font-bold text-[#1F114C]">70-80</p><div class="w-full bg-[#EDEDED] rounded-full h-1.5 mt-1"><div class="h-1.5 bg-[#1F114C] rounded-full" style="width:75%"></div></div></div>
+                <div class="flex-1 bg-[#F6F6F6] rounded-lg p-3 text-center"><p class="text-[10px] text-[#8B8B8B]">Influencia</p><p class="text-[18px] font-bold text-[#1F114C]">60-75</p><div class="w-full bg-[#EDEDED] rounded-full h-1.5 mt-1"><div class="h-1.5 bg-[#1F114C] rounded-full" style="width:67%"></div></div></div>
+                <div class="flex-1 bg-[#F6F6F6] rounded-lg p-3 text-center"><p class="text-[10px] text-[#8B8B8B]">Solidez</p><p class="text-[18px] font-bold text-[#1F114C]">50-65</p><div class="w-full bg-[#EDEDED] rounded-full h-1.5 mt-1"><div class="h-1.5 bg-[#1F114C] rounded-full" style="width:57%"></div></div></div>
+                <div class="flex-1 bg-[#F6F6F6] rounded-lg p-3 text-center"><p class="text-[10px] text-[#8B8B8B]">Control</p><p class="text-[18px] font-bold text-[#1F114C]">75-85</p><div class="w-full bg-[#EDEDED] rounded-full h-1.5 mt-1"><div class="h-1.5 bg-[#1F114C] rounded-full" style="width:80%"></div></div></div>
+              </div>
+            </div>
+            <!-- Expected MIL -->
+            <div class="mb-4">
+              <p class="text-[12px] text-[#585858] font-medium mb-2">MIL Esperado</p>
+              <div class="flex items-center gap-3"><div class="flex-1 bg-[#F6F6F6] rounded-full h-3"><div class="h-3 bg-[#5C4B99] rounded-full" style="width:70%"></div></div><span class="text-[13px] text-[#1F114C] font-medium w-16">Min: 70</span></div>
+            </div>
+            <!-- Competencies -->
+            <div>
+              <p class="text-[12px] text-[#585858] font-medium mb-2">Competencias Requeridas</p>
+              <div class="grid grid-cols-2 gap-2">
+                <div class="flex items-center justify-between bg-[#F6F6F6] rounded-lg px-3 py-2"><span class="text-[12px] text-[#333]">Liderazgo Tecnico</span><div class="flex gap-0.5"><span class="w-2 h-2 rounded-full bg-[#1F114C]"></span><span class="w-2 h-2 rounded-full bg-[#1F114C]"></span><span class="w-2 h-2 rounded-full bg-[#1F114C]"></span><span class="w-2 h-2 rounded-full bg-[#1F114C]"></span><span class="w-2 h-2 rounded-full bg-[#EDEDED]"></span></div></div>
+                <div class="flex items-center justify-between bg-[#F6F6F6] rounded-lg px-3 py-2"><span class="text-[12px] text-[#333]">Pensamiento Analitico</span><div class="flex gap-0.5"><span class="w-2 h-2 rounded-full bg-[#1F114C]"></span><span class="w-2 h-2 rounded-full bg-[#1F114C]"></span><span class="w-2 h-2 rounded-full bg-[#1F114C]"></span><span class="w-2 h-2 rounded-full bg-[#1F114C]"></span><span class="w-2 h-2 rounded-full bg-[#1F114C]"></span></div></div>
+                <div class="flex items-center justify-between bg-[#F6F6F6] rounded-lg px-3 py-2"><span class="text-[12px] text-[#333]">Comunicacion</span><div class="flex gap-0.5"><span class="w-2 h-2 rounded-full bg-[#1F114C]"></span><span class="w-2 h-2 rounded-full bg-[#1F114C]"></span><span class="w-2 h-2 rounded-full bg-[#1F114C]"></span><span class="w-2 h-2 rounded-full bg-[#EDEDED]"></span><span class="w-2 h-2 rounded-full bg-[#EDEDED]"></span></div></div>
+                <div class="flex items-center justify-between bg-[#F6F6F6] rounded-lg px-3 py-2"><span class="text-[12px] text-[#333]">Trabajo en Equipo</span><div class="flex gap-0.5"><span class="w-2 h-2 rounded-full bg-[#1F114C]"></span><span class="w-2 h-2 rounded-full bg-[#1F114C]"></span><span class="w-2 h-2 rounded-full bg-[#1F114C]"></span><span class="w-2 h-2 rounded-full bg-[#1F114C]"></span><span class="w-2 h-2 rounded-full bg-[#EDEDED]"></span></div></div>
+                <div class="flex items-center justify-between bg-[#F6F6F6] rounded-lg px-3 py-2"><span class="text-[12px] text-[#333]">Adaptabilidad</span><div class="flex gap-0.5"><span class="w-2 h-2 rounded-full bg-[#1F114C]"></span><span class="w-2 h-2 rounded-full bg-[#1F114C]"></span><span class="w-2 h-2 rounded-full bg-[#1F114C]"></span><span class="w-2 h-2 rounded-full bg-[#EDEDED]"></span><span class="w-2 h-2 rounded-full bg-[#EDEDED]"></span></div></div>
+                <div class="flex items-center justify-between bg-[#F6F6F6] rounded-lg px-3 py-2"><span class="text-[12px] text-[#333]">Resolucion de Problemas</span><div class="flex gap-0.5"><span class="w-2 h-2 rounded-full bg-[#1F114C]"></span><span class="w-2 h-2 rounded-full bg-[#1F114C]"></span><span class="w-2 h-2 rounded-full bg-[#1F114C]"></span><span class="w-2 h-2 rounded-full bg-[#1F114C]"></span><span class="w-2 h-2 rounded-full bg-[#1F114C]"></span></div></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Requirements + AI Description -->
+          <div class="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+            <h3 class="text-[14px] font-semibold text-[#1F114C] mb-3">Requisitos y Descripcion</h3>
+            <div class="mb-4">
+              <p class="text-[12px] text-[#585858] font-medium mb-2">Requisitos Excluyentes</p>
+              <div class="space-y-1.5">
+                <div class="flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-[#DD0C15] shrink-0"></span><span class="text-[12px] text-[#333]">5+ anos de experiencia en desarrollo backend (Node.js, Python o Go)</span></div>
+                <div class="flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-[#DD0C15] shrink-0"></span><span class="text-[12px] text-[#333]">Experiencia con arquitectura de microservicios y AWS</span></div>
+                <div class="flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-[#DD0C15] shrink-0"></span><span class="text-[12px] text-[#333]">Ingles B2+ (comunicacion con equipos globales)</span></div>
+                <div class="flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-[#DD0C15] shrink-0"></span><span class="text-[12px] text-[#333]">Experiencia liderando equipos tecnicos (3+ personas)</span></div>
+              </div>
+            </div>
+            <div class="mb-4">
+              <p class="text-[12px] text-[#585858] font-medium mb-2">KPIs del Cargo</p>
+              <div class="flex gap-3">
+                <div class="flex-1 bg-[#F6F6F6] rounded-lg p-2.5 text-center"><p class="text-[10px] text-[#8B8B8B]">Uptime SLA</p><p class="text-[14px] font-bold text-[#1F114C]">99.9%</p></div>
+                <div class="flex-1 bg-[#F6F6F6] rounded-lg p-2.5 text-center"><p class="text-[10px] text-[#8B8B8B]">Deploy Freq</p><p class="text-[14px] font-bold text-[#1F114C]">Daily</p></div>
+                <div class="flex-1 bg-[#F6F6F6] rounded-lg p-2.5 text-center"><p class="text-[10px] text-[#8B8B8B]">Code Review</p><p class="text-[14px] font-bold text-[#1F114C]"><24h</p></div>
+                <div class="flex-1 bg-[#F6F6F6] rounded-lg p-2.5 text-center"><p class="text-[10px] text-[#8B8B8B]">Sprint Velocity</p><p class="text-[14px] font-bold text-[#1F114C]">+10%</p></div>
+              </div>
+            </div>
+            <div>
+              <div class="flex justify-between items-center mb-2">
+                <p class="text-[12px] text-[#585858] font-medium">Descripcion (Generada por IA)</p>
+                <div class="flex gap-2">
+                  <span class="text-[10px] bg-teal-50 text-teal-600 px-2 py-0.5 rounded border border-teal-200">IA Generada</span>
+                  <button class="text-[10px] text-[#DD0C15]">Regenerar</button>
+                </div>
+              </div>
+              <div class="bg-[#F6F6F6] rounded-lg p-3 text-[12px] text-[#585858] leading-relaxed">
+                Buscamos un Senior Software Engineer apasionado por construir sistemas escalables y liderar equipos de alto rendimiento. Seras responsable de disenar la arquitectura backend de nuestra plataforma de talento humano, trabajando con Node.js, TypeScript, PostgreSQL y AWS. Lideraras un equipo de 4-6 desarrolladores, definiendo estandares de codigo, conduciendo code reviews y mentoreando ingenieros junior. Ofrecemos trabajo hibrido, salario competitivo, y la oportunidad de impactar la gestion de talento de empresas en toda Latinoamerica.
+              </div>
+            </div>
+          </div>
+
+          <!-- Publication Channels -->
+          <div class="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+            <div class="flex justify-between items-center mb-4">
+              <h3 class="text-[14px] font-semibold text-[#1F114C]">Canales de Publicacion</h3>
+              <button class="text-[12px] text-[#DD0C15] font-medium">+ Agregar Canal</button>
+            </div>
+            <div class="space-y-2">
+              <div class="flex items-center justify-between bg-[#F6F6F6] rounded-lg px-4 py-3">
+                <div class="flex items-center gap-3"><div class="w-8 h-8 rounded bg-blue-600 flex items-center justify-center text-white text-[10px] font-bold">in</div><div><p class="text-[12px] text-[#333] font-medium">LinkedIn Jobs</p><p class="text-[10px] text-[#8B8B8B]">Publicada hace 20 dias</p></div></div>
+                <div class="flex items-center gap-4"><div class="text-right"><p class="text-[13px] font-medium text-[#1F114C]">156</p><p class="text-[10px] text-[#8B8B8B]">aplicaciones</p></div><div class="text-right"><p class="text-[13px] font-medium text-green-600">12</p><p class="text-[10px] text-[#8B8B8B]">calificados</p></div><div class="text-right"><p class="text-[13px] font-medium text-[#1F114C]">$2.80</p><p class="text-[10px] text-[#8B8B8B]">costo/calif.</p></div><span class="bg-green-50 text-green-600 text-[10px] px-2 py-0.5 rounded">Activa</span></div>
+              </div>
+              <div class="flex items-center justify-between bg-[#F6F6F6] rounded-lg px-4 py-3">
+                <div class="flex items-center gap-3"><div class="w-8 h-8 rounded bg-[#1F114C] flex items-center justify-center text-white text-[10px] font-bold">P</div><div><p class="text-[12px] text-[#333] font-medium">Portal TIMS</p><p class="text-[10px] text-[#8B8B8B]">Publicada hace 20 dias</p></div></div>
+                <div class="flex items-center gap-4"><div class="text-right"><p class="text-[13px] font-medium text-[#1F114C]">89</p><p class="text-[10px] text-[#8B8B8B]">aplicaciones</p></div><div class="text-right"><p class="text-[13px] font-medium text-green-600">8</p><p class="text-[10px] text-[#8B8B8B]">calificados</p></div><div class="text-right"><p class="text-[13px] font-medium text-[#1F114C]">$0</p><p class="text-[10px] text-[#8B8B8B]">costo/calif.</p></div><span class="bg-green-50 text-green-600 text-[10px] px-2 py-0.5 rounded">Activa</span></div>
+              </div>
+              <div class="flex items-center justify-between bg-[#F6F6F6] rounded-lg px-4 py-3">
+                <div class="flex items-center gap-3"><div class="w-8 h-8 rounded bg-green-600 flex items-center justify-center text-white text-[10px] font-bold">R</div><div><p class="text-[12px] text-[#333] font-medium">Referidos</p><p class="text-[10px] text-[#8B8B8B]">Programa activo</p></div></div>
+                <div class="flex items-center gap-4"><div class="text-right"><p class="text-[13px] font-medium text-[#1F114C]">23</p><p class="text-[10px] text-[#8B8B8B]">referidos</p></div><div class="text-right"><p class="text-[13px] font-medium text-green-600">6</p><p class="text-[10px] text-[#8B8B8B]">calificados</p></div><div class="text-right"><p class="text-[13px] font-medium text-[#1F114C]">$0</p><p class="text-[10px] text-[#8B8B8B]">costo/calif.</p></div><span class="bg-green-50 text-green-600 text-[10px] px-2 py-0.5 rounded">Activa</span></div>
+              </div>
+              <div class="flex items-center justify-between bg-[#F6F6F6] rounded-lg px-4 py-3">
+                <div class="flex items-center gap-3"><div class="w-8 h-8 rounded bg-orange-500 flex items-center justify-center text-white text-[10px] font-bold">CT</div><div><p class="text-[12px] text-[#333] font-medium">Computrabajo</p><p class="text-[10px] text-[#8B8B8B]">Publicada hace 15 dias</p></div></div>
+                <div class="flex items-center gap-4"><div class="text-right"><p class="text-[13px] font-medium text-[#1F114C]">72</p><p class="text-[10px] text-[#8B8B8B]">aplicaciones</p></div><div class="text-right"><p class="text-[13px] font-medium text-green-600">4</p><p class="text-[10px] text-[#8B8B8B]">calificados</p></div><div class="text-right"><p class="text-[13px] font-medium text-[#1F114C]">$5.20</p><p class="text-[10px] text-[#8B8B8B]">costo/calif.</p></div><span class="bg-green-50 text-green-600 text-[10px] px-2 py-0.5 rounded">Activa</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- RIGHT COL 35% -->
+        <div class="flex-[35] space-y-4">
+
+          <!-- Candidates Summary -->
+          <div class="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+            <div class="flex justify-between items-center mb-3">
+              <h3 class="text-[14px] font-semibold text-[#1F114C]">Candidatos Asociados</h3>
+              <span class="text-[12px] text-[#DD0C15] font-medium cursor-pointer">Ver todos</span>
+            </div>
+            <div class="flex gap-2 mb-4">
+              <div class="flex-1 bg-[#F6F6F6] rounded-lg p-2.5 text-center"><p class="text-[18px] font-bold text-[#1F114C]">34</p><p class="text-[10px] text-[#8B8B8B]">Total</p></div>
+              <div class="flex-1 bg-green-50 rounded-lg p-2.5 text-center"><p class="text-[18px] font-bold text-green-600">12</p><p class="text-[10px] text-green-600">Calificados</p></div>
+              <div class="flex-1 bg-amber-50 rounded-lg p-2.5 text-center"><p class="text-[18px] font-bold text-amber-600">8</p><p class="text-[10px] text-amber-600">En proceso</p></div>
+              <div class="flex-1 bg-red-50 rounded-lg p-2.5 text-center"><p class="text-[18px] font-bold text-[#DD0C15]">14</p><p class="text-[10px] text-[#DD0C15]">Rechazados</p></div>
+            </div>
+            <!-- Mini pipeline -->
+            <p class="text-[11px] text-[#585858] font-medium mb-2">Pipeline actual</p>
+            <div class="space-y-1.5">
+              <div class="flex items-center gap-2"><span class="text-[11px] text-[#585858] w-20">Postulados</span><div class="flex-1 bg-[#F6F6F6] rounded-full h-2"><div class="h-2 bg-[#E8E5F0] rounded-full" style="width:100%"></div></div><span class="text-[11px] text-[#1F114C] font-medium w-6 text-right">34</span></div>
+              <div class="flex items-center gap-2"><span class="text-[11px] text-[#585858] w-20">Preseleccion</span><div class="flex-1 bg-[#F6F6F6] rounded-full h-2"><div class="h-2 bg-[#D4CFE5] rounded-full" style="width:53%"></div></div><span class="text-[11px] text-[#1F114C] font-medium w-6 text-right">18</span></div>
+              <div class="flex items-center gap-2"><span class="text-[11px] text-[#585858] w-20">Evaluacion</span><div class="flex-1 bg-[#F6F6F6] rounded-full h-2"><div class="h-2 bg-[#B8AED4] rounded-full" style="width:35%"></div></div><span class="text-[11px] text-[#1F114C] font-medium w-6 text-right">12</span></div>
+              <div class="flex items-center gap-2"><span class="text-[11px] text-[#585858] w-20">Entrevista</span><div class="flex-1 bg-[#F6F6F6] rounded-full h-2"><div class="h-2 bg-[#7B6BAA] rounded-full" style="width:24%"></div></div><span class="text-[11px] text-[#1F114C] font-medium w-6 text-right">8</span></div>
+              <div class="flex items-center gap-2"><span class="text-[11px] text-[#585858] w-20">Oferta</span><div class="flex-1 bg-[#F6F6F6] rounded-full h-2"><div class="h-2 bg-[#5C4B99] rounded-full" style="width:9%"></div></div><span class="text-[11px] text-[#1F114C] font-medium w-6 text-right">3</span></div>
+              <div class="flex items-center gap-2"><span class="text-[11px] text-[#585858] w-20">Contratado</span><div class="flex-1 bg-[#F6F6F6] rounded-full h-2"><div class="h-2 bg-[#1F114C] rounded-full" style="width:6%"></div></div><span class="text-[11px] text-[#1F114C] font-medium w-6 text-right">2</span></div>
+            </div>
+          </div>
+
+          <!-- Conversion by Source -->
+          <div class="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+            <h3 class="text-[14px] font-semibold text-[#1F114C] mb-3">Conversion por Fuente</h3>
+            <div class="space-y-3">
+              <div><div class="flex justify-between text-[12px] mb-1"><span class="text-[#585858]">LinkedIn</span><span class="text-[#1F114C] font-medium">7.7% (12/156)</span></div><div class="w-full bg-[#F6F6F6] rounded-full h-2"><div class="bg-blue-500 h-2 rounded-full" style="width:7.7%"></div></div></div>
+              <div><div class="flex justify-between text-[12px] mb-1"><span class="text-[#585858]">Portal TIMS</span><span class="text-[#1F114C] font-medium">9.0% (8/89)</span></div><div class="w-full bg-[#F6F6F6] rounded-full h-2"><div class="bg-[#1F114C] h-2 rounded-full" style="width:9%"></div></div></div>
+              <div><div class="flex justify-between text-[12px] mb-1"><span class="text-[#585858]">Referidos</span><span class="text-green-600 font-medium">26.1% (6/23)</span></div><div class="w-full bg-[#F6F6F6] rounded-full h-2"><div class="bg-green-500 h-2 rounded-full" style="width:26.1%"></div></div></div>
+              <div><div class="flex justify-between text-[12px] mb-1"><span class="text-[#585858]">Computrabajo</span><span class="text-[#1F114C] font-medium">5.6% (4/72)</span></div><div class="w-full bg-[#F6F6F6] rounded-full h-2"><div class="bg-orange-500 h-2 rounded-full" style="width:5.6%"></div></div></div>
+            </div>
+            <div class="mt-3 bg-teal-50 rounded-lg p-2.5 border border-teal-200"><p class="text-[11px] text-teal-700"><strong>IA:</strong> Referidos tienen 3.4x mejor conversion. Considerar incrementar incentivo del programa de referidos.</p></div>
+          </div>
+
+          <!-- SLA & Timeline -->
+          <div class="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+            <h3 class="text-[14px] font-semibold text-[#1F114C] mb-3">SLA y Tiempos</h3>
+            <div class="flex gap-3 mb-4">
+              <div class="flex-1 bg-red-50 border border-red-200 rounded-lg p-3 text-center"><p class="text-[10px] text-[#DD0C15]">Dias Transcurridos</p><p class="text-[22px] font-bold text-[#DD0C15]">45</p><p class="text-[10px] text-[#DD0C15]">SLA: 30 dias</p></div>
+              <div class="flex-1 bg-[#F6F6F6] rounded-lg p-3 text-center"><p class="text-[10px] text-[#8B8B8B]">Tiempo Promedio/Etapa</p><p class="text-[22px] font-bold text-[#1F114C]">6.4</p><p class="text-[10px] text-[#8B8B8B]">dias</p></div>
+            </div>
+            <div class="space-y-2">
+              <div class="flex items-center justify-between"><span class="text-[11px] text-[#585858]">Postulacion → Preseleccion</span><span class="text-[11px] font-medium text-green-600">2 dias (SLA: 3)</span></div>
+              <div class="flex items-center justify-between"><span class="text-[11px] text-[#585858]">Preseleccion → Evaluacion</span><span class="text-[11px] font-medium text-[#DD0C15]">8 dias (SLA: 5)</span></div>
+              <div class="flex items-center justify-between"><span class="text-[11px] text-[#585858]">Evaluacion → Entrevista</span><span class="text-[11px] font-medium text-amber-600">5 dias (SLA: 5)</span></div>
+              <div class="flex items-center justify-between"><span class="text-[11px] text-[#585858]">Entrevista → Oferta</span><span class="text-[11px] font-medium text-green-600">4 dias (SLA: 7)</span></div>
+            </div>
+          </div>
+
+          <!-- Approval Chain -->
+          <div class="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+            <h3 class="text-[14px] font-semibold text-[#1F114C] mb-3">Cadena de Aprobacion</h3>
+            <div class="space-y-0">
+              <div class="flex items-center gap-3 py-2"><div class="w-6 h-6 rounded-full bg-green-500 flex items-center justify-center"><svg class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="m4.5 12.75 6 6 9-13.5"/></svg></div><div class="flex-1"><p class="text-[12px] text-[#333]">Laura Garcia <span class="text-[#8B8B8B]">(Hiring Manager)</span></p><p class="text-[10px] text-green-600">Aprobada — 14 Abril 2026</p></div></div>
+              <div class="ml-3 w-0.5 h-4 bg-[#EDEDED]"></div>
+              <div class="flex items-center gap-3 py-2"><div class="w-6 h-6 rounded-full bg-green-500 flex items-center justify-center"><svg class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="m4.5 12.75 6 6 9-13.5"/></svg></div><div class="flex-1"><p class="text-[12px] text-[#333]">Maria Rodriguez <span class="text-[#8B8B8B]">(HR Director)</span></p><p class="text-[10px] text-green-600">Aprobada — 15 Abril 2026</p></div></div>
+              <div class="ml-3 w-0.5 h-4 bg-[#EDEDED]"></div>
+              <div class="flex items-center gap-3 py-2"><div class="w-6 h-6 rounded-full bg-green-500 flex items-center justify-center"><svg class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="m4.5 12.75 6 6 9-13.5"/></svg></div><div class="flex-1"><p class="text-[12px] text-[#333]">Andres Tafur <span class="text-[#8B8B8B]">(Gerencia)</span></p><p class="text-[10px] text-green-600">Aprobada — 15 Abril 2026</p></div></div>
+            </div>
+          </div>
+
+          <!-- Risks -->
+          <div class="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)] border border-amber-200">
+            <h3 class="text-[14px] font-semibold text-[#1F114C] mb-3 flex items-center gap-2"><svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg>Riesgos de la Vacante</h3>
+            <div class="space-y-2">
+              <div class="flex items-start gap-2"><span class="w-2 h-2 rounded-full bg-[#DD0C15] mt-1.5 shrink-0"></span><span class="text-[12px] text-[#585858]"><strong class="text-[#333]">SLA Vencido:</strong> 45 dias abierta (target: 30). Riesgo de perder candidatos calificados.</span></div>
+              <div class="flex items-start gap-2"><span class="w-2 h-2 rounded-full bg-amber-500 mt-1.5 shrink-0"></span><span class="text-[12px] text-[#585858]"><strong class="text-[#333]">Candidata top en riesgo:</strong> Maria Lopez (FIT 87) detenida 12 dias en entrevista.</span></div>
+              <div class="flex items-start gap-2"><span class="w-2 h-2 rounded-full bg-amber-500 mt-1.5 shrink-0"></span><span class="text-[12px] text-[#585858]"><strong class="text-[#333]">Brecha salarial:</strong> 2 candidatos con expectativa sobre la banda maxima ($95K).</span></div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

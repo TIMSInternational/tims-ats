@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TIMS ATS — HRIS & Integraciones Admin</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>body{font-family:'Inter',sans-serif;margin:0;background:#F6F6F6;} .scrollbar-thin::-webkit-scrollbar{width:4px;} .scrollbar-thin::-webkit-scrollbar-thumb{background:#ccc;border-radius:4px;}</style>
+</head>
+<body>
+<div class="flex w-[1440px] h-[900px] mx-auto overflow-hidden">
+
+  <!-- SIDEBAR COMPACT -->
+  <div class="flex flex-col w-[72px] h-full bg-[#1F114C] shrink-0 items-center">
+    <div class="flex items-center justify-center h-[80px] border-b border-white/10 w-full"><div class="w-9 h-9 rounded-lg bg-[#DD0C15] flex items-center justify-center"><span class="text-white text-[13px] font-bold">T</span></div></div>
+    <nav class="flex-1 py-3 flex flex-col items-center gap-1 w-full">
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></a>
+      <div class="w-8 border-t border-white/10 my-2"></div>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a4 4 0 00-8 0v2"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75z"/></svg></a>
+      <div class="w-8 border-t border-white/10 my-2"></div>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M15.59 14.37a6 6 0 01-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 006.16-12.12A14.98 14.98 0 009.631 8.41m5.96 5.96a14.926 14.926 0 01-5.841 2.58m-.119-8.54a6 6 0 00-7.381 5.84h4.8m2.58-5.84a14.927 14.927 0 00-2.58 5.84"/></svg></a>
+      <div class="w-8 border-t border-white/10 my-2"></div>
+      <!-- Settings icon - ACTIVE -->
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center bg-white/10"><svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z"/><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg></a>
+    </nav>
+    <div class="py-3 border-t border-white/10 flex justify-center"><div class="w-9 h-9 rounded-full bg-[#DD0C15] flex items-center justify-center text-white text-[11px] font-bold">FT</div></div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="flex flex-col flex-1 min-w-0">
+    <!-- TOP BAR -->
+    <div class="flex items-center justify-between px-6 h-16 bg-white border-b border-[#EDEDED] shrink-0">
+      <div class="flex items-center gap-2">
+        <span class="text-[13px] text-[#8B8B8B]">Admin</span><svg class="w-3 h-3 text-[#ccc]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+        <span class="text-sm font-medium text-[#1F114C]">HRIS & Integraciones</span>
+      </div>
+      <div class="flex items-center gap-3">
+        <button class="flex items-center gap-1.5 border border-[#EDEDED] text-[#585858] px-3 h-8 rounded-lg text-[12px]"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>Exportar Logs</button>
+        <button class="flex items-center gap-1.5 bg-[#DD0C15] text-white px-4 h-8 rounded-lg text-[12px] font-medium"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4.5v15m7.5-7.5h-15"/></svg>+Nueva Integracion</button>
+      </div>
+    </div>
+
+    <!-- CONTENT -->
+    <div class="flex-1 overflow-y-auto p-5 scrollbar-thin" style="gap:0;">
+
+      <!-- KPI ROW -->
+      <div class="grid grid-cols-5 gap-3 mb-4">
+        <div class="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center">
+          <p class="text-[11px] text-[#8B8B8B] mb-1">Conectores Activos</p>
+          <p class="text-[26px] font-bold text-[#1F114C]">6</p>
+          <p class="text-[10px] text-green-500 font-medium">Todos operativos</p>
+        </div>
+        <div class="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center">
+          <p class="text-[11px] text-[#8B8B8B] mb-1">Tasa Sync Exitosa</p>
+          <p class="text-[26px] font-bold text-green-600">98.7%</p>
+          <p class="text-[10px] text-green-500 font-medium">+0.3% vs semana ant.</p>
+        </div>
+        <div class="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center">
+          <p class="text-[11px] text-[#8B8B8B] mb-1">Ultima Sincronizacion</p>
+          <p class="text-[20px] font-bold text-[#1F114C]">14:32</p>
+          <p class="text-[10px] text-[#8B8B8B]">hace 8 min</p>
+        </div>
+        <div class="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center">
+          <p class="text-[11px] text-[#8B8B8B] mb-1">Errores (24h)</p>
+          <p class="text-[26px] font-bold text-[#DD0C15]">3</p>
+          <p class="text-[10px] text-amber-500 font-medium">1 pendiente</p>
+        </div>
+        <div class="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center">
+          <p class="text-[11px] text-[#8B8B8B] mb-1">Webhooks Activos</p>
+          <p class="text-[26px] font-bold text-[#1F114C]">12</p>
+          <p class="text-[10px] text-green-500 font-medium">100% disponibles</p>
+        </div>
+      </div>
+
+      <!-- MIDDLE: 2-column -->
+      <div class="flex gap-4 mb-4">
+
+        <!-- LEFT (~55%) -->
+        <div class="w-[55%] flex flex-col gap-4">
+
+          <!-- Active Connectors -->
+          <div class="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 flex flex-col" style="max-height:280px;">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-[13px] font-semibold text-[#1F114C]">Conectores Activos</h3>
+              <input type="text" placeholder="Buscar conector..." class="border border-[#EDEDED] rounded-lg px-2.5 h-7 text-[11px] w-[140px] outline-none focus:border-[#1F114C]">
+            </div>
+            <div class="flex-1 overflow-y-auto scrollbar-thin space-y-2">
+              <!-- SAP SuccessFactors -->
+              <div class="border border-[#EDEDED] rounded-lg p-2.5 hover:border-[#1F114C]/20">
+                <div class="flex items-center justify-between mb-1.5">
+                  <div class="flex items-center gap-2">
+                    <div class="w-7 h-7 rounded bg-blue-100 flex items-center justify-center"><span class="text-[10px] font-bold text-blue-700">SAP</span></div>
+                    <div>
+                      <span class="text-[12px] font-medium text-[#333]">SAP SuccessFactors</span>
+                      <span class="ml-2 px-1.5 py-0.5 rounded text-[9px] font-medium bg-green-50 text-green-600">Activo</span>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-1.5">
+                    <button class="px-2 py-1 rounded text-[9px] font-medium bg-[#1F114C] text-white">Sync Now</button>
+                    <button class="px-2 py-1 rounded text-[9px] font-medium border border-[#EDEDED] text-[#585858]">Config</button>
+                    <button class="px-2 py-1 rounded text-[9px] font-medium border border-[#EDEDED] text-amber-600">Pausar</button>
+                  </div>
+                </div>
+                <div class="flex items-center gap-4 text-[10px] text-[#8B8B8B]">
+                  <span>Ultimo sync: 30 May 14:32</span>
+                  <span>1,247 entidades</span>
+                  <span>Cada 15 min</span>
+                </div>
+              </div>
+              <!-- Google Workspace -->
+              <div class="border border-[#EDEDED] rounded-lg p-2.5 hover:border-[#1F114C]/20">
+                <div class="flex items-center justify-between mb-1.5">
+                  <div class="flex items-center gap-2">
+                    <div class="w-7 h-7 rounded bg-red-50 flex items-center justify-center"><span class="text-[10px] font-bold text-red-600">G</span></div>
+                    <div>
+                      <span class="text-[12px] font-medium text-[#333]">Google Workspace</span>
+                      <span class="ml-2 px-1.5 py-0.5 rounded text-[9px] font-medium bg-green-50 text-green-600">Activo</span>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-1.5">
+                    <button class="px-2 py-1 rounded text-[9px] font-medium bg-[#1F114C] text-white">Sync Now</button>
+                    <button class="px-2 py-1 rounded text-[9px] font-medium border border-[#EDEDED] text-[#585858]">Config</button>
+                    <button class="px-2 py-1 rounded text-[9px] font-medium border border-[#EDEDED] text-amber-600">Pausar</button>
+                  </div>
+                </div>
+                <div class="flex items-center gap-4 text-[10px] text-[#8B8B8B]">
+                  <span>Ultimo sync: 30 May 14:28</span>
+                  <span>892 entidades</span>
+                  <span>Cada 30 min</span>
+                </div>
+              </div>
+              <!-- Slack -->
+              <div class="border border-[#EDEDED] rounded-lg p-2.5 hover:border-[#1F114C]/20">
+                <div class="flex items-center justify-between mb-1.5">
+                  <div class="flex items-center gap-2">
+                    <div class="w-7 h-7 rounded bg-purple-50 flex items-center justify-center"><span class="text-[10px] font-bold text-purple-600">SL</span></div>
+                    <div>
+                      <span class="text-[12px] font-medium text-[#333]">Slack</span>
+                      <span class="ml-2 px-1.5 py-0.5 rounded text-[9px] font-medium bg-green-50 text-green-600">Activo</span>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-1.5">
+                    <button class="px-2 py-1 rounded text-[9px] font-medium bg-[#1F114C] text-white">Sync Now</button>
+                    <button class="px-2 py-1 rounded text-[9px] font-medium border border-[#EDEDED] text-[#585858]">Config</button>
+                    <button class="px-2 py-1 rounded text-[9px] font-medium border border-[#EDEDED] text-amber-600">Pausar</button>
+                  </div>
+                </div>
+                <div class="flex items-center gap-4 text-[10px] text-[#8B8B8B]">
+                  <span>Ultimo sync: 30 May 14:30</span>
+                  <span>45 canales</span>
+                  <span>Tiempo real</span>
+                </div>
+              </div>
+              <!-- AWS SES -->
+              <div class="border border-[#EDEDED] rounded-lg p-2.5 hover:border-[#1F114C]/20">
+                <div class="flex items-center justify-between mb-1.5">
+                  <div class="flex items-center gap-2">
+                    <div class="w-7 h-7 rounded bg-amber-50 flex items-center justify-center"><span class="text-[10px] font-bold text-amber-700">AWS</span></div>
+                    <div>
+                      <span class="text-[12px] font-medium text-[#333]">AWS SES</span>
+                      <span class="ml-2 px-1.5 py-0.5 rounded text-[9px] font-medium bg-green-50 text-green-600">Activo</span>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-1.5">
+                    <button class="px-2 py-1 rounded text-[9px] font-medium bg-[#1F114C] text-white">Sync Now</button>
+                    <button class="px-2 py-1 rounded text-[9px] font-medium border border-[#EDEDED] text-[#585858]">Config</button>
+                    <button class="px-2 py-1 rounded text-[9px] font-medium border border-[#EDEDED] text-amber-600">Pausar</button>
+                  </div>
+                </div>
+                <div class="flex items-center gap-4 text-[10px] text-[#8B8B8B]">
+                  <span>Ultimo sync: 30 May 14:25</span>
+                  <span>3,480 emails</span>
+                  <span>Cada 5 min</span>
+                </div>
+              </div>
+              <!-- Nomina Colombia -->
+              <div class="border border-[#EDEDED] rounded-lg p-2.5 hover:border-[#1F114C]/20">
+                <div class="flex items-center justify-between mb-1.5">
+                  <div class="flex items-center gap-2">
+                    <div class="w-7 h-7 rounded bg-yellow-50 flex items-center justify-center"><span class="text-[10px] font-bold text-yellow-700">CO</span></div>
+                    <div>
+                      <span class="text-[12px] font-medium text-[#333]">Nomina Colombia</span>
+                      <span class="ml-2 px-1.5 py-0.5 rounded text-[9px] font-medium bg-red-50 text-[#DD0C15]">Error</span>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-1.5">
+                    <button class="px-2 py-1 rounded text-[9px] font-medium bg-[#DD0C15] text-white">Reintentar</button>
+                    <button class="px-2 py-1 rounded text-[9px] font-medium border border-[#EDEDED] text-[#585858]">Config</button>
+                    <button class="px-2 py-1 rounded text-[9px] font-medium border border-[#EDEDED] text-amber-600">Pausar</button>
+                  </div>
+                </div>
+                <div class="flex items-center gap-4 text-[10px] text-[#8B8B8B]">
+                  <span>Ultimo sync: 30 May 13:45</span>
+                  <span>568 empleados</span>
+                  <span>Cada 1h</span>
+                </div>
+              </div>
+              <!-- Nomina Mexico -->
+              <div class="border border-[#EDEDED] rounded-lg p-2.5 hover:border-[#1F114C]/20">
+                <div class="flex items-center justify-between mb-1.5">
+                  <div class="flex items-center gap-2">
+                    <div class="w-7 h-7 rounded bg-green-50 flex items-center justify-center"><span class="text-[10px] font-bold text-green-700">MX</span></div>
+                    <div>
+                      <span class="text-[12px] font-medium text-[#333]">Nomina Mexico</span>
+                      <span class="ml-2 px-1.5 py-0.5 rounded text-[9px] font-medium bg-amber-50 text-amber-600">Pausado</span>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-1.5">
+                    <button class="px-2 py-1 rounded text-[9px] font-medium bg-green-600 text-white">Reanudar</button>
+                    <button class="px-2 py-1 rounded text-[9px] font-medium border border-[#EDEDED] text-[#585858]">Config</button>
+                  </div>
+                </div>
+                <div class="flex items-center gap-4 text-[10px] text-[#8B8B8B]">
+                  <span>Ultimo sync: 29 May 22:00</span>
+                  <span>312 empleados</span>
+                  <span>Cada 1h (pausado)</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Webhooks Configuration -->
+          <div class="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 flex flex-col" style="max-height:175px;">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-[13px] font-semibold text-[#1F114C]">Configuracion de Webhooks</h3>
+              <button class="px-2.5 py-1 rounded-lg text-[10px] font-medium bg-[#F6F6F6] text-[#585858]">+ Agregar Webhook</button>
+            </div>
+            <div class="flex-1 overflow-y-auto scrollbar-thin">
+              <table class="w-full text-[10px]">
+                <thead>
+                  <tr class="text-[#8B8B8B] border-b border-[#EDEDED]">
+                    <th class="text-left pb-2 font-medium">Endpoint</th>
+                    <th class="text-left pb-2 font-medium">Eventos</th>
+                    <th class="text-left pb-2 font-medium">Estado</th>
+                    <th class="text-left pb-2 font-medium">Ultimo Trigger</th>
+                  </tr>
+                </thead>
+                <tbody class="text-[#333]">
+                  <tr class="border-b border-[#F6F6F6]">
+                    <td class="py-1.5 font-mono text-[9px]">https://api.tims.co/wh/****a3f2</td>
+                    <td class="py-1.5">candidate.created, candidate.updated</td>
+                    <td class="py-1.5"><span class="px-1.5 py-0.5 rounded text-[9px] bg-green-50 text-green-600 font-medium">Activo</span></td>
+                    <td class="py-1.5 text-[#8B8B8B]">30 May 14:31</td>
+                  </tr>
+                  <tr class="border-b border-[#F6F6F6]">
+                    <td class="py-1.5 font-mono text-[9px]">https://api.tims.co/wh/****b7e1</td>
+                    <td class="py-1.5">offer.approved, offer.rejected</td>
+                    <td class="py-1.5"><span class="px-1.5 py-0.5 rounded text-[9px] bg-green-50 text-green-600 font-medium">Activo</span></td>
+                    <td class="py-1.5 text-[#8B8B8B]">30 May 13:15</td>
+                  </tr>
+                  <tr class="border-b border-[#F6F6F6]">
+                    <td class="py-1.5 font-mono text-[9px]">https://slack.tims.co/wh/****d4c9</td>
+                    <td class="py-1.5">interview.scheduled, interview.completed</td>
+                    <td class="py-1.5"><span class="px-1.5 py-0.5 rounded text-[9px] bg-green-50 text-green-600 font-medium">Activo</span></td>
+                    <td class="py-1.5 text-[#8B8B8B]">30 May 14:28</td>
+                  </tr>
+                  <tr>
+                    <td class="py-1.5 font-mono text-[9px]">https://nomina.tims.co/wh/****e5a8</td>
+                    <td class="py-1.5">employee.onboarded, payroll.sync</td>
+                    <td class="py-1.5"><span class="px-1.5 py-0.5 rounded text-[9px] bg-amber-50 text-amber-600 font-medium">Pausado</span></td>
+                    <td class="py-1.5 text-[#8B8B8B]">29 May 22:00</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- RIGHT (~45%) -->
+        <div class="w-[45%] flex flex-col gap-4">
+
+          <!-- Error Log -->
+          <div class="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 flex flex-col" style="max-height:195px;">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-[13px] font-semibold text-[#1F114C]">Log de Errores</h3>
+              <span class="text-[10px] text-[#8B8B8B]">Ultimas 24h</span>
+            </div>
+            <div class="flex-1 overflow-y-auto scrollbar-thin space-y-2">
+              <div class="border-l-2 border-[#DD0C15] pl-2.5 py-1">
+                <div class="flex items-center justify-between">
+                  <span class="text-[11px] font-medium text-[#333]">Nomina Colombia - Timeout</span>
+                  <span class="px-1.5 py-0.5 rounded text-[9px] font-medium bg-amber-50 text-amber-600">Pendiente</span>
+                </div>
+                <p class="text-[10px] text-[#8B8B8B] mt-0.5">Connection timeout after 30s al sincronizar tabla empleados_co</p>
+                <div class="flex items-center gap-3 mt-1 text-[9px] text-[#8B8B8B]">
+                  <span>30 May 13:45</span>
+                  <span>Reintentos: 3/5</span>
+                </div>
+              </div>
+              <div class="border-l-2 border-amber-400 pl-2.5 py-1">
+                <div class="flex items-center justify-between">
+                  <span class="text-[11px] font-medium text-[#333]">SAP SF - Rate Limit</span>
+                  <span class="px-1.5 py-0.5 rounded text-[9px] font-medium bg-green-50 text-green-600">Resuelto</span>
+                </div>
+                <p class="text-[10px] text-[#8B8B8B] mt-0.5">HTTP 429 - Rate limit exceeded. Reintento automatico exitoso.</p>
+                <div class="flex items-center gap-3 mt-1 text-[9px] text-[#8B8B8B]">
+                  <span>30 May 11:22</span>
+                  <span>Reintentos: 1/5</span>
+                </div>
+              </div>
+              <div class="border-l-2 border-amber-400 pl-2.5 py-1">
+                <div class="flex items-center justify-between">
+                  <span class="text-[11px] font-medium text-[#333]">Google WS - Auth Token Expirado</span>
+                  <span class="px-1.5 py-0.5 rounded text-[9px] font-medium bg-green-50 text-green-600">Resuelto</span>
+                </div>
+                <p class="text-[10px] text-[#8B8B8B] mt-0.5">OAuth token expired. Refresh automatico completado.</p>
+                <div class="flex items-center gap-3 mt-1 text-[9px] text-[#8B8B8B]">
+                  <span>30 May 08:05</span>
+                  <span>Reintentos: 0/5</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Sync Activity Timeline -->
+          <div class="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 flex flex-col" style="max-height:150px;">
+            <h3 class="text-[13px] font-semibold text-[#1F114C] mb-3">Actividad de Sincronizacion</h3>
+            <div class="flex-1 overflow-y-auto scrollbar-thin space-y-2">
+              <div class="flex items-center gap-2">
+                <div class="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0"></div>
+                <span class="text-[10px] text-[#8B8B8B] w-[70px] shrink-0">14:32</span>
+                <span class="text-[10px] text-[#333]"><strong>SAP SF</strong> — 1,247 entidades sincronizadas (empleados, puestos)</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <div class="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0"></div>
+                <span class="text-[10px] text-[#8B8B8B] w-[70px] shrink-0">14:30</span>
+                <span class="text-[10px] text-[#333]"><strong>Slack</strong> — Notificaciones enviadas: 8 nuevas entrevistas</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <div class="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0"></div>
+                <span class="text-[10px] text-[#8B8B8B] w-[70px] shrink-0">14:28</span>
+                <span class="text-[10px] text-[#333]"><strong>Google WS</strong> — 892 cuentas, 23 calendarios actualizados</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <div class="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0"></div>
+                <span class="text-[10px] text-[#8B8B8B] w-[70px] shrink-0">14:25</span>
+                <span class="text-[10px] text-[#333]"><strong>AWS SES</strong> — 156 emails transaccionales procesados</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <div class="w-1.5 h-1.5 rounded-full bg-[#DD0C15] shrink-0"></div>
+                <span class="text-[10px] text-[#8B8B8B] w-[70px] shrink-0">13:45</span>
+                <span class="text-[10px] text-[#DD0C15]"><strong>Nomina CO</strong> — Error de conexion, reintentando...</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <div class="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0"></div>
+                <span class="text-[10px] text-[#8B8B8B] w-[70px] shrink-0">13:30</span>
+                <span class="text-[10px] text-[#333]"><strong>SAP SF</strong> — 1,245 entidades sincronizadas</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- API Keys & Sandbox -->
+          <div class="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 flex flex-col" style="max-height:120px;">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-[13px] font-semibold text-[#1F114C]">API Keys & Sandbox</h3>
+              <button class="px-2.5 py-1 rounded-lg text-[10px] font-medium bg-[#F6F6F6] text-[#585858]">+ Generar Key</button>
+            </div>
+            <div class="flex-1 overflow-y-auto scrollbar-thin">
+              <table class="w-full text-[10px]">
+                <thead>
+                  <tr class="text-[#8B8B8B] border-b border-[#EDEDED]">
+                    <th class="text-left pb-1.5 font-medium">API Key</th>
+                    <th class="text-left pb-1.5 font-medium">Entorno</th>
+                    <th class="text-left pb-1.5 font-medium">Creada</th>
+                    <th class="text-left pb-1.5 font-medium">Ultimo Uso</th>
+                    <th class="text-left pb-1.5 font-medium">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody class="text-[#333]">
+                  <tr class="border-b border-[#F6F6F6]">
+                    <td class="py-1.5 font-mono text-[9px]">sk_live_****7f3a</td>
+                    <td class="py-1.5"><span class="px-1.5 py-0.5 rounded text-[9px] bg-green-50 text-green-600 font-medium">Production</span></td>
+                    <td class="py-1.5 text-[#8B8B8B]">15 Ene 2026</td>
+                    <td class="py-1.5 text-[#8B8B8B]">30 May 14:32</td>
+                    <td class="py-1.5 flex gap-1"><button class="text-[9px] text-blue-600 hover:underline">Regenerar</button><button class="text-[9px] text-[#DD0C15] hover:underline">Revocar</button></td>
+                  </tr>
+                  <tr>
+                    <td class="py-1.5 font-mono text-[9px]">sk_test_****b2d1</td>
+                    <td class="py-1.5"><span class="px-1.5 py-0.5 rounded text-[9px] bg-amber-50 text-amber-600 font-medium">Sandbox</span></td>
+                    <td class="py-1.5 text-[#8B8B8B]">22 Mar 2026</td>
+                    <td class="py-1.5 text-[#8B8B8B]">29 May 16:10</td>
+                    <td class="py-1.5 flex gap-1"><button class="text-[9px] text-blue-600 hover:underline">Regenerar</button><button class="text-[9px] text-[#DD0C15] hover:underline">Revocar</button></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- BOTTOM ROW -->
+      <div class="flex gap-4">
+
+        <!-- Audit Trail -->
+        <div class="w-[60%] bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5" style="max-height:155px;">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-[13px] font-semibold text-[#1F114C]">Auditoria de Cambios</h3>
+            <span class="text-[10px] text-[#8B8B8B]">Ultimos 7 dias</span>
+          </div>
+          <div class="overflow-y-auto scrollbar-thin" style="max-height:100px;">
+            <table class="w-full text-[10px]">
+              <thead>
+                <tr class="text-[#8B8B8B] border-b border-[#EDEDED]">
+                  <th class="text-left pb-1.5 font-medium">Quien</th>
+                  <th class="text-left pb-1.5 font-medium">Accion</th>
+                  <th class="text-left pb-1.5 font-medium">Cuando</th>
+                  <th class="text-left pb-1.5 font-medium">IP</th>
+                </tr>
+              </thead>
+              <tbody class="text-[#333]">
+                <tr class="border-b border-[#F6F6F6]">
+                  <td class="py-1.5 font-medium">Federico Tafur</td>
+                  <td class="py-1.5">Actualizo credenciales SAP SuccessFactors</td>
+                  <td class="py-1.5 text-[#8B8B8B]">30 May 10:15</td>
+                  <td class="py-1.5 font-mono text-[9px] text-[#8B8B8B]">192.168.1.45</td>
+                </tr>
+                <tr class="border-b border-[#F6F6F6]">
+                  <td class="py-1.5 font-medium">Carlos Mendoza</td>
+                  <td class="py-1.5">Pauso conector Nomina Mexico</td>
+                  <td class="py-1.5 text-[#8B8B8B]">29 May 22:00</td>
+                  <td class="py-1.5 font-mono text-[9px] text-[#8B8B8B]">10.0.0.112</td>
+                </tr>
+                <tr class="border-b border-[#F6F6F6]">
+                  <td class="py-1.5 font-medium">Ana Rodriguez</td>
+                  <td class="py-1.5">Creo webhook interview.scheduled</td>
+                  <td class="py-1.5 text-[#8B8B8B]">28 May 15:30</td>
+                  <td class="py-1.5 font-mono text-[9px] text-[#8B8B8B]">192.168.1.78</td>
+                </tr>
+                <tr class="border-b border-[#F6F6F6]">
+                  <td class="py-1.5 font-medium">Federico Tafur</td>
+                  <td class="py-1.5">Regenero API key produccion (sk_live_****7f3a)</td>
+                  <td class="py-1.5 text-[#8B8B8B]">27 May 09:45</td>
+                  <td class="py-1.5 font-mono text-[9px] text-[#8B8B8B]">192.168.1.45</td>
+                </tr>
+                <tr>
+                  <td class="py-1.5 font-medium">Maria Lopez</td>
+                  <td class="py-1.5">Configuro frecuencia sync Google WS a 30 min</td>
+                  <td class="py-1.5 text-[#8B8B8B]">26 May 14:20</td>
+                  <td class="py-1.5 font-mono text-[9px] text-[#8B8B8B]">10.0.0.85</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- System Health -->
+        <div class="w-[40%] bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5" style="max-height:155px;">
+          <h3 class="text-[13px] font-semibold text-[#1F114C] mb-3">Salud del Sistema</h3>
+          <div class="grid grid-cols-2 gap-3">
+            <div class="flex items-center gap-2.5">
+              <div class="w-2.5 h-2.5 rounded-full bg-green-500"></div>
+              <div>
+                <p class="text-[11px] font-medium text-[#333]">API Gateway</p>
+                <p class="text-[10px] text-[#8B8B8B]">Uptime 99.98%</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-2.5">
+              <div class="w-2.5 h-2.5 rounded-full bg-green-500"></div>
+              <div>
+                <p class="text-[11px] font-medium text-[#333]">Base de Datos</p>
+                <p class="text-[10px] text-[#8B8B8B]">Uptime 99.99%</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-2.5">
+              <div class="w-2.5 h-2.5 rounded-full bg-green-500"></div>
+              <div>
+                <p class="text-[11px] font-medium text-[#333]">Cola de Mensajes</p>
+                <p class="text-[10px] text-[#8B8B8B]">Uptime 99.95%</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-2.5">
+              <div class="w-2.5 h-2.5 rounded-full bg-amber-400"></div>
+              <div>
+                <p class="text-[11px] font-medium text-[#333]">Almacenamiento</p>
+                <p class="text-[10px] text-amber-600">78% usado (warn)</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-2.5">
+              <div class="w-2.5 h-2.5 rounded-full bg-green-500"></div>
+              <div>
+                <p class="text-[11px] font-medium text-[#333]">Workers</p>
+                <p class="text-[10px] text-[#8B8B8B]">8/8 activos</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-2.5">
+              <div class="w-2.5 h-2.5 rounded-full bg-green-500"></div>
+              <div>
+                <p class="text-[11px] font-medium text-[#333]">Redis Cache</p>
+                <p class="text-[10px] text-[#8B8B8B]">Latencia 2ms</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

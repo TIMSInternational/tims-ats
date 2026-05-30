@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TIMS ATS — Inteligencia de Equipo</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>body{font-family:'Inter',sans-serif;margin:0;background:#F6F6F6;} .scrollbar-thin::-webkit-scrollbar{width:4px;} .scrollbar-thin::-webkit-scrollbar-thumb{background:#ccc;border-radius:4px;}
+/* Radar chart CSS */
+.radar-container{position:relative;width:260px;height:260px;margin:0 auto;}
+.radar-hex{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;}
+.radar-label{position:absolute;font-size:10px;font-weight:600;color:#1F114C;}
+.radar-label.top{top:2px;left:50%;transform:translateX(-50%);}
+.radar-label.top-right{top:52px;right:2px;}
+.radar-label.bottom-right{bottom:52px;right:2px;}
+.radar-label.bottom{bottom:2px;left:50%;transform:translateX(-50%);}
+.radar-label.bottom-left{bottom:52px;left:2px;}
+.radar-label.top-left{top:52px;left:2px;}
+</style>
+</head>
+<body>
+<div class="flex w-[1440px] h-[900px] mx-auto overflow-hidden">
+
+  <!-- SIDEBAR COMPACT -->
+  <div class="flex flex-col w-[72px] h-full bg-[#1F114C] shrink-0 items-center">
+    <div class="flex items-center justify-center h-[80px] border-b border-white/10 w-full"><div class="w-9 h-9 rounded-lg bg-[#DD0C15] flex items-center justify-center"><span class="text-white text-[13px] font-bold">T</span></div></div>
+    <nav class="flex-1 py-3 flex flex-col items-center gap-1 w-full">
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></a>
+      <div class="w-8 border-t border-white/10 my-2"></div>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a4 4 0 00-8 0v2"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z"/></svg></a>
+      <div class="w-8 border-t border-white/10 my-2"></div>
+      <!-- Team/People icon — ACTIVE -->
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center bg-white/10"><svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M15.59 14.37a6 6 0 01-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 006.16-12.12A14.98 14.98 0 009.631 8.41"/></svg></a>
+      <div class="w-8 border-t border-white/10 my-2"></div>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281"/><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg></a>
+    </nav>
+    <div class="py-3 border-t border-white/10 flex justify-center"><div class="w-9 h-9 rounded-full bg-[#DD0C15] flex items-center justify-center text-white text-[11px] font-bold">FT</div></div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="flex flex-col flex-1 min-w-0">
+    <!-- TOP BAR -->
+    <div class="flex items-center justify-between px-6 h-16 bg-white border-b border-[#EDEDED] shrink-0">
+      <div class="flex items-center gap-2">
+        <span class="text-[13px] text-[#8B8B8B]">Talent</span>
+        <svg class="w-3 h-3 text-[#ccc]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+        <span class="text-sm font-medium text-[#1F114C]">Inteligencia de Equipo</span>
+      </div>
+      <div class="flex items-center gap-3">
+        <!-- Team selector -->
+        <div class="flex items-center gap-2 border border-[#EDEDED] rounded-lg px-3 h-8">
+          <svg class="w-3.5 h-3.5 text-[#585858]" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z"/></svg>
+          <span class="text-[12px] text-[#585858]">Equipo:</span>
+          <span class="text-[12px] font-medium text-[#1F114C]">Tecnologia</span>
+          <svg class="w-3 h-3 text-[#8B8B8B]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="m19.5 8.25-7.5 7.5-7.5-7.5"/></svg>
+        </div>
+        <button class="flex items-center gap-1.5 border border-[#EDEDED] text-[#585858] px-3 h-8 rounded-lg text-[12px]">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
+          Exportar
+        </button>
+      </div>
+    </div>
+
+    <!-- CONTENT -->
+    <div class="flex-1 overflow-y-auto p-5 scrollbar-thin">
+
+      <!-- KPI ROW -->
+      <div class="grid grid-cols-5 gap-3 mb-4">
+        <div class="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center">
+          <p class="text-[11px] text-[#8B8B8B] mb-1">Tamano del Equipo</p>
+          <p class="text-[22px] font-bold text-[#1F114C]">12</p>
+          <p class="text-[10px] text-[#8B8B8B]">miembros activos</p>
+          <div class="flex items-center justify-center gap-1 mt-1"><svg class="w-3 h-3 text-green-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="m4.5 15.75 7.5-7.5 7.5 7.5"/></svg><span class="text-[10px] text-green-500 font-medium">+2 vs Q1</span></div>
+        </div>
+        <div class="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center">
+          <p class="text-[11px] text-[#8B8B8B] mb-1">Antiguedad Promedio</p>
+          <p class="text-[22px] font-bold text-[#1F114C]">2.8</p>
+          <p class="text-[10px] text-[#8B8B8B]">anos</p>
+          <div class="flex items-center justify-center gap-1 mt-1"><svg class="w-3 h-3 text-green-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="m4.5 15.75 7.5-7.5 7.5 7.5"/></svg><span class="text-[10px] text-green-500 font-medium">+0.3 vs anterior</span></div>
+        </div>
+        <div class="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center">
+          <p class="text-[11px] text-[#8B8B8B] mb-1">Balance PCA</p>
+          <p class="text-[22px] font-bold text-amber-500">68</p>
+          <p class="text-[10px] text-[#8B8B8B]">score /100</p>
+          <div class="flex items-center justify-center gap-1 mt-1"><svg class="w-3 h-3 text-amber-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"/></svg><span class="text-[10px] text-amber-500 font-medium">Necesita balance</span></div>
+        </div>
+        <div class="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center">
+          <p class="text-[11px] text-[#8B8B8B] mb-1">Indice Diversidad</p>
+          <p class="text-[22px] font-bold text-[#1F114C]">0.72</p>
+          <p class="text-[10px] text-[#8B8B8B]">Shannon index</p>
+          <div class="flex items-center justify-center gap-1 mt-1"><svg class="w-3 h-3 text-green-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="m4.5 15.75 7.5-7.5 7.5 7.5"/></svg><span class="text-[10px] text-green-500 font-medium">+0.05 vs anterior</span></div>
+        </div>
+        <div class="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center">
+          <p class="text-[11px] text-[#8B8B8B] mb-1">Performance Prom.</p>
+          <p class="text-[22px] font-bold text-green-600">8.2</p>
+          <p class="text-[10px] text-[#8B8B8B]">de 10</p>
+          <div class="flex items-center justify-center gap-1 mt-1"><svg class="w-3 h-3 text-green-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="m4.5 15.75 7.5-7.5 7.5 7.5"/></svg><span class="text-[10px] text-green-500 font-medium">+0.4 vs anterior</span></div>
+        </div>
+      </div>
+
+      <!-- MAIN 2-COLUMN AREA -->
+      <div class="flex gap-4 mb-4">
+
+        <!-- LEFT COLUMN (~55%) -->
+        <div class="flex flex-col gap-4" style="width:55%;">
+
+          <!-- Team PCA Profile - Radar Chart -->
+          <div class="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-[14px] font-semibold text-[#1F114C]">Perfil PCA del Equipo</h3>
+              <span class="text-[11px] text-[#8B8B8B]">Promedio grupal</span>
+            </div>
+            <div class="flex items-center gap-6">
+              <!-- Radar Chart (CSS mockup) -->
+              <div class="radar-container shrink-0">
+                <!-- Outer hexagon grid lines -->
+                <svg viewBox="0 0 260 260" class="absolute inset-0 w-full h-full">
+                  <!-- Grid rings -->
+                  <polygon points="130,15 225,62 225,198 130,245 35,198 35,62" fill="none" stroke="#EDEDED" stroke-width="1"/>
+                  <polygon points="130,45 200,77 200,183 130,215 60,183 60,77" fill="none" stroke="#EDEDED" stroke-width="1"/>
+                  <polygon points="130,75 175,92 175,168 130,185 85,168 85,92" fill="none" stroke="#EDEDED" stroke-width="1"/>
+                  <polygon points="130,105 150,112 150,148 130,155 110,148 110,112" fill="none" stroke="#EDEDED" stroke-width="1"/>
+                  <!-- Axes -->
+                  <line x1="130" y1="130" x2="130" y2="15" stroke="#EDEDED" stroke-width="0.5"/>
+                  <line x1="130" y1="130" x2="225" y2="62" stroke="#EDEDED" stroke-width="0.5"/>
+                  <line x1="130" y1="130" x2="225" y2="198" stroke="#EDEDED" stroke-width="0.5"/>
+                  <line x1="130" y1="130" x2="130" y2="245" stroke="#EDEDED" stroke-width="0.5"/>
+                  <line x1="130" y1="130" x2="35" y2="198" stroke="#EDEDED" stroke-width="0.5"/>
+                  <line x1="130" y1="130" x2="35" y2="62" stroke="#EDEDED" stroke-width="0.5"/>
+                  <!-- Data polygon - team profile -->
+                  <polygon points="130,35 210,75 195,190 130,210 55,170 60,78" fill="rgba(31,17,76,0.12)" stroke="#1F114C" stroke-width="2"/>
+                  <!-- Data dots -->
+                  <circle cx="130" cy="35" r="4" fill="#1F114C"/>
+                  <circle cx="210" cy="75" r="4" fill="#1F114C"/>
+                  <circle cx="195" cy="190" r="4" fill="#1F114C"/>
+                  <circle cx="130" cy="210" r="4" fill="#1F114C"/>
+                  <circle cx="55" cy="170" r="4" fill="#1F114C"/>
+                  <circle cx="60" cy="78" r="4" fill="#1F114C"/>
+                </svg>
+                <!-- Labels -->
+                <span class="radar-label top">Dinamismo</span>
+                <span class="radar-label top-right">Solidez</span>
+                <span class="radar-label bottom-right">Influencia</span>
+                <span class="radar-label bottom">Cautela</span>
+                <span class="radar-label bottom-left">Autonomia</span>
+                <span class="radar-label top-left">Adaptabilidad</span>
+              </div>
+              <!-- Score breakdown -->
+              <div class="flex-1 space-y-2.5">
+                <div>
+                  <div class="flex justify-between mb-1"><span class="text-[11px] text-[#585858]">Dinamismo</span><span class="text-[11px] font-semibold text-[#1F114C]">88%</span></div>
+                  <div class="w-full bg-[#F6F6F6] rounded-full h-2"><div class="h-2 rounded-full bg-[#1F114C]" style="width:88%"></div></div>
+                </div>
+                <div>
+                  <div class="flex justify-between mb-1"><span class="text-[11px] text-[#585858]">Solidez</span><span class="text-[11px] font-semibold text-[#1F114C]">82%</span></div>
+                  <div class="w-full bg-[#F6F6F6] rounded-full h-2"><div class="h-2 rounded-full bg-[#5C4B99]" style="width:82%"></div></div>
+                </div>
+                <div>
+                  <div class="flex justify-between mb-1"><span class="text-[11px] text-[#585858]">Influencia</span><span class="text-[11px] font-semibold text-[#1F114C]">65%</span></div>
+                  <div class="w-full bg-[#F6F6F6] rounded-full h-2"><div class="h-2 rounded-full bg-[#7B6BAA]" style="width:65%"></div></div>
+                </div>
+                <div>
+                  <div class="flex justify-between mb-1"><span class="text-[11px] text-[#585858]">Cautela</span><span class="text-[11px] font-semibold text-[#1F114C]">72%</span></div>
+                  <div class="w-full bg-[#F6F6F6] rounded-full h-2"><div class="h-2 rounded-full bg-[#B8AED4]" style="width:72%"></div></div>
+                </div>
+                <div>
+                  <div class="flex justify-between mb-1"><span class="text-[11px] text-[#585858]">Autonomia</span><span class="text-[11px] font-semibold text-[#1F114C]">55%</span></div>
+                  <div class="w-full bg-[#F6F6F6] rounded-full h-2"><div class="h-2 rounded-full bg-amber-400" style="width:55%"></div></div>
+                </div>
+                <div>
+                  <div class="flex justify-between mb-1"><span class="text-[11px] text-[#585858]">Adaptabilidad</span><span class="text-[11px] font-semibold text-[#1F114C]">78%</span></div>
+                  <div class="w-full bg-[#F6F6F6] rounded-full h-2"><div class="h-2 rounded-full bg-[#D4CFE5]" style="width:78%"></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Team Composition -->
+          <div class="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+            <h3 class="text-[14px] font-semibold text-[#1F114C] mb-3">Composicion del Equipo</h3>
+            <div class="grid grid-cols-3 gap-4">
+              <!-- DISC Distribution -->
+              <div>
+                <p class="text-[11px] font-medium text-[#585858] mb-2">Distribucion DISC</p>
+                <div class="space-y-2">
+                  <div>
+                    <div class="flex justify-between mb-0.5"><span class="text-[10px] font-semibold text-[#DD0C15]">D - Dominancia</span><span class="text-[10px] font-bold text-[#333]">42%</span></div>
+                    <div class="w-full bg-[#F6F6F6] rounded-full h-3"><div class="h-3 rounded-full bg-[#DD0C15] flex items-center pl-1" style="width:42%"><span class="text-[8px] text-white font-medium">5</span></div></div>
+                  </div>
+                  <div>
+                    <div class="flex justify-between mb-0.5"><span class="text-[10px] font-semibold text-amber-500">I - Influencia</span><span class="text-[10px] font-bold text-[#333]">25%</span></div>
+                    <div class="w-full bg-[#F6F6F6] rounded-full h-3"><div class="h-3 rounded-full bg-amber-500 flex items-center pl-1" style="width:25%"><span class="text-[8px] text-white font-medium">3</span></div></div>
+                  </div>
+                  <div>
+                    <div class="flex justify-between mb-0.5"><span class="text-[10px] font-semibold text-green-500">S - Estabilidad</span><span class="text-[10px] font-bold text-[#333]">17%</span></div>
+                    <div class="w-full bg-[#F6F6F6] rounded-full h-3"><div class="h-3 rounded-full bg-green-500 flex items-center pl-1" style="width:17%"><span class="text-[8px] text-white font-medium">2</span></div></div>
+                  </div>
+                  <div>
+                    <div class="flex justify-between mb-0.5"><span class="text-[10px] font-semibold text-blue-500">C - Cautela</span><span class="text-[10px] font-bold text-[#333]">17%</span></div>
+                    <div class="w-full bg-[#F6F6F6] rounded-full h-3"><div class="h-3 rounded-full bg-blue-500 flex items-center pl-1" style="width:17%"><span class="text-[8px] text-white font-medium">2</span></div></div>
+                  </div>
+                </div>
+              </div>
+              <!-- Gender Split -->
+              <div>
+                <p class="text-[11px] font-medium text-[#585858] mb-2">Genero</p>
+                <div class="flex items-end gap-2 h-[100px]">
+                  <div class="flex flex-col items-center flex-1">
+                    <span class="text-[10px] font-bold text-[#1F114C] mb-1">58%</span>
+                    <div class="w-full bg-[#1F114C] rounded-t-md" style="height:58px"></div>
+                    <span class="text-[10px] text-[#585858] mt-1">Masc.</span>
+                    <span class="text-[9px] text-[#8B8B8B]">7</span>
+                  </div>
+                  <div class="flex flex-col items-center flex-1">
+                    <span class="text-[10px] font-bold text-[#DD0C15] mb-1">42%</span>
+                    <div class="w-full bg-[#DD0C15] rounded-t-md" style="height:42px"></div>
+                    <span class="text-[10px] text-[#585858] mt-1">Fem.</span>
+                    <span class="text-[9px] text-[#8B8B8B]">5</span>
+                  </div>
+                </div>
+              </div>
+              <!-- Seniority Distribution -->
+              <div>
+                <p class="text-[11px] font-medium text-[#585858] mb-2">Seniority</p>
+                <div class="space-y-1.5">
+                  <div class="flex items-center gap-2">
+                    <span class="text-[10px] text-[#585858] w-14 shrink-0">Senior</span>
+                    <div class="flex-1 bg-[#F6F6F6] rounded-full h-3"><div class="h-3 rounded-full bg-[#1F114C]" style="width:33%"></div></div>
+                    <span class="text-[10px] font-medium text-[#333] w-4">4</span>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <span class="text-[10px] text-[#585858] w-14 shrink-0">Mid</span>
+                    <div class="flex-1 bg-[#F6F6F6] rounded-full h-3"><div class="h-3 rounded-full bg-[#5C4B99]" style="width:42%"></div></div>
+                    <span class="text-[10px] font-medium text-[#333] w-4">5</span>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <span class="text-[10px] text-[#585858] w-14 shrink-0">Junior</span>
+                    <div class="flex-1 bg-[#F6F6F6] rounded-full h-3"><div class="h-3 rounded-full bg-[#B8AED4]" style="width:25%"></div></div>
+                    <span class="text-[10px] font-medium text-[#333] w-4">3</span>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <span class="text-[10px] text-[#585858] w-14 shrink-0">Lead</span>
+                    <div class="flex-1 bg-[#F6F6F6] rounded-full h-3"><div class="h-3 rounded-full bg-[#DD0C15]" style="width:8%"></div></div>
+                    <span class="text-[10px] font-medium text-[#333] w-4">1</span>
+                  </div>
+                </div>
+                <div class="mt-3 pt-2 border-t border-[#F0F0F0]">
+                  <p class="text-[10px] text-[#8B8B8B]">Ratio Sr/Jr: <span class="font-semibold text-[#1F114C]">1.3:1</span></p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- RIGHT COLUMN (~45%) -->
+        <div class="flex flex-col gap-4" style="width:45%;">
+
+          <!-- Team Members List -->
+          <div class="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-[14px] font-semibold text-[#1F114C]">Miembros del Equipo</h3>
+              <span class="text-[11px] text-[#8B8B8B]">12 miembros</span>
+            </div>
+            <div class="overflow-y-auto max-h-[155px] scrollbar-thin">
+              <table class="w-full">
+                <thead><tr class="border-b border-[#EDEDED]">
+                  <th class="text-[10px] text-[#8B8B8B] font-medium text-left pb-2 pl-1">Nombre</th>
+                  <th class="text-[10px] text-[#8B8B8B] font-medium text-left pb-2">Rol</th>
+                  <th class="text-[10px] text-[#8B8B8B] font-medium text-center pb-2">PCA</th>
+                  <th class="text-[10px] text-[#8B8B8B] font-medium text-center pb-2">Antig.</th>
+                  <th class="text-[10px] text-[#8B8B8B] font-medium text-center pb-2">Perf.</th>
+                </tr></thead>
+                <tbody class="text-[11px]">
+                  <tr class="border-b border-[#F6F6F6]">
+                    <td class="py-1.5 pl-1"><div class="flex items-center gap-2"><div class="w-6 h-6 rounded-full bg-[#1F114C] flex items-center justify-center text-white text-[8px] font-bold">CM</div><span class="text-[#333] font-medium">Carlos Morales</span></div></td>
+                    <td class="text-[#585858]">Tech Lead</td>
+                    <td class="text-center"><span class="px-1.5 py-0.5 rounded bg-[#DD0C15]/10 text-[#DD0C15] text-[9px] font-bold">DI</span></td>
+                    <td class="text-center text-[#585858]">4.2a</td>
+                    <td class="text-center"><span class="font-semibold text-green-600">9.1</span></td>
+                  </tr>
+                  <tr class="border-b border-[#F6F6F6]">
+                    <td class="py-1.5 pl-1"><div class="flex items-center gap-2"><div class="w-6 h-6 rounded-full bg-[#DD0C15] flex items-center justify-center text-white text-[8px] font-bold">MR</div><span class="text-[#333] font-medium">Maria Restrepo</span></div></td>
+                    <td class="text-[#585858]">Sr. Developer</td>
+                    <td class="text-center"><span class="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 text-[9px] font-bold">IS</span></td>
+                    <td class="text-center text-[#585858]">3.5a</td>
+                    <td class="text-center"><span class="font-semibold text-green-600">8.7</span></td>
+                  </tr>
+                  <tr class="border-b border-[#F6F6F6]">
+                    <td class="py-1.5 pl-1"><div class="flex items-center gap-2"><div class="w-6 h-6 rounded-full bg-[#5C4B99] flex items-center justify-center text-white text-[8px] font-bold">JH</div><span class="text-[#333] font-medium">Jose Hernandez</span></div></td>
+                    <td class="text-[#585858]">Sr. Developer</td>
+                    <td class="text-center"><span class="px-1.5 py-0.5 rounded bg-[#DD0C15]/10 text-[#DD0C15] text-[9px] font-bold">DC</span></td>
+                    <td class="text-center text-[#585858]">3.1a</td>
+                    <td class="text-center"><span class="font-semibold text-green-600">8.4</span></td>
+                  </tr>
+                  <tr class="border-b border-[#F6F6F6]">
+                    <td class="py-1.5 pl-1"><div class="flex items-center gap-2"><div class="w-6 h-6 rounded-full bg-green-600 flex items-center justify-center text-white text-[8px] font-bold">AV</div><span class="text-[#333] font-medium">Ana Villamizar</span></div></td>
+                    <td class="text-[#585858]">Mid Developer</td>
+                    <td class="text-center"><span class="px-1.5 py-0.5 rounded bg-green-500/10 text-green-600 text-[9px] font-bold">SC</span></td>
+                    <td class="text-center text-[#585858]">2.8a</td>
+                    <td class="text-center"><span class="font-semibold text-[#1F114C]">8.0</span></td>
+                  </tr>
+                  <tr class="border-b border-[#F6F6F6]">
+                    <td class="py-1.5 pl-1"><div class="flex items-center gap-2"><div class="w-6 h-6 rounded-full bg-amber-500 flex items-center justify-center text-white text-[8px] font-bold">RP</div><span class="text-[#333] font-medium">Roberto Paredes</span></div></td>
+                    <td class="text-[#585858]">Sr. DevOps</td>
+                    <td class="text-center"><span class="px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600 text-[9px] font-bold">CD</span></td>
+                    <td class="text-center text-[#585858]">3.8a</td>
+                    <td class="text-center"><span class="font-semibold text-green-600">8.5</span></td>
+                  </tr>
+                  <tr class="border-b border-[#F6F6F6]">
+                    <td class="py-1.5 pl-1"><div class="flex items-center gap-2"><div class="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center text-white text-[8px] font-bold">LG</div><span class="text-[#333] font-medium">Laura Gutierrez</span></div></td>
+                    <td class="text-[#585858]">Mid Developer</td>
+                    <td class="text-center"><span class="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 text-[9px] font-bold">ID</span></td>
+                    <td class="text-center text-[#585858]">2.0a</td>
+                    <td class="text-center"><span class="font-semibold text-[#1F114C]">7.9</span></td>
+                  </tr>
+                  <tr class="border-b border-[#F6F6F6]">
+                    <td class="py-1.5 pl-1"><div class="flex items-center gap-2"><div class="w-6 h-6 rounded-full bg-[#1F114C] flex items-center justify-center text-white text-[8px] font-bold">DA</div><span class="text-[#333] font-medium">Diego Alvarez</span></div></td>
+                    <td class="text-[#585858]">Mid QA</td>
+                    <td class="text-center"><span class="px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600 text-[9px] font-bold">CS</span></td>
+                    <td class="text-center text-[#585858]">2.4a</td>
+                    <td class="text-center"><span class="font-semibold text-[#1F114C]">8.1</span></td>
+                  </tr>
+                  <tr class="border-b border-[#F6F6F6]">
+                    <td class="py-1.5 pl-1"><div class="flex items-center gap-2"><div class="w-6 h-6 rounded-full bg-[#DD0C15] flex items-center justify-center text-white text-[8px] font-bold">SC</div><span class="text-[#333] font-medium">Sofia Cardenas</span></div></td>
+                    <td class="text-[#585858]">Jr. Developer</td>
+                    <td class="text-center"><span class="px-1.5 py-0.5 rounded bg-[#DD0C15]/10 text-[#DD0C15] text-[9px] font-bold">DI</span></td>
+                    <td class="text-center text-[#585858]">1.2a</td>
+                    <td class="text-center"><span class="font-semibold text-[#1F114C]">7.6</span></td>
+                  </tr>
+                  <tr class="border-b border-[#F6F6F6]">
+                    <td class="py-1.5 pl-1"><div class="flex items-center gap-2"><div class="w-6 h-6 rounded-full bg-[#5C4B99] flex items-center justify-center text-white text-[8px] font-bold">FM</div><span class="text-[#333] font-medium">Felipe Mendoza</span></div></td>
+                    <td class="text-[#585858]">Sr. Developer</td>
+                    <td class="text-center"><span class="px-1.5 py-0.5 rounded bg-[#DD0C15]/10 text-[#DD0C15] text-[9px] font-bold">DI</span></td>
+                    <td class="text-center text-[#585858]">3.0a</td>
+                    <td class="text-center"><span class="font-semibold text-green-600">8.8</span></td>
+                  </tr>
+                  <tr class="border-b border-[#F6F6F6]">
+                    <td class="py-1.5 pl-1"><div class="flex items-center gap-2"><div class="w-6 h-6 rounded-full bg-green-600 flex items-center justify-center text-white text-[8px] font-bold">VP</div><span class="text-[#333] font-medium">Valentina Pena</span></div></td>
+                    <td class="text-[#585858]">Mid Designer</td>
+                    <td class="text-center"><span class="px-1.5 py-0.5 rounded bg-green-500/10 text-green-600 text-[9px] font-bold">SI</span></td>
+                    <td class="text-center text-[#585858]">1.8a</td>
+                    <td class="text-center"><span class="font-semibold text-[#1F114C]">8.2</span></td>
+                  </tr>
+                  <tr class="border-b border-[#F6F6F6]">
+                    <td class="py-1.5 pl-1"><div class="flex items-center gap-2"><div class="w-6 h-6 rounded-full bg-amber-500 flex items-center justify-center text-white text-[8px] font-bold">AT</div><span class="text-[#333] font-medium">Andres Torres</span></div></td>
+                    <td class="text-[#585858]">Jr. Developer</td>
+                    <td class="text-center"><span class="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 text-[9px] font-bold">IC</span></td>
+                    <td class="text-center text-[#585858]">0.8a</td>
+                    <td class="text-center"><span class="font-semibold text-amber-500">7.2</span></td>
+                  </tr>
+                  <tr>
+                    <td class="py-1.5 pl-1"><div class="flex items-center gap-2"><div class="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center text-white text-[8px] font-bold">CR</div><span class="text-[#333] font-medium">Camila Rios</span></div></td>
+                    <td class="text-[#585858]">Jr. QA</td>
+                    <td class="text-center"><span class="px-1.5 py-0.5 rounded bg-[#DD0C15]/10 text-[#DD0C15] text-[9px] font-bold">DI</span></td>
+                    <td class="text-center text-[#585858]">0.6a</td>
+                    <td class="text-center"><span class="font-semibold text-amber-500">7.4</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Team Balance Alerts -->
+          <div class="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+            <div class="flex items-center gap-2 mb-3">
+              <svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z"/></svg>
+              <h3 class="text-[14px] font-semibold text-[#1F114C]">Alertas de Balance</h3>
+              <span class="ml-auto text-[10px] bg-amber-50 text-amber-600 px-2 py-0.5 rounded-full font-medium">3 alertas</span>
+            </div>
+            <div class="space-y-2">
+              <div class="flex items-start gap-2 p-2.5 rounded-lg bg-[#DD0C15]/5 border border-[#DD0C15]/10">
+                <div class="w-1.5 h-1.5 rounded-full bg-[#DD0C15] mt-1.5 shrink-0"></div>
+                <div>
+                  <p class="text-[11px] text-[#333] leading-relaxed"><strong>Exceso de perfil D (42%).</strong> Equipo tiene alta dominancia. Considerar agregar perfiles S para mejorar colaboracion y estabilidad.</p>
+                </div>
+              </div>
+              <div class="flex items-start gap-2 p-2.5 rounded-lg bg-amber-50 border border-amber-100">
+                <div class="w-1.5 h-1.5 rounded-full bg-amber-500 mt-1.5 shrink-0"></div>
+                <div>
+                  <p class="text-[11px] text-[#333] leading-relaxed"><strong>Bajo indice de Cautela (17%).</strong> Pocas personas con perfil analitico. Riesgo de toma de decisiones sin suficiente analisis critico.</p>
+                </div>
+              </div>
+              <div class="flex items-start gap-2 p-2.5 rounded-lg bg-amber-50 border border-amber-100">
+                <div class="w-1.5 h-1.5 rounded-full bg-amber-500 mt-1.5 shrink-0"></div>
+                <div>
+                  <p class="text-[11px] text-[#333] leading-relaxed"><strong>Autonomia al 55%.</strong> Equipo depende de liderazgo centralizado. Fomentar independencia con mentoria.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Recommended Hires -->
+          <div class="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+            <div class="flex items-center gap-2 mb-3">
+              <svg class="w-4 h-4 text-[#1F114C]" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zM3 19.235v-.11a6.375 6.375 0 0112.75 0v.109A12.318 12.318 0 019.374 21c-2.331 0-4.512-.645-6.374-1.766z"/></svg>
+              <h3 class="text-[14px] font-semibold text-[#1F114C]">Contrataciones Recomendadas</h3>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <div class="p-2.5 rounded-lg border border-[#EDEDED] bg-[#F6F6F6]/50">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="px-1.5 py-0.5 rounded bg-green-500/10 text-green-600 text-[9px] font-bold">S</span>
+                  <span class="text-[11px] font-semibold text-[#1F114C]">Perfil Estable</span>
+                </div>
+                <p class="text-[10px] text-[#585858]">Mid Developer con enfoque colaborativo para equilibrar dinamismo.</p>
+                <p class="text-[9px] text-[#8B8B8B] mt-1">Prioridad: <span class="text-[#DD0C15] font-semibold">Alta</span></p>
+              </div>
+              <div class="p-2.5 rounded-lg border border-[#EDEDED] bg-[#F6F6F6]/50">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600 text-[9px] font-bold">CS</span>
+                  <span class="text-[11px] font-semibold text-[#1F114C]">Perfil Analitico</span>
+                </div>
+                <p class="text-[10px] text-[#585858]">Sr. QA Engineer con pensamiento critico y orientacion al detalle.</p>
+                <p class="text-[9px] text-[#8B8B8B] mt-1">Prioridad: <span class="text-amber-500 font-semibold">Media</span></p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- BOTTOM: Team Comparison -->
+      <div class="grid grid-cols-3 gap-3">
+        <div class="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+          <div class="flex items-center justify-between mb-2">
+            <h4 class="text-[12px] font-semibold text-[#1F114C]">Tecnologia</h4>
+            <span class="text-[9px] bg-[#1F114C] text-white px-2 py-0.5 rounded-full">Este equipo</span>
+          </div>
+          <div class="grid grid-cols-3 gap-2 text-center">
+            <div><p class="text-[10px] text-[#8B8B8B]">Balance</p><p class="text-[14px] font-bold text-amber-500">68</p></div>
+            <div><p class="text-[10px] text-[#8B8B8B]">Perf.</p><p class="text-[14px] font-bold text-green-600">8.2</p></div>
+            <div><p class="text-[10px] text-[#8B8B8B]">Tamano</p><p class="text-[14px] font-bold text-[#1F114C]">12</p></div>
+          </div>
+          <div class="flex gap-1 mt-2">
+            <div class="h-1.5 rounded-full bg-[#DD0C15] flex-[42]"></div>
+            <div class="h-1.5 rounded-full bg-amber-500 flex-[25]"></div>
+            <div class="h-1.5 rounded-full bg-green-500 flex-[17]"></div>
+            <div class="h-1.5 rounded-full bg-blue-500 flex-[17]"></div>
+          </div>
+          <div class="flex justify-between mt-1"><span class="text-[8px] text-[#8B8B8B]">D:42%</span><span class="text-[8px] text-[#8B8B8B]">I:25%</span><span class="text-[8px] text-[#8B8B8B]">S:17%</span><span class="text-[8px] text-[#8B8B8B]">C:17%</span></div>
+        </div>
+        <div class="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+          <div class="flex items-center justify-between mb-2">
+            <h4 class="text-[12px] font-semibold text-[#1F114C]">Operaciones</h4>
+            <span class="text-[9px] bg-[#F6F6F6] text-[#8B8B8B] px-2 py-0.5 rounded-full">Comparar</span>
+          </div>
+          <div class="grid grid-cols-3 gap-2 text-center">
+            <div><p class="text-[10px] text-[#8B8B8B]">Balance</p><p class="text-[14px] font-bold text-green-600">81</p></div>
+            <div><p class="text-[10px] text-[#8B8B8B]">Perf.</p><p class="text-[14px] font-bold text-[#1F114C]">7.9</p></div>
+            <div><p class="text-[10px] text-[#8B8B8B]">Tamano</p><p class="text-[14px] font-bold text-[#1F114C]">18</p></div>
+          </div>
+          <div class="flex gap-1 mt-2">
+            <div class="h-1.5 rounded-full bg-[#DD0C15] flex-[22]"></div>
+            <div class="h-1.5 rounded-full bg-amber-500 flex-[28]"></div>
+            <div class="h-1.5 rounded-full bg-green-500 flex-[30]"></div>
+            <div class="h-1.5 rounded-full bg-blue-500 flex-[20]"></div>
+          </div>
+          <div class="flex justify-between mt-1"><span class="text-[8px] text-[#8B8B8B]">D:22%</span><span class="text-[8px] text-[#8B8B8B]">I:28%</span><span class="text-[8px] text-[#8B8B8B]">S:30%</span><span class="text-[8px] text-[#8B8B8B]">C:20%</span></div>
+        </div>
+        <div class="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+          <div class="flex items-center justify-between mb-2">
+            <h4 class="text-[12px] font-semibold text-[#1F114C]">Comercial</h4>
+            <span class="text-[9px] bg-[#F6F6F6] text-[#8B8B8B] px-2 py-0.5 rounded-full">Comparar</span>
+          </div>
+          <div class="grid grid-cols-3 gap-2 text-center">
+            <div><p class="text-[10px] text-[#8B8B8B]">Balance</p><p class="text-[14px] font-bold text-green-600">74</p></div>
+            <div><p class="text-[10px] text-[#8B8B8B]">Perf.</p><p class="text-[14px] font-bold text-green-600">8.5</p></div>
+            <div><p class="text-[10px] text-[#8B8B8B]">Tamano</p><p class="text-[14px] font-bold text-[#1F114C]">9</p></div>
+          </div>
+          <div class="flex gap-1 mt-2">
+            <div class="h-1.5 rounded-full bg-[#DD0C15] flex-[30]"></div>
+            <div class="h-1.5 rounded-full bg-amber-500 flex-[35]"></div>
+            <div class="h-1.5 rounded-full bg-green-500 flex-[15]"></div>
+            <div class="h-1.5 rounded-full bg-blue-500 flex-[20]"></div>
+          </div>
+          <div class="flex justify-between mt-1"><span class="text-[8px] text-[#8B8B8B]">D:30%</span><span class="text-[8px] text-[#8B8B8B]">I:35%</span><span class="text-[8px] text-[#8B8B8B]">S:15%</span><span class="text-[8px] text-[#8B8B8B]">C:20%</span></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

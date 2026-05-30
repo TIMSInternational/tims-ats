@@ -1,6 +1,3 @@
-// Phase 0 — Organization domain
-// This is the foundation schema. Additional models added per phase.
-
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
@@ -8,17 +5,98 @@ datasource db {
 
 generator client {
   provider        = "prisma-client-js"
-  previewFeatures = ["multiSchema", "prismaSchemaFolder"]
+  previewFeatures = []
 }
 
 model Organization {
-  id        String   @id @default(uuid()) @db.Uuid
-  name      String
-  slug      String   @unique
-  domain    String?
-  logo      String?
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  slug        String   @unique
+  domain      String?  @unique
+  logo        String?
+  plan        String   @default("trial")
+  settings    Json     @default("{}")
+  billingEmail String? @map("billing_email")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  companies     Company[]
+  users         User[]
+  roles         Role[]
+  featureFlags  FeatureFlag[]
+  auditLogs     AuditLog[]
+  vacancies     Vacancy[]
+  subscription  Subscription?
 
   @@map("organizations")
+}
+
+model Company {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String
+  country        String
+  currency       String   @default("USD")
+  timezone       String   @default("America/Bogota")
+  language       String   @default("es")
+  legalName      String?  @map("legal_name")
+  taxId          String?  @map("tax_id")
+  settings       Json     @default("{}")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  businessUnits  BusinessUnit[]
+  vacancies      Vacancy[]
+
+  @@index([organizationId])
+  @@map("companies")
+}
+
+model BusinessUnit {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  companyId      String   @map("company_id") @db.Uuid
+  name           String
+  code           String?
+  parentId       String?  @map("parent_id") @db.Uuid
+  settings       Json     @default("{}")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  company        Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  parent         BusinessUnit? @relation("UnitHierarchy", fields: [parentId], references: [id])
+  children       BusinessUnit[] @relation("UnitHierarchy")
+  teams          Team[]
+  vacancies      Vacancy[]
+
+  @@index([organizationId])
+  @@index([companyId])
+  @@map("business_units")
+}
+
+model Team {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  businessUnitId String   @map("business_unit_id") @db.Uuid
+  name           String
+  leaderId       String?  @map("leader_id") @db.Uuid
+  settings       Json     @default("{}")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  businessUnit   BusinessUnit @relation(fields: [businessUnitId], references: [id], onDelete: Cascade)
+  leader         User?        @relation("TeamLeader", fields: [leaderId], references: [id])
+  members        UserTeam[]
+  vacancies      Vacancy[]
+  okrs           Okr[]
+
+  @@index([organizationId])
+  @@index([businessUnitId])
+  @@map("teams")
 }

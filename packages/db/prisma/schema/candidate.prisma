@@ -1,0 +1,72 @@
+model Candidate {
+  id              String    @id @default(uuid()) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  firstName       String    @map("first_name")
+  lastName        String    @map("last_name")
+  email           String
+  phone           String?
+  source          String
+  poolType        String    @map("pool_type")
+  avatar          String?
+  location        String?
+  currentTitle    String?   @map("current_title")
+  currentCompany  String?   @map("current_company")
+  yearsExperience Int?      @map("years_experience")
+  skills          Json?
+  linkedinUrl     String?   @map("linkedin_url")
+  notes           String?
+  isActive        Boolean   @default(true) @map("is_active")
+  createdById     String?   @map("created_by_id") @db.Uuid
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  deletedAt       DateTime? @map("deleted_at")
+
+  createdBy              User?                  @relation("CandidateCreator", fields: [createdById], references: [id])
+  applications           Application[]
+  documents              CandidateDocument[]
+  tags                   CandidateTag[]
+  assessmentAssignments  AssessmentAssignment[]
+  fitScores              FitScore[]
+  interviews             Interview[]     @relation("CandidateInterviews")
+  offers                 Offer[]         @relation("CandidateOffers")
+
+  @@unique([organizationId, email])
+  @@index([organizationId])
+  @@index([organizationId, poolType])
+  @@map("candidates")
+}
+
+model CandidateDocument {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  candidateId    String   @map("candidate_id") @db.Uuid
+  type           String
+  fileName       String   @map("file_name")
+  fileUrl        String   @map("file_url")
+  fileSize       Int?     @map("file_size")
+  parsedData     Json?    @map("parsed_data")
+  uploadedAt     DateTime @default(now()) @map("uploaded_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  candidate Candidate @relation(fields: [candidateId], references: [id])
+
+  @@index([organizationId])
+  @@map("candidate_documents")
+}
+
+model CandidateTag {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  candidateId    String   @map("candidate_id") @db.Uuid
+  tag            String
+  source         String
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  candidate Candidate @relation(fields: [candidateId], references: [id])
+
+  @@unique([candidateId, tag])
+  @@index([organizationId])
+  @@map("candidate_tags")
+}

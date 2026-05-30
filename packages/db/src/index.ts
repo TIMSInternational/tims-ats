@@ -1,1 +1,2 @@
-export { db } from "./client";
+export { db, createTenantClient } from "./client";
+export type { PrismaClient } from "@prisma/client";

@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TIMS ATS — Onboarding 30/60/90 Dashboard</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>body{font-family:'Inter',sans-serif;margin:0;background:#F6F6F6;} .scrollbar-thin::-webkit-scrollbar{width:4px;} .scrollbar-thin::-webkit-scrollbar-thumb{background:#ccc;border-radius:4px;}</style>
+</head>
+<body>
+<div class="flex w-[1440px] h-[900px] mx-auto overflow-hidden">
+
+  <!-- SIDEBAR COMPACT -->
+  <div class="flex flex-col w-[72px] h-full bg-[#1F114C] shrink-0 items-center">
+    <div class="flex items-center justify-center h-[80px] border-b border-white/10 w-full"><div class="w-9 h-9 rounded-lg bg-[#DD0C15] flex items-center justify-center"><span class="text-white text-[13px] font-bold">T</span></div></div>
+    <nav class="flex-1 py-3 flex flex-col items-center gap-1 w-full">
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></a>
+      <div class="w-8 border-t border-white/10 my-2"></div>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a4 4 0 00-8 0v2"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75z"/></svg></a>
+      <div class="w-8 border-t border-white/10 my-2"></div>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center bg-white/10"><svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M15.59 14.37a6 6 0 01-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 006.16-12.12A14.98 14.98 0 009.631 8.41m5.96 5.96a14.926 14.926 0 01-5.841 2.58m-.119-8.54a6 6 0 00-7.381 5.84h4.8m2.58-5.84a14.927 14.927 0 00-2.58 5.84"/></svg></a>
+      <div class="w-8 border-t border-white/10 my-2"></div>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281"/><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg></a>
+    </nav>
+    <div class="py-3 border-t border-white/10 flex justify-center"><div class="w-9 h-9 rounded-full bg-[#DD0C15] flex items-center justify-center text-white text-[11px] font-bold">FT</div></div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="flex flex-col flex-1 min-w-0">
+    <!-- TOP BAR -->
+    <div class="flex items-center justify-between px-6 h-16 bg-white border-b border-[#EDEDED] shrink-0">
+      <div class="flex items-center gap-2">
+        <span class="text-[13px] text-[#8B8B8B]">People</span><svg class="w-3 h-3 text-[#ccc]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+        <span class="text-sm font-medium text-[#1F114C]">Onboarding Dashboard</span>
+      </div>
+      <div class="flex items-center gap-3">
+        <button class="flex items-center gap-1.5 border border-[#EDEDED] text-[#585858] px-3 h-8 rounded-lg text-[12px]"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>Exportar</button>
+        <button class="flex items-center gap-1.5 bg-[#DD0C15] text-white px-4 h-8 rounded-lg text-[12px] font-medium"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4.5v15m7.5-7.5h-15"/></svg>Nuevo Onboarding</button>
+      </div>
+    </div>
+
+    <!-- CONTENT -->
+    <div class="flex-1 overflow-y-auto p-6 scrollbar-thin">
+
+      <!-- KPI ROW -->
+      <div class="grid grid-cols-5 gap-3 mb-6">
+        <div class="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center">
+          <p class="text-[11px] text-[#8B8B8B] mb-1">Onboardings Activos</p>
+          <p class="text-[28px] font-bold text-[#1F114C]">8</p>
+          <p class="text-[10px] text-green-500 font-medium">+3 este mes</p>
+        </div>
+        <div class="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center">
+          <p class="text-[11px] text-[#8B8B8B] mb-1">Tasa Finalizacion</p>
+          <p class="text-[28px] font-bold text-green-600">89%</p>
+          <p class="text-[10px] text-[#8B8B8B]">ultimo trimestre</p>
+        </div>
+        <div class="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center">
+          <p class="text-[11px] text-[#8B8B8B] mb-1">Docs Pendientes</p>
+          <p class="text-[28px] font-bold text-amber-500">12</p>
+          <p class="text-[10px] text-amber-500">requieren accion</p>
+        </div>
+        <div class="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center">
+          <p class="text-[11px] text-[#8B8B8B] mb-1">Riesgo Onboarding</p>
+          <p class="text-[28px] font-bold text-[#DD0C15]">2</p>
+          <p class="text-[10px] text-[#DD0C15]">personas en riesgo</p>
+        </div>
+        <div class="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center">
+          <p class="text-[11px] text-[#8B8B8B] mb-1">Tiempo al 1er Objetivo</p>
+          <p class="text-[28px] font-bold text-[#1F114C]">18d</p>
+          <p class="text-[10px] text-green-500 font-medium">-4 vs promedio</p>
+        </div>
+      </div>
+
+      <!-- Active Onboardings Table -->
+      <div class="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] overflow-hidden mb-6">
+        <div class="flex justify-between items-center px-5 py-4 border-b border-[#EDEDED]">
+          <h3 class="text-[14px] font-semibold text-[#1F114C]">Nuevos Ingresos Activos</h3>
+          <div class="flex items-center gap-2">
+            <div class="flex bg-[#F6F6F6] rounded-lg overflow-hidden">
+              <button class="px-3 h-7 bg-[#1F114C] text-white text-[11px] font-medium">Todos</button>
+              <button class="px-3 h-7 text-[11px] text-[#585858]">Dia 1-30</button>
+              <button class="px-3 h-7 text-[11px] text-[#585858]">Dia 31-60</button>
+              <button class="px-3 h-7 text-[11px] text-[#585858]">Dia 61-90</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Table -->
+        <div class="overflow-x-auto">
+          <table class="w-full text-[11px]">
+            <thead><tr class="bg-[#FAFAFA] border-b border-[#EDEDED]">
+              <th class="text-left py-2.5 px-4 text-[#585858] font-medium w-[220px]">Colaborador</th>
+              <th class="text-left py-2.5 px-3 text-[#585858] font-medium">Cargo</th>
+              <th class="text-center py-2.5 px-3 text-[#585858] font-medium">Ingreso</th>
+              <th class="text-center py-2.5 px-3 text-[#585858] font-medium">Dia</th>
+              <th class="text-center py-2.5 px-3 text-[#585858] font-medium">Fase</th>
+              <th class="text-center py-2.5 px-3 text-[#585858] font-medium">Tareas</th>
+              <th class="text-center py-2.5 px-3 text-[#585858] font-medium">Docs</th>
+              <th class="text-center py-2.5 px-3 text-[#585858] font-medium">Cursos</th>
+              <th class="text-center py-2.5 px-3 text-[#585858] font-medium">Check-in</th>
+              <th class="text-center py-2.5 px-3 text-[#585858] font-medium">Riesgo</th>
+              <th class="text-center py-2.5 px-3 text-[#585858] font-medium">Progreso</th>
+            </tr></thead>
+            <tbody>
+              <!-- Row 1 -->
+              <tr class="border-b border-[#F0F0F0] hover:bg-[#FAFAFA] cursor-pointer">
+                <td class="py-3 px-4"><div class="flex items-center gap-2.5"><div class="w-8 h-8 rounded-full bg-[#1F114C] flex items-center justify-center text-white text-[10px] font-bold shrink-0">ML</div><div><p class="text-[12px] font-medium text-[#333]">Maria Lopez</p><p class="text-[10px] text-[#8B8B8B]">Buddy: Carlos R.</p></div></div></td>
+                <td class="py-3 px-3 text-[11px] text-[#333]">Sr. Software Eng</td>
+                <td class="py-3 px-3 text-[11px] text-[#585858] text-center">15 Jun</td>
+                <td class="py-3 px-3 text-center"><span class="text-[12px] font-bold text-[#1F114C]">5</span><span class="text-[10px] text-[#8B8B8B]">/90</span></td>
+                <td class="py-3 px-3 text-center"><span class="text-[10px] bg-green-50 text-green-600 px-2 py-0.5 rounded-full font-medium">Dia 1-30</span></td>
+                <td class="py-3 px-3 text-center"><span class="text-[11px] text-green-600 font-medium">8/12</span></td>
+                <td class="py-3 px-3 text-center"><span class="text-[11px] text-amber-600 font-medium">3/5</span></td>
+                <td class="py-3 px-3 text-center"><span class="text-[11px] text-[#585858]">0/3</span></td>
+                <td class="py-3 px-3 text-center"><span class="text-[10px] bg-green-50 text-green-600 px-1.5 py-0.5 rounded">Dia 1 ✓</span></td>
+                <td class="py-3 px-3 text-center"><span class="w-2.5 h-2.5 rounded-full bg-green-500 inline-block"></span></td>
+                <td class="py-3 px-3"><div class="flex items-center gap-1.5 justify-center"><div class="w-20 bg-[#F6F6F6] rounded-full h-2"><div class="h-2 bg-green-500 rounded-full" style="width:45%"></div></div><span class="text-[10px] text-[#585858]">45%</span></div></td>
+              </tr>
+              <!-- Row 2 -->
+              <tr class="border-b border-[#F0F0F0] hover:bg-[#FAFAFA] cursor-pointer bg-[#FAFAFA]">
+                <td class="py-3 px-4"><div class="flex items-center gap-2.5"><div class="w-8 h-8 rounded-full bg-emerald-600 flex items-center justify-center text-white text-[10px] font-bold shrink-0">FM</div><div><p class="text-[12px] font-medium text-[#333]">Felipe Morales</p><p class="text-[10px] text-[#8B8B8B]">Buddy: Laura G.</p></div></div></td>
+                <td class="py-3 px-3 text-[11px] text-[#333]">Product Manager</td>
+                <td class="py-3 px-3 text-[11px] text-[#585858] text-center">1 Jun</td>
+                <td class="py-3 px-3 text-center"><span class="text-[12px] font-bold text-[#1F114C]">19</span><span class="text-[10px] text-[#8B8B8B]">/90</span></td>
+                <td class="py-3 px-3 text-center"><span class="text-[10px] bg-green-50 text-green-600 px-2 py-0.5 rounded-full font-medium">Dia 1-30</span></td>
+                <td class="py-3 px-3 text-center"><span class="text-[11px] text-green-600 font-medium">10/12</span></td>
+                <td class="py-3 px-3 text-center"><span class="text-[11px] text-green-600 font-medium">5/5</span></td>
+                <td class="py-3 px-3 text-center"><span class="text-[11px] text-green-600 font-medium">1/3</span></td>
+                <td class="py-3 px-3 text-center"><div class="flex flex-col gap-0.5"><span class="text-[9px] bg-green-50 text-green-600 px-1 py-0.5 rounded">Dia 1 ✓</span><span class="text-[9px] bg-green-50 text-green-600 px-1 py-0.5 rounded">Sem 1 ✓</span></div></td>
+                <td class="py-3 px-3 text-center"><span class="w-2.5 h-2.5 rounded-full bg-green-500 inline-block"></span></td>
+                <td class="py-3 px-3"><div class="flex items-center gap-1.5 justify-center"><div class="w-20 bg-[#F6F6F6] rounded-full h-2"><div class="h-2 bg-green-500 rounded-full" style="width:68%"></div></div><span class="text-[10px] text-[#585858]">68%</span></div></td>
+              </tr>
+              <!-- Row 3 - At risk -->
+              <tr class="border-b border-[#F0F0F0] hover:bg-[#FAFAFA] cursor-pointer border-l-[3px] border-l-[#DD0C15]">
+                <td class="py-3 px-4"><div class="flex items-center gap-2.5"><div class="w-8 h-8 rounded-full bg-red-600 flex items-center justify-center text-white text-[10px] font-bold shrink-0">JP</div><div><p class="text-[12px] font-medium text-[#333]">Juan Perez</p><p class="text-[10px] text-[#DD0C15] font-medium">Sin buddy asignado!</p></div></div></td>
+                <td class="py-3 px-3 text-[11px] text-[#333]">DevOps Engineer</td>
+                <td class="py-3 px-3 text-[11px] text-[#585858] text-center">20 May</td>
+                <td class="py-3 px-3 text-center"><span class="text-[12px] font-bold text-amber-600">30</span><span class="text-[10px] text-[#8B8B8B]">/90</span></td>
+                <td class="py-3 px-3 text-center"><span class="text-[10px] bg-amber-50 text-amber-600 px-2 py-0.5 rounded-full font-medium">Dia 31-60</span></td>
+                <td class="py-3 px-3 text-center"><span class="text-[11px] text-[#DD0C15] font-medium">5/12</span></td>
+                <td class="py-3 px-3 text-center"><span class="text-[11px] text-[#DD0C15] font-medium">2/5</span></td>
+                <td class="py-3 px-3 text-center"><span class="text-[11px] text-[#DD0C15] font-medium">0/3</span></td>
+                <td class="py-3 px-3 text-center"><div class="flex flex-col gap-0.5"><span class="text-[9px] bg-green-50 text-green-600 px-1 py-0.5 rounded">Dia 1 ✓</span><span class="text-[9px] bg-[#DD0C15]/10 text-[#DD0C15] px-1 py-0.5 rounded">Dia 30 Vencido!</span></div></td>
+                <td class="py-3 px-3 text-center"><span class="w-2.5 h-2.5 rounded-full bg-[#DD0C15] animate-pulse inline-block"></span></td>
+                <td class="py-3 px-3"><div class="flex items-center gap-1.5 justify-center"><div class="w-20 bg-[#F6F6F6] rounded-full h-2"><div class="h-2 bg-[#DD0C15] rounded-full" style="width:28%"></div></div><span class="text-[10px] text-[#DD0C15] font-medium">28%</span></div></td>
+              </tr>
+              <!-- Row 4 -->
+              <tr class="border-b border-[#F0F0F0] hover:bg-[#FAFAFA] cursor-pointer bg-[#FAFAFA]">
+                <td class="py-3 px-4"><div class="flex items-center gap-2.5"><div class="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-white text-[10px] font-bold shrink-0">IR</div><div><p class="text-[12px] font-medium text-[#333]">Isabella Reyes</p><p class="text-[10px] text-[#8B8B8B]">Buddy: Ana P.</p></div></div></td>
+                <td class="py-3 px-3 text-[11px] text-[#333]">UX Designer</td>
+                <td class="py-3 px-3 text-[11px] text-[#585858] text-center">1 May</td>
+                <td class="py-3 px-3 text-center"><span class="text-[12px] font-bold text-[#1F114C]">49</span><span class="text-[10px] text-[#8B8B8B]">/90</span></td>
+                <td class="py-3 px-3 text-center"><span class="text-[10px] bg-amber-50 text-amber-600 px-2 py-0.5 rounded-full font-medium">Dia 31-60</span></td>
+                <td class="py-3 px-3 text-center"><span class="text-[11px] text-green-600 font-medium">9/12</span></td>
+                <td class="py-3 px-3 text-center"><span class="text-[11px] text-green-600 font-medium">5/5</span></td>
+                <td class="py-3 px-3 text-center"><span class="text-[11px] text-amber-600 font-medium">1/3</span></td>
+                <td class="py-3 px-3 text-center"><div class="flex flex-col gap-0.5"><span class="text-[9px] bg-green-50 text-green-600 px-1 py-0.5 rounded">Dia 1 ✓</span><span class="text-[9px] bg-green-50 text-green-600 px-1 py-0.5 rounded">Dia 30 ✓</span></div></td>
+                <td class="py-3 px-3 text-center"><span class="w-2.5 h-2.5 rounded-full bg-green-500 inline-block"></span></td>
+                <td class="py-3 px-3"><div class="flex items-center gap-1.5 justify-center"><div class="w-20 bg-[#F6F6F6] rounded-full h-2"><div class="h-2 bg-green-500 rounded-full" style="width:72%"></div></div><span class="text-[10px] text-[#585858]">72%</span></div></td>
+              </tr>
+              <!-- Row 5 - At risk -->
+              <tr class="border-b border-[#F0F0F0] hover:bg-[#FAFAFA] cursor-pointer border-l-[3px] border-l-amber-500">
+                <td class="py-3 px-4"><div class="flex items-center gap-2.5"><div class="w-8 h-8 rounded-full bg-orange-600 flex items-center justify-center text-white text-[10px] font-bold shrink-0">AT</div><div><p class="text-[12px] font-medium text-[#333]">Andres Torres</p><p class="text-[10px] text-[#8B8B8B]">Buddy: Maria R.</p></div></div></td>
+                <td class="py-3 px-3 text-[11px] text-[#333]">Data Analyst</td>
+                <td class="py-3 px-3 text-[11px] text-[#585858] text-center">15 Abr</td>
+                <td class="py-3 px-3 text-center"><span class="text-[12px] font-bold text-[#5C4B99]">65</span><span class="text-[10px] text-[#8B8B8B]">/90</span></td>
+                <td class="py-3 px-3 text-center"><span class="text-[10px] bg-purple-50 text-[#5C4B99] px-2 py-0.5 rounded-full font-medium">Dia 61-90</span></td>
+                <td class="py-3 px-3 text-center"><span class="text-[11px] text-amber-600 font-medium">8/12</span></td>
+                <td class="py-3 px-3 text-center"><span class="text-[11px] text-green-600 font-medium">5/5</span></td>
+                <td class="py-3 px-3 text-center"><span class="text-[11px] text-amber-600 font-medium">2/3</span></td>
+                <td class="py-3 px-3 text-center"><div class="flex flex-col gap-0.5"><span class="text-[9px] bg-green-50 text-green-600 px-1 py-0.5 rounded">Dia 30 ✓</span><span class="text-[9px] bg-amber-50 text-amber-600 px-1 py-0.5 rounded">Dia 60 Pendiente</span></div></td>
+                <td class="py-3 px-3 text-center"><span class="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block"></span></td>
+                <td class="py-3 px-3"><div class="flex items-center gap-1.5 justify-center"><div class="w-20 bg-[#F6F6F6] rounded-full h-2"><div class="h-2 bg-amber-500 rounded-full" style="width:58%"></div></div><span class="text-[10px] text-amber-600">58%</span></div></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ROW 2: Tasks by Responsible + Pending Docs + Initial Courses -->
+      <div class="flex gap-4 mb-6">
+        <!-- Tasks by responsible -->
+        <div class="flex-1 bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+          <h3 class="text-[14px] font-semibold text-[#1F114C] mb-3">Tareas por Responsable</h3>
+          <div class="space-y-3">
+            <div><div class="flex justify-between items-center mb-1.5"><span class="text-[12px] text-[#333] font-medium flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-[#1F114C]"></span>RRHH</span><span class="text-[11px] text-[#1F114C] font-medium">18/24 completadas</span></div><div class="w-full bg-[#F6F6F6] rounded-full h-2.5"><div class="h-2.5 bg-[#1F114C] rounded-full" style="width:75%"></div></div></div>
+            <div><div class="flex justify-between items-center mb-1.5"><span class="text-[12px] text-[#333] font-medium flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-[#5C4B99]"></span>Lider</span><span class="text-[11px] text-[#1F114C] font-medium">12/20 completadas</span></div><div class="w-full bg-[#F6F6F6] rounded-full h-2.5"><div class="h-2.5 bg-[#5C4B99] rounded-full" style="width:60%"></div></div></div>
+            <div><div class="flex justify-between items-center mb-1.5"><span class="text-[12px] text-[#333] font-medium flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-blue-500"></span>TI</span><span class="text-[11px] text-[#DD0C15] font-medium">6/16 completadas</span></div><div class="w-full bg-[#F6F6F6] rounded-full h-2.5"><div class="h-2.5 bg-blue-500 rounded-full" style="width:37%"></div></div></div>
+            <div><div class="flex justify-between items-center mb-1.5"><span class="text-[12px] text-[#333] font-medium flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-green-500"></span>Buddy</span><span class="text-[11px] text-[#1F114C] font-medium">10/12 completadas</span></div><div class="w-full bg-[#F6F6F6] rounded-full h-2.5"><div class="h-2.5 bg-green-500 rounded-full" style="width:83%"></div></div></div>
+            <div><div class="flex justify-between items-center mb-1.5"><span class="text-[12px] text-[#333] font-medium flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span>Colaborador</span><span class="text-[11px] text-amber-600 font-medium">14/20 completadas</span></div><div class="w-full bg-[#F6F6F6] rounded-full h-2.5"><div class="h-2.5 bg-amber-500 rounded-full" style="width:70%"></div></div></div>
+          </div>
+          <p class="text-[10px] text-[#DD0C15] mt-3 pt-3 border-t border-[#F0F0F0] font-medium">Alerta: TI tiene el menor avance (37%). 10 accesos pendientes de crear.</p>
+        </div>
+
+        <!-- Pending Documents -->
+        <div class="flex-1 bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+          <div class="flex justify-between items-center mb-3">
+            <h3 class="text-[14px] font-semibold text-[#1F114C]">Documentos Pendientes</h3>
+            <span class="bg-amber-500 text-white text-[10px] font-bold w-6 h-6 rounded-full flex items-center justify-center">12</span>
+          </div>
+          <div class="space-y-2">
+            <div class="flex items-center justify-between bg-[#F6F6F6] rounded-lg px-3 py-2.5">
+              <div class="flex items-center gap-2"><svg class="w-4 h-4 text-[#DD0C15]" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg><div><p class="text-[11px] text-[#333] font-medium">Contrato laboral</p><p class="text-[10px] text-[#8B8B8B]">Maria Lopez — Pendiente firma</p></div></div>
+              <button class="text-[10px] text-[#DD0C15] font-medium">Enviar</button>
+            </div>
+            <div class="flex items-center justify-between bg-[#F6F6F6] rounded-lg px-3 py-2.5">
+              <div class="flex items-center gap-2"><svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg><div><p class="text-[11px] text-[#333] font-medium">Politica privacidad</p><p class="text-[10px] text-[#8B8B8B]">Juan Perez — No firmada</p></div></div>
+              <button class="text-[10px] text-[#DD0C15] font-medium">Recordar</button>
+            </div>
+            <div class="flex items-center justify-between bg-[#F6F6F6] rounded-lg px-3 py-2.5">
+              <div class="flex items-center gap-2"><svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg><div><p class="text-[11px] text-[#333] font-medium">NDA Confidencialidad</p><p class="text-[10px] text-[#8B8B8B]">Felipe Morales — Pendiente</p></div></div>
+              <button class="text-[10px] text-[#DD0C15] font-medium">Enviar</button>
+            </div>
+            <p class="text-[10px] text-[#DD0C15] cursor-pointer">+9 documentos mas pendientes →</p>
+          </div>
+        </div>
+
+        <!-- Courses + Accesses -->
+        <div class="flex-1 bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+          <h3 class="text-[14px] font-semibold text-[#1F114C] mb-3">Cursos Iniciales & Accesos</h3>
+          <div class="mb-4">
+            <p class="text-[11px] text-[#585858] font-medium mb-2">Cursos Obligatorios</p>
+            <div class="space-y-1.5">
+              <div class="flex items-center justify-between"><span class="text-[11px] text-[#333]">Cultura Organizacional</span><div class="flex items-center gap-1"><div class="w-12 bg-[#F6F6F6] rounded-full h-1.5"><div class="h-1.5 bg-green-500 rounded-full" style="width:87%"></div></div><span class="text-[10px] text-green-600">87%</span></div></div>
+              <div class="flex items-center justify-between"><span class="text-[11px] text-[#333]">Seguridad de la Informacion</span><div class="flex items-center gap-1"><div class="w-12 bg-[#F6F6F6] rounded-full h-1.5"><div class="h-1.5 bg-amber-500 rounded-full" style="width:62%"></div></div><span class="text-[10px] text-amber-600">62%</span></div></div>
+              <div class="flex items-center justify-between"><span class="text-[11px] text-[#333]">Codigo de Conducta</span><div class="flex items-center gap-1"><div class="w-12 bg-[#F6F6F6] rounded-full h-1.5"><div class="h-1.5 bg-[#DD0C15] rounded-full" style="width:37%"></div></div><span class="text-[10px] text-[#DD0C15]">37%</span></div></div>
+            </div>
+          </div>
+          <div class="border-t border-[#F0F0F0] pt-3">
+            <p class="text-[11px] text-[#585858] font-medium mb-2">Accesos Pendientes (TI)</p>
+            <div class="space-y-1.5">
+              <div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-[#DD0C15]"></span><span class="text-[11px] text-[#333]">Email corporativo — Juan P.</span></div>
+              <div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-[#DD0C15]"></span><span class="text-[11px] text-[#333]">VPN + Laptop — Maria L.</span></div>
+              <div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-amber-500"></span><span class="text-[11px] text-[#333]">Jira/Confluence — Maria L.</span></div>
+              <div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-amber-500"></span><span class="text-[11px] text-[#333]">Slack workspace — 3 personas</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ROW 3: Check-in schedule + L&D Route -->
+      <div class="flex gap-4">
+        <!-- Check-in Schedule -->
+        <div class="flex-1 bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+          <h3 class="text-[14px] font-semibold text-[#1F114C] mb-3">Calendario de Check-ins</h3>
+          <div class="overflow-hidden rounded-lg border border-[#EDEDED]">
+            <table class="w-full text-[11px]">
+              <thead><tr class="bg-[#FAFAFA]"><th class="py-2 px-3 text-left text-[#585858] font-medium">Colaborador</th><th class="py-2 px-3 text-center text-[#585858] font-medium">Dia 1</th><th class="py-2 px-3 text-center text-[#585858] font-medium">Sem 1</th><th class="py-2 px-3 text-center text-[#585858] font-medium">Dia 30</th><th class="py-2 px-3 text-center text-[#585858] font-medium">Dia 60</th><th class="py-2 px-3 text-center text-[#585858] font-medium">Dia 90</th></tr></thead>
+              <tbody>
+                <tr class="border-t border-[#F0F0F0]"><td class="py-2 px-3 font-medium text-[#333]">Maria Lopez</td><td class="py-2 px-3 text-center"><span class="text-green-600">✓</span></td><td class="py-2 px-3 text-center"><span class="text-[#8B8B8B]">Jun 22</span></td><td class="py-2 px-3 text-center"><span class="text-[#8B8B8B]">Jul 15</span></td><td class="py-2 px-3 text-center"><span class="text-[#8B8B8B]">Ago 14</span></td><td class="py-2 px-3 text-center"><span class="text-[#8B8B8B]">Sep 13</span></td></tr>
+                <tr class="border-t border-[#F0F0F0] bg-[#FAFAFA]"><td class="py-2 px-3 font-medium text-[#333]">Felipe Morales</td><td class="py-2 px-3 text-center"><span class="text-green-600">✓</span></td><td class="py-2 px-3 text-center"><span class="text-green-600">✓</span></td><td class="py-2 px-3 text-center"><span class="text-amber-600 font-medium">Hoy!</span></td><td class="py-2 px-3 text-center"><span class="text-[#8B8B8B]">Jul 31</span></td><td class="py-2 px-3 text-center"><span class="text-[#8B8B8B]">Ago 30</span></td></tr>
+                <tr class="border-t border-[#F0F0F0]"><td class="py-2 px-3 font-medium text-[#DD0C15]">Juan Perez</td><td class="py-2 px-3 text-center"><span class="text-green-600">✓</span></td><td class="py-2 px-3 text-center"><span class="text-green-600">✓</span></td><td class="py-2 px-3 text-center"><span class="text-[#DD0C15] font-medium">Vencido!</span></td><td class="py-2 px-3 text-center"><span class="text-[#8B8B8B]">Jul 19</span></td><td class="py-2 px-3 text-center"><span class="text-[#8B8B8B]">Ago 18</span></td></tr>
+                <tr class="border-t border-[#F0F0F0] bg-[#FAFAFA]"><td class="py-2 px-3 font-medium text-[#333]">Isabella Reyes</td><td class="py-2 px-3 text-center"><span class="text-green-600">✓</span></td><td class="py-2 px-3 text-center"><span class="text-green-600">✓</span></td><td class="py-2 px-3 text-center"><span class="text-green-600">✓</span></td><td class="py-2 px-3 text-center"><span class="text-[#8B8B8B]">Jul 1</span></td><td class="py-2 px-3 text-center"><span class="text-[#8B8B8B]">Jul 31</span></td></tr>
+                <tr class="border-t border-[#F0F0F0]"><td class="py-2 px-3 font-medium text-[#333]">Andres Torres</td><td class="py-2 px-3 text-center"><span class="text-green-600">✓</span></td><td class="py-2 px-3 text-center"><span class="text-green-600">✓</span></td><td class="py-2 px-3 text-center"><span class="text-green-600">✓</span></td><td class="py-2 px-3 text-center"><span class="text-amber-600 font-medium">Manana</span></td><td class="py-2 px-3 text-center"><span class="text-[#8B8B8B]">Jul 14</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- L&D Route auto-generated -->
+        <div class="flex-1 bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+          <div class="flex justify-between items-center mb-3">
+            <h3 class="text-[14px] font-semibold text-[#1F114C]">Ruta de Capacitacion Inicial</h3>
+            <span class="text-[10px] bg-teal-50 text-teal-600 px-2 py-0.5 rounded border border-teal-200">Generada desde brechas PCA</span>
+          </div>
+          <div class="space-y-2.5">
+            <div class="bg-[#F6F6F6] rounded-lg p-3">
+              <div class="flex justify-between items-center mb-1"><p class="text-[12px] text-[#333] font-medium">Maria Lopez — Sr. Software Engineer</p><span class="text-[10px] text-[#8B8B8B]">3 cursos asignados</span></div>
+              <div class="space-y-1">
+                <div class="flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span><span class="text-[10px] text-[#585858]">Comunicacion Efectiva para Lideres (brecha: Comunicacion -1)</span></div>
+                <div class="flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-[#8B8B8B]"></span><span class="text-[10px] text-[#585858]">Metodologias Agiles TIMS</span></div>
+                <div class="flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-[#8B8B8B]"></span><span class="text-[10px] text-[#585858]">Herramientas Internas (Jira, Confluence)</span></div>
+              </div>
+            </div>
+            <div class="bg-[#F6F6F6] rounded-lg p-3">
+              <div class="flex justify-between items-center mb-1"><p class="text-[12px] text-[#333] font-medium">Juan Perez — DevOps Engineer</p><span class="text-[10px] text-[#DD0C15]">0 de 4 completados</span></div>
+              <div class="space-y-1">
+                <div class="flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-[#DD0C15]"></span><span class="text-[10px] text-[#585858]">Adaptabilidad al Cambio (brecha: Solidez +3, sobreajuste)</span></div>
+                <div class="flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-[#DD0C15]"></span><span class="text-[10px] text-[#585858]">Trabajo en Equipo Multidisciplinario</span></div>
+                <div class="flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-[#8B8B8B]"></span><span class="text-[10px] text-[#585858]">Infraestructura TIMS (AWS, Kubernetes)</span></div>
+                <div class="flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-[#8B8B8B]"></span><span class="text-[10px] text-[#585858]">Seguridad Cloud</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="mt-3 bg-teal-50 rounded-lg p-2 border border-teal-200"><p class="text-[10px] text-teal-700"><strong>IA:</strong> Las rutas de capacitacion se generan automaticamente desde las brechas detectadas en las evaluaciones PCA vs JCA del candidato.</p></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+</body>
+</html>

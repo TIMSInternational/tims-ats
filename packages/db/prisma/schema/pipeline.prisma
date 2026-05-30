@@ -1,0 +1,70 @@
+model PipelineStage {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  vacancyId      String   @map("vacancy_id") @db.Uuid
+  name           String
+  order          Int
+  slaHours       Int?     @map("sla_hours")
+  checklist      Json?
+  isDefault      Boolean  @default(false) @map("is_default")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  vacancy        Vacancy         @relation(fields: [vacancyId], references: [id], onDelete: Cascade)
+  applications   Application[]
+  movementsTo    StageMovement[] @relation("MovementToStage")
+  movementsFrom  StageMovement[] @relation("MovementFromStage")
+
+  @@index([organizationId])
+  @@index([vacancyId])
+  @@map("pipeline_stages")
+}
+
+model Application {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  candidateId    String    @map("candidate_id") @db.Uuid
+  vacancyId      String    @map("vacancy_id") @db.Uuid
+  currentStageId String    @map("current_stage_id") @db.Uuid
+  source         String
+  status         String    @default("active")
+  appliedAt      DateTime  @default(now()) @map("applied_at")
+  rejectedAt     DateTime? @map("rejected_at")
+  rejectedReason String?   @map("rejected_reason")
+  feedback       String?
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  candidate      Candidate     @relation(fields: [candidateId], references: [id])
+  vacancy        Vacancy       @relation(fields: [vacancyId], references: [id], onDelete: Cascade)
+  currentStage   PipelineStage @relation(fields: [currentStageId], references: [id])
+  movements      StageMovement[]
+  interviews     Interview[]     @relation("ApplicationInterviews")
+  offers         Offer[]         @relation("ApplicationOffers")
+
+  @@unique([candidateId, vacancyId])
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@index([vacancyId, currentStageId])
+  @@map("applications")
+}
+
+model StageMovement {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  applicationId  String   @map("application_id") @db.Uuid
+  fromStageId    String?  @map("from_stage_id") @db.Uuid
+  toStageId      String   @map("to_stage_id") @db.Uuid
+  movedBy        String   @map("moved_by") @db.Uuid
+  reason         String?
+  movedAt        DateTime @default(now()) @map("moved_at")
+
+  application    Application    @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  fromStage      PipelineStage? @relation("MovementFromStage", fields: [fromStageId], references: [id])
+  toStage        PipelineStage  @relation("MovementToStage", fields: [toStageId], references: [id])
+  actor          User           @relation("StageMovementActor", fields: [movedBy], references: [id])
+
+  @@index([organizationId])
+  @@index([applicationId])
+  @@map("stage_movements")
+}

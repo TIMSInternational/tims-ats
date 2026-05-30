@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TIMS ATS — Mapa de Talento & Sucesion</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>body{font-family:'Inter',sans-serif;margin:0;background:#F6F6F6;} .scrollbar-thin::-webkit-scrollbar{width:4px;} .scrollbar-thin::-webkit-scrollbar-thumb{background:#ccc;border-radius:4px;}</style>
+</head>
+<body>
+<div class="flex w-[1440px] h-[900px] mx-auto overflow-hidden">
+
+  <!-- SIDEBAR COMPACT -->
+  <div class="flex flex-col w-[72px] h-full bg-[#1F114C] shrink-0 items-center">
+    <div class="flex items-center justify-center h-[80px] border-b border-white/10 w-full"><div class="w-9 h-9 rounded-lg bg-[#DD0C15] flex items-center justify-center"><span class="text-white text-[13px] font-bold">T</span></div></div>
+    <nav class="flex-1 py-3 flex flex-col items-center gap-1 w-full">
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></a>
+      <div class="w-8 border-t border-white/10 my-2"></div>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a4 4 0 00-8 0v2"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center bg-white/10"><svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75z"/></svg></a>
+      <div class="w-8 border-t border-white/10 my-2"></div>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M15.59 14.37a6 6 0 01-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 006.16-12.12A14.98 14.98 0 009.631 8.41"/></svg></a>
+      <div class="w-8 border-t border-white/10 my-2"></div>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281"/><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg></a>
+    </nav>
+    <div class="py-3 border-t border-white/10 flex justify-center"><div class="w-9 h-9 rounded-full bg-[#DD0C15] flex items-center justify-center text-white text-[11px] font-bold">FT</div></div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="flex flex-col flex-1 min-w-0">
+    <!-- TOP BAR -->
+    <div class="flex items-center justify-between px-6 h-16 bg-white border-b border-[#EDEDED] shrink-0">
+      <div class="flex items-center gap-2">
+        <span class="text-[13px] text-[#8B8B8B]">Talent</span>
+        <svg class="w-3.5 h-3.5 text-[#8B8B8B]" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M8.25 4.5l7.5 7.5-7.5 7.5"/></svg>
+        <span class="text-[13px] font-medium text-[#1F114C]">Mapa de Talento & Sucesion</span>
+      </div>
+      <div class="flex items-center gap-3">
+        <button class="flex items-center gap-1.5 border border-[#EDEDED] text-[#585858] px-3 h-8 rounded-lg text-[12px]"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>Exportar</button>
+        <button class="flex items-center gap-1.5 bg-[#DD0C15] text-white px-4 h-8 rounded-lg text-[12px] font-medium"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4.5v15m7.5-7.5h-15"/></svg>Agregar Sucesor</button>
+      </div>
+    </div>
+
+    <!-- CONTENT -->
+    <div class="flex-1 overflow-y-auto p-5 scrollbar-thin">
+
+      <!-- KPI ROW -->
+      <div class="grid grid-cols-5 gap-3 mb-4">
+        <!-- KPI 1: Roles Criticos -->
+        <div class="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-[11px] text-[#8B8B8B] font-medium">Roles Criticos</span>
+            <div class="w-7 h-7 rounded-lg bg-[#1F114C]/10 flex items-center justify-center"><svg class="w-4 h-4 text-[#1F114C]" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z"/></svg></div>
+          </div>
+          <p class="text-[24px] font-bold text-[#1F114C]">18</p>
+          <p class="text-[10px] text-[#8B8B8B] mt-1">Identificados en la organizacion</p>
+        </div>
+        <!-- KPI 2: Ready Now -->
+        <div class="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-[11px] text-[#8B8B8B] font-medium">Sucesores Ready Now</span>
+            <div class="w-7 h-7 rounded-lg bg-green-50 flex items-center justify-center"><svg class="w-4 h-4 text-green-600" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></div>
+          </div>
+          <p class="text-[24px] font-bold text-green-600">12</p>
+          <p class="text-[10px] text-[#8B8B8B] mt-1">Listos para asumir de inmediato</p>
+        </div>
+        <!-- KPI 3: In 1-2 Years -->
+        <div class="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-[11px] text-[#8B8B8B] font-medium">Sucesores 1-2 Anos</span>
+            <div class="w-7 h-7 rounded-lg bg-amber-50 flex items-center justify-center"><svg class="w-4 h-4 text-amber-600" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></div>
+          </div>
+          <p class="text-[24px] font-bold text-amber-600">9</p>
+          <p class="text-[10px] text-[#8B8B8B] mt-1">En desarrollo con plan activo</p>
+        </div>
+        <!-- KPI 4: Sin Sucesor -->
+        <div class="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4 border border-red-200">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-[11px] text-[#DD0C15] font-medium">Roles Sin Sucesor</span>
+            <div class="w-7 h-7 rounded-lg bg-red-50 flex items-center justify-center"><svg class="w-4 h-4 text-[#DD0C15]" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z"/><path d="M12 15.75h.007v.008H12v-.008z"/></svg></div>
+          </div>
+          <p class="text-[24px] font-bold text-[#DD0C15]">5</p>
+          <p class="text-[10px] text-[#DD0C15] mt-1">Requieren atencion inmediata</p>
+        </div>
+        <!-- KPI 5: Flight Risk -->
+        <div class="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-[11px] text-[#8B8B8B] font-medium">Riesgo de Fuga</span>
+            <div class="w-7 h-7 rounded-lg bg-orange-50 flex items-center justify-center"><svg class="w-4 h-4 text-orange-600" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M15.362 5.214A8.252 8.252 0 0112 21 8.25 8.25 0 016.038 7.048 8.287 8.287 0 009 9.6a8.983 8.983 0 013.361-6.867 8.21 8.21 0 003 2.48z"/><path d="M12 18a3.75 3.75 0 00.495-7.467 5.99 5.99 0 00-1.925 3.546 5.974 5.974 0 01-2.133-1A3.75 3.75 0 0012 18z"/></svg></div>
+          </div>
+          <p class="text-[24px] font-bold text-orange-600">7</p>
+          <p class="text-[10px] text-[#8B8B8B] mt-1">Empleados clave en riesgo alto</p>
+        </div>
+      </div>
+
+      <!-- MAIN AREA: TWO COLUMNS -->
+      <div class="flex gap-4 mb-4" style="height:370px;">
+
+        <!-- LEFT: Succession Pipeline (~55%) -->
+        <div class="w-[55%] bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4 overflow-y-auto scrollbar-thin">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-[13px] font-semibold text-[#1F114C]">Pipeline de Sucesion</h3>
+            <span class="text-[10px] text-[#8B8B8B]">5 roles criticos principales</span>
+          </div>
+
+          <!-- Role 1: Director de Tecnologia -->
+          <div class="mb-3 border border-[#EDEDED] rounded-lg p-3">
+            <div class="flex items-center gap-3 mb-2">
+              <div class="flex items-center gap-2 flex-1">
+                <div class="w-8 h-8 rounded-full bg-[#1F114C] flex items-center justify-center text-white text-[10px] font-bold shrink-0">RM</div>
+                <div>
+                  <p class="text-[12px] font-semibold text-[#1F114C]">Director de Tecnologia</p>
+                  <p class="text-[10px] text-[#585858]">Ricardo Mendoza — 12 anos</p>
+                </div>
+              </div>
+              <span class="text-[9px] bg-orange-50 text-orange-600 px-2 py-0.5 rounded-full font-medium flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-orange-500"></span>Riesgo Medio</span>
+            </div>
+            <div class="flex gap-2 ml-6 pl-4 border-l-2 border-dashed border-[#EDEDED]">
+              <div class="flex-1 border border-green-300 bg-green-50/50 rounded-lg p-2">
+                <p class="text-[9px] text-green-700 font-semibold mb-1">Ready Now</p>
+                <div class="flex items-center gap-1.5">
+                  <div class="w-6 h-6 rounded-full bg-green-600 flex items-center justify-center text-white text-[8px] font-bold">CM</div>
+                  <div><p class="text-[10px] font-medium text-[#333]">Carlos Morales</p><p class="text-[9px] text-[#8B8B8B]">Gerente de Ingenieria</p></div>
+                </div>
+              </div>
+              <div class="flex-1 border border-amber-300 bg-amber-50/50 rounded-lg p-2">
+                <p class="text-[9px] text-amber-700 font-semibold mb-1">1-2 Anos</p>
+                <div class="flex items-center gap-1.5">
+                  <div class="w-6 h-6 rounded-full bg-amber-600 flex items-center justify-center text-white text-[8px] font-bold">LP</div>
+                  <div><p class="text-[10px] font-medium text-[#333]">Laura Pineda</p><p class="text-[9px] text-[#8B8B8B]">Lead Architect</p></div>
+                </div>
+              </div>
+              <div class="flex-1 border border-blue-300 bg-blue-50/50 rounded-lg p-2">
+                <p class="text-[9px] text-blue-700 font-semibold mb-1">Externo</p>
+                <div class="flex items-center gap-1.5">
+                  <div class="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center text-white text-[8px] font-bold">AV</div>
+                  <div><p class="text-[10px] font-medium text-[#333]">Andres Vargas</p><p class="text-[9px] text-[#8B8B8B]">CTO en Rappi</p></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Role 2: VP Operaciones -->
+          <div class="mb-3 border border-[#EDEDED] rounded-lg p-3">
+            <div class="flex items-center gap-3 mb-2">
+              <div class="flex items-center gap-2 flex-1">
+                <div class="w-8 h-8 rounded-full bg-violet-600 flex items-center justify-center text-white text-[10px] font-bold shrink-0">MR</div>
+                <div>
+                  <p class="text-[12px] font-semibold text-[#1F114C]">VP de Operaciones</p>
+                  <p class="text-[10px] text-[#585858]">Martha Rios — 15 anos</p>
+                </div>
+              </div>
+              <span class="text-[9px] bg-red-50 text-[#DD0C15] px-2 py-0.5 rounded-full font-medium flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-[#DD0C15]"></span>Riesgo Alto</span>
+            </div>
+            <div class="flex gap-2 ml-6 pl-4 border-l-2 border-dashed border-[#EDEDED]">
+              <div class="flex-1 border border-green-300 bg-green-50/50 rounded-lg p-2">
+                <p class="text-[9px] text-green-700 font-semibold mb-1">Ready Now</p>
+                <div class="flex items-center gap-1.5">
+                  <div class="w-6 h-6 rounded-full bg-green-600 flex items-center justify-center text-white text-[8px] font-bold">JC</div>
+                  <div><p class="text-[10px] font-medium text-[#333]">Jorge Castillo</p><p class="text-[9px] text-[#8B8B8B]">Dir. Logistica</p></div>
+                </div>
+              </div>
+              <div class="flex-1 border border-amber-300 bg-amber-50/50 rounded-lg p-2">
+                <p class="text-[9px] text-amber-700 font-semibold mb-1">1-2 Anos</p>
+                <div class="flex items-center gap-1.5">
+                  <div class="w-6 h-6 rounded-full bg-amber-600 flex items-center justify-center text-white text-[8px] font-bold">SF</div>
+                  <div><p class="text-[10px] font-medium text-[#333]">Sofia Fuentes</p><p class="text-[9px] text-[#8B8B8B]">Gte. Cadena Suministro</p></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Role 3: Director Financiero -->
+          <div class="mb-3 border border-[#EDEDED] rounded-lg p-3">
+            <div class="flex items-center gap-3 mb-2">
+              <div class="flex items-center gap-2 flex-1">
+                <div class="w-8 h-8 rounded-full bg-teal-600 flex items-center justify-center text-white text-[10px] font-bold shrink-0">HG</div>
+                <div>
+                  <p class="text-[12px] font-semibold text-[#1F114C]">Director Financiero (CFO)</p>
+                  <p class="text-[10px] text-[#585858]">Hector Gutierrez — 10 anos</p>
+                </div>
+              </div>
+              <span class="text-[9px] bg-green-50 text-green-600 px-2 py-0.5 rounded-full font-medium flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>Riesgo Bajo</span>
+            </div>
+            <div class="flex gap-2 ml-6 pl-4 border-l-2 border-dashed border-[#EDEDED]">
+              <div class="flex-1 border border-green-300 bg-green-50/50 rounded-lg p-2">
+                <p class="text-[9px] text-green-700 font-semibold mb-1">Ready Now</p>
+                <div class="flex items-center gap-1.5">
+                  <div class="w-6 h-6 rounded-full bg-green-600 flex items-center justify-center text-white text-[8px] font-bold">PN</div>
+                  <div><p class="text-[10px] font-medium text-[#333]">Patricia Navarro</p><p class="text-[9px] text-[#8B8B8B]">Controller Financiero</p></div>
+                </div>
+              </div>
+              <div class="flex-1 border border-green-300 bg-green-50/50 rounded-lg p-2">
+                <p class="text-[9px] text-green-700 font-semibold mb-1">Ready Now</p>
+                <div class="flex items-center gap-1.5">
+                  <div class="w-6 h-6 rounded-full bg-green-600 flex items-center justify-center text-white text-[8px] font-bold">DA</div>
+                  <div><p class="text-[10px] font-medium text-[#333]">Diego Alarcon</p><p class="text-[9px] text-[#8B8B8B]">Dir. Planeacion Fin.</p></div>
+                </div>
+              </div>
+              <div class="flex-1 border border-amber-300 bg-amber-50/50 rounded-lg p-2">
+                <p class="text-[9px] text-amber-700 font-semibold mb-1">1-2 Anos</p>
+                <div class="flex items-center gap-1.5">
+                  <div class="w-6 h-6 rounded-full bg-amber-600 flex items-center justify-center text-white text-[8px] font-bold">VT</div>
+                  <div><p class="text-[10px] font-medium text-[#333]">Valentina Torres</p><p class="text-[9px] text-[#8B8B8B]">Gte. Contabilidad</p></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Role 4: Director Comercial -->
+          <div class="mb-3 border border-[#EDEDED] rounded-lg p-3">
+            <div class="flex items-center gap-3 mb-2">
+              <div class="flex items-center gap-2 flex-1">
+                <div class="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-[10px] font-bold shrink-0">FS</div>
+                <div>
+                  <p class="text-[12px] font-semibold text-[#1F114C]">Director Comercial</p>
+                  <p class="text-[10px] text-[#585858]">Fernando Salazar — 8 anos</p>
+                </div>
+              </div>
+              <span class="text-[9px] bg-red-50 text-[#DD0C15] px-2 py-0.5 rounded-full font-medium flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-[#DD0C15]"></span>Riesgo Alto</span>
+            </div>
+            <div class="flex gap-2 ml-6 pl-4 border-l-2 border-dashed border-[#EDEDED]">
+              <div class="flex-1 border border-amber-300 bg-amber-50/50 rounded-lg p-2">
+                <p class="text-[9px] text-amber-700 font-semibold mb-1">1-2 Anos</p>
+                <div class="flex items-center gap-1.5">
+                  <div class="w-6 h-6 rounded-full bg-amber-600 flex items-center justify-center text-white text-[8px] font-bold">NC</div>
+                  <div><p class="text-[10px] font-medium text-[#333]">Natalia Cifuentes</p><p class="text-[9px] text-[#8B8B8B]">Gte. Ventas Empresas</p></div>
+                </div>
+              </div>
+              <div class="flex-1 border border-blue-300 bg-blue-50/50 rounded-lg p-2">
+                <p class="text-[9px] text-blue-700 font-semibold mb-1">Externo</p>
+                <div class="flex items-center gap-1.5">
+                  <div class="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center text-white text-[8px] font-bold">RE</div>
+                  <div><p class="text-[10px] font-medium text-[#333]">Roberto Espinoza</p><p class="text-[9px] text-[#8B8B8B]">VP Ventas en Grupo Exito</p></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Role 5: Dir. Recursos Humanos -->
+          <div class="border border-red-200 rounded-lg p-3 bg-red-50/30">
+            <div class="flex items-center gap-3 mb-2">
+              <div class="flex items-center gap-2 flex-1">
+                <div class="w-8 h-8 rounded-full bg-pink-600 flex items-center justify-center text-white text-[10px] font-bold shrink-0">AB</div>
+                <div>
+                  <p class="text-[12px] font-semibold text-[#1F114C]">Dir. Recursos Humanos</p>
+                  <p class="text-[10px] text-[#585858]">Ana Beltran — 6 anos</p>
+                </div>
+              </div>
+              <span class="text-[9px] bg-red-100 text-[#DD0C15] px-2 py-0.5 rounded-full font-semibold flex items-center gap-1"><svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z"/></svg>Sin Sucesor</span>
+            </div>
+            <div class="ml-6 pl-4 border-l-2 border-dashed border-red-200">
+              <div class="border border-red-200 bg-red-50 rounded-lg p-2 text-center">
+                <p class="text-[10px] text-[#DD0C15] font-medium">No se han identificado sucesores</p>
+                <button class="text-[9px] text-white bg-[#DD0C15] px-3 py-1 rounded mt-1 font-medium">+ Asignar Sucesor</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- RIGHT (~45%): Competency Coverage + Flight Risk -->
+        <div class="w-[45%] flex flex-col gap-4">
+
+          <!-- Competency Coverage Card -->
+          <div class="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4 flex-1">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-[13px] font-semibold text-[#1F114C]">Cobertura de Competencias</h3>
+              <span class="text-[10px] text-[#8B8B8B]">Promedio: 72%</span>
+            </div>
+            <div class="space-y-2">
+              <div>
+                <div class="flex justify-between mb-1"><span class="text-[10px] text-[#585858]">Liderazgo Estrategico</span><span class="text-[10px] font-semibold text-green-600">88%</span></div>
+                <div class="w-full h-2 bg-[#F6F6F6] rounded-full"><div class="h-2 bg-green-500 rounded-full" style="width:88%"></div></div>
+              </div>
+              <div>
+                <div class="flex justify-between mb-1"><span class="text-[10px] text-[#585858]">Gestion Financiera</span><span class="text-[10px] font-semibold text-green-600">82%</span></div>
+                <div class="w-full h-2 bg-[#F6F6F6] rounded-full"><div class="h-2 bg-green-500 rounded-full" style="width:82%"></div></div>
+              </div>
+              <div>
+                <div class="flex justify-between mb-1"><span class="text-[10px] text-[#585858]">Innovacion & Tecnologia</span><span class="text-[10px] font-semibold text-amber-600">68%</span></div>
+                <div class="w-full h-2 bg-[#F6F6F6] rounded-full"><div class="h-2 bg-amber-500 rounded-full" style="width:68%"></div></div>
+              </div>
+              <div>
+                <div class="flex justify-between mb-1"><span class="text-[10px] text-[#585858]">Desarrollo de Personas</span><span class="text-[10px] font-semibold text-amber-600">65%</span></div>
+                <div class="w-full h-2 bg-[#F6F6F6] rounded-full"><div class="h-2 bg-amber-500 rounded-full" style="width:65%"></div></div>
+              </div>
+              <div>
+                <div class="flex justify-between mb-1"><span class="text-[10px] text-[#585858]">Gestion Comercial</span><span class="text-[10px] font-semibold text-amber-600">61%</span></div>
+                <div class="w-full h-2 bg-[#F6F6F6] rounded-full"><div class="h-2 bg-amber-500 rounded-full" style="width:61%"></div></div>
+              </div>
+              <div>
+                <div class="flex justify-between mb-1"><span class="text-[10px] text-[#585858]">Operaciones & Supply Chain</span><span class="text-[10px] font-semibold text-[#DD0C15]">47%</span></div>
+                <div class="w-full h-2 bg-[#F6F6F6] rounded-full"><div class="h-2 bg-[#DD0C15] rounded-full" style="width:47%"></div></div>
+              </div>
+              <div>
+                <div class="flex justify-between mb-1"><span class="text-[10px] text-[#585858]">Relaciones Institucionales</span><span class="text-[10px] font-semibold text-[#DD0C15]">39%</span></div>
+                <div class="w-full h-2 bg-[#F6F6F6] rounded-full"><div class="h-2 bg-[#DD0C15] rounded-full" style="width:39%"></div></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Flight Risk Analysis Card -->
+          <div class="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4 flex-1">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-[13px] font-semibold text-[#1F114C]">Analisis de Riesgo de Rotacion</h3>
+              <span class="text-[9px] bg-red-50 text-[#DD0C15] px-2 py-0.5 rounded-full font-medium">7 en riesgo alto</span>
+            </div>
+            <div class="space-y-2">
+              <!-- Employee 1 -->
+              <div class="flex items-center gap-2 p-2 bg-red-50/50 rounded-lg border border-red-100">
+                <div class="w-7 h-7 rounded-full bg-violet-600 flex items-center justify-center text-white text-[9px] font-bold shrink-0">MR</div>
+                <div class="flex-1 min-w-0">
+                  <p class="text-[11px] font-medium text-[#333]">Martha Rios</p>
+                  <p class="text-[9px] text-[#8B8B8B]">VP Operaciones · 15 anos</p>
+                </div>
+                <div class="text-center px-2">
+                  <p class="text-[9px] text-[#8B8B8B]">Engagement</p>
+                  <p class="text-[11px] font-bold text-[#DD0C15]">4.2/10</p>
+                </div>
+                <div class="shrink-0"><span class="text-[9px] bg-[#DD0C15] text-white px-2 py-0.5 rounded-full font-bold">92%</span></div>
+              </div>
+              <!-- Employee 2 -->
+              <div class="flex items-center gap-2 p-2 bg-red-50/50 rounded-lg border border-red-100">
+                <div class="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-white text-[9px] font-bold shrink-0">FS</div>
+                <div class="flex-1 min-w-0">
+                  <p class="text-[11px] font-medium text-[#333]">Fernando Salazar</p>
+                  <p class="text-[9px] text-[#8B8B8B]">Dir. Comercial · 8 anos</p>
+                </div>
+                <div class="text-center px-2">
+                  <p class="text-[9px] text-[#8B8B8B]">Engagement</p>
+                  <p class="text-[11px] font-bold text-[#DD0C15]">5.1/10</p>
+                </div>
+                <div class="shrink-0"><span class="text-[9px] bg-[#DD0C15] text-white px-2 py-0.5 rounded-full font-bold">87%</span></div>
+              </div>
+              <!-- Employee 3 -->
+              <div class="flex items-center gap-2 p-2 bg-orange-50/50 rounded-lg border border-orange-100">
+                <div class="w-7 h-7 rounded-full bg-teal-600 flex items-center justify-center text-white text-[9px] font-bold shrink-0">CM</div>
+                <div class="flex-1 min-w-0">
+                  <p class="text-[11px] font-medium text-[#333]">Carlos Morales</p>
+                  <p class="text-[9px] text-[#8B8B8B]">Gte. Ingenieria · 7 anos</p>
+                </div>
+                <div class="text-center px-2">
+                  <p class="text-[9px] text-[#8B8B8B]">Engagement</p>
+                  <p class="text-[11px] font-bold text-orange-600">5.8/10</p>
+                </div>
+                <div class="shrink-0"><span class="text-[9px] bg-orange-500 text-white px-2 py-0.5 rounded-full font-bold">74%</span></div>
+              </div>
+              <!-- Employee 4 -->
+              <div class="flex items-center gap-2 p-2 bg-orange-50/50 rounded-lg border border-orange-100">
+                <div class="w-7 h-7 rounded-full bg-amber-600 flex items-center justify-center text-white text-[9px] font-bold shrink-0">LP</div>
+                <div class="flex-1 min-w-0">
+                  <p class="text-[11px] font-medium text-[#333]">Luis Paredes</p>
+                  <p class="text-[9px] text-[#8B8B8B]">Dir. Legal · 11 anos</p>
+                </div>
+                <div class="text-center px-2">
+                  <p class="text-[9px] text-[#8B8B8B]">Engagement</p>
+                  <p class="text-[11px] font-bold text-orange-600">6.0/10</p>
+                </div>
+                <div class="shrink-0"><span class="text-[9px] bg-orange-500 text-white px-2 py-0.5 rounded-full font-bold">68%</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- BOTTOM ROW -->
+      <div class="flex gap-4">
+
+        <!-- Roles Without Successor Table -->
+        <div class="w-[58%] bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4">
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-2">
+              <svg class="w-4 h-4 text-[#DD0C15]" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z"/></svg>
+              <h3 class="text-[13px] font-semibold text-[#1F114C]">Roles Sin Sucesor Identificado</h3>
+            </div>
+            <span class="text-[10px] bg-red-50 text-[#DD0C15] px-2 py-0.5 rounded-full font-medium">5 roles descubiertos</span>
+          </div>
+          <div class="overflow-hidden rounded-lg border border-[#EDEDED]">
+            <table class="w-full text-left">
+              <thead>
+                <tr class="bg-[#FAFAFA] text-[10px] text-[#585858] font-medium">
+                  <th class="px-3 py-2">Rol</th>
+                  <th class="px-3 py-2">Departamento</th>
+                  <th class="px-3 py-2">Criticidad</th>
+                  <th class="px-3 py-2">Sin Sucesor Desde</th>
+                  <th class="px-3 py-2">Accion</th>
+                </tr>
+              </thead>
+              <tbody class="text-[11px] text-[#333]">
+                <tr class="border-t border-[#F0F0F0]">
+                  <td class="px-3 py-2 font-medium">Dir. Recursos Humanos</td>
+                  <td class="px-3 py-2 text-[#585858]">RRHH</td>
+                  <td class="px-3 py-2"><span class="text-[9px] bg-[#DD0C15] text-white px-2 py-0.5 rounded-full font-medium">Critica</span></td>
+                  <td class="px-3 py-2 text-[#DD0C15] font-medium">18 meses</td>
+                  <td class="px-3 py-2"><button class="text-[9px] text-[#DD0C15] bg-red-50 px-2 py-1 rounded font-medium">Asignar</button></td>
+                </tr>
+                <tr class="border-t border-[#F0F0F0] bg-[#FAFAFA]">
+                  <td class="px-3 py-2 font-medium">Gte. Seguridad Industrial</td>
+                  <td class="px-3 py-2 text-[#585858]">Operaciones</td>
+                  <td class="px-3 py-2"><span class="text-[9px] bg-[#DD0C15] text-white px-2 py-0.5 rounded-full font-medium">Critica</span></td>
+                  <td class="px-3 py-2 text-[#DD0C15] font-medium">12 meses</td>
+                  <td class="px-3 py-2"><button class="text-[9px] text-[#DD0C15] bg-red-50 px-2 py-1 rounded font-medium">Asignar</button></td>
+                </tr>
+                <tr class="border-t border-[#F0F0F0]">
+                  <td class="px-3 py-2 font-medium">Dir. Innovacion Digital</td>
+                  <td class="px-3 py-2 text-[#585858]">Tecnologia</td>
+                  <td class="px-3 py-2"><span class="text-[9px] bg-orange-500 text-white px-2 py-0.5 rounded-full font-medium">Alta</span></td>
+                  <td class="px-3 py-2 text-orange-600 font-medium">8 meses</td>
+                  <td class="px-3 py-2"><button class="text-[9px] text-[#DD0C15] bg-red-50 px-2 py-1 rounded font-medium">Asignar</button></td>
+                </tr>
+                <tr class="border-t border-[#F0F0F0] bg-[#FAFAFA]">
+                  <td class="px-3 py-2 font-medium">Gte. Relaciones Institucionales</td>
+                  <td class="px-3 py-2 text-[#585858]">Asuntos Corp.</td>
+                  <td class="px-3 py-2"><span class="text-[9px] bg-orange-500 text-white px-2 py-0.5 rounded-full font-medium">Alta</span></td>
+                  <td class="px-3 py-2 text-orange-600 font-medium">6 meses</td>
+                  <td class="px-3 py-2"><button class="text-[9px] text-[#DD0C15] bg-red-50 px-2 py-1 rounded font-medium">Asignar</button></td>
+                </tr>
+                <tr class="border-t border-[#F0F0F0]">
+                  <td class="px-3 py-2 font-medium">Gte. Cumplimiento Normativo</td>
+                  <td class="px-3 py-2 text-[#585858]">Legal</td>
+                  <td class="px-3 py-2"><span class="text-[9px] bg-amber-500 text-white px-2 py-0.5 rounded-full font-medium">Media</span></td>
+                  <td class="px-3 py-2 text-amber-600 font-medium">3 meses</td>
+                  <td class="px-3 py-2"><button class="text-[9px] text-[#DD0C15] bg-red-50 px-2 py-1 rounded font-medium">Asignar</button></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Promotion/Exit Simulator -->
+        <div class="w-[42%] bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-[13px] font-semibold text-[#1F114C]">Simulador de Salida / Promocion</h3>
+            <svg class="w-4 h-4 text-[#8B8B8B]" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23.693L5 14.5m14.8.8l1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0112 21c-2.773 0-5.491-.235-8.135-.687-1.718-.293-2.3-2.379-1.067-3.61L5 14.5"/></svg>
+          </div>
+
+          <!-- Dropdown -->
+          <div class="mb-3">
+            <label class="text-[10px] text-[#585858] font-medium block mb-1">Que pasa si este empleado sale?</label>
+            <select class="w-full text-[11px] text-[#1F114C] font-medium bg-[#F6F6F6] border border-[#EDEDED] rounded-lg px-3 h-9 outline-none">
+              <option>Martha Rios — VP Operaciones</option>
+              <option>Fernando Salazar — Dir. Comercial</option>
+              <option>Ricardo Mendoza — Dir. Tecnologia</option>
+              <option>Hector Gutierrez — CFO</option>
+              <option>Ana Beltran — Dir. RRHH</option>
+            </select>
+          </div>
+
+          <!-- Simulation Result -->
+          <div class="bg-[#F6F6F6] rounded-lg p-3 mb-3">
+            <div class="flex items-center gap-2 mb-2">
+              <svg class="w-4 h-4 text-[#DD0C15]" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z"/></svg>
+              <span class="text-[11px] font-semibold text-[#DD0C15]">Impacto: Alto</span>
+            </div>
+            <div class="grid grid-cols-3 gap-2 mb-2">
+              <div class="text-center bg-white rounded-lg p-2">
+                <p class="text-[16px] font-bold text-[#DD0C15]">3</p>
+                <p class="text-[9px] text-[#8B8B8B]">Reportes directos</p>
+              </div>
+              <div class="text-center bg-white rounded-lg p-2">
+                <p class="text-[16px] font-bold text-[#1F114C]">142</p>
+                <p class="text-[9px] text-[#8B8B8B]">Personas afectadas</p>
+              </div>
+              <div class="text-center bg-white rounded-lg p-2">
+                <p class="text-[16px] font-bold text-amber-600">4-6m</p>
+                <p class="text-[9px] text-[#8B8B8B]">Tiempo reemplazo</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Next in Line -->
+          <div>
+            <p class="text-[10px] text-[#585858] font-medium mb-2">Siguiente en linea:</p>
+            <div class="flex items-center gap-2 p-2 bg-green-50 rounded-lg border border-green-200 mb-2">
+              <div class="w-7 h-7 rounded-full bg-green-600 flex items-center justify-center text-white text-[9px] font-bold shrink-0">JC</div>
+              <div class="flex-1">
+                <p class="text-[11px] font-medium text-[#333]">Jorge Castillo</p>
+                <p class="text-[9px] text-[#8B8B8B]">Dir. Logistica · Ready Now</p>
+              </div>
+              <span class="text-[9px] bg-green-600 text-white px-2 py-0.5 rounded-full font-medium">Readiness 91%</span>
+            </div>
+            <div class="flex items-center gap-2 p-2 bg-amber-50 rounded-lg border border-amber-200">
+              <div class="w-7 h-7 rounded-full bg-amber-600 flex items-center justify-center text-white text-[9px] font-bold shrink-0">SF</div>
+              <div class="flex-1">
+                <p class="text-[11px] font-medium text-[#333]">Sofia Fuentes</p>
+                <p class="text-[9px] text-[#8B8B8B]">Gte. Cadena Suministro · 1-2 Anos</p>
+              </div>
+              <span class="text-[9px] bg-amber-600 text-white px-2 py-0.5 rounded-full font-medium">Readiness 64%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+</body>
+</html>

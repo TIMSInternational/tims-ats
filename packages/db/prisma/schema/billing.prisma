@@ -1,0 +1,39 @@
+model Subscription {
+  id                     String    @id @default(uuid()) @db.Uuid
+  organizationId         String    @unique @map("organization_id") @db.Uuid
+  stripeCustomerId       String?   @map("stripe_customer_id")
+  stripeSubscriptionId   String?   @map("stripe_subscription_id")
+  plan                   String    @default("trial")
+  status                 String    @default("trialing")
+  currentPeriodStart     DateTime? @map("current_period_start")
+  currentPeriodEnd       DateTime? @map("current_period_end")
+  trialEndsAt            DateTime? @map("trial_ends_at")
+  cancelledAt            DateTime? @map("cancelled_at")
+  createdAt              DateTime  @default(now()) @map("created_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invoices     Invoice[]
+
+  @@map("subscriptions")
+}
+
+model Invoice {
+  id               String    @id @default(uuid()) @db.Uuid
+  organizationId   String    @map("organization_id") @db.Uuid
+  subscriptionId   String?   @map("subscription_id") @db.Uuid
+  stripeInvoiceId  String?   @map("stripe_invoice_id")
+  amount           Float
+  currency         String    @default("USD")
+  status           String    @default("draft")
+  paidAt           DateTime? @map("paid_at")
+  invoiceUrl       String?   @map("invoice_url")
+  periodStart      DateTime? @map("period_start")
+  periodEnd        DateTime? @map("period_end")
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id])
+
+  @@index([organizationId])
+  @@map("invoices")
+}

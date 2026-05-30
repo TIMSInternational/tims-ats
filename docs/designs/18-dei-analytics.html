@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TIMS ATS — DEI Analytics Dashboard</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>body{font-family:'Inter',sans-serif;margin:0;background:#F6F6F6;} .scrollbar-thin::-webkit-scrollbar{width:4px;} .scrollbar-thin::-webkit-scrollbar-thumb{background:#ccc;border-radius:4px;}</style>
+</head>
+<body>
+<div class="flex w-[1440px] h-[900px] mx-auto overflow-hidden">
+
+  <!-- SIDEBAR COMPACT -->
+  <div class="flex flex-col w-[72px] h-full bg-[#1F114C] shrink-0 items-center">
+    <div class="flex items-center justify-center h-[80px] border-b border-white/10 w-full"><div class="w-9 h-9 rounded-lg bg-[#DD0C15] flex items-center justify-center"><span class="text-white text-[13px] font-bold">T</span></div></div>
+    <nav class="flex-1 py-3 flex flex-col items-center gap-1 w-full">
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></a>
+      <div class="w-8 border-t border-white/10 my-2"></div>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a4 4 0 00-8 0v2"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center bg-white/10"><svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z"/></svg></a>
+      <div class="w-8 border-t border-white/10 my-2"></div>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M15.59 14.37a6 6 0 01-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 006.16-12.12A14.98 14.98 0 009.631 8.41"/></svg></a>
+      <div class="w-8 border-t border-white/10 my-2"></div>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281"/><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg></a>
+    </nav>
+    <div class="py-3 border-t border-white/10 flex justify-center"><div class="w-9 h-9 rounded-full bg-[#DD0C15] flex items-center justify-center text-white text-[11px] font-bold">FT</div></div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="flex flex-col flex-1 min-w-0">
+    <!-- TOP BAR -->
+    <div class="flex items-center justify-between px-6 h-16 bg-white border-b border-[#EDEDED] shrink-0">
+      <div class="flex items-center gap-2">
+        <span class="text-[13px] text-[#8B8B8B]">Analytics</span><svg class="w-3 h-3 text-[#ccc]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+        <span class="text-sm font-medium text-[#1F114C]">DEI Analytics</span>
+      </div>
+      <div class="flex items-center gap-3">
+        <button class="flex items-center gap-1.5 border border-[#EDEDED] text-[#585858] px-3 h-8 rounded-lg text-[12px]"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>Exportar</button>
+        <button class="flex items-center gap-1.5 bg-[#DD0C15] text-white px-4 h-8 rounded-lg text-[12px] font-medium"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>Generar Reporte</button>
+      </div>
+    </div>
+
+    <!-- CONTENT -->
+    <div class="flex-1 overflow-y-auto p-5 scrollbar-thin" style="max-height:calc(900px - 64px);">
+
+      <!-- KPI ROW -->
+      <div class="grid grid-cols-5 gap-3 mb-4">
+        <!-- Gender Ratio -->
+        <div class="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center">
+          <p class="text-[11px] text-[#8B8B8B] mb-1">Ratio de Genero</p>
+          <div class="flex items-center justify-center gap-2 my-1">
+            <div class="flex items-center gap-1"><svg class="w-4 h-4 text-blue-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg><span class="text-[11px] font-semibold text-blue-600">58%</span></div>
+            <div class="flex items-center gap-1"><svg class="w-4 h-4 text-pink-500" fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg><span class="text-[11px] font-semibold text-pink-500">39%</span></div>
+            <div class="flex items-center gap-1"><svg class="w-4 h-4 text-purple-400" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2l3 7h7l-5.5 4.5 2 7L12 16l-6.5 4.5 2-7L2 9h7z"/></svg><span class="text-[11px] font-semibold text-purple-400">3%</span></div>
+          </div>
+          <div class="flex gap-0.5 h-2 rounded-full overflow-hidden mt-2">
+            <div class="bg-blue-500" style="width:58%"></div>
+            <div class="bg-pink-400" style="width:39%"></div>
+            <div class="bg-purple-400" style="width:3%"></div>
+          </div>
+          <p class="text-[10px] text-[#8B8B8B] mt-1">M / F / NB</p>
+        </div>
+        <!-- Diversity Index -->
+        <div class="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center">
+          <p class="text-[11px] text-[#8B8B8B] mb-1">Indice de Diversidad</p>
+          <p class="text-[24px] font-bold text-[#1F114C]">7.4</p>
+          <p class="text-[10px] text-[#8B8B8B]">de 10</p>
+          <div class="flex items-center justify-center gap-1 mt-1"><svg class="w-3 h-3 text-green-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="m4.5 15.75 7.5-7.5 7.5 7.5"/></svg><span class="text-[10px] text-green-500 font-medium">+0.3 vs Q1</span></div>
+        </div>
+        <!-- Pay Equity Gap -->
+        <div class="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center">
+          <p class="text-[11px] text-[#8B8B8B] mb-1">Brecha Salarial</p>
+          <p class="text-[24px] font-bold text-amber-500">4.2%</p>
+          <p class="text-[10px] text-[#8B8B8B]">gap promedio M vs F</p>
+          <div class="flex items-center justify-center gap-1 mt-1"><svg class="w-3 h-3 text-green-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="m4.5 15.75 7.5-7.5 7.5 7.5"/></svg><span class="text-[10px] text-green-500 font-medium">-1.1% vs Q1</span></div>
+        </div>
+        <!-- Inclusion Score -->
+        <div class="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center">
+          <p class="text-[11px] text-[#8B8B8B] mb-1">Indice de Inclusion</p>
+          <p class="text-[24px] font-bold text-green-600">82</p>
+          <p class="text-[10px] text-[#8B8B8B]">de 100 (encuesta)</p>
+          <div class="flex items-center justify-center gap-1 mt-1"><svg class="w-3 h-3 text-green-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="m4.5 15.75 7.5-7.5 7.5 7.5"/></svg><span class="text-[10px] text-green-500 font-medium">+5 vs Q1</span></div>
+        </div>
+        <!-- Diverse Hires % -->
+        <div class="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center">
+          <p class="text-[11px] text-[#8B8B8B] mb-1">Contrataciones Diversas</p>
+          <p class="text-[24px] font-bold text-[#1F114C]">46%</p>
+          <p class="text-[10px] text-[#8B8B8B]">del total Q2</p>
+          <div class="flex items-center justify-center gap-1 mt-1"><svg class="w-3 h-3 text-green-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="m4.5 15.75 7.5-7.5 7.5 7.5"/></svg><span class="text-[10px] text-green-500 font-medium">+8% vs Q1</span></div>
+        </div>
+      </div>
+
+      <!-- MAIN 2-COLUMN AREA -->
+      <div class="flex gap-4 mb-4">
+
+        <!-- LEFT COLUMN ~55% -->
+        <div class="flex flex-col gap-4" style="width:55%;">
+
+          <!-- Gender Representation by Department -->
+          <div class="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-[13px] font-semibold text-[#1F114C]">Representacion de Genero por Departamento</h3>
+              <div class="flex items-center gap-3">
+                <div class="flex items-center gap-1"><div class="w-2.5 h-2.5 rounded-sm bg-blue-500"></div><span class="text-[10px] text-[#8B8B8B]">Masc</span></div>
+                <div class="flex items-center gap-1"><div class="w-2.5 h-2.5 rounded-sm bg-pink-400"></div><span class="text-[10px] text-[#8B8B8B]">Fem</span></div>
+                <div class="flex items-center gap-1"><div class="w-2.5 h-2.5 rounded-sm bg-purple-400"></div><span class="text-[10px] text-[#8B8B8B]">NB</span></div>
+              </div>
+            </div>
+            <div class="space-y-2">
+              <!-- Tecnologia -->
+              <div class="flex items-center gap-2">
+                <span class="text-[11px] text-[#585858] w-[90px] shrink-0 truncate">Tecnologia</span>
+                <div class="flex-1 flex h-5 rounded-full overflow-hidden">
+                  <div class="bg-blue-500 flex items-center justify-center" style="width:68%"><span class="text-[9px] text-white font-medium">68%</span></div>
+                  <div class="bg-pink-400 flex items-center justify-center" style="width:28%"><span class="text-[9px] text-white font-medium">28%</span></div>
+                  <div class="bg-purple-400 flex items-center justify-center" style="width:4%"></div>
+                </div>
+              </div>
+              <!-- Operaciones -->
+              <div class="flex items-center gap-2">
+                <span class="text-[11px] text-[#585858] w-[90px] shrink-0 truncate">Operaciones</span>
+                <div class="flex-1 flex h-5 rounded-full overflow-hidden">
+                  <div class="bg-blue-500 flex items-center justify-center" style="width:55%"><span class="text-[9px] text-white font-medium">55%</span></div>
+                  <div class="bg-pink-400 flex items-center justify-center" style="width:42%"><span class="text-[9px] text-white font-medium">42%</span></div>
+                  <div class="bg-purple-400 flex items-center justify-center" style="width:3%"></div>
+                </div>
+              </div>
+              <!-- RRHH -->
+              <div class="flex items-center gap-2">
+                <span class="text-[11px] text-[#585858] w-[90px] shrink-0 truncate">RRHH</span>
+                <div class="flex-1 flex h-5 rounded-full overflow-hidden">
+                  <div class="bg-blue-500 flex items-center justify-center" style="width:30%"><span class="text-[9px] text-white font-medium">30%</span></div>
+                  <div class="bg-pink-400 flex items-center justify-center" style="width:65%"><span class="text-[9px] text-white font-medium">65%</span></div>
+                  <div class="bg-purple-400 flex items-center justify-center" style="width:5%"><span class="text-[9px] text-white font-medium">5%</span></div>
+                </div>
+              </div>
+              <!-- Finanzas -->
+              <div class="flex items-center gap-2">
+                <span class="text-[11px] text-[#585858] w-[90px] shrink-0 truncate">Finanzas</span>
+                <div class="flex-1 flex h-5 rounded-full overflow-hidden">
+                  <div class="bg-blue-500 flex items-center justify-center" style="width:52%"><span class="text-[9px] text-white font-medium">52%</span></div>
+                  <div class="bg-pink-400 flex items-center justify-center" style="width:45%"><span class="text-[9px] text-white font-medium">45%</span></div>
+                  <div class="bg-purple-400 flex items-center justify-center" style="width:3%"></div>
+                </div>
+              </div>
+              <!-- Comercial -->
+              <div class="flex items-center gap-2">
+                <span class="text-[11px] text-[#585858] w-[90px] shrink-0 truncate">Comercial</span>
+                <div class="flex-1 flex h-5 rounded-full overflow-hidden">
+                  <div class="bg-blue-500 flex items-center justify-center" style="width:60%"><span class="text-[9px] text-white font-medium">60%</span></div>
+                  <div class="bg-pink-400 flex items-center justify-center" style="width:37%"><span class="text-[9px] text-white font-medium">37%</span></div>
+                  <div class="bg-purple-400 flex items-center justify-center" style="width:3%"></div>
+                </div>
+              </div>
+              <!-- Legal -->
+              <div class="flex items-center gap-2">
+                <span class="text-[11px] text-[#585858] w-[90px] shrink-0 truncate">Legal</span>
+                <div class="flex-1 flex h-5 rounded-full overflow-hidden">
+                  <div class="bg-blue-500 flex items-center justify-center" style="width:40%"><span class="text-[9px] text-white font-medium">40%</span></div>
+                  <div class="bg-pink-400 flex items-center justify-center" style="width:55%"><span class="text-[9px] text-white font-medium">55%</span></div>
+                  <div class="bg-purple-400 flex items-center justify-center" style="width:5%"><span class="text-[9px] text-white font-medium">5%</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Pay Equity Analysis -->
+          <div class="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+            <h3 class="text-[13px] font-semibold text-[#1F114C] mb-3">Analisis de Equidad Salarial</h3>
+            <table class="w-full text-[11px]">
+              <thead>
+                <tr class="text-[#8B8B8B] border-b border-[#EDEDED]">
+                  <th class="text-left py-2 font-medium">Nivel</th>
+                  <th class="text-right py-2 font-medium">Salario M</th>
+                  <th class="text-right py-2 font-medium">Salario F</th>
+                  <th class="text-right py-2 font-medium">Brecha</th>
+                  <th class="text-center py-2 font-medium">Estado</th>
+                </tr>
+              </thead>
+              <tbody class="text-[#333]">
+                <tr class="border-b border-[#F6F6F6]">
+                  <td class="py-2 font-medium">Junior</td>
+                  <td class="text-right py-2">$1,850K COP</td>
+                  <td class="text-right py-2">$1,820K COP</td>
+                  <td class="text-right py-2 text-green-600 font-medium">1.6%</td>
+                  <td class="text-center py-2"><span class="inline-block w-2 h-2 rounded-full bg-green-500"></span></td>
+                </tr>
+                <tr class="border-b border-[#F6F6F6]">
+                  <td class="py-2 font-medium">Mid</td>
+                  <td class="text-right py-2">$3,200K COP</td>
+                  <td class="text-right py-2">$3,050K COP</td>
+                  <td class="text-right py-2 text-amber-500 font-medium">4.7%</td>
+                  <td class="text-center py-2"><span class="inline-block w-2 h-2 rounded-full bg-amber-400"></span></td>
+                </tr>
+                <tr class="border-b border-[#F6F6F6]">
+                  <td class="py-2 font-medium">Senior</td>
+                  <td class="text-right py-2">$5,800K COP</td>
+                  <td class="text-right py-2">$5,450K COP</td>
+                  <td class="text-right py-2 text-[#DD0C15] font-medium">6.0%</td>
+                  <td class="text-center py-2"><span class="inline-block w-2 h-2 rounded-full bg-[#DD0C15]"></span></td>
+                </tr>
+                <tr class="border-b border-[#F6F6F6]">
+                  <td class="py-2 font-medium">Lead</td>
+                  <td class="text-right py-2">$8,500K COP</td>
+                  <td class="text-right py-2">$8,100K COP</td>
+                  <td class="text-right py-2 text-amber-500 font-medium">4.7%</td>
+                  <td class="text-center py-2"><span class="inline-block w-2 h-2 rounded-full bg-amber-400"></span></td>
+                </tr>
+                <tr>
+                  <td class="py-2 font-medium">Director</td>
+                  <td class="text-right py-2">$14,200K COP</td>
+                  <td class="text-right py-2">$13,200K COP</td>
+                  <td class="text-right py-2 text-[#DD0C15] font-medium">7.0%</td>
+                  <td class="text-center py-2"><span class="inline-block w-2 h-2 rounded-full bg-[#DD0C15]"></span></td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="flex items-center gap-4 mt-3 pt-2 border-t border-[#F0F0F0]">
+              <div class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-green-500"></span><span class="text-[10px] text-[#8B8B8B]">&lt;3% Equitativo</span></div>
+              <div class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-amber-400"></span><span class="text-[10px] text-[#8B8B8B]">3-5% Atencion</span></div>
+              <div class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-[#DD0C15]"></span><span class="text-[10px] text-[#8B8B8B]">&gt;5% Critico</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- RIGHT COLUMN ~45% -->
+        <div class="flex flex-col gap-4" style="width:45%;">
+
+          <!-- Age Distribution -->
+          <div class="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+            <h3 class="text-[13px] font-semibold text-[#1F114C] mb-3">Distribucion por Edad</h3>
+            <div class="space-y-2">
+              <div class="flex items-center gap-2"><span class="text-[11px] text-[#585858] w-12 shrink-0">18-25</span><div class="flex-1 bg-[#F6F6F6] rounded-full h-5 overflow-hidden"><div class="h-5 bg-[#B8AED4] rounded-full flex items-center px-2" style="width:18%"><span class="text-[9px] text-white font-medium">42</span></div></div><span class="text-[10px] text-[#8B8B8B] w-8">18%</span></div>
+              <div class="flex items-center gap-2"><span class="text-[11px] text-[#585858] w-12 shrink-0">26-35</span><div class="flex-1 bg-[#F6F6F6] rounded-full h-5 overflow-hidden"><div class="h-5 bg-[#7B6BAA] rounded-full flex items-center px-2" style="width:38%"><span class="text-[9px] text-white font-medium">89</span></div></div><span class="text-[10px] text-[#8B8B8B] w-8">38%</span></div>
+              <div class="flex items-center gap-2"><span class="text-[11px] text-[#585858] w-12 shrink-0">36-45</span><div class="flex-1 bg-[#F6F6F6] rounded-full h-5 overflow-hidden"><div class="h-5 bg-[#5C4B99] rounded-full flex items-center px-2" style="width:26%"><span class="text-[9px] text-white font-medium">61</span></div></div><span class="text-[10px] text-[#8B8B8B] w-8">26%</span></div>
+              <div class="flex items-center gap-2"><span class="text-[11px] text-[#585858] w-12 shrink-0">46-55</span><div class="flex-1 bg-[#F6F6F6] rounded-full h-5 overflow-hidden"><div class="h-5 bg-[#3D2D7A] rounded-full flex items-center px-2" style="width:13%"><span class="text-[9px] text-white font-medium">30</span></div></div><span class="text-[10px] text-[#8B8B8B] w-8">13%</span></div>
+              <div class="flex items-center gap-2"><span class="text-[11px] text-[#585858] w-12 shrink-0">55+</span><div class="flex-1 bg-[#F6F6F6] rounded-full h-5 overflow-hidden"><div class="h-5 bg-[#1F114C] rounded-full flex items-center px-2" style="width:5%"></div></div><span class="text-[10px] text-[#8B8B8B] w-8">5%</span></div>
+            </div>
+            <p class="text-[10px] text-[#8B8B8B] mt-2 text-center">Edad promedio: <strong class="text-[#1F114C]">33.4 anos</strong> | Total: <strong class="text-[#1F114C]">234</strong> empleados</p>
+          </div>
+
+          <!-- Nationality Diversity -->
+          <div class="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+            <h3 class="text-[13px] font-semibold text-[#1F114C] mb-3">Diversidad por Nacionalidad</h3>
+            <div class="space-y-1.5">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2"><span class="text-[13px]">🇨🇴</span><span class="text-[11px] text-[#333]">Colombia</span></div>
+                <div class="flex items-center gap-2"><div class="w-24 bg-[#F6F6F6] rounded-full h-3 overflow-hidden"><div class="h-3 bg-[#1F114C] rounded-full" style="width:42%"></div></div><span class="text-[11px] font-medium text-[#1F114C] w-8 text-right">42%</span></div>
+              </div>
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2"><span class="text-[13px]">🇲🇽</span><span class="text-[11px] text-[#333]">Mexico</span></div>
+                <div class="flex items-center gap-2"><div class="w-24 bg-[#F6F6F6] rounded-full h-3 overflow-hidden"><div class="h-3 bg-[#5C4B99] rounded-full" style="width:18%"></div></div><span class="text-[11px] font-medium text-[#1F114C] w-8 text-right">18%</span></div>
+              </div>
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2"><span class="text-[13px]">🇵🇪</span><span class="text-[11px] text-[#333]">Peru</span></div>
+                <div class="flex items-center gap-2"><div class="w-24 bg-[#F6F6F6] rounded-full h-3 overflow-hidden"><div class="h-3 bg-[#7B6BAA] rounded-full" style="width:14%"></div></div><span class="text-[11px] font-medium text-[#1F114C] w-8 text-right">14%</span></div>
+              </div>
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2"><span class="text-[13px]">🇨🇱</span><span class="text-[11px] text-[#333]">Chile</span></div>
+                <div class="flex items-center gap-2"><div class="w-24 bg-[#F6F6F6] rounded-full h-3 overflow-hidden"><div class="h-3 bg-[#B8AED4] rounded-full" style="width:11%"></div></div><span class="text-[11px] font-medium text-[#1F114C] w-8 text-right">11%</span></div>
+              </div>
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2"><span class="text-[13px]">🇦🇷</span><span class="text-[11px] text-[#333]">Argentina</span></div>
+                <div class="flex items-center gap-2"><div class="w-24 bg-[#F6F6F6] rounded-full h-3 overflow-hidden"><div class="h-3 bg-[#D4CFE5] rounded-full" style="width:9%"></div></div><span class="text-[11px] font-medium text-[#1F114C] w-8 text-right">9%</span></div>
+              </div>
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2"><span class="text-[13px]">🌎</span><span class="text-[11px] text-[#8B8B8B]">Otros (EC, VE, BR)</span></div>
+                <div class="flex items-center gap-2"><div class="w-24 bg-[#F6F6F6] rounded-full h-3 overflow-hidden"><div class="h-3 bg-[#E8E5F0] rounded-full" style="width:6%"></div></div><span class="text-[11px] font-medium text-[#1F114C] w-8 text-right">6%</span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Hiring Funnel Diversity -->
+          <div class="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+            <h3 class="text-[13px] font-semibold text-[#1F114C] mb-3">Embudo de Contratacion Diversa</h3>
+            <div class="space-y-1.5">
+              <div class="flex items-center gap-2">
+                <span class="text-[11px] text-[#585858] w-[80px] shrink-0">Postulados</span>
+                <div class="flex-1 bg-[#F6F6F6] rounded-full h-5 overflow-hidden"><div class="h-5 rounded-full flex items-center justify-end pr-2" style="width:52%;background:linear-gradient(90deg,#7B6BAA,#5C4B99)"><span class="text-[9px] text-white font-medium">52%</span></div></div>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="text-[11px] text-[#585858] w-[80px] shrink-0">Preseleccion</span>
+                <div class="flex-1 bg-[#F6F6F6] rounded-full h-5 overflow-hidden"><div class="h-5 rounded-full flex items-center justify-end pr-2" style="width:48%;background:linear-gradient(90deg,#7B6BAA,#5C4B99)"><span class="text-[9px] text-white font-medium">48%</span></div></div>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="text-[11px] text-[#585858] w-[80px] shrink-0">Entrevista</span>
+                <div class="flex-1 bg-[#F6F6F6] rounded-full h-5 overflow-hidden"><div class="h-5 rounded-full flex items-center justify-end pr-2" style="width:45%;background:linear-gradient(90deg,#7B6BAA,#5C4B99)"><span class="text-[9px] text-white font-medium">45%</span></div></div>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="text-[11px] text-[#585858] w-[80px] shrink-0">Oferta</span>
+                <div class="flex-1 bg-[#F6F6F6] rounded-full h-5 overflow-hidden"><div class="h-5 rounded-full flex items-center justify-end pr-2" style="width:44%;background:linear-gradient(90deg,#7B6BAA,#5C4B99)"><span class="text-[9px] text-white font-medium">44%</span></div></div>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="text-[11px] text-[#585858] w-[80px] shrink-0">Contratado</span>
+                <div class="flex-1 bg-[#F6F6F6] rounded-full h-5 overflow-hidden"><div class="h-5 rounded-full flex items-center justify-end pr-2" style="width:46%;background:linear-gradient(90deg,#7B6BAA,#1F114C)"><span class="text-[9px] text-white font-medium">46%</span></div></div>
+              </div>
+            </div>
+            <p class="text-[10px] text-[#8B8B8B] mt-2 text-center">% candidatos diversos en cada etapa | Meta: &gt;45%</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- BOTTOM ROW -->
+      <div class="grid grid-cols-3 gap-4">
+
+        <!-- Promotion Equity -->
+        <div class="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+          <h3 class="text-[13px] font-semibold text-[#1F114C] mb-3">Equidad en Promociones</h3>
+          <table class="w-full text-[11px]">
+            <thead>
+              <tr class="text-[#8B8B8B] border-b border-[#EDEDED]">
+                <th class="text-left py-1.5 font-medium">Depto</th>
+                <th class="text-center py-1.5 font-medium">Masc</th>
+                <th class="text-center py-1.5 font-medium">Fem</th>
+                <th class="text-center py-1.5 font-medium">Gap</th>
+              </tr>
+            </thead>
+            <tbody class="text-[#333]">
+              <tr class="border-b border-[#F6F6F6]">
+                <td class="py-1.5">Tecnologia</td>
+                <td class="text-center py-1.5">14%</td>
+                <td class="text-center py-1.5">11%</td>
+                <td class="text-center py-1.5"><span class="text-amber-500 font-medium">-3%</span></td>
+              </tr>
+              <tr class="border-b border-[#F6F6F6]">
+                <td class="py-1.5">Operaciones</td>
+                <td class="text-center py-1.5">12%</td>
+                <td class="text-center py-1.5">13%</td>
+                <td class="text-center py-1.5"><span class="text-green-600 font-medium">+1%</span></td>
+              </tr>
+              <tr class="border-b border-[#F6F6F6]">
+                <td class="py-1.5">RRHH</td>
+                <td class="text-center py-1.5">10%</td>
+                <td class="text-center py-1.5">15%</td>
+                <td class="text-center py-1.5"><span class="text-green-600 font-medium">+5%</span></td>
+              </tr>
+              <tr class="border-b border-[#F6F6F6]">
+                <td class="py-1.5">Finanzas</td>
+                <td class="text-center py-1.5">11%</td>
+                <td class="text-center py-1.5">9%</td>
+                <td class="text-center py-1.5"><span class="text-amber-500 font-medium">-2%</span></td>
+              </tr>
+              <tr>
+                <td class="py-1.5">Comercial</td>
+                <td class="text-center py-1.5">13%</td>
+                <td class="text-center py-1.5">12%</td>
+                <td class="text-center py-1.5"><span class="text-green-600 font-medium">-1%</span></td>
+              </tr>
+            </tbody>
+          </table>
+          <p class="text-[10px] text-[#8B8B8B] mt-2">Tasa de promocion ultimo 12 meses</p>
+        </div>
+
+        <!-- Leadership Diversity (Pie chart mockup) -->
+        <div class="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+          <h3 class="text-[13px] font-semibold text-[#1F114C] mb-3">Diversidad en Liderazgo</h3>
+          <div class="flex items-center gap-4">
+            <!-- Pie chart via SVG -->
+            <div class="shrink-0">
+              <svg width="100" height="100" viewBox="0 0 42 42">
+                <circle cx="21" cy="21" r="15.9" fill="transparent" stroke="#3B82F6" stroke-width="6" stroke-dasharray="62 38" stroke-dashoffset="25"/>
+                <circle cx="21" cy="21" r="15.9" fill="transparent" stroke="#EC4899" stroke-width="6" stroke-dasharray="32 68" stroke-dashoffset="63"/>
+                <circle cx="21" cy="21" r="15.9" fill="transparent" stroke="#A78BFA" stroke-width="6" stroke-dasharray="6 94" stroke-dashoffset="31"/>
+                <text x="21" y="22" text-anchor="middle" fill="#1F114C" font-size="5" font-weight="700">18</text>
+                <text x="21" y="26" text-anchor="middle" fill="#8B8B8B" font-size="3">lideres</text>
+              </svg>
+            </div>
+            <div class="flex-1 space-y-2">
+              <div class="flex items-center justify-between"><div class="flex items-center gap-1.5"><div class="w-2.5 h-2.5 rounded-sm bg-blue-500"></div><span class="text-[11px] text-[#333]">Hombres</span></div><span class="text-[11px] font-semibold text-[#1F114C]">62%</span></div>
+              <div class="flex items-center justify-between"><div class="flex items-center gap-1.5"><div class="w-2.5 h-2.5 rounded-sm bg-pink-500"></div><span class="text-[11px] text-[#333]">Mujeres</span></div><span class="text-[11px] font-semibold text-[#1F114C]">32%</span></div>
+              <div class="flex items-center justify-between"><div class="flex items-center gap-1.5"><div class="w-2.5 h-2.5 rounded-sm bg-purple-400"></div><span class="text-[11px] text-[#333]">No-Binario</span></div><span class="text-[11px] font-semibold text-[#1F114C]">6%</span></div>
+              <div class="pt-1 border-t border-[#F0F0F0]">
+                <p class="text-[10px] text-[#8B8B8B]">Meta 2026: <strong class="text-[#1F114C]">40% mujeres</strong></p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Inclusion Index Trend -->
+        <div class="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+          <h3 class="text-[13px] font-semibold text-[#1F114C] mb-3">Tendencia Indice de Inclusion</h3>
+          <!-- Mini trend chart via SVG -->
+          <div class="flex items-end justify-between gap-3 h-[80px] px-2">
+            <div class="flex flex-col items-center gap-1 flex-1">
+              <span class="text-[11px] font-semibold text-[#1F114C]">72</span>
+              <div class="w-full bg-[#E8E5F0] rounded-t" style="height:52px"></div>
+              <span class="text-[10px] text-[#8B8B8B]">Q3 '25</span>
+            </div>
+            <div class="flex flex-col items-center gap-1 flex-1">
+              <span class="text-[11px] font-semibold text-[#1F114C]">75</span>
+              <div class="w-full bg-[#D4CFE5] rounded-t" style="height:58px"></div>
+              <span class="text-[10px] text-[#8B8B8B]">Q4 '25</span>
+            </div>
+            <div class="flex flex-col items-center gap-1 flex-1">
+              <span class="text-[11px] font-semibold text-[#1F114C]">77</span>
+              <div class="w-full bg-[#B8AED4] rounded-t" style="height:62px"></div>
+              <span class="text-[10px] text-[#8B8B8B]">Q1 '26</span>
+            </div>
+            <div class="flex flex-col items-center gap-1 flex-1">
+              <span class="text-[11px] font-semibold text-green-600">82</span>
+              <div class="w-full bg-[#1F114C] rounded-t" style="height:72px"></div>
+              <span class="text-[10px] text-[#8B8B8B]">Q2 '26</span>
+            </div>
+          </div>
+          <div class="flex justify-between items-center mt-3 pt-2 border-t border-[#F0F0F0]">
+            <span class="text-[10px] text-[#8B8B8B]">Crecimiento: <strong class="text-green-600">+10 pts</strong> (4 trimestres)</span>
+            <span class="text-[10px] text-[#8B8B8B]">Meta: <strong class="text-[#1F114C]">85</strong></span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

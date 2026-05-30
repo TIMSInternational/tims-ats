@@ -1,0 +1,68 @@
+model OnboardingPlan {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  buddyId        String?   @map("buddy_id") @db.Uuid
+  startDate      DateTime  @map("start_date")
+  phase          String    @default("day1_30")
+  status         String    @default("active")
+  riskScore      Float?    @map("risk_score")
+  completedAt    DateTime? @map("completed_at")
+  createdById    String    @map("created_by_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  user           User               @relation("OnboardingUser", fields: [userId], references: [id], onDelete: Cascade)
+  buddy          User?              @relation("OnboardingBuddy", fields: [buddyId], references: [id], onDelete: SetNull)
+  creator        User               @relation("OnboardingCreator", fields: [createdById], references: [id])
+  tasks          OnboardingTask[]
+  checkIns       OnboardingCheckIn[]
+
+  @@index([organizationId])
+  @@map("onboarding_plans")
+}
+
+model OnboardingTask {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  planId         String    @map("plan_id") @db.Uuid
+  title          String
+  description    String?
+  responsible    String
+  phase          String
+  dueDate        DateTime? @map("due_date")
+  completed      Boolean   @default(false)
+  completedAt    DateTime? @map("completed_at")
+  completedById  String?   @map("completed_by_id") @db.Uuid
+  order          Int       @default(0)
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  plan           OnboardingPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  completedBy    User?          @relation("OnboardingTaskCompletedBy", fields: [completedById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([planId])
+  @@map("onboarding_tasks")
+}
+
+model OnboardingCheckIn {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  planId         String    @map("plan_id") @db.Uuid
+  type           String
+  scheduledDate  DateTime  @map("scheduled_date")
+  status         String    @default("pending")
+  notes          String?
+  score          Int?
+  completedAt    DateTime? @map("completed_at")
+  completedById  String?   @map("completed_by_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  plan           OnboardingPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  completedBy    User?          @relation("OnboardingCheckInCompletedBy", fields: [completedById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([planId])
+  @@map("onboarding_check_ins")
+}

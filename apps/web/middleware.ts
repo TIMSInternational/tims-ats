@@ -1,32 +1,54 @@
-import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+import { updateSession } from '@tims/auth/middleware';
 
-export function middleware(request: NextRequest) {
-  const hostname = request.headers.get("host") || "";
-  const url = request.nextUrl.clone();
+const PUBLIC_PATHS = [
+  '/login',
+  '/register',
+  '/forgot-password',
+  '/reset-password',
+  '/auth/callback',
+  '/auth/confirm',
+];
+
+export async function middleware(request: NextRequest) {
+  const { supabaseResponse, user } = await updateSession(request);
+
+  const hostname = request.headers.get('host') || '';
+  const pathname = request.nextUrl.pathname;
+
+  // Allow public paths without auth
+  const isPublicPath = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
+  const isStaticAsset = pathname.startsWith('/_next') || pathname.startsWith('/favicon');
+  const isApiRoute = pathname.startsWith('/api/');
+
+  if (isStaticAsset || isApiRoute) return supabaseResponse;
 
   // Extract subdomain
-  const subdomain = hostname.split(".")[0];
+  const parts = hostname.split('.');
+  const subdomain = parts.length >= 2 ? parts[0] : null;
 
-  // app.tims.com → admin routes
-  if (subdomain === "app") {
-    // Admin panel — auth required (TODO: implement)
-    return NextResponse.next();
+  // Portal routes ({client}.tims.com) — handled separately
+  if (subdomain && subdomain !== 'app' && subdomain !== 'localhost' && subdomain !== 'www') {
+    supabaseResponse.headers.set('x-org-slug', subdomain);
+    return supabaseResponse;
   }
 
-  // {client}.tims.com → portal routes
-  if (subdomain !== "localhost" && subdomain !== "app" && subdomain !== "www") {
-    // Rewrite to portal routes with org context
-    url.pathname = `/(portal)${url.pathname}`;
-    // TODO: lookup org by slug, inject into headers
-    const response = NextResponse.rewrite(url);
-    response.headers.set("x-org-slug", subdomain);
-    return response;
+  // Admin routes (app.tims.com or localhost)
+  if (!isPublicPath && !user) {
+    const loginUrl = new URL('/login', request.url);
+    loginUrl.searchParams.set('redirect', pathname);
+    return NextResponse.redirect(loginUrl);
   }
 
-  return NextResponse.next();
+  // Redirect logged-in users away from auth pages
+  if (isPublicPath && user && pathname !== '/auth/callback') {
+    return NextResponse.redirect(new URL('/', request.url));
+  }
+
+  return supabaseResponse;
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/).*)"],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|logo_tims.png).*)'],
 };

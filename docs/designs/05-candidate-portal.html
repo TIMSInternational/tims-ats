@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TIMS ATS — Candidate Portal</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>body{font-family:'Inter',sans-serif;margin:0;background:#fff;}</style>
+</head>
+<body>
+<div class="w-[1440px] h-[900px] mx-auto overflow-y-auto bg-white">
+
+  <!-- TOP NAV -->
+  <div class="flex items-center justify-between px-8 h-[72px] bg-white border-b border-[#EDEDED] sticky top-0 z-50">
+    <div class="flex items-center gap-8">
+      <div class="flex items-center gap-2">
+        <img src="../../../apps/web/public/logo_tims.png" alt="TIMS" class="h-9">
+      </div>
+      <nav class="flex items-center gap-6">
+        <a class="text-[13px] font-medium text-[#1F114C] border-b-2 border-[#DD0C15] pb-1">Inicio</a>
+        <a class="text-[13px] text-[#585858] hover:text-[#1F114C]">Vacantes</a>
+        <a class="text-[13px] text-[#585858] hover:text-[#1F114C]">Nosotros</a>
+        <a class="text-[13px] text-[#585858] hover:text-[#1F114C]">Beneficios</a>
+      </nav>
+    </div>
+    <div class="flex items-center gap-4">
+      <div class="flex items-center gap-2 text-[13px] text-[#585858]"><span class="font-medium text-[#1F114C]">ES</span><span class="text-[#EDEDED]">|</span><span>EN</span></div>
+      <button class="border border-[#1F114C] text-[#1F114C] px-4 h-9 rounded-lg text-[13px] font-medium hover:bg-[#1F114C] hover:text-white transition-colors">Iniciar Sesion</button>
+      <button class="bg-[#DD0C15] text-white px-4 h-9 rounded-lg text-[13px] font-medium shadow-[0_2px_8px_rgba(221,12,21,0.25)]">Registrarse</button>
+    </div>
+  </div>
+
+  <!-- HERO -->
+  <div class="relative h-[400px] bg-gradient-to-r from-[#1F114C] via-[#2D1B6E] to-[#1F114C] overflow-hidden">
+    <!-- Decorative elements -->
+    <div class="absolute inset-0 opacity-10">
+      <div class="absolute top-10 left-20 w-64 h-64 rounded-full bg-[#DD0C15] blur-[100px]"></div>
+      <div class="absolute bottom-0 right-40 w-96 h-96 rounded-full bg-[#5C4B99] blur-[120px]"></div>
+    </div>
+    <div class="relative flex flex-col items-center justify-center h-full text-center px-8">
+      <p class="text-[14px] text-white/60 font-medium tracking-[3px] uppercase mb-3">TIMS International</p>
+      <h1 class="text-[42px] font-extrabold text-white leading-tight mb-3">Construye tu futuro<br>con nosotros</h1>
+      <p class="text-[16px] text-white/70 max-w-[550px] mb-8">Descubre oportunidades que se alinean con tu talento. Evaluamos lo que realmente importa para encontrar el match perfecto.</p>
+      <!-- Search Bar -->
+      <div class="flex bg-white rounded-xl shadow-[0_4px_24px_rgba(0,0,0,0.15)] overflow-hidden w-[700px]">
+        <div class="flex items-center gap-2 px-4 flex-1 border-r border-[#EDEDED]">
+          <svg class="w-5 h-5 text-[#8B8B8B]" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          <input type="text" placeholder="Cargo, palabra clave o empresa..." class="flex-1 h-[52px] text-[14px] text-[#333] outline-none placeholder:text-[#8B8B8B]">
+        </div>
+        <div class="flex items-center gap-2 px-4 w-[200px] border-r border-[#EDEDED]">
+          <svg class="w-5 h-5 text-[#8B8B8B]" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z"/><path d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z"/></svg>
+          <input type="text" placeholder="Ciudad o pais" class="flex-1 h-[52px] text-[14px] text-[#333] outline-none placeholder:text-[#8B8B8B]">
+        </div>
+        <button class="bg-[#DD0C15] text-white px-8 text-[14px] font-semibold hover:bg-[#c00b13] transition-colors">Buscar</button>
+      </div>
+      <!-- Quick stats -->
+      <div class="flex items-center gap-8 mt-6">
+        <div class="flex items-center gap-2"><div class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></div><span class="text-[13px] text-white/60"><strong class="text-white">24</strong> vacantes abiertas</span></div>
+        <div class="flex items-center gap-2"><span class="text-[13px] text-white/60"><strong class="text-white">4</strong> paises</span></div>
+        <div class="flex items-center gap-2"><span class="text-[13px] text-white/60"><strong class="text-white">8</strong> departamentos</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FEATURED POSITIONS -->
+  <div class="px-8 py-10">
+    <div class="flex justify-between items-center mb-6">
+      <div>
+        <h2 class="text-[22px] font-bold text-[#1F114C]">Vacantes Destacadas</h2>
+        <p class="text-[13px] text-[#585858] mt-1">Posiciones con alta demanda que podrian interesarte</p>
+      </div>
+      <a class="text-[13px] text-[#DD0C15] font-medium hover:underline">Ver todas las vacantes →</a>
+    </div>
+
+    <div class="grid grid-cols-3 gap-5">
+      <!-- Card 1 -->
+      <div class="bg-white border border-[#EDEDED] rounded-xl p-5 hover:shadow-[0_4px_20px_rgba(0,0,0,0.08)] hover:border-[#1F114C]/20 transition-all cursor-pointer group">
+        <div class="flex items-start justify-between mb-3">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-lg bg-[#1F114C] flex items-center justify-center text-white text-[11px] font-bold">TI</div>
+            <div><p class="text-[11px] text-[#8B8B8B]">TIMS International</p><p class="text-[10px] text-[#8B8B8B]">Bogota, Colombia</p></div>
+          </div>
+          <span class="text-[10px] bg-green-50 text-green-600 px-2 py-0.5 rounded-full border border-green-200">Nueva</span>
+        </div>
+        <h3 class="text-[15px] font-semibold text-[#1F114C] mb-2 group-hover:text-[#DD0C15] transition-colors">Senior Software Engineer</h3>
+        <p class="text-[12px] text-[#585858] mb-3 line-clamp-2">Lider tecnico para equipo de desarrollo. Arquitectura de microservicios con Node.js y AWS. Trabajo hibrido.</p>
+        <div class="flex flex-wrap gap-1.5 mb-4">
+          <span class="text-[10px] bg-[#F6F6F6] text-[#585858] px-2 py-0.5 rounded-full">Full-time</span>
+          <span class="text-[10px] bg-[#F6F6F6] text-[#585858] px-2 py-0.5 rounded-full">Hibrido</span>
+          <span class="text-[10px] bg-[#F6F6F6] text-[#585858] px-2 py-0.5 rounded-full">Senior</span>
+          <span class="text-[10px] bg-[#F6F6F6] text-[#585858] px-2 py-0.5 rounded-full">Engineering</span>
+        </div>
+        <div class="flex items-center justify-between pt-3 border-t border-[#F0F0F0]">
+          <div><p class="text-[13px] font-semibold text-[#1F114C]">$85K – $95K</p><p class="text-[10px] text-[#8B8B8B]">USD / ano</p></div>
+          <button class="bg-[#1F114C] text-white px-4 py-2 rounded-lg text-[12px] font-medium group-hover:bg-[#DD0C15] transition-colors">Aplicar</button>
+        </div>
+      </div>
+
+      <!-- Card 2 -->
+      <div class="bg-white border border-[#EDEDED] rounded-xl p-5 hover:shadow-[0_4px_20px_rgba(0,0,0,0.08)] hover:border-[#1F114C]/20 transition-all cursor-pointer group">
+        <div class="flex items-start justify-between mb-3">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-lg bg-[#1F114C] flex items-center justify-center text-white text-[11px] font-bold">TI</div>
+            <div><p class="text-[11px] text-[#8B8B8B]">TIMS International</p><p class="text-[10px] text-[#8B8B8B]">Remoto</p></div>
+          </div>
+          <span class="text-[10px] bg-amber-50 text-amber-600 px-2 py-0.5 rounded-full border border-amber-200">Urgente</span>
+        </div>
+        <h3 class="text-[15px] font-semibold text-[#1F114C] mb-2 group-hover:text-[#DD0C15] transition-colors">Product Manager</h3>
+        <p class="text-[12px] text-[#585858] mb-3 line-clamp-2">Gestion de producto para plataforma SaaS de talento humano. Trabajo remoto, equipo global en LATAM.</p>
+        <div class="flex flex-wrap gap-1.5 mb-4">
+          <span class="text-[10px] bg-[#F6F6F6] text-[#585858] px-2 py-0.5 rounded-full">Full-time</span>
+          <span class="text-[10px] bg-[#F6F6F6] text-[#585858] px-2 py-0.5 rounded-full">Remoto</span>
+          <span class="text-[10px] bg-[#F6F6F6] text-[#585858] px-2 py-0.5 rounded-full">Mid-Senior</span>
+          <span class="text-[10px] bg-[#F6F6F6] text-[#585858] px-2 py-0.5 rounded-full">Product</span>
+        </div>
+        <div class="flex items-center justify-between pt-3 border-t border-[#F0F0F0]">
+          <div><p class="text-[13px] font-semibold text-[#1F114C]">$70K – $85K</p><p class="text-[10px] text-[#8B8B8B]">USD / ano</p></div>
+          <button class="bg-[#1F114C] text-white px-4 py-2 rounded-lg text-[12px] font-medium group-hover:bg-[#DD0C15] transition-colors">Aplicar</button>
+        </div>
+      </div>
+
+      <!-- Card 3 -->
+      <div class="bg-white border border-[#EDEDED] rounded-xl p-5 hover:shadow-[0_4px_20px_rgba(0,0,0,0.08)] hover:border-[#1F114C]/20 transition-all cursor-pointer group">
+        <div class="flex items-start justify-between mb-3">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-lg bg-[#1F114C] flex items-center justify-center text-white text-[11px] font-bold">TI</div>
+            <div><p class="text-[11px] text-[#8B8B8B]">TIMS International</p><p class="text-[10px] text-[#8B8B8B]">Medellin, Colombia</p></div>
+          </div>
+        </div>
+        <h3 class="text-[15px] font-semibold text-[#1F114C] mb-2 group-hover:text-[#DD0C15] transition-colors">DevOps Engineer</h3>
+        <p class="text-[12px] text-[#585858] mb-3 line-clamp-2">Infraestructura cloud, CI/CD, Kubernetes, monitoreo. Equipo de plataforma en crecimiento.</p>
+        <div class="flex flex-wrap gap-1.5 mb-4">
+          <span class="text-[10px] bg-[#F6F6F6] text-[#585858] px-2 py-0.5 rounded-full">Full-time</span>
+          <span class="text-[10px] bg-[#F6F6F6] text-[#585858] px-2 py-0.5 rounded-full">Hibrido</span>
+          <span class="text-[10px] bg-[#F6F6F6] text-[#585858] px-2 py-0.5 rounded-full">Mid</span>
+          <span class="text-[10px] bg-[#F6F6F6] text-[#585858] px-2 py-0.5 rounded-full">Infrastructure</span>
+        </div>
+        <div class="flex items-center justify-between pt-3 border-t border-[#F0F0F0]">
+          <div><p class="text-[13px] font-semibold text-[#1F114C]">$65K – $80K</p><p class="text-[10px] text-[#8B8B8B]">USD / ano</p></div>
+          <button class="bg-[#1F114C] text-white px-4 py-2 rounded-lg text-[12px] font-medium group-hover:bg-[#DD0C15] transition-colors">Aplicar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- WHY WORK WITH US -->
+  <div class="bg-[#F6F6F6] px-8 py-10">
+    <h2 class="text-[22px] font-bold text-[#1F114C] text-center mb-2">Por que trabajar con nosotros</h2>
+    <p class="text-[13px] text-[#585858] text-center mb-8 max-w-[500px] mx-auto">Nuestro proceso de seleccion evalua lo que realmente importa, usando herramientas cientificas y tecnologia de punta</p>
+    <div class="grid grid-cols-4 gap-5">
+      <div class="bg-white rounded-xl p-5 text-center shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+        <div class="w-12 h-12 rounded-xl bg-[#F0EEFB] flex items-center justify-center mx-auto mb-3"><svg class="w-6 h-6 text-[#1F114C]" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg></div>
+        <h3 class="text-[13px] font-semibold text-[#1F114C] mb-1">Evaluacion Cientifica</h3>
+        <p class="text-[11px] text-[#585858]">Pruebas psicometricas validadas que miden tu verdadero potencial, no solo tu CV</p>
+      </div>
+      <div class="bg-white rounded-xl p-5 text-center shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+        <div class="w-12 h-12 rounded-xl bg-[#E8F8F5] flex items-center justify-center mx-auto mb-3"><svg class="w-6 h-6 text-[#2A9D8F]" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z"/></svg></div>
+        <h3 class="text-[13px] font-semibold text-[#1F114C] mb-1">Proceso Transparente</h3>
+        <p class="text-[11px] text-[#585858]">Conoce tu estado en tiempo real. Sin incertidumbre, con feedback en cada etapa</p>
+      </div>
+      <div class="bg-white rounded-xl p-5 text-center shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+        <div class="w-12 h-12 rounded-xl bg-[#FEE8E7] flex items-center justify-center mx-auto mb-3"><svg class="w-6 h-6 text-[#DD0C15]" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z"/></svg></div>
+        <h3 class="text-[13px] font-semibold text-[#1F114C] mb-1">Entrevistas Digitales</h3>
+        <p class="text-[11px] text-[#585858]">Entrevistas por video integradas en la plataforma, sin apps externas</p>
+      </div>
+      <div class="bg-white rounded-xl p-5 text-center shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+        <div class="w-12 h-12 rounded-xl bg-[#FFF7E6] flex items-center justify-center mx-auto mb-3"><svg class="w-6 h-6 text-[#F59E0B]" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M4.26 10.147a60.436 60.436 0 00-.491 6.347A48.627 48.627 0 0112 20.904a48.627 48.627 0 018.232-4.41 60.46 60.46 0 00-.491-6.347m-15.482 0a50.57 50.57 0 00-2.658-.813A59.905 59.905 0 0112 3.493a59.902 59.902 0 0110.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0A50.697 50.697 0 0112 13.489a50.702 50.702 0 017.74-3.342M6.75 15a.75.75 0 100-1.5.75.75 0 000 1.5zm0 0v-3.675A55.378 55.378 0 0112 8.443m-7.007 11.55A5.981 5.981 0 006.75 15.75v-1.5"/></svg></div>
+        <h3 class="text-[13px] font-semibold text-[#1F114C] mb-1">Desarrollo Profesional</h3>
+        <p class="text-[11px] text-[#585858]">Recursos de aprendizaje y retroalimentacion para tu crecimiento, incluso si no quedas</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- BROWSE BY CATEGORY -->
+  <div class="px-8 py-10">
+    <h2 class="text-[22px] font-bold text-[#1F114C] mb-6">Explorar por Area</h2>
+    <div class="grid grid-cols-6 gap-3">
+      <div class="bg-[#F6F6F6] rounded-xl p-4 text-center hover:bg-[#1F114C] hover:text-white transition-all cursor-pointer group">
+        <p class="text-[24px] mb-1">💻</p>
+        <p class="text-[12px] font-medium text-[#1F114C] group-hover:text-white">Engineering</p>
+        <p class="text-[10px] text-[#8B8B8B] group-hover:text-white/60">8 vacantes</p>
+      </div>
+      <div class="bg-[#F6F6F6] rounded-xl p-4 text-center hover:bg-[#1F114C] hover:text-white transition-all cursor-pointer group">
+        <p class="text-[24px] mb-1">📊</p>
+        <p class="text-[12px] font-medium text-[#1F114C] group-hover:text-white">Product</p>
+        <p class="text-[10px] text-[#8B8B8B] group-hover:text-white/60">4 vacantes</p>
+      </div>
+      <div class="bg-[#F6F6F6] rounded-xl p-4 text-center hover:bg-[#1F114C] hover:text-white transition-all cursor-pointer group">
+        <p class="text-[24px] mb-1">🎨</p>
+        <p class="text-[12px] font-medium text-[#1F114C] group-hover:text-white">Design</p>
+        <p class="text-[10px] text-[#8B8B8B] group-hover:text-white/60">3 vacantes</p>
+      </div>
+      <div class="bg-[#F6F6F6] rounded-xl p-4 text-center hover:bg-[#1F114C] hover:text-white transition-all cursor-pointer group">
+        <p class="text-[24px] mb-1">📈</p>
+        <p class="text-[12px] font-medium text-[#1F114C] group-hover:text-white">Consultoria</p>
+        <p class="text-[10px] text-[#8B8B8B] group-hover:text-white/60">5 vacantes</p>
+      </div>
+      <div class="bg-[#F6F6F6] rounded-xl p-4 text-center hover:bg-[#1F114C] hover:text-white transition-all cursor-pointer group">
+        <p class="text-[24px] mb-1">👥</p>
+        <p class="text-[12px] font-medium text-[#1F114C] group-hover:text-white">RRHH</p>
+        <p class="text-[10px] text-[#8B8B8B] group-hover:text-white/60">2 vacantes</p>
+      </div>
+      <div class="bg-[#F6F6F6] rounded-xl p-4 text-center hover:bg-[#1F114C] hover:text-white transition-all cursor-pointer group">
+        <p class="text-[24px] mb-1">💼</p>
+        <p class="text-[12px] font-medium text-[#1F114C] group-hover:text-white">Comercial</p>
+        <p class="text-[10px] text-[#8B8B8B] group-hover:text-white/60">2 vacantes</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="bg-[#1F114C] px-8 py-8">
+    <div class="flex justify-between items-start">
+      <div>
+        <img src="../../../apps/web/public/logo_tims.png" alt="TIMS" class="h-8 brightness-0 invert mb-3">
+        <p class="text-[12px] text-white/40 max-w-[300px]">Asesores en Talento Humano que potencian el crecimiento personal, laboral y organizacional.</p>
+      </div>
+      <div class="flex gap-16">
+        <div>
+          <p class="text-[11px] text-white/40 font-bold tracking-[1px] uppercase mb-3">Plataforma</p>
+          <div class="space-y-2">
+            <a class="block text-[12px] text-white/60 hover:text-white">Vacantes</a>
+            <a class="block text-[12px] text-white/60 hover:text-white">Proceso de seleccion</a>
+            <a class="block text-[12px] text-white/60 hover:text-white">Evaluaciones</a>
+          </div>
+        </div>
+        <div>
+          <p class="text-[11px] text-white/40 font-bold tracking-[1px] uppercase mb-3">Empresa</p>
+          <div class="space-y-2">
+            <a class="block text-[12px] text-white/60 hover:text-white">Sobre TIMS</a>
+            <a class="block text-[12px] text-white/60 hover:text-white">Cultura</a>
+            <a class="block text-[12px] text-white/60 hover:text-white">Contacto</a>
+          </div>
+        </div>
+        <div>
+          <p class="text-[11px] text-white/40 font-bold tracking-[1px] uppercase mb-3">Legal</p>
+          <div class="space-y-2">
+            <a class="block text-[12px] text-white/60 hover:text-white">Privacidad</a>
+            <a class="block text-[12px] text-white/60 hover:text-white">Terminos</a>
+            <a class="block text-[12px] text-white/60 hover:text-white">Cookies</a>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="flex justify-between items-center mt-6 pt-6 border-t border-white/10">
+      <p class="text-[11px] text-white/30">© 2026 TIMS International. Todos los derechos reservados.</p>
+      <p class="text-[11px] text-white/30">Powered by <span class="text-white/50 font-medium">TIMS ATS</span></p>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

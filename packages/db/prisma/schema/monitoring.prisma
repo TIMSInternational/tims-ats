@@ -1,0 +1,41 @@
+model AlertRule {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  module         String
+  condition      Json
+  severity       String
+  message        String
+  isActive       Boolean  @default(true) @map("is_active")
+  createdById    String   @map("created_by_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  creator User    @relation("AlertRuleCreator", fields: [createdById], references: [id])
+  alerts  Alert[]
+
+  @@index([organizationId])
+  @@map("alert_rules")
+}
+
+model Alert {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  ruleId         String?   @map("rule_id") @db.Uuid
+  module         String
+  severity       String
+  title          String
+  message        String
+  metadata       Json?
+  status         String    @default("active")
+  dismissedById  String?   @map("dismissed_by_id") @db.Uuid
+  dismissedAt    DateTime? @map("dismissed_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  rule      AlertRule? @relation(fields: [ruleId], references: [id])
+  dismisser User?      @relation("AlertDismisser", fields: [dismissedById], references: [id])
+
+  @@index([organizationId, status])
+  @@index([organizationId, severity])
+  @@index([createdAt])
+  @@map("alerts")
+}

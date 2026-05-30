@@ -1,0 +1,95 @@
+model SalaryBand {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  level          String
+  title          String?
+  minSalary      Float    @map("min_salary")
+  midSalary      Float    @map("mid_salary")
+  maxSalary      Float    @map("max_salary")
+  currency       String   @default("USD")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  compensations EmployeeCompensation[]
+
+  @@unique([organizationId, level])
+  @@index([organizationId])
+  @@map("salary_bands")
+}
+
+model EmployeeCompensation {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  currentSalary  Float    @map("current_salary")
+  currency       String   @default("USD")
+  compaRatio     Float?   @map("compa_ratio")
+  bandId         String?  @map("band_id") @db.Uuid
+  variablePay    Float?   @map("variable_pay")
+  effectiveDate  DateTime @map("effective_date")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  user User        @relation("EmployeeCompensationUser", fields: [userId], references: [id], onDelete: Cascade)
+  band SalaryBand? @relation(fields: [bandId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, userId])
+  @@index([organizationId])
+  @@map("employee_compensations")
+}
+
+model SalaryAdjustment {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  type           String
+  previousSalary Float     @map("previous_salary")
+  newSalary      Float     @map("new_salary")
+  reason         String?
+  status         String    @default("pending")
+  approvedById   String?   @map("approved_by_id") @db.Uuid
+  effectiveDate  DateTime? @map("effective_date")
+  requestedById  String    @map("requested_by_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  user      User  @relation("SalaryAdjustmentUser", fields: [userId], references: [id], onDelete: Cascade)
+  approver  User? @relation("SalaryAdjustmentApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  requester User  @relation("SalaryAdjustmentRequester", fields: [requestedById], references: [id])
+
+  @@index([organizationId])
+  @@map("salary_adjustments")
+}
+
+model BenefitPlan {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String
+  type           String
+  description    String?
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  enrollments BenefitEnrollment[]
+
+  @@index([organizationId])
+  @@map("benefit_plans")
+}
+
+model BenefitEnrollment {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  benefitPlanId  String   @map("benefit_plan_id") @db.Uuid
+  enrolledAt     DateTime @default(now()) @map("enrolled_at")
+  status         String   @default("active")
+
+  user User        @relation("BenefitEnrollmentUser", fields: [userId], references: [id], onDelete: Cascade)
+  plan BenefitPlan @relation(fields: [benefitPlanId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, benefitPlanId])
+  @@index([organizationId])
+  @@map("benefit_enrollments")
+}

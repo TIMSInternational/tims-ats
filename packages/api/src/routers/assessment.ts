@@ -1,0 +1,432 @@
+import { z } from 'zod';
+import { router, protectedProcedure, permissionProcedure } from '../trpc';
+import { db } from '@tims/db';
+import { TRPCError } from '@trpc/server';
+
+// ---------------------------------------------------------------------------
+// Router
+// ---------------------------------------------------------------------------
+
+export const assessmentRouter = router({
+  // 7.1 — List assessment types for the organization
+  listTypes: permissionProcedure('assessment', 'read')
+    .input(
+      z.object({
+        includeInactive: z.boolean().default(false),
+      }).optional(),
+    )
+    .query(async ({ ctx, input }) => {
+      return db.assessmentType.findMany({
+        where: {
+          organizationId: ctx.user.organizationId,
+          ...(input?.includeInactive ? {} : { isActive: true }),
+        },
+        orderBy: { name: 'asc' },
+        include: {
+          _count: { select: { assignments: true } },
+        },
+      });
+    }),
+
+  // 7.2 — Assign assessment to a candidate
+  assign: permissionProcedure('assessment', 'create')
+    .input(
+      z.object({
+        candidateId: z.string().uuid(),
+        vacancyId: z.string().uuid(),
+        assessmentTypeId: z.string().uuid(),
+        expiresAt: z.string().datetime().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      // Verify assessment type belongs to org
+      const assessmentType = await db.assessmentType.findFirst({
+        where: { id: input.assessmentTypeId, organizationId: ctx.user.organizationId, isActive: true },
+      });
+      if (!assessmentType) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Tipo de evaluacion no encontrado' });
+      }
+
+      return db.assessmentAssignment.create({
+        data: {
+          organizationId: ctx.user.organizationId,
+          candidateId: input.candidateId,
+          vacancyId: input.vacancyId,
+          assessmentTypeId: input.assessmentTypeId,
+          assignedById: ctx.user.id,
+          status: 'assigned',
+          expiresAt: input.expiresAt ? new Date(input.expiresAt) : undefined,
+        },
+        include: {
+          assessmentType: { select: { id: true, name: true, code: true } },
+          candidate: { select: { id: true, firstName: true, lastName: true, email: true } },
+        },
+      });
+    }),
+
+  // 7.3 — Bulk assign assessment to multiple candidates
+  bulkAssign: permissionProcedure('assessment', 'create')
+    .input(
+      z.object({
+        candidateIds: z.array(z.string().uuid()).min(1).max(200),
+        vacancyId: z.string().uuid(),
+        assessmentTypeId: z.string().uuid(),
+        expiresAt: z.string().datetime().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const assessmentType = await db.assessmentType.findFirst({
+        where: { id: input.assessmentTypeId, organizationId: ctx.user.organizationId, isActive: true },
+      });
+      if (!assessmentType) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Tipo de evaluacion no encontrado' });
+      }
+
+      const result = await db.assessmentAssignment.createMany({
+        data: input.candidateIds.map((candidateId) => ({
+          organizationId: ctx.user.organizationId,
+          candidateId,
+          vacancyId: input.vacancyId,
+          assessmentTypeId: input.assessmentTypeId,
+          assignedById: ctx.user.id,
+          status: 'assigned',
+          expiresAt: input.expiresAt ? new Date(input.expiresAt) : undefined,
+        })),
+        skipDuplicates: true,
+      });
+
+      return { assigned: result.count };
+    }),
+
+  // 7.4 — Get results for a vacancy (all candidates)
+  getResults: permissionProcedure('assessment', 'read')
+    .input(
+      z.object({
+        vacancyId: z.string().uuid(),
+        assessmentTypeId: z.string().uuid().optional(),
+        cursor: z.string().uuid().optional(),
+        limit: z.number().int().min(1).max(100).default(25),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const { cursor, limit, vacancyId, assessmentTypeId } = input;
+
+      const where: any = {
+        organizationId: ctx.user.organizationId,
+        vacancyId,
+        status: 'completed',
+      };
+      if (assessmentTypeId) where.assessmentTypeId = assessmentTypeId;
+
+      const items = await db.assessmentAssignment.findMany({
+        where,
+        take: limit + 1,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        orderBy: { completedAt: 'desc' },
+        include: {
+          candidate: { select: { id: true, firstName: true, lastName: true, email: true, avatar: true } },
+          assessmentType: { select: { id: true, name: true, code: true } },
+          result: true,
+        },
+      });
+
+      let nextCursor: string | undefined;
+      if (items.length > limit) {
+        const extra = items.pop()!;
+        nextCursor = extra.id;
+      }
+
+      return { items, nextCursor };
+    }),
+
+  // 7.5 — Get detailed result for a single assignment
+  getResultDetail: permissionProcedure('assessment', 'read')
+    .input(z.object({ assignmentId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const assignment = await db.assessmentAssignment.findFirst({
+        where: { id: input.assignmentId, organizationId: ctx.user.organizationId },
+        include: {
+          candidate: { select: { id: true, firstName: true, lastName: true, email: true } },
+          assessmentType: true,
+          result: true,
+          session: true,
+        },
+      });
+
+      if (!assignment) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Asignacion no encontrada' });
+      }
+
+      return assignment;
+    }),
+
+  // 7.6 — List pending assessments (not yet completed)
+  listPending: permissionProcedure('assessment', 'read')
+    .input(
+      z.object({
+        vacancyId: z.string().uuid().optional(),
+        cursor: z.string().uuid().optional(),
+        limit: z.number().int().min(1).max(100).default(25),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const { cursor, limit, vacancyId } = input;
+
+      const where: any = {
+        organizationId: ctx.user.organizationId,
+        status: { in: ['assigned', 'in_progress'] },
+      };
+      if (vacancyId) where.vacancyId = vacancyId;
+
+      const items = await db.assessmentAssignment.findMany({
+        where,
+        take: limit + 1,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        orderBy: { assignedAt: 'desc' },
+        include: {
+          candidate: { select: { id: true, firstName: true, lastName: true, email: true } },
+          assessmentType: { select: { id: true, name: true, code: true, duration: true } },
+        },
+      });
+
+      let nextCursor: string | undefined;
+      if (items.length > limit) {
+        const extra = items.pop()!;
+        nextCursor = extra.id;
+      }
+
+      return { items, nextCursor };
+    }),
+
+  // 7.7 — Cancel an assessment assignment
+  cancel: permissionProcedure('assessment', 'update')
+    .input(
+      z.object({
+        assignmentId: z.string().uuid(),
+        reason: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const assignment = await db.assessmentAssignment.findFirst({
+        where: {
+          id: input.assignmentId,
+          organizationId: ctx.user.organizationId,
+          status: { in: ['assigned', 'in_progress'] },
+        },
+      });
+
+      if (!assignment) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Asignacion no encontrada o ya completada/cancelada',
+        });
+      }
+
+      return db.assessmentAssignment.update({
+        where: { id: input.assignmentId },
+        data: { status: 'cancelled' },
+      });
+    }),
+
+  // 7.8 — Resend assessment invitation (stub)
+  resend: permissionProcedure('assessment', 'update')
+    .input(z.object({ assignmentId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const assignment = await db.assessmentAssignment.findFirst({
+        where: {
+          id: input.assignmentId,
+          organizationId: ctx.user.organizationId,
+          status: { in: ['assigned', 'in_progress'] },
+        },
+        include: {
+          candidate: { select: { email: true, firstName: true } },
+          assessmentType: { select: { name: true } },
+        },
+      });
+
+      if (!assignment) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Asignacion no encontrada o no reenviar invitaciones para evaluaciones completadas',
+        });
+      }
+
+      // Stub: in production this would trigger an SES email
+      await db.assessmentAssignment.update({
+        where: { id: input.assignmentId },
+        data: { reminderSentAt: new Date() },
+      });
+
+      return {
+        sent: true,
+        to: assignment.candidate.email,
+        assessmentName: assignment.assessmentType.name,
+        status: 'stub_sent',
+      };
+    }),
+
+  // 7.9 — Get proctoring events for an assignment
+  getProctoringEvents: permissionProcedure('assessment', 'read')
+    .input(z.object({ assignmentId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const session = await db.proctoringSession.findFirst({
+        where: {
+          assignmentId: input.assignmentId,
+          organizationId: ctx.user.organizationId,
+        },
+      });
+
+      if (!session) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Sesion de proctoring no encontrada' });
+      }
+
+      return {
+        sessionId: session.id,
+        assignmentId: session.assignmentId,
+        startedAt: session.startedAt,
+        endedAt: session.endedAt,
+        flagCount: session.flagCount,
+        severity: session.severity,
+        events: session.events,
+      };
+    }),
+
+  // 7.10 — Flag a proctoring event
+  flagProctoring: permissionProcedure('assessment', 'update')
+    .input(
+      z.object({
+        assignmentId: z.string().uuid(),
+        event: z.object({
+          type: z.string(),
+          description: z.string(),
+          timestamp: z.string().datetime(),
+          severity: z.enum(['low', 'medium', 'high', 'critical']),
+        }),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const session = await db.proctoringSession.findFirst({
+        where: {
+          assignmentId: input.assignmentId,
+          organizationId: ctx.user.organizationId,
+        },
+      });
+
+      if (!session) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Sesion de proctoring no encontrada' });
+      }
+
+      const existingEvents = (session.events as any[]) ?? [];
+      const updatedEvents = [...existingEvents, input.event];
+
+      // Determine highest severity
+      const severityOrder = ['low', 'medium', 'high', 'critical'];
+      const maxSeverity = updatedEvents.reduce((max, e) => {
+        const eSev = severityOrder.indexOf(e.severity);
+        const mSev = severityOrder.indexOf(max);
+        return eSev > mSev ? e.severity : max;
+      }, session.severity ?? 'low');
+
+      return db.proctoringSession.update({
+        where: { id: session.id },
+        data: {
+          events: updatedEvents,
+          flagCount: { increment: 1 },
+          severity: maxSeverity,
+        },
+      });
+    }),
+
+  // 7.11 — Get explainability for assessment result (stub — mock AI)
+  getExplainability: permissionProcedure('assessment', 'read')
+    .input(z.object({ assignmentId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const assignment = await db.assessmentAssignment.findFirst({
+        where: { id: input.assignmentId, organizationId: ctx.user.organizationId },
+        include: { result: true, assessmentType: { select: { name: true, code: true } } },
+      });
+
+      if (!assignment) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Asignacion no encontrada' });
+      }
+      if (!assignment.result) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'La evaluacion aun no tiene resultados' });
+      }
+
+      // Stub: mock AI explainability
+      return {
+        assignmentId: input.assignmentId,
+        assessmentType: assignment.assessmentType.name,
+        score: assignment.result.normalizedScore,
+        explanation: {
+          summary: 'El candidato demostro un desempeno solido en habilidades tecnicas con oportunidades de mejora en comunicacion.',
+          strengths: [
+            'Resolucion de problemas logicos: percentil 85',
+            'Conocimiento tecnico: por encima del promedio',
+          ],
+          weaknesses: [
+            'Comunicacion escrita: por debajo del promedio',
+            'Gestion del tiempo: completado con 90% del tiempo asignado',
+          ],
+          recommendations: [
+            'Considerar evaluacion adicional de comunicacion',
+            'Verificar habilidades en entrevista tecnica',
+          ],
+          confidenceLevel: 0.82,
+        },
+        modelVersion: 'bedrock-claude-v1-stub',
+      };
+    }),
+
+  // 7.12 — Compare assessment results for multiple candidates
+  compare: permissionProcedure('assessment', 'read')
+    .input(
+      z.object({
+        assignmentIds: z.array(z.string().uuid()).min(2).max(10),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const assignments = await db.assessmentAssignment.findMany({
+        where: {
+          id: { in: input.assignmentIds },
+          organizationId: ctx.user.organizationId,
+        },
+        include: {
+          candidate: { select: { id: true, firstName: true, lastName: true, avatar: true } },
+          assessmentType: { select: { id: true, name: true, code: true } },
+          result: true,
+        },
+      });
+
+      if (assignments.length !== input.assignmentIds.length) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Una o mas asignaciones no encontradas',
+        });
+      }
+
+      // Sort by score descending
+      const ranked = assignments
+        .filter((a) => a.result)
+        .sort((a, b) => (b.result?.normalizedScore ?? 0) - (a.result?.normalizedScore ?? 0))
+        .map((a, idx) => ({
+          rank: idx + 1,
+          candidate: a.candidate,
+          assessmentType: a.assessmentType,
+          rawScore: a.result?.rawScore,
+          normalizedScore: a.result?.normalizedScore,
+          percentile: a.result?.percentile,
+          breakdown: a.result?.breakdown,
+        }));
+
+      const unscored = assignments
+        .filter((a) => !a.result)
+        .map((a) => ({
+          candidate: a.candidate,
+          assessmentType: a.assessmentType,
+          status: a.status,
+        }));
+
+      return { ranked, unscored };
+    }),
+});

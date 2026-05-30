@@ -1,0 +1,69 @@
+model NineBoxEvaluation {
+  id               String   @id @default(uuid()) @db.Uuid
+  organizationId   String   @map("organization_id") @db.Uuid
+  userId           String   @map("user_id") @db.Uuid
+  period           String
+  potentialScore   Float    @map("potential_score")
+  performanceScore Float    @map("performance_score")
+  quadrant         String
+  confidence       Float
+  axisBreakdown    Json     @map("axis_breakdown")
+  evaluatedAt      DateTime @default(now()) @map("evaluated_at")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  user User @relation("NineBoxUser", fields: [userId], references: [id])
+
+  @@unique([organizationId, userId, period])
+  @@index([organizationId])
+  @@map("nine_box_evaluations")
+}
+
+model CalibrationSession {
+  id          String    @id @default(uuid()) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  period      String
+  status      String
+  scheduledAt DateTime? @map("scheduled_at")
+  completedAt DateTime? @map("completed_at")
+  createdById String    @map("created_by_id") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  creator User               @relation("CalibrationCreator", fields: [createdById], references: [id])
+  members CalibrationMember[]
+  votes   CalibrationVote[]
+
+  @@index([organizationId])
+  @@map("calibration_sessions")
+}
+
+model CalibrationMember {
+  id        String   @id @default(uuid()) @db.Uuid
+  sessionId String   @map("session_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  status    String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  session CalibrationSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User               @relation("CalibrationMemberUser", fields: [userId], references: [id])
+
+  @@unique([sessionId, userId])
+  @@map("calibration_members")
+}
+
+model CalibrationVote {
+  id              String   @id @default(uuid()) @db.Uuid
+  sessionId       String   @map("session_id") @db.Uuid
+  evaluatedUserId String   @map("evaluated_user_id") @db.Uuid
+  voterId         String   @map("voter_id") @db.Uuid
+  quadrant        String
+  justification   String?
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  session       CalibrationSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  evaluatedUser User               @relation("CalibrationEvaluated", fields: [evaluatedUserId], references: [id])
+  voter         User               @relation("CalibrationVoter", fields: [voterId], references: [id])
+
+  @@unique([sessionId, evaluatedUserId, voterId])
+  @@map("calibration_votes")
+}

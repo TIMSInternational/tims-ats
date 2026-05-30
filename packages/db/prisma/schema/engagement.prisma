@@ -1,0 +1,73 @@
+model Survey {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  title          String
+  type           String
+  status         String    @default("draft")
+  questions      Json
+  targetGroups   Json?     @map("target_groups")
+  startsAt       DateTime? @map("starts_at")
+  endsAt         DateTime? @map("ends_at")
+  responseCount  Int       @default(0) @map("response_count")
+  createdById    String    @map("created_by_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  creator   User             @relation("SurveyCreator", fields: [createdById], references: [id])
+  responses SurveyResponse[]
+
+  @@index([organizationId])
+  @@map("surveys")
+}
+
+model SurveyResponse {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  surveyId       String   @map("survey_id") @db.Uuid
+  userId         String?  @map("user_id") @db.Uuid
+  answers        Json
+  submittedAt    DateTime @default(now()) @map("submitted_at")
+
+  survey Survey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  user   User?  @relation("SurveyResponseUser", fields: [userId], references: [id], onDelete: SetNull)
+
+  @@unique([surveyId, userId])
+  @@index([organizationId])
+  @@map("survey_responses")
+}
+
+model ActionPlan {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  title          String
+  responsibleId  String    @map("responsible_id") @db.Uuid
+  area           String?
+  status         String    @default("pending")
+  dueDate        DateTime? @map("due_date")
+  actions        Json?
+  notes          String?
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  responsible User @relation("ActionPlanResponsible", fields: [responsibleId], references: [id])
+
+  @@index([organizationId])
+  @@map("action_plans")
+}
+
+model LeaderCommitment {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  leaderId       String    @map("leader_id") @db.Uuid
+  description    String
+  status         String    @default("pending")
+  dueDate        DateTime? @map("due_date")
+  completedAt    DateTime? @map("completed_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  leader User @relation("LeaderCommitmentLeader", fields: [leaderId], references: [id])
+
+  @@index([organizationId])
+  @@map("leader_commitments")
+}

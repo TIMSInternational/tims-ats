@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TIMS ATS — Recruiting Command Center</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script>tailwind.config={theme:{extend:{fontFamily:{sans:['Inter','sans-serif']},colors:{navy:'#1F114C',red:'#DD0C15',gray:{bg:'#F6F6F6',border:'#EDEDED',text:'#585858',muted:'#8B8B8B'}}}}}</script>
+<style>body{font-family:'Inter',sans-serif;margin:0;background:#F6F6F6;} .scrollbar-hide::-webkit-scrollbar{display:none;}</style>
+</head>
+<body>
+<div class="flex w-[1440px] h-[900px] mx-auto overflow-hidden">
+
+  <!-- SIDEBAR COMPACT -->
+  <div class="flex flex-col w-[72px] h-full bg-[#1F114C] shrink-0 items-center">
+    <div class="flex items-center justify-center h-[80px] border-b border-white/10 w-full">
+      <div class="w-9 h-9 rounded-lg bg-[#DD0C15] flex items-center justify-center">
+        <span class="text-white text-[13px] font-bold">T</span>
+      </div>
+    </div>
+    <nav class="flex-1 py-3 flex flex-col items-center gap-1 w-full overflow-y-auto">
+      <a title="Command Center" class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10 relative group bg-white/10"><svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><span class="absolute left-14 bg-[#1F114C] text-white text-[12px] px-2 py-1 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none z-50 shadow-lg">Command Center</span></a>
+      <div class="w-8 border-t border-white/10 my-2"></div>
+      <a title="Vacancies" class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10 group relative"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a4 4 0 00-8 0v2"/></svg><span class="absolute left-14 bg-[#1F114C] text-white text-[12px] px-2 py-1 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none z-50 shadow-lg">Vacancies</span></a>
+      <a title="Pipeline" class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10 group relative"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18"/></svg><span class="absolute left-14 bg-[#1F114C] text-white text-[12px] px-2 py-1 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none z-50 shadow-lg">Pipeline</span></a>
+      <a title="Candidates" class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10 group relative"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg><span class="absolute left-14 bg-[#1F114C] text-white text-[12px] px-2 py-1 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none z-50 shadow-lg">Candidates</span></a>
+      <a title="Assessments" class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10 group relative"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg><span class="absolute -top-0.5 -right-0.5 bg-[#DD0C15] text-white text-[8px] font-bold w-3.5 h-3.5 rounded-full flex items-center justify-center">3</span><span class="absolute left-14 bg-[#1F114C] text-white text-[12px] px-2 py-1 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none z-50 shadow-lg">Assessments</span></a>
+      <a title="Interviews" class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10 group relative"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z"/></svg><span class="absolute -top-0.5 -right-0.5 bg-[#DD0C15] text-white text-[8px] font-bold w-3.5 h-3.5 rounded-full flex items-center justify-center">2</span><span class="absolute left-14 bg-[#1F114C] text-white text-[12px] px-2 py-1 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none z-50 shadow-lg">Interviews</span></a>
+      <a title="Offers" class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10 group relative"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg><span class="absolute left-14 bg-[#1F114C] text-white text-[12px] px-2 py-1 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none z-50 shadow-lg">Offers</span></a>
+      <a title="Analytics" class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10 group relative"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z"/></svg><span class="absolute left-14 bg-[#1F114C] text-white text-[12px] px-2 py-1 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none z-50 shadow-lg">Analytics</span></a>
+      <div class="w-8 border-t border-white/10 my-2"></div>
+      <a title="Directory" class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10 group relative"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z"/></svg><span class="absolute left-14 bg-[#1F114C] text-white text-[12px] px-2 py-1 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none z-50 shadow-lg">Directory</span></a>
+      <a title="Onboarding" class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10 group relative"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M15.59 14.37a6 6 0 01-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 006.16-12.12A14.98 14.98 0 009.631 8.41m5.96 5.96a14.926 14.926 0 01-5.841 2.58m-.119-8.54a6 6 0 00-7.381 5.84h4.8m2.58-5.84a14.927 14.927 0 00-2.58 5.84"/></svg><span class="absolute left-14 bg-[#1F114C] text-white text-[12px] px-2 py-1 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none z-50 shadow-lg">Onboarding</span></a>
+      <div class="w-8 border-t border-white/10 my-2"></div>
+      <a title="Settings" class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10 group relative"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z"/><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg><span class="absolute left-14 bg-[#1F114C] text-white text-[12px] px-2 py-1 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none z-50 shadow-lg">Settings</span></a>
+    </nav>
+    <div class="py-3 border-t border-white/10 flex justify-center">
+      <div class="w-9 h-9 rounded-full bg-[#DD0C15] flex items-center justify-center text-white text-[11px] font-bold">FT</div>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="flex flex-col flex-1 min-w-0">
+    <!-- TOP BAR -->
+    <div class="flex items-center justify-between px-6 h-16 bg-white border-b border-[#EDEDED] shrink-0">
+      <span class="text-sm font-medium text-[#1F114C]">Recruiting Command Center</span>
+      <div class="flex items-center gap-5">
+        <div class="flex items-center gap-2 bg-[#F6F6F6] rounded-full px-3 h-8 w-[200px]"><svg class="w-4 h-4 text-[#1F114C]/40" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg><span class="text-[13px] text-[#1F114C]/40">Search...</span></div>
+        <div class="relative"><svg class="w-5 h-5 text-[#1F114C]" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"/></svg><span class="absolute -top-1 -right-1 bg-[#DD0C15] text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center">7</span></div>
+        <span class="text-[13px] text-[#1F114C]">ES/EN</span>
+        <div class="w-8 h-8 rounded-full bg-[#1F114C] flex items-center justify-center text-white text-[13px] font-bold">AT</div>
+      </div>
+    </div>
+
+    <!-- CONTENT -->
+    <div class="flex-1 overflow-y-auto p-6">
+      <div class="flex justify-between items-center mb-6">
+        <h1 class="text-lg font-bold text-[#1F114C]">Overview Metrics</h1>
+        <span class="text-[13px] text-[#585858]">Today's Status</span>
+      </div>
+
+      <!-- KPI CARDS -->
+      <div class="flex gap-3 mb-6 overflow-x-auto scrollbar-hide">
+        <div class="min-w-[130px] bg-white rounded-xl p-4 shadow-[0_2px_8px_rgba(0,0,0,0.06)] flex flex-col gap-1">
+          <div class="flex items-center gap-1.5"><div class="w-2.5 h-2.5 rounded-full bg-[#DD0C15]"></div><span class="text-[11px] text-[#585858]">Vacantes Abiertas</span></div>
+          <span class="text-[28px] font-bold text-[#1F114C] leading-tight">24</span>
+          <span class="text-[11px] text-[#DD0C15] font-medium">3 criticas</span>
+        </div>
+        <div class="min-w-[130px] bg-white rounded-xl p-4 shadow-[0_2px_8px_rgba(0,0,0,0.06)] flex flex-col gap-1">
+          <div class="flex items-center gap-1.5"><div class="w-2.5 h-2.5 rounded-full bg-amber-500"></div><span class="text-[11px] text-[#585858]">Vencidas SLA</span></div>
+          <span class="text-[28px] font-bold text-[#DD0C15] leading-tight">7</span>
+          <span class="text-[11px] text-amber-500">requieren accion</span>
+        </div>
+        <div class="min-w-[130px] bg-white rounded-xl p-4 shadow-[0_2px_8px_rgba(0,0,0,0.06)] flex flex-col gap-1">
+          <div class="flex items-center gap-1.5"><div class="w-2.5 h-2.5 rounded-full bg-blue-500"></div><span class="text-[11px] text-[#585858]">Congeladas</span></div>
+          <span class="text-[28px] font-bold text-[#8B8B8B] leading-tight">3</span>
+          <span class="text-[11px] text-[#8B8B8B]">sin actividad</span>
+        </div>
+        <div class="min-w-[130px] bg-white rounded-xl p-4 shadow-[0_2px_8px_rgba(0,0,0,0.06)] flex flex-col gap-1">
+          <div class="flex items-center gap-1.5"><div class="w-2.5 h-2.5 rounded-full bg-green-500"></div><span class="text-[11px] text-[#585858]">Candidatos Activos</span></div>
+          <span class="text-[28px] font-bold text-[#1F114C] leading-tight">342</span>
+          <span class="text-[11px] text-green-500">+45 esta semana</span>
+        </div>
+        <div class="min-w-[130px] bg-white rounded-xl p-4 shadow-[0_2px_8px_rgba(0,0,0,0.06)] flex flex-col gap-1">
+          <div class="flex items-center gap-1.5"><div class="w-2.5 h-2.5 rounded-full bg-violet-500"></div><span class="text-[11px] text-[#585858]">En Evaluacion</span></div>
+          <span class="text-[28px] font-bold text-[#1F114C] leading-tight">67</span>
+          <span class="text-[11px] text-[#585858]">pruebas activas</span>
+        </div>
+        <div class="min-w-[130px] bg-white rounded-xl p-4 shadow-[0_2px_8px_rgba(0,0,0,0.06)] flex flex-col gap-1">
+          <div class="flex items-center gap-1.5"><div class="w-2.5 h-2.5 rounded-full bg-teal-500"></div><span class="text-[11px] text-[#585858]">Entrevistas Hoy</span></div>
+          <span class="text-[28px] font-bold text-[#1F114C] leading-tight">5</span>
+          <span class="text-[11px] text-amber-500">2 por confirmar</span>
+        </div>
+        <div class="min-w-[130px] bg-white rounded-xl p-4 shadow-[0_2px_8px_rgba(0,0,0,0.06)] flex flex-col gap-1">
+          <div class="flex items-center gap-1.5"><div class="w-2.5 h-2.5 rounded-full bg-orange-500"></div><span class="text-[11px] text-[#585858]">Ofertas Pendientes</span></div>
+          <span class="text-[28px] font-bold text-[#1F114C] leading-tight">4</span>
+          <span class="text-[11px] text-[#DD0C15]">1 vence manana</span>
+        </div>
+        <div class="min-w-[130px] bg-white rounded-xl p-4 shadow-[0_2px_8px_rgba(0,0,0,0.06)] flex flex-col gap-1">
+          <div class="flex items-center gap-1.5"><div class="w-2.5 h-2.5 rounded-full bg-[#DD0C15]"></div><span class="text-[11px] text-[#585858]">Riesgo Abandono</span></div>
+          <span class="text-[28px] font-bold text-[#DD0C15] leading-tight">8</span>
+          <span class="text-[11px] text-[#DD0C15]">alto FIT detenidos</span>
+        </div>
+      </div>
+
+      <!-- PIPELINE + VACANCIES -->
+      <div class="flex gap-4 mb-6">
+        <!-- Pipeline Chart -->
+        <div class="flex-[65] bg-white rounded-xl p-5 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
+          <div class="flex justify-between items-center mb-4">
+            <span class="text-base font-semibold text-[#1F114C]">Candidatos por Etapa del Pipeline</span>
+            <div class="flex gap-3">
+              <div class="flex items-center gap-2 bg-[#F6F6F6] rounded-md px-3 h-8"><span class="text-[13px] text-[#1F114C]">Todas las vacantes</span><svg class="w-3.5 h-3.5 text-[#1F114C]" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="m19.5 8.25-7.5 7.5-7.5-7.5"/></svg></div>
+              <div class="flex items-center gap-2 bg-[#F6F6F6] rounded-md px-3 h-8"><span class="text-[13px] text-[#1F114C]">Ultimos 30 dias</span></div>
+            </div>
+          </div>
+          <div class="space-y-2">
+            <div class="flex items-center gap-4"><div class="h-6 rounded-sm bg-[#E8E5F0] flex items-center justify-center" style="width:100%"><span class="text-[11px] font-medium text-[#1F114C]">342</span></div><span class="text-xs text-[#585858] w-24 shrink-0">Postulados</span></div>
+            <div class="flex items-center gap-4"><div class="h-6 rounded-sm bg-[#D4CFE5] flex items-center justify-center" style="width:52.6%"><span class="text-[11px] font-medium text-[#1F114C]">180</span></div><span class="text-xs text-[#585858] w-24 shrink-0">Preseleccion <span class="text-[10px] text-[#8B8B8B]">53%</span></span></div>
+            <div class="flex items-center gap-4"><div class="h-6 rounded-sm bg-[#B8AED4] flex items-center justify-center" style="width:27.8%"><span class="text-[11px] font-medium text-white">95</span></div><span class="text-xs text-[#585858] w-24 shrink-0">Eval. PCA <span class="text-[10px] text-[#8B8B8B]">53%</span></span></div>
+            <div class="flex items-center gap-4"><div class="h-6 rounded-sm bg-[#9B8DC4] flex items-center justify-center" style="width:19.6%"><span class="text-[11px] font-medium text-white">67</span></div><span class="text-xs text-[#585858] w-24 shrink-0">Eval. MIL <span class="text-[10px] text-[#8B8B8B]">71%</span></span></div>
+            <div class="flex items-center gap-4"><div class="h-6 rounded-sm bg-[#7B6BAA] flex items-center justify-center" style="width:12.3%"><span class="text-[11px] font-medium text-white">42</span></div><span class="text-xs text-[#585858] w-24 shrink-0">Entrevista <span class="text-[10px] text-[#8B8B8B]">63%</span></span></div>
+            <div class="flex items-center gap-4"><div class="h-6 rounded-sm bg-[#5C4B99] flex items-center justify-center" style="width:4.4%"><span class="text-[11px] font-medium text-white">15</span></div><span class="text-xs text-[#585858] w-24 shrink-0">Oferta <span class="text-[10px] text-[#8B8B8B]">36%</span></span></div>
+            <div class="flex items-center gap-4"><div class="h-6 rounded-sm bg-[#1F114C] flex items-center justify-center" style="width:2.3%"><span class="text-[11px] font-medium text-white">8</span></div><span class="text-xs text-[#585858] w-24 shrink-0">Contratado <span class="text-[10px] text-[#8B8B8B]">53%</span></span></div>
+          </div>
+        </div>
+        <!-- Vacancies by Dimension -->
+        <div class="flex-[35] bg-white rounded-xl p-5 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
+          <span class="text-base font-semibold text-[#1F114C] block mb-3">Vacantes por Dimension</span>
+          <div class="flex gap-3 mb-4 border-b border-[#EDEDED] pb-2">
+            <span class="text-[13px] text-[#1F114C] font-medium border-b-2 border-[#DD0C15] pb-2">Pais</span>
+            <span class="text-[13px] text-[#8B8B8B] pb-2">Ciudad</span>
+            <span class="text-[13px] text-[#8B8B8B] pb-2">Unidad</span>
+            <span class="text-[13px] text-[#8B8B8B] pb-2">Lider</span>
+          </div>
+          <div class="flex gap-6">
+            <div class="flex flex-col items-center">
+              <div class="w-[120px] h-[120px] rounded-full border-[16px] border-[#1F114C] flex items-center justify-center"><span class="text-xl font-bold text-[#1F114C]">24</span></div>
+              <span class="text-[11px] text-[#585858] mt-2">Vacantes totales</span>
+            </div>
+            <div class="flex flex-col gap-3 flex-1">
+              <div class="flex items-center gap-2"><div class="w-2.5 h-2.5 rounded-full bg-[#1F114C]"></div><span class="text-xs text-[#333]">Colombia</span><span class="text-xs text-[#1F114C] font-medium ml-auto">14</span><span class="text-[11px] text-[#585858]">65%</span></div>
+              <div class="w-full bg-[#F6F6F6] rounded-sm h-1.5"><div class="h-1.5 bg-[#1F114C] rounded-sm" style="width:65%"></div></div>
+              <div class="flex items-center gap-2"><div class="w-2.5 h-2.5 rounded-full bg-teal-500"></div><span class="text-xs text-[#333]">Peru</span><span class="text-xs text-[#1F114C] font-medium ml-auto">6</span><span class="text-[11px] text-[#585858]">25%</span></div>
+              <div class="w-full bg-[#F6F6F6] rounded-sm h-1.5"><div class="h-1.5 bg-teal-500 rounded-sm" style="width:25%"></div></div>
+              <div class="flex items-center gap-2"><div class="w-2.5 h-2.5 rounded-full bg-amber-500"></div><span class="text-xs text-[#333]">Argentina</span><span class="text-xs text-[#1F114C] font-medium ml-auto">3</span><span class="text-[11px] text-[#585858]">8%</span></div>
+              <div class="w-full bg-[#F6F6F6] rounded-sm h-1.5"><div class="h-1.5 bg-amber-500 rounded-sm" style="width:8%"></div></div>
+              <div class="flex items-center gap-2"><div class="w-2.5 h-2.5 rounded-full bg-[#8B8B8B]"></div><span class="text-xs text-[#333]">Mexico</span><span class="text-xs text-[#1F114C] font-medium ml-auto">1</span><span class="text-[11px] text-[#585858]">2%</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ALERTS SECTION -->
+      <div class="flex justify-between items-center mb-4">
+        <span class="text-base font-semibold text-[#1F114C]">Alertas y Acciones Criticas</span>
+        <span class="text-[13px] text-[#585858]">Requieren atencion inmediata</span>
+      </div>
+      <div class="flex gap-4">
+        <!-- SLA -->
+        <div class="flex-1 bg-white rounded-xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
+          <div class="flex justify-between items-center mb-4"><span class="text-sm font-semibold text-[#1F114C]">SLA Vencidos por Etapa</span><span class="bg-[#DD0C15] text-white text-xs font-bold w-6 h-6 rounded-full flex items-center justify-center">7</span></div>
+          <div class="space-y-3">
+            <div class="flex items-center gap-3"><div class="w-[3px] h-12 bg-[#DD0C15] rounded-full shrink-0"></div><div class="flex-1"><div class="flex justify-between"><span class="text-[13px] text-[#333]">Preseleccion</span><span class="text-xs text-[#585858]">3 candidatos</span></div><div class="w-full bg-[#F6F6F6] rounded-full h-1 my-1"><div class="h-1 bg-[#DD0C15] rounded-full" style="width:80%"></div></div><span class="text-[11px] text-[#DD0C15]">Promedio: 12 dias (SLA: 5)</span></div></div>
+            <div class="flex items-center gap-3"><div class="w-[3px] h-12 bg-[#DD0C15] rounded-full shrink-0"></div><div class="flex-1"><div class="flex justify-between"><span class="text-[13px] text-[#333]">Evaluacion</span><span class="text-xs text-[#585858]">2 candidatos</span></div><div class="w-full bg-[#F6F6F6] rounded-full h-1 my-1"><div class="h-1 bg-[#DD0C15] rounded-full" style="width:60%"></div></div><span class="text-[11px] text-[#DD0C15]">8 dias (SLA: 3)</span></div></div>
+            <div class="flex items-center gap-3"><div class="w-[3px] h-12 bg-amber-500 rounded-full shrink-0"></div><div class="flex-1"><div class="flex justify-between"><span class="text-[13px] text-[#333]">Entrevista</span><span class="text-xs text-[#585858]">1 candidato</span></div><div class="w-full bg-[#F6F6F6] rounded-full h-1 my-1"><div class="h-1 bg-amber-500 rounded-full" style="width:40%"></div></div><span class="text-[11px] text-amber-500">6 dias (SLA: 5)</span></div></div>
+            <div class="flex items-center gap-3"><div class="w-[3px] h-12 bg-[#DD0C15] rounded-full shrink-0"></div><div class="flex-1"><div class="flex justify-between"><span class="text-[13px] text-[#333]">Oferta</span><span class="text-xs text-[#585858]">1 candidato</span></div><div class="w-full bg-[#F6F6F6] rounded-full h-1 my-1"><div class="h-1 bg-[#DD0C15] rounded-full" style="width:90%"></div></div><span class="text-[11px] text-[#DD0C15]">15 dias (SLA: 7)</span></div></div>
+          </div>
+        </div>
+        <!-- Pending Tests -->
+        <div class="flex-1 bg-white rounded-xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
+          <div class="flex justify-between items-center mb-4"><span class="text-sm font-semibold text-[#1F114C]">Pruebas y Scorecards Pendientes</span><span class="bg-amber-500 text-white text-xs font-bold w-6 h-6 rounded-full flex items-center justify-center">12</span></div>
+          <p class="text-xs text-[#585858] mb-2">Pruebas Pendientes (8)</p>
+          <div class="space-y-2 mb-3">
+            <div class="flex justify-between items-center h-10"><div><p class="text-[13px] text-[#333]">Maria Lopez — PCA</p><p class="text-[11px] text-[#8B8B8B]">Asignada hace 5 dias</p></div><span class="text-xs text-[#DD0C15] cursor-pointer">Reenviar</span></div>
+            <div class="flex justify-between items-center h-10"><div><p class="text-[13px] text-[#333]">Juan Perez — Integridad</p><p class="text-[11px] text-[#8B8B8B]">3 dias</p></div><span class="text-xs text-[#DD0C15] cursor-pointer">Reenviar</span></div>
+            <div class="flex justify-between items-center h-10"><div><p class="text-[13px] text-[#333]">Ana Torres — MIL</p><p class="text-[11px] text-[#8B8B8B]">7 dias</p></div><span class="text-xs text-[#DD0C15] cursor-pointer">Reenviar</span></div>
+            <span class="text-xs text-[#DD0C15]">+5 mas</span>
+          </div>
+          <div class="border-t border-[#EDEDED] pt-3">
+            <p class="text-xs text-[#585858] mb-2">Scorecards Pendientes (4)</p>
+            <div class="space-y-2">
+              <div class="flex justify-between items-center h-10"><div><p class="text-[13px] text-[#333]">Carlos Ruiz — Entrevista tecnica</p><p class="text-[11px] text-[#8B8B8B]">Evaluador: Laura G.</p></div><span class="text-xs text-[#1F114C] cursor-pointer">Recordar</span></div>
+              <div class="flex justify-between items-center h-10"><div><p class="text-[13px] text-[#333]">Sofia Chen — Entrevista cultural</p><p class="text-[11px] text-[#8B8B8B]">Evaluador: Andres T.</p></div><span class="text-xs text-[#1F114C] cursor-pointer">Recordar</span></div>
+              <span class="text-xs text-[#DD0C15]">+2 mas</span>
+            </div>
+          </div>
+        </div>
+        <!-- Risk Candidates -->
+        <div class="flex-1 bg-white rounded-xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
+          <div class="flex justify-between items-center mb-4"><div class="flex items-center gap-2"><span class="text-sm font-semibold text-[#1F114C]">Candidatos en Riesgo</span><div class="w-2 h-2 rounded-full bg-[#DD0C15] animate-pulse"></div></div><span class="text-xs text-[#DD0C15]">4 alertas</span></div>
+          <div class="space-y-4">
+            <div><div class="flex items-center gap-3"><div class="w-8 h-8 rounded-full bg-[#1F114C] flex items-center justify-center text-white text-xs font-bold shrink-0">ML</div><div class="flex-1"><div class="flex items-center gap-2"><span class="text-[13px] text-[#333]">Maria Lopez</span><span class="bg-green-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">FIT: 87</span></div><p class="text-[11px] text-[#8B8B8B]">Senior SW Eng</p><p class="text-[11px] text-[#DD0C15]">Detenida 12 dias en Entrevista</p></div></div><p class="text-[11px] text-teal-600 mt-1 ml-11 italic">Accion sugerida IA: Agendar entrevista urgente</p></div>
+            <div><div class="flex items-center gap-3"><div class="w-8 h-8 rounded-full bg-[#1F114C] flex items-center justify-center text-white text-xs font-bold shrink-0">JP</div><div class="flex-1"><div class="flex items-center gap-2"><span class="text-[13px] text-[#333]">Juan Perez</span><span class="bg-green-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">FIT: 82</span></div><p class="text-[11px] text-[#8B8B8B]">Product Mgr</p><p class="text-[11px] text-amber-500">Sin respuesta hace 8 dias</p></div></div><p class="text-[11px] text-teal-600 mt-1 ml-11 italic">Accion sugerida IA: Contactar por WhatsApp</p></div>
+            <div><div class="flex items-center gap-3"><div class="w-8 h-8 rounded-full bg-[#1F114C] flex items-center justify-center text-white text-xs font-bold shrink-0">AT</div><div class="flex-1"><div class="flex items-center gap-2"><span class="text-[13px] text-[#333]">Ana Torres</span><span class="bg-amber-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">FIT: 78</span></div><p class="text-[11px] text-[#8B8B8B]">DevOps Eng</p><p class="text-[11px] text-[#DD0C15]">Oferta competidora detectada</p></div></div><p class="text-[11px] text-teal-600 mt-1 ml-11 italic">Accion sugerida IA: Revisar paquete de compensacion</p></div>
+            <div><div class="flex items-center gap-3"><div class="w-8 h-8 rounded-full bg-[#1F114C] flex items-center justify-center text-white text-xs font-bold shrink-0">CR</div><div class="flex-1"><div class="flex items-center gap-2"><span class="text-[13px] text-[#333]">Carlos Ruiz</span><span class="bg-amber-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">FIT: 71</span></div><p class="text-[11px] text-[#8B8B8B]">UX Designer</p><p class="text-[11px] text-[#DD0C15]">Evaluacion vencida</p></div></div><p class="text-[11px] text-teal-600 mt-1 ml-11 italic">Accion sugerida IA: Solicitar extension al evaluador</p></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

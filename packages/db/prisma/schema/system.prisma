@@ -1,0 +1,56 @@
+model FeatureFlag {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  key            String
+  enabled        Boolean  @default(false)
+  payload        Json?
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, key])
+  @@index([organizationId])
+  @@map("feature_flags")
+}
+
+model AuditLog {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  userId         String?  @map("user_id") @db.Uuid
+  actorId        String?  @map("actor_id") @db.Uuid
+  action         String
+  entity         String
+  entityId       String?  @map("entity_id")
+  changes        Json?
+  metadata       Json?
+  ipAddress      String?  @map("ip_address")
+  userAgent      String?  @map("user_agent")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user  User? @relation("AuditUser", fields: [userId], references: [id])
+  actor User? @relation("AuditActor", fields: [actorId], references: [id])
+
+  @@index([organizationId])
+  @@index([organizationId, entity])
+  @@index([organizationId, userId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model Session {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  token          String   @unique
+  ipAddress      String?  @map("ip_address")
+  userAgent      String?  @map("user_agent")
+  expiresAt      DateTime @map("expires_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([organizationId])
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}

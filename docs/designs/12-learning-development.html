@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TIMS ATS — Capacitacion & Desarrollo</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>body{font-family:'Inter',sans-serif;margin:0;background:#F6F6F6;} .scrollbar-thin::-webkit-scrollbar{width:4px;} .scrollbar-thin::-webkit-scrollbar-thumb{background:#ccc;border-radius:4px;}</style>
+</head>
+<body>
+<div class="flex w-[1440px] h-[900px] mx-auto overflow-hidden">
+
+  <!-- SIDEBAR COMPACT -->
+  <div class="flex flex-col w-[72px] h-full bg-[#1F114C] shrink-0 items-center">
+    <div class="flex items-center justify-center h-[80px] border-b border-white/10 w-full"><div class="w-9 h-9 rounded-lg bg-[#DD0C15] flex items-center justify-center"><span class="text-white text-[13px] font-bold">T</span></div></div>
+    <nav class="flex-1 py-3 flex flex-col items-center gap-1 w-full">
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></a>
+      <div class="w-8 border-t border-white/10 my-2"></div>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a4 4 0 00-8 0v2"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center bg-white/10"><svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75z"/></svg></a>
+      <div class="w-8 border-t border-white/10 my-2"></div>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M15.59 14.37a6 6 0 01-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 006.16-12.12A14.98 14.98 0 009.631 8.41m5.96 5.96a14.926 14.926 0 01-5.841 2.58m-.119-8.54a6 6 0 00-7.381 5.84h4.8m2.58-5.84a14.927 14.927 0 00-2.58 5.84"/></svg></a>
+      <div class="w-8 border-t border-white/10 my-2"></div>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281"/><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg></a>
+    </nav>
+    <div class="py-3 border-t border-white/10 flex justify-center"><div class="w-9 h-9 rounded-full bg-[#DD0C15] flex items-center justify-center text-white text-[11px] font-bold">FT</div></div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="flex flex-col flex-1 min-w-0">
+    <!-- TOP BAR -->
+    <div class="flex items-center justify-between px-6 h-16 bg-white border-b border-[#EDEDED] shrink-0">
+      <div class="flex items-center gap-2">
+        <span class="text-[13px] text-[#8B8B8B]">People</span><svg class="w-3 h-3 text-[#ccc]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+        <span class="text-sm font-medium text-[#1F114C]">Capacitacion & Desarrollo</span>
+      </div>
+      <div class="flex items-center gap-3">
+        <button class="flex items-center gap-1.5 border border-[#EDEDED] text-[#585858] px-3 h-8 rounded-lg text-[12px]"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>Exportar</button>
+        <button class="flex items-center gap-1.5 bg-[#DD0C15] text-white px-4 h-8 rounded-lg text-[12px] font-medium"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4.5v15m7.5-7.5h-15"/></svg>+Nuevo Curso</button>
+      </div>
+    </div>
+
+    <!-- CONTENT -->
+    <div class="flex-1 overflow-y-auto p-5 scrollbar-thin" style="gap:0;">
+
+      <!-- KPI ROW -->
+      <div class="grid grid-cols-5 gap-3 mb-4">
+        <div class="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center">
+          <p class="text-[11px] text-[#8B8B8B] mb-1">Total Cursos</p>
+          <p class="text-[26px] font-bold text-[#1F114C]">47</p>
+          <p class="text-[10px] text-green-500 font-medium">+6 este trimestre</p>
+        </div>
+        <div class="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center">
+          <p class="text-[11px] text-[#8B8B8B] mb-1">Aprendices Activos</p>
+          <p class="text-[26px] font-bold text-[#1F114C]">234</p>
+          <p class="text-[10px] text-green-500 font-medium">+18 vs mes anterior</p>
+        </div>
+        <div class="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center">
+          <p class="text-[11px] text-[#8B8B8B] mb-1">Horas Formacion Prom.</p>
+          <p class="text-[26px] font-bold text-[#1F114C]">14.2h</p>
+          <p class="text-[10px] text-[#8B8B8B]">por empleado/mes</p>
+        </div>
+        <div class="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center">
+          <p class="text-[11px] text-[#8B8B8B] mb-1">Certificaciones</p>
+          <p class="text-[26px] font-bold text-green-600">128</p>
+          <p class="text-[10px] text-green-500 font-medium">+22 este mes</p>
+        </div>
+        <div class="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center">
+          <p class="text-[11px] text-[#8B8B8B] mb-1">Reduccion Brechas</p>
+          <p class="text-[26px] font-bold text-green-600">31%</p>
+          <p class="text-[10px] text-green-500 font-medium">vs evaluacion anterior</p>
+        </div>
+      </div>
+
+      <!-- MIDDLE: 2-column -->
+      <div class="flex gap-4 mb-4">
+
+        <!-- LEFT: Catalogo de Cursos (~55%) -->
+        <div class="w-[55%] bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 flex flex-col" style="max-height:370px;">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-[13px] font-semibold text-[#1F114C]">Catalogo de Cursos</h3>
+            <div class="flex items-center gap-1">
+              <input type="text" placeholder="Buscar curso..." class="border border-[#EDEDED] rounded-lg px-2.5 h-7 text-[11px] w-[140px] outline-none focus:border-[#1F114C]">
+            </div>
+          </div>
+          <!-- Filter Tabs -->
+          <div class="flex gap-1 mb-3">
+            <button class="px-3 py-1 rounded-full text-[11px] font-medium bg-[#1F114C] text-white">Todos</button>
+            <button class="px-3 py-1 rounded-full text-[11px] font-medium bg-[#F6F6F6] text-[#585858] hover:bg-[#EDEDED]">Obligatorios</button>
+            <button class="px-3 py-1 rounded-full text-[11px] font-medium bg-[#F6F6F6] text-[#585858] hover:bg-[#EDEDED]">Por Brecha</button>
+            <button class="px-3 py-1 rounded-full text-[11px] font-medium bg-[#F6F6F6] text-[#585858] hover:bg-[#EDEDED]">Empresa</button>
+          </div>
+          <!-- Course List -->
+          <div class="flex-1 overflow-y-auto scrollbar-thin space-y-2">
+            <!-- Course 1 -->
+            <div class="border border-[#EDEDED] rounded-lg p-3 hover:border-[#1F114C]/20 cursor-pointer">
+              <div class="flex items-center justify-between mb-1.5">
+                <div class="flex items-center gap-2">
+                  <span class="text-[12px] font-medium text-[#333]">Seguridad Industrial Avanzada</span>
+                  <span class="px-1.5 py-0.5 rounded text-[9px] font-medium bg-red-50 text-[#DD0C15]">Obligatorio</span>
+                </div>
+                <span class="text-[10px] text-[#8B8B8B]">8h</span>
+              </div>
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                  <span class="text-[10px] text-[#8B8B8B]">89 inscritos</span>
+                  <span class="text-[10px] text-[#8B8B8B]">Certificacion</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <div class="w-[80px] h-1.5 bg-[#EDEDED] rounded-full"><div class="h-full bg-green-500 rounded-full" style="width:78%"></div></div>
+                  <span class="text-[10px] font-medium text-green-600">78%</span>
+                </div>
+              </div>
+            </div>
+            <!-- Course 2 -->
+            <div class="border border-[#EDEDED] rounded-lg p-3 hover:border-[#1F114C]/20 cursor-pointer">
+              <div class="flex items-center justify-between mb-1.5">
+                <div class="flex items-center gap-2">
+                  <span class="text-[12px] font-medium text-[#333]">Liderazgo y Gestion de Equipos</span>
+                  <span class="px-1.5 py-0.5 rounded text-[9px] font-medium bg-purple-50 text-purple-600">Por Brecha</span>
+                </div>
+                <span class="text-[10px] text-[#8B8B8B]">12h</span>
+              </div>
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                  <span class="text-[10px] text-[#8B8B8B]">45 inscritos</span>
+                  <span class="text-[10px] text-[#8B8B8B]">eLearning</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <div class="w-[80px] h-1.5 bg-[#EDEDED] rounded-full"><div class="h-full bg-amber-500 rounded-full" style="width:52%"></div></div>
+                  <span class="text-[10px] font-medium text-amber-600">52%</span>
+                </div>
+              </div>
+            </div>
+            <!-- Course 3 -->
+            <div class="border border-[#EDEDED] rounded-lg p-3 hover:border-[#1F114C]/20 cursor-pointer">
+              <div class="flex items-center justify-between mb-1.5">
+                <div class="flex items-center gap-2">
+                  <span class="text-[12px] font-medium text-[#333]">Normativa Aduanera LATAM 2026</span>
+                  <span class="px-1.5 py-0.5 rounded text-[9px] font-medium bg-red-50 text-[#DD0C15]">Obligatorio</span>
+                </div>
+                <span class="text-[10px] text-[#8B8B8B]">6h</span>
+              </div>
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                  <span class="text-[10px] text-[#8B8B8B]">112 inscritos</span>
+                  <span class="text-[10px] text-[#8B8B8B]">Presencial</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <div class="w-[80px] h-1.5 bg-[#EDEDED] rounded-full"><div class="h-full bg-green-500 rounded-full" style="width:91%"></div></div>
+                  <span class="text-[10px] font-medium text-green-600">91%</span>
+                </div>
+              </div>
+            </div>
+            <!-- Course 4 -->
+            <div class="border border-[#EDEDED] rounded-lg p-3 hover:border-[#1F114C]/20 cursor-pointer">
+              <div class="flex items-center justify-between mb-1.5">
+                <div class="flex items-center gap-2">
+                  <span class="text-[12px] font-medium text-[#333]">Excel Avanzado para Logistica</span>
+                  <span class="px-1.5 py-0.5 rounded text-[9px] font-medium bg-blue-50 text-blue-600">Empresa</span>
+                </div>
+                <span class="text-[10px] text-[#8B8B8B]">4h</span>
+              </div>
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                  <span class="text-[10px] text-[#8B8B8B]">67 inscritos</span>
+                  <span class="text-[10px] text-[#8B8B8B]">eLearning</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <div class="w-[80px] h-1.5 bg-[#EDEDED] rounded-full"><div class="h-full bg-green-500 rounded-full" style="width:85%"></div></div>
+                  <span class="text-[10px] font-medium text-green-600">85%</span>
+                </div>
+              </div>
+            </div>
+            <!-- Course 5 -->
+            <div class="border border-[#EDEDED] rounded-lg p-3 hover:border-[#1F114C]/20 cursor-pointer">
+              <div class="flex items-center justify-between mb-1.5">
+                <div class="flex items-center gap-2">
+                  <span class="text-[12px] font-medium text-[#333]">Comunicacion Efectiva</span>
+                  <span class="px-1.5 py-0.5 rounded text-[9px] font-medium bg-purple-50 text-purple-600">Por Brecha</span>
+                </div>
+                <span class="text-[10px] text-[#8B8B8B]">5h</span>
+              </div>
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                  <span class="text-[10px] text-[#8B8B8B]">38 inscritos</span>
+                  <span class="text-[10px] text-[#8B8B8B]">Hibrido</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <div class="w-[80px] h-1.5 bg-[#EDEDED] rounded-full"><div class="h-full bg-amber-500 rounded-full" style="width:41%"></div></div>
+                  <span class="text-[10px] font-medium text-amber-600">41%</span>
+                </div>
+              </div>
+            </div>
+            <!-- Course 6 -->
+            <div class="border border-[#EDEDED] rounded-lg p-3 hover:border-[#1F114C]/20 cursor-pointer">
+              <div class="flex items-center justify-between mb-1.5">
+                <div class="flex items-center gap-2">
+                  <span class="text-[12px] font-medium text-[#333]">Manejo de Cargas Peligrosas</span>
+                  <span class="px-1.5 py-0.5 rounded text-[9px] font-medium bg-red-50 text-[#DD0C15]">Obligatorio</span>
+                </div>
+                <span class="text-[10px] text-[#8B8B8B]">10h</span>
+              </div>
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                  <span class="text-[10px] text-[#8B8B8B]">54 inscritos</span>
+                  <span class="text-[10px] text-[#8B8B8B]">Certificacion</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <div class="w-[80px] h-1.5 bg-[#EDEDED] rounded-full"><div class="h-full bg-green-500 rounded-full" style="width:66%"></div></div>
+                  <span class="text-[10px] font-medium text-green-600">66%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- RIGHT (~45%) -->
+        <div class="w-[45%] flex flex-col gap-4">
+
+          <!-- Rutas de Aprendizaje por Brecha -->
+          <div class="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5" style="max-height:195px;">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-[13px] font-semibold text-[#1F114C]">Rutas de Aprendizaje por Brecha</h3>
+              <span class="text-[10px] text-[#8B8B8B]">Generado por IA</span>
+            </div>
+            <div class="space-y-2.5 overflow-y-auto scrollbar-thin" style="max-height:130px;">
+              <!-- Path 1 -->
+              <div class="flex items-center gap-3">
+                <div class="flex items-center gap-1 shrink-0">
+                  <div class="w-5 h-5 rounded-full bg-[#1F114C] text-white text-[8px] flex items-center justify-center font-bold">1</div>
+                  <div class="w-4 h-0.5 bg-[#1F114C]"></div>
+                  <div class="w-5 h-5 rounded-full bg-[#1F114C] text-white text-[8px] flex items-center justify-center font-bold">2</div>
+                  <div class="w-4 h-0.5 bg-[#1F114C]"></div>
+                  <div class="w-5 h-5 rounded-full bg-amber-500 text-white text-[8px] flex items-center justify-center font-bold">3</div>
+                  <div class="w-4 h-0.5 bg-[#EDEDED]"></div>
+                  <div class="w-5 h-5 rounded-full bg-[#EDEDED] text-[#8B8B8B] text-[8px] flex items-center justify-center font-bold">4</div>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <p class="text-[11px] font-medium text-[#333] truncate">Liderazgo Operacional</p>
+                  <p class="text-[10px] text-[#8B8B8B]">23 personas asignadas &middot; 4 cursos</p>
+                </div>
+                <span class="text-[10px] font-medium text-amber-600 shrink-0">62%</span>
+              </div>
+              <!-- Path 2 -->
+              <div class="flex items-center gap-3">
+                <div class="flex items-center gap-1 shrink-0">
+                  <div class="w-5 h-5 rounded-full bg-[#1F114C] text-white text-[8px] flex items-center justify-center font-bold">1</div>
+                  <div class="w-4 h-0.5 bg-[#1F114C]"></div>
+                  <div class="w-5 h-5 rounded-full bg-amber-500 text-white text-[8px] flex items-center justify-center font-bold">2</div>
+                  <div class="w-4 h-0.5 bg-[#EDEDED]"></div>
+                  <div class="w-5 h-5 rounded-full bg-[#EDEDED] text-[#8B8B8B] text-[8px] flex items-center justify-center font-bold">3</div>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <p class="text-[11px] font-medium text-[#333] truncate">Competencias Digitales</p>
+                  <p class="text-[10px] text-[#8B8B8B]">41 personas asignadas &middot; 3 cursos</p>
+                </div>
+                <span class="text-[10px] font-medium text-amber-600 shrink-0">38%</span>
+              </div>
+              <!-- Path 3 -->
+              <div class="flex items-center gap-3">
+                <div class="flex items-center gap-1 shrink-0">
+                  <div class="w-5 h-5 rounded-full bg-[#1F114C] text-white text-[8px] flex items-center justify-center font-bold">1</div>
+                  <div class="w-4 h-0.5 bg-[#1F114C]"></div>
+                  <div class="w-5 h-5 rounded-full bg-[#1F114C] text-white text-[8px] flex items-center justify-center font-bold">2</div>
+                  <div class="w-4 h-0.5 bg-[#1F114C]"></div>
+                  <div class="w-5 h-5 rounded-full bg-[#1F114C] text-white text-[8px] flex items-center justify-center font-bold">3</div>
+                  <div class="w-4 h-0.5 bg-[#1F114C]"></div>
+                  <div class="w-5 h-5 rounded-full bg-green-500 text-white text-[8px] flex items-center justify-center font-bold">4</div>
+                  <div class="w-4 h-0.5 bg-green-500"></div>
+                  <div class="w-5 h-5 rounded-full bg-green-500 text-white text-[8px] flex items-center justify-center font-bold">5</div>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <p class="text-[11px] font-medium text-[#333] truncate">Cumplimiento Normativo</p>
+                  <p class="text-[10px] text-[#8B8B8B]">56 personas asignadas &middot; 5 cursos</p>
+                </div>
+                <span class="text-[10px] font-medium text-green-600 shrink-0">94%</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Pre-test / Post-test Impact -->
+          <div class="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 flex-1" style="max-height:165px;">
+            <h3 class="text-[13px] font-semibold text-[#1F114C] mb-3">Impacto Pre-test / Post-test</h3>
+            <div class="space-y-2.5 overflow-y-auto scrollbar-thin" style="max-height:110px;">
+              <!-- Item 1 -->
+              <div class="flex items-center gap-3">
+                <p class="text-[11px] text-[#333] w-[140px] truncate shrink-0">Seguridad Industrial</p>
+                <div class="flex items-center gap-1.5 flex-1">
+                  <div class="flex items-center gap-1">
+                    <span class="text-[10px] text-[#DD0C15] font-medium w-[28px] text-right">42%</span>
+                    <div class="w-[60px] h-1.5 bg-[#EDEDED] rounded-full"><div class="h-full bg-[#DD0C15]/40 rounded-full" style="width:42%"></div></div>
+                  </div>
+                  <svg class="w-3 h-3 text-green-500 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+                  <div class="flex items-center gap-1">
+                    <div class="w-[60px] h-1.5 bg-[#EDEDED] rounded-full"><div class="h-full bg-green-500 rounded-full" style="width:87%"></div></div>
+                    <span class="text-[10px] text-green-600 font-medium w-[28px]">87%</span>
+                  </div>
+                </div>
+                <span class="text-[10px] font-bold text-green-600 shrink-0">+45</span>
+              </div>
+              <!-- Item 2 -->
+              <div class="flex items-center gap-3">
+                <p class="text-[11px] text-[#333] w-[140px] truncate shrink-0">Normativa Aduanera</p>
+                <div class="flex items-center gap-1.5 flex-1">
+                  <div class="flex items-center gap-1">
+                    <span class="text-[10px] text-[#DD0C15] font-medium w-[28px] text-right">38%</span>
+                    <div class="w-[60px] h-1.5 bg-[#EDEDED] rounded-full"><div class="h-full bg-[#DD0C15]/40 rounded-full" style="width:38%"></div></div>
+                  </div>
+                  <svg class="w-3 h-3 text-green-500 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+                  <div class="flex items-center gap-1">
+                    <div class="w-[60px] h-1.5 bg-[#EDEDED] rounded-full"><div class="h-full bg-green-500 rounded-full" style="width:79%"></div></div>
+                    <span class="text-[10px] text-green-600 font-medium w-[28px]">79%</span>
+                  </div>
+                </div>
+                <span class="text-[10px] font-bold text-green-600 shrink-0">+41</span>
+              </div>
+              <!-- Item 3 -->
+              <div class="flex items-center gap-3">
+                <p class="text-[11px] text-[#333] w-[140px] truncate shrink-0">Liderazgo Equipos</p>
+                <div class="flex items-center gap-1.5 flex-1">
+                  <div class="flex items-center gap-1">
+                    <span class="text-[10px] text-amber-500 font-medium w-[28px] text-right">51%</span>
+                    <div class="w-[60px] h-1.5 bg-[#EDEDED] rounded-full"><div class="h-full bg-amber-400 rounded-full" style="width:51%"></div></div>
+                  </div>
+                  <svg class="w-3 h-3 text-green-500 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+                  <div class="flex items-center gap-1">
+                    <div class="w-[60px] h-1.5 bg-[#EDEDED] rounded-full"><div class="h-full bg-green-500 rounded-full" style="width:74%"></div></div>
+                    <span class="text-[10px] text-green-600 font-medium w-[28px]">74%</span>
+                  </div>
+                </div>
+                <span class="text-[10px] font-bold text-green-600 shrink-0">+23</span>
+              </div>
+              <!-- Item 4 -->
+              <div class="flex items-center gap-3">
+                <p class="text-[11px] text-[#333] w-[140px] truncate shrink-0">Excel Logistica</p>
+                <div class="flex items-center gap-1.5 flex-1">
+                  <div class="flex items-center gap-1">
+                    <span class="text-[10px] text-amber-500 font-medium w-[28px] text-right">55%</span>
+                    <div class="w-[60px] h-1.5 bg-[#EDEDED] rounded-full"><div class="h-full bg-amber-400 rounded-full" style="width:55%"></div></div>
+                  </div>
+                  <svg class="w-3 h-3 text-green-500 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+                  <div class="flex items-center gap-1">
+                    <div class="w-[60px] h-1.5 bg-[#EDEDED] rounded-full"><div class="h-full bg-green-500 rounded-full" style="width:88%"></div></div>
+                    <span class="text-[10px] text-green-600 font-medium w-[28px]">88%</span>
+                  </div>
+                </div>
+                <span class="text-[10px] font-bold text-green-600 shrink-0">+33</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- BOTTOM ROW -->
+      <div class="flex gap-4">
+
+        <!-- Team Progress Table -->
+        <div class="w-[60%] bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-[13px] font-semibold text-[#1F114C]">Avance por Equipo</h3>
+            <span class="text-[10px] text-[#8B8B8B]">Ultimo periodo</span>
+          </div>
+          <table class="w-full text-left">
+            <thead>
+              <tr class="bg-[#FAFAFA]">
+                <th class="text-[11px] text-[#585858] font-medium px-3 py-2 rounded-l-lg">Equipo</th>
+                <th class="text-[11px] text-[#585858] font-medium px-2 py-2 text-center">Miembros</th>
+                <th class="text-[11px] text-[#585858] font-medium px-2 py-2 text-center">Hrs Prom.</th>
+                <th class="text-[11px] text-[#585858] font-medium px-2 py-2 text-center">Cursos</th>
+                <th class="text-[11px] text-[#585858] font-medium px-2 py-2 text-center">Certif.</th>
+                <th class="text-[11px] text-[#585858] font-medium px-2 py-2 text-center rounded-r-lg">Completado</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="border-b border-[#F6F6F6]">
+                <td class="px-3 py-2.5 text-[11px] text-[#333] font-medium">Operaciones Maritimas</td>
+                <td class="px-2 py-2.5 text-[11px] text-[#585858] text-center">42</td>
+                <td class="px-2 py-2.5 text-[11px] text-[#585858] text-center">16.8h</td>
+                <td class="px-2 py-2.5 text-[11px] text-[#585858] text-center">12</td>
+                <td class="px-2 py-2.5 text-[11px] text-[#585858] text-center">34</td>
+                <td class="px-2 py-2.5 text-center">
+                  <div class="flex items-center justify-center gap-1.5">
+                    <div class="w-[50px] h-1.5 bg-[#EDEDED] rounded-full"><div class="h-full bg-green-500 rounded-full" style="width:92%"></div></div>
+                    <span class="text-[10px] font-medium text-green-600">92%</span>
+                  </div>
+                </td>
+              </tr>
+              <tr class="border-b border-[#F6F6F6]">
+                <td class="px-3 py-2.5 text-[11px] text-[#333] font-medium">Logistica Terrestre</td>
+                <td class="px-2 py-2.5 text-[11px] text-[#585858] text-center">38</td>
+                <td class="px-2 py-2.5 text-[11px] text-[#585858] text-center">14.2h</td>
+                <td class="px-2 py-2.5 text-[11px] text-[#585858] text-center">9</td>
+                <td class="px-2 py-2.5 text-[11px] text-[#585858] text-center">28</td>
+                <td class="px-2 py-2.5 text-center">
+                  <div class="flex items-center justify-center gap-1.5">
+                    <div class="w-[50px] h-1.5 bg-[#EDEDED] rounded-full"><div class="h-full bg-green-500 rounded-full" style="width:81%"></div></div>
+                    <span class="text-[10px] font-medium text-green-600">81%</span>
+                  </div>
+                </td>
+              </tr>
+              <tr class="border-b border-[#F6F6F6]">
+                <td class="px-3 py-2.5 text-[11px] text-[#333] font-medium">Aduanas y Comercio</td>
+                <td class="px-2 py-2.5 text-[11px] text-[#585858] text-center">29</td>
+                <td class="px-2 py-2.5 text-[11px] text-[#585858] text-center">18.5h</td>
+                <td class="px-2 py-2.5 text-[11px] text-[#585858] text-center">14</td>
+                <td class="px-2 py-2.5 text-[11px] text-[#585858] text-center">26</td>
+                <td class="px-2 py-2.5 text-center">
+                  <div class="flex items-center justify-center gap-1.5">
+                    <div class="w-[50px] h-1.5 bg-[#EDEDED] rounded-full"><div class="h-full bg-green-500 rounded-full" style="width:88%"></div></div>
+                    <span class="text-[10px] font-medium text-green-600">88%</span>
+                  </div>
+                </td>
+              </tr>
+              <tr class="border-b border-[#F6F6F6]">
+                <td class="px-3 py-2.5 text-[11px] text-[#333] font-medium">Almacenamiento</td>
+                <td class="px-2 py-2.5 text-[11px] text-[#585858] text-center">51</td>
+                <td class="px-2 py-2.5 text-[11px] text-[#585858] text-center">11.3h</td>
+                <td class="px-2 py-2.5 text-[11px] text-[#585858] text-center">7</td>
+                <td class="px-2 py-2.5 text-[11px] text-[#585858] text-center">18</td>
+                <td class="px-2 py-2.5 text-center">
+                  <div class="flex items-center justify-center gap-1.5">
+                    <div class="w-[50px] h-1.5 bg-[#EDEDED] rounded-full"><div class="h-full bg-amber-500 rounded-full" style="width:63%"></div></div>
+                    <span class="text-[10px] font-medium text-amber-600">63%</span>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td class="px-3 py-2.5 text-[11px] text-[#333] font-medium">Admin & Finanzas</td>
+                <td class="px-2 py-2.5 text-[11px] text-[#585858] text-center">24</td>
+                <td class="px-2 py-2.5 text-[11px] text-[#585858] text-center">9.7h</td>
+                <td class="px-2 py-2.5 text-[11px] text-[#585858] text-center">6</td>
+                <td class="px-2 py-2.5 text-[11px] text-[#585858] text-center">12</td>
+                <td class="px-2 py-2.5 text-center">
+                  <div class="flex items-center justify-center gap-1.5">
+                    <div class="w-[50px] h-1.5 bg-[#EDEDED] rounded-full"><div class="h-full bg-amber-500 rounded-full" style="width:57%"></div></div>
+                    <span class="text-[10px] font-medium text-amber-600">57%</span>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- AI Recommendations -->
+        <div class="w-[40%] bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
+          <div class="flex items-center gap-2 mb-3">
+            <div class="w-5 h-5 rounded-md bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center">
+              <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg>
+            </div>
+            <h3 class="text-[13px] font-semibold text-[#1F114C]">Recomendaciones IA</h3>
+          </div>
+          <div class="space-y-2.5">
+            <!-- Rec 1 -->
+            <div class="border border-[#EDEDED] rounded-lg p-3">
+              <div class="flex items-center justify-between mb-1">
+                <p class="text-[11px] font-medium text-[#333]">Gestion de Conflictos Laborales</p>
+                <span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-green-50 text-green-600">94%</span>
+              </div>
+              <p class="text-[10px] text-[#8B8B8B] mb-1.5">Recomendado para: Supervisores con brecha en comunicacion</p>
+              <div class="flex items-center gap-2">
+                <span class="text-[9px] px-1.5 py-0.5 rounded bg-purple-50 text-purple-600">Brecha: Comunicacion</span>
+                <span class="text-[9px] text-[#8B8B8B]">12 personas afectadas</span>
+              </div>
+            </div>
+            <!-- Rec 2 -->
+            <div class="border border-[#EDEDED] rounded-lg p-3">
+              <div class="flex items-center justify-between mb-1">
+                <p class="text-[11px] font-medium text-[#333]">Power BI para Operaciones</p>
+                <span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-green-50 text-green-600">89%</span>
+              </div>
+              <p class="text-[10px] text-[#8B8B8B] mb-1.5">Recomendado para: Analistas y coordinadores logisticos</p>
+              <div class="flex items-center gap-2">
+                <span class="text-[9px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600">Brecha: Datos</span>
+                <span class="text-[9px] text-[#8B8B8B]">8 personas afectadas</span>
+              </div>
+            </div>
+            <!-- Rec 3 -->
+            <div class="border border-[#EDEDED] rounded-lg p-3">
+              <div class="flex items-center justify-between mb-1">
+                <p class="text-[11px] font-medium text-[#333]">Metodologias Agiles en Logistica</p>
+                <span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-50 text-amber-600">76%</span>
+              </div>
+              <p class="text-[10px] text-[#8B8B8B] mb-1.5">Recomendado para: Jefes de area con baja eficiencia</p>
+              <div class="flex items-center gap-2">
+                <span class="text-[9px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-600">Brecha: Gestion</span>
+                <span class="text-[9px] text-[#8B8B8B]">15 personas afectadas</span>
+              </div>
+            </div>
+            <!-- Rec 4 -->
+            <div class="border border-[#EDEDED] rounded-lg p-3">
+              <div class="flex items-center justify-between mb-1">
+                <p class="text-[11px] font-medium text-[#333]">Ingles Tecnico Maritimo B2</p>
+                <span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-50 text-amber-600">71%</span>
+              </div>
+              <p class="text-[10px] text-[#8B8B8B] mb-1.5">Recomendado para: Operadores con contacto internacional</p>
+              <div class="flex items-center gap-2">
+                <span class="text-[9px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600">Brecha: Idiomas</span>
+                <span class="text-[9px] text-[#8B8B8B]">21 personas afectadas</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

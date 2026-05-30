@@ -1,0 +1,88 @@
+model Interview {
+  id              String    @id @default(uuid()) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  candidateId     String    @map("candidate_id") @db.Uuid
+  vacancyId       String    @map("vacancy_id") @db.Uuid
+  applicationId   String?   @map("application_id") @db.Uuid
+  type            String
+  status          String    @default("scheduled")
+  scheduledAt     DateTime  @map("scheduled_at")
+  duration        Int
+  location        String?
+  meetingUrl      String?   @map("meeting_url")
+  recordingUrl    String?   @map("recording_url")
+  transcriptUrl   String?   @map("transcript_url")
+  notes           String?
+  cancelledAt     DateTime? @map("cancelled_at")
+  cancelReason    String?   @map("cancel_reason")
+  createdById     String    @map("created_by_id") @db.Uuid
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  candidate   Candidate              @relation("CandidateInterviews", fields: [candidateId], references: [id])
+  vacancy     Vacancy                @relation(fields: [vacancyId], references: [id], onDelete: Cascade)
+  application Application?           @relation("ApplicationInterviews", fields: [applicationId], references: [id])
+  creator     User                   @relation("InterviewCreator", fields: [createdById], references: [id])
+  evaluators  InterviewEvaluator[]
+  scorecards  InterviewScorecard[]
+  summary     InterviewSummary?
+
+  @@index([organizationId])
+  @@index([organizationId, scheduledAt])
+  @@index([candidateId])
+  @@index([vacancyId])
+  @@map("interviews")
+}
+
+model InterviewEvaluator {
+  id          String   @id @default(uuid()) @db.Uuid
+  interviewId String   @map("interview_id") @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  role        String
+  status      String   @default("pending")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  interview Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  user      User      @relation("InterviewEvaluatorUser", fields: [userId], references: [id])
+
+  @@unique([interviewId, userId])
+  @@map("interview_evaluators")
+}
+
+model InterviewScorecard {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  interviewId    String    @map("interview_id") @db.Uuid
+  evaluatorId    String    @map("evaluator_id") @db.Uuid
+  ratings        Json
+  recommendation String
+  overallNotes   String?   @map("overall_notes")
+  biasFlags      Json?     @map("bias_flags")
+  submittedAt    DateTime? @map("submitted_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  interview Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  evaluator User      @relation("ScorecardEvaluator", fields: [evaluatorId], references: [id])
+
+  @@unique([interviewId, evaluatorId])
+  @@index([organizationId])
+  @@map("interview_scorecards")
+}
+
+model InterviewSummary {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  interviewId    String   @unique @map("interview_id") @db.Uuid
+  summary        String
+  keyPoints      Json     @map("key_points")
+  strengths      Json
+  concerns       Json
+  generatedAt    DateTime @default(now()) @map("generated_at")
+  model          String?
+
+  interview Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("interview_summaries")
+}

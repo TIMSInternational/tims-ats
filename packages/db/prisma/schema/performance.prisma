@@ -1,0 +1,116 @@
+model Okr {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  teamId         String?  @map("team_id") @db.Uuid
+  title          String
+  period         String
+  status         String   @default("active")
+  progress       Float    @default(0)
+  createdById    String   @map("created_by_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  user           User       @relation("OkrUser", fields: [userId], references: [id], onDelete: Cascade)
+  team           Team?      @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  creator        User       @relation("OkrCreator", fields: [createdById], references: [id])
+  keyResults     KeyResult[]
+
+  @@index([organizationId])
+  @@map("okrs")
+}
+
+model KeyResult {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  okrId          String   @map("okr_id") @db.Uuid
+  title          String
+  targetValue    Float    @map("target_value")
+  currentValue   Float    @default(0) @map("current_value")
+  unit           String?
+  status         String   @default("on_track")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  okr            Okr @relation(fields: [okrId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([okrId])
+  @@map("key_results")
+}
+
+model CoachingSession {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  leaderId       String    @map("leader_id") @db.Uuid
+  scheduledAt    DateTime  @map("scheduled_at")
+  duration       Int?
+  topic          String
+  type           String    @default("scheduled")
+  status         String    @default("scheduled")
+  notes          String?
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  employee       User         @relation("CoachingEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+  leader         User         @relation("CoachingLeader", fields: [leaderId], references: [id], onDelete: Cascade)
+  commitments    Commitment[]
+
+  @@index([organizationId])
+  @@map("coaching_sessions")
+}
+
+model Commitment {
+  id                String    @id @default(uuid()) @db.Uuid
+  organizationId    String    @map("organization_id") @db.Uuid
+  employeeId        String    @map("employee_id") @db.Uuid
+  coachingSessionId String?   @map("coaching_session_id") @db.Uuid
+  description       String
+  dueDate           DateTime  @map("due_date")
+  status            String    @default("pending")
+  completedAt       DateTime? @map("completed_at")
+  createdById       String    @map("created_by_id") @db.Uuid
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  employee          User             @relation("CommitmentEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+  session           CoachingSession? @relation(fields: [coachingSessionId], references: [id], onDelete: SetNull)
+  creator           User             @relation("CommitmentCreator", fields: [createdById], references: [id])
+
+  @@index([organizationId])
+  @@index([coachingSessionId])
+  @@map("commitments")
+}
+
+model Feedback {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  fromUserId     String   @map("from_user_id") @db.Uuid
+  toUserId       String   @map("to_user_id") @db.Uuid
+  type           String
+  message        String
+  isAnonymous    Boolean  @default(false) @map("is_anonymous")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  fromUser       User @relation("FeedbackFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUser         User @relation("FeedbackTo", fields: [toUserId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("feedbacks")
+}
+
+model Recognition {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  fromUserId     String   @map("from_user_id") @db.Uuid
+  toUserId       String   @map("to_user_id") @db.Uuid
+  category       String
+  message        String
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  fromUser       User @relation("RecognitionFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUser         User @relation("RecognitionTo", fields: [toUserId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("recognitions")
+}

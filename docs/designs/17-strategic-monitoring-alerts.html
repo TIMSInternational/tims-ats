@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TIMS ATS — Monitoreo Estrategico & Alertas</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>body{font-family:'Inter',sans-serif;margin:0;background:#F6F6F6;} .scrollbar-thin::-webkit-scrollbar{width:4px;} .scrollbar-thin::-webkit-scrollbar-thumb{background:#ccc;border-radius:4px;}</style>
+</head>
+<body>
+<div class="flex w-[1440px] h-[900px] mx-auto overflow-hidden">
+
+  <!-- SIDEBAR COMPACT -->
+  <div class="flex flex-col w-[72px] h-full bg-[#1F114C] shrink-0 items-center">
+    <div class="flex items-center justify-center h-[80px] border-b border-white/10 w-full"><div class="w-9 h-9 rounded-lg bg-[#DD0C15] flex items-center justify-center"><span class="text-white text-[13px] font-bold">T</span></div></div>
+    <nav class="flex-1 py-3 flex flex-col items-center gap-1 w-full">
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center bg-white/10"><svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></a>
+      <div class="w-8 border-t border-white/10 my-2"></div>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a4 4 0 00-8 0v2"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75z"/></svg></a>
+      <div class="w-8 border-t border-white/10 my-2"></div>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z"/></svg></a>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M15.59 14.37a6 6 0 01-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 006.16-12.12A14.98 14.98 0 009.631 8.41m5.96 5.96a14.926 14.926 0 01-5.841 2.58m-.119-8.54a6 6 0 00-7.381 5.84h4.8m2.58-5.84a14.927 14.927 0 00-2.58 5.84"/></svg></a>
+      <div class="w-8 border-t border-white/10 my-2"></div>
+      <a class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10"><svg class="w-5 h-5 text-white/60" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281"/><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg></a>
+    </nav>
+    <div class="py-3 border-t border-white/10 flex justify-center"><div class="w-9 h-9 rounded-full bg-[#DD0C15] flex items-center justify-center text-white text-[11px] font-bold">FT</div></div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="flex flex-col flex-1 min-w-0">
+    <!-- TOP BAR -->
+    <div class="flex items-center justify-between px-6 h-16 bg-white border-b border-[#EDEDED] shrink-0">
+      <div class="flex items-center gap-2">
+        <span class="text-[13px] text-[#8B8B8B]">Estrategia</span><svg class="w-3 h-3 text-[#ccc]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+        <span class="text-sm font-medium text-[#1F114C]">Monitoreo Estrategico</span>
+      </div>
+      <div class="flex items-center gap-3">
+        <button class="flex items-center gap-1.5 border border-[#EDEDED] text-[#585858] px-3 h-8 rounded-lg text-[12px]"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>Exportar</button>
+        <button class="flex items-center gap-1.5 bg-[#DD0C15] text-white px-4 h-8 rounded-lg text-[12px] font-medium"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"/></svg>Configurar Alertas</button>
+      </div>
+    </div>
+
+    <!-- CONTENT -->
+    <div class="flex-1 overflow-hidden p-5">
+      <div class="flex flex-col h-full gap-4">
+
+        <!-- ROW 1: EXECUTIVE KPI CARDS -->
+        <div class="grid grid-cols-6 gap-3 shrink-0">
+          <div class="bg-white rounded-xl p-3.5 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center">
+            <p class="text-[10px] text-[#8B8B8B] mb-0.5 uppercase tracking-wide">Headcount</p>
+            <p class="text-[26px] font-bold text-[#1F114C] leading-tight">1,247</p>
+            <p class="text-[10px] text-green-500 font-medium mt-0.5">+18 vs mes anterior</p>
+          </div>
+          <div class="bg-white rounded-xl p-3.5 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center">
+            <p class="text-[10px] text-[#8B8B8B] mb-0.5 uppercase tracking-wide">Vacantes Abiertas</p>
+            <p class="text-[26px] font-bold text-[#1F114C] leading-tight">23</p>
+            <p class="text-[10px] text-amber-500 font-medium mt-0.5">5 criticas</p>
+          </div>
+          <div class="bg-white rounded-xl p-3.5 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center">
+            <p class="text-[10px] text-[#8B8B8B] mb-0.5 uppercase tracking-wide">Time-to-Fill Prom.</p>
+            <p class="text-[26px] font-bold text-[#1F114C] leading-tight">34d</p>
+            <p class="text-[10px] text-green-500 font-medium mt-0.5">-6d vs trimestre ant.</p>
+          </div>
+          <div class="bg-white rounded-xl p-3.5 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center">
+            <p class="text-[10px] text-[#8B8B8B] mb-0.5 uppercase tracking-wide">Rotacion</p>
+            <p class="text-[26px] font-bold text-amber-500 leading-tight">8.2%</p>
+            <p class="text-[10px] text-amber-500 font-medium mt-0.5">+1.1% vs objetivo</p>
+          </div>
+          <div class="bg-white rounded-xl p-3.5 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center">
+            <p class="text-[10px] text-[#8B8B8B] mb-0.5 uppercase tracking-wide">eNPS</p>
+            <p class="text-[26px] font-bold text-green-600 leading-tight">+42</p>
+            <p class="text-[10px] text-green-500 font-medium mt-0.5">+5 vs encuesta ant.</p>
+          </div>
+          <div class="bg-white rounded-xl p-3.5 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center">
+            <p class="text-[10px] text-[#8B8B8B] mb-0.5 uppercase tracking-wide">Hrs. Capacitacion</p>
+            <p class="text-[26px] font-bold text-[#1F114C] leading-tight">12.4</p>
+            <p class="text-[10px] text-green-500 font-medium mt-0.5">hrs/persona este Q</p>
+          </div>
+        </div>
+
+        <!-- ROW 2: Module Health + Alerts -->
+        <div class="flex gap-4 flex-1 min-h-0">
+
+          <!-- MODULE HEALTH GRID -->
+          <div class="flex-1 min-w-0">
+            <div class="grid grid-cols-3 gap-3 h-full">
+
+              <!-- Recruiting -->
+              <div class="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] flex flex-col justify-between">
+                <div>
+                  <div class="flex items-center justify-between mb-2">
+                    <div class="flex items-center gap-2">
+                      <div class="w-2.5 h-2.5 rounded-full bg-green-400"></div>
+                      <span class="text-[13px] font-semibold text-[#333]">Reclutamiento</span>
+                    </div>
+                    <span class="text-[10px] text-green-600 bg-green-50 px-1.5 py-0.5 rounded font-medium">Saludable</span>
+                  </div>
+                  <div class="space-y-1.5">
+                    <div class="flex justify-between"><span class="text-[11px] text-[#8B8B8B]">Pipeline Activo</span><span class="text-[11px] font-semibold text-[#333]">142 candidatos</span></div>
+                    <div class="flex justify-between"><span class="text-[11px] text-[#8B8B8B]">Tasa Conversion</span><span class="text-[11px] font-semibold text-[#333]">18.3%</span></div>
+                  </div>
+                </div>
+                <div class="flex items-center gap-1 mt-2">
+                  <svg class="w-3 h-3 text-green-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4.5 19.5l15-15m0 0H8.25m11.25 0v11.25"/></svg>
+                  <!-- Sparkline -->
+                  <svg class="w-full h-6" viewBox="0 0 120 24"><polyline fill="none" stroke="#22c55e" stroke-width="1.5" points="0,18 20,16 40,14 60,12 80,10 100,8 120,6"/></svg>
+                </div>
+              </div>
+
+              <!-- Onboarding -->
+              <div class="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] flex flex-col justify-between">
+                <div>
+                  <div class="flex items-center justify-between mb-2">
+                    <div class="flex items-center gap-2">
+                      <div class="w-2.5 h-2.5 rounded-full bg-amber-400"></div>
+                      <span class="text-[13px] font-semibold text-[#333]">Onboarding</span>
+                    </div>
+                    <span class="text-[10px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded font-medium">Atencion</span>
+                  </div>
+                  <div class="space-y-1.5">
+                    <div class="flex justify-between"><span class="text-[11px] text-[#8B8B8B]">En Proceso</span><span class="text-[11px] font-semibold text-[#333]">8 personas</span></div>
+                    <div class="flex justify-between"><span class="text-[11px] text-[#8B8B8B]">Completacion 90d</span><span class="text-[11px] font-semibold text-amber-500">74%</span></div>
+                  </div>
+                </div>
+                <div class="flex items-center gap-1 mt-2">
+                  <svg class="w-3 h-3 text-amber-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4.5 12h15"/></svg>
+                  <svg class="w-full h-6" viewBox="0 0 120 24"><polyline fill="none" stroke="#f59e0b" stroke-width="1.5" points="0,10 20,12 40,10 60,14 80,12 100,14 120,16"/></svg>
+                </div>
+              </div>
+
+              <!-- Performance -->
+              <div class="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] flex flex-col justify-between">
+                <div>
+                  <div class="flex items-center justify-between mb-2">
+                    <div class="flex items-center gap-2">
+                      <div class="w-2.5 h-2.5 rounded-full bg-green-400"></div>
+                      <span class="text-[13px] font-semibold text-[#333]">Performance</span>
+                    </div>
+                    <span class="text-[10px] text-green-600 bg-green-50 px-1.5 py-0.5 rounded font-medium">Saludable</span>
+                  </div>
+                  <div class="space-y-1.5">
+                    <div class="flex justify-between"><span class="text-[11px] text-[#8B8B8B]">Eval. Completadas</span><span class="text-[11px] font-semibold text-[#333]">92%</span></div>
+                    <div class="flex justify-between"><span class="text-[11px] text-[#8B8B8B]">Rating Promedio</span><span class="text-[11px] font-semibold text-[#333]">3.8 / 5.0</span></div>
+                  </div>
+                </div>
+                <div class="flex items-center gap-1 mt-2">
+                  <svg class="w-3 h-3 text-green-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4.5 19.5l15-15m0 0H8.25m11.25 0v11.25"/></svg>
+                  <svg class="w-full h-6" viewBox="0 0 120 24"><polyline fill="none" stroke="#22c55e" stroke-width="1.5" points="0,20 20,18 40,16 60,14 80,10 100,8 120,6"/></svg>
+                </div>
+              </div>
+
+              <!-- L&D -->
+              <div class="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] flex flex-col justify-between">
+                <div>
+                  <div class="flex items-center justify-between mb-2">
+                    <div class="flex items-center gap-2">
+                      <div class="w-2.5 h-2.5 rounded-full bg-green-400"></div>
+                      <span class="text-[13px] font-semibold text-[#333]">L&D / Capacitacion</span>
+                    </div>
+                    <span class="text-[10px] text-green-600 bg-green-50 px-1.5 py-0.5 rounded font-medium">Saludable</span>
+                  </div>
+                  <div class="space-y-1.5">
+                    <div class="flex justify-between"><span class="text-[11px] text-[#8B8B8B]">Cursos Activos</span><span class="text-[11px] font-semibold text-[#333]">14</span></div>
+                    <div class="flex justify-between"><span class="text-[11px] text-[#8B8B8B]">Completacion</span><span class="text-[11px] font-semibold text-[#333]">81%</span></div>
+                  </div>
+                </div>
+                <div class="flex items-center gap-1 mt-2">
+                  <svg class="w-3 h-3 text-green-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4.5 19.5l15-15m0 0H8.25m11.25 0v11.25"/></svg>
+                  <svg class="w-full h-6" viewBox="0 0 120 24"><polyline fill="none" stroke="#22c55e" stroke-width="1.5" points="0,16 20,14 40,14 60,12 80,10 100,8 120,6"/></svg>
+                </div>
+              </div>
+
+              <!-- Talent / Sucesion -->
+              <div class="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] flex flex-col justify-between">
+                <div>
+                  <div class="flex items-center justify-between mb-2">
+                    <div class="flex items-center gap-2">
+                      <div class="w-2.5 h-2.5 rounded-full bg-[#DD0C15]"></div>
+                      <span class="text-[13px] font-semibold text-[#333]">Talento / Sucesion</span>
+                    </div>
+                    <span class="text-[10px] text-red-600 bg-red-50 px-1.5 py-0.5 rounded font-medium">Critico</span>
+                  </div>
+                  <div class="space-y-1.5">
+                    <div class="flex justify-between"><span class="text-[11px] text-[#8B8B8B]">Roles Criticos</span><span class="text-[11px] font-semibold text-[#DD0C15]">2 sin sucesor</span></div>
+                    <div class="flex justify-between"><span class="text-[11px] text-[#8B8B8B]">Cobertura</span><span class="text-[11px] font-semibold text-[#333]">68%</span></div>
+                  </div>
+                </div>
+                <div class="flex items-center gap-1 mt-2">
+                  <svg class="w-3 h-3 text-red-500 rotate-90" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19.5 4.5l-15 15m0 0h11.25m-11.25 0V8.25"/></svg>
+                  <svg class="w-full h-6" viewBox="0 0 120 24"><polyline fill="none" stroke="#ef4444" stroke-width="1.5" points="0,8 20,10 40,10 60,12 80,14 100,16 120,18"/></svg>
+                </div>
+              </div>
+
+              <!-- Engagement -->
+              <div class="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] flex flex-col justify-between">
+                <div>
+                  <div class="flex items-center justify-between mb-2">
+                    <div class="flex items-center gap-2">
+                      <div class="w-2.5 h-2.5 rounded-full bg-amber-400"></div>
+                      <span class="text-[13px] font-semibold text-[#333]">Engagement</span>
+                    </div>
+                    <span class="text-[10px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded font-medium">Atencion</span>
+                  </div>
+                  <div class="space-y-1.5">
+                    <div class="flex justify-between"><span class="text-[11px] text-[#8B8B8B]">eNPS Global</span><span class="text-[11px] font-semibold text-[#333]">+42</span></div>
+                    <div class="flex justify-between"><span class="text-[11px] text-[#8B8B8B]">Participacion Enc.</span><span class="text-[11px] font-semibold text-amber-500">67%</span></div>
+                  </div>
+                </div>
+                <div class="flex items-center gap-1 mt-2">
+                  <svg class="w-3 h-3 text-amber-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4.5 12h15"/></svg>
+                  <svg class="w-full h-6" viewBox="0 0 120 24"><polyline fill="none" stroke="#f59e0b" stroke-width="1.5" points="0,12 20,10 40,12 60,14 80,12 100,12 120,14"/></svg>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- ALERTS COLUMN -->
+          <div class="w-[310px] shrink-0 bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] flex flex-col">
+            <div class="flex items-center justify-between px-4 py-3 border-b border-[#EDEDED]">
+              <div class="flex items-center gap-2">
+                <svg class="w-4 h-4 text-[#DD0C15]" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"/></svg>
+                <span class="text-[13px] font-semibold text-[#333]">Alertas Activas</span>
+              </div>
+              <span class="text-[10px] bg-[#DD0C15] text-white px-1.5 py-0.5 rounded-full font-bold">7</span>
+            </div>
+            <div class="flex-1 overflow-y-auto scrollbar-thin p-2 space-y-2">
+
+              <!-- Alert 1 - Critico -->
+              <div class="border border-red-200 bg-red-50/50 rounded-lg p-3">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="text-[9px] font-bold bg-[#DD0C15] text-white px-1.5 py-0.5 rounded uppercase">Critico</span>
+                  <span class="text-[9px] bg-[#1F114C] text-white px-1.5 py-0.5 rounded">Reclutamiento</span>
+                </div>
+                <p class="text-[11px] text-[#333] font-medium leading-tight">SLA vencido en 3 vacantes criticas</p>
+                <p class="text-[9px] text-[#8B8B8B] mt-1">Hace 12 min</p>
+              </div>
+
+              <!-- Alert 2 - Critico -->
+              <div class="border border-red-200 bg-red-50/50 rounded-lg p-3">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="text-[9px] font-bold bg-[#DD0C15] text-white px-1.5 py-0.5 rounded uppercase">Critico</span>
+                  <span class="text-[9px] bg-[#1F114C] text-white px-1.5 py-0.5 rounded">Sucesion</span>
+                </div>
+                <p class="text-[11px] text-[#333] font-medium leading-tight">2 roles criticos sin sucesor identificado</p>
+                <p class="text-[9px] text-[#8B8B8B] mt-1">Hace 45 min</p>
+              </div>
+
+              <!-- Alert 3 - Alto -->
+              <div class="border border-amber-200 bg-amber-50/50 rounded-lg p-3">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="text-[9px] font-bold bg-amber-500 text-white px-1.5 py-0.5 rounded uppercase">Alto</span>
+                  <span class="text-[9px] bg-[#1F114C] text-white px-1.5 py-0.5 rounded">Engagement</span>
+                </div>
+                <p class="text-[11px] text-[#333] font-medium leading-tight">eNPS bajo en Ventas (score: 12)</p>
+                <p class="text-[9px] text-[#8B8B8B] mt-1">Hace 1 hora</p>
+              </div>
+
+              <!-- Alert 4 - Alto -->
+              <div class="border border-amber-200 bg-amber-50/50 rounded-lg p-3">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="text-[9px] font-bold bg-amber-500 text-white px-1.5 py-0.5 rounded uppercase">Alto</span>
+                  <span class="text-[9px] bg-[#1F114C] text-white px-1.5 py-0.5 rounded">Onboarding</span>
+                </div>
+                <p class="text-[11px] text-[#333] font-medium leading-tight">Juan Perez onboarding en riesgo - dia 47 sin completar modulo 3</p>
+                <p class="text-[9px] text-[#8B8B8B] mt-1">Hace 2 horas</p>
+              </div>
+
+              <!-- Alert 5 - Alto -->
+              <div class="border border-amber-200 bg-amber-50/50 rounded-lg p-3">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="text-[9px] font-bold bg-amber-500 text-white px-1.5 py-0.5 rounded uppercase">Alto</span>
+                  <span class="text-[9px] bg-[#1F114C] text-white px-1.5 py-0.5 rounded">Performance</span>
+                </div>
+                <p class="text-[11px] text-[#333] font-medium leading-tight">14 evaluaciones vencen en 5 dias - Depto. Logistica</p>
+                <p class="text-[9px] text-[#8B8B8B] mt-1">Hace 3 horas</p>
+              </div>
+
+              <!-- Alert 6 - Medio -->
+              <div class="border border-blue-200 bg-blue-50/50 rounded-lg p-3">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="text-[9px] font-bold bg-blue-500 text-white px-1.5 py-0.5 rounded uppercase">Medio</span>
+                  <span class="text-[9px] bg-[#1F114C] text-white px-1.5 py-0.5 rounded">L&D</span>
+                </div>
+                <p class="text-[11px] text-[#333] font-medium leading-tight">Certificacion ISO 9001 vence para 8 empleados en 30 dias</p>
+                <p class="text-[9px] text-[#8B8B8B] mt-1">Hace 4 horas</p>
+              </div>
+
+              <!-- Alert 7 - Medio -->
+              <div class="border border-blue-200 bg-blue-50/50 rounded-lg p-3">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="text-[9px] font-bold bg-blue-500 text-white px-1.5 py-0.5 rounded uppercase">Medio</span>
+                  <span class="text-[9px] bg-[#1F114C] text-white px-1.5 py-0.5 rounded">Rotacion</span>
+                </div>
+                <p class="text-[11px] text-[#333] font-medium leading-tight">Rotacion en Operaciones supero umbral trimestral (11.3%)</p>
+                <p class="text-[9px] text-[#8B8B8B] mt-1">Hace 6 horas</p>
+              </div>
+
+            </div>
+          </div>
+
+        </div>
+
+        <!-- ROW 3: TREND CHART + QUICK ACTIONS -->
+        <div class="flex gap-4 shrink-0" style="height:165px;">
+
+          <!-- Cross-Module Trend -->
+          <div class="flex-1 bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4 flex flex-col min-w-0">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-[13px] font-semibold text-[#333]">Tendencia Cross-Modulo (6 Meses)</span>
+              <div class="flex items-center gap-3">
+                <div class="flex items-center gap-1"><div class="w-2 h-2 rounded-full bg-[#1F114C]"></div><span class="text-[9px] text-[#8B8B8B]">Headcount</span></div>
+                <div class="flex items-center gap-1"><div class="w-2 h-2 rounded-full bg-[#DD0C15]"></div><span class="text-[9px] text-[#8B8B8B]">Rotacion %</span></div>
+                <div class="flex items-center gap-1"><div class="w-2 h-2 rounded-full bg-green-500"></div><span class="text-[9px] text-[#8B8B8B]">eNPS</span></div>
+                <div class="flex items-center gap-1"><div class="w-2 h-2 rounded-full bg-amber-500"></div><span class="text-[9px] text-[#8B8B8B]">Time-to-Fill</span></div>
+              </div>
+            </div>
+            <div class="flex-1 relative">
+              <svg class="w-full h-full" viewBox="0 0 700 90" preserveAspectRatio="none">
+                <!-- Grid lines -->
+                <line x1="0" y1="0" x2="700" y2="0" stroke="#f0f0f0" stroke-width="0.5"/>
+                <line x1="0" y1="22" x2="700" y2="22" stroke="#f0f0f0" stroke-width="0.5"/>
+                <line x1="0" y1="45" x2="700" y2="45" stroke="#f0f0f0" stroke-width="0.5"/>
+                <line x1="0" y1="67" x2="700" y2="67" stroke="#f0f0f0" stroke-width="0.5"/>
+                <line x1="0" y1="89" x2="700" y2="89" stroke="#f0f0f0" stroke-width="0.5"/>
+                <!-- Bars background per month -->
+                <!-- Dec -->
+                <rect x="20" y="30" width="20" height="59" rx="2" fill="#1F114C" opacity="0.15"/>
+                <rect x="42" y="50" width="20" height="39" rx="2" fill="#DD0C15" opacity="0.15"/>
+                <rect x="64" y="35" width="20" height="54" rx="2" fill="#22c55e" opacity="0.15"/>
+                <rect x="86" y="40" width="20" height="49" rx="2" fill="#f59e0b" opacity="0.15"/>
+                <!-- Jan -->
+                <rect x="140" y="28" width="20" height="61" rx="2" fill="#1F114C" opacity="0.2"/>
+                <rect x="162" y="48" width="20" height="41" rx="2" fill="#DD0C15" opacity="0.2"/>
+                <rect x="184" y="32" width="20" height="57" rx="2" fill="#22c55e" opacity="0.2"/>
+                <rect x="206" y="38" width="20" height="51" rx="2" fill="#f59e0b" opacity="0.2"/>
+                <!-- Feb -->
+                <rect x="260" y="25" width="20" height="64" rx="2" fill="#1F114C" opacity="0.25"/>
+                <rect x="282" y="42" width="20" height="47" rx="2" fill="#DD0C15" opacity="0.25"/>
+                <rect x="304" y="30" width="20" height="59" rx="2" fill="#22c55e" opacity="0.25"/>
+                <rect x="326" y="36" width="20" height="53" rx="2" fill="#f59e0b" opacity="0.25"/>
+                <!-- Mar -->
+                <rect x="380" y="22" width="20" height="67" rx="2" fill="#1F114C" opacity="0.35"/>
+                <rect x="402" y="38" width="20" height="51" rx="2" fill="#DD0C15" opacity="0.35"/>
+                <rect x="424" y="28" width="20" height="61" rx="2" fill="#22c55e" opacity="0.35"/>
+                <rect x="446" y="32" width="20" height="57" rx="2" fill="#f59e0b" opacity="0.35"/>
+                <!-- Apr -->
+                <rect x="500" y="18" width="20" height="71" rx="2" fill="#1F114C" opacity="0.5"/>
+                <rect x="522" y="35" width="20" height="54" rx="2" fill="#DD0C15" opacity="0.5"/>
+                <rect x="544" y="22" width="20" height="67" rx="2" fill="#22c55e" opacity="0.5"/>
+                <rect x="566" y="28" width="20" height="61" rx="2" fill="#f59e0b" opacity="0.5"/>
+                <!-- May (current) -->
+                <rect x="620" y="14" width="20" height="75" rx="2" fill="#1F114C"/>
+                <rect x="642" y="30" width="20" height="59" rx="2" fill="#DD0C15"/>
+                <rect x="664" y="18" width="20" height="71" rx="2" fill="#22c55e"/>
+                <rect x="686" y="24" width="14" height="65" rx="2" fill="#f59e0b"/>
+              </svg>
+              <!-- Month labels -->
+              <div class="absolute bottom-[-14px] left-0 right-0 flex justify-between px-4">
+                <span class="text-[9px] text-[#8B8B8B]">Dic</span>
+                <span class="text-[9px] text-[#8B8B8B]">Ene</span>
+                <span class="text-[9px] text-[#8B8B8B]">Feb</span>
+                <span class="text-[9px] text-[#8B8B8B]">Mar</span>
+                <span class="text-[9px] text-[#8B8B8B]">Abr</span>
+                <span class="text-[9px] text-[#8B8B8B] font-semibold">May</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Quick Actions -->
+          <div class="w-[310px] shrink-0 bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4 flex flex-col">
+            <span class="text-[13px] font-semibold text-[#333] mb-3">Acciones Rapidas</span>
+            <div class="flex flex-col gap-2 flex-1">
+              <button class="flex items-center gap-2.5 w-full px-3 py-2 rounded-lg border border-[#EDEDED] hover:bg-[#F6F6F6] transition text-left">
+                <div class="w-7 h-7 rounded-lg bg-red-50 flex items-center justify-center shrink-0"><svg class="w-3.5 h-3.5 text-[#DD0C15]" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z"/></svg></div>
+                <div><p class="text-[11px] font-medium text-[#333]">Ver Vacantes Criticas</p><p class="text-[9px] text-[#8B8B8B]">5 vacantes con SLA vencido</p></div>
+              </button>
+              <button class="flex items-center gap-2.5 w-full px-3 py-2 rounded-lg border border-[#EDEDED] hover:bg-[#F6F6F6] transition text-left">
+                <div class="w-7 h-7 rounded-lg bg-amber-50 flex items-center justify-center shrink-0"><svg class="w-3.5 h-3.5 text-amber-500" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"/></svg></div>
+                <div><p class="text-[11px] font-medium text-[#333]">Revisar Alertas</p><p class="text-[9px] text-[#8B8B8B]">7 alertas pendientes</p></div>
+              </button>
+              <button class="flex items-center gap-2.5 w-full px-3 py-2 rounded-lg border border-[#EDEDED] hover:bg-[#F6F6F6] transition text-left">
+                <div class="w-7 h-7 rounded-lg bg-[#1F114C]/5 flex items-center justify-center shrink-0"><svg class="w-3.5 h-3.5 text-[#1F114C]" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg></div>
+                <div><p class="text-[11px] font-medium text-[#333]">Exportar Reporte Ejecutivo</p><p class="text-[9px] text-[#8B8B8B]">PDF con KPIs del mes</p></div>
+              </button>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

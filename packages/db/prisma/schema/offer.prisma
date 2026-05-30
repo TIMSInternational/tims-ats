@@ -1,0 +1,90 @@
+model Offer {
+  id                String    @id @default(uuid()) @db.Uuid
+  organizationId    String    @map("organization_id") @db.Uuid
+  candidateId       String    @map("candidate_id") @db.Uuid
+  vacancyId         String    @map("vacancy_id") @db.Uuid
+  applicationId     String?   @map("application_id") @db.Uuid
+  status            String    @default("draft")
+  salary            Float
+  currency          String    @default("USD")
+  startDate         DateTime  @map("start_date")
+  contractType      String    @map("contract_type")
+  benefits          Json?
+  terms             Json?
+  signedDocumentUrl String?   @map("signed_document_url")
+  sentAt            DateTime? @map("sent_at")
+  respondedAt       DateTime? @map("responded_at")
+  expiresAt         DateTime? @map("expires_at")
+  createdById       String    @map("created_by_id") @db.Uuid
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  candidate   Candidate                @relation("CandidateOffers", fields: [candidateId], references: [id])
+  vacancy     Vacancy                  @relation("VacancyOffers", fields: [vacancyId], references: [id], onDelete: Cascade)
+  application Application?             @relation("ApplicationOffers", fields: [applicationId], references: [id])
+  creator     User                     @relation("OfferCreator", fields: [createdById], references: [id])
+  approvals   OfferApproval[]
+  validations PreemploymentValidation[]
+  legalChecks LegalCheck[]
+
+  @@index([organizationId])
+  @@map("offers")
+}
+
+model OfferApproval {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  offerId        String    @map("offer_id") @db.Uuid
+  approverId     String    @map("approver_id") @db.Uuid
+  step           Int
+  status         String    @default("pending")
+  comment        String?
+  decidedAt      DateTime? @map("decided_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  offer    Offer @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  approver User  @relation("OfferApprover", fields: [approverId], references: [id])
+
+  @@index([organizationId])
+  @@map("offer_approvals")
+}
+
+model PreemploymentValidation {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  offerId        String    @map("offer_id") @db.Uuid
+  type           String
+  status         String    @default("pending")
+  isBlocking     Boolean   @default(true) @map("is_blocking")
+  result         Json?
+  completedById  String?   @map("completed_by_id") @db.Uuid
+  completedAt    DateTime? @map("completed_at")
+  notes          String?
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  offer           Offer @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  completedByUser User? @relation("ValidationCompletedBy", fields: [completedById], references: [id])
+
+  @@index([organizationId])
+  @@map("preemployment_validations")
+}
+
+model LegalCheck {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  offerId        String    @map("offer_id") @db.Uuid
+  country        String
+  checkName      String    @map("check_name")
+  description    String?
+  completed      Boolean   @default(false)
+  completedAt    DateTime? @map("completed_at")
+  completedById  String?   @map("completed_by_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  offer           Offer @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  completedByUser User? @relation("LegalCheckCompletedBy", fields: [completedById], references: [id])
+
+  @@index([organizationId])
+  @@map("legal_checks")
+}
