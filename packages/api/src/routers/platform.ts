@@ -84,6 +84,66 @@ export const platformRouter = router({
     return months;
   }),
 
+  // ============ SEARCH ============
+
+  search: platformProcedure
+    .input(z.object({ query: z.string().min(1).max(100) }))
+    .query(async ({ input }) => {
+      const q = input.query.trim();
+      if (!q) return { organizations: [], users: [], pages: [] };
+
+      const [organizations, users] = await Promise.all([
+        db.organization.findMany({
+          where: {
+            OR: [
+              { name: { contains: q, mode: 'insensitive' } },
+              { slug: { contains: q, mode: 'insensitive' } },
+              { domain: { contains: q, mode: 'insensitive' } },
+            ],
+          },
+          take: 5,
+          select: { id: true, name: true, slug: true, plan: true, isActive: true },
+          orderBy: { name: 'asc' },
+        }),
+        db.user.findMany({
+          where: {
+            OR: [
+              { firstName: { contains: q, mode: 'insensitive' } },
+              { lastName: { contains: q, mode: 'insensitive' } },
+              { email: { contains: q, mode: 'insensitive' } },
+            ],
+          },
+          take: 5,
+          select: {
+            id: true, firstName: true, lastName: true, email: true,
+            isPlatformOwner: true, isActive: true, avatar: true,
+            organization: { select: { name: true } },
+          },
+          orderBy: { firstName: 'asc' },
+        }),
+      ]);
+
+      // Match pages by name
+      const PAGES = [
+        { name: 'Dashboard', href: '/dashboard', keywords: 'inicio home panel' },
+        { name: 'Organizaciones', href: '/platform/organizations', keywords: 'orgs empresas clients' },
+        { name: 'Suscripciones', href: '/platform/subscriptions', keywords: 'billing planes pagos facturacion stripe' },
+        { name: 'Usuarios', href: '/platform/users', keywords: 'users personas cuentas' },
+        { name: 'Salud del Sistema', href: '/platform/health', keywords: 'health status uptime monitoreo' },
+        { name: 'Feature Flags', href: '/platform/feature-flags', keywords: 'flags toggles features modulos' },
+        { name: 'Analytics', href: '/platform/analytics', keywords: 'metricas estadisticas growth crecimiento' },
+        { name: 'Auditoria', href: '/platform/audit', keywords: 'audit logs registro actividad' },
+        { name: 'Soporte', href: '/platform/support', keywords: 'support ayuda impersonar reset' },
+      ];
+
+      const ql = q.toLowerCase();
+      const pages = PAGES.filter(
+        (p) => p.name.toLowerCase().includes(ql) || p.keywords.includes(ql)
+      ).slice(0, 4);
+
+      return { organizations, users, pages };
+    }),
+
   // ============ ORGANIZATIONS ============
 
   listOrganizations: platformProcedure
