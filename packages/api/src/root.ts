@@ -23,6 +23,7 @@ import { auditRouter } from './routers/audit';
 import { billingRouter } from './routers/billing';
 import { featureFlagRouter } from './routers/featureFlag';
 import { portalRouter } from './routers/portal';
+import { notificationRouter } from './routers/notification';
 
 export { createContext } from './context';
 export type { TRPCContext } from './context';
@@ -52,6 +53,7 @@ export const appRouter = router({
   billing: billingRouter,
   featureFlag: featureFlagRouter,
   portal: portalRouter,
+  notification: notificationRouter,
 });
 
 export const createCaller = createCallerFactory(appRouter);

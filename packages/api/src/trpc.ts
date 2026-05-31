@@ -30,7 +30,12 @@ const isAuthed = t.middleware(({ ctx, next }) => {
 });
 
 // RLS middleware — injects organization context for tenant isolation
+// Platform owners skip RLS (they access all orgs)
 const withRLS = t.middleware(async ({ ctx, next }) => {
+  if (ctx.user?.isPlatformOwner) {
+    return next({ ctx: { db } });
+  }
+
   if (!ctx.user?.organizationId) {
     throw new TRPCError({
       code: 'FORBIDDEN',
@@ -38,7 +43,6 @@ const withRLS = t.middleware(async ({ ctx, next }) => {
     });
   }
 
-  // Set the organization context for RLS policies
   await db.$executeRawUnsafe(
     `SET LOCAL app.current_org_id = '${ctx.user.organizationId}'`
   );
@@ -53,8 +57,8 @@ function requirePermission(module: string, action: string) {
       throw new TRPCError({ code: 'UNAUTHORIZED' });
     }
 
-    // Super admin bypasses all permission checks
-    if (ctx.user.roles.includes('super_admin')) {
+    // Platform owner and super admin bypass all permission checks
+    if (ctx.user.isPlatformOwner || ctx.user.roles.includes('platform_owner') || ctx.user.roles.includes('super_admin')) {
       return next();
     }
 

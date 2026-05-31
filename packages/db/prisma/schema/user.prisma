@@ -1,6 +1,6 @@
 model User {
   id               String    @id @default(uuid()) @db.Uuid
-  organizationId   String    @map("organization_id") @db.Uuid
+  organizationId   String?   @map("organization_id") @db.Uuid
   supabaseUserId   String    @unique @map("supabase_user_id")
   email            String
   firstName        String    @map("first_name")
@@ -14,13 +14,14 @@ model User {
   locale           String    @default("es")
   timezone         String    @default("America/Bogota")
   mfaEnabled       Boolean   @default(false) @map("mfa_enabled")
+  isPlatformOwner  Boolean   @default(false) @map("is_platform_owner")
   lastLoginAt      DateTime? @map("last_login_at")
   isActive         Boolean   @default(true) @map("is_active")
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
   deletedAt        DateTime? @map("deleted_at")
 
-  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization     Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   userRoles        UserRole[]
   teams            UserTeam[]
   ledTeams         Team[]      @relation("TeamLeader")
@@ -53,6 +54,9 @@ model User {
   // Monitoring
   createdAlertRules        AlertRule[]         @relation("AlertRuleCreator")
   dismissedAlerts          Alert[]             @relation("AlertDismisser")
+
+  // Notifications
+  notifications            Notification[]      @relation("UserNotifications")
 
   // Integration
   createdConnectors        Connector[]         @relation("ConnectorCreator")

@@ -1,6 +1,3 @@
-import type { CreateNextContextOptions } from '@trpc/server/adapters/next';
-import { createClient } from '@supabase/supabase-js';
-
 export interface TRPCContext {
   user: {
     id: string;
@@ -8,6 +5,7 @@ export interface TRPCContext {
     email: string;
     organizationId: string;
     roles: string[];
+    isPlatformOwner: boolean;
   } | null;
   headers: Headers;
 }

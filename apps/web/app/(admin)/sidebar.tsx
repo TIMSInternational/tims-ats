@@ -1,59 +1,46 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
+import { createSupabaseBrowserClient } from '@tims/auth/client';
+import { useI18n } from '../../lib/i18n';
 
-const NAV_SECTIONS = [
-  {
-    label: null,
-    items: [
-      { href: '/dashboard', label: 'Command Center', icon: 'grid' },
-    ],
-  },
-  {
-    label: 'Reclutamiento',
-    items: [
-      { href: '/recruitment/pipeline', label: 'Pipeline', icon: 'kanban' },
-      { href: '/recruitment/vacancies', label: 'Vacantes', icon: 'briefcase' },
-      { href: '/recruitment/candidates', label: 'Candidatos', icon: 'user' },
-      { href: '/recruitment/interviews', label: 'Entrevistas', icon: 'video' },
-      { href: '/recruitment/offers', label: 'Ofertas', icon: 'clipboard' },
-      { href: '/recruitment/talent-pools', label: 'Talent Pool', icon: 'users' },
-      { href: '/recruitment/analytics', label: 'Analytics', icon: 'chart' },
-    ],
-  },
-  {
-    label: 'Personas',
-    items: [
-      { href: '/people/onboarding', label: 'Onboarding', icon: 'rocket' },
-      { href: '/people/performance', label: 'Performance', icon: 'target' },
-      { href: '/learning', label: 'Capacitacion', icon: 'book' },
-    ],
-  },
-  {
-    label: 'Talento',
-    items: [
-      { href: '/talent/nine-box', label: 'Nine Box', icon: 'ninebox' },
-      { href: '/talent/succession', label: 'Sucesion', icon: 'succession' },
-      { href: '/talent/team-intelligence', label: 'Equipo', icon: 'team' },
-    ],
-  },
-  {
-    label: 'Organizacion',
-    items: [
-      { href: '/engagement/climate', label: 'Clima', icon: 'heart' },
-      { href: '/engagement/dei', label: 'DEI', icon: 'dei' },
-      { href: '/compensation', label: 'Compensacion', icon: 'dollar' },
-      { href: '/monitoring', label: 'Monitoreo', icon: 'monitor' },
-    ],
-  },
-  {
-    label: null,
-    items: [
-      { href: '/settings/integrations', label: 'Integraciones', icon: 'settings' },
-    ],
-  },
-];
+function useNavSections() {
+  const { t } = useI18n();
+  return [
+    { label: null, items: [
+      { href: '/dashboard', label: t.sidebar.commandCenter, icon: 'grid' },
+    ]},
+    { label: t.sidebar.recruitment, items: [
+      { href: '/recruitment/pipeline', label: t.sidebar.pipeline, icon: 'kanban' },
+      { href: '/recruitment/vacancies', label: t.sidebar.vacancies, icon: 'briefcase' },
+      { href: '/recruitment/candidates', label: t.sidebar.candidates, icon: 'user' },
+      { href: '/recruitment/interviews', label: t.sidebar.interviews, icon: 'video' },
+      { href: '/recruitment/offers', label: t.sidebar.offers, icon: 'clipboard' },
+      { href: '/recruitment/talent-pools', label: t.sidebar.talentPool, icon: 'users' },
+      { href: '/recruitment/analytics', label: t.sidebar.analytics, icon: 'chart' },
+    ]},
+    { label: t.sidebar.people, items: [
+      { href: '/people/onboarding', label: t.sidebar.onboarding, icon: 'rocket' },
+      { href: '/people/performance', label: t.sidebar.performance, icon: 'target' },
+      { href: '/learning', label: t.sidebar.training, icon: 'book' },
+    ]},
+    { label: t.sidebar.talent, items: [
+      { href: '/talent/nine-box', label: t.sidebar.nineBox, icon: 'ninebox' },
+      { href: '/talent/succession', label: t.sidebar.succession, icon: 'succession' },
+      { href: '/talent/team-intelligence', label: t.sidebar.teamIntel, icon: 'team' },
+    ]},
+    { label: t.sidebar.organization, items: [
+      { href: '/engagement/climate', label: t.sidebar.climate, icon: 'heart' },
+      { href: '/engagement/dei', label: t.sidebar.dei, icon: 'dei' },
+      { href: '/compensation', label: t.sidebar.compensation, icon: 'dollar' },
+      { href: '/monitoring', label: t.sidebar.monitoring, icon: 'monitor' },
+    ]},
+    { label: null, items: [
+      { href: '/settings/integrations', label: t.sidebar.integrations, icon: 'settings' },
+    ]},
+  ];
+}
 
 function Icon({ name, className }: { name: string; className: string }) {
   const c = className;
@@ -101,8 +88,11 @@ function Icon({ name, className }: { name: string; className: string }) {
   }
 }
 
-export function Sidebar({ userInitials, expanded, onToggle, ready = true }: { userInitials: string; expanded: boolean; onToggle: () => void; ready?: boolean }) {
+export function Sidebar({ userInitials, displayName, expanded, onToggle, ready = true, avatar }: { userInitials: string; displayName: string; expanded: boolean; onToggle: () => void; ready?: boolean; avatar?: string | null }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const { t } = useI18n();
+  const NAV_SECTIONS = useNavSections();
 
   return (
     <aside
@@ -113,13 +103,14 @@ export function Sidebar({ userInitials, expanded, onToggle, ready = true }: { us
       }`}
     >
       {/* Logo */}
-      <div className={`flex items-center h-[64px] border-b border-white/10 shrink-0 ${expanded ? 'px-5' : 'justify-center'}`}>
-        <Link href="/dashboard" className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-[#DD0C15] flex items-center justify-center shrink-0">
-            <span className="text-white text-[13px] font-bold">T</span>
-          </div>
-          {expanded && (
-            <span className="text-white text-[15px] font-semibold whitespace-nowrap">TIMS Platform</span>
+      <div className={`flex items-center justify-center h-[72px] border-b border-white/10 shrink-0 ${expanded ? 'px-5' : 'px-0'}`}>
+        <Link href="/dashboard" className="flex items-center overflow-hidden">
+          {expanded ? (
+            <img src="/logo_tims.png" alt="TIMS International" className="h-12 brightness-0 invert" />
+          ) : (
+            <div className="w-9 h-9 rounded-lg bg-[#DD0C15] flex items-center justify-center">
+              <span className="text-white text-[13px] font-bold">T</span>
+            </div>
           )}
         </Link>
       </div>
@@ -186,20 +177,40 @@ export function Sidebar({ userInitials, expanded, onToggle, ready = true }: { us
             <path d="M18 5v14" />
           </svg>
           {expanded && (
-            <span className="text-[12px] whitespace-nowrap">Colapsar menu</span>
+            <span className="text-[12px] whitespace-nowrap">{t.nav.collapse}</span>
           )}
         </button>
 
-        {/* User */}
+        {/* User + Logout */}
         <div className={`flex items-center py-3 ${expanded ? 'px-5 gap-3' : 'justify-center'}`}>
-          <div className="w-9 h-9 rounded-full bg-[#DD0C15] flex items-center justify-center text-white text-[11px] font-bold shrink-0">
-            {userInitials}
-          </div>
-          {expanded && (
-            <div className="min-w-0">
-              <p className="text-[12px] text-white font-medium truncate">Federico Tafur</p>
-              <p className="text-[10px] text-white/40 truncate">Super Admin</p>
+          {avatar ? (
+            <img src={avatar} alt="" className="w-9 h-9 rounded-full shrink-0 object-cover" />
+          ) : (
+            <div className="w-9 h-9 rounded-full bg-[#DD0C15] flex items-center justify-center text-white text-[11px] font-bold shrink-0">
+              {userInitials}
             </div>
+          )}
+          {expanded && (
+            <>
+              <div className="min-w-0 flex-1">
+                <p className="text-[12px] text-white font-medium truncate">{displayName}</p>
+                <p className="text-[10px] text-white/40 truncate">{t.nav.admin}</p>
+              </div>
+              <button
+                onClick={async () => {
+                  const supabase = createSupabaseBrowserClient();
+                  await supabase.auth.signOut();
+                  router.push('/login');
+                  router.refresh();
+                }}
+                title="Cerrar sesion"
+                className="w-8 h-8 rounded-md flex items-center justify-center text-white/40 hover:text-white/70 hover:bg-white/[0.07] transition-colors shrink-0"
+              >
+                <svg className="w-[16px] h-[16px]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+                  <path d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
+                </svg>
+              </button>
+            </>
           )}
         </div>
       </div>

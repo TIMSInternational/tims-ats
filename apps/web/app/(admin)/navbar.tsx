@@ -1,32 +1,82 @@
 'use client';
 
-import { usePathname } from 'next/navigation';
+import { useState, useRef, useEffect } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
+import { trpc } from '../../lib/trpc';
+import { useI18n } from '../../lib/i18n';
 
-const BREADCRUMB_MAP: Record<string, { parent?: string; label: string }> = {
-  '/dashboard': { label: 'Command Center' },
-  '/recruitment/pipeline': { parent: 'Reclutamiento', label: 'Pipeline' },
-  '/recruitment/vacancies': { parent: 'Reclutamiento', label: 'Vacantes' },
-  '/recruitment/candidates': { parent: 'Reclutamiento', label: 'Candidatos' },
-  '/recruitment/interviews': { parent: 'Reclutamiento', label: 'Entrevistas' },
-  '/recruitment/offers': { parent: 'Reclutamiento', label: 'Ofertas' },
-  '/recruitment/talent-pools': { parent: 'Reclutamiento', label: 'Talent Pool' },
-  '/recruitment/analytics': { parent: 'Reclutamiento', label: 'Analytics' },
-  '/people/onboarding': { parent: 'Personas', label: 'Onboarding' },
-  '/people/performance': { parent: 'Personas', label: 'Performance & OKR' },
-  '/learning': { parent: 'Personas', label: 'Capacitacion & Desarrollo' },
-  '/talent/nine-box': { parent: 'Talento', label: 'Nine Box Predictivo' },
-  '/talent/succession': { parent: 'Talento', label: 'Mapa de Sucesion' },
-  '/talent/team-intelligence': { parent: 'Talento', label: 'Inteligencia de Equipo' },
-  '/engagement/climate': { parent: 'Organizacion', label: 'Engagement & Clima' },
-  '/engagement/dei': { parent: 'Organizacion', label: 'DEI Analytics' },
-  '/compensation': { parent: 'Organizacion', label: 'Compensacion & Beneficios' },
-  '/monitoring': { parent: 'Estrategia', label: 'Monitoreo Estrategico' },
-  '/settings/integrations': { parent: 'Configuracion', label: 'HRIS & Integraciones' },
-};
+function useClickOutside(ref: React.RefObject<HTMLElement | null>, handler: () => void) {
+  useEffect(() => {
+    const listener = (e: MouseEvent) => {
+      if (!ref.current || ref.current.contains(e.target as Node)) return;
+      handler();
+    };
+    document.addEventListener('mousedown', listener);
+    return () => document.removeEventListener('mousedown', listener);
+  }, [ref, handler]);
+}
 
-export function Navbar() {
+function useTimeAgo() {
+  const { t } = useI18n();
+  return (date: Date): string => {
+    const now = new Date();
+    const diff = now.getTime() - new Date(date).getTime();
+    const minutes = Math.floor(diff / 60000);
+    if (minutes < 1) return t.nav.now;
+    if (minutes < 60) return t.nav.minutesAgo.replace('{n}', String(minutes));
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return t.nav.hoursAgo.replace('{n}', String(hours));
+    const days = Math.floor(hours / 24);
+    return t.nav.daysAgo.replace('{n}', String(days));
+  };
+}
+
+export function Navbar({ isPlatformOwner = false }: { isPlatformOwner?: boolean }) {
   const pathname = usePathname();
-  const crumb = BREADCRUMB_MAP[pathname] || { label: 'TIMS Platform' };
+  const router = useRouter();
+  const { locale, setLocale, t } = useI18n();
+  const timeAgo = useTimeAgo();
+
+  const breadcrumbs = t.breadcrumbs as Record<string, { parent?: string; label: string }>;
+  const crumb = breadcrumbs[pathname] || { label: 'TIMS Platform' };
+
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [langOpen, setLangOpen] = useState(false);
+  const [searchFocused, setSearchFocused] = useState(false);
+
+  const notifRef = useRef<HTMLDivElement>(null);
+  const langRef = useRef<HTMLDivElement>(null);
+
+  useClickOutside(notifRef, () => setNotifOpen(false));
+  useClickOutside(langRef, () => setLangOpen(false));
+
+  const { data: unreadData } = trpc.notification.unreadCount.useQuery(undefined, {
+    refetchInterval: 30000,
+  });
+
+  const { data: notifData, refetch: refetchNotifs } = trpc.notification.list.useQuery(
+    { limit: 10 },
+    { enabled: notifOpen }
+  );
+
+  const markAsReadMutation = trpc.notification.markAsRead.useMutation({
+    onSuccess: () => refetchNotifs(),
+  });
+
+  const markAllAsReadMutation = trpc.notification.markAllAsRead.useMutation({
+    onSuccess: () => refetchNotifs(),
+  });
+
+  const unreadCount = unreadData?.count ?? 0;
+  const notifications = notifData?.notifications ?? [];
+
+  const handleNotifClick = (notif: { id: string; read: boolean; actionUrl?: string | null }) => {
+    if (!notif.read) markAsReadMutation.mutate({ id: notif.id });
+    if (notif.actionUrl) {
+      router.push(notif.actionUrl);
+      setNotifOpen(false);
+    }
+  };
 
   return (
     <header className="flex items-center justify-between px-6 h-[56px] bg-white border-b border-[#EDEDED] shrink-0">
@@ -44,44 +94,172 @@ export function Navbar() {
       </div>
 
       {/* Right actions */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5">
         {/* Search */}
         <div className="relative">
-          <svg className="w-4 h-4 text-[#8B8B8B] absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+          <svg className="w-4 h-4 text-[#8B8B8B] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
             <circle cx="11" cy="11" r="8" />
             <path d="m21 21-4.35-4.35" />
           </svg>
           <input
             type="text"
-            placeholder="Buscar..."
-            className="h-8 pl-9 pr-3 rounded-lg border border-[#EDEDED] bg-[#FAFAFA] text-[12px] text-[#333] placeholder:text-[#8B8B8B] w-[200px] focus:outline-none focus:ring-1 focus:ring-[#1F114C]/20 focus:border-[#1F114C]/30 transition"
+            placeholder={t.nav.search}
+            onFocus={() => setSearchFocused(true)}
+            onBlur={() => setSearchFocused(false)}
+            className={`h-8 pl-9 pr-3 rounded-lg border border-[#EDEDED] bg-[#FAFAFA] text-[12px] text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-1 focus:ring-[#1F114C]/20 focus:border-[#1F114C]/30 transition-all ${
+              searchFocused ? 'w-[280px]' : 'w-[200px]'
+            }`}
           />
+          {searchFocused && (
+            <div className="absolute right-3 top-1/2 -translate-y-1/2">
+              <kbd className="text-[9px] text-[#8B8B8B] bg-[#EDEDED] rounded px-1 py-0.5 font-mono">ESC</kbd>
+            </div>
+          )}
         </div>
 
         {/* Notifications */}
-        <button className="relative w-9 h-9 rounded-lg flex items-center justify-center hover:bg-[#F6F6F6] transition-colors">
-          <svg className="w-[18px] h-[18px] text-[#585858]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-            <path d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
-          </svg>
-          <span className="absolute top-1 right-1 w-[18px] h-[18px] rounded-full bg-[#DD0C15] text-white text-[9px] font-bold flex items-center justify-center">
-            7
-          </span>
-        </button>
+        <div ref={notifRef} className="relative">
+          <button
+            onClick={() => { setNotifOpen(!notifOpen); setLangOpen(false); }}
+            className={`relative w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${
+              notifOpen ? 'bg-[#F6F6F6]' : 'hover:bg-[#F6F6F6]'
+            }`}
+          >
+            <svg className="w-[18px] h-[18px] text-[#585858]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+              <path d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+            </svg>
+            {unreadCount > 0 && (
+              <span className="absolute top-1 right-1 min-w-[16px] h-[16px] rounded-full bg-[#DD0C15] text-white text-[8px] font-bold flex items-center justify-center px-1">
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            )}
+          </button>
+
+          {notifOpen && (
+            <div className="absolute right-0 top-full mt-2 w-[380px] bg-white rounded-xl shadow-[0_8px_30px_rgba(0,0,0,0.12)] border border-[#EDEDED] z-50 overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-[#EDEDED]">
+                <h3 className="text-[13px] font-semibold text-[#1F114C]">
+                  {t.nav.notifications}
+                  {unreadCount > 0 && (
+                    <span className="ml-1.5 text-[11px] font-normal text-[#8B8B8B]">({unreadCount} {t.nav.unread})</span>
+                  )}
+                </h3>
+                {unreadCount > 0 && (
+                  <button
+                    onClick={() => markAllAsReadMutation.mutate()}
+                    disabled={markAllAsReadMutation.isPending}
+                    className="text-[11px] text-[#DD0C15] font-medium hover:underline disabled:opacity-50"
+                  >
+                    {t.nav.markAllRead}
+                  </button>
+                )}
+              </div>
+
+              <div className="max-h-[400px] overflow-y-auto">
+                {notifications.length === 0 ? (
+                  <div className="py-12 text-center">
+                    <svg className="w-10 h-10 text-[#EDEDED] mx-auto mb-3" fill="none" stroke="currentColor" strokeWidth="1" viewBox="0 0 24 24">
+                      <path d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+                    </svg>
+                    <p className="text-[13px] text-[#8B8B8B]">{t.nav.noNotifications}</p>
+                    <p className="text-[11px] text-[#ccc] mt-1">{t.nav.noNotificationsDesc}</p>
+                  </div>
+                ) : (
+                  notifications.map((notif) => (
+                    <button
+                      key={notif.id}
+                      onClick={() => handleNotifClick(notif)}
+                      className={`w-full flex items-start gap-3 px-4 py-3 text-left hover:bg-[#FAFAFA] transition-colors border-b border-[#F6F6F6] last:border-0 ${
+                        !notif.read ? 'bg-blue-50/30' : ''
+                      }`}
+                    >
+                      <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${
+                        notif.type === 'critical' ? 'bg-[#DD0C15]' :
+                        notif.type === 'warning' ? 'bg-amber-500' :
+                        notif.type === 'success' ? 'bg-green-500' : 'bg-blue-500'
+                      }`} />
+                      <div className="min-w-0 flex-1">
+                        <p className={`text-[12px] text-[#333] leading-snug ${!notif.read ? 'font-medium' : ''}`}>
+                          {notif.title}
+                        </p>
+                        {notif.message && (
+                          <p className="text-[11px] text-[#8B8B8B] mt-0.5 line-clamp-1">{notif.message}</p>
+                        )}
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-[10px] text-[#8B8B8B]">{timeAgo(notif.createdAt)}</span>
+                          {notif.module && (
+                            <span className="text-[9px] text-[#8B8B8B] bg-[#F6F6F6] rounded px-1.5 py-0.5">{notif.module}</span>
+                          )}
+                        </div>
+                      </div>
+                      {!notif.read && (
+                        <div className="w-2 h-2 rounded-full bg-[#1F114C] mt-1.5 shrink-0" />
+                      )}
+                    </button>
+                  ))
+                )}
+              </div>
+
+              {notifications.length > 0 && (
+                <div className="px-4 py-2.5 border-t border-[#EDEDED] bg-[#FAFAFA]">
+                  <button className="text-[12px] text-[#1F114C] font-medium hover:underline w-full text-center">
+                    {t.nav.viewAll}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Help */}
-        <button className="w-9 h-9 rounded-lg flex items-center justify-center hover:bg-[#F6F6F6] transition-colors">
+        <button
+          className="w-9 h-9 rounded-lg flex items-center justify-center hover:bg-[#F6F6F6] transition-colors"
+          title={t.nav.helpCenter}
+        >
           <svg className="w-[18px] h-[18px] text-[#585858]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
             <path d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
           </svg>
         </button>
 
         {/* Language */}
-        <button className="h-8 px-2.5 rounded-lg border border-[#EDEDED] flex items-center gap-1.5 hover:bg-[#FAFAFA] transition-colors">
-          <span className="text-[12px] text-[#585858] font-medium">ES</span>
-          <svg className="w-3 h-3 text-[#8B8B8B]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-            <path d="m6 9 6 6 6-6" />
-          </svg>
-        </button>
+        <div ref={langRef} className="relative">
+          <button
+            onClick={() => { setLangOpen(!langOpen); setNotifOpen(false); }}
+            className={`h-8 px-2.5 rounded-lg border border-[#EDEDED] flex items-center gap-1.5 transition-colors ${
+              langOpen ? 'bg-[#FAFAFA] border-[#ccc]' : 'hover:bg-[#FAFAFA]'
+            }`}
+          >
+            <span className="text-[12px] text-[#585858] font-medium">{locale}</span>
+            <svg className={`w-3 h-3 text-[#8B8B8B] transition-transform ${langOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </button>
+
+          {langOpen && (
+            <div className="absolute right-0 top-full mt-2 w-[140px] bg-white rounded-xl shadow-[0_8px_30px_rgba(0,0,0,0.12)] border border-[#EDEDED] z-50 overflow-hidden py-1">
+              {[
+                { code: 'ES' as const, label: 'Espanol', flag: '🇪🇸' },
+                { code: 'EN' as const, label: 'English', flag: '🇺🇸' },
+              ].map((l) => (
+                <button
+                  key={l.code}
+                  onClick={() => { setLocale(l.code); setLangOpen(false); }}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-[#FAFAFA] transition-colors ${
+                    locale === l.code ? 'bg-[#F6F6F6]' : ''
+                  }`}
+                >
+                  <span className="text-[14px]">{l.flag}</span>
+                  <span className="text-[12px] text-[#333]">{l.label}</span>
+                  {locale === l.code && (
+                    <svg className="w-3.5 h-3.5 text-[#1F114C] ml-auto" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                      <path d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </header>
   );

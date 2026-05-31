@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 230" fill="none">
+  <!-- Left dark blue piece (top-left diagonal) -->
+  <path d="M40 75 L80 35 L80 95 L40 135 Z" fill="#1a4a6e"/>
+
+  <!-- Center dark blue piece (main diagonal bar) -->
+  <path d="M80 35 L120 75 L120 195 L80 155 Z" fill="#1a4a6e"/>
+
+  <!-- Bottom-left dark blue piece -->
+  <path d="M40 135 L80 155 L80 195 L40 175 Z" fill="#153d5c"/>
+
+  <!-- Right teal piece (top) -->
+  <path d="M120 75 L160 35 L160 95 L120 135 Z" fill="#2a9d8f"/>
+
+  <!-- Right teal piece (bottom connector) -->
+  <path d="M120 135 L160 95 L160 175 L120 195 Z" fill="#238b7e"/>
+</svg>
