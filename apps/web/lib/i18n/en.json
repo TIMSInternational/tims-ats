@@ -52,6 +52,7 @@
     "featureFlags": "Feature Flags",
     "analytics": "Analytics",
     "support": "Support",
+    "notifications": "Notifications",
     "audit": "Audit",
     "supportPage": "Support"
   },
@@ -63,6 +64,7 @@
     "/platform/health": { "parent": "System", "label": "System Health" },
     "/platform/feature-flags": { "parent": "System", "label": "Feature Flags" },
     "/platform/analytics": { "parent": "System", "label": "Analytics" },
+    "/platform/notifications": { "parent": "Platform", "label": "Notifications" },
     "/platform/audit": { "parent": "Support", "label": "Audit" },
     "/platform/support": { "parent": "Support", "label": "Support" },
     "/recruitment/pipeline": { "parent": "Recruitment", "label": "Pipeline" },

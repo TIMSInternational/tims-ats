@@ -52,6 +52,7 @@
     "featureFlags": "Feature Flags",
     "analytics": "Analytics",
     "support": "Soporte",
+    "notifications": "Notificaciones",
     "audit": "Auditoria",
     "supportPage": "Soporte"
   },
@@ -63,6 +64,7 @@
     "/platform/health": { "parent": "Sistema", "label": "Salud del Sistema" },
     "/platform/feature-flags": { "parent": "Sistema", "label": "Feature Flags" },
     "/platform/analytics": { "parent": "Sistema", "label": "Analytics" },
+    "/platform/notifications": { "parent": "Plataforma", "label": "Notificaciones" },
     "/platform/audit": { "parent": "Soporte", "label": "Auditoria" },
     "/platform/support": { "parent": "Soporte", "label": "Soporte" },
     "/recruitment/pipeline": { "parent": "Reclutamiento", "label": "Pipeline" },

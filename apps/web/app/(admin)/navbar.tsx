@@ -343,7 +343,10 @@ export function Navbar({ isPlatformOwner = false }: { isPlatformOwner?: boolean 
 
               {notifications.length > 0 && (
                 <div className="px-4 py-2.5 border-t border-[#EDEDED] bg-[#FAFAFA]">
-                  <button className="text-[12px] text-[#1F114C] font-medium hover:underline w-full text-center">
+                  <button
+                    onClick={() => { router.push('/platform/notifications'); setNotifOpen(false); }}
+                    className="text-[12px] text-[#1F114C] font-medium hover:underline w-full text-center"
+                  >
                     {t.nav.viewAll}
                   </button>
                 </div>

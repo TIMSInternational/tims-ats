@@ -21,3 +21,20 @@ model Notification {
   @@index([organizationId])
   @@map("notifications")
 }
+
+model NotificationPreference {
+  id              String   @id @default(uuid()) @db.Uuid
+  userId          String   @unique @map("user_id") @db.Uuid
+  emailEnabled    Boolean  @default(true) @map("email_enabled")
+  pushEnabled     Boolean  @default(true) @map("push_enabled")
+  categories      Json     @default("{\"critical\":true,\"warning\":true,\"info\":true,\"success\":true}")
+  modules         Json     @default("{}")
+  quietHoursStart String?  @map("quiet_hours_start")
+  quietHoursEnd   String?  @map("quiet_hours_end")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  user User @relation("UserNotificationPrefs", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notification_preferences")
+}

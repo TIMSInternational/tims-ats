@@ -57,6 +57,7 @@ model User {
 
   // Notifications
   notifications            Notification[]      @relation("UserNotifications")
+  notificationPrefs        NotificationPreference? @relation("UserNotificationPrefs")
 
   // Integration
   createdConnectors        Connector[]         @relation("ConnectorCreator")

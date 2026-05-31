@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { router, protectedProcedure } from '../trpc';
 import { db } from '@tims/db';
 import { TRPCError } from '@trpc/server';
+import { notify } from '../lib/notify';
 
 // Guard: only platform owners can use these procedures
 const platformProcedure = protectedProcedure.use(async ({ ctx, next }) => {
@@ -208,7 +209,7 @@ export const platformRouter = router({
       billingEmail: z.string().email().optional(),
     }))
     .mutation(async ({ input }) => {
-      return db.$transaction(async (tx) => {
+      const org = await db.$transaction(async (tx) => {
         const org = await tx.organization.create({
           data: {
             name: input.name,
@@ -233,6 +234,16 @@ export const platformRouter = router({
 
         return org;
       });
+
+      await notify({
+        type: 'success',
+        title: `Nueva organizacion creada: ${org.name}`,
+        module: 'platform',
+        actionUrl: '/platform/organizations',
+        organizationId: org.id,
+      });
+
+      return org;
     }),
 
   updateOrganization: platformProcedure
@@ -251,10 +262,22 @@ export const platformRouter = router({
   suspendOrganization: platformProcedure
     .input(z.object({ id: z.string().uuid(), suspend: z.boolean() }))
     .mutation(async ({ input }) => {
-      return db.organization.update({
+      const org = await db.organization.update({
         where: { id: input.id },
         data: { isActive: !input.suspend },
       });
+
+      if (input.suspend) {
+        await notify({
+          type: 'warning',
+          title: `Organizacion suspendida: ${org.name}`,
+          module: 'platform',
+          actionUrl: '/platform/organizations',
+          organizationId: org.id,
+        });
+      }
+
+      return org;
     }),
 
   // ============ USERS ============

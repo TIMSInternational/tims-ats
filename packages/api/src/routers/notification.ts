@@ -75,6 +75,52 @@ export const notificationRouter = router({
       });
     }),
 
+  // Get preferences
+  getPreferences: protectedProcedure.query(async ({ ctx }) => {
+    let prefs = await db.notificationPreference.findUnique({ where: { userId: ctx.user.id } });
+    if (!prefs) {
+      prefs = await db.notificationPreference.create({
+        data: { userId: ctx.user.id },
+      });
+    }
+    return prefs;
+  }),
+
+  // Update preferences
+  updatePreferences: protectedProcedure
+    .input(z.object({
+      emailEnabled: z.boolean().optional(),
+      pushEnabled: z.boolean().optional(),
+      categories: z.record(z.boolean()).optional(),
+      modules: z.record(z.boolean()).optional(),
+      quietHoursStart: z.string().nullable().optional(),
+      quietHoursEnd: z.string().nullable().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      return db.notificationPreference.upsert({
+        where: { userId: ctx.user.id },
+        create: { userId: ctx.user.id, ...input as any },
+        update: input as any,
+      });
+    }),
+
+  // Archive all read
+  archiveAllRead: protectedProcedure.mutation(async ({ ctx }) => {
+    return db.notification.updateMany({
+      where: { userId: ctx.user.id, read: true, archived: false },
+      data: { archived: true },
+    });
+  }),
+
+  // Delete notification
+  delete: protectedProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      return db.notification.deleteMany({
+        where: { id: input.id, userId: ctx.user.id },
+      });
+    }),
+
   // Create notification (internal — called by other routers/workers)
   create: protectedProcedure
     .input(
