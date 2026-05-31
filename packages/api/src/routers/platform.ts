@@ -53,6 +53,37 @@ export const platformRouter = router({
     return activity.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime()).slice(0, 10);
   }),
 
+  getPlanDistribution: platformProcedure.query(async () => {
+    const subs = await db.subscription.findMany({ select: { plan: true } });
+    const dist: Record<string, number> = { trial: 0, starter: 0, professional: 0, enterprise: 0 };
+    for (const s of subs) dist[s.plan] = (dist[s.plan] || 0) + 1;
+    const total = subs.length || 1;
+    return Object.entries(dist).map(([plan, count]) => ({
+      plan,
+      count,
+      percentage: Math.round((count / total) * 100),
+    }));
+  }),
+
+  getUserGrowth: platformProcedure.query(async () => {
+    const months: { month: string; count: number }[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const start = new Date();
+      start.setMonth(start.getMonth() - i, 1);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(start);
+      end.setMonth(end.getMonth() + 1);
+      const count = await db.user.count({
+        where: { createdAt: { gte: start, lt: end } },
+      });
+      months.push({
+        month: start.toLocaleDateString('es', { month: 'short' }),
+        count,
+      });
+    }
+    return months;
+  }),
+
   // ============ ORGANIZATIONS ============
 
   listOrganizations: platformProcedure
