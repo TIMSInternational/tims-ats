@@ -134,13 +134,11 @@ const BAR_OPACITIES = [
   'bg-[#1F114C]',
 ];
 
-const MOCK_ALERTS = [
-  { id: '1', severity: 'critical' as const, title: 'Cola de emails al 92% de capacidad', time: 'Hace 8 min' },
-  { id: '2', severity: 'critical' as const, title: 'Latencia de DB >500ms en region us-east', time: 'Hace 22 min' },
-  { id: '3', severity: 'warning' as const, title: 'Almacenamiento de archivos al 78%', time: 'Hace 1h' },
-  { id: '4', severity: 'warning' as const, title: '3 certificados SSL vencen en 14 dias', time: 'Hace 3h' },
-  { id: '5', severity: 'info' as const, title: 'Mantenimiento programado: Jun 3, 2:00 AM', time: 'Hace 6h' },
-];
+function mapNotifType(type: string): 'critical' | 'warning' | 'info' {
+  if (type === 'critical') return 'critical';
+  if (type === 'warning') return 'warning';
+  return 'info';
+}
 
 function getAlertStyles(severity: 'critical' | 'warning' | 'info') {
   switch (severity) {
@@ -162,6 +160,8 @@ export default function DashboardPage() {
   const activity = trpc.platform.getRecentActivity.useQuery();
   const planDist = trpc.platform.getPlanDistribution.useQuery();
   const userGrowth = trpc.platform.getUserGrowth.useQuery();
+  const alerts = trpc.notification.list.useQuery({ limit: 5 });
+  const mrrTrend = trpc.platform.getMrrTrend.useQuery();
 
   const maxGrowth = Math.max(...(userGrowth.data?.map(m => m.count) || [1]));
 
@@ -391,25 +391,44 @@ export default function DashboardPage() {
           <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-semibold text-[#333]">Alertas del Sistema</h3>
-              <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-[#DD0C15] text-white text-[10px] font-bold">
-                {MOCK_ALERTS.length}
-              </span>
+              {(alerts.data?.notifications?.length ?? 0) > 0 ? (
+                <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-[#DD0C15] text-white text-[10px] font-bold">
+                  {alerts.data!.notifications.length}
+                </span>
+              ) : (
+                <span className="w-5 h-5 rounded-full bg-green-500 flex items-center justify-center">
+                  <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" /></svg>
+                </span>
+              )}
             </div>
             <div className="space-y-3">
-              {MOCK_ALERTS.map((alert) => {
-                const styles = getAlertStyles(alert.severity);
-                return (
-                  <div key={alert.id} className={`flex items-start gap-3 p-2.5 rounded-lg ${styles.bg}`}>
-                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase flex-shrink-0 mt-0.5 ${styles.badge}`}>
-                      {styles.label}
-                    </span>
-                    <div>
-                      <p className="text-xs text-[#333] font-medium">{alert.title}</p>
-                      <p className="text-[10px] text-[#8B8B8B] mt-0.5">{alert.time}</p>
+              {alerts.isLoading ? (
+                <div className="space-y-3 animate-pulse">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-14 bg-gray-100 rounded-lg" />)}</div>
+              ) : alerts.data?.notifications && alerts.data.notifications.length > 0 ? (
+                alerts.data.notifications.map((notif) => {
+                  const severity = mapNotifType(notif.type);
+                  const styles = getAlertStyles(severity);
+                  return (
+                    <div key={notif.id} className={`flex items-start gap-3 p-2.5 rounded-lg ${styles.bg}`}>
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase flex-shrink-0 mt-0.5 ${styles.badge}`}>
+                        {styles.label}
+                      </span>
+                      <div>
+                        <p className="text-xs text-[#333] font-medium">{notif.title}</p>
+                        <p className="text-[10px] text-[#8B8B8B] mt-0.5">{timeAgo(notif.createdAt)}</p>
+                      </div>
                     </div>
+                  );
+                })
+              ) : (
+                <div className="flex items-start gap-3 p-2.5 rounded-lg bg-green-50">
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-bold text-green-700 bg-green-100 uppercase flex-shrink-0 mt-0.5">OK</span>
+                  <div>
+                    <p className="text-xs text-[#333] font-medium">Sin alertas activas</p>
+                    <p className="text-[10px] text-[#8B8B8B] mt-0.5">Todos los sistemas operativos</p>
                   </div>
-                );
-              })}
+                </div>
+              )}
             </div>
           </div>
 
@@ -446,32 +465,45 @@ export default function DashboardPage() {
             <h3 className="text-sm font-semibold text-[#333]">Tendencia de MRR</h3>
             <span className="text-xs text-[#8B8B8B]">Ultimos 6 meses</span>
           </div>
-          <div className="flex items-end gap-4 h-[140px] px-2">
-            {[
-              { month: 'Dic', value: 12400 },
-              { month: 'Ene', value: 13800 },
-              { month: 'Feb', value: 14200 },
-              { month: 'Mar', value: 15600 },
-              { month: 'Abr', value: 16900 },
-              { month: 'May', value: kpis.data?.mrr || 18450 },
-            ].map((m, i, arr) => {
-              const max = Math.max(...arr.map(a => a.value));
-              const pct = (m.value / max) * 95;
-              const isLast = i === arr.length - 1;
-              return (
-                <div key={i} className="flex-1 flex flex-col items-center gap-1.5">
-                  <span className={`text-[10px] font-medium ${isLast ? 'text-green-600 font-bold' : 'text-[#8B8B8B]'}`}>
-                    ${(m.value / 1000).toFixed(1)}k
-                  </span>
-                  <div
-                    className={`w-full rounded-t-md ${isLast ? 'bg-green-500' : 'bg-green-500/20'}`}
-                    style={{ height: `${pct}%` }}
-                  />
-                  <span className={`text-[10px] ${isLast ? 'text-[#333] font-medium' : 'text-[#8B8B8B]'}`}>{m.month}</span>
-                </div>
-              );
-            })}
-          </div>
+          {mrrTrend.isLoading ? (
+            <div className="h-[140px] animate-pulse"><div className="h-full w-full bg-gray-100 rounded" /></div>
+          ) : mrrTrend.data ? (
+            <div className="relative">
+              {/* Grid lines */}
+              <div className="absolute inset-0 flex flex-col justify-between pointer-events-none" style={{ bottom: 24, top: 18 }}>
+                {[0, 1, 2, 3].map(i => (
+                  <div key={i} className="border-t border-dashed border-[#F0F0F0]" />
+                ))}
+              </div>
+              <div className="flex items-end gap-4 px-2 relative" style={{ height: 130 }}>
+                {(() => {
+                  const maxH = 110;
+                  const max = Math.max(...mrrTrend.data.map(m => m.mrr), 1);
+                  return mrrTrend.data.map((m, i) => {
+                    const barH = m.mrr > 0 ? Math.max(Math.round((m.mrr / max) * maxH), 16) : 2;
+                    const isLast = i === mrrTrend.data!.length - 1;
+                    return (
+                      <div key={i} className="flex-1 flex flex-col items-center justify-end gap-1">
+                        <span className={`text-[10px] font-medium ${isLast && m.mrr > 0 ? 'text-green-600 font-bold' : 'text-[#8B8B8B]'}`}>
+                          {m.mrr === 0 ? '$0' : `$${m.mrr >= 1000 ? (m.mrr / 1000).toFixed(1) + 'k' : m.mrr}`}
+                        </span>
+                        <div
+                          className="w-full rounded-t-md"
+                          style={{
+                            height: barH,
+                            backgroundColor: m.mrr === 0 ? '#EDEDED' : isLast ? '#22c55e' : `rgba(34, 197, 94, ${0.15 + (i / 5) * 0.85})`,
+                          }}
+                        />
+                        <span className={`text-[10px] ${isLast ? 'text-[#333] font-medium' : 'text-[#8B8B8B]'}`}>
+                          {m.month.charAt(0).toUpperCase() + m.month.slice(1)}
+                        </span>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            </div>
+          ) : null}
         </div>
 
         {/* Platform Stats */}

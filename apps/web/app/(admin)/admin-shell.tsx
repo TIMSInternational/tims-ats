@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { Sidebar } from './sidebar';
 import { PlatformSidebar } from './platform-sidebar';
 import { Navbar } from './navbar';
+import { SupportChat } from './support-chat';
 import { TRPCProvider } from '../../lib/trpc-provider';
 import { I18nProvider } from '../../lib/i18n';
 
@@ -24,6 +25,7 @@ export function AdminShell({
 }) {
   const [expanded, setExpanded] = useState(true);
   const [mounted, setMounted] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem(SIDEBAR_KEY);
@@ -52,12 +54,13 @@ export function AdminShell({
           avatar={avatar}
         />
         <div className="flex flex-col flex-1 min-w-0">
-          <Navbar isPlatformOwner={isPlatformOwner} />
+          <Navbar isPlatformOwner={isPlatformOwner} onHelpClick={() => setChatOpen(!chatOpen)} />
           <main className="flex-1 overflow-y-auto bg-[#F6F6F6]">
             {children}
           </main>
         </div>
       </div>
+      <SupportChat open={chatOpen} onClose={() => setChatOpen(false)} />
     </TRPCProvider>
     </I18nProvider>
   );

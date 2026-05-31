@@ -31,7 +31,7 @@ function useTimeAgo() {
   };
 }
 
-export function Navbar({ isPlatformOwner = false }: { isPlatformOwner?: boolean }) {
+export function Navbar({ isPlatformOwner = false, onHelpClick }: { isPlatformOwner?: boolean; onHelpClick?: () => void }) {
   const pathname = usePathname();
   const router = useRouter();
   const { locale, setLocale, t } = useI18n();
@@ -357,6 +357,7 @@ export function Navbar({ isPlatformOwner = false }: { isPlatformOwner?: boolean 
 
         {/* Help */}
         <button
+          onClick={onHelpClick}
           className="w-9 h-9 rounded-lg flex items-center justify-center hover:bg-[#F6F6F6] transition-colors"
           title={t.nav.helpCenter}
         >

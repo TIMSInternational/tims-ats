@@ -145,6 +145,28 @@ export const platformRouter = router({
       return { organizations, users, pages };
     }),
 
+  getMrrTrend: platformProcedure.query(async () => {
+    const months: { month: string; mrr: number }[] = [];
+    const prices: Record<string, number> = { trial: 0, starter: 499, professional: 999, enterprise: 2499 };
+    for (let i = 5; i >= 0; i--) {
+      const start = new Date();
+      start.setMonth(start.getMonth() - i, 1);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(start);
+      end.setMonth(end.getMonth() + 1);
+      const subs = await db.subscription.findMany({
+        where: { status: 'active', createdAt: { lt: end } },
+        select: { plan: true },
+      });
+      const mrr = subs.reduce((sum, s) => sum + (prices[s.plan] || 0), 0);
+      months.push({
+        month: start.toLocaleDateString('es', { month: 'short' }),
+        mrr,
+      });
+    }
+    return months;
+  }),
+
   // ============ ORGANIZATIONS ============
 
   listOrganizations: platformProcedure
