@@ -24,6 +24,7 @@ import { billingRouter } from './routers/billing';
 import { featureFlagRouter } from './routers/featureFlag';
 import { portalRouter } from './routers/portal';
 import { notificationRouter } from './routers/notification';
+import { platformRouter } from './routers/platform';
 
 export { createContext } from './context';
 export type { TRPCContext } from './context';
@@ -54,6 +55,7 @@ export const appRouter = router({
   featureFlag: featureFlagRouter,
   portal: portalRouter,
   notification: notificationRouter,
+  platform: platformRouter,
 });
 
 export const createCaller = createCallerFactory(appRouter);
