@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1440">
+<title>TIMS Platform - Auditoria</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  body { font-family: 'Inter', sans-serif; margin: 0; background: #F6F6F6; }
+</style>
+</head>
+<body>
+<div class="flex w-[1440px] h-[900px] mx-auto overflow-hidden">
+
+  <!-- Sidebar -->
+  <aside class="w-[240px] bg-[#0F0A2A] flex flex-col flex-shrink-0">
+    <div class="p-5 flex items-center gap-3 border-b border-white/10">
+      <div class="w-9 h-9 bg-[#DD0C15] rounded-lg flex items-center justify-center">
+        <span class="text-white font-bold text-sm">T</span>
+      </div>
+      <div>
+        <div class="text-white font-semibold text-sm">TIMS</div>
+        <div class="text-white/40 text-[11px]">Platform Console</div>
+      </div>
+    </div>
+    <nav class="flex-1 py-4 px-3 space-y-1">
+      <a href="#" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-white/50 hover:text-white/80 hover:bg-white/5 text-sm">
+        <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25a2.25 2.25 0 01-2.25-2.25v-2.25z"/></svg>
+        Dashboard
+      </a>
+      <a href="#" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-white/50 hover:text-white/80 hover:bg-white/5 text-sm">
+        <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M2.25 21h19.5m-18-18v18m10.5-18v18m6-13.5V21M6.75 6.75h.75m-.75 3h.75m-.75 3h.75m3-6h.75m-.75 3h.75m-.75 3h.75M6.75 21v-3.375c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21"/></svg>
+        Organizaciones
+      </a>
+      <a href="#" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-white/50 hover:text-white/80 hover:bg-white/5 text-sm">
+        <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z"/></svg>
+        Suscripciones
+      </a>
+      <a href="#" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-white/50 hover:text-white/80 hover:bg-white/5 text-sm">
+        <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z"/></svg>
+        Usuarios
+      </a>
+      <a href="#" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-white/50 hover:text-white/80 hover:bg-white/5 text-sm">
+        <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"/></svg>
+        Salud del Sistema
+      </a>
+      <a href="#" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-white/50 hover:text-white/80 hover:bg-white/5 text-sm">
+        <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M3 3v1.5M3 21v-6m0 0l2.77-.693a9 9 0 016.208.682l.108.054a9 9 0 006.086.71l3.114-.732a48.524 48.524 0 01-.005-10.499l-3.11.732a9 9 0 01-6.085-.711l-.108-.054a9 9 0 00-6.208-.682L3 4.5M3 15V4.5"/></svg>
+        Feature Flags
+      </a>
+      <a href="#" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-white/50 hover:text-white/80 hover:bg-white/5 text-sm">
+        <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z"/></svg>
+        Analytics
+      </a>
+      <a href="#" class="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-white/10 text-white text-sm font-medium">
+        <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
+        Auditoria
+      </a>
+      <a href="#" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-white/50 hover:text-white/80 hover:bg-white/5 text-sm">
+        <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M16.712 4.33a9.027 9.027 0 011.652 1.306c.51.51.944 1.064 1.306 1.652M16.712 4.33l-3.448 4.138m3.448-4.138a9.014 9.014 0 00-9.424 0M19.67 7.288l-4.138 3.448m4.138-3.448a9.014 9.014 0 010 9.424m-4.138-5.976a3.736 3.736 0 00-.88-1.388 3.737 3.737 0 00-1.388-.88m2.268 2.268a3.765 3.765 0 010 2.528m-2.268-4.796l4.138-3.448M7.288 19.67l3.448-4.138m-3.448 4.138a9.027 9.027 0 01-1.306-1.652 9.027 9.027 0 01-1.652-1.306m2.958 2.958a9.014 9.014 0 010-9.424m4.138 5.976a3.765 3.765 0 01-2.528 0m5.976-4.138l3.448 4.138m-3.448-4.138a3.765 3.765 0 010 2.528m0-2.528l4.138 3.448M4.33 16.712a9.014 9.014 0 010-9.424m4.138 5.976l-4.138 3.448m4.138-3.448a3.736 3.736 0 01-.88 1.388 3.737 3.737 0 01-1.388.88m2.268-2.268l-3.448 4.138"/></svg>
+        Soporte
+      </a>
+    </nav>
+    <div class="p-4 border-t border-white/10">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-full bg-[#DD0C15] flex items-center justify-center text-white text-xs font-semibold">FT</div>
+        <div>
+          <div class="text-white text-sm font-medium">Federico T.</div>
+          <div class="text-white/40 text-[11px]">Platform Owner</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <div class="flex-1 flex flex-col overflow-hidden">
+    <!-- Topbar -->
+    <header class="h-16 bg-white border-b border-[#EDEDED] flex items-center justify-between px-6 flex-shrink-0">
+      <div class="flex items-center gap-2 text-sm">
+        <span class="text-gray-400">Soporte</span>
+        <svg class="w-4 h-4 text-gray-300" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M8.25 4.5l7.5 7.5-7.5 7.5"/></svg>
+        <span class="text-gray-800 font-medium">Auditoria</span>
+      </div>
+      <button class="flex items-center gap-2 px-4 py-2 border border-[#EDEDED] rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
+        Exportar
+      </button>
+    </header>
+
+    <!-- Content -->
+    <main class="flex-1 overflow-y-auto p-6 space-y-4">
+      <!-- Filters Row -->
+      <div class="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4">
+        <div class="flex items-center gap-3">
+          <div class="flex items-center gap-2 border border-[#EDEDED] rounded-lg px-3 py-2">
+            <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5"/></svg>
+            <span class="text-sm text-gray-600">30 May - 31 May 2026</span>
+            <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M19.5 8.25l-7.5 7.5-7.5-7.5"/></svg>
+          </div>
+          <select class="border border-[#EDEDED] rounded-lg px-3 py-2 text-sm text-gray-600 bg-white">
+            <option>Todas las Organizaciones</option>
+            <option>Grupo Bolivar</option>
+            <option>Bancolombia</option>
+            <option>Rappi</option>
+          </select>
+          <div class="relative flex-1 max-w-[200px]">
+            <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"/></svg>
+            <input type="text" placeholder="Buscar usuario..." class="w-full border border-[#EDEDED] rounded-lg pl-9 pr-3 py-2 text-sm text-gray-600 placeholder:text-gray-400">
+          </div>
+          <select class="border border-[#EDEDED] rounded-lg px-3 py-2 text-sm text-gray-600 bg-white">
+            <option>Todas las Acciones</option>
+            <option>create</option>
+            <option>update</option>
+            <option>delete</option>
+            <option>access</option>
+            <option>login</option>
+          </select>
+          <select class="border border-[#EDEDED] rounded-lg px-3 py-2 text-sm text-gray-600 bg-white">
+            <option>Todas las Entidades</option>
+            <option>user</option>
+            <option>vacancy</option>
+            <option>candidate</option>
+            <option>organization</option>
+            <option>role</option>
+          </select>
+        </div>
+        <!-- Applied Filters -->
+        <div class="flex items-center gap-2 mt-3">
+          <span class="text-xs text-gray-400">Filtros activos:</span>
+          <span class="inline-flex items-center gap-1 px-2.5 py-1 bg-[#1F114C]/10 text-[#1F114C] rounded-full text-xs font-medium">
+            Ultimas 24h
+            <button class="hover:text-[#DD0C15]"><svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg></button>
+          </span>
+          <span class="inline-flex items-center gap-1 px-2.5 py-1 bg-[#1F114C]/10 text-[#1F114C] rounded-full text-xs font-medium">
+            Grupo Bolivar
+            <button class="hover:text-[#DD0C15]"><svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg></button>
+          </span>
+          <button class="text-xs text-gray-400 hover:text-[#DD0C15] ml-1">Limpiar todo</button>
+        </div>
+      </div>
+
+      <!-- Audit Log Table -->
+      <div class="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] overflow-hidden">
+        <table class="w-full">
+          <thead>
+            <tr class="border-b border-[#EDEDED]">
+              <th class="text-left text-[11px] text-gray-400 uppercase tracking-wider font-medium px-5 py-3">Fecha / Hora</th>
+              <th class="text-left text-[11px] text-gray-400 uppercase tracking-wider font-medium px-5 py-3">Actor</th>
+              <th class="text-left text-[11px] text-gray-400 uppercase tracking-wider font-medium px-5 py-3">Organizacion</th>
+              <th class="text-left text-[11px] text-gray-400 uppercase tracking-wider font-medium px-5 py-3">Accion</th>
+              <th class="text-left text-[11px] text-gray-400 uppercase tracking-wider font-medium px-5 py-3">Entidad</th>
+              <th class="text-left text-[11px] text-gray-400 uppercase tracking-wider font-medium px-5 py-3">Detalle</th>
+              <th class="text-left text-[11px] text-gray-400 uppercase tracking-wider font-medium px-5 py-3">IP</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-[#EDEDED]">
+            <tr class="hover:bg-gray-50/50">
+              <td class="px-5 py-3 text-xs text-gray-500 whitespace-nowrap">31 May 14:32:18</td>
+              <td class="px-5 py-3"><div class="flex items-center gap-2"><div class="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center text-[10px] font-semibold text-blue-600">CM</div><span class="text-sm text-gray-700">Carlos Mendez</span></div></td>
+              <td class="px-5 py-3 text-sm text-gray-600">Grupo Bolivar</td>
+              <td class="px-5 py-3"><span class="px-2 py-0.5 rounded-full text-[11px] font-medium bg-purple-100 text-purple-700">login</span></td>
+              <td class="px-5 py-3 text-sm text-gray-600">user</td>
+              <td class="px-5 py-3 text-sm text-gray-500 max-w-[200px] truncate">Inicio de sesion exitoso via SSO</td>
+              <td class="px-5 py-3 text-xs text-gray-400 font-mono">190.24.18.92</td>
+            </tr>
+            <tr class="hover:bg-gray-50/50">
+              <td class="px-5 py-3 text-xs text-gray-500 whitespace-nowrap">31 May 14:28:05</td>
+              <td class="px-5 py-3"><div class="flex items-center gap-2"><div class="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center text-[10px] font-semibold text-green-600">LR</div><span class="text-sm text-gray-700">Laura Rodriguez</span></div></td>
+              <td class="px-5 py-3 text-sm text-gray-600">Bancolombia</td>
+              <td class="px-5 py-3"><span class="px-2 py-0.5 rounded-full text-[11px] font-medium bg-green-100 text-green-700">create</span></td>
+              <td class="px-5 py-3 text-sm text-gray-600">vacancy</td>
+              <td class="px-5 py-3 text-sm text-gray-500 max-w-[200px] truncate">Vacante: Analista de Datos Senior</td>
+              <td class="px-5 py-3 text-xs text-gray-400 font-mono">181.53.42.11</td>
+            </tr>
+            <tr class="hover:bg-gray-50/50">
+              <td class="px-5 py-3 text-xs text-gray-500 whitespace-nowrap">31 May 13:55:41</td>
+              <td class="px-5 py-3"><div class="flex items-center gap-2"><div class="w-6 h-6 rounded-full bg-orange-100 flex items-center justify-center text-[10px] font-semibold text-orange-600">AM</div><span class="text-sm text-gray-700">Andrea Martinez</span></div></td>
+              <td class="px-5 py-3 text-sm text-gray-600">Rappi</td>
+              <td class="px-5 py-3"><span class="px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-100 text-blue-700">update</span></td>
+              <td class="px-5 py-3 text-sm text-gray-600">candidate</td>
+              <td class="px-5 py-3 text-sm text-gray-500 max-w-[200px] truncate">Etapa cambiada: Entrevista > Oferta</td>
+              <td class="px-5 py-3 text-xs text-gray-400 font-mono">200.12.77.34</td>
+            </tr>
+            <tr class="hover:bg-gray-50/50">
+              <td class="px-5 py-3 text-xs text-gray-500 whitespace-nowrap">31 May 13:42:19</td>
+              <td class="px-5 py-3"><div class="flex items-center gap-2"><div class="w-6 h-6 rounded-full bg-red-100 flex items-center justify-center text-[10px] font-semibold text-red-600">JG</div><span class="text-sm text-gray-700">Juan Garcia</span></div></td>
+              <td class="px-5 py-3 text-sm text-gray-600">Grupo Bolivar</td>
+              <td class="px-5 py-3"><span class="px-2 py-0.5 rounded-full text-[11px] font-medium bg-red-100 text-red-700">delete</span></td>
+              <td class="px-5 py-3 text-sm text-gray-600">vacancy</td>
+              <td class="px-5 py-3 text-sm text-gray-500 max-w-[200px] truncate">Vacante eliminada: Pasante Contable</td>
+              <td class="px-5 py-3 text-xs text-gray-400 font-mono">190.24.18.105</td>
+            </tr>
+            <tr class="hover:bg-gray-50/50">
+              <td class="px-5 py-3 text-xs text-gray-500 whitespace-nowrap">31 May 12:18:33</td>
+              <td class="px-5 py-3"><div class="flex items-center gap-2"><div class="w-6 h-6 rounded-full bg-purple-100 flex items-center justify-center text-[10px] font-semibold text-purple-600">MV</div><span class="text-sm text-gray-700">Maria Vargas</span></div></td>
+              <td class="px-5 py-3 text-sm text-gray-600">Bancolombia</td>
+              <td class="px-5 py-3"><span class="px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-100 text-blue-700">update</span></td>
+              <td class="px-5 py-3 text-sm text-gray-600">organization</td>
+              <td class="px-5 py-3 text-sm text-gray-500 max-w-[200px] truncate">Configuracion SSO actualizada</td>
+              <td class="px-5 py-3 text-xs text-gray-400 font-mono">181.53.42.88</td>
+            </tr>
+            <tr class="hover:bg-gray-50/50">
+              <td class="px-5 py-3 text-xs text-gray-500 whitespace-nowrap">31 May 11:45:02</td>
+              <td class="px-5 py-3"><div class="flex items-center gap-2"><div class="w-6 h-6 rounded-full bg-teal-100 flex items-center justify-center text-[10px] font-semibold text-teal-600">DP</div><span class="text-sm text-gray-700">Diego Perez</span></div></td>
+              <td class="px-5 py-3 text-sm text-gray-600">Rappi</td>
+              <td class="px-5 py-3"><span class="px-2 py-0.5 rounded-full text-[11px] font-medium bg-gray-100 text-gray-600">access</span></td>
+              <td class="px-5 py-3 text-sm text-gray-600">candidate</td>
+              <td class="px-5 py-3 text-sm text-gray-500 max-w-[200px] truncate">Exportacion masiva de candidatos (CSV)</td>
+              <td class="px-5 py-3 text-xs text-gray-400 font-mono">200.12.77.56</td>
+            </tr>
+            <tr class="hover:bg-gray-50/50">
+              <td class="px-5 py-3 text-xs text-gray-500 whitespace-nowrap">31 May 10:22:14</td>
+              <td class="px-5 py-3"><div class="flex items-center gap-2"><div class="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center text-[10px] font-semibold text-blue-600">CM</div><span class="text-sm text-gray-700">Carlos Mendez</span></div></td>
+              <td class="px-5 py-3 text-sm text-gray-600">Grupo Bolivar</td>
+              <td class="px-5 py-3"><span class="px-2 py-0.5 rounded-full text-[11px] font-medium bg-green-100 text-green-700">create</span></td>
+              <td class="px-5 py-3 text-sm text-gray-600">role</td>
+              <td class="px-5 py-3 text-sm text-gray-500 max-w-[200px] truncate">Rol asignado: Admin a sofia.luna@gb.co</td>
+              <td class="px-5 py-3 text-xs text-gray-400 font-mono">190.24.18.92</td>
+            </tr>
+            <tr class="hover:bg-gray-50/50">
+              <td class="px-5 py-3 text-xs text-gray-500 whitespace-nowrap">31 May 09:58:47</td>
+              <td class="px-5 py-3"><div class="flex items-center gap-2"><div class="w-6 h-6 rounded-full bg-pink-100 flex items-center justify-center text-[10px] font-semibold text-pink-600">SL</div><span class="text-sm text-gray-700">Sofia Luna</span></div></td>
+              <td class="px-5 py-3 text-sm text-gray-600">Grupo Bolivar</td>
+              <td class="px-5 py-3"><span class="px-2 py-0.5 rounded-full text-[11px] font-medium bg-purple-100 text-purple-700">login</span></td>
+              <td class="px-5 py-3 text-sm text-gray-600">user</td>
+              <td class="px-5 py-3 text-sm text-gray-500 max-w-[200px] truncate">Primer inicio de sesion del usuario</td>
+              <td class="px-5 py-3 text-xs text-gray-400 font-mono">190.24.19.14</td>
+            </tr>
+            <tr class="hover:bg-gray-50/50">
+              <td class="px-5 py-3 text-xs text-gray-500 whitespace-nowrap">31 May 08:34:22</td>
+              <td class="px-5 py-3"><div class="flex items-center gap-2"><div class="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center text-[10px] font-semibold text-green-600">LR</div><span class="text-sm text-gray-700">Laura Rodriguez</span></div></td>
+              <td class="px-5 py-3 text-sm text-gray-600">Bancolombia</td>
+              <td class="px-5 py-3"><span class="px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-100 text-blue-700">update</span></td>
+              <td class="px-5 py-3 text-sm text-gray-600">user</td>
+              <td class="px-5 py-3 text-sm text-gray-500 max-w-[200px] truncate">Password reset para pedro.santos@bc.co</td>
+              <td class="px-5 py-3 text-xs text-gray-400 font-mono">181.53.42.11</td>
+            </tr>
+            <tr class="hover:bg-gray-50/50">
+              <td class="px-5 py-3 text-xs text-gray-500 whitespace-nowrap">31 May 07:12:55</td>
+              <td class="px-5 py-3"><div class="flex items-center gap-2"><div class="w-6 h-6 rounded-full bg-orange-100 flex items-center justify-center text-[10px] font-semibold text-orange-600">AM</div><span class="text-sm text-gray-700">Andrea Martinez</span></div></td>
+              <td class="px-5 py-3 text-sm text-gray-600">Rappi</td>
+              <td class="px-5 py-3"><span class="px-2 py-0.5 rounded-full text-[11px] font-medium bg-green-100 text-green-700">create</span></td>
+              <td class="px-5 py-3 text-sm text-gray-600">vacancy</td>
+              <td class="px-5 py-3 text-sm text-gray-500 max-w-[200px] truncate">Vacante: Product Manager LATAM</td>
+              <td class="px-5 py-3 text-xs text-gray-400 font-mono">200.12.77.34</td>
+            </tr>
+            <tr class="hover:bg-gray-50/50">
+              <td class="px-5 py-3 text-xs text-gray-500 whitespace-nowrap">30 May 23:48:31</td>
+              <td class="px-5 py-3"><div class="flex items-center gap-2"><div class="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-[10px] font-semibold text-indigo-600">FT</div><span class="text-sm text-gray-700">Federico Tafur</span></div></td>
+              <td class="px-5 py-3 text-sm text-gray-600">TIMS Platform</td>
+              <td class="px-5 py-3"><span class="px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-100 text-blue-700">update</span></td>
+              <td class="px-5 py-3 text-sm text-gray-600">organization</td>
+              <td class="px-5 py-3 text-sm text-gray-500 max-w-[200px] truncate">Feature flag habilitada: AI Screening</td>
+              <td class="px-5 py-3 text-xs text-gray-400 font-mono">172.58.91.3</td>
+            </tr>
+            <tr class="hover:bg-gray-50/50">
+              <td class="px-5 py-3 text-xs text-gray-500 whitespace-nowrap">30 May 22:15:08</td>
+              <td class="px-5 py-3"><div class="flex items-center gap-2"><div class="w-6 h-6 rounded-full bg-teal-100 flex items-center justify-center text-[10px] font-semibold text-teal-600">DP</div><span class="text-sm text-gray-700">Diego Perez</span></div></td>
+              <td class="px-5 py-3 text-sm text-gray-600">Rappi</td>
+              <td class="px-5 py-3"><span class="px-2 py-0.5 rounded-full text-[11px] font-medium bg-gray-100 text-gray-600">access</span></td>
+              <td class="px-5 py-3 text-sm text-gray-600">candidate</td>
+              <td class="px-5 py-3 text-sm text-gray-500 max-w-[200px] truncate">Descarga de CV: maria.gomez_cv.pdf</td>
+              <td class="px-5 py-3 text-xs text-gray-400 font-mono">200.12.77.56</td>
+            </tr>
+          </tbody>
+        </table>
+        <!-- Pagination -->
+        <div class="flex items-center justify-between px-5 py-3 border-t border-[#EDEDED]">
+          <span class="text-sm text-gray-500">Mostrando 1-12 de 2,847</span>
+          <div class="flex items-center gap-1">
+            <button class="w-8 h-8 rounded-lg border border-[#EDEDED] flex items-center justify-center text-gray-400 hover:bg-gray-50">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M15.75 19.5L8.25 12l7.5-7.5"/></svg>
+            </button>
+            <button class="w-8 h-8 rounded-lg bg-[#1F114C] text-white text-sm font-medium">1</button>
+            <button class="w-8 h-8 rounded-lg border border-[#EDEDED] text-sm text-gray-600 hover:bg-gray-50">2</button>
+            <button class="w-8 h-8 rounded-lg border border-[#EDEDED] text-sm text-gray-600 hover:bg-gray-50">3</button>
+            <span class="text-gray-400 px-1">...</span>
+            <button class="w-8 h-8 rounded-lg border border-[#EDEDED] text-sm text-gray-600 hover:bg-gray-50">238</button>
+            <button class="w-8 h-8 rounded-lg border border-[#EDEDED] flex items-center justify-center text-gray-400 hover:bg-gray-50">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M8.25 4.5l7.5 7.5-7.5 7.5"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Reglas de Alerta -->
+      <div class="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-sm font-semibold text-gray-800">Reglas de Alerta</h3>
+          <button class="text-xs text-[#1F114C] font-medium hover:underline">+ Nueva Regla</button>
+        </div>
+        <div class="space-y-3">
+          <!-- Rule 1 -->
+          <div class="flex items-center justify-between p-3 border border-[#EDEDED] rounded-lg">
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center">
+                <svg class="w-4 h-4 text-red-500" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg>
+              </div>
+              <div>
+                <div class="text-sm text-gray-700 font-medium">Alerta en exportacion de datos</div>
+                <div class="text-xs text-gray-400">Notificar cuando un usuario exporte datos masivos</div>
+              </div>
+            </div>
+            <div class="flex items-center gap-3">
+              <span class="text-xs text-gray-400">Activa desde 15 Abr</span>
+              <button class="relative w-10 h-5 bg-green-500 rounded-full transition-colors">
+                <span class="absolute top-0.5 right-0.5 w-4 h-4 bg-white rounded-full shadow"></span>
+              </button>
+            </div>
+          </div>
+          <!-- Rule 2 -->
+          <div class="flex items-center justify-between p-3 border border-[#EDEDED] rounded-lg">
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-lg bg-yellow-50 flex items-center justify-center">
+                <svg class="w-4 h-4 text-yellow-500" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z"/></svg>
+              </div>
+              <div>
+                <div class="text-sm text-gray-700 font-medium">Alerta en cambio de rol</div>
+                <div class="text-xs text-gray-400">Notificar cuando se asignen o cambien roles de usuario</div>
+              </div>
+            </div>
+            <div class="flex items-center gap-3">
+              <span class="text-xs text-gray-400">Activa desde 20 Mar</span>
+              <button class="relative w-10 h-5 bg-green-500 rounded-full transition-colors">
+                <span class="absolute top-0.5 right-0.5 w-4 h-4 bg-white rounded-full shadow"></span>
+              </button>
+            </div>
+          </div>
+          <!-- Rule 3 -->
+          <div class="flex items-center justify-between p-3 border border-[#EDEDED] rounded-lg">
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
+                <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z"/><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+              </div>
+              <div>
+                <div class="text-sm text-gray-700 font-medium">Alerta en config. de organizacion</div>
+                <div class="text-xs text-gray-400">Notificar cuando se modifique la configuracion de una org</div>
+              </div>
+            </div>
+            <div class="flex items-center gap-3">
+              <span class="text-xs text-gray-400">Desactivada</span>
+              <button class="relative w-10 h-5 bg-gray-300 rounded-full transition-colors">
+                <span class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow"></span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+</div>
+</body>
+</html>

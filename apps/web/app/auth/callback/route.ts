@@ -2,15 +2,10 @@ import { createSupabaseServerClient } from '@tims/auth/server';
 import { NextResponse } from 'next/server';
 import { db } from '@tims/db';
 
-const PLATFORM_OWNER_EMAILS = [
-  'federico@nexadev.ai',
-  'fedetafur@vt.edu',
-  'fedetafur@gmail.com',
-  'fedetafur2@gmail.com',
-  'fedetafur3@gmail.com',
-  'fedetafur4@gmail.com',
-  'andres@nexadev.ai',
-];
+async function isPlatformOwnerEmail(email: string): Promise<boolean> {
+  const entry = await db.platformOwnerEmail.findUnique({ where: { email } });
+  return !!entry;
+}
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
@@ -64,7 +59,7 @@ export async function GET(request: Request) {
   }
 
   // New user — check if platform owner
-  if (PLATFORM_OWNER_EMAILS.includes(supabaseUser.email)) {
+  if (await isPlatformOwnerEmail(supabaseUser.email)) {
     await db.user.create({
       data: {
         supabaseUserId: supabaseUser.id,

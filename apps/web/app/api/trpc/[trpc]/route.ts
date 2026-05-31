@@ -57,17 +57,11 @@ const handler = (req: Request) =>
 
       // Auto-create platform owner accounts for allowed emails
       if (!appUser && supabaseUser.email) {
-        const PLATFORM_OWNER_EMAILS = [
-          'federico@nexadev.ai',
-          'fedetafur@vt.edu',
-          'fedetafur2@gmail.com',
-          'fedetafur3@gmail.com',
-          'fedetafur4@gmail.com',
-          'fedetafur@gmail.com',
-          'andres@nexadev.ai',
-        ];
+        const isPlatformEmail = await db.platformOwnerEmail.findUnique({
+          where: { email: supabaseUser.email },
+        });
 
-        if (PLATFORM_OWNER_EMAILS.includes(supabaseUser.email)) {
+        if (isPlatformEmail) {
           appUser = await db.user.create({
             data: {
               supabaseUserId: supabaseUser.id,

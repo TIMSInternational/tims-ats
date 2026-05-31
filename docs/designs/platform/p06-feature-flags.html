@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TIMS Platform — Feature Flags</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>body{font-family:'Inter',sans-serif;margin:0;background:#F6F6F6;} .scrollbar-thin::-webkit-scrollbar{width:4px;} .scrollbar-thin::-webkit-scrollbar-thumb{background:#ccc;border-radius:4px;}
+.toggle-on{background:#1F114C;} .toggle-on::after{transform:translateX(16px);}
+.toggle{position:relative;width:36px;height:20px;border-radius:10px;background:#D1D5DB;cursor:pointer;transition:background 0.2s;}
+.toggle::after{content:'';position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:white;transition:transform 0.2s;box-shadow:0 1px 2px rgba(0,0,0,0.15);}
+</style>
+</head>
+<body>
+<div class="flex w-[1440px] h-[900px] mx-auto overflow-hidden">
+
+  <!-- SIDEBAR 240px -->
+  <div class="flex flex-col w-[240px] h-full bg-[#0F0A2A] shrink-0">
+    <div class="flex items-center gap-2.5 px-5 h-[64px] border-b border-white/10">
+      <div class="w-8 h-8 rounded-lg bg-[#DD0C15] flex items-center justify-center"><span class="text-white text-[12px] font-bold">T</span></div>
+      <div><p class="text-white text-[14px] font-semibold leading-tight">TIMS</p><p class="text-white/40 text-[10px]">Platform Console</p></div>
+    </div>
+    <nav class="flex-1 py-4 px-3 flex flex-col gap-0.5 overflow-y-auto">
+      <a class="flex items-center gap-2.5 px-3 h-9 rounded-lg text-[13px] text-white/60 hover:bg-white/5 hover:text-white/80">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        Dashboard
+      </a>
+      <a class="flex items-center gap-2.5 px-3 h-9 rounded-lg text-[13px] text-white/60 hover:bg-white/5 hover:text-white/80">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21"/></svg>
+        Organizaciones
+      </a>
+      <a class="flex items-center gap-2.5 px-3 h-9 rounded-lg text-[13px] text-white/60 hover:bg-white/5 hover:text-white/80">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z"/></svg>
+        Suscripciones
+      </a>
+      <a class="flex items-center gap-2.5 px-3 h-9 rounded-lg text-[13px] text-white/60 hover:bg-white/5 hover:text-white/80">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z"/></svg>
+        Usuarios
+      </a>
+      <a class="flex items-center gap-2.5 px-3 h-9 rounded-lg text-[13px] text-white/60 hover:bg-white/5 hover:text-white/80">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z"/></svg>
+        Salud del Sistema
+      </a>
+      <a class="flex items-center gap-2.5 px-3 h-9 rounded-lg bg-white/10 text-[13px] text-white font-medium">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M3 3v1.5M3 21v-6m0 0l2.77-.693a9 9 0 016.208.682l.108.054a9 9 0 006.086.71l3.114-.732a48.524 48.524 0 01-.005-10.499l-3.11.732a9 9 0 01-6.085-.711l-.108-.054a9 9 0 00-6.208-.682L3 4.5M3 15V4.5"/></svg>
+        Feature Flags
+      </a>
+      <a class="flex items-center gap-2.5 px-3 h-9 rounded-lg text-[13px] text-white/60 hover:bg-white/5 hover:text-white/80">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z"/></svg>
+        Analytics
+      </a>
+      <a class="flex items-center gap-2.5 px-3 h-9 rounded-lg text-[13px] text-white/60 hover:bg-white/5 hover:text-white/80">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15a2.25 2.25 0 012.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z"/></svg>
+        Auditoria
+      </a>
+      <a class="flex items-center gap-2.5 px-3 h-9 rounded-lg text-[13px] text-white/60 hover:bg-white/5 hover:text-white/80">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M16.712 4.33a9.027 9.027 0 011.652 1.306c.51.51.944 1.064 1.306 1.652M16.712 4.33l-3.448 4.138m3.448-4.138a9.014 9.014 0 00-9.424 0M19.67 7.288l-4.138 3.448m4.138-3.448a9.014 9.014 0 010 9.424m-4.138-5.976a3.736 3.736 0 00-.88-1.388 3.737 3.737 0 00-1.388-.88m2.268 2.268a3.765 3.765 0 010 2.528m-2.268-4.796a3.765 3.765 0 00-2.528 0m4.796 4.796c-.181.506-.475.982-.88 1.388a3.736 3.736 0 01-1.388.88m2.268-2.268l4.138 3.448m0 0a9.027 9.027 0 01-1.306 1.652c-.51.51-1.064.944-1.652 1.306m0 0l-3.448-4.138m3.448 4.138a9.014 9.014 0 01-9.424 0m5.976-4.138a3.765 3.765 0 01-2.528 0m0 0a3.736 3.736 0 01-1.388-.88 3.737 3.737 0 01-.88-1.388m0 0a3.765 3.765 0 010-2.528m2.268 4.796l-3.448 4.138m0 0a9.027 9.027 0 01-1.652-1.306 9.027 9.027 0 01-1.306-1.652m0 0l4.138-3.448M4.33 16.712a9.014 9.014 0 010-9.424m4.138 5.976a3.765 3.765 0 01-2.268-2.268m0 0L2.062 7.288m2.268 2.268L2.062 7.288m0 0a9.027 9.027 0 011.306-1.652A9.014 9.014 0 017.288 4.33"/></svg>
+        Soporte
+      </a>
+    </nav>
+    <div class="px-4 py-3 border-t border-white/10 flex items-center gap-2.5">
+      <div class="w-8 h-8 rounded-full bg-[#DD0C15] flex items-center justify-center text-white text-[11px] font-bold">FT</div>
+      <div><p class="text-white text-[12px] font-medium">Federico Tafur</p><p class="text-white/40 text-[10px]">Platform Owner</p></div>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="flex flex-col flex-1 min-w-0">
+    <!-- TOP BAR -->
+    <div class="flex items-center justify-between px-6 h-16 bg-white border-b border-[#EDEDED] shrink-0">
+      <div class="flex items-center gap-2">
+        <span class="text-[13px] text-[#8B8B8B]">Sistema</span>
+        <svg class="w-3 h-3 text-[#ccc]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+        <span class="text-sm font-medium text-[#1F114C]">Feature Flags</span>
+      </div>
+      <div class="flex items-center gap-3">
+        <button class="flex items-center gap-1.5 bg-[#DD0C15] text-white px-4 h-8 rounded-lg text-[12px] font-medium">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4.5v15m7.5-7.5h-15"/></svg>
+          Crear Flag
+        </button>
+      </div>
+    </div>
+
+    <!-- CONTENT -->
+    <div class="flex-1 overflow-y-auto p-5 scrollbar-thin">
+
+      <!-- INFO BANNER -->
+      <div class="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4 flex items-center gap-3">
+        <svg class="w-5 h-5 text-blue-500 shrink-0" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z"/></svg>
+        <p class="text-[12px] text-blue-700">Los feature flags controlan que modulos y funcionalidades estan disponibles para cada organizacion. Los cambios se aplican en tiempo real.</p>
+      </div>
+
+      <!-- FEATURE FLAGS TABLE -->
+      <div class="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] overflow-hidden mb-4">
+        <table class="w-full text-left">
+          <thead>
+            <tr class="border-b border-[#EDEDED]">
+              <th class="px-4 py-3 text-[11px] font-semibold text-[#8B8B8B] uppercase tracking-wider">Flag Key</th>
+              <th class="px-4 py-3 text-[11px] font-semibold text-[#8B8B8B] uppercase tracking-wider">Descripcion</th>
+              <th class="px-4 py-3 text-[11px] font-semibold text-[#8B8B8B] uppercase tracking-wider text-center">Default</th>
+              <th class="px-4 py-3 text-[11px] font-semibold text-[#8B8B8B] uppercase tracking-wider text-center">Overrides</th>
+              <th class="px-4 py-3 text-[11px] font-semibold text-[#8B8B8B] uppercase tracking-wider">Ultima Modificacion</th>
+              <th class="px-4 py-3 text-[11px] font-semibold text-[#8B8B8B] uppercase tracking-wider">Acciones</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-[#F3F3F3]">
+            <!-- ai_enabled - ON -->
+            <tr class="hover:bg-[#FAFAFA]">
+              <td class="px-4 py-3"><code class="text-[12px] font-mono bg-[#F0EEF7] text-[#1F114C] px-2 py-0.5 rounded">ai_enabled</code></td>
+              <td class="px-4 py-3 text-[12px] text-[#585858]">Habilita funcionalidades de IA (screening, matching, sugerencias)</td>
+              <td class="px-4 py-3 text-center"><div class="flex justify-center"><div class="toggle toggle-on"></div></div></td>
+              <td class="px-4 py-3 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-100 text-purple-700">2</span></td>
+              <td class="px-4 py-3 text-[12px] text-[#8B8B8B]">28 May 2026, 14:30</td>
+              <td class="px-4 py-3">
+                <div class="flex items-center gap-1">
+                  <button class="px-2 py-1 text-[10px] text-[#1F114C] bg-[#F0EEF7] rounded font-medium hover:bg-[#E4E0F0]">Configurar</button>
+                  <button class="px-2 py-1 text-[10px] text-[#DD0C15] bg-red-50 rounded font-medium hover:bg-red-100">Eliminar</button>
+                </div>
+              </td>
+            </tr>
+            <!-- nine_box_enabled - OFF -->
+            <tr class="hover:bg-[#FAFAFA]">
+              <td class="px-4 py-3"><code class="text-[12px] font-mono bg-[#F0EEF7] text-[#1F114C] px-2 py-0.5 rounded">nine_box_enabled</code></td>
+              <td class="px-4 py-3 text-[12px] text-[#585858]">Modulo de Nine-Box / Talent Review para evaluacion de talento</td>
+              <td class="px-4 py-3 text-center"><div class="flex justify-center"><div class="toggle"></div></div></td>
+              <td class="px-4 py-3 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-100 text-purple-700">5</span></td>
+              <td class="px-4 py-3 text-[12px] text-[#8B8B8B]">25 May 2026, 09:15</td>
+              <td class="px-4 py-3">
+                <div class="flex items-center gap-1">
+                  <button class="px-2 py-1 text-[10px] text-[#1F114C] bg-[#F0EEF7] rounded font-medium hover:bg-[#E4E0F0]">Configurar</button>
+                  <button class="px-2 py-1 text-[10px] text-[#DD0C15] bg-red-50 rounded font-medium hover:bg-red-100">Eliminar</button>
+                </div>
+              </td>
+            </tr>
+            <!-- dei_enabled -->
+            <tr class="hover:bg-[#FAFAFA]">
+              <td class="px-4 py-3"><code class="text-[12px] font-mono bg-[#F0EEF7] text-[#1F114C] px-2 py-0.5 rounded">dei_enabled</code></td>
+              <td class="px-4 py-3 text-[12px] text-[#585858]">Modulo de Diversidad, Equidad e Inclusion con analytics</td>
+              <td class="px-4 py-3 text-center"><div class="flex justify-center"><div class="toggle"></div></div></td>
+              <td class="px-4 py-3 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-100 text-purple-700">3</span></td>
+              <td class="px-4 py-3 text-[12px] text-[#8B8B8B]">24 May 2026, 16:42</td>
+              <td class="px-4 py-3">
+                <div class="flex items-center gap-1">
+                  <button class="px-2 py-1 text-[10px] text-[#1F114C] bg-[#F0EEF7] rounded font-medium hover:bg-[#E4E0F0]">Configurar</button>
+                  <button class="px-2 py-1 text-[10px] text-[#DD0C15] bg-red-50 rounded font-medium hover:bg-red-100">Eliminar</button>
+                </div>
+              </td>
+            </tr>
+            <!-- compensation_enabled -->
+            <tr class="hover:bg-[#FAFAFA]">
+              <td class="px-4 py-3"><code class="text-[12px] font-mono bg-[#F0EEF7] text-[#1F114C] px-2 py-0.5 rounded">compensation_enabled</code></td>
+              <td class="px-4 py-3 text-[12px] text-[#585858]">Modulo de Compensacion y Beneficios con benchmarking</td>
+              <td class="px-4 py-3 text-center"><div class="flex justify-center"><div class="toggle"></div></div></td>
+              <td class="px-4 py-3 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-100 text-purple-700">4</span></td>
+              <td class="px-4 py-3 text-[12px] text-[#8B8B8B]">22 May 2026, 11:20</td>
+              <td class="px-4 py-3">
+                <div class="flex items-center gap-1">
+                  <button class="px-2 py-1 text-[10px] text-[#1F114C] bg-[#F0EEF7] rounded font-medium hover:bg-[#E4E0F0]">Configurar</button>
+                  <button class="px-2 py-1 text-[10px] text-[#DD0C15] bg-red-50 rounded font-medium hover:bg-red-100">Eliminar</button>
+                </div>
+              </td>
+            </tr>
+            <!-- succession_enabled -->
+            <tr class="hover:bg-[#FAFAFA]">
+              <td class="px-4 py-3"><code class="text-[12px] font-mono bg-[#F0EEF7] text-[#1F114C] px-2 py-0.5 rounded">succession_enabled</code></td>
+              <td class="px-4 py-3 text-[12px] text-[#585858]">Planificacion de sucesion y mapa de talento</td>
+              <td class="px-4 py-3 text-center"><div class="flex justify-center"><div class="toggle"></div></div></td>
+              <td class="px-4 py-3 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-100 text-purple-700">2</span></td>
+              <td class="px-4 py-3 text-[12px] text-[#8B8B8B]">20 May 2026, 08:55</td>
+              <td class="px-4 py-3">
+                <div class="flex items-center gap-1">
+                  <button class="px-2 py-1 text-[10px] text-[#1F114C] bg-[#F0EEF7] rounded font-medium hover:bg-[#E4E0F0]">Configurar</button>
+                  <button class="px-2 py-1 text-[10px] text-[#DD0C15] bg-red-50 rounded font-medium hover:bg-red-100">Eliminar</button>
+                </div>
+              </td>
+            </tr>
+            <!-- video_interviews -->
+            <tr class="hover:bg-[#FAFAFA]">
+              <td class="px-4 py-3"><code class="text-[12px] font-mono bg-[#F0EEF7] text-[#1F114C] px-2 py-0.5 rounded">video_interviews</code></td>
+              <td class="px-4 py-3 text-[12px] text-[#585858]">Entrevistas en video con grabacion y transcripcion AI</td>
+              <td class="px-4 py-3 text-center"><div class="flex justify-center"><div class="toggle"></div></div></td>
+              <td class="px-4 py-3 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-100 text-purple-700">1</span></td>
+              <td class="px-4 py-3 text-[12px] text-[#8B8B8B]">18 May 2026, 15:10</td>
+              <td class="px-4 py-3">
+                <div class="flex items-center gap-1">
+                  <button class="px-2 py-1 text-[10px] text-[#1F114C] bg-[#F0EEF7] rounded font-medium hover:bg-[#E4E0F0]">Configurar</button>
+                  <button class="px-2 py-1 text-[10px] text-[#DD0C15] bg-red-50 rounded font-medium hover:bg-red-100">Eliminar</button>
+                </div>
+              </td>
+            </tr>
+            <!-- whatsapp_enabled -->
+            <tr class="hover:bg-[#FAFAFA]">
+              <td class="px-4 py-3"><code class="text-[12px] font-mono bg-[#F0EEF7] text-[#1F114C] px-2 py-0.5 rounded">whatsapp_enabled</code></td>
+              <td class="px-4 py-3 text-[12px] text-[#585858]">Integracion con WhatsApp Business para comunicacion candidatos</td>
+              <td class="px-4 py-3 text-center"><div class="flex justify-center"><div class="toggle"></div></div></td>
+              <td class="px-4 py-3 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gray-100 text-gray-500">0</span></td>
+              <td class="px-4 py-3 text-[12px] text-[#8B8B8B]">15 May 2026, 10:00</td>
+              <td class="px-4 py-3">
+                <div class="flex items-center gap-1">
+                  <button class="px-2 py-1 text-[10px] text-[#1F114C] bg-[#F0EEF7] rounded font-medium hover:bg-[#E4E0F0]">Configurar</button>
+                  <button class="px-2 py-1 text-[10px] text-[#DD0C15] bg-red-50 rounded font-medium hover:bg-red-100">Eliminar</button>
+                </div>
+              </td>
+            </tr>
+            <!-- advanced_analytics -->
+            <tr class="hover:bg-[#FAFAFA]">
+              <td class="px-4 py-3"><code class="text-[12px] font-mono bg-[#F0EEF7] text-[#1F114C] px-2 py-0.5 rounded">advanced_analytics</code></td>
+              <td class="px-4 py-3 text-[12px] text-[#585858]">Analytics avanzados con dashboards personalizables y exportacion</td>
+              <td class="px-4 py-3 text-center"><div class="flex justify-center"><div class="toggle"></div></div></td>
+              <td class="px-4 py-3 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-100 text-purple-700">6</span></td>
+              <td class="px-4 py-3 text-[12px] text-[#8B8B8B]">12 May 2026, 13:45</td>
+              <td class="px-4 py-3">
+                <div class="flex items-center gap-1">
+                  <button class="px-2 py-1 text-[10px] text-[#1F114C] bg-[#F0EEF7] rounded font-medium hover:bg-[#E4E0F0]">Configurar</button>
+                  <button class="px-2 py-1 text-[10px] text-[#DD0C15] bg-red-50 rounded font-medium hover:bg-red-100">Eliminar</button>
+                </div>
+              </td>
+            </tr>
+            <!-- api_access -->
+            <tr class="hover:bg-[#FAFAFA]">
+              <td class="px-4 py-3"><code class="text-[12px] font-mono bg-[#F0EEF7] text-[#1F114C] px-2 py-0.5 rounded">api_access</code></td>
+              <td class="px-4 py-3 text-[12px] text-[#585858]">Acceso a API REST publica con API keys y rate limiting</td>
+              <td class="px-4 py-3 text-center"><div class="flex justify-center"><div class="toggle"></div></div></td>
+              <td class="px-4 py-3 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-100 text-purple-700">3</span></td>
+              <td class="px-4 py-3 text-[12px] text-[#8B8B8B]">10 May 2026, 17:30</td>
+              <td class="px-4 py-3">
+                <div class="flex items-center gap-1">
+                  <button class="px-2 py-1 text-[10px] text-[#1F114C] bg-[#F0EEF7] rounded font-medium hover:bg-[#E4E0F0]">Configurar</button>
+                  <button class="px-2 py-1 text-[10px] text-[#DD0C15] bg-red-50 rounded font-medium hover:bg-red-100">Eliminar</button>
+                </div>
+              </td>
+            </tr>
+            <!-- sso_saml -->
+            <tr class="hover:bg-[#FAFAFA]">
+              <td class="px-4 py-3"><code class="text-[12px] font-mono bg-[#F0EEF7] text-[#1F114C] px-2 py-0.5 rounded">sso_saml</code></td>
+              <td class="px-4 py-3 text-[12px] text-[#585858]">Single Sign-On via SAML 2.0 para integracion empresarial</td>
+              <td class="px-4 py-3 text-center"><div class="flex justify-center"><div class="toggle"></div></div></td>
+              <td class="px-4 py-3 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-100 text-purple-700">1</span></td>
+              <td class="px-4 py-3 text-[12px] text-[#8B8B8B]">08 May 2026, 12:00</td>
+              <td class="px-4 py-3">
+                <div class="flex items-center gap-1">
+                  <button class="px-2 py-1 text-[10px] text-[#1F114C] bg-[#F0EEF7] rounded font-medium hover:bg-[#E4E0F0]">Configurar</button>
+                  <button class="px-2 py-1 text-[10px] text-[#DD0C15] bg-red-50 rounded font-medium hover:bg-red-100">Eliminar</button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- OVERRIDE POR ORGANIZACION PANEL -->
+      <div class="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] overflow-hidden">
+        <div class="px-5 py-3 border-b border-[#EDEDED] flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <svg class="w-4 h-4 text-[#1F114C]" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75"/></svg>
+            <p class="text-[13px] font-semibold text-[#1F114C]">Override por Organizacion</p>
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-medium bg-[#F0EEF7] text-[#1F114C]">ai_enabled</span>
+          </div>
+          <select class="h-8 px-3 border border-[#EDEDED] rounded-lg text-[12px] bg-white text-[#585858] focus:outline-none">
+            <option>ai_enabled</option>
+            <option>nine_box_enabled</option>
+            <option>dei_enabled</option>
+            <option>compensation_enabled</option>
+          </select>
+        </div>
+        <div class="divide-y divide-[#F3F3F3]">
+          <!-- Org 1 -->
+          <div class="flex items-center justify-between px-5 py-3">
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-lg bg-[#1F114C] flex items-center justify-center text-white text-[10px] font-bold">TI</div>
+              <div>
+                <p class="text-[13px] font-medium text-[#1F114C]">TIMS International</p>
+                <p class="text-[10px] text-[#8B8B8B]">Plan Enterprise -- 450 usuarios</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-4">
+              <span class="text-[11px] text-green-600 font-medium">Activado (override)</span>
+              <div class="toggle toggle-on"></div>
+            </div>
+          </div>
+          <!-- Org 2 -->
+          <div class="flex items-center justify-between px-5 py-3">
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white text-[10px] font-bold">GS</div>
+              <div>
+                <p class="text-[13px] font-medium text-[#1F114C]">Grupo Salinas</p>
+                <p class="text-[10px] text-[#8B8B8B]">Plan Enterprise -- 820 usuarios</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-4">
+              <span class="text-[11px] text-green-600 font-medium">Activado (override)</span>
+              <div class="toggle toggle-on"></div>
+            </div>
+          </div>
+          <!-- Org 3 -->
+          <div class="flex items-center justify-between px-5 py-3">
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-lg bg-red-600 flex items-center justify-center text-white text-[10px] font-bold">BN</div>
+              <div>
+                <p class="text-[13px] font-medium text-[#1F114C]">Banorte</p>
+                <p class="text-[10px] text-[#8B8B8B]">Plan Professional -- 280 usuarios</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-4">
+              <span class="text-[11px] text-[#8B8B8B]">Usa default (On)</span>
+              <div class="toggle toggle-on"></div>
+            </div>
+          </div>
+          <!-- Org 4 -->
+          <div class="flex items-center justify-between px-5 py-3">
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-lg bg-amber-500 flex items-center justify-center text-white text-[10px] font-bold">CM</div>
+              <div>
+                <p class="text-[13px] font-medium text-[#1F114C]">Cemex</p>
+                <p class="text-[10px] text-[#8B8B8B]">Plan Starter -- 45 usuarios</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-4">
+              <span class="text-[11px] text-[#8B8B8B]">Usa default (On)</span>
+              <div class="toggle toggle-on"></div>
+            </div>
+          </div>
+          <!-- Org 5 -->
+          <div class="flex items-center justify-between px-5 py-3">
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center text-white text-[10px] font-bold">FE</div>
+              <div>
+                <p class="text-[13px] font-medium text-[#1F114C]">FEMSA</p>
+                <p class="text-[10px] text-[#8B8B8B]">Plan Professional -- 190 usuarios</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-4">
+              <span class="text-[11px] text-[#DD0C15] font-medium">Desactivado (override)</span>
+              <div class="toggle"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+</body>
+</html>

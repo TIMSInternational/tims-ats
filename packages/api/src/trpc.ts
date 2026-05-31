@@ -2,6 +2,7 @@ import { initTRPC, TRPCError } from '@trpc/server';
 import superjson from 'superjson';
 import type { Context } from './context';
 import { db } from '@tims/db';
+import { checkRateLimit, getRateLimitCategory } from './middleware/rate-limit';
 
 const t = initTRPC.context<Context>().create({
   transformer: superjson,
@@ -11,8 +12,15 @@ const t = initTRPC.context<Context>().create({
 });
 
 export const router = t.router;
-export const publicProcedure = t.procedure;
 export const createCallerFactory = t.createCallerFactory;
+
+// Rate limiting middleware
+const withRateLimit = t.middleware(({ ctx, next, path, type }) => {
+  const identifier = ctx.user?.id || ctx.headers.get('x-forwarded-for') || 'anonymous';
+  const category = getRateLimitCategory(path, type as 'query' | 'mutation');
+  checkRateLimit(identifier, category);
+  return next();
+});
 
 // Auth middleware — requires a valid user session
 const isAuthed = t.middleware(({ ctx, next }) => {
@@ -118,7 +126,8 @@ const withAudit = t.middleware(async ({ ctx, next, path }) => {
   return result;
 });
 
-// Composed procedures
+// Composed procedures — rate limit → auth → RLS
+export const publicProcedure = t.procedure.use(withRateLimit);
 export const protectedProcedure = publicProcedure.use(isAuthed).use(withRLS);
 export const auditedProcedure = protectedProcedure.use(withAudit);
 

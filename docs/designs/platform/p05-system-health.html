@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TIMS Platform — Salud del Sistema</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>body{font-family:'Inter',sans-serif;margin:0;background:#F6F6F6;} .scrollbar-thin::-webkit-scrollbar{width:4px;} .scrollbar-thin::-webkit-scrollbar-thumb{background:#ccc;border-radius:4px;}</style>
+</head>
+<body>
+<div class="flex w-[1440px] h-[900px] mx-auto overflow-hidden">
+
+  <!-- SIDEBAR 240px -->
+  <div class="flex flex-col w-[240px] h-full bg-[#0F0A2A] shrink-0">
+    <div class="flex items-center gap-2.5 px-5 h-[64px] border-b border-white/10">
+      <div class="w-8 h-8 rounded-lg bg-[#DD0C15] flex items-center justify-center"><span class="text-white text-[12px] font-bold">T</span></div>
+      <div><p class="text-white text-[14px] font-semibold leading-tight">TIMS</p><p class="text-white/40 text-[10px]">Platform Console</p></div>
+    </div>
+    <nav class="flex-1 py-4 px-3 flex flex-col gap-0.5 overflow-y-auto">
+      <a class="flex items-center gap-2.5 px-3 h-9 rounded-lg text-[13px] text-white/60 hover:bg-white/5 hover:text-white/80">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        Dashboard
+      </a>
+      <a class="flex items-center gap-2.5 px-3 h-9 rounded-lg text-[13px] text-white/60 hover:bg-white/5 hover:text-white/80">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21"/></svg>
+        Organizaciones
+      </a>
+      <a class="flex items-center gap-2.5 px-3 h-9 rounded-lg text-[13px] text-white/60 hover:bg-white/5 hover:text-white/80">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z"/></svg>
+        Suscripciones
+      </a>
+      <a class="flex items-center gap-2.5 px-3 h-9 rounded-lg text-[13px] text-white/60 hover:bg-white/5 hover:text-white/80">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z"/></svg>
+        Usuarios
+      </a>
+      <a class="flex items-center gap-2.5 px-3 h-9 rounded-lg bg-white/10 text-[13px] text-white font-medium">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z"/></svg>
+        Salud del Sistema
+      </a>
+      <a class="flex items-center gap-2.5 px-3 h-9 rounded-lg text-[13px] text-white/60 hover:bg-white/5 hover:text-white/80">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M3 3v1.5M3 21v-6m0 0l2.77-.693a9 9 0 016.208.682l.108.054a9 9 0 006.086.71l3.114-.732a48.524 48.524 0 01-.005-10.499l-3.11.732a9 9 0 01-6.085-.711l-.108-.054a9 9 0 00-6.208-.682L3 4.5M3 15V4.5"/></svg>
+        Feature Flags
+      </a>
+      <a class="flex items-center gap-2.5 px-3 h-9 rounded-lg text-[13px] text-white/60 hover:bg-white/5 hover:text-white/80">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z"/></svg>
+        Analytics
+      </a>
+      <a class="flex items-center gap-2.5 px-3 h-9 rounded-lg text-[13px] text-white/60 hover:bg-white/5 hover:text-white/80">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15a2.25 2.25 0 012.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z"/></svg>
+        Auditoria
+      </a>
+      <a class="flex items-center gap-2.5 px-3 h-9 rounded-lg text-[13px] text-white/60 hover:bg-white/5 hover:text-white/80">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M16.712 4.33a9.027 9.027 0 011.652 1.306c.51.51.944 1.064 1.306 1.652M16.712 4.33l-3.448 4.138m3.448-4.138a9.014 9.014 0 00-9.424 0M19.67 7.288l-4.138 3.448m4.138-3.448a9.014 9.014 0 010 9.424m-4.138-5.976a3.736 3.736 0 00-.88-1.388 3.737 3.737 0 00-1.388-.88m2.268 2.268a3.765 3.765 0 010 2.528m-2.268-4.796a3.765 3.765 0 00-2.528 0m4.796 4.796c-.181.506-.475.982-.88 1.388a3.736 3.736 0 01-1.388.88m2.268-2.268l4.138 3.448m0 0a9.027 9.027 0 01-1.306 1.652c-.51.51-1.064.944-1.652 1.306m0 0l-3.448-4.138m3.448 4.138a9.014 9.014 0 01-9.424 0m5.976-4.138a3.765 3.765 0 01-2.528 0m0 0a3.736 3.736 0 01-1.388-.88 3.737 3.737 0 01-.88-1.388m0 0a3.765 3.765 0 010-2.528m2.268 4.796l-3.448 4.138m0 0a9.027 9.027 0 01-1.652-1.306 9.027 9.027 0 01-1.306-1.652m0 0l4.138-3.448M4.33 16.712a9.014 9.014 0 010-9.424m4.138 5.976a3.765 3.765 0 01-2.268-2.268m0 0L2.062 7.288m2.268 2.268L2.062 7.288m0 0a9.027 9.027 0 011.306-1.652A9.014 9.014 0 017.288 4.33"/></svg>
+        Soporte
+      </a>
+    </nav>
+    <div class="px-4 py-3 border-t border-white/10 flex items-center gap-2.5">
+      <div class="w-8 h-8 rounded-full bg-[#DD0C15] flex items-center justify-center text-white text-[11px] font-bold">FT</div>
+      <div><p class="text-white text-[12px] font-medium">Federico Tafur</p><p class="text-white/40 text-[10px]">Platform Owner</p></div>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="flex flex-col flex-1 min-w-0">
+    <!-- TOP BAR -->
+    <div class="flex items-center justify-between px-6 h-16 bg-white border-b border-[#EDEDED] shrink-0">
+      <div class="flex items-center gap-2">
+        <span class="text-[13px] text-[#8B8B8B]">Sistema</span>
+        <svg class="w-3 h-3 text-[#ccc]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+        <span class="text-sm font-medium text-[#1F114C]">Salud del Sistema</span>
+      </div>
+      <div class="flex items-center gap-3">
+        <span class="text-[11px] text-[#8B8B8B]">Ultima actualizacion: hace 30 seg</span>
+        <button class="flex items-center gap-1.5 border border-[#EDEDED] text-[#585858] px-3 h-8 rounded-lg text-[12px]">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182"/></svg>
+          Refrescar
+        </button>
+      </div>
+    </div>
+
+    <!-- CONTENT -->
+    <div class="flex-1 overflow-y-auto p-5 scrollbar-thin">
+
+      <!-- OVERALL STATUS BANNER -->
+      <div class="bg-green-50 border border-green-200 rounded-xl p-4 mb-4 flex items-center gap-3">
+        <div class="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center shrink-0">
+          <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M4.5 12.75l6 6 9-13.5"/></svg>
+        </div>
+        <div>
+          <p class="text-[14px] font-semibold text-green-800">Todos los sistemas operativos</p>
+          <p class="text-[12px] text-green-600">7 de 8 servicios funcionando al 100%. 1 servicio degradado.</p>
+        </div>
+        <div class="ml-auto text-right">
+          <p class="text-[11px] text-green-600">Uptime global (30 dias)</p>
+          <p class="text-[18px] font-bold text-green-700">99.97%</p>
+        </div>
+      </div>
+
+      <!-- SERVICE STATUS GRID -->
+      <div class="grid grid-cols-4 gap-3 mb-4">
+        <!-- API Gateway -->
+        <div class="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-green-500"></span>
+              <span class="text-[13px] font-semibold text-[#1F114C]">API Gateway</span>
+            </div>
+            <span class="px-2 py-0.5 rounded-full text-[9px] font-semibold bg-green-100 text-green-700">Operativo</span>
+          </div>
+          <div class="space-y-2">
+            <div class="flex justify-between"><span class="text-[11px] text-[#8B8B8B]">Latencia p95</span><span class="text-[12px] font-medium text-[#1F114C]">45ms</span></div>
+            <div class="flex justify-between"><span class="text-[11px] text-[#8B8B8B]">Uptime</span><span class="text-[12px] font-medium text-green-600">99.99%</span></div>
+            <div class="flex justify-between"><span class="text-[11px] text-[#8B8B8B]">Requests/min</span><span class="text-[12px] font-medium text-[#1F114C]">234</span></div>
+          </div>
+        </div>
+
+        <!-- Base de Datos -->
+        <div class="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-green-500"></span>
+              <span class="text-[13px] font-semibold text-[#1F114C]">Base de Datos</span>
+            </div>
+            <span class="px-2 py-0.5 rounded-full text-[9px] font-semibold bg-green-100 text-green-700">Operativo</span>
+          </div>
+          <div class="space-y-2">
+            <div class="flex justify-between"><span class="text-[11px] text-[#8B8B8B]">Conexiones</span><span class="text-[12px] font-medium text-[#1F114C]">12 / 100</span></div>
+            <div class="flex justify-between"><span class="text-[11px] text-[#8B8B8B]">Query time</span><span class="text-[12px] font-medium text-green-600">8ms</span></div>
+            <div class="flex justify-between"><span class="text-[11px] text-[#8B8B8B]">DB Size</span><span class="text-[12px] font-medium text-[#1F114C]">2.4 GB</span></div>
+          </div>
+        </div>
+
+        <!-- Autenticacion -->
+        <div class="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-green-500"></span>
+              <span class="text-[13px] font-semibold text-[#1F114C]">Autenticacion</span>
+            </div>
+            <span class="px-2 py-0.5 rounded-full text-[9px] font-semibold bg-green-100 text-green-700">Operativo</span>
+          </div>
+          <div class="space-y-2">
+            <div class="flex justify-between"><span class="text-[11px] text-[#8B8B8B]">Logins hoy</span><span class="text-[12px] font-medium text-[#1F114C]">234</span></div>
+            <div class="flex justify-between"><span class="text-[11px] text-[#8B8B8B]">Fallidos</span><span class="text-[12px] font-medium text-[#DD0C15]">3</span></div>
+            <div class="flex justify-between"><span class="text-[11px] text-[#8B8B8B]">Sesiones activas</span><span class="text-[12px] font-medium text-[#1F114C]">342</span></div>
+          </div>
+        </div>
+
+        <!-- Almacenamiento -->
+        <div class="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-green-500"></span>
+              <span class="text-[13px] font-semibold text-[#1F114C]">Almacenamiento</span>
+            </div>
+            <span class="px-2 py-0.5 rounded-full text-[9px] font-semibold bg-green-100 text-green-700">Operativo</span>
+          </div>
+          <div class="space-y-2">
+            <div class="flex justify-between"><span class="text-[11px] text-[#8B8B8B]">Usado</span><span class="text-[12px] font-medium text-[#1F114C]">12.4 GB / 50 GB</span></div>
+            <div class="w-full h-1.5 bg-[#EDEDED] rounded-full"><div class="h-1.5 bg-blue-500 rounded-full" style="width:24.8%"></div></div>
+            <div class="flex justify-between"><span class="text-[11px] text-[#8B8B8B]">Uploads hoy</span><span class="text-[12px] font-medium text-[#1F114C]">45</span></div>
+          </div>
+        </div>
+
+        <!-- Background Jobs - DEGRADED -->
+        <div class="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] ring-1 ring-amber-200">
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+              <span class="text-[13px] font-semibold text-[#1F114C]">Background Jobs</span>
+            </div>
+            <span class="px-2 py-0.5 rounded-full text-[9px] font-semibold bg-amber-100 text-amber-700">Degradado</span>
+          </div>
+          <div class="space-y-2">
+            <div class="flex justify-between"><span class="text-[11px] text-[#8B8B8B]">Cola</span><span class="text-[12px] font-medium text-amber-600">23 pendientes</span></div>
+            <div class="flex justify-between"><span class="text-[11px] text-[#8B8B8B]">Fallidos</span><span class="text-[12px] font-medium text-[#DD0C15]">2</span></div>
+            <div class="flex justify-between"><span class="text-[11px] text-[#8B8B8B]">Procesados hoy</span><span class="text-[12px] font-medium text-[#1F114C]">1,204</span></div>
+          </div>
+        </div>
+
+        <!-- AI Bedrock -->
+        <div class="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-green-500"></span>
+              <span class="text-[13px] font-semibold text-[#1F114C]">AI (Bedrock)</span>
+            </div>
+            <span class="px-2 py-0.5 rounded-full text-[9px] font-semibold bg-green-100 text-green-700">Operativo</span>
+          </div>
+          <div class="space-y-2">
+            <div class="flex justify-between"><span class="text-[11px] text-[#8B8B8B]">Llamadas hoy</span><span class="text-[12px] font-medium text-[#1F114C]">156</span></div>
+            <div class="flex justify-between"><span class="text-[11px] text-[#8B8B8B]">Costo</span><span class="text-[12px] font-medium text-[#1F114C]">$12.40</span></div>
+            <div class="flex justify-between"><span class="text-[11px] text-[#8B8B8B]">Presupuesto</span><span class="text-[12px] font-medium text-amber-600">68% usado</span></div>
+            <div class="w-full h-1.5 bg-[#EDEDED] rounded-full"><div class="h-1.5 bg-amber-500 rounded-full" style="width:68%"></div></div>
+          </div>
+        </div>
+
+        <!-- Email SES -->
+        <div class="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-green-500"></span>
+              <span class="text-[13px] font-semibold text-[#1F114C]">Email (SES)</span>
+            </div>
+            <span class="px-2 py-0.5 rounded-full text-[9px] font-semibold bg-green-100 text-green-700">Operativo</span>
+          </div>
+          <div class="space-y-2">
+            <div class="flex justify-between"><span class="text-[11px] text-[#8B8B8B]">Enviados hoy</span><span class="text-[12px] font-medium text-[#1F114C]">89</span></div>
+            <div class="flex justify-between"><span class="text-[11px] text-[#8B8B8B]">Bounce rate</span><span class="text-[12px] font-medium text-green-600">0.2%</span></div>
+            <div class="flex justify-between"><span class="text-[11px] text-[#8B8B8B]">Reputation</span><span class="text-[12px] font-medium text-green-600">Excelente</span></div>
+          </div>
+        </div>
+
+        <!-- Realtime -->
+        <div class="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-green-500"></span>
+              <span class="text-[13px] font-semibold text-[#1F114C]">Realtime</span>
+            </div>
+            <span class="px-2 py-0.5 rounded-full text-[9px] font-semibold bg-green-100 text-green-700">Operativo</span>
+          </div>
+          <div class="space-y-2">
+            <div class="flex justify-between"><span class="text-[11px] text-[#8B8B8B]">Conexiones</span><span class="text-[12px] font-medium text-[#1F114C]">34</span></div>
+            <div class="flex justify-between"><span class="text-[11px] text-[#8B8B8B]">Mensajes/seg</span><span class="text-[12px] font-medium text-[#1F114C]">12</span></div>
+            <div class="flex justify-between"><span class="text-[11px] text-[#8B8B8B]">Canales activos</span><span class="text-[12px] font-medium text-[#1F114C]">8</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- BOTTOM ROW -->
+      <div class="grid grid-cols-2 gap-3">
+        <!-- API Response Time Chart -->
+        <div class="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+          <div class="flex items-center justify-between mb-4">
+            <p class="text-[13px] font-semibold text-[#1F114C]">Tiempo de Respuesta API (24h)</p>
+            <div class="flex items-center gap-3">
+              <span class="flex items-center gap-1 text-[10px] text-[#8B8B8B]"><span class="w-2 h-2 rounded-full bg-[#1F114C]"></span>p50</span>
+              <span class="flex items-center gap-1 text-[10px] text-[#8B8B8B]"><span class="w-2 h-2 rounded-full bg-[#DD0C15]"></span>p95</span>
+            </div>
+          </div>
+          <!-- Mock Chart -->
+          <div class="relative h-[140px]">
+            <!-- Y axis labels -->
+            <div class="absolute left-0 top-0 h-full flex flex-col justify-between text-[9px] text-[#8B8B8B] w-8">
+              <span>100ms</span><span>75ms</span><span>50ms</span><span>25ms</span><span>0ms</span>
+            </div>
+            <!-- Chart area -->
+            <div class="ml-10 h-full relative">
+              <!-- Grid lines -->
+              <div class="absolute inset-0 flex flex-col justify-between">
+                <div class="border-t border-dashed border-[#EDEDED]"></div>
+                <div class="border-t border-dashed border-[#EDEDED]"></div>
+                <div class="border-t border-dashed border-[#EDEDED]"></div>
+                <div class="border-t border-dashed border-[#EDEDED]"></div>
+                <div class="border-t border-[#EDEDED]"></div>
+              </div>
+              <!-- p50 line (SVG) -->
+              <svg class="absolute inset-0 w-full h-full" preserveAspectRatio="none" viewBox="0 0 100 100">
+                <polyline fill="none" stroke="#1F114C" stroke-width="1.5" points="0,70 5,68 10,72 15,65 20,60 25,62 30,58 35,55 40,60 45,63 50,58 55,55 60,52 65,58 70,62 75,55 80,50 85,52 90,55 95,58 100,55"/>
+                <polyline fill="none" stroke="#DD0C15" stroke-width="1.5" stroke-dasharray="3,2" points="0,50 5,48 10,52 15,45 20,38 25,42 30,35 35,32 40,40 45,42 50,38 55,35 60,30 65,38 70,42 75,35 80,28 85,30 90,35 95,38 100,35"/>
+              </svg>
+              <!-- X axis -->
+              <div class="absolute bottom-0 left-0 right-0 flex justify-between text-[9px] text-[#8B8B8B] pt-1" style="transform:translateY(14px)">
+                <span>00:00</span><span>04:00</span><span>08:00</span><span>12:00</span><span>16:00</span><span>20:00</span><span>Ahora</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Error Log -->
+        <div class="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+          <div class="flex items-center justify-between mb-4">
+            <p class="text-[13px] font-semibold text-[#1F114C]">Ultimos Errores</p>
+            <button class="text-[11px] text-[#1F114C] font-medium hover:underline">Ver todos</button>
+          </div>
+          <div class="space-y-2.5">
+            <!-- Error 1 -->
+            <div class="flex items-start gap-3 p-2.5 rounded-lg bg-[#FAFAFA] border border-[#F0F0F0]">
+              <span class="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-green-100 text-green-700 mt-0.5 shrink-0">Resuelto</span>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-0.5">
+                  <span class="text-[11px] font-medium text-[#1F114C]">Background Jobs</span>
+                  <span class="text-[10px] text-[#8B8B8B]">Hace 12 min</span>
+                </div>
+                <p class="text-[11px] text-[#585858] truncate">TimeoutError: Job email_notification_batch excedio limite de 30s</p>
+              </div>
+            </div>
+            <!-- Error 2 -->
+            <div class="flex items-start gap-3 p-2.5 rounded-lg bg-amber-50/50 border border-amber-100">
+              <span class="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-amber-100 text-amber-700 mt-0.5 shrink-0">Investigando</span>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-0.5">
+                  <span class="text-[11px] font-medium text-[#1F114C]">Background Jobs</span>
+                  <span class="text-[10px] text-[#8B8B8B]">Hace 25 min</span>
+                </div>
+                <p class="text-[11px] text-[#585858] truncate">RetryError: Job sync_org_data fallo 3 intentos consecutivos</p>
+              </div>
+            </div>
+            <!-- Error 3 -->
+            <div class="flex items-start gap-3 p-2.5 rounded-lg bg-[#FAFAFA] border border-[#F0F0F0]">
+              <span class="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-green-100 text-green-700 mt-0.5 shrink-0">Resuelto</span>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-0.5">
+                  <span class="text-[11px] font-medium text-[#1F114C]">API Gateway</span>
+                  <span class="text-[10px] text-[#8B8B8B]">Hace 2 horas</span>
+                </div>
+                <p class="text-[11px] text-[#585858] truncate">RateLimitExceeded: Org grupo_salinas excedio 100 req/min en /api/candidates</p>
+              </div>
+            </div>
+            <!-- Error 4 -->
+            <div class="flex items-start gap-3 p-2.5 rounded-lg bg-[#FAFAFA] border border-[#F0F0F0]">
+              <span class="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-green-100 text-green-700 mt-0.5 shrink-0">Resuelto</span>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-0.5">
+                  <span class="text-[11px] font-medium text-[#1F114C]">Autenticacion</span>
+                  <span class="text-[10px] text-[#8B8B8B]">Hace 4 horas</span>
+                </div>
+                <p class="text-[11px] text-[#585858] truncate">AuthError: Multiples intentos fallidos desde IP 189.203.xx.xx (bloqueado)</p>
+              </div>
+            </div>
+            <!-- Error 5 -->
+            <div class="flex items-start gap-3 p-2.5 rounded-lg bg-[#FAFAFA] border border-[#F0F0F0]">
+              <span class="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-green-100 text-green-700 mt-0.5 shrink-0">Resuelto</span>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-0.5">
+                  <span class="text-[11px] font-medium text-[#1F114C]">Email (SES)</span>
+                  <span class="text-[10px] text-[#8B8B8B]">Hace 6 horas</span>
+                </div>
+                <p class="text-[11px] text-[#585858] truncate">BounceError: Email rebotado a usuario@empresa-inexistente.com (hard bounce)</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+</body>
+</html>
