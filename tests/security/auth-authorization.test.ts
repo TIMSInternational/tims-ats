@@ -1,0 +1,74 @@
+import { describe, it, expect } from 'vitest';
+import { readFileSync, readdirSync } from 'fs';
+import { join } from 'path';
+
+const ROUTERS_DIR = join(__dirname, '../../packages/api/src/routers');
+const TRPC_FILE = join(__dirname, '../../packages/api/src/trpc.ts');
+
+function getRouterFiles(): string[] {
+  return readdirSync(ROUTERS_DIR)
+    .filter((f) => f.endsWith('.ts'))
+    .map((f) => join(ROUTERS_DIR, f));
+}
+
+describe('Authentication & Authorization', () => {
+  it('should have auth middleware defined in trpc.ts', () => {
+    const content = readFileSync(TRPC_FILE, 'utf8');
+    expect(content).toContain('isAuthed');
+    expect(content).toContain('protectedProcedure');
+  });
+
+  it('should limit publicProcedure usage to known safe endpoints', () => {
+    const allowedPublicEndpoints = [
+      'getInvitationByToken',
+      'acceptInvitation',
+      'syncUser',
+      // Portal endpoints — public-facing candidate portal (unauthenticated job browsing)
+      'listVacancies',
+      'getVacancy',
+      'applyToVacancy',
+    ];
+    const violations: string[] = [];
+
+    for (const file of getRouterFiles()) {
+      const content = readFileSync(file, 'utf8');
+      const matches = content.matchAll(/(\w+):\s*publicProcedure/g);
+      for (const match of matches) {
+        const name = match[1];
+        if (!allowedPublicEndpoints.includes(name)) {
+          violations.push(`${file.split('/').pop()}:${name}`);
+        }
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+
+  it('should have permission middleware for sensitive operations', () => {
+    const content = readFileSync(TRPC_FILE, 'utf8');
+    expect(content).toContain('requirePermission');
+    expect(content).toContain('permissionProcedure');
+  });
+
+  it('should verify organizationId in user mutation WHERE clauses', () => {
+    const userRouter = readFileSync(join(ROUTERS_DIR, 'user.ts'), 'utf8');
+    // The deactivate mutation must check organizationId
+    const deactivateSection = userRouter.slice(
+      userRouter.indexOf('deactivate:'),
+      userRouter.indexOf('deactivate:') + 500,
+    );
+    expect(deactivateSection).toContain('organizationId');
+  });
+
+  it('should have platform owner guard on platform routes', () => {
+    const platformRouter = readFileSync(join(ROUTERS_DIR, 'platform.ts'), 'utf8');
+    expect(platformRouter).toContain('isPlatformOwner');
+    expect(platformRouter).toContain('platformProcedure');
+  });
+
+  it('should validate invitation tokens as UUID format', () => {
+    const platformRouter = readFileSync(join(ROUTERS_DIR, 'platform.ts'), 'utf8');
+    // Both getInvitationByToken and acceptInvitation should validate token as UUID
+    const tokenValidations = platformRouter.match(/token:\s*z\.string\(\)\.uuid\(\)/g);
+    expect(tokenValidations?.length).toBeGreaterThanOrEqual(2);
+  });
+});
