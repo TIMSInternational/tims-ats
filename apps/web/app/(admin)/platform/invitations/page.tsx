@@ -4,7 +4,8 @@ import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
-import type { InvitationListItem, OrganizationListItem } from '../../../../lib/trpc-types';
+import { InviteOrgModal } from './invite-org-modal';
+import { InviteUserModal } from './invite-user-modal';
 
 function formatDate(date: string | Date | null | undefined): string {
   if (!date) return '\u2014';
@@ -50,12 +51,7 @@ export default function InvitationsPage() {
   const limit = 15;
 
   const kpis = trpc.platform.getInvitationKpis.useQuery();
-  const invitations = trpc.platform.listInvitations.useQuery({
-    page,
-    limit,
-    type: typeFilter || undefined,
-    search: search || undefined,
-  });
+  const invitations = trpc.platform.listInvitations.useQuery({ page, limit, type: typeFilter || undefined, search: search || undefined });
   const utils = trpc.useUtils();
 
   const resend = trpc.platform.resendInvitation.useMutation({
@@ -140,41 +136,19 @@ export default function InvitationsPage() {
       <div className="flex items-center justify-between mb-4 flex-shrink-0">
         <div className="flex items-center gap-2">
           {TYPE_TABS.map((tab) => (
-            <button
-              key={tab.value}
-              onClick={() => { setTypeFilter(tab.value); setPage(0); }}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
-                typeFilter === tab.value
-                  ? 'bg-[#1F114C] text-white'
-                  : 'bg-white border border-[#EDEDED] text-[#585858] hover:bg-[#F6F6F6]'
-              }`}
-            >
-              {tab.label}
-            </button>
+            <button key={tab.value} onClick={() => { setTypeFilter(tab.value); setPage(0); }} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${typeFilter === tab.value ? 'bg-[#1F114C] text-white' : 'bg-white border border-[#EDEDED] text-[#585858] hover:bg-[#F6F6F6]'}`}>{tab.label}</button>
           ))}
         </div>
         <div className="flex items-center gap-2">
           <div className="relative">
             <svg className="w-4 h-4 text-[#8B8B8B] absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" /></svg>
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => { setSearch(e.target.value); setPage(0); }}
-              placeholder={t.invitations.searchEmail}
-              className="h-8 pl-9 pr-3 rounded-lg border border-[#EDEDED] text-xs text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 w-52"
-            />
+            <input type="text" value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} placeholder={t.invitations.searchEmail} className="h-8 pl-9 pr-3 rounded-lg border border-[#EDEDED] text-xs text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 w-52" />
           </div>
-          <button
-            onClick={() => setShowOrgInvite(true)}
-            className="h-8 px-4 rounded-lg bg-[#1F114C] text-white text-xs font-medium hover:bg-[#2a1866] transition flex items-center gap-1.5"
-          >
+          <button onClick={() => setShowOrgInvite(true)} className="h-8 px-4 rounded-lg bg-[#1F114C] text-white text-xs font-medium hover:bg-[#2a1866] transition flex items-center gap-1.5">
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4" /></svg>
             {t.invitations.inviteOrg}
           </button>
-          <button
-            onClick={() => setShowUserInvite(true)}
-            className="h-8 px-4 rounded-lg border border-[#1F114C] text-[#1F114C] text-xs font-medium hover:bg-[#1F114C]/5 transition flex items-center gap-1.5"
-          >
+          <button onClick={() => setShowUserInvite(true)} className="h-8 px-4 rounded-lg border border-[#1F114C] text-[#1F114C] text-xs font-medium hover:bg-[#1F114C]/5 transition flex items-center gap-1.5">
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 00-4-4H9a4 4 0 00-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
             {t.invitations.inviteUser}
           </button>
@@ -225,59 +199,28 @@ export default function InvitationsPage() {
                   const canAct = !isAccepted && !isRevoked;
 
                   return (
-                    <tr
-                      key={inv.id}
-                      className={`border-b border-[#F6F6F6] hover:bg-[#FAFAFA] transition ${isRevoked ? 'opacity-50' : ''}`}
-                    >
+                    <tr key={inv.id} className={`border-b border-[#F6F6F6] hover:bg-[#FAFAFA] transition ${isRevoked ? 'opacity-50' : ''}`}>
                       <td className="px-5 py-3">
                         <span className="text-sm text-[#333] font-medium">{inv.email}</span>
-                        {inv.roleSlug && (
-                          <p className="text-[10px] text-[#8B8B8B]">{inv.roleSlug.replace(/_/g, ' ')}</p>
-                        )}
+                        {inv.roleSlug && <p className="text-[10px] text-[#8B8B8B]">{inv.roleSlug.replace(/_/g, ' ')}</p>}
                       </td>
                       <td className="px-4 py-3 text-center">{typeBadge(inv.type, { orgAdmin: t.invitations.typeOrgAdmin, user: t.invitations.typeUser })}</td>
-                      <td className="px-4 py-3">
-                        <span className="text-sm text-[#585858]">
-                          {inv.organization?.name || inv.organizationName || '\u2014'}
-                        </span>
-                      </td>
+                      <td className="px-4 py-3"><span className="text-sm text-[#585858]">{inv.organization?.name || inv.organizationName || '\u2014'}</span></td>
                       <td className="px-4 py-3 text-center">
                         {(() => { const sl = { pending: t.invitations.statusPending, sent: t.invitations.statusSent, accepted: t.invitations.statusAccepted, expired: t.invitations.statusExpired, revoked: t.invitations.statusRevoked }; return isExpired && inv.status !== 'expired' ? statusBadge('expired', sl) : statusBadge(inv.status, sl); })()}
                       </td>
-                      <td className="px-4 py-3">
-                        <span className="text-xs text-[#585858]">{formatDate(inv.sentAt)}</span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`text-xs ${isExpired ? 'text-[#DD0C15] font-medium' : 'text-[#585858]'}`}>
-                          {formatDate(inv.expiresAt)}
-                        </span>
-                      </td>
+                      <td className="px-4 py-3"><span className="text-xs text-[#585858]">{formatDate(inv.sentAt)}</span></td>
+                      <td className="px-4 py-3"><span className={`text-xs ${isExpired ? 'text-[#DD0C15] font-medium' : 'text-[#585858]'}`}>{formatDate(inv.expiresAt)}</span></td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-center gap-1.5">
                           {canAct ? (
                             <>
-                              <button
-                                onClick={() => resend.mutate({ id: inv.id })}
-                                disabled={resend.isPending}
-                                className="text-[10px] text-blue-600 font-medium hover:underline disabled:opacity-50"
-                              >
-                                {t.invitations.resend}
-                              </button>
+                              <button onClick={() => resend.mutate({ id: inv.id })} disabled={resend.isPending} className="text-[10px] text-blue-600 font-medium hover:underline disabled:opacity-50">{t.invitations.resend}</button>
                               <span className="text-[#EDEDED]">|</span>
-                              <button
-                                onClick={() => {
-                                  if (confirm('Revocar invitacion?')) revoke.mutate({ id: inv.id });
-                                }}
-                                disabled={revoke.isPending}
-                                className="text-[10px] text-[#DD0C15] font-medium hover:underline disabled:opacity-50"
-                              >
-                                {t.invitations.revoke}
-                              </button>
+                              <button onClick={() => { if (confirm('Revocar invitacion?')) revoke.mutate({ id: inv.id }); }} disabled={revoke.isPending} className="text-[10px] text-[#DD0C15] font-medium hover:underline disabled:opacity-50">{t.invitations.revoke}</button>
                             </>
                           ) : (
-                            <span className="text-[10px] text-[#8B8B8B]">
-                              {isAccepted ? t.invitations.completed : t.invitations.revoked}
-                            </span>
+                            <span className="text-[10px] text-[#8B8B8B]">{isAccepted ? t.invitations.completed : t.invitations.revoked}</span>
                           )}
                         </div>
                       </td>
@@ -290,38 +233,22 @@ export default function InvitationsPage() {
         </div>
         {/* Pagination */}
         <div className="flex items-center justify-between px-5 py-3.5 border-t border-[#EDEDED] flex-shrink-0">
-          <span className="text-xs text-[#8B8B8B]">
-            {t.common.showing} {rows.length > 0 ? page * limit + 1 : 0}-{page * limit + rows.length} {t.common.of} {total}
-          </span>
+          <span className="text-xs text-[#8B8B8B]">{t.common.showing} {rows.length > 0 ? page * limit + 1 : 0}-{page * limit + rows.length} {t.common.of} {total}</span>
           <div className="flex items-center gap-1">
-            <button
-              onClick={() => setPage((p) => Math.max(0, p - 1))}
-              disabled={page === 0}
-              className="w-8 h-8 rounded-lg border border-[#EDEDED] flex items-center justify-center text-[#8B8B8B] hover:bg-[#F6F6F6] transition disabled:opacity-40"
-            >
+            <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0} className="w-8 h-8 rounded-lg border border-[#EDEDED] flex items-center justify-center text-[#8B8B8B] hover:bg-[#F6F6F6] transition disabled:opacity-40">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7" /></svg>
             </button>
             {Array.from({ length: Math.min(Math.ceil(total / limit), 5) }).map((_, i) => (
-              <button
-                key={i}
-                onClick={() => setPage(i)}
-                className={`w-8 h-8 rounded-lg text-xs font-medium transition ${page === i ? 'bg-[#1F114C] text-white' : 'border border-[#EDEDED] text-[#585858] hover:bg-[#F6F6F6]'}`}
-              >
-                {i + 1}
-              </button>
+              <button key={i} onClick={() => setPage(i)} className={`w-8 h-8 rounded-lg text-xs font-medium transition ${page === i ? 'bg-[#1F114C] text-white' : 'border border-[#EDEDED] text-[#585858] hover:bg-[#F6F6F6]'}`}>{i + 1}</button>
             ))}
-            <button
-              onClick={() => setPage((p) => p + 1)}
-              disabled={(page + 1) * limit >= total}
-              className="w-8 h-8 rounded-lg border border-[#EDEDED] flex items-center justify-center text-[#585858] hover:bg-[#F6F6F6] transition disabled:opacity-40"
-            >
+            <button onClick={() => setPage((p) => p + 1)} disabled={(page + 1) * limit >= total} className="w-8 h-8 rounded-lg border border-[#EDEDED] flex items-center justify-center text-[#585858] hover:bg-[#F6F6F6] transition disabled:opacity-40">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" /></svg>
             </button>
           </div>
         </div>
       </div>
 
-      {/* Invite Org Modal */}
+      {/* Modals */}
       {showOrgInvite && (
         <InviteOrgModal
           onClose={() => setShowOrgInvite(false)}
@@ -333,7 +260,6 @@ export default function InvitationsPage() {
         />
       )}
 
-      {/* Invite User Modal */}
       {showUserInvite && (
         <InviteUserModal
           onClose={() => setShowUserInvite(false)}
@@ -346,233 +272,4 @@ export default function InvitationsPage() {
       )}
     </div>
   );
-}
-
-// ============ INVITE ORG MODAL ============
-
-function InviteOrgModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
-  const { t } = useI18n();
-  const [email, setEmail] = useState('');
-  const [orgName, setOrgName] = useState('');
-  const [orgSlug, setOrgSlug] = useState('');
-  const [plan, setPlan] = useState<'trial' | 'starter' | 'professional' | 'enterprise'>('trial');
-
-  const create = trpc.platform.createOrgInvitation.useMutation({
-    onSuccess: () => { toast('Invitacion de organizacion enviada', { type: 'success' }); onSuccess(); },
-    onError: (err) => { toast(err.message || 'Error al crear invitacion', { type: 'error' }); },
-  });
-
-  const handleNameChange = (value: string) => {
-    setOrgName(value);
-    if (!orgSlug || orgSlug === slugify(orgName)) {
-      setOrgSlug(slugify(value));
-    }
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email || !orgName || !orgSlug) return;
-    create.mutate({ email, organizationName: orgName, organizationSlug: orgSlug, organizationPlan: plan });
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 p-6">
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="text-lg font-semibold text-[#333]">{t.invitations.inviteOrgTitle}</h2>
-          <button onClick={onClose} className="w-8 h-8 rounded-lg hover:bg-[#F6F6F6] flex items-center justify-center text-[#8B8B8B] transition">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" /></svg>
-          </button>
-        </div>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.adminEmail} *</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="admin@empresa.com"
-              className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20"
-              required
-            />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.orgName} *</label>
-            <input
-              type="text"
-              value={orgName}
-              onChange={(e) => handleNameChange(e.target.value)}
-              placeholder="Mi Empresa S.A.S."
-              className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20"
-              required
-            />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.slug} *</label>
-            <input
-              type="text"
-              value={orgSlug}
-              onChange={(e) => setOrgSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))}
-              placeholder="mi-empresa"
-              className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm font-mono text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20"
-              required
-              pattern="^[a-z0-9-]+$"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.plan}</label>
-            <select
-              value={plan}
-              onChange={(e) => setPlan(e.target.value as typeof plan)}
-              className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#333] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20"
-            >
-              <option value="trial">Trial (14 dias)</option>
-              <option value="starter">Starter ($499/mes)</option>
-              <option value="professional">Professional ($999/mes)</option>
-              <option value="enterprise">Enterprise ($2,499/mes)</option>
-            </select>
-          </div>
-          {create.error && (
-            <div className="text-xs text-[#DD0C15] bg-red-50 px-3 py-2 rounded-lg">
-              {create.error.message}
-            </div>
-          )}
-          <div className="flex justify-end gap-2 pt-2">
-            <button type="button" onClick={onClose} className="h-9 px-4 rounded-lg border border-[#EDEDED] text-sm font-medium text-[#585858] hover:bg-[#F6F6F6] transition">
-              {t.invitations.cancel}
-            </button>
-            <button
-              type="submit"
-              disabled={!email || !orgName || !orgSlug || create.isPending}
-              className="h-9 px-5 rounded-lg bg-[#1F114C] text-white text-sm font-medium hover:bg-[#2a1866] transition disabled:opacity-50"
-            >
-              {create.isPending ? t.invitations.sending : t.invitations.createAndSend}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-// ============ INVITE USER MODAL ============
-
-function InviteUserModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
-  const { t } = useI18n();
-  const [email, setEmail] = useState('');
-  const [orgId, setOrgId] = useState('');
-  const [orgSearch, setOrgSearch] = useState('');
-  const [roleSlug, setRoleSlug] = useState('');
-
-  const orgs = trpc.platform.listOrganizations.useQuery({ search: orgSearch || undefined, limit: 10, page: 0 });
-  const create = trpc.platform.createUserInvitation.useMutation({
-    onSuccess: () => { toast('Invitacion de usuario enviada', { type: 'success' }); onSuccess(); },
-    onError: (err) => { toast(err.message || 'Error al crear invitacion', { type: 'error' }); },
-  });
-
-  const ROLES = [
-    { slug: 'super_admin', label: 'Super Administrador' },
-    { slug: 'hr_admin', label: 'Admin RRHH' },
-    { slug: 'recruiter', label: 'Reclutador' },
-    { slug: 'hiring_manager', label: 'Hiring Manager' },
-    { slug: 'viewer', label: 'Solo Lectura' },
-  ];
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email || !orgId) return;
-    create.mutate({ email, organizationId: orgId, roleSlug: roleSlug || undefined });
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 p-6">
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="text-lg font-semibold text-[#333]">{t.invitations.inviteUserTitle}</h2>
-          <button onClick={onClose} className="w-8 h-8 rounded-lg hover:bg-[#F6F6F6] flex items-center justify-center text-[#8B8B8B] transition">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" /></svg>
-          </button>
-        </div>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.userEmail} *</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="usuario@empresa.com"
-              className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20"
-              required
-            />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.organization} *</label>
-            <input
-              type="text"
-              value={orgSearch}
-              onChange={(e) => { setOrgSearch(e.target.value); setOrgId(''); }}
-              placeholder={t.organizations.searchOrg}
-              className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20"
-            />
-            {orgSearch && !orgId && orgs.data && (
-              <div className="mt-1 bg-white border border-[#EDEDED] rounded-lg shadow-lg max-h-40 overflow-y-auto">
-                {orgs.data.organizations.map((org) => (
-                  <button
-                    key={org.id}
-                    type="button"
-                    onClick={() => { setOrgId(org.id); setOrgSearch(org.name); }}
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-[#F6F6F6] transition"
-                  >
-                    {org.name} <span className="text-[#8B8B8B] text-xs">({org.slug})</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          <div>
-            <label className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.role}</label>
-            <select
-              value={roleSlug}
-              onChange={(e) => setRoleSlug(e.target.value)}
-              className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#333] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20"
-            >
-              <option value="">{t.invitations.selectRole}</option>
-              {ROLES.map((r) => (
-                <option key={r.slug} value={r.slug}>{r.label}</option>
-              ))}
-            </select>
-          </div>
-          {create.error && (
-            <div className="text-xs text-[#DD0C15] bg-red-50 px-3 py-2 rounded-lg">
-              {create.error.message}
-            </div>
-          )}
-          <div className="flex justify-end gap-2 pt-2">
-            <button type="button" onClick={onClose} className="h-9 px-4 rounded-lg border border-[#EDEDED] text-sm font-medium text-[#585858] hover:bg-[#F6F6F6] transition">
-              {t.invitations.cancel}
-            </button>
-            <button
-              type="submit"
-              disabled={!email || !orgId || create.isPending}
-              className="h-9 px-5 rounded-lg bg-[#1F114C] text-white text-sm font-medium hover:bg-[#2a1866] transition disabled:opacity-50"
-            >
-              {create.isPending ? t.invitations.sending : t.invitations.sendInvitation}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 50);
 }

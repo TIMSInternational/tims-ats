@@ -46,7 +46,7 @@ describe('Input Validation', () => {
   it('should limit z.any() usage to Prisma JSON fields only', () => {
     // z.any() is acceptable for Prisma Json fields (content, benefits, terms, result)
     // but should NOT appear for regular string/number/enum fields
-    const allowedFiles = ['learning.ts', 'offer.ts']; // Prisma Json field routers
+    const allowedFiles = ['learning.ts', 'offer/crud.ts', 'offer/validations.ts']; // Prisma Json field routers
     const violations: string[] = [];
     for (const { name, content } of getRouterFiles()) {
       if (content.includes('z.any()') && !allowedFiles.includes(name)) {
