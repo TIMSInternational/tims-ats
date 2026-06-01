@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
@@ -25,6 +26,8 @@ function statusBadge(status: string, dueDate?: Date | string | null, labels?: { 
 
 export default function InvoicesPage() {
   const { t } = useI18n();
+  const searchParams = useSearchParams();
+  const orgFilter = searchParams.get('org') || undefined;
 
   const STATUS_TABS = [
     { value: '', label: t.invoices.filterAll },
@@ -42,7 +45,7 @@ export default function InvoicesPage() {
   const limit = 15;
 
   const kpis = trpc.platform.getInvoiceKpis.useQuery();
-  const invoices = trpc.platform.listInvoices.useQuery({ page, limit, status: statusFilter || undefined, search: search || undefined });
+  const invoices = trpc.platform.listInvoices.useQuery({ page, limit, status: statusFilter || undefined, search: search || undefined, organizationId: orgFilter });
   const utils = trpc.useUtils();
 
   const updateStatus = trpc.platform.updateInvoiceStatus.useMutation({

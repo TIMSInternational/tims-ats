@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { trpc } from '../../../../../lib/trpc';
 import { toast } from '../../../../../lib/toast';
 import { useI18n } from '../../../../../lib/i18n';
@@ -27,7 +28,9 @@ type TabKey = (typeof TABS)[number]['key'];
 
 export function OrgDetail({ id }: { id: string }) {
   const { t } = useI18n();
-  const [activeTab, setActiveTab] = useState<TabKey>('overview');
+  const searchParams = useSearchParams();
+  const initialTab = (searchParams.get('tab') as TabKey) || 'overview';
+  const [activeTab, setActiveTab] = useState<TabKey>(TABS.some(t => t.key === initialTab) ? initialTab : 'overview');
   const [showEdit, setShowEdit] = useState(false);
 
   const utils = trpc.useUtils();
