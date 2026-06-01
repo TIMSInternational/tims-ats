@@ -164,7 +164,89 @@ Repositories:    *.repository.ts  (candidate.repository.ts)
 
 ---
 
-## 4. Database Standards
+## 4. AI-Generated Code Safety (MANDATORY)
+
+> 45% of AI-generated code contains security vulnerabilities (Veracode 2025).
+> AI code has 2.74x higher vulnerability density than human-written code.
+> These rules are NON-NEGOTIABLE for every line of code in this project.
+
+### Banned Patterns (auto-reject in review)
+```
+NEVER generate:
+  - $executeRawUnsafe or $queryRawUnsafe (SQL injection)
+  - dangerouslySetInnerHTML without DOMPurify (XSS)
+  - eval(), new Function(), vm.runInNewContext (code injection)
+  - cors({ origin: '*' }) (open CORS)
+  - NODE_TLS_REJECT_UNAUTHORIZED = '0' (TLS bypass)
+  - Hardcoded API keys, tokens, passwords, or connection strings
+  - z.any(), z.unknown() without narrowing, .passthrough() on Zod schemas
+  - console.log with request bodies, tokens, or PII
+  - findMany() / findFirst() without explicit select (data exposure)
+  - JWT verification without checking exp, iss, aud
+```
+
+### Prisma Safety Rules
+- **Always use `select` or `omit`.** Never return full records — HR data contains SSN, salary, medical info.
+  ```typescript
+  // WRONG — leaks all fields including password hash, SSN
+  db.candidate.findMany({ where: { organizationId } })
+  // RIGHT — explicit field selection
+  db.candidate.findMany({ where: { organizationId }, select: { id: true, firstName: true, lastName: true, email: true } })
+  ```
+- **Never `$queryRawUnsafe`.** Use `$queryRaw` with tagged template literals.
+- **Wrap multi-step operations in `$transaction`.** Race conditions are the #1 AI-generated production bug.
+- **Use database-level unique constraints.** Don't rely on check-then-create patterns.
+
+### Next.js Safety Rules
+- **Use `import 'server-only'`** in all server modules. Prevents server code from being bundled into client.
+- **Keep Next.js patched.** CVE-2025-55182 (React2Shell) was CVSS 10.0 — RCE via Server Components.
+- **Never expose server env vars to client.** Only `NEXT_PUBLIC_*` prefixed vars reach the browser.
+- **No `dangerouslySetInnerHTML`.** If rendering user HTML (job descriptions, candidate notes), sanitize with DOMPurify.
+
+### Supabase Safety Rules
+- **RLS enabled on EVERY table.** Tables have RLS off by default. This single misconfiguration caused CVE-2025-48757 (170+ apps exposed).
+- **Never use `service_role` key client-side.** It bypasses ALL RLS. Only the `anon` key in browser code.
+- **Audit RLS policies quarterly.** New tables = new policies. No exceptions.
+
+### Dependency Safety Rules
+- **Verify every new package exists and is legitimate before `pnpm add`.** AI hallucinates package names 19.7% of the time ("slopsquatting"). Check npmjs.com manually.
+- **Lock all dependency versions.** Use exact versions, not ranges. `pnpm-lock.yaml` committed always.
+- **Run `npm audit` before every deploy.** Block deploys with high/critical vulnerabilities.
+
+### Code Review Checklist for AI-Generated Code
+Every PR must be checked for:
+1. **Auth bypass** — Does every endpoint have the correct middleware? (`protectedProcedure`, `platformProcedure`, `permissionProcedure`)
+2. **Tenant isolation** — Does every query filter by `organizationId`?
+3. **Data exposure** — Are Prisma queries using `select`? Is sensitive data (passwords, SSN, salary) excluded from responses?
+4. **Input bounds** — Are all string inputs bounded (`.max()`)? All arrays bounded?
+5. **Secret leakage** — Any hardcoded keys, tokens, or credentials?
+6. **XSS** — Any `dangerouslySetInnerHTML` or unescaped HTML rendering?
+7. **Race conditions** — Are multi-step DB operations wrapped in `$transaction`?
+8. **Error exposure** — Do error handlers leak stack traces or internal state?
+
+### CI/CD Security Gates (implement before production)
+```
+Pre-commit:
+  - Gitleaks (block commits with secrets)
+  - ESLint with @typescript-eslint/no-explicit-any
+
+Pull Request:
+  - tsc --noEmit (zero errors)
+  - Semgrep security scan (block high/critical)
+  - npm audit (block known vulnerable deps)
+
+Pre-deploy:
+  - Supabase RLS audit (all tables have policies)
+  - Environment variable validation (no hardcoded fallbacks)
+
+Post-deploy:
+  - Sentry error monitoring (no stack traces in responses)
+  - Runtime secret scanning
+```
+
+---
+
+## 5. Database Standards
 
 ### Schema Conventions
 - Every model: `id` (UUID), `createdAt`, `updatedAt`.
@@ -201,7 +283,7 @@ datasource db {
 
 ---
 
-## 5. AI Agent Architecture — Microservice
+## 6. AI Agent Architecture — Microservice
 
 > Full technical doc: `docs/AI-AGENT-ARCHITECTURE.md`
 
@@ -254,7 +336,7 @@ Request → Budget Check → Cache Lookup → PII Strip → Bedrock Call → Out
 
 ---
 
-## 6. PII Handling (CRITICAL)
+## 7. PII Handling (CRITICAL)
 
 ### Architecture
 ```
@@ -286,7 +368,7 @@ LOW (pass, log access): Job descriptions, company policies
 
 ---
 
-## 7. Scaling & Production Infrastructure
+## 8. Scaling & Production Infrastructure
 
 ### Caching (Upstash Redis)
 | Data | TTL | Strategy |
@@ -334,7 +416,7 @@ Dead letter queue + `onFailure` hooks for persistent failure alerting.
 
 ---
 
-## 8. Known Issues & Remaining Work
+## 9. Known Issues & Remaining Work
 
 ### FIXED (this session)
 - [x] SQL injection in RLS middleware
@@ -369,7 +451,7 @@ Dead letter queue + `onFailure` hooks for persistent failure alerting.
 
 ---
 
-## 9. Commit & PR Standards
+## 10. Commit & PR Standards
 
 ### Commit Messages
 ```
@@ -394,7 +476,7 @@ refactor/service-layer    chore/connection-pooling
 
 ---
 
-## 10. Development Commands
+## 11. Development Commands
 
 ```bash
 # Dev server
