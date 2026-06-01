@@ -140,6 +140,7 @@
     "email": "Email",
     "name": "Name",
     "type": "Type",
+    "searchAgents": "Search agents...",
     "paidInvoices": "Paid invoices",
     "requiresAttention": "Requires attention",
     "noIssues": "No issues",

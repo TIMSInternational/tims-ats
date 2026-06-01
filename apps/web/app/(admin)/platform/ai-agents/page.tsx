@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
+import { useI18n } from '../../../../lib/i18n';
 import type { AiAgentItem } from '../../../../lib/trpc-types';
 import { AgentEditDrawer } from './agent-edit-drawer';
 
@@ -37,6 +38,7 @@ function formatCache(seconds: number) {
 }
 
 export default function PlatformAiAgentsPage() {
+  const { t } = useI18n();
   const utils = trpc.useUtils();
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
@@ -153,7 +155,7 @@ export default function PlatformAiAgentsPage() {
       <div className="flex items-center gap-3 mb-4 shrink-0">
         <div className="relative flex-1 max-w-xs">
           <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#ABABAB]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607z" /></svg>
-          <input type="text" placeholder="Buscar agentes..." value={search} onChange={e => setSearch(e.target.value)} className="w-full h-9 pl-9 pr-3 text-[12px] border border-[#EDEDED] rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-[#1F114C]/30" />
+          <input type="text" placeholder={t.common.searchAgents} value={search} onChange={e => setSearch(e.target.value)} className="w-full h-9 pl-9 pr-3 text-[12px] border border-[#EDEDED] rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-[#1F114C]/30" />
         </div>
         <div className="flex items-center gap-1 bg-white border border-[#EDEDED] rounded-lg p-0.5">
           {[{ key: 'all', label: 'Todos' }, { key: 'mvp', label: 'MVP' }, { key: 'post-mvp', label: 'Post-MVP' }].map(tab => (

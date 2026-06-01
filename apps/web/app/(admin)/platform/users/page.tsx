@@ -3,66 +3,14 @@
 import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
-import type { UserListItem } from '../../../../lib/trpc-types';
-
-const ROLE_COLORS: Record<string, { bg: string; text: string }> = {
-  platform_owner: { bg: 'bg-purple-100', text: 'text-purple-700' },
-  super_admin: { bg: 'bg-red-100', text: 'text-red-700' },
-  hr_admin: { bg: 'bg-blue-100', text: 'text-blue-700' },
-  recruiter: { bg: 'bg-cyan-100', text: 'text-cyan-700' },
-  leader: { bg: 'bg-amber-100', text: 'text-amber-700' },
-  employee: { bg: 'bg-gray-100', text: 'text-gray-500' },
-};
-
-const AVATAR_COLORS = [
-  'bg-[#DD0C15]', 'bg-[#1F114C]', 'bg-blue-500', 'bg-emerald-500',
-  'bg-orange-500', 'bg-pink-500', 'bg-indigo-500', 'bg-teal-500',
-  'bg-violet-500', 'bg-amber-500',
-];
-
-function getInitials(firstName?: string | null, lastName?: string | null): string {
-  return `${(firstName || '')[0] || ''}${(lastName || '')[0] || ''}`.toUpperCase();
-}
-
-function getAvatarColor(name: string): string {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
-  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
-}
-
-function formatDate(date: string | Date | null | undefined): string {
-  if (!date) return '-';
-  return new Intl.DateTimeFormat('es', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(date));
-}
-
-function formatLastLogin(date: string | Date | null | undefined): string {
-  if (!date) return 'Nunca';
-  const diff = Date.now() - new Date(date).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'Hace un momento';
-  if (mins < 60) return `Hace ${mins} min`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `Hace ${hours} hora${hours > 1 ? 's' : ''}`;
-  const days = Math.floor(hours / 24);
-  if (days === 1) return 'Ayer';
-  if (days < 30) return `Hace ${days} dias`;
-  return formatDate(date);
-}
-
-function SkeletonRow() {
-  return (
-    <tr className="border-b border-[#F3F3F3] animate-pulse">
-      <td className="px-4 py-2.5"><div className="flex items-center gap-2.5"><div className="w-8 h-8 rounded-full bg-gray-200" /><div className="h-4 w-28 bg-gray-200 rounded" /></div></td>
-      <td className="px-4 py-2.5"><div className="h-3 w-36 bg-gray-100 rounded" /></td>
-      <td className="px-4 py-2.5"><div className="h-3 w-24 bg-gray-100 rounded" /></td>
-      <td className="px-4 py-2.5"><div className="h-5 w-16 bg-gray-100 rounded-full" /></td>
-      <td className="px-4 py-2.5"><div className="h-3 w-14 bg-gray-100 rounded" /></td>
-      <td className="px-4 py-2.5"><div className="h-3 w-20 bg-gray-100 rounded" /></td>
-      <td className="px-4 py-2.5"><div className="h-3 w-20 bg-gray-100 rounded" /></td>
-      <td className="px-4 py-2.5"><div className="h-5 w-28 bg-gray-100 rounded" /></td>
-    </tr>
-  );
-}
+import {
+  ROLE_COLORS,
+  getInitials,
+  getAvatarColor,
+  formatDate,
+  formatLastLogin,
+  SkeletonRow,
+} from './users-utils';
 
 export default function PlatformUsersPage() {
   const { t } = useI18n();
@@ -138,18 +86,10 @@ export default function PlatformUsersPage() {
             onChange={e => { setSearch(e.target.value); setPage(0); }}
           />
         </div>
-        <select
-          className="h-9 px-3 border border-[#EDEDED] rounded-lg text-[12px] bg-white text-[#585858] focus:outline-none"
-          value={orgFilter}
-          onChange={e => { setOrgFilter(e.target.value); setPage(0); }}
-        >
+        <select className="h-9 px-3 border border-[#EDEDED] rounded-lg text-[12px] bg-white text-[#585858] focus:outline-none" value={orgFilter} onChange={e => { setOrgFilter(e.target.value); setPage(0); }}>
           <option value="">Todas las Organizaciones</option>
         </select>
-        <select
-          className="h-9 px-3 border border-[#EDEDED] rounded-lg text-[12px] bg-white text-[#585858] focus:outline-none"
-          value={roleFilter}
-          onChange={e => { setRoleFilter(e.target.value); setPage(0); }}
-        >
+        <select className="h-9 px-3 border border-[#EDEDED] rounded-lg text-[12px] bg-white text-[#585858] focus:outline-none" value={roleFilter} onChange={e => { setRoleFilter(e.target.value); setPage(0); }}>
           <option value="">Todos los Roles</option>
           <option value="super_admin">super_admin</option>
           <option value="hr_admin">hr_admin</option>
@@ -158,18 +98,8 @@ export default function PlatformUsersPage() {
           <option value="employee">employee</option>
         </select>
         <div className="flex items-center bg-white border border-[#EDEDED] rounded-lg overflow-hidden">
-          <button
-            className={`px-3 h-9 text-[12px] font-medium transition ${activeFilter === 'active' ? 'bg-[#1F114C] text-white' : 'text-[#585858]'}`}
-            onClick={() => { setActiveFilter('active'); setPage(0); }}
-          >
-            {t.users.filterActive}
-          </button>
-          <button
-            className={`px-3 h-9 text-[12px] font-medium transition ${activeFilter === 'all' ? 'bg-[#1F114C] text-white' : 'text-[#585858]'}`}
-            onClick={() => { setActiveFilter('all'); setPage(0); }}
-          >
-            {t.users.filterAll}
-          </button>
+          <button className={`px-3 h-9 text-[12px] font-medium transition ${activeFilter === 'active' ? 'bg-[#1F114C] text-white' : 'text-[#585858]'}`} onClick={() => { setActiveFilter('active'); setPage(0); }}>{t.users.filterActive}</button>
+          <button className={`px-3 h-9 text-[12px] font-medium transition ${activeFilter === 'all' ? 'bg-[#1F114C] text-white' : 'text-[#585858]'}`} onClick={() => { setActiveFilter('all'); setPage(0); }}>{t.users.filterAll}</button>
         </div>
         <div className="flex-1" />
         <button className="flex items-center gap-1.5 border border-[#EDEDED] text-[#585858] px-3 h-9 rounded-lg text-[12px] hover:bg-[#F6F6F6] transition">
@@ -182,7 +112,7 @@ export default function PlatformUsersPage() {
         </button>
       </div>
 
-      {/* USER TABLE — fixed height, fills remaining space */}
+      {/* USER TABLE */}
       <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] flex-1 flex flex-col min-h-0 overflow-hidden">
         <div className="flex-1 overflow-y-auto min-h-0">
           <table className="w-full text-left">
@@ -223,24 +153,14 @@ export default function PlatformUsersPage() {
                     <tr key={user.id} className="hover:bg-[#FAFAFA]">
                       <td className="px-4 py-2.5">
                         <div className="flex items-center gap-2.5">
-                          <div className={`w-8 h-8 rounded-full ${avatarBg} flex items-center justify-center text-white text-[10px] font-bold`}>
-                            {initials}
-                          </div>
-                          <span className={`text-[13px] font-medium text-[#1F114C] ${!user.isActive ? 'opacity-60' : ''}`}>
-                            {fullName}
-                          </span>
+                          <div className={`w-8 h-8 rounded-full ${avatarBg} flex items-center justify-center text-white text-[10px] font-bold`}>{initials}</div>
+                          <span className={`text-[13px] font-medium text-[#1F114C] ${!user.isActive ? 'opacity-60' : ''}`}>{fullName}</span>
                         </div>
                       </td>
-                      <td className={`px-4 py-2.5 text-[12px] ${user.isActive ? 'text-[#585858]' : 'text-[#8B8B8B]'}`}>
-                        {user.email}
-                      </td>
-                      <td className={`px-4 py-2.5 text-[12px] ${user.isActive ? 'text-[#585858]' : 'text-[#8B8B8B]'}`}>
-                        {user.isPlatformOwner ? 'Plataforma' : user.organization?.name || '-'}
-                      </td>
+                      <td className={`px-4 py-2.5 text-[12px] ${user.isActive ? 'text-[#585858]' : 'text-[#8B8B8B]'}`}>{user.email}</td>
+                      <td className={`px-4 py-2.5 text-[12px] ${user.isActive ? 'text-[#585858]' : 'text-[#8B8B8B]'}`}>{user.isPlatformOwner ? 'Plataforma' : user.organization?.name || '-'}</td>
                       <td className="px-4 py-2.5">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${roleColor.bg} ${roleColor.text}`}>
-                          {roleSlug}
-                        </span>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${roleColor.bg} ${roleColor.text}`}>{roleSlug}</span>
                       </td>
                       <td className="px-4 py-2.5">
                         <span className={`flex items-center gap-1.5 text-[12px] ${user.isActive ? 'text-[#585858]' : 'text-[#8B8B8B]'}`}>
@@ -248,12 +168,8 @@ export default function PlatformUsersPage() {
                           {user.isActive ? t.users.statusActive : t.users.statusInactive}
                         </span>
                       </td>
-                      <td className={`px-4 py-2.5 text-[12px] ${user.isActive ? 'text-[#585858]' : 'text-[#8B8B8B]'}`}>
-                        {formatLastLogin(user.lastLoginAt)}
-                      </td>
-                      <td className="px-4 py-2.5 text-[12px] text-[#8B8B8B]">
-                        {formatDate(user.createdAt)}
-                      </td>
+                      <td className={`px-4 py-2.5 text-[12px] ${user.isActive ? 'text-[#585858]' : 'text-[#8B8B8B]'}`}>{formatLastLogin(user.lastLoginAt)}</td>
+                      <td className="px-4 py-2.5 text-[12px] text-[#8B8B8B]">{formatDate(user.createdAt)}</td>
                       <td className="px-4 py-2.5">
                         <div className="flex items-center gap-1">
                           <button className="px-2 py-1 text-[10px] text-[#1F114C] bg-[#F0EEF7] rounded font-medium hover:bg-[#E4E0F0]">Ver</button>
@@ -283,38 +199,19 @@ export default function PlatformUsersPage() {
             {t.common.showing} {total > 0 ? page * limit + 1 : 0} - {Math.min((page + 1) * limit, total)} {t.common.of} {total.toLocaleString()}
           </p>
           <div className="flex items-center gap-1">
-            <button
-              onClick={() => setPage((p) => Math.max(0, p - 1))}
-              disabled={page === 0}
-              className="w-8 h-8 rounded-lg border border-[#EDEDED] flex items-center justify-center text-[#8B8B8B] hover:bg-[#F6F6F6] transition disabled:opacity-40"
-            >
+            <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0} className="w-8 h-8 rounded-lg border border-[#EDEDED] flex items-center justify-center text-[#8B8B8B] hover:bg-[#F6F6F6] transition disabled:opacity-40">
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6" /></svg>
             </button>
             {Array.from({ length: Math.min(Math.ceil(total / limit), 5) }).map((_, i) => (
-              <button
-                key={i}
-                onClick={() => setPage(i)}
-                className={`w-8 h-8 rounded-lg text-[12px] font-medium transition ${page === i ? 'bg-[#1F114C] text-white' : 'border border-[#EDEDED] text-[#585858] hover:bg-[#F6F6F6]'}`}
-              >
-                {i + 1}
-              </button>
+              <button key={i} onClick={() => setPage(i)} className={`w-8 h-8 rounded-lg text-[12px] font-medium transition ${page === i ? 'bg-[#1F114C] text-white' : 'border border-[#EDEDED] text-[#585858] hover:bg-[#F6F6F6]'}`}>{i + 1}</button>
             ))}
             {Math.ceil(total / limit) > 5 && (
               <>
                 <span className="text-[12px] text-[#8B8B8B] px-1">...</span>
-                <button
-                  onClick={() => setPage(Math.ceil(total / limit) - 1)}
-                  className={`w-8 h-8 rounded-lg text-[12px] font-medium border border-[#EDEDED] text-[#585858] hover:bg-[#F6F6F6] transition`}
-                >
-                  {Math.ceil(total / limit)}
-                </button>
+                <button onClick={() => setPage(Math.ceil(total / limit) - 1)} className="w-8 h-8 rounded-lg text-[12px] font-medium border border-[#EDEDED] text-[#585858] hover:bg-[#F6F6F6] transition">{Math.ceil(total / limit)}</button>
               </>
             )}
-            <button
-              onClick={() => setPage((p) => p + 1)}
-              disabled={(page + 1) * limit >= total}
-              className="w-8 h-8 rounded-lg border border-[#EDEDED] flex items-center justify-center text-[#585858] hover:bg-[#F6F6F6] transition disabled:opacity-40"
-            >
+            <button onClick={() => setPage((p) => p + 1)} disabled={(page + 1) * limit >= total} className="w-8 h-8 rounded-lg border border-[#EDEDED] flex items-center justify-center text-[#585858] hover:bg-[#F6F6F6] transition disabled:opacity-40">
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" /></svg>
             </button>
           </div>

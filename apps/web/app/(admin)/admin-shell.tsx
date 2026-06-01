@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Sidebar } from './sidebar';
 import { PlatformSidebar } from './platform-sidebar';
-import { Navbar } from './navbar';
+import { Navbar } from './navbar/index';
 import { SupportChat } from './support-chat';
 import { TRPCProvider } from '../../lib/trpc-provider';
 import { I18nProvider } from '../../lib/i18n';

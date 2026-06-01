@@ -2,44 +2,14 @@
 
 import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
-
-const ACTION_OPTIONS = ['', 'create', 'update', 'delete', 'access', 'login'] as const;
-const ENTITY_OPTIONS = ['', 'user', 'vacancy', 'candidate', 'organization', 'role'] as const;
-
-const ACTION_COLORS: Record<string, { bg: string; text: string }> = {
-  create: { bg: 'bg-green-100', text: 'text-green-700' },
-  update: { bg: 'bg-blue-100', text: 'text-blue-700' },
-  delete: { bg: 'bg-red-100', text: 'text-red-700' },
-  access: { bg: 'bg-gray-100', text: 'text-gray-600' },
-  login: { bg: 'bg-purple-100', text: 'text-purple-700' },
-};
-
-const AVATAR_COLORS = [
-  { bg: 'bg-blue-100', text: 'text-blue-600' },
-  { bg: 'bg-green-100', text: 'text-green-600' },
-  { bg: 'bg-orange-100', text: 'text-orange-600' },
-  { bg: 'bg-red-100', text: 'text-red-600' },
-  { bg: 'bg-purple-100', text: 'text-purple-600' },
-  { bg: 'bg-teal-100', text: 'text-teal-600' },
-  { bg: 'bg-pink-100', text: 'text-pink-600' },
-  { bg: 'bg-indigo-100', text: 'text-indigo-600' },
-];
-
-function getInitials(name?: string | null): string {
-  if (!name) return '??';
-  return name
-    .split(' ')
-    .map((w) => w[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
-}
-
-function getAvatarColor(name?: string | null) {
-  if (!name) return AVATAR_COLORS[0];
-  const idx = name.split('').reduce((a, c) => a + c.charCodeAt(0), 0) % AVATAR_COLORS.length;
-  return AVATAR_COLORS[idx];
-}
+import {
+  ACTION_OPTIONS,
+  ENTITY_OPTIONS,
+  ACTION_COLORS,
+  getInitials,
+  getAvatarColor,
+  formatTimestamp,
+} from './audit-utils';
 
 export default function AuditPage() {
   const [action, setAction] = useState('');
@@ -75,69 +45,30 @@ export default function AuditPage() {
     setPage(0);
   }
 
-  function formatTimestamp(ts: string | Date) {
-    const d = new Date(ts);
-    const day = d.getDate();
-    const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-    const mon = months[d.getMonth()];
-    const h = d.getHours().toString().padStart(2, '0');
-    const m = d.getMinutes().toString().padStart(2, '0');
-    const s = d.getSeconds().toString().padStart(2, '0');
-    return `${day} ${mon} ${h}:${m}:${s}`;
-  }
-
   return (
     <main className="flex-1 overflow-y-auto p-6 space-y-4">
       {/* Filters Row */}
       <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4">
         <div className="flex items-center gap-3">
-          {/* Date From */}
           <div className="flex items-center gap-2 border border-[#EDEDED] rounded-lg px-3 py-2">
             <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
               <path d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
             </svg>
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => { setDateFrom(e.target.value); setPage(0); }}
-              className="text-sm text-gray-600 bg-transparent outline-none"
-              placeholder="Desde"
-            />
+            <input type="date" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setPage(0); }} className="text-sm text-gray-600 bg-transparent outline-none" placeholder="Desde" />
             <span className="text-gray-300">-</span>
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(e) => { setDateTo(e.target.value); setPage(0); }}
-              className="text-sm text-gray-600 bg-transparent outline-none"
-              placeholder="Hasta"
-            />
+            <input type="date" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setPage(0); }} className="text-sm text-gray-600 bg-transparent outline-none" placeholder="Hasta" />
           </div>
 
-          {/* Action Filter */}
-          <select
-            value={action}
-            onChange={(e) => { setAction(e.target.value); setPage(0); }}
-            className="border border-[#EDEDED] rounded-lg px-3 py-2 text-sm text-gray-600 bg-white"
-          >
+          <select value={action} onChange={(e) => { setAction(e.target.value); setPage(0); }} className="border border-[#EDEDED] rounded-lg px-3 py-2 text-sm text-gray-600 bg-white">
             <option value="">Todas las Acciones</option>
-            {ACTION_OPTIONS.filter(Boolean).map((a) => (
-              <option key={a} value={a}>{a}</option>
-            ))}
+            {ACTION_OPTIONS.filter(Boolean).map((a) => (<option key={a} value={a}>{a}</option>))}
           </select>
 
-          {/* Entity Filter */}
-          <select
-            value={entity}
-            onChange={(e) => { setEntity(e.target.value); setPage(0); }}
-            className="border border-[#EDEDED] rounded-lg px-3 py-2 text-sm text-gray-600 bg-white"
-          >
+          <select value={entity} onChange={(e) => { setEntity(e.target.value); setPage(0); }} className="border border-[#EDEDED] rounded-lg px-3 py-2 text-sm text-gray-600 bg-white">
             <option value="">Todas las Entidades</option>
-            {ENTITY_OPTIONS.filter(Boolean).map((e) => (
-              <option key={e} value={e}>{e}</option>
-            ))}
+            {ENTITY_OPTIONS.filter(Boolean).map((e) => (<option key={e} value={e}>{e}</option>))}
           </select>
 
-          {/* Export stub */}
           <div className="flex-1" />
           <button className="flex items-center gap-2 px-4 py-2 border border-[#EDEDED] rounded-lg text-sm text-gray-600 hover:bg-gray-50">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
@@ -147,7 +78,6 @@ export default function AuditPage() {
           </button>
         </div>
 
-        {/* Active Filters */}
         {hasActiveFilters && (
           <div className="flex items-center gap-2 mt-3">
             <span className="text-xs text-gray-400">Filtros activos:</span>
@@ -175,9 +105,7 @@ export default function AuditPage() {
                 </button>
               </span>
             )}
-            <button onClick={clearFilters} className="text-xs text-gray-400 hover:text-[#DD0C15] ml-1">
-              Limpiar todo
-            </button>
+            <button onClick={clearFilters} className="text-xs text-gray-400 hover:text-[#DD0C15] ml-1">Limpiar todo</button>
           </div>
         )}
       </div>
@@ -227,21 +155,15 @@ export default function AuditPage() {
 
                   return (
                     <tr key={log.id ?? idx} className="hover:bg-gray-50/50">
-                      <td className="px-5 py-3 text-xs text-gray-500 whitespace-nowrap">
-                        {log.createdAt ? formatTimestamp(log.createdAt) : '--'}
-                      </td>
+                      <td className="px-5 py-3 text-xs text-gray-500 whitespace-nowrap">{log.createdAt ? formatTimestamp(log.createdAt) : '--'}</td>
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-2">
-                          <div className={`w-6 h-6 rounded-full ${avatar.bg} flex items-center justify-center text-[10px] font-semibold ${avatar.text}`}>
-                            {getInitials(actorName)}
-                          </div>
+                          <div className={`w-6 h-6 rounded-full ${avatar.bg} flex items-center justify-center text-[10px] font-semibold ${avatar.text}`}>{getInitials(actorName)}</div>
                           <span className="text-sm text-gray-700">{actorName}</span>
                         </div>
                       </td>
                       <td className="px-5 py-3">
-                        <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${actionStyle.bg} ${actionStyle.text}`}>
-                          {log.action}
-                        </span>
+                        <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${actionStyle.bg} ${actionStyle.text}`}>{log.action}</span>
                       </td>
                       <td className="px-5 py-3 text-sm text-gray-600">{log.entity ?? '--'}</td>
                       <td className="px-5 py-3 text-sm text-gray-500 max-w-[200px] truncate">{log.entityId ?? '--'}</td>
@@ -254,62 +176,28 @@ export default function AuditPage() {
 
             {/* Pagination */}
             <div className="flex items-center justify-between px-5 py-3 border-t border-[#EDEDED]">
-              <span className="text-sm text-gray-500">
-                Mostrando {page * limit + 1}-{Math.min((page + 1) * limit, total)} de {total.toLocaleString()}
-              </span>
+              <span className="text-sm text-gray-500">Mostrando {page * limit + 1}-{Math.min((page + 1) * limit, total)} de {total.toLocaleString()}</span>
               <div className="flex items-center gap-1">
-                <button
-                  onClick={() => setPage((p) => Math.max(0, p - 1))}
-                  disabled={page === 0}
-                  className="w-8 h-8 rounded-lg border border-[#EDEDED] flex items-center justify-center text-gray-400 hover:bg-gray-50 disabled:opacity-30"
-                >
+                <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0} className="w-8 h-8 rounded-lg border border-[#EDEDED] flex items-center justify-center text-gray-400 hover:bg-gray-50 disabled:opacity-30">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
                 </button>
-
                 {Array.from({ length: Math.min(totalPages, 5) }).map((_, i) => {
                   let pageNum: number;
-                  if (totalPages <= 5) {
-                    pageNum = i;
-                  } else if (page < 3) {
-                    pageNum = i;
-                  } else if (page > totalPages - 4) {
-                    pageNum = totalPages - 5 + i;
-                  } else {
-                    pageNum = page - 2 + i;
-                  }
-
+                  if (totalPages <= 5) { pageNum = i; }
+                  else if (page < 3) { pageNum = i; }
+                  else if (page > totalPages - 4) { pageNum = totalPages - 5 + i; }
+                  else { pageNum = page - 2 + i; }
                   return (
-                    <button
-                      key={pageNum}
-                      onClick={() => setPage(pageNum)}
-                      className={`w-8 h-8 rounded-lg text-sm font-medium ${
-                        page === pageNum
-                          ? 'bg-[#1F114C] text-white'
-                          : 'border border-[#EDEDED] text-gray-600 hover:bg-gray-50'
-                      }`}
-                    >
-                      {pageNum + 1}
-                    </button>
+                    <button key={pageNum} onClick={() => setPage(pageNum)} className={`w-8 h-8 rounded-lg text-sm font-medium ${page === pageNum ? 'bg-[#1F114C] text-white' : 'border border-[#EDEDED] text-gray-600 hover:bg-gray-50'}`}>{pageNum + 1}</button>
                   );
                 })}
-
                 {totalPages > 5 && page < totalPages - 3 && (
                   <>
                     <span className="text-gray-400 px-1">...</span>
-                    <button
-                      onClick={() => setPage(totalPages - 1)}
-                      className="w-8 h-8 rounded-lg border border-[#EDEDED] text-sm text-gray-600 hover:bg-gray-50"
-                    >
-                      {totalPages}
-                    </button>
+                    <button onClick={() => setPage(totalPages - 1)} className="w-8 h-8 rounded-lg border border-[#EDEDED] text-sm text-gray-600 hover:bg-gray-50">{totalPages}</button>
                   </>
                 )}
-
-                <button
-                  onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-                  disabled={page >= totalPages - 1}
-                  className="w-8 h-8 rounded-lg border border-[#EDEDED] flex items-center justify-center text-gray-400 hover:bg-gray-50 disabled:opacity-30"
-                >
+                <button onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1} className="w-8 h-8 rounded-lg border border-[#EDEDED] flex items-center justify-center text-gray-400 hover:bg-gray-50 disabled:opacity-30">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg>
                 </button>
               </div>
