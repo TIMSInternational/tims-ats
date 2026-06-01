@@ -220,8 +220,8 @@ export default function AuditPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#EDEDED]">
-                {logs.map((log: any, idx: number) => {
-                  const actorName = log.actorName ?? log.userId ?? 'Sistema';
+                {logs.map((log, idx) => {
+                  const actorName = log.actor ? `${log.actor.firstName} ${log.actor.lastName}`.trim() || log.actor.email : (log.userId ?? 'Sistema');
                   const avatar = getAvatarColor(actorName);
                   const actionStyle = ACTION_COLORS[log.action] ?? { bg: 'bg-gray-100', text: 'text-gray-600' };
 
@@ -244,8 +244,8 @@ export default function AuditPage() {
                         </span>
                       </td>
                       <td className="px-5 py-3 text-sm text-gray-600">{log.entity ?? '--'}</td>
-                      <td className="px-5 py-3 text-sm text-gray-500 max-w-[200px] truncate">{log.detail ?? log.description ?? '--'}</td>
-                      <td className="px-5 py-3 text-xs text-gray-400 font-mono">{log.ip ?? '--'}</td>
+                      <td className="px-5 py-3 text-sm text-gray-500 max-w-[200px] truncate">{log.entityId ?? '--'}</td>
+                      <td className="px-5 py-3 text-xs text-gray-400 font-mono">{log.ipAddress ?? '--'}</td>
                     </tr>
                   );
                 })}

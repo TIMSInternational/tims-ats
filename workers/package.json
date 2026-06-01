@@ -10,8 +10,6 @@
   "dependencies": {
     "@tims/db": "workspace:*",
     "@tims/ai": "workspace:*",
-    "@tims/email": "workspace:*",
-    "@tims/whatsapp": "workspace:*",
     "@tims/shared": "workspace:*",
     "@trigger.dev/sdk": "^4.4.0"
   },

@@ -55,7 +55,7 @@ export function AdminShell({
         />
         <div className="flex flex-col flex-1 min-w-0">
           <Navbar isPlatformOwner={isPlatformOwner} onHelpClick={() => setChatOpen(!chatOpen)} />
-          <main className="flex-1 overflow-y-auto bg-[#F6F6F6]">
+          <main className="flex-1 overflow-hidden bg-[#F6F6F6]">
             {children}
           </main>
         </div>

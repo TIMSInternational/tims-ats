@@ -182,9 +182,9 @@ export default function DashboardPage() {
     : [];
 
   return (
-    <div className="p-6">
+    <div className="h-full flex flex-col overflow-hidden p-6">
       {/* KPI Row */}
-      <div className="grid grid-cols-5 gap-4 mb-6">
+      <div className="grid grid-cols-5 gap-4 mb-6 flex-shrink-0">
         {kpis.isLoading ? (
           Array.from({ length: 5 }).map((_, i) => (
             <div key={i} className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 animate-pulse">
@@ -254,6 +254,8 @@ export default function DashboardPage() {
         ) : null}
       </div>
 
+      {/* Content Area */}
+      <div className="flex-1 min-h-0 overflow-y-auto">
       {/* Two Column Layout */}
       <div className="flex gap-5 mb-6">
         {/* LEFT 60% */}
@@ -527,6 +529,7 @@ export default function DashboardPage() {
             ))}
           </div>
         </div>
+      </div>
       </div>
     </div>
   );

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
+import { toast } from '../../../../lib/toast';
 
 export default function SupportPage() {
   const [newEmail, setNewEmail] = useState('');
@@ -18,14 +19,18 @@ export default function SupportPage() {
     onSuccess: () => {
       setNewEmail('');
       utils.platform.listPlatformOwnerEmails.invalidate();
+      toast('Email agregado exitosamente', { type: 'success' });
     },
+    onError: (err) => { toast(err.message || 'Error al agregar email', { type: 'error' }); },
   });
 
   const removeEmailMutation = trpc.platform.removePlatformOwnerEmail.useMutation({
     onSuccess: () => {
       setConfirmRemove(null);
       utils.platform.listPlatformOwnerEmails.invalidate();
+      toast('Email eliminado', { type: 'success' });
     },
+    onError: (err) => { toast(err.message || 'Error al eliminar email', { type: 'error' }); },
   });
 
   const emails = emailsData ?? [];
@@ -89,14 +94,14 @@ export default function SupportPage() {
                 <div key={i} className="h-10 bg-gray-100 rounded-lg animate-pulse" />
               ))}
             </div>
-          ) : (emails as any[]).length === 0 ? (
+          ) : emails.length === 0 ? (
             <div className="py-6 text-center">
               <p className="text-sm text-gray-400">No hay emails registrados</p>
               <p className="text-xs text-gray-300 mt-1">Agrega un email para comenzar</p>
             </div>
           ) : (
             <div className="space-y-2 max-h-[280px] overflow-y-auto">
-              {(emails as any[]).map((item: any) => {
+              {emails.map((item) => {
                 const email = typeof item === 'string' ? item : item.email;
                 const isConfirming = confirmRemove === email;
                 return (

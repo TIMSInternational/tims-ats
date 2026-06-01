@@ -28,6 +28,10 @@ model Offer {
   legalChecks LegalCheck[]
 
   @@index([organizationId])
+  @@index([candidateId])
+  @@index([vacancyId])
+  @@index([applicationId])
+  @@index([createdById])
   @@map("offers")
 }
 
@@ -46,6 +50,8 @@ model OfferApproval {
   approver User  @relation("OfferApprover", fields: [approverId], references: [id])
 
   @@index([organizationId])
+  @@index([offerId])
+  @@index([approverId])
   @@map("offer_approvals")
 }
 
@@ -67,6 +73,8 @@ model PreemploymentValidation {
   completedByUser User? @relation("ValidationCompletedBy", fields: [completedById], references: [id])
 
   @@index([organizationId])
+  @@index([offerId])
+  @@index([completedById])
   @@map("preemployment_validations")
 }
 
@@ -86,5 +94,7 @@ model LegalCheck {
   completedByUser User? @relation("LegalCheckCompletedBy", fields: [completedById], references: [id])
 
   @@index([organizationId])
+  @@index([offerId])
+  @@index([completedById])
   @@map("legal_checks")
 }

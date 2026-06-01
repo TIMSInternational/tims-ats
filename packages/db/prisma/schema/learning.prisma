@@ -18,6 +18,7 @@ model Course {
   pathCourses LearningPathCourse[]
 
   @@index([organizationId])
+  @@index([createdById])
   @@map("courses")
 }
 
@@ -47,6 +48,7 @@ model LearningPathCourse {
   course Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
 
   @@unique([pathId, courseId])
+  @@index([courseId])
   @@map("learning_path_courses")
 }
 
@@ -69,6 +71,8 @@ model Enrollment {
   certificate Certificate?
 
   @@index([organizationId])
+  @@index([userId])
+  @@index([courseId])
   @@map("enrollments")
 }
 
@@ -86,5 +90,7 @@ model Certificate {
   user       User       @relation("CertificateUser", fields: [userId], references: [id])
 
   @@index([organizationId])
+  @@index([userId])
+  @@index([courseId])
   @@map("certificates")
 }

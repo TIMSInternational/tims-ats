@@ -1,0 +1,54 @@
+model AiAgent {
+  id              String   @id @default(uuid()) @db.Uuid
+  slug            String   @unique
+  name            String
+  description     String   @default("")
+  category        String   @default("general")
+  model           String   @default("haiku")
+  batchEligible   Boolean  @default(false) @map("batch_eligible")
+  cacheTtlSeconds Int      @default(0) @map("cache_ttl_seconds")
+  costPerCall     Float    @default(0) @map("cost_per_call")
+  status          String   @default("stub")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  orgConfigs AiAgentOrgConfig[]
+  usageLogs  AiAgentUsageLog[]
+
+  @@map("ai_agents")
+}
+
+model AiAgentOrgConfig {
+  id             String   @id @default(uuid()) @db.Uuid
+  agentId        String   @map("agent_id") @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  enabled        Boolean  @default(true)
+  monthlyBudget  Float?   @map("monthly_budget")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  agent        AiAgent      @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, organizationId])
+  @@index([organizationId])
+  @@map("ai_agent_org_configs")
+}
+
+model AiAgentUsageLog {
+  id             String   @id @default(uuid()) @db.Uuid
+  agentId        String   @map("agent_id") @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  userId         String?  @map("user_id") @db.Uuid
+  inputTokens    Int      @default(0) @map("input_tokens")
+  outputTokens   Int      @default(0) @map("output_tokens")
+  costUsd        Float    @default(0) @map("cost_usd")
+  latencyMs      Int      @default(0) @map("latency_ms")
+  cached         Boolean  @default(false)
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  agent AiAgent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([agentId, organizationId, createdAt])
+  @@map("ai_agent_usage_logs")
+}

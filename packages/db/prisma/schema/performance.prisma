@@ -17,6 +17,9 @@ model Okr {
   keyResults     KeyResult[]
 
   @@index([organizationId])
+  @@index([userId])
+  @@index([teamId])
+  @@index([createdById])
   @@map("okrs")
 }
 
@@ -57,6 +60,8 @@ model CoachingSession {
   commitments    Commitment[]
 
   @@index([organizationId])
+  @@index([employeeId])
+  @@index([leaderId])
   @@map("coaching_sessions")
 }
 
@@ -78,7 +83,9 @@ model Commitment {
   creator           User             @relation("CommitmentCreator", fields: [createdById], references: [id])
 
   @@index([organizationId])
+  @@index([employeeId])
   @@index([coachingSessionId])
+  @@index([createdById])
   @@map("commitments")
 }
 
@@ -96,6 +103,8 @@ model Feedback {
   toUser         User @relation("FeedbackTo", fields: [toUserId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
+  @@index([fromUserId])
+  @@index([toUserId])
   @@map("feedbacks")
 }
 
@@ -112,5 +121,7 @@ model Recognition {
   toUser         User @relation("RecognitionTo", fields: [toUserId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
+  @@index([fromUserId])
+  @@index([toUserId])
   @@map("recognitions")
 }

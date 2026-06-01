@@ -40,6 +40,10 @@ model Vacancy {
 
   @@index([organizationId])
   @@index([organizationId, status])
+  @@index([companyId])
+  @@index([businessUnitId])
+  @@index([teamId])
+  @@index([createdBy])
   @@index([assignedTo])
   @@map("vacancies")
 }
@@ -101,5 +105,6 @@ model VacancyApproval {
 
   @@index([organizationId])
   @@index([vacancyId])
+  @@index([approverId])
   @@map("vacancy_approvals")
 }

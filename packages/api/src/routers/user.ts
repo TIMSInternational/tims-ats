@@ -131,6 +131,15 @@ export const userRouter = router({
   assignRole: permissionProcedure('user', 'update')
     .input(assignRoleSchema)
     .mutation(async ({ ctx, input }) => {
+      // Verify user belongs to same organization (IDOR prevention)
+      const targetUser = await db.user.findFirst({
+        where: { id: input.userId, organizationId: ctx.user.organizationId },
+        select: { id: true },
+      });
+      if (!targetUser) {
+        throw new Error('Usuario no encontrado en esta organizacion');
+      }
+
       const role = await db.role.findFirst({
         where: {
           organizationId: ctx.user.organizationId,
@@ -166,9 +175,9 @@ export const userRouter = router({
   // Deactivate user
   deactivate: permissionProcedure('user', 'delete')
     .input(z.object({ userId: z.string().uuid() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       return db.user.update({
-        where: { id: input.userId },
+        where: { id: input.userId, organizationId: ctx.user.organizationId },
         data: { isActive: false, deletedAt: new Date() },
       });
     }),

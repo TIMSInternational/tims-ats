@@ -1,16 +1,23 @@
+enum InvoiceStatus {
+  draft
+  pending
+  paid
+  void
+}
+
 model Subscription {
-  id                     String    @id @default(uuid()) @db.Uuid
-  organizationId         String    @unique @map("organization_id") @db.Uuid
-  stripeCustomerId       String?   @map("stripe_customer_id")
-  stripeSubscriptionId   String?   @map("stripe_subscription_id")
-  plan                   String    @default("trial")
-  status                 String    @default("trialing")
-  currentPeriodStart     DateTime? @map("current_period_start")
-  currentPeriodEnd       DateTime? @map("current_period_end")
-  trialEndsAt            DateTime? @map("trial_ends_at")
-  cancelledAt            DateTime? @map("cancelled_at")
-  createdAt              DateTime  @default(now()) @map("created_at")
-  updatedAt              DateTime  @updatedAt @map("updated_at")
+  id                     String             @id @default(uuid()) @db.Uuid
+  organizationId         String             @unique @map("organization_id") @db.Uuid
+  stripeCustomerId       String?            @map("stripe_customer_id")
+  stripeSubscriptionId   String?            @map("stripe_subscription_id")
+  plan                   OrgPlan            @default(trial)
+  status                 SubscriptionStatus @default(trialing)
+  currentPeriodStart     DateTime?          @map("current_period_start")
+  currentPeriodEnd       DateTime?          @map("current_period_end")
+  trialEndsAt            DateTime?          @map("trial_ends_at")
+  cancelledAt            DateTime?          @map("cancelled_at")
+  createdAt              DateTime           @default(now()) @map("created_at")
+  updatedAt              DateTime           @updatedAt @map("updated_at")
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   invoices     Invoice[]
@@ -20,20 +27,70 @@ model Subscription {
 
 model Invoice {
   id               String    @id @default(uuid()) @db.Uuid
+  invoiceNumber    Int       @default(autoincrement()) @map("invoice_number")
   organizationId   String    @map("organization_id") @db.Uuid
   subscriptionId   String?   @map("subscription_id") @db.Uuid
   stripeInvoiceId  String?   @map("stripe_invoice_id")
   amount           Float
+  subtotal         Float?
+  taxRate          Float?    @map("tax_rate")
   currency         String    @default("USD")
-  status           String    @default("draft")
+  status           InvoiceStatus @default(draft)
+  description      String?
+  invoiceDate      DateTime  @default(now()) @map("invoice_date")
+  dueDate          DateTime? @map("due_date")
+  poNumber         String?   @map("po_number")
+  notes            String?
+  memo             String?
+  emailTo          String?   @map("email_to")
+  emailCc          String?   @map("email_cc")
   paidAt           DateTime? @map("paid_at")
   invoiceUrl       String?   @map("invoice_url")
   periodStart      DateTime? @map("period_start")
   periodEnd        DateTime? @map("period_end")
   createdAt        DateTime  @default(now()) @map("created_at")
 
-  subscription Subscription? @relation(fields: [subscriptionId], references: [id])
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  subscription Subscription?  @relation(fields: [subscriptionId], references: [id])
+  lineItems    InvoiceLineItem[]
 
+  @@unique([organizationId, invoiceNumber])
   @@index([organizationId])
+  @@index([subscriptionId])
   @@map("invoices")
+}
+
+model InvoiceLineItem {
+  id          String @id @default(uuid()) @db.Uuid
+  invoiceId   String @map("invoice_id") @db.Uuid
+  description String
+  quantity    Int    @default(1)
+  unitPrice   Float  @map("unit_price")
+  total       Float
+  sortOrder   Int    @default(0) @map("sort_order")
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+  @@map("invoice_line_items")
+}
+
+model BillingProfile {
+  id              String   @id @default(uuid()) @db.Uuid
+  organizationId  String   @unique @map("organization_id") @db.Uuid
+  companyName     String?  @map("company_name")
+  taxId           String?  @map("tax_id")
+  address         String?
+  city            String?
+  state           String?
+  country         String?
+  zipCode         String?  @map("zip_code")
+  billingEmail    String?  @map("billing_email")
+  billingPhone    String?  @map("billing_phone")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("billing_profiles")
 }

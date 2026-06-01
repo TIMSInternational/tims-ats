@@ -15,10 +15,10 @@ export const router = t.router;
 export const createCallerFactory = t.createCallerFactory;
 
 // Rate limiting middleware
-const withRateLimit = t.middleware(({ ctx, next, path, type }) => {
+const withRateLimit = t.middleware(async ({ ctx, next, path, type }) => {
   const identifier = ctx.user?.id || ctx.headers.get('x-forwarded-for') || 'anonymous';
   const category = getRateLimitCategory(path, type as 'query' | 'mutation');
-  checkRateLimit(identifier, category);
+  await checkRateLimit(identifier, category);
   return next();
 });
 
@@ -51,9 +51,7 @@ const withRLS = t.middleware(async ({ ctx, next }) => {
     });
   }
 
-  await db.$executeRawUnsafe(
-    `SET LOCAL app.current_org_id = '${ctx.user.organizationId}'`
-  );
+  await db.$executeRaw`SET LOCAL app.current_org_id = ${ctx.user.organizationId}`;
 
   return next({ ctx: { db } });
 });

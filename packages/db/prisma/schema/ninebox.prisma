@@ -34,6 +34,7 @@ model CalibrationSession {
   votes   CalibrationVote[]
 
   @@index([organizationId])
+  @@index([createdById])
   @@map("calibration_sessions")
 }
 
@@ -48,6 +49,7 @@ model CalibrationMember {
   user    User               @relation("CalibrationMemberUser", fields: [userId], references: [id])
 
   @@unique([sessionId, userId])
+  @@index([userId])
   @@map("calibration_members")
 }
 
@@ -65,5 +67,7 @@ model CalibrationVote {
   voter         User               @relation("CalibrationVoter", fields: [voterId], references: [id])
 
   @@unique([sessionId, evaluatedUserId, voterId])
+  @@index([evaluatedUserId])
+  @@index([voterId])
   @@map("calibration_votes")
 }

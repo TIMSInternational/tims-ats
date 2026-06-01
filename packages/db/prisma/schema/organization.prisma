@@ -8,13 +8,27 @@ generator client {
   previewFeatures = []
 }
 
+enum SubscriptionStatus {
+  trialing
+  active
+  past_due
+  cancelled
+}
+
+enum OrgPlan {
+  trial
+  starter
+  professional
+  enterprise
+}
+
 model Organization {
   id          String   @id @default(uuid()) @db.Uuid
   name        String
   slug        String   @unique
   domain      String?  @unique
   logo        String?
-  plan        String   @default("trial")
+  plan        OrgPlan  @default(trial)
   settings    Json     @default("{}")
   billingEmail String? @map("billing_email")
   isActive    Boolean  @default(true) @map("is_active")
@@ -25,10 +39,14 @@ model Organization {
   companies     Company[]
   users         User[]
   roles         Role[]
-  featureFlags  FeatureFlag[]
-  auditLogs     AuditLog[]
-  vacancies     Vacancy[]
-  subscription  Subscription?
+  featureFlags       FeatureFlag[]
+  auditLogs          AuditLog[]
+  vacancies          Vacancy[]
+  subscription       Subscription?
+  invoices           Invoice[]
+  billingProfile     BillingProfile?
+  invitations        PlatformInvitation[]
+  aiAgentOrgConfigs  AiAgentOrgConfig[]
 
   @@map("organizations")
 }
@@ -76,6 +94,7 @@ model BusinessUnit {
 
   @@index([organizationId])
   @@index([companyId])
+  @@index([parentId])
   @@map("business_units")
 }
 
@@ -98,5 +117,6 @@ model Team {
 
   @@index([organizationId])
   @@index([businessUnitId])
+  @@index([leaderId])
   @@map("teams")
 }

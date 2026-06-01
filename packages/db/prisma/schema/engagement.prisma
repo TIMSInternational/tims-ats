@@ -17,6 +17,7 @@ model Survey {
   responses SurveyResponse[]
 
   @@index([organizationId])
+  @@index([createdById])
   @@map("surveys")
 }
 
@@ -33,6 +34,7 @@ model SurveyResponse {
 
   @@unique([surveyId, userId])
   @@index([organizationId])
+  @@index([userId])
   @@map("survey_responses")
 }
 
@@ -52,6 +54,7 @@ model ActionPlan {
   responsible User @relation("ActionPlanResponsible", fields: [responsibleId], references: [id])
 
   @@index([organizationId])
+  @@index([responsibleId])
   @@map("action_plans")
 }
 
@@ -69,5 +72,6 @@ model LeaderCommitment {
   leader User @relation("LeaderCommitmentLeader", fields: [leaderId], references: [id])
 
   @@index([organizationId])
+  @@index([leaderId])
   @@map("leader_commitments")
 }

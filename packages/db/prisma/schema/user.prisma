@@ -67,6 +67,9 @@ model User {
   // Candidate
   createdCandidates        Candidate[]         @relation("CandidateCreator")
 
+  // Invitations
+  sentInvitations          PlatformInvitation[] @relation("InvitationSender")
+
   // Assessment
   assessmentAssignments    AssessmentAssignment[] @relation("AssessmentAssigner")
 
@@ -114,6 +117,8 @@ model User {
   @@unique([organizationId, email])
   @@index([organizationId])
   @@index([supabaseUserId])
+  @@index([companyId])
+  @@index([businessUnitId])
   @@map("users")
 }
 
@@ -128,5 +133,6 @@ model UserTeam {
   team      Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
   @@unique([userId, teamId])
+  @@index([teamId])
   @@map("user_teams")
 }

@@ -41,6 +41,10 @@ model AssessmentAssignment {
   session        ProctoringSession?
 
   @@index([organizationId])
+  @@index([candidateId])
+  @@index([vacancyId])
+  @@index([assessmentTypeId])
+  @@index([assignedById])
   @@map("assessment_assignments")
 }
 
@@ -100,5 +104,6 @@ model FitScore {
 
   @@unique([candidateId, vacancyId])
   @@index([organizationId])
+  @@index([vacancyId])
   @@map("fit_scores")
 }

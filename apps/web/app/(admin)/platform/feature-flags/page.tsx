@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import { trpc } from '../../../../lib/trpc';
+import { toast } from '../../../../lib/toast';
 
 // Descriptions for known flag keys (matches HTML mockup)
 const FLAG_DESCRIPTIONS: Record<string, string> = {
@@ -23,7 +24,9 @@ export default function PlatformFeatureFlagsPage() {
   const updateFlag = trpc.platform.updateFeatureFlag.useMutation({
     onSuccess: () => {
       utils.platform.listAllFeatureFlags.invalidate();
+      toast('Feature flag actualizado', { type: 'success' });
     },
+    onError: (err) => { toast(err.message || 'Error al actualizar feature flag', { type: 'error' }); },
   });
 
   // Track local toggle states for optimistic updates

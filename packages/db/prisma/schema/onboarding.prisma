@@ -19,6 +19,9 @@ model OnboardingPlan {
   checkIns       OnboardingCheckIn[]
 
   @@index([organizationId])
+  @@index([userId])
+  @@index([buddyId])
+  @@index([createdById])
   @@map("onboarding_plans")
 }
 
@@ -43,6 +46,7 @@ model OnboardingTask {
 
   @@index([organizationId])
   @@index([planId])
+  @@index([completedById])
   @@map("onboarding_tasks")
 }
 
@@ -64,5 +68,6 @@ model OnboardingCheckIn {
 
   @@index([organizationId])
   @@index([planId])
+  @@index([completedById])
   @@map("onboarding_check_ins")
 }

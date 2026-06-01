@@ -15,6 +15,9 @@ model CriticalRole {
   successors    Successor[]
 
   @@index([organizationId])
+  @@index([currentHolderId])
+  @@index([companyId])
+  @@index([unitId])
   @@map("critical_roles")
 }
 
@@ -36,5 +39,7 @@ model Successor {
 
   @@unique([criticalRoleId, userId])
   @@index([organizationId])
+  @@index([userId])
+  @@index([addedById])
   @@map("successors")
 }

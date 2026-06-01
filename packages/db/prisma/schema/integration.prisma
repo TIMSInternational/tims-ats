@@ -17,6 +17,7 @@ model Connector {
   errors  SyncError[]
 
   @@index([organizationId])
+  @@index([createdById])
   @@map("connectors")
 }
 
@@ -34,6 +35,7 @@ model ConnectorSync {
   connector Connector @relation(fields: [connectorId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
+  @@index([connectorId])
   @@map("connector_syncs")
 }
 
@@ -52,6 +54,7 @@ model SyncError {
   connector Connector @relation(fields: [connectorId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
+  @@index([connectorId])
   @@map("sync_errors")
 }
 
@@ -71,6 +74,7 @@ model Webhook {
   creator User @relation("WebhookCreator", fields: [createdById], references: [id])
 
   @@index([organizationId])
+  @@index([createdById])
   @@map("webhooks")
 }
 
@@ -92,5 +96,6 @@ model ApiKey {
 
   @@index([keyHash])
   @@index([organizationId])
+  @@index([createdById])
   @@map("api_keys")
 }

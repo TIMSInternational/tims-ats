@@ -36,6 +36,7 @@ model EmployeeCompensation {
 
   @@unique([organizationId, userId])
   @@index([organizationId])
+  @@index([bandId])
   @@map("employee_compensations")
 }
 
@@ -59,6 +60,9 @@ model SalaryAdjustment {
   requester User  @relation("SalaryAdjustmentRequester", fields: [requestedById], references: [id])
 
   @@index([organizationId])
+  @@index([userId])
+  @@index([approvedById])
+  @@index([requestedById])
   @@map("salary_adjustments")
 }
 
@@ -91,5 +95,6 @@ model BenefitEnrollment {
 
   @@unique([userId, benefitPlanId])
   @@index([organizationId])
+  @@index([benefitPlanId])
   @@map("benefit_enrollments")
 }

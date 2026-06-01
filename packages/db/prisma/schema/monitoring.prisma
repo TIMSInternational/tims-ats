@@ -14,6 +14,7 @@ model AlertRule {
   alerts  Alert[]
 
   @@index([organizationId])
+  @@index([createdById])
   @@map("alert_rules")
 }
 
@@ -36,6 +37,8 @@ model Alert {
 
   @@index([organizationId, status])
   @@index([organizationId, severity])
+  @@index([ruleId])
+  @@index([dismissedById])
   @@index([createdAt])
   @@map("alerts")
 }

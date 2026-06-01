@@ -173,19 +173,19 @@ export function Navbar({ isPlatformOwner = false, onHelpClick }: { isPlatformOwn
               {searchResults.isLoading ? (
                 <div className="px-4 py-6 text-center">
                   <div className="w-5 h-5 border-2 border-[#1F114C]/20 border-t-[#1F114C] rounded-full animate-spin mx-auto mb-2" />
-                  <p className="text-[11px] text-[#8B8B8B]">Buscando...</p>
+                  <p className="text-[11px] text-[#8B8B8B]">{t.nav.searching}</p>
                 </div>
               ) : !hasResults ? (
                 <div className="px-4 py-6 text-center">
                   <svg className="w-8 h-8 text-[#EDEDED] mx-auto mb-2" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" /></svg>
-                  <p className="text-[12px] text-[#8B8B8B]">Sin resultados para &quot;{searchQuery}&quot;</p>
+                  <p className="text-[12px] text-[#8B8B8B]">{t.nav.noSearchResults} &quot;{searchQuery}&quot;</p>
                 </div>
               ) : (
                 <>
                   {/* Pages */}
                   {searchResults.data!.pages.length > 0 && (
                     <div>
-                      <div className="px-3 py-2 text-[10px] font-semibold text-[#8B8B8B] uppercase tracking-wider bg-[#FAFAFA]">Paginas</div>
+                      <div className="px-3 py-2 text-[10px] font-semibold text-[#8B8B8B] uppercase tracking-wider bg-[#FAFAFA]">{t.nav.pages}</div>
                       {searchResults.data!.pages.map((page) => (
                         <button
                           key={page.href}
@@ -202,7 +202,7 @@ export function Navbar({ isPlatformOwner = false, onHelpClick }: { isPlatformOwn
                   {/* Organizations */}
                   {searchResults.data!.organizations.length > 0 && (
                     <div>
-                      <div className="px-3 py-2 text-[10px] font-semibold text-[#8B8B8B] uppercase tracking-wider bg-[#FAFAFA]">Organizaciones</div>
+                      <div className="px-3 py-2 text-[10px] font-semibold text-[#8B8B8B] uppercase tracking-wider bg-[#FAFAFA]">{t.nav.organizations}</div>
                       {searchResults.data!.organizations.map((org) => (
                         <button
                           key={org.id}
@@ -217,7 +217,7 @@ export function Navbar({ isPlatformOwner = false, onHelpClick }: { isPlatformOwn
                             <p className="text-[10px] text-[#8B8B8B]">{org.slug} · {org.plan}</p>
                           </div>
                           {!org.isActive && (
-                            <span className="text-[9px] text-[#DD0C15] bg-red-50 px-1.5 py-0.5 rounded font-medium">Suspendida</span>
+                            <span className="text-[9px] text-[#DD0C15] bg-red-50 px-1.5 py-0.5 rounded font-medium">{t.nav.suspended}</span>
                           )}
                         </button>
                       ))}
@@ -227,7 +227,7 @@ export function Navbar({ isPlatformOwner = false, onHelpClick }: { isPlatformOwn
                   {/* Users */}
                   {searchResults.data!.users.length > 0 && (
                     <div>
-                      <div className="px-3 py-2 text-[10px] font-semibold text-[#8B8B8B] uppercase tracking-wider bg-[#FAFAFA]">Usuarios</div>
+                      <div className="px-3 py-2 text-[10px] font-semibold text-[#8B8B8B] uppercase tracking-wider bg-[#FAFAFA]">{t.nav.users}</div>
                       {searchResults.data!.users.map((user) => (
                         <button
                           key={user.id}
@@ -246,7 +246,7 @@ export function Navbar({ isPlatformOwner = false, onHelpClick }: { isPlatformOwn
                             <p className="text-[10px] text-[#8B8B8B] truncate">{user.email}{user.organization ? ` · ${user.organization.name}` : ''}</p>
                           </div>
                           {user.isPlatformOwner && (
-                            <span className="text-[9px] text-[#1F114C] bg-[#1F114C]/10 px-1.5 py-0.5 rounded font-medium">Owner</span>
+                            <span className="text-[9px] text-[#1F114C] bg-[#1F114C]/10 px-1.5 py-0.5 rounded font-medium">{t.nav.owner}</span>
                           )}
                         </button>
                       ))}

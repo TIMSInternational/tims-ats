@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
+import { toast } from '../../../../lib/toast';
+import type { OrganizationListItem } from '../../../../lib/trpc-types';
 
 function getInitials(name: string): string {
   return name
@@ -34,17 +36,16 @@ function planBadge(plan: string) {
   const cls = styles[plan?.toLowerCase()] || 'bg-gray-100 text-gray-700';
   return (
     <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${cls}`}>
-      {plan}
+      {plan?.charAt(0).toUpperCase() + plan?.slice(1)}
     </span>
   );
 }
 
-function statusDot(status: string) {
-  const isActive = status?.toLowerCase() === 'active' || status?.toLowerCase() === 'activa';
-  const isSuspended = status?.toLowerCase() === 'suspended' || status?.toLowerCase() === 'suspendida';
-  const dotColor = isSuspended ? 'bg-[#DD0C15]' : isActive ? 'bg-green-400' : 'bg-gray-400';
+function statusDot(status: string, isActive?: boolean) {
+  const isSuspended = !isActive || status?.toLowerCase() === 'suspended';
+  const dotColor = isSuspended ? 'bg-[#DD0C15]' : 'bg-green-400';
   const textColor = isSuspended ? 'text-[#DD0C15] font-medium' : 'text-[#585858]';
-  const label = isSuspended ? 'Suspendida' : isActive ? 'Activa' : status;
+  const label = isSuspended ? 'Suspendida' : 'Activa';
   return (
     <div className="flex items-center gap-1.5">
       <div className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
@@ -56,6 +57,18 @@ function statusDot(status: string) {
 function formatDate(date: string | Date | null | undefined): string {
   if (!date) return '\u2014';
   return new Intl.DateTimeFormat('es', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(date));
+}
+
+function trialDateColor(trialEndsAt: string | Date | null | undefined): string {
+  if (!trialEndsAt) return 'text-[#8B8B8B]';
+  const daysLeft = Math.ceil((new Date(trialEndsAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+  if (daysLeft <= 3) return 'text-[#DD0C15] font-medium';
+  if (daysLeft <= 7) return 'text-amber-600 font-medium';
+  return 'text-amber-600 font-medium';
+}
+
+function Skeleton({ className }: { className: string }) {
+  return <div className={`bg-gray-200 rounded animate-pulse ${className}`} />;
 }
 
 function SkeletonRow() {
@@ -77,20 +90,29 @@ export default function OrganizationsPage() {
   const [search, setSearch] = useState('');
   const [planFilter, setPlanFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [showModal, setShowModal] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editOrg, setEditOrg] = useState<OrganizationListItem | null>(null);
   const [page, setPage] = useState(0);
   const limit = 10;
 
-  // Form state
+  // Create form state
   const [formName, setFormName] = useState('');
   const [formSlug, setFormSlug] = useState('');
   const [formPlan, setFormPlan] = useState('trial');
   const [formEmail, setFormEmail] = useState('');
 
+  // Edit form state
+  const [editName, setEditName] = useState('');
+  const [editPlan, setEditPlan] = useState('');
+
+  const kpis = trpc.platform.getOrganizationKpis.useQuery();
+
   const orgs = trpc.platform.listOrganizations.useQuery({
     search: search || undefined,
     plan: planFilter || undefined,
     status: statusFilter || undefined,
+    page,
     limit,
   });
 
@@ -99,18 +121,35 @@ export default function OrganizationsPage() {
   const createOrg = trpc.platform.createOrganization.useMutation({
     onSuccess: () => {
       utils.platform.listOrganizations.invalidate();
-      setShowModal(false);
+      utils.platform.getOrganizationKpis.invalidate();
+      setShowCreateModal(false);
       setFormName('');
       setFormSlug('');
       setFormPlan('trial');
       setFormEmail('');
+      toast('Organizacion creada exitosamente', { type: 'success' });
     },
+    onError: (err) => { toast(err.message || 'Error al crear organizacion', { type: 'error' }); },
+  });
+
+  const updateOrg = trpc.platform.updateOrganization.useMutation({
+    onSuccess: () => {
+      utils.platform.listOrganizations.invalidate();
+      utils.platform.getOrganizationKpis.invalidate();
+      setShowEditModal(false);
+      setEditOrg(null);
+      toast('Organizacion actualizada', { type: 'success' });
+    },
+    onError: (err) => { toast(err.message || 'Error al actualizar organizacion', { type: 'error' }); },
   });
 
   const suspendOrg = trpc.platform.suspendOrganization.useMutation({
     onSuccess: () => {
       utils.platform.listOrganizations.invalidate();
+      utils.platform.getOrganizationKpis.invalidate();
+      toast('Estado de organizacion actualizado', { type: 'success' });
     },
+    onError: (err) => { toast(err.message || 'Error al cambiar estado de organizacion', { type: 'error' }); },
   });
 
   const organizations = orgs.data?.organizations ?? [];
@@ -120,6 +159,7 @@ export default function OrganizationsPage() {
     setSearch('');
     setPlanFilter('');
     setStatusFilter('');
+    setPage(0);
   };
 
   const handleCreate = (e: React.FormEvent) => {
@@ -132,8 +172,81 @@ export default function OrganizationsPage() {
     });
   };
 
+  const handleEdit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editOrg) return;
+    updateOrg.mutate({
+      id: editOrg.id,
+      name: editName,
+      plan: editPlan,
+    });
+  };
+
+  const openEdit = (org: OrganizationListItem) => {
+    setEditOrg(org);
+    setEditName(org.name);
+    setEditPlan(org.plan || org.subscription?.plan || 'trial');
+    setShowEditModal(true);
+  };
+
   return (
-    <main className="flex-1 overflow-y-auto p-6">
+    <div className="h-full flex flex-col overflow-hidden p-6">
+      {/* KPI Row */}
+      <div className="grid grid-cols-4 gap-4 mb-6">
+        {kpis.isLoading ? (
+          Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 animate-pulse">
+              <Skeleton className="h-3 w-24 mb-3" />
+              <Skeleton className="h-7 w-12 mb-2" />
+              <Skeleton className="h-3 w-20" />
+            </div>
+          ))
+        ) : kpis.data ? (
+          <>
+            <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs text-[#8B8B8B] font-medium uppercase tracking-wide">Total Orgs</span>
+                <div className="w-8 h-8 rounded-lg bg-[#1F114C]/10 flex items-center justify-center">
+                  <svg className="w-4 h-4 text-[#1F114C]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M3 21h18M3 7v14m6-14v14m6-14v14m6-14v14M3 7l9-4 9 4" /></svg>
+                </div>
+              </div>
+              <div className="text-2xl font-bold text-[#333]">{kpis.data.total}</div>
+              <div className="text-xs text-green-500 mt-1 font-medium">+3 este mes</div>
+            </div>
+            <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs text-[#8B8B8B] font-medium uppercase tracking-wide">Activas</span>
+                <div className="w-8 h-8 rounded-lg bg-green-50 flex items-center justify-center">
+                  <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 11-5.93-9.14" /><path d="M22 4L12 14.01l-3-3" /></svg>
+                </div>
+              </div>
+              <div className="text-2xl font-bold text-[#333]">{kpis.data.active}</div>
+              <div className="text-xs text-[#8B8B8B] mt-1">{kpis.data.total > 0 ? Math.round((kpis.data.active / kpis.data.total) * 100) : 0}% del total</div>
+            </div>
+            <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs text-[#8B8B8B] font-medium uppercase tracking-wide">Suspendidas</span>
+                <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center">
+                  <svg className="w-4 h-4 text-[#DD0C15]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M15 9l-6 6M9 9l6 6" /></svg>
+                </div>
+              </div>
+              <div className="text-2xl font-bold text-[#DD0C15]">{kpis.data.suspended}</div>
+              <div className="text-xs text-[#8B8B8B] mt-1">Pago pendiente</div>
+            </div>
+            <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs text-[#8B8B8B] font-medium uppercase tracking-wide">Periodo de Prueba</span>
+                <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center">
+                  <svg className="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></svg>
+                </div>
+              </div>
+              <div className="text-2xl font-bold text-[#333]">{kpis.data.trialing}</div>
+              <div className="text-xs text-amber-500 mt-1 font-medium">{kpis.data.expiringThisWeek} vencen esta semana</div>
+            </div>
+          </>
+        ) : null}
+      </div>
+
       {/* Filters */}
       <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4 mb-4 flex items-center gap-4">
         <div className="relative flex-1 max-w-xs">
@@ -141,14 +254,14 @@ export default function OrganizationsPage() {
             type="text"
             placeholder="Buscar organizacion..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => { setSearch(e.target.value); setPage(0); }}
             className="w-full h-9 pl-9 pr-4 rounded-lg border border-[#EDEDED] text-sm focus:outline-none focus:border-[#1F114C]"
           />
           <svg className="w-4 h-4 text-[#8B8B8B] absolute left-3 top-2.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" /></svg>
         </div>
         <select
           value={planFilter}
-          onChange={(e) => setPlanFilter(e.target.value)}
+          onChange={(e) => { setPlanFilter(e.target.value); setPage(0); }}
           className="h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#585858] bg-white focus:outline-none focus:border-[#1F114C]"
         >
           <option value="">Todos los Planes</option>
@@ -159,7 +272,7 @@ export default function OrganizationsPage() {
         </select>
         <select
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
+          onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}
           className="h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#585858] bg-white focus:outline-none focus:border-[#1F114C]"
         >
           <option value="">Todos los Estados</option>
@@ -171,8 +284,11 @@ export default function OrganizationsPage() {
           Limpiar filtros
         </button>
         <div className="flex-1" />
+        <button className="h-9 px-4 rounded-lg border border-[#EDEDED] text-sm text-[#585858] font-medium hover:bg-[#F6F6F6] transition">
+          Exportar
+        </button>
         <button
-          onClick={() => setShowModal(true)}
+          onClick={() => setShowCreateModal(true)}
           className="h-9 px-4 rounded-lg bg-[#DD0C15] text-sm text-white font-medium hover:bg-[#c40b13] transition flex items-center gap-1.5"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
@@ -181,9 +297,10 @@ export default function OrganizationsPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] overflow-hidden">
+      <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] flex-1 flex flex-col min-h-0 overflow-hidden">
+        <div className="flex-1 overflow-y-auto min-h-0">
         <table className="w-full">
-          <thead>
+          <thead className="sticky top-0 bg-white z-10">
             <tr className="border-b border-[#EDEDED]">
               <th className="text-left text-xs font-semibold text-[#8B8B8B] uppercase tracking-wide px-5 py-3.5">Organizacion</th>
               <th className="text-left text-xs font-semibold text-[#8B8B8B] uppercase tracking-wide px-4 py-3.5">Slug</th>
@@ -213,8 +330,10 @@ export default function OrganizationsPage() {
                 </td>
               </tr>
             ) : (
-              organizations.map((org: any) => {
-                const isSuspended = org.status?.toLowerCase() === 'suspended' || org.status?.toLowerCase() === 'suspendida';
+              organizations.map((org) => {
+                const isSuspended = !org.isActive;
+                const plan = org.plan || org.subscription?.plan || 'trial';
+                const trialEndsAt = org.subscription?.trialEndsAt;
                 return (
                   <tr
                     key={org.id}
@@ -231,21 +350,22 @@ export default function OrganizationsPage() {
                     <td className="px-4 py-3.5">
                       <span className="text-xs text-[#8B8B8B] font-mono">{org.slug}</span>
                     </td>
-                    <td className="px-4 py-3.5">{planBadge(org.plan || org.subscription?.plan || 'Trial')}</td>
-                    <td className="px-4 py-3.5">{statusDot(org.status || 'active')}</td>
+                    <td className="px-4 py-3.5">{planBadge(plan)}</td>
+                    <td className="px-4 py-3.5">{statusDot(org.subscription?.status ?? '', org.isActive)}</td>
                     <td className="px-4 py-3.5 text-center">
-                      <span className="text-sm text-[#333] font-medium">{org.users?.length ?? org.userCount ?? 0}</span>
+                      <span className="text-sm text-[#333] font-medium">{org._count?.users ?? 0}</span>
                     </td>
                     <td className="px-4 py-3.5">
                       <span className="text-xs text-[#8B8B8B]">{formatDate(org.createdAt)}</span>
                     </td>
                     <td className="px-4 py-3.5">
-                      <span className={`text-xs ${org.trialEndsAt ? 'text-amber-600 font-medium' : 'text-[#8B8B8B]'}`}>
-                        {org.trialEndsAt ? formatDate(org.trialEndsAt) : '\u2014'}
+                      <span className={`text-xs ${trialEndsAt ? trialDateColor(trialEndsAt) : 'text-[#8B8B8B]'}`}>
+                        {trialEndsAt ? formatDate(trialEndsAt) : '\u2014'}
                       </span>
                     </td>
                     <td className="px-4 py-3.5">
                       <div className="flex items-center justify-center gap-1">
+                        {/* View */}
                         <a
                           href={`/platform/organizations/${org.id}`}
                           className="w-7 h-7 rounded-md hover:bg-[#F6F6F6] flex items-center justify-center transition"
@@ -253,17 +373,20 @@ export default function OrganizationsPage() {
                         >
                           <svg className="w-3.5 h-3.5 text-[#8B8B8B]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
                         </a>
+                        {/* Edit */}
                         <button
-                          onClick={() => {
-                            if (!isSuspended && confirm(`Suspender ${org.name}?`)) {
-                              suspendOrg.mutate({ id: org.id, suspend: true });
-                            }
-                          }}
-                          disabled={isSuspended || suspendOrg.isPending}
-                          className="w-7 h-7 rounded-md hover:bg-[#F6F6F6] flex items-center justify-center transition disabled:opacity-40"
-                          title={isSuspended ? 'Ya suspendida' : 'Suspender'}
+                          onClick={() => openEdit(org)}
+                          className="w-7 h-7 rounded-md hover:bg-[#F6F6F6] flex items-center justify-center transition"
+                          title="Editar"
                         >
-                          <svg className="w-3.5 h-3.5 text-[#8B8B8B]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M15 9l-6 6M9 9l6 6" /></svg>
+                          <svg className="w-3.5 h-3.5 text-[#8B8B8B]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
+                        </button>
+                        {/* Impersonate */}
+                        <button
+                          className="w-7 h-7 rounded-md hover:bg-[#F6F6F6] flex items-center justify-center transition"
+                          title="Impersonar"
+                        >
+                          <svg className="w-3.5 h-3.5 text-[#8B8B8B]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4M10 17l5-5-5-5M15 12H3" /></svg>
                         </button>
                       </div>
                     </td>
@@ -273,10 +396,11 @@ export default function OrganizationsPage() {
             )}
           </tbody>
         </table>
+        </div>
         {/* Pagination */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-t border-[#EDEDED]">
+        <div className="flex items-center justify-between px-5 py-3.5 border-t border-[#EDEDED] flex-shrink-0">
           <span className="text-xs text-[#8B8B8B]">
-            Mostrando {organizations.length > 0 ? 1 : 0}-{organizations.length} de {total} organizaciones
+            Mostrando {organizations.length > 0 ? page * limit + 1 : 0}-{page * limit + organizations.length} de {total} organizaciones
           </span>
           <div className="flex items-center gap-1">
             <button
@@ -286,12 +410,18 @@ export default function OrganizationsPage() {
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7" /></svg>
             </button>
-            <button className="w-8 h-8 rounded-lg bg-[#1F114C] text-white text-xs font-medium">
-              {page + 1}
-            </button>
+            {Array.from({ length: Math.min(Math.ceil(total / limit), 5) }).map((_, i) => (
+              <button
+                key={i}
+                onClick={() => setPage(i)}
+                className={`w-8 h-8 rounded-lg text-xs font-medium transition ${page === i ? 'bg-[#1F114C] text-white' : 'border border-[#EDEDED] text-[#585858] hover:bg-[#F6F6F6]'}`}
+              >
+                {i + 1}
+              </button>
+            ))}
             <button
               onClick={() => setPage((p) => p + 1)}
-              disabled={organizations.length < limit}
+              disabled={(page + 1) * limit >= total}
               className="w-8 h-8 rounded-lg border border-[#EDEDED] flex items-center justify-center text-[#585858] hover:bg-[#F6F6F6] transition disabled:opacity-40"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" /></svg>
@@ -301,13 +431,13 @@ export default function OrganizationsPage() {
       </div>
 
       {/* Create Organization Modal */}
-      {showModal && (
+      {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setShowModal(false)} />
+          <div className="absolute inset-0 bg-black/40" onClick={() => setShowCreateModal(false)} />
           <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-base font-semibold text-[#333]">Crear Organizacion</h2>
-              <button onClick={() => setShowModal(false)} className="w-8 h-8 rounded-lg hover:bg-[#F6F6F6] flex items-center justify-center transition">
+              <button onClick={() => setShowCreateModal(false)} className="w-8 h-8 rounded-lg hover:bg-[#F6F6F6] flex items-center justify-center transition">
                 <svg className="w-4 h-4 text-[#8B8B8B]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12" /></svg>
               </button>
             </div>
@@ -369,7 +499,7 @@ export default function OrganizationsPage() {
               <div className="flex gap-3 pt-2">
                 <button
                   type="button"
-                  onClick={() => setShowModal(false)}
+                  onClick={() => setShowCreateModal(false)}
                   className="flex-1 h-9 rounded-lg border border-[#EDEDED] text-sm font-medium text-[#585858] hover:bg-[#F6F6F6] transition"
                 >
                   Cancelar
@@ -386,6 +516,96 @@ export default function OrganizationsPage() {
           </div>
         </div>
       )}
-    </main>
+
+      {/* Edit Organization Modal */}
+      {showEditModal && editOrg && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setShowEditModal(false)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-base font-semibold text-[#333]">Editar Organizacion</h2>
+              <button onClick={() => setShowEditModal(false)} className="w-8 h-8 rounded-lg hover:bg-[#F6F6F6] flex items-center justify-center transition">
+                <svg className="w-4 h-4 text-[#8B8B8B]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <form onSubmit={handleEdit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-[#585858] mb-1.5">Nombre</label>
+                <input
+                  type="text"
+                  required
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm focus:outline-none focus:border-[#1F114C]"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-[#585858] mb-1.5">Plan</label>
+                <select
+                  value={editPlan}
+                  onChange={(e) => setEditPlan(e.target.value)}
+                  className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm bg-white focus:outline-none focus:border-[#1F114C]"
+                >
+                  <option value="trial">Trial</option>
+                  <option value="starter">Starter</option>
+                  <option value="professional">Professional</option>
+                  <option value="enterprise">Enterprise</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-[#585858] mb-1.5">Estado</label>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!editOrg.isActive) {
+                        suspendOrg.mutate({ id: editOrg.id, suspend: false });
+                        setShowEditModal(false);
+                      }
+                    }}
+                    className={`flex-1 h-9 rounded-lg text-sm font-medium transition ${editOrg.isActive ? 'bg-green-50 text-green-700 border border-green-200' : 'border border-[#EDEDED] text-[#585858] hover:bg-green-50'}`}
+                  >
+                    Activa
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (editOrg.isActive && confirm(`Suspender ${editOrg.name}?`)) {
+                        suspendOrg.mutate({ id: editOrg.id, suspend: true });
+                        setShowEditModal(false);
+                      }
+                    }}
+                    className={`flex-1 h-9 rounded-lg text-sm font-medium transition ${!editOrg.isActive ? 'bg-red-50 text-[#DD0C15] border border-red-200' : 'border border-[#EDEDED] text-[#585858] hover:bg-red-50'}`}
+                  >
+                    Suspendida
+                  </button>
+                </div>
+              </div>
+              {updateOrg.error && (
+                <div className="p-2.5 rounded-lg bg-red-50 text-xs text-[#DD0C15] font-medium">
+                  Error: {updateOrg.error.message}
+                </div>
+              )}
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowEditModal(false)}
+                  className="flex-1 h-9 rounded-lg border border-[#EDEDED] text-sm font-medium text-[#585858] hover:bg-[#F6F6F6] transition"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={updateOrg.isPending}
+                  className="flex-1 h-9 rounded-lg bg-[#1F114C] text-sm text-white font-medium hover:bg-[#1F114C]/90 transition disabled:opacity-60"
+                >
+                  {updateOrg.isPending ? 'Guardando...' : 'Guardar'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

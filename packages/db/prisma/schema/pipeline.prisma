@@ -66,5 +66,8 @@ model StageMovement {
 
   @@index([organizationId])
   @@index([applicationId])
+  @@index([fromStageId])
+  @@index([toStageId])
+  @@index([movedBy])
   @@map("stage_movements")
 }

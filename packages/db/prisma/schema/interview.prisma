@@ -31,6 +31,8 @@ model Interview {
   @@index([organizationId, scheduledAt])
   @@index([candidateId])
   @@index([vacancyId])
+  @@index([applicationId])
+  @@index([createdById])
   @@map("interviews")
 }
 
@@ -46,6 +48,7 @@ model InterviewEvaluator {
   user      User      @relation("InterviewEvaluatorUser", fields: [userId], references: [id])
 
   @@unique([interviewId, userId])
+  @@index([userId])
   @@map("interview_evaluators")
 }
 
@@ -67,6 +70,7 @@ model InterviewScorecard {
 
   @@unique([interviewId, evaluatorId])
   @@index([organizationId])
+  @@index([evaluatorId])
   @@map("interview_scorecards")
 }
 

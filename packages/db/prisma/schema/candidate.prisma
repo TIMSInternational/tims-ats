@@ -33,6 +33,7 @@ model Candidate {
   @@unique([organizationId, email])
   @@index([organizationId])
   @@index([organizationId, poolType])
+  @@index([createdById])
   @@map("candidates")
 }
 
@@ -52,6 +53,7 @@ model CandidateDocument {
   candidate Candidate @relation(fields: [candidateId], references: [id])
 
   @@index([organizationId])
+  @@index([candidateId])
   @@map("candidate_documents")
 }
 
