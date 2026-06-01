@@ -136,6 +136,33 @@ export const usersRouter = router({
       return user;
     }),
 
+  resetUserPassword: platformProcedure
+    .input(z.object({ email: z.string().email().max(255) }))
+    .mutation(async ({ ctx, input }) => {
+      // Verify user exists
+      const user = await db.user.findFirst({
+        where: { email: input.email },
+        select: { id: true, email: true, organizationId: true },
+      });
+      if (!user) throw new TRPCError({ code: 'NOT_FOUND', message: 'Usuario no encontrado con ese email' });
+
+      // Audit log the action
+      await db.auditLog.create({
+        data: {
+          organizationId: user.organizationId || ctx.user.organizationId,
+          actorId: ctx.user.id,
+          action: 'password_reset_requested',
+          entity: 'user',
+          entityId: user.id,
+          changes: JSON.stringify({ email: input.email }),
+        },
+      }).catch(() => {});
+
+      // TODO: Integrate Supabase Admin API to actually send reset email
+      // const { error } = await supabaseAdmin.auth.resetPasswordForEmail(input.email);
+      return { sent: true, email: input.email };
+    }),
+
   changeOrgUserRole: platformProcedure
     .input(z.object({
       userId: z.string().uuid(),

@@ -109,6 +109,64 @@ export const systemRouter = router({
     };
   }),
 
+  sendBulkNotification: platformProcedure
+    .input(z.object({
+      organizationId: z.string().uuid().optional(),
+      title: z.string().min(1).max(200),
+      message: z.string().min(1).max(1000),
+      type: z.enum(['info', 'warning', 'critical', 'success']),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const where: { organizationId?: string; isActive: boolean } = { isActive: true };
+      if (input.organizationId) where.organizationId = input.organizationId;
+
+      const users = await db.user.findMany({ where, select: { id: true } });
+
+      if (users.length === 0) {
+        return { sent: 0 };
+      }
+
+      await db.notification.createMany({
+        data: users.map(u => ({
+          userId: u.id,
+          organizationId: input.organizationId || undefined,
+          type: input.type,
+          title: input.title,
+          message: input.message,
+          module: 'platform',
+        })),
+      });
+
+      await db.auditLog.create({
+        data: {
+          organizationId: input.organizationId || ctx.user.organizationId,
+          actorId: ctx.user.id,
+          action: 'bulk_notification_sent',
+          entity: 'notification',
+          changes: JSON.stringify({ title: input.title, type: input.type, userCount: users.length }),
+        },
+      }).catch(() => {});
+
+      return { sent: users.length };
+    }),
+
+  getRecentPlatformEvents: platformProcedure
+    .input(z.object({ limit: z.number().min(1).max(50).default(10) }))
+    .query(async ({ input }) => {
+      const logs = await db.auditLog.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: input.limit,
+        select: {
+          id: true,
+          action: true,
+          entity: true,
+          createdAt: true,
+          actor: { select: { id: true, firstName: true, lastName: true, email: true } },
+        },
+      });
+      return logs;
+    }),
+
   getAnalytics: platformProcedure.query(async () => {
     const [orgCount, userCount, activeUsers, subs] = await Promise.all([
       db.organization.count(),
