@@ -6,9 +6,18 @@ const ROUTERS_DIR = join(__dirname, '../../packages/api/src/routers');
 const TRPC_FILE = join(__dirname, '../../packages/api/src/trpc.ts');
 
 function getRouterFiles(): string[] {
-  return readdirSync(ROUTERS_DIR)
-    .filter((f) => f.endsWith('.ts'))
-    .map((f) => join(ROUTERS_DIR, f));
+  const files: string[] = [];
+  for (const entry of readdirSync(ROUTERS_DIR, { withFileTypes: true })) {
+    if (entry.isFile() && entry.name.endsWith('.ts')) {
+      files.push(join(ROUTERS_DIR, entry.name));
+    } else if (entry.isDirectory()) {
+      const subDir = join(ROUTERS_DIR, entry.name);
+      for (const sub of readdirSync(subDir)) {
+        if (sub.endsWith('.ts')) files.push(join(subDir, sub));
+      }
+    }
+  }
+  return files;
 }
 
 describe('Authentication & Authorization', () => {
@@ -60,15 +69,15 @@ describe('Authentication & Authorization', () => {
   });
 
   it('should have platform owner guard on platform routes', () => {
-    const platformRouter = readFileSync(join(ROUTERS_DIR, 'platform.ts'), 'utf8');
-    expect(platformRouter).toContain('isPlatformOwner');
-    expect(platformRouter).toContain('platformProcedure');
+    const commonFile = readFileSync(join(ROUTERS_DIR, 'platform', '_common.ts'), 'utf8');
+    expect(commonFile).toContain('isPlatformOwner');
+    expect(commonFile).toContain('platformProcedure');
   });
 
   it('should validate invitation tokens as UUID format', () => {
-    const platformRouter = readFileSync(join(ROUTERS_DIR, 'platform.ts'), 'utf8');
+    const invitationsFile = readFileSync(join(ROUTERS_DIR, 'platform', 'invitations.ts'), 'utf8');
     // Both getInvitationByToken and acceptInvitation should validate token as UUID
-    const tokenValidations = platformRouter.match(/token:\s*z\.string\(\)\.uuid\(\)/g);
+    const tokenValidations = invitationsFile.match(/token:\s*z\.string\(\)\.uuid\(\)/g);
     expect(tokenValidations?.length).toBeGreaterThanOrEqual(2);
   });
 });

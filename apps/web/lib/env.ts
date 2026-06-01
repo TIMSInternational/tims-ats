@@ -1,3 +1,4 @@
+import 'server-only';
 import { z } from 'zod';
 
 const envSchema = z.object({
@@ -8,6 +9,7 @@ const envSchema = z.object({
 
   // Database
   DATABASE_URL: z.string().min(1),
+  DIRECT_URL: z.string().min(1).optional(),
 
   // AWS
   AWS_REGION: z.string().default('us-east-1'),

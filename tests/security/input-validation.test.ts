@@ -5,9 +5,20 @@ import { join } from 'path';
 const ROUTERS_DIR = join(__dirname, '../../packages/api/src/routers');
 
 function getRouterFiles(): { name: string; content: string }[] {
-  return readdirSync(ROUTERS_DIR)
-    .filter((f) => f.endsWith('.ts'))
-    .map((f) => ({ name: f, content: readFileSync(join(ROUTERS_DIR, f), 'utf8') }));
+  const files: { name: string; content: string }[] = [];
+  for (const entry of readdirSync(ROUTERS_DIR, { withFileTypes: true })) {
+    if (entry.isFile() && entry.name.endsWith('.ts')) {
+      files.push({ name: entry.name, content: readFileSync(join(ROUTERS_DIR, entry.name), 'utf8') });
+    } else if (entry.isDirectory()) {
+      const subDir = join(ROUTERS_DIR, entry.name);
+      for (const sub of readdirSync(subDir)) {
+        if (sub.endsWith('.ts')) {
+          files.push({ name: `${entry.name}/${sub}`, content: readFileSync(join(subDir, sub), 'utf8') });
+        }
+      }
+    }
+  }
+  return files;
 }
 
 describe('Input Validation', () => {
@@ -57,15 +68,16 @@ describe('Input Validation', () => {
 
   it('should bound string inputs with .max()', () => {
     // Check that critical routers (platform, candidate, user) have bounded strings
-    const platformRouter = readFileSync(join(ROUTERS_DIR, 'platform.ts'), 'utf8');
+    const invoicesRouter = readFileSync(join(ROUTERS_DIR, 'platform', 'invoices.ts'), 'utf8');
+    const invitationsRouter = readFileSync(join(ROUTERS_DIR, 'platform', 'invitations.ts'), 'utf8');
 
     // createInvoice should have bounded line item descriptions
-    expect(platformRouter).toContain('.max(300)'); // lineItem description
-    expect(platformRouter).toContain('.max(500)'); // description/memo
-    expect(platformRouter).toContain('.max(1000)'); // notes
+    expect(invoicesRouter).toContain('.max(300)'); // lineItem description
+    expect(invoicesRouter).toContain('.max(500)'); // description/memo
+    expect(invoicesRouter).toContain('.max(1000)'); // notes
 
     // createOrgInvitation should have bounded inputs
-    expect(platformRouter).toContain('.max(255)'); // email
-    expect(platformRouter).toContain('.max(100)'); // org name
+    expect(invitationsRouter).toContain('.max(255)'); // email
+    expect(invitationsRouter).toContain('.max(100)'); // org name
   });
 });

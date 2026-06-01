@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
+import { useI18n } from '../../../../lib/i18n';
 import type { OrganizationListItem } from '../../../../lib/trpc-types';
 
 function getInitials(name: string): string {
@@ -41,11 +42,12 @@ function planBadge(plan: string) {
   );
 }
 
-function statusDot(status: string, isActive?: boolean) {
+function statusDot(status: string, isActive?: boolean, labels?: { active: string; suspended: string }) {
+  const l = labels || { active: 'Activa', suspended: 'Suspendida' };
   const isSuspended = !isActive || status?.toLowerCase() === 'suspended';
   const dotColor = isSuspended ? 'bg-[#DD0C15]' : 'bg-green-400';
   const textColor = isSuspended ? 'text-[#DD0C15] font-medium' : 'text-[#585858]';
-  const label = isSuspended ? 'Suspendida' : 'Activa';
+  const label = isSuspended ? l.suspended : l.active;
   return (
     <div className="flex items-center gap-1.5">
       <div className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
@@ -87,6 +89,7 @@ function SkeletonRow() {
 }
 
 export default function OrganizationsPage() {
+  const { t } = useI18n();
   const [search, setSearch] = useState('');
   const [planFilter, setPlanFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -205,7 +208,7 @@ export default function OrganizationsPage() {
           <>
             <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
               <div className="flex items-center justify-between mb-3">
-                <span className="text-xs text-[#8B8B8B] font-medium uppercase tracking-wide">Total Orgs</span>
+                <span className="text-xs text-[#8B8B8B] font-medium uppercase tracking-wide">{t.organizations.kpiTotal}</span>
                 <div className="w-8 h-8 rounded-lg bg-[#1F114C]/10 flex items-center justify-center">
                   <svg className="w-4 h-4 text-[#1F114C]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M3 21h18M3 7v14m6-14v14m6-14v14m6-14v14M3 7l9-4 9 4" /></svg>
                 </div>
@@ -215,7 +218,7 @@ export default function OrganizationsPage() {
             </div>
             <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
               <div className="flex items-center justify-between mb-3">
-                <span className="text-xs text-[#8B8B8B] font-medium uppercase tracking-wide">Activas</span>
+                <span className="text-xs text-[#8B8B8B] font-medium uppercase tracking-wide">{t.organizations.kpiActive}</span>
                 <div className="w-8 h-8 rounded-lg bg-green-50 flex items-center justify-center">
                   <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 11-5.93-9.14" /><path d="M22 4L12 14.01l-3-3" /></svg>
                 </div>
@@ -225,7 +228,7 @@ export default function OrganizationsPage() {
             </div>
             <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
               <div className="flex items-center justify-between mb-3">
-                <span className="text-xs text-[#8B8B8B] font-medium uppercase tracking-wide">Suspendidas</span>
+                <span className="text-xs text-[#8B8B8B] font-medium uppercase tracking-wide">{t.organizations.kpiSuspended}</span>
                 <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center">
                   <svg className="w-4 h-4 text-[#DD0C15]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M15 9l-6 6M9 9l6 6" /></svg>
                 </div>
@@ -235,7 +238,7 @@ export default function OrganizationsPage() {
             </div>
             <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
               <div className="flex items-center justify-between mb-3">
-                <span className="text-xs text-[#8B8B8B] font-medium uppercase tracking-wide">Periodo de Prueba</span>
+                <span className="text-xs text-[#8B8B8B] font-medium uppercase tracking-wide">{t.organizations.kpiTrialing}</span>
                 <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center">
                   <svg className="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></svg>
                 </div>
@@ -252,7 +255,7 @@ export default function OrganizationsPage() {
         <div className="relative flex-1 max-w-xs">
           <input
             type="text"
-            placeholder="Buscar organizacion..."
+            placeholder={t.organizations.searchOrg}
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(0); }}
             className="w-full h-9 pl-9 pr-4 rounded-lg border border-[#EDEDED] text-sm focus:outline-none focus:border-[#1F114C]"
@@ -275,9 +278,9 @@ export default function OrganizationsPage() {
           onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}
           className="h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#585858] bg-white focus:outline-none focus:border-[#1F114C]"
         >
-          <option value="">Todos los Estados</option>
-          <option value="active">Activa</option>
-          <option value="suspended">Suspendida</option>
+          <option value="">{t.organizations.filterAll}</option>
+          <option value="active">{t.organizations.statusActive}</option>
+          <option value="suspended">{t.organizations.statusSuspended}</option>
           <option value="cancelled">Cancelada</option>
         </select>
         <button onClick={clearFilters} className="h-9 px-3 rounded-lg text-sm text-[#8B8B8B] hover:text-[#585858] transition font-medium">
@@ -292,7 +295,7 @@ export default function OrganizationsPage() {
           className="h-9 px-4 rounded-lg bg-[#DD0C15] text-sm text-white font-medium hover:bg-[#c40b13] transition flex items-center gap-1.5"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
-          Crear Organizacion
+          {t.organizations.newOrg}
         </button>
       </div>
 
@@ -351,7 +354,7 @@ export default function OrganizationsPage() {
                       <span className="text-xs text-[#8B8B8B] font-mono">{org.slug}</span>
                     </td>
                     <td className="px-4 py-3.5">{planBadge(plan)}</td>
-                    <td className="px-4 py-3.5">{statusDot(org.subscription?.status ?? '', org.isActive)}</td>
+                    <td className="px-4 py-3.5">{statusDot(org.subscription?.status ?? '', org.isActive, { active: t.organizations.statusActive, suspended: t.organizations.statusSuspended })}</td>
                     <td className="px-4 py-3.5 text-center">
                       <span className="text-sm text-[#333] font-medium">{org._count?.users ?? 0}</span>
                     </td>
@@ -400,7 +403,7 @@ export default function OrganizationsPage() {
         {/* Pagination */}
         <div className="flex items-center justify-between px-5 py-3.5 border-t border-[#EDEDED] flex-shrink-0">
           <span className="text-xs text-[#8B8B8B]">
-            Mostrando {organizations.length > 0 ? page * limit + 1 : 0}-{page * limit + organizations.length} de {total} organizaciones
+            {t.common.showing} {organizations.length > 0 ? page * limit + 1 : 0}-{page * limit + organizations.length} {t.common.of} {total}
           </span>
           <div className="flex items-center gap-1">
             <button
@@ -436,7 +439,7 @@ export default function OrganizationsPage() {
           <div className="absolute inset-0 bg-black/40" onClick={() => setShowCreateModal(false)} />
           <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-5">
-              <h2 className="text-base font-semibold text-[#333]">Crear Organizacion</h2>
+              <h2 className="text-base font-semibold text-[#333]">{t.organizations.newOrg}</h2>
               <button onClick={() => setShowCreateModal(false)} className="w-8 h-8 rounded-lg hover:bg-[#F6F6F6] flex items-center justify-center transition">
                 <svg className="w-4 h-4 text-[#8B8B8B]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12" /></svg>
               </button>
@@ -502,14 +505,14 @@ export default function OrganizationsPage() {
                   onClick={() => setShowCreateModal(false)}
                   className="flex-1 h-9 rounded-lg border border-[#EDEDED] text-sm font-medium text-[#585858] hover:bg-[#F6F6F6] transition"
                 >
-                  Cancelar
+                  {t.common.cancel}
                 </button>
                 <button
                   type="submit"
                   disabled={createOrg.isPending}
                   className="flex-1 h-9 rounded-lg bg-[#DD0C15] text-sm text-white font-medium hover:bg-[#c40b13] transition disabled:opacity-60"
                 >
-                  {createOrg.isPending ? 'Creando...' : 'Crear'}
+                  {createOrg.isPending ? t.common.loading : t.common.create}
                 </button>
               </div>
             </form>
@@ -523,7 +526,7 @@ export default function OrganizationsPage() {
           <div className="absolute inset-0 bg-black/40" onClick={() => setShowEditModal(false)} />
           <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-5">
-              <h2 className="text-base font-semibold text-[#333]">Editar Organizacion</h2>
+              <h2 className="text-base font-semibold text-[#333]">{t.organizations.edit} {t.organizations.title}</h2>
               <button onClick={() => setShowEditModal(false)} className="w-8 h-8 rounded-lg hover:bg-[#F6F6F6] flex items-center justify-center transition">
                 <svg className="w-4 h-4 text-[#8B8B8B]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12" /></svg>
               </button>
@@ -565,7 +568,7 @@ export default function OrganizationsPage() {
                     }}
                     className={`flex-1 h-9 rounded-lg text-sm font-medium transition ${editOrg.isActive ? 'bg-green-50 text-green-700 border border-green-200' : 'border border-[#EDEDED] text-[#585858] hover:bg-green-50'}`}
                   >
-                    Activa
+                    {t.organizations.statusActive}
                   </button>
                   <button
                     type="button"
@@ -577,7 +580,7 @@ export default function OrganizationsPage() {
                     }}
                     className={`flex-1 h-9 rounded-lg text-sm font-medium transition ${!editOrg.isActive ? 'bg-red-50 text-[#DD0C15] border border-red-200' : 'border border-[#EDEDED] text-[#585858] hover:bg-red-50'}`}
                   >
-                    Suspendida
+                    {t.organizations.statusSuspended}
                   </button>
                 </div>
               </div>
@@ -592,14 +595,14 @@ export default function OrganizationsPage() {
                   onClick={() => setShowEditModal(false)}
                   className="flex-1 h-9 rounded-lg border border-[#EDEDED] text-sm font-medium text-[#585858] hover:bg-[#F6F6F6] transition"
                 >
-                  Cancelar
+                  {t.common.cancel}
                 </button>
                 <button
                   type="submit"
                   disabled={updateOrg.isPending}
                   className="flex-1 h-9 rounded-lg bg-[#1F114C] text-sm text-white font-medium hover:bg-[#1F114C]/90 transition disabled:opacity-60"
                 >
-                  {updateOrg.isPending ? 'Guardando...' : 'Guardar'}
+                  {updateOrg.isPending ? t.common.saving : t.common.save}
                 </button>
               </div>
             </form>

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
+import { useI18n } from '../../../../lib/i18n';
 import type { SubscriptionListItem, MrrTrendItem, ExpiringTrial } from '../../../../lib/trpc-types';
 
 function formatCurrency(value: number): string {
@@ -45,13 +46,14 @@ function planBadge(plan: string) {
   return <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${cls}`}>{plan?.charAt(0).toUpperCase() + plan?.slice(1)}</span>;
 }
 
-function statusBadge(status: string) {
+function statusBadge(status: string, labels?: { active: string; trialing: string; pastDue: string; canceled: string }) {
+  const l = labels || { active: 'Activa', trialing: 'En Prueba', pastDue: 'Pago Vencido', canceled: 'Cancelada' };
   const map: Record<string, { cls: string; label: string }> = {
-    active: { cls: 'bg-green-100 text-green-700', label: 'Activa' },
-    trialing: { cls: 'bg-blue-100 text-blue-700', label: 'En Prueba' },
-    past_due: { cls: 'bg-red-100 text-red-700', label: 'Pago Vencido' },
-    cancelled: { cls: 'bg-gray-100 text-gray-600', label: 'Cancelada' },
-    canceled: { cls: 'bg-gray-100 text-gray-600', label: 'Cancelada' },
+    active: { cls: 'bg-green-100 text-green-700', label: l.active },
+    trialing: { cls: 'bg-blue-100 text-blue-700', label: l.trialing },
+    past_due: { cls: 'bg-red-100 text-red-700', label: l.pastDue },
+    cancelled: { cls: 'bg-gray-100 text-gray-600', label: l.canceled },
+    canceled: { cls: 'bg-gray-100 text-gray-600', label: l.canceled },
   };
   const m = map[status?.toLowerCase()] || { cls: 'bg-gray-100 text-gray-600', label: status };
   return <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${m.cls}`}>{m.label}</span>;
@@ -76,6 +78,7 @@ function SkeletonRow() {
 }
 
 export default function SubscriptionsPage() {
+  const { t } = useI18n();
   const [page, setPage] = useState(0);
   const limit = 10;
 
@@ -147,7 +150,7 @@ export default function SubscriptionsPage() {
             {/* Suscripciones Activas */}
             <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
               <div className="flex items-center justify-between mb-3">
-                <span className="text-xs text-[#8B8B8B] font-medium uppercase tracking-wide">Suscripciones Activas</span>
+                <span className="text-xs text-[#8B8B8B] font-medium uppercase tracking-wide">{t.subscriptions.kpiActive}</span>
                 <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
                   <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 11-5.93-9.14" /><path d="M22 4L12 14.01l-3-3" /></svg>
                 </div>
@@ -176,7 +179,7 @@ export default function SubscriptionsPage() {
               </div>
               <div className={`text-2xl font-bold ${kpis.data.pastDue > 0 ? 'text-[#DD0C15]' : 'text-[#333]'}`}>{kpis.data.pastDue}</div>
               <div className={`text-xs mt-1 font-medium ${kpis.data.pastDue > 0 ? 'text-[#DD0C15]' : 'text-[#8B8B8B]'}`}>
-                {kpis.data.pastDue > 0 ? 'Requiere atencion' : 'Sin problemas'}
+                {kpis.data.pastDue > 0 ? t.common.requiresAttention : t.common.noIssues}
               </div>
             </div>
           </>
@@ -224,7 +227,7 @@ export default function SubscriptionsPage() {
       {/* Subscription Table — fills remaining space */}
       <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] flex-1 flex flex-col min-h-0 overflow-hidden">
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#EDEDED] flex-shrink-0">
-          <h3 className="text-sm font-semibold text-[#333]">Suscripciones</h3>
+          <h3 className="text-sm font-semibold text-[#333]">{t.subscriptions.title}</h3>
           <span className="text-xs text-[#8B8B8B]">{total} organizaciones</span>
         </div>
         <div className="flex-1 overflow-y-auto min-h-0">
@@ -278,7 +281,7 @@ export default function SubscriptionsPage() {
                         </div>
                       </td>
                       <td className="px-4 py-3">{planBadge(sub.plan || 'trial')}</td>
-                      <td className="px-4 py-3">{statusBadge(sub.status || 'active')}</td>
+                      <td className="px-4 py-3">{statusBadge(sub.status || 'active', { active: t.subscriptions.statusActive, trialing: t.subscriptions.statusTrialing, pastDue: t.subscriptions.statusPastDue, canceled: t.subscriptions.statusCanceled })}</td>
                       <td className="px-4 py-3 text-right">
                         <span className={`text-sm font-semibold ${isPastDue ? 'text-[#DD0C15]' : isCancelled ? 'text-[#8B8B8B] line-through' : 'text-[#333]'}`}>
                           {formatCurrency(mrr)}
@@ -297,26 +300,26 @@ export default function SubscriptionsPage() {
                           <button className="text-[10px] text-[#1F114C] font-medium hover:underline">Facturas</button>
                           <span className="text-[#EDEDED]">|</span>
                           {isCancelled ? (
-                            <span className="text-[10px] text-[#8B8B8B]">Cambiar</span>
+                            <span className="text-[10px] text-[#8B8B8B]">{t.subscriptions.changePlan}</span>
                           ) : (
                             <button
                               onClick={() => handlePlanChange(sub.organizationId, sub.plan || 'starter')}
                               disabled={updateSub.isPending}
                               className="text-[10px] text-[#1F114C] font-medium hover:underline disabled:opacity-50"
                             >
-                              Cambiar
+                              {t.subscriptions.changePlan}
                             </button>
                           )}
                           <span className="text-[#EDEDED]">|</span>
                           {isCancelled ? (
-                            <span className="text-[10px] text-[#8B8B8B]">Cancelar</span>
+                            <span className="text-[10px] text-[#8B8B8B]">{t.subscriptions.cancel}</span>
                           ) : (
                             <button
                               onClick={() => handleCancel(sub.organizationId, orgName)}
                               disabled={updateSub.isPending}
                               className="text-[10px] text-[#DD0C15] font-medium hover:underline disabled:opacity-50"
                             >
-                              Cancelar
+                              {t.subscriptions.cancel}
                             </button>
                           )}
                         </div>
@@ -331,7 +334,7 @@ export default function SubscriptionsPage() {
         {/* Pagination */}
         <div className="flex items-center justify-between px-5 py-3.5 border-t border-[#EDEDED] flex-shrink-0">
           <span className="text-xs text-[#8B8B8B]">
-            Mostrando {subscriptions.length > 0 ? page * limit + 1 : 0}-{page * limit + subscriptions.length} de {total} suscripciones
+            {t.common.showing} {subscriptions.length > 0 ? page * limit + 1 : 0}-{page * limit + subscriptions.length} {t.common.of} {total}
           </span>
           <div className="flex items-center gap-1">
             <button

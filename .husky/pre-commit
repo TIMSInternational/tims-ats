@@ -1,0 +1,15 @@
+#!/usr/bin/env sh
+
+# Run Gitleaks to check for secrets
+if command -v gitleaks &> /dev/null; then
+  gitleaks git --pre-commit --staged --verbose
+  if [ $? -ne 0 ]; then
+    echo "Gitleaks found secrets in staged files. Commit blocked."
+    exit 1
+  fi
+else
+  echo "WARNING: Gitleaks not installed. Install with: brew install gitleaks"
+fi
+
+# Run TypeScript type check on changed files
+echo "Running type checks..."

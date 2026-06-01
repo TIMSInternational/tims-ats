@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
+import { useI18n } from '../../../../lib/i18n';
 import type { UserListItem } from '../../../../lib/trpc-types';
 
 const ROLE_COLORS: Record<string, { bg: string; text: string }> = {
@@ -64,6 +65,7 @@ function SkeletonRow() {
 }
 
 export default function PlatformUsersPage() {
+  const { t } = useI18n();
   const [search, setSearch] = useState('');
   const [orgFilter, setOrgFilter] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
@@ -100,7 +102,7 @@ export default function PlatformUsersPage() {
         ) : kpis.data ? (
           <>
             <div className="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center">
-              <p className="text-[11px] text-[#8B8B8B] mb-1">Total Usuarios</p>
+              <p className="text-[11px] text-[#8B8B8B] mb-1">{t.users.kpiTotal}</p>
               <p className="text-[26px] font-bold text-[#1F114C]">{kpis.data.total.toLocaleString()}</p>
               <p className="text-[10px] text-green-500 font-medium">En la plataforma</p>
             </div>
@@ -110,12 +112,12 @@ export default function PlatformUsersPage() {
               <p className="text-[10px] text-[#8B8B8B]">{kpis.data.total > 0 ? `${((kpis.data.activeToday / kpis.data.total) * 100).toFixed(1)}% del total` : '0%'}</p>
             </div>
             <div className="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center">
-              <p className="text-[11px] text-[#8B8B8B] mb-1">Platform Owners</p>
+              <p className="text-[11px] text-[#8B8B8B] mb-1">{t.users.kpiPlatformOwners}</p>
               <p className="text-[26px] font-bold text-[#1F114C]">{kpis.data.platformOwners}</p>
               <p className="text-[10px] text-[#8B8B8B]">Acceso total</p>
             </div>
             <div className="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center">
-              <p className="text-[11px] text-[#8B8B8B] mb-1">Inactivos</p>
+              <p className="text-[11px] text-[#8B8B8B] mb-1">{t.users.kpiInactive}</p>
               <p className="text-[26px] font-bold text-amber-500">{kpis.data.inactive}</p>
               <p className="text-[10px] text-amber-500 font-medium">Sin login 30+ dias</p>
             </div>
@@ -131,7 +133,7 @@ export default function PlatformUsersPage() {
           </svg>
           <input
             className="w-full h-9 pl-9 pr-3 border border-[#EDEDED] rounded-lg text-[12px] bg-white focus:outline-none focus:border-[#1F114C]"
-            placeholder="Buscar por nombre o email..."
+            placeholder={t.users.searchUser}
             value={search}
             onChange={e => { setSearch(e.target.value); setPage(0); }}
           />
@@ -160,13 +162,13 @@ export default function PlatformUsersPage() {
             className={`px-3 h-9 text-[12px] font-medium transition ${activeFilter === 'active' ? 'bg-[#1F114C] text-white' : 'text-[#585858]'}`}
             onClick={() => { setActiveFilter('active'); setPage(0); }}
           >
-            Activos
+            {t.users.filterActive}
           </button>
           <button
             className={`px-3 h-9 text-[12px] font-medium transition ${activeFilter === 'all' ? 'bg-[#1F114C] text-white' : 'text-[#585858]'}`}
             onClick={() => { setActiveFilter('all'); setPage(0); }}
           >
-            Todos
+            {t.users.filterAll}
           </button>
         </div>
         <div className="flex-1" />
@@ -176,7 +178,7 @@ export default function PlatformUsersPage() {
         </button>
         <button className="flex items-center gap-1.5 bg-[#DD0C15] text-white px-4 h-9 rounded-lg text-[12px] font-medium hover:bg-[#c40b13] transition">
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 4.5v15m7.5-7.5h-15" /></svg>
-          Invitar Usuario
+          {t.invitations.inviteUser}
         </button>
       </div>
 
@@ -243,7 +245,7 @@ export default function PlatformUsersPage() {
                       <td className="px-4 py-2.5">
                         <span className={`flex items-center gap-1.5 text-[12px] ${user.isActive ? 'text-[#585858]' : 'text-[#8B8B8B]'}`}>
                           <span className={`w-2 h-2 rounded-full ${user.isActive ? 'bg-green-500' : 'bg-gray-400'}`} />
-                          {user.isActive ? 'Activo' : 'Inactivo'}
+                          {user.isActive ? t.users.statusActive : t.users.statusInactive}
                         </span>
                       </td>
                       <td className={`px-4 py-2.5 text-[12px] ${user.isActive ? 'text-[#585858]' : 'text-[#8B8B8B]'}`}>
@@ -255,15 +257,15 @@ export default function PlatformUsersPage() {
                       <td className="px-4 py-2.5">
                         <div className="flex items-center gap-1">
                           <button className="px-2 py-1 text-[10px] text-[#1F114C] bg-[#F0EEF7] rounded font-medium hover:bg-[#E4E0F0]">Ver</button>
-                          <button className="px-2 py-1 text-[10px] text-[#585858] bg-[#F3F3F3] rounded font-medium hover:bg-[#E8E8E8]">Editar</button>
+                          <button className="px-2 py-1 text-[10px] text-[#585858] bg-[#F3F3F3] rounded font-medium hover:bg-[#E8E8E8]">{t.common.edit}</button>
                           {!user.isPlatformOwner && user.isActive && (
                             <>
                               <button className="px-2 py-1 text-[10px] text-amber-600 bg-amber-50 rounded font-medium hover:bg-amber-100">Impersonar</button>
-                              <button className="px-2 py-1 text-[10px] text-[#DD0C15] bg-red-50 rounded font-medium hover:bg-red-100">Desactivar</button>
+                              <button className="px-2 py-1 text-[10px] text-[#DD0C15] bg-red-50 rounded font-medium hover:bg-red-100">{t.users.deactivate}</button>
                             </>
                           )}
                           {!user.isPlatformOwner && !user.isActive && (
-                            <button className="px-2 py-1 text-[10px] text-green-600 bg-green-50 rounded font-medium hover:bg-green-100">Activar</button>
+                            <button className="px-2 py-1 text-[10px] text-green-600 bg-green-50 rounded font-medium hover:bg-green-100">{t.users.activate}</button>
                           )}
                         </div>
                       </td>
@@ -278,7 +280,7 @@ export default function PlatformUsersPage() {
         {/* Pagination */}
         <div className="flex items-center justify-between px-4 py-3 border-t border-[#EDEDED] flex-shrink-0">
           <p className="text-[12px] text-[#8B8B8B]">
-            Mostrando {total > 0 ? page * limit + 1 : 0} - {Math.min((page + 1) * limit, total)} de {total.toLocaleString()} usuarios
+            {t.common.showing} {total > 0 ? page * limit + 1 : 0} - {Math.min((page + 1) * limit, total)} {t.common.of} {total.toLocaleString()}
           </p>
           <div className="flex items-center gap-1">
             <button

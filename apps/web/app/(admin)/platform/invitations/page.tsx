@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
+import { useI18n } from '../../../../lib/i18n';
 import type { InvitationListItem, OrganizationListItem } from '../../../../lib/trpc-types';
 
 function formatDate(date: string | Date | null | undefined): string {
@@ -10,34 +11,37 @@ function formatDate(date: string | Date | null | undefined): string {
   return new Intl.DateTimeFormat('es', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(date));
 }
 
-function statusBadge(status: string) {
+function statusBadge(status: string, labels?: { pending: string; sent: string; accepted: string; expired: string; revoked: string }) {
+  const l = labels || { pending: 'Pendiente', sent: 'Enviada', accepted: 'Aceptada', expired: 'Expirada', revoked: 'Revocada' };
   const map: Record<string, { cls: string; label: string }> = {
-    pending: { cls: 'bg-gray-100 text-gray-600', label: 'Pendiente' },
-    sent: { cls: 'bg-blue-100 text-blue-700', label: 'Enviada' },
-    accepted: { cls: 'bg-green-100 text-green-700', label: 'Aceptada' },
-    expired: { cls: 'bg-amber-100 text-amber-700', label: 'Expirada' },
-    revoked: { cls: 'bg-red-100 text-red-700', label: 'Revocada' },
+    pending: { cls: 'bg-gray-100 text-gray-600', label: l.pending },
+    sent: { cls: 'bg-blue-100 text-blue-700', label: l.sent },
+    accepted: { cls: 'bg-green-100 text-green-700', label: l.accepted },
+    expired: { cls: 'bg-amber-100 text-amber-700', label: l.expired },
+    revoked: { cls: 'bg-red-100 text-red-700', label: l.revoked },
   };
   const m = map[status] || { cls: 'bg-gray-100 text-gray-600', label: status };
   return <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${m.cls}`}>{m.label}</span>;
 }
 
-function typeBadge(type: string) {
-  if (type === 'org_admin') return <span className="px-2 py-1 rounded-full text-[10px] font-bold bg-violet-100 text-violet-700">Org Admin</span>;
-  return <span className="px-2 py-1 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700">Usuario</span>;
+function typeBadge(type: string, labels?: { orgAdmin: string; user: string }) {
+  const l = labels || { orgAdmin: 'Org Admin', user: 'Usuario' };
+  if (type === 'org_admin') return <span className="px-2 py-1 rounded-full text-[10px] font-bold bg-violet-100 text-violet-700">{l.orgAdmin}</span>;
+  return <span className="px-2 py-1 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700">{l.user}</span>;
 }
 
 function Skeleton({ className }: { className: string }) {
   return <div className={`bg-gray-200 rounded animate-pulse ${className}`} />;
 }
 
-const TYPE_TABS = [
-  { value: '', label: 'Todas' },
-  { value: 'org_admin', label: 'Org Admins' },
-  { value: 'user', label: 'Usuarios' },
-];
-
 export default function InvitationsPage() {
+  const { t } = useI18n();
+
+  const TYPE_TABS = [
+    { value: '', label: t.invitations.filterAll },
+    { value: 'org_admin', label: t.invitations.filterOrgAdmins },
+    { value: 'user', label: t.invitations.filterUsers },
+  ];
   const [page, setPage] = useState(0);
   const [typeFilter, setTypeFilter] = useState('');
   const [search, setSearch] = useState('');
@@ -86,7 +90,7 @@ export default function InvitationsPage() {
           <>
             <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
               <div className="flex items-center justify-between mb-3">
-                <span className="text-xs text-[#8B8B8B] font-medium uppercase tracking-wide">Total Enviadas</span>
+                <span className="text-xs text-[#8B8B8B] font-medium uppercase tracking-wide">{t.invitations.kpiTotal}</span>
                 <div className="w-8 h-8 rounded-lg bg-violet-50 flex items-center justify-center">
                   <svg className="w-4 h-4 text-violet-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" /></svg>
                 </div>
@@ -96,36 +100,36 @@ export default function InvitationsPage() {
             </div>
             <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
               <div className="flex items-center justify-between mb-3">
-                <span className="text-xs text-[#8B8B8B] font-medium uppercase tracking-wide">Pendientes</span>
+                <span className="text-xs text-[#8B8B8B] font-medium uppercase tracking-wide">{t.invitations.kpiPending}</span>
                 <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center">
                   <svg className="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></svg>
                 </div>
               </div>
               <div className="text-2xl font-bold text-amber-600">{kpis.data.pending}</div>
-              <div className="text-xs text-amber-500 mt-1 font-medium">esperando respuesta</div>
+              <div className="text-xs text-amber-500 mt-1 font-medium">{t.invitations.waitingResponse}</div>
             </div>
             <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
               <div className="flex items-center justify-between mb-3">
-                <span className="text-xs text-[#8B8B8B] font-medium uppercase tracking-wide">Aceptadas</span>
+                <span className="text-xs text-[#8B8B8B] font-medium uppercase tracking-wide">{t.invitations.kpiAccepted}</span>
                 <div className="w-8 h-8 rounded-lg bg-green-50 flex items-center justify-center">
                   <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 11-5.93-9.14" /><path d="M22 4L12 14.01l-3-3" /></svg>
                 </div>
               </div>
               <div className="text-2xl font-bold text-green-600">{kpis.data.accepted}</div>
               <div className="text-xs text-green-500 mt-1 font-medium">
-                {kpis.data.total > 0 ? `${Math.round((kpis.data.accepted / kpis.data.total) * 100)}% tasa de aceptacion` : 'sin invitaciones'}
+                {kpis.data.total > 0 ? `${Math.round((kpis.data.accepted / kpis.data.total) * 100)}% ${t.invitations.acceptanceRate}` : 'sin invitaciones'}
               </div>
             </div>
             <div className={`bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 ${kpis.data.expired > 0 ? 'border border-red-200' : ''}`}>
               <div className="flex items-center justify-between mb-3">
-                <span className="text-xs text-[#8B8B8B] font-medium uppercase tracking-wide">Expiradas</span>
+                <span className="text-xs text-[#8B8B8B] font-medium uppercase tracking-wide">{t.invitations.kpiExpired}</span>
                 <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center">
                   <svg className="w-4 h-4 text-[#DD0C15]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M15 9l-6 6M9 9l6 6" /></svg>
                 </div>
               </div>
               <div className={`text-2xl font-bold ${kpis.data.expired > 0 ? 'text-[#DD0C15]' : 'text-[#333]'}`}>{kpis.data.expired}</div>
               <div className={`text-xs mt-1 font-medium ${kpis.data.expired > 0 ? 'text-[#DD0C15]' : 'text-[#8B8B8B]'}`}>
-                {kpis.data.expired > 0 ? 'Considerar reenviar' : 'Sin expiradas'}
+                {kpis.data.expired > 0 ? t.invitations.considerResend : t.invitations.noExpired}
               </div>
             </div>
           </>
@@ -156,7 +160,7 @@ export default function InvitationsPage() {
               type="text"
               value={search}
               onChange={(e) => { setSearch(e.target.value); setPage(0); }}
-              placeholder="Buscar por email..."
+              placeholder={t.invitations.searchEmail}
               className="h-8 pl-9 pr-3 rounded-lg border border-[#EDEDED] text-xs text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 w-52"
             />
           </div>
@@ -165,14 +169,14 @@ export default function InvitationsPage() {
             className="h-8 px-4 rounded-lg bg-[#1F114C] text-white text-xs font-medium hover:bg-[#2a1866] transition flex items-center gap-1.5"
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4" /></svg>
-            Invitar Organizacion
+            {t.invitations.inviteOrg}
           </button>
           <button
             onClick={() => setShowUserInvite(true)}
             className="h-8 px-4 rounded-lg border border-[#1F114C] text-[#1F114C] text-xs font-medium hover:bg-[#1F114C]/5 transition flex items-center gap-1.5"
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 00-4-4H9a4 4 0 00-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
-            Invitar Usuario
+            {t.invitations.inviteUser}
           </button>
         </div>
       </div>
@@ -209,8 +213,8 @@ export default function InvitationsPage() {
                 <tr>
                   <td colSpan={7} className="px-5 py-16 text-center">
                     <svg className="w-12 h-12 text-[#EDEDED] mx-auto mb-3" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" /></svg>
-                    <p className="text-sm text-[#8B8B8B]">No hay invitaciones</p>
-                    <p className="text-xs text-[#8B8B8B] mt-1">Invita organizaciones o usuarios para comenzar</p>
+                    <p className="text-sm text-[#8B8B8B]">{t.invitations.noInvitations}</p>
+                    <p className="text-xs text-[#8B8B8B] mt-1">{t.invitations.noInvitationsDesc}</p>
                   </td>
                 </tr>
               ) : (
@@ -231,14 +235,14 @@ export default function InvitationsPage() {
                           <p className="text-[10px] text-[#8B8B8B]">{inv.roleSlug.replace(/_/g, ' ')}</p>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-center">{typeBadge(inv.type)}</td>
+                      <td className="px-4 py-3 text-center">{typeBadge(inv.type, { orgAdmin: t.invitations.typeOrgAdmin, user: t.invitations.typeUser })}</td>
                       <td className="px-4 py-3">
                         <span className="text-sm text-[#585858]">
                           {inv.organization?.name || inv.organizationName || '\u2014'}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-center">
-                        {isExpired && inv.status !== 'expired' ? statusBadge('expired') : statusBadge(inv.status)}
+                        {(() => { const sl = { pending: t.invitations.statusPending, sent: t.invitations.statusSent, accepted: t.invitations.statusAccepted, expired: t.invitations.statusExpired, revoked: t.invitations.statusRevoked }; return isExpired && inv.status !== 'expired' ? statusBadge('expired', sl) : statusBadge(inv.status, sl); })()}
                       </td>
                       <td className="px-4 py-3">
                         <span className="text-xs text-[#585858]">{formatDate(inv.sentAt)}</span>
@@ -257,7 +261,7 @@ export default function InvitationsPage() {
                                 disabled={resend.isPending}
                                 className="text-[10px] text-blue-600 font-medium hover:underline disabled:opacity-50"
                               >
-                                Reenviar
+                                {t.invitations.resend}
                               </button>
                               <span className="text-[#EDEDED]">|</span>
                               <button
@@ -267,12 +271,12 @@ export default function InvitationsPage() {
                                 disabled={revoke.isPending}
                                 className="text-[10px] text-[#DD0C15] font-medium hover:underline disabled:opacity-50"
                               >
-                                Revocar
+                                {t.invitations.revoke}
                               </button>
                             </>
                           ) : (
                             <span className="text-[10px] text-[#8B8B8B]">
-                              {isAccepted ? 'Completada' : 'Revocada'}
+                              {isAccepted ? t.invitations.completed : t.invitations.revoked}
                             </span>
                           )}
                         </div>
@@ -287,7 +291,7 @@ export default function InvitationsPage() {
         {/* Pagination */}
         <div className="flex items-center justify-between px-5 py-3.5 border-t border-[#EDEDED] flex-shrink-0">
           <span className="text-xs text-[#8B8B8B]">
-            Mostrando {rows.length > 0 ? page * limit + 1 : 0}-{page * limit + rows.length} de {total} invitaciones
+            {t.common.showing} {rows.length > 0 ? page * limit + 1 : 0}-{page * limit + rows.length} {t.common.of} {total}
           </span>
           <div className="flex items-center gap-1">
             <button
@@ -347,6 +351,7 @@ export default function InvitationsPage() {
 // ============ INVITE ORG MODAL ============
 
 function InviteOrgModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
+  const { t } = useI18n();
   const [email, setEmail] = useState('');
   const [orgName, setOrgName] = useState('');
   const [orgSlug, setOrgSlug] = useState('');
@@ -375,14 +380,14 @@ function InviteOrgModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 p-6">
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-lg font-semibold text-[#333]">Invitar Organizacion</h2>
+          <h2 className="text-lg font-semibold text-[#333]">{t.invitations.inviteOrgTitle}</h2>
           <button onClick={onClose} className="w-8 h-8 rounded-lg hover:bg-[#F6F6F6] flex items-center justify-center text-[#8B8B8B] transition">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="text-xs font-medium text-[#585858] mb-1 block">Email del Admin *</label>
+            <label className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.adminEmail} *</label>
             <input
               type="email"
               value={email}
@@ -393,7 +398,7 @@ function InviteOrgModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
             />
           </div>
           <div>
-            <label className="text-xs font-medium text-[#585858] mb-1 block">Nombre de la Organizacion *</label>
+            <label className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.orgName} *</label>
             <input
               type="text"
               value={orgName}
@@ -404,7 +409,7 @@ function InviteOrgModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
             />
           </div>
           <div>
-            <label className="text-xs font-medium text-[#585858] mb-1 block">Slug *</label>
+            <label className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.slug} *</label>
             <input
               type="text"
               value={orgSlug}
@@ -416,7 +421,7 @@ function InviteOrgModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
             />
           </div>
           <div>
-            <label className="text-xs font-medium text-[#585858] mb-1 block">Plan</label>
+            <label className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.plan}</label>
             <select
               value={plan}
               onChange={(e) => setPlan(e.target.value as typeof plan)}
@@ -435,14 +440,14 @@ function InviteOrgModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
           )}
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={onClose} className="h-9 px-4 rounded-lg border border-[#EDEDED] text-sm font-medium text-[#585858] hover:bg-[#F6F6F6] transition">
-              Cancelar
+              {t.invitations.cancel}
             </button>
             <button
               type="submit"
               disabled={!email || !orgName || !orgSlug || create.isPending}
               className="h-9 px-5 rounded-lg bg-[#1F114C] text-white text-sm font-medium hover:bg-[#2a1866] transition disabled:opacity-50"
             >
-              {create.isPending ? 'Enviando...' : 'Crear & Enviar Invitacion'}
+              {create.isPending ? t.invitations.sending : t.invitations.createAndSend}
             </button>
           </div>
         </form>
@@ -454,6 +459,7 @@ function InviteOrgModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
 // ============ INVITE USER MODAL ============
 
 function InviteUserModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
+  const { t } = useI18n();
   const [email, setEmail] = useState('');
   const [orgId, setOrgId] = useState('');
   const [orgSearch, setOrgSearch] = useState('');
@@ -484,14 +490,14 @@ function InviteUserModal({ onClose, onSuccess }: { onClose: () => void; onSucces
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 p-6">
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-lg font-semibold text-[#333]">Invitar Usuario</h2>
+          <h2 className="text-lg font-semibold text-[#333]">{t.invitations.inviteUserTitle}</h2>
           <button onClick={onClose} className="w-8 h-8 rounded-lg hover:bg-[#F6F6F6] flex items-center justify-center text-[#8B8B8B] transition">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="text-xs font-medium text-[#585858] mb-1 block">Email del Usuario *</label>
+            <label className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.userEmail} *</label>
             <input
               type="email"
               value={email}
@@ -502,12 +508,12 @@ function InviteUserModal({ onClose, onSuccess }: { onClose: () => void; onSucces
             />
           </div>
           <div>
-            <label className="text-xs font-medium text-[#585858] mb-1 block">Organizacion *</label>
+            <label className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.organization} *</label>
             <input
               type="text"
               value={orgSearch}
               onChange={(e) => { setOrgSearch(e.target.value); setOrgId(''); }}
-              placeholder="Buscar organizacion..."
+              placeholder={t.organizations.searchOrg}
               className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20"
             />
             {orgSearch && !orgId && orgs.data && (
@@ -526,13 +532,13 @@ function InviteUserModal({ onClose, onSuccess }: { onClose: () => void; onSucces
             )}
           </div>
           <div>
-            <label className="text-xs font-medium text-[#585858] mb-1 block">Rol</label>
+            <label className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.role}</label>
             <select
               value={roleSlug}
               onChange={(e) => setRoleSlug(e.target.value)}
               className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#333] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20"
             >
-              <option value="">Seleccionar rol...</option>
+              <option value="">{t.invitations.selectRole}</option>
               {ROLES.map((r) => (
                 <option key={r.slug} value={r.slug}>{r.label}</option>
               ))}
@@ -545,14 +551,14 @@ function InviteUserModal({ onClose, onSuccess }: { onClose: () => void; onSucces
           )}
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={onClose} className="h-9 px-4 rounded-lg border border-[#EDEDED] text-sm font-medium text-[#585858] hover:bg-[#F6F6F6] transition">
-              Cancelar
+              {t.invitations.cancel}
             </button>
             <button
               type="submit"
               disabled={!email || !orgId || create.isPending}
               className="h-9 px-5 rounded-lg bg-[#1F114C] text-white text-sm font-medium hover:bg-[#2a1866] transition disabled:opacity-50"
             >
-              {create.isPending ? 'Enviando...' : 'Enviar Invitacion'}
+              {create.isPending ? t.invitations.sending : t.invitations.sendInvitation}
             </button>
           </div>
         </form>
