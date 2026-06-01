@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { trpc } from '../../../../../../lib/trpc';
 import { useI18n } from '../../../../../../lib/i18n';
 import { Skeleton } from '../../org-utils';
@@ -30,6 +31,7 @@ function InvoiceStatusBadge({ status }: { status: string }) {
 
 export function BillingSection({ organizationId }: { organizationId: string }) {
   const { t } = useI18n();
+  const router = useRouter();
   const [showDrawer, setShowDrawer] = useState(false);
 
   const profile = trpc.platform.getBillingProfile.useQuery({ organizationId });
@@ -88,9 +90,18 @@ export function BillingSection({ organizationId }: { organizationId: string }) {
       <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] overflow-hidden">
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#EDEDED]">
           <h3 className="text-sm font-semibold text-[#333]">Facturas Recientes</h3>
-          <Link href={`/platform/invoices?org=${organizationId}`} className="text-xs text-[#1F114C] hover:underline font-medium">
-            Ver todas las facturas
-          </Link>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => router.push(`/platform/invoices?create=true&org=${organizationId}`)}
+              className="h-7 px-3 rounded-lg bg-[#1F114C] text-[10px] text-white font-medium hover:bg-[#2a1866] transition flex items-center gap-1.5"
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
+              Nueva Factura
+            </button>
+            <Link href={`/platform/invoices?org=${organizationId}`} className="text-xs text-[#1F114C] hover:underline font-medium">
+              Ver todas las facturas
+            </Link>
+          </div>
         </div>
         {invoices.isLoading ? (
           <div className="p-5 space-y-3">

@@ -28,6 +28,7 @@ export default function InvoicesPage() {
   const { t } = useI18n();
   const searchParams = useSearchParams();
   const orgFilter = searchParams.get('org') || undefined;
+  const autoCreate = searchParams.get('create') === 'true';
 
   const STATUS_TABS = [
     { value: '', label: t.invoices.filterAll },
@@ -39,7 +40,7 @@ export default function InvoicesPage() {
   const [page, setPage] = useState(0);
   const [statusFilter, setStatusFilter] = useState('');
   const [search, setSearch] = useState('');
-  const [showWizard, setShowWizard] = useState(false);
+  const [showWizard, setShowWizard] = useState(autoCreate);
   const [viewInvoiceId, setViewInvoiceId] = useState<string | null>(null);
   const [showBillingDrawer, setShowBillingDrawer] = useState<string | null>(null);
   const limit = 15;
@@ -72,7 +73,7 @@ export default function InvoicesPage() {
   const total = invoices.data?.total ?? 0;
 
   if (showWizard) {
-    return <InvoiceWizard onClose={() => setShowWizard(false)} onSuccess={() => { setShowWizard(false); utils.platform.listInvoices.invalidate(); utils.platform.getInvoiceKpis.invalidate(); }} />;
+    return <InvoiceWizard preselectedOrgId={orgFilter} onClose={() => setShowWizard(false)} onSuccess={() => { setShowWizard(false); utils.platform.listInvoices.invalidate(); utils.platform.getInvoiceKpis.invalidate(); }} />;
   }
 
   if (viewInvoiceId) {

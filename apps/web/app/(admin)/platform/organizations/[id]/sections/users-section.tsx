@@ -10,11 +10,51 @@ import { InviteUserModal } from '../../../invitations/invite-user-modal';
 const ROLE_COLORS: Record<string, { bg: string; text: string }> = {
   super_admin: { bg: 'bg-purple-100', text: 'text-purple-700' },
   hr_admin: { bg: 'bg-blue-100', text: 'text-blue-700' },
+  hrbp: { bg: 'bg-indigo-100', text: 'text-indigo-700' },
   recruiter: { bg: 'bg-teal-100', text: 'text-teal-700' },
   leader: { bg: 'bg-amber-100', text: 'text-amber-700' },
+  committee: { bg: 'bg-orange-100', text: 'text-orange-700' },
   employee: { bg: 'bg-gray-100', text: 'text-gray-600' },
   platform_owner: { bg: 'bg-rose-100', text: 'text-rose-700' },
 };
+
+const ASSIGNABLE_ROLES = [
+  { slug: 'super_admin', label: 'Super Admin' },
+  { slug: 'hr_admin', label: 'HR Admin' },
+  { slug: 'hrbp', label: 'HRBP' },
+  { slug: 'recruiter', label: 'Recruiter' },
+  { slug: 'leader', label: 'Leader' },
+  { slug: 'committee', label: 'Committee' },
+  { slug: 'employee', label: 'Employee' },
+];
+
+function RoleSelector({ userId, organizationId, currentRole }: { userId: string; organizationId: string; currentRole: string }) {
+  const utils = trpc.useUtils();
+  const changeRole = trpc.platform.changeOrgUserRole.useMutation({
+    onSuccess: () => {
+      utils.platform.getOrgUsers.invalidate({ organizationId });
+      toast('Rol actualizado', { type: 'success' });
+    },
+    onError: (err) => { toast(err.message || 'Error al cambiar rol', { type: 'error' }); },
+  });
+
+  return (
+    <select
+      value={currentRole}
+      disabled={changeRole.isPending}
+      onChange={(e) => {
+        if (e.target.value !== currentRole) {
+          changeRole.mutate({ userId, organizationId, roleSlug: e.target.value });
+        }
+      }}
+      className="px-1.5 py-0.5 rounded text-[10px] font-semibold border border-[#EDEDED] bg-white text-[#333] focus:outline-none focus:ring-1 focus:ring-[#1F114C]/30 disabled:opacity-50 cursor-pointer"
+    >
+      {ASSIGNABLE_ROLES.map((r) => (
+        <option key={r.slug} value={r.slug}>{r.label}</option>
+      ))}
+    </select>
+  );
+}
 
 function formatLastLogin(date: string | Date | null | undefined): string {
   if (!date) return 'Nunca';
@@ -137,7 +177,11 @@ export function UsersSection({ organizationId, organizationName }: { organizatio
                     </td>
                     <td className="px-4 py-2.5 text-[12px] text-[#585858]">{user.email}</td>
                     <td className="px-4 py-2.5">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${roleColor.bg} ${roleColor.text}`}>{roleSlug}</span>
+                      {user.isPlatformOwner ? (
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${roleColor.bg} ${roleColor.text}`}>platform_owner</span>
+                      ) : (
+                        <RoleSelector userId={user.id} organizationId={organizationId} currentRole={roleSlug} />
+                      )}
                     </td>
                     <td className="px-4 py-2.5 text-[12px] text-[#585858]">{user.jobTitle || '\u2014'}</td>
                     <td className="px-4 py-2.5">

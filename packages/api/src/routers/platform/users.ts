@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { TRPCError } from '@trpc/server';
 import { router } from '../../trpc';
 import { db } from '@tims/db';
 import { platformProcedure } from './_common';
@@ -133,5 +134,38 @@ export const usersRouter = router({
         },
       }).catch(() => {});
       return user;
+    }),
+
+  changeOrgUserRole: platformProcedure
+    .input(z.object({
+      userId: z.string().uuid(),
+      organizationId: z.string().uuid(),
+      roleSlug: z.string().max(50),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const role = await db.role.findFirst({
+        where: { organizationId: input.organizationId, slug: input.roleSlug },
+      });
+      if (!role) throw new TRPCError({ code: 'NOT_FOUND', message: 'Role not found' });
+
+      await db.userRole.deleteMany({
+        where: { userId: input.userId, role: { organizationId: input.organizationId } },
+      });
+      await db.userRole.create({
+        data: { userId: input.userId, roleId: role.id },
+      });
+
+      await db.auditLog.create({
+        data: {
+          organizationId: input.organizationId,
+          actorId: ctx.user.id,
+          action: 'user_role_changed',
+          entity: 'user',
+          entityId: input.userId,
+          changes: JSON.stringify({ newRole: input.roleSlug }),
+        },
+      }).catch(() => {});
+
+      return { success: true };
     }),
 });

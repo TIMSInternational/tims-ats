@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
@@ -9,7 +9,7 @@ import { fmtCurrency, fmtDateLong } from './_helpers';
 
 interface LineItem { description: string; quantity: number; unitPrice: number; }
 
-export function InvoiceWizard({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
+export function InvoiceWizard({ onClose, onSuccess, preselectedOrgId }: { onClose: () => void; onSuccess: () => void; preselectedOrgId?: string }) {
   const { t } = useI18n();
   const [step, setStep] = useState(0);
   const [previewTab, setPreviewTab] = useState<'invoice' | 'email'>('invoice');
@@ -29,6 +29,25 @@ export function InvoiceWizard({ onClose, onSuccess }: { onClose: () => void; onS
   const [emailCc, setEmailCc] = useState('');
 
   const orgs = trpc.platform.listOrganizations.useQuery({ search: orgSearch || undefined, limit: 10, page: 0 });
+  const preselectedOrgQuery = trpc.platform.getOrganization.useQuery(
+    { id: preselectedOrgId! },
+    { enabled: !!preselectedOrgId && !orgId },
+  );
+
+  useEffect(() => {
+    if (preselectedOrgId && !orgId && preselectedOrgQuery.data) {
+      const org = preselectedOrgQuery.data;
+      const bEmail = org.billingProfile?.billingEmail || '';
+      setOrgId(org.id);
+      setOrgSearch(org.name);
+      setOrgName(org.name);
+      setEmailTo(bEmail);
+      setOrgEmail(bEmail);
+      setStep(1);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preselectedOrgQuery.data]);
+
   const nextNum = trpc.platform.getNextInvoiceNumber.useQuery();
   const createInvoice = trpc.platform.createInvoice.useMutation({
     onSuccess: () => { toast('Factura creada exitosamente', { type: 'success' }); onSuccess(); },
