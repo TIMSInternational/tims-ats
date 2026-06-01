@@ -70,14 +70,30 @@ export function Skeleton({ className }: { className: string }) {
 export function SkeletonRow() {
   return (
     <tr className="border-b border-[#F6F6F6] animate-pulse">
+      <td className="px-3 py-3.5"><div className="w-4 h-4 bg-gray-200 rounded" /></td>
       <td className="px-5 py-3.5"><div className="flex items-center gap-3"><div className="w-8 h-8 rounded-lg bg-gray-200" /><div className="h-4 w-32 bg-gray-200 rounded" /></div></td>
-      <td className="px-4 py-3.5"><div className="h-3 w-24 bg-gray-100 rounded" /></td>
       <td className="px-4 py-3.5"><div className="h-5 w-16 bg-gray-100 rounded-full" /></td>
       <td className="px-4 py-3.5"><div className="h-3 w-14 bg-gray-100 rounded" /></td>
+      <td className="px-4 py-3.5"><div className="h-3 w-6 bg-gray-100 rounded mx-auto" /></td>
       <td className="px-4 py-3.5 text-center"><div className="h-4 w-6 bg-gray-100 rounded mx-auto" /></td>
+      <td className="px-4 py-3.5 text-center"><div className="h-4 w-8 bg-gray-100 rounded mx-auto" /></td>
       <td className="px-4 py-3.5"><div className="h-3 w-20 bg-gray-100 rounded" /></td>
-      <td className="px-4 py-3.5"><div className="h-3 w-20 bg-gray-100 rounded" /></td>
-      <td className="px-4 py-3.5"><div className="h-5 w-20 bg-gray-100 rounded mx-auto" /></td>
+      <td className="px-4 py-3.5"><div className="h-5 w-6 bg-gray-100 rounded mx-auto" /></td>
     </tr>
   );
+}
+
+export function formatRelativeTime(date: string | Date | null | undefined): string {
+  if (!date) return '';
+  const now = Date.now();
+  const d = new Date(date).getTime();
+  const diffMs = now - d;
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+  if (diffMins < 1) return 'Ahora';
+  if (diffMins < 60) return `${diffMins}m`;
+  if (diffHours < 24) return `${diffHours}h`;
+  if (diffDays < 30) return `${diffDays}d`;
+  return `${Math.floor(diffDays / 30)}mo`;
 }

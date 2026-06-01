@@ -1,29 +1,32 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
 import type { OrganizationListItem } from '../../../../lib/trpc-types';
 import { CreateOrgModal } from './create-org-modal';
 import { EditOrgModal } from './edit-org-modal';
-import {
-  getInitials, getAvatarColor, planBadge, statusDot,
-  formatDate, trialDateColor, Skeleton, SkeletonRow,
-} from './org-utils';
+import { OrgTable } from './org-table';
+import { OrgBulkBar } from './org-bulk-bar';
+import { Skeleton } from './org-utils';
 
 const PLAN_MRR: Record<string, number> = { trial: 0, starter: 499, professional: 999, enterprise: 2499 };
 
+type SortField = 'name' | 'plan' | 'createdAt' | 'users' | null;
+type SortDir = 'asc' | 'desc';
+
 export default function OrganizationsPage() {
   const { t } = useI18n();
-  const router = useRouter();
   const [search, setSearch] = useState('');
   const [planFilter, setPlanFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editOrg, setEditOrg] = useState<OrganizationListItem | null>(null);
   const [page, setPage] = useState(0);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [sortBy, setSortBy] = useState<SortField>(null);
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
   const limit = 15;
 
   const kpis = trpc.platform.getOrganizationKpis.useQuery();
@@ -32,6 +35,8 @@ export default function OrganizationsPage() {
     plan: planFilter || undefined,
     status: statusFilter || undefined,
     page, limit,
+    sortBy: sortBy ?? undefined,
+    sortDir: sortBy ? sortDir : undefined,
   });
 
   const utils = trpc.useUtils();
@@ -40,14 +45,25 @@ export default function OrganizationsPage() {
 
   const clearFilters = () => { setSearch(''); setPlanFilter(''); setStatusFilter(''); setPage(0); };
 
+  const handleSort = (field: SortField) => {
+    if (sortBy === field) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortBy(field);
+      setSortDir(field === 'name' || field === 'plan' ? 'asc' : 'desc');
+    }
+    setPage(0);
+  };
+
   const handleExport = () => {
-    const header = 'Nombre,Slug,Plan,Estado,Usuarios,Creada,MRR';
+    const header = 'Nombre,Slug,Plan,Estado,Usuarios,Facturas,Creada,MRR';
     const rows = organizations.map((org) => {
       const plan = org.plan || org.subscription?.plan || 'trial';
       return [
         `"${org.name}"`, org.slug, plan,
         org.isActive ? 'active' : 'suspended',
         org._count?.users ?? 0,
+        (org._count as Record<string, number>)?.invoices ?? 0,
         new Date(org.createdAt).toISOString().slice(0, 10),
         PLAN_MRR[plan] || 0,
       ].join(',');
@@ -137,63 +153,28 @@ export default function OrganizationsPage() {
         </button>
       </div>
 
+      {/* Bulk bar */}
+      {selectedIds.length > 0 && (
+        <OrgBulkBar
+          selectedIds={selectedIds}
+          organizations={organizations}
+          onDeselectAll={() => setSelectedIds([])}
+        />
+      )}
+
       {/* Table */}
       <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] flex-1 flex flex-col min-h-0 overflow-hidden">
         <div className="flex-1 overflow-y-auto min-h-0">
-          <table className="w-full">
-            <thead className="sticky top-0 bg-white z-10">
-              <tr className="border-b border-[#EDEDED]">
-                <th className="text-left text-xs font-semibold text-[#8B8B8B] uppercase tracking-wide px-5 py-3">{t.common.name}</th>
-                <th className="text-left text-xs font-semibold text-[#8B8B8B] uppercase tracking-wide px-4 py-3">Plan</th>
-                <th className="text-right text-xs font-semibold text-[#8B8B8B] uppercase tracking-wide px-4 py-3">MRR</th>
-                <th className="text-left text-xs font-semibold text-[#8B8B8B] uppercase tracking-wide px-4 py-3">{t.common.status}</th>
-                <th className="text-center text-xs font-semibold text-[#8B8B8B] uppercase tracking-wide px-4 py-3">{t.users.title}</th>
-                <th className="text-left text-xs font-semibold text-[#8B8B8B] uppercase tracking-wide px-4 py-3">{t.organizations.createdAt}</th>
-                <th className="text-left text-xs font-semibold text-[#8B8B8B] uppercase tracking-wide px-4 py-3">Trial</th>
-                <th className="text-center text-xs font-semibold text-[#8B8B8B] uppercase tracking-wide px-4 py-3">{t.common.actions}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {orgs.isLoading ? <><SkeletonRow /><SkeletonRow /><SkeletonRow /><SkeletonRow /><SkeletonRow /></> : organizations.length === 0 ? (
-                <tr><td colSpan={8} className="px-5 py-16 text-center">
-                  <svg className="w-12 h-12 text-[#EDEDED] mx-auto mb-3" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M3 21h18M3 7v14m6-14v14m6-14v14m6-14v14M3 7l9-4 9 4" /></svg>
-                  <p className="text-sm text-[#8B8B8B]">{t.organizations.noOrgs}</p>
-                  <p className="text-xs text-[#8B8B8B] mt-1">{t.organizations.noOrgsDesc}</p>
-                </td></tr>
-              ) : organizations.map((org) => {
-                const isSuspended = !org.isActive;
-                const plan = org.plan || org.subscription?.plan || 'trial';
-                const trialEndsAt = org.subscription?.trialEndsAt;
-                const mrr = PLAN_MRR[plan] || 0;
-                return (
-                  <tr key={org.id} onClick={() => router.push(`/platform/organizations/${org.id}`)} className={`border-b border-[#F6F6F6] hover:bg-[#FAFAFA] transition cursor-pointer ${isSuspended ? 'bg-red-50/30' : ''}`}>
-                    <td className="px-5 py-3">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-8 h-8 rounded-lg ${getAvatarColor(org.name)} flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0`}>{getInitials(org.name)}</div>
-                        <div>
-                          <span className="text-sm text-[#333] font-medium">{org.name}</span>
-                          <p className="text-[10px] text-[#8B8B8B] font-mono">{org.slug}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">{planBadge(plan)}</td>
-                    <td className="px-4 py-3 text-right"><span className={`text-sm font-semibold ${mrr > 0 ? 'text-[#333]' : 'text-[#8B8B8B]'}`}>${mrr.toLocaleString()}</span></td>
-                    <td className="px-4 py-3">{statusDot(org.subscription?.status ?? '', org.isActive, { active: t.organizations.statusActive, suspended: t.organizations.statusSuspended })}</td>
-                    <td className="px-4 py-3 text-center"><span className="text-sm text-[#333] font-medium">{org._count?.users ?? 0}</span></td>
-                    <td className="px-4 py-3"><span className="text-xs text-[#8B8B8B]">{formatDate(org.createdAt)}</span></td>
-                    <td className="px-4 py-3"><span className={`text-xs ${trialEndsAt ? trialDateColor(trialEndsAt) : 'text-[#8B8B8B]'}`}>{trialEndsAt ? formatDate(trialEndsAt) : '\u2014'}</span></td>
-                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center justify-center gap-1">
-                        <button onClick={() => setEditOrg(org)} className="w-7 h-7 rounded-md hover:bg-[#F6F6F6] flex items-center justify-center transition" title={t.common.edit}>
-                          <svg className="w-3.5 h-3.5 text-[#8B8B8B]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <OrgTable
+            organizations={organizations}
+            isLoading={orgs.isLoading}
+            selectedIds={selectedIds}
+            onSelectIds={setSelectedIds}
+            sortBy={sortBy}
+            sortDir={sortDir}
+            onSort={handleSort}
+            onEdit={setEditOrg}
+          />
         </div>
         <div className="flex items-center justify-between px-5 py-3 border-t border-[#EDEDED] flex-shrink-0">
           <span className="text-xs text-[#8B8B8B]">{t.common.showing} {organizations.length > 0 ? page * limit + 1 : 0}-{page * limit + organizations.length} {t.common.of} {total}</span>

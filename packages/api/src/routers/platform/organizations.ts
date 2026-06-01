@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { router } from '../../trpc';
-import { db, SubscriptionStatus, OrgPlan, InvitationStatus } from '@tims/db';
+import { db, SubscriptionStatus, OrgPlan, InvitationStatus, InvoiceStatus } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { notify } from '../../lib/notify';
 import { platformProcedure } from './_common';
@@ -32,28 +32,48 @@ export const organizationsRouter = router({
       cursor: z.string().uuid().optional(),
       page: z.number().int().min(0).default(0),
       limit: z.number().min(1).max(50).default(20),
-      search: z.string().optional(),
-      plan: z.string().optional(),
-      status: z.string().optional(),
+      search: z.string().max(200).optional(),
+      plan: z.string().max(50).optional(),
+      status: z.string().max(50).optional(),
+      sortBy: z.enum(['name', 'plan', 'createdAt', 'users']).optional(),
+      sortDir: z.enum(['asc', 'desc']).optional(),
     }))
     .query(async ({ input }) => {
       const { cursor, page, limit, search, plan, status } = input;
 
-      const where: any = {};
+      const where: Record<string, unknown> = {};
       if (search) where.OR = [{ name: { contains: search, mode: 'insensitive' } }, { slug: { contains: search, mode: 'insensitive' } }];
       if (plan) where.plan = plan;
       if (status === 'active') where.isActive = true;
       if (status === 'suspended') where.isActive = false;
+
+      const sortMap: Record<string, Record<string, unknown>> = {
+        name: { name: input.sortDir || 'asc' },
+        plan: { plan: input.sortDir || 'asc' },
+        createdAt: { createdAt: input.sortDir || 'desc' },
+        users: { users: { _count: input.sortDir || 'desc' } },
+      };
+      const orderBy = input.sortBy ? sortMap[input.sortBy] : { createdAt: 'desc' as const };
 
       const orgs = await db.organization.findMany({
         where,
         take: limit,
         skip: cursor ? 1 : page * limit,
         ...(cursor ? { cursor: { id: cursor } } : {}),
-        orderBy: { createdAt: 'desc' },
+        orderBy,
         include: {
-          _count: { select: { users: true } },
+          _count: { select: { users: true, vacancies: true, invoices: true } },
           subscription: { select: { plan: true, status: true, trialEndsAt: true } },
+          users: {
+            select: { lastLoginAt: true },
+            where: { lastLoginAt: { not: null } },
+            orderBy: { lastLoginAt: 'desc' },
+            take: 1,
+          },
+          invoices: {
+            where: { status: InvoiceStatus.pending },
+            select: { id: true, dueDate: true },
+          },
         },
       });
 
