@@ -5,11 +5,11 @@ import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
 
-export function InviteUserModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
+export function InviteUserModal({ onClose, onSuccess, preselectedOrgId, preselectedOrgName }: { onClose: () => void; onSuccess: () => void; preselectedOrgId?: string; preselectedOrgName?: string }) {
   const { t } = useI18n();
   const [email, setEmail] = useState('');
-  const [orgId, setOrgId] = useState('');
-  const [orgSearch, setOrgSearch] = useState('');
+  const [orgId, setOrgId] = useState(preselectedOrgId || '');
+  const [orgSearch, setOrgSearch] = useState(preselectedOrgName || '');
   const [roleSlug, setRoleSlug] = useState('');
 
   const orgs = trpc.platform.listOrganizations.useQuery({ search: orgSearch || undefined, limit: 10, page: 0 });

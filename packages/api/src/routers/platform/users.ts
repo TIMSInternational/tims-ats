@@ -94,4 +94,44 @@ export const usersRouter = router({
     .mutation(async ({ input }) => {
       return db.platformOwnerEmail.delete({ where: { email: input.email } });
     }),
+
+  deactivateOrgUser: platformProcedure
+    .input(z.object({ userId: z.string().uuid(), organizationId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const user = await db.user.update({
+        where: { id: input.userId, organizationId: input.organizationId },
+        data: { isActive: false },
+        select: { id: true, firstName: true, lastName: true, email: true, isActive: true },
+      });
+      await db.auditLog.create({
+        data: {
+          organizationId: input.organizationId,
+          actorId: ctx.user.id,
+          action: 'user_deactivated',
+          entity: 'user',
+          entityId: input.userId,
+        },
+      }).catch(() => {});
+      return user;
+    }),
+
+  activateOrgUser: platformProcedure
+    .input(z.object({ userId: z.string().uuid(), organizationId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const user = await db.user.update({
+        where: { id: input.userId, organizationId: input.organizationId },
+        data: { isActive: true },
+        select: { id: true, firstName: true, lastName: true, email: true, isActive: true },
+      });
+      await db.auditLog.create({
+        data: {
+          organizationId: input.organizationId,
+          actorId: ctx.user.id,
+          action: 'user_activated',
+          entity: 'user',
+          entityId: input.userId,
+        },
+      }).catch(() => {});
+      return user;
+    }),
 });

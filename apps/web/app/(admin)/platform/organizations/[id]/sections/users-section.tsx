@@ -1,8 +1,11 @@
 'use client';
 
+import { useState } from 'react';
 import { trpc } from '../../../../../../lib/trpc';
+import { toast } from '../../../../../../lib/toast';
 import { useI18n } from '../../../../../../lib/i18n';
 import { getInitials, getAvatarColor, formatDate, Skeleton } from '../../org-utils';
+import { InviteUserModal } from '../../../invitations/invite-user-modal';
 
 const ROLE_COLORS: Record<string, { bg: string; text: string }> = {
   super_admin: { bg: 'bg-purple-100', text: 'text-purple-700' },
@@ -40,9 +43,27 @@ function SkeletonRow() {
   );
 }
 
-export function UsersSection({ organizationId }: { organizationId: string }) {
+export function UsersSection({ organizationId, organizationName }: { organizationId: string; organizationName?: string }) {
   const { t } = useI18n();
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const utils = trpc.useUtils();
   const { data, isLoading } = trpc.platform.getOrgUsers.useQuery({ organizationId });
+
+  const deactivateUser = trpc.platform.deactivateOrgUser.useMutation({
+    onSuccess: () => {
+      utils.platform.getOrgUsers.invalidate({ organizationId });
+      toast('Usuario desactivado', { type: 'success' });
+    },
+    onError: (err) => { toast(err.message || 'Error al desactivar usuario', { type: 'error' }); },
+  });
+
+  const activateUser = trpc.platform.activateOrgUser.useMutation({
+    onSuccess: () => {
+      utils.platform.getOrgUsers.invalidate({ organizationId });
+      toast('Usuario activado', { type: 'success' });
+    },
+    onError: (err) => { toast(err.message || 'Error al activar usuario', { type: 'error' }); },
+  });
 
   const users = data?.users ?? [];
 
@@ -51,11 +72,26 @@ export function UsersSection({ organizationId }: { organizationId: string }) {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-[#333]">Usuarios ({data?.total ?? 0})</h3>
-        <button className="h-8 px-3 rounded-lg bg-[#DD0C15] text-xs text-white font-medium hover:bg-[#c40b13] transition flex items-center gap-1.5">
+        <button
+          onClick={() => setShowInviteModal(true)}
+          className="h-8 px-3 rounded-lg bg-[#DD0C15] text-xs text-white font-medium hover:bg-[#c40b13] transition flex items-center gap-1.5"
+        >
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
           Invitar Usuario
         </button>
       </div>
+
+      {showInviteModal && (
+        <InviteUserModal
+          preselectedOrgId={organizationId}
+          preselectedOrgName={organizationName}
+          onClose={() => setShowInviteModal(false)}
+          onSuccess={() => {
+            setShowInviteModal(false);
+            utils.platform.getOrgUsers.invalidate({ organizationId });
+          }}
+        />
+      )}
 
       {/* Table */}
       <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] overflow-hidden">
@@ -113,9 +149,27 @@ export function UsersSection({ organizationId }: { organizationId: string }) {
                     <td className="px-4 py-2.5 text-[12px] text-[#8B8B8B]">{formatLastLogin(user.lastLoginAt)}</td>
                     <td className="px-4 py-2.5">
                       {user.isActive ? (
-                        <button className="px-2 py-1 text-[10px] text-[#DD0C15] bg-red-50 rounded font-medium hover:bg-red-100 transition">Desactivar</button>
+                        <button
+                          disabled={deactivateUser.isPending}
+                          onClick={() => {
+                            if (confirm(`Desactivar a ${fullName}?`)) {
+                              deactivateUser.mutate({ userId: user.id, organizationId });
+                            }
+                          }}
+                          className="px-2 py-1 text-[10px] text-[#DD0C15] bg-red-50 rounded font-medium hover:bg-red-100 transition disabled:opacity-50"
+                        >
+                          Desactivar
+                        </button>
                       ) : (
-                        <button className="px-2 py-1 text-[10px] text-green-600 bg-green-50 rounded font-medium hover:bg-green-100 transition">Activar</button>
+                        <button
+                          disabled={activateUser.isPending}
+                          onClick={() => {
+                            activateUser.mutate({ userId: user.id, organizationId });
+                          }}
+                          className="px-2 py-1 text-[10px] text-green-600 bg-green-50 rounded font-medium hover:bg-green-100 transition disabled:opacity-50"
+                        >
+                          Activar
+                        </button>
                       )}
                     </td>
                   </tr>

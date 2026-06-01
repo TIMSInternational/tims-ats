@@ -6,10 +6,14 @@ import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
 import type { OrganizationListItem } from '../../../../lib/trpc-types';
 
+const PLAN_MRR: Record<string, number> = { trial: 0, starter: 499, professional: 999, enterprise: 2499 };
+const PLAN_ORDER: Record<string, number> = { trial: 0, starter: 1, professional: 2, enterprise: 3 };
+
 export function EditOrgModal({ org, onClose, onSuccess }: { org: OrganizationListItem; onClose: () => void; onSuccess: () => void }) {
   const { t } = useI18n();
   const [editName, setEditName] = useState(org.name);
-  const [editPlan, setEditPlan] = useState(org.plan || org.subscription?.plan || 'trial');
+  const currentPlan = org.plan || org.subscription?.plan || 'trial';
+  const [editPlan, setEditPlan] = useState(currentPlan);
   const utils = trpc.useUtils();
 
   const updateOrg = trpc.platform.updateOrganization.useMutation({
@@ -74,6 +78,18 @@ export function EditOrgModal({ org, onClose, onSuccess }: { org: OrganizationLis
               <option value="professional">Professional</option>
               <option value="enterprise">Enterprise</option>
             </select>
+            {editPlan !== currentPlan && (
+              <div className={`mt-2 px-3 py-2 rounded-lg text-xs font-medium ${
+                PLAN_ORDER[editPlan] > PLAN_ORDER[currentPlan]
+                  ? 'bg-blue-50 text-blue-700'
+                  : 'bg-amber-50 text-amber-700'
+              }`}>
+                {PLAN_ORDER[editPlan] > PLAN_ORDER[currentPlan]
+                  ? `Upgrade a ${editPlan}: $${PLAN_MRR[currentPlan]}/mes -> $${PLAN_MRR[editPlan]}/mes`
+                  : `Downgrade a ${editPlan}: reducira funcionalidades. $${PLAN_MRR[currentPlan]}/mes -> $${PLAN_MRR[editPlan]}/mes`
+                }
+              </div>
+            )}
           </div>
           <div>
             <label className="block text-xs font-medium text-[#585858] mb-1.5">Estado</label>

@@ -102,13 +102,13 @@ export const organizationsRouter = router({
 
   createOrganization: platformProcedure
     .input(z.object({
-      name: z.string().min(2),
-      slug: z.string().min(2).regex(/^[a-z0-9-]+$/),
+      name: z.string().min(2).max(100),
+      slug: z.string().min(2).max(50).regex(/^[a-z0-9-]+$/),
       plan: z.enum(['trial', 'starter', 'professional', 'enterprise']),
       adminEmail: z.string().email(),
       billingEmail: z.string().email().optional(),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const org = await db.$transaction(async (tx) => {
         const org = await tx.organization.create({
           data: {
@@ -143,6 +143,17 @@ export const organizationsRouter = router({
         organizationId: org.id,
       });
 
+      await db.auditLog.create({
+        data: {
+          organizationId: org.id,
+          actorId: ctx.user.id,
+          action: 'org_created',
+          entity: 'organization',
+          entityId: org.id,
+          changes: JSON.stringify({ name: input.name, slug: input.slug, plan: input.plan }),
+        },
+      }).catch(() => {});
+
       return org;
     }),
 
@@ -152,16 +163,44 @@ export const organizationsRouter = router({
       name: z.string().max(100).optional(),
       plan: z.nativeEnum(OrgPlan).optional(),
       isActive: z.boolean().optional(),
-      settings: z.record(z.string(), z.unknown()).optional(),
+      settings: z.object({
+        locale: z.string().max(10).optional(),
+        timezone: z.string().max(50).optional(),
+        currency: z.string().max(10).optional(),
+      }).optional(),
     }))
-    .mutation(async ({ input }) => {
-      const { id, ...data } = input;
-      return db.organization.update({ where: { id }, data: data as any });
+    .mutation(async ({ ctx, input }) => {
+      const { id, ...rest } = input;
+      const updateData: {
+        name?: string;
+        plan?: OrgPlan;
+        isActive?: boolean;
+        settings?: { locale?: string; timezone?: string; currency?: string };
+      } = {};
+      if (rest.name !== undefined) updateData.name = rest.name;
+      if (rest.plan !== undefined) updateData.plan = rest.plan;
+      if (rest.isActive !== undefined) updateData.isActive = rest.isActive;
+      if (rest.settings !== undefined) updateData.settings = rest.settings;
+
+      const org = await db.organization.update({ where: { id }, data: updateData });
+
+      await db.auditLog.create({
+        data: {
+          organizationId: id,
+          actorId: ctx.user.id,
+          action: 'org_updated',
+          entity: 'organization',
+          entityId: id,
+          changes: JSON.stringify(rest),
+        },
+      }).catch(() => {});
+
+      return org;
     }),
 
   suspendOrganization: platformProcedure
     .input(z.object({ id: z.string().uuid(), suspend: z.boolean() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const org = await db.organization.update({
         where: { id: input.id },
         data: { isActive: !input.suspend },
@@ -176,6 +215,16 @@ export const organizationsRouter = router({
           organizationId: org.id,
         });
       }
+
+      await db.auditLog.create({
+        data: {
+          organizationId: org.id,
+          actorId: ctx.user.id,
+          action: input.suspend ? 'org_suspended' : 'org_activated',
+          entity: 'organization',
+          entityId: org.id,
+        },
+      }).catch(() => {});
 
       return org;
     }),

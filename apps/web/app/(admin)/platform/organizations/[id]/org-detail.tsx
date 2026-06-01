@@ -163,7 +163,7 @@ export function OrgDetail({ id }: { id: string }) {
       {/* Tab content */}
       <div className="flex-1 min-h-0 overflow-y-auto">
         {activeTab === 'overview' && <OverviewSection org={org} />}
-        {activeTab === 'users' && <UsersSection organizationId={id} />}
+        {activeTab === 'users' && <UsersSection organizationId={id} organizationName={org.name} />}
         {activeTab === 'billing' && <BillingSection organizationId={id} />}
         {activeTab === 'features' && <FeaturesSection organizationId={id} />}
         {activeTab === 'ai' && <AiSection organizationId={id} />}
