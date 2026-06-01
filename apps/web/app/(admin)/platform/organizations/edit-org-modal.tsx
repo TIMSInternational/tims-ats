@@ -9,7 +9,7 @@ import type { OrganizationListItem } from '../../../../lib/trpc-types';
 export function EditOrgModal({ org, onClose, onSuccess }: { org: OrganizationListItem; onClose: () => void; onSuccess: () => void }) {
   const { t } = useI18n();
   const [editName, setEditName] = useState(org.name);
-  const [editPlan, setEditPlan] = useState<string>(org.plan || org.subscription?.plan || 'trial');
+  const [editPlan, setEditPlan] = useState(org.plan || org.subscription?.plan || 'trial');
   const utils = trpc.useUtils();
 
   const updateOrg = trpc.platform.updateOrganization.useMutation({
@@ -66,7 +66,7 @@ export function EditOrgModal({ org, onClose, onSuccess }: { org: OrganizationLis
             <label className="block text-xs font-medium text-[#585858] mb-1.5">Plan</label>
             <select
               value={editPlan}
-              onChange={(e) => setEditPlan(e.target.value)}
+              onChange={(e) => setEditPlan(e.target.value as typeof editPlan)}
               className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm bg-white focus:outline-none focus:border-[#1F114C]"
             >
               <option value="trial">Trial</option>

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { router } from '../../trpc';
-import { db, SubscriptionStatus } from '@tims/db';
+import { db, SubscriptionStatus, OrgPlan, InvitationStatus } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { notify } from '../../lib/notify';
 import { platformProcedure } from './_common';
@@ -72,7 +72,8 @@ export const organizationsRouter = router({
           users: { select: { id: true, firstName: true, lastName: true, email: true, jobTitle: true, isActive: true, lastLoginAt: true, isPlatformOwner: true }, orderBy: { createdAt: 'desc' } },
           subscription: true,
           featureFlags: true,
-          _count: { select: { users: true, vacancies: true } },
+          billingProfile: true,
+          _count: { select: { users: true, vacancies: true, invoices: true, invitations: { where: { status: { in: [InvitationStatus.pending, InvitationStatus.sent] } } } } },
         },
       });
       if (!org) throw new TRPCError({ code: 'NOT_FOUND' });
@@ -128,10 +129,10 @@ export const organizationsRouter = router({
   updateOrganization: platformProcedure
     .input(z.object({
       id: z.string().uuid(),
-      name: z.string().optional(),
-      plan: z.string().optional(),
+      name: z.string().max(100).optional(),
+      plan: z.nativeEnum(OrgPlan).optional(),
       isActive: z.boolean().optional(),
-      settings: z.record(z.unknown()).optional(),
+      settings: z.record(z.string(), z.unknown()).optional(),
     }))
     .mutation(async ({ input }) => {
       const { id, ...data } = input;

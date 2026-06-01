@@ -101,6 +101,17 @@ export const aiAgentsRouter = router({
       });
     }),
 
+  getOrgAiConfigs: platformProcedure
+    .input(z.object({ organizationId: z.string().uuid() }))
+    .query(async ({ input }) => {
+      return db.aiAgentOrgConfig.findMany({
+        where: { organizationId: input.organizationId },
+        include: {
+          agent: { select: { id: true, name: true, slug: true, category: true, model: true, status: true, costPerCall: true } },
+        },
+      });
+    }),
+
   getAiAgentUsage: platformProcedure
     .input(z.object({
       agentId: z.string().uuid().optional(),

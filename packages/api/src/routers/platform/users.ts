@@ -59,6 +59,26 @@ export const usersRouter = router({
       return { users, total };
     }),
 
+  getOrgUsers: platformProcedure
+    .input(z.object({
+      organizationId: z.string().uuid(),
+      limit: z.number().min(1).max(50).default(20),
+    }))
+    .query(async ({ input }) => {
+      const [users, total] = await Promise.all([
+        db.user.findMany({
+          where: { organizationId: input.organizationId },
+          take: input.limit,
+          orderBy: { createdAt: 'desc' },
+          include: {
+            userRoles: { include: { role: { select: { name: true, slug: true } } } },
+          },
+        }),
+        db.user.count({ where: { organizationId: input.organizationId } }),
+      ]);
+      return { users, total };
+    }),
+
   listPlatformOwnerEmails: platformProcedure.query(async () => {
     return db.platformOwnerEmail.findMany({ orderBy: { createdAt: 'desc' } });
   }),

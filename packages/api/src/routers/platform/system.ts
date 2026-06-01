@@ -175,6 +175,22 @@ export const systemRouter = router({
       return { logs, nextCursor, total };
     }),
 
+  getOrgAuditLogs: platformProcedure
+    .input(z.object({
+      organizationId: z.string().uuid(),
+      limit: z.number().min(1).max(50).default(10),
+    }))
+    .query(async ({ input }) => {
+      return db.auditLog.findMany({
+        where: { organizationId: input.organizationId },
+        take: input.limit,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          actor: { select: { id: true, firstName: true, lastName: true, email: true, avatar: true } },
+        },
+      });
+    }),
+
   listAllFeatureFlags: platformProcedure.query(async () => {
     const flags = await db.featureFlag.findMany({
       orderBy: [{ key: 'asc' }],

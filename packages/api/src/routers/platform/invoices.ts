@@ -325,6 +325,42 @@ export const invoicesRouter = router({
       return [header, ...rows].join('\n');
     }),
 
+  getOrgInvoices: platformProcedure
+    .input(z.object({
+      organizationId: z.string().uuid(),
+      limit: z.number().min(1).max(20).default(5),
+    }))
+    .query(async ({ input }) => {
+      const [invoices, stats] = await Promise.all([
+        db.invoice.findMany({
+          where: { organizationId: input.organizationId },
+          take: input.limit,
+          orderBy: { createdAt: 'desc' },
+          include: { lineItems: { orderBy: { sortOrder: 'asc' } } },
+        }),
+        db.invoice.aggregate({
+          where: { organizationId: input.organizationId, status: InvoiceStatus.pending },
+          _sum: { amount: true },
+          _count: true,
+        }),
+      ]);
+
+      const overdueCount = await db.invoice.count({
+        where: {
+          organizationId: input.organizationId,
+          status: InvoiceStatus.pending,
+          dueDate: { lt: new Date() },
+        },
+      });
+
+      return {
+        invoices,
+        outstandingAmount: stats._sum.amount ?? 0,
+        pendingCount: stats._count,
+        overdueCount,
+      };
+    }),
+
   getBillingProfile: platformProcedure
     .input(z.object({ organizationId: z.string().uuid() }))
     .query(async ({ input }) => {
