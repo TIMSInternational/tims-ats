@@ -1,51 +1,43 @@
 'use client';
 
-import { trpc } from '../../../lib/trpc';
-import { KpiSection } from './kpi-section';
-import { RecentActivity } from './recent-activity';
-import {
-  UserGrowthChart,
-  PlanDistribution,
-  SystemAlerts,
-  MrrTrendChart,
-  PlatformMetrics,
-  QuickActions,
-} from './charts-section';
+import { AttentionBar } from './attention-bar';
+import { KpiStrip } from './kpi-strip';
+import { MrrTrendChart } from './charts/mrr-trend-chart';
+import { RevenueByCustomerChart } from './charts/revenue-by-customer';
+import { PlanDistributionChart } from './charts/plan-distribution';
+import { CustomerHealthGrid } from './charts/customer-health';
+import { CustomerTable } from './customer-table';
+import { ActivityFeed } from './activity-feed';
 
 export default function DashboardPage() {
-  const kpis = trpc.platform.getDashboardKpis.useQuery();
-  const activity = trpc.platform.getRecentActivity.useQuery();
-  const planDist = trpc.platform.getPlanDistribution.useQuery();
-  const userGrowth = trpc.platform.getUserGrowth.useQuery();
-  const alerts = trpc.notification.list.useQuery({ limit: 5 });
-  const mrrTrend = trpc.platform.getMrrTrend.useQuery();
-
   return (
     <div className="h-full flex flex-col overflow-hidden p-6">
-      <KpiSection data={kpis.data} isLoading={kpis.isLoading} />
-
       <div className="flex-1 min-h-0 overflow-y-auto">
-        {/* Two Column Layout */}
-        <div className="flex gap-5 mb-6">
-          {/* LEFT 60% */}
-          <div className="w-[60%] flex flex-col gap-5">
-            <RecentActivity data={activity.data} isLoading={activity.isLoading} />
-            <UserGrowthChart data={userGrowth.data} isLoading={userGrowth.isLoading} />
-          </div>
+        {/* Attention Bar */}
+        <AttentionBar />
 
-          {/* RIGHT 40% */}
-          <div className="w-[40%] flex flex-col gap-5">
-            <PlanDistribution data={planDist.data} isLoading={planDist.isLoading} />
-            <SystemAlerts notifications={alerts.data?.notifications} isLoading={alerts.isLoading} />
-            <QuickActions />
-          </div>
+        {/* KPI Strip */}
+        <KpiStrip />
+
+        {/* Charts Row 1: MRR Trend + Revenue by Customer */}
+        <div className="grid grid-cols-2 gap-4 mb-5">
+          <MrrTrendChart />
+          <RevenueByCustomerChart />
         </div>
 
-        {/* Bottom: Revenue Trend + Platform Stats */}
-        <div className="flex gap-5">
-          <MrrTrendChart data={mrrTrend.data} isLoading={mrrTrend.isLoading} />
-          <PlatformMetrics mrr={kpis.data?.mrr} totalOrgs={kpis.data?.totalOrgs} />
+        {/* Charts Row 2: Plan Distribution + Customer Health */}
+        <div className="grid grid-cols-2 gap-4 mb-5">
+          <PlanDistributionChart />
+          <CustomerHealthGrid />
         </div>
+
+        {/* Customer Table (full width) */}
+        <div className="mb-5">
+          <CustomerTable />
+        </div>
+
+        {/* Activity Feed + System Status */}
+        <ActivityFeed />
       </div>
     </div>
   );
