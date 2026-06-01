@@ -60,7 +60,7 @@ export function trialDateColor(trialEndsAt: string | Date | null | undefined): s
   const daysLeft = Math.ceil((new Date(trialEndsAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
   if (daysLeft <= 3) return 'text-[#DD0C15] font-medium';
   if (daysLeft <= 7) return 'text-amber-600 font-medium';
-  return 'text-amber-600 font-medium';
+  return 'text-[#8B8B8B]';
 }
 
 export function Skeleton({ className }: { className: string }) {
