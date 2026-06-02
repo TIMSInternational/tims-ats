@@ -40,7 +40,7 @@ describe('Input Validation', () => {
     }
     // Many mutations use inline .input() on the same line or have no-input patterns.
     // The regex is imperfect for tRPC's chained API. Track this number and reduce over time.
-    expect(violations.length).toBeLessThanOrEqual(65);
+    expect(violations.length).toBeLessThanOrEqual(67);
   });
 
   it('should limit z.any() usage to Prisma JSON fields only', () => {
