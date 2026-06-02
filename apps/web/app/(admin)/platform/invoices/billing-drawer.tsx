@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
-import { Skeleton } from './_helpers';
+import { Skeleton } from '../../../../components';
 
 export function BillingProfileDrawer({ organizationId, onClose }: { organizationId: string; onClose: () => void }) {
   const { t } = useI18n();

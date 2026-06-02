@@ -14,6 +14,7 @@ export type BillingProfileData = RouterOutput['platform']['getBillingProfile'];
 export type MrrTrendItem = RouterOutput['platform']['getMrrTrend'][number];
 export type SubscriptionKpis = RouterOutput['platform']['getSubscriptionKpis'];
 export type ExpiringTrial = SubscriptionKpis['expiringTrials'][number];
+export type SubscriptionDetail = RouterOutput['platform']['getSubscriptionDetail'];
 
 // Platform owner emails
 export type PlatformOwnerEmailList = RouterOutput['platform']['listPlatformOwnerEmails'];

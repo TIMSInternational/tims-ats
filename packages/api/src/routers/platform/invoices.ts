@@ -4,6 +4,88 @@ import { db, InvoiceStatus } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { sendEmail } from '../../lib/ses';
 import { platformProcedure } from './_common';
+import type { Prisma } from '@tims/db';
+
+const invoiceListSelect = {
+  id: true,
+  invoiceNumber: true,
+  organizationId: true,
+  amount: true,
+  currency: true,
+  status: true,
+  description: true,
+  invoiceDate: true,
+  dueDate: true,
+  paidAt: true,
+  poNumber: true,
+  memo: true,
+  createdAt: true,
+  organization: { select: { id: true, name: true, slug: true } },
+  lineItems: {
+    select: { id: true, description: true, quantity: true, unitPrice: true, total: true, sortOrder: true },
+    orderBy: { sortOrder: 'asc' as const },
+  },
+} as const;
+
+const invoiceDetailSelect = {
+  ...invoiceListSelect,
+  notes: true,
+  emailTo: true,
+  emailCc: true,
+  organization: {
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      billingEmail: true,
+      billingProfile: {
+        select: {
+          companyName: true,
+          taxId: true,
+          address: true,
+          city: true,
+          state: true,
+          country: true,
+          zipCode: true,
+          billingEmail: true,
+          billingPhone: true,
+        },
+      },
+    },
+  },
+} as const;
+
+const STATUS_FILTER = z.enum(['draft', 'pending', 'paid', 'void', 'overdue']).optional();
+
+function buildInvoiceWhere(input: {
+  status?: string;
+  organizationId?: string;
+  search?: string;
+  dateFrom?: Date;
+  dateTo?: Date;
+}): Prisma.InvoiceWhereInput {
+  const where: Prisma.InvoiceWhereInput = {};
+
+  if (input.status === 'overdue') {
+    where.status = InvoiceStatus.pending;
+    where.dueDate = { lt: new Date() };
+  } else if (input.status) {
+    where.status = input.status as InvoiceStatus;
+  }
+
+  if (input.organizationId) where.organizationId = input.organizationId;
+  if (input.search?.trim()) {
+    where.organization = { name: { contains: input.search.trim(), mode: 'insensitive' } };
+  }
+  if (input.dateFrom || input.dateTo) {
+    const createdAt: Prisma.DateTimeFilter = {};
+    if (input.dateFrom) createdAt.gte = input.dateFrom;
+    if (input.dateTo) createdAt.lte = input.dateTo;
+    where.createdAt = createdAt;
+  }
+
+  return where;
+}
 
 export const invoicesRouter = router({
   getInvoiceKpis: platformProcedure.query(async () => {
@@ -49,44 +131,23 @@ export const invoicesRouter = router({
   listInvoices: platformProcedure
     .input(z.object({
       page: z.number().int().min(0).default(0),
-      limit: z.number().min(1).max(50).default(20),
-      search: z.string().optional(),
-      status: z.string().optional(),
+      limit: z.number().int().min(1).max(50).default(20),
+      search: z.string().max(100).optional(),
+      status: STATUS_FILTER,
       organizationId: z.string().uuid().optional(),
       dateFrom: z.date().optional(),
       dateTo: z.date().optional(),
     }))
     .query(async ({ input }) => {
-      const { page, limit, search, status, organizationId, dateFrom, dateTo } = input;
-      const where: any = {};
-
-      if (status === 'overdue') {
-        where.status = 'pending';
-        where.dueDate = { lt: new Date() };
-      } else if (status) {
-        where.status = status;
-      }
-
-      if (organizationId) where.organizationId = organizationId;
-      if (search) {
-        where.organization = { name: { contains: search, mode: 'insensitive' } };
-      }
-      if (dateFrom || dateTo) {
-        where.createdAt = {};
-        if (dateFrom) where.createdAt.gte = dateFrom;
-        if (dateTo) where.createdAt.lte = dateTo;
-      }
+      const where = buildInvoiceWhere(input);
 
       const [invoices, total] = await Promise.all([
         db.invoice.findMany({
           where,
-          take: limit,
-          skip: page * limit,
+          take: input.limit,
+          skip: input.page * input.limit,
           orderBy: { createdAt: 'desc' },
-          include: {
-            organization: { select: { id: true, name: true, slug: true } },
-            lineItems: { orderBy: { sortOrder: 'asc' } },
-          },
+          select: invoiceListSelect,
         }),
         db.invoice.count({ where }),
       ]);
@@ -99,14 +160,9 @@ export const invoicesRouter = router({
     .query(async ({ input }) => {
       const invoice = await db.invoice.findUnique({
         where: { id: input.id },
-        include: {
-          organization: {
-            include: { billingProfile: true },
-          },
-          lineItems: { orderBy: { sortOrder: 'asc' } },
-        },
+        select: invoiceDetailSelect,
       });
-      if (!invoice) throw new TRPCError({ code: 'NOT_FOUND' });
+      if (!invoice) throw new TRPCError({ code: 'NOT_FOUND', message: 'Factura no encontrada' });
       return invoice;
     }),
 
@@ -118,7 +174,7 @@ export const invoicesRouter = router({
   createInvoice: platformProcedure
     .input(z.object({
       organizationId: z.string().uuid(),
-      currency: z.string().default('USD'),
+      currency: z.string().max(5).default('USD'),
       description: z.string().max(500).optional(),
       invoiceDate: z.date().optional(),
       dueDate: z.date().optional(),
@@ -166,9 +222,16 @@ export const invoicesRouter = router({
             })),
           },
         },
-        include: {
-          lineItems: { orderBy: { sortOrder: 'asc' } },
-          organization: { select: { name: true, billingEmail: true }, },
+        select: {
+          id: true,
+          invoiceNumber: true,
+          amount: true,
+          currency: true,
+          lineItems: {
+            select: { description: true, quantity: true, unitPrice: true, total: true },
+            orderBy: { sortOrder: 'asc' },
+          },
+          organization: { select: { name: true, billingEmail: true } },
         },
       });
 
@@ -219,10 +282,35 @@ export const invoicesRouter = router({
       status: z.enum(['paid', 'void', 'pending']),
     }))
     .mutation(async ({ input }) => {
-      const data: any = { status: input.status };
+      const existing = await db.invoice.findUnique({
+        where: { id: input.id },
+        select: { id: true, status: true, organizationId: true },
+      });
+      if (!existing) throw new TRPCError({ code: 'NOT_FOUND', message: 'Factura no encontrada' });
+
+      const data: { status: InvoiceStatus; paidAt?: Date | null } = {
+        status: input.status as InvoiceStatus,
+      };
       if (input.status === 'paid') data.paidAt = new Date();
       if (input.status === 'pending') data.paidAt = null;
-      return db.invoice.update({ where: { id: input.id }, data });
+
+      const updated = await db.invoice.update({
+        where: { id: input.id },
+        data,
+        select: { id: true, status: true, invoiceNumber: true },
+      });
+
+      await db.auditLog.create({
+        data: {
+          action: `invoice_status_${input.status}`,
+          entity: 'invoice',
+          entityId: input.id,
+          organizationId: existing.organizationId,
+          metadata: { from: existing.status, to: input.status, invoiceNumber: updated.invoiceNumber },
+        },
+      });
+
+      return updated;
     }),
 
   sendPaymentReminder: platformProcedure
@@ -230,11 +318,24 @@ export const invoicesRouter = router({
     .mutation(async ({ input }) => {
       const invoice = await db.invoice.findUnique({
         where: { id: input.id },
-        include: {
-          organization: { include: { billingProfile: true } },
+        select: {
+          id: true,
+          invoiceNumber: true,
+          amount: true,
+          currency: true,
+          description: true,
+          dueDate: true,
+          organizationId: true,
+          organization: {
+            select: {
+              name: true,
+              billingEmail: true,
+              billingProfile: { select: { billingEmail: true } },
+            },
+          },
         },
       });
-      if (!invoice) throw new TRPCError({ code: 'NOT_FOUND' });
+      if (!invoice) throw new TRPCError({ code: 'NOT_FOUND', message: 'Factura no encontrada' });
 
       const email = invoice.organization.billingProfile?.billingEmail
         || invoice.organization.billingEmail
@@ -275,35 +376,44 @@ export const invoicesRouter = router({
       });
 
       if (!sent) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to send email' });
+
+      await db.auditLog.create({
+        data: {
+          action: 'payment_reminder_sent',
+          entity: 'invoice',
+          entityId: invoice.id,
+          organizationId: invoice.organizationId,
+          metadata: { billingEmail: email, invoiceNumber: invoice.invoiceNumber },
+        },
+      });
+
       return { sent: true };
     }),
 
   exportInvoicesCsv: platformProcedure
     .input(z.object({
-      status: z.string().optional(),
+      status: STATUS_FILTER,
       organizationId: z.string().uuid().optional(),
       dateFrom: z.date().optional(),
       dateTo: z.date().optional(),
     }))
     .query(async ({ input }) => {
-      const where: any = {};
-      if (input.status === 'overdue') {
-        where.status = 'pending';
-        where.dueDate = { lt: new Date() };
-      } else if (input.status) {
-        where.status = input.status;
-      }
-      if (input.organizationId) where.organizationId = input.organizationId;
-      if (input.dateFrom || input.dateTo) {
-        where.createdAt = {};
-        if (input.dateFrom) where.createdAt.gte = input.dateFrom;
-        if (input.dateTo) where.createdAt.lte = input.dateTo;
-      }
+      const where = buildInvoiceWhere(input);
 
       const invoices = await db.invoice.findMany({
         where,
         orderBy: { createdAt: 'desc' },
-        include: { organization: { select: { name: true } } },
+        select: {
+          invoiceNumber: true,
+          amount: true,
+          currency: true,
+          status: true,
+          description: true,
+          createdAt: true,
+          dueDate: true,
+          paidAt: true,
+          organization: { select: { name: true } },
+        },
       });
 
       const header = 'Numero,Organizacion,Monto,Moneda,Estado,Descripcion,Emision,Vencimiento,Pagada';
@@ -311,11 +421,11 @@ export const invoicesRouter = router({
         const fmt = (d: Date | null | undefined) => d ? new Intl.DateTimeFormat('es', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(d) : '';
         return [
           `INV-${inv.invoiceNumber}`,
-          `"${inv.organization.name}"`,
+          `"${inv.organization.name.replace(/"/g, '""')}"`,
           inv.amount,
           inv.currency,
           inv.status,
-          `"${inv.description || ''}"`,
+          `"${(inv.description || '').replace(/"/g, '""')}"`,
           fmt(inv.createdAt),
           fmt(inv.dueDate),
           fmt(inv.paidAt),
@@ -328,30 +438,29 @@ export const invoicesRouter = router({
   getOrgInvoices: platformProcedure
     .input(z.object({
       organizationId: z.string().uuid(),
-      limit: z.number().min(1).max(20).default(5),
+      limit: z.number().int().min(1).max(20).default(5),
     }))
     .query(async ({ input }) => {
-      const [invoices, stats] = await Promise.all([
+      const [invoices, stats, overdueCount] = await Promise.all([
         db.invoice.findMany({
           where: { organizationId: input.organizationId },
           take: input.limit,
           orderBy: { createdAt: 'desc' },
-          include: { lineItems: { orderBy: { sortOrder: 'asc' } } },
+          select: invoiceListSelect,
         }),
         db.invoice.aggregate({
           where: { organizationId: input.organizationId, status: InvoiceStatus.pending },
           _sum: { amount: true },
           _count: true,
         }),
+        db.invoice.count({
+          where: {
+            organizationId: input.organizationId,
+            status: InvoiceStatus.pending,
+            dueDate: { lt: new Date() },
+          },
+        }),
       ]);
-
-      const overdueCount = await db.invoice.count({
-        where: {
-          organizationId: input.organizationId,
-          status: InvoiceStatus.pending,
-          dueDate: { lt: new Date() },
-        },
-      });
 
       return {
         invoices,
@@ -364,21 +473,34 @@ export const invoicesRouter = router({
   getBillingProfile: platformProcedure
     .input(z.object({ organizationId: z.string().uuid() }))
     .query(async ({ input }) => {
-      return db.billingProfile.findUnique({ where: { organizationId: input.organizationId } });
+      return db.billingProfile.findUnique({
+        where: { organizationId: input.organizationId },
+        select: {
+          companyName: true,
+          taxId: true,
+          address: true,
+          city: true,
+          state: true,
+          country: true,
+          zipCode: true,
+          billingEmail: true,
+          billingPhone: true,
+        },
+      });
     }),
 
   upsertBillingProfile: platformProcedure
     .input(z.object({
       organizationId: z.string().uuid(),
-      companyName: z.string().optional(),
-      taxId: z.string().optional(),
-      address: z.string().optional(),
-      city: z.string().optional(),
-      state: z.string().optional(),
-      country: z.string().optional(),
-      zipCode: z.string().optional(),
+      companyName: z.string().max(200).optional(),
+      taxId: z.string().max(50).optional(),
+      address: z.string().max(300).optional(),
+      city: z.string().max(100).optional(),
+      state: z.string().max(100).optional(),
+      country: z.string().max(100).optional(),
+      zipCode: z.string().max(20).optional(),
       billingEmail: z.string().email().optional(),
-      billingPhone: z.string().optional(),
+      billingPhone: z.string().max(30).optional(),
     }))
     .mutation(async ({ input }) => {
       const { organizationId, ...data } = input;
@@ -386,6 +508,11 @@ export const invoicesRouter = router({
         where: { organizationId },
         create: { organizationId, ...data },
         update: data,
+        select: {
+          companyName: true,
+          taxId: true,
+          billingEmail: true,
+        },
       });
     }),
 });

@@ -106,11 +106,14 @@ async function main() {
     });
   }
 
-  // TIMS Subscription
+  // TIMS Subscription — backdate 11 months for MRR trend
+  const timsSubCreatedAt = new Date();
+  timsSubCreatedAt.setMonth(timsSubCreatedAt.getMonth() - 11);
+  timsSubCreatedAt.setDate(1);
   await db.subscription.upsert({
     where: { organizationId: org.id },
-    update: {},
-    create: { organizationId: org.id, plan: 'enterprise', status: 'active' },
+    update: { createdAt: timsSubCreatedAt },
+    create: { organizationId: org.id, plan: 'enterprise', status: 'active', createdAt: timsSubCreatedAt },
   });
 
   console.log(`[User] ${user.firstName} ${user.lastName} (platform owner)`);
@@ -118,17 +121,17 @@ async function main() {
   // ===========================
   // 2. Additional Organizations
   // ===========================
-  const orgDefs: { name: string; slug: string; plan: OrgPlan; status: SubscriptionStatus; billingEmail: string; country: string; currency: string }[] = [
-    { name: 'Bancolombia', slug: 'bancolombia', plan: OrgPlan.enterprise, status: SubscriptionStatus.active, billingEmail: 'rrhh@bancolombia.com.co', country: 'CO', currency: 'COP' },
-    { name: 'Rappi', slug: 'rappi', plan: OrgPlan.professional, status: SubscriptionStatus.active, billingEmail: 'people@rappi.com', country: 'CO', currency: 'USD' },
-    { name: 'Grupo Nutresa', slug: 'grupo-nutresa', plan: OrgPlan.professional, status: SubscriptionStatus.active, billingEmail: 'talento@nutresa.com', country: 'CO', currency: 'COP' },
-    { name: 'Ecopetrol', slug: 'ecopetrol', plan: OrgPlan.enterprise, status: SubscriptionStatus.active, billingEmail: 'rrhh@ecopetrol.com.co', country: 'CO', currency: 'COP' },
-    { name: 'MercadoLibre Colombia', slug: 'mercadolibre-co', plan: OrgPlan.starter, status: SubscriptionStatus.active, billingEmail: 'hr@mercadolibre.com.co', country: 'CO', currency: 'USD' },
-    { name: 'Globant', slug: 'globant', plan: OrgPlan.professional, status: SubscriptionStatus.active, billingEmail: 'people@globant.com', country: 'AR', currency: 'USD' },
-    { name: 'StartupX', slug: 'startupx', plan: OrgPlan.trial, status: SubscriptionStatus.trialing, billingEmail: 'admin@startupx.io', country: 'CO', currency: 'USD' },
-    { name: 'TechFlow Labs', slug: 'techflow-labs', plan: OrgPlan.trial, status: SubscriptionStatus.trialing, billingEmail: 'hello@techflow.dev', country: 'MX', currency: 'MXN' },
-    { name: 'AgroVerde S.A.', slug: 'agroverde', plan: OrgPlan.starter, status: SubscriptionStatus.active, billingEmail: 'admin@agroverde.co', country: 'CO', currency: 'COP' },
-    { name: 'CloudNine Solutions', slug: 'cloudnine', plan: OrgPlan.professional, status: SubscriptionStatus.past_due, billingEmail: 'billing@cloudnine.io', country: 'US', currency: 'USD' },
+  const orgDefs: { name: string; slug: string; plan: OrgPlan; status: SubscriptionStatus; billingEmail: string; country: string; currency: string; monthsAgo: number }[] = [
+    { name: 'Bancolombia', slug: 'bancolombia', plan: OrgPlan.enterprise, status: SubscriptionStatus.active, billingEmail: 'rrhh@bancolombia.com.co', country: 'CO', currency: 'COP', monthsAgo: 10 },
+    { name: 'Rappi', slug: 'rappi', plan: OrgPlan.professional, status: SubscriptionStatus.active, billingEmail: 'people@rappi.com', country: 'CO', currency: 'USD', monthsAgo: 8 },
+    { name: 'Grupo Nutresa', slug: 'grupo-nutresa', plan: OrgPlan.professional, status: SubscriptionStatus.active, billingEmail: 'talento@nutresa.com', country: 'CO', currency: 'COP', monthsAgo: 7 },
+    { name: 'Ecopetrol', slug: 'ecopetrol', plan: OrgPlan.enterprise, status: SubscriptionStatus.active, billingEmail: 'rrhh@ecopetrol.com.co', country: 'CO', currency: 'COP', monthsAgo: 6 },
+    { name: 'MercadoLibre Colombia', slug: 'mercadolibre-co', plan: OrgPlan.starter, status: SubscriptionStatus.active, billingEmail: 'hr@mercadolibre.com.co', country: 'CO', currency: 'USD', monthsAgo: 5 },
+    { name: 'Globant', slug: 'globant', plan: OrgPlan.professional, status: SubscriptionStatus.active, billingEmail: 'people@globant.com', country: 'AR', currency: 'USD', monthsAgo: 4 },
+    { name: 'StartupX', slug: 'startupx', plan: OrgPlan.trial, status: SubscriptionStatus.trialing, billingEmail: 'admin@startupx.io', country: 'CO', currency: 'USD', monthsAgo: 0 },
+    { name: 'TechFlow Labs', slug: 'techflow-labs', plan: OrgPlan.trial, status: SubscriptionStatus.trialing, billingEmail: 'hello@techflow.dev', country: 'MX', currency: 'MXN', monthsAgo: 0 },
+    { name: 'AgroVerde S.A.', slug: 'agroverde', plan: OrgPlan.starter, status: SubscriptionStatus.active, billingEmail: 'admin@agroverde.co', country: 'CO', currency: 'COP', monthsAgo: 3 },
+    { name: 'CloudNine Solutions', slug: 'cloudnine', plan: OrgPlan.professional, status: SubscriptionStatus.past_due, billingEmail: 'billing@cloudnine.io', country: 'US', currency: 'USD', monthsAgo: 2 },
   ];
 
   const orgs: Record<string, typeof org> = {};
@@ -145,15 +148,25 @@ async function main() {
     });
     orgs[od.slug] = o;
 
-    // Subscription
+    // Subscription — backdate createdAt so MRR trend chart shows growth
+    const subCreatedAt = new Date();
+    subCreatedAt.setMonth(subCreatedAt.getMonth() - od.monthsAgo);
+    subCreatedAt.setDate(1);
+    const periodStart = new Date();
+    periodStart.setDate(1);
+    const periodEnd = new Date(periodStart);
+    periodEnd.setMonth(periodEnd.getMonth() + 1);
     await db.subscription.upsert({
       where: { organizationId: o.id },
-      update: {},
+      update: { createdAt: subCreatedAt },
       create: {
         organizationId: o.id,
         plan: od.plan,
         status: od.status,
-        trialEndsAt: od.status === 'trialing' ? daysFromNow(od.slug === 'startupx' ? 3 : 10) : null,
+        createdAt: subCreatedAt,
+        trialEndsAt: od.status === 'trialing' ? daysFromNow(od.slug === 'startupx' ? 15 : 10) : null,
+        currentPeriodStart: od.status === 'active' || od.status === 'past_due' ? periodStart : null,
+        currentPeriodEnd: od.status === 'active' || od.status === 'past_due' ? periodEnd : null,
       },
     });
 

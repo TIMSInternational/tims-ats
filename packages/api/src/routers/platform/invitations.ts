@@ -305,4 +305,68 @@ export const invitationsRouter = router({
 
       return { accepted: true, organizationId: invitation.organizationId, type: invitation.type };
     }),
+
+  bulkInviteUsers: platformProcedure
+    .input(z.object({
+      organizationId: z.string().uuid(),
+      users: z.array(z.object({
+        email: z.string().email().max(255),
+        firstName: z.string().max(100).optional(),
+        lastName: z.string().max(100).optional(),
+        roleSlug: z.string().max(50).optional(),
+      })).min(1).max(200),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const org = await db.organization.findUnique({
+        where: { id: input.organizationId },
+        select: { name: true },
+      });
+      if (!org) throw new TRPCError({ code: 'NOT_FOUND', message: 'Organization not found' });
+
+      const results: { email: string; status: 'sent' | 'duplicate' | 'error'; message?: string }[] = [];
+      const existingEmails = await db.platformInvitation.findMany({
+        where: {
+          organizationId: input.organizationId,
+          email: { in: input.users.map(u => u.email) },
+          status: { in: [InvitationStatus.sent, InvitationStatus.pending, InvitationStatus.accepted] },
+        },
+        select: { email: true },
+      });
+      const existingSet = new Set(existingEmails.map(e => e.email.toLowerCase()));
+
+      for (const user of input.users) {
+        if (existingSet.has(user.email.toLowerCase())) {
+          results.push({ email: user.email, status: 'duplicate', message: 'Already invited' });
+          continue;
+        }
+
+        try {
+          const token = randomUUID();
+          const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+          await db.platformInvitation.create({
+            data: {
+              email: user.email,
+              type: InvitationType.user,
+              organizationId: input.organizationId,
+              organizationName: org.name,
+              roleSlug: user.roleSlug,
+              token,
+              status: InvitationStatus.sent,
+              invitedById: ctx.user.id,
+              sentAt: new Date(),
+              expiresAt,
+            },
+          });
+          results.push({ email: user.email, status: 'sent' });
+        } catch {
+          results.push({ email: user.email, status: 'error', message: 'Failed to create invitation' });
+        }
+      }
+
+      const sent = results.filter(r => r.status === 'sent').length;
+      const duplicates = results.filter(r => r.status === 'duplicate').length;
+      const errors = results.filter(r => r.status === 'error').length;
+
+      return { results, summary: { total: input.users.length, sent, duplicates, errors } };
+    }),
 });

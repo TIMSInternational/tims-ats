@@ -2,15 +2,13 @@
 
 import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
+import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
-import {
-  ROLE_COLORS,
-  getInitials,
-  getAvatarColor,
-  formatDate,
-  formatLastLogin,
-  SkeletonRow,
-} from './users-utils';
+import { KpiCard, KpiCardSkeleton, Modal } from '../../../../components';
+import { UserTable } from './user-table';
+import { RoleChangeModal } from './role-change-modal';
+import { InviteWizard } from './invite-wizard';
+import type { UserListItem } from '../../../../lib/trpc-types';
 
 export default function PlatformUsersPage() {
   const { t } = useI18n();
@@ -19,9 +17,13 @@ export default function PlatformUsersPage() {
   const [roleFilter, setRoleFilter] = useState('');
   const [activeFilter, setActiveFilter] = useState<'active' | 'all'>('active');
   const [page, setPage] = useState(0);
+  const [confirmTarget, setConfirmTarget] = useState<{ user: UserListItem; action: 'deactivate' | 'activate' } | null>(null);
+  const [editRoleTarget, setEditRoleTarget] = useState<UserListItem | null>(null);
+  const [showInviteWizard, setShowInviteWizard] = useState(false);
   const limit = 15;
 
   const kpis = trpc.platform.getUserKpis.useQuery();
+  const orgs = trpc.platform.listOrganizationsMinimal.useQuery();
 
   const { data, isLoading } = trpc.platform.listAllUsers.useQuery({
     page,
@@ -32,48 +34,108 @@ export default function PlatformUsersPage() {
     isActive: activeFilter === 'active' ? true : undefined,
   });
 
+  const utils = trpc.useUtils();
   const users = data?.users ?? [];
   const total = data?.total ?? 0;
 
+  const invalidateAll = () => {
+    utils.platform.listAllUsers.invalidate();
+    utils.platform.getUserKpis.invalidate();
+  };
+
+  const deactivateUser = trpc.platform.deactivateOrgUser.useMutation({
+    onSuccess: () => { invalidateAll(); setConfirmTarget(null); toast(t.users.userDeactivated, { type: 'success' }); },
+    onError: (err) => { toast(err.message, { type: 'error' }); },
+  });
+
+  const activateUser = trpc.platform.activateOrgUser.useMutation({
+    onSuccess: () => { invalidateAll(); setConfirmTarget(null); toast(t.users.userActivated, { type: 'success' }); },
+    onError: (err) => { toast(err.message, { type: 'error' }); },
+  });
+
+  const changeRole = trpc.platform.changeOrgUserRole.useMutation({
+    onSuccess: () => { invalidateAll(); setEditRoleTarget(null); toast(t.common.save, { type: 'success' }); },
+    onError: (err) => { toast(err.message, { type: 'error' }); },
+  });
+
+  const exportCsv = trpc.platform.exportUsersCsv.useQuery(
+    {
+      organizationId: orgFilter || undefined,
+      isActive: activeFilter === 'active' ? true : undefined,
+      roleSlug: roleFilter || undefined,
+    },
+    { enabled: false },
+  );
+
+  const handleExport = async () => {
+    const result = await exportCsv.refetch();
+    if (result.data) {
+      const blob = new Blob([result.data.csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `usuarios-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast(`${t.users.exportCsv}: ${result.data.count}`, { type: 'success' });
+    }
+  };
+
+  const handleConfirm = () => {
+    if (!confirmTarget) return;
+    const { user, action } = confirmTarget;
+    if (!user.organizationId) return;
+    if (action === 'deactivate') {
+      deactivateUser.mutate({ userId: user.id, organizationId: user.organizationId });
+    } else {
+      activateUser.mutate({ userId: user.id, organizationId: user.organizationId });
+    }
+  };
+
   return (
     <div className="h-full flex flex-col overflow-hidden p-5">
-      {/* KPI ROW */}
+      {/* KPI Row */}
       <div className="grid grid-cols-4 gap-3 mb-4 flex-shrink-0">
         {kpis.isLoading ? (
-          Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center animate-pulse">
-              <div className="h-3 bg-gray-200 rounded w-20 mx-auto mb-2" />
-              <div className="h-8 bg-gray-200 rounded w-16 mx-auto mb-1" />
-              <div className="h-2.5 bg-gray-100 rounded w-14 mx-auto" />
-            </div>
-          ))
+          Array.from({ length: 4 }).map((_, i) => <KpiCardSkeleton key={i} />)
         ) : kpis.data ? (
           <>
-            <div className="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center">
-              <p className="text-[11px] text-[#8B8B8B] mb-1">{t.users.kpiTotal}</p>
-              <p className="text-[26px] font-bold text-[#1F114C]">{kpis.data.total.toLocaleString()}</p>
-              <p className="text-[10px] text-green-500 font-medium">En la plataforma</p>
-            </div>
-            <div className="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center">
-              <p className="text-[11px] text-[#8B8B8B] mb-1">Activos Hoy</p>
-              <p className="text-[26px] font-bold text-green-600">{kpis.data.activeToday}</p>
-              <p className="text-[10px] text-[#8B8B8B]">{kpis.data.total > 0 ? `${((kpis.data.activeToday / kpis.data.total) * 100).toFixed(1)}% del total` : '0%'}</p>
-            </div>
-            <div className="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center">
-              <p className="text-[11px] text-[#8B8B8B] mb-1">{t.users.kpiPlatformOwners}</p>
-              <p className="text-[26px] font-bold text-[#1F114C]">{kpis.data.platformOwners}</p>
-              <p className="text-[10px] text-[#8B8B8B]">Acceso total</p>
-            </div>
-            <div className="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center">
-              <p className="text-[11px] text-[#8B8B8B] mb-1">{t.users.kpiInactive}</p>
-              <p className="text-[26px] font-bold text-amber-500">{kpis.data.inactive}</p>
-              <p className="text-[10px] text-amber-500 font-medium">Sin login 30+ dias</p>
-            </div>
+            <KpiCard
+              label={t.users.kpiTotal}
+              value={kpis.data.total.toLocaleString()}
+              subtitle={t.users.onPlatform}
+              icon={<svg className="w-4 h-4 text-[#1F114C]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" /></svg>}
+              iconBg="bg-[#1F114C]/10"
+            />
+            <KpiCard
+              label={t.users.activeToday}
+              value={kpis.data.activeToday}
+              subtitle={`${kpis.data.total > 0 ? ((kpis.data.activeToday / kpis.data.total) * 100).toFixed(1) : 0}% ${t.users.ofTotal}`}
+              valueColor="text-green-600"
+              icon={<svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 11-5.93-9.14" /><path d="M22 4L12 14.01l-3-3" /></svg>}
+              iconBg="bg-green-50"
+            />
+            <KpiCard
+              label={t.users.kpiPlatformOwners}
+              value={kpis.data.platformOwners}
+              subtitle={t.users.fullAccess}
+              icon={<svg className="w-4 h-4 text-[#1F114C]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>}
+              iconBg="bg-[#1F114C]/10"
+            />
+            <KpiCard
+              label={t.users.kpiInactive}
+              value={kpis.data.inactive}
+              subtitle={t.users.noLogin30Days}
+              valueColor="text-amber-500"
+              icon={<svg className="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0zM12 9v4M12 17h.01" /></svg>}
+              iconBg="bg-amber-50"
+              highlight={kpis.data.inactive > 0}
+            />
           </>
         ) : null}
       </div>
 
-      {/* FILTERS */}
+      {/* Filters */}
       <div className="flex items-center gap-3 mb-4 flex-shrink-0">
         <div className="relative flex-1 max-w-[280px]">
           <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8B8B8B]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
@@ -83,140 +145,139 @@ export default function PlatformUsersPage() {
             className="w-full h-9 pl-9 pr-3 border border-[#EDEDED] rounded-lg text-[12px] bg-white focus:outline-none focus:border-[#1F114C]"
             placeholder={t.users.searchUser}
             value={search}
-            onChange={e => { setSearch(e.target.value); setPage(0); }}
+            onChange={(e) => { setSearch(e.target.value); setPage(0); }}
           />
         </div>
-        <select className="h-9 px-3 border border-[#EDEDED] rounded-lg text-[12px] bg-white text-[#585858] focus:outline-none" value={orgFilter} onChange={e => { setOrgFilter(e.target.value); setPage(0); }}>
-          <option value="">Todas las Organizaciones</option>
+        <select
+          className="h-9 px-3 border border-[#EDEDED] rounded-lg text-[12px] bg-white text-[#585858] focus:outline-none"
+          value={orgFilter}
+          onChange={(e) => { setOrgFilter(e.target.value); setPage(0); }}
+        >
+          <option value="">{t.users.allOrgs}</option>
+          {orgs.data?.map((org) => (
+            <option key={org.id} value={org.id}>{org.name}</option>
+          ))}
         </select>
-        <select className="h-9 px-3 border border-[#EDEDED] rounded-lg text-[12px] bg-white text-[#585858] focus:outline-none" value={roleFilter} onChange={e => { setRoleFilter(e.target.value); setPage(0); }}>
-          <option value="">Todos los Roles</option>
-          <option value="super_admin">super_admin</option>
-          <option value="hr_admin">hr_admin</option>
-          <option value="recruiter">recruiter</option>
-          <option value="leader">leader</option>
-          <option value="employee">employee</option>
+        <select
+          className="h-9 px-3 border border-[#EDEDED] rounded-lg text-[12px] bg-white text-[#585858] focus:outline-none"
+          value={roleFilter}
+          onChange={(e) => { setRoleFilter(e.target.value); setPage(0); }}
+        >
+          <option value="">{t.users.allRoles}</option>
+          <option value="super_admin">Super Admin</option>
+          <option value="hr_admin">HR Admin</option>
+          <option value="recruiter">Recruiter</option>
+          <option value="leader">Leader</option>
+          <option value="employee">Employee</option>
         </select>
         <div className="flex items-center bg-white border border-[#EDEDED] rounded-lg overflow-hidden">
-          <button className={`px-3 h-9 text-[12px] font-medium transition ${activeFilter === 'active' ? 'bg-[#1F114C] text-white' : 'text-[#585858]'}`} onClick={() => { setActiveFilter('active'); setPage(0); }}>{t.users.filterActive}</button>
-          <button className={`px-3 h-9 text-[12px] font-medium transition ${activeFilter === 'all' ? 'bg-[#1F114C] text-white' : 'text-[#585858]'}`} onClick={() => { setActiveFilter('all'); setPage(0); }}>{t.users.filterAll}</button>
+          <button
+            className={`px-3 h-9 text-[12px] font-medium transition ${activeFilter === 'active' ? 'bg-[#1F114C] text-white' : 'text-[#585858]'}`}
+            onClick={() => { setActiveFilter('active'); setPage(0); }}
+          >
+            {t.users.filterActive}
+          </button>
+          <button
+            className={`px-3 h-9 text-[12px] font-medium transition ${activeFilter === 'all' ? 'bg-[#1F114C] text-white' : 'text-[#585858]'}`}
+            onClick={() => { setActiveFilter('all'); setPage(0); }}
+          >
+            {t.users.filterAll}
+          </button>
         </div>
         <div className="flex-1" />
-        <button className="flex items-center gap-1.5 border border-[#EDEDED] text-[#585858] px-3 h-9 rounded-lg text-[12px] hover:bg-[#F6F6F6] transition">
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
-          Exportar
+        <button
+          onClick={handleExport}
+          className="flex items-center gap-1.5 border border-[#EDEDED] text-[#585858] px-3 h-9 rounded-lg text-[12px] hover:bg-[#F6F6F6] transition"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+            <path d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+          </svg>
+          {t.users.export}
         </button>
-        <button className="flex items-center gap-1.5 bg-[#DD0C15] text-white px-4 h-9 rounded-lg text-[12px] font-medium hover:bg-[#c40b13] transition">
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 4.5v15m7.5-7.5h-15" /></svg>
-          {t.invitations.inviteUser}
+        <button
+          onClick={() => setShowInviteWizard(true)}
+          className="flex items-center gap-1.5 bg-[#DD0C15] text-white px-4 h-9 rounded-lg text-[12px] font-medium hover:bg-[#c40b13] transition"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <path d="M12 4.5v15m7.5-7.5h-15" />
+          </svg>
+          {t.users.inviteUser}
         </button>
       </div>
 
-      {/* USER TABLE */}
-      <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] flex-1 flex flex-col min-h-0 overflow-hidden">
-        <div className="flex-1 overflow-y-auto min-h-0">
-          <table className="w-full text-left">
-            <thead className="sticky top-0 bg-white z-10">
-              <tr className="border-b border-[#EDEDED]">
-                <th className="px-4 py-3 text-[11px] font-semibold text-[#8B8B8B] uppercase tracking-wider">Usuario</th>
-                <th className="px-4 py-3 text-[11px] font-semibold text-[#8B8B8B] uppercase tracking-wider">Email</th>
-                <th className="px-4 py-3 text-[11px] font-semibold text-[#8B8B8B] uppercase tracking-wider">Organizacion</th>
-                <th className="px-4 py-3 text-[11px] font-semibold text-[#8B8B8B] uppercase tracking-wider">Rol</th>
-                <th className="px-4 py-3 text-[11px] font-semibold text-[#8B8B8B] uppercase tracking-wider">Estado</th>
-                <th className="px-4 py-3 text-[11px] font-semibold text-[#8B8B8B] uppercase tracking-wider">Ultimo Login</th>
-                <th className="px-4 py-3 text-[11px] font-semibold text-[#8B8B8B] uppercase tracking-wider">Creado</th>
-                <th className="px-4 py-3 text-[11px] font-semibold text-[#8B8B8B] uppercase tracking-wider">Acciones</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#F3F3F3]">
-              {isLoading ? (
-                Array.from({ length: 8 }).map((_, i) => <SkeletonRow key={i} />)
-              ) : users.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="px-4 py-16 text-center">
-                    <svg className="w-10 h-10 mx-auto mb-3 text-[#ccc]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-                      <path d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
-                    </svg>
-                    <p className="text-[13px] text-[#8B8B8B]">No se encontraron usuarios</p>
-                    <p className="text-[11px] text-[#ABABAB] mt-1">Intenta ajustar los filtros de busqueda</p>
-                  </td>
-                </tr>
-              ) : (
-                users.map((user) => {
-                  const initials = getInitials(user.firstName, user.lastName);
-                  const fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Sin nombre';
-                  const roleSlug = user.isPlatformOwner ? 'platform_owner' : user.userRoles?.[0]?.role?.slug || 'employee';
-                  const roleColor = ROLE_COLORS[roleSlug] || ROLE_COLORS.employee;
-                  const avatarBg = user.isActive ? getAvatarColor(fullName) : 'bg-gray-400';
+      {/* Table */}
+      <UserTable
+        users={users}
+        isLoading={isLoading}
+        page={page}
+        limit={limit}
+        total={total}
+        onPageChange={setPage}
+        onDeactivate={(user) => setConfirmTarget({ user, action: 'deactivate' })}
+        onActivate={(user) => setConfirmTarget({ user, action: 'activate' })}
+        onEditRole={setEditRoleTarget}
+      />
 
-                  return (
-                    <tr key={user.id} className="hover:bg-[#FAFAFA]">
-                      <td className="px-4 py-2.5">
-                        <div className="flex items-center gap-2.5">
-                          <div className={`w-8 h-8 rounded-full ${avatarBg} flex items-center justify-center text-white text-[10px] font-bold`}>{initials}</div>
-                          <span className={`text-[13px] font-medium text-[#1F114C] ${!user.isActive ? 'opacity-60' : ''}`}>{fullName}</span>
-                        </div>
-                      </td>
-                      <td className={`px-4 py-2.5 text-[12px] ${user.isActive ? 'text-[#585858]' : 'text-[#8B8B8B]'}`}>{user.email}</td>
-                      <td className={`px-4 py-2.5 text-[12px] ${user.isActive ? 'text-[#585858]' : 'text-[#8B8B8B]'}`}>{user.isPlatformOwner ? 'Plataforma' : user.organization?.name || '-'}</td>
-                      <td className="px-4 py-2.5">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${roleColor.bg} ${roleColor.text}`}>{roleSlug}</span>
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <span className={`flex items-center gap-1.5 text-[12px] ${user.isActive ? 'text-[#585858]' : 'text-[#8B8B8B]'}`}>
-                          <span className={`w-2 h-2 rounded-full ${user.isActive ? 'bg-green-500' : 'bg-gray-400'}`} />
-                          {user.isActive ? t.users.statusActive : t.users.statusInactive}
-                        </span>
-                      </td>
-                      <td className={`px-4 py-2.5 text-[12px] ${user.isActive ? 'text-[#585858]' : 'text-[#8B8B8B]'}`}>{formatLastLogin(user.lastLoginAt)}</td>
-                      <td className="px-4 py-2.5 text-[12px] text-[#8B8B8B]">{formatDate(user.createdAt)}</td>
-                      <td className="px-4 py-2.5">
-                        <div className="flex items-center gap-1">
-                          <button className="px-2 py-1 text-[10px] text-[#1F114C] bg-[#F0EEF7] rounded font-medium hover:bg-[#E4E0F0]">Ver</button>
-                          <button className="px-2 py-1 text-[10px] text-[#585858] bg-[#F3F3F3] rounded font-medium hover:bg-[#E8E8E8]">{t.common.edit}</button>
-                          {!user.isPlatformOwner && user.isActive && (
-                            <>
-                              <button className="px-2 py-1 text-[10px] text-amber-600 bg-amber-50 rounded font-medium hover:bg-amber-100">Impersonar</button>
-                              <button className="px-2 py-1 text-[10px] text-[#DD0C15] bg-red-50 rounded font-medium hover:bg-red-100">{t.users.deactivate}</button>
-                            </>
-                          )}
-                          {!user.isPlatformOwner && !user.isActive && (
-                            <button className="px-2 py-1 text-[10px] text-green-600 bg-green-50 rounded font-medium hover:bg-green-100">{t.users.activate}</button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Pagination */}
-        <div className="flex items-center justify-between px-4 py-3 border-t border-[#EDEDED] flex-shrink-0">
-          <p className="text-[12px] text-[#8B8B8B]">
-            {t.common.showing} {total > 0 ? page * limit + 1 : 0} - {Math.min((page + 1) * limit, total)} {t.common.of} {total.toLocaleString()}
-          </p>
-          <div className="flex items-center gap-1">
-            <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0} className="w-8 h-8 rounded-lg border border-[#EDEDED] flex items-center justify-center text-[#8B8B8B] hover:bg-[#F6F6F6] transition disabled:opacity-40">
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6" /></svg>
-            </button>
-            {Array.from({ length: Math.min(Math.ceil(total / limit), 5) }).map((_, i) => (
-              <button key={i} onClick={() => setPage(i)} className={`w-8 h-8 rounded-lg text-[12px] font-medium transition ${page === i ? 'bg-[#1F114C] text-white' : 'border border-[#EDEDED] text-[#585858] hover:bg-[#F6F6F6]'}`}>{i + 1}</button>
-            ))}
-            {Math.ceil(total / limit) > 5 && (
-              <>
-                <span className="text-[12px] text-[#8B8B8B] px-1">...</span>
-                <button onClick={() => setPage(Math.ceil(total / limit) - 1)} className="w-8 h-8 rounded-lg text-[12px] font-medium border border-[#EDEDED] text-[#585858] hover:bg-[#F6F6F6] transition">{Math.ceil(total / limit)}</button>
-              </>
-            )}
-            <button onClick={() => setPage((p) => p + 1)} disabled={(page + 1) * limit >= total} className="w-8 h-8 rounded-lg border border-[#EDEDED] flex items-center justify-center text-[#585858] hover:bg-[#F6F6F6] transition disabled:opacity-40">
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" /></svg>
-            </button>
+      {/* Confirm Modal */}
+      {confirmTarget && (
+        <Modal
+          title={confirmTarget.action === 'deactivate' ? t.users.deactivate : t.users.activate}
+          onClose={() => setConfirmTarget(null)}
+        >
+          <div className="space-y-4">
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-[#F6F6F6]">
+              <div className="w-10 h-10 rounded-full bg-[#1F114C] flex items-center justify-center text-white text-sm font-bold">
+                {`${confirmTarget.user.firstName?.[0] || ''}${confirmTarget.user.lastName?.[0] || ''}`.toUpperCase()}
+              </div>
+              <div>
+                <p className="text-sm font-medium text-[#333]">{confirmTarget.user.firstName} {confirmTarget.user.lastName}</p>
+                <p className="text-xs text-[#8B8B8B]">{confirmTarget.user.email}</p>
+              </div>
+            </div>
+            <p className="text-sm text-[#585858]">
+              {confirmTarget.action === 'deactivate' ? t.users.confirmDeactivate : t.users.confirmActivate}
+            </p>
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                onClick={() => setConfirmTarget(null)}
+                className="h-9 px-4 rounded-lg border border-[#EDEDED] text-sm text-[#585858] font-medium hover:bg-[#F6F6F6] transition"
+              >
+                {t.common.cancel}
+              </button>
+              <button
+                onClick={handleConfirm}
+                disabled={deactivateUser.isPending || activateUser.isPending}
+                className={`h-9 px-4 rounded-lg text-sm text-white font-medium transition disabled:opacity-50 ${
+                  confirmTarget.action === 'deactivate' ? 'bg-[#DD0C15] hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'
+                }`}
+              >
+                {(deactivateUser.isPending || activateUser.isPending) ? t.common.saving : confirmTarget.action === 'deactivate' ? t.users.deactivate : t.users.activate}
+              </button>
+            </div>
           </div>
-        </div>
-      </div>
+        </Modal>
+      )}
+
+      {/* Invite Wizard */}
+      {showInviteWizard && (
+        <InviteWizard
+          onClose={() => setShowInviteWizard(false)}
+          onSuccess={() => { setShowInviteWizard(false); invalidateAll(); }}
+        />
+      )}
+
+      {/* Role Change Modal */}
+      {editRoleTarget && (
+        <RoleChangeModal
+          user={editRoleTarget}
+          onConfirm={(roleSlug) => {
+            if (!editRoleTarget.organizationId) return;
+            changeRole.mutate({ userId: editRoleTarget.id, organizationId: editRoleTarget.organizationId, roleSlug });
+          }}
+          onClose={() => setEditRoleTarget(null)}
+          isPending={changeRole.isPending}
+        />
+      )}
     </div>
   );
 }

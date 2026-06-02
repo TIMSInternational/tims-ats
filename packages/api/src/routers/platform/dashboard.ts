@@ -2,13 +2,7 @@ import { z } from 'zod';
 import { router } from '../../trpc';
 import { db, SubscriptionStatus, InvoiceStatus, InvitationStatus } from '@tims/db';
 import { platformProcedure } from './_common';
-
-const PLAN_PRICES: Record<string, number> = {
-  trial: 0,
-  starter: 499,
-  professional: 999,
-  enterprise: 2499,
-};
+import { PLAN_PRICES } from '../../lib/plan-prices';
 
 export const dashboardRouter = router({
   getDashboardKpis: platformProcedure.query(async () => {

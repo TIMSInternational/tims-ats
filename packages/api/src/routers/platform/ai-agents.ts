@@ -1,8 +1,28 @@
 import { z } from 'zod';
 import { router } from '../../trpc';
 import { db } from '@tims/db';
+import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { platformProcedure } from './_common';
+
+const agentListSelect = {
+  id: true,
+  slug: true,
+  name: true,
+  description: true,
+  category: true,
+  model: true,
+  batchEligible: true,
+  cacheTtlSeconds: true,
+  costPerCall: true,
+  status: true,
+  createdAt: true,
+  _count: { select: { orgConfigs: true, usageLogs: true } },
+} as const;
+
+const AGENT_STATUS = z.enum(['active', 'stub', 'disabled']);
+const AGENT_MODEL = z.enum(['haiku', 'sonnet']);
+const AGENT_CATEGORY = z.enum(['recruitment', 'interview', 'assessment', 'pipeline', 'talent', 'general']);
 
 export const aiAgentsRouter = router({
   getAiAgentKpis: platformProcedure.query(async () => {
@@ -26,33 +46,32 @@ export const aiAgentsRouter = router({
       stubCount,
       monthlySpend: usageLogs._sum.costUsd ?? 0,
       avgCostPerCall: usageLogs._avg.costUsd ?? 0,
+      totalCalls30d: usageLogs._count,
     };
   }),
 
   listAiAgents: platformProcedure
     .input(z.object({
-      category: z.string().optional(),
-      status: z.string().optional(),
-      search: z.string().optional(),
+      category: AGENT_CATEGORY.optional(),
+      status: AGENT_STATUS.optional(),
+      search: z.string().max(100).optional(),
     }).optional())
     .query(async ({ input }) => {
-      const where: any = {};
+      const where: Prisma.AiAgentWhereInput = {};
       if (input?.category) where.category = input.category;
       if (input?.status) where.status = input.status;
-      if (input?.search) {
+      if (input?.search?.trim()) {
         where.OR = [
-          { name: { contains: input.search, mode: 'insensitive' } },
-          { slug: { contains: input.search, mode: 'insensitive' } },
-          { description: { contains: input.search, mode: 'insensitive' } },
+          { name: { contains: input.search.trim(), mode: 'insensitive' } },
+          { slug: { contains: input.search.trim(), mode: 'insensitive' } },
+          { description: { contains: input.search.trim(), mode: 'insensitive' } },
         ];
       }
 
       return db.aiAgent.findMany({
         where,
         orderBy: [{ category: 'asc' }, { name: 'asc' }],
-        include: {
-          _count: { select: { orgConfigs: true, usageLogs: true } },
-        },
+        select: agentListSelect,
       });
     }),
 
@@ -61,28 +80,58 @@ export const aiAgentsRouter = router({
     .query(async ({ input }) => {
       const agent = await db.aiAgent.findUnique({
         where: { id: input.id },
-        include: {
+        select: {
+          ...agentListSelect,
           orgConfigs: {
-            include: { organization: { select: { id: true, name: true } } },
+            select: {
+              id: true,
+              enabled: true,
+              monthlyBudget: true,
+              organization: { select: { id: true, name: true } },
+            },
           },
         },
       });
-      if (!agent) throw new TRPCError({ code: 'NOT_FOUND' });
+      if (!agent) throw new TRPCError({ code: 'NOT_FOUND', message: 'Agente no encontrado' });
       return agent;
     }),
 
   updateAiAgent: platformProcedure
     .input(z.object({
       id: z.string().uuid(),
-      status: z.string().optional(),
-      model: z.string().optional(),
-      cacheTtlSeconds: z.number().int().min(0).optional(),
+      status: AGENT_STATUS.optional(),
+      model: AGENT_MODEL.optional(),
+      cacheTtlSeconds: z.number().int().min(0).max(86400).optional(),
       batchEligible: z.boolean().optional(),
-      description: z.string().optional(),
+      description: z.string().max(500).optional(),
     }))
     .mutation(async ({ input }) => {
+      const existing = await db.aiAgent.findUnique({
+        where: { id: input.id },
+        select: { id: true, status: true, slug: true },
+      });
+      if (!existing) throw new TRPCError({ code: 'NOT_FOUND', message: 'Agente no encontrado' });
+
       const { id, ...data } = input;
-      return db.aiAgent.update({ where: { id }, data });
+      const updated = await db.aiAgent.update({
+        where: { id },
+        data,
+        select: agentListSelect,
+      });
+
+      if (input.status && input.status !== existing.status) {
+        await db.auditLog.create({
+          data: {
+            action: `ai_agent_status_${input.status}`,
+            entity: 'ai_agent',
+            entityId: id,
+            organizationId: '00000000-0000-0000-0000-000000000000',
+            metadata: { slug: existing.slug, from: existing.status, to: input.status },
+          },
+        }).catch(() => {});
+      }
+
+      return updated;
     }),
 
   updateAiAgentOrgConfig: platformProcedure
@@ -90,7 +139,7 @@ export const aiAgentsRouter = router({
       agentId: z.string().uuid(),
       organizationId: z.string().uuid(),
       enabled: z.boolean().optional(),
-      monthlyBudget: z.number().min(0).optional(),
+      monthlyBudget: z.number().min(0).max(100000).optional(),
     }))
     .mutation(async ({ input }) => {
       const { agentId, organizationId, ...data } = input;
@@ -98,6 +147,12 @@ export const aiAgentsRouter = router({
         where: { agentId_organizationId: { agentId, organizationId } },
         create: { agentId, organizationId, ...data },
         update: data,
+        select: {
+          id: true,
+          enabled: true,
+          monthlyBudget: true,
+          organization: { select: { id: true, name: true } },
+        },
       });
     }),
 
@@ -106,8 +161,13 @@ export const aiAgentsRouter = router({
     .query(async ({ input }) => {
       return db.aiAgentOrgConfig.findMany({
         where: { organizationId: input.organizationId },
-        include: {
-          agent: { select: { id: true, name: true, slug: true, category: true, model: true, status: true, costPerCall: true } },
+        select: {
+          id: true,
+          enabled: true,
+          monthlyBudget: true,
+          agent: {
+            select: { id: true, name: true, slug: true, category: true, model: true, status: true, costPerCall: true },
+          },
         },
       });
     }),
@@ -115,19 +175,31 @@ export const aiAgentsRouter = router({
   getAiAgentUsage: platformProcedure
     .input(z.object({
       agentId: z.string().uuid().optional(),
+      organizationId: z.string().uuid().optional(),
       days: z.number().int().min(1).max(90).default(30),
     }).optional())
     .query(async ({ input }) => {
       const since = new Date(Date.now() - (input?.days ?? 30) * 24 * 60 * 60 * 1000);
-      const where: any = { createdAt: { gte: since } };
+      const where: Prisma.AiAgentUsageLogWhereInput = { createdAt: { gte: since } };
       if (input?.agentId) where.agentId = input.agentId;
+      if (input?.organizationId) where.organizationId = input.organizationId;
 
-      const agg = await db.aiAgentUsageLog.aggregate({
-        where,
-        _sum: { costUsd: true, inputTokens: true, outputTokens: true },
-        _avg: { latencyMs: true, costUsd: true },
-        _count: true,
-      });
+      const [agg, byAgent] = await Promise.all([
+        db.aiAgentUsageLog.aggregate({
+          where,
+          _sum: { costUsd: true, inputTokens: true, outputTokens: true },
+          _avg: { latencyMs: true, costUsd: true },
+          _count: true,
+        }),
+        db.aiAgentUsageLog.groupBy({
+          by: ['agentId'],
+          where,
+          _sum: { costUsd: true },
+          _count: true,
+          orderBy: { _sum: { costUsd: 'desc' } },
+          take: 10,
+        }),
+      ]);
 
       return {
         totalCalls: agg._count,
@@ -136,6 +208,11 @@ export const aiAgentsRouter = router({
         totalOutputTokens: agg._sum.outputTokens ?? 0,
         avgLatencyMs: Math.round(agg._avg.latencyMs ?? 0),
         avgCostPerCall: agg._avg.costUsd ?? 0,
+        topAgentsByCost: byAgent.map((g) => ({
+          agentId: g.agentId,
+          totalCost: g._sum.costUsd ?? 0,
+          callCount: g._count,
+        })),
       };
     }),
 
@@ -144,7 +221,6 @@ export const aiAgentsRouter = router({
     if (existing > 0) return { seeded: false, count: existing };
 
     const agents = [
-      // MVP Agents (11)
       { slug: 'cv-parser', name: 'CV Parser', description: 'Extrae datos estructurados de hojas de vida', category: 'recruitment', model: 'haiku', batchEligible: true, cacheTtlSeconds: 0, costPerCall: 0.003, status: 'stub' },
       { slug: 'vacancy-writer', name: 'Vacancy Writer', description: 'Genera descripciones de vacantes optimizadas', category: 'recruitment', model: 'sonnet', batchEligible: false, cacheTtlSeconds: 300, costPerCall: 0.015, status: 'stub' },
       { slug: 'inclusive-language', name: 'Inclusive Language Checker', description: 'Revisa lenguaje inclusivo en descripciones de vacantes', category: 'recruitment', model: 'haiku', batchEligible: false, cacheTtlSeconds: 600, costPerCall: 0.003, status: 'stub' },
@@ -156,7 +232,6 @@ export const aiAgentsRouter = router({
       { slug: 'pipeline-optimizer', name: 'Pipeline Optimizer', description: 'Sugiere optimizaciones del pipeline de reclutamiento', category: 'pipeline', model: 'sonnet', batchEligible: false, cacheTtlSeconds: 1800, costPerCall: 0.015, status: 'stub' },
       { slug: 'email-composer', name: 'Email Composer', description: 'Compone emails personalizados para candidatos', category: 'recruitment', model: 'haiku', batchEligible: false, cacheTtlSeconds: 0, costPerCall: 0.003, status: 'stub' },
       { slug: 'offer-letter-gen', name: 'Offer Letter Generator', description: 'Genera cartas de oferta personalizadas', category: 'recruitment', model: 'sonnet', batchEligible: false, cacheTtlSeconds: 0, costPerCall: 0.015, status: 'stub' },
-      // Post-MVP Agents (21)
       { slug: 'talent-insights', name: 'Talent Insights', description: 'Analytics avanzados de talento con predicciones', category: 'talent', model: 'sonnet', batchEligible: false, cacheTtlSeconds: 3600, costPerCall: 0.015, status: 'stub' },
       { slug: 'succession-planner', name: 'Succession Planner', description: 'Planificacion de sucesion asistida por IA', category: 'talent', model: 'sonnet', batchEligible: false, cacheTtlSeconds: 3600, costPerCall: 0.015, status: 'stub' },
       { slug: 'performance-reviewer', name: 'Performance Reviewer', description: 'Asistente de evaluacion de desempeno', category: 'talent', model: 'sonnet', batchEligible: false, cacheTtlSeconds: 0, costPerCall: 0.015, status: 'stub' },
@@ -181,7 +256,6 @@ export const aiAgentsRouter = router({
     ];
 
     await db.aiAgent.createMany({ data: agents });
-
     return { seeded: true, count: agents.length };
   }),
 });

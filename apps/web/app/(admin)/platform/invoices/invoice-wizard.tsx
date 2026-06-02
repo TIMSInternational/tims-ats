@@ -5,7 +5,9 @@ import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
 import type { OrganizationListItem } from '../../../../lib/trpc-types';
-import { fmtCurrency, fmtDateLong } from './_helpers';
+import { formatCurrency, formatDateLong as fmtDateLong } from '../../../../lib/format-utils';
+
+function fmtCurrency(value: number, currency = 'USD') { return formatCurrency(value, currency, 2); }
 
 interface LineItem { description: string; quantity: number; unitPrice: number; }
 
