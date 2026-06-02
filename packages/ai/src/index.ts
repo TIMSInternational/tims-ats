@@ -1,1 +1,9 @@
-// @tims/ai — implementation added during Phase development
+export { invokeAgent, calculateCost } from './client';
+export { checkBudget } from './budget';
+export { logInvocation } from './logger';
+export { generateVacancyDescription } from './agents/vacancy-writer';
+export { checkInclusiveLanguage } from './agents/inclusive-language';
+export { parseCV } from './agents/cv-parser';
+export type { ParsedCVData } from './agents/cv-parser';
+export { screenCandidate } from './agents/candidate-screener';
+export type { ScreeningResult } from './agents/candidate-screener';

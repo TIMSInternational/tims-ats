@@ -171,6 +171,9 @@ importers:
       '@tims/shared':
         specifier: workspace:*
         version: link:../shared
+      '@trpc/server':
+        specifier: ^11.17.0
+        version: 11.17.0(typescript@5.9.3)
       ai:
         specifier: ^4.3.0
         version: 4.3.19(react@19.2.6)(zod@3.25.76)
@@ -190,6 +193,9 @@ importers:
       '@supabase/supabase-js':
         specifier: ^2.49.0
         version: 2.106.1
+      '@tims/ai':
+        specifier: workspace:*
+        version: link:../ai
       '@tims/db':
         specifier: workspace:*
         version: link:../db
