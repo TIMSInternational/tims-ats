@@ -2,7 +2,7 @@
 
 import { trpc } from '../../../../../../lib/trpc';
 import { toast } from '../../../../../../lib/toast';
-import { Skeleton } from '../../org-utils';
+import { Skeleton } from '../../../../../../components';
 
 const FEATURE_DESCRIPTIONS: Record<string, string> = {
   ai_cv_parser: 'Parsing automatico de hojas de vida con IA',

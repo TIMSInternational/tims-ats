@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { trpc } from '../../../../../../lib/trpc';
-import { Skeleton } from '../../org-utils';
+import { useI18n } from '../../../../../../lib/i18n';
+import { Skeleton } from '../../../../../../components';
 
 const ACTION_COLORS: Record<string, { bg: string; text: string }> = {
   CREATE: { bg: 'bg-green-100', text: 'text-green-700' },
@@ -45,6 +46,7 @@ function formatTimestamp(date: string | Date): string {
 }
 
 export function ActivitySection({ organizationId }: { organizationId: string }) {
+  const { t } = useI18n();
   const { data: logs, isLoading } = trpc.platform.getOrgAuditLogs.useQuery({ organizationId });
 
   return (

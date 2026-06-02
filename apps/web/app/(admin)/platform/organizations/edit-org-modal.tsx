@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
+import { Modal } from '../../../../components';
 import type { OrganizationListItem } from '../../../../lib/trpc-types';
 
 const PLAN_MRR: Record<string, number> = { trial: 0, starter: 499, professional: 999, enterprise: 2499 };
@@ -12,6 +13,7 @@ const PLAN_ORDER: Record<string, number> = { trial: 0, starter: 1, professional:
 export function EditOrgModal({ org, onClose, onSuccess }: { org: OrganizationListItem; onClose: () => void; onSuccess: () => void }) {
   const { t } = useI18n();
   const [editName, setEditName] = useState(org.name);
+  const [showSuspendConfirm, setShowSuspendConfirm] = useState(false);
   const currentPlan = org.plan || org.subscription?.plan || 'trial';
   const [editPlan, setEditPlan] = useState(currentPlan);
   const utils = trpc.useUtils();
@@ -108,8 +110,8 @@ export function EditOrgModal({ org, onClose, onSuccess }: { org: OrganizationLis
               <button
                 type="button"
                 onClick={() => {
-                  if (org.isActive && confirm(`Suspender ${org.name}?`)) {
-                    suspendOrg.mutate({ id: org.id, suspend: true });
+                  if (org.isActive) {
+                    setShowSuspendConfirm(true);
                   }
                 }}
                 className={`flex-1 h-9 rounded-lg text-sm font-medium transition ${!org.isActive ? 'bg-red-50 text-[#DD0C15] border border-red-200' : 'border border-[#EDEDED] text-[#585858] hover:bg-red-50'}`}
@@ -141,6 +143,15 @@ export function EditOrgModal({ org, onClose, onSuccess }: { org: OrganizationLis
           </div>
         </form>
       </div>
+      {showSuspendConfirm && (
+        <Modal title={`${t.organizations.suspend} ${org.name}?`} onClose={() => setShowSuspendConfirm(false)} maxWidth="max-w-sm">
+          <p className="text-sm text-[#585858] mb-4">{t.organizations.confirmBulkSuspend}</p>
+          <div className="flex gap-3">
+            <button onClick={() => setShowSuspendConfirm(false)} className="flex-1 h-9 rounded-lg border border-[#EDEDED] text-sm font-medium text-[#585858] hover:bg-[#F6F6F6] transition">{t.common.cancel}</button>
+            <button onClick={() => { setShowSuspendConfirm(false); suspendOrg.mutate({ id: org.id, suspend: true }); }} className="flex-1 h-9 rounded-lg bg-[#DD0C15] text-sm text-white font-medium hover:bg-[#c40b13] transition">{t.organizations.suspend}</button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

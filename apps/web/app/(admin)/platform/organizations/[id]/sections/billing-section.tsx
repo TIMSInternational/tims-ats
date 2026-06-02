@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { trpc } from '../../../../../../lib/trpc';
 import { useI18n } from '../../../../../../lib/i18n';
-import { Skeleton } from '../../org-utils';
+import { Skeleton } from '../../../../../../components';
 import { BillingProfileDrawer } from '../../../invoices/billing-drawer';
 
 function fmtCurrency(value: number, currency = 'USD'): string {

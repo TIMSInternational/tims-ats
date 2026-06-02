@@ -3,10 +3,38 @@
 import { useRouter } from 'next/navigation';
 import { useI18n } from '../../../../lib/i18n';
 import type { OrganizationListItem } from '../../../../lib/trpc-types';
-import {
-  getInitials, getAvatarColor, planBadge,
-  formatRelativeTime, SkeletonRow,
-} from './org-utils';
+import { getInitials, getAvatarColor, formatRelativeTime } from '../../../../lib/format-utils';
+
+function planBadge(plan: string) {
+  const styles: Record<string, string> = {
+    enterprise: 'bg-emerald-100 text-emerald-700',
+    professional: 'bg-violet-100 text-violet-700',
+    starter: 'bg-blue-100 text-blue-700',
+    trial: 'bg-amber-100 text-amber-700',
+  };
+  const cls = styles[plan?.toLowerCase()] || 'bg-gray-100 text-gray-700';
+  return (
+    <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${cls}`}>
+      {plan?.charAt(0).toUpperCase() + plan?.slice(1)}
+    </span>
+  );
+}
+
+function SkeletonRow() {
+  return (
+    <tr className="border-b border-[#F6F6F6] animate-pulse">
+      <td className="px-3 py-3.5"><div className="w-4 h-4 bg-gray-200 rounded" /></td>
+      <td className="px-5 py-3.5"><div className="flex items-center gap-3"><div className="w-8 h-8 rounded-lg bg-gray-200" /><div className="h-4 w-32 bg-gray-200 rounded" /></div></td>
+      <td className="px-4 py-3.5"><div className="h-5 w-16 bg-gray-100 rounded-full" /></td>
+      <td className="px-4 py-3.5"><div className="h-3 w-14 bg-gray-100 rounded" /></td>
+      <td className="px-4 py-3.5"><div className="h-3 w-6 bg-gray-100 rounded mx-auto" /></td>
+      <td className="px-4 py-3.5 text-center"><div className="h-4 w-6 bg-gray-100 rounded mx-auto" /></td>
+      <td className="px-4 py-3.5 text-center"><div className="h-4 w-8 bg-gray-100 rounded mx-auto" /></td>
+      <td className="px-4 py-3.5"><div className="h-3 w-20 bg-gray-100 rounded" /></td>
+      <td className="px-4 py-3.5"><div className="h-5 w-6 bg-gray-100 rounded mx-auto" /></td>
+    </tr>
+  );
+}
 import { OrgActionsDropdown } from './org-actions-dropdown';
 
 const PLAN_MRR: Record<string, number> = { trial: 0, starter: 499, professional: 999, enterprise: 2499 };

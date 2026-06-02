@@ -9,7 +9,7 @@ import { CreateOrgModal } from './create-org-modal';
 import { EditOrgModal } from './edit-org-modal';
 import { OrgTable } from './org-table';
 import { OrgBulkBar } from './org-bulk-bar';
-import { Skeleton } from './org-utils';
+import { Skeleton } from '../../../../components';
 
 const PLAN_MRR: Record<string, number> = { trial: 0, starter: 499, professional: 999, enterprise: 2499 };
 

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
+import { Modal } from '../../../../components';
 import type { OrganizationListItem } from '../../../../lib/trpc-types';
 
 interface OrgActionsDropdownProps {
@@ -16,6 +17,7 @@ export function OrgActionsDropdown({ org, onEdit }: OrgActionsDropdownProps) {
   const { t } = useI18n();
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   const utils = trpc.useUtils();
@@ -47,11 +49,13 @@ export function OrgActionsDropdown({ org, onEdit }: OrgActionsDropdownProps) {
   }, [open]);
 
   const handleSuspendToggle = () => {
-    const action = org.isActive ? t.organizations.suspend : t.organizations.activate;
-    if (confirm(`${action} ${org.name}?`)) {
-      suspendOrg.mutate({ id: org.id, suspend: org.isActive });
-    }
     setOpen(false);
+    setShowConfirm(true);
+  };
+
+  const confirmSuspendToggle = () => {
+    setShowConfirm(false);
+    suspendOrg.mutate({ id: org.id, suspend: org.isActive });
   };
 
   return (
@@ -131,6 +135,26 @@ export function OrgActionsDropdown({ org, onEdit }: OrgActionsDropdownProps) {
             )}
           </button>
         </div>
+      )}
+      {showConfirm && (
+        <Modal
+          title={`${org.isActive ? t.organizations.suspend : t.organizations.activate} ${org.name}?`}
+          onClose={() => setShowConfirm(false)}
+          maxWidth="max-w-sm"
+        >
+          <p className="text-sm text-[#585858] mb-4">
+            {org.isActive ? t.organizations.confirmBulkSuspend : t.organizations.confirmBulkActivate}
+          </p>
+          <div className="flex gap-3">
+            <button onClick={() => setShowConfirm(false)} className="flex-1 h-9 rounded-lg border border-[#EDEDED] text-sm font-medium text-[#585858] hover:bg-[#F6F6F6] transition">{t.common.cancel}</button>
+            <button
+              onClick={confirmSuspendToggle}
+              className={`flex-1 h-9 rounded-lg text-sm text-white font-medium transition ${org.isActive ? 'bg-[#DD0C15] hover:bg-[#c40b13]' : 'bg-green-500 hover:bg-green-600'}`}
+            >
+              {org.isActive ? t.organizations.suspend : t.organizations.activate}
+            </button>
+          </div>
+        </Modal>
       )}
     </div>
   );

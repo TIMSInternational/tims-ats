@@ -1,7 +1,32 @@
 'use client';
 
 import { useState } from 'react';
-import { planBadge, formatDate, trialDateColor, Skeleton } from '../../org-utils';
+import { formatDate } from '../../../../../../lib/format-utils';
+import { useI18n } from '../../../../../../lib/i18n';
+import { Skeleton } from '../../../../../../components';
+
+function planBadge(plan: string) {
+  const styles: Record<string, string> = {
+    enterprise: 'bg-emerald-100 text-emerald-700',
+    professional: 'bg-violet-100 text-violet-700',
+    starter: 'bg-blue-100 text-blue-700',
+    trial: 'bg-amber-100 text-amber-700',
+  };
+  const cls = styles[plan?.toLowerCase()] || 'bg-gray-100 text-gray-700';
+  return (
+    <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${cls}`}>
+      {plan?.charAt(0).toUpperCase() + plan?.slice(1)}
+    </span>
+  );
+}
+
+function trialDateColor(trialEndsAt: string | Date | null | undefined): string {
+  if (!trialEndsAt) return 'text-[#8B8B8B]';
+  const daysLeft = Math.ceil((new Date(trialEndsAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+  if (daysLeft <= 3) return 'text-[#DD0C15] font-medium';
+  if (daysLeft <= 7) return 'text-amber-600 font-medium';
+  return 'text-[#8B8B8B]';
+}
 
 interface OverviewProps {
   org: {
@@ -67,6 +92,7 @@ function SubscriptionStatusBadge({ status }: { status: string }) {
 }
 
 export function OverviewSection({ org }: OverviewProps) {
+  const { t } = useI18n();
   const [showStripeIds, setShowStripeIds] = useState(false);
   const [expandedCompanies, setExpandedCompanies] = useState<Set<string>>(new Set());
 

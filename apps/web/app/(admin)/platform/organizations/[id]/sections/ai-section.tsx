@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { trpc } from '../../../../../../lib/trpc';
-import { Skeleton } from '../../org-utils';
+import { useI18n } from '../../../../../../lib/i18n';
+import { Skeleton } from '../../../../../../components';
 
 const MODEL_BADGES: Record<string, { bg: string; text: string }> = {
   haiku: { bg: 'bg-teal-100', text: 'text-teal-700' },
@@ -22,6 +23,7 @@ function fmtCurrency(value: number): string {
 }
 
 export function AiSection({ organizationId }: { organizationId: string }) {
+  const { t } = useI18n();
   const { data: configs, isLoading } = trpc.platform.getOrgAiConfigs.useQuery({ organizationId });
 
   return (

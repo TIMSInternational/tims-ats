@@ -4,7 +4,8 @@ import { useState } from 'react';
 import { trpc } from '../../../../../../lib/trpc';
 import { toast } from '../../../../../../lib/toast';
 import { useI18n } from '../../../../../../lib/i18n';
-import { getInitials, getAvatarColor, formatDate, Skeleton } from '../../org-utils';
+import { getInitials, getAvatarColor, formatDate } from '../../../../../../lib/format-utils';
+import { Skeleton, Modal } from '../../../../../../components';
 import { InviteUserModal } from '../../../invitations/invite-user-modal';
 
 const ROLE_COLORS: Record<string, { bg: string; text: string }> = {
@@ -86,6 +87,7 @@ function SkeletonRow() {
 export function UsersSection({ organizationId, organizationName }: { organizationId: string; organizationName?: string }) {
   const { t } = useI18n();
   const [showInviteModal, setShowInviteModal] = useState(false);
+  const [deactivateTarget, setDeactivateTarget] = useState<{ id: string; name: string } | null>(null);
   const utils = trpc.useUtils();
   const { data, isLoading } = trpc.platform.getOrgUsers.useQuery({ organizationId });
 
@@ -195,11 +197,7 @@ export function UsersSection({ organizationId, organizationName }: { organizatio
                       {user.isActive ? (
                         <button
                           disabled={deactivateUser.isPending}
-                          onClick={() => {
-                            if (confirm(`Desactivar a ${fullName}?`)) {
-                              deactivateUser.mutate({ userId: user.id, organizationId });
-                            }
-                          }}
+                          onClick={() => setDeactivateTarget({ id: user.id, name: fullName })}
                           className="px-2 py-1 text-[10px] text-[#DD0C15] bg-red-50 rounded font-medium hover:bg-red-100 transition disabled:opacity-50"
                         >
                           Desactivar
@@ -223,6 +221,15 @@ export function UsersSection({ organizationId, organizationName }: { organizatio
           </tbody>
         </table>
       </div>
+      {deactivateTarget && (
+        <Modal title={`Desactivar a ${deactivateTarget.name}?`} onClose={() => setDeactivateTarget(null)} maxWidth="max-w-sm">
+          <p className="text-sm text-[#585858] mb-4">El usuario perdera acceso a la plataforma.</p>
+          <div className="flex gap-3">
+            <button onClick={() => setDeactivateTarget(null)} className="flex-1 h-9 rounded-lg border border-[#EDEDED] text-sm font-medium text-[#585858] hover:bg-[#F6F6F6] transition">{t.common.cancel}</button>
+            <button onClick={() => { deactivateUser.mutate({ userId: deactivateTarget.id, organizationId }); setDeactivateTarget(null); }} className="flex-1 h-9 rounded-lg bg-[#DD0C15] text-sm text-white font-medium hover:bg-[#c40b13] transition">Desactivar</button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

@@ -6,7 +6,37 @@ import { useSearchParams } from 'next/navigation';
 import { trpc } from '../../../../../lib/trpc';
 import { toast } from '../../../../../lib/toast';
 import { useI18n } from '../../../../../lib/i18n';
-import { getInitials, getAvatarColor, planBadge, statusDot, Skeleton } from '../org-utils';
+import { getInitials, getAvatarColor } from '../../../../../lib/format-utils';
+import { Skeleton, Modal } from '../../../../../components';
+
+function planBadge(plan: string) {
+  const styles: Record<string, string> = {
+    enterprise: 'bg-emerald-100 text-emerald-700',
+    professional: 'bg-violet-100 text-violet-700',
+    starter: 'bg-blue-100 text-blue-700',
+    trial: 'bg-amber-100 text-amber-700',
+  };
+  const cls = styles[plan?.toLowerCase()] || 'bg-gray-100 text-gray-700';
+  return (
+    <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${cls}`}>
+      {plan?.charAt(0).toUpperCase() + plan?.slice(1)}
+    </span>
+  );
+}
+
+function statusDot(status: string, isActive?: boolean, labels?: { active: string; suspended: string }) {
+  const l = labels || { active: 'Activa', suspended: 'Suspendida' };
+  const isSuspended = !isActive || status?.toLowerCase() === 'suspended';
+  const dotColor = isSuspended ? 'bg-[#DD0C15]' : 'bg-green-400';
+  const textColor = isSuspended ? 'text-[#DD0C15] font-medium' : 'text-[#585858]';
+  const label = isSuspended ? l.suspended : l.active;
+  return (
+    <div className="flex items-center gap-1.5">
+      <div className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
+      <span className={`text-xs ${textColor}`}>{label}</span>
+    </div>
+  );
+}
 import { EditOrgModal } from '../edit-org-modal';
 import { OverviewSection } from './sections/overview-section';
 import { UsersSection } from './sections/users-section';
@@ -32,6 +62,7 @@ export function OrgDetail({ id }: { id: string }) {
   const initialTab = (searchParams.get('tab') as TabKey) || 'overview';
   const [activeTab, setActiveTab] = useState<TabKey>(TABS.some(t => t.key === initialTab) ? initialTab : 'overview');
   const [showEdit, setShowEdit] = useState(false);
+  const [showSuspendConfirm, setShowSuspendConfirm] = useState(false);
 
   const utils = trpc.useUtils();
   const { data: org, isLoading, error } = trpc.platform.getOrganization.useQuery({ id });
@@ -48,9 +79,11 @@ export function OrgDetail({ id }: { id: string }) {
 
   const handleSuspendToggle = () => {
     if (!org) return;
-    const willSuspend = org.isActive;
-    if (willSuspend && !confirm(`Suspender ${org.name}?`)) return;
-    suspendOrg.mutate({ id: org.id, suspend: willSuspend });
+    if (org.isActive) {
+      setShowSuspendConfirm(true);
+    } else {
+      suspendOrg.mutate({ id: org.id, suspend: false });
+    }
   };
 
   if (isLoading) {
@@ -180,6 +213,17 @@ export function OrgDetail({ id }: { id: string }) {
             utils.platform.getOrganization.invalidate({ id });
           }}
         />
+      )}
+
+      {/* Suspend confirmation modal */}
+      {showSuspendConfirm && org && (
+        <Modal title={`${t.organizations.suspend} ${org.name}?`} onClose={() => setShowSuspendConfirm(false)} maxWidth="max-w-sm">
+          <p className="text-sm text-[#585858] mb-4">{t.organizations.confirmBulkSuspend}</p>
+          <div className="flex gap-3">
+            <button onClick={() => setShowSuspendConfirm(false)} className="flex-1 h-9 rounded-lg border border-[#EDEDED] text-sm font-medium text-[#585858] hover:bg-[#F6F6F6] transition">{t.common.cancel}</button>
+            <button onClick={() => { setShowSuspendConfirm(false); suspendOrg.mutate({ id: org.id, suspend: true }); }} className="flex-1 h-9 rounded-lg bg-[#DD0C15] text-sm text-white font-medium hover:bg-[#c40b13] transition">{t.organizations.suspend}</button>
+          </div>
+        </Modal>
       )}
     </div>
   );
