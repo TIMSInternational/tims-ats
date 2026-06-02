@@ -534,6 +534,26 @@
     "users": "usuarios",
     "customFlag": "Feature flag personalizado"
   },
+  "audit": {
+    "title": "Auditoria",
+    "colDateTime": "Fecha / Hora",
+    "colActor": "Actor",
+    "colOrganization": "Organizacion",
+    "colAction": "Accion",
+    "colEntity": "Entidad",
+    "colDetail": "Detalle",
+    "colIp": "IP",
+    "allActions": "Todas las Acciones",
+    "allEntities": "Todas las Entidades",
+    "activeFilters": "Filtros activos",
+    "clearAll": "Limpiar todo",
+    "export": "Exportar",
+    "noLogs": "No se encontraron registros de auditoria",
+    "noLogsDesc": "Ajusta los filtros para buscar eventos",
+    "showing": "Mostrando",
+    "of": "de",
+    "system": "Sistema"
+  },
   "notifications": {
     "title": "Notificaciones",
     "unreadCount": "notificacion(es) sin leer",

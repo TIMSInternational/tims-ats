@@ -327,6 +327,50 @@ export const systemRouter = router({
       return { logs, nextCursor, total };
     }),
 
+  exportAuditLogsCsv: platformProcedure
+    .input(z.object({
+      action: z.string().max(100).optional(),
+      entity: z.string().max(100).optional(),
+      dateFrom: z.date().optional(),
+      dateTo: z.date().optional(),
+    }))
+    .query(async ({ input }) => {
+      const where: Prisma.AuditLogWhereInput = {};
+      if (input.action) where.action = input.action;
+      if (input.entity) where.entity = input.entity;
+      if (input.dateFrom || input.dateTo) {
+        const createdAt: Prisma.DateTimeFilter = {};
+        if (input.dateFrom) createdAt.gte = input.dateFrom;
+        if (input.dateTo) createdAt.lte = input.dateTo;
+        where.createdAt = createdAt;
+      }
+
+      const logs = await db.auditLog.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: 1000,
+        select: {
+          action: true, entity: true, entityId: true, ipAddress: true, createdAt: true,
+          actor: { select: { firstName: true, lastName: true, email: true } },
+        },
+      });
+
+      const header = 'Fecha,Actor,Accion,Entidad,ID Entidad,IP';
+      const rows = logs.map(l => {
+        const actor = l.actor ? `${l.actor.firstName} ${l.actor.lastName}`.trim() || l.actor.email : 'Sistema';
+        return [
+          l.createdAt.toISOString(),
+          actor.replace(/,/g, ' '),
+          l.action,
+          l.entity || '-',
+          l.entityId || '-',
+          l.ipAddress || '-',
+        ].join(',');
+      });
+
+      return { csv: [header, ...rows].join('\n'), count: logs.length };
+    }),
+
   getOrgAuditLogs: platformProcedure
     .input(z.object({
       organizationId: z.string().uuid(),

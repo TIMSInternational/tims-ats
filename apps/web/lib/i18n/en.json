@@ -534,6 +534,26 @@
     "users": "users",
     "customFlag": "Custom feature flag"
   },
+  "audit": {
+    "title": "Audit",
+    "colDateTime": "Date / Time",
+    "colActor": "Actor",
+    "colOrganization": "Organization",
+    "colAction": "Action",
+    "colEntity": "Entity",
+    "colDetail": "Detail",
+    "colIp": "IP",
+    "allActions": "All Actions",
+    "allEntities": "All Entities",
+    "activeFilters": "Active filters",
+    "clearAll": "Clear all",
+    "export": "Export",
+    "noLogs": "No audit logs found",
+    "noLogsDesc": "Adjust filters to search for events",
+    "showing": "Showing",
+    "of": "of",
+    "system": "System"
+  },
   "notifications": {
     "title": "Notifications",
     "unreadCount": "unread notification(s)",
