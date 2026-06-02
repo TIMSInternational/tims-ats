@@ -1,8 +1,9 @@
 'use client';
 
-import { use } from 'react';
+import { use, useState } from 'react';
 import { DailyProvider } from '@daily-co/daily-react';
 import { trpc } from '../../../../../../lib/trpc';
+import { Skeleton } from '../../../../../../components';
 import { InterviewTopBar } from './interview-top-bar';
 import { VideoArea } from './video-area';
 import { VideoControls } from './video-controls';
@@ -23,14 +24,26 @@ export default function InterviewRoomPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
+  const [hasJoined, setHasJoined] = useState(false);
 
   const interview = trpc.interview.getById.useQuery({ id });
-  const videoToken = trpc.interview.getVideoToken.useQuery(
-    { interviewId: id },
-    { enabled: !!interview.data },
-  );
 
-  if (interview.isLoading || videoToken.isLoading) {
+  // Only fetch video token after interview loads — this also creates the room
+  const videoToken = trpc.interview.createVideoRoom.useMutation();
+  const [roomData, setRoomData] = useState<{ url: string; token: string } | null>(null);
+
+  // Join button handler — creates room + gets token
+  const handleJoin = async () => {
+    try {
+      const result = await videoToken.mutateAsync({ interviewId: id });
+      setRoomData({ url: result.url, token: result.token });
+      setHasJoined(true);
+    } catch {
+      // Error handled by mutation state
+    }
+  };
+
+  if (interview.isLoading) {
     return <InterviewRoomSkeleton />;
   }
 
@@ -48,32 +61,67 @@ export default function InterviewRoomPage({
   const data = interview.data;
   const candidateName = `${data.candidate.firstName} ${data.candidate.lastName}`;
   const candidateInitials = getInitials(candidateName);
-  const roomUrl = videoToken.data?.url;
-  const token = videoToken.data?.token;
 
-  return (
-    <DailyProvider url={roomUrl} token={token}>
+  // Pre-join lobby — show "Join" button before connecting to Daily
+  if (!hasJoined || !roomData) {
+    return (
       <div className="h-full flex flex-col overflow-hidden">
-        {/* Top bar */}
+        <InterviewTopBar
+          candidateName={candidateName}
+          vacancyTitle={data.vacancy.title}
+          fitScore={87}
+          isRecording={false}
+        />
+        <div className="flex-1 flex items-center justify-center bg-[#0a0a0a]">
+          <div className="text-center">
+            <div className="w-24 h-24 rounded-full bg-gradient-to-br from-[#1F114C] to-[#5C4B99] flex items-center justify-center mx-auto mb-6">
+              <span className="text-white text-3xl font-bold">{candidateInitials}</span>
+            </div>
+            <p className="text-white text-[16px] font-medium mb-1">{candidateName}</p>
+            <p className="text-white/50 text-[13px] mb-6">{data.vacancy.title} — Entrevista {data.type}</p>
+            <button
+              onClick={handleJoin}
+              disabled={videoToken.isPending}
+              className="bg-[#DD0C15] text-white px-8 py-3 rounded-xl text-[14px] font-medium shadow-[0_4px_16px_rgba(221,12,21,0.3)] hover:bg-[#c00b13] transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 mx-auto"
+            >
+              {videoToken.isPending ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  Conectando...
+                </>
+              ) : (
+                <>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+                    <path d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z" />
+                  </svg>
+                  Unirse a la entrevista
+                </>
+              )}
+            </button>
+            {videoToken.error && (
+              <p className="text-red-400 text-[12px] mt-3">{videoToken.error.message}</p>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // In-call view — DailyProvider only renders with valid url + token
+  return (
+    <DailyProvider url={roomData.url} token={roomData.token}>
+      <div className="h-full flex flex-col overflow-hidden">
         <InterviewTopBar
           candidateName={candidateName}
           vacancyTitle={data.vacancy.title}
           fitScore={87}
           isRecording
         />
-
-        {/* Split view */}
         <div className="flex flex-1 overflow-hidden">
-          {/* Left: Video (60%) */}
           <div className="flex-[60] flex flex-col bg-[#0a0a0a] relative min-w-0">
-            <VideoArea
-              candidateName={candidateName}
-              candidateInitials={candidateInitials}
-            />
+            <VideoArea candidateName={candidateName} candidateInitials={candidateInitials} />
             <VideoControls />
           </div>
-
-          {/* Right: Scorecard (40%) */}
           <ScorecardPanel
             candidateName={candidateName}
             candidateInitials={candidateInitials}
@@ -89,44 +137,14 @@ export default function InterviewRoomPage({
 function InterviewRoomSkeleton() {
   return (
     <div className="h-full flex flex-col overflow-hidden">
-      {/* Top bar skeleton */}
       <div className="flex items-center justify-between px-6 h-[50px] bg-[#1F114C] shrink-0">
         <div className="flex items-center gap-3">
-          <div className="w-24 h-3 bg-white/10 rounded animate-pulse" />
-          <div className="w-40 h-3 bg-white/10 rounded animate-pulse" />
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="w-16 h-3 bg-white/10 rounded animate-pulse" />
-          <div className="w-20 h-8 bg-white/10 rounded-lg animate-pulse" />
+          <Skeleton className="w-24 h-3 bg-white/10 rounded" />
+          <Skeleton className="w-40 h-3 bg-white/10 rounded" />
         </div>
       </div>
-
-      <div className="flex flex-1 overflow-hidden">
-        {/* Video skeleton */}
-        <div className="flex-[60] flex flex-col bg-[#0a0a0a]">
-          <div className="flex-1 flex items-center justify-center">
-            <div className="w-32 h-32 rounded-full bg-[#1a1a1a] animate-pulse" />
-          </div>
-          <div className="flex items-center justify-center gap-3 py-3 bg-[#111]">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="w-10 h-10 rounded-full bg-white/10 animate-pulse" />
-            ))}
-          </div>
-        </div>
-
-        {/* Scorecard skeleton */}
-        <div className="flex-[40] flex flex-col bg-white border-l border-[#EDEDED]">
-          <div className="flex border-b border-[#EDEDED] p-3 gap-2">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="flex-1 h-4 bg-[#F6F6F6] rounded animate-pulse" />
-            ))}
-          </div>
-          <div className="p-4 space-y-4">
-            <div className="h-16 bg-[#F6F6F6] rounded-lg animate-pulse" />
-            <div className="h-24 bg-[#F6F6F6] rounded-lg animate-pulse" />
-            <div className="h-24 bg-[#F6F6F6] rounded-lg animate-pulse" />
-          </div>
-        </div>
+      <div className="flex-1 flex items-center justify-center bg-[#0a0a0a]">
+        <div className="w-32 h-32 rounded-full bg-[#1a1a1a] animate-pulse" />
       </div>
     </div>
   );

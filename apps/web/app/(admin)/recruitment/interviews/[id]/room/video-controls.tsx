@@ -13,26 +13,34 @@ export function VideoControls() {
   const daily = useDaily();
   const router = useRouter();
   const localSessionId = useLocalSessionId();
-  const localVideo = useVideoTrack(localSessionId ?? '');
-  const localAudio = useAudioTrack(localSessionId ?? '');
 
-  const isCamOff = localVideo.isOff;
-  const isMicOff = localAudio.isOff;
+  // Only access tracks when we have a valid local session
+  const hasSession = !!localSessionId;
+  const localVideo = useVideoTrack(localSessionId ?? 'placeholder');
+  const localAudio = useAudioTrack(localSessionId ?? 'placeholder');
+
+  const isCamOff = hasSession ? localVideo.isOff : true;
+  const isMicOff = hasSession ? localAudio.isOff : true;
 
   const toggleCamera = useCallback(() => {
-    daily?.setLocalVideo(!isCamOff ? false : true);
-  }, [daily, isCamOff]);
+    if (!daily || !hasSession) return;
+    daily.setLocalVideo(isCamOff);
+  }, [daily, isCamOff, hasSession]);
 
   const toggleMic = useCallback(() => {
-    daily?.setLocalAudio(!isMicOff ? false : true);
-  }, [daily, isMicOff]);
+    if (!daily || !hasSession) return;
+    daily.setLocalAudio(isMicOff);
+  }, [daily, isMicOff, hasSession]);
 
   const shareScreen = useCallback(() => {
-    daily?.startScreenShare();
-  }, [daily]);
+    if (!daily || !hasSession) return;
+    daily.startScreenShare();
+  }, [daily, hasSession]);
 
   const handleLeave = useCallback(() => {
-    daily?.leave();
+    if (daily) {
+      daily.leave().catch(() => {});
+    }
     router.push('/recruitment/interviews');
   }, [daily, router]);
 

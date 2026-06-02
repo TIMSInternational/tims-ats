@@ -4,6 +4,7 @@ import {
   DailyVideo,
   useLocalSessionId,
   useParticipantIds,
+  useDaily,
 } from '@daily-co/daily-react';
 
 interface VideoAreaProps {
@@ -12,15 +13,17 @@ interface VideoAreaProps {
 }
 
 export function VideoArea({ candidateName, candidateInitials }: VideoAreaProps) {
+  const daily = useDaily();
   const localSessionId = useLocalSessionId();
   const remoteIds = useParticipantIds({ filter: 'remote' });
   const mainParticipant = remoteIds[0] ?? null;
+  const isJoined = !!daily && !!localSessionId;
 
   return (
     <div className="flex-1 flex flex-col bg-[#0a0a0a] relative min-h-0">
       {/* Self video PiP */}
       <div className="absolute top-4 left-4 w-[180px] h-[120px] rounded-xl bg-[#1a1a1a] border-2 border-white/20 overflow-hidden z-10 shadow-lg">
-        {localSessionId ? (
+        {isJoined && localSessionId ? (
           <DailyVideo
             sessionId={localSessionId}
             mirror
