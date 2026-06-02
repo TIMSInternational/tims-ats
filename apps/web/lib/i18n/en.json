@@ -534,6 +534,28 @@
     "users": "users",
     "customFlag": "Custom feature flag"
   },
+  "notifications": {
+    "title": "Notifications",
+    "unreadCount": "unread notification(s)",
+    "allCaughtUp": "All notifications up to date",
+    "markAllRead": "Mark all as read",
+    "archiveRead": "Archive read",
+    "filterAll": "All",
+    "filterUnread": "Unread",
+    "filterCritical": "Critical",
+    "filterWarning": "Warning",
+    "filterInfo": "Info",
+    "filterSuccess": "Success",
+    "noNotifications": "No notifications",
+    "noUnread": "No unread notifications",
+    "noType": "No notifications of type",
+    "emptyDesc": "When something important happens, it will appear here",
+    "loading": "Loading notifications...",
+    "loadMore": "Load more",
+    "loadingMore": "Loading...",
+    "archive": "Archive",
+    "delete": "Delete"
+  },
   "analytics": {
     "title": "Analytics",
     "newOrgs": "New Orgs",

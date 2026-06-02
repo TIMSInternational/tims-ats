@@ -534,6 +534,28 @@
     "users": "usuarios",
     "customFlag": "Feature flag personalizado"
   },
+  "notifications": {
+    "title": "Notificaciones",
+    "unreadCount": "notificacion(es) sin leer",
+    "allCaughtUp": "Todas las notificaciones al dia",
+    "markAllRead": "Marcar todas como leidas",
+    "archiveRead": "Archivar leidas",
+    "filterAll": "Todas",
+    "filterUnread": "Sin Leer",
+    "filterCritical": "Critico",
+    "filterWarning": "Warning",
+    "filterInfo": "Info",
+    "filterSuccess": "Success",
+    "noNotifications": "No hay notificaciones",
+    "noUnread": "No hay notificaciones sin leer",
+    "noType": "No hay notificaciones de tipo",
+    "emptyDesc": "Cuando algo importante pase, aparecera aqui",
+    "loading": "Cargando notificaciones...",
+    "loadMore": "Cargar mas",
+    "loadingMore": "Cargando...",
+    "archive": "Archivar",
+    "delete": "Eliminar"
+  },
   "analytics": {
     "title": "Analytics",
     "newOrgs": "Nuevas Orgs",
