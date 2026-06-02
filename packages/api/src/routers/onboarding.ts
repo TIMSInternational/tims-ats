@@ -39,9 +39,10 @@ export const onboardingRouter = router({
         ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
         orderBy: { createdAt: 'desc' },
         include: {
-          user: { select: { id: true, firstName: true, lastName: true, avatar: true } },
+          user: { select: { id: true, firstName: true, lastName: true, avatar: true, jobTitle: true } },
           buddy: { select: { id: true, firstName: true, lastName: true, avatar: true } },
-          _count: { select: { tasks: true, checkIns: true } },
+          tasks: { select: { id: true, completed: true, responsible: true, phase: true } },
+          checkIns: { select: { id: true, status: true, type: true, scheduledDate: true, completedAt: true } },
         },
       });
 

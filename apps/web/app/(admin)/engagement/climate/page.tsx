@@ -2,42 +2,61 @@
 
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
-import { formatDate } from '../../../../lib/format-utils';
-import { DataTable, EmptyState, StatusBadge } from '../../../../components';
-
-const STATUS_MAP: Record<string, { cls: string; label: string }> = {
-  draft: { cls: 'bg-gray-100 text-gray-600', label: 'Borrador' },
-  active: { cls: 'bg-green-50 text-green-600 border border-green-200', label: 'Activa' },
-  closed: { cls: 'bg-blue-50 text-blue-600 border border-blue-200', label: 'Cerrada' },
-};
+import { ClimateKpis } from './climate-kpis';
+import { ClimateHeatmap } from './climate-heatmap';
+import { ClimateResults } from './climate-results';
+import { WordCloud, SentimentAnalysis, LowClimateAlerts } from './climate-sidebar';
+import { ActionPlans, LeaderCommitments } from './climate-bottom';
 
 export default function ClimatePage() {
   const { t } = useI18n();
-  const surveys = trpc.engagement.listSurveys.useQuery({ limit: 50 });
-  const items = surveys.data?.items ?? [];
-
-  const columns = [
-    { key: 'title', label: 'Encuesta' },
-    { key: 'type', label: t.common.type },
-    { key: 'status', label: t.common.status },
-    { key: 'responses', label: 'Respuestas', align: 'center' as const },
-    { key: 'created', label: t.common.date },
-  ];
+  const enps = trpc.engagement.getEnps.useQuery({});
+  const kpis = trpc.engagement.getDashboardKpis.useQuery();
 
   return (
-    <div className="h-full flex flex-col overflow-hidden p-6">
-      <h1 className="text-lg font-semibold text-[#1F114C] mb-5">{t.sidebar.climate}</h1>
-      <DataTable columns={columns} loading={surveys.isLoading} skeletonRows={6} empty={<EmptyState icon={<svg className="w-10 h-10 text-[#ccc]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" /></svg>} message="No hay encuestas configuradas" description="Crea la primera encuesta de clima" />}>
-        {items.map((survey) => (
-          <tr key={survey.id} className="border-b border-[#F6F6F6] hover:bg-[#FAFAFA] transition">
-            <td className="px-4 py-3"><p className="text-[13px] font-medium text-[#333]">{survey.title}</p></td>
-            <td className="px-4 py-3"><span className="text-[12px] text-[#585858]">{survey.type}</span></td>
-            <td className="px-4 py-3"><StatusBadge status={survey.status} map={STATUS_MAP} /></td>
-            <td className="px-4 py-3 text-center"><span className="text-[13px] text-[#333]">{survey.responseCount}</span></td>
-            <td className="px-4 py-3"><span className="text-[12px] text-[#8B8B8B]">{formatDate(survey.createdAt)}</span></td>
-          </tr>
-        ))}
-      </DataTable>
+    <div className="flex flex-col flex-1 min-w-0 h-full">
+      {/* Top Bar */}
+      <div className="flex items-center justify-between px-6 h-16 bg-white border-b border-[#EDEDED] shrink-0">
+        <div className="flex items-center gap-2">
+          <span className="text-[13px] text-[#8B8B8B]">People</span>
+          <svg className="w-3 h-3 text-[#ccc]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" /></svg>
+          <span className="text-sm font-medium text-[#1F114C]">{t.sidebar.climate}</span>
+        </div>
+        <div className="flex items-center gap-3">
+          <button className="flex items-center gap-1.5 border border-[#EDEDED] text-[#585858] px-3 h-8 rounded-lg text-[12px]">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+            Exportar
+          </button>
+          <button className="flex items-center gap-1.5 bg-[#DD0C15] text-white px-4 h-8 rounded-lg text-[12px] font-medium">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 4.5v15m7.5-7.5h-15" /></svg>
+            Lanzar Encuesta
+          </button>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto p-5">
+        <ClimateKpis enps={enps.data ?? null} dashKpis={kpis.data ?? null} loading={enps.isLoading || kpis.isLoading} />
+
+        {/* Main Two Columns */}
+        <div className="flex gap-4 mb-4">
+          <div className="w-[55%] flex flex-col gap-4">
+            <ClimateHeatmap />
+            <ClimateResults />
+          </div>
+          <div className="w-[45%] flex flex-col gap-4">
+            <WordCloud />
+            <SentimentAnalysis />
+            <LowClimateAlerts />
+          </div>
+        </div>
+
+        {/* Bottom Row */}
+        <div className="flex gap-4">
+          <ActionPlans />
+          <LeaderCommitments />
+        </div>
+      </div>
     </div>
   );
 }

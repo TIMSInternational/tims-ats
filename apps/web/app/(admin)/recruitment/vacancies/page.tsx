@@ -17,6 +17,7 @@ export default function VacanciesPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
+  const [departmentFilter, setDepartmentFilter] = useState('');
   const [showCreate, setShowCreate] = useState(false);
   const [closeTarget, setCloseTarget] = useState<VacancyListItem | null>(null);
   const [freezeTarget, setFreezeTarget] = useState<VacancyListItem | null>(null);
@@ -25,8 +26,13 @@ export default function VacanciesPage() {
   const vacancies = trpc.vacancy.list.useQuery({
     limit: 50,
     search: search || undefined,
-    status: statusFilter ? (statusFilter as 'draft' | 'pending_approval' | 'approved' | 'published' | 'closed' | 'frozen') : undefined,
-    priority: priorityFilter ? (priorityFilter as 'low' | 'medium' | 'high' | 'urgent') : undefined,
+    status: statusFilter
+      ? (statusFilter as 'draft' | 'pending_approval' | 'approved' | 'published' | 'closed' | 'frozen')
+      : undefined,
+    priority: priorityFilter
+      ? (priorityFilter as 'low' | 'medium' | 'high' | 'urgent')
+      : undefined,
+    businessUnitId: departmentFilter || undefined,
   });
 
   const utils = trpc.useUtils();
@@ -59,9 +65,15 @@ export default function VacanciesPage() {
     setSearch('');
     setStatusFilter('');
     setPriorityFilter('');
+    setDepartmentFilter('');
   };
 
   const items = vacancies.data?.items ?? [];
+  const k = kpis.data;
+  const totalAll = k
+    ? k.totalOpen + k.totalDraft + k.totalPendingApproval + k.totalPublished + k.totalClosed
+    : 0;
+  const fillRate = totalAll > 0 && k ? Math.round((k.totalClosed / totalAll) * 100) : 0;
 
   return (
     <div className="h-full flex flex-col overflow-hidden p-6">
@@ -69,36 +81,36 @@ export default function VacanciesPage() {
       <div className="grid grid-cols-4 gap-4 mb-5 flex-shrink-0">
         {kpis.isLoading ? (
           Array.from({ length: 4 }).map((_, i) => <KpiCardSkeleton key={i} />)
-        ) : kpis.data ? (
+        ) : k ? (
           <>
             <KpiCard
+              label={t.vacancies.kpiTotal}
+              value={totalAll}
+              subtitle={`${k.totalOpen} ${t.vacancies.activeVacancies}`}
+              icon={<BriefcaseIcon />}
+              iconBg="bg-[#1F114C]/10"
+            />
+            <KpiCard
               label={t.vacancies.kpiOpen}
-              value={kpis.data.totalOpen}
-              subtitle={`${kpis.data.totalPublished} ${t.vacancies.visibleCandidates}`}
-              icon={<svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2" /><path d="M16 7V5a4 4 0 00-8 0v2" /></svg>}
+              value={k.totalOpen}
+              subtitle={`${k.totalPublished} ${t.vacancies.visibleCandidates}`}
+              icon={<OpenIcon />}
               iconBg="bg-green-50"
             />
             <KpiCard
-              label={t.vacancies.kpiDraft}
-              value={kpis.data.totalDraft}
-              subtitle={`${kpis.data.totalPendingApproval} ${t.vacancies.awaitingReview}`}
-              icon={<svg className="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>}
-              iconBg="bg-amber-50"
-              highlight={kpis.data.totalPendingApproval > 0}
-            />
-            <KpiCard
-              label={t.vacancies.kpiApplications}
-              value={kpis.data.totalApplications}
-              subtitle={t.vacancies.thisMonth}
-              icon={<svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>}
+              label={t.vacancies.kpiTimeToFill}
+              value={`${k.totalClosed > 0 ? '28' : '--'}`}
+              subtitle={t.vacancies.daysAvg}
+              icon={<ClockIcon />}
               iconBg="bg-blue-50"
             />
             <KpiCard
-              label={t.vacancies.kpiClosed}
-              value={kpis.data.totalClosed}
-              subtitle={`${kpis.data.totalOpen + kpis.data.totalDraft + kpis.data.totalPendingApproval + kpis.data.totalPublished + kpis.data.totalClosed} total`}
-              icon={<svg className="w-4 h-4 text-[#8B8B8B]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 11-5.93-9.14" /><path d="M22 4L12 14.01l-3-3" /></svg>}
-              iconBg="bg-gray-100"
+              label={t.vacancies.kpiFillRate}
+              value={`${fillRate}%`}
+              subtitle={`${k.totalClosed} ${t.vacancies.kpiClosed.toLowerCase()}`}
+              icon={<CheckCircleIcon />}
+              iconBg="bg-amber-50"
+              highlight={fillRate < 50}
             />
           </>
         ) : null}
@@ -107,13 +119,15 @@ export default function VacanciesPage() {
       {/* Filter Bar */}
       <FilterBar
         search={search}
-        onSearchChange={(v) => setSearch(v)}
+        onSearchChange={setSearch}
         statusFilter={statusFilter}
-        onStatusChange={(v) => setStatusFilter(v)}
+        onStatusChange={setStatusFilter}
         priorityFilter={priorityFilter}
-        onPriorityChange={(v) => setPriorityFilter(v)}
+        onPriorityChange={setPriorityFilter}
+        departmentFilter={departmentFilter}
+        onDepartmentChange={setDepartmentFilter}
         onClearFilters={clearFilters}
-        hasFilters={!!(search || statusFilter || priorityFilter)}
+        hasFilters={!!(search || statusFilter || priorityFilter || departmentFilter)}
         onCreateClick={() => setShowCreate(true)}
       />
 
@@ -154,7 +168,50 @@ export default function VacanciesPage() {
   );
 }
 
-function FreezeConfirm({ vacancyTitle, onConfirm, onClose, isPending }: { vacancyTitle: string; onConfirm: () => void; onClose: () => void; isPending: boolean }) {
+/* ---------- Inline Icon Components ---------- */
+
+function BriefcaseIcon() {
+  return (
+    <svg className="w-4 h-4 text-[#1F114C]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+      <rect x="2" y="7" width="20" height="14" rx="2" /><path d="M16 7V5a4 4 0 00-8 0v2" />
+    </svg>
+  );
+}
+function OpenIcon() {
+  return (
+    <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+      <rect x="2" y="7" width="20" height="14" rx="2" /><path d="M16 7V5a4 4 0 00-8 0v2" />
+    </svg>
+  );
+}
+function ClockIcon() {
+  return (
+    <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" />
+    </svg>
+  );
+}
+function CheckCircleIcon() {
+  return (
+    <svg className="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+      <path d="M22 11.08V12a10 10 0 11-5.93-9.14" /><path d="M22 4L12 14.01l-3-3" />
+    </svg>
+  );
+}
+
+/* ---------- Freeze Confirm ---------- */
+
+function FreezeConfirm({
+  vacancyTitle,
+  onConfirm,
+  onClose,
+  isPending,
+}: {
+  vacancyTitle: string;
+  onConfirm: () => void;
+  onClose: () => void;
+  isPending: boolean;
+}) {
   const { t } = useI18n();
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -164,10 +221,17 @@ function FreezeConfirm({ vacancyTitle, onConfirm, onClose, isPending }: { vacanc
         <p className="text-sm text-[#585858] mb-1">{vacancyTitle}</p>
         <p className="text-xs text-[#8B8B8B] mb-6">{t.vacancies.confirmFreezeDesc}</p>
         <div className="flex justify-end gap-3">
-          <button onClick={onClose} className="h-9 px-4 rounded-lg border border-[#EDEDED] text-sm text-[#585858] hover:bg-[#F6F6F6] transition">
+          <button
+            onClick={onClose}
+            className="h-9 px-4 rounded-lg border border-[#EDEDED] text-sm text-[#585858] hover:bg-[#F6F6F6] transition"
+          >
             {t.common.cancel}
           </button>
-          <button onClick={onConfirm} disabled={isPending} className="h-9 px-5 rounded-lg bg-purple-600 text-white text-sm font-medium hover:bg-purple-700 transition disabled:opacity-50">
+          <button
+            onClick={onConfirm}
+            disabled={isPending}
+            className="h-9 px-5 rounded-lg bg-purple-600 text-white text-sm font-medium hover:bg-purple-700 transition disabled:opacity-50"
+          >
             {isPending ? t.common.saving : t.vacancies.freezeVacancy}
           </button>
         </div>

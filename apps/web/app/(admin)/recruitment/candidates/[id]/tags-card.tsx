@@ -11,6 +11,13 @@ interface Tag {
   source: string;
 }
 
+function getTagStyle(source: string): string {
+  if (source === 'ai') return 'bg-teal-50 text-teal-600 border border-teal-200';
+  if (source === 'skill') return 'bg-blue-50 text-blue-600';
+  if (source === 'category') return 'bg-purple-50 text-purple-600';
+  return 'bg-blue-50 text-blue-600';
+}
+
 export function TagsCard({ tags, candidateId }: { tags: Tag[]; candidateId: string }) {
   const { t } = useI18n();
   const [newTag, setNewTag] = useState('');
@@ -37,13 +44,17 @@ export function TagsCard({ tags, candidateId }: { tags: Tag[]; candidateId: stri
       {tags.length === 0 ? (
         <p className="text-xs text-[#8B8B8B] mb-3">{t.candidates.noTags}</p>
       ) : (
-        <div className="flex flex-wrap gap-1.5 mb-3">
+        <div className="flex flex-wrap gap-2 mb-3">
           {tags.map((tag) => (
-            <span key={tag.id} className="inline-flex items-center gap-1 text-[11px] bg-blue-50 text-blue-600 px-2.5 py-1 rounded-full">
+            <span
+              key={tag.id}
+              className={`inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full ${getTagStyle(tag.source)}`}
+            >
+              {tag.source === 'ai' && 'IA: '}
               {tag.tag}
               <button
                 onClick={() => removeTag.mutate({ candidateId, tag: tag.tag })}
-                className="text-blue-400 hover:text-blue-700 ml-0.5"
+                className="opacity-60 hover:opacity-100 ml-0.5"
                 disabled={removeTag.isPending}
               >
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" /></svg>

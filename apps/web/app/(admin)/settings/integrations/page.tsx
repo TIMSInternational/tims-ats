@@ -2,53 +2,59 @@
 
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
-import { EmptyState, StatusBadge } from '../../../../components';
-
-const STATUS_MAP: Record<string, { cls: string; label: string }> = {
-  active: { cls: 'bg-green-50 text-green-600 border border-green-200', label: 'Activo' },
-  error: { cls: 'bg-red-50 text-red-600', label: 'Error' },
-  inactive: { cls: 'bg-gray-100 text-gray-600', label: 'Inactivo' },
-  pending: { cls: 'bg-amber-50 text-amber-600', label: 'Pendiente' },
-};
+import { IntegrationKpis } from './integration-kpis';
+import { ActiveConnectors, WebhooksConfig } from './integration-connectors';
+import { ErrorLog, SyncActivity, ApiKeysPanel } from './integration-right-column';
+import { AuditTrail, SystemHealth } from './integration-bottom';
 
 export default function IntegrationsPage() {
   const { t } = useI18n();
-  const connectors = trpc.integration.listConnectors.useQuery();
-  const items = connectors.data ?? [];
+  const kpis = trpc.integration.getDashboardKpis.useQuery();
 
   return (
-    <div className="h-full flex flex-col overflow-hidden p-6">
-      <h1 className="text-lg font-semibold text-[#1F114C] mb-5">{t.sidebar.integrations}</h1>
+    <div className="flex flex-col flex-1 min-w-0 h-full">
+      {/* Top Bar */}
+      <div className="flex items-center justify-between px-6 h-16 bg-white border-b border-[#EDEDED] shrink-0">
+        <div className="flex items-center gap-2">
+          <span className="text-[13px] text-[#8B8B8B]">Admin</span>
+          <svg className="w-3 h-3 text-[#ccc]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" /></svg>
+          <span className="text-sm font-medium text-[#1F114C]">{t.sidebar.integrations}</span>
+        </div>
+        <div className="flex items-center gap-3">
+          <button className="flex items-center gap-1.5 border border-[#EDEDED] text-[#585858] px-3 h-8 rounded-lg text-[12px]">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+            Exportar Logs
+          </button>
+          <button className="flex items-center gap-1.5 bg-[#DD0C15] text-white px-4 h-8 rounded-lg text-[12px] font-medium">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 4.5v15m7.5-7.5h-15" /></svg>
+            +Nueva Integracion
+          </button>
+        </div>
+      </div>
 
-      {connectors.isLoading ? (
-        <div className="grid grid-cols-3 gap-4">
-          {Array.from({ length: 3 }).map((_, i) => <div key={i} className="bg-white rounded-xl p-5 animate-pulse"><div className="h-20 bg-gray-100 rounded" /></div>)}
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto p-5">
+        <IntegrationKpis data={kpis.data ?? null} loading={kpis.isLoading} />
+
+        {/* Middle 2-Column */}
+        <div className="flex gap-4 mb-4">
+          <div className="w-[55%] flex flex-col gap-4">
+            <ActiveConnectors />
+            <WebhooksConfig />
+          </div>
+          <div className="w-[45%] flex flex-col gap-4">
+            <ErrorLog />
+            <SyncActivity />
+            <ApiKeysPanel />
+          </div>
         </div>
-      ) : items.length === 0 ? (
-        <EmptyState icon={<svg className="w-10 h-10 text-[#ccc]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281" /><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>} message="No hay integraciones configuradas" description="Conecta HRIS, calendarios y otros servicios" />
-      ) : (
-        <div className="grid grid-cols-3 gap-4">
-          {items.map((conn) => (
-            <div key={conn.id} className="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-[#F6F6F6] flex items-center justify-center text-[#1F114C] text-[11px] font-bold">
-                    {conn.type.slice(0, 2).toUpperCase()}
-                  </div>
-                  <div>
-                    <p className="text-[13px] font-medium text-[#333]">{conn.name}</p>
-                    <p className="text-[10px] text-[#8B8B8B]">{conn.type}</p>
-                  </div>
-                </div>
-                <StatusBadge status={conn.status} map={STATUS_MAP} />
-              </div>
-              {conn.lastSyncAt && (
-                <p className="text-[10px] text-[#8B8B8B]">Last sync: {new Date(conn.lastSyncAt).toLocaleDateString()}</p>
-              )}
-            </div>
-          ))}
+
+        {/* Bottom Row */}
+        <div className="flex gap-4">
+          <AuditTrail />
+          <SystemHealth />
         </div>
-      )}
+      </div>
     </div>
   );
 }

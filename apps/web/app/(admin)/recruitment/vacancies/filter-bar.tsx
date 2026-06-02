@@ -9,6 +9,8 @@ interface FilterBarProps {
   onStatusChange: (v: string) => void;
   priorityFilter: string;
   onPriorityChange: (v: string) => void;
+  departmentFilter: string;
+  onDepartmentChange: (v: string) => void;
   onClearFilters: () => void;
   hasFilters: boolean;
   onCreateClick: () => void;
@@ -21,6 +23,8 @@ export function FilterBar({
   onStatusChange,
   priorityFilter,
   onPriorityChange,
+  departmentFilter,
+  onDepartmentChange,
   onClearFilters,
   hasFilters,
   onCreateClick,
@@ -28,18 +32,29 @@ export function FilterBar({
   const { t } = useI18n();
 
   return (
-    <div className="flex items-center gap-3 mb-4 flex-shrink-0">
-      <div className="relative flex-1 max-w-sm">
-        <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8B8B8B]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" /></svg>
+    <div className="flex items-center gap-3 mb-4 flex-shrink-0 flex-wrap">
+      {/* Search */}
+      <div className="relative flex-1 min-w-[200px] max-w-sm">
+        <svg
+          className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8B8B8B]"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          viewBox="0 0 24 24"
+        >
+          <circle cx="11" cy="11" r="8" />
+          <path d="m21 21-4.35-4.35" />
+        </svg>
         <input
           type="text"
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder={t.vacancies.searchVacancy}
-          className="w-full h-9 pl-9 pr-3 rounded-lg border border-[#EDEDED] text-sm focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 focus:border-[#1F114C]"
+          className="w-full h-9 pl-9 pr-3 rounded-lg border border-[#EDEDED] text-sm text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 focus:border-[#1F114C] bg-white"
         />
       </div>
 
+      {/* Status Filter */}
       <select
         value={statusFilter}
         onChange={(e) => onStatusChange(e.target.value)}
@@ -54,6 +69,7 @@ export function FilterBar({
         <option value="frozen">{t.vacancies.filterFrozen}</option>
       </select>
 
+      {/* Priority Filter */}
       <select
         value={priorityFilter}
         onChange={(e) => onPriorityChange(e.target.value)}
@@ -66,20 +82,33 @@ export function FilterBar({
         <option value="urgent">{t.vacancies.priorityUrgent}</option>
       </select>
 
+      {/* Department Filter */}
+      <select
+        value={departmentFilter}
+        onChange={(e) => onDepartmentChange(e.target.value)}
+        className="h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#585858] bg-white focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20"
+      >
+        <option value="">{t.vacancies.allDepartments}</option>
+      </select>
+
+      {/* Clear Filters */}
       {hasFilters && (
         <button
           onClick={onClearFilters}
           className="h-9 px-3 rounded-lg border border-[#EDEDED] text-xs text-[#8B8B8B] hover:bg-[#F6F6F6] transition"
         >
-          {t.subscriptions.clearFilters}
+          {t.vacancies.clearFilters}
         </button>
       )}
 
+      {/* Create Button */}
       <button
         onClick={onCreateClick}
         className="h-9 px-4 rounded-lg bg-[#DD0C15] text-white text-sm font-medium hover:bg-[#c00b13] transition flex items-center gap-2 ml-auto"
       >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+          <path d="M12 5v14M5 12h14" />
+        </svg>
         {t.vacancies.newVacancy}
       </button>
     </div>

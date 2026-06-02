@@ -1,0 +1,48 @@
+'use client';
+
+interface PerformanceKpi {
+  label: string;
+  value: string | number;
+  valueColor?: string;
+  change?: { text: string; color: string };
+  extra?: React.ReactNode;
+  progressBar?: { pct: number; color: string };
+}
+
+export function PerformanceKpis({ kpis }: { kpis: PerformanceKpi[] }) {
+  return (
+    <div className="grid grid-cols-5 gap-4">
+      {kpis.map((kpi) => (
+        <div
+          key={kpi.label}
+          className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4"
+        >
+          <div className="text-[11px] text-[#8B8B8B] font-medium mb-1">
+            {kpi.label}
+          </div>
+          <div className="flex items-end gap-2">
+            <span
+              className={`text-[28px] font-bold leading-none ${kpi.valueColor || 'text-[#333]'}`}
+            >
+              {kpi.value}
+            </span>
+            {kpi.change && (
+              <span className={`text-[11px] font-medium mb-1 ${kpi.change.color}`}>
+                {kpi.change.text}
+              </span>
+            )}
+          </div>
+          {kpi.progressBar && (
+            <div className="w-full h-1.5 bg-[#EDEDED] rounded-full mt-2">
+              <div
+                className={`h-full rounded-full ${kpi.progressBar.color}`}
+                style={{ width: `${kpi.progressBar.pct}%` }}
+              />
+            </div>
+          )}
+          {kpi.extra && <div className="mt-2">{kpi.extra}</div>}
+        </div>
+      ))}
+    </div>
+  );
+}

@@ -53,13 +53,27 @@ export const nineboxRouter = router({
         orderBy: { evaluatedAt: 'desc' },
       });
 
-      // Group by quadrant
+      // Map quadrant names to grid keys (potential-performance)
+      const quadrantToGrid: Record<string, string> = {
+        star: '3-3',
+        high_potential: '3-2',
+        enigma: '3-1',
+        solid_performer: '2-3',
+        consistent_performer: '2-3',
+        core_player: '2-2',
+        inconsistent: '2-1',
+        workhouse: '1-3',
+        underperformer: '1-2',
+        risk: '1-1',
+      };
+
       const grid: Record<string, typeof evaluations> = {};
       for (const evaluation of evaluations) {
-        if (!grid[evaluation.quadrant]) {
-          grid[evaluation.quadrant] = [];
+        const key = quadrantToGrid[evaluation.quadrant] ?? evaluation.quadrant;
+        if (!grid[key]) {
+          grid[key] = [];
         }
-        grid[evaluation.quadrant].push(evaluation);
+        grid[key].push(evaluation);
       }
 
       return { period: input.period, grid, totalEvaluations: evaluations.length };

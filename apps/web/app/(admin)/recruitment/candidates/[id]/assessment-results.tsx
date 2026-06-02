@@ -1,7 +1,7 @@
 'use client';
 
 import { useI18n } from '../../../../../lib/i18n';
-import { DiscChart, AssessmentBadge } from '../../../../../components';
+import { DiscChart } from '../../../../../components';
 
 interface Assignment {
   id: string;
@@ -19,45 +19,129 @@ interface FitScore {
   calculatedAt: Date | string;
 }
 
+function StatusLabel({ status }: { status: string }) {
+  const { t } = useI18n();
+  const cls = status === 'completed'
+    ? 'bg-green-50 text-green-600'
+    : status === 'in_progress'
+      ? 'bg-amber-50 text-amber-600'
+      : 'bg-gray-100 text-gray-600';
+  const label = status === 'completed' ? t.candidates.completed : status;
+  return <span className={`text-[12px] font-medium px-2 py-0.5 rounded ${cls}`}>{label}</span>;
+}
+
+function DiscScoreBoxes({ breakdown }: { breakdown: Record<string, number> }) {
+  const dims = [
+    { key: 'D', value: breakdown.dominance ?? 0 },
+    { key: 'I', value: breakdown.influence ?? 0 },
+    { key: 'S', value: breakdown.steadiness ?? 0 },
+    { key: 'C', value: breakdown.compliance ?? 0 },
+  ];
+
+  return (
+    <div className="flex gap-2">
+      {dims.map((d) => (
+        <div key={d.key} className="flex-1 bg-[#F6F6F6] rounded p-2 text-center">
+          <p className="text-[10px] text-[#8B8B8B]">{d.key}</p>
+          <p className="text-[14px] font-bold text-[#1F114C]">{d.value}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function BreakdownGrid({ data }: { data: Record<string, number> }) {
+  const entries = Object.entries(data).slice(0, 6);
+  return (
+    <div className="grid grid-cols-3 gap-2 mt-2">
+      {entries.map(([key, val]) => (
+        <div key={key} className="bg-[#F6F6F6] rounded p-2 text-center">
+          <p className="text-[9px] text-[#8B8B8B] capitalize">{key}</p>
+          <p className="text-[13px] font-bold text-[#1F114C]">{String(val)}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AssessmentRow({ name, status, children }: { name: string; status: string; children?: React.ReactNode }) {
+  return (
+    <div className="mt-2">
+      <div className="flex items-center justify-between">
+        <span className="text-[12px] text-[#585858]">{name}</span>
+        <StatusLabel status={status} />
+      </div>
+      {children}
+    </div>
+  );
+}
+
 export function AssessmentResults({ assignments, fitScores }: { assignments: Assignment[]; fitScores: FitScore[] }) {
   const { t } = useI18n();
   const latestFit = fitScores[0];
   const breakdown = latestFit?.breakdown as Record<string, number> | null;
+  const hasDisc = breakdown && (breakdown.dominance || breakdown.influence || breakdown.steadiness || breakdown.compliance);
+
+  // Group assignments by code for special rendering
+  const byCode = new Map<string, Assignment>();
+  for (const a of assignments) {
+    byCode.set(a.assessmentType.code.toLowerCase(), a);
+  }
 
   return (
     <div className="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
       <h3 className="text-[14px] font-semibold text-[#1F114C] mb-4">{t.candidates.assessmentResults}</h3>
 
-      {/* DISC Chart if breakdown available */}
-      {breakdown && (breakdown.dominance || breakdown.influence || breakdown.steadiness || breakdown.compliance) && (
-        <div className="mb-4">
-          <p className="text-[12px] text-[#585858] font-medium mb-2">{t.vacancies.pcaExpected}</p>
+      {/* DISC Chart */}
+      {hasDisc && (
+        <div className="bg-[#F6F6F6] rounded-lg p-4 mb-4">
           <DiscChart scores={breakdown} />
         </div>
       )}
 
-      {/* Assessment list */}
       <div className="space-y-2">
-        {assignments.map((a) => (
-          <div key={a.id} className="flex items-center justify-between py-2 border-b border-[#F6F6F6] last:border-0">
-            <div className="flex items-center gap-2">
-              <AssessmentBadge type={a.assessmentType.code} status={a.status} />
-              <span className="text-[12px] text-[#333]">{a.assessmentType.name}</span>
-            </div>
-            <div className="flex items-center gap-2">
+        {/* PCA / DISC with score boxes */}
+        {hasDisc && (
+          <>
+            <AssessmentRow name="PCA (DISC)" status="completed">
+              <div className="mt-2">
+                <DiscScoreBoxes breakdown={breakdown} />
+              </div>
+            </AssessmentRow>
+          </>
+        )}
+
+        {/* All other assignments */}
+        {assignments.map((a) => {
+          // Skip PCA if already rendered via DISC
+          if (hasDisc && a.assessmentType.code.toLowerCase() === 'pca') return null;
+
+          return (
+            <AssessmentRow key={a.id} name={a.assessmentType.name} status={a.status}>
               {a.result?.normalizedScore != null && (
-                <span className="text-[13px] font-bold text-[#1F114C]">{a.result.normalizedScore}</span>
+                <div className="mt-1">
+                  <div className="w-full bg-[#F6F6F6] rounded-full h-2">
+                    <div
+                      className="bg-[#1F114C] h-2 rounded-full transition-all"
+                      style={{ width: `${Math.min(a.result.normalizedScore, 100)}%` }}
+                    />
+                  </div>
+                  <p className="text-[11px] text-[#585858] mt-1">
+                    {t.candidates.level} <span className="font-medium text-[#1F114C]">{a.result.normalizedScore}/100</span>
+                  </p>
+                </div>
               )}
-              <span className={`text-[10px] px-2 py-0.5 rounded font-medium ${
-                a.status === 'completed' ? 'bg-green-50 text-green-600' :
-                a.status === 'in_progress' ? 'bg-amber-50 text-amber-600' :
-                'bg-gray-100 text-gray-600'
-              }`}>
-                {a.status}
-              </span>
-            </div>
-          </div>
-        ))}
+              {a.result?.breakdown != null && typeof a.result.breakdown === 'object' && !Array.isArray(a.result.breakdown) ? (
+                <BreakdownGrid data={a.result.breakdown as Record<string, number>} />
+              ) : null}
+            </AssessmentRow>
+          );
+        })}
+
+        {/* View Full Reports button */}
+        <button className="w-full mt-3 bg-[#F6F6F6] text-[#1F114C] text-[12px] font-medium py-2 rounded-lg hover:bg-[#EDEDED] transition">
+          {t.candidates.viewFullReports}
+        </button>
       </div>
     </div>
   );

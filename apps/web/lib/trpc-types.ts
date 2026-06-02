@@ -49,6 +49,8 @@ export type PipelineStageWithApps = PipelineBoardData['stages'][number];
 export type PipelineApplicationCard = PipelineStageWithApps['applications'][number];
 export type PipelineFunnel = RouterOutput['pipeline']['getFunnel'];
 
-// Interview (types will be added when interview service is refactored in Phase 1.3)
+// Interview
+export type InterviewListItem = RouterOutput['interview']['list']['items'][number];
+export type InterviewListResult = RouterOutput['interview']['list'];
 
 // Offer (types will be added when offer service is refactored in Phase 1.4)

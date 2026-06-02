@@ -2,44 +2,68 @@
 
 import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
-import { DataTable, EmptyState, StatusBadge } from '../../../components';
-
-const STATUS_MAP: Record<string, { cls: string; label: string }> = {
-  published: { cls: 'bg-green-50 text-green-600 border border-green-200', label: 'Publicado' },
-  draft: { cls: 'bg-gray-100 text-gray-600', label: 'Borrador' },
-  archived: { cls: 'bg-amber-50 text-amber-600', label: 'Archivado' },
-};
+import { LearningKpis } from './learning-kpis';
+import { CourseCatalog } from './course-catalog';
+import { LearningPathsPanel } from './learning-paths-panel';
+import { PrePostTest } from './pre-post-test';
+import { TeamProgressTable } from './team-progress-table';
+import { AiRecommendations } from './ai-recommendations';
 
 export default function LearningPage() {
   const { t } = useI18n();
+  const kpis = trpc.learning.getDashboardKpis.useQuery();
   const courses = trpc.learning.listCourses.useQuery({ pageSize: 50 });
-  const items = courses.data?.courses ?? [];
+  const paths = trpc.learning.listPaths.useQuery();
 
-  const columns = [
-    { key: 'title', label: 'Curso' },
-    { key: 'type', label: t.common.type },
-    { key: 'status', label: t.common.status },
-    { key: 'enrolled', label: 'Inscritos', align: 'center' as const },
-    { key: 'duration', label: 'Duracion' },
-  ];
+  const courseItems = courses.data?.courses ?? [];
+  const pathItems = paths.data ?? [];
 
   return (
-    <div className="h-full flex flex-col overflow-hidden p-6">
-      <h1 className="text-lg font-semibold text-[#1F114C] mb-5">{t.sidebar.training}</h1>
-      <DataTable columns={columns} loading={courses.isLoading} skeletonRows={6} empty={<EmptyState icon={<svg className="w-10 h-10 text-[#ccc]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" /></svg>} message="No hay cursos registrados" description="Crea el primer curso para comenzar" />}>
-        {items.map((course) => (
-          <tr key={course.id} className="border-b border-[#F6F6F6] hover:bg-[#FAFAFA] transition">
-            <td className="px-4 py-3">
-              <p className="text-[13px] font-medium text-[#333]">{course.title}</p>
-              <p className="text-[10px] text-[#8B8B8B]">{course.category}</p>
-            </td>
-            <td className="px-4 py-3"><span className="text-[12px] text-[#585858]">{course.type}</span></td>
-            <td className="px-4 py-3"><span className="text-[12px] text-[#585858]">{course.isRequired ? 'Obligatorio' : 'Opcional'}</span></td>
-            <td className="px-4 py-3 text-center"><span className="text-[13px] text-[#333]">{course._count.enrollments}</span></td>
-            <td className="px-4 py-3"><span className="text-[12px] text-[#585858]">{course.type}</span></td>
-          </tr>
-        ))}
-      </DataTable>
+    <div className="flex flex-col flex-1 min-w-0 h-full">
+      {/* Top Bar */}
+      <div className="flex items-center justify-between px-6 h-16 bg-white border-b border-[#EDEDED] shrink-0">
+        <div className="flex items-center gap-2">
+          <span className="text-[13px] text-[#8B8B8B]">{t.learning.breadcrumb}</span>
+          <svg className="w-3 h-3 text-[#ccc]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <path d="m9 18 6-6-6-6" />
+          </svg>
+          <span className="text-sm font-medium text-[#1F114C]">{t.learning.title}</span>
+        </div>
+        <div className="flex items-center gap-3">
+          <button className="flex items-center gap-1.5 border border-[#EDEDED] text-[#585858] px-3 h-8 rounded-lg text-[12px]">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+              <path d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+            </svg>
+            {t.learning.export}
+          </button>
+          <button className="flex items-center gap-1.5 bg-[#DD0C15] text-white px-4 h-8 rounded-lg text-[12px] font-medium">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <path d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+            {t.learning.newCourse}
+          </button>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto p-5">
+        <LearningKpis data={kpis.data} loading={kpis.isLoading} t={t.learning} />
+
+        {/* Middle: 2-column */}
+        <div className="flex gap-4 mb-4">
+          <CourseCatalog courses={courseItems} loading={courses.isLoading} t={t.learning} />
+          <div className="w-[45%] flex flex-col gap-4">
+            <LearningPathsPanel paths={pathItems} loading={paths.isLoading} t={t.learning} />
+            <PrePostTest t={t.learning} />
+          </div>
+        </div>
+
+        {/* Bottom Row */}
+        <div className="flex gap-4">
+          <TeamProgressTable t={t.learning} />
+          <AiRecommendations t={t.learning} />
+        </div>
+      </div>
     </div>
   );
 }

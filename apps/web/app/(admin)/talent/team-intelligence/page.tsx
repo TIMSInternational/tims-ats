@@ -2,62 +2,71 @@
 
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
-import { KpiCard, KpiCardSkeleton, EmptyState } from '../../../../components';
+import { TeamIntelKpis } from './team-intel-kpis';
+import { PcaProfile } from './pca-profile';
+import { TeamComposition } from './team-composition';
+import { TeamMembersTable } from './team-members-table';
+import { BalanceAlerts } from './balance-alerts';
+import { RecommendedHires } from './recommended-hires';
+import { TeamComparison } from './team-comparison';
 
 export default function TeamIntelligencePage() {
   const { t } = useI18n();
   const kpis = trpc.teamIntel.getDashboardKpis.useQuery();
 
   return (
-    <div className="h-full flex flex-col overflow-hidden p-6">
-      <h1 className="text-lg font-semibold text-[#1F114C] mb-5">{t.teamIntel.title}</h1>
-
-      {/* KPIs */}
-      <div className="grid grid-cols-4 gap-4 mb-6 flex-shrink-0">
-        {kpis.isLoading ? (
-          Array.from({ length: 4 }).map((_, i) => <KpiCardSkeleton key={i} />)
-        ) : kpis.data ? (
-          <>
-            <KpiCard
-              label={t.teamIntel.kpiTeams}
-              value={kpis.data.totalTeams}
-              subtitle={`${kpis.data.totalMembers} ${t.teamIntel.kpiMembers.toLowerCase()}`}
-              icon={<svg className="w-4 h-4 text-[#1F114C]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M18 21a8 8 0 00-16 0" /><circle cx="10" cy="8" r="5" /></svg>}
-              iconBg="bg-[#1F114C]/10"
-            />
-            <KpiCard
-              label={t.teamIntel.kpiMembers}
-              value={kpis.data.totalMembers}
-              subtitle={`${t.teamIntel.kpiAvgSize}: ${kpis.data.avgTeamSize}`}
-              icon={<svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>}
-              iconBg="bg-blue-50"
-            />
-            <KpiCard
-              label={t.teamIntel.kpiAvgSize}
-              value={kpis.data.avgTeamSize}
-              subtitle={t.teamIntel.kpiMembers}
-              icon={<svg className="w-4 h-4 text-violet-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75z" /></svg>}
-              iconBg="bg-violet-50"
-            />
-            <KpiCard
-              label={t.teamIntel.kpiLeaderless}
-              value={kpis.data.teamsWithoutLeader}
-              subtitle={kpis.data.teamsWithoutLeader > 0 ? t.common.requiresAttention : t.common.noIssues}
-              valueColor={kpis.data.teamsWithoutLeader > 0 ? 'text-[#DD0C15]' : undefined}
-              icon={<svg className="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z" /></svg>}
-              iconBg="bg-amber-50"
-              highlight={kpis.data.teamsWithoutLeader > 0}
-            />
-          </>
-        ) : null}
+    <div className="flex flex-col flex-1 min-w-0 h-full">
+      {/* Top Bar */}
+      <div className="flex items-center justify-between px-6 h-16 bg-white border-b border-[#EDEDED] shrink-0">
+        <div className="flex items-center gap-2">
+          <span className="text-[13px] text-[#8B8B8B]">{t.teamIntel.breadcrumb}</span>
+          <svg className="w-3 h-3 text-[#ccc]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <path d="m9 18 6-6-6-6" />
+          </svg>
+          <span className="text-sm font-medium text-[#1F114C]">{t.teamIntel.title}</span>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 border border-[#EDEDED] rounded-lg px-3 h-8">
+            <svg className="w-3.5 h-3.5 text-[#585858]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+              <path d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
+            </svg>
+            <span className="text-[12px] text-[#585858]">{t.teamIntel.teamSelector}:</span>
+            <span className="text-[12px] font-medium text-[#1F114C]">Tecnologia</span>
+            <svg className="w-3 h-3 text-[#8B8B8B]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <path d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+            </svg>
+          </div>
+          <button className="flex items-center gap-1.5 border border-[#EDEDED] text-[#585858] px-3 h-8 rounded-lg text-[12px]">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+              <path d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+            </svg>
+            {t.teamIntel.export}
+          </button>
+        </div>
       </div>
 
-      <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 flex-1">
-        <p className="text-sm text-[#8B8B8B] text-center py-8">
-          {t.teamIntel.noTeams}
-          <br />
-          <span className="text-xs">{t.teamIntel.noTeamsDesc}</span>
-        </p>
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto p-5">
+        <TeamIntelKpis data={kpis.data} loading={kpis.isLoading} t={t.teamIntel} />
+
+        {/* Main 2-column */}
+        <div className="flex gap-4 mb-4">
+          {/* Left Column (55%) */}
+          <div className="flex flex-col gap-4" style={{ width: '55%' }}>
+            <PcaProfile t={t.teamIntel} />
+            <TeamComposition t={t.teamIntel} />
+          </div>
+
+          {/* Right Column (45%) */}
+          <div className="flex flex-col gap-4" style={{ width: '45%' }}>
+            <TeamMembersTable t={t.teamIntel} />
+            <BalanceAlerts t={t.teamIntel} />
+            <RecommendedHires t={t.teamIntel} />
+          </div>
+        </div>
+
+        {/* Bottom: Team Comparison */}
+        <TeamComparison t={t.teamIntel} />
       </div>
     </div>
   );

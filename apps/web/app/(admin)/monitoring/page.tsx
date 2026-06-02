@@ -2,53 +2,56 @@
 
 import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
-import { KpiCard, KpiCardSkeleton, DataTable, EmptyState, StatusBadge } from '../../../components';
-import { formatRelativeTime } from '../../../lib/format-utils';
-
-const SEVERITY_MAP: Record<string, { cls: string; label: string }> = {
-  low: { cls: 'bg-blue-50 text-blue-600', label: 'Bajo' },
-  medium: { cls: 'bg-amber-50 text-amber-600', label: 'Medio' },
-  high: { cls: 'bg-red-50 text-red-600', label: 'Alto' },
-  critical: { cls: 'bg-red-100 text-red-700', label: 'Critico' },
-};
+import { MonitoringKpis } from './monitoring-kpis';
+import { ModuleHealthGrid } from './monitoring-modules';
+import { AlertsPanel } from './monitoring-alerts';
+import { CrossModuleTrend, QuickActions } from './monitoring-bottom';
 
 export default function MonitoringPage() {
   const { t } = useI18n();
   const kpis = trpc.monitoring.getExecutiveKpis.useQuery();
-  const alerts = trpc.monitoring.getActiveAlerts.useQuery({ limit: 20 });
-
-  const columns = [
-    { key: 'module', label: 'Modulo' },
-    { key: 'message', label: 'Alerta' },
-    { key: 'severity', label: 'Severidad' },
-    { key: 'time', label: 'Tiempo' },
-  ];
 
   return (
-    <div className="h-full flex flex-col overflow-hidden p-6">
-      <h1 className="text-lg font-semibold text-[#1F114C] mb-5">{t.sidebar.monitoring}</h1>
-
-      <div className="grid grid-cols-4 gap-4 mb-6 flex-shrink-0">
-        {kpis.isLoading ? Array.from({ length: 4 }).map((_, i) => <KpiCardSkeleton key={i} />) : kpis.data ? (
-          <>
-            <KpiCard label="Headcount" value={kpis.data.totalEmployees} subtitle="empleados activos" icon={<svg className="w-4 h-4 text-[#1F114C]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>} iconBg="bg-[#1F114C]/10" />
-            <KpiCard label="Vacantes Abiertas" value={kpis.data.activeVacancies} subtitle="en reclutamiento" icon={<svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2" /><path d="M16 7V5a4 4 0 00-8 0v2" /></svg>} iconBg="bg-green-50" />
-            <KpiCard label="Alertas Activas" value={kpis.data.openAlerts} subtitle={kpis.data.openAlerts > 0 ? t.common.requiresAttention : t.common.noIssues} valueColor={kpis.data.openAlerts > 0 ? 'text-[#DD0C15]' : undefined} icon={<svg className="w-4 h-4 text-[#DD0C15]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z" /></svg>} iconBg="bg-red-50" highlight={kpis.data.openAlerts > 0} />
-            <KpiCard label="Turnover" value={`${kpis.data.turnoverRate}%`} subtitle="ultimos 12 meses" icon={<svg className="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M3 7.5L7.5 3m0 0L12 7.5M7.5 3v13.5m13.5-3L16.5 18m0 0L12 13.5m4.5 4.5V4.5" /></svg>} iconBg="bg-amber-50" />
-          </>
-        ) : null}
+    <div className="flex flex-col flex-1 min-w-0 h-full">
+      {/* Top Bar */}
+      <div className="flex items-center justify-between px-6 h-16 bg-white border-b border-[#EDEDED] shrink-0">
+        <div className="flex items-center gap-2">
+          <span className="text-[13px] text-[#8B8B8B]">Estrategia</span>
+          <svg className="w-3 h-3 text-[#ccc]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" /></svg>
+          <span className="text-sm font-medium text-[#1F114C]">{t.sidebar.monitoring}</span>
+        </div>
+        <div className="flex items-center gap-3">
+          <button className="flex items-center gap-1.5 border border-[#EDEDED] text-[#585858] px-3 h-8 rounded-lg text-[12px]">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+            Exportar
+          </button>
+          <button className="flex items-center gap-1.5 bg-[#DD0C15] text-white px-4 h-8 rounded-lg text-[12px] font-medium">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <path d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+            </svg>
+            Configurar Alertas
+          </button>
+        </div>
       </div>
 
-      <DataTable columns={columns} loading={alerts.isLoading} skeletonRows={5} empty={<EmptyState icon={<svg className="w-10 h-10 text-emerald-300" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>} message="Sin alertas activas" description="Todos los modulos funcionando correctamente" />}>
-        {(alerts.data?.items ?? []).map((alert) => (
-          <tr key={alert.id} className="border-b border-[#F6F6F6] hover:bg-[#FAFAFA] transition">
-            <td className="px-4 py-3"><span className="text-[12px] text-[#585858]">{alert.module}</span></td>
-            <td className="px-4 py-3"><p className="text-[13px] text-[#333]">{alert.message}</p></td>
-            <td className="px-4 py-3"><StatusBadge status={alert.severity} map={SEVERITY_MAP} /></td>
-            <td className="px-4 py-3"><span className="text-[12px] text-[#8B8B8B]">{formatRelativeTime(alert.createdAt)}</span></td>
-          </tr>
-        ))}
-      </DataTable>
+      {/* Content */}
+      <div className="flex-1 overflow-hidden p-5">
+        <div className="flex flex-col h-full gap-4">
+          <MonitoringKpis data={kpis.data ?? null} loading={kpis.isLoading} />
+
+          {/* Row 2: Module Health + Alerts */}
+          <div className="flex gap-4 flex-1 min-h-0">
+            <ModuleHealthGrid />
+            <AlertsPanel />
+          </div>
+
+          {/* Row 3: Trend + Quick Actions */}
+          <div className="flex gap-4 shrink-0" style={{ height: '165px' }}>
+            <CrossModuleTrend />
+            <QuickActions />
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
