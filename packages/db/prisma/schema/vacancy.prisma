@@ -37,6 +37,7 @@ model Vacancy {
   assessmentAssignments AssessmentAssignment[] @relation("VacancyAssessments")
   fitScores      FitScore[]                    @relation("VacancyFitScores")
   offers         Offer[]                       @relation("VacancyOffers")
+  referrals      Referral[]
 
   @@index([organizationId])
   @@index([organizationId, status])

@@ -36,3 +36,19 @@ export type VacancyListItem = RouterOutput['vacancy']['list']['items'][number];
 export type VacancyDetail = RouterOutput['vacancy']['getById'];
 export type VacancyDashboardKpis = RouterOutput['vacancy']['getDashboardKpis'];
 export type VacancyStats = RouterOutput['vacancy']['getStats'];
+
+// Candidate
+export type CandidateListItem = RouterOutput['candidate']['list']['items'][number];
+export type CandidateDetail = RouterOutput['candidate']['getById'];
+export type CandidateKpis = RouterOutput['candidate']['getDashboardKpis'];
+export type CandidateTimelineEvent = RouterOutput['candidate']['getTimeline'][number];
+
+// Pipeline
+export type PipelineBoardData = RouterOutput['pipeline']['getBoard'];
+export type PipelineStageWithApps = PipelineBoardData['stages'][number];
+export type PipelineApplicationCard = PipelineStageWithApps['applications'][number];
+export type PipelineFunnel = RouterOutput['pipeline']['getFunnel'];
+
+// Interview (types will be added when interview service is refactored in Phase 1.3)
+
+// Offer (types will be added when offer service is refactored in Phase 1.4)

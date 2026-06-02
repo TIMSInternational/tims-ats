@@ -72,3 +72,25 @@ model CandidateTag {
   @@index([organizationId])
   @@map("candidate_tags")
 }
+
+model Referral {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  vacancyId      String    @map("vacancy_id") @db.Uuid
+  referrerEmail  String    @map("referrer_email")
+  referrerName   String?   @map("referrer_name")
+  candidateEmail String    @map("candidate_email")
+  token          String    @unique
+  status         String    @default("pending")
+  appliedAt      DateTime? @map("applied_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  vacancy        Vacancy   @relation(fields: [vacancyId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([vacancyId])
+  @@index([token])
+  @@index([candidateEmail])
+  @@map("referrals")
+}
