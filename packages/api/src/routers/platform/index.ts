@@ -1,5 +1,8 @@
 import { mergeRouters } from '../../trpc';
 import { dashboardRouter } from './dashboard';
+import { dashboardForecastRouter } from './dashboard-forecast';
+import { dashboardChurnRouter } from './dashboard-churn';
+import { dashboardUpsellRouter } from './dashboard-upsell';
 import { organizationsRouter } from './organizations';
 import { usersRouter } from './users';
 import { subscriptionsRouter } from './subscriptions';
@@ -10,6 +13,9 @@ import { systemRouter } from './system';
 
 export const platformRouter = mergeRouters(
   dashboardRouter,
+  dashboardForecastRouter,
+  dashboardChurnRouter,
+  dashboardUpsellRouter,
   organizationsRouter,
   usersRouter,
   subscriptionsRouter,

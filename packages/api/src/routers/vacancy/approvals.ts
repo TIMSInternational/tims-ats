@@ -3,16 +3,40 @@ import { router, permissionProcedure } from '../../trpc';
 import { db } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 
+// ---------------------------------------------------------------------------
+// Shared selects
+// ---------------------------------------------------------------------------
+
+const approvalSelect = {
+  id: true,
+  step: true,
+  status: true,
+  comment: true,
+  decidedAt: true,
+  approver: { select: { id: true, firstName: true, lastName: true, avatar: true } },
+} as const;
+
+const vacancyWithApprovalsSelect = {
+  id: true,
+  title: true,
+  status: true,
+  approvals: { orderBy: { step: 'asc' as const }, select: approvalSelect },
+} as const;
+
+// ---------------------------------------------------------------------------
+// Approvals sub-router
+// ---------------------------------------------------------------------------
+
 export const vacancyApprovalsRouter = router({
-  // 4.8 — Submit vacancy for approval
   submitForApproval: permissionProcedure('vacancy', 'update')
     .input(z.object({
       id: z.string().uuid(),
-      approverIds: z.array(z.string().uuid()).min(1),
+      approverIds: z.array(z.string().uuid()).min(1).max(10),
     }))
     .mutation(async ({ ctx, input }) => {
       const vacancy = await db.vacancy.findFirst({
         where: { id: input.id, organizationId: ctx.user.organizationId, status: 'draft', deletedAt: null },
+        select: { id: true },
       });
       if (!vacancy) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Vacante no encontrada o no esta en borrador' });
@@ -36,16 +60,15 @@ export const vacancyApprovalsRouter = router({
 
         return tx.vacancy.findUniqueOrThrow({
           where: { id: input.id },
-          include: { approvals: { orderBy: { step: 'asc' } } },
+          select: vacancyWithApprovalsSelect,
         });
       });
     }),
 
-  // 4.9 — Approve vacancy
   approve: permissionProcedure('vacancy', 'approve')
     .input(z.object({
       id: z.string().uuid(),
-      comment: z.string().optional(),
+      comment: z.string().max(1000).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const approval = await db.vacancyApproval.findFirst({
@@ -54,6 +77,7 @@ export const vacancyApprovalsRouter = router({
           approverId: ctx.user.id,
           status: 'pending',
         },
+        select: { id: true },
       });
       if (!approval) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'No hay aprobacion pendiente para este usuario' });
@@ -64,7 +88,6 @@ export const vacancyApprovalsRouter = router({
         data: { status: 'approved', comment: input.comment, decidedAt: new Date() },
       });
 
-      // Check if all approvals are done
       const pendingCount = await db.vacancyApproval.count({
         where: { vacancyId: input.id, status: 'pending' },
       });
@@ -78,15 +101,14 @@ export const vacancyApprovalsRouter = router({
 
       return db.vacancy.findUniqueOrThrow({
         where: { id: input.id },
-        include: { approvals: { orderBy: { step: 'asc' } } },
+        select: vacancyWithApprovalsSelect,
       });
     }),
 
-  // 4.10 — Reject vacancy
   reject: permissionProcedure('vacancy', 'approve')
     .input(z.object({
       id: z.string().uuid(),
-      comment: z.string().min(1),
+      comment: z.string().min(1).max(1000),
     }))
     .mutation(async ({ ctx, input }) => {
       const approval = await db.vacancyApproval.findFirst({
@@ -95,6 +117,7 @@ export const vacancyApprovalsRouter = router({
           approverId: ctx.user.id,
           status: 'pending',
         },
+        select: { id: true },
       });
       if (!approval) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'No hay aprobacion pendiente para este usuario' });
@@ -111,7 +134,6 @@ export const vacancyApprovalsRouter = router({
           data: { status: 'draft' },
         });
 
-        // Cancel remaining pending approvals
         await tx.vacancyApproval.updateMany({
           where: { vacancyId: input.id, status: 'pending' },
           data: { status: 'cancelled' },
@@ -119,17 +141,17 @@ export const vacancyApprovalsRouter = router({
 
         return tx.vacancy.findUniqueOrThrow({
           where: { id: input.id },
-          include: { approvals: { orderBy: { step: 'asc' } } },
+          select: vacancyWithApprovalsSelect,
         });
       });
     }),
 
-  // 4.19 — Get approval chain for a vacancy
   getApprovalChain: permissionProcedure('vacancy', 'read')
     .input(z.object({ vacancyId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       const vacancy = await db.vacancy.findFirst({
         where: { id: input.vacancyId, organizationId: ctx.user.organizationId, deletedAt: null },
+        select: { id: true },
       });
       if (!vacancy) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Vacante no encontrada' });
@@ -138,9 +160,7 @@ export const vacancyApprovalsRouter = router({
       return db.vacancyApproval.findMany({
         where: { vacancyId: input.vacancyId },
         orderBy: { step: 'asc' },
-        include: {
-          approver: { select: { id: true, firstName: true, lastName: true, avatar: true } },
-        },
+        select: approvalSelect,
       });
     }),
 });

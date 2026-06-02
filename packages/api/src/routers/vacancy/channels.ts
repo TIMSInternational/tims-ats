@@ -3,13 +3,24 @@ import { router, permissionProcedure } from '../../trpc';
 import { db } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 
+const channelSelect = {
+  id: true,
+  channelName: true,
+  channelType: true,
+  status: true,
+  publishedAt: true,
+  unpublishedAt: true,
+  stats: true,
+  createdAt: true,
+} as const;
+
 export const vacancyChannelsRouter = router({
-  // 4.15 — List publication channels for a vacancy
   listChannels: permissionProcedure('vacancy', 'read')
     .input(z.object({ vacancyId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       const vacancy = await db.vacancy.findFirst({
         where: { id: input.vacancyId, organizationId: ctx.user.organizationId, deletedAt: null },
+        select: { id: true },
       });
       if (!vacancy) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Vacante no encontrada' });
@@ -18,14 +29,14 @@ export const vacancyChannelsRouter = router({
       return db.publicationChannel.findMany({
         where: { vacancyId: input.vacancyId, organizationId: ctx.user.organizationId },
         orderBy: { createdAt: 'desc' },
+        select: channelSelect,
       });
     }),
 
-  // 4.16 — Publish vacancy to a channel
   publish: permissionProcedure('vacancy', 'publish')
     .input(z.object({
       vacancyId: z.string().uuid(),
-      channelName: z.string().min(1),
+      channelName: z.string().min(1).max(100),
       channelType: z.enum(['internal', 'linkedin', 'indeed', 'computrabajo', 'elempleo', 'website', 'other']),
     }))
     .mutation(async ({ ctx, input }) => {
@@ -36,6 +47,7 @@ export const vacancyChannelsRouter = router({
           status: { in: ['approved', 'published'] },
           deletedAt: null,
         },
+        select: { id: true, status: true },
       });
       if (!vacancy) {
         throw new TRPCError({
@@ -53,9 +65,9 @@ export const vacancyChannelsRouter = router({
           status: 'published',
           publishedAt: new Date(),
         },
+        select: channelSelect,
       });
 
-      // Update vacancy status to published if not already
       if (vacancy.status !== 'published') {
         await db.vacancy.update({
           where: { id: input.vacancyId },
@@ -66,12 +78,12 @@ export const vacancyChannelsRouter = router({
       return channel;
     }),
 
-  // 4.17 — Unpublish vacancy from a channel
   unpublish: permissionProcedure('vacancy', 'publish')
     .input(z.object({ channelId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       const channel = await db.publicationChannel.findFirst({
         where: { id: input.channelId, organizationId: ctx.user.organizationId },
+        select: { id: true },
       });
       if (!channel) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Canal no encontrado' });
@@ -80,6 +92,7 @@ export const vacancyChannelsRouter = router({
       return db.publicationChannel.update({
         where: { id: input.channelId },
         data: { status: 'unpublished', unpublishedAt: new Date() },
+        select: channelSelect,
       });
     }),
 });

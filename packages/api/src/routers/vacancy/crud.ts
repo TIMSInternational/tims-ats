@@ -5,14 +5,115 @@ import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 
 // ---------------------------------------------------------------------------
+// Shared selects — explicit field selection (CLAUDE.md: never return full records)
+// ---------------------------------------------------------------------------
+
+const vacancyListSelect = {
+  id: true,
+  title: true,
+  status: true,
+  priority: true,
+  positions: true,
+  location: true,
+  remotePolicy: true,
+  contractType: true,
+  salary: true,
+  createdAt: true,
+  closedAt: true,
+  company: { select: { id: true, name: true } },
+  unit: { select: { id: true, name: true } },
+  team: { select: { id: true, name: true } },
+  creator: { select: { id: true, firstName: true, lastName: true, avatar: true } },
+  assignee: { select: { id: true, firstName: true, lastName: true, avatar: true } },
+  _count: { select: { applications: true } },
+} satisfies Prisma.VacancySelect;
+
+const vacancyDetailSelect = {
+  id: true,
+  title: true,
+  description: true,
+  status: true,
+  priority: true,
+  positions: true,
+  location: true,
+  remotePolicy: true,
+  contractType: true,
+  salary: true,
+  settings: true,
+  createdAt: true,
+  updatedAt: true,
+  closedAt: true,
+  closedReason: true,
+  organizationId: true,
+  company: { select: { id: true, name: true } },
+  unit: { select: { id: true, name: true } },
+  team: { select: { id: true, name: true } },
+  creator: { select: { id: true, firstName: true, lastName: true, avatar: true, email: true } },
+  assignee: { select: { id: true, firstName: true, lastName: true, avatar: true, email: true } },
+  jobProfile: {
+    select: {
+      id: true,
+      discTargets: true,
+      competencies: true,
+      pcaExpected: true,
+      milExpected: true,
+      kpis: true,
+      requirements: true,
+    },
+  },
+  channels: {
+    select: {
+      id: true,
+      channelName: true,
+      channelType: true,
+      status: true,
+      publishedAt: true,
+      stats: true,
+    },
+  },
+  approvals: {
+    orderBy: { step: 'asc' as const },
+    select: {
+      id: true,
+      step: true,
+      status: true,
+      comment: true,
+      decidedAt: true,
+      approver: { select: { id: true, firstName: true, lastName: true, avatar: true } },
+    },
+  },
+  stages: {
+    orderBy: { order: 'asc' as const },
+    select: { id: true, name: true, order: true, slaHours: true, isDefault: true },
+  },
+  _count: { select: { applications: true } },
+} satisfies Prisma.VacancySelect;
+
+const vacancyMutationSelect = {
+  id: true,
+  title: true,
+  status: true,
+  priority: true,
+  positions: true,
+  createdAt: true,
+} satisfies Prisma.VacancySelect;
+
+// ---------------------------------------------------------------------------
 // Shared Zod schemas
 // ---------------------------------------------------------------------------
 
 const salarySchema = z.object({
-  min: z.number().optional(),
-  max: z.number().optional(),
+  min: z.number().min(0).optional(),
+  max: z.number().min(0).optional(),
   currency: z.string().max(10).default('COP'),
   period: z.enum(['monthly', 'yearly']).default('monthly'),
+}).optional();
+
+const settingsSchema = z.object({
+  slaTargetDays: z.number().int().min(1).max(365).optional(),
+  autoPublish: z.boolean().optional(),
+  requireApproval: z.boolean().optional(),
+  notifyOnApply: z.boolean().optional(),
 }).optional();
 
 const createVacancyInput = z.object({
@@ -21,14 +122,14 @@ const createVacancyInput = z.object({
   companyId: z.string().uuid().optional(),
   businessUnitId: z.string().uuid().optional(),
   teamId: z.string().uuid().optional(),
-  positions: z.number().int().min(1).default(1),
+  positions: z.number().int().min(1).max(100).default(1),
   priority: z.enum(['low', 'medium', 'high', 'urgent']).default('medium'),
   salary: salarySchema,
   contractType: z.string().max(100).optional(),
   location: z.string().max(200).optional(),
   remotePolicy: z.enum(['onsite', 'remote', 'hybrid']).optional(),
   assignedTo: z.string().uuid().optional(),
-  settings: z.record(z.unknown()).optional(),
+  settings: settingsSchema,
 });
 
 const updateVacancyInput = z.object({
@@ -38,14 +139,14 @@ const updateVacancyInput = z.object({
   companyId: z.string().uuid().nullish(),
   businessUnitId: z.string().uuid().nullish(),
   teamId: z.string().uuid().nullish(),
-  positions: z.number().int().min(1).optional(),
+  positions: z.number().int().min(1).max(100).optional(),
   priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
   salary: salarySchema,
   contractType: z.string().max(100).nullish(),
   location: z.string().max(200).nullish(),
   remotePolicy: z.enum(['onsite', 'remote', 'hybrid']).nullish(),
   assignedTo: z.string().uuid().nullish(),
-  settings: z.record(z.unknown()).optional(),
+  settings: settingsSchema,
 });
 
 const paginationInput = z.object({
@@ -58,7 +159,6 @@ const paginationInput = z.object({
 // ---------------------------------------------------------------------------
 
 export const vacancyCrudRouter = router({
-  // 4.1 — List vacancies with cursor pagination and filters
   list: permissionProcedure('vacancy', 'read')
     .input(
       paginationInput.extend({
@@ -91,14 +191,7 @@ export const vacancyCrudRouter = router({
         take: limit + 1,
         ...(cursor && { cursor: { id: cursor }, skip: 1 }),
         orderBy: { createdAt: 'desc' },
-        include: {
-          company: { select: { id: true, name: true } },
-          unit: { select: { id: true, name: true } },
-          team: { select: { id: true, name: true } },
-          creator: { select: { id: true, firstName: true, lastName: true, avatar: true } },
-          assignee: { select: { id: true, firstName: true, lastName: true, avatar: true } },
-          _count: { select: { applications: true } },
-        },
+        select: vacancyListSelect,
       });
 
       let nextCursor: string | undefined;
@@ -110,7 +203,6 @@ export const vacancyCrudRouter = router({
       return { items, nextCursor };
     }),
 
-  // 4.2 — Get vacancy by ID
   getById: permissionProcedure('vacancy', 'read')
     .input(z.object({ id: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
@@ -120,21 +212,7 @@ export const vacancyCrudRouter = router({
           organizationId: ctx.user.organizationId,
           deletedAt: null,
         },
-        include: {
-          company: { select: { id: true, name: true } },
-          unit: { select: { id: true, name: true } },
-          team: { select: { id: true, name: true } },
-          creator: { select: { id: true, firstName: true, lastName: true, avatar: true } },
-          assignee: { select: { id: true, firstName: true, lastName: true, avatar: true } },
-          jobProfile: true,
-          channels: true,
-          approvals: {
-            orderBy: { step: 'asc' },
-            include: { approver: { select: { id: true, firstName: true, lastName: true, avatar: true } } },
-          },
-          stages: { orderBy: { order: 'asc' } },
-          _count: { select: { applications: true } },
-        },
+        select: vacancyDetailSelect,
       });
 
       if (!vacancy) {
@@ -144,7 +222,6 @@ export const vacancyCrudRouter = router({
       return vacancy;
     }),
 
-  // 4.3 — Create vacancy
   create: permissionProcedure('vacancy', 'create')
     .input(createVacancyInput)
     .mutation(async ({ ctx, input }) => {
@@ -156,10 +233,10 @@ export const vacancyCrudRouter = router({
           organizationId: ctx.user.organizationId,
           createdBy: ctx.user.id,
         },
+        select: vacancyMutationSelect,
       });
     }),
 
-  // 4.4 — Update vacancy
   update: permissionProcedure('vacancy', 'update')
     .input(updateVacancyInput)
     .mutation(async ({ ctx, input }) => {
@@ -167,6 +244,7 @@ export const vacancyCrudRouter = router({
 
       const vacancy = await db.vacancy.findFirst({
         where: { id, organizationId: ctx.user.organizationId, deletedAt: null },
+        select: { id: true },
       });
       if (!vacancy) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Vacante no encontrada' });
@@ -179,10 +257,10 @@ export const vacancyCrudRouter = router({
           salary: (data.salary ?? undefined) as Prisma.InputJsonValue | undefined,
           settings: (data.settings ?? undefined) as Prisma.InputJsonValue | undefined,
         },
+        select: vacancyMutationSelect,
       });
     }),
 
-  // 4.5 — Close vacancy
   close: permissionProcedure('vacancy', 'update')
     .input(z.object({
       id: z.string().uuid(),
@@ -191,6 +269,7 @@ export const vacancyCrudRouter = router({
     .mutation(async ({ ctx, input }) => {
       const vacancy = await db.vacancy.findFirst({
         where: { id: input.id, organizationId: ctx.user.organizationId, deletedAt: null },
+        select: { id: true, status: true },
       });
       if (!vacancy) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Vacante no encontrada' });
@@ -203,15 +282,16 @@ export const vacancyCrudRouter = router({
           closedAt: new Date(),
           closedReason: input.reason,
         },
+        select: vacancyMutationSelect,
       });
     }),
 
-  // 4.6 — Freeze vacancy
   freeze: permissionProcedure('vacancy', 'update')
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       const vacancy = await db.vacancy.findFirst({
         where: { id: input.id, organizationId: ctx.user.organizationId, deletedAt: null },
+        select: { id: true, status: true },
       });
       if (!vacancy) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Vacante no encontrada' });
@@ -220,57 +300,91 @@ export const vacancyCrudRouter = router({
       return db.vacancy.update({
         where: { id: input.id },
         data: { status: 'frozen' },
+        select: vacancyMutationSelect,
       });
     }),
 
-  // 4.7 — Duplicate vacancy
   duplicate: permissionProcedure('vacancy', 'create')
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       const original = await db.vacancy.findFirst({
         where: { id: input.id, organizationId: ctx.user.organizationId, deletedAt: null },
-        include: { jobProfile: true, stages: { orderBy: { order: 'asc' } } },
+        select: {
+          title: true,
+          description: true,
+          organizationId: true,
+          companyId: true,
+          businessUnitId: true,
+          teamId: true,
+          positions: true,
+          priority: true,
+          salary: true,
+          contractType: true,
+          location: true,
+          remotePolicy: true,
+          settings: true,
+          jobProfile: {
+            select: {
+              organizationId: true,
+              discTargets: true,
+              competencies: true,
+              pcaExpected: true,
+              milExpected: true,
+              kpis: true,
+              requirements: true,
+            },
+          },
+          stages: {
+            orderBy: { order: 'asc' },
+            select: { name: true, order: true, slaHours: true, checklist: true, isDefault: true },
+          },
+        },
       });
       if (!original) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Vacante no encontrada' });
       }
 
-      const { id: _id, createdAt: _ca, updatedAt: _ua, deletedAt: _da, closedAt: _cla, closedReason: _clr, jobProfile: _jp, stages: _stg, ...rest } = original;
-
       return db.$transaction(async (tx) => {
         const newVacancy = await tx.vacancy.create({
           data: {
-            ...rest,
-            title: `${rest.title} (copia)`,
+            title: `${original.title} (copia)`,
+            description: original.description,
+            organizationId: original.organizationId,
+            companyId: original.companyId,
+            businessUnitId: original.businessUnitId,
+            teamId: original.teamId,
+            positions: original.positions,
+            priority: original.priority,
+            salary: (original.salary as Prisma.InputJsonValue) ?? undefined,
+            contractType: original.contractType,
+            location: original.location,
+            remotePolicy: original.remotePolicy,
+            settings: (original.settings as Prisma.InputJsonValue) ?? {},
             status: 'draft',
             createdBy: ctx.user.id,
-            settings: rest.settings as Prisma.InputJsonValue,
-            salary: (rest.salary as Prisma.InputJsonValue) ?? undefined,
           },
+          select: vacancyMutationSelect,
         });
 
-        // Duplicate job profile
         if (original.jobProfile) {
-          const { id: _jpId, vacancyId: _vId, createdAt: _jpCa, updatedAt: _jpUa, ...jpRest } = original.jobProfile;
           await tx.jobProfile.create({
             data: {
-              ...jpRest,
+              organizationId: original.jobProfile.organizationId,
               vacancyId: newVacancy.id,
-              discTargets: jpRest.discTargets as Prisma.InputJsonValue,
-              competencies: jpRest.competencies as Prisma.InputJsonValue,
-              pcaExpected: (jpRest.pcaExpected as Prisma.InputJsonValue) ?? undefined,
-              milExpected: (jpRest.milExpected as Prisma.InputJsonValue) ?? undefined,
-              kpis: (jpRest.kpis as Prisma.InputJsonValue) ?? undefined,
-              requirements: (jpRest.requirements as Prisma.InputJsonValue) ?? undefined,
+              discTargets: (original.jobProfile.discTargets as Prisma.InputJsonValue) ?? {},
+              competencies: (original.jobProfile.competencies as Prisma.InputJsonValue) ?? {},
+              pcaExpected: (original.jobProfile.pcaExpected as Prisma.InputJsonValue) ?? undefined,
+              milExpected: (original.jobProfile.milExpected as Prisma.InputJsonValue) ?? undefined,
+              kpis: (original.jobProfile.kpis as Prisma.InputJsonValue) ?? undefined,
+              requirements: (original.jobProfile.requirements as Prisma.InputJsonValue) ?? undefined,
             },
           });
         }
 
-        // Duplicate pipeline stages
         if (original.stages.length > 0) {
           await tx.pipelineStage.createMany({
             data: original.stages.map((s) => ({
-              organizationId: newVacancy.organizationId,
+              organizationId: newVacancy.id ? original.organizationId : original.organizationId,
               vacancyId: newVacancy.id,
               name: s.name,
               order: s.order,

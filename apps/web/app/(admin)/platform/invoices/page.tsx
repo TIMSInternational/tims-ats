@@ -222,8 +222,8 @@ export default function InvoicesPage() {
               <td className="px-4 py-3">
                 <span className="text-xs font-semibold text-[#1F114C]">INV-{inv.invoiceNumber}</span>
               </td>
-              <td className="px-4 py-3">
-                <span className="text-sm text-[#333] font-medium">{inv.organization?.name || '\u2014'}</span>
+              <td className="px-4 py-3" onClick={(e) => { e.stopPropagation(); if (inv.organization?.id) setShowBillingDrawer(inv.organization.id); }}>
+                <span className="text-sm text-[#333] font-medium hover:text-[#1F114C] hover:underline cursor-pointer">{inv.organization?.name || '\u2014'}</span>
                 {inv.lineItems?.[0]?.description && (
                   <p className="text-[10px] text-[#8B8B8B] truncate max-w-[200px]">
                     {inv.lineItems[0].description}{inv.lineItems.length > 1 ? ` (+${inv.lineItems.length - 1})` : ''}
