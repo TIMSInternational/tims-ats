@@ -216,6 +216,24 @@ export const aiAgentsRouter = router({
       };
     }),
 
+  exportAgentsCsv: platformProcedure.query(async () => {
+    const agents = await db.aiAgent.findMany({
+      orderBy: [{ category: 'asc' }, { name: 'asc' }],
+      select: {
+        name: true, slug: true, category: true, model: true, status: true,
+        batchEligible: true, cacheTtlSeconds: true, costPerCall: true,
+        _count: { select: { orgConfigs: true, usageLogs: true } },
+      },
+    });
+    const header = 'Name,Slug,Category,Model,Status,Batch,Cache TTL,Cost/Call,Org Configs,Usage Logs';
+    const rows = agents.map(a => [
+      a.name, a.slug, a.category, a.model, a.status,
+      a.batchEligible ? 'Yes' : 'No', a.cacheTtlSeconds,
+      `$${a.costPerCall.toFixed(3)}`, a._count.orgConfigs, a._count.usageLogs,
+    ].join(','));
+    return { csv: [header, ...rows].join('\n'), count: agents.length };
+  }),
+
   seedAiAgents: platformProcedure.mutation(async () => {
     const existing = await db.aiAgent.count();
     if (existing > 0) return { seeded: false, count: existing };

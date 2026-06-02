@@ -1,10 +1,30 @@
 import { z } from 'zod';
 import { router, publicProcedure } from '../../trpc';
 import { db, InvitationType, InvitationStatus } from '@tims/db';
+import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { sendEmail } from '../../lib/ses';
 import { randomUUID } from 'crypto';
 import { platformProcedure } from './_common';
+
+const INVITATION_TYPE = z.enum(['org_admin', 'user']);
+const INVITATION_STATUS = z.enum(['pending', 'sent', 'accepted', 'expired', 'revoked']);
+
+const invitationListSelect = {
+  id: true,
+  email: true,
+  type: true,
+  organizationId: true,
+  organizationName: true,
+  roleSlug: true,
+  status: true,
+  sentAt: true,
+  expiresAt: true,
+  acceptedAt: true,
+  createdAt: true,
+  organization: { select: { id: true, name: true } },
+  invitedBy: { select: { id: true, firstName: true, lastName: true } },
+} as const;
 
 export const invitationsRouter = router({
   getInvitationKpis: platformProcedure.query(async () => {
@@ -20,17 +40,17 @@ export const invitationsRouter = router({
   listInvitations: platformProcedure
     .input(z.object({
       page: z.number().int().min(0).default(0),
-      limit: z.number().min(1).max(50).default(20),
-      type: z.string().optional(),
-      status: z.string().optional(),
-      search: z.string().optional(),
+      limit: z.number().int().min(1).max(50).default(20),
+      type: INVITATION_TYPE.optional(),
+      status: INVITATION_STATUS.optional(),
+      search: z.string().max(100).optional(),
     }))
     .query(async ({ input }) => {
       const { page, limit, type, status, search } = input;
-      const where: any = {};
-      if (type) where.type = type;
-      if (status) where.status = status;
-      if (search) where.email = { contains: search, mode: 'insensitive' };
+      const where: Prisma.PlatformInvitationWhereInput = {};
+      if (type) where.type = type as InvitationType;
+      if (status) where.status = status as InvitationStatus;
+      if (search?.trim()) where.email = { contains: search.trim(), mode: 'insensitive' };
 
       const [invitations, total] = await Promise.all([
         db.platformInvitation.findMany({
@@ -38,10 +58,7 @@ export const invitationsRouter = router({
           take: limit,
           skip: page * limit,
           orderBy: { createdAt: 'desc' },
-          include: {
-            organization: { select: { id: true, name: true } },
-            invitedBy: { select: { id: true, firstName: true, lastName: true } },
-          },
+          select: invitationListSelect,
         }),
         db.platformInvitation.count({ where }),
       ]);
@@ -60,7 +77,6 @@ export const invitationsRouter = router({
       const token = randomUUID();
       const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
-      // Pre-create the org + subscription
       const org = await db.$transaction(async (tx) => {
         const org = await tx.organization.create({
           data: {
@@ -70,11 +86,9 @@ export const invitationsRouter = router({
             billingEmail: input.email,
           },
         });
-
         await tx.role.create({
           data: { organizationId: org.id, name: 'Super Administrador', slug: 'super_admin', isSystem: true },
         });
-
         await tx.subscription.create({
           data: {
             organizationId: org.id,
@@ -83,7 +97,6 @@ export const invitationsRouter = router({
             trialEndsAt: input.organizationPlan === 'trial' ? new Date(Date.now() + 14 * 24 * 60 * 60 * 1000) : null,
           },
         });
-
         return org;
       });
 
@@ -101,35 +114,23 @@ export const invitationsRouter = router({
           sentAt: new Date(),
           expiresAt,
         },
+        select: invitationListSelect,
       });
 
       const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.timsats.com';
-
       await sendEmail({
         to: input.email,
         subject: `Invitacion para administrar ${input.organizationName} en TIMS ATS`,
         html: `
           <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
-            <div style="text-align: center; margin-bottom: 32px;">
-              <h1 style="color: #1F114C; font-size: 24px; margin: 0;">TIMS ATS</h1>
-            </div>
+            <div style="text-align: center; margin-bottom: 32px;"><h1 style="color: #1F114C; font-size: 24px; margin: 0;">TIMS ATS</h1></div>
             <div style="background: #f8f9fa; border-radius: 12px; padding: 32px; margin-bottom: 24px;">
               <h2 style="color: #333; font-size: 18px; margin: 0 0 16px;">Has sido invitado</h2>
-              <p style="color: #585858; line-height: 1.6; margin: 0 0 16px;">
-                Has sido invitado a administrar <strong>${input.organizationName}</strong> en TIMS ATS.
-              </p>
-              <p style="color: #585858; line-height: 1.6; margin: 0 0 24px;">
-                Haz clic en el boton para configurar tu cuenta y comenzar.
-              </p>
-              <div style="text-align: center;">
-                <a href="${appUrl}/accept-invitation?token=${token}" style="background: #1F114C; color: white; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; display: inline-block;">
-                  Aceptar Invitacion
-                </a>
-              </div>
+              <p style="color: #585858; line-height: 1.6; margin: 0 0 16px;">Has sido invitado a administrar <strong>${input.organizationName}</strong> en TIMS ATS.</p>
+              <p style="color: #585858; line-height: 1.6; margin: 0 0 24px;">Haz clic en el boton para configurar tu cuenta y comenzar.</p>
+              <div style="text-align: center;"><a href="${appUrl}/accept-invitation?token=${token}" style="background: #1F114C; color: white; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; display: inline-block;">Aceptar Invitacion</a></div>
             </div>
-            <p style="color: #8B8B8B; font-size: 12px; text-align: center;">
-              Esta invitacion expira en 7 dias. Si no solicitaste esta invitacion, puedes ignorar este correo.
-            </p>
+            <p style="color: #8B8B8B; font-size: 12px; text-align: center;">Esta invitacion expira en 7 dias.</p>
           </div>
         `,
       });
@@ -163,36 +164,24 @@ export const invitationsRouter = router({
           sentAt: new Date(),
           expiresAt,
         },
+        select: invitationListSelect,
       });
 
       const roleLabel = input.roleSlug?.replace(/_/g, ' ') || 'usuario';
       const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.timsats.com';
-
       await sendEmail({
         to: input.email,
         subject: `Invitacion para unirte a ${org.name} en TIMS ATS`,
         html: `
           <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
-            <div style="text-align: center; margin-bottom: 32px;">
-              <h1 style="color: #1F114C; font-size: 24px; margin: 0;">TIMS ATS</h1>
-            </div>
+            <div style="text-align: center; margin-bottom: 32px;"><h1 style="color: #1F114C; font-size: 24px; margin: 0;">TIMS ATS</h1></div>
             <div style="background: #f8f9fa; border-radius: 12px; padding: 32px; margin-bottom: 24px;">
               <h2 style="color: #333; font-size: 18px; margin: 0 0 16px;">Has sido invitado</h2>
-              <p style="color: #585858; line-height: 1.6; margin: 0 0 16px;">
-                Has sido invitado a unirte a <strong>${org.name}</strong> en TIMS ATS como <strong>${roleLabel}</strong>.
-              </p>
-              <p style="color: #585858; line-height: 1.6; margin: 0 0 24px;">
-                Haz clic en el boton para aceptar la invitacion.
-              </p>
-              <div style="text-align: center;">
-                <a href="${appUrl}/accept-invitation?token=${token}" style="background: #1F114C; color: white; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; display: inline-block;">
-                  Aceptar Invitacion
-                </a>
-              </div>
+              <p style="color: #585858; line-height: 1.6; margin: 0 0 16px;">Has sido invitado a unirte a <strong>${org.name}</strong> en TIMS ATS como <strong>${roleLabel}</strong>.</p>
+              <p style="color: #585858; line-height: 1.6; margin: 0 0 24px;">Haz clic en el boton para aceptar la invitacion.</p>
+              <div style="text-align: center;"><a href="${appUrl}/accept-invitation?token=${token}" style="background: #1F114C; color: white; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; display: inline-block;">Aceptar Invitacion</a></div>
             </div>
-            <p style="color: #8B8B8B; font-size: 12px; text-align: center;">
-              Esta invitacion expira en 7 dias. Si no solicitaste esta invitacion, puedes ignorar este correo.
-            </p>
+            <p style="color: #8B8B8B; font-size: 12px; text-align: center;">Esta invitacion expira en 7 dias.</p>
           </div>
         `,
       });
@@ -203,8 +192,11 @@ export const invitationsRouter = router({
   resendInvitation: platformProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ input }) => {
-      const invitation = await db.platformInvitation.findUnique({ where: { id: input.id } });
-      if (!invitation) throw new TRPCError({ code: 'NOT_FOUND' });
+      const invitation = await db.platformInvitation.findUnique({
+        where: { id: input.id },
+        select: { id: true, email: true, token: true, status: true, organizationName: true },
+      });
+      if (!invitation) throw new TRPCError({ code: 'NOT_FOUND', message: 'Invitacion no encontrada' });
       if (invitation.status === 'accepted' || invitation.status === 'revoked') {
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Cannot resend accepted or revoked invitation' });
       }
@@ -217,23 +209,13 @@ export const invitationsRouter = router({
         subject: `Recordatorio: Invitacion pendiente - ${invitation.organizationName || 'TIMS ATS'}`,
         html: `
           <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
-            <div style="text-align: center; margin-bottom: 32px;">
-              <h1 style="color: #1F114C; font-size: 24px; margin: 0;">TIMS ATS</h1>
-            </div>
+            <div style="text-align: center; margin-bottom: 32px;"><h1 style="color: #1F114C; font-size: 24px; margin: 0;">TIMS ATS</h1></div>
             <div style="background: #f8f9fa; border-radius: 12px; padding: 32px; margin-bottom: 24px;">
               <h2 style="color: #333; font-size: 18px; margin: 0 0 16px;">Recordatorio de Invitacion</h2>
-              <p style="color: #585858; line-height: 1.6; margin: 0 0 24px;">
-                Tienes una invitacion pendiente para ${invitation.organizationName ? `<strong>${invitation.organizationName}</strong> en ` : ''}TIMS ATS.
-              </p>
-              <div style="text-align: center;">
-                <a href="${appUrl}/accept-invitation?token=${invitation.token}" style="background: #1F114C; color: white; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; display: inline-block;">
-                  Aceptar Invitacion
-                </a>
-              </div>
+              <p style="color: #585858; line-height: 1.6; margin: 0 0 24px;">Tienes una invitacion pendiente para ${invitation.organizationName ? `<strong>${invitation.organizationName}</strong> en ` : ''}TIMS ATS.</p>
+              <div style="text-align: center;"><a href="${appUrl}/accept-invitation?token=${invitation.token}" style="background: #1F114C; color: white; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; display: inline-block;">Aceptar Invitacion</a></div>
             </div>
-            <p style="color: #8B8B8B; font-size: 12px; text-align: center;">
-              Esta invitacion expira en 7 dias.
-            </p>
+            <p style="color: #8B8B8B; font-size: 12px; text-align: center;">Esta invitacion expira en 7 dias.</p>
           </div>
         `,
       });
@@ -241,16 +223,66 @@ export const invitationsRouter = router({
       return db.platformInvitation.update({
         where: { id: input.id },
         data: { sentAt: new Date(), expiresAt, status: InvitationStatus.sent },
+        select: { id: true, status: true, sentAt: true, expiresAt: true },
       });
     }),
 
   revokeInvitation: platformProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ input }) => {
+      const existing = await db.platformInvitation.findUnique({
+        where: { id: input.id },
+        select: { id: true, status: true },
+      });
+      if (!existing) throw new TRPCError({ code: 'NOT_FOUND', message: 'Invitacion no encontrada' });
+      if (existing.status === 'accepted') throw new TRPCError({ code: 'BAD_REQUEST', message: 'No se puede revocar una invitacion aceptada' });
+
       return db.platformInvitation.update({
         where: { id: input.id },
         data: { status: InvitationStatus.revoked },
+        select: { id: true, status: true },
       });
+    }),
+
+  exportInvitationsCsv: platformProcedure
+    .input(z.object({
+      type: INVITATION_TYPE.optional(),
+      status: INVITATION_STATUS.optional(),
+    }))
+    .query(async ({ input }) => {
+      const where: Prisma.PlatformInvitationWhereInput = {};
+      if (input.type) where.type = input.type as InvitationType;
+      if (input.status) where.status = input.status as InvitationStatus;
+
+      const invitations = await db.platformInvitation.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          email: true,
+          type: true,
+          organizationName: true,
+          roleSlug: true,
+          status: true,
+          sentAt: true,
+          expiresAt: true,
+          acceptedAt: true,
+        },
+      });
+
+      const header = 'Email,Tipo,Organizacion,Rol,Estado,Enviada,Expira,Aceptada';
+      const fmt = (d: Date | null | undefined) => d ? d.toISOString().split('T')[0] : '-';
+      const rows = invitations.map(inv => [
+        inv.email,
+        inv.type,
+        `"${(inv.organizationName || '').replace(/"/g, '""')}"`,
+        inv.roleSlug || '-',
+        inv.status,
+        fmt(inv.sentAt),
+        fmt(inv.expiresAt),
+        fmt(inv.acceptedAt),
+      ].join(','));
+
+      return { csv: [header, ...rows].join('\n'), count: invitations.length };
     }),
 
   // ============ PUBLIC INVITATION ENDPOINTS ============
@@ -260,7 +292,9 @@ export const invitationsRouter = router({
     .query(async ({ input }) => {
       const invitation = await db.platformInvitation.findUnique({
         where: { token: input.token },
-        include: {
+        select: {
+          id: true, email: true, type: true, organizationName: true,
+          organizationSlug: true, roleSlug: true, status: true, expiresAt: true,
           organization: { select: { id: true, name: true, slug: true } },
         },
       });
@@ -289,6 +323,7 @@ export const invitationsRouter = router({
     .mutation(async ({ input }) => {
       const invitation = await db.platformInvitation.findUnique({
         where: { token: input.token },
+        select: { id: true, status: true, expiresAt: true, organizationId: true, type: true },
       });
       if (!invitation) throw new TRPCError({ code: 'NOT_FOUND', message: 'Invitacion no encontrada' });
       if (invitation.status === InvitationStatus.accepted) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Esta invitacion ya fue aceptada' });
@@ -339,7 +374,6 @@ export const invitationsRouter = router({
           results.push({ email: user.email, status: 'duplicate', message: 'Already invited' });
           continue;
         }
-
         try {
           const token = randomUUID();
           const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
