@@ -2,28 +2,78 @@ import { z } from 'zod';
 import { router, permissionProcedure } from '../../trpc';
 import { db } from '@tims/db';
 import { TRPCError } from '@trpc/server';
+import { videoService } from '../../services/video.service';
 
 export const interviewMediaRouter = router({
-  // 8.12 — Get video token (stub -- mock token)
-  getVideoToken: permissionProcedure('interview', 'read')
+  // 8.12a — Create a Daily.co video room for an interview
+  createVideoRoom: permissionProcedure('interview', 'create')
     .input(z.object({ interviewId: z.string().uuid() }))
-    .query(async ({ ctx, input }) => {
+    .mutation(async ({ ctx, input }) => {
       const interview = await db.interview.findFirst({
         where: { id: input.interviewId, organizationId: ctx.user.organizationId },
+        select: { id: true, meetingUrl: true },
       });
 
       if (!interview) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Entrevista no encontrada' });
       }
 
-      // Stub: return a mock video session token
-      return {
-        interviewId: input.interviewId,
-        token: `mock-video-token-${input.interviewId}-${Date.now()}`,
-        provider: 'mock-provider',
-        expiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
-        roomName: `interview-${input.interviewId}`,
-      };
+      const { url, roomName } = await videoService.createRoom(input.interviewId);
+
+      const currentUser = await db.user.findUnique({
+        where: { id: ctx.user.id },
+        select: { firstName: true, lastName: true },
+      });
+      const userName = [currentUser?.firstName, currentUser?.lastName].filter(Boolean).join(' ') || 'Evaluator';
+      const token = await videoService.createMeetingToken(roomName, userName, true);
+
+      await db.interview.update({
+        where: { id: input.interviewId },
+        data: { meetingUrl: url },
+      });
+
+      return { url, token, roomName };
+    }),
+
+  // 8.12b — Get a video token for an existing room
+  getVideoToken: permissionProcedure('interview', 'read')
+    .input(z.object({ interviewId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const interview = await db.interview.findFirst({
+        where: { id: input.interviewId, organizationId: ctx.user.organizationId },
+        select: { id: true, meetingUrl: true },
+      });
+
+      if (!interview) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Entrevista no encontrada' });
+      }
+
+      if (!interview.meetingUrl) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Esta entrevista no tiene sala de video. Cree una primero.',
+        });
+      }
+
+      // Extract room name from Daily URL: https://DOMAIN.daily.co/ROOM_NAME
+      const urlParts = interview.meetingUrl.split('/');
+      const roomName = urlParts[urlParts.length - 1];
+
+      if (!roomName) {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'No se pudo extraer el nombre de la sala del URL de la reunión',
+        });
+      }
+
+      const currentUser = await db.user.findUnique({
+        where: { id: ctx.user.id },
+        select: { firstName: true, lastName: true },
+      });
+      const userName = [currentUser?.firstName, currentUser?.lastName].filter(Boolean).join(' ') || 'Participant';
+      const token = await videoService.createMeetingToken(roomName, userName, false);
+
+      return { url: interview.meetingUrl, token };
     }),
 
   // 8.13 — Save transcript
