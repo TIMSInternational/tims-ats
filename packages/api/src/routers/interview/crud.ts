@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { router, permissionProcedure } from '../../trpc';
 import { db } from '@tims/db';
+import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 
 export const interviewCrudRouter = router({
@@ -10,8 +11,8 @@ export const interviewCrudRouter = router({
       z.object({
         vacancyId: z.string().uuid().optional(),
         candidateId: z.string().uuid().optional(),
-        status: z.string().optional(),
-        type: z.string().optional(),
+        status: z.string().max(50).optional(),
+        type: z.string().max(50).optional(),
         from: z.date().optional(),
         to: z.date().optional(),
         page: z.number().int().min(1).default(1),
@@ -21,7 +22,7 @@ export const interviewCrudRouter = router({
     .query(async ({ ctx, input }) => {
       const { page, pageSize, ...filters } = input;
 
-      const where: any = {
+      const where: Prisma.InterviewWhereInput = {
         organizationId: ctx.user.organizationId,
         ...(filters.vacancyId && { vacancyId: filters.vacancyId }),
         ...(filters.candidateId && { candidateId: filters.candidateId }),
@@ -102,12 +103,12 @@ export const interviewCrudRouter = router({
         candidateId: z.string().uuid(),
         vacancyId: z.string().uuid(),
         applicationId: z.string().uuid().optional(),
-        type: z.string(),
+        type: z.string().max(50),
         scheduledAt: z.date(),
         duration: z.number().int().min(15).max(480),
-        location: z.string().optional(),
-        meetingUrl: z.string().url().optional(),
-        notes: z.string().optional(),
+        location: z.string().max(500).optional(),
+        meetingUrl: z.string().url().max(2048).optional(),
+        notes: z.string().max(5000).optional(),
         evaluatorIds: z.array(z.string().uuid()).min(1),
       })
     )
@@ -145,9 +146,9 @@ export const interviewCrudRouter = router({
         id: z.string().uuid(),
         scheduledAt: z.date(),
         duration: z.number().int().min(15).max(480).optional(),
-        location: z.string().optional(),
-        meetingUrl: z.string().url().optional(),
-        notes: z.string().optional(),
+        location: z.string().max(500).optional(),
+        meetingUrl: z.string().url().max(2048).optional(),
+        notes: z.string().max(5000).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -182,7 +183,7 @@ export const interviewCrudRouter = router({
     .input(
       z.object({
         id: z.string().uuid(),
-        cancelReason: z.string().min(1),
+        cancelReason: z.string().min(1).max(1000),
       })
     )
     .mutation(async ({ ctx, input }) => {

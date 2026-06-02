@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { router, protectedProcedure, permissionProcedure } from '../trpc';
 import { db } from '@tims/db';
+import type { Prisma } from '@tims/db';
 import { randomBytes, createHash } from 'crypto';
 
 export const integrationRouter = router({
@@ -33,16 +34,16 @@ export const integrationRouter = router({
     .input(
       z.object({
         name: z.string().min(1).max(100),
-        type: z.string().min(1),
+        type: z.string().min(1).max(100),
         config: z.record(z.unknown()),
-        syncFrequency: z.string().optional(),
+        syncFrequency: z.string().max(100).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
       return db.connector.create({
         data: {
           ...input,
-          config: input.config as any,
+          config: input.config as unknown as Prisma.JsonObject,
           organizationId: ctx.user.organizationId,
           createdById: ctx.user.id,
         },
@@ -54,9 +55,9 @@ export const integrationRouter = router({
       z.object({
         id: z.string().uuid(),
         name: z.string().min(1).max(100).optional(),
-        status: z.string().optional(),
+        status: z.string().max(50).optional(),
         config: z.record(z.unknown()).optional(),
-        syncFrequency: z.string().nullish(),
+        syncFrequency: z.string().max(100).nullish(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -65,7 +66,7 @@ export const integrationRouter = router({
         where: { id, organizationId: ctx.user.organizationId },
         data: {
           ...data,
-          config: data.config as any,
+          config: data.config as unknown as Prisma.JsonObject,
         },
       });
     }),
@@ -130,8 +131,8 @@ export const integrationRouter = router({
     .input(
       z.object({
         url: z.string().url(),
-        events: z.array(z.string()),
-        secret: z.string().optional(),
+        events: z.array(z.string().max(100)),
+        secret: z.string().max(500).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -194,7 +195,7 @@ export const integrationRouter = router({
       z.object({
         name: z.string().min(1).max(100),
         environment: z.enum(['production', 'staging', 'development']).default('production'),
-        scopes: z.array(z.string()),
+        scopes: z.array(z.string().max(100)),
         expiresAt: z.date().optional(),
       })
     )
@@ -235,7 +236,7 @@ export const integrationRouter = router({
     .input(
       z.object({
         connectorId: z.string().uuid().optional(),
-        status: z.string().optional(),
+        status: z.string().max(50).optional(),
         take: z.number().min(1).max(100).default(20),
         cursor: z.string().uuid().optional(),
       })

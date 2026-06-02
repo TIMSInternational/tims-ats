@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { router, protectedProcedure, permissionProcedure } from '../trpc';
 import { db } from '@tims/db';
+import type { Prisma } from '@tims/db';
 
 export const learningRouter = router({
   // ── Courses ──────────────────────────────────────────────────────────
@@ -8,9 +9,9 @@ export const learningRouter = router({
   listCourses: permissionProcedure('learning', 'read')
     .input(
       z.object({
-        category: z.string().optional(),
+        category: z.string().max(100).optional(),
         isRequired: z.boolean().optional(),
-        search: z.string().optional(),
+        search: z.string().max(200).optional(),
         page: z.number().int().min(1).default(1),
         pageSize: z.number().int().min(1).max(100).default(20),
       }).optional(),
@@ -71,18 +72,20 @@ export const learningRouter = router({
     .input(
       z.object({
         title: z.string().min(1).max(255),
-        description: z.string().optional(),
-        type: z.string(),
-        category: z.string().optional(),
+        description: z.string().max(2000).optional(),
+        type: z.string().max(100),
+        category: z.string().max(100).optional(),
         duration: z.number().int().min(1),
-        content: z.any().optional(),
+        content: z.record(z.unknown()).optional(),
         isRequired: z.boolean().default(false),
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      const { content, ...rest } = input;
       return db.course.create({
         data: {
-          ...input,
+          ...rest,
+          ...(content !== undefined && { content: content as unknown as Prisma.InputJsonObject }),
           organizationId: ctx.user.organizationId,
           createdById: ctx.user.id,
         },
@@ -94,20 +97,23 @@ export const learningRouter = router({
       z.object({
         id: z.string().uuid(),
         title: z.string().min(1).max(255).optional(),
-        description: z.string().optional(),
-        type: z.string().optional(),
-        category: z.string().optional(),
+        description: z.string().max(2000).optional(),
+        type: z.string().max(100).optional(),
+        category: z.string().max(100).optional(),
         duration: z.number().int().min(1).optional(),
-        content: z.any().optional(),
+        content: z.record(z.unknown()).optional(),
         isRequired: z.boolean().optional(),
         isActive: z.boolean().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const { id, ...data } = input;
+      const { id, content, ...data } = input;
       return db.course.update({
         where: { id, organizationId: ctx.user.organizationId },
-        data,
+        data: {
+          ...data,
+          ...(content !== undefined && { content: content as unknown as Prisma.InputJsonObject }),
+        },
       });
     }),
 
@@ -198,8 +204,8 @@ export const learningRouter = router({
     .input(
       z.object({
         name: z.string().min(1).max(255),
-        description: z.string().optional(),
-        targetGap: z.string().optional(),
+        description: z.string().max(2000).optional(),
+        targetGap: z.string().max(200).optional(),
         courseIds: z.array(z.string().uuid()).optional(),
       }),
     )

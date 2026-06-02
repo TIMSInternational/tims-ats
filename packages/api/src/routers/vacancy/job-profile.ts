@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { router, permissionProcedure } from '../../trpc';
 import { db } from '@tims/db';
+import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 
 export const vacancyJobProfileRouter = router({
@@ -47,20 +48,20 @@ export const vacancyJobProfileRouter = router({
         create: {
           organizationId: ctx.user.organizationId,
           vacancyId,
-          discTargets: (data.discTargets ?? {}) as any,
-          competencies: (data.competencies ?? {}) as any,
-          pcaExpected: data.pcaExpected as any ?? undefined,
-          milExpected: data.milExpected as any ?? undefined,
-          kpis: data.kpis as any ?? undefined,
-          requirements: data.requirements as any ?? undefined,
+          discTargets: (data.discTargets ?? {}) as Prisma.InputJsonValue,
+          competencies: (data.competencies ?? {}) as Prisma.InputJsonValue,
+          pcaExpected: (data.pcaExpected as Prisma.InputJsonValue) ?? undefined,
+          milExpected: (data.milExpected as Prisma.InputJsonValue) ?? undefined,
+          kpis: (data.kpis as Prisma.InputJsonValue) ?? undefined,
+          requirements: (data.requirements as Prisma.InputJsonValue) ?? undefined,
         },
         update: {
-          ...(data.discTargets !== undefined && { discTargets: data.discTargets as any }),
-          ...(data.competencies !== undefined && { competencies: data.competencies as any }),
-          ...(data.pcaExpected !== undefined && { pcaExpected: data.pcaExpected as any }),
-          ...(data.milExpected !== undefined && { milExpected: data.milExpected as any }),
-          ...(data.kpis !== undefined && { kpis: data.kpis as any }),
-          ...(data.requirements !== undefined && { requirements: data.requirements as any }),
+          ...(data.discTargets !== undefined && { discTargets: data.discTargets as Prisma.InputJsonValue }),
+          ...(data.competencies !== undefined && { competencies: data.competencies as Prisma.InputJsonValue }),
+          ...(data.pcaExpected !== undefined && { pcaExpected: data.pcaExpected as Prisma.InputJsonValue }),
+          ...(data.milExpected !== undefined && { milExpected: data.milExpected as Prisma.InputJsonValue }),
+          ...(data.kpis !== undefined && { kpis: data.kpis as Prisma.InputJsonValue }),
+          ...(data.requirements !== undefined && { requirements: data.requirements as Prisma.InputJsonValue }),
         },
       });
     }),

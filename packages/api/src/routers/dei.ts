@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { router, permissionProcedure } from '../trpc';
 import { db } from '@tims/db';
+import type { Prisma } from '@tims/db';
 
 export const deiRouter = router({
   // ── Gender Representation ──────────────────────────────────────────
@@ -113,7 +114,7 @@ export const deiRouter = router({
       }).optional(),
     )
     .query(async ({ ctx, input }) => {
-      const where: any = {
+      const where: Prisma.CandidateWhereInput = {
         organizationId: ctx.user.organizationId,
         ...(input?.dateFrom || input?.dateTo
           ? {
@@ -188,15 +189,15 @@ export const deiRouter = router({
 
       if (!survey) return { index: null, totalResponses: 0 };
 
-      const inclusionQuestions = (survey.questions as any[]).filter(
-        (q: any) => q.category === 'inclusion',
+      const inclusionQuestions = (survey.questions as Array<Record<string, unknown>>).filter(
+        (q: Record<string, unknown>) => q.category === 'inclusion',
       );
 
       if (!inclusionQuestions.length) return { index: null, totalResponses: survey.responses.length };
 
-      const scores = survey.responses.flatMap((r: any) =>
+      const scores = survey.responses.flatMap((r) =>
         inclusionQuestions
-          .map((q: any) => Number((r.answers as any)?.[q.text]))
+          .map((q: Record<string, unknown>) => Number((r.answers as Record<string, unknown> | null)?.[q.text as string]))
           .filter((n: number) => !isNaN(n)),
       );
 
@@ -214,7 +215,7 @@ export const deiRouter = router({
     .input(
       z.object({
         format: z.enum(['pdf', 'xlsx']).default('pdf'),
-        sections: z.array(z.string()).optional(),
+        sections: z.array(z.string().max(100)).optional(),
       }),
     )
     .mutation(async () => {

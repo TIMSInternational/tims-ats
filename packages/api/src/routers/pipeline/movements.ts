@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { router, permissionProcedure } from '../../trpc';
 import { db } from '@tims/db';
+import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 
 export const pipelineMovementsRouter = router({
@@ -18,7 +19,7 @@ export const pipelineMovementsRouter = router({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Vacante no encontrada' });
       }
 
-      const applicationWhere: any = {
+      const applicationWhere: Prisma.ApplicationWhereInput = {
         vacancyId: input.vacancyId,
         organizationId: ctx.user.organizationId,
       };
@@ -70,7 +71,7 @@ export const pipelineMovementsRouter = router({
     .input(z.object({
       applicationId: z.string().uuid(),
       toStageId: z.string().uuid(),
-      reason: z.string().optional(),
+      reason: z.string().max(500).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const application = await db.application.findFirst({
@@ -120,7 +121,7 @@ export const pipelineMovementsRouter = router({
     .input(z.object({
       applicationIds: z.array(z.string().uuid()).min(1).max(50),
       toStageId: z.string().uuid(),
-      reason: z.string().optional(),
+      reason: z.string().max(500).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const applications = await db.application.findMany({
@@ -173,8 +174,8 @@ export const pipelineMovementsRouter = router({
   rejectCandidate: permissionProcedure('pipeline', 'update')
     .input(z.object({
       applicationId: z.string().uuid(),
-      reason: z.string().min(1),
-      feedback: z.string().optional(),
+      reason: z.string().min(1).max(500),
+      feedback: z.string().max(2000).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const application = await db.application.findFirst({

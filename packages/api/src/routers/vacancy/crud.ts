@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { router, permissionProcedure } from '../../trpc';
 import { db } from '@tims/db';
+import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 
 // ---------------------------------------------------------------------------
@@ -10,21 +11,21 @@ import { TRPCError } from '@trpc/server';
 const salarySchema = z.object({
   min: z.number().optional(),
   max: z.number().optional(),
-  currency: z.string().default('COP'),
+  currency: z.string().max(10).default('COP'),
   period: z.enum(['monthly', 'yearly']).default('monthly'),
 }).optional();
 
 const createVacancyInput = z.object({
   title: z.string().min(1).max(200),
-  description: z.string().optional(),
+  description: z.string().max(5000).optional(),
   companyId: z.string().uuid().optional(),
   businessUnitId: z.string().uuid().optional(),
   teamId: z.string().uuid().optional(),
   positions: z.number().int().min(1).default(1),
   priority: z.enum(['low', 'medium', 'high', 'urgent']).default('medium'),
   salary: salarySchema,
-  contractType: z.string().optional(),
-  location: z.string().optional(),
+  contractType: z.string().max(100).optional(),
+  location: z.string().max(200).optional(),
   remotePolicy: z.enum(['onsite', 'remote', 'hybrid']).optional(),
   assignedTo: z.string().uuid().optional(),
   settings: z.record(z.unknown()).optional(),
@@ -33,15 +34,15 @@ const createVacancyInput = z.object({
 const updateVacancyInput = z.object({
   id: z.string().uuid(),
   title: z.string().min(1).max(200).optional(),
-  description: z.string().optional(),
+  description: z.string().max(5000).optional(),
   companyId: z.string().uuid().nullish(),
   businessUnitId: z.string().uuid().nullish(),
   teamId: z.string().uuid().nullish(),
   positions: z.number().int().min(1).optional(),
   priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
   salary: salarySchema,
-  contractType: z.string().nullish(),
-  location: z.string().nullish(),
+  contractType: z.string().max(100).nullish(),
+  location: z.string().max(200).nullish(),
   remotePolicy: z.enum(['onsite', 'remote', 'hybrid']).nullish(),
   assignedTo: z.string().uuid().nullish(),
   settings: z.record(z.unknown()).optional(),
@@ -67,13 +68,13 @@ export const vacancyCrudRouter = router({
         businessUnitId: z.string().uuid().optional(),
         teamId: z.string().uuid().optional(),
         assignedTo: z.string().uuid().optional(),
-        search: z.string().optional(),
+        search: z.string().max(200).optional(),
       }),
     )
     .query(async ({ ctx, input }) => {
       const { cursor, limit, status, priority, companyId, businessUnitId, teamId, assignedTo, search } = input;
 
-      const where: any = {
+      const where: Prisma.VacancyWhereInput = {
         organizationId: ctx.user.organizationId,
         deletedAt: null,
         ...(status && { status }),
@@ -150,8 +151,8 @@ export const vacancyCrudRouter = router({
       return db.vacancy.create({
         data: {
           ...input,
-          salary: (input.salary ?? undefined) as any,
-          settings: (input.settings ?? {}) as any,
+          salary: (input.salary ?? undefined) as Prisma.InputJsonValue | undefined,
+          settings: (input.settings ?? {}) as Prisma.InputJsonValue,
           organizationId: ctx.user.organizationId,
           createdBy: ctx.user.id,
         },
@@ -175,8 +176,8 @@ export const vacancyCrudRouter = router({
         where: { id },
         data: {
           ...data,
-          salary: (data.salary ?? undefined) as any,
-          settings: (data.settings ?? undefined) as any,
+          salary: (data.salary ?? undefined) as Prisma.InputJsonValue | undefined,
+          settings: (data.settings ?? undefined) as Prisma.InputJsonValue | undefined,
         },
       });
     }),
@@ -185,7 +186,7 @@ export const vacancyCrudRouter = router({
   close: permissionProcedure('vacancy', 'update')
     .input(z.object({
       id: z.string().uuid(),
-      reason: z.string().min(1),
+      reason: z.string().min(1).max(1000),
     }))
     .mutation(async ({ ctx, input }) => {
       const vacancy = await db.vacancy.findFirst({
@@ -243,8 +244,8 @@ export const vacancyCrudRouter = router({
             title: `${rest.title} (copia)`,
             status: 'draft',
             createdBy: ctx.user.id,
-            settings: rest.settings as any,
-            salary: (rest.salary as any) ?? undefined,
+            settings: rest.settings as Prisma.InputJsonValue,
+            salary: (rest.salary as Prisma.InputJsonValue) ?? undefined,
           },
         });
 
@@ -255,12 +256,12 @@ export const vacancyCrudRouter = router({
             data: {
               ...jpRest,
               vacancyId: newVacancy.id,
-              discTargets: jpRest.discTargets as any,
-              competencies: jpRest.competencies as any,
-              pcaExpected: jpRest.pcaExpected as any ?? undefined,
-              milExpected: jpRest.milExpected as any ?? undefined,
-              kpis: jpRest.kpis as any ?? undefined,
-              requirements: jpRest.requirements as any ?? undefined,
+              discTargets: jpRest.discTargets as Prisma.InputJsonValue,
+              competencies: jpRest.competencies as Prisma.InputJsonValue,
+              pcaExpected: (jpRest.pcaExpected as Prisma.InputJsonValue) ?? undefined,
+              milExpected: (jpRest.milExpected as Prisma.InputJsonValue) ?? undefined,
+              kpis: (jpRest.kpis as Prisma.InputJsonValue) ?? undefined,
+              requirements: (jpRest.requirements as Prisma.InputJsonValue) ?? undefined,
             },
           });
         }
@@ -274,7 +275,7 @@ export const vacancyCrudRouter = router({
               name: s.name,
               order: s.order,
               slaHours: s.slaHours,
-              checklist: s.checklist as any ?? undefined,
+              checklist: (s.checklist as Prisma.InputJsonValue) ?? undefined,
               isDefault: s.isDefault,
             })),
           });

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { router, protectedProcedure, permissionProcedure } from '../trpc';
 import { db } from '@tims/db';
+import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 
 // ---------------------------------------------------------------------------
@@ -111,7 +112,7 @@ export const assessmentRouter = router({
     .query(async ({ ctx, input }) => {
       const { cursor, limit, vacancyId, assessmentTypeId } = input;
 
-      const where: any = {
+      const where: Prisma.AssessmentAssignmentWhereInput = {
         organizationId: ctx.user.organizationId,
         vacancyId,
         status: 'completed',
@@ -172,7 +173,7 @@ export const assessmentRouter = router({
     .query(async ({ ctx, input }) => {
       const { cursor, limit, vacancyId } = input;
 
-      const where: any = {
+      const where: Prisma.AssessmentAssignmentWhereInput = {
         organizationId: ctx.user.organizationId,
         status: { in: ['assigned', 'in_progress'] },
       };
@@ -203,7 +204,7 @@ export const assessmentRouter = router({
     .input(
       z.object({
         assignmentId: z.string().uuid(),
-        reason: z.string().optional(),
+        reason: z.string().max(500).optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -297,8 +298,8 @@ export const assessmentRouter = router({
       z.object({
         assignmentId: z.string().uuid(),
         event: z.object({
-          type: z.string(),
-          description: z.string(),
+          type: z.string().max(100),
+          description: z.string().max(1000),
           timestamp: z.string().datetime(),
           severity: z.enum(['low', 'medium', 'high', 'critical']),
         }),
@@ -316,21 +317,22 @@ export const assessmentRouter = router({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Sesion de proctoring no encontrada' });
       }
 
-      const existingEvents = (session.events as any[]) ?? [];
+      const existingEvents = (session.events as Array<Record<string, unknown>>) ?? [];
       const updatedEvents = [...existingEvents, input.event];
 
       // Determine highest severity
       const severityOrder = ['low', 'medium', 'high', 'critical'];
-      const maxSeverity = updatedEvents.reduce((max, e) => {
-        const eSev = severityOrder.indexOf(e.severity);
+      const maxSeverity = updatedEvents.reduce<string>((max, e) => {
+        const sev = (e as Record<string, unknown>).severity as string | undefined;
+        const eSev = severityOrder.indexOf(sev ?? 'low');
         const mSev = severityOrder.indexOf(max);
-        return eSev > mSev ? e.severity : max;
+        return eSev > mSev ? (sev ?? 'low') : max;
       }, session.severity ?? 'low');
 
       return db.proctoringSession.update({
         where: { id: session.id },
         data: {
-          events: updatedEvents,
+          events: updatedEvents as unknown as Prisma.JsonArray,
           flagCount: { increment: 1 },
           severity: maxSeverity,
         },

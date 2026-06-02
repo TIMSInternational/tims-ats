@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { router, permissionProcedure } from '../../trpc';
 import { db } from '@tims/db';
+import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 
 export const offerCrudRouter = router({
@@ -10,7 +11,7 @@ export const offerCrudRouter = router({
       z.object({
         vacancyId: z.string().uuid().optional(),
         candidateId: z.string().uuid().optional(),
-        status: z.string().optional(),
+        status: z.string().max(50).optional(),
         page: z.number().int().min(1).default(1),
         pageSize: z.number().int().min(1).max(100).default(20),
       })
@@ -18,7 +19,7 @@ export const offerCrudRouter = router({
     .query(async ({ ctx, input }) => {
       const { page, pageSize, ...filters } = input;
 
-      const where: any = {
+      const where: Prisma.OfferWhereInput = {
         organizationId: ctx.user.organizationId,
         ...(filters.vacancyId && { vacancyId: filters.vacancyId }),
         ...(filters.candidateId && { candidateId: filters.candidateId }),
@@ -100,18 +101,21 @@ export const offerCrudRouter = router({
         vacancyId: z.string().uuid(),
         applicationId: z.string().uuid().optional(),
         salary: z.number().positive(),
-        currency: z.string().default('USD'),
+        currency: z.string().max(10).default('USD'),
         startDate: z.date(),
-        contractType: z.string(),
-        benefits: z.any().optional(),
-        terms: z.any().optional(),
+        contractType: z.string().max(100),
+        benefits: z.record(z.unknown()).optional(),
+        terms: z.record(z.unknown()).optional(),
         expiresAt: z.date().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
+      const { benefits, terms, ...rest } = input;
       return db.offer.create({
         data: {
-          ...input,
+          ...rest,
+          benefits: benefits as Prisma.InputJsonValue | undefined,
+          terms: terms as Prisma.InputJsonValue | undefined,
           organizationId: ctx.user.organizationId,
           createdById: ctx.user.id,
           status: 'draft',
@@ -131,11 +135,11 @@ export const offerCrudRouter = router({
       z.object({
         id: z.string().uuid(),
         salary: z.number().positive().optional(),
-        currency: z.string().optional(),
+        currency: z.string().max(10).optional(),
         startDate: z.date().optional(),
-        contractType: z.string().optional(),
-        benefits: z.any().optional(),
-        terms: z.any().optional(),
+        contractType: z.string().max(100).optional(),
+        benefits: z.record(z.unknown()).optional(),
+        terms: z.record(z.unknown()).optional(),
         expiresAt: z.date().optional(),
       })
     )
@@ -157,6 +161,14 @@ export const offerCrudRouter = router({
         });
       }
 
-      return db.offer.update({ where: { id }, data });
+      const { benefits, terms, ...rest } = data;
+      return db.offer.update({
+        where: { id },
+        data: {
+          ...rest,
+          ...(benefits !== undefined && { benefits: benefits as Prisma.InputJsonValue }),
+          ...(terms !== undefined && { terms: terms as Prisma.InputJsonValue }),
+        },
+      });
     }),
 });

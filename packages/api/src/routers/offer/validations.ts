@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { router, permissionProcedure } from '../../trpc';
 import { db } from '@tims/db';
+import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 
 export const offerValidationsRouter = router({
@@ -26,8 +27,8 @@ export const offerValidationsRouter = router({
       z.object({
         id: z.string().uuid(),
         status: z.enum(['pending', 'passed', 'failed', 'waived']),
-        result: z.any().optional(),
-        notes: z.string().optional(),
+        result: z.record(z.unknown()).optional(),
+        notes: z.string().max(5000).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -43,7 +44,7 @@ export const offerValidationsRouter = router({
         where: { id: input.id },
         data: {
           status: input.status,
-          result: input.result ?? undefined,
+          result: (input.result as Prisma.InputJsonValue) ?? undefined,
           notes: input.notes,
           completedById: ctx.user.id,
           completedAt: input.status !== 'pending' ? new Date() : null,
@@ -56,8 +57,8 @@ export const offerValidationsRouter = router({
     .input(
       z.object({
         offerId: z.string().uuid(),
-        fileName: z.string(),
-        fileType: z.string(),
+        fileName: z.string().max(255),
+        fileType: z.string().max(100),
         fileSize: z.number().int().positive(),
       })
     )

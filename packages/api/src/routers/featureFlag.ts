@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { router, protectedProcedure, permissionProcedure } from '../trpc';
-import { db } from '@tims/db';
+import { db, Prisma } from '@tims/db';
 
 export const featureFlagRouter = router({
   // List all feature flags for the organization
@@ -29,14 +29,16 @@ export const featureFlagRouter = router({
         },
         data: {
           ...data,
-          payload: data.payload as any,
+          payload: data.payload === null
+            ? Prisma.JsonNull
+            : data.payload as unknown as Prisma.InputJsonObject | undefined,
         },
       });
     }),
 
   // Check a single flag by key (lightweight, used by client feature gates)
   check: protectedProcedure
-    .input(z.object({ key: z.string() }))
+    .input(z.object({ key: z.string().max(200) }))
     .query(async ({ ctx, input }) => {
       const flag = await db.featureFlag.findUnique({
         where: {

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { router, permissionProcedure } from '../trpc';
 import { db } from '@tims/db';
+import type { Prisma } from '@tims/db';
 
 export const monitoringRouter = router({
   // ── Executive KPIs ─────────────────────────────────────────────────
@@ -69,7 +70,7 @@ export const monitoringRouter = router({
   getActiveAlerts: permissionProcedure('monitoring', 'read')
     .input(
       z.object({
-        module: z.string().optional(),
+        module: z.string().max(100).optional(),
         severity: z.enum(['info', 'warning', 'critical']).optional(),
         page: z.number().int().min(1).default(1),
         limit: z.number().int().min(1).max(100).default(20),
@@ -185,9 +186,9 @@ export const monitoringRouter = router({
         rules: z.array(
           z.object({
             id: z.string().uuid().optional(),
-            module: z.string(),
+            module: z.string().max(100),
             condition: z.object({
-              metric: z.string(),
+              metric: z.string().max(100),
               operator: z.enum(['gt', 'lt', 'eq', 'gte', 'lte']),
               threshold: z.number(),
             }),
@@ -207,7 +208,7 @@ export const monitoringRouter = router({
             where: { id: rule.id, organizationId: ctx.user.organizationId },
             data: {
               module: rule.module,
-              condition: rule.condition as any,
+              condition: rule.condition as unknown as Prisma.JsonObject,
               severity: rule.severity,
               message: rule.message,
               isActive: rule.isActive,
@@ -218,7 +219,7 @@ export const monitoringRouter = router({
           const created = await db.alertRule.create({
             data: {
               module: rule.module,
-              condition: rule.condition as any,
+              condition: rule.condition as unknown as Prisma.JsonObject,
               severity: rule.severity,
               message: rule.message,
               isActive: rule.isActive,

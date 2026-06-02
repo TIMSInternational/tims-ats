@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { router, permissionProcedure } from '../../trpc';
 import { db } from '@tims/db';
+import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 
 // ---------------------------------------------------------------------------
@@ -8,8 +9,8 @@ import { TRPCError } from '@trpc/server';
 // ---------------------------------------------------------------------------
 
 const checklistItemSchema = z.object({
-  key: z.string(),
-  label: z.string(),
+  key: z.string().max(100),
+  label: z.string().max(200),
   completed: z.boolean().default(false),
   completedBy: z.string().uuid().optional(),
   completedAt: z.string().datetime().optional(),
@@ -65,7 +66,7 @@ export const pipelineStagesRouter = router({
           name: input.name,
           order: input.order,
           slaHours: input.slaHours,
-          checklist: input.checklist as any ?? undefined,
+          checklist: input.checklist as unknown as Prisma.JsonArray ?? undefined,
           isDefault: input.isDefault,
         },
       });
@@ -97,7 +98,7 @@ export const pipelineStagesRouter = router({
           ...(data.name !== undefined && { name: data.name }),
           ...(data.order !== undefined && { order: data.order }),
           ...(data.slaHours !== undefined && { slaHours: data.slaHours }),
-          ...(data.checklist !== undefined && { checklist: data.checklist as any }),
+          ...(data.checklist !== undefined && { checklist: data.checklist as unknown as Prisma.JsonArray }),
           ...(data.isDefault !== undefined && { isDefault: data.isDefault }),
         },
       });
@@ -139,7 +140,7 @@ export const pipelineStagesRouter = router({
       return {
         stageId: stage.id,
         stageName: stage.name,
-        checklist: (stage.checklist as any[]) ?? [],
+        checklist: (stage.checklist as Array<Record<string, unknown>>) ?? [],
       };
     }),
 
@@ -159,7 +160,7 @@ export const pipelineStagesRouter = router({
 
       return db.pipelineStage.update({
         where: { id: input.stageId },
-        data: { checklist: input.checklist as any },
+        data: { checklist: input.checklist as unknown as Prisma.JsonArray },
       });
     }),
 });

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { router, protectedProcedure, permissionProcedure } from '../trpc';
 import { db } from '@tims/db';
+import type { Prisma } from '@tims/db';
 
 export const engagementRouter = router({
   // ── Surveys ────────────────────────────────────────────────────────
@@ -39,11 +40,11 @@ export const engagementRouter = router({
         type: z.enum(['pulse', 'enps', 'climate', 'custom']),
         questions: z.array(
           z.object({
-            text: z.string().min(1),
+            text: z.string().min(1).max(500),
             type: z.enum(['scale', 'text', 'multiple_choice', 'yes_no']),
-            options: z.array(z.string()).optional(),
+            options: z.array(z.string().max(200)).optional(),
             required: z.boolean().default(true),
-            category: z.string().optional(),
+            category: z.string().max(100).optional(),
           }),
         ).min(1),
         targetGroups: z.object({
@@ -60,8 +61,8 @@ export const engagementRouter = router({
         data: {
           title: input.title,
           type: input.type,
-          questions: input.questions as any,
-          targetGroups: input.targetGroups as any ?? undefined,
+          questions: input.questions as unknown as Prisma.JsonArray,
+          targetGroups: input.targetGroups as unknown as Prisma.JsonObject ?? undefined,
           startsAt: input.startsAt ? new Date(input.startsAt) : undefined,
           endsAt: input.endsAt ? new Date(input.endsAt) : undefined,
           organizationId: ctx.user.organizationId,
@@ -89,9 +90,9 @@ export const engagementRouter = router({
       }
 
       const totalResponses = survey.responses.length;
-      const questionSummaries = (survey.questions as any[]).map((q: any) => {
+      const questionSummaries = (survey.questions as Array<Record<string, unknown>>).map((q: Record<string, unknown>) => {
         const answers = survey.responses
-          .map((r: any) => (r.answers as any)?.[q.text])
+          .map((r) => (r.answers as Record<string, unknown> | null)?.[q.text as string])
           .filter(Boolean);
 
         if (q.type === 'scale') {
@@ -131,7 +132,7 @@ export const engagementRouter = router({
         data: {
           surveyId: input.surveyId,
           userId: input.anonymous ? null : ctx.user.id,
-          answers: input.answers as any,
+          answers: input.answers as unknown as Prisma.JsonObject,
           organizationId: ctx.user.organizationId,
         },
       });
@@ -163,7 +164,7 @@ export const engagementRouter = router({
       });
 
       const scores = responses
-        .map((r: any) => {
+        .map((r) => {
           const vals = Object.values(r.answers as Record<string, unknown>);
           return typeof vals[0] === 'number' ? (vals[0] as number) : parseInt(vals[0] as string, 10);
         })
@@ -204,15 +205,15 @@ export const engagementRouter = router({
       });
 
       const survey = surveys[0];
-      if (!survey) return { categories: [] as string[], teams: [] as string[], data: [] as any[] };
+      if (!survey) return { categories: [] as string[], teams: [] as string[], data: [] as Array<Record<string, unknown>> };
 
-      const categories = [...new Set((survey.questions as any[]).map((q: any) => q.category).filter(Boolean))];
+      const categories = [...new Set((survey.questions as Array<Record<string, unknown>>).map((q: Record<string, unknown>) => q.category as string).filter(Boolean))];
 
       const data = categories.map((cat: string) => {
-        const catQuestions = (survey.questions as any[]).filter((q: any) => q.category === cat);
-        const scores = survey.responses.flatMap((r: any) =>
+        const catQuestions = (survey.questions as Array<Record<string, unknown>>).filter((q: Record<string, unknown>) => q.category === cat);
+        const scores = survey.responses.flatMap((r) =>
           catQuestions
-            .map((q: any) => Number((r.answers as any)?.[q.text]))
+            .map((q: Record<string, unknown>) => Number((r.answers as Record<string, unknown> | null)?.[q.text as string]))
             .filter((n: number) => !isNaN(n)),
         );
         const avg = scores.length ? scores.reduce((a: number, b: number) => a + b, 0) / scores.length : 0;
@@ -249,8 +250,8 @@ export const engagementRouter = router({
       for (const r of survey.responses) {
         const key =
           input.groupBy === 'company'
-            ? (r.user as any)?.companyId
-            : (r.user as any)?.businessUnitId;
+            ? (r.user as Record<string, unknown> | null)?.companyId as string | undefined
+            : (r.user as Record<string, unknown> | null)?.businessUnitId as string | undefined;
         if (!key) continue;
         if (!groups[key]) groups[key] = [];
         const vals = Object.values(r.answers as Record<string, unknown>)
@@ -326,7 +327,7 @@ export const engagementRouter = router({
       z.object({
         title: z.string().min(1).max(200),
         responsibleId: z.string().uuid(),
-        area: z.string().optional(),
+        area: z.string().max(200).optional(),
         notes: z.string().max(2000).optional(),
         dueDate: z.string().datetime().optional(),
       }),
@@ -410,7 +411,7 @@ export const engagementRouter = router({
 
       return {
         summary: { high: 0, medium: 0, low: 0, total },
-        topRisk: [] as any[],
+        topRisk: [] as Array<Record<string, unknown>>,
       };
     }),
 

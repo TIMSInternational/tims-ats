@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { router, permissionProcedure } from '../../trpc';
 import { db } from '@tims/db';
+import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 
 // ---------------------------------------------------------------------------
@@ -15,18 +16,18 @@ const cursorPaginationInput = z.object({
 const candidateCreateInput = z.object({
   firstName: z.string().min(1).max(120),
   lastName: z.string().min(1).max(120),
-  email: z.string().email(),
-  phone: z.string().optional(),
-  source: z.string().min(1),
-  poolType: z.string().min(1),
-  avatar: z.string().url().optional(),
-  location: z.string().optional(),
-  currentTitle: z.string().optional(),
-  currentCompany: z.string().optional(),
+  email: z.string().email().max(254),
+  phone: z.string().max(30).optional(),
+  source: z.string().min(1).max(100),
+  poolType: z.string().min(1).max(100),
+  avatar: z.string().url().max(2048).optional(),
+  location: z.string().max(200).optional(),
+  currentTitle: z.string().max(200).optional(),
+  currentCompany: z.string().max(200).optional(),
   yearsExperience: z.number().int().min(0).optional(),
-  skills: z.array(z.string()).optional(),
-  linkedinUrl: z.string().url().optional(),
-  notes: z.string().optional(),
+  skills: z.array(z.string().max(100)).max(50).optional(),
+  linkedinUrl: z.string().url().max(2048).optional(),
+  notes: z.string().max(5000).optional(),
 });
 
 const candidateUpdateInput = candidateCreateInput.partial().extend({
@@ -42,20 +43,20 @@ export const candidateCrudRouter = router({
   list: permissionProcedure('candidate', 'read')
     .input(
       cursorPaginationInput.extend({
-        search: z.string().optional(),
-        poolType: z.string().optional(),
+        search: z.string().max(200).optional(),
+        poolType: z.string().max(100).optional(),
         fitMin: z.number().min(0).max(100).optional(),
         fitMax: z.number().min(0).max(100).optional(),
-        tags: z.array(z.string()).optional(),
-        source: z.string().optional(),
-        skills: z.array(z.string()).optional(),
+        tags: z.array(z.string().max(100)).max(50).optional(),
+        source: z.string().max(100).optional(),
+        skills: z.array(z.string().max(100)).max(50).optional(),
       }),
     )
     .query(async ({ ctx, input }) => {
       const { cursor, limit, search, poolType, tags, source, skills, fitMin, fitMax } = input;
 
       // Build where clause
-      const where: any = {
+      const where: Prisma.CandidateWhereInput = {
         organizationId: ctx.user.organizationId,
         isActive: true,
         deletedAt: null,
