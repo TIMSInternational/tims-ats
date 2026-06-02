@@ -1,6 +1,7 @@
 'use client';
 
 import { CandidateAvatar } from '../../../../components';
+import { toast } from '../../../../lib/toast';
 
 /* ── Grid cell colour matrix (row-col, top-left = 3-1) ────────────── */
 const CELL_BG: Record<string, string> = {
@@ -41,7 +42,7 @@ export function NineBoxGrid({ allPeople, selectedUserId, onSelectUser }: NineBox
           <select className="text-[11px] border border-[#EDEDED] rounded-lg px-2 h-7 text-[#585858] bg-white">
             <option>Q2 2026</option><option>Q1 2026</option><option>2026</option>
           </select>
-          <button className="text-[11px] border border-[#EDEDED] rounded-lg px-2 h-7 text-[#585858] hover:bg-[#F6F6F6] transition">Simulador</button>
+          <button onClick={() => toast('Simulador: proximamente', { type: 'info' })} className="text-[11px] border border-[#EDEDED] rounded-lg px-2 h-7 text-[#585858] hover:bg-[#F6F6F6] transition">Simulador</button>
         </div>
       </div>
 

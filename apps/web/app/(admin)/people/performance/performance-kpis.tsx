@@ -9,7 +9,26 @@ interface PerformanceKpi {
   progressBar?: { pct: number; color: string };
 }
 
-export function PerformanceKpis({ kpis }: { kpis: PerformanceKpi[] }) {
+interface PerformanceKpisProps {
+  kpis: PerformanceKpi[];
+  isLoading?: boolean;
+}
+
+export function PerformanceKpis({ kpis, isLoading }: PerformanceKpisProps) {
+  if (isLoading) {
+    return (
+      <div className="grid grid-cols-5 gap-4">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4">
+            <div className="h-3 w-24 bg-gray-200 rounded animate-pulse mb-3" />
+            <div className="h-7 w-14 bg-gray-200 rounded animate-pulse mb-2" />
+            <div className="h-2 w-20 bg-gray-200 rounded animate-pulse" />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div className="grid grid-cols-5 gap-4">
       {kpis.map((kpi) => (

@@ -12,6 +12,9 @@ interface DimensionItem {
   color: string;
 }
 
+// TODO: wire to API when endpoint is available
+// Need a new endpoint: vacancy.getVacanciesByDimension({ dimension: 'country'|'city'|'unit'|'leader' })
+// that groups open vacancies by the requested dimension and returns label + count.
 const DIMENSION_DATA: Record<DimensionTab, DimensionItem[]> = {
   country: [
     { label: 'Colombia', count: 14, pct: 65, color: 'bg-[#1F114C]' },

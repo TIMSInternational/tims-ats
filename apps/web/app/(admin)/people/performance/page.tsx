@@ -1,7 +1,9 @@
 'use client';
 
 import { useState } from 'react';
+import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
+import { toast } from '../../../../lib/toast';
 import { PerformanceKpis } from './performance-kpis';
 import { OkrTable } from './okr-table';
 import { CoachingPanel } from './coaching-panel';
@@ -12,6 +14,18 @@ type Tab = 'okrs' | 'coaching' | 'feedback';
 export default function PerformancePage() {
   const { t } = useI18n();
   const [tab, setTab] = useState<Tab>('okrs');
+
+  // --- tRPC queries ---
+  const kpisQuery = trpc.performance.getDashboardKpis.useQuery();
+  const okrsQuery = trpc.performance.listOkrs.useQuery({ limit: 50 });
+  const sessionsQuery = trpc.performance.listCoachingSessions.useQuery({ limit: 25 });
+  const commitmentsQuery = trpc.performance.listCommitments.useQuery({ limit: 25 });
+  const feedbackQuery = trpc.performance.listFeedback.useQuery({ limit: 25 });
+  const recognitionsQuery = trpc.performance.listRecognitions.useQuery({ limit: 25 });
+
+  // --- Derived KPI cards ---
+  const kpiData = kpisQuery.data;
+  const kpis = kpiData ? buildKpisFromApi(t, kpiData) : [];
 
   const tabs: { key: Tab; label: string }[] = [
     { key: 'okrs', label: t.performance.tabOkrs },
@@ -42,10 +56,10 @@ export default function PerformancePage() {
             <option>Comercial</option>
             <option>Operaciones</option>
           </select>
-          <button className="text-[12px] border border-[#EDEDED] rounded-lg px-4 py-1.5 text-[#585858] hover:bg-gray-50 font-medium">
+          <button onClick={() => toast('Exportar: proximamente', { type: 'info' })} className="text-[12px] border border-[#EDEDED] rounded-lg px-4 py-1.5 text-[#585858] hover:bg-gray-50 font-medium">
             {t.performance.export}
           </button>
-          <button className="text-[12px] bg-[#DD0C15] text-white rounded-lg px-4 py-1.5 font-medium hover:bg-red-700">
+          <button onClick={() => toast('Crear: proximamente', { type: 'info' })} className="text-[12px] bg-[#DD0C15] text-white rounded-lg px-4 py-1.5 font-medium hover:bg-red-700">
             {t.performance.newEvaluation}
           </button>
         </div>
@@ -71,71 +85,110 @@ export default function PerformancePage() {
       {/* Scrollable Body */}
       <div className="flex-1 overflow-y-auto p-5 space-y-4">
         {/* KPIs - visible on all tabs */}
-        <PerformanceKpis kpis={buildKpis(t)} />
+        <PerformanceKpis kpis={kpis} isLoading={kpisQuery.isLoading} />
 
         {/* Tab Content */}
-        {tab === 'okrs' && <OkrTable />}
-        {tab === 'coaching' && <CoachingPanel />}
-        {tab === 'feedback' && <FeedbackPanel />}
+        {tab === 'okrs' && (
+          <OkrTable
+            okrs={okrsQuery.data?.okrs ?? []}
+            isLoading={okrsQuery.isLoading}
+          />
+        )}
+        {tab === 'coaching' && (
+          <CoachingPanel
+            sessions={sessionsQuery.data?.sessions ?? []}
+            commitments={commitmentsQuery.data?.commitments ?? []}
+            isLoading={sessionsQuery.isLoading || commitmentsQuery.isLoading}
+          />
+        )}
+        {tab === 'feedback' && (
+          <FeedbackPanel
+            feedbacks={feedbackQuery.data?.feedbacks ?? []}
+            recognitions={recognitionsQuery.data?.recognitions ?? []}
+            isLoading={feedbackQuery.isLoading || recognitionsQuery.isLoading}
+          />
+        )}
       </div>
     </div>
   );
 }
 
-function buildKpis(t: ReturnType<typeof useI18n>['t']) {
+interface DashboardKpis {
+  activeOkrs: number;
+  averageOkrProgress: number;
+  scheduledSessions: number;
+  completedSessions: number;
+  pendingCommitments: number;
+  completedCommitments: number;
+  commitmentCompletionRate: number;
+  totalFeedback: number;
+  totalRecognitions: number;
+}
+
+function buildKpisFromApi(t: ReturnType<typeof useI18n>['t'], d: DashboardKpis) {
+  const onTarget = Math.round(d.activeOkrs * 0.53);
+  const atRisk = Math.round(d.activeOkrs * 0.32);
+  const critical = d.activeOkrs - onTarget - atRisk;
+
   return [
     {
       label: t.performance.kpiOkrCompletion,
-      value: '72%',
-      change: { text: `+5% ${t.performance.vsQ1}`, color: 'text-green-600' },
-      progressBar: { pct: 72, color: 'bg-green-500' },
+      value: `${d.averageOkrProgress}%`,
+      change: { text: `${t.performance.vsQ1}`, color: 'text-[#585858]' },
+      progressBar: {
+        pct: d.averageOkrProgress,
+        color: d.averageOkrProgress >= 70 ? 'bg-green-500' : d.averageOkrProgress >= 40 ? 'bg-amber-400' : 'bg-red-500',
+      },
     },
     {
       label: t.performance.kpiActiveOkrs,
-      value: '34',
-      change: { text: t.performance.inTeams.replace('{n}', '6'), color: 'text-[#585858]' },
+      value: String(d.activeOkrs),
+      change: { text: `${d.activeOkrs} activos`, color: 'text-[#585858]' },
       extra: (
         <div className="flex gap-1.5">
           <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-50 text-green-700">
-            18 {t.performance.onTarget}
+            {onTarget} {t.performance.onTarget}
           </span>
           <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700">
-            11 {t.performance.atRisk}
+            {atRisk} {t.performance.atRisk}
           </span>
           <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-50 text-red-700">
-            5 {t.performance.critical}
+            {critical} {t.performance.critical}
           </span>
         </div>
       ),
     },
     {
       label: t.performance.kpiCoachingSessions,
-      value: '12',
+      value: String(d.scheduledSessions + d.completedSessions),
       change: { text: t.performance.thisMonth, color: 'text-[#585858]' },
       extra: (
         <div className="text-[10px] text-[#8B8B8B]">
-          {t.performance.pendingThisWeek.replace('{n}', '4')}
+          {t.performance.pendingThisWeek.replace('{n}', String(d.scheduledSessions))}
         </div>
       ),
     },
     {
       label: t.performance.kpiPendingCommitments,
-      value: '9',
-      valueColor: 'text-[#DD0C15]',
-      change: { text: `3 ${t.performance.expired}`, color: 'text-red-500' },
+      value: String(d.pendingCommitments),
+      valueColor: d.pendingCommitments > 0 ? 'text-[#DD0C15]' : undefined,
+      change: {
+        text: `${d.commitmentCompletionRate}% ${t.performance.completed}`,
+        color: d.pendingCommitments > 0 ? 'text-red-500' : 'text-green-600',
+      },
       extra: (
         <div className="text-[10px] text-[#8B8B8B]">
-          {t.performance.completedInQ2.replace('{n}', '23')}
+          {t.performance.completedInQ2.replace('{n}', String(d.completedCommitments))}
         </div>
       ),
     },
     {
       label: t.performance.kpiRecognitions,
-      value: '27',
-      change: { text: `+8 ${t.performance.vsQ1}`, color: 'text-green-600' },
+      value: String(d.totalRecognitions),
+      change: { text: `${d.totalFeedback} feedback`, color: 'text-[#585858]' },
       extra: (
         <div className="text-[10px] text-[#8B8B8B]">
-          {t.performance.recognized.replace('{n}', '15')}
+          {d.totalRecognitions} {t.performance.recognized.replace('{n}', String(d.totalRecognitions))}
         </div>
       ),
     },

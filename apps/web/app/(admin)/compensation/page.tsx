@@ -2,6 +2,7 @@
 
 import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
+import { toast } from '../../../lib/toast';
 import { CompKpis } from './comp-kpis';
 import { SalaryBands, PayEquityCard } from './comp-left-column';
 import { CompaRatioDistribution, BenefitsUtilization, PendingAdjustments } from './comp-right-column';
@@ -21,8 +22,8 @@ export default function CompensationPage() {
           <span className="text-[#333] font-semibold">{t.sidebar.compensation}</span>
         </div>
         <div className="flex items-center gap-3">
-          <button className="text-[12px] border border-[#EDEDED] rounded-lg px-4 py-1.5 text-[#585858] hover:bg-gray-50 font-medium">Exportar</button>
-          <button className="text-[12px] bg-[#DD0C15] text-white rounded-lg px-4 py-1.5 font-medium hover:bg-red-700">Simular Ajuste</button>
+          <button onClick={() => toast('Exportar: proximamente', { type: 'info' })} className="text-[12px] border border-[#EDEDED] rounded-lg px-4 py-1.5 text-[#585858] hover:bg-gray-50 font-medium">Exportar</button>
+          <button onClick={() => toast('Simular Ajuste: proximamente', { type: 'info' })} className="text-[12px] bg-[#DD0C15] text-white rounded-lg px-4 py-1.5 font-medium hover:bg-red-700">Simular Ajuste</button>
         </div>
       </div>
 

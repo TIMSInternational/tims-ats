@@ -2,20 +2,29 @@
 
 import { useI18n } from '../../../../lib/i18n';
 
-interface OkrRow {
+interface OkrUser {
   id: string;
-  initials: string;
-  avatarBg: string;
-  avatarText: string;
+  firstName: string;
+  lastName: string;
+  avatar: string | null;
+}
+
+interface OkrTeam {
+  id: string;
   name: string;
-  team: string;
-  objective: string;
+}
+
+export interface OkrItem {
+  id: string;
+  title: string;
   progress: number;
+  user: OkrUser | null;
+  team: OkrTeam | null;
 }
 
 interface TeamGroup {
   team: string;
-  rows: OkrRow[];
+  rows: OkrItem[];
 }
 
 function getProgressColor(pct: number): string {
@@ -30,31 +39,73 @@ function getStatusDot(pct: number): string {
   return 'bg-red-500';
 }
 
-const MOCK_DATA: OkrRow[] = [
-  { id: '1', initials: 'CR', avatarBg: 'bg-blue-100', avatarText: 'text-blue-700', name: 'Carlos Ramirez', team: 'Logistica', objective: 'Reducir tiempos de entrega 20%', progress: 85 },
-  { id: '2', initials: 'MF', avatarBg: 'bg-purple-100', avatarText: 'text-purple-700', name: 'Maria Fernandez', team: 'Logistica', objective: 'Optimizar rutas de distribucion', progress: 52 },
-  { id: '3', initials: 'JT', avatarBg: 'bg-rose-100', avatarText: 'text-rose-700', name: 'Jorge Torres', team: 'Logistica', objective: 'Implementar sistema de tracking', progress: 25 },
-  { id: '4', initials: 'AG', avatarBg: 'bg-emerald-100', avatarText: 'text-emerald-700', name: 'Andrea Gutierrez', team: 'Comercial', objective: 'Cerrar 15 cuentas nuevas Q2', progress: 93 },
-  { id: '5', initials: 'RM', avatarBg: 'bg-cyan-100', avatarText: 'text-cyan-700', name: 'Ricardo Mendoza', team: 'Comercial', objective: 'Incrementar ticket promedio 10%', progress: 61 },
-  { id: '6', initials: 'LP', avatarBg: 'bg-orange-100', avatarText: 'text-orange-700', name: 'Laura Paredes', team: 'Operaciones', objective: 'Certificacion ISO 9001 planta', progress: 78 },
-  { id: '7', initials: 'DV', avatarBg: 'bg-indigo-100', avatarText: 'text-indigo-700', name: 'Diego Villamizar', team: 'Operaciones', objective: 'Reducir merma al 2%', progress: 30 },
-  { id: '8', initials: 'SC', avatarBg: 'bg-pink-100', avatarText: 'text-pink-700', name: 'Sofia Castillo', team: 'Operaciones', objective: 'Capacitar 100% operarios nuevos', progress: 100 },
-];
-
-function groupByTeam(rows: OkrRow[]): TeamGroup[] {
-  const map = new Map<string, OkrRow[]>();
-  rows.forEach((r) => {
-    const arr = map.get(r.team) || [];
-    arr.push(r);
-    map.set(r.team, arr);
-  });
-  return Array.from(map.entries()).map(([team, rows]) => ({ team, rows }));
+function getInitials(firstName: string, lastName: string): string {
+  return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
 }
 
-export function OkrTable() {
+const AVATAR_COLORS = [
+  { bg: 'bg-blue-100', text: 'text-blue-700' },
+  { bg: 'bg-purple-100', text: 'text-purple-700' },
+  { bg: 'bg-rose-100', text: 'text-rose-700' },
+  { bg: 'bg-emerald-100', text: 'text-emerald-700' },
+  { bg: 'bg-cyan-100', text: 'text-cyan-700' },
+  { bg: 'bg-orange-100', text: 'text-orange-700' },
+  { bg: 'bg-indigo-100', text: 'text-indigo-700' },
+  { bg: 'bg-pink-100', text: 'text-pink-700' },
+];
+
+function getAvatarColor(id: string) {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (hash + id.charCodeAt(i)) % AVATAR_COLORS.length;
+  return AVATAR_COLORS[hash];
+}
+
+function groupByTeam(rows: OkrItem[]): TeamGroup[] {
+  const map = new Map<string, OkrItem[]>();
+  rows.forEach((r) => {
+    const teamName = r.team?.name ?? 'Sin equipo';
+    const arr = map.get(teamName) || [];
+    arr.push(r);
+    map.set(teamName, arr);
+  });
+  return Array.from(map.entries()).map(([team, items]) => ({ team, rows: items }));
+}
+
+interface OkrTableProps {
+  okrs: OkrItem[];
+  isLoading: boolean;
+}
+
+export function OkrTable({ okrs, isLoading }: OkrTableProps) {
   const { t } = useI18n();
-  const groups = groupByTeam(MOCK_DATA);
-  const alerts = MOCK_DATA.filter((r) => r.progress < 35);
+
+  if (isLoading) {
+    return (
+      <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-[#EDEDED]">
+          <div className="h-4 w-40 bg-gray-200 rounded animate-pulse" />
+          <div className="flex gap-3">
+            <div className="h-3 w-16 bg-gray-200 rounded animate-pulse" />
+            <div className="h-3 w-16 bg-gray-200 rounded animate-pulse" />
+            <div className="h-3 w-16 bg-gray-200 rounded animate-pulse" />
+          </div>
+        </div>
+        <div className="p-5 space-y-3">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-4">
+              <div className="w-6 h-6 rounded-full bg-gray-200 animate-pulse" />
+              <div className="h-3 w-28 bg-gray-200 rounded animate-pulse" />
+              <div className="h-3 w-20 bg-gray-200 rounded animate-pulse" />
+              <div className="flex-1 h-1.5 bg-gray-200 rounded animate-pulse" />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  const groups = groupByTeam(okrs);
+  const alerts = okrs.filter((r) => r.progress < 35);
 
   return (
     <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] overflow-hidden">
@@ -97,7 +148,10 @@ export function OkrTable() {
           </svg>
           <span className="text-[11px] text-red-700 font-medium">{t.performance.alertLabel} </span>
           <span className="text-[11px] text-red-600">
-            {alerts.map((a) => `${a.name} (${a.progress}%)`).join(' y ')}{' '}
+            {alerts.map((a) => {
+              const name = a.user ? `${a.user.firstName} ${a.user.lastName}` : 'N/A';
+              return `${name} (${a.progress}%)`;
+            }).join(' y ')}{' '}
             {t.performance.alertMessage.replace('{names}', '')}
           </span>
         </div>
@@ -114,31 +168,37 @@ function TeamRows({ group }: { group: TeamGroup }) {
           {group.team}
         </td>
       </tr>
-      {group.rows.map((row) => (
-        <tr key={row.id} className="border-b border-[#EDEDED]">
-          <td className="px-5 py-2.5">
-            <div className="flex items-center gap-2">
-              <div className={`w-6 h-6 rounded-full ${row.avatarBg} ${row.avatarText} flex items-center justify-center text-[9px] font-bold`}>
-                {row.initials}
+      {group.rows.map((row) => {
+        const name = row.user ? `${row.user.firstName} ${row.user.lastName}` : 'N/A';
+        const initials = row.user ? getInitials(row.user.firstName, row.user.lastName) : '??';
+        const color = getAvatarColor(row.id);
+        const teamName = row.team?.name ?? '';
+        return (
+          <tr key={row.id} className="border-b border-[#EDEDED]">
+            <td className="px-5 py-2.5">
+              <div className="flex items-center gap-2">
+                <div className={`w-6 h-6 rounded-full ${color.bg} ${color.text} flex items-center justify-center text-[9px] font-bold`}>
+                  {initials}
+                </div>
+                <span className="font-medium">{name}</span>
               </div>
-              <span className="font-medium">{row.name}</span>
-            </div>
-          </td>
-          <td className="px-3 py-2.5 text-[#585858]">{row.team}</td>
-          <td className="px-3 py-2.5">{row.objective}</td>
-          <td className="px-3 py-2.5">
-            <div className="flex items-center gap-2">
-              <div className="w-full h-1.5 bg-[#EDEDED] rounded-full">
-                <div className={`h-full rounded-full ${getProgressColor(row.progress)}`} style={{ width: `${row.progress}%` }} />
+            </td>
+            <td className="px-3 py-2.5 text-[#585858]">{teamName}</td>
+            <td className="px-3 py-2.5">{row.title}</td>
+            <td className="px-3 py-2.5">
+              <div className="flex items-center gap-2">
+                <div className="w-full h-1.5 bg-[#EDEDED] rounded-full">
+                  <div className={`h-full rounded-full ${getProgressColor(row.progress)}`} style={{ width: `${row.progress}%` }} />
+                </div>
+                <span className="text-[10px] text-[#585858] w-8 text-right">{row.progress}%</span>
               </div>
-              <span className="text-[10px] text-[#585858] w-8 text-right">{row.progress}%</span>
-            </div>
-          </td>
-          <td className="px-3 py-2.5 text-center">
-            <span className={`w-2.5 h-2.5 rounded-full inline-block ${getStatusDot(row.progress)}`} />
-          </td>
-        </tr>
-      ))}
+            </td>
+            <td className="px-3 py-2.5 text-center">
+              <span className={`w-2.5 h-2.5 rounded-full inline-block ${getStatusDot(row.progress)}`} />
+            </td>
+          </tr>
+        );
+      })}
     </>
   );
 }

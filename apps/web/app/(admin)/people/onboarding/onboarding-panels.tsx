@@ -1,6 +1,7 @@
 'use client';
 
 import type { OnboardingPlan } from './onboarding-table';
+import { toast } from '../../../../lib/toast';
 
 function DocIcon({ urgent }: { urgent: boolean }) {
   return (
@@ -99,7 +100,7 @@ export function PendingDocuments({ plans }: { plans: OnboardingPlan[] }) {
                 <p className="text-[10px] text-[#8B8B8B]">{doc.person} — Pendiente</p>
               </div>
             </div>
-            <button className="text-[10px] text-[#DD0C15] font-medium hover:underline">
+            <button onClick={() => toast(doc.urgent ? 'Enviar: proximamente' : 'Recordar: proximamente', { type: 'info' })} className="text-[10px] text-[#DD0C15] font-medium hover:underline">
               {doc.urgent ? 'Enviar' : 'Recordar'}
             </button>
           </div>

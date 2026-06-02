@@ -17,8 +17,6 @@ export default function OffersPage() {
     status: statusFilter || undefined,
   });
 
-  const pendingOffers = trpc.offer.getPending.useQuery();
-
   const items = offers.data?.items ?? [];
 
   // Compute KPIs from the list data
@@ -37,10 +35,10 @@ export default function OffersPage() {
         : items.length > 0
           ? Math.round(items.reduce((sum, o) => sum + o.salary, 0) / items.length)
           : 0;
-    const pendingApprovals = pendingOffers.data?.length ?? 0;
+    const pendingApprovals = items.filter((o) => o.status === 'pending_approval').length;
 
     return { activeCount, acceptanceRate, avgSalary, pendingApprovals };
-  }, [items, pendingOffers.data]);
+  }, [items]);
 
   // If an offer is selected, show detail view
   if (selectedOfferId) {

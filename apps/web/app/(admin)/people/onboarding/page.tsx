@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
+import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
 import { KpiCard, KpiCardSkeleton } from '../../../../components';
 import { OnboardingTable, type OnboardingPlan } from './onboarding-table';
@@ -104,10 +105,10 @@ export default function OnboardingPage() {
           <span className="text-sm font-medium text-[#1F114C]">{t.onboarding.title} Dashboard</span>
         </div>
         <div className="flex items-center gap-3">
-          <button className="flex items-center gap-1.5 border border-[#EDEDED] text-[#585858] px-3 h-8 rounded-lg text-[12px] hover:bg-[#F6F6F6] transition">
+          <button onClick={() => toast('Exportar: proximamente', { type: 'info' })} className="flex items-center gap-1.5 border border-[#EDEDED] text-[#585858] px-3 h-8 rounded-lg text-[12px] hover:bg-[#F6F6F6] transition">
             <ExportIcon />Exportar
           </button>
-          <button className="flex items-center gap-1.5 bg-[#DD0C15] text-white px-4 h-8 rounded-lg text-[12px] font-medium hover:bg-[#c40b13] transition">
+          <button onClick={() => toast('Crear: proximamente', { type: 'info' })} className="flex items-center gap-1.5 bg-[#DD0C15] text-white px-4 h-8 rounded-lg text-[12px] font-medium hover:bg-[#c40b13] transition">
             <PlusIcon />Nuevo Onboarding
           </button>
         </div>

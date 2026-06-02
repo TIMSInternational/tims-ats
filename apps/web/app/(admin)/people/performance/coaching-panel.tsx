@@ -1,39 +1,33 @@
 'use client';
 
 import { useI18n } from '../../../../lib/i18n';
+import { toast } from '../../../../lib/toast';
 
-interface CoachingSession {
+interface SessionUser {
   id: string;
-  date: string;
-  coach: string;
-  coachee: string;
+  firstName: string;
+  lastName: string;
+  avatar: string | null;
+}
+
+export interface CoachingSessionItem {
+  id: string;
+  scheduledAt: string | Date;
   topic: string;
-  priority: 'urgent' | 'pending' | 'scheduled';
+  status: string;
+  employee: SessionUser | null;
+  leader: SessionUser | null;
 }
 
-interface Commitment {
+export interface CommitmentItem {
   id: string;
-  employee: string;
   description: string;
-  status: 'expired' | 'in_progress' | 'completed';
-  date: string;
-  leader: string;
+  status: string;
+  dueDate: string | Date;
+  completedAt?: string | Date | null;
+  employee: { id: string; firstName: string; lastName: string; avatar: string | null } | null;
+  creator: { id: string; firstName: string; lastName: string } | null;
 }
-
-const MOCK_SESSIONS: CoachingSession[] = [
-  { id: '1', date: 'Lun 02 Jun, 10:00 AM', coach: 'Roberto Diaz', coachee: 'Jorge Torres', topic: 'Revision avance tracking + plan de accion', priority: 'urgent' },
-  { id: '2', date: 'Mar 03 Jun, 2:00 PM', coach: 'Ana Morales', coachee: 'Diego Villamizar', topic: 'Coaching desempeno: meta merma 2%', priority: 'urgent' },
-  { id: '3', date: 'Mie 04 Jun, 9:30 AM', coach: 'Carlos Ramirez', coachee: 'Maria Fernandez', topic: 'Seguimiento optimizacion de rutas', priority: 'pending' },
-  { id: '4', date: 'Vie 06 Jun, 11:00 AM', coach: 'Roberto Diaz', coachee: 'Andrea Gutierrez', topic: 'Celebracion: cuentas Q2 casi completas', priority: 'scheduled' },
-];
-
-const MOCK_COMMITMENTS: Commitment[] = [
-  { id: '1', employee: 'Jorge Torres', description: 'Plan de accion tracking', status: 'expired', date: '25 May 2026', leader: 'Roberto Diaz' },
-  { id: '2', employee: 'Diego Villamizar', description: 'Auditoria proceso merma', status: 'expired', date: '27 May 2026', leader: 'Ana Morales' },
-  { id: '3', employee: 'Maria Fernandez', description: 'Presentar 3 rutas alternas', status: 'in_progress', date: '05 Jun 2026', leader: 'Carlos Ramirez' },
-  { id: '4', employee: 'Ricardo Mendoza', description: 'Propuesta upselling clientes A', status: 'completed', date: '28 May 2026', leader: 'Roberto Diaz' },
-  { id: '5', employee: 'Laura Paredes', description: 'Documentacion ISO fase 3', status: 'in_progress', date: '10 Jun 2026', leader: 'Ana Morales' },
-];
 
 const PRIORITY_BADGE: Record<string, { cls: string; labelKey: 'urgent' | 'pending' | 'scheduled' }> = {
   urgent: { cls: 'bg-red-50 text-red-600', labelKey: 'urgent' },
@@ -43,11 +37,61 @@ const PRIORITY_BADGE: Record<string, { cls: string; labelKey: 'urgent' | 'pendin
 
 const STATUS_BADGE: Record<string, { cls: string; labelKey: 'commitmentExpired' | 'commitmentInProgress' | 'commitmentCompleted' }> = {
   expired: { cls: 'bg-red-50 text-red-600', labelKey: 'commitmentExpired' },
+  pending: { cls: 'bg-red-50 text-red-600', labelKey: 'commitmentExpired' },
   in_progress: { cls: 'bg-amber-50 text-amber-600', labelKey: 'commitmentInProgress' },
   completed: { cls: 'bg-green-50 text-green-600', labelKey: 'commitmentCompleted' },
 };
 
-export function CoachingPanel() {
+function formatDate(d: string | Date): string {
+  const date = new Date(d);
+  return date.toLocaleDateString('es-CO', {
+    weekday: 'short', day: '2-digit', month: 'short',
+    hour: '2-digit', minute: '2-digit',
+  });
+}
+
+function formatShortDate(d: string | Date): string {
+  return new Date(d).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function getCommitmentStatus(status: string, dueDate: string | Date): string {
+  if (status === 'completed') return 'completed';
+  const due = new Date(dueDate);
+  if (due < new Date()) return 'expired';
+  if (status === 'in_progress') return 'in_progress';
+  return 'pending';
+}
+
+function getPriority(status: string): string {
+  if (status === 'urgent') return 'urgent';
+  if (status === 'pending') return 'pending';
+  return 'scheduled';
+}
+
+function SkeletonRows({ count }: { count: number }) {
+  return (
+    <div className="divide-y divide-[#EDEDED]">
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i} className="px-5 py-3 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-lg bg-gray-200 animate-pulse shrink-0" />
+          <div className="flex-1 space-y-2">
+            <div className="h-3 w-32 bg-gray-200 rounded animate-pulse" />
+            <div className="h-2.5 w-48 bg-gray-200 rounded animate-pulse" />
+          </div>
+          <div className="h-5 w-16 bg-gray-200 rounded-full animate-pulse" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+interface CoachingPanelProps {
+  sessions: CoachingSessionItem[];
+  commitments: CommitmentItem[];
+  isLoading: boolean;
+}
+
+export function CoachingPanel({ sessions, commitments, isLoading }: CoachingPanelProps) {
   const { t } = useI18n();
 
   return (
@@ -58,59 +102,81 @@ export function CoachingPanel() {
           <h3 className="text-[13px] font-semibold text-[#333]">{t.performance.coachingTitle}</h3>
           <span className="text-[10px] text-[#8B8B8B]">{t.performance.next7Days}</span>
         </div>
-        <div className="divide-y divide-[#EDEDED]">
-          {MOCK_SESSIONS.map((s) => {
-            const badge = PRIORITY_BADGE[s.priority];
-            return (
-              <div key={s.id} className="px-5 py-3 flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
-                  <CalendarIcon />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-[12px] font-medium text-[#333]">{s.date}</div>
-                  <div className="text-[11px] text-[#585858]">
-                    {s.coach} &rarr; {s.coachee}
+        {isLoading ? (
+          <SkeletonRows count={4} />
+        ) : sessions.length === 0 ? (
+          <div className="px-5 py-8 text-center text-[12px] text-[#8B8B8B]">
+            No hay sesiones programadas
+          </div>
+        ) : (
+          <div className="divide-y divide-[#EDEDED]">
+            {sessions.map((s) => {
+              const priority = getPriority(s.status);
+              const badge = PRIORITY_BADGE[priority];
+              const coachName = s.leader ? `${s.leader.firstName} ${s.leader.lastName}` : 'N/A';
+              const coacheeName = s.employee ? `${s.employee.firstName} ${s.employee.lastName}` : 'N/A';
+              return (
+                <div key={s.id} className="px-5 py-3 flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
+                    <CalendarIcon />
                   </div>
-                  <div className="text-[10px] text-[#8B8B8B]">{s.topic}</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[12px] font-medium text-[#333]">{formatDate(s.scheduledAt)}</div>
+                    <div className="text-[11px] text-[#585858]">
+                      {coachName} &rarr; {coacheeName}
+                    </div>
+                    <div className="text-[10px] text-[#8B8B8B]">{s.topic}</div>
+                  </div>
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium shrink-0 ${badge.cls}`}>
+                    {t.performance[badge.labelKey]}
+                  </span>
                 </div>
-                <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium shrink-0 ${badge.cls}`}>
-                  {t.performance[badge.labelKey]}
-                </span>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Commitments */}
       <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
         <div className="flex items-center justify-between px-5 py-3 border-b border-[#EDEDED]">
           <h3 className="text-[13px] font-semibold text-[#333]">{t.performance.commitmentsTitle}</h3>
-          <button className="text-[10px] text-[#DD0C15] font-medium hover:underline">
+          <button onClick={() => toast('Ver todo: proximamente', { type: 'info' })} className="text-[10px] text-[#DD0C15] font-medium hover:underline">
             {t.performance.viewAll}
           </button>
         </div>
-        <div className="divide-y divide-[#EDEDED]">
-          {MOCK_COMMITMENTS.map((c) => {
-            const badge = STATUS_BADGE[c.status];
-            const dateLabel = c.status === 'completed' ? t.performance.completed : t.performance.deadline;
-            return (
-              <div key={c.id} className="px-5 py-2.5">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-[11px] font-medium text-[#333]">
-                    {c.employee} &mdash; {c.description}
-                  </span>
-                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${badge.cls}`}>
-                    {t.performance[badge.labelKey]}
-                  </span>
+        {isLoading ? (
+          <SkeletonRows count={4} />
+        ) : commitments.length === 0 ? (
+          <div className="px-5 py-8 text-center text-[12px] text-[#8B8B8B]">
+            No hay compromisos registrados
+          </div>
+        ) : (
+          <div className="divide-y divide-[#EDEDED]">
+            {commitments.map((c) => {
+              const resolvedStatus = getCommitmentStatus(c.status, c.dueDate);
+              const badge = STATUS_BADGE[resolvedStatus] ?? STATUS_BADGE['in_progress'];
+              const dateLabel = resolvedStatus === 'completed' ? t.performance.completed : t.performance.deadline;
+              const employeeName = c.employee ? `${c.employee.firstName} ${c.employee.lastName}` : 'N/A';
+              const leaderName = c.creator ? `${c.creator.firstName} ${c.creator.lastName}` : 'N/A';
+              return (
+                <div key={c.id} className="px-5 py-2.5">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[11px] font-medium text-[#333]">
+                      {employeeName} &mdash; {c.description}
+                    </span>
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${badge.cls}`}>
+                      {t.performance[badge.labelKey]}
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-[#8B8B8B]">
+                    {dateLabel}: {formatShortDate(c.dueDate)} &middot; {t.performance.leader}: {leaderName}
+                  </div>
                 </div>
-                <div className="text-[10px] text-[#8B8B8B]">
-                  {dateLabel}: {c.date} &middot; {t.performance.leader}: {c.leader}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

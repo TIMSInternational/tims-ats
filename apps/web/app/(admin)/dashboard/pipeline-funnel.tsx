@@ -1,5 +1,6 @@
 'use client';
 
+import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
 
 const STAGE_COLORS = [
@@ -22,14 +23,11 @@ interface PipelineFunnelProps {
   totalApplications: number;
 }
 
-export function PipelineFunnel({ totalApplications }: PipelineFunnelProps) {
-  const { t } = useI18n();
-  const rd = t.recruitingDashboard;
-
-  const total = Math.max(totalApplications, 1);
-
-  // Static stage data matching the HTML design proportions
-  const stages: PipelineStage[] = [
+// TODO: wire to API when endpoint is available
+// Currently pipeline.getFunnel only works per-vacancy (requires vacancyId).
+// Need a new aggregate endpoint: pipeline.getAggregateFunnel (all vacancies).
+function buildFallbackStages(total: number, rd: Record<string, string>): PipelineStage[] {
+  return [
     { label: rd.applied, count: total, pct: '' },
     { label: rd.preselection, count: Math.round(total * 0.526), pct: '53%' },
     { label: rd.evalPca, count: Math.round(total * 0.278), pct: '53%' },
@@ -38,6 +36,42 @@ export function PipelineFunnel({ totalApplications }: PipelineFunnelProps) {
     { label: rd.offer, count: Math.round(total * 0.044), pct: '36%' },
     { label: rd.hired, count: Math.round(total * 0.023), pct: '53%' },
   ];
+}
+
+export function PipelineFunnel({ totalApplications }: PipelineFunnelProps) {
+  const { t } = useI18n();
+  const rd = t.recruitingDashboard;
+  const total = Math.max(totalApplications, 1);
+
+  // Use real vacancy stats to build funnel from the most recent published vacancy
+  const recentVacancies = trpc.vacancy.getDashboardKpis.useQuery(undefined, {
+    staleTime: 60_000,
+  });
+
+  const firstVacancyId = recentVacancies.data?.recentVacancies?.[0]?.id;
+
+  const funnelQuery = trpc.pipeline.getFunnel.useQuery(
+    { vacancyId: firstVacancyId! },
+    { enabled: !!firstVacancyId, staleTime: 60_000 },
+  );
+
+  let stages: PipelineStage[];
+
+  if (funnelQuery.data?.funnel?.length) {
+    const funnel = funnelQuery.data.funnel;
+    const funnelTotal = funnelQuery.data.totalApplications || 1;
+    stages = funnel.map((s) => ({
+      label: s.stageName,
+      count: s.currentCount,
+      pct: s.conversionRate > 0 ? `${s.conversionRate}%` : '',
+    }));
+    // Prepend "Applied" row with total
+    stages.unshift({ label: rd.applied, count: funnelTotal, pct: '' });
+  } else {
+    stages = buildFallbackStages(total, rd);
+  }
+
+  const maxCount = Math.max(...stages.map((s) => s.count), 1);
 
   return (
     <div className="flex-[65] bg-white rounded-xl p-5 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
@@ -57,11 +91,11 @@ export function PipelineFunnel({ totalApplications }: PipelineFunnelProps) {
       </div>
       <div className="space-y-2">
         {stages.map((stage, idx) => {
-          const widthPct = Math.max((stage.count / total) * 100, 3);
+          const widthPct = Math.max((stage.count / maxCount) * 100, 3);
           return (
             <div key={stage.label} className="flex items-center gap-4">
               <div
-                className={`h-6 rounded-sm flex items-center justify-center ${STAGE_COLORS[idx]}`}
+                className={`h-6 rounded-sm flex items-center justify-center ${STAGE_COLORS[idx % STAGE_COLORS.length]}`}
                 style={{ width: `${widthPct}%` }}
               >
                 <span className="text-[11px] font-medium">{stage.count}</span>

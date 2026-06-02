@@ -13,6 +13,9 @@ interface RiskCandidate {
   aiAction: string;
 }
 
+// TODO: wire to API when endpoint is available
+// Need: candidate.getRiskCandidates() — candidates with high fit scores who are
+// stalled in pipeline, unresponsive, or have competing offers detected by AI.
 const RISK_CANDIDATES: RiskCandidate[] = [
   {
     initials: 'ML',

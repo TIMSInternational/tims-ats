@@ -14,12 +14,16 @@ interface PendingScorecard {
   evaluator: string;
 }
 
+// TODO: wire to API when endpoint is available
+// Need: assessment.getPendingTests() and interview.getPendingScorecards()
+// to return candidates with incomplete assessments / unsubmitted scorecards.
 const PENDING_TESTS: PendingTest[] = [
   { name: 'Maria Lopez', type: 'PCA', daysAgo: 5 },
   { name: 'Juan Perez', type: 'Integridad', daysAgo: 3 },
   { name: 'Ana Torres', type: 'MIL', daysAgo: 7 },
 ];
 
+// TODO: wire to API when endpoint is available
 const PENDING_SCORECARDS: PendingScorecard[] = [
   { name: 'Carlos Ruiz', interviewType: 'Entrevista tecnica', evaluator: 'Laura G.' },
   { name: 'Sofia Chen', interviewType: 'Entrevista cultural', evaluator: 'Andres T.' },

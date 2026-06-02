@@ -1,29 +1,32 @@
 'use client';
 
 import { useI18n } from '../../../../lib/i18n';
+import { toast } from '../../../../lib/toast';
 
-interface FeedbackItem {
+interface FeedbackUser {
   id: string;
-  fromInitials: string;
-  fromBg: string;
-  fromText: string;
-  fromName: string;
-  toName: string;
-  type: 'constructive' | 'improvement' | 'positive';
-  message: string;
-  timeAgo: string;
+  firstName: string;
+  lastName: string;
+  avatar: string | null;
 }
 
-interface RecognitionItem {
+export interface FeedbackItem {
   id: string;
-  emoji: string;
-  emojiBg: string;
-  name: string;
-  badge: string;
-  badgeCls: string;
+  type: string;
   message: string;
-  by: string;
-  when: string;
+  createdAt: string | Date;
+  isAnonymous: boolean;
+  fromUser: FeedbackUser | null;
+  toUser: FeedbackUser | null;
+}
+
+export interface RecognitionItem {
+  id: string;
+  category: string;
+  message: string;
+  createdAt: string | Date;
+  fromUser: FeedbackUser | null;
+  toUser: FeedbackUser | null;
 }
 
 const FEEDBACK_TYPE: Record<string, { cls: string; labelKey: 'typeConstructive' | 'typeImprovement' | 'typePositive' }> = {
@@ -32,49 +35,75 @@ const FEEDBACK_TYPE: Record<string, { cls: string; labelKey: 'typeConstructive' 
   positive: { cls: 'bg-green-50 text-green-600', labelKey: 'typePositive' },
 };
 
-const MOCK_FEEDBACK: FeedbackItem[] = [
-  {
-    id: '1', fromInitials: 'AG', fromBg: 'bg-emerald-100', fromText: 'text-emerald-700',
-    fromName: 'Andrea Gutierrez', toName: 'Ricardo Mendoza', type: 'constructive',
-    message: '"La presentacion del cliente Avianca estuvo muy bien preparada. Sugerencia: incluir metricas de ROI..."',
-    timeAgo: 'Hace 2 horas',
-  },
-  {
-    id: '2', fromInitials: 'CR', fromBg: 'bg-blue-100', fromText: 'text-blue-700',
-    fromName: 'Carlos Ramirez', toName: 'Jorge Torres', type: 'improvement',
-    message: '"Necesitamos priorizar el modulo de tracking. El atraso esta afectando al equipo completo..."',
-    timeAgo: 'Hace 1 dia',
-  },
-  {
-    id: '3', fromInitials: 'LP', fromBg: 'bg-orange-100', fromText: 'text-orange-700',
-    fromName: 'Laura Paredes', toName: 'Sofia Castillo', type: 'positive',
-    message: '"Excelente trabajo capacitando a los 12 operarios nuevos. Todos aprobaron la evaluacion al primer intento."',
-    timeAgo: 'Hace 2 dias',
-  },
+const CATEGORY_EMOJI: Record<string, { emoji: string; bg: string }> = {
+  excellence: { emoji: '\u2B50', bg: 'bg-yellow-50' },
+  top_performer: { emoji: '\uD83D\uDCAA', bg: 'bg-blue-50' },
+  teamwork: { emoji: '\uD83E\uDD1D', bg: 'bg-green-50' },
+  innovation: { emoji: '\uD83D\uDCA1', bg: 'bg-purple-50' },
+  leadership: { emoji: '\uD83C\uDFC6', bg: 'bg-amber-50' },
+};
+
+const CATEGORY_BADGE: Record<string, { labelKey: string; cls: string }> = {
+  excellence: { labelKey: 'badgeExcellence', cls: 'bg-yellow-50 text-yellow-700' },
+  top_performer: { labelKey: 'badgeTopPerformer', cls: 'bg-blue-50 text-blue-700' },
+  teamwork: { labelKey: 'badgeTeamwork', cls: 'bg-green-50 text-green-700' },
+  innovation: { labelKey: 'badgeInnovation', cls: 'bg-purple-50 text-purple-700' },
+  leadership: { labelKey: 'badgeLeadership', cls: 'bg-amber-50 text-amber-700' },
+};
+
+function getInitials(firstName: string, lastName: string): string {
+  return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
+}
+
+const AVATAR_COLORS = [
+  { bg: 'bg-emerald-100', text: 'text-emerald-700' },
+  { bg: 'bg-blue-100', text: 'text-blue-700' },
+  { bg: 'bg-orange-100', text: 'text-orange-700' },
+  { bg: 'bg-purple-100', text: 'text-purple-700' },
+  { bg: 'bg-cyan-100', text: 'text-cyan-700' },
+  { bg: 'bg-pink-100', text: 'text-pink-700' },
 ];
 
-const MOCK_RECOGNITION: RecognitionItem[] = [
-  {
-    id: '1', emoji: '\u2B50', emojiBg: 'bg-yellow-50',
-    name: 'Sofia Castillo', badge: 'badgeExcellence', badgeCls: 'bg-yellow-50 text-yellow-700',
-    message: '"100% de capacitacion completada antes de fecha. Compromiso excepcional con el equipo."',
-    by: 'Por Ana Morales', when: 'Hoy',
-  },
-  {
-    id: '2', emoji: '\uD83D\uDCAA', emojiBg: 'bg-blue-50',
-    name: 'Andrea Gutierrez', badge: 'badgeTopPerformer', badgeCls: 'bg-blue-50 text-blue-700',
-    message: '"14 de 15 cuentas cerradas. La mejor vendedora del trimestre sin duda."',
-    by: 'Por Roberto Diaz', when: 'Hace 1 dia',
-  },
-  {
-    id: '3', emoji: '\uD83E\uDD1D', emojiBg: 'bg-green-50',
-    name: 'Carlos Ramirez', badge: 'badgeTeamwork', badgeCls: 'bg-green-50 text-green-700',
-    message: '"Liderazgo ejemplar reduciendo tiempos de entrega. Apoyo constante a su equipo."',
-    by: 'Por Roberto Diaz', when: 'Hace 3 dias',
-  },
-];
+function getAvatarColor(id: string) {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (hash + id.charCodeAt(i)) % AVATAR_COLORS.length;
+  return AVATAR_COLORS[hash];
+}
 
-export function FeedbackPanel() {
+function timeAgo(d: string | Date): string {
+  const diffMs = Date.now() - new Date(d).getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 60) return `Hace ${diffMin} min`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `Hace ${diffHr} hora${diffHr > 1 ? 's' : ''}`;
+  const diffDay = Math.floor(diffHr / 24);
+  return `Hace ${diffDay} dia${diffDay > 1 ? 's' : ''}`;
+}
+
+function SkeletonList({ count }: { count: number }) {
+  return (
+    <div className="divide-y divide-[#EDEDED]">
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i} className="px-5 py-3 flex items-start gap-3">
+          <div className="w-7 h-7 rounded-full bg-gray-200 animate-pulse shrink-0" />
+          <div className="flex-1 space-y-2">
+            <div className="h-3 w-40 bg-gray-200 rounded animate-pulse" />
+            <div className="h-2.5 w-full bg-gray-200 rounded animate-pulse" />
+            <div className="h-2 w-16 bg-gray-200 rounded animate-pulse" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+interface FeedbackPanelProps {
+  feedbacks: FeedbackItem[];
+  recognitions: RecognitionItem[];
+  isLoading: boolean;
+}
+
+export function FeedbackPanel({ feedbacks, recognitions, isLoading }: FeedbackPanelProps) {
   const { t } = useI18n();
 
   return (
@@ -83,63 +112,91 @@ export function FeedbackPanel() {
       <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
         <div className="flex items-center justify-between px-5 py-3 border-b border-[#EDEDED]">
           <h3 className="text-[13px] font-semibold text-[#333]">{t.performance.feedbackTitle}</h3>
-          <button className="text-[10px] text-[#DD0C15] font-medium hover:underline">
+          <button onClick={() => toast('Dar Retroalimentacion: proximamente', { type: 'info' })} className="text-[10px] text-[#DD0C15] font-medium hover:underline">
             {t.performance.giveFeedback}
           </button>
         </div>
-        <div className="divide-y divide-[#EDEDED]">
-          {MOCK_FEEDBACK.map((fb) => {
-            const typeBadge = FEEDBACK_TYPE[fb.type];
-            return (
-              <div key={fb.id} className="px-5 py-3 flex items-start gap-3">
-                <div className={`w-7 h-7 rounded-full ${fb.fromBg} ${fb.fromText} flex items-center justify-center text-[9px] font-bold shrink-0 mt-0.5`}>
-                  {fb.fromInitials}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-0.5">
-                    <span className="text-[11px] font-medium text-[#333]">{fb.fromName}</span>
-                    <ArrowIcon />
-                    <span className="text-[11px] text-[#585858]">{fb.toName}</span>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${typeBadge.cls}`}>
-                      {t.performance[typeBadge.labelKey]}
-                    </span>
+        {isLoading ? (
+          <SkeletonList count={3} />
+        ) : feedbacks.length === 0 ? (
+          <div className="px-5 py-8 text-center text-[12px] text-[#8B8B8B]">
+            No hay feedback registrado
+          </div>
+        ) : (
+          <div className="divide-y divide-[#EDEDED]">
+            {feedbacks.map((fb) => {
+              const typeBadge = FEEDBACK_TYPE[fb.type] ?? FEEDBACK_TYPE['constructive'];
+              const fromName = fb.isAnonymous || !fb.fromUser
+                ? 'Anonimo' : `${fb.fromUser.firstName} ${fb.fromUser.lastName}`;
+              const toName = fb.toUser ? `${fb.toUser.firstName} ${fb.toUser.lastName}` : 'N/A';
+              const initials = fb.isAnonymous || !fb.fromUser
+                ? '??' : getInitials(fb.fromUser.firstName, fb.fromUser.lastName);
+              const color = fb.fromUser ? getAvatarColor(fb.fromUser.id) : AVATAR_COLORS[0];
+              return (
+                <div key={fb.id} className="px-5 py-3 flex items-start gap-3">
+                  <div className={`w-7 h-7 rounded-full ${color.bg} ${color.text} flex items-center justify-center text-[9px] font-bold shrink-0 mt-0.5`}>
+                    {initials}
                   </div>
-                  <p className="text-[11px] text-[#585858] line-clamp-1">{fb.message}</p>
-                  <span className="text-[10px] text-[#8B8B8B]">{fb.timeAgo}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <span className="text-[11px] font-medium text-[#333]">{fromName}</span>
+                      <ArrowIcon />
+                      <span className="text-[11px] text-[#585858]">{toName}</span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${typeBadge.cls}`}>
+                        {t.performance[typeBadge.labelKey]}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-[#585858] line-clamp-1">{fb.message}</p>
+                    <span className="text-[10px] text-[#8B8B8B]">{timeAgo(fb.createdAt)}</span>
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Recognition Wall */}
       <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
         <div className="flex items-center justify-between px-5 py-3 border-b border-[#EDEDED]">
           <h3 className="text-[13px] font-semibold text-[#333]">{t.performance.recognitionTitle}</h3>
-          <button className="text-[10px] text-[#DD0C15] font-medium hover:underline">
+          <button onClick={() => toast('Reconocer: proximamente', { type: 'info' })} className="text-[10px] text-[#DD0C15] font-medium hover:underline">
             {t.performance.recognize}
           </button>
         </div>
-        <div className="divide-y divide-[#EDEDED]">
-          {MOCK_RECOGNITION.map((r) => (
-            <div key={r.id} className="px-5 py-3 flex items-start gap-3">
-              <div className={`w-8 h-8 rounded-lg ${r.emojiBg} flex items-center justify-center text-[16px] shrink-0`}>
-                {r.emoji}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-0.5">
-                  <span className="text-[11px] font-medium text-[#333]">{r.name}</span>
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${r.badgeCls}`}>
-                    {t.performance[r.badge as keyof typeof t.performance]}
-                  </span>
+        {isLoading ? (
+          <SkeletonList count={3} />
+        ) : recognitions.length === 0 ? (
+          <div className="px-5 py-8 text-center text-[12px] text-[#8B8B8B]">
+            No hay reconocimientos registrados
+          </div>
+        ) : (
+          <div className="divide-y divide-[#EDEDED]">
+            {recognitions.map((r) => {
+              const emojiData = CATEGORY_EMOJI[r.category] ?? { emoji: '\u2B50', bg: 'bg-yellow-50' };
+              const badgeData = CATEGORY_BADGE[r.category] ?? { labelKey: 'badgeExcellence', cls: 'bg-yellow-50 text-yellow-700' };
+              const toName = r.toUser ? `${r.toUser.firstName} ${r.toUser.lastName}` : 'N/A';
+              const fromName = r.fromUser ? `Por ${r.fromUser.firstName} ${r.fromUser.lastName}` : '';
+              return (
+                <div key={r.id} className="px-5 py-3 flex items-start gap-3">
+                  <div className={`w-8 h-8 rounded-lg ${emojiData.bg} flex items-center justify-center text-[16px] shrink-0`}>
+                    {emojiData.emoji}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <span className="text-[11px] font-medium text-[#333]">{toName}</span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${badgeData.cls}`}>
+                        {t.performance[badgeData.labelKey as keyof typeof t.performance]}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-[#585858]">{r.message}</p>
+                    <span className="text-[10px] text-[#8B8B8B]">{fromName} &middot; {timeAgo(r.createdAt)}</span>
+                  </div>
                 </div>
-                <p className="text-[11px] text-[#585858]">{r.message}</p>
-                <span className="text-[10px] text-[#8B8B8B]">{r.by} &middot; {r.when}</span>
-              </div>
-            </div>
-          ))}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
