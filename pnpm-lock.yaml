@@ -238,6 +238,9 @@ importers:
         specifier: ^6.8.2
         version: 6.8.2(prisma@6.8.2(typescript@5.9.3))(typescript@5.9.3)
     devDependencies:
+      '@supabase/supabase-js':
+        specifier: ^2.106.1
+        version: 2.106.1
       prisma:
         specifier: ^6.8.2
         version: 6.8.2(typescript@5.9.3)
