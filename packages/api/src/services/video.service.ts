@@ -66,23 +66,54 @@ async function dailyFetch<T>(
 
 export const videoService = {
   /**
-   * Create a private Daily.co room for an interview.
-   * Room expires 2 hours from creation.
+   * Create or retrieve a private Daily.co room for an interview.
+   * If room already exists, fetches it. Room expires 2 hours from creation.
    */
   async createRoom(interviewId: string): Promise<{ url: string; roomName: string }> {
     const roomName = `tims-${interviewId.slice(0, 8)}`;
+    const apiKey = getApiKey();
 
-    const data = await dailyFetch<DailyRoomResponse>('/rooms/', {
-      name: roomName,
-      privacy: 'private',
-      properties: {
-        exp: twoHoursFromNow(),
-        enable_chat: true,
-        enable_knocking: false,
+    // Try to create the room
+    const createRes = await fetch(`${DAILY_API_BASE}/rooms/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
       },
+      body: JSON.stringify({
+        name: roomName,
+        privacy: 'private',
+        properties: {
+          exp: twoHoursFromNow(),
+          enable_chat: true,
+          enable_knocking: false,
+        },
+      }),
     });
 
-    return { url: data.url, roomName: data.name };
+    if (createRes.ok) {
+      const data = (await createRes.json()) as DailyRoomResponse;
+      return { url: data.url, roomName: data.name };
+    }
+
+    // Room already exists — fetch it instead
+    if (createRes.status === 400) {
+      const getRes = await fetch(`${DAILY_API_BASE}/rooms/${roomName}`, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${apiKey}` },
+      });
+
+      if (getRes.ok) {
+        const data = (await getRes.json()) as DailyRoomResponse;
+        return { url: data.url, roomName: data.name };
+      }
+    }
+
+    const errorBody = (await createRes.json().catch(() => ({}))) as DailyErrorResponse;
+    throw new TRPCError({
+      code: 'INTERNAL_SERVER_ERROR',
+      message: `Daily.co API error (${createRes.status}): ${errorBody.error || errorBody.info || createRes.statusText}`,
+    });
   },
 
   /**
