@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
@@ -9,6 +9,7 @@ import { VacancySelector } from './vacancy-selector';
 import { KanbanBoard } from './kanban-board';
 import { PipelineListView } from './pipeline-list-view';
 import { PipelineTableView } from './pipeline-table-view';
+import { PipelineFilters, applyFilters, EMPTY_FILTERS, type PipelineFilterState } from './pipeline-filters';
 
 type ViewMode = 'kanban' | 'list' | 'table';
 
@@ -16,6 +17,7 @@ export default function PipelinePage() {
   const { t } = useI18n();
   const [selectedVacancyId, setSelectedVacancyId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('kanban');
+  const [filters, setFilters] = useState<PipelineFilterState>(EMPTY_FILTERS);
 
   const vacancies = trpc.vacancy.list.useQuery({ limit: 50, status: 'published' });
   const board = trpc.pipeline.getBoard.useQuery(
@@ -47,6 +49,12 @@ export default function PipelinePage() {
     setSelectedVacancyId(vacancyList[0].id);
   }
 
+  // Apply client-side filters to board data
+  const filteredStages = useMemo(() => {
+    if (!board.data?.stages) return [];
+    return applyFilters(board.data.stages as Parameters<typeof applyFilters>[0], filters);
+  }, [board.data?.stages, filters]);
+
   const VIEW_OPTIONS: { key: ViewMode; label: string }[] = [
     { key: 'kanban', label: 'Kanban' },
     { key: 'list', label: 'List' },
@@ -64,22 +72,7 @@ export default function PipelinePage() {
             onSelect={setSelectedVacancyId}
             isLoading={vacancies.isLoading}
           />
-          {/* Filter buttons */}
-          <div className="flex items-center gap-2">
-            {['Source', 'FIT Score', 'Date', 'SLA'].map((label) => (
-              <button
-                key={label}
-                className="flex items-center gap-1.5 px-3 h-8 rounded-lg border border-[#EDEDED] text-[12px] text-[#585858] hover:bg-[#F6F6F6] transition-colors"
-              >
-                {label === 'Source' && (
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-                    <path d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" />
-                  </svg>
-                )}
-                {label}
-              </button>
-            ))}
-          </div>
+          <PipelineFilters filters={filters} onChange={setFilters} />
         </div>
         <div className="flex items-center gap-3">
           {/* View toggle */}
@@ -99,7 +92,10 @@ export default function PipelinePage() {
             ))}
           </div>
           {/* Add Candidate */}
-          <button className="flex items-center gap-2 bg-[#DD0C15] text-white px-4 h-9 rounded-lg text-[13px] font-medium shadow-[0_2px_8px_rgba(221,12,21,0.25)] hover:bg-[#c00b13] transition-colors">
+          <button
+            onClick={() => toast('Agregar candidato: proximamente', { type: 'info' })}
+            className="flex items-center gap-2 bg-[#DD0C15] text-white px-4 h-9 rounded-lg text-[13px] font-medium shadow-[0_2px_8px_rgba(221,12,21,0.25)] hover:bg-[#c00b13] transition-colors"
+          >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
               <path d="M12 4.5v15m7.5-7.5h-15" />
             </svg>
@@ -145,20 +141,20 @@ export default function PipelinePage() {
         ) : board.data ? (
           viewMode === 'kanban' ? (
             <KanbanBoard
-              stages={board.data.stages}
+              stages={filteredStages as typeof board.data.stages}
               onMove={(applicationId, toStageId) => moveCandidate.mutate({ applicationId, toStageId })}
               onReject={(applicationId, reason) => rejectCandidate.mutate({ applicationId, reason })}
               isMoving={moveCandidate.isPending}
             />
           ) : viewMode === 'list' ? (
             <PipelineListView
-              stages={board.data.stages}
+              stages={filteredStages as typeof board.data.stages}
               onMove={(applicationId, toStageId) => moveCandidate.mutate({ applicationId, toStageId })}
               onReject={(applicationId, reason) => rejectCandidate.mutate({ applicationId, reason })}
             />
           ) : (
             <PipelineTableView
-              stages={board.data.stages}
+              stages={filteredStages as typeof board.data.stages}
               onMove={(applicationId, toStageId) => moveCandidate.mutate({ applicationId, toStageId })}
               onReject={(applicationId, reason) => rejectCandidate.mutate({ applicationId, reason })}
             />
