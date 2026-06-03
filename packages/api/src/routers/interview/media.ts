@@ -5,7 +5,8 @@ import { TRPCError } from '@trpc/server';
 import { videoService } from '../../services/video.service';
 
 export const interviewMediaRouter = router({
-  // 8.12a — Create a Daily.co video room for an interview
+  // 8.12a — Create or reuse a Daily.co video room for an interview
+  // Room name is deterministic per interview — same interview always gets same room
   createVideoRoom: permissionProcedure('interview', 'create')
     .input(z.object({ interviewId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
@@ -18,13 +19,24 @@ export const interviewMediaRouter = router({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Entrevista no encontrada' });
       }
 
-      const { url, roomName } = await videoService.createRoom(input.interviewId);
-
       const currentUser = await db.user.findUnique({
         where: { id: ctx.user.id },
         select: { firstName: true, lastName: true },
       });
       const userName = [currentUser?.firstName, currentUser?.lastName].filter(Boolean).join(' ') || 'Evaluator';
+
+      // If room already exists, reuse it — just generate a fresh token
+      if (interview.meetingUrl) {
+        const urlParts = interview.meetingUrl.split('/');
+        const existingRoomName = urlParts[urlParts.length - 1] ?? '';
+        if (existingRoomName) {
+          const token = await videoService.createMeetingToken(existingRoomName, userName, true);
+          return { url: interview.meetingUrl, token, roomName: existingRoomName };
+        }
+      }
+
+      // First time — create room, store URL, generate token
+      const { url, roomName } = await videoService.createRoom(input.interviewId);
       const token = await videoService.createMeetingToken(roomName, userName, true);
 
       await db.interview.update({
