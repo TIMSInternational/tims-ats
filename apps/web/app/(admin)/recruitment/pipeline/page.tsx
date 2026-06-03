@@ -10,6 +10,7 @@ import { KanbanBoard } from './kanban-board';
 import { PipelineListView } from './pipeline-list-view';
 import { PipelineTableView } from './pipeline-table-view';
 import { PipelineFilters, applyFilters, EMPTY_FILTERS, type PipelineFilterState } from './pipeline-filters';
+import { AddCandidateModal } from './add-candidate-modal';
 
 type ViewMode = 'kanban' | 'list' | 'table';
 
@@ -18,6 +19,7 @@ export default function PipelinePage() {
   const [selectedVacancyId, setSelectedVacancyId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('kanban');
   const [filters, setFilters] = useState<PipelineFilterState>(EMPTY_FILTERS);
+  const [showAddCandidate, setShowAddCandidate] = useState(false);
 
   const vacancies = trpc.vacancy.list.useQuery({ limit: 50, status: 'published' });
   const board = trpc.pipeline.getBoard.useQuery(
@@ -93,7 +95,7 @@ export default function PipelinePage() {
           </div>
           {/* Add Candidate */}
           <button
-            onClick={() => toast('Agregar candidato: proximamente', { type: 'info' })}
+            onClick={() => selectedVacancyId ? setShowAddCandidate(true) : toast('Selecciona una vacante primero', { type: 'info' })}
             className="flex items-center gap-2 bg-[#DD0C15] text-white px-4 h-9 rounded-lg text-[13px] font-medium shadow-[0_2px_8px_rgba(221,12,21,0.25)] hover:bg-[#c00b13] transition-colors"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -161,6 +163,19 @@ export default function PipelinePage() {
           )
         ) : null}
       </div>
+
+      {/* Add Candidate Modal */}
+      {showAddCandidate && selectedVacancyId && (
+        <AddCandidateModal
+          vacancyId={selectedVacancyId}
+          vacancyTitle={vacancyList.find((v) => v.id === selectedVacancyId)?.title ?? ''}
+          onClose={() => setShowAddCandidate(false)}
+          onSuccess={() => {
+            setShowAddCandidate(false);
+            utils.pipeline.getBoard.invalidate({ vacancyId: selectedVacancyId });
+          }}
+        />
+      )}
     </div>
   );
 }
