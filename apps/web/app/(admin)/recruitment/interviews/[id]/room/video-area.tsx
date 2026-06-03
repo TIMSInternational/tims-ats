@@ -4,7 +4,7 @@ import {
   DailyVideo,
   useLocalSessionId,
   useParticipantIds,
-  useDaily,
+  useMeetingState,
 } from '@daily-co/daily-react';
 
 interface VideoAreaProps {
@@ -13,11 +13,11 @@ interface VideoAreaProps {
 }
 
 export function VideoArea({ candidateName, candidateInitials }: VideoAreaProps) {
-  const daily = useDaily();
   const localSessionId = useLocalSessionId();
   const remoteIds = useParticipantIds({ filter: 'remote' });
+  const meetingState = useMeetingState();
+  const isJoined = meetingState === 'joined-meeting';
   const mainParticipant = remoteIds[0] ?? null;
-  const isJoined = !!daily && !!localSessionId;
 
   return (
     <div className="flex-1 flex flex-col bg-[#0a0a0a] relative min-h-0">
@@ -45,18 +45,25 @@ export function VideoArea({ candidateName, candidateInitials }: VideoAreaProps) 
         </div>
       </div>
 
+      {/* Connection status overlay */}
+      {!isJoined && (
+        <div className="absolute top-4 right-4 z-10 bg-black/50 backdrop-blur-sm rounded-lg px-3 py-2">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+            <span className="text-[11px] text-white/70">
+              {meetingState === 'joining-meeting' ? 'Conectando...' : 'Preparando...'}
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Main video (remote participant) */}
       <div className="flex-1 flex items-center justify-center relative">
-        {mainParticipant ? (
+        {isJoined && mainParticipant ? (
           <DailyVideo
             sessionId={mainParticipant}
             type="video"
-            style={{
-              width: '100%',
-              height: '100%',
-              objectFit: 'cover',
-              borderRadius: '0',
-            }}
+            style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '0' }}
           />
         ) : (
           <div className="w-32 h-32 rounded-full bg-gradient-to-br from-[#1F114C] to-[#5C4B99] flex items-center justify-center">
@@ -70,8 +77,8 @@ export function VideoArea({ candidateName, candidateInitials }: VideoAreaProps) 
             <span className="text-[13px] text-white font-medium">{candidateName}</span>
           </div>
           <div className="bg-black/50 backdrop-blur-sm rounded-lg px-3 py-2">
-            <span className="text-[11px] text-green-400">
-              {mainParticipant ? 'Conexion estable' : 'Esperando candidato...'}
+            <span className={`text-[11px] ${isJoined ? 'text-green-400' : 'text-amber-400'}`}>
+              {isJoined && mainParticipant ? 'Conexion estable' : isJoined ? 'Esperando candidato...' : 'Conectando...'}
             </span>
           </div>
         </div>

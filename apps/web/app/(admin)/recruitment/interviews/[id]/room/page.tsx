@@ -8,6 +8,7 @@ import { InterviewTopBar } from './interview-top-bar';
 import { VideoArea } from './video-area';
 import { VideoControls } from './video-controls';
 import { ScorecardPanel } from './scorecard-panel';
+import { AutoJoin } from './auto-join';
 
 function getInitials(name: string): string {
   return name
@@ -109,7 +110,8 @@ export default function InterviewRoomPage({
 
   // In-call view — DailyProvider only renders with valid url + token
   return (
-    <DailyProvider url={roomData.url} token={roomData.token}>
+    <DailyProvider>
+      <AutoJoin url={roomData.url} token={roomData.token} />
       <div className="h-full flex flex-col overflow-hidden">
         <InterviewTopBar
           candidateName={candidateName}
