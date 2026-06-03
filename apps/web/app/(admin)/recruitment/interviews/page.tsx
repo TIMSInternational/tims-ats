@@ -9,10 +9,12 @@ import { InterviewFilterBar } from './interview-filter-bar';
 import { InterviewTable } from './interview-table';
 import { UpcomingPanel } from './upcoming-panel';
 import { MiniCalendar } from './mini-calendar';
+import { ScheduleModal } from './schedule-modal';
 
 export default function InterviewsPage() {
   const { t } = useI18n();
   const [statusFilter, setStatusFilter] = useState('');
+  const [showSchedule, setShowSchedule] = useState(false);
   const [typeFilter, setTypeFilter] = useState('');
 
   const interviews = trpc.interview.list.useQuery({
@@ -116,6 +118,7 @@ export default function InterviewsPage() {
           onTypeChange={setTypeFilter}
           onClearFilters={clearFilters}
           hasFilters={hasFilters}
+          onSchedule={() => setShowSchedule(true)}
         />
 
         {/* Interview Table */}
@@ -138,6 +141,17 @@ export default function InterviewsPage() {
           isLoading={interviews.isLoading}
         />
       </div>
+
+      {/* Schedule Modal */}
+      {showSchedule && (
+        <ScheduleModal
+          onClose={() => setShowSchedule(false)}
+          onSuccess={() => {
+            setShowSchedule(false);
+            utils.interview.list.invalidate();
+          }}
+        />
+      )}
     </div>
   );
 }

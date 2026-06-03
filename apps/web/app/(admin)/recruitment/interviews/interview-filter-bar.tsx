@@ -9,12 +9,14 @@ interface InterviewFilterBarProps {
   onTypeChange: (v: string) => void;
   onClearFilters: () => void;
   hasFilters: boolean;
+  onSchedule: () => void;
 }
 
 export function InterviewFilterBar({
   statusFilter, onStatusChange,
   typeFilter, onTypeChange,
   onClearFilters, hasFilters,
+  onSchedule,
 }: InterviewFilterBarProps) {
   const { t } = useI18n();
 
@@ -57,7 +59,7 @@ export function InterviewFilterBar({
       )}
 
       <div className="ml-auto">
-        <button className="h-9 px-4 rounded-lg bg-[#DD0C15] text-white text-sm font-medium hover:bg-[#c00b13] transition flex items-center gap-2">
+        <button onClick={onSchedule} className="h-9 px-4 rounded-lg bg-[#DD0C15] text-white text-sm font-medium hover:bg-[#c00b13] transition flex items-center gap-2">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
             <path d="M12 5v14M5 12h14" />
           </svg>
