@@ -18,8 +18,10 @@ const candidateListSelect = {
   currentTitle: true,
   currentCompany: true,
   skills: true,
+  yearsExperience: true,
   isActive: true,
   createdAt: true,
+  updatedAt: true,
   tags: { select: { id: true, tag: true, source: true } },
   fitScores: {
     orderBy: { calculatedAt: 'desc' as const },

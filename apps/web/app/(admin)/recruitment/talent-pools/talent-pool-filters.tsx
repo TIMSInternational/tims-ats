@@ -1,77 +1,48 @@
 'use client';
 
 import { useI18n } from '../../../../lib/i18n';
+import type { TalentPoolFilterState } from './page';
 
 interface PoolFilterProps {
-  search: string;
-  onSearchChange: (value: string) => void;
+  filters: TalentPoolFilterState;
+  onFilterChange: <K extends keyof TalentPoolFilterState>(key: K, value: TalentPoolFilterState[K]) => void;
+  onClear: () => void;
 }
 
-interface CheckboxOption {
-  label: string;
-  count: number;
-  checked?: boolean;
+const POOL_TYPE_OPTIONS = [
+  { value: 'active', i18nKey: 'activeCandidates' },
+  { value: 'passive', i18nKey: 'passiveCandidates' },
+  { value: 'historic_finalist', i18nKey: 'historicFinalists' },
+  { value: 'high_potential_rejected', i18nKey: 'highPotentialRejected' },
+  { value: 'referral', i18nKey: 'referrals' },
+  { value: 'internal', i18nKey: 'internalCandidates' },
+  { value: 'ex_employee', i18nKey: 'exEmployees' },
+] as const;
+
+const LOCATION_OPTIONS = ['Bogota', 'Medellin', 'Lima', 'Remoto'];
+
+const EXPERIENCE_OPTIONS = [
+  { value: 'junior', i18nKey: 'junior', min: 0, max: 2 },
+  { value: 'mid', i18nKey: 'mid', min: 3, max: 5 },
+  { value: 'senior', i18nKey: 'senior', min: 6, max: 9 },
+  { value: 'lead', i18nKey: 'lead', min: 10, max: 99 },
+] as const;
+
+const SKILL_OPTIONS = ['Node.js', 'React', 'Python', 'AWS', 'TypeScript', 'Java', 'SQL', 'K8s', 'Go', 'Docker'];
+
+function toggleArrayValue(arr: string[], value: string): string[] {
+  return arr.includes(value) ? arr.filter((v) => v !== value) : [...arr, value];
 }
 
-function FilterCheckbox({ label, count, checked }: CheckboxOption) {
-  return (
-    <label className="flex items-center gap-2 text-[11px] text-[#333] cursor-pointer">
-      <input type="checkbox" defaultChecked={checked} className="w-3.5 h-3.5 accent-[#DD0C15]" />
-      {label}
-      <span className="text-[#8B8B8B] ml-auto">{count}</span>
-    </label>
-  );
-}
-
-export function TalentPoolFilters({ search, onSearchChange }: PoolFilterProps) {
+export function TalentPoolFilters({ filters, onFilterChange, onClear }: PoolFilterProps) {
   const { t } = useI18n();
-
-  const poolTypes: CheckboxOption[] = [
-    { label: t.talentPool.activeCandidates, count: 234, checked: true },
-    { label: t.talentPool.passiveCandidates, count: 89, checked: true },
-    { label: t.talentPool.historicFinalists, count: 156 },
-    { label: t.talentPool.highPotentialRejected, count: 67 },
-    { label: t.talentPool.referrals, count: 45 },
-    { label: t.talentPool.internalCandidates, count: 23 },
-    { label: t.talentPool.exEmployees, count: 12 },
-  ];
-
-  const locations: CheckboxOption[] = [
-    { label: 'Bogota', count: 189, checked: true },
-    { label: 'Medellin', count: 78 },
-    { label: 'Lima', count: 56 },
-    { label: t.talentPool.remote, count: 124 },
-  ];
-
-  const experience = [
-    { label: t.talentPool.junior, checked: false },
-    { label: t.talentPool.mid, checked: false },
-    { label: t.talentPool.senior, checked: true },
-    { label: t.talentPool.lead, checked: false },
-  ];
-
-  const skills = [
-    { label: 'Node.js', active: true },
-    { label: 'React', active: true },
-    { label: 'Python', active: false },
-    { label: 'AWS', active: false },
-    { label: 'TypeScript', active: false },
-    { label: 'Java', active: false },
-    { label: 'SQL', active: false },
-  ];
-
-  const aiTags = [
-    { label: t.talentPool.highPotential, active: true },
-    { label: t.talentPool.naturalLeader, active: true },
-    { label: t.talentPool.technicalProfile, active: false },
-    { label: t.talentPool.bilingual, active: false },
-  ];
+  const tp = t.talentPool;
 
   return (
     <div className="w-[250px] bg-white border-r border-[#EDEDED] p-4 overflow-y-auto shrink-0">
       <div className="flex justify-between items-center mb-4">
-        <h3 className="text-[13px] font-semibold text-[#1F114C]">{t.talentPool.filters}</h3>
-        <button className="text-[11px] text-[#DD0C15]">{t.talentPool.clearFilters}</button>
+        <h3 className="text-[13px] font-semibold text-[#1F114C]">{tp.filters}</h3>
+        <button onClick={onClear} className="text-[11px] text-[#DD0C15]">{tp.clearFilters}</button>
       </div>
 
       {/* Search */}
@@ -83,9 +54,9 @@ export function TalentPoolFilters({ search, onSearchChange }: PoolFilterProps) {
           </svg>
           <input
             type="text"
-            value={search}
-            onChange={(e) => onSearchChange(e.target.value)}
-            placeholder={t.talentPool.searchCandidate}
+            value={filters.search}
+            onChange={(e) => onFilterChange('search', e.target.value)}
+            placeholder={tp.searchCandidate}
             className="flex-1 bg-transparent text-[12px] outline-none placeholder:text-[#8B8B8B]"
           />
         </div>
@@ -93,88 +64,100 @@ export function TalentPoolFilters({ search, onSearchChange }: PoolFilterProps) {
 
       {/* Pool Type */}
       <div className="mb-4">
-        <p className="text-[11px] text-[#585858] font-medium mb-2">{t.talentPool.poolType}</p>
+        <p className="text-[11px] text-[#585858] font-medium mb-2">{tp.poolType}</p>
         <div className="space-y-1.5">
-          {poolTypes.map((opt) => (
-            <FilterCheckbox key={opt.label} {...opt} />
+          {POOL_TYPE_OPTIONS.map((opt) => (
+            <label key={opt.value} className="flex items-center gap-2 text-[11px] text-[#333] cursor-pointer">
+              <input
+                type="checkbox"
+                checked={filters.poolTypes.includes(opt.value)}
+                onChange={() => onFilterChange('poolTypes', toggleArrayValue(filters.poolTypes, opt.value))}
+                className="w-3.5 h-3.5 accent-[#DD0C15]"
+              />
+              {tp[opt.i18nKey] ?? opt.value}
+            </label>
           ))}
         </div>
       </div>
 
       {/* FIT Score */}
       <div className="mb-4">
-        <p className="text-[11px] text-[#585858] font-medium mb-2">{t.talentPool.fitScore}</p>
+        <p className="text-[11px] text-[#585858] font-medium mb-2">{tp.fitScore}</p>
         <div className="flex items-center gap-2">
-          <input type="range" min="0" max="100" defaultValue="60" className="flex-1 accent-[#1F114C] h-1.5" />
-          <span className="text-[11px] text-[#1F114C] font-medium w-8">60+</span>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            value={filters.fitMin}
+            onChange={(e) => onFilterChange('fitMin', Number(e.target.value))}
+            className="flex-1 accent-[#1F114C] h-1.5"
+          />
+          <span className="text-[11px] text-[#1F114C] font-medium w-8">{filters.fitMin}+</span>
         </div>
       </div>
 
       {/* Skills */}
       <div className="mb-4">
-        <p className="text-[11px] text-[#585858] font-medium mb-2">{t.talentPool.skills}</p>
+        <p className="text-[11px] text-[#585858] font-medium mb-2">{tp.skills}</p>
         <div className="flex flex-wrap gap-1.5">
-          {skills.map((s) => (
-            <span
-              key={s.label}
-              className={`text-[10px] px-2 py-0.5 rounded-full cursor-pointer ${
-                s.active
-                  ? 'bg-blue-50 text-blue-600 border border-blue-200'
-                  : 'bg-[#F6F6F6] text-[#585858]'
-              }`}
-            >
-              {s.label}
-            </span>
-          ))}
-          <span className="text-[10px] text-[#DD0C15] cursor-pointer mt-1">{t.talentPool.seeMore}</span>
+          {SKILL_OPTIONS.map((skill) => {
+            const active = filters.skills.includes(skill);
+            return (
+              <button
+                key={skill}
+                onClick={() => onFilterChange('skills', toggleArrayValue(filters.skills, skill))}
+                className={`text-[10px] px-2 py-0.5 rounded-full cursor-pointer ${
+                  active
+                    ? 'bg-blue-50 text-blue-600 border border-blue-200'
+                    : 'bg-[#F6F6F6] text-[#585858]'
+                }`}
+              >
+                {skill}
+              </button>
+            );
+          })}
         </div>
       </div>
 
       {/* Location */}
       <div className="mb-4">
-        <p className="text-[11px] text-[#585858] font-medium mb-2">{t.talentPool.locationLabel}</p>
+        <p className="text-[11px] text-[#585858] font-medium mb-2">{tp.locationLabel}</p>
         <div className="space-y-1.5">
-          {locations.map((loc) => (
-            <FilterCheckbox key={loc.label} {...loc} />
+          {LOCATION_OPTIONS.map((loc) => (
+            <label key={loc} className="flex items-center gap-2 text-[11px] text-[#333] cursor-pointer">
+              <input
+                type="checkbox"
+                checked={filters.locations.includes(loc)}
+                onChange={() => onFilterChange('locations', toggleArrayValue(filters.locations, loc))}
+                className="w-3.5 h-3.5 accent-[#DD0C15]"
+              />
+              {loc === 'Remoto' ? (tp.remote ?? loc) : loc}
+            </label>
           ))}
         </div>
       </div>
 
       {/* Experience */}
       <div className="mb-4">
-        <p className="text-[11px] text-[#585858] font-medium mb-2">{t.talentPool.experienceLabel}</p>
+        <p className="text-[11px] text-[#585858] font-medium mb-2">{tp.experienceLabel}</p>
         <div className="space-y-1.5">
-          {experience.map((exp) => (
-            <label key={exp.label} className="flex items-center gap-2 text-[11px] text-[#333] cursor-pointer">
-              <input type="checkbox" defaultChecked={exp.checked} className="w-3.5 h-3.5 accent-[#DD0C15]" />
-              {exp.label}
+          {EXPERIENCE_OPTIONS.map((exp) => (
+            <label key={exp.value} className="flex items-center gap-2 text-[11px] text-[#333] cursor-pointer">
+              <input
+                type="checkbox"
+                checked={filters.experienceLevels.includes(exp.value)}
+                onChange={() => onFilterChange('experienceLevels', toggleArrayValue(filters.experienceLevels, exp.value))}
+                className="w-3.5 h-3.5 accent-[#DD0C15]"
+              />
+              {tp[exp.i18nKey] ?? exp.value}
             </label>
-          ))}
-        </div>
-      </div>
-
-      {/* AI Tags */}
-      <div className="mb-4">
-        <p className="text-[11px] text-[#585858] font-medium mb-2">{t.talentPool.aiTags}</p>
-        <div className="flex flex-wrap gap-1.5">
-          {aiTags.map((tag) => (
-            <span
-              key={tag.label}
-              className={`text-[10px] px-2 py-0.5 rounded-full cursor-pointer ${
-                tag.active
-                  ? 'bg-teal-50 text-teal-600 border border-teal-200'
-                  : 'bg-[#F6F6F6] text-[#585858]'
-              }`}
-            >
-              {tag.label}
-            </span>
           ))}
         </div>
       </div>
 
       {/* Saved Searches */}
       <div className="border-t border-[#EDEDED] pt-3">
-        <p className="text-[11px] text-[#585858] font-medium mb-2">{t.talentPool.savedSearches}</p>
+        <p className="text-[11px] text-[#585858] font-medium mb-2">{tp.savedSearches}</p>
         <div className="space-y-1.5">
           <button className="w-full text-left bg-[#F6F6F6] rounded-lg px-3 py-2 text-[11px] text-[#333] hover:bg-[#EDEDED]">
             Sr. Engineers LATAM
@@ -182,7 +165,7 @@ export function TalentPoolFilters({ search, onSearchChange }: PoolFilterProps) {
           <button className="w-full text-left bg-[#F6F6F6] rounded-lg px-3 py-2 text-[11px] text-[#333] hover:bg-[#EDEDED]">
             Product roles Bogota
           </button>
-          <button className="text-[11px] text-[#DD0C15] mt-1">{t.talentPool.saveCurrentSearch}</button>
+          <button className="text-[11px] text-[#DD0C15] mt-1">{tp.saveCurrentSearch}</button>
         </div>
       </div>
     </div>

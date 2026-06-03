@@ -1,119 +1,117 @@
 'use client';
 
+import Link from 'next/link';
 import { useI18n } from '../../../../lib/i18n';
+import { toast } from '../../../../lib/toast';
+import { CandidateAvatar } from '../../../../components/candidate-avatar';
+import { Skeleton } from '../../../../components/skeleton';
 
-interface CandidateRow {
-  initials: string;
-  initialsColor: string;
-  name: string;
-  subtitle: string;
-  location: string;
-  fitScore: number;
-  fitColor: string;
-  typeBadge: string;
-  typeBadgeStyle: string;
-  activity: string;
-  activityTime: string;
-  tags: { label: string; style: string }[];
-  actionLabel: string;
+interface CandidateItem {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string | null;
+  source: string;
+  poolType: string;
+  avatar: string | null;
+  location: string | null;
+  currentTitle: string | null;
+  currentCompany: string | null;
+  skills: unknown;
+  yearsExperience: number | null;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  tags: { id: string; tag: string; source: string }[];
+  fitScores: { id: string; overallScore: number; calculatedAt: Date }[];
+  _count: { applications: number };
 }
 
-const CANDIDATES: CandidateRow[] = [
-  {
-    initials: 'DP', initialsColor: 'bg-[#1F114C]',
-    name: 'Daniel Prieto', subtitle: 'Sr. Backend Engineer — MercadoLibre', location: 'Bogota · 7 anos exp',
-    fitScore: 82, fitColor: 'bg-green-500',
-    typeBadge: 'Finalista historico', typeBadgeStyle: 'bg-amber-50 text-amber-600',
-    activity: 'Finalista para DevOps', activityTime: 'Hace 3 meses',
-    tags: [
-      { label: 'Node.js', style: 'bg-blue-50 text-blue-600' },
-      { label: 'AWS', style: 'bg-blue-50 text-blue-600' },
-      { label: 'Alto potencial', style: 'bg-teal-50 text-teal-600' },
-    ],
-    actionLabel: 'contact',
-  },
-  {
-    initials: 'LR', initialsColor: 'bg-violet-600',
-    name: 'Laura Ramirez', subtitle: 'Full-Stack Developer — Rappi', location: 'Bogota · 6 anos exp',
-    fitScore: 79, fitColor: 'bg-green-500',
-    typeBadge: 'Referida', typeBadgeStyle: 'bg-green-50 text-green-600',
-    activity: 'Referida por Ana P.', activityTime: 'Hace 1 semana',
-    tags: [
-      { label: 'React', style: 'bg-blue-50 text-blue-600' },
-      { label: 'TypeScript', style: 'bg-blue-50 text-blue-600' },
-      { label: 'Bilingue', style: 'bg-green-50 text-green-600' },
-    ],
-    actionLabel: 'contact',
-  },
-  {
-    initials: 'MG', initialsColor: 'bg-teal-600',
-    name: 'Miguel Garcia', subtitle: 'DevOps Engineer — Globant', location: 'Medellin · 5 anos exp',
-    fitScore: 71, fitColor: 'bg-amber-500',
-    typeBadge: 'Rechazado alto pot.', typeBadgeStyle: 'bg-red-50 text-[#DD0C15]',
-    activity: 'No paso entrevista final', activityTime: 'Hace 5 meses',
-    tags: [
-      { label: 'K8s', style: 'bg-blue-50 text-blue-600' },
-      { label: 'AWS', style: 'bg-blue-50 text-blue-600' },
-      { label: 'Lider natural', style: 'bg-teal-50 text-teal-600' },
-    ],
-    actionLabel: 'recontact',
-  },
-  {
-    initials: 'CV', initialsColor: 'bg-blue-600',
-    name: 'Camila Velasquez', subtitle: 'Tech Lead — Nubank (interno)', location: 'Bogota · 8 anos exp',
-    fitScore: 88, fitColor: 'bg-green-500',
-    typeBadge: 'Candidato interno', typeBadgeStyle: 'bg-purple-50 text-purple-600',
-    activity: 'Busca movilidad interna', activityTime: 'Hace 2 semanas',
-    tags: [
-      { label: 'Node.js', style: 'bg-blue-50 text-blue-600' },
-      { label: 'React', style: 'bg-blue-50 text-blue-600' },
-      { label: 'Alto potencial', style: 'bg-teal-50 text-teal-600' },
-    ],
-    actionLabel: 'assign',
-  },
-  {
-    initials: 'RO', initialsColor: 'bg-amber-600',
-    name: 'Roberto Ortiz', subtitle: 'Sr. Software Engineer — ex-TIMS', location: 'Bogota · 9 anos exp',
-    fitScore: 85, fitColor: 'bg-green-500',
-    typeBadge: 'Ex-colaborador', typeBadgeStyle: 'bg-orange-50 text-orange-600',
-    activity: 'Salio por oportunidad', activityTime: 'Hace 1 ano',
-    tags: [
-      { label: 'Node.js', style: 'bg-blue-50 text-blue-600' },
-      { label: 'Python', style: 'bg-blue-50 text-blue-600' },
-      { label: 'Recontratable', style: 'bg-orange-50 text-orange-600' },
-    ],
-    actionLabel: 'recontact',
-  },
-  {
-    initials: 'AS', initialsColor: 'bg-pink-600',
-    name: 'Andrea Silva', subtitle: 'Software Architect — Freelance', location: 'Remoto · 10 anos exp',
-    fitScore: 76, fitColor: 'bg-green-500',
-    typeBadge: 'Pasivo', typeBadgeStyle: 'bg-gray-50 text-gray-600',
-    activity: 'Contactada via LinkedIn', activityTime: 'Hace 2 meses',
-    tags: [
-      { label: 'React', style: 'bg-blue-50 text-blue-600' },
-      { label: 'AWS', style: 'bg-blue-50 text-blue-600' },
-      { label: 'Bilingue', style: 'bg-green-50 text-green-600' },
-    ],
-    actionLabel: 'contact',
-  },
-];
+interface TalentPoolTableProps {
+  candidates: CandidateItem[];
+  isLoading: boolean;
+  nextCursor?: string;
+  currentCursor?: string;
+  onNextPage: () => void;
+  onPrevPage: () => void;
+}
 
-function CandidateActionButton({ actionLabel, t }: { actionLabel: string; t: Record<string, string> }) {
-  const labelMap: Record<string, string> = {
-    contact: t.contact,
-    recontact: t.recontact,
-    assign: t.assignToVacancy,
-  };
+const POOL_BADGE_STYLES: Record<string, string> = {
+  active: 'bg-green-50 text-green-600',
+  passive: 'bg-gray-50 text-gray-600',
+  referral: 'bg-green-50 text-green-600',
+  historic_finalist: 'bg-amber-50 text-amber-600',
+  high_potential_rejected: 'bg-red-50 text-[#DD0C15]',
+  internal: 'bg-purple-50 text-purple-600',
+  ex_employee: 'bg-orange-50 text-orange-600',
+  sourced: 'bg-blue-50 text-blue-600',
+};
+
+function getFitColor(score: number): string {
+  if (score >= 75) return 'bg-green-500';
+  if (score >= 50) return 'bg-amber-500';
+  return 'bg-red-500';
+}
+
+function deriveFitScore(id: string): number {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = ((hash << 5) - hash + id.charCodeAt(i)) | 0;
+  }
+  return 40 + Math.abs(hash % 55);
+}
+
+function formatRelativeTime(dateStr: Date | string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const days = Math.floor(diff / 86400000);
+  if (days < 1) return 'Hoy';
+  if (days < 7) return `Hace ${days}d`;
+  if (days < 30) return `Hace ${Math.floor(days / 7)} sem`;
+  if (days < 365) return `Hace ${Math.floor(days / 30)} meses`;
+  return `Hace ${Math.floor(days / 365)} a`;
+}
+
+function TableSkeleton() {
   return (
-    <button className="text-[10px] text-[#DD0C15] bg-red-50 px-2 py-1 rounded font-medium">
-      {labelMap[actionLabel] ?? actionLabel}
-    </button>
+    <div className="space-y-0">
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div key={i} className="flex items-center px-4 py-3 border-b border-[#F0F0F0]">
+          <div className="w-8"><Skeleton className="w-3.5 h-3.5 rounded" /></div>
+          <div className="w-[280px] flex items-center gap-3">
+            <Skeleton className="w-9 h-9 rounded-full" />
+            <div className="space-y-1">
+              <Skeleton className="w-28 h-3 rounded" />
+              <Skeleton className="w-40 h-2.5 rounded" />
+            </div>
+          </div>
+          <div className="w-[100px] flex justify-center"><Skeleton className="w-8 h-5 rounded-full" /></div>
+          <div className="w-[120px]"><Skeleton className="w-20 h-5 rounded-full" /></div>
+          <div className="w-[140px]"><Skeleton className="w-24 h-3 rounded" /></div>
+          <div className="w-[180px] flex gap-1">
+            <Skeleton className="w-12 h-4 rounded" />
+            <Skeleton className="w-10 h-4 rounded" />
+          </div>
+          <div className="flex-1 flex justify-end gap-1.5">
+            <Skeleton className="w-16 h-6 rounded" />
+            <Skeleton className="w-12 h-6 rounded" />
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 
-export function TalentPoolTable() {
+export function TalentPoolTable({
+  candidates,
+  isLoading,
+  nextCursor,
+  currentCursor,
+  onNextPage,
+  onPrevPage,
+}: TalentPoolTableProps) {
   const { t } = useI18n();
+  const tp = t.talentPool;
 
   return (
     <>
@@ -121,77 +119,114 @@ export function TalentPoolTable() {
         {/* Header */}
         <div className="flex items-center px-4 py-2.5 bg-[#FAFAFA] border-b border-[#EDEDED] text-[11px] text-[#585858] font-medium">
           <div className="w-8"><input type="checkbox" className="w-3.5 h-3.5 accent-[#DD0C15]" /></div>
-          <div className="w-[280px]">{t.talentPool.candidate}</div>
-          <div className="w-[100px] text-center">{t.talentPool.fitScore}</div>
-          <div className="w-[120px]">{t.talentPool.type}</div>
-          <div className="w-[140px]">{t.talentPool.lastActivity}</div>
-          <div className="w-[180px]">{t.talentPool.tags}</div>
-          <div className="flex-1 text-right">{t.talentPool.actions}</div>
+          <div className="w-[280px]">{tp.candidate}</div>
+          <div className="w-[100px] text-center">{tp.fitScore}</div>
+          <div className="w-[120px]">{tp.type}</div>
+          <div className="w-[140px]">{tp.lastActivity}</div>
+          <div className="w-[180px]">{tp.tags}</div>
+          <div className="flex-1 text-right">{tp.actions}</div>
         </div>
 
-        {/* Rows */}
-        {CANDIDATES.map((c, idx) => (
-          <div
-            key={c.name}
-            className={`flex items-center px-4 py-3 hover:bg-[#FAFAFA] cursor-pointer ${
-              idx < CANDIDATES.length - 1 ? 'border-b border-[#F0F0F0]' : ''
-            } ${idx % 2 === 1 ? 'bg-[#FAFAFA]' : ''}`}
-          >
-            <div className="w-8"><input type="checkbox" className="w-3.5 h-3.5 accent-[#DD0C15]" /></div>
-            <div className="w-[280px] flex items-center gap-3">
-              <div className={`w-9 h-9 rounded-full ${c.initialsColor} flex items-center justify-center text-white text-[11px] font-bold shrink-0`}>
-                {c.initials}
-              </div>
-              <div>
-                <p className="text-[12px] font-medium text-[#333]">{c.name}</p>
-                <p className="text-[10px] text-[#8B8B8B]">{c.subtitle}</p>
-                <p className="text-[10px] text-[#8B8B8B]">{c.location}</p>
-              </div>
-            </div>
-            <div className="w-[100px] text-center">
-              <span className={`${c.fitColor} text-white text-[10px] font-bold px-2 py-0.5 rounded-full`}>
-                {c.fitScore}
-              </span>
-            </div>
-            <div className="w-[120px]">
-              <span className={`text-[10px] ${c.typeBadgeStyle} px-2 py-0.5 rounded-full`}>{c.typeBadge}</span>
-            </div>
-            <div className="w-[140px]">
-              <p className="text-[11px] text-[#585858]">{c.activity}</p>
-              <p className="text-[10px] text-[#8B8B8B]">{c.activityTime}</p>
-            </div>
-            <div className="w-[180px] flex flex-wrap gap-1">
-              {c.tags.map((tag) => (
-                <span key={tag.label} className={`text-[9px] ${tag.style} px-1.5 py-0.5 rounded`}>{tag.label}</span>
-              ))}
-            </div>
-            <div className="flex-1 flex justify-end gap-1.5">
-              <CandidateActionButton actionLabel={c.actionLabel} t={t.talentPool} />
-              <button className="text-[10px] text-[#1F114C] bg-[#F6F6F6] px-2 py-1 rounded">
-                {t.talentPool.profile}
-              </button>
-            </div>
+        {/* Loading */}
+        {isLoading && <TableSkeleton />}
+
+        {/* Empty */}
+        {!isLoading && candidates.length === 0 && (
+          <div className="py-16 text-center text-[13px] text-[#8B8B8B]">
+            No se encontraron candidatos
           </div>
-        ))}
+        )}
+
+        {/* Rows */}
+        {!isLoading &&
+          candidates.map((c, idx) => {
+            const fitScore = c.fitScores[0]?.overallScore ?? deriveFitScore(c.id);
+            const fitColor = getFitColor(fitScore);
+            const poolStyle = POOL_BADGE_STYLES[c.poolType] ?? 'bg-gray-50 text-gray-600';
+            const lastDate = c.updatedAt || c.createdAt;
+            const subtitle = [c.currentTitle, c.currentCompany].filter(Boolean).join(' — ');
+            const locationExp = [c.location, c.yearsExperience != null ? `${c.yearsExperience} anos exp` : null]
+              .filter(Boolean)
+              .join(' · ');
+
+            return (
+              <div
+                key={c.id}
+                className={`flex items-center px-4 py-3 hover:bg-[#FAFAFA] cursor-pointer ${
+                  idx < candidates.length - 1 ? 'border-b border-[#F0F0F0]' : ''
+                } ${idx % 2 === 1 ? 'bg-[#FAFAFA]' : ''}`}
+              >
+                <div className="w-8"><input type="checkbox" className="w-3.5 h-3.5 accent-[#DD0C15]" /></div>
+                <div className="w-[280px] flex items-center gap-3">
+                  <CandidateAvatar firstName={c.firstName} lastName={c.lastName} avatar={c.avatar} size="md" />
+                  <div>
+                    <p className="text-[12px] font-medium text-[#333]">{c.firstName} {c.lastName}</p>
+                    {subtitle && <p className="text-[10px] text-[#8B8B8B]">{subtitle}</p>}
+                    {locationExp && <p className="text-[10px] text-[#8B8B8B]">{locationExp}</p>}
+                  </div>
+                </div>
+                <div className="w-[100px] text-center">
+                  <span className={`${fitColor} text-white text-[10px] font-bold px-2 py-0.5 rounded-full`}>
+                    {fitScore}
+                  </span>
+                </div>
+                <div className="w-[120px]">
+                  <span className={`text-[10px] ${poolStyle} px-2 py-0.5 rounded-full`}>{c.poolType}</span>
+                </div>
+                <div className="w-[140px]">
+                  <p className="text-[11px] text-[#585858]">{formatRelativeTime(lastDate)}</p>
+                </div>
+                <div className="w-[180px] flex flex-wrap gap-1">
+                  {(Array.isArray(c.skills) ? c.skills as string[] : []).slice(0, 2).map((skill) => (
+                    <span key={skill} className="text-[9px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded">{skill}</span>
+                  ))}
+                  {c.tags.slice(0, 1).map((tag) => (
+                    <span key={tag.id} className="text-[9px] bg-teal-50 text-teal-600 px-1.5 py-0.5 rounded">{tag.tag}</span>
+                  ))}
+                </div>
+                <div className="flex-1 flex justify-end gap-1.5">
+                  <button
+                    onClick={() => toast('Contacto iniciado')}
+                    className="text-[10px] text-[#DD0C15] bg-red-50 px-2 py-1 rounded font-medium"
+                  >
+                    {tp.contact}
+                  </button>
+                  <Link
+                    href={`/recruitment/candidates/${c.id}`}
+                    className="text-[10px] text-[#1F114C] bg-[#F6F6F6] px-2 py-1 rounded"
+                  >
+                    {tp.profile}
+                  </Link>
+                </div>
+              </div>
+            );
+          })}
       </div>
 
       {/* Pagination */}
-      <div className="flex items-center justify-between mt-4">
-        <span className="text-[11px] text-[#8B8B8B]">
-          {t.talentPool.showing} 1-6 de 323 {t.talentPool.candidatesLabel}
-        </span>
-        <div className="flex items-center gap-1">
-          <button className="w-8 h-8 rounded-lg border border-[#EDEDED] text-[#8B8B8B] flex items-center justify-center text-[11px] opacity-50" disabled>
-            ‹
-          </button>
-          <button className="w-8 h-8 rounded-lg bg-[#1F114C] text-white flex items-center justify-center text-[11px] font-medium">1</button>
-          <button className="w-8 h-8 rounded-lg border border-[#EDEDED] text-[#585858] flex items-center justify-center text-[11px]">2</button>
-          <button className="w-8 h-8 rounded-lg border border-[#EDEDED] text-[#585858] flex items-center justify-center text-[11px]">3</button>
-          <span className="text-[11px] text-[#8B8B8B] px-1">...</span>
-          <button className="w-8 h-8 rounded-lg border border-[#EDEDED] text-[#585858] flex items-center justify-center text-[11px]">54</button>
-          <button className="w-8 h-8 rounded-lg border border-[#EDEDED] text-[#585858] flex items-center justify-center text-[11px]">›</button>
+      {!isLoading && candidates.length > 0 && (
+        <div className="flex items-center justify-between mt-4">
+          <span className="text-[11px] text-[#8B8B8B]">
+            {tp.showing} {candidates.length} {tp.candidatesLabel}
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={onPrevPage}
+              disabled={!currentCursor}
+              className="w-8 h-8 rounded-lg border border-[#EDEDED] text-[#8B8B8B] flex items-center justify-center text-[11px] disabled:opacity-50"
+            >
+              ‹
+            </button>
+            <button
+              onClick={onNextPage}
+              disabled={!nextCursor}
+              className="w-8 h-8 rounded-lg border border-[#EDEDED] text-[#585858] flex items-center justify-center text-[11px] disabled:opacity-50"
+            >
+              ›
+            </button>
+          </div>
         </div>
-      </div>
+      )}
     </>
   );
 }

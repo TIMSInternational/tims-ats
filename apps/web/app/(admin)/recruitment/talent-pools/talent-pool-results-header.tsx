@@ -1,42 +1,85 @@
 'use client';
 
 import { useI18n } from '../../../../lib/i18n';
+import type { TalentPoolFilterState } from './page';
 
-export function TalentPoolResultsHeader() {
+interface ResultsHeaderProps {
+  totalCount: number;
+  filters: TalentPoolFilterState;
+  onFilterChange: <K extends keyof TalentPoolFilterState>(key: K, value: TalentPoolFilterState[K]) => void;
+}
+
+interface FilterPill {
+  label: string;
+  key: keyof TalentPoolFilterState;
+  value: string;
+  style: string;
+}
+
+export function TalentPoolResultsHeader({ totalCount, filters, onFilterChange }: ResultsHeaderProps) {
   const { t } = useI18n();
+  const tp = t.talentPool;
 
-  const activeFilters = [
-    { label: 'Node.js', style: 'bg-blue-50 text-blue-600', removable: true },
-    { label: 'React', style: 'bg-blue-50 text-blue-600', removable: true },
-    { label: 'Senior 5+', style: 'bg-[#1F114C] text-white', removable: false },
-    { label: 'Bogota', style: 'bg-[#1F114C] text-white', removable: false },
-    { label: 'FIT 60+', style: 'bg-teal-50 text-teal-600', removable: false },
-  ];
+  const pills: FilterPill[] = [];
+
+  for (const skill of filters.skills) {
+    pills.push({ label: skill, key: 'skills', value: skill, style: 'bg-blue-50 text-blue-600' });
+  }
+  for (const loc of filters.locations) {
+    pills.push({ label: loc, key: 'locations', value: loc, style: 'bg-[#1F114C] text-white' });
+  }
+  for (const exp of filters.experienceLevels) {
+    pills.push({ label: tp[exp as keyof typeof tp] ?? exp, key: 'experienceLevels', value: exp, style: 'bg-[#1F114C] text-white' });
+  }
+  if (filters.fitMin > 0) {
+    pills.push({ label: `FIT ${filters.fitMin}+`, key: 'fitMin', value: '0', style: 'bg-teal-50 text-teal-600' });
+  }
+  for (const pt of filters.poolTypes) {
+    pills.push({ label: pt, key: 'poolTypes', value: pt, style: 'bg-amber-50 text-amber-600' });
+  }
+
+  const removePill = (pill: FilterPill) => {
+    if (pill.key === 'fitMin') {
+      onFilterChange('fitMin', 0);
+    } else {
+      const current = filters[pill.key];
+      if (Array.isArray(current)) {
+        onFilterChange(pill.key, current.filter((v: string) => v !== pill.value) as never);
+      }
+    }
+  };
 
   return (
     <div className="flex items-center justify-between mb-4">
       <div className="flex items-center gap-3">
         <span className="text-[13px] text-[#585858]">
-          {t.talentPool.showing} <strong className="text-[#1F114C]">323</strong> {t.talentPool.candidatesLabel}
+          {tp.showing} <strong className="text-[#1F114C]">{totalCount}</strong> {tp.candidatesLabel}
         </span>
-        <div className="flex items-center gap-1.5">
-          {activeFilters.map((f) => (
-            <span key={f.label} className={`text-[10px] ${f.style} px-2 py-0.5 rounded-full flex items-center gap-1`}>
-              {f.label}
-              {f.removable && (
-                <button className="text-blue-400 hover:text-blue-600">x</button>
-              )}
-            </span>
-          ))}
-        </div>
+        {pills.length > 0 && (
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {pills.map((pill) => (
+              <span
+                key={`${pill.key}-${pill.value}`}
+                className={`text-[10px] ${pill.style} px-2 py-0.5 rounded-full flex items-center gap-1`}
+              >
+                {pill.label}
+                <button onClick={() => removePill(pill)} className="opacity-60 hover:opacity-100 ml-0.5">x</button>
+              </span>
+            ))}
+          </div>
+        )}
       </div>
       <div className="flex items-center gap-2">
-        <span className="text-[11px] text-[#8B8B8B]">{t.talentPool.sortBy}</span>
-        <select className="text-[11px] text-[#1F114C] font-medium bg-white border border-[#EDEDED] rounded px-2 h-7 outline-none">
-          <option>{t.talentPool.sortFit}</option>
-          <option>{t.talentPool.sortRecent}</option>
-          <option>{t.talentPool.sortName}</option>
-          <option>{t.talentPool.sortExperience}</option>
+        <span className="text-[11px] text-[#8B8B8B]">{tp.sortBy}</span>
+        <select
+          value={filters.sort}
+          onChange={(e) => onFilterChange('sort', e.target.value)}
+          className="text-[11px] text-[#1F114C] font-medium bg-white border border-[#EDEDED] rounded px-2 h-7 outline-none"
+        >
+          <option value="fit">{tp.sortFit}</option>
+          <option value="recent">{tp.sortRecent}</option>
+          <option value="name">{tp.sortName}</option>
+          <option value="experience">{tp.sortExperience}</option>
         </select>
         <div className="flex bg-[#F6F6F6] rounded-lg overflow-hidden ml-2">
           <button className="px-2.5 h-7 bg-[#1F114C] text-white text-[11px]">

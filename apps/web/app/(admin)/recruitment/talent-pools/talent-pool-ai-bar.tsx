@@ -7,6 +7,7 @@ interface AiRecommendation {
   description: string;
 }
 
+// TODO: Wire to real AI recommendations endpoint when ai-gateway is ready
 export function TalentPoolAiBar() {
   const { t } = useI18n();
 
