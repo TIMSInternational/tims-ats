@@ -1,38 +1,26 @@
 'use client';
 
+import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
-
-interface PendingTest {
-  name: string;
-  type: string;
-  daysAgo: number;
-}
-
-interface PendingScorecard {
-  name: string;
-  interviewType: string;
-  evaluator: string;
-}
-
-// TODO: wire to API when endpoint is available
-// Need: assessment.getPendingTests() and interview.getPendingScorecards()
-// to return candidates with incomplete assessments / unsubmitted scorecards.
-const PENDING_TESTS: PendingTest[] = [
-  { name: 'Maria Lopez', type: 'PCA', daysAgo: 5 },
-  { name: 'Juan Perez', type: 'Integridad', daysAgo: 3 },
-  { name: 'Ana Torres', type: 'MIL', daysAgo: 7 },
-];
-
-// TODO: wire to API when endpoint is available
-const PENDING_SCORECARDS: PendingScorecard[] = [
-  { name: 'Carlos Ruiz', interviewType: 'Entrevista tecnica', evaluator: 'Laura G.' },
-  { name: 'Sofia Chen', interviewType: 'Entrevista cultural', evaluator: 'Andres T.' },
-];
+import { toast } from '../../../lib/toast';
 
 export function AlertsPendingPanel() {
   const { t } = useI18n();
   const rd = t.recruitingDashboard;
-  const totalPending = PENDING_TESTS.length + 5 + PENDING_SCORECARDS.length + 2;
+
+  const pendingAssessments = trpc.assessment.listPending.useQuery({ limit: 10 });
+  const pendingScorecards = trpc.interview.getPendingScorecards.useQuery();
+
+  const tests = pendingAssessments.data?.items ?? [];
+  const scorecards = pendingScorecards.data ?? [];
+  const isLoading = pendingAssessments.isLoading || pendingScorecards.isLoading;
+
+  const totalPending = tests.length + scorecards.length;
+
+  const daysAgo = (date: Date | string) => {
+    const d = typeof date === 'string' ? new Date(date) : date;
+    return Math.max(0, Math.floor((Date.now() - d.getTime()) / 86400000));
+  };
 
   return (
     <div className="flex-1 bg-white rounded-xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
@@ -43,49 +31,77 @@ export function AlertsPendingPanel() {
         </span>
       </div>
 
-      {/* Pending Tests */}
-      <p className="text-xs text-[#585858] mb-2">
-        {rd.pendingTestsLabel} ({PENDING_TESTS.length + 5})
-      </p>
-      <div className="space-y-2 mb-3">
-        {PENDING_TESTS.map((test) => (
-          <div key={test.name} className="flex justify-between items-center h-10">
-            <div>
-              <p className="text-[13px] text-[#333]">
-                {test.name} — {test.type}
-              </p>
-              <p className="text-[11px] text-[#8B8B8B]">
-                {rd.assignedAgo} {test.daysAgo} {rd.days}
-              </p>
-            </div>
-            <button className="text-xs text-[#DD0C15] hover:underline">{rd.resend}</button>
-          </div>
-        ))}
-        <span className="text-xs text-[#DD0C15]">+5 {rd.more}</span>
-      </div>
-
-      {/* Pending Scorecards */}
-      <div className="border-t border-[#EDEDED] pt-3">
-        <p className="text-xs text-[#585858] mb-2">
-          {rd.pendingScorecards} ({PENDING_SCORECARDS.length + 2})
-        </p>
-        <div className="space-y-2">
-          {PENDING_SCORECARDS.map((sc) => (
-            <div key={sc.name} className="flex justify-between items-center h-10">
-              <div>
-                <p className="text-[13px] text-[#333]">
-                  {sc.name} — {sc.interviewType}
-                </p>
-                <p className="text-[11px] text-[#8B8B8B]">
-                  {rd.evaluator}: {sc.evaluator}
-                </p>
-              </div>
-              <button className="text-xs text-[#1F114C] hover:underline">{rd.remind}</button>
-            </div>
-          ))}
-          <span className="text-xs text-[#DD0C15]">+2 {rd.more}</span>
+      {isLoading ? (
+        <div className="space-y-3 animate-pulse">
+          {Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-10 bg-gray-100 rounded" />)}
         </div>
-      </div>
+      ) : (
+        <>
+          {/* Pending Assessments */}
+          <p className="text-xs text-[#585858] mb-2">
+            {rd.pendingTestsLabel} ({tests.length})
+          </p>
+          <div className="space-y-2 mb-3">
+            {tests.slice(0, 3).map((test) => (
+              <div key={test.id} className="flex justify-between items-center h-10">
+                <div>
+                  <p className="text-[13px] text-[#333]">
+                    {test.candidate.firstName} {test.candidate.lastName} — {test.assessmentType.name}
+                  </p>
+                  <p className="text-[11px] text-[#8B8B8B]">
+                    {rd.assignedAgo} {daysAgo(test.assignedAt)} {rd.days}
+                  </p>
+                </div>
+                <button
+                  onClick={() => toast('Reenviar: proximamente', { type: 'info' })}
+                  className="text-xs text-[#DD0C15] hover:underline"
+                >
+                  {rd.resend}
+                </button>
+              </div>
+            ))}
+            {tests.length > 3 && (
+              <span className="text-xs text-[#DD0C15]">+{tests.length - 3} {rd.more}</span>
+            )}
+            {tests.length === 0 && (
+              <p className="text-[11px] text-[#8B8B8B]">Sin pruebas pendientes</p>
+            )}
+          </div>
+
+          {/* Pending Scorecards */}
+          <div className="border-t border-[#EDEDED] pt-3">
+            <p className="text-xs text-[#585858] mb-2">
+              {rd.pendingScorecards} ({scorecards.length})
+            </p>
+            <div className="space-y-2">
+              {scorecards.slice(0, 2).map((sc) => (
+                <div key={sc.interview.id} className="flex justify-between items-center h-10">
+                  <div>
+                    <p className="text-[13px] text-[#333]">
+                      {sc.interview.candidate.firstName} {sc.interview.candidate.lastName} — {sc.interview.vacancy.title}
+                    </p>
+                    <p className="text-[11px] text-[#8B8B8B]">
+                      {rd.evaluator}: {sc.role}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => toast('Recordar: proximamente', { type: 'info' })}
+                    className="text-xs text-[#1F114C] hover:underline"
+                  >
+                    {rd.remind}
+                  </button>
+                </div>
+              ))}
+              {scorecards.length > 2 && (
+                <span className="text-xs text-[#DD0C15]">+{scorecards.length - 2} {rd.more}</span>
+              )}
+              {scorecards.length === 0 && (
+                <p className="text-[11px] text-[#8B8B8B]">Sin scorecards pendientes</p>
+              )}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
