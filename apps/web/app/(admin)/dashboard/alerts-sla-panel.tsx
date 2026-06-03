@@ -17,34 +17,31 @@ export function AlertsSlaPanel() {
   const { t } = useI18n();
   const rd = t.recruitingDashboard;
 
-  // Fetch all published vacancies
-  const vacancies = trpc.vacancy.list.useQuery({ limit: 10, status: 'published' }, { staleTime: 60_000 });
-  const vacancyIds = (vacancies.data?.items ?? []).map((v) => v.id);
+  // Get the first published vacancy for SLA data
+  const vacancies = trpc.vacancy.list.useQuery({ limit: 1, status: 'published' }, { staleTime: 60_000 });
+  const firstVacancyId = vacancies.data?.items?.[0]?.id;
 
-  // Fetch SLA status for each vacancy
-  const slaQueries = vacancyIds.map((id) =>
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    trpc.pipeline.getSlaStatus.useQuery({ vacancyId: id }, { staleTime: 60_000 }),
+  const slaQuery = trpc.pipeline.getSlaStatus.useQuery(
+    { vacancyId: firstVacancyId! },
+    { enabled: !!firstVacancyId, staleTime: 60_000 },
   );
 
-  const isLoading = vacancies.isLoading || slaQueries.some((q) => q.isLoading);
+  const isLoading = vacancies.isLoading || slaQuery.isLoading;
 
-  // Aggregate overdue items across all vacancies
   const slaData = useMemo<SlaStage[]>(() => {
+    if (!slaQuery.data?.items) return [];
+
     const overdueByStage = new Map<string, { count: number; totalHours: number; slaHours: number }>();
 
-    for (const q of slaQueries) {
-      if (!q.data?.items) continue;
-      for (const item of q.data.items) {
-        if (!item.isOverdue) continue;
-        const existing = overdueByStage.get(item.stageName) ?? { count: 0, totalHours: 0, slaHours: item.slaHours ?? 0 };
-        existing.count += 1;
-        existing.totalHours += item.hoursInStage;
-        if (item.slaHours && item.slaHours > existing.slaHours) {
-          existing.slaHours = item.slaHours;
-        }
-        overdueByStage.set(item.stageName, existing);
+    for (const item of slaQuery.data.items) {
+      if (!item.isOverdue) continue;
+      const existing = overdueByStage.get(item.stageName) ?? { count: 0, totalHours: 0, slaHours: item.slaHours ?? 0 };
+      existing.count += 1;
+      existing.totalHours += item.hoursInStage;
+      if (item.slaHours && item.slaHours > existing.slaHours) {
+        existing.slaHours = item.slaHours;
       }
+      overdueByStage.set(item.stageName, existing);
     }
 
     if (overdueByStage.size === 0) return [];
@@ -61,7 +58,7 @@ export function AlertsSlaPanel() {
         severity: (data.totalHours / data.count > data.slaHours * 2 ? 'critical' : 'warning') as 'critical' | 'warning',
       }))
       .sort((a, b) => b.count - a.count);
-  }, [slaQueries]);
+  }, [slaQuery.data]);
 
   const totalOverdue = slaData.reduce((s, d) => s + d.count, 0);
 
