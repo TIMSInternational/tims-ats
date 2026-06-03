@@ -11,6 +11,7 @@ model Offer {
   contractType      String    @map("contract_type")
   benefits          Json?
   terms             Json?
+  settings          Json      @default("{}")
   signedDocumentUrl String?   @map("signed_document_url")
   sentAt            DateTime? @map("sent_at")
   respondedAt       DateTime? @map("responded_at")
@@ -19,10 +20,11 @@ model Offer {
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")
 
-  candidate   Candidate                @relation("CandidateOffers", fields: [candidateId], references: [id])
-  vacancy     Vacancy                  @relation("VacancyOffers", fields: [vacancyId], references: [id], onDelete: Cascade)
-  application Application?             @relation("ApplicationOffers", fields: [applicationId], references: [id])
-  creator     User                     @relation("OfferCreator", fields: [createdById], references: [id])
+  organization Organization             @relation("OrganizationOffers", fields: [organizationId], references: [id])
+  candidate    Candidate               @relation("CandidateOffers", fields: [candidateId], references: [id])
+  vacancy      Vacancy                 @relation("VacancyOffers", fields: [vacancyId], references: [id], onDelete: Cascade)
+  application  Application?            @relation("ApplicationOffers", fields: [applicationId], references: [id])
+  creator      User                    @relation("OfferCreator", fields: [createdById], references: [id])
   approvals   OfferApproval[]
   validations PreemploymentValidation[]
   legalChecks LegalCheck[]

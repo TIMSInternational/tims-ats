@@ -48,6 +48,7 @@ model Organization {
   billingProfile     BillingProfile?
   invitations        PlatformInvitation[]
   aiAgentOrgConfigs  AiAgentOrgConfig[]
+  offers             Offer[]            @relation("OrganizationOffers")
 
   @@map("organizations")
 }

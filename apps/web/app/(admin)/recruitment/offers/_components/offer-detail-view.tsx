@@ -9,6 +9,9 @@ import { formatCurrency, formatDate } from '../../../../../lib/format-utils';
 import { ApprovalChain } from './approval-chain';
 import { OfferTimeline } from './offer-timeline';
 import { OfferValidations } from './offer-validations';
+import { OfferLetterModal } from './offer-letter-modal';
+import { SigningLinkModal } from './signing-link-modal';
+import { useState } from 'react';
 
 interface OfferDetailViewProps {
   offerId: string;
@@ -73,6 +76,19 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
   const benefitList = benefits ? Object.values(benefits) : [];
   const terms = o.terms as Record<string, string> | null;
 
+  const [showLetterModal, setShowLetterModal] = useState(false);
+  const [showSigningModal, setShowSigningModal] = useState(false);
+  const [signingUrl, setSigningUrl] = useState('');
+
+  const generateSigningLink = trpc.offer.generateSigningLink.useMutation({
+    onSuccess: (data) => {
+      setSigningUrl(window.location.origin + data.signingUrl);
+      setShowSigningModal(true);
+      offer.refetch();
+    },
+    onError: (err) => toast(err.message, { type: 'error' }),
+  });
+
   return (
     <div className="space-y-6">
       {/* Back button */}
@@ -94,6 +110,9 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
         totalValidations={totalValidations}
         progressPct={progressPct}
         allComplete={allComplete}
+        onViewLetter={() => setShowLetterModal(true)}
+        onSendForSigning={() => generateSigningLink.mutate({ offerId })}
+        isGeneratingLink={generateSigningLink.isPending}
       />
 
       {/* Two columns */}
@@ -119,6 +138,32 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
           />
         </div>
       </div>
+
+      {/* Offer Letter Modal */}
+      {showLetterModal && (
+        <OfferLetterModal
+          offer={{
+            candidate: o.candidate,
+            vacancy: o.vacancy,
+            salary: o.salary,
+            currency: o.currency,
+            startDate: o.startDate,
+            contractType: o.contractType,
+            benefits,
+            terms,
+            createdAt: o.createdAt,
+          }}
+          onClose={() => setShowLetterModal(false)}
+        />
+      )}
+
+      {/* Signing Link Modal */}
+      {showSigningModal && (
+        <SigningLinkModal
+          signingUrl={signingUrl}
+          onClose={() => setShowSigningModal(false)}
+        />
+      )}
     </div>
   );
 }
@@ -135,6 +180,9 @@ interface CandidateHeaderProps {
   totalValidations: number;
   progressPct: number;
   allComplete: boolean;
+  onViewLetter?: () => void;
+  onSendForSigning?: () => void;
+  isGeneratingLink?: boolean;
 }
 
 function CandidateHeader({
@@ -144,6 +192,9 @@ function CandidateHeader({
   totalValidations,
   progressPct,
   allComplete,
+  onViewLetter,
+  onSendForSigning,
+  isGeneratingLink,
 }: CandidateHeaderProps) {
   const { t } = useI18n();
 
@@ -187,21 +238,42 @@ function CandidateHeader({
           <p className="text-[10px] text-[#8B8B8B] mt-1">{t.offers.checksCompleted}</p>
         </div>
 
-        {/* Authorize button */}
-        <button
-          className={`px-5 py-2.5 rounded-lg text-[13px] font-medium shrink-0 flex items-center gap-1.5 ${
-            allComplete
-              ? 'bg-[#DD0C15] text-white hover:bg-red-700 transition'
-              : 'bg-[#EDEDED] text-[#8B8B8B] cursor-not-allowed'
-          }`}
-          disabled={!allComplete}
-          onClick={() => toast('Autorizar contratacion: proximamente', { type: 'info' })}
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-            <path d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-          </svg>
-          {t.offers.authorizeHiring}
-        </button>
+        {/* Offer Letter + Signature + Authorize buttons */}
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            className="px-4 py-2.5 rounded-lg text-[13px] font-medium flex items-center gap-1.5 border border-[#EDEDED] text-[#1F114C] hover:bg-[#F6F6F6] transition"
+            onClick={onViewLetter}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+              <path d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+            </svg>
+            Ver Carta de Oferta
+          </button>
+          <button
+            className="px-4 py-2.5 rounded-lg text-[13px] font-medium flex items-center gap-1.5 border border-[#1F114C] text-[#1F114C] hover:bg-[#1F114C] hover:text-white transition"
+            disabled={isGeneratingLink}
+            onClick={onSendForSigning}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+              <path d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
+            </svg>
+            {isGeneratingLink ? 'Generando...' : 'Enviar para Firma'}
+          </button>
+          <button
+            className={`px-5 py-2.5 rounded-lg text-[13px] font-medium flex items-center gap-1.5 ${
+              allComplete
+                ? 'bg-[#DD0C15] text-white hover:bg-red-700 transition'
+                : 'bg-[#EDEDED] text-[#8B8B8B] cursor-not-allowed'
+            }`}
+            disabled={!allComplete}
+            onClick={() => toast('Autorizar contratacion: proximamente', { type: 'info' })}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+              <path d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+            </svg>
+            {t.offers.authorizeHiring}
+          </button>
+        </div>
       </div>
     </div>
   );
