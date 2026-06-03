@@ -72,6 +72,7 @@ export function AddCandidateModal({ vacancyId, vacancyTitle, onClose, onSuccess 
 
   const createCandidate = trpc.candidate.create.useMutation();
   const applyToVacancy = trpc.candidate.applyToVacancy.useMutation();
+  const utils = trpc.useUtils();
 
   const isStep1Valid = firstName.trim() && lastName.trim() && email.trim();
   const isPending = processStep !== 'idle';
@@ -80,29 +81,53 @@ export function AddCandidateModal({ vacancyId, vacancyTitle, onClose, onSuccess 
     if (!isStep1Valid) return;
     try {
       setProcessStep('creating');
-      const candidate = await createCandidate.mutateAsync({
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
-        email: email.trim(),
-        phone: phone.trim() || undefined,
-        source,
-        poolType,
-        location: location.trim() || undefined,
-        currentTitle: currentTitle.trim() || undefined,
-        currentCompany: currentCompany.trim() || undefined,
-        yearsExperience: parseInt(yearsExperience) || undefined,
-        linkedinUrl: linkedinUrl.trim() || undefined,
-        skills: skills.trim() ? skills.split(',').map((s) => s.trim()).filter(Boolean) : undefined,
-        notes: notes.trim() || undefined,
-      });
+
+      let candidateId: string;
+      try {
+        const candidate = await createCandidate.mutateAsync({
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          email: email.trim(),
+          phone: phone.trim() || undefined,
+          source,
+          poolType,
+          location: location.trim() || undefined,
+          currentTitle: currentTitle.trim() || undefined,
+          currentCompany: currentCompany.trim() || undefined,
+          yearsExperience: parseInt(yearsExperience) || undefined,
+          linkedinUrl: linkedinUrl.trim() ? linkedinUrl.trim() : undefined,
+          skills: skills.trim() ? skills.split(',').map((s) => s.trim()).filter(Boolean) : undefined,
+          notes: notes.trim() || undefined,
+        });
+        candidateId = candidate.id;
+      } catch (createErr) {
+        // Candidate with this email already exists — find them and use their ID
+        const msg = createErr instanceof Error ? createErr.message : '';
+        if (msg.includes('Unique constraint') || msg.includes('unique') || msg.includes('already exists')) {
+          const results = await utils.candidate.search.fetch({ query: email.trim(), limit: 1 });
+          if (results.length > 0) {
+            candidateId = results[0].id;
+            toast(`${firstName} ${lastName} ya existe — agregando a la vacante`, { type: 'info' });
+          } else {
+            throw new Error('Candidato con este email ya existe pero no se pudo encontrar');
+          }
+        } else {
+          throw createErr;
+        }
+      }
 
       setProcessStep('applying');
-      await applyToVacancy.mutateAsync({ candidateId: candidate.id, vacancyId, source });
+      await applyToVacancy.mutateAsync({ candidateId, vacancyId, source });
 
       toast(`${firstName} ${lastName} agregado al pipeline`, { type: 'success' });
       onSuccess();
     } catch (err) {
-      toast(err instanceof Error ? err.message : 'Error al agregar candidato', { type: 'error' });
+      const msg = err instanceof Error ? err.message : 'Error al agregar candidato';
+      if (msg.includes('unique') || msg.includes('Unique') || msg.includes('already')) {
+        toast('Este candidato ya esta aplicando a esta vacante', { type: 'error' });
+      } else {
+        toast(msg, { type: 'error' });
+      }
       setProcessStep('idle');
     }
   };
