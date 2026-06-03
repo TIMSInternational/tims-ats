@@ -29,8 +29,19 @@ const OFFER_STATUS_LABEL: Record<string, { bg: string; text: string; label: stri
 
 export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
   const { t } = useI18n();
-
   const offer = trpc.offer.getById.useQuery({ id: offerId });
+  const [showLetterModal, setShowLetterModal] = useState(false);
+  const [showSigningModal, setShowSigningModal] = useState(false);
+  const [signingUrl, setSigningUrl] = useState('');
+
+  const generateSigningLink = trpc.offer.generateSigningLink.useMutation({
+    onSuccess: (data) => {
+      setSigningUrl(window.location.origin + data.signingUrl);
+      setShowSigningModal(true);
+      offer.refetch();
+    },
+    onError: (err) => toast(err.message, { type: 'error' }),
+  });
 
   if (offer.isLoading) {
     return (
@@ -49,9 +60,7 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
     return (
       <div className="text-center py-16">
         <p className="text-[#8B8B8B] text-sm">Oferta no encontrada</p>
-        <button onClick={onBack} className="mt-3 text-[13px] text-[#1F114C] hover:underline">
-          {t.offers.backToList}
-        </button>
+        <button onClick={onBack} className="mt-3 text-[13px] text-[#1F114C] hover:underline">{t.offers.backToList}</button>
       </div>
     );
   }
@@ -59,50 +68,22 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
   const o = offer.data;
   const statusInfo = OFFER_STATUS_LABEL[o.status] ?? OFFER_STATUS_LABEL.draft;
   const validations = o.validations ?? [];
-  const legalChecks = (o.legalChecks ?? []) as Array<{
-    id: string;
-    checkName: string;
-    completed: boolean;
-    completedAt: Date | string | null;
-    completedByUser: { id: string; firstName: string; lastName: string } | null;
-  }>;
-
+  const legalChecks = (o.legalChecks ?? []) as Array<{ id: string; checkName: string; completed: boolean; completedAt: Date | string | null; completedByUser: { id: string; firstName: string; lastName: string } | null }>;
   const completedValidations = validations.filter((v) => v.status === 'passed').length;
   const totalValidations = validations.length || 6;
   const progressPct = totalValidations > 0 ? (completedValidations / totalValidations) * 100 : 0;
   const allComplete = completedValidations === totalValidations && totalValidations > 0;
-
   const benefits = o.benefits as Record<string, string> | null;
   const benefitList = benefits ? Object.values(benefits) : [];
   const terms = o.terms as Record<string, string> | null;
 
-  const [showLetterModal, setShowLetterModal] = useState(false);
-  const [showSigningModal, setShowSigningModal] = useState(false);
-  const [signingUrl, setSigningUrl] = useState('');
-
-  const generateSigningLink = trpc.offer.generateSigningLink.useMutation({
-    onSuccess: (data) => {
-      setSigningUrl(window.location.origin + data.signingUrl);
-      setShowSigningModal(true);
-      offer.refetch();
-    },
-    onError: (err) => toast(err.message, { type: 'error' }),
-  });
-
   return (
     <div className="space-y-6">
-      {/* Back button */}
-      <button
-        onClick={onBack}
-        className="flex items-center gap-1.5 text-[13px] text-[#8B8B8B] hover:text-[#585858] transition"
-      >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-          <path d="M15.75 19.5L8.25 12l7.5-7.5" />
-        </svg>
+      <button onClick={onBack} className="flex items-center gap-1.5 text-[13px] text-[#8B8B8B] hover:text-[#585858] transition">
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
         {t.offers.backToList}
       </button>
 
-      {/* Candidate Header */}
       <CandidateHeader
         offer={o}
         statusLabel={statusInfo.label}
