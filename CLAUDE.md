@@ -141,10 +141,10 @@ Repositories:    *.repository.ts  (candidate.repository.ts)
 - **NEVER `$executeRawUnsafe` with interpolation.** Use `$executeRaw` template literals.
 
 ### Multi-Tenancy (Defense in Depth)
-1. **Primary:** Application-level `WHERE organizationId = ctx.user.organizationId` on every query.
-2. **Secondary:** Supabase RLS policies as safety net.
-3. **Enforcement:** Prisma tenant middleware that auto-injects `organizationId` on all tenant-scoped models.
-- **IDOR prevention.** Every mutation verifies resource belongs to caller's org.
+1. **Primary — IMPLEMENTED:** Application-level `WHERE organizationId = ctx.user.organizationId` on every query. **This is currently the ONLY enforced tenant boundary**, so it is not optional on any query or mutation.
+2. **Secondary — NOT YET IMPLEMENTED (do not rely on this):** Supabase RLS policies as a safety net. As of the 2026-06-04 security audit, RLS is **disabled on every tenant table** and **no policies exist** (`pg_policies` is empty). The `set_config('app.current_org_id', …)` call in `trpc.ts` is read by nothing today and, with `is_local=true`, would not even survive past its own statement on a pooled connection. Enabling real RLS is a tracked, high-priority follow-up — until it lands, assume zero database-level isolation.
+3. **Enforcement — NOT YET WIRED IN:** A Prisma tenant middleware (`withTenantIsolation` in `packages/db`) exists but is **never attached to any client**, so nothing auto-injects `organizationId`. Do not assume it runs.
+- **IDOR prevention (load-bearing).** Because layers 2 and 3 are absent, every query/mutation that takes a resource id MUST verify the resource belongs to `ctx.user.organizationId` (e.g. `findFirst({ where: { id, organizationId } })` before update/delete). A missing check is a real cross-tenant breach, not a redundant one.
 
 ### Rate Limiting (Per-Tenant)
 - **Upstash Redis** with sliding window. Three tiers:
@@ -436,6 +436,9 @@ Dead letter queue + `onFailure` hooks for persistent failure alerting.
 ### Remaining (next sessions)
 | Priority | Task |
 |----------|------|
+| **CRITICAL — SECURITY** | **Database-level tenant isolation is ABSENT.** Enable Postgres RLS + `FORCE ROW LEVEL SECURITY` + per-table policies reading `current_setting('app.current_org_id')`, AND make the GUC actually apply (wrap each request's queries in a transaction that sets it, or wire `withTenantIsolation` into a per-request `ctx.db`). Verify the Prisma connection role is not `BYPASSRLS`, and exempt platform owners (no org). Needs its own tested migration — see security audit 2026-06-04. App-level `WHERE` is the only defense until this lands. |
+| HIGH — SECURITY | RBAC follow-up: `hr_admin` uses a denylist short-circuit in `trpc.ts` that bypasses the DB `rolePermission` check. Move to least-privilege once per-org `rolePermission` coverage is verified for every `hr_admin` role. |
+| HIGH — SECURITY | Add CAPTCHA (Turnstile/hCaptcha) to the public `applyToVacancy` form; move to nonce-based CSP and drop `'unsafe-inline'`/`'unsafe-eval'` from `script-src`. |
 | HIGH | Split god components (invoices 605 LOC, orgs 611, invitations 572) |
 | HIGH | Split platform.ts router (1519 LOC) into sub-routers |
 | HIGH | Wire i18n keys to page components (mechanical replacement) |
@@ -443,7 +446,6 @@ Dead letter queue + `onFailure` hooks for persistent failure alerting.
 | HIGH | Configure Supavisor connection pooling for production |
 | MEDIUM | Add Sentry + Pino structured logging |
 | MEDIUM | Refactor pages to use shared KpiCard/DataTable components |
-| MEDIUM | Add Prisma tenant middleware (auto-inject organizationId) |
 | MEDIUM | Circuit breaker for Bedrock/SES |
 | MEDIUM | Set up AI gateway microservice (Docker + ECS) |
 | LOW | Migrate to Supabase sa-east-1 region |

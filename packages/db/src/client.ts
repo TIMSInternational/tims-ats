@@ -10,22 +10,8 @@ export const db =
 
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = db;
 
-export function createTenantClient(orgId: string): PrismaClient {
-  const client = new PrismaClient({
-    log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
-  });
-
-  client.$extends({
-    query: {
-      $allOperations({ args, query }) {
-        // Inject organization_id filter for RLS
-        // This works with Supabase RLS policies that check current_setting('app.current_org_id')
-        return client.$executeRawUnsafe(
-          `SET LOCAL app.current_org_id = '${orgId}'`
-        ).then(() => query(args));
-      },
-    },
-  });
-
-  return client;
-}
+// NOTE: a former `createTenantClient(orgId)` helper lived here. It was dead code
+// (never called) and built raw SQL by interpolating orgId — the exact injection
+// pattern banned by CLAUDE.md — and its `$extends(...)` return value was discarded,
+// so it never actually applied. Removed. Tenant org context is set via the
+// parameterized set_config(...) call in packages/api/src/trpc.ts.

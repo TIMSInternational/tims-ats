@@ -104,6 +104,12 @@ export const offerSigningRouter = router({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Enlace de firma invalido' });
       }
 
+      // Bound disclosure to the offer's validity window — an expired link must not
+      // keep exposing salary/terms/candidate PII indefinitely.
+      if (offer.expiresAt && offer.expiresAt < new Date()) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Este enlace de firma ha expirado' });
+      }
+
       return offer;
     }),
 
@@ -123,7 +129,7 @@ export const offerSigningRouter = router({
             equals: input.token,
           },
         },
-        select: { id: true, status: true, settings: true },
+        select: { id: true, status: true, settings: true, expiresAt: true },
         take: 1,
       });
 
@@ -138,6 +144,10 @@ export const offerSigningRouter = router({
           code: 'BAD_REQUEST',
           message: 'Esta oferta ya fue respondida o no esta disponible para firma',
         });
+      }
+
+      if (offer.expiresAt && offer.expiresAt < new Date()) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Esta oferta ha expirado y no puede firmarse' });
       }
 
       const existingSettings = (offer.settings as Record<string, unknown>) ?? {};
@@ -206,7 +216,7 @@ export const offerSigningRouter = router({
             equals: input.token,
           },
         },
-        select: { id: true, status: true, settings: true },
+        select: { id: true, status: true, settings: true, expiresAt: true },
         take: 1,
       });
 
@@ -221,6 +231,10 @@ export const offerSigningRouter = router({
           code: 'BAD_REQUEST',
           message: 'Esta oferta ya fue respondida',
         });
+      }
+
+      if (offer.expiresAt && offer.expiresAt < new Date()) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Esta oferta ha expirado' });
       }
 
       const existingSettings = (offer.settings as Record<string, unknown>) ?? {};

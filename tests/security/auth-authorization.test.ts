@@ -31,7 +31,6 @@ describe('Authentication & Authorization', () => {
     const allowedPublicEndpoints = [
       'getInvitationByToken',
       'acceptInvitation',
-      'syncUser',
       // Portal endpoints — public-facing candidate portal (unauthenticated job browsing)
       'getPortalStats',
       'listVacancies',

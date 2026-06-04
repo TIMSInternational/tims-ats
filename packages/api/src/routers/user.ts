@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { router, protectedProcedure, permissionProcedure, auditedProcedure } from '../trpc';
 import { db } from '@tims/db';
-import { createUserSchema, updateUserSchema, assignRoleSchema } from '@tims/shared';
+import { createUserSchema, updateProfileSchema, assignRoleSchema } from '@tims/shared';
 
 export const userRouter = router({
   // Get current user profile
@@ -23,13 +23,26 @@ export const userRouter = router({
     });
   }),
 
-  // Update own profile
+  // Update own profile — strict allowlist (updateProfileSchema) so a user cannot
+  // set roleSlug / companyId / businessUnitId / isActive / isPlatformOwner on
+  // themselves. Returns only non-sensitive profile fields.
   updateProfile: protectedProcedure
-    .input(updateUserSchema)
+    .input(updateProfileSchema)
     .mutation(async ({ ctx, input }) => {
       return db.user.update({
         where: { id: ctx.user.id },
         data: input,
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          displayName: true,
+          jobTitle: true,
+          phone: true,
+          locale: true,
+          timezone: true,
+          avatar: true,
+        },
       });
     }),
 

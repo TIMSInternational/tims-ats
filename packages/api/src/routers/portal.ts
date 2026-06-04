@@ -158,6 +158,17 @@ export const portalRouter = router({
         },
       });
 
+      // Idempotent: a candidate may only have one application per vacancy
+      // (DB enforces @@unique([candidateId, vacancyId])). Re-submitting the public
+      // form returns the existing application instead of throwing a 500.
+      const existing = await db.application.findFirst({
+        where: { candidateId: candidate.id, vacancyId: vacancy.id },
+        select: { id: true },
+      });
+      if (existing) {
+        return { applicationId: existing.id, candidateId: candidate.id };
+      }
+
       const defaultStage = vacancy.stages[0];
       const stageId = defaultStage?.id ?? (await db.pipelineStage.findFirstOrThrow({
         where: { vacancyId: vacancy.id },
@@ -165,18 +176,29 @@ export const portalRouter = router({
         select: { id: true },
       })).id;
 
-      const application = await db.application.create({
-        data: {
-          organizationId: orgId,
-          candidateId: candidate.id,
-          vacancyId: vacancy.id,
-          currentStageId: stageId,
-          source: input.source,
-          coverLetter: input.coverLetter,
-        },
-      });
-
-      return { applicationId: application.id, candidateId: candidate.id };
+      try {
+        const application = await db.application.create({
+          data: {
+            organizationId: orgId,
+            candidateId: candidate.id,
+            vacancyId: vacancy.id,
+            currentStageId: stageId,
+            source: input.source,
+            coverLetter: input.coverLetter,
+          },
+        });
+        return { applicationId: application.id, candidateId: candidate.id };
+      } catch (err) {
+        // Unique-constraint race on concurrent double-submit — resolve idempotently
+        if ((err as { code?: string }).code === 'P2002') {
+          const app = await db.application.findFirst({
+            where: { candidateId: candidate.id, vacancyId: vacancy.id },
+            select: { id: true },
+          });
+          if (app) return { applicationId: app.id, candidateId: candidate.id };
+        }
+        throw err;
+      }
     }),
 
   // ── Authenticated (candidate portal) ───────────────────────

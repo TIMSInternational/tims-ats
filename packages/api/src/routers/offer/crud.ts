@@ -110,13 +110,31 @@ export const offerCrudRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      const orgId = ctx.user.organizationId;
+
+      // Verify referenced resources belong to the caller's org (prevents
+      // cross-tenant references and PII leak via the candidate include below).
+      const [candidate, vacancy] = await Promise.all([
+        db.candidate.findFirst({ where: { id: input.candidateId, organizationId: orgId }, select: { id: true } }),
+        db.vacancy.findFirst({ where: { id: input.vacancyId, organizationId: orgId }, select: { id: true } }),
+      ]);
+      if (!candidate) throw new Error('Candidato no encontrado en esta organizacion');
+      if (!vacancy) throw new Error('Vacante no encontrada en esta organizacion');
+      if (input.applicationId) {
+        const application = await db.application.findFirst({
+          where: { id: input.applicationId, organizationId: orgId },
+          select: { id: true },
+        });
+        if (!application) throw new Error('Aplicacion no encontrada en esta organizacion');
+      }
+
       const { benefits, terms, ...rest } = input;
       return db.offer.create({
         data: {
           ...rest,
           benefits: benefits as Prisma.InputJsonValue | undefined,
           terms: terms as Prisma.InputJsonValue | undefined,
-          organizationId: ctx.user.organizationId,
+          organizationId: orgId,
           createdById: ctx.user.id,
           status: 'draft',
         },

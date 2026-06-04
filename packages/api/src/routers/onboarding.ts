@@ -2,6 +2,17 @@ import { z } from 'zod';
 import { router, protectedProcedure, permissionProcedure } from '../trpc';
 import { db } from '@tims/db';
 
+// Verify every referenced user id belongs to the caller's org (prevents attaching
+// onboarding records to another tenant's users / leaking their names via includes).
+async function assertUsersInOrg(orgId: string, userIds: (string | null | undefined)[]) {
+  const ids = [...new Set(userIds.filter((x): x is string => !!x))];
+  if (ids.length === 0) return;
+  const count = await db.user.count({ where: { id: { in: ids }, organizationId: orgId } });
+  if (count !== ids.length) {
+    throw new Error('Usuario referenciado no encontrado en esta organizacion');
+  }
+}
+
 export const onboardingRouter = router({
   // 10.1 — List onboarding plans for the organization
   list: permissionProcedure('onboarding', 'read')
@@ -101,6 +112,9 @@ export const onboardingRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // Verify referenced users belong to the caller's org (no cross-tenant refs)
+      await assertUsersInOrg(ctx.user.organizationId, [input.userId, input.buddyId]);
+
       return db.onboardingPlan.create({
         data: {
           ...input,
@@ -128,6 +142,14 @@ export const onboardingRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       const { id, ...data } = input;
+
+      // Verify the plan belongs to the caller's org (IDOR prevention)
+      const plan = await db.onboardingPlan.findFirst({
+        where: { id, organizationId: ctx.user.organizationId },
+        select: { id: true },
+      });
+      if (!plan) throw new Error('Plan de onboarding no encontrado');
+      if (data.buddyId) await assertUsersInOrg(ctx.user.organizationId, [data.buddyId]);
 
       return db.onboardingPlan.update({
         where: { id },
@@ -178,6 +200,13 @@ export const onboardingRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // Verify the parent plan belongs to the caller's org (IDOR prevention)
+      const plan = await db.onboardingPlan.findFirst({
+        where: { id: input.planId, organizationId: ctx.user.organizationId },
+        select: { id: true },
+      });
+      if (!plan) throw new Error('Plan de onboarding no encontrado');
+
       return db.onboardingTask.create({
         data: {
           ...input,
@@ -202,6 +231,13 @@ export const onboardingRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       const { id, completed, ...rest } = input;
+
+      // Verify the task belongs to the caller's org (IDOR prevention)
+      const task = await db.onboardingTask.findFirst({
+        where: { id, organizationId: ctx.user.organizationId },
+        select: { id: true },
+      });
+      if (!task) throw new Error('Tarea de onboarding no encontrada');
 
       return db.onboardingTask.update({
         where: { id },
@@ -294,6 +330,13 @@ export const onboardingRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       const { id, ...data } = input;
+
+      // Verify the check-in belongs to the caller's org (IDOR prevention)
+      const checkIn = await db.onboardingCheckIn.findFirst({
+        where: { id, organizationId: ctx.user.organizationId },
+        select: { id: true },
+      });
+      if (!checkIn) throw new Error('Check-in de onboarding no encontrado');
 
       return db.onboardingCheckIn.update({
         where: { id },

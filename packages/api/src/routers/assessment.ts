@@ -40,12 +40,23 @@ export const assessmentRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      // Verify assessment type belongs to org
-      const assessmentType = await db.assessmentType.findFirst({
-        where: { id: input.assessmentTypeId, organizationId: ctx.user.organizationId, isActive: true },
-      });
+      const orgId = ctx.user.organizationId;
+      // Verify assessment type, candidate AND vacancy all belong to the org —
+      // otherwise an attacker could assign against another tenant's candidate and
+      // read their PII back via getResults / listPending includes.
+      const [assessmentType, candidate, vacancy] = await Promise.all([
+        db.assessmentType.findFirst({ where: { id: input.assessmentTypeId, organizationId: orgId, isActive: true }, select: { id: true } }),
+        db.candidate.findFirst({ where: { id: input.candidateId, organizationId: orgId }, select: { id: true } }),
+        db.vacancy.findFirst({ where: { id: input.vacancyId, organizationId: orgId }, select: { id: true } }),
+      ]);
       if (!assessmentType) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Tipo de evaluacion no encontrado' });
+      }
+      if (!candidate) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Candidato no encontrado' });
+      }
+      if (!vacancy) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Vacante no encontrada' });
       }
 
       return db.assessmentAssignment.create({
@@ -76,11 +87,21 @@ export const assessmentRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const assessmentType = await db.assessmentType.findFirst({
-        where: { id: input.assessmentTypeId, organizationId: ctx.user.organizationId, isActive: true },
-      });
+      const orgId = ctx.user.organizationId;
+      const uniqueCandidateIds = [...new Set(input.candidateIds)];
+      const [assessmentType, vacancy, candidateCount] = await Promise.all([
+        db.assessmentType.findFirst({ where: { id: input.assessmentTypeId, organizationId: orgId, isActive: true }, select: { id: true } }),
+        db.vacancy.findFirst({ where: { id: input.vacancyId, organizationId: orgId }, select: { id: true } }),
+        db.candidate.count({ where: { id: { in: uniqueCandidateIds }, organizationId: orgId } }),
+      ]);
       if (!assessmentType) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Tipo de evaluacion no encontrado' });
+      }
+      if (!vacancy) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Vacante no encontrada' });
+      }
+      if (candidateCount !== uniqueCandidateIds.length) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Uno o mas candidatos no encontrados en esta organizacion' });
       }
 
       const result = await db.assessmentAssignment.createMany({
