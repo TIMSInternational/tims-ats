@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { router, permissionProcedure } from '../trpc';
-import { db } from '@tims/db';
+import { tenantDb as db } from '@tims/db';
 
 export const auditRouter = router({
   // List logs with cursor pagination and filters

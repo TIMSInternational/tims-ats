@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { router, protectedProcedure } from '../trpc';
-import { db } from '@tims/db';
+import { tenantDb as db } from '@tims/db';
 
 const notificationSelect = {
   id: true,

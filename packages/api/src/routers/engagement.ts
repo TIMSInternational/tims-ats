@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { router, protectedProcedure, permissionProcedure } from '../trpc';
-import { db } from '@tims/db';
+import { tenantDb as db } from '@tims/db';
 import type { Prisma } from '@tims/db';
 
 export const engagementRouter = router({

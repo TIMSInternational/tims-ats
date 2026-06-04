@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { router, publicProcedure, permissionProcedure } from '../../trpc';
-import { db } from '@tims/db';
+import { tenantDb as db } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import crypto from 'crypto';
 import { emailService } from '../../services/email.service';

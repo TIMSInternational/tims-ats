@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { router, permissionProcedure } from '../../trpc';
-import { db } from '@tims/db';
+import { tenantDb as db } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 
 export const interviewAiRouter = router({
