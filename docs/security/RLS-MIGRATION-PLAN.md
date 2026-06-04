@@ -26,17 +26,43 @@
   query). Gated on `TENANT_DATABASE_URL`; until that points at `app_tenant`, `tenantDb`
   is a transparent passthrough over the base `db` (zero behavior/perf change).
 
-**Remaining (the cutover — do on staging first)**
+**Cutover progress**
+- ✅ Wiring done: the tenant-procedure middleware (`withTenantContext` in `trpc.ts`)
+  wraps every authenticated request in `runWithTenant(orgId, …)`. Verified the full
+  mechanism on the live DB: the extension's batch `$transaction([set_config, query])`
+  scopes correctly (org A → its rows, org B → 0), and no-regression smoke (portal 200,
+  a tenant endpoint returns 401 not 500).
+- **Router opt-in pattern** (chosen over `ctx.db` to avoid extended-client typing
+  friction): a tenant router changes one line — `import { db }` → `import { tenantDb as db }`
+  — and every `db.*` call is then org-scoped via RLS. `onboarding.ts` is migrated as the
+  reference. Inert until `TENANT_DATABASE_URL` is set, so each router migration is a
+  zero-behavior-change diff.
+
+**Remaining (do on staging first)**
 1. Establish a Prisma migration **baseline** (repo uses `db push`), then apply this
    migration (or run the SQL via `psql` as the privileged role).
 2. Rotate the `app_tenant` password (`ALTER ROLE app_tenant PASSWORD '<secret>'`),
    store it, set `TENANT_DATABASE_URL` to its connection string (pooler, 6543).
-3. Wire `runWithTenant(orgId, …)` into the tRPC context builder and switch
-   **tenant** routers from the global `db` to `ctx.db = tenantDb`. Keep the context
-   builder + platform routers + workers on the privileged `db`.
-4. Add `tests/security/tenant-isolation.test.ts` that connects as `app_tenant` and
-   asserts cross-tenant reads/writes are blocked **on the pooled connection**.
+3. **Finish the router migration** — switch the remaining tenant routers to
+   `import { tenantDb as db }`:
+   - **Migrate (tenant-scoped):** candidate, pipeline, vacancy/*, interview/*, offer/*,
+     assessment, performance/*, learning, engagement, compensation, succession, ninebox,
+     dei, team-intel, monitoring, notification, billing, integration, user, organization,
+     onboarding ✅. Also their repositories/services (`candidate.repository.ts`,
+     `pipeline.repository.ts`, etc.) that `import { db }`.
+   - **KEEP on privileged `db` (cross-org / no-org):** all `routers/platform/**`
+     (platformProcedure), `portal.ts` (public, cross-org by vacancy), `auth.ts`, the tRPC
+     context builder (`apps/web/app/api/trpc/[trpc]/route.ts`), `trpc.ts` middleware
+     (audit/permission lookups), and workers.
+4. Add `tests/security/tenant-isolation.test.ts` (or run `scripts/rls-isolation-check.ts`
+   in CI against a seeded staging DB) asserting cross-tenant reads/writes are blocked
+   **on the pooled connection**.
 5. Benchmark dashboard + pipeline p95 (target < 10% regression), then roll out.
+
+> Note on platform owners: `withTenantContext` lets platform owners through without an
+> org context. They must only use platform routers (privileged `db`); a platform owner
+> hitting a migrated tenant router post-cutover would be scoped to "no org" (sees
+> nothing) — acceptable, but keep platform UIs on platform routers.
 
 ## 1. Why this exists
 

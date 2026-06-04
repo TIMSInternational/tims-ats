@@ -1,7 +1,7 @@
 import { initTRPC, TRPCError } from '@trpc/server';
 import superjson from 'superjson';
 import type { Context } from './context';
-import { db } from '@tims/db';
+import { db, runWithTenant } from '@tims/db';
 import { checkRateLimit, getRateLimitCategory } from './middleware/rate-limit';
 
 const t = initTRPC.context<Context>().create({
@@ -55,30 +55,28 @@ const isAuthed = t.middleware(({ ctx, next }) => {
   });
 });
 
-// RLS middleware — injects organization context for tenant isolation
-// Platform owners skip RLS (they access all orgs)
-const withRLS = t.middleware(async ({ ctx, next }) => {
+// Tenant-context middleware — establishes the per-request org context (read by the
+// `tenantDb` RLS client via AsyncLocalStorage). Tenant routers import `tenantDb` and
+// their queries are scoped to this org; platform owners run unscoped (they use the
+// privileged `db` in platform routers).
+const withTenantContext = t.middleware(({ ctx, next }) => {
   if (ctx.user?.isPlatformOwner) {
-    return next({ ctx: { db } });
+    return next();
   }
 
-  if (!ctx.user?.organizationId) {
+  const orgId = ctx.user?.organizationId;
+  if (!orgId) {
     throw new TRPCError({
       code: 'FORBIDDEN',
       message: 'No se encontro contexto de organizacion',
     });
   }
-
-  // set_config(key, value, is_local=true) is the parameterizable equivalent of
-  // SET LOCAL — the value binds as $1, so there is no interpolation. UUID format
-  // is still validated as defense-in-depth.
-  const orgId = ctx.user.organizationId;
+  // Validate UUID format as defense-in-depth before it becomes the RLS GUC value.
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(orgId)) {
     throw new TRPCError({ code: 'FORBIDDEN', message: 'Invalid organization ID format' });
   }
-  await db.$executeRaw`SELECT set_config('app.current_org_id', ${orgId}, true)`;
 
-  return next({ ctx: { db } });
+  return runWithTenant(orgId, () => next());
 });
 
 // HR admin module access — explicit ALLOWLIST (fail-closed). A newly added module
@@ -161,7 +159,7 @@ const withAudit = t.middleware(async ({ ctx, next, path }) => {
 
 // Composed procedures — rate limit → auth → RLS
 export const publicProcedure = t.procedure.use(withRateLimit);
-export const protectedProcedure = publicProcedure.use(isAuthed).use(withRLS);
+export const protectedProcedure = publicProcedure.use(isAuthed).use(withTenantContext);
 export const auditedProcedure = protectedProcedure.use(withAudit);
 
 // Helper to create permission-gated procedures

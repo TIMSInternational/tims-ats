@@ -1,6 +1,9 @@
 import { z } from 'zod';
 import { router, protectedProcedure, permissionProcedure } from '../trpc';
-import { db } from '@tims/db';
+// Tenant-scoped client: queries are automatically restricted to the request's org
+// via RLS (see docs/security/RLS-MIGRATION-PLAN.md). Behaves identically to the base
+// db until the RLS cutover (TENANT_DATABASE_URL) is enabled.
+import { tenantDb as db } from '@tims/db';
 
 // Verify every referenced user id belongs to the caller's org (prevents attaching
 // onboarding records to another tenant's users / leaking their names via includes).
