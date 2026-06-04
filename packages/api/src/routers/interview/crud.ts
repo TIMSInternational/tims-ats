@@ -3,6 +3,7 @@ import { router, permissionProcedure } from '../../trpc';
 import { db } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
+import { emailService } from '../../services/email.service';
 
 export const interviewCrudRouter = router({
   // 8.1 — List interviews with filters
@@ -115,7 +116,7 @@ export const interviewCrudRouter = router({
     .mutation(async ({ ctx, input }) => {
       const { evaluatorIds, ...data } = input;
 
-      return db.interview.create({
+      const interview = await db.interview.create({
         data: {
           ...data,
           organizationId: ctx.user.organizationId,
@@ -130,6 +131,8 @@ export const interviewCrudRouter = router({
           },
         },
         include: {
+          candidate: { select: { firstName: true, lastName: true, email: true } },
+          vacancy: { select: { title: true } },
           evaluators: {
             include: {
               user: { select: { id: true, firstName: true, lastName: true } },
@@ -137,6 +140,28 @@ export const interviewCrudRouter = router({
           },
         },
       });
+
+      // Fire-and-forget: send interview invitation email
+      const org = await db.organization.findFirst({
+        where: { id: ctx.user.organizationId },
+        select: { name: true, billingEmail: true },
+      });
+      if (interview.candidate?.email && org) {
+        emailService.sendInterviewInvitation({
+          candidateEmail: interview.candidate.email,
+          candidateName: `${interview.candidate.firstName} ${interview.candidate.lastName}`,
+          vacancyTitle: interview.vacancy?.title ?? '',
+          companyName: org.name,
+          interviewType: data.type,
+          scheduledAt: data.scheduledAt,
+          duration: data.duration,
+          location: data.location ?? undefined,
+          meetingUrl: data.meetingUrl ?? undefined,
+          contactEmail: org.billingEmail ?? 'rrhh@timsinternational.com',
+        });
+      }
+
+      return interview;
     }),
 
   // 8.4 — Reschedule an interview
@@ -169,13 +194,41 @@ export const interviewCrudRouter = router({
         });
       }
 
-      return db.interview.update({
+      const updated = await db.interview.update({
         where: { id },
         data: {
           ...data,
           status: 'rescheduled',
         },
+        include: {
+          candidate: { select: { firstName: true, lastName: true, email: true } },
+          vacancy: { select: { title: true } },
+        },
       });
+
+      // Fire-and-forget: send reschedule notification
+      const org = await db.organization.findFirst({
+        where: { id: ctx.user.organizationId },
+        select: { name: true, billingEmail: true },
+      });
+      if (updated.candidate?.email && org) {
+        emailService.sendInterviewReschedule({
+          candidateEmail: updated.candidate.email,
+          candidateName: `${updated.candidate.firstName} ${updated.candidate.lastName}`,
+          vacancyTitle: updated.vacancy?.title ?? '',
+          companyName: org.name,
+          interviewType: existing.type,
+          oldScheduledAt: existing.scheduledAt,
+          newScheduledAt: data.scheduledAt,
+          scheduledAt: data.scheduledAt,
+          duration: data.duration ?? existing.duration,
+          location: data.location ?? existing.location ?? undefined,
+          meetingUrl: data.meetingUrl ?? existing.meetingUrl ?? undefined,
+          contactEmail: org.billingEmail ?? 'rrhh@timsinternational.com',
+        });
+      }
+
+      return updated;
     }),
 
   // 8.5 — Cancel an interview
@@ -195,13 +248,35 @@ export const interviewCrudRouter = router({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Entrevista no encontrada' });
       }
 
-      return db.interview.update({
+      const cancelled = await db.interview.update({
         where: { id: input.id },
         data: {
           status: 'cancelled',
           cancelledAt: new Date(),
           cancelReason: input.cancelReason,
         },
+        include: {
+          candidate: { select: { firstName: true, lastName: true, email: true } },
+          vacancy: { select: { title: true } },
+        },
       });
+
+      // Fire-and-forget: send cancellation notification
+      const org = await db.organization.findFirst({
+        where: { id: ctx.user.organizationId },
+        select: { name: true, billingEmail: true },
+      });
+      if (cancelled.candidate?.email && org) {
+        emailService.sendInterviewCancellation({
+          candidateEmail: cancelled.candidate.email,
+          candidateName: `${cancelled.candidate.firstName} ${cancelled.candidate.lastName}`,
+          vacancyTitle: cancelled.vacancy?.title ?? '',
+          companyName: org.name,
+          cancelReason: input.cancelReason,
+          contactEmail: org.billingEmail ?? 'rrhh@timsinternational.com',
+        });
+      }
+
+      return cancelled;
     }),
 });

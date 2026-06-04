@@ -3,6 +3,7 @@ import { router, publicProcedure, permissionProcedure } from '../../trpc';
 import { db } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import crypto from 'crypto';
+import { emailService } from '../../services/email.service';
 
 export const offerSigningRouter = router({
   // Generate a unique signing link for an offer
@@ -11,7 +12,11 @@ export const offerSigningRouter = router({
     .mutation(async ({ ctx, input }) => {
       const offer = await db.offer.findFirst({
         where: { id: input.offerId, organizationId: ctx.user.organizationId },
-        select: { id: true, status: true, settings: true },
+        select: {
+          id: true, status: true, settings: true,
+          candidate: { select: { firstName: true, lastName: true, email: true } },
+          vacancy: { select: { title: true } },
+        },
       });
 
       if (!offer) {
@@ -37,9 +42,25 @@ export const offerSigningRouter = router({
         },
       });
 
-      return {
-        signingUrl: `/offers/sign/${signingToken}`,
-      };
+      const signingUrl = `/offers/sign/${signingToken}`;
+
+      // Fire-and-forget: send offer email to candidate
+      const org = await db.organization.findFirst({
+        where: { id: ctx.user.organizationId },
+        select: { name: true },
+      });
+      if (offer.candidate.email && org) {
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.tims.co';
+        emailService.sendOfferToCandidate({
+          candidateEmail: offer.candidate.email,
+          candidateName: `${offer.candidate.firstName} ${offer.candidate.lastName}`,
+          vacancyTitle: offer.vacancy?.title ?? '',
+          companyName: org.name,
+          signingUrl: `${baseUrl}${signingUrl}`,
+        });
+      }
+
+      return { signingUrl };
     }),
 
   // PUBLIC: Get offer data by signing token (no auth required)
@@ -120,19 +141,56 @@ export const offerSigningRouter = router({
       }
 
       const existingSettings = (offer.settings as Record<string, unknown>) ?? {};
+      const now = new Date();
+
+      // Fetch candidate + vacancy + org info for notification
+      const fullOffer = await db.offer.findFirst({
+        where: { id: offer.id },
+        select: {
+          organizationId: true,
+          candidate: { select: { firstName: true, lastName: true } },
+          vacancy: { select: { title: true } },
+        },
+      });
 
       await db.offer.update({
         where: { id: offer.id },
         data: {
           status: 'accepted',
-          respondedAt: new Date(),
+          respondedAt: now,
           settings: {
             ...existingSettings,
             signatureName: input.signatureName,
-            acceptedAt: new Date().toISOString(),
+            acceptedAt: now.toISOString(),
           },
         },
       });
+
+      // Fire-and-forget: notify HR team
+      if (fullOffer) {
+        const org = await db.organization.findFirst({
+          where: { id: fullOffer.organizationId },
+          select: { name: true },
+        });
+        const hrUsers = await db.user.findMany({
+          where: {
+            organizationId: fullOffer.organizationId,
+            isActive: true,
+            userRoles: { some: { role: { slug: { in: ['hr_admin', 'super_admin'] } } } },
+          },
+          select: { email: true },
+        });
+        if (org && hrUsers.length > 0) {
+          emailService.notifyOfferAccepted({
+            hrEmails: hrUsers.map((u) => u.email),
+            recipientName: 'Equipo de RRHH',
+            candidateName: `${fullOffer.candidate.firstName} ${fullOffer.candidate.lastName}`,
+            vacancyTitle: fullOffer.vacancy?.title ?? '',
+            companyName: org.name,
+            acceptedAt: now,
+          });
+        }
+      }
 
       return { success: true };
     }),
@@ -166,18 +224,55 @@ export const offerSigningRouter = router({
       }
 
       const existingSettings = (offer.settings as Record<string, unknown>) ?? {};
+      const now = new Date();
+
+      // Fetch candidate + vacancy + org info for notification
+      const fullOffer = await db.offer.findFirst({
+        where: { id: offer.id },
+        select: {
+          organizationId: true,
+          candidate: { select: { firstName: true, lastName: true } },
+          vacancy: { select: { title: true } },
+        },
+      });
 
       await db.offer.update({
         where: { id: offer.id },
         data: {
           status: 'declined',
-          respondedAt: new Date(),
+          respondedAt: now,
           settings: {
             ...existingSettings,
-            declinedAt: new Date().toISOString(),
+            declinedAt: now.toISOString(),
           },
         },
       });
+
+      // Fire-and-forget: notify HR team
+      if (fullOffer) {
+        const org = await db.organization.findFirst({
+          where: { id: fullOffer.organizationId },
+          select: { name: true },
+        });
+        const hrUsers = await db.user.findMany({
+          where: {
+            organizationId: fullOffer.organizationId,
+            isActive: true,
+            userRoles: { some: { role: { slug: { in: ['hr_admin', 'super_admin'] } } } },
+          },
+          select: { email: true },
+        });
+        if (org && hrUsers.length > 0) {
+          emailService.notifyOfferDeclined({
+            hrEmails: hrUsers.map((u) => u.email),
+            recipientName: 'Equipo de RRHH',
+            candidateName: `${fullOffer.candidate.firstName} ${fullOffer.candidate.lastName}`,
+            vacancyTitle: fullOffer.vacancy?.title ?? '',
+            companyName: org.name,
+            declinedAt: now,
+          });
+        }
+      }
 
       return { success: true };
     }),
