@@ -93,6 +93,14 @@ export const performanceOkrsRouter = router({
     .mutation(async ({ ctx, input }) => {
       const { keyResults, ...okrData } = input;
 
+      // Verify the referenced user belongs to the caller's org (no cross-tenant ref)
+      const userInOrg = await db.user.count({
+        where: { id: input.userId, organizationId: ctx.user.organizationId },
+      });
+      if (userInOrg === 0) {
+        throw new Error('Usuario referenciado no encontrado en esta organizacion');
+      }
+
       return db.okr.create({
         data: {
           ...okrData,
@@ -127,8 +135,15 @@ export const performanceOkrsRouter = router({
         progress: z.number().min(0).max(100).optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const { id, ...data } = input;
+
+      // Verify the OKR belongs to the caller's org (IDOR prevention)
+      const okr = await db.okr.findFirst({
+        where: { id, organizationId: ctx.user.organizationId },
+        select: { id: true },
+      });
+      if (!okr) throw new Error('OKR no encontrado');
 
       return db.okr.update({
         where: { id },
@@ -148,8 +163,15 @@ export const performanceOkrsRouter = router({
         title: z.string().min(1).max(500).optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const { id, ...data } = input;
+
+      // Verify the key result belongs to the caller's org (IDOR prevention)
+      const existing = await db.keyResult.findFirst({
+        where: { id, organizationId: ctx.user.organizationId },
+        select: { id: true },
+      });
+      if (!existing) throw new Error('Key Result no encontrado');
 
       const keyResult = await db.keyResult.update({
         where: { id },
