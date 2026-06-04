@@ -1,6 +1,28 @@
 import { z } from 'zod';
+import { TRPCError } from '@trpc/server';
 import { router, publicProcedure, protectedProcedure } from '../trpc';
 import { db } from '@tims/db';
+
+// Verify a Cloudflare Turnstile token on the public apply form. Env-gated: when
+// TURNSTILE_SECRET_KEY is not configured (dev / not-yet-enabled), verification is
+// skipped so existing flows keep working. Once the secret is set, a valid token is
+// required — this throttles scripted spam/DoS against the unauthenticated endpoint.
+async function verifyCaptcha(token: string | undefined): Promise<boolean> {
+  const secret = process.env.TURNSTILE_SECRET_KEY;
+  if (!secret) return true; // not configured — skip
+  if (!token) return false;
+  try {
+    const res = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ secret, response: token }),
+    });
+    const data = (await res.json()) as { success?: boolean };
+    return data.success === true;
+  } catch {
+    return false; // fail closed on verification error
+  }
+}
 
 export const portalRouter = router({
   // ── Public (no auth) ────────────────────────────────────────
@@ -120,9 +142,17 @@ export const portalRouter = router({
         yearsExperience: z.number().int().min(0).max(50).optional(),
         location: z.string().max(200).optional(),
         coverLetter: z.string().max(5000).optional(),
+        captchaToken: z.string().max(4096).optional(),
       })
     )
     .mutation(async ({ input }) => {
+      if (!(await verifyCaptcha(input.captchaToken))) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Verificacion de seguridad fallida. Recarga la pagina e intenta de nuevo.',
+        });
+      }
+
       const vacancy = await db.vacancy.findFirstOrThrow({
         where: { id: input.vacancyId, status: 'published', deletedAt: null },
         include: { stages: { where: { isDefault: true }, take: 1 } },

@@ -81,6 +81,19 @@ const withRLS = t.middleware(async ({ ctx, next }) => {
   return next({ ctx: { db } });
 });
 
+// HR admin module access — explicit ALLOWLIST (fail-closed). A newly added module
+// is NOT granted to hr_admin until added here, unlike the previous "everything
+// except [billing, integration]" denylist which auto-granted new (possibly
+// sensitive) modules. This set preserves the exact access hr_admin already had.
+// REVIEW: audit / feature_flags / monitoring / organization are likely not HR
+// concerns — remove once product confirms no hr_admin workflow relies on them.
+const HR_ADMIN_MODULES = new Set<string>([
+  'assessment', 'audit', 'candidate', 'compensation', 'dei', 'engagement',
+  'feature_flags', 'interview', 'learning', 'monitoring', 'ninebox', 'offer',
+  'onboarding', 'organization', 'performance', 'pipeline', 'succession',
+  'team_intel', 'user', 'vacancy',
+]);
+
 // Permission middleware factory
 function requirePermission(module: string, action: string) {
   return t.middleware(async ({ ctx, next }) => {
@@ -93,12 +106,9 @@ function requirePermission(module: string, action: string) {
       return next();
     }
 
-    // HR admin has access to all HR modules
-    if (ctx.user.roles.includes('hr_admin')) {
-      const nonHrModules = ['billing', 'integration'];
-      if (!nonHrModules.includes(module)) {
-        return next();
-      }
+    // HR admin: explicit allowlist (see HR_ADMIN_MODULES above)
+    if (ctx.user.roles.includes('hr_admin') && HR_ADMIN_MODULES.has(module)) {
+      return next();
     }
 
     // Check specific permissions in database
