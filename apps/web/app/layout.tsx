@@ -4,6 +4,12 @@ import './globals.css';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 
+// Render every route dynamically so Next.js can stamp the per-request CSP nonce
+// (set in middleware.ts) onto its inline bootstrap scripts. Statically
+// prerendered HTML can't carry a per-request nonce, so those scripts would be
+// blocked by the nonce-based CSP. Cascades to all nested segments.
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: 'TIMS Platform',
   description: 'Human Capital Management by TIMS International',
