@@ -52,13 +52,14 @@ const withRLS = t.middleware(async ({ ctx, next }) => {
     });
   }
 
-  // SET LOCAL doesn't support parameterized values ($1) — must use Prisma.raw()
-  // Validate UUID format to prevent SQL injection before interpolating
+  // set_config(key, value, is_local=true) is the parameterizable equivalent of
+  // SET LOCAL — the value binds as $1, so there is no interpolation. UUID format
+  // is still validated as defense-in-depth.
   const orgId = ctx.user.organizationId;
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(orgId)) {
     throw new TRPCError({ code: 'FORBIDDEN', message: 'Invalid organization ID format' });
   }
-  await db.$executeRawUnsafe(`SET LOCAL app.current_org_id = '${orgId}'`);
+  await db.$executeRaw`SELECT set_config('app.current_org_id', ${orgId}, true)`;
 
   return next({ ctx: { db } });
 });
