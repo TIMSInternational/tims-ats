@@ -29,7 +29,25 @@ pooler (port 6543, transaction mode)**, which is also why the per-query
   left **unset** (the direct endpoint can't sustain the doubled pool — see warning
   above). Activation is one env var away once the pooler URL is used.
 
-### Cutover attempt findings (2026-06-04) — BLOCKED on Supavisor + custom role
+### ✅ RESOLVED — enforcement is LIVE (2026-06-04)
+The Supavisor custom-role blocker was solved by **not logging in as `app_tenant` at all**.
+RLS bypass is evaluated against the *current* role, so the app connects as `postgres`
+(which the pooler accepts) and each tenant query runs `SET LOCAL ROLE app_tenant` in its
+transaction — dropping to the non-bypass role so RLS applies. No custom-role pooler auth,
+no second connection pool.
+
+- `app_tenant` is now `NOLOGIN NOBYPASSRLS` (never authenticates directly); `GRANT app_tenant
+  TO postgres` lets `postgres` `SET ROLE` to it. (In the migration + applied live.)
+- `tenant-client.ts` wraps each op in `$transaction([SET LOCAL ROLE app_tenant, set_config,
+  query])`. Gated by `RLS_ENFORCED=true`.
+- **Verified end-to-end through the running app:** authenticated `candidate.list` returned
+  HTTP 200 with the 22 TIMS candidates via the RLS path; base/platform queries (no SET ROLE)
+  keep the `postgres` bypass; unset GUC fails closed.
+- **Production env:** `DATABASE_URL` → postgres **pooler** (`aws-1-us-west-2.pooler.supabase.com:6543/...?pgbouncer=true`,
+  IPv4/reliable) and `RLS_ENFORCED=true`. Set both in Vercel. Rollback = `RLS_ENFORCED=false`
+  (instant) or `DISABLE ROW LEVEL SECURITY` per table.
+
+### Cutover attempt findings (2026-06-04) — initial Supavisor blocker (now resolved above)
 Tried to activate locally and hit two Supabase-platform constraints:
 - **Direct endpoint is IPv6-only.** `db.lzhfnjfsdwdywwnlqgqq.supabase.co` has only an
   AAAA record (`2600:1f14::/34` → **us-west-2**); from an IPv4/flaky-IPv6 network it's
