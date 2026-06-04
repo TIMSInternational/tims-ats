@@ -4,6 +4,21 @@ import { db } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { randomBytes, createHash } from 'crypto';
 
+// Webhook fields safe to return to clients — deliberately EXCLUDES `secret`
+// (the HMAC signing secret) so it is never exposed via read/create/update.
+const WEBHOOK_PUBLIC_SELECT = {
+  id: true,
+  organizationId: true,
+  url: true,
+  events: true,
+  isActive: true,
+  lastTriggeredAt: true,
+  failureCount: true,
+  createdById: true,
+  createdAt: true,
+  updatedAt: true,
+} satisfies Prisma.WebhookSelect;
+
 export const integrationRouter = router({
   // ── Connectors ──────────────────────────────────────────────
 
@@ -123,6 +138,7 @@ export const integrationRouter = router({
   listWebhooks: permissionProcedure('integration', 'read').query(async ({ ctx }) => {
     return db.webhook.findMany({
       where: { organizationId: ctx.user.organizationId },
+      select: WEBHOOK_PUBLIC_SELECT,
       orderBy: { createdAt: 'desc' },
     });
   }),
@@ -142,6 +158,7 @@ export const integrationRouter = router({
           organizationId: ctx.user.organizationId,
           createdById: ctx.user.id,
         },
+        select: WEBHOOK_PUBLIC_SELECT,
       });
     }),
 
@@ -159,6 +176,7 @@ export const integrationRouter = router({
       return db.webhook.update({
         where: { id, organizationId: ctx.user.organizationId },
         data,
+        select: WEBHOOK_PUBLIC_SELECT,
       });
     }),
 
