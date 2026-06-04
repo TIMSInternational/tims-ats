@@ -16,7 +16,10 @@ export default function LoginPage() {
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirect = searchParams.get('redirect') || '/';
+  // Only accept same-origin relative paths (must start with a single '/', not
+  // '//' or a scheme) to prevent open-redirect / OAuth redirectTo manipulation.
+  const rawRedirect = searchParams.get('redirect') || '/';
+  const redirect = /^\/(?!\/)/.test(rawRedirect) ? rawRedirect : '/';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -51,7 +54,7 @@ function LoginForm() {
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/auth/callback?redirect=${redirect}`,
+        redirectTo: `${window.location.origin}/auth/callback?redirect=${encodeURIComponent(redirect)}`,
       },
     });
   };
@@ -62,7 +65,7 @@ function LoginForm() {
       provider: 'azure',
       options: {
         scopes: 'openid profile email',
-        redirectTo: `${window.location.origin}/auth/callback?redirect=${redirect}`,
+        redirectTo: `${window.location.origin}/auth/callback?redirect=${encodeURIComponent(redirect)}`,
       },
     });
   };
