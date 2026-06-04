@@ -14,9 +14,9 @@
  */
 import { PrismaClient } from '@prisma/client';
 
-const url = process.env.TENANT_DATABASE_URL;
-const A = process.env.ORG_A;
-const B = process.env.ORG_B;
+const url = process.env.TENANT_DATABASE_URL ?? '';
+const A = process.env.ORG_A ?? '';
+const B = process.env.ORG_B ?? '';
 if (!url || !A || !B) {
   console.error('Set TENANT_DATABASE_URL, ORG_A, ORG_B');
   process.exit(2);
