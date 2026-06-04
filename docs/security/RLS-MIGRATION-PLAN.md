@@ -29,6 +29,33 @@ pooler (port 6543, transaction mode)**, which is also why the per-query
   left **unset** (the direct endpoint can't sustain the doubled pool — see warning
   above). Activation is one env var away once the pooler URL is used.
 
+### Cutover attempt findings (2026-06-04) — BLOCKED on Supavisor + custom role
+Tried to activate locally and hit two Supabase-platform constraints:
+- **Direct endpoint is IPv6-only.** `db.lzhfnjfsdwdywwnlqgqq.supabase.co` has only an
+  AAAA record (`2600:1f14::/34` → **us-west-2**); from an IPv4/flaky-IPv6 network it's
+  intermittently unreachable. So the app should use the **pooler** for all connections.
+- **Pooler found:** `aws-1-us-west-2.pooler.supabase.com:6543` (usernames
+  `postgres.lzhfnjfsdwdywwnlqgqq` / `app_tenant.lzhfnjfsdwdywwnlqgqq`, add `?pgbouncer=true`).
+  The `postgres` user authenticates and queries fine through it (base connection works).
+- **BLOCKER:** Supavisor **rejects the custom `app_tenant` role** ("authentication failed …
+  credentials for app_tenant are not valid"), even though that exact password works on the
+  direct connection (proven by the isolation tests). Repeated attempts trip Supavisor's
+  **auth circuit breaker** (`ECIRCUITBREAKER`), temporarily blocking all pooler connections.
+  This is a known friction with custom DB roles + Supavisor; the built-in roles work but
+  bypass-less custom roles may need Supabase-side enablement.
+
+**Resolution options for the user (pick one):**
+1. Make `app_tenant` authenticate via Supavisor — verify in the Supabase dashboard /
+   support that custom roles are permitted on the pooler; may need recreating the role or a
+   pooler cache refresh.
+2. Use **session-mode pooler** (`aws-1-us-west-2.pooler.supabase.com:5432`) for
+   `TENANT_DATABASE_URL` — session mode handles role auth differently and may accept app_tenant.
+3. Enable the Supabase **IPv4 add-on** and connect `app_tenant` to the direct endpoint
+   (where it's already proven to work) with a small `connection_limit`.
+
+Until one is in place, `TENANT_DATABASE_URL` is left unset (RLS applied but dormant; app
+runs on the `postgres` connection unchanged).
+
 ### To activate (ops)
 1. In Supabase, get the **pooler** connection string (port 6543). Build the
    `app_tenant` variant (username `app_tenant.<project-ref>`).
