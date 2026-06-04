@@ -15,9 +15,26 @@ export const router = t.router;
 export const mergeRouters = t.mergeRouters;
 export const createCallerFactory = t.createCallerFactory;
 
+// Derive a trusted client identifier for rate limiting. Authenticated requests key
+// on the user id. For anonymous requests, NEVER trust the client-controlled
+// left-most `x-forwarded-for` value — an attacker rotates it to get a fresh bucket
+// per request, defeating the limiter entirely. Prefer `x-real-ip` (set by the
+// platform edge, not client-spoofable); otherwise use the LAST hop of
+// `x-forwarded-for` (the entry appended by the trusted proxy), never the first.
+function anonymousIdentifier(headers: Headers): string {
+  const realIp = headers.get('x-real-ip')?.trim();
+  if (realIp) return `ip:${realIp}`;
+  const xff = headers.get('x-forwarded-for');
+  if (xff) {
+    const hops = xff.split(',').map((p) => p.trim()).filter(Boolean);
+    if (hops.length > 0) return `ip:${hops[hops.length - 1]}`;
+  }
+  return 'anonymous';
+}
+
 // Rate limiting middleware
 const withRateLimit = t.middleware(async ({ ctx, next, path, type }) => {
-  const identifier = ctx.user?.id || ctx.headers.get('x-forwarded-for') || 'anonymous';
+  const identifier = ctx.user?.id ?? anonymousIdentifier(ctx.headers);
   const category = getRateLimitCategory(path, type as 'query' | 'mutation');
   await checkRateLimit(identifier, category);
   return next();
