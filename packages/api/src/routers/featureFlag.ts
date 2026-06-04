@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { router, protectedProcedure, permissionProcedure } from '../trpc';
-import { db, Prisma } from '@tims/db';
+import { tenantDb as db, Prisma } from '@tims/db';
 
 export const featureFlagRouter = router({
   // List all feature flags for the organization

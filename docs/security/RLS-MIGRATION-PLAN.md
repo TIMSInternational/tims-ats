@@ -43,17 +43,18 @@
    migration (or run the SQL via `psql` as the privileged role).
 2. Rotate the `app_tenant` password (`ALTER ROLE app_tenant PASSWORD '<secret>'`),
    store it, set `TENANT_DATABASE_URL` to its connection string (pooler, 6543).
-3. **Finish the router migration** — switch the remaining tenant routers to
-   `import { tenantDb as db }`:
-   - **Migrate (tenant-scoped):** candidate, pipeline, vacancy/*, interview/*, offer/*,
-     assessment, performance/*, learning, engagement, compensation, succession, ninebox,
-     dei, team-intel, monitoring, notification, billing, integration, user, organization,
-     onboarding ✅. Also their repositories/services (`candidate.repository.ts`,
-     `pipeline.repository.ts`, etc.) that `import { db }`.
-   - **KEEP on privileged `db` (cross-org / no-org):** all `routers/platform/**`
-     (platformProcedure), `portal.ts` (public, cross-org by vacancy), `auth.ts`, the tRPC
-     context builder (`apps/web/app/api/trpc/[trpc]/route.ts`), `trpc.ts` middleware
-     (audit/permission lookups), and workers.
+3. ✅ **Router migration DONE.** All 37 tenant router/repository files now
+   `import { tenantDb as db }` (offer/*, vacancy/*, interview/*, performance/*,
+   assessment, learning, engagement, compensation, succession, ninebox, dei, team-intel,
+   monitoring, notification, billing, integration, user, organization, audit, featureFlag,
+   onboarding + `candidate.repository.ts`/`pipeline.repository.ts`). KEPT on privileged
+   `db`: all `routers/platform/**`, `portal.ts`, `auth.ts`, the tRPC context builder, the
+   `trpc.ts` audit/permission middleware, and workers.
+   - **Clean for enforcement:** verified there are **no `$transaction` and no
+     `$queryRaw`/`$executeRaw` calls in any migrated tenant file**, so the extension's
+     per-operation `$transaction([set_config, query])` has no nested-transaction or
+     raw-bypass hazards. (If interactive transactions are added to tenant code later, the
+     extension must set the GUC once at the transaction start instead of per-op.)
 4. Add `tests/security/tenant-isolation.test.ts` (or run `scripts/rls-isolation-check.ts`
    in CI against a seeded staging DB) asserting cross-tenant reads/writes are blocked
    **on the pooled connection**.

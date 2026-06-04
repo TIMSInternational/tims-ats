@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { router, protectedProcedure, permissionProcedure, auditedProcedure } from '../trpc';
-import { db } from '@tims/db';
+import { tenantDb as db } from '@tims/db';
 import { createUserSchema, updateProfileSchema, assignRoleSchema } from '@tims/shared';
 
 export const userRouter = router({
