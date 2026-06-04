@@ -5,6 +5,23 @@ import { db } from '@tims/db';
 export const portalRouter = router({
   // ── Public (no auth) ────────────────────────────────────────
 
+  // Get portal stats for hero section
+  getPortalStats: publicProcedure
+    .input(z.object({ organizationId: z.string().uuid() }))
+    .query(async ({ input }) => {
+      const where = { organizationId: input.organizationId, status: 'published', deletedAt: null };
+      const [totalVacancies, vacancies] = await Promise.all([
+        db.vacancy.count({ where }),
+        db.vacancy.findMany({
+          where,
+          select: { location: true, unit: { select: { name: true } } },
+        }),
+      ]);
+      const locations = new Set(vacancies.map((v) => v.location).filter(Boolean));
+      const departments = new Set(vacancies.map((v) => v.unit?.name).filter(Boolean));
+      return { totalVacancies, totalLocations: locations.size, totalDepartments: departments.size };
+    }),
+
   // List published vacancies for the careers portal
   listVacancies: publicProcedure
     .input(
@@ -32,11 +49,15 @@ export const portalRouter = router({
         select: {
           id: true,
           title: true,
+          description: true,
           location: true,
           remotePolicy: true,
           contractType: true,
+          salary: true,
+          priority: true,
           createdAt: true,
           company: { select: { id: true, name: true } },
+          unit: { select: { name: true } },
         },
         orderBy: { createdAt: 'desc' },
       });
@@ -52,24 +73,35 @@ export const portalRouter = router({
   getVacancy: publicProcedure
     .input(z.object({ id: z.string().uuid() }))
     .query(async ({ input }) => {
-      return db.vacancy.findFirstOrThrow({
-        where: { id: input.id, status: 'published', deletedAt: null },
-        select: {
-          id: true,
-          title: true,
-          description: true,
-          location: true,
-          remotePolicy: true,
-          contractType: true,
-          salary: true,
-          positions: true,
-          createdAt: true,
-          company: { select: { id: true, name: true } },
-          jobProfile: {
-            select: { competencies: true, requirements: true },
+      const [vacancy, applicantCount] = await Promise.all([
+        db.vacancy.findFirstOrThrow({
+          where: { id: input.id, status: 'published', deletedAt: null },
+          select: {
+            id: true,
+            organizationId: true,
+            title: true,
+            description: true,
+            location: true,
+            remotePolicy: true,
+            contractType: true,
+            salary: true,
+            positions: true,
+            priority: true,
+            settings: true,
+            createdAt: true,
+            company: { select: { id: true, name: true } },
+            unit: { select: { name: true } },
+            organization: { select: { name: true, logo: true } },
+            jobProfile: {
+              select: { competencies: true, requirements: true },
+            },
           },
-        },
-      });
+        }),
+        db.application.count({
+          where: { vacancyId: input.id },
+        }),
+      ]);
+      return { ...vacancy, applicantCount };
     }),
 
   // Apply to a vacancy (public — creates candidate + application)
@@ -80,11 +112,14 @@ export const portalRouter = router({
         firstName: z.string().min(1).max(100),
         lastName: z.string().min(1).max(100),
         email: z.string().email(),
-        phone: z.string().optional(),
-        source: z.string().default('portal'),
-        linkedinUrl: z.string().url().optional(),
-        currentTitle: z.string().optional(),
-        currentCompany: z.string().optional(),
+        phone: z.string().max(30).optional(),
+        source: z.string().max(50).default('portal'),
+        linkedinUrl: z.string().url().max(2048).optional(),
+        currentTitle: z.string().max(200).optional(),
+        currentCompany: z.string().max(200).optional(),
+        yearsExperience: z.number().int().min(0).max(50).optional(),
+        location: z.string().max(200).optional(),
+        coverLetter: z.string().max(5000).optional(),
       })
     )
     .mutation(async ({ input }) => {
@@ -95,7 +130,6 @@ export const portalRouter = router({
 
       const orgId = vacancy.organizationId;
 
-      // Upsert candidate
       const candidate = await db.candidate.upsert({
         where: { organizationId_email: { organizationId: orgId, email: input.email } },
         create: {
@@ -109,45 +143,36 @@ export const portalRouter = router({
           linkedinUrl: input.linkedinUrl,
           currentTitle: input.currentTitle,
           currentCompany: input.currentCompany,
+          yearsExperience: input.yearsExperience,
+          location: input.location,
         },
         update: {
           firstName: input.firstName,
           lastName: input.lastName,
           phone: input.phone,
+          linkedinUrl: input.linkedinUrl,
+          currentTitle: input.currentTitle,
+          currentCompany: input.currentCompany,
+          yearsExperience: input.yearsExperience,
+          location: input.location,
         },
       });
 
-      // Find the default stage (first stage)
       const defaultStage = vacancy.stages[0];
-      if (!defaultStage) {
-        // Fallback: get the first ordered stage
-        const firstStage = await db.pipelineStage.findFirst({
-          where: { vacancyId: vacancy.id },
-          orderBy: { order: 'asc' },
-        });
-        if (!firstStage) {
-          throw new Error('No pipeline stages configured for this vacancy');
-        }
-
-        const application = await db.application.create({
-          data: {
-            organizationId: orgId,
-            candidateId: candidate.id,
-            vacancyId: vacancy.id,
-            currentStageId: firstStage.id,
-            source: input.source,
-          },
-        });
-        return { applicationId: application.id, candidateId: candidate.id };
-      }
+      const stageId = defaultStage?.id ?? (await db.pipelineStage.findFirstOrThrow({
+        where: { vacancyId: vacancy.id },
+        orderBy: { order: 'asc' },
+        select: { id: true },
+      })).id;
 
       const application = await db.application.create({
         data: {
           organizationId: orgId,
           candidateId: candidate.id,
           vacancyId: vacancy.id,
-          currentStageId: defaultStage.id,
+          currentStageId: stageId,
           source: input.source,
+          coverLetter: input.coverLetter,
         },
       });
 

@@ -33,9 +33,14 @@ describe('Authentication & Authorization', () => {
       'acceptInvitation',
       'syncUser',
       // Portal endpoints — public-facing candidate portal (unauthenticated job browsing)
+      'getPortalStats',
       'listVacancies',
       'getVacancy',
       'applyToVacancy',
+      // Offer signing — candidate accesses an offer via an emailed signing token (no account)
+      'getBySigningToken',
+      'acceptByToken',
+      'declineByToken',
     ];
     const violations: string[] = [];
 

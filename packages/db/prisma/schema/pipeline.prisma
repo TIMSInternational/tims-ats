@@ -32,6 +32,7 @@ model Application {
   rejectedAt     DateTime? @map("rejected_at")
   rejectedReason String?   @map("rejected_reason")
   feedback       String?
+  coverLetter    String?   @map("cover_letter")
   referralToken  String?   @map("referral_token")
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
