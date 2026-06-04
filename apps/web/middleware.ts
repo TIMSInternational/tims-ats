@@ -9,6 +9,7 @@ const PUBLIC_PATHS = [
   '/reset-password',
   '/auth/callback',
   '/auth/confirm',
+  '/careers',
 ];
 
 export async function middleware(request: NextRequest) {

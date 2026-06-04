@@ -112,11 +112,14 @@ export const portalRouter = router({
         firstName: z.string().min(1).max(100),
         lastName: z.string().min(1).max(100),
         email: z.string().email(),
-        phone: z.string().optional(),
-        source: z.string().default('portal'),
-        linkedinUrl: z.string().url().optional(),
-        currentTitle: z.string().optional(),
-        currentCompany: z.string().optional(),
+        phone: z.string().max(30).optional(),
+        source: z.string().max(50).default('portal'),
+        linkedinUrl: z.string().url().max(2048).optional(),
+        currentTitle: z.string().max(200).optional(),
+        currentCompany: z.string().max(200).optional(),
+        yearsExperience: z.number().int().min(0).max(50).optional(),
+        location: z.string().max(200).optional(),
+        coverLetter: z.string().max(5000).optional(),
       })
     )
     .mutation(async ({ input }) => {
@@ -127,7 +130,6 @@ export const portalRouter = router({
 
       const orgId = vacancy.organizationId;
 
-      // Upsert candidate
       const candidate = await db.candidate.upsert({
         where: { organizationId_email: { organizationId: orgId, email: input.email } },
         create: {
@@ -141,45 +143,36 @@ export const portalRouter = router({
           linkedinUrl: input.linkedinUrl,
           currentTitle: input.currentTitle,
           currentCompany: input.currentCompany,
+          yearsExperience: input.yearsExperience,
+          location: input.location,
         },
         update: {
           firstName: input.firstName,
           lastName: input.lastName,
           phone: input.phone,
+          linkedinUrl: input.linkedinUrl,
+          currentTitle: input.currentTitle,
+          currentCompany: input.currentCompany,
+          yearsExperience: input.yearsExperience,
+          location: input.location,
         },
       });
 
-      // Find the default stage (first stage)
       const defaultStage = vacancy.stages[0];
-      if (!defaultStage) {
-        // Fallback: get the first ordered stage
-        const firstStage = await db.pipelineStage.findFirst({
-          where: { vacancyId: vacancy.id },
-          orderBy: { order: 'asc' },
-        });
-        if (!firstStage) {
-          throw new Error('No pipeline stages configured for this vacancy');
-        }
-
-        const application = await db.application.create({
-          data: {
-            organizationId: orgId,
-            candidateId: candidate.id,
-            vacancyId: vacancy.id,
-            currentStageId: firstStage.id,
-            source: input.source,
-          },
-        });
-        return { applicationId: application.id, candidateId: candidate.id };
-      }
+      const stageId = defaultStage?.id ?? (await db.pipelineStage.findFirstOrThrow({
+        where: { vacancyId: vacancy.id },
+        orderBy: { order: 'asc' },
+        select: { id: true },
+      })).id;
 
       const application = await db.application.create({
         data: {
           organizationId: orgId,
           candidateId: candidate.id,
           vacancyId: vacancy.id,
-          currentStageId: defaultStage.id,
+          currentStageId: stageId,
           source: input.source,
+          coverLetter: input.coverLetter,
         },
       });
 

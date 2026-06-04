@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { trpc } from '../../../../../../lib/trpc';
 import { Skeleton } from '../../../../../../components';
 import { toast } from '../../../../../../lib/toast';
+import { ApplyModal } from './apply-modal';
 
 interface JobDetailViewProps {
   orgSlug: string;
@@ -42,6 +43,7 @@ function remoteLabel(p: string | null) {
 
 export function JobDetailView({ orgSlug, vacancyId }: JobDetailViewProps) {
   const [search, setSearch] = useState('');
+  const [showApply, setShowApply] = useState(false);
   const vacancy = trpc.portal.getVacancy.useQuery({ id: vacancyId });
   const vacancies = trpc.portal.listVacancies.useQuery(
     { organizationId: vacancy.data?.organizationId ?? '', take: 20 },
@@ -169,9 +171,17 @@ export function JobDetailView({ orgSlug, vacancyId }: JobDetailViewProps) {
               {salary && fmtSalary(salary) && <span className="rounded-md bg-[#F6F6F6] px-2.5 py-1 text-[12px] font-semibold text-[#1F114C]">{fmtSalary(salary)} / ano</span>}
             </div>
             <div className="flex items-center gap-3">
-              <button onClick={() => toast('Proximamente')} className="h-11 rounded-lg bg-[#DD0C15] px-8 text-[14px] font-semibold text-white transition-colors hover:bg-[#c00b13]">Aplicar ahora</button>
+              <button onClick={() => setShowApply(true)} className="h-11 rounded-lg bg-[#DD0C15] px-8 text-[14px] font-semibold text-white transition-colors hover:bg-[#c00b13]">Aplicar ahora</button>
               <button onClick={() => toast('Guardado')} className="h-11 rounded-lg border border-[#1F114C] px-6 text-[14px] font-semibold text-[#1F114C] transition-colors hover:bg-[#F6F6F6]">Guardar</button>
             </div>
+            {showApply && (
+              <ApplyModal
+                vacancyId={v.id}
+                vacancyTitle={v.title}
+                companyName={companyName}
+                onClose={() => setShowApply(false)}
+              />
+            )}
           </div>
 
           {/* Content */}
