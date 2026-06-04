@@ -115,6 +115,29 @@ export const interviewCrudRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       const { evaluatorIds, ...data } = input;
+      const orgId = ctx.user.organizationId;
+
+      // Verify referenced resources belong to the caller's org. Without this, an
+      // attacker could schedule against another tenant's candidate — leaking their
+      // PII via the include AND emailing them an interview invitation.
+      const uniqueEvaluators = [...new Set(evaluatorIds)];
+      const [candidate, vacancy, evaluatorCount] = await Promise.all([
+        db.candidate.findFirst({ where: { id: input.candidateId, organizationId: orgId }, select: { id: true } }),
+        db.vacancy.findFirst({ where: { id: input.vacancyId, organizationId: orgId }, select: { id: true } }),
+        db.user.count({ where: { id: { in: uniqueEvaluators }, organizationId: orgId } }),
+      ]);
+      if (!candidate) throw new Error('Candidato no encontrado en esta organizacion');
+      if (!vacancy) throw new Error('Vacante no encontrada en esta organizacion');
+      if (evaluatorCount !== uniqueEvaluators.length) {
+        throw new Error('Evaluador no encontrado en esta organizacion');
+      }
+      if (input.applicationId) {
+        const application = await db.application.findFirst({
+          where: { id: input.applicationId, organizationId: orgId },
+          select: { id: true },
+        });
+        if (!application) throw new Error('Aplicacion no encontrada en esta organizacion');
+      }
 
       const interview = await db.interview.create({
         data: {
