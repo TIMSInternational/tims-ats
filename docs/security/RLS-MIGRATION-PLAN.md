@@ -1,7 +1,42 @@
 # Database-Level Tenant Isolation (Postgres RLS) — Migration Plan
 
-> Status: **PLANNED — not yet implemented.** Owner: NexaDev. Created after the
-> 2026-06-04 security audit. This is the highest-priority remaining security item.
+> Status: **FOUNDATION BUILT + EMPIRICALLY VERIFIED — not yet enforced in prod.**
+> Owner: NexaDev. Created after the 2026-06-04 security audit; highest-priority
+> remaining security item.
+
+## Implementation status (what is done vs remaining)
+
+**Done & verified**
+- ✅ Confirmed the blocker: the app connects as `postgres`, which has
+  `rolbypassrls = true` — RLS is a no-op for it. The app must connect as a
+  dedicated non-bypass role (`app_tenant`).
+- ✅ Migration written: `packages/db/prisma/migrations/20260604100000_enable_rls_tenant_isolation/migration.sql`
+  — creates `app_tenant`, grants, and `ENABLE/FORCE RLS` + `tenant_isolation`
+  policies on **81 tables** (71 by `organization_id`, `organizations` by `id`,
+  9 child/join tables by parent join; 3 global catalogs intentionally skipped).
+- ✅ **Empirically proven on the live Supabase instance** (scoped, reversible):
+  `app_tenant` scoped to org A sees only A's rows; org B sees **0** of A's rows;
+  unset GUC returns 0 with **no error** (fail closed); `WITH CHECK` blocks
+  cross-org writes; `postgres` keeps bypassing so the app is unaffected.
+- ✅ Found & fixed a policy bug during the proof: use
+  `NULLIF(current_setting('app.current_org_id', true), '')::uuid` — an unset GUC
+  returns `''`, and `''::uuid` raises instead of hiding rows.
+- ✅ App-layer foundation shipped **inert**: `tenant-context.ts` (AsyncLocalStorage)
+  and `tenant-client.ts` (`tenantDb` — sets the GUC in the same transaction as each
+  query). Gated on `TENANT_DATABASE_URL`; until that points at `app_tenant`, `tenantDb`
+  is a transparent passthrough over the base `db` (zero behavior/perf change).
+
+**Remaining (the cutover — do on staging first)**
+1. Establish a Prisma migration **baseline** (repo uses `db push`), then apply this
+   migration (or run the SQL via `psql` as the privileged role).
+2. Rotate the `app_tenant` password (`ALTER ROLE app_tenant PASSWORD '<secret>'`),
+   store it, set `TENANT_DATABASE_URL` to its connection string (pooler, 6543).
+3. Wire `runWithTenant(orgId, …)` into the tRPC context builder and switch
+   **tenant** routers from the global `db` to `ctx.db = tenantDb`. Keep the context
+   builder + platform routers + workers on the privileged `db`.
+4. Add `tests/security/tenant-isolation.test.ts` that connects as `app_tenant` and
+   asserts cross-tenant reads/writes are blocked **on the pooled connection**.
+5. Benchmark dashboard + pipeline p95 (target < 10% regression), then roll out.
 
 ## 1. Why this exists
 
