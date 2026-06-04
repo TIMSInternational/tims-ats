@@ -24,6 +24,11 @@ const envSchema = z.object({
   UPSTASH_REDIS_REST_URL: z.string().url().optional(),
   UPSTASH_REDIS_REST_TOKEN: z.string().min(1).optional(),
 
+  // Cloudflare Turnstile (CAPTCHA on public apply form — optional; enforced only
+  // when both keys are set)
+  NEXT_PUBLIC_TURNSTILE_SITE_KEY: z.string().min(1).optional(),
+  TURNSTILE_SECRET_KEY: z.string().min(1).optional(),
+
   // Node
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
 });

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { trpc } from '../../../../../../lib/trpc';
 import { toast } from '../../../../../../lib/toast';
 import { Modal } from '../../../../../../components';
+import { TurnstileWidget } from '../../../../../../components/turnstile-widget';
 
 interface ApplyModalProps {
   vacancyId: string;
@@ -45,10 +46,14 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, onClose }: Ap
   const [yearsExperience, setYearsExperience] = useState('');
   const [linkedinUrl, setLinkedinUrl] = useState('');
   const [coverLetter, setCoverLetter] = useState('');
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
 
+  const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
   const applyMutation = trpc.portal.applyToVacancy.useMutation();
 
   const isStep1Valid = firstName.trim() && lastName.trim() && email.trim() && email.includes('@');
+  // When a captcha is configured, a solved token is required to submit.
+  const captchaSatisfied = !turnstileSiteKey || !!captchaToken;
 
   const handleSubmit = async () => {
     if (!isStep1Valid) return;
@@ -66,6 +71,7 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, onClose }: Ap
         yearsExperience: yearsExperience ? parseInt(yearsExperience) : undefined,
         linkedinUrl: linkedinUrl.trim() || undefined,
         coverLetter: coverLetter.trim() || undefined,
+        captchaToken: captchaToken ?? undefined,
         source: 'portal',
       });
       setSuccess(true);
@@ -219,6 +225,12 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, onClose }: Ap
             </div>
           )}
 
+          {turnstileSiteKey && (
+            <div className="pt-1">
+              <TurnstileWidget siteKey={turnstileSiteKey} onToken={setCaptchaToken} />
+            </div>
+          )}
+
           <p className="text-[11px] text-[#8B8B8B]">
             Al enviar tu aplicacion, aceptas que {companyName} procese tus datos personales con fines de seleccion de personal.
           </p>
@@ -257,7 +269,7 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, onClose }: Ap
           ) : (
             <button
               onClick={handleSubmit}
-              disabled={!isStep1Valid || submitting}
+              disabled={!isStep1Valid || submitting || !captchaSatisfied}
               className="flex h-9 items-center gap-2 rounded-lg bg-[#DD0C15] px-5 text-sm font-medium text-white transition hover:bg-[#c00b13] disabled:opacity-50"
             >
               {submitting ? 'Enviando...' : 'Enviar aplicacion'}
