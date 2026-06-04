@@ -4,6 +4,40 @@
 > Owner: NexaDev. Created after the 2026-06-04 security audit; highest-priority
 > remaining security item.
 
+## ⚠️ Activation must use the POOLER (6543), not the direct endpoint (5432)
+
+Enabling enforcement makes the app open **two** connection pools (the privileged
+`postgres` pool for the context builder / platform routers, **and** the `app_tenant`
+pool for tenant routers). On the **direct** connection (port 5432) this doubles
+connection usage and exhausts Supabase's direct-connection limit — observed
+firsthand: setting `TENANT_DATABASE_URL` to the direct endpoint under load made the
+endpoint refuse new connections. **`TENANT_DATABASE_URL` MUST point at the Supavisor
+pooler (port 6543, transaction mode)**, which is also why the per-query
+`set_config`-in-transaction design was chosen (it survives transaction-mode pooling).
+
+## Applied state (2026-06-04)
+
+- ✅ **RLS migration APPLIED to the database**: 81 tables RLS-enabled with the
+  `tenant_isolation` policy; `app_tenant` role created (`rolbypassrls = false`).
+  Verified counts (81/81). Because `postgres` bypasses RLS, the running app
+  (which connects as `postgres`) is **unaffected** — RLS is currently dormant.
+- ✅ **DB-layer isolation PROVEN as `app_tenant`** across direct tables (candidates,
+  vacancies, interviews, offers, onboarding_plans, salary_bands, webhooks), the
+  `organizations` special-case (`id` policy), and the `user_roles` child table
+  (parent-join policy): scoped org sees its rows, no-context sees 0 (fail-closed).
+- ⏸️ **Not yet activated against the app**: `TENANT_DATABASE_URL` is intentionally
+  left **unset** (the direct endpoint can't sustain the doubled pool — see warning
+  above). Activation is one env var away once the pooler URL is used.
+
+### To activate (ops)
+1. In Supabase, get the **pooler** connection string (port 6543). Build the
+   `app_tenant` variant (username `app_tenant.<project-ref>`).
+2. Rotate the role password: `ALTER ROLE app_tenant PASSWORD '<secret>';` and store it.
+3. Set `TENANT_DATABASE_URL` to that pooler connection string (app + Vercel).
+4. Restart, run `scripts/rls-isolation-check.ts` against it, smoke-test the app,
+   benchmark p95, then ship. Rollback = unset `TENANT_DATABASE_URL` (instant) and/or
+   `ALTER TABLE … DISABLE ROW LEVEL SECURITY` per table.
+
 ## Implementation status (what is done vs remaining)
 
 **Done & verified**
