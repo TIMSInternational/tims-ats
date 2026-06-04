@@ -5,7 +5,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   return (
     <I18nProvider>
       <TRPCProvider>
-        <div className="min-h-screen bg-[#F6F6F6]">
+        <div className="min-h-screen bg-white">
           {children}
         </div>
       </TRPCProvider>

@@ -5,6 +5,23 @@ import { db } from '@tims/db';
 export const portalRouter = router({
   // ── Public (no auth) ────────────────────────────────────────
 
+  // Get portal stats for hero section
+  getPortalStats: publicProcedure
+    .input(z.object({ organizationId: z.string().uuid() }))
+    .query(async ({ input }) => {
+      const where = { organizationId: input.organizationId, status: 'published', deletedAt: null };
+      const [totalVacancies, vacancies] = await Promise.all([
+        db.vacancy.count({ where }),
+        db.vacancy.findMany({
+          where,
+          select: { location: true, unit: { select: { name: true } } },
+        }),
+      ]);
+      const locations = new Set(vacancies.map((v) => v.location).filter(Boolean));
+      const departments = new Set(vacancies.map((v) => v.unit?.name).filter(Boolean));
+      return { totalVacancies, totalLocations: locations.size, totalDepartments: departments.size };
+    }),
+
   // List published vacancies for the careers portal
   listVacancies: publicProcedure
     .input(
@@ -32,11 +49,15 @@ export const portalRouter = router({
         select: {
           id: true,
           title: true,
+          description: true,
           location: true,
           remotePolicy: true,
           contractType: true,
+          salary: true,
+          priority: true,
           createdAt: true,
           company: { select: { id: true, name: true } },
+          unit: { select: { name: true } },
         },
         orderBy: { createdAt: 'desc' },
       });
@@ -52,24 +73,35 @@ export const portalRouter = router({
   getVacancy: publicProcedure
     .input(z.object({ id: z.string().uuid() }))
     .query(async ({ input }) => {
-      return db.vacancy.findFirstOrThrow({
-        where: { id: input.id, status: 'published', deletedAt: null },
-        select: {
-          id: true,
-          title: true,
-          description: true,
-          location: true,
-          remotePolicy: true,
-          contractType: true,
-          salary: true,
-          positions: true,
-          createdAt: true,
-          company: { select: { id: true, name: true } },
-          jobProfile: {
-            select: { competencies: true, requirements: true },
+      const [vacancy, applicantCount] = await Promise.all([
+        db.vacancy.findFirstOrThrow({
+          where: { id: input.id, status: 'published', deletedAt: null },
+          select: {
+            id: true,
+            organizationId: true,
+            title: true,
+            description: true,
+            location: true,
+            remotePolicy: true,
+            contractType: true,
+            salary: true,
+            positions: true,
+            priority: true,
+            settings: true,
+            createdAt: true,
+            company: { select: { id: true, name: true } },
+            unit: { select: { name: true } },
+            organization: { select: { name: true, logo: true } },
+            jobProfile: {
+              select: { competencies: true, requirements: true },
+            },
           },
-        },
-      });
+        }),
+        db.application.count({
+          where: { vacancyId: input.id },
+        }),
+      ]);
+      return { ...vacancy, applicantCount };
     }),
 
   // Apply to a vacancy (public — creates candidate + application)
