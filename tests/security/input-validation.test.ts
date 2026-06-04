@@ -67,8 +67,12 @@ describe('Input Validation', () => {
   });
 
   it('should bound string inputs with .max()', () => {
-    // Check that critical routers (platform, candidate, user) have bounded strings
-    const invoicesRouter = readFileSync(join(ROUTERS_DIR, 'platform', 'invoices.ts'), 'utf8');
+    // Check that critical routers (platform, candidate, user) have bounded strings.
+    // Zod input schemas may live in a co-located `*.schemas.ts` sibling, so read
+    // those alongside the router file when asserting bounds are present.
+    const invoicesRouter =
+      readFileSync(join(ROUTERS_DIR, 'platform', 'invoices.ts'), 'utf8') +
+      readFileSync(join(ROUTERS_DIR, 'platform', 'invoices.schemas.ts'), 'utf8');
     const invitationsRouter = readFileSync(join(ROUTERS_DIR, 'platform', 'invitations.ts'), 'utf8');
 
     // createInvoice should have bounded line item descriptions

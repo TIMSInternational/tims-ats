@@ -4,28 +4,19 @@ import { trpc } from '../../../../../lib/trpc';
 import { toast } from '../../../../../lib/toast';
 import { useI18n } from '../../../../../lib/i18n/index';
 import { Skeleton } from '../../../../../components';
-import { CandidateAvatar } from '../../../../../components';
-import { formatCurrency, formatDate } from '../../../../../lib/format-utils';
 import { ApprovalChain } from './approval-chain';
 import { OfferTimeline } from './offer-timeline';
 import { OfferValidations } from './offer-validations';
 import { OfferLetterModal } from './offer-letter-modal';
 import { SigningLinkModal } from './signing-link-modal';
+import { OFFER_STATUS_LABEL } from './offer-detail-view.helpers';
+import { CandidateHeader, OfferCard } from './offer-detail-view.parts';
 import { useState } from 'react';
 
 interface OfferDetailViewProps {
   offerId: string;
   onBack: () => void;
 }
-
-const OFFER_STATUS_LABEL: Record<string, { bg: string; text: string; label: string }> = {
-  draft: { bg: 'bg-gray-500/20', text: 'text-gray-300', label: 'Borrador' },
-  pending_approval: { bg: 'bg-amber-500/20', text: 'text-amber-300', label: 'Pendiente' },
-  approved: { bg: 'bg-blue-500/20', text: 'text-blue-300', label: 'Aprobada' },
-  sent: { bg: 'bg-violet-500/20', text: 'text-violet-300', label: 'Enviada' },
-  accepted: { bg: 'bg-green-500/20', text: 'text-green-300', label: 'Oferta Aceptada' },
-  declined: { bg: 'bg-red-500/20', text: 'text-red-300', label: 'Rechazada' },
-};
 
 export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
   const { t } = useI18n();
@@ -145,201 +136,6 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
           onClose={() => setShowSigningModal(false)}
         />
       )}
-    </div>
-  );
-}
-
-/* ── Candidate Header subcomponent ── */
-
-interface CandidateHeaderProps {
-  offer: {
-    candidate: { firstName: string; lastName: string; avatar: string | null };
-    vacancy: { title: string };
-  };
-  statusLabel: string;
-  completedValidations: number;
-  totalValidations: number;
-  progressPct: number;
-  allComplete: boolean;
-  onViewLetter?: () => void;
-  onSendForSigning?: () => void;
-  isGeneratingLink?: boolean;
-}
-
-function CandidateHeader({
-  offer,
-  statusLabel,
-  completedValidations,
-  totalValidations,
-  progressPct,
-  allComplete,
-  onViewLetter,
-  onSendForSigning,
-  isGeneratingLink,
-}: CandidateHeaderProps) {
-  const { t } = useI18n();
-
-  return (
-    <div className="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-      <div className="flex items-center gap-5">
-        <div className="w-14 h-14 rounded-full bg-gradient-to-br from-[#1F114C] to-[#5C4B99] flex items-center justify-center text-white text-xl font-bold shrink-0">
-          {offer.candidate.firstName.charAt(0)}
-          {offer.candidate.lastName.charAt(0)}
-        </div>
-        <div className="flex-1">
-          <div className="flex items-center gap-3 mb-1">
-            <h1 className="text-[18px] font-bold text-[#1F114C]">
-              {offer.candidate.firstName} {offer.candidate.lastName}
-            </h1>
-            <span className="bg-[#5C4B99] text-white text-[10px] font-medium px-2.5 py-0.5 rounded-full">
-              {t.offers.preEmployment}
-            </span>
-          </div>
-          <p className="text-[13px] text-[#585858]">{offer.vacancy.title}</p>
-        </div>
-
-        {/* Progress circle */}
-        <div className="shrink-0 text-center">
-          <div className="relative w-16 h-16">
-            <svg className="w-16 h-16 -rotate-90" viewBox="0 0 36 36">
-              <circle cx="18" cy="18" r="15.9" fill="none" stroke="#EDEDED" strokeWidth="2.5" />
-              <circle
-                cx="18" cy="18" r="15.9" fill="none"
-                stroke="#22C55E" strokeWidth="2.5"
-                strokeDasharray={`${progressPct} ${100 - progressPct}`}
-                strokeLinecap="round"
-              />
-            </svg>
-            <div className="absolute inset-0 flex items-center justify-center">
-              <span className="text-[14px] font-bold text-[#1F114C]">
-                {completedValidations}/{totalValidations}
-              </span>
-            </div>
-          </div>
-          <p className="text-[10px] text-[#8B8B8B] mt-1">{t.offers.checksCompleted}</p>
-        </div>
-
-        {/* Offer Letter + Signature + Authorize buttons */}
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            className="px-4 py-2.5 rounded-lg text-[13px] font-medium flex items-center gap-1.5 border border-[#EDEDED] text-[#1F114C] hover:bg-[#F6F6F6] transition"
-            onClick={onViewLetter}
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-              <path d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-            </svg>
-            Ver Carta de Oferta
-          </button>
-          <button
-            className="px-4 py-2.5 rounded-lg text-[13px] font-medium flex items-center gap-1.5 border border-[#1F114C] text-[#1F114C] hover:bg-[#1F114C] hover:text-white transition"
-            disabled={isGeneratingLink}
-            onClick={onSendForSigning}
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-              <path d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
-            </svg>
-            {isGeneratingLink ? 'Generando...' : 'Enviar para Firma'}
-          </button>
-          <button
-            className={`px-5 py-2.5 rounded-lg text-[13px] font-medium flex items-center gap-1.5 ${
-              allComplete
-                ? 'bg-[#DD0C15] text-white hover:bg-red-700 transition'
-                : 'bg-[#EDEDED] text-[#8B8B8B] cursor-not-allowed'
-            }`}
-            disabled={!allComplete}
-            onClick={() => toast('Autorizar contratacion: proximamente', { type: 'info' })}
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-              <path d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-            </svg>
-            {t.offers.authorizeHiring}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ── Offer Card subcomponent ── */
-
-interface OfferCardProps {
-  offer: {
-    salary: number;
-    currency: string;
-    startDate: Date | string | null;
-    contractType: string | null;
-    vacancy: { title: string };
-    status: string;
-  };
-  statusInfo: { bg: string; text: string; label: string };
-  benefitList: string[];
-  terms: Record<string, string> | null;
-}
-
-function OfferCard({ offer, statusInfo, benefitList, terms }: OfferCardProps) {
-  const { t } = useI18n();
-
-  return (
-    <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] overflow-hidden">
-      <div className="bg-gradient-to-r from-[#1F114C] to-[#2D1B6E] px-5 py-4">
-        <div className="flex justify-between items-center">
-          <div>
-            <p className="text-white/60 text-[11px] font-medium tracking-wider uppercase">
-              {t.offers.offerCard}
-            </p>
-            <p className="text-white text-[16px] font-semibold mt-0.5">{offer.vacancy.title}</p>
-          </div>
-          <span
-            className={`${statusInfo.bg} ${statusInfo.text} text-[11px] font-medium px-3 py-1 rounded-full border border-white/20`}
-          >
-            {statusInfo.label}
-          </span>
-        </div>
-      </div>
-      <div className="p-5">
-        <div className="grid grid-cols-2 gap-x-8 gap-y-3 mb-4">
-          <div>
-            <p className="text-[11px] text-[#8B8B8B]">{t.offers.baseSalary}</p>
-            <p className="text-[15px] font-bold text-[#1F114C]">
-              {formatCurrency(offer.salary, offer.currency)} / {t.vacancies.yearly.toLowerCase()}
-            </p>
-          </div>
-          <div>
-            <p className="text-[11px] text-[#8B8B8B]">{t.offers.annualBonus}</p>
-            <p className="text-[15px] font-bold text-[#1F114C]">{terms?.bonus || '—'}</p>
-          </div>
-          <div>
-            <p className="text-[11px] text-[#8B8B8B]">{t.offers.startDate}</p>
-            <p className="text-[13px] text-[#333] font-medium">
-              {offer.startDate ? formatDate(offer.startDate) : '—'}
-            </p>
-          </div>
-          <div>
-            <p className="text-[11px] text-[#8B8B8B]">{t.offers.contractType}</p>
-            <p className="text-[13px] text-[#333] font-medium">{offer.contractType || '—'}</p>
-          </div>
-          <div>
-            <p className="text-[11px] text-[#8B8B8B]">{t.offers.schedule}</p>
-            <p className="text-[13px] text-[#333]">{terms?.schedule || 'Full-time'}</p>
-          </div>
-          <div>
-            <p className="text-[11px] text-[#8B8B8B]">{t.offers.modality}</p>
-            <p className="text-[13px] text-[#333]">{terms?.modality || '—'}</p>
-          </div>
-        </div>
-        {benefitList.length > 0 && (
-          <div className="border-t border-[#F0F0F0] pt-3">
-            <p className="text-[11px] text-[#8B8B8B] mb-2">{t.offers.benefitsIncluded}</p>
-            <div className="flex flex-wrap gap-1.5">
-              {benefitList.map((b, i) => (
-                <span key={i} className="text-[10px] bg-[#F6F6F6] text-[#585858] px-2 py-1 rounded-full">
-                  {String(b)}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
     </div>
   );
 }
