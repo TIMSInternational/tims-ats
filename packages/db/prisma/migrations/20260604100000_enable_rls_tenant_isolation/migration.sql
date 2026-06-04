@@ -2,21 +2,24 @@
 -- VERIFIED empirically on the live Supabase instance (cross-org read blocked, WITH CHECK
 -- blocks cross-org write, unset GUC fails closed with no error).
 --
--- PREREQUISITE: the app must connect as the NON-BYPASSRLS role app_tenant. The migration/
--- owner role (postgres) has rolbypassrls=true and is intentionally unaffected (context
--- builder, platform routers, workers use it). Enabling RLS is a NO-OP for postgres, so this
--- is SAFE to apply before the app connection is switched.
+-- ENFORCEMENT MODEL: the app connects as the privileged `postgres` role (the role the
+-- Supabase Supavisor pooler authenticates). Tenant queries run `SET LOCAL ROLE app_tenant`
+-- per transaction (see packages/db/src/tenant-client.ts) so they execute as the NON-bypass
+-- role and RLS applies. This needs no custom-role login (Supavisor rejects those) and no
+-- second connection pool. `postgres` keeps BYPASSRLS for context-builder / platform /
+-- worker queries, so enabling RLS is a NO-OP for them.
 --
 -- The policy uses NULLIF(current_setting(...), '')::uuid: an unset/empty GUC becomes NULL so
 -- every row is hidden (fail closed) instead of raising a uuid cast error.
 
--- 1) Dedicated application role (NON-bypass). PLACEHOLDER password — rotate via
---    ALTER ROLE app_tenant PASSWORD '<secret>' before pointing DATABASE_URL at it.
+-- 1) Non-login privilege role used only as the SET LOCAL ROLE target for RLS. No password /
+--    no login (it never authenticates directly). GRANT it to postgres so postgres can SET ROLE.
 DO $$ BEGIN
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='app_tenant') THEN
-    CREATE ROLE app_tenant LOGIN PASSWORD 'ROTATE_ME_BEFORE_USE' NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
+    CREATE ROLE app_tenant NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
   END IF;
 END $$;
+GRANT app_tenant TO postgres;
 
 GRANT USAGE ON SCHEMA public TO app_tenant;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_tenant;

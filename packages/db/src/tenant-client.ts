@@ -1,39 +1,35 @@
-import { PrismaClient } from '@prisma/client';
 import { db } from './client';
 import { getTenantOrgId } from './tenant-context';
 
-// Tenant-scoped Prisma client. For each operation it sets the Postgres
-// `app.current_org_id` GUC (read by the RLS policies) in the SAME transaction as
-// the query, so the transaction-local setting actually applies on pooled
-// connections. The org id comes from AsyncLocalStorage (see tenant-context.ts).
+// Tenant-scoped Prisma client for RLS enforcement.
 //
-// ROLLOUT GATING: RLS only enforces when the connection is the NON-bypass
-// `app_tenant` role. Until TENANT_DATABASE_URL is set to that role's connection
-// string, this client falls back to the base `db` (privileged) connection and is a
-// transparent passthrough — identical behavior to before, no extra round-trips.
-// See docs/security/RLS-MIGRATION-PLAN.md for the cutover steps.
-const RLS_ENFORCED = !!process.env.TENANT_DATABASE_URL;
+// The app connects as the privileged `postgres` role (the only role the Supabase
+// Supavisor pooler reliably authenticates). For each tenant operation we run, inside
+// a single transaction:
+//   1. SET LOCAL ROLE app_tenant   -- drop to the NON-bypass role so RLS policies apply
+//   2. set_config('app.current_org_id', <org>, true)  -- the GUC the policies read
+//   3. the actual query
+// Because RLS bypass is evaluated against the *current* role, SET LOCAL ROLE makes the
+// query subject to RLS even though the login role (postgres) has BYPASSRLS. This avoids
+// authenticating a custom role through Supavisor (which it rejects) and needs no second
+// connection pool. Requires `GRANT app_tenant TO postgres` (in the RLS migration).
+//
+// SET LOCAL / set_config(..., true) are transaction-scoped, so this is safe on the
+// transaction-mode pooler. Enable with RLS_ENFORCED=true once the migration is applied.
+const RLS_ENFORCED = process.env.RLS_ENFORCED === 'true';
 
-const tenantBase: PrismaClient = RLS_ENFORCED
-  ? new PrismaClient({
-      datasources: { db: { url: process.env.TENANT_DATABASE_URL } },
-      log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
-    })
-  : db;
-
-export const tenantDb = tenantBase.$extends({
+export const tenantDb = db.$extends({
   name: 'tenantRls',
   query: {
     async $allOperations({ args, query }) {
       const orgId = getTenantOrgId();
-      // Not enforced yet, or no org in scope (platform owner / system job): run as-is.
+      // Not enforced, or no org in scope (platform owner / system job): run unscoped.
       if (!RLS_ENFORCED || !orgId) {
         return query(args);
       }
-      // set_config(..., is_local=true) is transaction-scoped; batching it with the
-      // query guarantees they share one transaction/connection so RLS sees the org.
-      const [, result] = await tenantBase.$transaction([
-        tenantBase.$executeRaw`SELECT set_config('app.current_org_id', ${orgId}, true)`,
+      const [, , result] = await db.$transaction([
+        db.$executeRaw`SET LOCAL ROLE app_tenant`,
+        db.$executeRaw`SELECT set_config('app.current_org_id', ${orgId}, true)`,
         query(args),
       ]);
       return result;
