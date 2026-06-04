@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import path from "node:path";
 
 // Dev (Turbopack/HMR) needs 'unsafe-eval'; production builds do not, so drop it
 // there to shrink the XSS attack surface. 'unsafe-inline' stays until a full
@@ -12,6 +13,20 @@ const scriptSrc = isProd
 
 const nextConfig: NextConfig = {
   devIndicators: false,
+  // Monorepo: trace from the repo root so file tracing can see the pnpm store
+  // (workspace packages + the Prisma query-engine binary live two levels up).
+  outputFileTracingRoot: path.join(__dirname, "../../"),
+  // Keep Prisma out of the webpack bundle so its native engine binary is
+  // resolved/required from node_modules at runtime instead of being inlined.
+  serverExternalPackages: ["@prisma/client", "prisma"],
+  // Force the Linux query-engine binary into every serverless function bundle.
+  // pnpm nests it under the hashed .pnpm store, which Next's tracing misses by
+  // default — without this, runtime queries throw "Query Engine not found".
+  outputFileTracingIncludes: {
+    "**": [
+      "../../node_modules/.pnpm/@prisma+client*/node_modules/.prisma/client/*.node",
+    ],
+  },
   transpilePackages: [
     "@tims/api",
     "@tims/auth",
