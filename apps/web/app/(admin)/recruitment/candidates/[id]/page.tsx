@@ -38,12 +38,12 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
         </div>
         <div className="flex-1 overflow-y-auto p-6">
           <Skeleton className="h-40 w-full rounded-xl mb-6" />
-          <div className="flex gap-6">
-            <div className="flex-[60] space-y-4">
+          <div className="flex flex-col md:flex-row gap-6">
+            <div className="w-full md:flex-[60] space-y-4">
               <Skeleton className="h-48 w-full rounded-xl" />
               <Skeleton className="h-32 w-full rounded-xl" />
             </div>
-            <div className="flex-[40] space-y-4">
+            <div className="w-full md:flex-[40] space-y-4">
               <Skeleton className="h-64 w-full rounded-xl" />
               <Skeleton className="h-32 w-full rounded-xl" />
             </div>
@@ -94,12 +94,12 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
         <CandidateHeader candidate={c} />
 
         {/* Tabs */}
-        <div className="flex gap-1 mb-6 border-b border-[#EDEDED]">
+        <div className="flex gap-1 mb-6 border-b border-[#EDEDED] overflow-x-auto">
           {TABS.map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2.5 text-[13px] font-medium transition ${
+              className={`px-4 py-2.5 text-[13px] font-medium transition shrink-0 whitespace-nowrap ${
                 activeTab === tab
                   ? 'text-[#1F114C] border-b-2 border-[#DD0C15]'
                   : 'text-[#8B8B8B] hover:text-[#585858]'
@@ -111,14 +111,14 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
         </div>
 
         {/* Two Columns */}
-        <div className="flex gap-6">
+        <div className="flex flex-col md:flex-row gap-6">
           {/* Left 60% */}
-          <div className="flex-[60] space-y-4">
+          <div className="w-full md:flex-[60] space-y-4">
             <ProfileTab candidate={c} />
           </div>
 
           {/* Right 40% */}
-          <div className="flex-[40] space-y-4">
+          <div className="w-full md:flex-[40] space-y-4">
             {c.assessmentAssignments.length > 0 && (
               <AssessmentResults assignments={c.assessmentAssignments} fitScores={c.fitScores} />
             )}

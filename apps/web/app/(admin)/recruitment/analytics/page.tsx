@@ -16,7 +16,7 @@ export default function RecruitmentAnalyticsPage() {
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {/* Top Bar */}
-      <div className="flex items-center justify-between px-6 h-16 bg-white border-b border-[#EDEDED] shrink-0">
+      <div className="flex flex-wrap items-center justify-between gap-y-2 px-4 md:px-6 min-h-16 py-2 bg-white border-b border-[#EDEDED] shrink-0">
         <div className="flex items-center gap-2">
           <span className="text-[13px] text-[#8B8B8B]">{t.recruitAnalytics.breadcrumb}</span>
           <svg className="w-3 h-3 text-[#ccc]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -56,20 +56,20 @@ export default function RecruitmentAnalyticsPage() {
         <AnalyticsKpiRow />
 
         {/* Row 2: Funnel + Source Performance */}
-        <div className="flex gap-4 mb-6">
+        <div className="flex flex-col md:flex-row gap-4 mb-6">
           <AnalyticsFunnel />
           <AnalyticsSourceQuality />
         </div>
 
         {/* Row 3: Trend + Lost + Prediction */}
-        <div className="flex gap-4 mb-6">
+        <div className="flex flex-col md:flex-row gap-4 mb-6">
           <AnalyticsTrend />
           <AnalyticsLostByDelay />
           <AnalyticsVacancyPrediction />
         </div>
 
         {/* Row 4: SLA Table + QoH Breakdown */}
-        <div className="flex gap-4">
+        <div className="flex flex-col md:flex-row gap-4">
           <AnalyticsSlaTable />
           <AnalyticsQohBreakdown />
         </div>

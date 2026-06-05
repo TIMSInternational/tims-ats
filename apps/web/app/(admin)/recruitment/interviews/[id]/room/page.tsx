@@ -119,8 +119,8 @@ export default function InterviewRoomPage({
           fitScore={87}
           isRecording
         />
-        <div className="flex flex-1 overflow-hidden">
-          <div className="flex-[60] flex flex-col bg-[#0a0a0a] relative min-w-0">
+        <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
+          <div className="h-[45vh] md:h-auto md:flex-[60] flex flex-col bg-[#0a0a0a] relative min-w-0 shrink-0 md:shrink">
             <VideoArea candidateName={candidateName} candidateInitials={candidateInitials} />
             <VideoControls />
           </div>

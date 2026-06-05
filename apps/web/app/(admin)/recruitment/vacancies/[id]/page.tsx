@@ -35,12 +35,12 @@ export default function VacancyDetailPage({ params }: { params: Promise<{ id: st
           <Skeleton className="h-5 w-64 rounded" />
         </div>
         <div className="flex-1 overflow-y-auto p-6">
-          <div className="flex gap-6">
-            <div className="flex-[65] space-y-4">
+          <div className="flex flex-col md:flex-row gap-6">
+            <div className="w-full md:flex-[65] space-y-4">
               <Skeleton className="h-48 w-full rounded-xl" />
               <Skeleton className="h-64 w-full rounded-xl" />
             </div>
-            <div className="flex-[35] space-y-4">
+            <div className="w-full md:flex-[35] space-y-4">
               <Skeleton className="h-48 w-full rounded-xl" />
               <Skeleton className="h-32 w-full rounded-xl" />
             </div>
@@ -63,8 +63,8 @@ export default function VacancyDetailPage({ params }: { params: Promise<{ id: st
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {/* Top Bar */}
-      <div className="flex items-center justify-between px-6 h-16 bg-white border-b border-[#EDEDED] shrink-0">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-y-2 px-4 md:px-6 min-h-16 py-2 bg-white border-b border-[#EDEDED] shrink-0">
+        <div className="flex items-center gap-2 min-w-0">
           <Link href="/recruitment/vacancies" className="text-[13px] text-[#8B8B8B] hover:text-[#585858] transition">
             {t.sidebar.vacancies}
           </Link>
@@ -91,16 +91,16 @@ export default function VacancyDetailPage({ params }: { params: Promise<{ id: st
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-6">
-        <div className="flex gap-6">
+        <div className="flex flex-col md:flex-row gap-6">
           {/* Left Column 65% */}
-          <div className="flex-[65] space-y-4">
+          <div className="w-full md:flex-[65] space-y-4">
             <GeneralInfo vacancy={v} />
             {v.jobProfile && <JobProfileCard jobProfile={v.jobProfile} />}
             {v.channels.length > 0 && <ChannelsCard channels={v.channels} />}
           </div>
 
           {/* Right Column 35% */}
-          <div className="flex-[35] space-y-4">
+          <div className="w-full md:flex-[35] space-y-4">
             <CandidatesSummary
               vacancyId={id}
               stats={stats.data ?? null}

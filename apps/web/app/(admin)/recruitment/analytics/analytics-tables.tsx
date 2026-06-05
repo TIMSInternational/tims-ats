@@ -23,10 +23,10 @@ export function AnalyticsSlaTable() {
   ];
 
   return (
-    <div className="flex-1 bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+    <div className="w-full md:flex-1 bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
       <h3 className="text-[14px] font-semibold text-[#1F114C] mb-3">{t.recruitAnalytics.slaByRecruiter}</h3>
       <div className="overflow-hidden rounded-lg border border-[#EDEDED]">
-        <table className="w-full text-[11px]">
+        <div className="overflow-x-auto"><table className="w-full min-w-[480px] text-[11px]">
           <thead>
             <tr className="bg-[#FAFAFA] border-b border-[#EDEDED]">
               <th className="text-left py-2.5 px-3 text-[#585858] font-medium">{t.recruitAnalytics.recruiter}</th>
@@ -54,7 +54,7 @@ export function AnalyticsSlaTable() {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       </div>
     </div>
   );
@@ -77,7 +77,7 @@ export function AnalyticsQohBreakdown() {
   ];
 
   return (
-    <div className="flex-1 bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+    <div className="w-full md:flex-1 bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
       <h3 className="text-[14px] font-semibold text-[#1F114C] mb-3">{t.recruitAnalytics.qohBreakdown}</h3>
       <p className="text-[11px] text-[#8B8B8B] mb-3">{t.recruitAnalytics.qohBasedOn}</p>
       <div className="space-y-3">

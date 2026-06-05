@@ -21,7 +21,7 @@ export function InterviewFilterBar({
   const { t } = useI18n();
 
   return (
-    <div className="flex items-center gap-3 mb-4 flex-shrink-0">
+    <div className="flex flex-wrap items-center gap-3 gap-y-2 mb-4 flex-shrink-0">
       <select
         value={statusFilter}
         onChange={(e) => onStatusChange(e.target.value)}
