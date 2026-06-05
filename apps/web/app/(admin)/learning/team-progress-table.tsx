@@ -36,7 +36,7 @@ function ProgressBar({ pct }: { pct: number }) {
 
 export function TeamProgressTable({ t }: TeamProgressTableProps) {
   return (
-    <div className="w-[60%] bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
+    <div className="w-full md:w-[60%] bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-[13px] font-semibold text-[#1F114C]">{t.teamProgress}</h3>
         <span className="text-[10px] text-[#8B8B8B]">{t.lastPeriod}</span>

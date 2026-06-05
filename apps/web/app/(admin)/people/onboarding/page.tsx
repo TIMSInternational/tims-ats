@@ -96,7 +96,7 @@ export default function OnboardingPage() {
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {/* Top bar */}
-      <div className="flex items-center justify-between px-6 h-16 bg-white border-b border-[#EDEDED] shrink-0">
+      <div className="flex flex-wrap items-center justify-between gap-y-2 px-4 md:px-6 min-h-16 py-2 bg-white border-b border-[#EDEDED] shrink-0">
         <div className="flex items-center gap-2">
           <span className="text-[13px] text-[#8B8B8B]">People</span>
           <svg className="w-3 h-3 text-[#ccc]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -176,18 +176,18 @@ export default function OnboardingPage() {
         />
 
         {/* Row 2: Tasks + Docs + Courses */}
-        <div className="flex gap-4 mb-6">
+        <div className="flex flex-col md:flex-row gap-4 mb-6">
           <TasksByResponsible plans={items} />
           <PendingDocuments plans={items} />
           <CoursesAndAccesses />
         </div>
 
         {/* Row 3: Check-in Calendar + Learning Route */}
-        <div className="flex gap-4">
-          <div className="flex-1 bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+        <div className="flex flex-col md:flex-row gap-4">
+          <div className="w-full md:flex-1 bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
             <h3 className="text-[14px] font-semibold text-[#1F114C] mb-3">Calendario de Check-ins</h3>
-            <div className="overflow-hidden rounded-lg border border-[#EDEDED]">
-              <table className="w-full text-[11px]">
+            <div className="overflow-x-auto rounded-lg border border-[#EDEDED]">
+              <table className="w-full min-w-[420px] text-[11px]">
                 <thead>
                   <tr className="bg-[#FAFAFA]">
                     <th className="py-2 px-3 text-left text-[#585858] font-medium">Colaborador</th>

@@ -20,9 +20,9 @@ export function PcaProfile({ t }: PcaProfileProps) {
         <h3 className="text-[14px] font-semibold text-[#1F114C]">{t.pcaProfile}</h3>
         <span className="text-[11px] text-[#8B8B8B]">{t.groupAverage}</span>
       </div>
-      <div className="flex items-center gap-6">
+      <div className="flex flex-col md:flex-row md:items-center gap-6">
         {/* Radar Chart */}
-        <div className="relative w-[260px] h-[260px] shrink-0">
+        <div className="relative w-[260px] h-[260px] shrink-0 mx-auto md:mx-0">
           <svg viewBox="0 0 260 260" className="absolute inset-0 w-full h-full">
             <polygon points="130,15 225,62 225,198 130,245 35,198 35,62" fill="none" stroke="#EDEDED" strokeWidth="1" />
             <polygon points="130,45 200,77 200,183 130,215 60,183 60,77" fill="none" stroke="#EDEDED" strokeWidth="1" />

@@ -103,7 +103,7 @@ export default function NineBoxPage() {
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {/* Top bar */}
-      <div className="flex items-center justify-between px-6 h-16 bg-white border-b border-[#EDEDED] shrink-0">
+      <div className="flex flex-wrap items-center justify-between gap-y-2 px-4 md:px-6 min-h-16 py-2 bg-white border-b border-[#EDEDED] shrink-0">
         <div className="flex items-center gap-2">
           <span className="text-[13px] text-[#8B8B8B]">Talent</span>
           <svg className="w-3 h-3 text-[#ccc]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" /></svg>
@@ -136,14 +136,14 @@ export default function NineBoxPage() {
         </div>
 
         {/* Main two columns */}
-        <div className="flex gap-4 mb-4">
+        <div className="flex flex-col md:flex-row gap-4 mb-4">
           {/* Left: Nine Box Grid */}
-          <div className="w-[58%]">
+          <div className="w-full md:w-[58%]">
             <NineBoxGrid grid={grid} allPeople={allPeople} selectedUserId={selectedUserId} onSelectUser={setSelectedUserId} />
           </div>
 
           {/* Right column */}
-          <div className="w-[42%] flex flex-col gap-4">
+          <div className="w-full md:w-[42%] flex flex-col gap-4">
             {/* Selected Employee Detail */}
             <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4">
               <p className="text-[11px] font-semibold text-[#1F114C] mb-3">Detalle del Empleado Seleccionado</p>

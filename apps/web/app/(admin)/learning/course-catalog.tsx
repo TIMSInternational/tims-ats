@@ -68,7 +68,7 @@ export function CourseCatalog({ courses, loading, t }: CourseCatalogProps) {
 
   if (loading) {
     return (
-      <div className="w-[55%] bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
+      <div className="w-full md:w-[55%] bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
         <Skeleton className="h-4 w-40 mb-3" />
         {Array.from({ length: 4 }).map((_, i) => (
           <Skeleton key={i} className="h-16 w-full mb-2" />
@@ -78,7 +78,7 @@ export function CourseCatalog({ courses, loading, t }: CourseCatalogProps) {
   }
 
   return (
-    <div className="w-[55%] bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 flex flex-col max-h-[370px]">
+    <div className="w-full md:w-[55%] bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 flex flex-col max-h-[370px]">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-[13px] font-semibold text-[#1F114C]">{t.courseCatalog}</h3>
         <input

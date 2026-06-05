@@ -30,7 +30,7 @@ export function TeamComposition({ t }: TeamCompositionProps) {
   return (
     <div className="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
       <h3 className="text-[14px] font-semibold text-[#1F114C] mb-3">{t.teamComposition}</h3>
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* DISC Distribution */}
         <div>
           <p className="text-[11px] font-medium text-[#585858] mb-2">{t.discDistribution}</p>
