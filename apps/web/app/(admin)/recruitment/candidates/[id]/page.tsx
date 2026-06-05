@@ -14,6 +14,8 @@ import { DocumentsCard } from './documents-card';
 import { TagsCard } from './tags-card';
 import { CandidateTimeline } from './candidate-timeline';
 import { RiskFlags } from './risk-flags';
+import { CvParseCard } from './cv-parse-card';
+import { ScreenCandidateCard } from './screen-candidate-card';
 
 const TABS = [
   'tabProfile', 'tabApplications', 'tabAssessments', 'tabInterviews',
@@ -121,6 +123,8 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
               <AssessmentResults assignments={c.assessmentAssignments} fitScores={c.fitScores} />
             )}
             {c.fitScores.length > 0 && <FitBreakdown fitScores={c.fitScores} />}
+            <ScreenCandidateCard candidateId={id} vacancies={c.applications.map((a) => a.vacancy)} />
+            <CvParseCard />
             <StageTimeline applications={c.applications} />
             <TagsCard tags={c.tags} candidateId={id} />
             <RiskFlags />
