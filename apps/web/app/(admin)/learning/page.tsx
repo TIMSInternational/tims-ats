@@ -22,7 +22,7 @@ export default function LearningPage() {
   return (
     <div className="flex flex-col flex-1 min-w-0 h-full">
       {/* Top Bar */}
-      <div className="flex items-center justify-between px-6 h-16 bg-white border-b border-[#EDEDED] shrink-0">
+      <div className="flex flex-wrap items-center justify-between gap-y-2 px-4 md:px-6 min-h-16 py-2 bg-white border-b border-[#EDEDED] shrink-0">
         <div className="flex items-center gap-2">
           <span className="text-[13px] text-[#8B8B8B]">{t.learning.breadcrumb}</span>
           <svg className="w-3 h-3 text-[#ccc]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -51,16 +51,16 @@ export default function LearningPage() {
         <LearningKpis data={kpis.data} loading={kpis.isLoading} t={t.learning} />
 
         {/* Middle: 2-column */}
-        <div className="flex gap-4 mb-4">
+        <div className="flex flex-col md:flex-row gap-4 mb-4">
           <CourseCatalog courses={courseItems} loading={courses.isLoading} t={t.learning} />
-          <div className="w-[45%] flex flex-col gap-4">
+          <div className="w-full md:w-[45%] flex flex-col gap-4">
             <LearningPathsPanel paths={pathItems} loading={paths.isLoading} t={t.learning} />
             <PrePostTest t={t.learning} />
           </div>
         </div>
 
         {/* Bottom Row */}
-        <div className="flex gap-4">
+        <div className="flex flex-col md:flex-row gap-4">
           <TeamProgressTable t={t.learning} />
           <AiRecommendations t={t.learning} />
         </div>

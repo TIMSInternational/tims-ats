@@ -33,7 +33,7 @@ export function TasksByResponsible({ plans }: { plans: OnboardingPlan[] }) {
   const lowestRole = roles.length > 0 ? roles.reduce((min, r) => (r[1].total > 0 && r[1].done / r[1].total < (min[1].total > 0 ? min[1].done / min[1].total : 1)) ? r : min) : null;
 
   return (
-    <div className="flex-1 bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+    <div className="w-full md:flex-1 bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
       <h3 className="text-[14px] font-semibold text-[#1F114C] mb-3">Tareas por Responsable</h3>
       <div className="space-y-3">
         {roles.map(([role, { total, done }]) => {
@@ -80,7 +80,7 @@ export function PendingDocuments({ plans }: { plans: OnboardingPlan[] }) {
   const totalPending = plans.reduce((s, p) => s + p.tasks.filter((t) => !t.completed).length, 0);
 
   return (
-    <div className="flex-1 bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+    <div className="w-full md:flex-1 bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
       <div className="flex justify-between items-center mb-3">
         <h3 className="text-[14px] font-semibold text-[#1F114C]">Documentos Pendientes</h3>
         <span className="bg-amber-500 text-white text-[10px] font-bold w-6 h-6 rounded-full flex items-center justify-center">
@@ -123,7 +123,7 @@ export function CoursesAndAccesses() {
   ];
 
   return (
-    <div className="flex-1 bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+    <div className="w-full md:flex-1 bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
       <h3 className="text-[14px] font-semibold text-[#1F114C] mb-3">Cursos Iniciales & Accesos</h3>
       <div className="mb-4">
         <p className="text-[11px] text-[#585858] font-medium mb-2">Cursos Obligatorios</p>
@@ -155,7 +155,7 @@ export function CoursesAndAccesses() {
 
 export function LearningRoute() {
   return (
-    <div className="flex-1 bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+    <div className="w-full md:flex-1 bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
       <div className="flex justify-between items-center mb-3">
         <h3 className="text-[14px] font-semibold text-[#1F114C]">Ruta de Capacitacion Inicial</h3>
         <span className="text-[10px] bg-teal-50 text-teal-600 px-2 py-0.5 rounded border border-teal-200">

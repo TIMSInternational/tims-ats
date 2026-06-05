@@ -72,7 +72,7 @@ export function BillingSection({ organizationId }: { organizationId: string }) {
 
       {/* Outstanding summary */}
       {invData && (invData.pendingCount > 0 || invData.overdueCount > 0) && (
-        <div className="flex gap-4">
+        <div className="flex flex-wrap gap-4">
           <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center gap-3">
             <span className="text-xs text-amber-700 font-medium">Pendiente: {fmtCurrency(Number(invData.outstandingAmount))}</span>
             <span className="text-[10px] text-amber-600">({invData.pendingCount} facturas)</span>
@@ -119,7 +119,7 @@ export function BillingSection({ organizationId }: { organizationId: string }) {
             <p className="text-xs text-[#8B8B8B]">No hay facturas para esta organizacion</p>
           </div>
         ) : (
-          <table className="w-full text-left">
+          <div className="overflow-x-auto"><table className="w-full min-w-[560px] text-left">
             <thead>
               <tr className="border-b border-[#EDEDED]">
                 <th className="px-5 py-3 text-[11px] font-semibold text-[#8B8B8B] uppercase tracking-wider">Factura</th>
@@ -144,7 +144,7 @@ export function BillingSection({ organizationId }: { organizationId: string }) {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         )}
       </div>
 

@@ -58,7 +58,7 @@ const AVATAR_COLORS = ['bg-[#1F114C]', 'bg-violet-600', 'bg-teal-600', 'bg-blue-
 export function SuccessionPipeline({ roles, loading, t }: SuccessionPipelineProps) {
   if (loading) {
     return (
-      <div className="w-[55%] bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4">
+      <div className="w-full md:w-[55%] bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4">
         <Skeleton className="h-4 w-48 mb-3" />
         {Array.from({ length: 3 }).map((_, i) => (
           <Skeleton key={i} className="h-24 w-full mb-3" />
@@ -80,7 +80,7 @@ export function SuccessionPipeline({ roles, loading, t }: SuccessionPipelineProp
   }
 
   return (
-    <div className="w-[55%] bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4 overflow-y-auto max-h-[370px]">
+    <div className="w-full md:w-[55%] bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4 overflow-y-auto max-h-[370px]">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-[13px] font-semibold text-[#1F114C]">{t.successionPipeline}</h3>
         <span className="text-[10px] text-[#8B8B8B]">{roles.length} roles criticos principales</span>

@@ -37,7 +37,7 @@ export function ExitSimulator({ roles, t }: ExitSimulatorProps) {
   const selectedRole = roles.find((r) => r.id === selectedId);
 
   return (
-    <div className="w-[42%] bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4">
+    <div className="w-full md:w-[42%] bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-[13px] font-semibold text-[#1F114C]">{t.exitSimulator}</h3>
         <svg className="w-4 h-4 text-[#8B8B8B]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">

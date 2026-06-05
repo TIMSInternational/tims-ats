@@ -50,7 +50,7 @@ function getCritLabel(crit: string, t: RolesWithoutSuccessorProps['t']) {
 export function RolesWithoutSuccessor({ data, loading, t }: RolesWithoutSuccessorProps) {
   if (loading) {
     return (
-      <div className="w-[58%] bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4">
+      <div className="w-full md:w-[58%] bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4">
         <Skeleton className="h-4 w-64 mb-3" />
         {Array.from({ length: 4 }).map((_, i) => (
           <Skeleton key={i} className="h-8 w-full mb-2" />
@@ -69,7 +69,7 @@ export function RolesWithoutSuccessor({ data, loading, t }: RolesWithoutSuccesso
     : DEMO_ROLES;
 
   return (
-    <div className="w-[58%] bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4">
+    <div className="w-full md:w-[58%] bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <svg className="w-4 h-4 text-[#DD0C15]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">

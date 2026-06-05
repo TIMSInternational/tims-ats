@@ -153,7 +153,7 @@ export function OrgTable({
   };
 
   return (
-    <table className="w-full">
+    <div className="overflow-x-auto"><table className="w-full min-w-[560px]">
       <thead className="sticky top-0 bg-white z-10">
         <tr className="border-b border-[#EDEDED]">
           <th className="px-3 py-3 w-10">
@@ -269,6 +269,6 @@ export function OrgTable({
           })
         )}
       </tbody>
-    </table>
+    </table></div>
   );
 }

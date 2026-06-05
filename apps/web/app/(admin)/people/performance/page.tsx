@@ -66,7 +66,7 @@ export default function PerformancePage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 px-7 pt-3 border-b border-[#EDEDED] bg-white shrink-0">
+      <div className="flex gap-1 px-4 md:px-7 pt-3 overflow-x-auto border-b border-[#EDEDED] bg-white shrink-0">
         {tabs.map((tb) => (
           <button
             key={tb.key}

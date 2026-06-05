@@ -62,7 +62,7 @@ export function JobDetailView({ orgSlug, vacancyId }: JobDetailViewProps) {
   if (vacancy.isLoading) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <div className="w-[400px] space-y-4">
+        <div className="w-full lg:w-[400px] space-y-4">
           <Skeleton className="h-8 w-3/4 rounded" />
           <Skeleton className="h-4 w-1/2 rounded" />
           <Skeleton className="h-32 w-full rounded" />

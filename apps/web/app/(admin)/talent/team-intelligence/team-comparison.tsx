@@ -60,7 +60,7 @@ const TEAMS = [
 
 export function TeamComparison({ t }: TeamComparisonProps) {
   return (
-    <div className="grid grid-cols-3 gap-3">
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
       {TEAMS.map((team) => (
         <div key={team.name} className="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
           <div className="flex items-center justify-between mb-2">

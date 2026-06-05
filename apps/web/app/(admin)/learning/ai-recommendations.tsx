@@ -46,7 +46,7 @@ const DEMO_RECS = [
 
 export function AiRecommendations({ t }: AiRecommendationsProps) {
   return (
-    <div className="w-[40%] bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
+    <div className="w-full md:w-[40%] bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
       <div className="flex items-center gap-2 mb-3">
         <div className="w-5 h-5 rounded-md bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center">
           <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">

@@ -23,7 +23,7 @@ export default function SuccessionPage() {
   return (
     <div className="flex flex-col flex-1 min-w-0 h-full">
       {/* Top Bar */}
-      <div className="flex items-center justify-between px-6 h-16 bg-white border-b border-[#EDEDED] shrink-0">
+      <div className="flex flex-wrap items-center justify-between gap-y-2 px-4 md:px-6 min-h-16 py-2 bg-white border-b border-[#EDEDED] shrink-0">
         <div className="flex items-center gap-2">
           <span className="text-[13px] text-[#8B8B8B]">{t.succession.breadcrumb}</span>
           <svg className="w-3.5 h-3.5 text-[#8B8B8B]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
@@ -52,21 +52,21 @@ export default function SuccessionPage() {
         <SuccessionKpis data={kpis.data} loading={kpis.isLoading} t={t.succession} />
 
         {/* Main 2-column */}
-        <div className="flex gap-4 mb-4" style={{ minHeight: 370 }}>
+        <div className="flex flex-col md:flex-row gap-4 mb-4" style={{ minHeight: 370 }}>
           <SuccessionPipeline roles={roleItems} loading={roles.isLoading} t={t.succession} />
-          <div className="w-[45%] flex flex-col gap-4">
+          <div className="w-full md:w-[45%] flex flex-col gap-4">
             <CompetencyCoverage data={coverage.data} loading={coverage.isLoading} t={t.succession} />
             <FlightRiskPanel data={flightRisk.data} loading={flightRisk.isLoading} t={t.succession} />
           </div>
         </div>
 
         {/* Bottom Row */}
-        <div className="flex gap-4">
+        <div className="flex flex-col md:flex-row gap-4">
           <RolesWithoutSuccessor data={noSuccessor.data} loading={noSuccessor.isLoading} t={t.succession} />
           {roleItems.length > 0 ? (
             <ExitSimulator roles={roleItems} t={t.succession} />
           ) : (
-            <div className="w-[42%] bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4">
+            <div className="w-full md:w-[42%] bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4">
               <h3 className="text-[13px] font-semibold text-[#1F114C] mb-3">{t.succession.exitSimulator}</h3>
               <p className="text-[11px] text-[#8B8B8B] text-center py-8">{t.succession.noRoles}</p>
             </div>

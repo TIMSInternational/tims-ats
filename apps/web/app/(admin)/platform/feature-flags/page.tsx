@@ -117,7 +117,7 @@ export default function PlatformFeatureFlagsPage() {
             <p className="text-[11px] text-[#ABABAB] mt-1">{t.featureFlags.noFlagsDesc}</p>
           </div>
         ) : (
-          <table className="w-full text-left">
+          <div className="overflow-x-auto"><table className="w-full min-w-[560px] text-left">
             <thead>
               <tr className="border-b border-[#EDEDED]">
                 <th className="px-4 py-3 text-[11px] font-semibold text-[#8B8B8B] uppercase tracking-wider">{t.featureFlags.flagKey}</th>
@@ -161,7 +161,7 @@ export default function PlatformFeatureFlagsPage() {
                 );
               })}
             </tbody>
-          </table>
+          </table></div>
         )}
       </div>
 
