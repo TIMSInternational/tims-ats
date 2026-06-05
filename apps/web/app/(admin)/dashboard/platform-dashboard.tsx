@@ -20,7 +20,7 @@ export function PlatformDashboard() {
         <AttentionBar />
         <KpiStrip />
 
-        <div className="grid grid-cols-2 gap-4 mb-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
           <MrrTrendChart />
           <RevenueByCustomerChart />
         </div>
@@ -29,7 +29,7 @@ export function PlatformDashboard() {
           <MrrForecastChart />
         </div>
 
-        <div className="grid grid-cols-2 gap-4 mb-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
           <UpsellPanel />
           <AiCostAnomalyPanel />
         </div>
@@ -38,7 +38,7 @@ export function PlatformDashboard() {
           <ChurnRiskPanel />
         </div>
 
-        <div className="grid grid-cols-2 gap-4 mb-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
           <PlanDistributionChart />
           <CustomerHealthGrid />
         </div>

@@ -27,7 +27,7 @@ export function ClimateKpis({ enps, dashKpis, loading }: ClimateKpisProps) {
 
   if (loading) {
     return (
-      <div className="grid grid-cols-5 gap-3 mb-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
         {Array.from({ length: 5 }).map((_, i) => <KpiSkeleton key={i} />)}
       </div>
     );
@@ -38,7 +38,7 @@ export function ClimateKpis({ enps, dashKpis, loading }: ClimateKpisProps) {
   const promoterPct = enps && enps.totalResponses ? Math.round((enps.promoters / enps.totalResponses) * 100) : 0;
 
   return (
-    <div className="grid grid-cols-5 gap-3 mb-4">
+    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
       <Card label={t.climate.kpiEnps}>
         <p className={`text-[26px] font-bold ${enpsColor}`}>{enpsScore > 0 ? '+' : ''}{enpsScore}</p>
       </Card>

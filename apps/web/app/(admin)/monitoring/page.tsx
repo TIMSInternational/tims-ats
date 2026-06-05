@@ -15,7 +15,7 @@ export default function MonitoringPage() {
   return (
     <div className="flex flex-col flex-1 min-w-0 h-full">
       {/* Top Bar */}
-      <div className="flex items-center justify-between px-6 h-16 bg-white border-b border-[#EDEDED] shrink-0">
+      <div className="flex flex-wrap items-center justify-between gap-y-2 px-4 md:px-6 min-h-16 py-2 bg-white border-b border-[#EDEDED] shrink-0">
         <div className="flex items-center gap-2">
           <span className="text-[13px] text-[#8B8B8B]">{t.monitoring.breadcrumbParent}</span>
           <svg className="w-3 h-3 text-[#ccc]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" /></svg>
@@ -36,18 +36,18 @@ export default function MonitoringPage() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-hidden p-5">
-        <div className="flex flex-col h-full gap-4">
+      <div className="flex-1 overflow-y-auto md:overflow-hidden p-5">
+        <div className="flex flex-col md:h-full gap-4">
           <MonitoringKpis data={kpis.data ?? null} loading={kpis.isLoading} />
 
           {/* Row 2: Module Health + Alerts */}
-          <div className="flex gap-4 flex-1 min-h-0">
+          <div className="flex flex-col md:flex-row gap-4 md:flex-1 min-h-0">
             <ModuleHealthGrid />
             <AlertsPanel />
           </div>
 
           {/* Row 3: Trend + Quick Actions */}
-          <div className="flex gap-4 shrink-0" style={{ height: '165px' }}>
+          <div className="flex flex-col md:flex-row gap-4 shrink-0 md:h-[165px]">
             <CrossModuleTrend />
             <QuickActions />
           </div>

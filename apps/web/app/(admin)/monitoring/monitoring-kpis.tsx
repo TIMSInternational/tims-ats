@@ -22,7 +22,7 @@ export function MonitoringKpis({ data, loading }: MonitoringKpisProps) {
 
   if (loading || !data) {
     return (
-      <div className="grid grid-cols-5 gap-3 shrink-0">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 shrink-0">
         {Array.from({ length: 5 }).map((_, i) => <KpiSkeleton key={i} />)}
       </div>
     );
@@ -37,7 +37,7 @@ export function MonitoringKpis({ data, loading }: MonitoringKpisProps) {
   ];
 
   return (
-    <div className="grid grid-cols-5 gap-3 shrink-0">
+    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 shrink-0">
       {items.map((k) => (
         <div key={k.label} className="bg-white rounded-xl p-3.5 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center">
           <p className="text-[10px] text-[#8B8B8B] mb-0.5 uppercase tracking-wide">{k.label}</p>

@@ -40,7 +40,7 @@ export function ActivityFeed() {
   const { data: health, isLoading: healthLoading } = trpc.platform.getSystemHealth.useQuery();
 
   return (
-    <div className="grid grid-cols-2 gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
       {/* Recent Activity */}
       <div className="rounded-xl border border-border bg-white p-5 flex flex-col">
         <div className="mb-4">

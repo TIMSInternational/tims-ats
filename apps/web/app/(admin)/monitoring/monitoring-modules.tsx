@@ -24,13 +24,13 @@ export function ModuleHealthGrid() {
   };
 
   return (
-    <div className="flex-1 min-w-0">
+    <div className="w-full md:flex-1 min-w-0">
       {q.isLoading ? (
-        <div className="h-full bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] animate-pulse" />
+        <div className="h-40 md:h-full bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] animate-pulse" />
       ) : q.isError ? (
         <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 text-[12px] text-[#DD0C15]">{t.monitoring.moduleHealthErr}</div>
       ) : (
-        <div className="grid grid-cols-3 gap-3 h-full">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 md:h-full">
           {(q.data ?? []).map((m) => {
             const meta = STATUS_META[m.status] ?? STATUS_META.healthy;
             return (

@@ -106,7 +106,7 @@ export function AlertsRiskPanel() {
   const isLoading = vacancies.isLoading || board.isLoading;
 
   return (
-    <div className="flex-1 bg-white rounded-xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
+    <div className="w-full md:flex-1 bg-white rounded-xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
       <div className="flex justify-between items-center mb-4">
         <div className="flex items-center gap-2">
           <span className="text-sm font-semibold text-[#1F114C]">{rd.riskCandidates}</span>

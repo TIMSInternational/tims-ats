@@ -8,7 +8,7 @@ export function MarketCompetitiveness() {
   // No external market salary source is integrated, so percentile-vs-market can't
   // be computed honestly. Render an explicit unavailable state (rule #4).
   return (
-    <div className="col-span-7 bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
+    <div className="col-span-12 md:col-span-7 bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
       <div className="text-[13px] font-semibold text-[#333] mb-3">{t.compensation.marketTitle}</div>
       <div className="flex items-center justify-center h-[120px] text-center">
         <p className="text-[12px] text-[#8B8B8B] max-w-md">{t.compensation.marketUnavailable}</p>
@@ -23,7 +23,7 @@ export function TotalCompBreakdown() {
   const fmt = (n: number) => `$${Math.round(n / 1000).toLocaleString('es-CO')}K`;
 
   return (
-    <div className="col-span-5 bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
+    <div className="col-span-12 md:col-span-5 bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
       <div className="text-[13px] font-semibold text-[#333] mb-3">{t.compensation.totalCompTitle}</div>
       {q.isLoading ? (
         <div className="h-28 bg-gray-50 rounded animate-pulse" />

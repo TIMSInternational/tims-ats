@@ -81,7 +81,7 @@ export function KpiStrip() {
 
   if (isLoading) {
     return (
-      <div className="grid grid-cols-4 gap-4 mb-5">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
         {[...Array(4)].map((_, i) => (
           <div key={i} className="rounded-xl border border-border bg-white p-4">
             <Skeleton className="h-3 w-16 mb-3" />
@@ -99,7 +99,7 @@ export function KpiStrip() {
   const mrrChange = trendArrow(kpis.mrr, kpis.mrrPrevMonth);
 
   return (
-    <div className="grid grid-cols-4 gap-4 mb-5">
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
       <KpiCard
         label="MRR"
         value={formatCurrency(kpis.mrr)}
