@@ -4,6 +4,7 @@ import { candidateDocumentsRouter } from './documents';
 import { candidateTagsRouter } from './tags';
 import { candidatePoolRouter } from './pool';
 import { candidateTimelineRouter } from './timeline';
+import { candidateAiRouter } from './ai';
 
 export const candidateRouter = mergeRouters(
   candidateCrudRouter,
@@ -11,4 +12,5 @@ export const candidateRouter = mergeRouters(
   candidateTagsRouter,
   candidatePoolRouter,
   candidateTimelineRouter,
+  candidateAiRouter,
 );

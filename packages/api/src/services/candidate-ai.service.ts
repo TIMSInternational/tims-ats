@@ -1,6 +1,12 @@
 import { TRPCError } from '@trpc/server';
-import { parseCV as parseCVAgent } from '@tims/ai';
+import { parseCV as parseCVAgent, screenCandidate as screenCandidateAgent } from '@tims/ai';
 import { candidateRepository } from '../repositories/candidate.repository';
+import { candidateAiRepository } from '../repositories/candidate-ai.repository';
+
+/** Coerce an unknown JSON value into a clean string[] (skills can be Json/null). */
+function toStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
+}
 
 // ---------------------------------------------------------------------------
 // Candidate AI service — the candidate-domain entry points that call AI.
@@ -50,5 +56,40 @@ export const candidateAiService = {
     }
 
     return parsedData;
+  },
+
+  /**
+   * Screen a candidate against a vacancy via the gated candidate-screener agent,
+   * then persist the assessment as the candidate↔vacancy FitScore. Both records
+   * are loaded org-scoped and verified to exist before any AI spend.
+   */
+  async screenCandidate(orgId: string, candidateId: string, vacancyId: string) {
+    const [candidate, vacancy] = await Promise.all([
+      candidateAiRepository.getCandidateProfile(orgId, candidateId),
+      candidateAiRepository.getVacancyForScreening(orgId, vacancyId),
+    ]);
+    if (!candidate) throw new TRPCError({ code: 'NOT_FOUND', message: 'Candidato no encontrado' });
+    if (!vacancy) throw new TRPCError({ code: 'NOT_FOUND', message: 'Vacante no encontrada' });
+
+    const settings = (vacancy.settings ?? {}) as { skills?: unknown; requirements?: unknown };
+
+    const { result, model } = await screenCandidateAgent(
+      orgId,
+      {
+        name: `${candidate.firstName} ${candidate.lastName}`,
+        title: candidate.currentTitle ?? undefined,
+        skills: toStringArray(candidate.skills),
+        experience: candidate.yearsExperience ?? undefined,
+      },
+      {
+        title: vacancy.title,
+        requirements: toStringArray(settings.requirements).concat(vacancy.description ? [vacancy.description] : []),
+        skills: toStringArray(settings.skills),
+      },
+    );
+
+    const fit = await candidateAiRepository.upsertFitScore(orgId, candidateId, vacancyId, result.score, result);
+
+    return { ...result, model, fitScoreId: fit.id };
   },
 };
