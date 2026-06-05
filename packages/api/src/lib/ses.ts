@@ -1,4 +1,5 @@
 import { SESClient, SendEmailCommand } from '@aws-sdk/client-ses';
+import { logger } from '@tims/shared';
 import { sesCircuit } from './circuit-breaker';
 
 const ses = new SESClient({
@@ -30,11 +31,14 @@ export async function sendEmail({ to, subject, html }: SendEmailParams): Promise
       );
       return true;
     }, () => {
-      console.error('[SES] Circuit breaker open — email not sent');
+      logger.warn({ component: 'ses' }, 'Circuit breaker open — email not sent');
       return false;
     });
   } catch (error) {
-    console.error('[SES] Failed to send email:', error);
+    logger.error(
+      { component: 'ses', errMessage: error instanceof Error ? error.message : String(error) },
+      'Failed to send email',
+    );
     return false;
   }
 }
