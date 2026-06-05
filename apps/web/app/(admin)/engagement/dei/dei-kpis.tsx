@@ -1,6 +1,7 @@
 'use client';
 
 import { trpc } from '../../../../lib/trpc';
+import { useI18n } from '../../../../lib/i18n';
 
 function KpiSkeleton() {
   return <div className="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] animate-pulse"><div className="h-20 bg-gray-100 rounded" /></div>;
@@ -17,6 +18,7 @@ function KpiCard({ label, children, sub }: { label: string; children: React.Reac
 }
 
 export function DeiKpis() {
+  const { t } = useI18n();
   const kpis = trpc.dei.getDashboardKpis.useQuery();
   const genders = trpc.dei.getGenderRepresentation.useQuery();
   const pay = trpc.dei.getPayEquity.useQuery();
@@ -33,7 +35,7 @@ export function DeiKpis() {
   if (kpis.isError || !kpis.data) {
     return (
       <div className="bg-white rounded-xl p-4 mb-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center text-[12px] text-[#DD0C15]">
-        No se pudieron cargar los indicadores DEI.
+        {t.dei.errKpis}
       </div>
     );
   }
@@ -48,7 +50,7 @@ export function DeiKpis() {
   return (
     <div className="grid grid-cols-5 gap-3 mb-4">
       {/* Gender ratio */}
-      <KpiCard label="Ratio de Género" sub="M / F / NB">
+      <KpiCard label={t.dei.kpiGenderRatio} sub={t.dei.kpiGenderRatioHint}>
         <div className="flex items-center justify-center gap-2 my-1">
           <span className="text-[11px] font-semibold text-blue-600">{male}%</span>
           <span className="text-[11px] font-semibold text-pink-500">{female}%</span>
@@ -62,15 +64,15 @@ export function DeiKpis() {
       </KpiCard>
 
       {/* Parity index */}
-      <KpiCard label="Índice de Paridad" sub="1.0 = paridad total">
+      <KpiCard label={t.dei.kpiParity} sub={t.dei.kpiParityHint}>
         <p className="text-[24px] font-bold text-[#1F114C]">{d.genderParityIndex.toFixed(2)}</p>
-        <p className="text-[10px] text-[#8B8B8B]">{d.womenPct}% mujeres</p>
+        <p className="text-[10px] text-[#8B8B8B]">{d.womenPct}{t.dei.womenSuffix}</p>
       </KpiCard>
 
       {/* Pay gap */}
-      <KpiCard label="Brecha Salarial" sub="mediana F vs M">
+      <KpiCard label={t.dei.kpiPayGap} sub={t.dei.kpiPayGapHint}>
         {gap === null || gap === undefined ? (
-          <p className="text-[18px] font-bold text-[#8B8B8B] mt-2">N/D</p>
+          <p className="text-[18px] font-bold text-[#8B8B8B] mt-2">{t.dei.na}</p>
         ) : (
           <p className={`text-[24px] font-bold ${Math.abs(gap) < 3 ? 'text-green-600' : Math.abs(gap) <= 5 ? 'text-amber-500' : 'text-[#DD0C15]'}`}>
             {gap > 0 ? '+' : ''}{gap}%
@@ -79,14 +81,14 @@ export function DeiKpis() {
       </KpiCard>
 
       {/* Inclusion */}
-      <KpiCard label="Índice de Inclusión" sub="de 100 (encuesta)">
-        <p className="text-[24px] font-bold text-green-600">{inclusion.data?.index ?? 'N/D'}</p>
+      <KpiCard label={t.dei.kpiInclusion} sub={t.dei.kpiInclusionHint}>
+        <p className="text-[24px] font-bold text-green-600">{inclusion.data?.index ?? t.dei.na}</p>
       </KpiCard>
 
       {/* Demographics coverage */}
-      <KpiCard label="Cobertura Demográfica" sub={`${d.totalEmployees} empleados`}>
+      <KpiCard label={t.dei.kpiCoverage} sub={`${d.totalEmployees} ${t.dei.employeesSuffix}`}>
         <p className="text-[24px] font-bold text-[#1F114C]">{d.demographicsCoverage}%</p>
-        <p className="text-[10px] text-[#8B8B8B]">{d.totalNationalities} nacionalidades</p>
+        <p className="text-[10px] text-[#8B8B8B]">{d.totalNationalities} {t.dei.nationalitiesSuffix}</p>
       </KpiCard>
     </div>
   );

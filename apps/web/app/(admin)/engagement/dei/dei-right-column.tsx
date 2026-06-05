@@ -1,13 +1,14 @@
 'use client';
 
 import { trpc } from '../../../../lib/trpc';
+import { useI18n } from '../../../../lib/i18n';
 
 const AGE_COLORS: Record<string, string> = {
   '<25': '#B8AED4', '25-34': '#7B6BAA', '35-44': '#5C4B99', '45-54': '#3D2D7A', '55+': '#1F114C',
 };
 
 const COUNTRY_NAMES: Record<string, string> = {
-  CO: 'Colombia', VE: 'Venezuela', US: 'Estados Unidos', EC: 'Ecuador', PE: 'Perú',
+  CO: 'Colombia', VE: 'Venezuela', US: 'USA', EC: 'Ecuador', PE: 'Perú',
   MX: 'México', CL: 'Chile', AR: 'Argentina', BR: 'Brasil',
 };
 
@@ -23,17 +24,18 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
 }
 
 export function AgeDistribution() {
+  const { t } = useI18n();
   const q = trpc.dei.getAgeDistribution.useQuery();
   const total = (q.data ?? []).reduce((sum, a) => sum + a.count, 0);
 
   return (
-    <Card title="Distribución por Edad">
+    <Card title={t.dei.ageDistribution}>
       {q.isLoading ? (
         <div className="h-28 bg-gray-50 rounded animate-pulse" />
       ) : q.isError ? (
-        <p className="text-[12px] text-[#DD0C15]">No se pudo cargar la distribución por edad.</p>
+        <p className="text-[12px] text-[#DD0C15]">{t.dei.errAge}</p>
       ) : total === 0 ? (
-        <p className="text-[12px] text-[#8B8B8B]">Sin fechas de nacimiento registradas aún.</p>
+        <p className="text-[12px] text-[#8B8B8B]">{t.dei.ageEmpty}</p>
       ) : (
         <>
           <div className="space-y-2">
@@ -50,7 +52,7 @@ export function AgeDistribution() {
             ))}
           </div>
           <p className="text-[10px] text-[#8B8B8B] mt-2 text-center">
-            Total: <strong className="text-[#1F114C]">{total}</strong> empleados con edad registrada
+            {t.dei.totalLabel}: <strong className="text-[#1F114C]">{total}</strong> {t.dei.ageTotalSuffix}
           </p>
         </>
       )}
@@ -59,16 +61,17 @@ export function AgeDistribution() {
 }
 
 export function NationalityDiversity() {
+  const { t } = useI18n();
   const q = trpc.dei.getNationalityDiversity.useQuery();
 
   return (
-    <Card title="Diversidad por Nacionalidad">
+    <Card title={t.dei.nationalityDiversity}>
       {q.isLoading ? (
         <div className="h-24 bg-gray-50 rounded animate-pulse" />
       ) : q.isError ? (
-        <p className="text-[12px] text-[#DD0C15]">No se pudo cargar la diversidad por nacionalidad.</p>
+        <p className="text-[12px] text-[#DD0C15]">{t.dei.errNationality}</p>
       ) : !q.data || q.data.distribution.length === 0 ? (
-        <p className="text-[12px] text-[#8B8B8B]">Sin nacionalidades registradas aún.</p>
+        <p className="text-[12px] text-[#8B8B8B]">{t.dei.noNationality}</p>
       ) : (
         <div className="space-y-1.5">
           {q.data.distribution.map((n, i) => (
@@ -92,20 +95,19 @@ export function NationalityDiversity() {
 }
 
 export function HiringFunnel() {
+  const { t } = useI18n();
   const q = trpc.dei.getHiringFunnel.useQuery();
 
   return (
-    <Card title="Pipeline de Candidatos">
+    <Card title={t.dei.candidatePipeline}>
       {q.isLoading ? (
         <div className="h-16 bg-gray-50 rounded animate-pulse" />
       ) : q.isError ? (
-        <p className="text-[12px] text-[#DD0C15]">No se pudo cargar el pipeline.</p>
+        <p className="text-[12px] text-[#DD0C15]">{t.dei.errPipeline}</p>
       ) : (
         <>
           <p className="text-[24px] font-bold text-[#1F114C]">{q.data?.total ?? 0}</p>
-          <p className="text-[10px] text-[#8B8B8B] mt-1">
-            candidatos totales. El desglose de diversidad por etapa requiere datos demográficos de candidatos, que no se recopilan.
-          </p>
+          <p className="text-[10px] text-[#8B8B8B] mt-1">{t.dei.candidatesTotalNote}</p>
         </>
       )}
     </Card>
