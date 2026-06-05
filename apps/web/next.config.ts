@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 import path from "node:path";
+import { withSentryConfig } from "@sentry/nextjs";
 
 // NOTE: Content-Security-Policy is set per-request in `middleware.ts` so it can
 // carry a unique nonce (nonce-based CSP, no 'unsafe-inline' on script-src in
@@ -49,4 +50,17 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+// Wrap with the Sentry build plugin. Org/project/token are read from env
+// (.env.sentry-build-plugin locally, or CI/Vercel env), so no slugs are
+// hardcoded and the wrapper is a no-op for source-map upload until a token is
+// set. tunnelRoute is intentionally omitted — Sentry ingest is already allowed
+// in the CSP connect-src, and a tunnel route would need middleware/auth carve-outs.
+export default withSentryConfig(nextConfig, {
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  // Upload a wider set of client files for better stack-trace resolution.
+  widenClientFileUpload: true,
+  // Quiet during local/non-CI builds.
+  silent: !process.env.CI,
+});
