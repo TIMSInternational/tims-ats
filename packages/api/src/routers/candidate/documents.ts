@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { router, permissionProcedure } from '../../trpc';
 import { candidateService } from '../../services/candidate.service';
+import { candidateAiService } from '../../services/candidate-ai.service';
 
 export const candidateDocumentsRouter = router({
   uploadDocument: permissionProcedure('candidate', 'update')
@@ -20,9 +21,15 @@ export const candidateDocumentsRouter = router({
       candidateService.deleteDocument(ctx.user.organizationId, input.documentId),
     ),
 
+  // Parses CV TEXT (paste-in / extracted upstream) via the gated cv-parser
+  // agent. Optionally persists the result to a document. Real file→text
+  // extraction (S3 + PDF/DOCX) is a separate future phase.
   parseCV: permissionProcedure('candidate', 'update')
-    .input(z.object({ documentId: z.string().uuid() }))
+    .input(z.object({
+      text: z.string().min(1).max(20000),
+      documentId: z.string().uuid().optional(),
+    }))
     .mutation(({ ctx, input }) =>
-      candidateService.parseCV(ctx.user.organizationId, input.documentId),
+      candidateAiService.parseCV(ctx.user.organizationId, input.text, input.documentId),
     ),
 });
