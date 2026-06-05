@@ -1,9 +1,6 @@
 import { z } from 'zod';
-import { invokeAgent, calculateCost } from '../client';
-import { checkBudget } from '../budget';
-import { logInvocation } from '../logger';
-import { resolveAgentId } from '../registry';
-import { TRPCError } from '@trpc/server';
+import { invokeAgent } from '../invoke';
+import { wrapAsData } from '../pii';
 
 const SYSTEM_PROMPT = `You are a professional HR job description writer for a Latin American enterprise HR platform.
 Generate compelling, inclusive job descriptions in Spanish.
@@ -39,50 +36,21 @@ export async function generateVacancyDescription(
   title: string,
   context?: string,
 ): Promise<{ description: string; model: string; tokensUsed: number }> {
-  const agentId = await resolveAgentId('vacancy-writer');
-
-  // Budget check
-  const budget = await checkBudget(orgId, agentId);
-  if (!budget.allowed) {
-    throw new TRPCError({ code: 'TOO_MANY_REQUESTS', message: 'AI budget exceeded for this month' });
-  }
-
-  const userMessage = `<job_data>
-Title: ${title}
-${context ? `Additional context: ${context}` : ''}
-</job_data>
-
-Generate a professional job description for this position.`;
-
-  const result = await invokeAgent('sonnet', SYSTEM_PROMPT, userMessage, 2048);
-  const cost = calculateCost('sonnet', result.inputTokens, result.outputTokens);
-
-  await logInvocation({
-    agentId,
-    organizationId: orgId,
-    inputTokens: result.inputTokens,
-    outputTokens: result.outputTokens,
-    costUsd: cost,
-    latencyMs: result.latencyMs,
-    model: result.model,
-    success: true,
+  const { data, model, inputTokens, outputTokens } = await invokeAgent({
+    slug: 'vacancy-writer',
+    orgId,
+    input: { title, context: context ?? null },
+    systemPrompt: SYSTEM_PROMPT,
+    buildUserMessage: ({ title, context }) => {
+      const body = `Title: ${title}${context ? `\nAdditional context: ${context}` : ''}`;
+      return `${wrapAsData('job_data', body)}\n\nGenerate a professional job description for this position.`;
+    },
+    schema: outputSchema,
+    // Job descriptions are non-PII prose — if the model returns un-parseable
+    // text, the raw text is still a usable description.
+    fallback: (raw) => ({ description: raw, sections: { responsibilities: [], requirements: [], benefits: [] } }),
+    maxTokens: 2048,
   });
 
-  // Parse output — fallback to raw text if JSON parsing fails
-  let description = result.text;
-  try {
-    const jsonMatch = result.text.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const parsed = outputSchema.parse(JSON.parse(jsonMatch[0]));
-      description = parsed.description;
-    }
-  } catch {
-    // Use raw text as fallback
-  }
-
-  return {
-    description,
-    model: result.model,
-    tokensUsed: result.inputTokens + result.outputTokens,
-  };
+  return { description: data.description, model, tokensUsed: inputTokens + outputTokens };
 }

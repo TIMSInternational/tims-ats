@@ -77,11 +77,14 @@ export function wrapAsData(tag: string, content: string): string {
   return `<${tag}>\n${safe}\n</${tag}>`;
 }
 
-export interface BedrockGuardrailConfig {
+// Declared as a `type` (not `interface`) so it carries an implicit index
+// signature and stays assignable to the AI SDK's providerOptions, which expects
+// Record<string, JSONValue>.
+export type BedrockGuardrailConfig = {
   guardrailIdentifier: string;
   guardrailVersion: string;
   trace: 'enabled' | 'disabled';
-}
+};
 
 /**
  * Build the Bedrock provider options carrying the Guardrail reference, or

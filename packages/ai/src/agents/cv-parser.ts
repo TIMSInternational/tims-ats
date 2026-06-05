@@ -1,9 +1,6 @@
 import { z } from 'zod';
-import { invokeAgent, calculateCost } from '../client';
-import { checkBudget } from '../budget';
-import { logInvocation } from '../logger';
-import { resolveAgentId } from '../registry';
-import { TRPCError } from '@trpc/server';
+import { invokeAgent } from '../invoke';
+import { wrapAsData } from '../pii';
 
 const SYSTEM_PROMPT = `You are a CV/resume parser for an HR platform. Extract structured data from CV text.
 
@@ -53,52 +50,32 @@ const outputSchema = z.object({
 
 export type ParsedCVData = z.infer<typeof outputSchema>;
 
+const EMPTY_CV: ParsedCVData = {
+  name: null, email: null, phone: null, skills: [], experience: [], education: [], languages: [], summary: null,
+};
+
 export async function parseCV(
   orgId: string,
   cvText: string,
 ): Promise<{ data: ParsedCVData; model: string; confidence: number }> {
-  const agentId = await resolveAgentId('cv-parser');
-
-  const budget = await checkBudget(orgId, agentId);
-  if (!budget.allowed) {
-    throw new TRPCError({ code: 'TOO_MANY_REQUESTS', message: 'AI budget exceeded for this month' });
-  }
-
-  const userMessage = `<cv_text>
-${cvText.slice(0, 8000)}
-</cv_text>
-
-Parse this CV and extract structured data. Return JSON only.`;
-
-  const result = await invokeAgent('haiku', SYSTEM_PROMPT, userMessage, 2048);
-  const cost = calculateCost('haiku', result.inputTokens, result.outputTokens);
-
-  await logInvocation({
-    agentId,
-    organizationId: orgId,
-    inputTokens: result.inputTokens,
-    outputTokens: result.outputTokens,
-    costUsd: cost,
-    latencyMs: result.latencyMs,
-    model: result.model,
-    success: true,
+  // CV text contains candidate PII — the registry sets cacheTtlSeconds=0 for
+  // cv-parser, so invokeAgent never caches raw input here.
+  const { data, model } = await invokeAgent({
+    slug: 'cv-parser',
+    orgId,
+    input: { cvText: cvText.slice(0, 8000) },
+    systemPrompt: SYSTEM_PROMPT,
+    buildUserMessage: ({ cvText }) =>
+      `${wrapAsData('cv_text', cvText)}\n\nParse this CV and extract structured data. Return JSON only.`,
+    schema: outputSchema,
+    fallback: () => EMPTY_CV,
+    maxTokens: 2048,
   });
 
-  try {
-    const jsonMatch = result.text.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const parsed = outputSchema.parse(JSON.parse(jsonMatch[0]));
-      const filledFields = Object.values(parsed).filter((v) => v !== null && (Array.isArray(v) ? v.length > 0 : true)).length;
-      const confidence = Math.min(filledFields / 8, 1);
-      return { data: parsed, model: result.model, confidence };
-    }
-  } catch {
-    // Fallback
-  }
+  const filledFields = Object.values(data).filter(
+    (v) => v !== null && (Array.isArray(v) ? v.length > 0 : true),
+  ).length;
+  const confidence = Math.min(filledFields / 8, 1);
 
-  return {
-    data: { name: null, email: null, phone: null, skills: [], experience: [], education: [], languages: [], summary: null },
-    model: result.model,
-    confidence: 0,
-  };
+  return { data, model, confidence };
 }

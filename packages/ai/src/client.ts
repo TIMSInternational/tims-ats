@@ -1,9 +1,18 @@
 import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock';
 import { generateText } from 'ai';
-import { z } from 'zod';
+import { bedrockCircuit } from './circuit';
+import { bedrockGuardrailOptions } from './pii';
 
 // ---------------------------------------------------------------------------
-// Bedrock Client — wraps AI SDK with circuit breaker pattern
+// Bedrock client — the ONLY place that calls AWS Bedrock.
+//
+// `bedrockGenerate` is the raw model call. It is intentionally NOT the gated
+// entry point: every agent goes through the gated `invokeAgent` in invoke.ts
+// (budget → cache → PII → bedrockGenerate → validate → log). Routers/services
+// must never import this directly — a CI grep-gate enforces that (rule #2).
+//
+// The call is wrapped in `bedrockCircuit` (5 failures → open 30s) and, when a
+// Bedrock Guardrail is provisioned, references it so PII is masked server-side.
 // ---------------------------------------------------------------------------
 
 const bedrock = createAmazonBedrock({
@@ -17,13 +26,7 @@ const MODELS = {
   sonnet: bedrock('anthropic.claude-sonnet-4-20250514-v1:0'),
 } as const;
 
-type ModelId = keyof typeof MODELS;
-
-// Simple circuit breaker state
-let failures = 0;
-let circuitOpenUntil = 0;
-const MAX_FAILURES = 5;
-const COOLDOWN_MS = 30_000;
+export type ModelId = keyof typeof MODELS;
 
 export interface InvokeResult {
   text: string;
@@ -33,29 +36,27 @@ export interface InvokeResult {
   latencyMs: number;
 }
 
-export async function invokeAgent(
+/**
+ * Raw Bedrock text generation, guarded by the circuit breaker and (when
+ * provisioned) a Bedrock Guardrail. Internal — only invoke.ts should call it.
+ */
+export async function bedrockGenerate(
   model: ModelId,
   systemPrompt: string,
   userMessage: string,
   maxTokens: number = 2048,
 ): Promise<InvokeResult> {
-  // Circuit breaker check
-  if (failures >= MAX_FAILURES && Date.now() < circuitOpenUntil) {
-    throw new Error('AI service temporarily unavailable (circuit open)');
-  }
-
+  const guardrail = bedrockGuardrailOptions();
   const start = Date.now();
 
-  try {
+  return bedrockCircuit.execute(async () => {
     const result = await generateText({
       model: MODELS[model],
       system: systemPrompt,
       prompt: userMessage,
       maxTokens,
+      ...(guardrail ? { providerOptions: guardrail } : {}),
     });
-
-    // Reset circuit on success
-    failures = 0;
 
     return {
       text: result.text,
@@ -64,16 +65,10 @@ export async function invokeAgent(
       model,
       latencyMs: Date.now() - start,
     };
-  } catch (error) {
-    failures++;
-    if (failures >= MAX_FAILURES) {
-      circuitOpenUntil = Date.now() + COOLDOWN_MS;
-    }
-    throw error;
-  }
+  });
 }
 
-// Cost calculation per model
+// Cost calculation per model (USD per 1K tokens).
 const COST_PER_1K_INPUT: Record<ModelId, number> = {
   haiku: 0.001,
   sonnet: 0.003,
