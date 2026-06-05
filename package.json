@@ -29,5 +29,10 @@
   "dependencies": {
     "@daily-co/daily-js": "^0.90.0",
     "@daily-co/daily-react": "^0.25.2"
+  },
+  "pnpm": {
+    "overrides": {
+      "@opentelemetry/api": "1.9.1"
+    }
   }
 }

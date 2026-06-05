@@ -2,12 +2,36 @@ import { fetchRequestHandler } from '@trpc/server/adapters/fetch';
 import { appRouter } from '@tims/api';
 import { createSupabaseServerClient } from '@tims/auth/server';
 import { db } from '@tims/db';
+import { logger } from '@tims/shared';
+import * as Sentry from '@sentry/nextjs';
 
 const handler = (req: Request) =>
   fetchRequestHandler({
     endpoint: '/api/trpc',
     req,
     router: appRouter,
+    // Structured error logging. Unexpected server errors are logged at `error`
+    // with the stack; expected client errors (auth, validation, not-found) are
+    // `warn` without stack noise. Never log `input` — it may contain PII.
+    onError({ error, path, type, ctx }) {
+      const base = {
+        path: path ?? '<none>',
+        type,
+        code: error.code,
+        userId: ctx?.user?.id,
+        orgId: ctx?.user?.organizationId || undefined,
+      };
+      if (error.code === 'INTERNAL_SERVER_ERROR') {
+        logger.error(
+          { ...base, errMessage: error.message, stack: error.stack },
+          'tRPC internal error',
+        );
+        // Report unexpected server errors to Sentry (no-ops without a DSN).
+        Sentry.captureException(error, { tags: { trpcPath: base.path }, extra: base });
+      } else {
+        logger.warn(base, `tRPC ${error.code}`);
+      }
+    },
     createContext: async () => {
       const supabase = await createSupabaseServerClient();
       const { data: { user: supabaseUser } } = await supabase.auth.getUser();
