@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { invokeAgent, calculateCost } from '../client';
 import { checkBudget } from '../budget';
 import { logInvocation } from '../logger';
-import { db } from '@tims/db';
+import { resolveAgentId } from '../registry';
 import { TRPCError } from '@trpc/server';
 
 const SYSTEM_PROMPT = `You are a professional HR job description writer for a Latin American enterprise HR platform.
@@ -39,9 +39,7 @@ export async function generateVacancyDescription(
   title: string,
   context?: string,
 ): Promise<{ description: string; model: string; tokensUsed: number }> {
-  const agentSlug = 'vacancy-writer';
-  const agent = await db.aiAgent.findFirst({ where: { slug: agentSlug }, select: { id: true } });
-  const agentId = agent?.id ?? agentSlug;
+  const agentId = await resolveAgentId('vacancy-writer');
 
   // Budget check
   const budget = await checkBudget(orgId, agentId);

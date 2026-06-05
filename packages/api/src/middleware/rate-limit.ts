@@ -130,13 +130,26 @@ export async function checkRateLimit(
   checkMemoryRateLimit(identifier, category);
 }
 
+// AI-backed endpoints (cost-controlled, capped per-org). Keep in sync with the
+// live agents in packages/ai and the stubbed-AI procedures so none escape the AI
+// tier. Matched case-insensitively. NOTE: precise per-procedure tagging should
+// replace this heuristic once all AI calls route through the central invokeAgent
+// pipeline (Phase 1). `simulate` is intentionally excluded — compensation's
+// simulate-adjustment is a pure calculation, not an AI call.
+const AI_PATH_KEYWORDS = [
+  'generate', 'parse', 'analyze', 'inclusive', 'screen', 'recommend',
+  'explainab', 'nextbestaction', 'detectbias', 'wordcloud', 'sentiment',
+  'medical', 'getguide',
+];
+
 export function getRateLimitCategory(path: string, type: 'query' | 'mutation'): RateLimitCategory {
   // Auth endpoints
   if (path.startsWith('auth.')) return 'auth';
+  const p = path.toLowerCase();
   // AI-related endpoints
-  if (path.includes('generate') || path.includes('parse') || path.includes('analyze') || path.includes('Explainability') || path.includes('Recommendations') || path.includes('NextBestAction') || path.includes('detectBias') || path.includes('simulate')) return 'ai';
+  if (AI_PATH_KEYWORDS.some((k) => p.includes(k))) return 'ai';
   // Export endpoints
-  if (path.includes('export') || path.includes('Export')) return 'export';
+  if (p.includes('export')) return 'export';
   // Default by type
   return type;
 }

@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { invokeAgent, calculateCost } from '../client';
 import { checkBudget } from '../budget';
 import { logInvocation } from '../logger';
-import { db } from '@tims/db';
+import { resolveAgentId } from '../registry';
 import { TRPCError } from '@trpc/server';
 
 const SYSTEM_PROMPT = `You are a CV/resume parser for an HR platform. Extract structured data from CV text.
@@ -57,9 +57,7 @@ export async function parseCV(
   orgId: string,
   cvText: string,
 ): Promise<{ data: ParsedCVData; model: string; confidence: number }> {
-  const agentSlug = 'cv-parser';
-  const agent = await db.aiAgent.findFirst({ where: { slug: agentSlug }, select: { id: true } });
-  const agentId = agent?.id ?? agentSlug;
+  const agentId = await resolveAgentId('cv-parser');
 
   const budget = await checkBudget(orgId, agentId);
   if (!budget.allowed) {

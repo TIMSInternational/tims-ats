@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { invokeAgent, calculateCost } from '../client';
 import { checkBudget } from '../budget';
 import { logInvocation } from '../logger';
-import { db } from '@tims/db';
+import { resolveAgentId } from '../registry';
 import { TRPCError } from '@trpc/server';
 
 const SYSTEM_PROMPT = `You are an inclusive language reviewer for job descriptions in Spanish.
@@ -41,9 +41,7 @@ export async function checkInclusiveLanguage(
   orgId: string,
   text: string,
 ): Promise<{ score: number; suggestions: Array<{ original: string; suggestion: string; reason: string }>; model: string }> {
-  const agentSlug = 'inclusive-language';
-  const agent = await db.aiAgent.findFirst({ where: { slug: agentSlug }, select: { id: true } });
-  const agentId = agent?.id ?? agentSlug;
+  const agentId = await resolveAgentId('inclusive-language');
 
   const budget = await checkBudget(orgId, agentId);
   if (!budget.allowed) {
