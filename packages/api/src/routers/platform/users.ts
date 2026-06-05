@@ -4,6 +4,7 @@ import { router } from '../../trpc';
 import { db } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { platformProcedure } from './_common';
+import { invalidatePermissionCache } from '../../lib/cache';
 
 const userListSelect = {
   id: true,
@@ -231,6 +232,9 @@ export const usersRouter = router({
       await db.userRole.create({
         data: { userId: input.userId, roleId: role.id },
       });
+
+      // Role change → drop the org's cached permission decisions.
+      await invalidatePermissionCache(input.organizationId);
 
       await db.auditLog.create({
         data: {
