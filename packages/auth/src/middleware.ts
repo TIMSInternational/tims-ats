@@ -1,9 +1,18 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
-export async function updateSession(request: NextRequest) {
+// `requestHeaders` lets the caller forward modified request headers (e.g. the
+// per-request CSP nonce) to the downstream render. Next.js reads the nonce from
+// the request's Content-Security-Policy header to tag its bootstrap scripts, so
+// the headers must travel via `NextResponse.next({ request: { headers } })`.
+export async function updateSession(
+  request: NextRequest,
+  requestHeaders?: Headers
+) {
+  const headers = requestHeaders ?? new Headers(request.headers);
+
   let supabaseResponse = NextResponse.next({
-    request,
+    request: { headers },
   });
 
   const supabase = createServerClient(
@@ -19,7 +28,7 @@ export async function updateSession(request: NextRequest) {
             request.cookies.set(name, value)
           );
           supabaseResponse = NextResponse.next({
-            request,
+            request: { headers },
           });
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options)
