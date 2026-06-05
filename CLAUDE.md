@@ -397,6 +397,13 @@ LOW (pass, log access): Job descriptions, company policies
 
 Cache keys: `trpc:{orgId}:{path}:{inputHash}`. Invalidate by org prefix on writes.
 
+> **Implemented (2026-06-05):** cache-aside layer in `packages/api/src/lib/cache.ts`
+> (Upstash + in-memory fallback, fail-soft). First consumer = the per-request
+> **permission check** in `trpc.ts` (`tims:perm:{orgId}:{roles}:{module}:{action}`,
+> 5-min TTL) — it previously hit `rolePermission` on every authed request.
+> Role-assignment writes call `invalidatePermissionCache(orgId)`. Org-settings /
+> dashboard-KPI caching can reuse `cacheGet`/`cacheSet`/`cacheInvalidatePrefix`.
+
 ### Circuit Breaker (External Services)
 ```typescript
 // Bedrock: 5 failures → open for 30s. SES: 3 failures → open for 60s.

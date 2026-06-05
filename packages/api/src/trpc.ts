@@ -3,6 +3,7 @@ import superjson from 'superjson';
 import type { Context } from './context';
 import { db, runWithTenant } from '@tims/db';
 import { checkRateLimit, getRateLimitCategory } from './middleware/rate-limit';
+import { getCachedPermission, setCachedPermission } from './lib/cache';
 
 const t = initTRPC.context<Context>().create({
   transformer: superjson,
@@ -115,21 +116,25 @@ function requirePermission(module: string, action: string) {
       return next();
     }
 
-    // Check specific permissions in database
-    const permission = await db.rolePermission.findFirst({
-      where: {
-        role: {
-          slug: { in: ctx.user.roles },
-          organizationId: ctx.user.organizationId,
-        },
-        permission: {
-          module,
-          action,
-        },
-      },
-    });
+    // Check specific permissions — cache-aside (5 min) keyed by org+roles+module+
+    // action. The role→permission grants aren't mutated at runtime, so this is a
+    // pure hot-path optimization; role-assignment writes invalidate the org's
+    // entries defensively (see invalidatePermissionCache).
+    const orgId = ctx.user.organizationId;
+    let allowed = await getCachedPermission(orgId, ctx.user.roles, module, action);
 
-    if (!permission) {
+    if (allowed === null) {
+      const permission = await db.rolePermission.findFirst({
+        where: {
+          role: { slug: { in: ctx.user.roles }, organizationId: orgId },
+          permission: { module, action },
+        },
+      });
+      allowed = !!permission;
+      await setCachedPermission(orgId, ctx.user.roles, module, action, allowed);
+    }
+
+    if (!allowed) {
       throw new TRPCError({
         code: 'FORBIDDEN',
         message: `No tienes permiso para ${action} en ${module}`,

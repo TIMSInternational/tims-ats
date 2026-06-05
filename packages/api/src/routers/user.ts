@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { router, protectedProcedure, permissionProcedure, auditedProcedure } from '../trpc';
 import { tenantDb as db } from '@tims/db';
 import { createUserSchema, updateProfileSchema, assignRoleSchema } from '@tims/shared';
+import { invalidatePermissionCache } from '../lib/cache';
 
 export const userRouter = router({
   // Get current user profile
@@ -164,7 +165,7 @@ export const userRouter = router({
         throw new Error(`Rol '${input.roleSlug}' no encontrado`);
       }
 
-      return db.userRole.upsert({
+      const result = await db.userRole.upsert({
         where: {
           userId_roleId: {
             userId: input.userId,
@@ -183,6 +184,10 @@ export const userRouter = router({
           unitScope: input.unitScope,
         },
       });
+
+      // Role change → drop the org's cached permission decisions.
+      await invalidatePermissionCache(ctx.user.organizationId);
+      return result;
     }),
 
   // Deactivate user
