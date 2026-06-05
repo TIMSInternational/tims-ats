@@ -1,6 +1,7 @@
 export { invokeAgent, calculateCost } from './client';
 export { checkBudget } from './budget';
 export { logInvocation } from './logger';
+export { resolveAgentId, seedLiveAgents, AGENT_REGISTRY } from './registry';
 export { generateVacancyDescription } from './agents/vacancy-writer';
 export { checkInclusiveLanguage } from './agents/inclusive-language';
 export { parseCV } from './agents/cv-parser';

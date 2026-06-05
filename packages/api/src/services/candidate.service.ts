@@ -246,13 +246,18 @@ export const candidateService = {
     const doc = await candidateRepository.findDocument(orgId, documentId);
     if (!doc) throw new TRPCError({ code: 'NOT_FOUND', message: 'Documento no encontrado' });
 
-    // Stub — will be replaced with Bedrock call in Phase 1.6
+    // CV parsing is NOT wired to Bedrock yet. The real cv-parser agent exists in
+    // @tims/ai but must run behind the AI guardrail layer (budget cap, response
+    // cache, PII redaction) before it can process raw CV text — see the Phase 1
+    // roadmap. Until then return an explicit "not parsed" result instead of
+    // fabricating candidate data (which previously persisted a fake "Juan Perez").
     const parsedData = {
-      extractedName: 'Juan Perez',
-      extractedEmail: 'juan@example.com',
-      extractedSkills: ['JavaScript', 'React', 'Node.js'],
-      confidence: 0.87,
-      modelVersion: 'stub',
+      extractedName: '',
+      extractedEmail: '',
+      extractedSkills: [] as string[],
+      confidence: 0,
+      modelVersion: 'unavailable',
+      parsed: false,
     };
 
     await candidateRepository.updateDocumentParsedData(documentId, parsedData);

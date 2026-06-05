@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { invokeAgent, calculateCost } from '../client';
 import { checkBudget } from '../budget';
 import { logInvocation } from '../logger';
-import { db } from '@tims/db';
+import { resolveAgentId } from '../registry';
 import { TRPCError } from '@trpc/server';
 
 const SYSTEM_PROMPT = `You are a candidate screening assistant for an HR platform.
@@ -43,9 +43,7 @@ export async function screenCandidate(
   candidateProfile: { name: string; title?: string; skills?: string[]; experience?: number },
   jobRequirements: { title: string; requirements?: string[]; skills?: string[] },
 ): Promise<{ result: ScreeningResult; model: string }> {
-  const agentSlug = 'candidate-screener';
-  const agent = await db.aiAgent.findFirst({ where: { slug: agentSlug }, select: { id: true } });
-  const agentId = agent?.id ?? agentSlug;
+  const agentId = await resolveAgentId('candidate-screener');
 
   const budget = await checkBudget(orgId, agentId);
   if (!budget.allowed) {

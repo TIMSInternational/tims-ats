@@ -34,8 +34,14 @@ function anonymousIdentifier(headers: Headers): string {
 
 // Rate limiting middleware
 const withRateLimit = t.middleware(async ({ ctx, next, path, type }) => {
-  const identifier = ctx.user?.id ?? anonymousIdentifier(ctx.headers);
   const category = getRateLimitCategory(path, type as 'query' | 'mutation');
+  // AI calls are cost-controlled per ORGANIZATION, not per user: neither one user
+  // nor an org's users collectively may exceed the org's AI throughput/budget.
+  // Everything else is keyed per user (or per trusted IP for anonymous requests).
+  const identifier =
+    category === 'ai' && ctx.user?.organizationId
+      ? `org:${ctx.user.organizationId}`
+      : (ctx.user?.id ?? anonymousIdentifier(ctx.headers));
   await checkRateLimit(identifier, category);
   return next();
 });
