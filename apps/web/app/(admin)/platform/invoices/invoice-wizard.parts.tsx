@@ -37,7 +37,7 @@ export function PreviewPanel({
   memo,
 }: PreviewPanelProps) {
   return (
-    <div className="w-1/2 overflow-y-auto bg-[#F0F0F0] p-6">
+    <div className="hidden md:block md:w-1/2 overflow-y-auto bg-[#F0F0F0] p-6">
       {step > 0 && (
         <>
           <div className="flex gap-4 mb-4">
