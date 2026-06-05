@@ -1,98 +1,111 @@
 'use client';
 
-const BAND_LEVELS = [
-  { level: 'Director', range: ['$6,500', '$8,500', '$10,500'], dots: [
-    { pos: 45, outlier: false }, { pos: 62, outlier: false }, { pos: 92, outlier: true },
-  ]},
-  { level: 'Lead', range: ['$4,500', '$6,000', '$7,500'], dots: [
-    { pos: 30, outlier: false }, { pos: 52, outlier: false }, { pos: 65, outlier: false }, { pos: 5, outlier: true },
-  ]},
-  { level: 'Senior', range: ['$3,000', '$4,000', '$5,000'], dots: [
-    { pos: 25, outlier: false }, { pos: 40, outlier: false }, { pos: 55, outlier: false }, { pos: 70, outlier: false }, { pos: 48, outlier: false },
-  ]},
-  { level: 'Mid', range: ['$1,600', '$2,300', '$3,000'], dots: [
-    { pos: 20, outlier: false }, { pos: 35, outlier: false }, { pos: 50, outlier: false }, { pos: 60, outlier: false }, { pos: 42, outlier: false }, { pos: 75, outlier: false },
-  ]},
-  { level: 'Junior', range: ['$900', '$1,250', '$1,600'], dots: [
-    { pos: 22, outlier: false }, { pos: 38, outlier: false }, { pos: 55, outlier: false }, { pos: 95, outlier: true },
-  ]},
-];
+import { trpc } from '../../../lib/trpc';
+import { useI18n } from '../../../lib/i18n';
 
-const EQUITY_ROWS = [
-  { role: 'Analista Logistica', m: '$2,450', f: '$2,380', gap: '-2.9%', gapColor: 'text-amber-600', badge: { cls: 'bg-amber-50 text-amber-700', label: 'Revisar' } },
-  { role: 'Coordinador Comercial', m: '$3,800', f: '$3,750', gap: '-1.3%', gapColor: 'text-green-600', badge: { cls: 'bg-green-50 text-green-700', label: 'OK' } },
-  { role: 'Supervisor Operaciones', m: '$4,200', f: '$3,850', gap: '-8.3%', gapColor: 'text-[#DD0C15]', badge: { cls: 'bg-red-50 text-red-700', label: 'Critico' } },
-  { role: 'Especialista RRHH', m: '$3,100', f: '$3,050', gap: '-1.6%', gapColor: 'text-green-600', badge: { cls: 'bg-green-50 text-green-700', label: 'OK' } },
-  { role: 'Gerente de Ventas', m: '$6,800', f: '$6,200', gap: '-8.8%', gapColor: 'text-[#DD0C15]', badge: { cls: 'bg-red-50 text-red-700', label: 'Critico' } },
-];
+const fmtCOP = (n: number) => `$${Math.round(n / 1000).toLocaleString('es-CO')}K`;
+
+function genderLabel(t: ReturnType<typeof useI18n>['t'], g: string): string {
+  return g === 'male' ? t.dei.genderMale : g === 'female' ? t.dei.genderFemale
+    : g === 'non_binary' ? t.dei.genderNonBinary : g === 'undisclosed' ? t.dei.genderUndisclosed : g;
+}
 
 export function SalaryBands() {
+  const { t } = useI18n();
+  const q = trpc.compensation.getBandDistribution.useQuery();
+
   return (
     <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
       <div className="flex items-center justify-between mb-4">
-        <div className="text-[13px] font-semibold text-[#333]">Bandas Salariales por Nivel</div>
-        <span className="text-[10px] text-[#8B8B8B]">USD mensual</span>
+        <div className="text-[13px] font-semibold text-[#333]">{t.compensation.bands}</div>
+        <span className="text-[10px] text-[#8B8B8B]">{t.compensation.bandsUnit}</span>
       </div>
-      <div className="space-y-3">
-        {BAND_LEVELS.map((b) => (
-          <div key={b.level} className="flex items-center gap-3">
-            <div className="w-[72px] text-[11px] font-medium text-[#585858] shrink-0">{b.level}</div>
-            <div className="flex-1 relative h-6">
-              <div className="absolute inset-y-0 rounded bg-[#1F114C]/10" style={{ left: '0%', right: '0%' }} />
-              <div className="absolute top-1 bottom-1 rounded bg-[#1F114C]/30" style={{ left: '10%', right: '10%' }} />
-              {b.dots.map((d, i) => (
-                <div
-                  key={i}
-                  className={`absolute top-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full border-2 border-white shadow ${d.outlier ? 'bg-[#DD0C15]' : 'bg-[#1F114C]'}`}
-                  style={{ left: `${d.pos}%` }}
-                />
-              ))}
-            </div>
-            <div className="flex gap-3 text-[9px] text-[#8B8B8B] shrink-0 w-[120px]">
-              {b.range.map((r, i) => <span key={i}>{r}</span>)}
-            </div>
+      {q.isLoading ? (
+        <div className="h-40 bg-gray-50 rounded animate-pulse" />
+      ) : q.isError ? (
+        <p className="text-[12px] text-[#DD0C15]">{t.compensation.bandsErr}</p>
+      ) : !q.data || q.data.length === 0 ? (
+        <p className="text-[12px] text-[#8B8B8B]">{t.compensation.bandsEmpty}</p>
+      ) : (
+        <>
+          <div className="space-y-3">
+            {q.data.map((b) => (
+              <div key={b.level + b.title} className="flex items-center gap-3">
+                <div className="w-[72px] text-[11px] font-medium text-[#585858] shrink-0 truncate">{b.level}</div>
+                <div className="flex-1 relative h-6">
+                  <div className="absolute inset-y-0 rounded bg-[#1F114C]/10" style={{ left: '0%', right: '0%' }} />
+                  <div className="absolute top-1 bottom-1 rounded bg-[#1F114C]/30" style={{ left: '25%', right: '25%' }} />
+                  {b.dots.map((d, i) => (
+                    <div
+                      key={i}
+                      className={`absolute top-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full border-2 border-white shadow ${d.outlier ? 'bg-[#DD0C15]' : 'bg-[#1F114C]'}`}
+                      style={{ left: `${d.pos}%` }}
+                    />
+                  ))}
+                </div>
+                <div className="flex gap-2 text-[9px] text-[#8B8B8B] shrink-0 w-[130px] justify-end">
+                  <span>{fmtCOP(b.min)}</span><span>{fmtCOP(b.mid)}</span><span>{fmtCOP(b.max)}</span>
+                </div>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
-      <div className="flex items-center gap-4 mt-3 pt-3 border-t border-[#EDEDED]">
-        <div className="flex items-center gap-1.5 text-[10px] text-[#8B8B8B]"><div className="w-2 h-2 rounded-full bg-[#1F114C]" /> Dentro de banda</div>
-        <div className="flex items-center gap-1.5 text-[10px] text-[#8B8B8B]"><div className="w-2 h-2 rounded-full bg-[#DD0C15]" /> Fuera de banda</div>
-        <div className="flex items-center gap-1.5 text-[10px] text-[#8B8B8B]"><div className="w-3 h-2 rounded bg-[#1F114C]/10" /> Rango min-max</div>
-        <div className="flex items-center gap-1.5 text-[10px] text-[#8B8B8B]"><div className="w-3 h-2 rounded bg-[#1F114C]/30" /> Rango IQR</div>
-      </div>
+          <div className="flex items-center gap-4 mt-3 pt-3 border-t border-[#EDEDED]">
+            <div className="flex items-center gap-1.5 text-[10px] text-[#8B8B8B]"><div className="w-2 h-2 rounded-full bg-[#1F114C]" /> {t.compensation.legendInBand}</div>
+            <div className="flex items-center gap-1.5 text-[10px] text-[#8B8B8B]"><div className="w-2 h-2 rounded-full bg-[#DD0C15]" /> {t.compensation.legendOutBand}</div>
+            <div className="flex items-center gap-1.5 text-[10px] text-[#8B8B8B]"><div className="w-3 h-2 rounded bg-[#1F114C]/10" /> {t.compensation.legendRange}</div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
 export function PayEquityCard() {
+  const { t } = useI18n();
+  const q = trpc.dei.getPayEquity.useQuery();
+  const gap = q.data?.gapPct;
+
   return (
     <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
-      <div className="flex items-center justify-between mb-3">
-        <div className="text-[13px] font-semibold text-[#333]">Equidad Salarial por Rol y Genero</div>
-        <span className="text-[10px] px-2 py-0.5 rounded bg-amber-50 text-amber-700 font-medium">3 brechas detectadas</span>
-      </div>
-      <table className="w-full text-[11px]">
-        <thead>
-          <tr className="border-b border-[#EDEDED]">
-            <th className="text-left text-[#8B8B8B] font-medium pb-2 pr-3">Rol</th>
-            <th className="text-right text-[#8B8B8B] font-medium pb-2 px-2">Hombres</th>
-            <th className="text-right text-[#8B8B8B] font-medium pb-2 px-2">Mujeres</th>
-            <th className="text-right text-[#8B8B8B] font-medium pb-2 px-2">Brecha</th>
-            <th className="text-center text-[#8B8B8B] font-medium pb-2 pl-2">Estado</th>
-          </tr>
-        </thead>
-        <tbody className="text-[#333]">
-          {EQUITY_ROWS.map((r, i) => (
-            <tr key={r.role} className={i < EQUITY_ROWS.length - 1 ? 'border-b border-[#EDEDED]/60' : ''}>
-              <td className="py-2 pr-3 font-medium">{r.role}</td>
-              <td className="py-2 px-2 text-right">{r.m}</td>
-              <td className="py-2 px-2 text-right">{r.f}</td>
-              <td className={`py-2 px-2 text-right ${r.gapColor} font-medium`}>{r.gap}</td>
-              <td className="py-2 pl-2 text-center"><span className={`text-[9px] px-1.5 py-0.5 rounded ${r.badge.cls}`}>{r.badge.label}</span></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <div className="text-[13px] font-semibold text-[#333] mb-3">{t.dei.payEquityByGender}</div>
+      {q.isLoading ? (
+        <div className="h-24 bg-gray-50 rounded animate-pulse" />
+      ) : q.isError ? (
+        <p className="text-[12px] text-[#DD0C15]">{t.dei.errPayEquity}</p>
+      ) : !q.data || q.data.results.length === 0 ? (
+        <p className="text-[12px] text-[#8B8B8B]">{t.dei.noComp}</p>
+      ) : (
+        <>
+          <table className="w-full text-[11px]">
+            <thead>
+              <tr className="border-b border-[#EDEDED] text-[#8B8B8B]">
+                <th className="text-left font-medium pb-2 pr-3">{t.dei.colGender}</th>
+                <th className="text-right font-medium pb-2 px-2">{t.dei.colEmployees}</th>
+                <th className="text-right font-medium pb-2 px-2">{t.dei.colAverage}</th>
+                <th className="text-right font-medium pb-2 px-2">{t.dei.colMedian}</th>
+              </tr>
+            </thead>
+            <tbody className="text-[#333]">
+              {q.data.results.map((row, i) => (
+                <tr key={row.group} className={i < q.data!.results.length - 1 ? 'border-b border-[#EDEDED]/60' : ''}>
+                  <td className="py-2 pr-3 font-medium">{genderLabel(t, row.group)}</td>
+                  <td className="py-2 px-2 text-right">{row.count}</td>
+                  <td className="py-2 px-2 text-right">{fmtCOP(row.averageSalary)}</td>
+                  <td className="py-2 px-2 text-right">{fmtCOP(row.medianSalary)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {gap !== null && gap !== undefined && (
+            <div className="mt-3 pt-2 border-t border-[#EDEDED] flex items-center justify-between">
+              <span className="text-[10px] text-[#8B8B8B]">{t.dei.medianGap}</span>
+              <span className={`text-[12px] font-semibold ${Math.abs(gap) < 3 ? 'text-green-600' : Math.abs(gap) <= 5 ? 'text-amber-500' : 'text-[#DD0C15]'}`}>
+                {gap > 0 ? '+' : ''}{gap}%
+              </span>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
