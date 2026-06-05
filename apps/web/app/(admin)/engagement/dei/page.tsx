@@ -1,6 +1,5 @@
 'use client';
 
-import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
 import { DeiKpis } from './dei-kpis';
@@ -10,7 +9,6 @@ import { PromotionEquity, LeadershipDiversity, InclusionTrend } from './dei-bott
 
 export default function DeiPage() {
   const { t } = useI18n();
-  const kpis = trpc.dei.getDashboardKpis.useQuery();
 
   return (
     <div className="flex flex-col flex-1 min-w-0 h-full">
@@ -35,7 +33,7 @@ export default function DeiPage() {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-5">
-        <DeiKpis loading={kpis.isLoading} />
+        <DeiKpis />
 
         {/* Main 2-Column */}
         <div className="flex gap-4 mb-4">
