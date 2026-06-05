@@ -1,6 +1,8 @@
 export { invokeAgent, calculateCost } from './client';
 export { checkBudget } from './budget';
 export { getCached, setCached, cacheKey } from './cache';
+export { sanitizeInput, wrapAsData, bedrockGuardrailOptions } from './pii';
+export type { BedrockGuardrailConfig } from './pii';
 export { logInvocation } from './logger';
 export { resolveAgentId, seedLiveAgents, AGENT_REGISTRY } from './registry';
 export { generateVacancyDescription } from './agents/vacancy-writer';
