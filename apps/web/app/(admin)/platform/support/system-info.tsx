@@ -65,7 +65,7 @@ export function SystemInfo() {
       {eventsLoading ? (
         <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-8 bg-[#F6F6F6] rounded-lg animate-pulse" />)}</div>
       ) : events && events.length > 0 ? (
-        <table className="w-full">
+        <div className="overflow-x-auto"><table className="w-full min-w-[560px]">
           <thead>
             <tr className="border-b border-[#EDEDED]">
               <th className="text-left text-[10px] text-[#8B8B8B] uppercase tracking-wider font-medium pb-2">Hora</th>
@@ -84,7 +84,7 @@ export function SystemInfo() {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       ) : (
         <div className="py-6 text-center">
           <p className="text-sm text-[#8B8B8B]">{t.support.noEvents}</p>

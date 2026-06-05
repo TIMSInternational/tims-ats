@@ -26,9 +26,9 @@ export default function AnalyticsPage() {
     return (
       <div className="h-full overflow-y-auto p-6 space-y-5">
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">{Array.from({ length: 5 }).map((_, i) => <KpiCardSkeleton key={i} />)}</div>
-        <div className="flex gap-5">
-          <div className="w-[55%] space-y-5"><div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 h-[300px] animate-pulse" /><div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 h-[280px] animate-pulse" /></div>
-          <div className="w-[45%] space-y-5"><div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 h-[200px] animate-pulse" /><div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 h-[280px] animate-pulse" /></div>
+        <div className="flex flex-col md:flex-row gap-5">
+          <div className="w-full md:w-[55%] space-y-5"><div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 h-[300px] animate-pulse" /><div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 h-[280px] animate-pulse" /></div>
+          <div className="w-full md:w-[45%] space-y-5"><div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 h-[200px] animate-pulse" /><div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 h-[280px] animate-pulse" /></div>
         </div>
       </div>
     );
@@ -94,9 +94,9 @@ export default function AnalyticsPage() {
       </div>
 
       {/* Two-column layout */}
-      <div className="flex gap-5">
+      <div className="flex flex-col md:flex-row gap-5">
         {/* LEFT 55% */}
-        <div className="w-[55%] space-y-5">
+        <div className="w-full md:w-[55%] space-y-5">
           {/* Growth Chart */}
           <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
             <div className="flex items-center justify-between mb-4">
@@ -175,11 +175,11 @@ export default function AnalyticsPage() {
         </div>
 
         {/* RIGHT 45% */}
-        <div className="w-[45%] space-y-5">
+        <div className="w-full md:w-[45%] space-y-5">
           {/* AI Usage */}
           <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
             <h3 className="text-sm font-semibold text-[#333] mb-4">{t.analytics.aiUsage}</h3>
-            <div className="flex gap-5">
+            <div className="flex flex-col md:flex-row gap-5">
               <div className="flex-1 space-y-3">
                 <div>
                   <div className="text-[11px] text-[#8B8B8B] uppercase">{t.analytics.totalCalls}</div>

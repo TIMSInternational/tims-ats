@@ -146,7 +146,7 @@ export default function AuditPage() {
           </div>
         ) : (
           <>
-            <table className="w-full">
+            <div className="overflow-x-auto"><table className="w-full min-w-[560px]">
               <thead>
                 <tr className="border-b border-[#EDEDED]">
                   <th className="text-left text-[11px] text-[#8B8B8B] uppercase tracking-wider font-medium px-5 py-3">{t.audit.colDateTime}</th>
@@ -180,7 +180,7 @@ export default function AuditPage() {
                   );
                 })}
               </tbody>
-            </table>
+            </table></div>
 
             {/* Pagination */}
             <div className="flex items-center justify-between px-5 py-3 border-t border-[#EDEDED]">

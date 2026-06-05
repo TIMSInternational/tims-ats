@@ -60,7 +60,7 @@ export function AiSection({ organizationId }: { organizationId: string }) {
         </div>
       ) : (
         <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] overflow-hidden">
-          <table className="w-full text-left">
+          <div className="overflow-x-auto"><table className="w-full min-w-[560px] text-left">
             <thead>
               <tr className="border-b border-[#EDEDED]">
                 <th className="px-5 py-3 text-[11px] font-semibold text-[#8B8B8B] uppercase tracking-wider">Agente</th>
@@ -104,7 +104,7 @@ export function AiSection({ organizationId }: { organizationId: string }) {
                 );
               })}
             </tbody>
-          </table>
+          </table></div>
         </div>
       )}
     </div>

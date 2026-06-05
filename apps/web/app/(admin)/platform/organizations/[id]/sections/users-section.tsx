@@ -137,7 +137,7 @@ export function UsersSection({ organizationId, organizationName }: { organizatio
 
       {/* Table */}
       <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] overflow-hidden">
-        <table className="w-full text-left">
+        <div className="overflow-x-auto"><table className="w-full min-w-[560px] text-left">
           <thead>
             <tr className="border-b border-[#EDEDED]">
               <th className="px-4 py-3 text-[11px] font-semibold text-[#8B8B8B] uppercase tracking-wider">Usuario</th>
@@ -219,7 +219,7 @@ export function UsersSection({ organizationId, organizationName }: { organizatio
               })
             )}
           </tbody>
-        </table>
+        </table></div>
       </div>
       {deactivateTarget && (
         <Modal title={`Desactivar a ${deactivateTarget.name}?`} onClose={() => setDeactivateTarget(null)} maxWidth="max-w-sm">
