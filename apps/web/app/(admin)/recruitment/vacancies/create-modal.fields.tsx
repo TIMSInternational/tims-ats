@@ -28,7 +28,7 @@ export function Step1BasicInfo({
         <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ej: Senior Software Engineer" maxLength={200} className={inputCls} autoFocus />
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div>
           <label className={labelCls}>Ubicacion</label>
           <input type="text" value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Bogota, Colombia" maxLength={200} className={inputCls} />
@@ -46,7 +46,7 @@ export function Step1BasicInfo({
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         <div>
           <label className={labelCls}>Tipo de contrato</label>
           <select value={contractType} onChange={(e) => setContractType(e.target.value)} className={`${inputCls} bg-white`}>
@@ -57,7 +57,7 @@ export function Step1BasicInfo({
           <label className={labelCls}>Posiciones</label>
           <input type="number" value={positions} onChange={(e) => setPositions(Math.max(1, Math.min(100, parseInt(e.target.value) || 1)))} min={1} max={100} className={inputCls} />
         </div>
-        <div>
+        <div className="col-span-2 md:col-span-1">
           <label className={labelCls}>Prioridad</label>
           <div className="flex bg-[#F6F6F6] rounded-lg overflow-hidden h-10">
             {(['low', 'medium', 'high', 'urgent'] as const).map((p) => (
@@ -154,7 +154,7 @@ export function Step3Compensation({
     <div className="space-y-5">
       <div>
         <p className="text-[13px] font-medium text-[#1F114C] mb-3">Rango salarial</p>
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div>
             <label className={labelCls}>Minimo</label>
             <input type="number" value={salaryMin} onChange={(e) => setSalaryMin(e.target.value)} placeholder="8,000,000" className={inputCls} />
@@ -189,7 +189,7 @@ export function Step3Compensation({
 
       <div className="border-t border-[#EDEDED] pt-4">
         <p className="text-[13px] font-medium text-[#1F114C] mb-3">Configuracion del proceso</p>
-        <div className="grid grid-cols-3 gap-3 mb-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
           <div>
             <label className={labelCls}>SLA objetivo (dias)</label>
             <input type="number" value={slaTargetDays} onChange={(e) => setSlaTargetDays(e.target.value)} min={1} max={365} className={inputCls} />

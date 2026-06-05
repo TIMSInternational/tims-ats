@@ -85,7 +85,7 @@ export function Modal({
       />
       <div
         ref={dialogRef}
-        className={`relative bg-white rounded-2xl shadow-2xl w-full ${maxWidth} mx-4 p-6`}
+        className={`relative bg-white rounded-2xl shadow-2xl w-full ${maxWidth} mx-4 p-6 max-h-[calc(100dvh-2rem)] overflow-y-auto`}
       >
         <div className="flex items-center justify-between mb-5">
           <h2

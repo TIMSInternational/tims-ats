@@ -129,7 +129,7 @@ export function Step2Fields({
     <div className="space-y-5">
       <div>
         <p className="text-[13px] font-medium text-[#1F114C] mb-3">Tipo de entrevista</p>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
           {INTERVIEW_TYPES.map((it) => (
             <button key={it.value} type="button" onClick={() => setInterviewType(it.value)}
               className={`text-left px-3 py-3 rounded-lg border transition ${
@@ -145,7 +145,7 @@ export function Step2Fields({
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         <div>
           <label className={labelCls}>Fecha *</label>
           <input type="date" value={scheduledDate} onChange={(e) => setScheduledDate(e.target.value)} className={inputCls} />

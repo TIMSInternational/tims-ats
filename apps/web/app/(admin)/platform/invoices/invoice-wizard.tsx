@@ -102,18 +102,18 @@ export function InvoiceWizard({ onClose, onSuccess, preselectedOrgId }: { onClos
   return (
     <div className="h-full flex flex-col bg-[#FAFAFA]">
       {/* Top bar */}
-      <div className="flex items-center justify-between px-6 py-4 bg-white border-b border-[#EDEDED] flex-shrink-0">
-        <div className="flex items-center gap-4">
+      <div className="flex items-center justify-between px-4 md:px-6 py-4 bg-white border-b border-[#EDEDED] flex-shrink-0">
+        <div className="flex items-center gap-2 md:gap-4">
           <button onClick={onClose} className="w-8 h-8 rounded-lg hover:bg-[#F6F6F6] flex items-center justify-center text-[#8B8B8B] transition">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
-          <h1 className="text-lg font-semibold text-[#333]">{t.invoices.wizardTitle}</h1>
+          <h1 className="text-base md:text-lg font-semibold text-[#333] whitespace-nowrap">{t.invoices.wizardTitle}</h1>
         </div>
         <div className="flex items-center gap-1">
           {STEPS.map((s, i) => (
             <div key={i} className="flex items-center gap-1">
-              {i > 0 && <div className={`w-6 h-[2px] ${i <= step ? 'bg-[#1F114C]' : 'bg-[#EDEDED]'}`} />}
-              <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold ${i < step ? 'bg-[#1F114C] text-white' : i === step ? 'bg-[#1F114C] text-white' : 'bg-[#EDEDED] text-[#8B8B8B]'}`}>{i + 1}</div>
+              {i > 0 && <div className={`w-3 md:w-6 h-[2px] ${i <= step ? 'bg-[#1F114C]' : 'bg-[#EDEDED]'}`} />}
+              <div className={`w-6 h-6 md:w-7 md:h-7 rounded-full flex items-center justify-center text-[10px] font-bold ${i < step ? 'bg-[#1F114C] text-white' : i === step ? 'bg-[#1F114C] text-white' : 'bg-[#EDEDED] text-[#8B8B8B]'}`}>{i + 1}</div>
             </div>
           ))}
         </div>
@@ -122,7 +122,7 @@ export function InvoiceWizard({ onClose, onSuccess, preselectedOrgId }: { onClos
       {/* Main content */}
       <div className="flex-1 flex min-h-0 overflow-hidden">
         {/* Left -- Form */}
-        <div className="w-1/2 overflow-y-auto p-8 border-r border-[#EDEDED]">
+        <div className="w-full md:w-1/2 overflow-y-auto p-4 md:p-8 md:border-r border-[#EDEDED]">
           {step === 0 && (
             <div>
               <h2 className="text-2xl font-semibold text-[#333] mb-2">{t.invoices.selectCustomer}</h2>
