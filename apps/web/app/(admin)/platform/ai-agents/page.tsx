@@ -115,7 +115,7 @@ export default function PlatformAiAgentsPage() {
   return (
     <div className="h-full overflow-y-auto p-5">
       {/* KPIs */}
-      <div className="grid grid-cols-5 gap-3 mb-4 shrink-0">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4 shrink-0">
         {isLoading ? (
           Array.from({ length: 5 }).map((_, i) => <KpiCardSkeleton key={i} />)
         ) : (

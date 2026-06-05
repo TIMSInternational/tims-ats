@@ -14,12 +14,12 @@ interface KpiItem {
 
 function KpiCardMini({ dotColor, label, value, valueColor, subtitle, subtitleColor }: KpiItem) {
   return (
-    <div className="min-w-[130px] bg-white rounded-xl p-4 shadow-[0_2px_8px_rgba(0,0,0,0.06)] flex flex-col gap-1">
+    <div className="md:min-w-[130px] bg-white rounded-xl p-4 shadow-[0_2px_8px_rgba(0,0,0,0.06)] flex flex-col gap-1">
       <div className="flex items-center gap-1.5">
         <div className={`w-2.5 h-2.5 rounded-full ${dotColor}`} />
         <span className="text-[11px] text-[#585858]">{label}</span>
       </div>
-      <span className={`text-[28px] font-bold leading-tight ${valueColor ?? 'text-[#1F114C]'}`}>
+      <span className={`text-[22px] md:text-[28px] font-bold leading-tight ${valueColor ?? 'text-[#1F114C]'}`}>
         {value}
       </span>
       <span className={`text-[11px] font-medium ${subtitleColor ?? 'text-[#585858]'}`}>
@@ -31,11 +31,11 @@ function KpiCardMini({ dotColor, label, value, valueColor, subtitle, subtitleCol
 
 function KpiStripSkeleton() {
   return (
-    <div className="flex gap-3 mb-6 overflow-x-auto scrollbar-hide">
+    <div className="grid grid-cols-2 gap-3 mb-6 md:flex md:overflow-x-auto scrollbar-hide">
       {Array.from({ length: 8 }).map((_, i) => (
         <div
           key={i}
-          className="min-w-[130px] bg-white rounded-xl p-4 shadow-[0_2px_8px_rgba(0,0,0,0.06)] animate-pulse"
+          className="md:min-w-[130px] bg-white rounded-xl p-4 shadow-[0_2px_8px_rgba(0,0,0,0.06)] animate-pulse"
         >
           <div className="h-3 w-20 bg-gray-200 rounded mb-2" />
           <div className="h-7 w-12 bg-gray-200 rounded mb-1" />
@@ -121,7 +121,7 @@ export function RecruitingKpiStrip() {
   ];
 
   return (
-    <div className="flex gap-3 mb-6 overflow-x-auto scrollbar-hide">
+    <div className="grid grid-cols-2 gap-3 mb-6 md:flex md:overflow-x-auto scrollbar-hide">
       {cards.map((card) => (
         <KpiCardMini key={card.label} {...card} />
       ))}

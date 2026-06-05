@@ -80,7 +80,7 @@ export default function OrganizationsPage() {
   return (
     <div className="h-full flex flex-col overflow-hidden p-6">
       {/* KPIs */}
-      <div className="grid grid-cols-4 gap-4 mb-6 flex-shrink-0">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 flex-shrink-0">
         {kpis.isLoading ? Array.from({ length: 4 }).map((_, i) => (
           <div key={i} className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 animate-pulse">
             <Skeleton className="h-3 w-24 mb-3" /><Skeleton className="h-7 w-12 mb-2" /><Skeleton className="h-3 w-20" />
@@ -91,7 +91,7 @@ export default function OrganizationsPage() {
               <span className="text-xs text-[#8B8B8B] font-medium uppercase tracking-wide">{t.organizations.kpiTotal}</span>
               <div className="w-8 h-8 rounded-lg bg-[#1F114C]/10 flex items-center justify-center"><svg className="w-4 h-4 text-[#1F114C]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M3 21h18M3 7v14m6-14v14m6-14v14m6-14v14M3 7l9-4 9 4" /></svg></div>
             </div>
-            <div className="text-2xl font-bold text-[#333]">{kpis.data.total}</div>
+            <div className="text-xl md:text-2xl font-bold text-[#333]">{kpis.data.total}</div>
             <div className="text-xs text-[#8B8B8B] mt-1">{kpis.data.active} {t.organizations.kpiActive.toLowerCase()}</div>
           </div>
           <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
@@ -99,7 +99,7 @@ export default function OrganizationsPage() {
               <span className="text-xs text-[#8B8B8B] font-medium uppercase tracking-wide">{t.organizations.kpiActive}</span>
               <div className="w-8 h-8 rounded-lg bg-green-50 flex items-center justify-center"><svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 11-5.93-9.14" /><path d="M22 4L12 14.01l-3-3" /></svg></div>
             </div>
-            <div className="text-2xl font-bold text-[#333]">{kpis.data.active}</div>
+            <div className="text-xl md:text-2xl font-bold text-[#333]">{kpis.data.active}</div>
             <div className="text-xs text-[#8B8B8B] mt-1">{kpis.data.total > 0 ? Math.round((kpis.data.active / kpis.data.total) * 100) : 0}% del total</div>
           </div>
           <div className={`bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 ${kpis.data.suspended > 0 ? 'border border-red-200' : ''}`}>
@@ -107,7 +107,7 @@ export default function OrganizationsPage() {
               <span className="text-xs text-[#8B8B8B] font-medium uppercase tracking-wide">{t.organizations.kpiSuspended}</span>
               <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center"><svg className="w-4 h-4 text-[#DD0C15]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M15 9l-6 6M9 9l6 6" /></svg></div>
             </div>
-            <div className={`text-2xl font-bold ${kpis.data.suspended > 0 ? 'text-[#DD0C15]' : 'text-[#333]'}`}>{kpis.data.suspended}</div>
+            <div className={`text-xl md:text-2xl font-bold ${kpis.data.suspended > 0 ? 'text-[#DD0C15]' : 'text-[#333]'}`}>{kpis.data.suspended}</div>
             <div className={`text-xs mt-1 ${kpis.data.suspended > 0 ? 'text-[#DD0C15] font-medium' : 'text-[#8B8B8B]'}`}>{kpis.data.suspended > 0 ? t.common.requiresAttention : t.common.noIssues}</div>
           </div>
           <div className={`bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 ${kpis.data.expiringThisWeek > 0 ? 'border border-amber-200' : ''}`}>
@@ -115,7 +115,7 @@ export default function OrganizationsPage() {
               <span className="text-xs text-[#8B8B8B] font-medium uppercase tracking-wide">{t.organizations.kpiTrialing}</span>
               <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center"><svg className="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></svg></div>
             </div>
-            <div className="text-2xl font-bold text-[#333]">{kpis.data.trialing}</div>
+            <div className="text-xl md:text-2xl font-bold text-[#333]">{kpis.data.trialing}</div>
             <div className={`text-xs mt-1 font-medium ${kpis.data.expiringThisWeek > 0 ? 'text-amber-600' : 'text-[#8B8B8B]'}`}>{kpis.data.expiringThisWeek} vencen esta semana</div>
           </div>
         </> : null}

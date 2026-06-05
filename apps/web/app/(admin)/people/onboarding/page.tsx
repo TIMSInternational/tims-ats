@@ -117,7 +117,7 @@ export default function OnboardingPage() {
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-6">
         {/* KPI Row */}
-        <div className="grid grid-cols-5 gap-3 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
           {kpis.isLoading ? (
             Array.from({ length: 5 }).map((_, i) => <KpiCardSkeleton key={i} />)
           ) : (

@@ -44,7 +44,7 @@ export default function PlatformHealthPage() {
     return (
       <div className="h-full overflow-y-auto p-5">
         <div className="bg-gray-100 rounded-xl p-4 mb-3 animate-pulse h-[68px]" />
-        <div className="grid grid-cols-4 gap-3 mb-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
           {Array.from({ length: 8 }).map((_, i) => (
             <div key={i} className="bg-white rounded-xl p-3.5 shadow-[0_1px_4px_rgba(0,0,0,0.06)] animate-pulse">
               <div className="h-4 bg-gray-200 rounded w-24 mb-2.5" />
@@ -94,7 +94,7 @@ export default function PlatformHealthPage() {
 
       {/* Quick Platform Stats */}
       {stats && (
-        <div className="grid grid-cols-4 gap-3 mb-3 shrink-0">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3 shrink-0">
           <div className="bg-white rounded-xl px-4 py-3 shadow-[0_1px_4px_rgba(0,0,0,0.06)] flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-[#1F114C]/10 flex items-center justify-center">
               <svg className="w-4 h-4 text-[#1F114C]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" /></svg>
@@ -135,7 +135,7 @@ export default function PlatformHealthPage() {
       )}
 
       {/* Service Grid */}
-      <div className="grid grid-cols-4 gap-3 mb-3 shrink-0">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3 shrink-0">
         {services.map((service) => {
           const config = statusConfig[service.status as ServiceStatus] || statusConfig.operational;
           return (

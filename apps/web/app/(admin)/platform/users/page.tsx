@@ -95,7 +95,7 @@ export default function PlatformUsersPage() {
   return (
     <div className="h-full flex flex-col overflow-hidden p-5">
       {/* KPI Row */}
-      <div className="grid grid-cols-4 gap-3 mb-4 flex-shrink-0">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4 flex-shrink-0">
         {kpis.isLoading ? (
           Array.from({ length: 4 }).map((_, i) => <KpiCardSkeleton key={i} />)
         ) : kpis.data ? (

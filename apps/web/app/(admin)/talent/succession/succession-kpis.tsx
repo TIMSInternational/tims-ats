@@ -28,7 +28,7 @@ interface SuccessionKpisProps {
 export function SuccessionKpis({ data, loading, t }: SuccessionKpisProps) {
   if (loading) {
     return (
-      <div className="grid grid-cols-5 gap-3 mb-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
         {Array.from({ length: 5 }).map((_, i) => (
           <KpiCardSkeleton key={i} />
         ))}
@@ -87,7 +87,7 @@ export function SuccessionKpis({ data, loading, t }: SuccessionKpisProps) {
   ];
 
   return (
-    <div className="grid grid-cols-5 gap-3 mb-4">
+    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
       {kpis.map((kpi) => (
         <div
           key={kpi.label}
@@ -103,7 +103,7 @@ export function SuccessionKpis({ data, loading, t }: SuccessionKpisProps) {
               </svg>
             </div>
           </div>
-          <p className={`text-[24px] font-bold ${kpi.valueColor}`}>{kpi.value}</p>
+          <p className={`text-[20px] md:text-[24px] font-bold ${kpi.valueColor}`}>{kpi.value}</p>
           <p className={`text-[10px] mt-1 ${kpi.subColor ?? 'text-[#8B8B8B]'}`}>{kpi.sub}</p>
         </div>
       ))}

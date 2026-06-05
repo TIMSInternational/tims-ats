@@ -25,7 +25,7 @@ export default function AnalyticsPage() {
   if (isLoading) {
     return (
       <div className="h-full overflow-y-auto p-6 space-y-5">
-        <div className="grid grid-cols-5 gap-4">{Array.from({ length: 5 }).map((_, i) => <KpiCardSkeleton key={i} />)}</div>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">{Array.from({ length: 5 }).map((_, i) => <KpiCardSkeleton key={i} />)}</div>
         <div className="flex gap-5">
           <div className="w-[55%] space-y-5"><div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 h-[300px] animate-pulse" /><div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 h-[280px] animate-pulse" /></div>
           <div className="w-[45%] space-y-5"><div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 h-[200px] animate-pulse" /><div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 h-[280px] animate-pulse" /></div>
@@ -54,7 +54,7 @@ export default function AnalyticsPage() {
   return (
     <div className="h-full overflow-y-auto p-6 space-y-5">
       {/* KPI Row */}
-      <div className="grid grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <KpiCard
           label={t.analytics.newOrgs}
           value={`+${data.newOrgsThisMonth}`}

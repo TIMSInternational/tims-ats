@@ -77,7 +77,7 @@ export function AnalyticsKpiRow() {
   ];
 
   return (
-    <div className="grid grid-cols-6 gap-3 mb-6">
+    <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-6">
       {kpis.map((kpi) => {
         const isNegative = kpi.trend === 'down';
         const changeColor = isNegative ? 'text-[#DD0C15]' : 'text-green-500';
@@ -87,7 +87,7 @@ export function AnalyticsKpiRow() {
             className="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center"
           >
             <p className="text-[11px] text-[#8B8B8B] mb-1">{kpi.label}</p>
-            <p className={`text-[24px] font-bold ${kpi.valueColor ?? 'text-[#1F114C]'}`}>
+            <p className={`text-[20px] md:text-[24px] font-bold ${kpi.valueColor ?? 'text-[#1F114C]'}`}>
               {kpi.value}
             </p>
             <p className="text-[10px] text-[#8B8B8B]">{kpi.subtitle}</p>

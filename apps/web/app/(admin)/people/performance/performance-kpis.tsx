@@ -17,7 +17,7 @@ interface PerformanceKpisProps {
 export function PerformanceKpis({ kpis, isLoading }: PerformanceKpisProps) {
   if (isLoading) {
     return (
-      <div className="grid grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         {Array.from({ length: 5 }).map((_, i) => (
           <div key={i} className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4">
             <div className="h-3 w-24 bg-gray-200 rounded animate-pulse mb-3" />
@@ -30,7 +30,7 @@ export function PerformanceKpis({ kpis, isLoading }: PerformanceKpisProps) {
   }
 
   return (
-    <div className="grid grid-cols-5 gap-4">
+    <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
       {kpis.map((kpi) => (
         <div
           key={kpi.label}
@@ -41,7 +41,7 @@ export function PerformanceKpis({ kpis, isLoading }: PerformanceKpisProps) {
           </div>
           <div className="flex items-end gap-2">
             <span
-              className={`text-[28px] font-bold leading-none ${kpi.valueColor || 'text-[#333]'}`}
+              className={`text-[22px] md:text-[28px] font-bold leading-none ${kpi.valueColor || 'text-[#333]'}`}
             >
               {kpi.value}
             </span>
