@@ -1,11 +1,14 @@
 'use client';
 
+import { useI18n } from '../../../lib/i18n';
+
 interface MonitoringKpisProps {
   data: {
     totalEmployees: number;
     activeVacancies: number;
+    pendingAdjustments: number;
+    activeSurveys: number;
     openAlerts: number;
-    turnoverRate: number;
   } | null;
   loading: boolean;
 }
@@ -14,31 +17,31 @@ function KpiSkeleton() {
   return <div className="bg-white rounded-xl p-3.5 shadow-[0_1px_4px_rgba(0,0,0,0.06)] animate-pulse"><div className="h-14 bg-gray-100 rounded" /></div>;
 }
 
-const KPI_ITEMS = [
-  { key: 'headcount', label: 'Headcount', value: '1,247', delta: '+18 vs mes anterior', deltaColor: 'text-green-500', valueColor: 'text-[#1F114C]' },
-  { key: 'vacantes', label: 'Vacantes Abiertas', value: '23', delta: '5 criticas', deltaColor: 'text-amber-500', valueColor: 'text-[#1F114C]' },
-  { key: 'ttf', label: 'Time-to-Fill Prom.', value: '34d', delta: '-6d vs trimestre ant.', deltaColor: 'text-green-500', valueColor: 'text-[#1F114C]' },
-  { key: 'rotacion', label: 'Rotacion', value: '8.2%', delta: '+1.1% vs objetivo', deltaColor: 'text-amber-500', valueColor: 'text-amber-500' },
-  { key: 'enps', label: 'eNPS', value: '+42', delta: '+5 vs encuesta ant.', deltaColor: 'text-green-500', valueColor: 'text-green-600' },
-  { key: 'hrs', label: 'Hrs. Capacitacion', value: '12.4', delta: 'hrs/persona este Q', deltaColor: 'text-green-500', valueColor: 'text-[#1F114C]' },
-];
+export function MonitoringKpis({ data, loading }: MonitoringKpisProps) {
+  const { t } = useI18n();
 
-export function MonitoringKpis({ loading }: MonitoringKpisProps) {
-  if (loading) {
+  if (loading || !data) {
     return (
-      <div className="grid grid-cols-6 gap-3 shrink-0">
-        {Array.from({ length: 6 }).map((_, i) => <KpiSkeleton key={i} />)}
+      <div className="grid grid-cols-5 gap-3 shrink-0">
+        {Array.from({ length: 5 }).map((_, i) => <KpiSkeleton key={i} />)}
       </div>
     );
   }
 
+  const items = [
+    { label: t.monitoring.kpiHeadcount, value: data.totalEmployees, color: 'text-[#1F114C]' },
+    { label: t.monitoring.kpiVacancies, value: data.activeVacancies, color: 'text-[#1F114C]' },
+    { label: t.monitoring.kpiAlerts, value: data.openAlerts, color: data.openAlerts > 0 ? 'text-[#DD0C15]' : 'text-[#1F114C]' },
+    { label: t.monitoring.kpiPending, value: data.pendingAdjustments, color: data.pendingAdjustments > 0 ? 'text-amber-500' : 'text-[#1F114C]' },
+    { label: t.monitoring.kpiSurveys, value: data.activeSurveys, color: 'text-[#1F114C]' },
+  ];
+
   return (
-    <div className="grid grid-cols-6 gap-3 shrink-0">
-      {KPI_ITEMS.map((k) => (
-        <div key={k.key} className="bg-white rounded-xl p-3.5 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center">
+    <div className="grid grid-cols-5 gap-3 shrink-0">
+      {items.map((k) => (
+        <div key={k.label} className="bg-white rounded-xl p-3.5 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center">
           <p className="text-[10px] text-[#8B8B8B] mb-0.5 uppercase tracking-wide">{k.label}</p>
-          <p className={`text-[26px] font-bold ${k.valueColor} leading-tight`}>{k.value}</p>
-          <p className={`text-[10px] ${k.deltaColor} font-medium mt-0.5`}>{k.delta}</p>
+          <p className={`text-[26px] font-bold ${k.color} leading-tight`}>{k.value}</p>
         </div>
       ))}
     </div>
