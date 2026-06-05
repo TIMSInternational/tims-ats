@@ -7,6 +7,10 @@ datasource db {
 generator client {
   provider        = "prisma-client-js"
   previewFeatures = []
+  // "native" for local dev; "rhel-openssl-3.0.x" is the Vercel serverless
+  // (Amazon Linux) runtime engine. Without it the query engine binary is
+  // missing from the deployed Lambda and every query throws at runtime.
+  binaryTargets   = ["native", "rhel-openssl-3.0.x"]
 }
 
 enum SubscriptionStatus {
