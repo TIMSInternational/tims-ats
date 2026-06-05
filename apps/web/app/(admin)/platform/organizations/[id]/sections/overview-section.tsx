@@ -115,7 +115,7 @@ export function OverviewSection({ org }: OverviewProps) {
   return (
     <div className="space-y-6">
       {/* Stat cards */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard
           label="Usuarios"
           value={org._count.users}

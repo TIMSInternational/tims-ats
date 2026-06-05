@@ -74,7 +74,7 @@ export default function NineBoxPage() {
   if (isLoading) {
     return (
       <div className="h-full flex flex-col overflow-hidden p-5">
-        <div className="grid grid-cols-4 gap-3 mb-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
           {Array.from({ length: 4 }).map((_, i) => <KpiCardSkeleton key={i} />)}
         </div>
         <div className="grid grid-cols-2 gap-4">
@@ -122,13 +122,13 @@ export default function NineBoxPage() {
       </div>
       <div className="flex-1 overflow-y-auto p-5">
         {/* KPI Row */}
-        <div className="grid grid-cols-4 gap-3 mb-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
           <KpiCard label="Total Evaluados" value={total} subtitle={`Ciclo ${PERIOD}`} iconBg="bg-[#1F114C]/10" icon={<svg className="w-4 h-4 text-[#1F114C]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" /></svg>} valueColor="text-[#1F114C]" />
           <KpiCard label={t.nineBox.kpiHighPotential} value={highPotentialCount} subtitle={total > 0 ? `${Math.round((highPotentialCount / total) * 100)}% del total` : ''} iconBg="bg-emerald-50" icon={<svg className="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22m0 0l-5.94-2.28m5.94 2.28l-2.28 5.941" /></svg>} valueColor="text-emerald-600" />
           <KpiCard label="En Riesgo" value={atRiskCount} subtitle="Plan urgente activo" iconBg="bg-red-50" icon={<svg className="w-4 h-4 text-[#DD0C15]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z" /><path d="M12 15.75h.007v.008H12v-.008z" /></svg>} valueColor="text-[#DD0C15]" highlight />
           <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
             <span className="text-xs text-[#8B8B8B] font-medium uppercase tracking-wide block mb-3">Confianza Promedio</span>
-            <div className="text-2xl font-bold text-[#1F114C]">{avgConfidence}%</div>
+            <div className="text-xl md:text-2xl font-bold text-[#1F114C]">{avgConfidence}%</div>
             <div className="w-full bg-gray-100 rounded-full h-1.5 mt-2">
               <div className="bg-[#1F114C] h-1.5 rounded-full transition-all" style={{ width: `${avgConfidence}%` }} />
             </div>

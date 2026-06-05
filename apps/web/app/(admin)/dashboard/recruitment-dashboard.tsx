@@ -91,7 +91,7 @@ function LeaderDashboard() {
         <h1 className="text-lg font-semibold text-[#1F114C] mb-5">
           {t.sidebar.commandCenter}
         </h1>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
           {vacancyKpis.isLoading ? (
             Array.from({ length: 3 }).map((_, i) => <KpiCardSkeleton key={i} />)
           ) : (

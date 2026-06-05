@@ -17,7 +17,7 @@ export function OfferKpis({ activeCount, acceptanceRate, avgSalary, pendingAppro
 
   if (loading) {
     return (
-      <div className="grid grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         {Array.from({ length: 4 }).map((_, i) => (
           <KpiCardSkeleton key={i} />
         ))}
@@ -26,7 +26,7 @@ export function OfferKpis({ activeCount, acceptanceRate, avgSalary, pendingAppro
   }
 
   return (
-    <div className="grid grid-cols-4 gap-4 mb-6">
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
       <KpiCard
         label={t.offers.kpiActive}
         value={activeCount}

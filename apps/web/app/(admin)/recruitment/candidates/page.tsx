@@ -43,7 +43,7 @@ export default function CandidatesPage() {
   return (
     <div className="h-full flex flex-col overflow-hidden p-6">
       {/* KPI Row */}
-      <div className="grid grid-cols-4 gap-4 mb-5 flex-shrink-0">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5 flex-shrink-0">
         {kpis.isLoading ? (
           Array.from({ length: 4 }).map((_, i) => <KpiCardSkeleton key={i} />)
         ) : kpis.data ? (

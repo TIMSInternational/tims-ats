@@ -30,7 +30,7 @@ export function SystemInfo() {
             <span className={`w-2.5 h-2.5 rounded-full ${statusColor(health.overall)}`} />
             <span className="text-sm font-medium text-[#585858]">{health.overall === 'operational' ? t.support.allOperational : t.support.someDegraded}</span>
           </div>
-          <div className="grid grid-cols-4 gap-3 mb-5">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
             <div className="bg-[#F6F6F6] rounded-lg p-3 text-center">
               <div className="text-lg font-bold text-[#333]">{health.stats.userCount}</div>
               <div className="text-[10px] text-[#8B8B8B] uppercase">{t.support.users}</div>

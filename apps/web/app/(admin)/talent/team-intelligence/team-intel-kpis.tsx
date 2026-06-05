@@ -28,7 +28,7 @@ interface TeamIntelKpisProps {
 export function TeamIntelKpis({ data, loading, t }: TeamIntelKpisProps) {
   if (loading) {
     return (
-      <div className="grid grid-cols-5 gap-3 mb-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
         {Array.from({ length: 5 }).map((_, i) => (
           <KpiCardSkeleton key={i} />
         ))}
@@ -83,7 +83,7 @@ export function TeamIntelKpis({ data, loading, t }: TeamIntelKpisProps) {
   ];
 
   return (
-    <div className="grid grid-cols-5 gap-3 mb-4">
+    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
       {kpis.map((kpi) => (
         <div key={kpi.label} className="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center">
           <p className="text-[11px] text-[#8B8B8B] mb-1">{kpi.label}</p>

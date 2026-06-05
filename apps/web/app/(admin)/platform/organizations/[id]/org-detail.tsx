@@ -104,7 +104,7 @@ export function OrgDetail({ id }: { id: string }) {
         </div>
         <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] flex-1 p-6">
           <Skeleton className="h-5 w-32 mb-4" />
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {Array.from({ length: 4 }).map((_, i) => (
               <Skeleton key={i} className="h-24 w-full rounded-xl" />
             ))}
