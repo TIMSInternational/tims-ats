@@ -19,6 +19,30 @@ export const compensationRouter = router({
       });
     }),
 
+  // ── Band Distribution (employees plotted within their band) ────────
+  getBandDistribution: permissionProcedure('compensation', 'read').query(async ({ ctx }) => {
+    const comps = await db.employeeCompensation.findMany({
+      where: { organizationId: ctx.user.organizationId, bandId: { not: null } },
+      select: { currentSalary: true, band: { select: { id: true, level: true, title: true, minSalary: true, midSalary: true, maxSalary: true } } },
+    });
+
+    const byBand = new Map<string, { level: string; title: string; min: number; mid: number; max: number; dots: { pos: number; outlier: boolean }[] }>();
+    for (const c of comps) {
+      if (!c.band) continue;
+      const min = Number(c.band.minSalary);
+      const max = Number(c.band.maxSalary);
+      const salary = Number(c.currentSalary);
+      if (!byBand.has(c.band.id)) {
+        byBand.set(c.band.id, { level: c.band.level ?? '', title: c.band.title ?? '', min, mid: Number(c.band.midSalary), max, dots: [] });
+      }
+      const span = max - min;
+      const rawPos = span > 0 ? ((salary - min) / span) * 100 : 50;
+      byBand.get(c.band.id)!.dots.push({ pos: Math.min(100, Math.max(0, rawPos)), outlier: rawPos < 0 || rawPos > 100 });
+    }
+
+    return [...byBand.values()].sort((a, b) => b.mid - a.mid);
+  }),
+
   // ── Compa-Ratio Distribution ───────────────────────────────────────
   getCompaRatioDistribution: permissionProcedure('compensation', 'read')
     .input(
@@ -342,10 +366,12 @@ export const compensationRouter = router({
   getDashboardKpis: permissionProcedure('compensation', 'read').query(async ({ ctx }) => {
     const orgId = ctx.user.organizationId;
 
-    const [totalPayroll, pendingAdjustments, avgCompaRatio] = await Promise.all([
+    const [payrollAgg, pendingAdjustments, avgCompaRatio, activeEmployees, benefitPlans] = await Promise.all([
       db.employeeCompensation.aggregate({
         where: { organizationId: orgId },
         _sum: { currentSalary: true },
+        _avg: { currentSalary: true },
+        _count: { _all: true },
       }),
       db.salaryAdjustment.count({
         where: { organizationId: orgId, status: 'pending' },
@@ -354,11 +380,25 @@ export const compensationRouter = router({
         where: { organizationId: orgId, compaRatio: { not: null } },
         _avg: { compaRatio: true },
       }),
+      db.user.count({ where: { organizationId: orgId, isActive: true } }),
+      db.benefitPlan.findMany({ where: { organizationId: orgId }, select: { _count: { select: { enrollments: true } } } }),
     ]);
 
+    // Average benefit utilization = mean over plans of (enrollments / active employees).
+    const benefitsUtilizationPct =
+      benefitPlans.length && activeEmployees
+        ? Math.round(
+            (benefitPlans.reduce((sum, p) => sum + p._count.enrollments / activeEmployees, 0) / benefitPlans.length) * 1000,
+          ) / 10
+        : 0;
+
     return {
-      totalMonthlyPayroll: Number(totalPayroll._sum.currentSalary) || 0,
+      totalMonthlyPayroll: Number(payrollAgg._sum.currentSalary) || 0,
+      avgSalary: Math.round(Number(payrollAgg._avg.currentSalary) || 0),
+      compensatedEmployees: payrollAgg._count._all,
+      activeEmployees,
       pendingAdjustments,
+      benefitsUtilizationPct,
       avgCompaRatio: avgCompaRatio._avg.compaRatio
         ? Math.round(Number(avgCompaRatio._avg.compaRatio) * 100) / 100
         : null,
