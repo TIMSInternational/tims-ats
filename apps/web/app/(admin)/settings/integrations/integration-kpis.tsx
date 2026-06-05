@@ -34,7 +34,7 @@ export function IntegrationKpis({ data, loading }: IntegrationKpisProps) {
       {items.map((k) => (
         <div key={k.label} className="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center">
           <p className="text-[11px] text-[#8B8B8B] mb-1">{k.label}</p>
-          <p className={`text-[26px] font-bold ${k.color}`}>{k.value}</p>
+          <p className={`text-[20px] md:text-[26px] font-bold ${k.color}`}>{k.value}</p>
         </div>
       ))}
     </div>

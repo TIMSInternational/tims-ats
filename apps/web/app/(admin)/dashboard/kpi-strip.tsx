@@ -62,7 +62,7 @@ function KpiCard({ label, value, trendLabel, trendColor, trendUp, sparkData, spa
       </div>
       <div className="flex items-end justify-between gap-2">
         <div>
-          <p className="text-2xl font-bold text-primary tracking-tight">{value}</p>
+          <p className="text-xl md:text-2xl font-bold text-primary tracking-tight">{value}</p>
           <span className={`text-xs font-medium ${trendColor}`}>
             {trendUp ? '\u2191' : '\u2193'} {trendLabel}
           </span>

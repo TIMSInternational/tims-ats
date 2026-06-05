@@ -87,7 +87,7 @@ export function NotificationDropdown({ onOpen }: { onOpen?: () => void }) {
       </button>
 
       {notifOpen && (
-        <div className="absolute right-0 top-full mt-2 w-[380px] bg-white rounded-xl shadow-[0_8px_30px_rgba(0,0,0,0.12)] border border-[#EDEDED] z-50 overflow-hidden">
+        <div className="absolute right-0 top-full mt-2 w-[calc(100vw-2rem)] max-w-[380px] bg-white rounded-xl shadow-[0_8px_30px_rgba(0,0,0,0.12)] border border-[#EDEDED] z-50 overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-[#EDEDED]">
             <h3 className="text-[13px] font-semibold text-[#1F114C]">
               {t.nav.notifications}
