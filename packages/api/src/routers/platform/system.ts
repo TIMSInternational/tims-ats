@@ -1,21 +1,20 @@
-import { z } from 'zod';
 import { router } from '../../trpc';
 import { db } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { platformProcedure } from './_common';
 import { PLAN_PRICES } from '../../lib/plan-prices';
-
-const auditLogSelect = {
-  id: true,
-  action: true,
-  entity: true,
-  entityId: true,
-  userId: true,
-  metadata: true,
-  createdAt: true,
-  ipAddress: true,
-  actor: { select: { id: true, firstName: true, lastName: true, email: true, avatar: true } },
-} as const;
+import { auditLogSelect, SYSTEM_FLAG_KEYS, buildSystemHealthServices } from './system.helpers';
+import {
+  sendBulkNotificationInput,
+  getRecentPlatformEventsInput,
+  getCrossOrgAuditLogsInput,
+  exportAuditLogsCsvInput,
+  getOrgAuditLogsInput,
+  updateFeatureFlagInput,
+  createFeatureFlagForAllOrgsInput,
+  deleteFeatureFlagInput,
+  deleteFeatureFlagByKeyInput,
+} from './system.schemas';
 
 export const systemRouter = router({
   getSystemHealth: platformProcedure.query(async () => {
@@ -48,47 +47,18 @@ export const systemRouter = router({
       select: { id: true, action: true, entity: true, metadata: true, createdAt: true },
     });
 
-    const services = [
-      { name: 'API Gateway', status: 'operational' as const, metrics: [
-        { label: 'Latencia p95', value: `${Math.max(dbLatency * 3, 12)}ms` },
-        { label: 'Uptime', value: '99.99%', color: 'green' as const },
-        { label: 'Requests/min', value: String(Math.round(auditLogsToday / Math.max(1, (Date.now() - todayStart.getTime()) / 60000))) },
-      ]},
-      { name: 'Base de Datos', status: (dbHealthy ? 'operational' : 'down') as 'operational' | 'down', metrics: [
-        { label: 'Conexiones', value: `${Math.min(orgCount + 2, 100)} / 100` },
-        { label: 'Query time', value: `${dbLatency}ms`, color: (dbLatency < 50 ? 'green' : 'amber') as 'green' | 'amber' },
-        { label: 'Registros', value: `${userCount + orgCount + vacancyCount}` },
-      ]},
-      { name: 'Autenticacion', status: 'operational' as const, metrics: [
-        { label: 'Logins hoy', value: String(loginsToday) },
-        { label: 'Fallidos', value: String(failedLogins), color: (failedLogins > 0 ? 'red' : undefined) as 'red' | undefined },
-        { label: 'Sesiones activas', value: String(activeUsers) },
-      ]},
-      { name: 'Almacenamiento', status: 'operational' as const, metrics: [
-        { label: 'Usado', value: '12.4 GB / 50 GB' },
-        { label: 'Uploads hoy', value: '0' },
-      ], progressBar: { percent: 24.8, color: 'blue' as const }},
-      { name: 'Background Jobs', status: 'operational' as const, metrics: [
-        { label: 'Cola', value: '0 pendientes' },
-        { label: 'Fallidos', value: '0' },
-        { label: 'Procesados hoy', value: String(auditLogsToday) },
-      ]},
-      { name: 'AI (Bedrock)', status: 'operational' as const, metrics: [
-        { label: 'Llamadas hoy', value: '0' },
-        { label: 'Costo', value: '$0.00' },
-        { label: 'Presupuesto', value: '0% usado' },
-      ], progressBar: { percent: 0, color: 'green' as const }},
-      { name: 'Email (SES)', status: 'operational' as const, metrics: [
-        { label: 'Enviados hoy', value: '0' },
-        { label: 'Bounce rate', value: '0%', color: 'green' as const },
-        { label: 'Reputation', value: 'N/A' },
-      ]},
-      { name: 'Realtime', status: 'operational' as const, metrics: [
-        { label: 'Conexiones', value: '0' },
-        { label: 'Mensajes/seg', value: '0' },
-        { label: 'Canales activos', value: '0' },
-      ]},
-    ];
+    const services = buildSystemHealthServices({
+      dbHealthy,
+      dbLatency,
+      orgCount,
+      userCount,
+      vacancyCount,
+      loginsToday,
+      failedLogins,
+      activeUsers,
+      auditLogsToday,
+      todayStart,
+    });
 
     const hasIssues = services.some(s => s.status !== 'operational');
 
@@ -110,12 +80,7 @@ export const systemRouter = router({
   }),
 
   sendBulkNotification: platformProcedure
-    .input(z.object({
-      organizationId: z.string().uuid().optional(),
-      title: z.string().min(1).max(200),
-      message: z.string().min(1).max(1000),
-      type: z.enum(['info', 'warning', 'critical', 'success']),
-    }))
+    .input(sendBulkNotificationInput)
     .mutation(async ({ ctx, input }) => {
       const where: { organizationId?: string; isActive: boolean } = { isActive: true };
       if (input.organizationId) where.organizationId = input.organizationId;
@@ -148,7 +113,7 @@ export const systemRouter = router({
     }),
 
   getRecentPlatformEvents: platformProcedure
-    .input(z.object({ limit: z.number().int().min(1).max(50).default(10) }))
+    .input(getRecentPlatformEventsInput)
     .query(async ({ input }) => {
       return db.auditLog.findMany({
         orderBy: { createdAt: 'desc' },
@@ -288,15 +253,7 @@ export const systemRouter = router({
   }),
 
   getCrossOrgAuditLogs: platformProcedure
-    .input(z.object({
-      cursor: z.string().uuid().optional(),
-      limit: z.number().int().min(1).max(50).default(20),
-      userId: z.string().uuid().optional(),
-      action: z.string().max(100).optional(),
-      entity: z.string().max(100).optional(),
-      dateFrom: z.date().optional(),
-      dateTo: z.date().optional(),
-    }))
+    .input(getCrossOrgAuditLogsInput)
     .query(async ({ input }) => {
       const { cursor, limit, userId, action, entity, dateFrom, dateTo } = input;
 
@@ -328,12 +285,7 @@ export const systemRouter = router({
     }),
 
   exportAuditLogsCsv: platformProcedure
-    .input(z.object({
-      action: z.string().max(100).optional(),
-      entity: z.string().max(100).optional(),
-      dateFrom: z.date().optional(),
-      dateTo: z.date().optional(),
-    }))
+    .input(exportAuditLogsCsvInput)
     .query(async ({ input }) => {
       const where: Prisma.AuditLogWhereInput = {};
       if (input.action) where.action = input.action;
@@ -372,10 +324,7 @@ export const systemRouter = router({
     }),
 
   getOrgAuditLogs: platformProcedure
-    .input(z.object({
-      organizationId: z.string().uuid(),
-      limit: z.number().int().min(1).max(50).default(10),
-    }))
+    .input(getOrgAuditLogsInput)
     .query(async ({ input }) => {
       return db.auditLog.findMany({
         where: { organizationId: input.organizationId },
@@ -417,11 +366,7 @@ export const systemRouter = router({
   }),
 
   updateFeatureFlag: platformProcedure
-    .input(z.object({
-      organizationId: z.string().uuid(),
-      key: z.string().max(100),
-      enabled: z.boolean(),
-    }))
+    .input(updateFeatureFlagInput)
     .mutation(async ({ ctx, input }) => {
       const result = await db.featureFlag.upsert({
         where: { organizationId_key: { organizationId: input.organizationId, key: input.key } },
@@ -445,10 +390,7 @@ export const systemRouter = router({
     }),
 
   createFeatureFlagForAllOrgs: platformProcedure
-    .input(z.object({
-      key: z.string().min(1).max(100).regex(/^[a-z0-9_]+$/),
-      enabled: z.boolean().default(false),
-    }))
+    .input(createFeatureFlagForAllOrgsInput)
     .mutation(async ({ input }) => {
       const orgs = await db.organization.findMany({ select: { id: true } });
       let created = 0;
@@ -466,7 +408,7 @@ export const systemRouter = router({
     }),
 
   deleteFeatureFlag: platformProcedure
-    .input(z.object({ id: z.string().uuid() }))
+    .input(deleteFeatureFlagInput)
     .mutation(async ({ input }) => {
       return db.featureFlag.delete({
         where: { id: input.id },
@@ -475,7 +417,7 @@ export const systemRouter = router({
     }),
 
   deleteFeatureFlagByKey: platformProcedure
-    .input(z.object({ key: z.string().max(100) }))
+    .input(deleteFeatureFlagByKeyInput)
     .mutation(async ({ input }) => {
       const deleted = await db.featureFlag.deleteMany({ where: { key: input.key } });
       return { key: input.key, deleted: deleted.count };
@@ -486,14 +428,9 @@ export const systemRouter = router({
     if (existing > 0) return { seeded: false, count: existing };
 
     const orgs = await db.organization.findMany({ select: { id: true } });
-    const FLAG_KEYS = [
-      'ai_enabled', 'nine_box_enabled', 'dei_enabled', 'compensation_enabled',
-      'succession_enabled', 'video_interviews', 'whatsapp_enabled',
-      'advanced_analytics', 'api_access', 'sso_saml',
-    ];
 
     const data = orgs.flatMap(org =>
-      FLAG_KEYS.map(key => ({
+      SYSTEM_FLAG_KEYS.map(key => ({
         organizationId: org.id,
         key,
         enabled: key === 'ai_enabled',

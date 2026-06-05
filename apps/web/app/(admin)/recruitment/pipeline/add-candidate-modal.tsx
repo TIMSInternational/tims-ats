@@ -4,6 +4,9 @@ import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { Modal } from '../../../../components';
+import { Step1Fields, Step2Fields, Step3Fields } from './add-candidate-modal.fields';
+import type { Step, ProcessStep } from './add-candidate-modal.helpers';
+import { STEP_LABELS } from './add-candidate-modal.helpers';
 
 interface AddCandidateModalProps {
   vacancyId: string;
@@ -11,40 +14,6 @@ interface AddCandidateModalProps {
   onClose: () => void;
   onSuccess: () => void;
 }
-
-type Step = 1 | 2 | 3;
-type ProcessStep = 'idle' | 'creating' | 'applying';
-
-const SOURCES = [
-  { value: 'manual', label: 'Ingreso manual' },
-  { value: 'linkedin', label: 'LinkedIn' },
-  { value: 'referral', label: 'Referido' },
-  { value: 'portal', label: 'Portal' },
-  { value: 'job_board', label: 'Job Board' },
-  { value: 'university', label: 'Universidad' },
-  { value: 'internal', label: 'Interno / Transferencia' },
-];
-
-const POOL_TYPES = [
-  { value: 'active', label: 'Activo — busca empleo' },
-  { value: 'passive', label: 'Pasivo — no busca activamente' },
-  { value: 'referral', label: 'Referido por empleado' },
-  { value: 'sourced', label: 'Sourced — contactado directamente' },
-];
-
-const EXPERIENCE_LEVELS = [
-  { value: '0', label: 'Sin experiencia' },
-  { value: '1', label: '1 ano' },
-  { value: '2', label: '2 anos' },
-  { value: '3', label: '3-4 anos' },
-  { value: '5', label: '5-7 anos' },
-  { value: '8', label: '8-10 anos' },
-  { value: '12', label: '10+ anos' },
-];
-
-const inputCls = 'w-full h-10 px-3 rounded-lg border border-[#EDEDED] text-sm focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 focus:border-[#1F114C] disabled:opacity-50 disabled:bg-[#FAFAFA]';
-const labelCls = 'block text-xs font-medium text-[#585858] mb-1';
-const textareaCls = 'w-full px-3 py-2 rounded-lg border border-[#EDEDED] text-sm focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 focus:border-[#1F114C] resize-none disabled:opacity-50';
 
 export function AddCandidateModal({ vacancyId, vacancyTitle, onClose, onSuccess }: AddCandidateModalProps) {
   const [step, setStep] = useState<Step>(1);
@@ -132,8 +101,6 @@ export function AddCandidateModal({ vacancyId, vacancyTitle, onClose, onSuccess 
     }
   };
 
-  const stepLabels = ['Datos personales', 'Perfil profesional', 'Fuente y aplicacion'];
-
   return (
     <Modal title="Agregar Candidato al Pipeline" onClose={onClose} maxWidth="max-w-2xl">
       {/* Vacancy badge */}
@@ -147,7 +114,7 @@ export function AddCandidateModal({ vacancyId, vacancyTitle, onClose, onSuccess 
 
       {/* Step indicator */}
       <div className="flex items-center gap-2 mb-6">
-        {stepLabels.map((label, i) => (
+        {STEP_LABELS.map((label, i) => (
           <div key={i} className="flex items-center gap-2 flex-1">
             <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 ${
               step > i + 1 ? 'bg-green-500 text-white' : step === i + 1 ? 'bg-[#1F114C] text-white' : 'bg-[#EDEDED] text-[#8B8B8B]'
@@ -162,162 +129,55 @@ export function AddCandidateModal({ vacancyId, vacancyTitle, onClose, onSuccess 
 
       {/* Step 1: Personal Info */}
       {step === 1 && (
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={labelCls}>Nombre *</label>
-              <input type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} maxLength={120} className={inputCls} placeholder="Maria" autoFocus />
-            </div>
-            <div>
-              <label className={labelCls}>Apellido *</label>
-              <input type="text" value={lastName} onChange={(e) => setLastName(e.target.value)} maxLength={120} className={inputCls} placeholder="Lopez Rodriguez" />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={labelCls}>Email *</label>
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} maxLength={254} className={inputCls} placeholder="maria.lopez@gmail.com" />
-            </div>
-            <div>
-              <label className={labelCls}>Telefono</label>
-              <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} maxLength={30} className={inputCls} placeholder="+57 310 123 4567" />
-            </div>
-          </div>
-          <div>
-            <label className={labelCls}>Ubicacion</label>
-            <input type="text" value={location} onChange={(e) => setLocation(e.target.value)} maxLength={200} className={inputCls} placeholder="Bogota, Colombia" />
-          </div>
-        </div>
+        <Step1Fields
+          firstName={firstName}
+          setFirstName={setFirstName}
+          lastName={lastName}
+          setLastName={setLastName}
+          email={email}
+          setEmail={setEmail}
+          phone={phone}
+          setPhone={setPhone}
+          location={location}
+          setLocation={setLocation}
+        />
       )}
 
       {/* Step 2: Professional Profile */}
       {step === 2 && (
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={labelCls}>Cargo actual</label>
-              <input type="text" value={currentTitle} onChange={(e) => setCurrentTitle(e.target.value)} maxLength={200} className={inputCls} placeholder="Senior Software Engineer" />
-            </div>
-            <div>
-              <label className={labelCls}>Empresa actual</label>
-              <input type="text" value={currentCompany} onChange={(e) => setCurrentCompany(e.target.value)} maxLength={200} className={inputCls} placeholder="MercadoLibre" />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={labelCls}>Anos de experiencia</label>
-              <select value={yearsExperience} onChange={(e) => setYearsExperience(e.target.value)} className={`${inputCls} bg-white`}>
-                {EXPERIENCE_LEVELS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className={labelCls}>LinkedIn</label>
-              <input type="url" value={linkedinUrl} onChange={(e) => setLinkedinUrl(e.target.value)} maxLength={2048} className={inputCls} placeholder="https://linkedin.com/in/maria-lopez" />
-            </div>
-          </div>
-          <div>
-            <label className={labelCls}>Habilidades clave</label>
-            <input type="text" value={skills} onChange={(e) => setSkills(e.target.value)} maxLength={500} className={inputCls} placeholder="React, TypeScript, Node.js, AWS (separadas por coma)" />
-            <p className="text-[10px] text-[#8B8B8B] mt-1">Separa cada habilidad con una coma</p>
-          </div>
-          <div>
-            <label className={labelCls}>Notas del reclutador</label>
-            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={1000} rows={3} className={textareaCls} placeholder="Observaciones relevantes sobre el candidato, como fue contactado, impresiones iniciales..." />
-          </div>
-        </div>
+        <Step2Fields
+          currentTitle={currentTitle}
+          setCurrentTitle={setCurrentTitle}
+          currentCompany={currentCompany}
+          setCurrentCompany={setCurrentCompany}
+          yearsExperience={yearsExperience}
+          setYearsExperience={setYearsExperience}
+          linkedinUrl={linkedinUrl}
+          setLinkedinUrl={setLinkedinUrl}
+          skills={skills}
+          setSkills={setSkills}
+          notes={notes}
+          setNotes={setNotes}
+        />
       )}
 
       {/* Step 3: Source & Application */}
       {step === 3 && (
-        <div className="space-y-5">
-          <div>
-            <p className="text-[13px] font-medium text-[#1F114C] mb-3">Como llego este candidato?</p>
-            <div className="grid grid-cols-2 gap-2">
-              {SOURCES.map((s) => (
-                <button
-                  key={s.value}
-                  type="button"
-                  onClick={() => setSource(s.value)}
-                  className={`text-left px-3 py-2.5 rounded-lg border text-[12px] transition ${
-                    source === s.value
-                      ? 'border-[#1F114C] bg-[#F0EEF5] text-[#1F114C] font-medium'
-                      : 'border-[#EDEDED] text-[#585858] hover:bg-[#F6F6F6]'
-                  }`}
-                >
-                  {s.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {source === 'referral' && (
-            <div>
-              <label className={labelCls}>Nombre del referente</label>
-              <input type="text" value={referrerName} onChange={(e) => setReferrerName(e.target.value)} maxLength={200} className={inputCls} placeholder="Juan Perez (Equipo Tecnologia)" />
-            </div>
-          )}
-
-          <div>
-            <p className="text-[13px] font-medium text-[#1F114C] mb-3">Tipo de candidato</p>
-            <div className="space-y-2">
-              {POOL_TYPES.map((p) => (
-                <label
-                  key={p.value}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border cursor-pointer transition ${
-                    poolType === p.value
-                      ? 'border-[#1F114C] bg-[#F0EEF5]'
-                      : 'border-[#EDEDED] hover:bg-[#F6F6F6]'
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="poolType"
-                    value={p.value}
-                    checked={poolType === p.value}
-                    onChange={(e) => setPoolType(e.target.value)}
-                    className="w-4 h-4 text-[#1F114C] focus:ring-[#1F114C]/20"
-                  />
-                  <span className={`text-[12px] ${poolType === p.value ? 'text-[#1F114C] font-medium' : 'text-[#585858]'}`}>{p.label}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-
-          {/* Summary */}
-          <div className="border-t border-[#EDEDED] pt-4">
-            <p className="text-[13px] font-medium text-[#1F114C] mb-2">Resumen</p>
-            <div className="bg-[#F6F6F6] rounded-lg p-3 space-y-1.5">
-              <div className="flex justify-between">
-                <span className="text-[12px] text-[#585858]">Candidato:</span>
-                <span className="text-[12px] text-[#333] font-medium">{firstName} {lastName}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-[12px] text-[#585858]">Email:</span>
-                <span className="text-[12px] text-[#333]">{email}</span>
-              </div>
-              {currentTitle && (
-                <div className="flex justify-between">
-                  <span className="text-[12px] text-[#585858]">Cargo:</span>
-                  <span className="text-[12px] text-[#333]">{currentTitle}{currentCompany ? ` en ${currentCompany}` : ''}</span>
-                </div>
-              )}
-              <div className="flex justify-between">
-                <span className="text-[12px] text-[#585858]">Fuente:</span>
-                <span className="text-[12px] text-[#333]">{SOURCES.find((s) => s.value === source)?.label}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-[12px] text-[#585858]">Vacante:</span>
-                <span className="text-[12px] text-[#333]">{vacancyTitle}</span>
-              </div>
-              {skills.trim() && (
-                <div className="flex justify-between">
-                  <span className="text-[12px] text-[#585858]">Skills:</span>
-                  <span className="text-[12px] text-[#333]">{skills.split(',').slice(0, 4).map((s) => s.trim()).join(', ')}{skills.split(',').length > 4 ? '...' : ''}</span>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+        <Step3Fields
+          source={source}
+          setSource={setSource}
+          poolType={poolType}
+          setPoolType={setPoolType}
+          referrerName={referrerName}
+          setReferrerName={setReferrerName}
+          firstName={firstName}
+          lastName={lastName}
+          email={email}
+          currentTitle={currentTitle}
+          currentCompany={currentCompany}
+          skills={skills}
+          vacancyTitle={vacancyTitle}
+        />
       )}
 
       {/* Navigation */}

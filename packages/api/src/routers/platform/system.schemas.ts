@@ -1,0 +1,49 @@
+import { z } from 'zod';
+
+export const sendBulkNotificationInput = z.object({
+  organizationId: z.string().uuid().optional(),
+  title: z.string().min(1).max(200),
+  message: z.string().min(1).max(1000),
+  type: z.enum(['info', 'warning', 'critical', 'success']),
+});
+
+export const getRecentPlatformEventsInput = z.object({
+  limit: z.number().int().min(1).max(50).default(10),
+});
+
+export const getCrossOrgAuditLogsInput = z.object({
+  cursor: z.string().uuid().optional(),
+  limit: z.number().int().min(1).max(50).default(20),
+  userId: z.string().uuid().optional(),
+  action: z.string().max(100).optional(),
+  entity: z.string().max(100).optional(),
+  dateFrom: z.date().optional(),
+  dateTo: z.date().optional(),
+});
+
+export const exportAuditLogsCsvInput = z.object({
+  action: z.string().max(100).optional(),
+  entity: z.string().max(100).optional(),
+  dateFrom: z.date().optional(),
+  dateTo: z.date().optional(),
+});
+
+export const getOrgAuditLogsInput = z.object({
+  organizationId: z.string().uuid(),
+  limit: z.number().int().min(1).max(50).default(10),
+});
+
+export const updateFeatureFlagInput = z.object({
+  organizationId: z.string().uuid(),
+  key: z.string().max(100),
+  enabled: z.boolean(),
+});
+
+export const createFeatureFlagForAllOrgsInput = z.object({
+  key: z.string().min(1).max(100).regex(/^[a-z0-9_]+$/),
+  enabled: z.boolean().default(false),
+});
+
+export const deleteFeatureFlagInput = z.object({ id: z.string().uuid() });
+
+export const deleteFeatureFlagByKeyInput = z.object({ key: z.string().max(100) });

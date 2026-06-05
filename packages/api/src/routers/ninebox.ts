@@ -1,19 +1,26 @@
-import { z } from 'zod';
 import { router, protectedProcedure, permissionProcedure } from '../trpc';
 import { tenantDb as db } from '@tims/db';
+import {
+  getGridInput,
+  getEmployeeDetailInput,
+  getAxisBreakdownInput,
+  getMovementHistoryInput,
+  simulateInput,
+  createCalibrationInput,
+  getCalibrationInput,
+  submitCalibrationVoteInput,
+  finalizeCalibrationInput,
+  getQuadrantPlanInput,
+  getBenchStrengthInput,
+  getDashboardKpisInput,
+} from './ninebox.schemas';
+import { quadrantToGrid, simulateQuadrantMap, quadrantPlans } from './ninebox.helpers';
 
 export const nineboxRouter = router({
   // ── Grid ─────────────────────────────────────────────────────────────
 
   getGrid: permissionProcedure('ninebox', 'read')
-    .input(
-      z.object({
-        period: z.string(),
-        companyId: z.string().uuid().optional(),
-        unitId: z.string().uuid().optional(),
-        teamId: z.string().uuid().optional(),
-      }),
-    )
+    .input(getGridInput)
     .query(async ({ ctx, input }) => {
       // Build user filter based on scope
       let userFilter: Record<string, unknown> = {};
@@ -53,20 +60,6 @@ export const nineboxRouter = router({
         orderBy: { evaluatedAt: 'desc' },
       });
 
-      // Map quadrant names to grid keys (potential-performance)
-      const quadrantToGrid: Record<string, string> = {
-        star: '3-3',
-        high_potential: '3-2',
-        enigma: '3-1',
-        solid_performer: '2-3',
-        consistent_performer: '2-3',
-        core_player: '2-2',
-        inconsistent: '2-1',
-        workhouse: '1-3',
-        underperformer: '1-2',
-        risk: '1-1',
-      };
-
       const grid: Record<string, typeof evaluations> = {};
       for (const evaluation of evaluations) {
         const key = quadrantToGrid[evaluation.quadrant] ?? evaluation.quadrant;
@@ -80,12 +73,7 @@ export const nineboxRouter = router({
     }),
 
   getEmployeeDetail: permissionProcedure('ninebox', 'read')
-    .input(
-      z.object({
-        userId: z.string().uuid(),
-        period: z.string(),
-      }),
-    )
+    .input(getEmployeeDetailInput)
     .query(async ({ ctx, input }) => {
       const evaluation = await db.nineBoxEvaluation.findFirst({
         where: {
@@ -127,12 +115,7 @@ export const nineboxRouter = router({
     }),
 
   getAxisBreakdown: permissionProcedure('ninebox', 'read')
-    .input(
-      z.object({
-        userId: z.string().uuid(),
-        period: z.string(),
-      }),
-    )
+    .input(getAxisBreakdownInput)
     .query(async ({ ctx, input }) => {
       const evaluation = await db.nineBoxEvaluation.findFirstOrThrow({
         where: {
@@ -154,12 +137,7 @@ export const nineboxRouter = router({
     }),
 
   getMovementHistory: permissionProcedure('ninebox', 'read')
-    .input(
-      z.object({
-        userId: z.string().uuid().optional(),
-        companyId: z.string().uuid().optional(),
-      }),
-    )
+    .input(getMovementHistoryInput)
     .query(async ({ ctx, input }) => {
       const evaluations = await db.nineBoxEvaluation.findMany({
         where: {
@@ -210,13 +188,7 @@ export const nineboxRouter = router({
 
   // Stub: simulate placement changes
   simulate: permissionProcedure('ninebox', 'read')
-    .input(
-      z.object({
-        userId: z.string().uuid(),
-        newPotentialScore: z.number().min(0).max(100),
-        newPerformanceScore: z.number().min(0).max(100),
-      }),
-    )
+    .input(simulateInput)
     .query(async ({ input }) => {
       // TODO: integrate with scoring engine
       const potentialBand =
@@ -228,15 +200,9 @@ export const nineboxRouter = router({
             ? 'medium'
             : 'low';
 
-      const quadrantMap: Record<string, Record<string, string>> = {
-        high: { high: 'star', medium: 'high_potential', low: 'enigma' },
-        medium: { high: 'solid_performer', medium: 'core_player', low: 'inconsistent' },
-        low: { high: 'workhouse', medium: 'underperformer', low: 'risk' },
-      };
-
       return {
         userId: input.userId,
-        simulatedQuadrant: quadrantMap[potentialBand][performanceBand],
+        simulatedQuadrant: simulateQuadrantMap[potentialBand][performanceBand],
         potentialBand,
         performanceBand,
         _stub: true,
@@ -246,13 +212,7 @@ export const nineboxRouter = router({
   // ── Calibration ──────────────────────────────────────────────────────
 
   createCalibration: permissionProcedure('ninebox', 'create')
-    .input(
-      z.object({
-        period: z.string(),
-        scheduledAt: z.string().datetime().optional(),
-        memberIds: z.array(z.string().uuid()).optional(),
-      }),
-    )
+    .input(createCalibrationInput)
     .mutation(async ({ ctx, input }) => {
       return db.calibrationSession.create({
         data: {
@@ -275,7 +235,7 @@ export const nineboxRouter = router({
     }),
 
   getCalibration: permissionProcedure('ninebox', 'read')
-    .input(z.object({ id: z.string().uuid() }))
+    .input(getCalibrationInput)
     .query(async ({ ctx, input }) => {
       return db.calibrationSession.findFirstOrThrow({
         where: {
@@ -300,14 +260,7 @@ export const nineboxRouter = router({
     }),
 
   submitCalibrationVote: permissionProcedure('ninebox', 'update')
-    .input(
-      z.object({
-        sessionId: z.string().uuid(),
-        evaluatedUserId: z.string().uuid(),
-        quadrant: z.string(),
-        justification: z.string().optional(),
-      }),
-    )
+    .input(submitCalibrationVoteInput)
     .mutation(async ({ ctx, input }) => {
       return db.calibrationVote.upsert({
         where: {
@@ -332,7 +285,7 @@ export const nineboxRouter = router({
     }),
 
   finalizeCalibration: permissionProcedure('ninebox', 'update')
-    .input(z.object({ sessionId: z.string().uuid() }))
+    .input(finalizeCalibrationInput)
     .mutation(async ({ ctx, input }) => {
       return db.calibrationSession.update({
         where: {
@@ -349,89 +302,13 @@ export const nineboxRouter = router({
   // ── Plans & Analytics ────────────────────────────────────────────────
 
   getQuadrantPlan: permissionProcedure('ninebox', 'read')
-    .input(z.object({ quadrant: z.string() }))
+    .input(getQuadrantPlanInput)
     .query(async ({ input }) => {
-      // Standard development plans per quadrant
-      const plans: Record<string, { title: string; actions: string[] }> = {
-        star: {
-          title: 'Retener y Acelerar',
-          actions: [
-            'Asignar proyectos de alta visibilidad',
-            'Incluir en plan de sucesion',
-            'Ofrecer mentoria ejecutiva',
-          ],
-        },
-        high_potential: {
-          title: 'Desarrollar Rendimiento',
-          actions: [
-            'Establecer metas desafiantes',
-            'Asignar coaching de desempeno',
-            'Rotacion de roles',
-          ],
-        },
-        enigma: {
-          title: 'Evaluar y Orientar',
-          actions: [
-            'Asignar mentor',
-            'Revisar encaje de rol',
-            'Establecer metas a corto plazo',
-          ],
-        },
-        solid_performer: {
-          title: 'Reconocer y Desarrollar',
-          actions: [
-            'Reconocimiento publico',
-            'Plan de capacitacion en liderazgo',
-            'Proyectos cross-funcionales',
-          ],
-        },
-        core_player: {
-          title: 'Motivar y Crecer',
-          actions: [
-            'Feedback regular',
-            'Capacitacion tecnica',
-            'Metas de estiramiento',
-          ],
-        },
-        inconsistent: {
-          title: 'Diagnosticar y Apoyar',
-          actions: [
-            'Identificar barreras',
-            'Plan de mejora con seguimiento',
-            'Evaluar motivacion',
-          ],
-        },
-        workhouse: {
-          title: 'Valorar Consistencia',
-          actions: [
-            'Reconocer contribuciones',
-            'Evaluar interes en crecimiento',
-            'Capacitacion selectiva',
-          ],
-        },
-        underperformer: {
-          title: 'Plan de Mejora',
-          actions: [
-            'Plan de mejora formal (PIP)',
-            'Coaching intensivo',
-            'Revision en 90 dias',
-          ],
-        },
-        risk: {
-          title: 'Accion Inmediata',
-          actions: [
-            'Conversacion de retroalimentacion directa',
-            'PIP con plazos estrictos',
-            'Evaluar reubicacion o salida',
-          ],
-        },
-      };
-
-      return plans[input.quadrant] ?? { title: 'Sin plan definido', actions: [] };
+      return quadrantPlans[input.quadrant] ?? { title: 'Sin plan definido', actions: [] };
     }),
 
   getBenchStrength: permissionProcedure('ninebox', 'read')
-    .input(z.object({ period: z.string() }))
+    .input(getBenchStrengthInput)
     .query(async ({ ctx, input }) => {
       const evaluations = await db.nineBoxEvaluation.findMany({
         where: {
@@ -464,7 +341,7 @@ export const nineboxRouter = router({
   // ── Dashboard KPIs ───────────────────────────────────────────────────
 
   getDashboardKpis: permissionProcedure('ninebox', 'read')
-    .input(z.object({ period: z.string() }))
+    .input(getDashboardKpisInput)
     .query(async ({ ctx, input }) => {
       const orgId = ctx.user.organizationId;
 
