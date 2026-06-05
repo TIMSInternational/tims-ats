@@ -1,33 +1,50 @@
 'use client';
 
-const MOCK_AREAS = [
-  { name: 'RRHH', score: 80, color: '#22c55e' },
-  { name: 'Tecnologia', score: 81, color: '#22c55e' },
-  { name: 'Ventas', score: 63, color: '#f59e0b' },
-  { name: 'Operaciones', score: 49, color: '#ef4444' },
-  { name: 'Logistica', score: 58, color: '#f59e0b' },
-  { name: 'Finanzas', score: 74, color: '#22c55e' },
-];
+import { trpc } from '../../../../lib/trpc';
+import { useI18n } from '../../../../lib/i18n';
 
 export function ClimateResults() {
+  const { t } = useI18n();
+  const q = trpc.engagement.getEnps.useQuery({});
+
+  const segments = q.data
+    ? [
+        { label: t.climate.promoters, value: q.data.promoters, cls: 'bg-green-500' },
+        { label: t.climate.passives, value: q.data.passives, cls: 'bg-amber-400' },
+        { label: t.climate.detractors, value: q.data.detractors, cls: 'bg-red-500' },
+      ]
+    : [];
+  const total = q.data?.totalResponses ?? 0;
+
   return (
     <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
-      <h3 className="text-[13px] font-semibold text-[#333] mb-3">Resultados por Area</h3>
-      <div className="space-y-2.5">
-        {MOCK_AREAS.map((area) => (
-          <div key={area.name} className="flex items-center gap-3">
-            <span className="text-[11px] text-[#585858] w-24 shrink-0">{area.name}</span>
-            <div className="flex-1 bg-[#EDEDED] rounded-full h-5 overflow-hidden">
-              <div
-                className="h-full rounded-full flex items-center pl-2 text-[10px] text-white font-semibold"
-                style={{ width: `${area.score}%`, backgroundColor: area.color }}
-              >
-                {area.score}
-              </div>
-            </div>
+      <h3 className="text-[13px] font-semibold text-[#333] mb-3">{t.climate.enpsDistribution}</h3>
+      {q.isLoading ? (
+        <div className="h-20 bg-gray-50 rounded animate-pulse" />
+      ) : q.isError ? (
+        <p className="text-[12px] text-[#DD0C15]">{t.climate.errClimate}</p>
+      ) : total === 0 ? (
+        <p className="text-[12px] text-[#8B8B8B]">{t.climate.noClimateData}</p>
+      ) : (
+        <>
+          <div className="flex h-6 rounded-full overflow-hidden mb-3">
+            {segments.map((s) => (
+              <div key={s.label} className={s.cls} style={{ width: `${(s.value / total) * 100}%` }} />
+            ))}
           </div>
-        ))}
-      </div>
+          <div className="space-y-1.5">
+            {segments.map((s) => (
+              <div key={s.label} className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <span className={`w-2.5 h-2.5 rounded-sm ${s.cls}`} />
+                  <span className="text-[11px] text-[#333]">{s.label}</span>
+                </div>
+                <span className="text-[11px] text-[#8B8B8B]">{s.value} · {Math.round((s.value / total) * 100)}%</span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }

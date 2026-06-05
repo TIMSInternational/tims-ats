@@ -205,7 +205,7 @@ export const engagementRouter = router({
       });
 
       const survey = surveys[0];
-      if (!survey) return { categories: [] as string[], teams: [] as string[], data: [] as Array<Record<string, unknown>> };
+      if (!survey) return { surveyId: null as string | null, title: '', data: [] as { category: string; score: number }[] };
 
       const categories = [...new Set((survey.questions as Array<Record<string, unknown>>).map((q: Record<string, unknown>) => q.category as string).filter(Boolean))];
 
