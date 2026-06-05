@@ -133,6 +133,18 @@ export const integrationRouter = router({
       };
     }),
 
+  // Org-wide recent sync feed (across all connectors) for the activity panel.
+  getRecentSyncs: permissionProcedure('integration', 'read')
+    .input(z.object({ take: z.number().min(1).max(50).default(15) }).optional())
+    .query(async ({ ctx, input }) => {
+      return db.connectorSync.findMany({
+        where: { organizationId: ctx.user.organizationId },
+        take: input?.take ?? 15,
+        orderBy: { startedAt: 'desc' },
+        include: { connector: { select: { name: true, type: true } } },
+      });
+    }),
+
   // ── Webhooks ────────────────────────────────────────────────
 
   listWebhooks: permissionProcedure('integration', 'read').query(async ({ ctx }) => {
