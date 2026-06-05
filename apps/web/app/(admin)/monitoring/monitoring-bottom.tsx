@@ -11,7 +11,7 @@ export function CrossModuleTrend() {
   const max = data.reduce((m, d) => Math.max(m, d.value), 0) || 1;
 
   return (
-    <div className="flex-1 bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4 flex flex-col min-w-0">
+    <div className="w-full h-[165px] md:h-auto md:flex-1 bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4 flex flex-col min-w-0">
       <span className="text-[13px] font-semibold text-[#333] mb-2">{t.monitoring.headcountTrend}</span>
       {q.isLoading ? (
         <div className="flex-1 bg-gray-50 rounded animate-pulse" />
@@ -45,7 +45,7 @@ export function QuickActions() {
   ];
 
   return (
-    <div className="w-[310px] shrink-0 bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4 flex flex-col">
+    <div className="w-full md:w-[310px] shrink-0 bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4 flex flex-col">
       <span className="text-[13px] font-semibold text-[#333] mb-3">{t.monitoring.quickActions}</span>
       <div className="flex flex-col gap-2 flex-1">
         {actions.map((a) => (

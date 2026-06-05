@@ -101,7 +101,7 @@ export function PipelineFunnel({ totalApplications }: PipelineFunnelProps) {
   const maxCount = Math.max(...stages.map((s) => s.count), 1);
 
   return (
-    <div className="flex-[65] bg-white rounded-xl p-5 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
+    <div className="w-full md:flex-[65] bg-white rounded-xl p-5 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
       <div className="flex justify-between items-center mb-4">
         <span className="text-base font-semibold text-[#1F114C]">{rd.pipelineByStage}</span>
         <div className="flex gap-2">
@@ -191,7 +191,7 @@ export function PipelineFunnel({ totalApplications }: PipelineFunnelProps) {
 
 export function PipelineFunnelSkeleton() {
   return (
-    <div className="flex-[65] bg-white rounded-xl p-5 shadow-[0_2px_12px_rgba(0,0,0,0.06)] animate-pulse">
+    <div className="w-full md:flex-[65] bg-white rounded-xl p-5 shadow-[0_2px_12px_rgba(0,0,0,0.06)] animate-pulse">
       <div className="h-5 w-60 bg-gray-200 rounded mb-4" />
       <div className="space-y-2">
         {Array.from({ length: 7 }).map((_, i) => (

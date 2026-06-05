@@ -65,7 +65,7 @@ export function VacanciesByDimension({ totalOpen }: VacanciesByDimensionProps) {
   const total = totalOpen || items.reduce((s, i) => s + i.count, 0);
 
   return (
-    <div className="flex-[35] bg-white rounded-xl p-5 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
+    <div className="w-full md:flex-[35] bg-white rounded-xl p-5 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
       <span className="text-base font-semibold text-[#1F114C] block mb-3">
         {rd.vacanciesByDimension}
       </span>
@@ -120,7 +120,7 @@ export function VacanciesByDimension({ totalOpen }: VacanciesByDimensionProps) {
 
 export function VacanciesByDimensionSkeleton() {
   return (
-    <div className="flex-[35] bg-white rounded-xl p-5 shadow-[0_2px_12px_rgba(0,0,0,0.06)] animate-pulse">
+    <div className="w-full md:flex-[35] bg-white rounded-xl p-5 shadow-[0_2px_12px_rgba(0,0,0,0.06)] animate-pulse">
       <div className="h-5 w-40 bg-gray-200 rounded mb-3" />
       <div className="h-4 w-full bg-gray-200 rounded mb-4" />
       <div className="flex gap-6">

@@ -27,7 +27,7 @@ export function ActionPlans() {
   const q = trpc.engagement.listActionPlans.useQuery({});
 
   return (
-    <div className="w-[55%] bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
+    <div className="w-full md:w-[55%] bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
       <h3 className="text-[13px] font-semibold text-[#333] mb-3">{t.climate.actionPlans}</h3>
       {q.isLoading ? (
         <div className="h-28 bg-gray-50 rounded animate-pulse" />
@@ -36,7 +36,8 @@ export function ActionPlans() {
       ) : !q.data || q.data.length === 0 ? (
         <p className="text-[12px] text-[#8B8B8B]">{t.climate.noPlans}</p>
       ) : (
-        <table className="w-full text-[11px]">
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[480px] text-[11px]">
           <thead>
             <tr className="border-b border-[#EDEDED] text-[#8B8B8B]">
               <th className="text-left font-medium pb-2">{t.climate.colPlan}</th>
@@ -61,6 +62,7 @@ export function ActionPlans() {
             })}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   );
@@ -71,7 +73,7 @@ export function LeaderCommitments() {
   const q = trpc.engagement.listLeaderCommitments.useQuery({});
 
   return (
-    <div className="w-[45%] bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
+    <div className="w-full md:w-[45%] bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
       <h3 className="text-[13px] font-semibold text-[#333] mb-3">{t.climate.leaderCommitments}</h3>
       {q.isLoading ? (
         <div className="h-28 bg-gray-50 rounded animate-pulse" />

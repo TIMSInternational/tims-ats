@@ -24,7 +24,7 @@ export function AlertsPanel() {
   const items = q.data?.items ?? [];
 
   return (
-    <div className="w-[310px] shrink-0 bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] flex flex-col">
+    <div className="w-full md:w-[310px] shrink-0 bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] flex flex-col">
       <div className="flex items-center justify-between px-4 py-3 border-b border-[#EDEDED]">
         <div className="flex items-center gap-2">
           <svg className="w-4 h-4 text-[#DD0C15]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">

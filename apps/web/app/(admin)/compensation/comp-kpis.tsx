@@ -24,7 +24,7 @@ export function CompKpis({ data, loading }: CompKpisProps) {
 
   if (loading || !data) {
     return (
-      <div className="grid grid-cols-5 gap-4 mb-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
         {Array.from({ length: 5 }).map((_, i) => <KpiSkeleton key={i} />)}
       </div>
     );
@@ -34,7 +34,7 @@ export function CompKpis({ data, loading }: CompKpisProps) {
   const benefits = data.benefitsUtilizationPct;
 
   return (
-    <div className="grid grid-cols-5 gap-4 mb-4">
+    <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
       <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4">
         <div className="text-[11px] text-[#8B8B8B] font-medium mb-1">{t.compensation.kpiPayroll}</div>
         <span className="text-[26px] font-bold text-[#333] leading-none">${data.totalMonthlyPayroll.toLocaleString()}</span>

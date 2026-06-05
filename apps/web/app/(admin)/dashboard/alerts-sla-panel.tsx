@@ -63,7 +63,7 @@ export function AlertsSlaPanel() {
   const totalOverdue = slaData.reduce((s, d) => s + d.count, 0);
 
   return (
-    <div className="flex-1 bg-white rounded-xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
+    <div className="w-full md:flex-1 bg-white rounded-xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
       <div className="flex justify-between items-center mb-4">
         <span className="text-sm font-semibold text-[#1F114C]">{rd.slaOverdueByStage}</span>
         <span className={`text-white text-xs font-bold w-6 h-6 rounded-full flex items-center justify-center ${totalOverdue > 0 ? 'bg-[#DD0C15]' : 'bg-green-500'}`}>

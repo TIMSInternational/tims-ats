@@ -26,7 +26,7 @@ export function DeiKpis() {
 
   if (kpis.isLoading) {
     return (
-      <div className="grid grid-cols-5 gap-3 mb-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
         {Array.from({ length: 5 }).map((_, i) => <KpiSkeleton key={i} />)}
       </div>
     );
@@ -48,7 +48,7 @@ export function DeiKpis() {
   const gap = pay.data?.gapPct;
 
   return (
-    <div className="grid grid-cols-5 gap-3 mb-4">
+    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
       {/* Gender ratio */}
       <KpiCard label={t.dei.kpiGenderRatio} sub={t.dei.kpiGenderRatioHint}>
         <div className="flex items-center justify-center gap-2 my-1">

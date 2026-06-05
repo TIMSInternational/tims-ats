@@ -16,7 +16,7 @@ export function IntegrationKpis({ data, loading }: IntegrationKpisProps) {
 
   if (loading || !data) {
     return (
-      <div className="grid grid-cols-4 gap-3 mb-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
         {Array.from({ length: 4 }).map((_, i) => <KpiSkeleton key={i} />)}
       </div>
     );
@@ -30,7 +30,7 @@ export function IntegrationKpis({ data, loading }: IntegrationKpisProps) {
   ];
 
   return (
-    <div className="grid grid-cols-4 gap-3 mb-4">
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
       {items.map((k) => (
         <div key={k.label} className="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center">
           <p className="text-[11px] text-[#8B8B8B] mb-1">{k.label}</p>

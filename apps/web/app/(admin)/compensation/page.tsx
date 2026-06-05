@@ -15,7 +15,7 @@ export default function CompensationPage() {
   return (
     <div className="flex flex-col flex-1 min-w-0 h-full">
       {/* Top Bar */}
-      <div className="flex items-center justify-between px-7 h-14 bg-white border-b border-[#EDEDED] shrink-0">
+      <div className="flex flex-wrap items-center justify-between gap-y-2 px-4 md:px-7 min-h-14 py-2 bg-white border-b border-[#EDEDED] shrink-0">
         <div className="flex items-center gap-2 text-[13px]">
           <span className="text-[#8B8B8B]">{t.compensation.breadcrumbParent}</span>
           <svg className="w-3.5 h-3.5 text-[#8B8B8B]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" /></svg>
@@ -33,11 +33,11 @@ export default function CompensationPage() {
 
         {/* Main Two-Column */}
         <div className="grid grid-cols-12 gap-4">
-          <div className="col-span-7 space-y-4">
+          <div className="col-span-12 md:col-span-7 space-y-4">
             <SalaryBands />
             <PayEquityCard />
           </div>
-          <div className="col-span-5 space-y-4">
+          <div className="col-span-12 md:col-span-5 space-y-4">
             <CompaRatioDistribution />
             <BenefitsUtilization />
             <PendingAdjustments />
