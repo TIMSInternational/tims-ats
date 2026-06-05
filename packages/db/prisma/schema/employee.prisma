@@ -1,0 +1,58 @@
+// ---------------------------------------------------------------------------
+// Employee demographics — voluntary self-ID data for DEI analytics.
+//
+// Stored in a SEPARATE 1:1 table (not on User) so this sensitive PII is never
+// pulled into the widely-used User selects, and so access can be scoped/audited
+// independently (CLAUDE.md §7, Colombian Habeas Data / GDPR). Today the User
+// IS the employee; this table hangs off User by userId.
+//
+// EXPOSURE RULE: only AGGREGATES (counts/percentages) are ever returned to the
+// client — never an individual's row, and dateOfBirth is bucketed into age
+// bands, never returned raw. All fields default to `undisclosed`/null so a row
+// represents "asked, not necessarily answered".
+// ---------------------------------------------------------------------------
+
+enum Gender {
+  female
+  male
+  non_binary
+  undisclosed
+}
+
+// Colombian self-identification categories (DANE) + undisclosed.
+enum Ethnicity {
+  mestizo
+  afrodescendiente
+  indigena
+  raizal
+  rom
+  palenquero
+  blanco
+  otro
+  undisclosed
+}
+
+enum DisabilityStatus {
+  none
+  has_disability
+  undisclosed
+}
+
+model EmployeeDemographics {
+  id               String           @id @default(uuid()) @db.Uuid
+  organizationId   String           @map("organization_id") @db.Uuid
+  userId           String           @unique @map("user_id") @db.Uuid
+  gender           Gender           @default(undisclosed)
+  dateOfBirth      DateTime?        @map("date_of_birth") @db.Date
+  nationality      String?          // ISO 3166-1 alpha-2 (e.g. "CO")
+  ethnicity        Ethnicity        @default(undisclosed)
+  disabilityStatus DisabilityStatus @default(undisclosed) @map("disability_status")
+  selfIdentified   Boolean          @default(false) @map("self_identified")
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("employee_demographics")
+}

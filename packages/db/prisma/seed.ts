@@ -1,4 +1,4 @@
-import { PrismaClient, OrgPlan, SubscriptionStatus, InvoiceStatus, InvitationType, InvitationStatus } from '@prisma/client';
+import { PrismaClient, OrgPlan, SubscriptionStatus, InvoiceStatus, InvitationType, InvitationStatus, Gender, Ethnicity, DisabilityStatus } from '@prisma/client';
 
 const db = new PrismaClient();
 
@@ -403,6 +403,49 @@ async function main() {
     create: { email: 'federico@nexadev.ai' },
   });
   console.log(`[PlatformOwner] federico@nexadev.ai`);
+
+  // ===========================
+  // 7. Employee Demographics (synthetic, voluntary self-ID demo data for DEI)
+  // ===========================
+  // Deterministic spread by index so charts populate proportionally to each
+  // org's real user count. Slight gender skew so parity index isn't a flat 1.0.
+  const ETHNICITIES: Ethnicity[] = ['mestizo', 'afrodescendiente', 'indigena', 'raizal', 'palenquero', 'blanco', 'otro'];
+  const NATIONALITIES = ['CO', 'CO', 'CO', 'CO', 'CO', 'VE', 'US', 'EC', 'PE'];
+  const refYear = new Date().getFullYear();
+
+  function demographicsFor(i: number): {
+    gender: Gender; dateOfBirth: Date; nationality: string; ethnicity: Ethnicity; disabilityStatus: DisabilityStatus; selfIdentified: boolean;
+  } {
+    const m = i % 20;
+    const gender: Gender = m < 9 ? 'female' : m < 18 ? 'male' : m === 18 ? 'non_binary' : 'undisclosed';
+    const age = 24 + (i * 7) % 35; // 24..58
+    const dateOfBirth = new Date(refYear - age, (i * 5) % 12, ((i * 3) % 27) + 1);
+    const disabilityStatus: DisabilityStatus = i % 13 === 0 ? 'has_disability' : i % 17 === 0 ? 'undisclosed' : 'none';
+    return {
+      gender,
+      dateOfBirth,
+      nationality: NATIONALITIES[i % NATIONALITIES.length]!,
+      ethnicity: gender === 'undisclosed' ? 'undisclosed' : ETHNICITIES[i % ETHNICITIES.length]!,
+      disabilityStatus,
+      selfIdentified: gender !== 'undisclosed',
+    };
+  }
+
+  const allUsers = await db.user.findMany({
+    where: { organizationId: { not: null }, isActive: true },
+    select: { id: true, organizationId: true },
+  });
+  let demoCount = 0;
+  for (let i = 0; i < allUsers.length; i++) {
+    const u = allUsers[i]!;
+    await db.employeeDemographics.upsert({
+      where: { userId: u.id },
+      update: {},
+      create: { userId: u.id, organizationId: u.organizationId!, ...demographicsFor(i) },
+    });
+    demoCount++;
+  }
+  console.log(`[Demographics] Seeded ${demoCount} employee demographic records`);
 
   console.log('\nSeed completed successfully!');
 }

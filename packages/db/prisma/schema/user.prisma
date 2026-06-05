@@ -114,6 +114,9 @@ model User {
   calibrationEvaluated         CalibrationVote[]       @relation("CalibrationEvaluated")
   calibrationVotes             CalibrationVote[]       @relation("CalibrationVoter")
 
+  // Demographics (1:1, sensitive self-ID — see employee.prisma)
+  demographics                 EmployeeDemographics?
+
   @@unique([organizationId, email])
   @@index([organizationId])
   @@index([supabaseUserId])
