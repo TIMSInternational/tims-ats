@@ -321,6 +321,15 @@ packages/ai/          → Agent configs, prompt templates, Zod output schemas
 Request → Budget Check → Cache Lookup → PII Strip → Bedrock Call → Output Validation → PII Re-inject → Audit Log
 ```
 
+> **Implemented today (2026-06-05), in-process in `packages/ai`** — the microservice
+> above is the scale-target, not yet built (rule #9). Every agent now goes through
+> ONE gated door, `invokeAgent` (`packages/ai/src/invoke.ts`):
+> `budget (fail-closed) → cache (org-scoped, per-agent TTL) → PII (input sanitize/wrap + Bedrock Guardrails) → bedrockGenerate (circuit-broken) → Zod-validate → usage log → cache store`.
+> Raw Bedrock access lives ONLY in `packages/ai/src/client.ts` (`bedrockGenerate`);
+> no router/service may import `@ai-sdk` or call Bedrock directly (rule #2). Budget
+> failures throw; a malformed model response returns the agent's obviously-degraded
+> fallback (rule #4), never fabricated data. PII tokenization (Presidio) is deferred.
+
 ### Guardrails
 - **System prompt hardening.** User content as DATA in XML delimiters, never INSTRUCTIONS.
 - **Input sanitization.** Strip injection patterns from CVs/job descriptions.
@@ -352,11 +361,18 @@ LOW (pass, log access): Job descriptions, company policies
 ```
 
 ### Implementation
-- **Presidio** (Microsoft, open-source) + custom HR recognizers (salary, visa, cedula).
-- **Deterministic tokens** scoped per-request: `"John Smith" → "<<PERSON_1>>"`.
-- **Token vault:** In-memory only, destroyed immediately after response.
-- **Output validation:** Re-scan LLM response for leaked PII.
-- **Bedrock Guardrails:** MASK mode as defense-in-depth safety net.
+- **Input sanitization — IMPLEMENTED** (`packages/ai/src/pii.ts`): strips control/
+  zero-width/bidi chars, defangs prompt-injection markers, and `wrapAsData()` wraps
+  user content in a delimiter it cannot break out of. Applied by every agent when
+  building the Bedrock message.
+- **Bedrock Guardrails (MASK) — IMPLEMENTED, env-gated** defense-in-depth: when
+  `BEDROCK_GUARDRAIL_ID` is set, `bedrockGenerate` references the guardrail so PII is
+  masked server-side. The MASK policy lives in the AWS guardrail config.
+- **Presidio strip/re-inject — DEFERRED** to a measured scale-trigger (rule #9):
+  - **Presidio** (Microsoft, open-source) + custom HR recognizers (salary, visa, cedula).
+  - **Deterministic tokens** scoped per-request: `"John Smith" → "<<PERSON_1>>"`.
+  - **Token vault:** In-memory only, destroyed immediately after response.
+  - **Output validation:** Re-scan LLM response for leaked PII.
 
 ### Compliance
 - **Colombian Habeas Data (Ley 1581/2012):** Prior express consent. AI processing clause. SIC registry.

@@ -42,6 +42,9 @@ importers:
       vitest:
         specifier: ^4.1.7
         version: 4.1.7(@opentelemetry/api@1.9.1)(@types/node@22.19.19)(vite@8.0.14(@types/node@22.19.19)(jiti@2.7.0)(terser@5.48.0))
+      zod:
+        specifier: ^3.25.0
+        version: 3.25.76
 
   apps/web:
     dependencies:

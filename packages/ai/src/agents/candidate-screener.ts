@@ -1,9 +1,6 @@
 import { z } from 'zod';
-import { invokeAgent, calculateCost } from '../client';
-import { checkBudget } from '../budget';
-import { logInvocation } from '../logger';
-import { resolveAgentId } from '../registry';
-import { TRPCError } from '@trpc/server';
+import { invokeAgent } from '../invoke';
+import { wrapAsData } from '../pii';
 
 const SYSTEM_PROMPT = `You are a candidate screening assistant for an HR platform.
 Compare a candidate's profile against job requirements and provide a screening assessment.
@@ -38,67 +35,42 @@ const outputSchema = z.object({
 
 export type ScreeningResult = z.infer<typeof outputSchema>;
 
+const REVIEW_FALLBACK: ScreeningResult = {
+  score: 50,
+  matchedSkills: [],
+  missingSkills: [],
+  strengths: [],
+  gaps: ['Unable to analyze — please review manually'],
+  recommendation: 'review',
+  reasoning: 'AI analysis could not be completed. Manual review recommended.',
+};
+
 export async function screenCandidate(
   orgId: string,
   candidateProfile: { name: string; title?: string; skills?: string[]; experience?: number },
   jobRequirements: { title: string; requirements?: string[]; skills?: string[] },
 ): Promise<{ result: ScreeningResult; model: string }> {
-  const agentId = await resolveAgentId('candidate-screener');
-
-  const budget = await checkBudget(orgId, agentId);
-  if (!budget.allowed) {
-    throw new TRPCError({ code: 'TOO_MANY_REQUESTS', message: 'AI budget exceeded for this month' });
-  }
-
-  const userMessage = `<candidate_profile>
-Name: ${candidateProfile.name}
+  // Candidate profile contains PII — the registry sets cacheTtlSeconds=0 for
+  // candidate-screener, so invokeAgent never caches raw input here.
+  const { data, model } = await invokeAgent({
+    slug: 'candidate-screener',
+    orgId,
+    input: { candidateProfile, jobRequirements },
+    systemPrompt: SYSTEM_PROMPT,
+    buildUserMessage: ({ candidateProfile, jobRequirements }) => {
+      const profile = `Name: ${candidateProfile.name}
 Title: ${candidateProfile.title ?? 'Not specified'}
 Skills: ${candidateProfile.skills?.join(', ') ?? 'Not specified'}
-Years of experience: ${candidateProfile.experience ?? 'Not specified'}
-</candidate_profile>
-
-<job_requirements>
-Position: ${jobRequirements.title}
+Years of experience: ${candidateProfile.experience ?? 'Not specified'}`;
+      const reqs = `Position: ${jobRequirements.title}
 Requirements: ${jobRequirements.requirements?.join(', ') ?? 'Not specified'}
-Required skills: ${jobRequirements.skills?.join(', ') ?? 'Not specified'}
-</job_requirements>
-
-Screen this candidate against the job requirements. Return JSON.`;
-
-  const result = await invokeAgent('sonnet', SYSTEM_PROMPT, userMessage, 1024);
-  const cost = calculateCost('sonnet', result.inputTokens, result.outputTokens);
-
-  await logInvocation({
-    agentId,
-    organizationId: orgId,
-    inputTokens: result.inputTokens,
-    outputTokens: result.outputTokens,
-    costUsd: cost,
-    latencyMs: result.latencyMs,
-    model: result.model,
-    success: true,
+Required skills: ${jobRequirements.skills?.join(', ') ?? 'Not specified'}`;
+      return `${wrapAsData('candidate_profile', profile)}\n\n${wrapAsData('job_requirements', reqs)}\n\nScreen this candidate against the job requirements. Return JSON.`;
+    },
+    schema: outputSchema,
+    fallback: () => REVIEW_FALLBACK,
+    maxTokens: 1024,
   });
 
-  try {
-    const jsonMatch = result.text.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const parsed = outputSchema.parse(JSON.parse(jsonMatch[0]));
-      return { result: parsed, model: result.model };
-    }
-  } catch {
-    // Fallback
-  }
-
-  return {
-    result: {
-      score: 50,
-      matchedSkills: [],
-      missingSkills: [],
-      strengths: [],
-      gaps: ['Unable to analyze — please review manually'],
-      recommendation: 'review',
-      reasoning: 'AI analysis could not be completed. Manual review recommended.',
-    },
-    model: result.model,
-  };
+  return { result: data, model };
 }

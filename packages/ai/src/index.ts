@@ -1,4 +1,7 @@
-export { invokeAgent, calculateCost } from './client';
+export { invokeAgent } from './invoke';
+export type { InvokeAgentParams, InvokeAgentResult } from './invoke';
+export { calculateCost } from './client';
+export { bedrockCircuit, CircuitBreaker } from './circuit';
 export { checkBudget } from './budget';
 export { getCached, setCached, cacheKey } from './cache';
 export { sanitizeInput, wrapAsData, bedrockGuardrailOptions } from './pii';

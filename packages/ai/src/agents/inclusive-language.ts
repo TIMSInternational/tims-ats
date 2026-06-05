@@ -1,9 +1,6 @@
 import { z } from 'zod';
-import { invokeAgent, calculateCost } from '../client';
-import { checkBudget } from '../budget';
-import { logInvocation } from '../logger';
-import { resolveAgentId } from '../registry';
-import { TRPCError } from '@trpc/server';
+import { invokeAgent } from '../invoke';
+import { wrapAsData } from '../pii';
 
 const SYSTEM_PROMPT = `You are an inclusive language reviewer for job descriptions in Spanish.
 Analyze the text for gendered, biased, or exclusionary language and suggest improvements.
@@ -41,42 +38,17 @@ export async function checkInclusiveLanguage(
   orgId: string,
   text: string,
 ): Promise<{ score: number; suggestions: Array<{ original: string; suggestion: string; reason: string }>; model: string }> {
-  const agentId = await resolveAgentId('inclusive-language');
-
-  const budget = await checkBudget(orgId, agentId);
-  if (!budget.allowed) {
-    throw new TRPCError({ code: 'TOO_MANY_REQUESTS', message: 'AI budget exceeded for this month' });
-  }
-
-  const userMessage = `<text_to_review>
-${text}
-</text_to_review>
-
-Analyze this job description for inclusive language. Return JSON.`;
-
-  const result = await invokeAgent('haiku', SYSTEM_PROMPT, userMessage, 1024);
-  const cost = calculateCost('haiku', result.inputTokens, result.outputTokens);
-
-  await logInvocation({
-    agentId,
-    organizationId: orgId,
-    inputTokens: result.inputTokens,
-    outputTokens: result.outputTokens,
-    costUsd: cost,
-    latencyMs: result.latencyMs,
-    model: result.model,
-    success: true,
+  const { data, model } = await invokeAgent({
+    slug: 'inclusive-language',
+    orgId,
+    input: { text },
+    systemPrompt: SYSTEM_PROMPT,
+    buildUserMessage: ({ text }) =>
+      `${wrapAsData('text_to_review', text)}\n\nAnalyze this job description for inclusive language. Return JSON.`,
+    schema: outputSchema,
+    fallback: () => ({ score: 75, suggestions: [] }),
+    maxTokens: 1024,
   });
 
-  try {
-    const jsonMatch = result.text.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const parsed = outputSchema.parse(JSON.parse(jsonMatch[0]));
-      return { ...parsed, model: result.model };
-    }
-  } catch {
-    // Fallback
-  }
-
-  return { score: 75, suggestions: [], model: result.model };
+  return { score: data.score, suggestions: data.suggestions, model };
 }
