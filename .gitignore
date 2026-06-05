@@ -34,6 +34,7 @@ coverage/
 
 # sentry
 .sentryclirc
+.env.sentry-build-plugin
 
 # prisma
 packages/db/prisma/migrations/*.sql

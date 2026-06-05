@@ -7,6 +7,8 @@ const dsn = process.env.SENTRY_DSN;
 Sentry.init({
   dsn,
   enabled: !!dsn,
-  tracesSampleRate: 0.1,
+  // 100% traces in dev, 10% in prod (Sentry's recommended Next.js baseline).
+  tracesSampleRate: process.env.NODE_ENV === 'development' ? 1.0 : 0.1,
+  // HR/ATS app (CLAUDE.md §7): no PII off-box.
   sendDefaultPii: false,
 });
