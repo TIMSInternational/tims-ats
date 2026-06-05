@@ -42,25 +42,27 @@ export function Navbar({ isPlatformOwner = false, onHelpClick, onMenuClick }: { 
         </button>
         {crumb.parent && (
           <>
-            <span className="text-[13px] text-[#8B8B8B]">{crumb.parent}</span>
-            <svg className="w-3.5 h-3.5 text-[#ccc]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <span className="hidden md:inline text-[13px] text-[#8B8B8B]">{crumb.parent}</span>
+            <svg className="hidden md:block w-3.5 h-3.5 text-[#ccc]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
               <path d="m9 18 6-6-6-6" />
             </svg>
           </>
         )}
-        <span className="text-[13px] font-medium text-[#1F114C]">{crumb.label}</span>
+        <span className="text-[13px] font-medium text-[#1F114C] truncate">{crumb.label}</span>
       </div>
 
-      {/* Right actions */}
-      <div className="flex items-center gap-1.5">
-        <SearchCommand onFocus={() => setLangOpen(false)} />
+      {/* Right actions — search + help collapse on mobile so the cluster fits */}
+      <div className="flex items-center gap-1.5 shrink-0">
+        <div className="hidden md:block">
+          <SearchCommand onFocus={() => setLangOpen(false)} />
+        </div>
 
         <NotificationDropdown onOpen={() => setLangOpen(false)} />
 
         {/* Help */}
         <button
           onClick={onHelpClick}
-          className="w-9 h-9 rounded-lg flex items-center justify-center hover:bg-[#F6F6F6] transition-colors"
+          className="w-9 h-9 rounded-lg hidden md:flex items-center justify-center hover:bg-[#F6F6F6] transition-colors"
           title={t.nav.helpCenter}
         >
           <svg className="w-[18px] h-[18px] text-[#585858]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">

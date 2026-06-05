@@ -41,7 +41,7 @@ export function MonitoringKpis({ data, loading }: MonitoringKpisProps) {
       {items.map((k) => (
         <div key={k.label} className="bg-white rounded-xl p-3.5 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center">
           <p className="text-[10px] text-[#8B8B8B] mb-0.5 uppercase tracking-wide">{k.label}</p>
-          <p className={`text-[26px] font-bold ${k.color} leading-tight`}>{k.value}</p>
+          <p className={`text-[20px] md:text-[26px] font-bold ${k.color} leading-tight`}>{k.value}</p>
         </div>
       ))}
     </div>

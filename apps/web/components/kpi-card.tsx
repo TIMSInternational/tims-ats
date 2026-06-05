@@ -38,7 +38,7 @@ export function KpiCard({
           {icon}
         </div>
       </div>
-      <div className={`text-2xl font-bold ${valueColor || 'text-[#333]'}`}>
+      <div className={`text-xl md:text-2xl font-bold ${valueColor || 'text-[#333]'}`}>
         {value}
       </div>
       {subtitle && (

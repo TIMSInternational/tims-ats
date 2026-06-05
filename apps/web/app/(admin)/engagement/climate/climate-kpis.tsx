@@ -40,19 +40,19 @@ export function ClimateKpis({ enps, dashKpis, loading }: ClimateKpisProps) {
   return (
     <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
       <Card label={t.climate.kpiEnps}>
-        <p className={`text-[26px] font-bold ${enpsColor}`}>{enpsScore > 0 ? '+' : ''}{enpsScore}</p>
+        <p className={`text-[20px] md:text-[26px] font-bold ${enpsColor}`}>{enpsScore > 0 ? '+' : ''}{enpsScore}</p>
       </Card>
       <Card label={t.climate.kpiResponses}>
-        <p className="text-[26px] font-bold text-[#1F114C]">{enps?.totalResponses ?? 0}</p>
+        <p className="text-[20px] md:text-[26px] font-bold text-[#1F114C]">{enps?.totalResponses ?? 0}</p>
       </Card>
       <Card label={t.climate.kpiActiveSurveys}>
-        <p className="text-[26px] font-bold text-[#1F114C]">{dashKpis?.activeSurveys ?? 0}</p>
+        <p className="text-[20px] md:text-[26px] font-bold text-[#1F114C]">{dashKpis?.activeSurveys ?? 0}</p>
       </Card>
       <Card label={t.climate.kpiOpenPlans}>
-        <p className={`text-[26px] font-bold ${(dashKpis?.actionPlansOpen ?? 0) > 0 ? 'text-[#DD0C15]' : 'text-[#1F114C]'}`}>{dashKpis?.actionPlansOpen ?? 0}</p>
+        <p className={`text-[20px] md:text-[26px] font-bold ${(dashKpis?.actionPlansOpen ?? 0) > 0 ? 'text-[#DD0C15]' : 'text-[#1F114C]'}`}>{dashKpis?.actionPlansOpen ?? 0}</p>
       </Card>
       <Card label={t.climate.kpiPromoters} sub={`${promoterPct}%`}>
-        <p className="text-[26px] font-bold text-green-600">{enps?.promoters ?? 0}</p>
+        <p className="text-[20px] md:text-[26px] font-bold text-green-600">{enps?.promoters ?? 0}</p>
       </Card>
     </div>
   );

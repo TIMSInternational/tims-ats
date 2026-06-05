@@ -65,7 +65,7 @@ export function DeiKpis() {
 
       {/* Parity index */}
       <KpiCard label={t.dei.kpiParity} sub={t.dei.kpiParityHint}>
-        <p className="text-[24px] font-bold text-[#1F114C]">{d.genderParityIndex.toFixed(2)}</p>
+        <p className="text-[20px] md:text-[24px] font-bold text-[#1F114C]">{d.genderParityIndex.toFixed(2)}</p>
         <p className="text-[10px] text-[#8B8B8B]">{d.womenPct}{t.dei.womenSuffix}</p>
       </KpiCard>
 
@@ -74,7 +74,7 @@ export function DeiKpis() {
         {gap === null || gap === undefined ? (
           <p className="text-[18px] font-bold text-[#8B8B8B] mt-2">{t.dei.na}</p>
         ) : (
-          <p className={`text-[24px] font-bold ${Math.abs(gap) < 3 ? 'text-green-600' : Math.abs(gap) <= 5 ? 'text-amber-500' : 'text-[#DD0C15]'}`}>
+          <p className={`text-[20px] md:text-[24px] font-bold ${Math.abs(gap) < 3 ? 'text-green-600' : Math.abs(gap) <= 5 ? 'text-amber-500' : 'text-[#DD0C15]'}`}>
             {gap > 0 ? '+' : ''}{gap}%
           </p>
         )}
@@ -82,12 +82,12 @@ export function DeiKpis() {
 
       {/* Inclusion */}
       <KpiCard label={t.dei.kpiInclusion} sub={t.dei.kpiInclusionHint}>
-        <p className="text-[24px] font-bold text-green-600">{inclusion.data?.index ?? t.dei.na}</p>
+        <p className="text-[20px] md:text-[24px] font-bold text-green-600">{inclusion.data?.index ?? t.dei.na}</p>
       </KpiCard>
 
       {/* Demographics coverage */}
       <KpiCard label={t.dei.kpiCoverage} sub={`${d.totalEmployees} ${t.dei.employeesSuffix}`}>
-        <p className="text-[24px] font-bold text-[#1F114C]">{d.demographicsCoverage}%</p>
+        <p className="text-[20px] md:text-[24px] font-bold text-[#1F114C]">{d.demographicsCoverage}%</p>
         <p className="text-[10px] text-[#8B8B8B]">{d.totalNationalities} {t.dei.nationalitiesSuffix}</p>
       </KpiCard>
     </div>
