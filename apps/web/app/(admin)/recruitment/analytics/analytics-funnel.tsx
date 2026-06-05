@@ -24,7 +24,7 @@ export function AnalyticsFunnel() {
   ];
 
   return (
-    <div className="flex-1 bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+    <div className="w-full md:flex-1 bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
       <h3 className="text-[14px] font-semibold text-[#1F114C] mb-4">{t.recruitAnalytics.funnel}</h3>
       <div className="space-y-2">
         {steps.map((step) => (
@@ -76,7 +76,7 @@ export function AnalyticsSourceQuality() {
   ];
 
   return (
-    <div className="flex-1 bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+    <div className="w-full md:flex-1 bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
       <h3 className="text-[14px] font-semibold text-[#1F114C] mb-4">{t.recruitAnalytics.sourceVsQuality}</h3>
       <div className="space-y-3">
         {sources.map((src, idx) => (

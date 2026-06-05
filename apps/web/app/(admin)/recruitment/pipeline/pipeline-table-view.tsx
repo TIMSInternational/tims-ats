@@ -143,7 +143,7 @@ export function PipelineTableView({ stages, onMove }: PipelineTableViewProps) {
       </div>
 
       <div className="overflow-auto flex-1">
-        <table className="w-full text-[11px]">
+        <table className="w-full min-w-[640px] text-[11px]">
           <thead className="sticky top-0 z-10">
             <tr className="bg-[#FAFAFA] border-b border-[#EDEDED]">
               <th className="text-left py-2.5 px-4 text-[#585858] font-medium cursor-pointer select-none" onClick={() => toggleSort('name')}>

@@ -77,9 +77,9 @@ export default function TalentPoolsPage() {
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {/* Top Bar */}
-      <div className="flex items-center justify-between px-6 h-16 bg-white border-b border-[#EDEDED] shrink-0">
+      <div className="flex flex-wrap items-center justify-between gap-y-2 px-4 md:px-6 min-h-16 py-2 bg-white border-b border-[#EDEDED] shrink-0">
         <span className="text-sm font-medium text-[#1F114C]">{t.talentPool.title}</span>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 md:gap-3">
           <button onClick={handleExport} className="flex items-center gap-1.5 border border-[#EDEDED] text-[#585858] px-3 h-8 rounded-lg text-[12px]">
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
               <path d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
@@ -102,7 +102,7 @@ export default function TalentPoolsPage() {
       </div>
 
       {/* Content */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-y-auto md:overflow-hidden">
         <TalentPoolFilters
           filters={filters}
           onFilterChange={updateFilter}

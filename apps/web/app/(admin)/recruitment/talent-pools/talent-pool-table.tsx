@@ -115,7 +115,8 @@ export function TalentPoolTable({
 
   return (
     <>
-      <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] overflow-hidden">
+      <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] overflow-hidden overflow-x-auto">
+        <div className="min-w-[880px]">
         {/* Header */}
         <div className="flex items-center px-4 py-2.5 bg-[#FAFAFA] border-b border-[#EDEDED] text-[11px] text-[#585858] font-medium">
           <div className="w-8"><input type="checkbox" className="w-3.5 h-3.5 accent-[#DD0C15]" /></div>
@@ -201,6 +202,7 @@ export function TalentPoolTable({
               </div>
             );
           })}
+        </div>
       </div>
 
       {/* Pagination */}

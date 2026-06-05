@@ -39,7 +39,7 @@ export function TalentPoolFilters({ filters, onFilterChange, onClear }: PoolFilt
   const tp = t.talentPool;
 
   return (
-    <div className="w-[250px] bg-white border-r border-[#EDEDED] p-4 overflow-y-auto shrink-0">
+    <div className="hidden md:block w-[250px] bg-white border-r border-[#EDEDED] p-4 overflow-y-auto shrink-0">
       <div className="flex justify-between items-center mb-4">
         <h3 className="text-[13px] font-semibold text-[#1F114C]">{tp.filters}</h3>
         <button onClick={onClear} className="text-[11px] text-[#DD0C15]">{tp.clearFilters}</button>

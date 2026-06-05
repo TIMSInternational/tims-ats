@@ -24,7 +24,7 @@ export function AnalyticsTrend() {
   ];
 
   return (
-    <div className="flex-[40] bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+    <div className="w-full md:flex-[40] bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
       <h3 className="text-[14px] font-semibold text-[#1F114C] mb-3">{t.recruitAnalytics.trendTitle}</h3>
       <div className="h-[160px] flex items-end gap-2 px-2">
         {bars.map((bar) => (
@@ -69,7 +69,7 @@ export function AnalyticsLostByDelay() {
   ];
 
   return (
-    <div className="flex-[30] bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+    <div className="w-full md:flex-[30] bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
       <div className="flex justify-between items-center mb-3">
         <h3 className="text-[14px] font-semibold text-[#1F114C]">{t.recruitAnalytics.lostByDelay}</h3>
         <span className="bg-[#DD0C15] text-white text-[10px] font-bold w-6 h-6 rounded-full flex items-center justify-center">
@@ -116,7 +116,7 @@ export function AnalyticsVacancyPrediction() {
   ];
 
   return (
-    <div className="flex-[30] bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+    <div className="w-full md:flex-[30] bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
       <h3 className="text-[14px] font-semibold text-[#1F114C] mb-3">{t.recruitAnalytics.vacancyPrediction}</h3>
       <div className="space-y-2.5">
         {items.map((item) => (

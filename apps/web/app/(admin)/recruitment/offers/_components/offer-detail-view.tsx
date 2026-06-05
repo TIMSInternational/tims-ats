@@ -39,9 +39,9 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
       <div className="space-y-4 animate-pulse">
         <Skeleton className="h-4 w-32" />
         <Skeleton className="h-24 w-full rounded-xl" />
-        <div className="flex gap-6">
-          <Skeleton className="flex-[55] h-64 rounded-xl" />
-          <Skeleton className="flex-[45] h-64 rounded-xl" />
+        <div className="flex flex-col md:flex-row gap-6">
+          <Skeleton className="w-full md:flex-[55] h-64 rounded-xl" />
+          <Skeleton className="w-full md:flex-[45] h-64 rounded-xl" />
         </div>
       </div>
     );
@@ -88,9 +88,9 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
       />
 
       {/* Two columns */}
-      <div className="flex gap-6">
+      <div className="flex flex-col md:flex-row gap-6">
         {/* LEFT: Offer details 55% */}
-        <div className="flex-[55] space-y-4">
+        <div className="w-full md:flex-[55] space-y-4">
           <OfferCard
             offer={o}
             statusInfo={statusInfo}
@@ -102,7 +102,7 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
         </div>
 
         {/* RIGHT: Validations 45% */}
-        <div className="flex-[45]">
+        <div className="w-full md:flex-[45]">
           <OfferValidations
             offerId={offerId}
             validations={validations}

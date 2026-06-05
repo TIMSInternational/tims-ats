@@ -51,7 +51,7 @@ export function ScorecardPanel({ candidateName, candidateInitials, vacancyTitle,
   const setNote = (id: string, value: string) => setNotes((prev) => ({ ...prev, [id]: value }));
 
   return (
-    <div className="flex-[40] flex flex-col bg-white border-l border-[#EDEDED]">
+    <div className="flex-1 md:flex-[40] flex flex-col bg-white border-t md:border-t-0 md:border-l border-[#EDEDED] min-h-0">
       {/* Tabs */}
       <div className="flex border-b border-[#EDEDED] shrink-0">
         {TABS.map((tab) => (

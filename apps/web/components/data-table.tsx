@@ -87,8 +87,8 @@ export function DataTable({
 
   return (
     <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] flex-1 flex flex-col min-h-0 overflow-hidden">
-      <div className="flex-1 overflow-y-auto min-h-0">
-        <table className="w-full">
+      <div className="flex-1 overflow-auto min-h-0">
+        <table className="w-full min-w-[640px]">
           <thead className="sticky top-0 bg-white z-10">
             <tr className="border-b border-[#EDEDED]">
               {columns.map((col) => (
@@ -122,7 +122,7 @@ export function DataTable({
       </div>
 
       {pagination && (
-        <div className="flex items-center justify-between px-5 py-3.5 border-t border-[#EDEDED] flex-shrink-0">
+        <div className="flex flex-wrap items-center justify-between gap-y-2 px-3 md:px-5 py-3.5 border-t border-[#EDEDED] flex-shrink-0">
           <span className="text-xs text-[#8B8B8B]">
             Mostrando{' '}
             {pagination.total > 0

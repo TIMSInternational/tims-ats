@@ -50,7 +50,7 @@ export default function InterviewsPage() {
   const hasFilters = !!(statusFilter || typeFilter);
 
   return (
-    <div className="h-full flex overflow-hidden p-6 gap-6">
+    <div className="min-h-full md:h-full flex flex-col md:flex-row md:overflow-hidden p-4 md:p-6 gap-6">
       {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* KPI Row */}
@@ -131,7 +131,7 @@ export default function InterviewsPage() {
       </div>
 
       {/* Right sidebar: Calendar + Upcoming */}
-      <div className="w-[280px] shrink-0 flex flex-col gap-4 overflow-y-auto">
+      <div className="w-full md:w-[280px] shrink-0 flex flex-col gap-4 md:overflow-y-auto">
         <MiniCalendar
           interviews={items}
           isLoading={interviews.isLoading}
