@@ -453,7 +453,7 @@ Dead letter queue + `onFailure` hooks for persistent failure alerting.
 | Priority | Task |
 |----------|------|
 | ~~CRITICAL — SECURITY~~ DONE | ~~Database-level tenant isolation is ABSENT.~~ **RLS is now live and verified** (migration `20260604100000`, `tenantDb`, `RLS_ENFORCED=true`) — see §3. |
-| **HIGH — AI COST/SAFETY** | Before wiring more Bedrock agents: AI calls send **raw candidate PII to Bedrock** (no Presidio/Guardrails) — Habeas Data/GDPR risk; add Bedrock Guardrails MASK + input sanitization. **No AI response cache** exists. Budget caps now fail-closed (default $25/agent/org cap via `AI_DEFAULT_MONTHLY_BUDGET_USD`) but per-org `AiAgentOrgConfig` budgets are unseeded. Wire the `bedrockCircuit` (exported, unused). **Rule: all Bedrock calls go through `@tims/ai` `invokeAgent` behind budget→cache→PII→validate→log; no router calls Bedrock directly.** |
+| ~~**HIGH — AI COST/SAFETY**~~ DONE (Phase 1) | **Guardrail layer is built.** Every AI call now goes through the single gated `@tims/ai` `invokeAgent` (budget→cache→PII→bedrock→validate→log): org-scoped response cache (per-agent TTL; PII agents ttl=0), input sanitization + env-gated Bedrock Guardrails MASK, fail-closed budget, `bedrockCircuit` wired, Zod validation. Rule #2 (no Bedrock outside `packages/ai`) is enforced by a CI grep-gate + Vitest test. **Remaining:** per-org `AiAgentOrgConfig` budgets still unseeded (default $25 cap applies); Presidio strip/re-inject deferred to a scale-trigger (rule #9). **Phase 2:** wire MVP agents to routers (real `candidate.parseCV`, `candidate-screener`). |
 | HIGH — SECURITY | RBAC follow-up: `hr_admin` uses a denylist short-circuit in `trpc.ts` that bypasses the DB `rolePermission` check. Move to least-privilege once per-org `rolePermission` coverage is verified for every `hr_admin` role. |
 | HIGH — SECURITY | Add CAPTCHA (Turnstile/hCaptcha) to the public `applyToVacancy` form; move to nonce-based CSP and drop `'unsafe-inline'`/`'unsafe-eval'` from `script-src`. |
 | HIGH | Split god components (invoices 605 LOC, orgs 611, invitations 572) |
@@ -463,7 +463,7 @@ Dead letter queue + `onFailure` hooks for persistent failure alerting.
 | HIGH | Configure Supavisor connection pooling for production |
 | MEDIUM | Add Sentry + Pino structured logging |
 | MEDIUM | Refactor pages to use shared KpiCard/DataTable components |
-| MEDIUM | Circuit breaker for Bedrock/SES |
+| ~~MEDIUM~~ DONE | Circuit breaker for Bedrock (`bedrockCircuit` in `packages/ai`) + SES (`sesCircuit` in `packages/api`) — both wired. |
 | MEDIUM | Set up AI gateway microservice (Docker + ECS) |
 | LOW | Migrate to Supabase sa-east-1 region |
 | LOW | Add Prisma read replica extension |

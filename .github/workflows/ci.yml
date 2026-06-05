@@ -129,6 +129,13 @@ jobs:
             exit 1
           fi
 
+      - name: AI has one door (no Bedrock/AI-SDK outside packages/ai)
+        run: |
+          if grep -rn "@ai-sdk\|createAmazonBedrock\|bedrockGenerate\|from 'ai'\|from \"ai\"" packages apps --include="*.ts" --include="*.tsx" 2>/dev/null | grep -v node_modules | grep -v "packages/ai/"; then
+            echo "::error::Bedrock/AI-SDK used outside packages/ai — every AI call MUST go through @tims/ai invokeAgent (CLAUDE.md rule #2)"
+            exit 1
+          fi
+
   # ========================================
   # Build (depends on typecheck + security)
   # ========================================
