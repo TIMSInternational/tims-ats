@@ -253,7 +253,7 @@ Post-deploy:
 - Every tenant model: `organizationId` with `@@index([organizationId])`.
 - Every FK: `@@index`. Prisma does NOT auto-create.
 - Cascades: explicit `onDelete:` on every `@relation`.
-- **Prisma enums** for all status/type fields: `InvoiceStatus`, `OrgPlan`, `SubscriptionStatus`, `InvitationType`, `InvitationStatus`.
+- **Prisma enums** for all status/type fields: `InvoiceStatus`, `OrgPlan`, `SubscriptionStatus`, `InvitationType`, `InvitationStatus`, `Gender`, `Ethnicity`, `DisabilityStatus`.
 - **Org-scoped uniqueness**: `@@unique([organizationId, invoiceNumber])`.
 
 ### Connection Pooling (Critical for Scale)
