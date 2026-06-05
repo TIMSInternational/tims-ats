@@ -17,7 +17,7 @@ function useClickOutside(ref: React.RefObject<HTMLElement | null>, handler: () =
   }, [ref, handler]);
 }
 
-export function Navbar({ isPlatformOwner = false, onHelpClick }: { isPlatformOwner?: boolean; onHelpClick?: () => void }) {
+export function Navbar({ isPlatformOwner = false, onHelpClick, onMenuClick }: { isPlatformOwner?: boolean; onHelpClick?: () => void; onMenuClick?: () => void }) {
   const pathname = usePathname();
   const { locale, setLocale, t } = useI18n();
 
@@ -29,9 +29,17 @@ export function Navbar({ isPlatformOwner = false, onHelpClick }: { isPlatformOwn
   useClickOutside(langRef, () => setLangOpen(false));
 
   return (
-    <header className="flex items-center justify-between px-6 h-[56px] bg-white border-b border-[#EDEDED] shrink-0">
+    <header className="flex items-center justify-between px-4 md:px-6 h-[56px] bg-white border-b border-[#EDEDED] shrink-0">
       {/* Breadcrumb */}
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-1.5 min-w-0">
+        {/* Mobile hamburger — opens the sidebar drawer */}
+        <button
+          onClick={onMenuClick}
+          className="md:hidden -ml-1 mr-1 w-9 h-9 rounded-lg flex items-center justify-center hover:bg-[#F6F6F6] transition-colors shrink-0"
+          aria-label="Menu"
+        >
+          <svg className="w-5 h-5 text-[#585858]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M3.75 6.75h16.5M3.75 12h16.5M3.75 17.25h16.5" /></svg>
+        </button>
         {crumb.parent && (
           <>
             <span className="text-[13px] text-[#8B8B8B]">{crumb.parent}</span>
