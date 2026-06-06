@@ -34,9 +34,9 @@ export const interviewScorecardsRouter = router({
     .input(
       z.object({
         interviewId: z.string().uuid(),
-        ratings: z.record(z.string(), z.number().min(1).max(5)),
+        ratings: z.record(z.string().max(80), z.number().min(1).max(5)),
         recommendation: z.enum(['strong_yes', 'yes', 'neutral', 'no', 'strong_no']),
-        overallNotes: z.string().optional(),
+        overallNotes: z.string().max(2000).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {

@@ -39,7 +39,8 @@
 |----------|------|
 | HIGH | **recruitment/analytics is fabricated** — zero tRPC calls, inline literal KPIs/funnel/trends (rule #4 violation, visible to TIMS). Wire to real aggregation endpoints. *(IN PROGRESS 2026-06-06)* |
 | HIGH | Assessment completion interface — candidate-facing assessment UI (product map next feature) |
-| MEDIUM | Wire next AI agents through the gate (28 of 32 still stubbed; needs product priority pick) |
+| MEDIUM | Wire next AI agents through the gate (25 of 32 still stubbed — interview-summarizer, interview-guide, bias-detector wired 2026-06-06; next picks need product input). Remaining mock stubs to truth-up: pipeline `getNextBestAction`, candidate `getRecommendations` |
+| MEDIUM | Surface the interview AI endpoints in the UI (generate-guide / summary / bias buttons on interview detail — backend live, no consumers yet) |
 | MEDIUM | Google Calendar OAuth for interviews (currently .ics only) |
 | MEDIUM | Real-time notifications (websocket/SSE) for pipeline updates |
 | LOW | Talent-pool mobile filter drawer (filters hidden <md — deliberate tradeoff) |

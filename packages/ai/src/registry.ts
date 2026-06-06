@@ -25,6 +25,10 @@ export const AGENT_REGISTRY: Record<string, AgentDef> = {
   'candidate-screener': { slug: 'candidate-screener', name: 'Candidate Screener', model: 'sonnet', category: 'recruitment', batchEligible: true, cacheTtlSeconds: 0 },
   'vacancy-writer': { slug: 'vacancy-writer', name: 'Vacancy Writer', model: 'sonnet', category: 'recruitment', batchEligible: false, cacheTtlSeconds: 2_592_000 },
   'inclusive-language': { slug: 'inclusive-language', name: 'Inclusive Language Checker', model: 'haiku', category: 'recruitment', batchEligible: false, cacheTtlSeconds: 86_400 },
+  // Interview agents — all operate on candidate PII / evaluator opinions ⇒ ttl 0 (never cached).
+  'interview-summarizer': { slug: 'interview-summarizer', name: 'Interview Summarizer', model: 'sonnet', category: 'recruitment', batchEligible: false, cacheTtlSeconds: 0 },
+  'interview-guide': { slug: 'interview-guide', name: 'Interview Guide Generator', model: 'sonnet', category: 'recruitment', batchEligible: false, cacheTtlSeconds: 0 },
+  'bias-detector': { slug: 'bias-detector', name: 'Scorecard Bias Detector', model: 'sonnet', category: 'recruitment', batchEligible: false, cacheTtlSeconds: 0 },
 };
 
 // Process-local memo (the ai_agents catalog is global/immutable enough that an
