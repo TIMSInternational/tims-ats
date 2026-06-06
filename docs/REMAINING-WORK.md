@@ -1,39 +1,65 @@
 # Known Issues & Remaining Work
 
-> Moved verbatim from CLAUDE.md §9 (2026-06-06) during the .claude/rules re-org.
-> Update this file as work completes — it is the single backlog/status reference.
+> Single backlog/status reference (rule #1: docs are code — update in the SAME PR as the change).
+> Originally CLAUDE.md §9; truthed-up 2026-06-06 against the June 4–6 hardening/feature sessions (PRs #1–#41).
 
-## FIXED (June 2026 hardening sessions)
-- [x] SQL injection in RLS middleware
-- [x] IDOR in user.deactivate + user.assignRole
-- [x] In-memory rate limiter → Upstash Redis
-- [x] 28 `any` types removed
-- [x] 80+ missing FK indexes added
-- [x] 5 Prisma enums added (OrgPlan, SubscriptionStatus, InvoiceStatus, InvitationType, InvitationStatus)
-- [x] ESLint + Prettier config
-- [x] Env validation with Zod
-- [x] Tailwind design tokens
-- [x] 8 shared UI components with a11y
-- [x] Toast system + error handling on 19 mutations
-- [x] 173 i18n keys (es + en)
-- [x] 5 empty packages removed
+## DONE (June 2026 sessions — verified, not aspirational)
 
-## Remaining (next sessions)
+### Security
+- [x] SQL injection in RLS middleware; IDOR fixes (user, onboarding, okrs, offer/interview/assessment parents)
+- [x] **RLS tenant isolation LIVE** — migration `20260604100000`, fail-closed policy on 81 tables, `tenantDb` + `SET LOCAL ROLE app_tenant`, `RLS_ENFORCED=true` in prod, verified cross-org fail-closed (PRs #4–#9)
+- [x] `hr_admin` denylist → **fail-closed allowlist** (20 modules) (PR #3)
+- [x] **Turnstile CAPTCHA** on public `applyToVacancy` (env-gated, fail-closed) (PR #3)
+- [x] **Nonce-based CSP** — prod drops `'unsafe-inline'`/`'unsafe-eval'` from script-src (PR #11)
+- [x] Rate limiter → Upstash sliding window (tenant/user/expensive tiers)
+- [x] Email HTML escaping (stored-XSS via public apply), offer-signing expiry, webhook secret redaction, open-redirect validation (PR #2)
+- [x] 56 security tests → 103 total tests, CI grep-gates (any/raw-SQL/XSS/ts-ignore/eval/service_role/AI-door)
+
+### AI (Phases 0–2)
+- [x] **Single gated door** `invokeAgent`: budget(fail-closed $25 default)→cache(org-scoped TTL)→PII(sanitize+wrap+env-gated Bedrock Guardrails MASK)→circuit→Zod-validate→log (PRs #15–#19)
+- [x] CI grep-gate + Vitest test enforce "no Bedrock outside `packages/ai`" (PR #19)
+- [x] **cv-parser** (`candidate.parseCV`, text-based) + **candidate-screener** (`candidate.screen` → FitScore) wired through the gate (PRs #20–#21) + candidate-detail AI cards UI (PR #30)
+
+### Architecture / quality
+- [x] God components split (largest now ≤365 LOC); `platform.ts` split into sub-routers (PR #12 + prior)
+- [x] Service layer live on candidate, pipeline, dei, candidate-ai, email, video, calendar — **standard for all new features**
+- [x] Sentry (env-gated, source-maps pending token) + Pino structured logging; pino worker-thread fatal fixed (PRs #13, #14, #37)
+- [x] Caching layer (`lib/cache.ts`, Upstash + in-mem fallback); permission checks cached 5 min w/ invalidation (PR #29)
+- [x] Supavisor pooling in prod (`pooler.supabase.com:6543`, pgbouncer mode)
+- [x] i18n complete: es/en parity 1802 keys, CI-guarded (PRs #24–#28)
+- [x] DEI vertical slice live (EmployeeDemographics, aggregates-only, live-DB seeded) (PRs #22–#23)
+- [x] 4 HR shells data-wired: compensation, climate, monitoring, integrations (PRs #25–#28)
+- [x] **Full mobile sweep** — all ~35 routes + modals/wizards QA'd @390×844, zero overflow (PRs #31–#36, #38)
+- [x] Vercel prod deploy + alias (tims-ats.vercel.app); Prisma serverless engine fix (PR #10)
+- [x] Agentic tooling: `/gate` `/ship` `/mobile-qa`, CLAUDE.md→`.claude/rules/` split, prettier hook, allowlist (PRs #39–#41)
+
+## Remaining — code work
 
 | Priority | Task |
 |----------|------|
-| ~~CRITICAL — SECURITY~~ DONE | ~~Database-level tenant isolation is ABSENT.~~ **RLS is now live and verified** (migration `20260604100000`, `tenantDb`, `RLS_ENFORCED=true`) — see `.claude/rules/api-security.md`. |
-| ~~**HIGH — AI COST/SAFETY**~~ DONE (Phase 1) | **Guardrail layer is built.** Every AI call now goes through the single gated `@tims/ai` `invokeAgent` (budget→cache→PII→bedrock→validate→log): org-scoped response cache (per-agent TTL; PII agents ttl=0), input sanitization + env-gated Bedrock Guardrails MASK, fail-closed budget, `bedrockCircuit` wired, Zod validation. Rule "no Bedrock outside `packages/ai`" is enforced by a CI grep-gate + Vitest test. **Phase 2 wired (real Bedrock through the gate):** `candidate.parseCV` (CV text → structured data, persists to document) and `candidate.screen` (candidate↔vacancy screening → FitScore) via `candidate-ai.service.ts` + `candidate-ai.repository.ts`. **Remaining:** per-org `AiAgentOrgConfig` budgets still unseeded (default $25 cap applies); Presidio strip/re-inject deferred to a scale-trigger; real CV file→text extraction (S3 + PDF/DOCX) is a separate future phase. |
-| HIGH — SECURITY | RBAC follow-up: `hr_admin` uses a denylist short-circuit in `trpc.ts` that bypasses the DB `rolePermission` check. Move to least-privilege once per-org `rolePermission` coverage is verified for every `hr_admin` role. |
-| HIGH — SECURITY | Add CAPTCHA (Turnstile/hCaptcha) to the public `applyToVacancy` form; move to nonce-based CSP and drop `'unsafe-inline'`/`'unsafe-eval'` from `script-src`. |
-| HIGH | Split god components (invoices 605 LOC, orgs 611, invitations 572) |
-| HIGH | Split platform.ts router (1519 LOC) into sub-routers |
-| HIGH | Wire i18n keys to page components (mechanical replacement) |
-| HIGH | Introduce service layer on next feature |
-| HIGH | Configure Supavisor connection pooling for production |
-| MEDIUM | Add Sentry + Pino structured logging |
-| MEDIUM | Refactor pages to use shared KpiCard/DataTable components |
-| ~~MEDIUM~~ DONE | Circuit breaker for Bedrock (`bedrockCircuit` in `packages/ai`) + SES (`sesCircuit` in `packages/api`) — both wired. |
-| MEDIUM | Set up AI gateway microservice (Docker + ECS) |
-| LOW | Migrate to Supabase sa-east-1 region |
-| LOW | Add Prisma read replica extension |
+| HIGH | **recruitment/analytics is fabricated** — zero tRPC calls, inline literal KPIs/funnel/trends (rule #4 violation, visible to TIMS). Wire to real aggregation endpoints. *(IN PROGRESS 2026-06-06)* |
+| HIGH | Assessment completion interface — candidate-facing assessment UI (product map next feature) |
+| MEDIUM | Wire next AI agents through the gate (28 of 32 still stubbed; needs product priority pick) |
+| MEDIUM | Google Calendar OAuth for interviews (currently .ics only) |
+| MEDIUM | Real-time notifications (websocket/SSE) for pipeline updates |
+| LOW | Talent-pool mobile filter drawer (filters hidden <md — deliberate tradeoff) |
+| LOW | Honest-unavailable panels await backing features: external market salary feed (compensation), NLP service (climate wordcloud/sentiment), platform telemetry (integrations system-health) |
+
+## Remaining — blocked on user / product decisions
+
+| Owner | Task |
+|-------|------|
+| Federico | **GitHub Actions billing** — every CI job fails in seconds; fix at github.com/settings/billing (merges currently use the local `/gate`) |
+| Federico | GitHub Pro → enable branch protection on `main` (saved PUT call with 6 required checks ready) |
+| Federico | Phone re-test of mobile sweep → report findings for surgical fixes |
+| Federico | `SENTRY_AUTH_TOKEN` → readable stack traces (add to `apps/web/.env.sentry-build-plugin` + Vercel) |
+| TIMS/product | Per-org `AiAgentOrgConfig` budgets (default fail-closed $25 cap applies until set) |
+| TIMS/product | Trim audit/feature_flags/monitoring/organization from `hr_admin` allowlist (needs product confirm) |
+
+## Deferred by design (rule #9 — build for the trigger, not the dream)
+
+- Presidio PII strip/re-inject (input sanitization + Bedrock Guardrails MASK cover today's scale)
+- Real CV file→text extraction (S3 + PDF/DOCX pipeline)
+- Trigger.dev background workers
+- AI gateway microservice (Docker + ECS) — in-process `packages/ai` door is the current implementation
+- Supabase sa-east-1 migration; Prisma read replicas
