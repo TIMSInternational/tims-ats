@@ -33,7 +33,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "jq -r '.tool_input.file_path // empty' | while IFS= read -r f; do case \"$f\" in *.ts|*.tsx|*.js|*.jsx|*.json|*.css) cd \"$CLAUDE_PROJECT_DIR\" && pnpm prettier --write \"$f\" >/dev/null 2>&1 || true;; esac; done"
+            "command": "jq -r '.tool_input.file_path // empty' | while IFS= read -r f; do case \"$f\" in *.ts|*.tsx|*.js|*.jsx|*.json|*.css|*.md) cd \"$CLAUDE_PROJECT_DIR\" && pnpm prettier --write \"$f\" >/dev/null 2>&1 || true;; esac; done",
+            "async": true,
+            "timeout": 5000
           }
         ]
       }
