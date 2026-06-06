@@ -1,0 +1,42 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm --filter @tims/api exec tsc --noEmit)",
+      "Bash(npx tsc --noEmit)",
+      "Bash(npx vitest run)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git branch:*)",
+      "Bash(git fetch:*)",
+      "Bash(gh run list:*)",
+      "Bash(gh run watch:*)",
+      "Bash(gh run view:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr checks:*)",
+      "Bash(vercel ls:*)",
+      "Bash(curl -s -o /dev/null -w %{http_code} https://tims-ats.vercel.app/:*)"
+    ],
+    "deny": [
+      "Read(**/.env)",
+      "Read(**/.env.*)",
+      "Read(.vercel/**)",
+      "Bash(cat .env:*)",
+      "Bash(cat apps/web/.env:*)",
+      "Bash(cat packages/db/.env:*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // empty' | while IFS= read -r f; do case \"$f\" in *.ts|*.tsx|*.js|*.jsx|*.json|*.css) cd \"$CLAUDE_PROJECT_DIR\" && pnpm prettier --write \"$f\" >/dev/null 2>&1 || true;; esac; done"
+          }
+        ]
+      }
+    ]
+  }
+}

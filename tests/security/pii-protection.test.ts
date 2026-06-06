@@ -37,11 +37,14 @@ describe('PII Protection', () => {
   });
 
   it('should document PII handling architecture', () => {
-    // CLAUDE.md should have PII section
+    // PII doctrine lives in .claude/rules/ai-safety.md since the CLAUDE.md
+    // re-org (2026-06-06); CLAUDE.md core still bans PII in logs.
+    const aiSafety = readFileSync(join(ROOT, '.claude/rules/ai-safety.md'), 'utf8');
+    expect(aiSafety).toContain('PII');
+    expect(aiSafety).toContain('Presidio');
+    expect(aiSafety).toContain('tokenize');
     const claudeMd = readFileSync(join(ROOT, 'CLAUDE.md'), 'utf8');
     expect(claudeMd).toContain('PII');
-    expect(claudeMd).toContain('Presidio');
-    expect(claudeMd).toContain('tokenize');
   });
 
   it('should have AI architecture doc with PII proxy design', () => {
