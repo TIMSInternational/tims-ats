@@ -4,6 +4,7 @@ import { organizationRouter } from './routers/organization';
 import { userRouter } from './routers/user';
 import { vacancyRouter } from './routers/vacancy';
 import { pipelineRouter } from './routers/pipeline';
+import { recruitmentAnalyticsRouter } from './routers/recruitment-analytics';
 import { candidateRouter } from './routers/candidate';
 import { assessmentRouter } from './routers/assessment';
 import { interviewRouter } from './routers/interview';
@@ -35,6 +36,7 @@ export const appRouter = router({
   user: userRouter,
   vacancy: vacancyRouter,
   pipeline: pipelineRouter,
+  recruitmentAnalytics: recruitmentAnalyticsRouter,
   candidate: candidateRouter,
   assessment: assessmentRouter,
   interview: interviewRouter,

@@ -8,10 +8,11 @@ import { AnalyticsTrend, AnalyticsLostByDelay, AnalyticsVacancyPrediction } from
 import { AnalyticsSlaTable, AnalyticsQohBreakdown } from './analytics-tables';
 
 const PERIODS = ['7D', '30D', '90D', '6M', '1Y'] as const;
+export type AnalyticsPeriod = (typeof PERIODS)[number];
 
 export default function RecruitmentAnalyticsPage() {
   const { t } = useI18n();
-  const [activePeriod, setActivePeriod] = useState<string>('30D');
+  const [activePeriod, setActivePeriod] = useState<AnalyticsPeriod>('30D');
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
@@ -53,18 +54,18 @@ export default function RecruitmentAnalyticsPage() {
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-6">
         {/* KPI Row */}
-        <AnalyticsKpiRow />
+        <AnalyticsKpiRow period={activePeriod} />
 
         {/* Row 2: Funnel + Source Performance */}
         <div className="flex flex-col md:flex-row gap-4 mb-6">
           <AnalyticsFunnel />
-          <AnalyticsSourceQuality />
+          <AnalyticsSourceQuality period={activePeriod} />
         </div>
 
         {/* Row 3: Trend + Lost + Prediction */}
         <div className="flex flex-col md:flex-row gap-4 mb-6">
           <AnalyticsTrend />
-          <AnalyticsLostByDelay />
+          <AnalyticsLostByDelay period={activePeriod} />
           <AnalyticsVacancyPrediction />
         </div>
 

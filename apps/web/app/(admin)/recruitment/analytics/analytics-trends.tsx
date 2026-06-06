@@ -1,140 +1,119 @@
 'use client';
 
+import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
+import type { AnalyticsPeriod } from './page';
 
-interface TrendBar {
-  month: string;
-  value: number;
-  color: string;
-  height: string;
-  isPrediction?: boolean;
-  valueColor?: string;
+function CardSkeleton({ flex }: { flex: string }) {
+  return (
+    <div className={`w-full ${flex} bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)] animate-pulse`}>
+      <div className="h-40 bg-gray-100 rounded" />
+    </div>
+  );
+}
+
+function CardError({ flex, message }: { flex: string; message: string }) {
+  return (
+    <div className={`w-full ${flex} bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center text-[12px] text-[#DD0C15]`}>
+      {message}
+    </div>
+  );
 }
 
 export function AnalyticsTrend() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+  const q = trpc.recruitmentAnalytics.getTrend.useQuery();
 
-  const bars: TrendBar[] = [
-    { month: 'Ene', value: 28, color: 'bg-[#B8AED4]', height: '90px' },
-    { month: 'Feb', value: 26, color: 'bg-[#B8AED4]', height: '80px' },
-    { month: 'Mar', value: 30, color: 'bg-[#7B6BAA]', height: '95px' },
-    { month: 'Abr', value: 25, color: 'bg-[#B8AED4]', height: '75px' },
-    { month: 'May', value: 23, color: 'bg-green-400', height: '70px', valueColor: 'text-green-600' },
-    { month: 'Jun', value: 21, color: 'bg-[#EDEDED] border border-dashed border-[#8B8B8B]', height: '65px', isPrediction: true, valueColor: 'text-[#8B8B8B]' },
-  ];
+  if (q.isLoading) return <CardSkeleton flex="md:flex-[40]" />;
+  if (q.isError || !q.data) return <CardError flex="md:flex-[40]" message={t.recruitAnalytics.errLoading} />;
+
+  const months = q.data;
+  const max = Math.max(1, ...months.map((m) => m.count));
+  const fmt = new Intl.DateTimeFormat(locale === 'ES' ? 'es' : 'en', { month: 'short' });
 
   return (
     <div className="w-full md:flex-[40] bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
       <h3 className="text-[14px] font-semibold text-[#1F114C] mb-3">{t.recruitAnalytics.trendTitle}</h3>
       <div className="h-[160px] flex items-end gap-2 px-2">
-        {bars.map((bar) => (
-          <div key={bar.month} className="flex-1 flex flex-col items-center gap-1">
-            <div className={`w-full ${bar.color} rounded-t-sm`} style={{ height: bar.height }} />
-            <span className="text-[9px] text-[#8B8B8B]">{bar.month}</span>
-            <span className={`text-[10px] font-medium ${bar.valueColor ?? 'text-[#1F114C]'}`}>
-              {bar.isPrediction ? `~${bar.value}` : bar.value}
+        {months.map((m) => (
+          <div key={`${m.year}-${m.month}`} className="flex-1 flex flex-col items-center justify-end gap-1 h-full">
+            <div
+              className="w-full bg-[#B8AED4] rounded-t-sm"
+              style={{ height: `${Math.max(Math.round((m.count / max) * 110), m.count > 0 ? 6 : 2)}px` }}
+            />
+            <span className="text-[9px] text-[#8B8B8B] capitalize">
+              {fmt.format(new Date(m.year, m.month, 1))}
             </span>
+            <span className="text-[10px] font-medium text-[#1F114C]">{m.count}</span>
           </div>
         ))}
       </div>
       <div className="flex items-center gap-2 mt-3 pt-3 border-t border-[#F0F0F0]">
         <span className="w-3 h-3 rounded-sm bg-[#B8AED4]" />
         <span className="text-[10px] text-[#585858]">{t.recruitAnalytics.actual}</span>
-        <span className="w-3 h-3 rounded-sm bg-[#EDEDED] border border-dashed border-[#8B8B8B] ml-3" />
-        <span className="text-[10px] text-[#585858]">{t.recruitAnalytics.aiPrediction}</span>
-        <div className="w-8 border-t border-dashed border-[#DD0C15] ml-3" />
-        <span className="text-[10px] text-[#DD0C15]">{t.recruitAnalytics.target}</span>
       </div>
     </div>
   );
 }
 
-interface LostItem {
-  stage: string;
-  detail: string;
-  detailColor: string;
-  avg: string;
-  avgColor: string;
-  sla: string;
-}
-
-export function AnalyticsLostByDelay() {
+export function AnalyticsLostByDelay({ period }: { period: AnalyticsPeriod }) {
   const { t } = useI18n();
+  const q = trpc.recruitmentAnalytics.getLostByDelay.useQuery({ period });
 
-  const items: LostItem[] = [
-    { stage: t.recruitAnalytics.preselection, detail: `5 ${t.recruitAnalytics.abandoned}`, detailColor: 'text-[#DD0C15]', avg: 'Avg: 12d', avgColor: 'text-[#DD0C15]', sla: 'SLA: 5d' },
-    { stage: t.recruitAnalytics.evaluation, detail: `3 ${t.recruitAnalytics.didNotComplete}`, detailColor: 'text-[#DD0C15]', avg: 'Avg: 9d', avgColor: 'text-[#DD0C15]', sla: 'SLA: 3d' },
-    { stage: t.recruitAnalytics.interview, detail: `2 ${t.recruitAnalytics.acceptedOther}`, detailColor: 'text-amber-600', avg: 'Avg: 7d', avgColor: 'text-amber-600', sla: 'SLA: 5d' },
-    { stage: t.recruitAnalytics.offer, detail: `2 ${t.recruitAnalytics.rejectedByDelay}`, detailColor: 'text-[#DD0C15]', avg: 'Avg: 14d', avgColor: 'text-[#DD0C15]', sla: 'SLA: 7d' },
-  ];
+  if (q.isLoading) return <CardSkeleton flex="md:flex-[30]" />;
+  if (q.isError || !q.data) return <CardError flex="md:flex-[30]" message={t.recruitAnalytics.errLoading} />;
+
+  const { total, items } = q.data;
 
   return (
     <div className="w-full md:flex-[30] bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
       <div className="flex justify-between items-center mb-3">
         <h3 className="text-[14px] font-semibold text-[#1F114C]">{t.recruitAnalytics.lostByDelay}</h3>
-        <span className="bg-[#DD0C15] text-white text-[10px] font-bold w-6 h-6 rounded-full flex items-center justify-center">
-          12
+        <span
+          className={`${total > 0 ? 'bg-[#DD0C15]' : 'bg-green-500'} text-white text-[10px] font-bold w-6 h-6 rounded-full flex items-center justify-center`}
+        >
+          {total}
         </span>
       </div>
-      <div className="space-y-2">
-        {items.map((item) => (
-          <div key={item.stage} className="flex items-center justify-between bg-[#F6F6F6] rounded-lg px-3 py-2">
-            <div>
-              <p className="text-[11px] text-[#333] font-medium">{item.stage}</p>
-              <p className={`text-[10px] ${item.detailColor}`}>{item.detail}</p>
+      {items.length === 0 ? (
+        <p className="text-[12px] text-[#8B8B8B] text-center py-8">{t.recruitAnalytics.noneLostByDelay}</p>
+      ) : (
+        <div className="space-y-2">
+          {items.map((item) => (
+            <div key={item.stageName} className="flex items-center justify-between bg-[#F6F6F6] rounded-lg px-3 py-2">
+              <div>
+                <p className="text-[11px] text-[#333] font-medium">{item.stageName}</p>
+                <p className="text-[10px] text-[#DD0C15]">
+                  {item.lostCount} {t.recruitAnalytics.candidates.toLowerCase()}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-[12px] font-bold text-[#DD0C15]">
+                  +{item.avgDaysOver}d {t.recruitAnalytics.avgOverSla}
+                </p>
+                <p className="text-[9px] text-[#8B8B8B]">SLA: {item.slaDays}d</p>
+              </div>
             </div>
-            <div className="text-right">
-              <p className={`text-[12px] font-bold ${item.avgColor}`}>{item.avg}</p>
-              <p className="text-[9px] text-[#8B8B8B]">{item.sla}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-      <p className="text-[10px] text-[#DD0C15] mt-3 pt-3 border-t border-[#F0F0F0] font-medium">
-        {t.recruitAnalytics.estimatedImpact}
-      </p>
+          ))}
+        </div>
+      )}
     </div>
   );
-}
-
-interface PredictionItem {
-  pct: number;
-  role: string;
-  estimate: string;
-  bgColor: string;
-  textColor: string;
 }
 
 export function AnalyticsVacancyPrediction() {
   const { t } = useI18n();
 
-  const items: PredictionItem[] = [
-    { pct: 87, role: 'Sr. Software Engineer', estimate: `${t.recruitAnalytics.estClose}: 5 ${t.recruitAnalytics.days}`, bgColor: 'bg-green-50', textColor: 'text-green-600' },
-    { pct: 62, role: 'Product Manager', estimate: `${t.recruitAnalytics.estClose}: 18 ${t.recruitAnalytics.days}`, bgColor: 'bg-amber-50', textColor: 'text-amber-600' },
-    { pct: 34, role: 'DevOps Engineer', estimate: `${t.recruitAnalytics.estClose}: 30+ ${t.recruitAnalytics.days}`, bgColor: 'bg-red-50', textColor: 'text-[#DD0C15]' },
-    { pct: 55, role: 'UX Designer', estimate: `${t.recruitAnalytics.estClose}: 22 ${t.recruitAnalytics.days}`, bgColor: 'bg-amber-50', textColor: 'text-amber-600' },
-  ];
-
+  // Honest unavailable state — there is no trained prediction model yet
+  // (rule: no stub may impersonate a feature). Endpoint intentionally absent.
   return (
     <div className="w-full md:flex-[30] bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
       <h3 className="text-[14px] font-semibold text-[#1F114C] mb-3">{t.recruitAnalytics.vacancyPrediction}</h3>
-      <div className="space-y-2.5">
-        {items.map((item) => (
-          <div key={item.role} className="flex items-center gap-3">
-            <div className={`w-8 h-8 rounded-full ${item.bgColor} flex items-center justify-center ${item.textColor} text-[10px] font-bold`}>
-              {item.pct}%
-            </div>
-            <div className="flex-1">
-              <p className="text-[11px] text-[#333] font-medium">{item.role}</p>
-              <p className={`text-[10px] ${item.textColor}`}>{item.estimate}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-      <div className="mt-3 bg-teal-50 rounded-lg p-2 border border-teal-200">
-        <p className="text-[10px] text-teal-700">
-          <strong>IA:</strong> {t.recruitAnalytics.aiVacancyTip}
-        </p>
+      <div className="flex flex-col items-center justify-center py-8 text-center">
+        <svg className="w-8 h-8 text-[#D4CFE5] mb-2" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+          <path d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09Z" />
+        </svg>
+        <p className="text-[12px] text-[#8B8B8B]">{t.recruitAnalytics.predictionUnavailable}</p>
       </div>
     </div>
   );

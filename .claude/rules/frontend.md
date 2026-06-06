@@ -30,6 +30,5 @@ paths:
 
 ## Known refactors pending
 
-- Split god components (invoices 605 LOC, orgs 611, invitations 572)
-- Wire i18n keys to page components (mechanical replacement)
 - Refactor pages to use shared KpiCard/DataTable components
+  (god-component splits + i18n wiring were completed June 2026 — see `docs/REMAINING-WORK.md`)
