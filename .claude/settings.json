@@ -15,7 +15,18 @@
       "Bash(gh pr view:*)",
       "Bash(gh pr checks:*)",
       "Bash(vercel ls:*)",
-      "Bash(curl -s -o /dev/null -w %{http_code} https://tims-ats.vercel.app/:*)"
+      "Bash(curl -s -o /dev/null -w %{http_code} https://tims-ats.vercel.app/:*)",
+      "Bash(npx vitest run *)",
+      "Bash(firecrawl search *)",
+      "Bash(firecrawl scrape *)",
+      "mcp__plugin_playwright_playwright__browser_snapshot",
+      "mcp__plugin_playwright_playwright__browser_take_screenshot",
+      "mcp__plugin_playwright_playwright__browser_wait_for",
+      "mcp__plugin_playwright_playwright__browser_network_requests",
+      "mcp__plugin_playwright_playwright__browser_console_messages",
+      "mcp__framer__framer_screenshot_node",
+      "mcp__framer__framer_get_node_children",
+      "mcp__claude_ai_Higgsfield__job_status"
     ],
     "deny": [
       "Read(**/.env)",
