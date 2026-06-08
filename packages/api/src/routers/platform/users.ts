@@ -199,6 +199,34 @@ export const usersRouter = router({
       });
       if (!user) throw new TRPCError({ code: 'NOT_FOUND', message: 'Usuario no encontrado con ese email' });
 
+      // Actually trigger a Supabase recovery email — same mechanism as the
+      // self-serve /forgot-password flow (resetPasswordForEmail → the recovery
+      // link lands on /reset-password, which calls updateUser({ password })).
+      // Previously this was a no-op that returned { sent: true } without
+      // sending anything (rule #4: the UI claimed an email was sent).
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      if (!supabaseUrl || !serviceKey) {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Servicio de autenticacion no configurado',
+        });
+      }
+      const { createClient } = await import('@supabase/supabase-js');
+      const admin = createClient(supabaseUrl, serviceKey, {
+        auth: { autoRefreshToken: false, persistSession: false },
+      });
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.timsats.com';
+      const { error } = await admin.auth.resetPasswordForEmail(input.email, {
+        redirectTo: `${appUrl}/reset-password`,
+      });
+      if (error) {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'No se pudo enviar el correo de restablecimiento',
+        });
+      }
+
       await db.auditLog.create({
         data: {
           organizationId: user.organizationId || ctx.user.organizationId,
