@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { router, permissionProcedure } from '../trpc';
 import { tenantDb as db } from '@tims/db';
 import type { Prisma } from '@tims/db';
+import { ALERT_METRIC_KEYS } from '@tims/shared';
 
 export const monitoringRouter = router({
   // ── Executive KPIs ─────────────────────────────────────────────────
@@ -88,6 +89,14 @@ export const monitoringRouter = router({
       const [items, total] = await Promise.all([
         db.alert.findMany({
           where,
+          select: {
+            id: true,
+            severity: true,
+            module: true,
+            title: true,
+            message: true,
+            createdAt: true,
+          },
           orderBy: [{ severity: 'desc' }, { createdAt: 'desc' }],
           skip: (page - 1) * limit,
           take: limit,
@@ -116,6 +125,7 @@ export const monitoringRouter = router({
           dismissedById: ctx.user.id,
           dismissedAt: new Date(),
         },
+        select: { id: true, status: true },
       });
     }),
 
@@ -176,6 +186,14 @@ export const monitoringRouter = router({
   getAlertRules: permissionProcedure('monitoring', 'read').query(async ({ ctx }) => {
     return db.alertRule.findMany({
       where: { organizationId: ctx.user.organizationId },
+      select: {
+        id: true,
+        module: true,
+        condition: true,
+        severity: true,
+        message: true,
+        isActive: true,
+      },
       orderBy: [{ module: 'asc' }],
     });
   }),
@@ -188,18 +206,27 @@ export const monitoringRouter = router({
             id: z.string().uuid().optional(),
             module: z.string().max(100),
             condition: z.object({
-              metric: z.string().max(100),
+              // Constrained to the shared metric registry so the cron engine can
+              // actually evaluate every rule the UI writes (no free-text metrics).
+              metric: z.enum(ALERT_METRIC_KEYS),
               operator: z.enum(['gt', 'lt', 'eq', 'gte', 'lte']),
-              threshold: z.number(),
+              threshold: z.number().finite(),
             }),
             severity: z.enum(['info', 'warning', 'critical']),
             message: z.string().min(1).max(500),
             isActive: z.boolean().default(true),
           }),
-        ),
+        ).max(50),
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      // Deliberately NOT wrapped in an interactive `$transaction`: this router uses
+      // `tenantDb` (RLS), whose extension sets the org GUC/role per-operation; an
+      // interactive `$transaction(tx => …)` would not carry that GUC into the tx and
+      // would fail closed under RLS. Rules are independent rows and the input is
+      // pre-validated, so a partial save is recoverable (admin re-saves; the client
+      // surfaces the error via onError). See RLS notes in .claude/rules/api-security.md.
+      const select = { id: true, module: true, severity: true, isActive: true } as const;
       const results = [];
 
       for (const rule of input.rules) {
@@ -213,6 +240,7 @@ export const monitoringRouter = router({
               message: rule.message,
               isActive: rule.isActive,
             },
+            select,
           });
           results.push(updated);
         } else {
@@ -226,6 +254,7 @@ export const monitoringRouter = router({
               organizationId: ctx.user.organizationId,
               createdById: ctx.user.id,
             },
+            select,
           });
           results.push(created);
         }

@@ -35,6 +35,8 @@ export {
   readImpersonationCookie,
   IMPERSONATION_COOKIE,
 } from './lib/impersonation';
+export { evaluateAlertRules } from './services/alert-evaluation.service';
+export type { AlertEvaluationSummary } from './services/alert-evaluation.service';
 
 export const appRouter = router({
   auth: authRouter,

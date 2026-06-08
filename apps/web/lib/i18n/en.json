@@ -1877,5 +1877,30 @@
     "backToDashboard": "Back to dashboard",
     "errorInvalidCode": "Invalid code. Try again.",
     "errorGeneric": "Something went wrong. Try again."
+  },
+  "alertRules": {
+    "title": "Alert rules",
+    "subtitle": "Create rules that are evaluated daily and raise alerts when breached.",
+    "addRule": "Add rule",
+    "noRules": "No rules configured yet.",
+    "metric": "Metric",
+    "operator": "Operator",
+    "threshold": "Threshold",
+    "severity": "Severity",
+    "message": "Message",
+    "active": "Active",
+    "messagePlaceholder": "Alert message shown when the rule is breached",
+    "rulesSaved": "Rules saved",
+    "saveError": "Could not save the rules",
+    "messageRequired": "Every rule needs a message",
+    "metric_vacancies_open_60d": "Vacancies open over 60 days",
+    "metric_sla_active_breaches": "Active SLA breaches",
+    "metric_pending_salary_adjustments": "Pending salary adjustments",
+    "metric_active_surveys": "Active surveys",
+    "metric_headcount": "Headcount (active employees)",
+    "metric_active_alerts": "Active alerts",
+    "sev_info": "Info",
+    "sev_warning": "Warning",
+    "sev_critical": "Critical"
   }
 }

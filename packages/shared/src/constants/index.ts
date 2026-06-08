@@ -17,3 +17,34 @@ export const PAGINATION = {
 export const PASSWORD_MIN_LENGTH = 8;
 export const SESSION_EXPIRY_HOURS = 24;
 export const MFA_REQUIRED_ROLES = ['super_admin', 'hr_admin', 'hrbp'] as const;
+
+// ── Alert-rule metric registry ──────────────────────────────────────────────
+// The shared contract between the rule-config UI (metric dropdown) and the cron
+// evaluation engine (per-org queries). A rule's condition.metric MUST be one of
+// these keys; the engine skips any rule whose metric isn't recognized. Every key
+// here maps to a REAL, org-scoped query in alert-evaluation.repository.ts — no
+// fabricated metrics. (failed-login thresholds are a documented follow-up: no
+// org-attributable failed-login record exists yet.)
+export const ALERT_METRIC_KEYS = [
+  'vacancies_open_60d',
+  'sla_active_breaches',
+  'pending_salary_adjustments',
+  'active_surveys',
+  'headcount',
+  'active_alerts',
+] as const;
+export type AlertMetricKey = (typeof ALERT_METRIC_KEYS)[number];
+
+// Canonical module each metric belongs to (used as the Alert.module when a rule
+// fires, and to group metrics in the config UI).
+export const ALERT_METRIC_MODULE: Record<AlertMetricKey, string> = {
+  vacancies_open_60d: 'recruitment',
+  sla_active_breaches: 'recruitment',
+  pending_salary_adjustments: 'compensation',
+  active_surveys: 'engagement',
+  headcount: 'people',
+  active_alerts: 'monitoring',
+};
+
+export const ALERT_OPERATORS = ['gt', 'lt', 'eq', 'gte', 'lte'] as const;
+export type AlertOperator = (typeof ALERT_OPERATORS)[number];

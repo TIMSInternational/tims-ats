@@ -1877,5 +1877,30 @@
     "backToDashboard": "Volver al panel",
     "errorInvalidCode": "Código inválido. Inténtalo de nuevo.",
     "errorGeneric": "Algo salió mal. Inténtalo de nuevo."
+  },
+  "alertRules": {
+    "title": "Reglas de alerta",
+    "subtitle": "Crea reglas que se evalúan a diario y generan alertas cuando se incumplen.",
+    "addRule": "Agregar regla",
+    "noRules": "Aún no hay reglas configuradas.",
+    "metric": "Métrica",
+    "operator": "Operador",
+    "threshold": "Umbral",
+    "severity": "Severidad",
+    "message": "Mensaje",
+    "active": "Activa",
+    "messagePlaceholder": "Mensaje de la alerta cuando se incumpla la regla",
+    "rulesSaved": "Reglas guardadas",
+    "saveError": "No se pudieron guardar las reglas",
+    "messageRequired": "Cada regla necesita un mensaje",
+    "metric_vacancies_open_60d": "Vacantes abiertas más de 60 días",
+    "metric_sla_active_breaches": "Incumplimientos de SLA activos",
+    "metric_pending_salary_adjustments": "Ajustes salariales pendientes",
+    "metric_active_surveys": "Encuestas activas",
+    "metric_headcount": "Headcount (empleados activos)",
+    "metric_active_alerts": "Alertas activas",
+    "sev_info": "Informativa",
+    "sev_warning": "Advertencia",
+    "sev_critical": "Crítica"
   }
 }

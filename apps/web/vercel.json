@@ -1,5 +1,11 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
-  "buildCommand": "pnpm --filter @tims/db exec prisma generate --schema prisma/schema && next build"
+  "buildCommand": "pnpm --filter @tims/db exec prisma generate --schema prisma/schema && next build",
+  "crons": [
+    {
+      "path": "/api/cron/evaluate-alerts",
+      "schedule": "0 6 * * *"
+    }
+  ]
 }

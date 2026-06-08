@@ -29,6 +29,10 @@ const envSchema = z.object({
   NEXT_PUBLIC_TURNSTILE_SITE_KEY: z.string().min(1).optional(),
   TURNSTILE_SECRET_KEY: z.string().min(1).optional(),
 
+  // Vercel Cron shared secret. The alert-evaluation cron route requires
+  // `Authorization: Bearer <CRON_SECRET>`; unset ⇒ the route 401s (fail-closed).
+  CRON_SECRET: z.string().min(1).optional(),
+
   // MFA enforcement (opt-in). When 'true', platform owners + super_admins must
   // step up to a verified TOTP factor (Supabase Auth MFA, aal2) before reaching
   // any admin route. Default off so a fresh deploy can never lock admins out.
