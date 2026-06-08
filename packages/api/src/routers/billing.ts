@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { TRPCError } from '@trpc/server';
 import { router, permissionProcedure } from '../trpc';
 import { tenantDb as db } from '@tims/db';
 
@@ -10,16 +11,35 @@ export const billingRouter = router({
     });
   }),
 
-  // Get usage — stub with mock data
-  getUsage: permissionProcedure('billing', 'read').query(async () => {
+  // Get usage — REAL counts. Plan limits are not modeled yet (null), and
+  // storage / API-call metering has no source yet (null) — honest unavailable,
+  // never fabricated (rule #4). Limits + Stripe-backed quotas arrive in Wave 2.
+  getUsage: permissionProcedure('billing', 'read').query(async ({ ctx }) => {
+    const orgId = ctx.user.organizationId;
+    const sub = await db.subscription.findUnique({
+      where: { organizationId: orgId },
+      select: { currentPeriodStart: true, currentPeriodEnd: true },
+    });
+    const periodStart = sub?.currentPeriodStart ?? null;
+
+    const [employees, vacancies, assessments] = await Promise.all([
+      db.user.count({ where: { organizationId: orgId, isActive: true } }),
+      db.vacancy.count({
+        where: { organizationId: orgId, deletedAt: null, status: { notIn: ['closed', 'cancelled'] } },
+      }),
+      db.assessmentAssignment.count({
+        where: { organizationId: orgId, ...(periodStart ? { assignedAt: { gte: periodStart } } : {}) },
+      }),
+    ]);
+
     return {
-      employees: { used: 42, limit: 100 },
-      vacancies: { used: 8, limit: 25 },
-      assessments: { used: 156, limit: 500 },
-      storage: { usedMb: 2340, limitMb: 10000 },
-      apiCalls: { used: 12400, limit: 50000 },
-      periodStart: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
-      periodEnd: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString(),
+      employees: { used: employees, limit: null },
+      vacancies: { used: vacancies, limit: null },
+      assessments: { used: assessments, limit: null },
+      storage: { usedMb: null, limitMb: null },
+      apiCalls: { used: null, limit: null },
+      periodStart: periodStart?.toISOString() ?? null,
+      periodEnd: sub?.currentPeriodEnd?.toISOString() ?? null,
     };
   }),
 
@@ -55,43 +75,33 @@ export const billingRouter = router({
       });
     }),
 
-  // Create checkout session — stub
+  // Stripe self-serve billing (checkout / customer portal / cancel) is NOT
+  // wired yet — Wave 2. These throw NOT_IMPLEMENTED rather than returning a
+  // fake checkout.stripe.com URL or flipping cancelledAt locally without
+  // telling Stripe (which would let a customer believe they cancelled while
+  // Stripe keeps billing) — rule #4. All three are currently unconsumed.
   createCheckoutSession: permissionProcedure('billing', 'update')
-    .input(
-      z.object({
-        plan: z.enum(['starter', 'professional', 'enterprise']),
-      })
-    )
-    .mutation(async () => {
-      // Stub — would create a Stripe Checkout session
-      return {
-        url: 'https://checkout.stripe.com/stub-session-id',
-        sessionId: 'cs_stub_placeholder',
-      };
+    .input(z.object({ plan: z.enum(['starter', 'professional', 'enterprise']) }))
+    .mutation(() => {
+      throw new TRPCError({
+        code: 'NOT_IMPLEMENTED',
+        message: 'El pago con Stripe aun no esta disponible.',
+      });
     }),
 
-  // Create portal session — stub
-  createPortalSession: permissionProcedure('billing', 'update').mutation(async () => {
-    // Stub — would create a Stripe Customer Portal session
-    return {
-      url: 'https://billing.stripe.com/stub-portal-session',
-    };
+  createPortalSession: permissionProcedure('billing', 'update').mutation(() => {
+    throw new TRPCError({
+      code: 'NOT_IMPLEMENTED',
+      message: 'El portal de facturacion de Stripe aun no esta disponible.',
+    });
   }),
 
-  // Cancel subscription — stub
   cancelSubscription: permissionProcedure('billing', 'update')
-    .input(
-      z.object({
-        reason: z.string().optional(),
-        cancelAtPeriodEnd: z.boolean().default(true),
-      })
-    )
-    .mutation(async ({ ctx }) => {
-      // Stub — would call Stripe to cancel
-      await db.subscription.update({
-        where: { organizationId: ctx.user.organizationId },
-        data: { cancelledAt: new Date() },
+    .input(z.object({ reason: z.string().optional(), cancelAtPeriodEnd: z.boolean().default(true) }))
+    .mutation(() => {
+      throw new TRPCError({
+        code: 'NOT_IMPLEMENTED',
+        message: 'La cancelacion de suscripcion aun no esta disponible.',
       });
-      return { cancelled: true };
     }),
 });
