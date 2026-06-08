@@ -29,6 +29,12 @@ import { platformRouter } from './routers/platform';
 
 export { createContext } from './context';
 export type { TRPCContext } from './context';
+export {
+  signImpersonationToken,
+  verifyImpersonationToken,
+  readImpersonationCookie,
+  IMPERSONATION_COOKIE,
+} from './lib/impersonation';
 
 export const appRouter = router({
   auth: authRouter,

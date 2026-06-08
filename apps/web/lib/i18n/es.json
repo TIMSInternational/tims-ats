@@ -446,6 +446,7 @@
     "inviteUser": "Invitar Usuario",
     "view": "Ver",
     "impersonate": "Impersonar",
+    "impersonateError": "No se pudo iniciar la impersonacion",
     "noUsersFound": "No se encontraron usuarios",
     "adjustFilters": "Intenta ajustar los filtros de busqueda",
     "platform": "Plataforma",
@@ -537,6 +538,11 @@
     "flagCreated": "Feature flag creado",
     "users": "usuarios",
     "customFlag": "Feature flag personalizado"
+  },
+  "impersonation": {
+    "banner": "Estas viendo la aplicacion como",
+    "exit": "Salir",
+    "exiting": "Saliendo..."
   },
   "support": {
     "quickActions": "Acciones Rapidas",

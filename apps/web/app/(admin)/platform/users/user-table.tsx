@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useI18n } from '../../../../lib/i18n';
+import { toast } from '../../../../lib/toast';
 import { DataTable, EmptyState } from '../../../../components';
 import { formatDate, formatRelativeTime, getInitials, getAvatarColor } from '../../../../lib/format-utils';
 import type { UserListItem } from '../../../../lib/trpc-types';
@@ -115,7 +116,25 @@ export function UserTable({
                 </button>
                 {!user.isPlatformOwner && user.isActive && (
                   <>
-                    <button className="px-2 py-1 text-[10px] text-amber-600 bg-amber-50 rounded font-medium hover:bg-amber-100">{t.users.impersonate}</button>
+                    <button
+                      onClick={async () => {
+                        try {
+                          const res = await fetch('/api/impersonate/start', {
+                            method: 'POST',
+                            headers: { 'content-type': 'application/json' },
+                            body: JSON.stringify({ userId: user.id }),
+                          });
+                          if (!res.ok) throw new Error();
+                          // Hard navigation so the server layout + tRPC context re-resolve as the target.
+                          window.location.href = '/dashboard';
+                        } catch {
+                          toast(t.users.impersonateError, { type: 'error' });
+                        }
+                      }}
+                      className="px-2 py-1 text-[10px] text-amber-600 bg-amber-50 rounded font-medium hover:bg-amber-100"
+                    >
+                      {t.users.impersonate}
+                    </button>
                     <button
                       onClick={() => onDeactivate(user)}
                       className="px-2 py-1 text-[10px] text-[#DD0C15] bg-red-50 rounded font-medium hover:bg-red-100"

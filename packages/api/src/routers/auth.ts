@@ -9,6 +9,14 @@ export const authRouter = router({
   // unauthenticated account-takeover vector, so it has been removed. Do not
   // reintroduce a public endpoint that links identities from request input.
 
+  // Impersonation banner state. When a platform owner is impersonating, ctx.user
+  // is the TARGET and carries impersonatorId. Returns the target's email so the
+  // banner can show who is being impersonated.
+  getImpersonationStatus: protectedProcedure.query(({ ctx }) => ({
+    isImpersonating: !!ctx.user.impersonatorId,
+    targetEmail: ctx.user.impersonatorId ? ctx.user.email : null,
+  })),
+
   // Get session info (current user + org + permissions)
   getSessionInfo: protectedProcedure.query(async ({ ctx }) => {
     const user = await db.user.findUnique({

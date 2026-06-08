@@ -446,6 +446,7 @@
     "inviteUser": "Invite User",
     "view": "View",
     "impersonate": "Impersonate",
+    "impersonateError": "Could not start impersonation",
     "noUsersFound": "No users found",
     "adjustFilters": "Try adjusting the search filters",
     "platform": "Platform",
@@ -537,6 +538,11 @@
     "flagCreated": "Feature flag created",
     "users": "users",
     "customFlag": "Custom feature flag"
+  },
+  "impersonation": {
+    "banner": "You are viewing the app as",
+    "exit": "Exit",
+    "exiting": "Exiting..."
   },
   "support": {
     "quickActions": "Quick Actions",

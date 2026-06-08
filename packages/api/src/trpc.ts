@@ -149,14 +149,17 @@ function requirePermission(module: string, action: string) {
 const withAudit = t.middleware(async ({ ctx, next, path }) => {
   const result = await next();
 
-  // Log after successful execution
+  // Log after successful execution. During impersonation ctx.user IS the target,
+  // so attribute the action to the real operator (impersonatorId) and record the
+  // impersonated account in metadata — never misattribute it to the target.
   if (ctx.user) {
     await db.auditLog.create({
       data: {
         organizationId: ctx.user.organizationId,
-        actorId: ctx.user.id,
+        actorId: ctx.user.impersonatorId ?? ctx.user.id,
         action: 'access',
         entity: path,
+        ...(ctx.user.impersonatorId ? { metadata: { impersonatedUserId: ctx.user.id } } : {}),
         ipAddress: ctx.headers.get('x-forwarded-for') || ctx.headers.get('x-real-ip'),
         userAgent: ctx.headers.get('user-agent'),
       },

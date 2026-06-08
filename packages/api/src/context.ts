@@ -6,6 +6,10 @@ export interface TRPCContext {
     organizationId: string;
     roles: string[];
     isPlatformOwner: boolean;
+    // Set ONLY when a platform owner is impersonating this user — the id of the
+    // real owner behind the session. Lets audit logs attribute impersonated
+    // actions to the human operator. Absent in normal sessions.
+    impersonatorId?: string;
   } | null;
   headers: Headers;
 }

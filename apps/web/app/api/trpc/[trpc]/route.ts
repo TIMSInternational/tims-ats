@@ -1,5 +1,5 @@
 import { fetchRequestHandler } from '@trpc/server/adapters/fetch';
-import { appRouter } from '@tims/api';
+import { appRouter, verifyImpersonationToken, readImpersonationCookie } from '@tims/api';
 import { createSupabaseServerClient } from '@tims/auth/server';
 import { db } from '@tims/db';
 import { logger } from '@tims/shared';
@@ -117,17 +117,51 @@ const handler = (req: Request) =>
         }).catch(() => {});
       }
 
+      const realUser = {
+        id: appUser.id,
+        supabaseUserId: appUser.supabaseUserId,
+        email: appUser.email,
+        organizationId: appUser.organizationId || '',
+        roles: appUser.isPlatformOwner
+          ? ['platform_owner']
+          : appUser.userRoles.map((ur) => ur.role.slug),
+        isPlatformOwner: appUser.isPlatformOwner,
+      };
+
+      // Impersonation: ONLY a real platform owner can be impersonating. The
+      // signed cookie is read solely in this branch, so a forged/stolen cookie
+      // is inert without an owner session. When valid, ctx.user BECOMES the
+      // target (the owner drops to the target's org + permissions; platform
+      // routes auto-block since isPlatformOwner is now false). impersonatorId
+      // preserves attribution for audit.
+      if (appUser.isPlatformOwner) {
+        const token = readImpersonationCookie(req.headers.get('cookie'));
+        const payload = verifyImpersonationToken(token);
+        if (payload) {
+          const target = await db.user.findUnique({
+            where: { id: payload.targetUserId },
+            include: { userRoles: { include: { role: { select: { slug: true } } } } },
+          });
+          // Never impersonate another platform owner or an inactive/org-less user.
+          if (target && target.isActive && target.organizationId && !target.isPlatformOwner) {
+            return {
+              user: {
+                id: target.id,
+                supabaseUserId: target.supabaseUserId,
+                email: target.email,
+                organizationId: target.organizationId,
+                roles: target.userRoles.map((ur) => ur.role.slug),
+                isPlatformOwner: false,
+                impersonatorId: appUser.id,
+              },
+              headers: new Headers(req.headers),
+            };
+          }
+        }
+      }
+
       return {
-        user: {
-          id: appUser.id,
-          supabaseUserId: appUser.supabaseUserId,
-          email: appUser.email,
-          organizationId: appUser.organizationId || '',
-          roles: appUser.isPlatformOwner
-            ? ['platform_owner']
-            : appUser.userRoles.map((ur) => ur.role.slug),
-          isPlatformOwner: appUser.isPlatformOwner,
-        },
+        user: realUser,
         headers: new Headers(req.headers),
       };
     },
