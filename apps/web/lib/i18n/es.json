@@ -22,7 +22,8 @@
     "organizations": "Organizaciones",
     "users": "Usuarios",
     "suspended": "Suspendida",
-    "owner": "Owner"
+    "owner": "Owner",
+    "security": "Seguridad (2FA)"
   },
   "sidebar": {
     "recruitment": "Reclutamiento",
@@ -1854,5 +1855,27 @@
     "strengths": "Fortalezas",
     "gaps": "Brechas",
     "reasoning": "Análisis"
+  },
+  "mfa": {
+    "title": "Autenticación en dos pasos",
+    "subtitle": "Protege tu cuenta con un código temporal de tu app de autenticación.",
+    "loading": "Cargando...",
+    "enforcedNotice": "Tu rol requiere verificación en dos pasos para continuar.",
+    "enrollTitle": "Configura la verificación en dos pasos",
+    "enrollScan": "Escanea este código QR con Google Authenticator, 1Password o una app similar.",
+    "secretLabel": "¿No puedes escanear? Ingresa esta clave manualmente:",
+    "codeLabel": "Código de 6 dígitos",
+    "verify": "Verificar y activar",
+    "verifying": "Verificando...",
+    "challengeTitle": "Verificación requerida",
+    "challengeDesc": "Ingresa el código de tu app de autenticación para continuar.",
+    "continueBtn": "Verificar",
+    "enabledTitle": "La verificación en dos pasos está activa",
+    "enabledDesc": "Tu cuenta está protegida con un segundo factor.",
+    "disable": "Desactivar",
+    "disabling": "Desactivando...",
+    "backToDashboard": "Volver al panel",
+    "errorInvalidCode": "Código inválido. Inténtalo de nuevo.",
+    "errorGeneric": "Algo salió mal. Inténtalo de nuevo."
   }
 }

@@ -1,8 +1,10 @@
-import { getUser } from '@tims/auth/server';
+import { getUser, createSupabaseServerClient } from '@tims/auth/server';
 import { redirect } from 'next/navigation';
 import { cookies } from 'next/headers';
 import { db } from '@tims/db';
 import { verifyImpersonationToken, IMPERSONATION_COOKIE } from '@tims/api';
+import { env } from '../../lib/env';
+import { isMfaEnforced, isMfaGateBlocking } from '../../lib/mfa';
 import { AdminShell } from './admin-shell';
 
 export default async function AdminLayout({
@@ -13,7 +15,7 @@ export default async function AdminLayout({
   const supabaseUser = await getUser();
   if (!supabaseUser) redirect('/login');
 
-  // Look up app user to check platform owner status
+  // Look up app user to check platform owner status + roles (for the MFA gate).
   const appUser = await db.user.findFirst({
     where: {
       OR: [
@@ -27,14 +29,54 @@ export default async function AdminLayout({
       email: true,
       isPlatformOwner: true,
       avatar: true,
+      userRoles: { select: { role: { select: { slug: true } } } },
     },
   });
+
+  // MFA enforcement gate (opt-in via MFA_ENFORCED). Privileged roles — platform
+  // owners and super_admins — must have stepped up to a verified TOTP factor
+  // (Supabase aal2) before any admin route renders. Evaluated against the REAL
+  // session's assurance level (impersonation rides a separate signed cookie, not
+  // a Supabase session swap, so this correctly reflects the operator). /mfa lives
+  // OUTSIDE this layout, so there is no redirect loop. Pure decision in lib/mfa.ts.
+  // Mirror trpc.ts's privileged set exactly: the isPlatformOwner flag OR the
+  // platform_owner / super_admin role slugs (any of which fully bypass permission
+  // checks). Keep these in sync — a role the API treats as privileged but the gate
+  // doesn't would silently escape MFA enforcement.
+  const isPrivileged =
+    !!appUser?.isPlatformOwner ||
+    (appUser?.userRoles ?? []).some(
+      (ur) => ur.role.slug === 'super_admin' || ur.role.slug === 'platform_owner',
+    );
+  if (isMfaEnforced(env.MFA_ENFORCED) && isPrivileged) {
+    const supabase = await createSupabaseServerClient();
+    const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    if (isMfaGateBlocking({ enforced: true, isPrivileged: true, currentLevel: aal?.currentLevel })) {
+      redirect('/mfa');
+    }
+  }
 
   // Impersonation: when a real platform owner has a valid impersonation cookie,
   // render the shell AS the target (tenant sidebar, target identity) so the UI
   // matches the impersonated tRPC context. Mirrors the resolution in the tRPC
   // route handler; the cookie is honored only for a real platform owner.
-  let effective = appUser;
+  // `effective` carries only the display fields (decoupled from appUser's select,
+  // which now also includes userRoles for the MFA gate above).
+  let effective: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    isPlatformOwner: boolean;
+    avatar: string | null;
+  } | null = appUser
+    ? {
+        firstName: appUser.firstName,
+        lastName: appUser.lastName,
+        email: appUser.email,
+        isPlatformOwner: appUser.isPlatformOwner,
+        avatar: appUser.avatar,
+      }
+    : null;
   if (appUser?.isPlatformOwner) {
     const cookieStore = await cookies();
     const payload = verifyImpersonationToken(cookieStore.get(IMPERSONATION_COOKIE)?.value);

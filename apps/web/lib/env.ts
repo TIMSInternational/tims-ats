@@ -29,6 +29,11 @@ const envSchema = z.object({
   NEXT_PUBLIC_TURNSTILE_SITE_KEY: z.string().min(1).optional(),
   TURNSTILE_SECRET_KEY: z.string().min(1).optional(),
 
+  // MFA enforcement (opt-in). When 'true', platform owners + super_admins must
+  // step up to a verified TOTP factor (Supabase Auth MFA, aal2) before reaching
+  // any admin route. Default off so a fresh deploy can never lock admins out.
+  MFA_ENFORCED: z.enum(['true', 'false']).optional(),
+
   // Node
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
 });

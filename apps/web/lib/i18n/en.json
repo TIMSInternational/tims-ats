@@ -22,7 +22,8 @@
     "organizations": "Organizations",
     "users": "Users",
     "suspended": "Suspended",
-    "owner": "Owner"
+    "owner": "Owner",
+    "security": "Security (2FA)"
   },
   "sidebar": {
     "recruitment": "Recruitment",
@@ -1854,5 +1855,27 @@
     "strengths": "Strengths",
     "gaps": "Gaps",
     "reasoning": "Analysis"
+  },
+  "mfa": {
+    "title": "Two-factor authentication",
+    "subtitle": "Protect your account with a time-based code from your authenticator app.",
+    "loading": "Loading...",
+    "enforcedNotice": "Your role requires two-factor verification to continue.",
+    "enrollTitle": "Set up two-step verification",
+    "enrollScan": "Scan this QR code with Google Authenticator, 1Password, or a similar app.",
+    "secretLabel": "Can't scan? Enter this key manually:",
+    "codeLabel": "6-digit code",
+    "verify": "Verify and enable",
+    "verifying": "Verifying...",
+    "challengeTitle": "Verification required",
+    "challengeDesc": "Enter the code from your authenticator app to continue.",
+    "continueBtn": "Verify",
+    "enabledTitle": "Two-step verification is on",
+    "enabledDesc": "Your account is protected with a second factor.",
+    "disable": "Disable",
+    "disabling": "Disabling...",
+    "backToDashboard": "Back to dashboard",
+    "errorInvalidCode": "Invalid code. Try again.",
+    "errorGeneric": "Something went wrong. Try again."
   }
 }
