@@ -84,8 +84,12 @@ export async function middleware(request: NextRequest) {
     return applyCsp(NextResponse.redirect(loginUrl));
   }
 
-  // Redirect logged-in users away from auth pages
-  if (isPublicPath && user && pathname !== '/auth/callback') {
+  // Redirect logged-in users away from the STAFF auth pages only. The candidate
+  // portal (/careers/*) is intentionally excluded: a candidate has a Supabase
+  // session and must stay in the portal (e.g. /careers/[org]/me) rather than be
+  // bounced into the staff app. /auth/* (callback/confirm) is also excluded.
+  const STAFF_AUTH_PAGES = ['/login', '/register', '/forgot-password', '/reset-password'];
+  if (user && STAFF_AUTH_PAGES.some((p) => pathname.startsWith(p))) {
     return applyCsp(NextResponse.redirect(new URL('/', request.url)));
   }
 

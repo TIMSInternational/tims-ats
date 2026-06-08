@@ -1907,5 +1907,28 @@
     "sev_info": "Informativa",
     "sev_warning": "Advertencia",
     "sev_critical": "Crítica"
+  },
+  "portalAuth": {
+    "loginTitle": "Portal de candidatos",
+    "loginSubtitle": "Ingresa tu correo y te enviaremos un enlace de acceso.",
+    "emailLabel": "Correo electrónico",
+    "emailPlaceholder": "tu@correo.com",
+    "sendLink": "Enviar enlace de acceso",
+    "sending": "Enviando...",
+    "checkEmailTitle": "Revisa tu correo",
+    "checkEmailDesc": "Si tienes postulaciones con este correo, te enviamos un enlace de acceso. Revisa tu bandeja de entrada.",
+    "errorGeneric": "No se pudo enviar el enlace. Inténtalo de nuevo.",
+    "backToJobs": "Volver a las vacantes"
+  },
+  "portalMe": {
+    "welcome": "Hola",
+    "signOut": "Cerrar sesión",
+    "applications": "Mis postulaciones",
+    "interviews": "Mis entrevistas",
+    "offer": "Mi oferta",
+    "sectionSoon": "Pronto verás esta información aquí.",
+    "noCandidateTitle": "Sin postulaciones",
+    "noCandidateDesc": "No encontramos postulaciones asociadas a este correo en esta empresa.",
+    "backToJobs": "Ver vacantes"
   }
 }

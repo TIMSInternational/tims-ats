@@ -62,7 +62,16 @@ const handler = (req: Request) =>
         });
 
         if (byEmail) {
-          // Link supabase account to existing user
+          // Claim-only link: only attach this Supabase identity to a staff account
+          // that has NOT already been claimed by a DIFFERENT Supabase user. Reaching
+          // this branch means the supabaseUserId lookup above missed, so a non-null
+          // mismatching id means another identity already owns this staff account —
+          // never re-point it (prevents an email-collision hijack, e.g. a candidate
+          // magic-link session whose email happens to match a staff user). Treat as
+          // no staff identity.
+          if (byEmail.supabaseUserId && byEmail.supabaseUserId !== supabaseUser.id) {
+            return { user: null, headers: new Headers(req.headers) };
+          }
           appUser = await db.user.update({
             where: { id: byEmail.id },
             data: {

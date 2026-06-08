@@ -1907,5 +1907,28 @@
     "sev_info": "Info",
     "sev_warning": "Warning",
     "sev_critical": "Critical"
+  },
+  "portalAuth": {
+    "loginTitle": "Candidate portal",
+    "loginSubtitle": "Enter your email and we'll send you a sign-in link.",
+    "emailLabel": "Email",
+    "emailPlaceholder": "you@email.com",
+    "sendLink": "Send sign-in link",
+    "sending": "Sending...",
+    "checkEmailTitle": "Check your email",
+    "checkEmailDesc": "If you have applications with this email, we've sent you a sign-in link. Check your inbox.",
+    "errorGeneric": "Couldn't send the link. Try again.",
+    "backToJobs": "Back to jobs"
+  },
+  "portalMe": {
+    "welcome": "Hi",
+    "signOut": "Sign out",
+    "applications": "My applications",
+    "interviews": "My interviews",
+    "offer": "My offer",
+    "sectionSoon": "This information will appear here soon.",
+    "noCandidateTitle": "No applications",
+    "noCandidateDesc": "We found no applications associated with this email at this company.",
+    "backToJobs": "View jobs"
   }
 }

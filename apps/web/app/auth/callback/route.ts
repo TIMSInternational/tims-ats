@@ -1,6 +1,7 @@
 import { createSupabaseServerClient } from '@tims/auth/server';
 import { NextResponse } from 'next/server';
 import { db } from '@tims/db';
+import { isSafePortalNext } from '../../../lib/portal-auth';
 
 async function isPlatformOwnerEmail(email: string): Promise<boolean> {
   const entry = await db.platformOwnerEmail.findUnique({ where: { email } });
@@ -27,6 +28,15 @@ export async function GET(request: Request) {
   const { data: { user: supabaseUser } } = await supabase.auth.getUser();
   if (!supabaseUser?.email) {
     return NextResponse.redirect(`${origin}/login?error=no_email`);
+  }
+
+  // Portal (candidate) login: a safe /careers/ `next` target means this is a
+  // candidate magic-link sign-in. Candidates are NOT staff — do NOT provision a
+  // `User` row; the portal resolves identity by email against `Candidate` records.
+  // The session now exists; just send them to their portal page.
+  const portalNext = isSafePortalNext(searchParams.get('next'));
+  if (portalNext) {
+    return NextResponse.redirect(`${origin}${portalNext}`);
   }
 
   // Check if user already exists
