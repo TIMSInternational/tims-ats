@@ -360,45 +360,18 @@ export const assessmentRouter = router({
       });
     }),
 
-  // 7.11 — Get explainability for assessment result (stub — mock AI)
+  // 7.11 — AI explainability for an assessment result.
+  // NOT IMPLEMENTED: the assessment-evaluator agent is not built yet (Wave 3).
+  // Returns 501 rather than fabricated strengths/weaknesses + a fake confidence
+  // score and 'bedrock-claude-v1-stub' modelVersion (rule #4: no stub may
+  // impersonate a real AI feature). Wire the gated agent here when it lands.
   getExplainability: permissionProcedure('assessment', 'read')
     .input(z.object({ assignmentId: z.string().uuid() }))
-    .query(async ({ ctx, input }) => {
-      const assignment = await db.assessmentAssignment.findFirst({
-        where: { id: input.assignmentId, organizationId: ctx.user.organizationId },
-        include: { result: true, assessmentType: { select: { name: true, code: true } } },
+    .query(() => {
+      throw new TRPCError({
+        code: 'NOT_IMPLEMENTED',
+        message: 'La explicabilidad con IA aun no esta disponible (agente de evaluacion pendiente).',
       });
-
-      if (!assignment) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Asignacion no encontrada' });
-      }
-      if (!assignment.result) {
-        throw new TRPCError({ code: 'BAD_REQUEST', message: 'La evaluacion aun no tiene resultados' });
-      }
-
-      // Stub: mock AI explainability
-      return {
-        assignmentId: input.assignmentId,
-        assessmentType: assignment.assessmentType.name,
-        score: assignment.result.normalizedScore,
-        explanation: {
-          summary: 'El candidato demostro un desempeno solido en habilidades tecnicas con oportunidades de mejora en comunicacion.',
-          strengths: [
-            'Resolucion de problemas logicos: percentil 85',
-            'Conocimiento tecnico: por encima del promedio',
-          ],
-          weaknesses: [
-            'Comunicacion escrita: por debajo del promedio',
-            'Gestion del tiempo: completado con 90% del tiempo asignado',
-          ],
-          recommendations: [
-            'Considerar evaluacion adicional de comunicacion',
-            'Verificar habilidades en entrevista tecnica',
-          ],
-          confidenceLevel: 0.82,
-        },
-        modelVersion: 'bedrock-claude-v1-stub',
-      };
     }),
 
   // 7.12 — Compare assessment results for multiple candidates

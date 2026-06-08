@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { TRPCError } from '@trpc/server';
 import { router, protectedProcedure, permissionProcedure } from '../trpc';
 import { tenantDb as db } from '@tims/db';
 
@@ -125,64 +126,28 @@ export const teamIntelRouter = router({
       };
     }),
 
-  // Stub: AI-driven balance alerts
+  // AI-driven team balance alerts.
+  // NOT IMPLEMENTED: needs an analysis agent + Competency model (Wave 3/4).
+  // Returns 501 rather than fabricated skill-gap/tenure alerts (rule #4).
   getBalanceAlerts: permissionProcedure('team_intel', 'read')
     .input(z.object({ teamId: z.string().uuid() }))
-    .query(async ({ ctx, input }) => {
-      // TODO: integrate with AI analysis engine
-      return {
-        teamId: input.teamId,
-        organizationId: ctx.user.organizationId,
-        alerts: [
-          {
-            type: 'skill_gap',
-            severity: 'medium',
-            message: 'El equipo carece de experiencia en analisis de datos',
-            recommendation: 'Considerar capacitacion o contratacion en esta area',
-          },
-          {
-            type: 'tenure_imbalance',
-            severity: 'low',
-            message: 'Alta concentracion de miembros con menos de 6 meses',
-            recommendation: 'Asignar mentores para acelerar integracion',
-          },
-        ],
-        generatedAt: new Date(),
-        _stub: true,
-      };
+    .query(() => {
+      throw new TRPCError({
+        code: 'NOT_IMPLEMENTED',
+        message: 'Las alertas de balance con IA aun no estan disponibles (agente pendiente).',
+      });
     }),
 
-  // Stub: AI-driven hiring recommendations
+  // AI-driven hiring recommendations.
+  // NOT IMPLEMENTED: needs a recommendation agent + Competency model (Wave 3/4).
+  // Returns 501 rather than fabricated role recommendations (rule #4).
   getRecommendedHires: permissionProcedure('team_intel', 'read')
     .input(z.object({ teamId: z.string().uuid() }))
-    .query(async ({ ctx, input }) => {
-      // TODO: integrate with AI recommendation engine
-      return {
-        teamId: input.teamId,
-        organizationId: ctx.user.organizationId,
-        recommendations: [
-          {
-            role: 'Analista de Datos Senior',
-            priority: 'high',
-            reason: 'Brecha critica en competencias de datos',
-            idealProfile: {
-              experience: '3-5 anos',
-              skills: ['SQL', 'Python', 'Visualizacion'],
-            },
-          },
-          {
-            role: 'Disenador UX',
-            priority: 'medium',
-            reason: 'Mejorar capacidad de diseno centrado en el usuario',
-            idealProfile: {
-              experience: '2-4 anos',
-              skills: ['Figma', 'Investigacion de usuarios', 'Prototipado'],
-            },
-          },
-        ],
-        generatedAt: new Date(),
-        _stub: true,
-      };
+    .query(() => {
+      throw new TRPCError({
+        code: 'NOT_IMPLEMENTED',
+        message: 'Las recomendaciones de contratacion con IA aun no estan disponibles (agente pendiente).',
+      });
     }),
 
   // ── Compare Teams ────────────────────────────────────────────────────

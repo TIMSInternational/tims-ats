@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { TRPCError } from '@trpc/server';
 import { router, protectedProcedure, permissionProcedure } from '../trpc';
 import { tenantDb as db } from '@tims/db';
 import type { Prisma } from '@tims/db';
@@ -230,31 +231,17 @@ export const learningRouter = router({
       });
     }),
 
-  // Stub: AI-driven gap-based path recommendations
+  // AI-driven gap-based learning paths.
+  // NOT IMPLEMENTED: needs the learning-recommender agent + a Competency model
+  // (both Wave 3/4). Returns 501 rather than fabricated paths with fake
+  // confidence scores (rule #4).
   getGapBasedPaths: permissionProcedure('learning', 'read')
     .input(z.object({ userId: z.string().uuid() }))
-    .query(async ({ ctx, input }) => {
-      // TODO: integrate with AI service for competency-gap analysis
-      return {
-        userId: input.userId,
-        organizationId: ctx.user.organizationId,
-        paths: [
-          {
-            suggestedPathName: 'Liderazgo Avanzado',
-            targetGap: 'leadership',
-            confidence: 0.82,
-            courses: [],
-          },
-          {
-            suggestedPathName: 'Comunicacion Efectiva',
-            targetGap: 'communication',
-            confidence: 0.74,
-            courses: [],
-          },
-        ],
-        generatedAt: new Date(),
-        _stub: true,
-      };
+    .query(() => {
+      throw new TRPCError({
+        code: 'NOT_IMPLEMENTED',
+        message: 'Las rutas basadas en brechas con IA aun no estan disponibles (agente pendiente).',
+      });
     }),
 
   // ── Assessment & Progress ────────────────────────────────────────────
@@ -322,31 +309,16 @@ export const learningRouter = router({
       };
     }),
 
-  // Stub: AI-driven course recommendations
+  // AI-driven course recommendations.
+  // NOT IMPLEMENTED: needs the learning-recommender agent (Wave 3). Returns 501
+  // rather than fabricated courses with fake relevance scores (rule #4).
   getRecommendations: permissionProcedure('learning', 'read')
     .input(z.object({ userId: z.string().uuid() }))
-    .query(async ({ ctx, input }) => {
-      // TODO: integrate with AI recommendation engine
-      return {
-        userId: input.userId,
-        organizationId: ctx.user.organizationId,
-        recommendations: [
-          {
-            courseId: null,
-            title: 'Gestion de Equipos Remotos',
-            reason: 'Basado en tu rol de lider de equipo',
-            score: 0.91,
-          },
-          {
-            courseId: null,
-            title: 'Analisis de Datos para Lideres',
-            reason: 'Competencia identificada como brecha',
-            score: 0.85,
-          },
-        ],
-        generatedAt: new Date(),
-        _stub: true,
-      };
+    .query(() => {
+      throw new TRPCError({
+        code: 'NOT_IMPLEMENTED',
+        message: 'Las recomendaciones de cursos con IA aun no estan disponibles (agente pendiente).',
+      });
     }),
 
   // ── Certificates ─────────────────────────────────────────────────────
