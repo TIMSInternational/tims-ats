@@ -255,10 +255,11 @@ export const systemRouter = router({
   getCrossOrgAuditLogs: platformProcedure
     .input(getCrossOrgAuditLogsInput)
     .query(async ({ input }) => {
-      const { cursor, limit, userId, action, entity, dateFrom, dateTo } = input;
+      const { cursor, limit, userId, organizationId, action, entity, dateFrom, dateTo } = input;
 
       const where: Prisma.AuditLogWhereInput = {};
       if (userId) where.actorId = userId;
+      if (organizationId) where.organizationId = organizationId;
       if (action) where.action = action;
       if (entity) where.entity = entity;
       if (dateFrom || dateTo) {
@@ -288,6 +289,7 @@ export const systemRouter = router({
     .input(exportAuditLogsCsvInput)
     .query(async ({ input }) => {
       const where: Prisma.AuditLogWhereInput = {};
+      if (input.organizationId) where.organizationId = input.organizationId;
       if (input.action) where.action = input.action;
       if (input.entity) where.entity = input.entity;
       if (input.dateFrom || input.dateTo) {
@@ -303,24 +305,45 @@ export const systemRouter = router({
         take: 1000,
         select: {
           action: true, entity: true, entityId: true, ipAddress: true, createdAt: true,
+          organization: { select: { name: true } },
           actor: { select: { firstName: true, lastName: true, email: true } },
         },
       });
 
-      const header = 'Fecha,Actor,Accion,Entidad,ID Entidad,IP';
-      const rows = logs.map(l => {
-        const actor = l.actor ? `${l.actor.firstName} ${l.actor.lastName}`.trim() || l.actor.email : 'Sistema';
-        return [
+      const actorName = (l: (typeof logs)[number]) =>
+        l.actor ? `${l.actor.firstName} ${l.actor.lastName}`.trim() || l.actor.email : 'Sistema';
+
+      if (input.format === 'json') {
+        const json = JSON.stringify(
+          logs.map((l) => ({
+            date: l.createdAt.toISOString(),
+            organization: l.organization?.name ?? null,
+            actor: actorName(l),
+            action: l.action,
+            entity: l.entity || null,
+            entityId: l.entityId || null,
+            ip: l.ipAddress || null,
+          })),
+          null,
+          2,
+        );
+        return { format: 'json' as const, data: json, count: logs.length };
+      }
+
+      const header = 'Fecha,Organizacion,Actor,Accion,Entidad,ID Entidad,IP';
+      const rows = logs.map((l) =>
+        [
           l.createdAt.toISOString(),
-          actor.replace(/,/g, ' '),
+          (l.organization?.name ?? '-').replace(/,/g, ' '),
+          actorName(l).replace(/,/g, ' '),
           l.action,
           l.entity || '-',
           l.entityId || '-',
           l.ipAddress || '-',
-        ].join(',');
-      });
+        ].join(','),
+      );
 
-      return { csv: [header, ...rows].join('\n'), count: logs.length };
+      return { format: 'csv' as const, data: [header, ...rows].join('\n'), count: logs.length };
     }),
 
   getOrgAuditLogs: platformProcedure

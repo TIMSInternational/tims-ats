@@ -139,7 +139,9 @@ export const aiAgentsRouter = router({
       agentId: z.string().uuid(),
       organizationId: z.string().uuid(),
       enabled: z.boolean().optional(),
-      monthlyBudget: z.number().min(0).max(100000).optional(),
+      // nullable so clearing the field sends null (Prisma strips undefined, so
+      // undefined could never clear an existing cap).
+      monthlyBudget: z.number().min(0).max(100000).nullable().optional(),
     }))
     .mutation(async ({ input }) => {
       const { agentId, organizationId, ...data } = input;

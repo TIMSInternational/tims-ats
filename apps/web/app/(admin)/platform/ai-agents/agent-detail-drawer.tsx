@@ -130,9 +130,27 @@ export function AgentDetailDrawer({ agent, onClose, onSuccess }: { agent: AiAgen
                       </div>
                       <div>
                         <p className="text-[13px] font-medium text-[#1F114C]">{config.organization?.name}</p>
-                        <p className="text-[10px] text-[#8B8B8B]">
-                          Budget: {config.monthlyBudget ? `$${config.monthlyBudget.toFixed(0)}/mo` : 'Sin limite'}
-                        </p>
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <span className="text-[10px] text-[#8B8B8B]">{t.aiAgents.budgetLabel}: $</span>
+                          <input
+                            key={`${config.id}-${config.monthlyBudget ?? ''}`}
+                            type="number"
+                            min={0}
+                            max={100000}
+                            step={1}
+                            defaultValue={config.monthlyBudget ?? ''}
+                            placeholder={t.aiAgents.noBudget}
+                            onBlur={(e) => {
+                              const raw = e.target.value.trim();
+                              const val = raw === '' ? null : Number(raw);
+                              if (val !== null && (Number.isNaN(val) || val < 0 || val > 100000)) return;
+                              if ((config.monthlyBudget ?? null) === val) return;
+                              updateOrgConfig.mutate({ agentId: agent.id, organizationId: config.organization.id, monthlyBudget: val });
+                            }}
+                            className="w-20 text-[10px] border border-[#EDEDED] rounded px-1.5 py-0.5 outline-none focus:border-[#1F114C]"
+                          />
+                          <span className="text-[10px] text-[#8B8B8B]">/mo</span>
+                        </div>
                       </div>
                     </div>
                     <div className="flex items-center gap-3">

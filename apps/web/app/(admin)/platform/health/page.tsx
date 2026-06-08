@@ -171,28 +171,17 @@ export default function PlatformHealthPage() {
         <div className="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)] flex flex-col">
           <div className="flex items-center justify-between mb-4 shrink-0">
             <p className="text-[13px] font-semibold text-[#1F114C]">{t.health.apiResponseTime}</p>
-            <div className="flex items-center gap-3">
-              <span className="flex items-center gap-1 text-[10px] text-[#8B8B8B]"><span className="w-2 h-2 rounded-full bg-[#1F114C]" />p50</span>
-              <span className="flex items-center gap-1 text-[10px] text-[#8B8B8B]"><span className="w-2 h-2 rounded-full bg-[#DD0C15]" />p95</span>
-            </div>
           </div>
-          <div className="relative flex-1 min-h-[120px]">
-            <div className="absolute left-0 top-0 bottom-4 flex flex-col justify-between text-[9px] text-[#8B8B8B] w-8">
-              <span>100ms</span><span>75ms</span><span>50ms</span><span>25ms</span><span>0ms</span>
-            </div>
-            <div className="ml-10 h-full relative pb-4">
-              <div className="absolute inset-0 bottom-4 flex flex-col justify-between">
-                {[0, 1, 2, 3].map(i => <div key={i} className="border-t border-dashed border-[#EDEDED]" />)}
-                <div className="border-t border-[#EDEDED]" />
-              </div>
-              <svg className="absolute inset-0 w-full" style={{ height: 'calc(100% - 16px)' }} preserveAspectRatio="none" viewBox="0 0 100 100">
-                <polyline fill="none" stroke="#1F114C" strokeWidth="0.8" points="0,70 5,68 10,72 15,65 20,60 25,62 30,58 35,55 40,60 45,63 50,58 55,55 60,52 65,58 70,62 75,55 80,50 85,52 90,55 95,58 100,55" />
-                <polyline fill="none" stroke="#DD0C15" strokeWidth="0.8" strokeDasharray="3,2" points="0,50 5,48 10,52 15,45 20,38 25,42 30,35 35,32 40,40 45,42 50,38 55,35 60,30 65,38 70,42 75,35 80,28 85,30 90,35 95,38 100,35" />
-              </svg>
-              <div className="absolute bottom-0 left-0 right-0 flex justify-between text-[9px] text-[#8B8B8B]">
-                <span>00:00</span><span>04:00</span><span>08:00</span><span>12:00</span><span>16:00</span><span>20:00</span><span>Now</span>
-              </div>
-            </div>
+          {/* Honest unavailable state — no latency telemetry source is queried
+              yet (no metrics store / OTel pipeline). Replaces a hardcoded fake
+              polyline that posed as live p50/p95 data (rule #4). Wire to real
+              metrics when a telemetry backend exists. */}
+          <div className="flex-1 min-h-[120px] flex flex-col items-center justify-center text-center">
+            <svg className="w-8 h-8 text-[#D4CFE5] mb-2" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 13.5h3.86a2.25 2.25 0 002.012-1.244l.256-.512a2.25 2.25 0 012.013-1.244h3.218a2.25 2.25 0 012.013 1.244l.256.512a2.25 2.25 0 002.013 1.244h3.859m-19.5.338V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18v-4.162c0-.224-.034-.447-.1-.661L19.24 5.338a2.25 2.25 0 00-2.15-1.588H6.911a2.25 2.25 0 00-2.15 1.588L2.35 13.177a2.25 2.25 0 00-.1.661z" />
+            </svg>
+            <p className="text-[12px] text-[#8B8B8B]">{t.health.latencyUnavailable}</p>
+            <p className="text-[10px] text-[#ABABAB] mt-1">{t.health.latencyUnavailableHint}</p>
           </div>
         </div>
 

@@ -15,6 +15,7 @@ export const getCrossOrgAuditLogsInput = z.object({
   cursor: z.string().uuid().optional(),
   limit: z.number().int().min(1).max(50).default(20),
   userId: z.string().uuid().optional(),
+  organizationId: z.string().uuid().optional(),
   action: z.string().max(100).optional(),
   entity: z.string().max(100).optional(),
   dateFrom: z.date().optional(),
@@ -22,10 +23,12 @@ export const getCrossOrgAuditLogsInput = z.object({
 });
 
 export const exportAuditLogsCsvInput = z.object({
+  organizationId: z.string().uuid().optional(),
   action: z.string().max(100).optional(),
   entity: z.string().max(100).optional(),
   dateFrom: z.date().optional(),
   dateTo: z.date().optional(),
+  format: z.enum(['csv', 'json']).default('csv'),
 });
 
 export const getOrgAuditLogsInput = z.object({

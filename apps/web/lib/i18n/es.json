@@ -457,6 +457,8 @@
   },
   "aiAgents": {
     "title": "Agentes IA",
+    "budgetLabel": "Presupuesto",
+    "noBudget": "Sin limite",
     "kpiTotal": "Total Agentes",
     "kpiActive": "Activos",
     "kpiStubs": "Stubs",
@@ -580,6 +582,9 @@
   },
   "audit": {
     "title": "Auditoria",
+    "allOrganizations": "Todas las Organizaciones",
+    "exportCsv": "CSV",
+    "exportJson": "JSON",
     "colDateTime": "Fecha / Hora",
     "colActor": "Actor",
     "colOrganization": "Organizacion",
@@ -1423,6 +1428,8 @@
   },
   "health": {
     "title": "Salud del Sistema",
+    "latencyUnavailable": "Telemetria de latencia no disponible",
+    "latencyUnavailableHint": "Se mostrara cuando haya una fuente de metricas conectada.",
     "allOperational": "Todos los sistemas operativos",
     "someIssues": "Algunos servicios presentan problemas",
     "servicesRunning": "servicios funcionando al 100%",

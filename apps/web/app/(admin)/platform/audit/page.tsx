@@ -36,14 +36,19 @@ export default function AuditPage() {
   const { t } = useI18n();
   const [action, setAction] = useState('');
   const [entity, setEntity] = useState('');
+  const [organizationId, setOrganizationId] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [page, setPage] = useState(0);
   const limit = 15;
 
+  const orgs = trpc.platform.listOrganizationsMinimal.useQuery();
+  const utils = trpc.useUtils();
+
   const { data, isLoading } = trpc.platform.getCrossOrgAuditLogs.useQuery({
     action: action || undefined,
     entity: entity || undefined,
+    organizationId: organizationId || undefined,
     dateFrom: dateFrom ? new Date(dateFrom) : undefined,
     dateTo: dateTo ? new Date(dateTo) : undefined,
     limit,
@@ -52,30 +57,29 @@ export default function AuditPage() {
   const logs = data?.logs ?? [];
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / limit));
-  const hasActiveFilters = action || entity || dateFrom || dateTo;
+  const hasActiveFilters = action || entity || organizationId || dateFrom || dateTo;
 
-  const exportCsv = trpc.platform.exportAuditLogsCsv.useQuery({
-    action: action || undefined,
-    entity: entity || undefined,
-    dateFrom: dateFrom ? new Date(dateFrom) : undefined,
-    dateTo: dateTo ? new Date(dateTo) : undefined,
-  }, { enabled: false });
-
-  const handleExport = async () => {
-    const result = await exportCsv.refetch();
-    if (result.data) {
-      const blob = new Blob([result.data.csv], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `audit-logs-${new Date().toISOString().slice(0, 10)}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
-      toast(`${t.audit.export}: ${result.data.count}`, { type: 'success' });
-    }
+  const handleExport = async (format: 'csv' | 'json') => {
+    const result = await utils.platform.exportAuditLogsCsv.fetch({
+      action: action || undefined,
+      entity: entity || undefined,
+      organizationId: organizationId || undefined,
+      dateFrom: dateFrom ? new Date(dateFrom) : undefined,
+      dateTo: dateTo ? new Date(dateTo) : undefined,
+      format,
+    });
+    const mime = format === 'json' ? 'application/json' : 'text/csv;charset=utf-8;';
+    const blob = new Blob([result.data], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `audit-logs-${new Date().toISOString().slice(0, 10)}.${format}`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast(`${t.audit.export}: ${result.count}`, { type: 'success' });
   };
 
-  function clearFilters() { setAction(''); setEntity(''); setDateFrom(''); setDateTo(''); setPage(0); }
+  function clearFilters() { setAction(''); setEntity(''); setOrganizationId(''); setDateFrom(''); setDateTo(''); setPage(0); }
 
   return (
     <div className="h-full overflow-y-auto p-6 space-y-4">
@@ -96,10 +100,18 @@ export default function AuditPage() {
             <option value="">{t.audit.allEntities}</option>
             {ENTITY_OPTIONS.map(e => <option key={e} value={e}>{e}</option>)}
           </select>
+          <select value={organizationId} onChange={(e) => { setOrganizationId(e.target.value); setPage(0); }} className="border border-[#EDEDED] rounded-lg px-3 py-2 text-sm text-[#585858] bg-white">
+            <option value="">{t.audit.allOrganizations}</option>
+            {(orgs.data ?? []).map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+          </select>
           <div className="flex-1" />
-          <button onClick={handleExport} className="flex items-center gap-2 px-4 py-2 border border-[#EDEDED] rounded-lg text-sm text-[#585858] hover:bg-[#F6F6F6] transition">
+          <button onClick={() => handleExport('csv')} className="flex items-center gap-2 px-4 py-2 border border-[#EDEDED] rounded-lg text-sm text-[#585858] hover:bg-[#F6F6F6] transition">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
-            {t.audit.export}
+            {t.audit.exportCsv}
+          </button>
+          <button onClick={() => handleExport('json')} className="flex items-center gap-2 px-4 py-2 border border-[#EDEDED] rounded-lg text-sm text-[#585858] hover:bg-[#F6F6F6] transition">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+            {t.audit.exportJson}
           </button>
         </div>
         {hasActiveFilters && (
