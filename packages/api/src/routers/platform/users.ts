@@ -241,6 +241,55 @@ export const usersRouter = router({
       return { sent: true, email: input.email };
     }),
 
+  // Force-logout: revoke ALL of a user's Supabase sessions so their refresh tokens
+  // stop working (the user can log back in — this is NOT a ban; use activate/
+  // deactivate for that). This is the server-side equivalent of the user's own
+  // global signOut, which Supabase implements by deleting their rows from
+  // `auth.sessions`. The JS admin SDK has no by-user-id session-revocation method,
+  // so we delete the rows directly via a parameterized query on the privileged
+  // connection (the app's `postgres` role owns the auth schema). NOTE: a currently
+  // active access token (JWT) remains valid until it expires (JWT TTL, ~1h) since
+  // the app validates the token statelessly; the session/refresh path is killed
+  // immediately, so the user is fully logged out within one token lifetime.
+  forceLogoutUser: platformProcedure
+    .input(z.object({ email: z.string().email().max(255) }))
+    .mutation(async ({ ctx, input }) => {
+      const user = await db.user.findFirst({
+        where: { email: input.email },
+        select: { id: true, email: true, organizationId: true, supabaseUserId: true },
+      });
+      if (!user) throw new TRPCError({ code: 'NOT_FOUND', message: 'Usuario no encontrado con ese email' });
+      if (!user.supabaseUserId) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'El usuario no tiene una sesion de autenticacion activa',
+        });
+      }
+      // supabaseUserId is stored as plain String (not @db.Uuid). Validate the
+      // format before it becomes the `::uuid`-cast bind value, so a malformed
+      // record fails cleanly here instead of as a raw Postgres cast 500.
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(user.supabaseUserId)) {
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'ID de autenticacion malformado' });
+      }
+
+      // Parameterized ($executeRaw, not Unsafe) — deletes every session row for the
+      // user; their refresh tokens become unusable because the session is gone.
+      const revoked = await db.$executeRaw`DELETE FROM auth.sessions WHERE user_id = ${user.supabaseUserId}::uuid`;
+
+      await db.auditLog.create({
+        data: {
+          organizationId: user.organizationId || ctx.user.organizationId,
+          actorId: ctx.user.id,
+          action: 'sessions_revoked',
+          entity: 'user',
+          entityId: user.id,
+          metadata: { email: input.email, sessionsRevoked: revoked },
+        },
+      }).catch(() => {});
+
+      return { email: input.email, sessionsRevoked: revoked };
+    }),
+
   changeOrgUserRole: platformProcedure
     .input(z.object({
       userId: z.string().uuid(),

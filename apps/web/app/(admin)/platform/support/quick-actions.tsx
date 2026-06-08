@@ -8,6 +8,7 @@ import { useI18n } from '../../../../lib/i18n';
 export function QuickActions() {
   const { t } = useI18n();
   const [resetEmail, setResetEmail] = useState('');
+  const [logoutEmail, setLogoutEmail] = useState('');
   const [notifOrgId, setNotifOrgId] = useState('');
   const [notifTitle, setNotifTitle] = useState('');
   const [notifMessage, setNotifMessage] = useState('');
@@ -17,6 +18,11 @@ export function QuickActions() {
 
   const resetMutation = trpc.platform.resetUserPassword.useMutation({
     onSuccess: (data) => { toast(`Reset enviado a ${data.email}`, { type: 'success' }); setResetEmail(''); },
+    onError: (err) => { toast(err.message, { type: 'error' }); },
+  });
+
+  const logoutMutation = trpc.platform.forceLogoutUser.useMutation({
+    onSuccess: (data) => { toast(`${t.support.forceLogoutDone}: ${data.email}`, { type: 'success' }); setLogoutEmail(''); },
     onError: (err) => { toast(err.message, { type: 'error' }); },
   });
 
@@ -42,6 +48,18 @@ export function QuickActions() {
             </button>
           </div>
           <p className="text-[11px] text-[#ABABAB] mt-2">{t.support.resetDesc}</p>
+        </form>
+
+        {/* Force Logout — revoke all of a user's sessions */}
+        <form onSubmit={(e) => { e.preventDefault(); const em = logoutEmail.trim(); if (em && em.includes('@')) logoutMutation.mutate({ email: em }); }} className="border border-[#EDEDED] rounded-lg p-4">
+          <label className="text-xs text-[#8B8B8B] font-medium mb-2 block">{t.support.forceLogout}</label>
+          <div className="flex gap-2">
+            <input type="email" placeholder={t.support.forceLogoutPlaceholder} value={logoutEmail} onChange={(e) => setLogoutEmail(e.target.value)} className="flex-1 border border-[#EDEDED] rounded-lg px-3 py-2 text-sm placeholder:text-[#ABABAB] focus:outline-none focus:ring-1 focus:ring-[#1F114C]/20" />
+            <button type="submit" disabled={logoutMutation.isPending || !logoutEmail.trim()} className="px-3 py-2 bg-[#DD0C15] text-white rounded-lg text-sm font-medium hover:bg-[#c40b13] whitespace-nowrap disabled:opacity-50">
+              {logoutMutation.isPending ? '...' : t.support.forceLogoutBtn}
+            </button>
+          </div>
+          <p className="text-[11px] text-[#ABABAB] mt-2">{t.support.forceLogoutDesc}</p>
         </form>
 
         {/* Send Notification */}

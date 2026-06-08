@@ -593,7 +593,12 @@
     "recentEvents": "Recent Platform Events",
     "noEvents": "No recent events",
     "noEventsDesc": "Platform events will appear here",
-    "system": "System"
+    "system": "System",
+    "forceLogout": "Force Logout",
+    "forceLogoutPlaceholder": "email@organization.co",
+    "forceLogoutBtn": "Force Logout",
+    "forceLogoutDesc": "Revokes all of the user's sessions. They can sign in again.",
+    "forceLogoutDone": "Sessions revoked"
   },
   "audit": {
     "title": "Audit",

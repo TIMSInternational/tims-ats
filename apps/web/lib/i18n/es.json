@@ -593,7 +593,12 @@
     "recentEvents": "Eventos Recientes de Plataforma",
     "noEvents": "No hay eventos recientes",
     "noEventsDesc": "Los eventos de plataforma apareceran aqui",
-    "system": "Sistema"
+    "system": "Sistema",
+    "forceLogout": "Cerrar Sesiones",
+    "forceLogoutPlaceholder": "email@organizacion.co",
+    "forceLogoutBtn": "Cerrar Sesiones",
+    "forceLogoutDesc": "Revoca todas las sesiones del usuario. Podrá volver a iniciar sesión.",
+    "forceLogoutDone": "Sesiones cerradas"
   },
   "audit": {
     "title": "Auditoria",
