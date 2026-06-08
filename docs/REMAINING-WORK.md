@@ -1,7 +1,8 @@
 # Known Issues & Remaining Work
 
 > Single backlog/status reference (rule #1: docs are code — update in the SAME PR as the change).
-> Originally CLAUDE.md §9; truthed-up 2026-06-06 against the June 4–6 hardening/feature sessions (PRs #1–#41).
+> Originally CLAUDE.md §9; truthed-up 2026-06-06 (PRs #1–#41), then 2026-06-08 (PRs #43–#53 + Bedrock guardrail).
+> **`docs/PRODUCT-MAP.md` is STALE — this file is canonical for status.** Roadmap detail: the build roadmap (5-agent audit, Jun 8) tracks Waves 0–4.
 
 ## DONE (June 2026 sessions — verified, not aspirational)
 
@@ -33,13 +34,24 @@
 - [x] Vercel prod deploy + alias (tims-ats.vercel.app); Prisma serverless engine fix (PR #10)
 - [x] Agentic tooling: `/gate` `/ship` `/mobile-qa`, CLAUDE.md→`.claude/rules/` split, prettier hook, allowlist (PRs #39–#41)
 
+### June 8 session — analytics, AI agents, Wave 0 integrity, platform console 100%, guardrail
+- [x] **recruitment/analytics data-wired** — was fabricated (inline literal KPIs); now real aggregation endpoints (TTF/TTH, accept rate, funnel, sources, trend, SLA) (PR #43)
+- [x] **Interview AI agents** through the gate: interview-summarizer, interview-guide, bias-detector (PR #44)
+- [x] **Wave 0 integrity** — 5 fake-AI endpoints + fake billing usage + mock Stripe-esign stubs → honest `NOT_IMPLEMENTED`/real counts (PRs #45–#46)
+- [x] **Platform console → 100%** — real password reset, AI per-org budget editor, audit JSON export + org filter, honest health panel, GDPR/Habeas-Data subject export, REAL signed-cookie impersonation (PRs #47–#50)
+- [x] **MFA/TOTP** for platform owners + super_admins — Supabase Auth MFA, `/mfa` enroll+step-up, enforcement gate (env-flag `MFA_ENFORCED`, default off, fail-open flag/fail-closed gate) (PR #51)
+- [x] **Alert-rule evaluation backend** — Vercel cron `/api/cron/evaluate-alerts` (fail-closed `CRON_SECRET`), per-org metric engine (6 real metrics), + rule-config UI replacing "coming soon" (PR #52)
+- [x] **Session force-logout** — `platform.forceLogoutUser` revokes a user's Supabase sessions (auth.sessions delete), surfaced in support console (PR #53)
+- [x] **Bedrock Guardrail wired** — `tims-ats-pii` (us-east-2) ANONYMIZE financial/SSN-class PII (not name/email/phone — cv-parser must extract those); `BEDROCK_GUARDRAIL_ID`/`_VERSION` set in Vercel → MASK defense-in-depth ACTIVE
+- [x] Tests 103 → **141**
+
 ## Remaining — code work
 
 | Priority | Task |
 |----------|------|
-| HIGH | **recruitment/analytics is fabricated** — zero tRPC calls, inline literal KPIs/funnel/trends (rule #4 violation, visible to TIMS). Wire to real aggregation endpoints. *(IN PROGRESS 2026-06-06)* |
-| HIGH | Assessment completion interface — candidate-facing assessment UI (product map next feature) |
-| MEDIUM | Wire next AI agents through the gate (25 of 32 still stubbed — interview-summarizer, interview-guide, bias-detector wired 2026-06-06; next picks need product input). Remaining mock stubs to truth-up: pipeline `getNextBestAction`, candidate `getRecommendations` |
+| HIGH | **Wave 1 — Authenticated candidate portal** (chosen portal-first, Jun 8): passwordless magic-link/OTP candidate session + dashboard (My Applications + stage timeline, My Interviews + join link, My Offer → links to existing `/offers/sign/[token]`). Backend `portal.getMy*` exists but is `protectedProcedure` (assumes staff org-membership) → needs a candidate-session `candidateProcedure`. See `docs/WAVE-1-CANDIDATE-PORTAL.md`. |
+| HIGH | **Wave 1.5 — Assessment completion ("Player")** — PRODUCT-MAP Priority 2 / core differentiator. ENTIRE backend missing: no question/response/submit/scoring schema. Includes **full webcam proctoring** (ProctoringSession, Habeas-Data consent, review UI). Deferred after Wave 1 per Jun 8 decision. |
+| MEDIUM | Wire next AI agents through the gate (22 of 32 still stubbed; cv-parser, screener, interview-summarizer/guide/bias-detector live). Remaining mock stubs to truth-up: pipeline `getNextBestAction`, candidate `getRecommendations` |
 | MEDIUM | Surface the interview AI endpoints in the UI (generate-guide / summary / bias buttons on interview detail — backend live, no consumers yet) |
 | MEDIUM | Google Calendar OAuth for interviews (currently .ics only) |
 | MEDIUM | Real-time notifications (websocket/SSE) for pipeline updates |
@@ -50,6 +62,7 @@
 
 | Owner | Task |
 |-------|------|
+| Federico | **Activate MFA** — enroll a TOTP factor at `/mfa`, then set `MFA_ENFORCED=true` in Vercel prod to enforce 2FA for platform owners + super_admins (built but off by default so it can't lock you out) |
 | Federico | **GitHub Actions billing** — every CI job fails in seconds; fix at github.com/settings/billing (merges currently use the local `/gate`) |
 | Federico | GitHub Pro → enable branch protection on `main` (saved PUT call with 6 required checks ready) |
 | Federico | Phone re-test of mobile sweep → report findings for surgical fixes |
