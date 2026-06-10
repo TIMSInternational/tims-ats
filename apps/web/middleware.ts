@@ -10,6 +10,7 @@ const PUBLIC_PATHS = [
   '/auth/callback',
   '/auth/confirm',
   '/careers',
+  '/logout',
 ];
 
 const IS_PROD = process.env.NODE_ENV === 'production';

@@ -1,8 +1,10 @@
 import { z } from 'zod';
+import { TRPCError } from '@trpc/server';
 import { router, protectedProcedure, permissionProcedure, auditedProcedure } from '../trpc';
 import { tenantDb as db } from '@tims/db';
 import { createUserSchema, updateProfileSchema, assignRoleSchema } from '@tims/shared';
 import { invalidatePermissionCache } from '../lib/cache';
+import { resolveStaffSupabaseUserId } from '../services/staff-provisioning.service';
 
 export const userRouter = router({
   // Get current user profile
@@ -119,13 +121,41 @@ export const userRouter = router({
         throw new Error(`Rol '${roleSlug}' no encontrado`);
       }
 
+      // Reject duplicates BEFORE provisioning an auth identity. Without this, an
+      // existing org/email row (incl. a deactivated/canceled invite, whose
+      // supabaseUserId is still a sentinel) would cause resolveStaffSupabaseUserId to
+      // send a fresh Supabase invite and THEN the insert would fail on
+      // @@unique([organizationId, email]) — orphaning the auth identity + emailing a
+      // former user. tenantDb is org-scoped; the query also sees soft-deleted rows.
+      // Case-INSENSITIVE match — Supabase auth emails are case-insensitive and the
+      // resolver matches on lower(email), so an exact-case check here would let
+      // `Alice@x.com` slip past an existing `alice@x.com` row and reach provisioning.
+      const existing = await db.user.findFirst({
+        where: {
+          organizationId: ctx.user.organizationId,
+          email: { equals: userData.email, mode: 'insensitive' },
+        },
+        select: { id: true },
+      });
+      if (existing) {
+        throw new TRPCError({
+          code: 'CONFLICT',
+          message: 'Ya existe un usuario con este correo en la organizacion',
+        });
+      }
+
+      // B2 invite-time linking: create/lookup the Supabase identity NOW and stamp it
+      // on the row, so the user is linked from birth (no later email-join). Done
+      // before the tx since it's an external call.
+      const supabaseUserId = await resolveStaffSupabaseUserId(userData.email);
+
       // Create user + role assignment in transaction
       return db.$transaction(async (tx) => {
         const user = await tx.user.create({
           data: {
             ...userData,
             organizationId: ctx.user.organizationId,
-            supabaseUserId: '', // Will be set when user accepts invite
+            supabaseUserId,
           },
         });
 

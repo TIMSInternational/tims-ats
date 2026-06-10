@@ -15,23 +15,28 @@ export default async function AdminLayout({
   const supabaseUser = await getUser();
   if (!supabaseUser) redirect('/login');
 
-  // Look up app user to check platform owner status + roles (for the MFA gate).
-  const appUser = await db.user.findFirst({
-    where: {
-      OR: [
-        { supabaseUserId: supabaseUser.id },
-        { email: supabaseUser.email || '' },
-      ],
-    },
+  // Recognize the staff/owner user by LINKED Supabase id only (staff are linked at
+  // invite time — B2; no email-join). An authenticated session with no linked staff
+  // row (e.g. a candidate who navigated to /admin) is signed out via /logout, which
+  // avoids the /login → / → /dashboard redirect loop. See
+  // docs/SECURITY-staff-candidate-auth-linking.md.
+  const appUser = await db.user.findUnique({
+    where: { supabaseUserId: supabaseUser.id },
     select: {
       firstName: true,
       lastName: true,
       email: true,
       isPlatformOwner: true,
+      organizationId: true,
+      isActive: true,
       avatar: true,
       userRoles: { select: { role: { select: { slug: true } } } },
     },
   });
+  // Must be a linked, active staff identity that is org-scoped or a platform owner.
+  if (!appUser || !appUser.isActive || (!appUser.isPlatformOwner && !appUser.organizationId)) {
+    redirect('/logout');
+  }
 
   // MFA enforcement gate (opt-in via MFA_ENFORCED). Privileged roles — platform
   // owners and super_admins — must have stepped up to a verified TOTP factor

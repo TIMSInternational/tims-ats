@@ -47,7 +47,12 @@ const handler = (req: Request) =>
         return { user: null, supabaseAuth, headers: new Headers(req.headers) };
       }
 
-      // Look up the app user from supabase ID
+      // Recognize a staff/owner user by LINKED Supabase id ONLY. Staff are linked to
+      // their Supabase identity at invite time (B2 — services/staff-provisioning),
+      // so there is no email-join here: this builder runs for every session including
+      // candidate portal sessions, and an email match would let a candidate / cross-
+      // tenant email collision be promoted into staff. See
+      // docs/SECURITY-staff-candidate-auth-linking.md.
       let appUser = await db.user.findUnique({
         where: { supabaseUserId: supabaseUser.id },
         include: {
@@ -57,53 +62,9 @@ const handler = (req: Request) =>
         },
       });
 
-      // Auto-link: if no user found by supabaseUserId, try by email
-      // NOTE (codex review, Wave 1 Slice 2): this email-based staff linking is a
-      // KNOWN cross-trust-boundary weakness — it runs for every Supabase session
-      // (including candidate portal sessions) and the same pattern exists in
-      // /auth/callback and the admin layout. It is ALSO load-bearing: password-login
-      // staff (signInWithPassword, no /auth/callback) get linked here. Closing the
-      // boundary safely requires invitation/onboarding-token-based linking applied
-      // consistently across all four sites + staff-login regression tests — tracked
-      // as a dedicated security PR (see docs/REMAINING-WORK.md), NOT this slice.
-      if (!appUser && supabaseUser.email) {
-        const byEmail = await db.user.findFirst({
-          where: { email: supabaseUser.email },
-          include: {
-            userRoles: {
-              include: { role: { select: { slug: true } } },
-            },
-          },
-        });
-
-        if (byEmail) {
-          // Claim-only link: only attach this Supabase identity to a staff account
-          // that has NOT already been claimed by a DIFFERENT Supabase user. Reaching
-          // this branch means the supabaseUserId lookup above missed, so a non-null
-          // mismatching id means another identity already owns this staff account —
-          // never re-point it (prevents an email-collision hijack, e.g. a candidate
-          // magic-link session whose email happens to match a staff user). Treat as
-          // no staff identity.
-          if (byEmail.supabaseUserId && byEmail.supabaseUserId !== supabaseUser.id) {
-            return { user: null, supabaseAuth, headers: new Headers(req.headers) };
-          }
-          appUser = await db.user.update({
-            where: { id: byEmail.id },
-            data: {
-              supabaseUserId: supabaseUser.id,
-              avatar: supabaseUser.user_metadata?.avatar_url || byEmail.avatar,
-              lastLoginAt: new Date(),
-            },
-            include: {
-              userRoles: {
-                include: { role: { select: { slug: true } } },
-              },
-            },
-          });
-        }
-      }
-
-      // Auto-create platform owner accounts for allowed emails
+      // Auto-create platform owner accounts for allowed emails (allowlist-gated, so
+      // not an email-collision vector — it CREATES an owner row, never claims an
+      // existing staff row).
       if (!appUser && supabaseUser.email) {
         const isPlatformEmail = await db.platformOwnerEmail.findUnique({
           where: { email: supabaseUser.email },
@@ -133,6 +94,14 @@ const handler = (req: Request) =>
         // Authenticated Supabase session with no staff `User` = a candidate (or a
         // not-yet-provisioned account). Keep `user` null but carry supabaseAuth so
         // the candidate portal can resolve them by email.
+        return { user: null, supabaseAuth, headers: new Headers(req.headers) };
+      }
+
+      // A usable staff identity must be active AND either org-scoped or a platform
+      // owner. This rejects a deactivated account and any org-less non-owner row
+      // (e.g. a legacy candidate-account row from before invite-time linking) — such
+      // a row must never be treated as staff just because it shares the Supabase id.
+      if (!appUser.isActive || (!appUser.isPlatformOwner && !appUser.organizationId)) {
         return { user: null, supabaseAuth, headers: new Headers(req.headers) };
       }
 

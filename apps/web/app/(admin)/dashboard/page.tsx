@@ -8,16 +8,15 @@ export default async function DashboardPage() {
   const supabaseUser = await getUser();
   if (!supabaseUser) redirect('/login');
 
-  const appUser = await db.user.findFirst({
-    where: {
-      OR: [
-        { supabaseUserId: supabaseUser.id },
-        { email: supabaseUser.email || '' },
-      ],
-    },
+  // Recognize by LINKED Supabase id only (staff linked at invite time — B2). An
+  // unlinked authenticated session is signed out (non-looping; see admin layout).
+  const appUser = await db.user.findUnique({
+    where: { supabaseUserId: supabaseUser.id },
     select: {
       id: true,
       isPlatformOwner: true,
+      organizationId: true,
+      isActive: true,
       userRoles: {
         select: {
           role: { select: { slug: true } },
@@ -26,7 +25,10 @@ export default async function DashboardPage() {
     },
   });
 
-  if (!appUser) redirect('/login');
+  // Must be a linked, active staff identity that is org-scoped or a platform owner.
+  if (!appUser || !appUser.isActive || (!appUser.isPlatformOwner && !appUser.organizationId)) {
+    redirect('/logout');
+  }
 
   // Platform owner sees platform dashboard
   if (appUser.isPlatformOwner) {

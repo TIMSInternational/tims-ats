@@ -4,7 +4,11 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { RegisterForm } from './register-form';
 
-type AccountType = null | 'candidate' | 'company';
+// Candidate self-registration was removed: candidates are not staff and never get a
+// `User` row — they apply through an employer's careers link, which creates a
+// Candidate record and signs them in via a portal magic-link (see the candidate
+// portal). /register is for COMPANIES (org admins) only.
+type AccountType = null | 'company';
 
 export default function RegisterPage() {
   const [accountType, setAccountType] = useState<AccountType>(null);
@@ -19,25 +23,10 @@ export default function RegisterPage() {
         </div>
 
         <div className="bg-white rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.08)] p-8">
-          <h2 className="text-lg font-semibold text-[#1F114C] mb-1">Crear Cuenta</h2>
-          <p className="text-[13px] text-[#8B8B8B] mb-8">Selecciona el tipo de cuenta que deseas crear</p>
+          <h2 className="text-lg font-semibold text-[#1F114C] mb-1">Crear Cuenta de Empresa</h2>
+          <p className="text-[13px] text-[#8B8B8B] mb-8">Registra tu organizacion para gestionar tu talento humano</p>
 
-          <div className="grid grid-cols-2 gap-4">
-            <button
-              onClick={() => setAccountType('candidate')}
-              className="group flex flex-col items-center gap-3 p-6 rounded-xl border-2 border-[#EDEDED] hover:border-[#1F114C] hover:bg-[#1F114C]/[0.02] transition-all text-center"
-            >
-              <div className="w-14 h-14 rounded-2xl bg-blue-50 flex items-center justify-center group-hover:bg-blue-100 transition-colors">
-                <svg className="w-7 h-7 text-blue-600" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-                  <path d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
-                </svg>
-              </div>
-              <div>
-                <p className="text-[14px] font-semibold text-[#1F114C]">Soy Candidato</p>
-                <p className="text-[11px] text-[#8B8B8B] mt-1">Busco oportunidades laborales y quiero aplicar a vacantes</p>
-              </div>
-            </button>
-
+          <div className="grid grid-cols-1 gap-4">
             <button
               onClick={() => setAccountType('company')}
               className="group flex flex-col items-center gap-3 p-6 rounded-xl border-2 border-[#EDEDED] hover:border-[#1F114C] hover:bg-[#1F114C]/[0.02] transition-all text-center"
@@ -55,6 +44,9 @@ export default function RegisterPage() {
           </div>
 
           <p className="text-center text-[12px] text-[#8B8B8B] mt-6">
+            Eres candidato? Postula directamente desde el enlace de empleos de la empresa.
+          </p>
+          <p className="text-center text-[12px] text-[#8B8B8B] mt-2">
             Ya tienes cuenta?{' '}
             <Link href="/login" className="text-[#DD0C15] font-medium hover:underline">
               Iniciar Sesion

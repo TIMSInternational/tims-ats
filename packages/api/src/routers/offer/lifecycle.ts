@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { router, permissionProcedure } from '../../trpc';
 import { tenantDb as db } from '@tims/db';
 import { TRPCError } from '@trpc/server';
+import { resolveStaffSupabaseUserId } from '../../services/staff-provisioning.service';
 
 export const offerLifecycleRouter = router({
   // NOTE: offer send + e-signature live in offer/signing.ts — the REAL flow
@@ -44,11 +45,13 @@ export const offerLifecycleRouter = router({
 
       const candidate = offer.candidate;
 
-      // Check if a user with this email already exists in the org
+      // Check if a user with this email already exists in the org (case-insensitive —
+      // matches the resolver's lower(email) auth lookup; avoids a fresh invite +
+      // duplicate when only the case differs).
       const existingUser = await db.user.findFirst({
         where: {
           organizationId: ctx.user.organizationId,
-          email: candidate.email,
+          email: { equals: candidate.email, mode: 'insensitive' },
         },
       });
 
@@ -59,12 +62,17 @@ export const offerLifecycleRouter = router({
         });
       }
 
+      // B2 invite-time linking: stamp the real Supabase identity now (reuses the
+      // candidate's existing auth user if they applied via the portal). External
+      // call, so it runs before the tx.
+      const supabaseUserId = await resolveStaffSupabaseUserId(candidate.email);
+
       return db.$transaction(async (tx) => {
-        // Create the user record (supabaseUserId will be set when they first log in)
+        // Create the user record, linked to its Supabase identity from birth.
         const newUser = await tx.user.create({
           data: {
             organizationId: ctx.user.organizationId,
-            supabaseUserId: `pending-${candidate.id}`,
+            supabaseUserId,
             email: candidate.email,
             firstName: candidate.firstName,
             lastName: candidate.lastName,

@@ -39,32 +39,15 @@ export async function GET(request: Request) {
     return NextResponse.redirect(`${origin}${portalNext}`);
   }
 
-  // Check if user already exists
+  // Recognize an existing staff/owner user by LINKED Supabase id only — staff are
+  // linked at invite time (B2), so there is no email-join here. An invited staff
+  // member arriving via the Supabase invite email already carries their linked id.
   const existingUser = await db.user.findFirst({
-    where: {
-      OR: [
-        { supabaseUserId: supabaseUser.id },
-        { email: supabaseUser.email },
-      ],
-    },
+    where: { supabaseUserId: supabaseUser.id },
+    select: { id: true },
   });
 
   if (existingUser) {
-    // Link supabase ID if not already linked
-    if (existingUser.supabaseUserId !== supabaseUser.id) {
-      await db.user.update({
-        where: { id: existingUser.id },
-        data: {
-          supabaseUserId: supabaseUser.id,
-          avatar: supabaseUser.user_metadata?.avatar_url || existingUser.avatar,
-          lastLoginAt: new Date(),
-        },
-      });
-    }
-
-    if (existingUser.isPlatformOwner) {
-      return NextResponse.redirect(`${origin}/dashboard`);
-    }
     return NextResponse.redirect(`${origin}/dashboard`);
   }
 
@@ -84,8 +67,10 @@ export async function GET(request: Request) {
     return NextResponse.redirect(`${origin}/dashboard`);
   }
 
-  // New user — company sign-up (create org + admin)
-  if (accountType === 'company') {
+  // New user — company sign-up (create org + admin). The account type may arrive as
+  // a query param (OAuth redirect) OR only in user_metadata (email/password signUp),
+  // so check both — otherwise a password company signup falls through.
+  if (accountType === 'company' || supabaseUser.user_metadata?.account_type === 'company') {
     const companyName = supabaseUser.user_metadata?.company_name || `${supabaseUser.email.split('@')[1].split('.')[0]} Org`;
     const slug = companyName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
@@ -140,18 +125,10 @@ export async function GET(request: Request) {
     return NextResponse.redirect(`${origin}/dashboard`);
   }
 
-  // New user — candidate sign-up (no org, just user record)
-  await db.user.create({
-    data: {
-      supabaseUserId: supabaseUser.id,
-      email: supabaseUser.email,
-      firstName: supabaseUser.user_metadata?.full_name?.split(' ')[0] || supabaseUser.user_metadata?.name?.split(' ')[0] || 'Candidato',
-      lastName: supabaseUser.user_metadata?.full_name?.split(' ').slice(1).join(' ') || supabaseUser.user_metadata?.name?.split(' ').slice(1).join(' ') || '',
-      avatar: supabaseUser.user_metadata?.avatar_url,
-      lastLoginAt: new Date(),
-    },
-  });
-
-  // TODO: redirect candidates to portal instead of dashboard
-  return NextResponse.redirect(`${origin}/dashboard`);
+  // Not a staff/owner/company session and no linked row. Candidates do NOT get a
+  // `users` row — they use the careers portal magic-link, which resolves identity by
+  // email against Candidate records (candidateProcedure). Creating a `users` row here
+  // would, under id-only recognition, mint an org-less "staff" identity. Clear the
+  // dangling session instead. (Replaces the legacy candidate-account creation.)
+  return NextResponse.redirect(`${origin}/logout`);
 }
