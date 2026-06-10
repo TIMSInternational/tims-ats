@@ -1953,6 +1953,17 @@
     "intLocation": "Location",
     "intStatusScheduled": "Scheduled",
     "intStatusConfirmed": "Confirmed",
-    "intStatusRescheduled": "Rescheduled"
+    "intStatusRescheduled": "Rescheduled",
+    "offerLoading": "Loading your offer…",
+    "offerError": "We couldn't load your offer.",
+    "offerEmpty": "You don't have any offers yet.",
+    "offerSalary": "Salary",
+    "offerStartDate": "Start date",
+    "offerContract": "Contract type",
+    "offerExpiresOn": "Expires on",
+    "offerReviewSign": "Review & sign",
+    "offerStatusSent": "Awaiting your response",
+    "offerStatusAccepted": "Accepted",
+    "offerStatusDeclined": "Declined"
   }
 }

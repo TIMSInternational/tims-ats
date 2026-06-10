@@ -92,6 +92,33 @@ export const candidatePortalRepo = {
     });
   },
 
+  // A candidate's offers that have actually been extended to them — status in the
+  // candidate-facing set ('sent'/'accepted'/'declined'); internal pre-send states
+  // (draft/pending_approval/approved) are never surfaced. Scoped to BOTH candidate
+  // and org. `settings` is selected only so the service can extract the signing
+  // token for the /offers/sign/[token] deep-link; it is NOT returned to the client.
+  findOffers(organizationId: string, candidateId: string) {
+    return tenantDb.offer.findMany({
+      where: {
+        candidateId,
+        organizationId,
+        status: { in: ['sent', 'accepted', 'declined'] },
+      },
+      select: {
+        id: true,
+        status: true,
+        salary: true,
+        currency: true,
+        startDate: true,
+        contractType: true,
+        expiresAt: true,
+        settings: true,
+        vacancy: { select: { title: true, company: { select: { name: true } } } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  },
+
   // A single application's stage timeline. CRITICAL: scoped by candidateId as well
   // as organizationId — org-only scoping would let a candidate read another
   // candidate's application by guessing its id (IDOR).

@@ -7,6 +7,17 @@ import { candidatePortalRepo } from '../repositories/candidate-portal.repository
 // client-supplied identifier. Every candidate read runs inside runWithTenant so the
 // tenantDb RLS GUC is set for the resolved org.
 
+// Lift the signing token out of an offer's `settings` JSON (set by staff when they
+// generate the signing link). Returns null when absent — the offer just isn't
+// signable yet. Narrowed defensively; never trusts the JSON shape.
+function extractSigningToken(settings: unknown): string | null {
+  if (settings && typeof settings === 'object' && !Array.isArray(settings)) {
+    const token = (settings as Record<string, unknown>).signingToken;
+    if (typeof token === 'string' && token.length > 0) return token;
+  }
+  return null;
+}
+
 // Resolve and validate the org from its careers slug. Throws NOT_FOUND for missing
 // or deactivated orgs (don't leak existence of inactive tenants).
 async function resolveOrg(orgSlug: string) {
@@ -46,6 +57,32 @@ export const candidatePortalService = {
       const candidate = await candidatePortalRepo.findActiveCandidate(org.id, email);
       if (!candidate) return [];
       return candidatePortalRepo.findInterviews(org.id, candidate.id);
+    });
+  },
+
+  // The candidate's offers at one org. Maps each row to a safe DTO: the signing
+  // token is lifted out of Offer.settings (for the /offers/sign/[token] deep-link)
+  // and the raw settings JSON is dropped from the response. Empty list if no
+  // candidate matches this session.
+  async getMyOffers(email: string, orgSlug: string) {
+    const org = await resolveOrg(orgSlug);
+    return runWithTenant(org.id, async () => {
+      const candidate = await candidatePortalRepo.findActiveCandidate(org.id, email);
+      if (!candidate) return [];
+      const offers = await candidatePortalRepo.findOffers(org.id, candidate.id);
+      const now = Date.now();
+      return offers.map(({ settings, ...offer }) => {
+        // Only surface the public-by-token signing link for an offer that is still
+        // SIGNABLE (status 'sent', not past its expiry). For accepted/declined/
+        // expired offers the token is withheld (null) — no point handing the
+        // browser a reusable bearer URL for a historical offer (codex review).
+        const signable =
+          offer.status === 'sent' && (!offer.expiresAt || offer.expiresAt.getTime() > now);
+        return {
+          ...offer,
+          signingToken: signable ? extractSigningToken(settings) : null,
+        };
+      });
     });
   },
 

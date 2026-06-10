@@ -290,35 +290,8 @@ export const portalRouter = router({
   // My Interviews moved to candidatePortal.myInterviews (Wave 1 Slice 3) — same
   // candidateProcedure pattern as My Applications. (Slice 4 migrates getMyOffer.)
 
-  // Get my offer
-  getMyOffer: protectedProcedure
-    .input(z.object({ offerId: z.string().uuid() }))
-    .query(async ({ ctx, input }) => {
-      const candidate = await db.candidate.findFirst({
-        where: { organizationId: ctx.user.organizationId, email: ctx.user.email },
-      });
-      if (!candidate) return null;
-
-      return db.offer.findFirst({
-        where: {
-          id: input.offerId,
-          candidateId: candidate.id,
-          organizationId: ctx.user.organizationId,
-        },
-        select: {
-          id: true,
-          status: true,
-          salary: true,
-          currency: true,
-          startDate: true,
-          contractType: true,
-          benefits: true,
-          terms: true,
-          expiresAt: true,
-          vacancy: { select: { title: true, company: { select: { name: true } } } },
-        },
-      });
-    }),
+  // My Offer moved to candidatePortal.myOffers (Wave 1 Slice 4) — candidateProcedure
+  // pattern; acceptance reuses the public /offers/sign/[token] flow.
 
   // Accept offer
   acceptOffer: protectedProcedure

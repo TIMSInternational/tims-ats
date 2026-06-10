@@ -1953,6 +1953,17 @@
     "intLocation": "Ubicación",
     "intStatusScheduled": "Programada",
     "intStatusConfirmed": "Confirmada",
-    "intStatusRescheduled": "Reprogramada"
+    "intStatusRescheduled": "Reprogramada",
+    "offerLoading": "Cargando tu oferta…",
+    "offerError": "No se pudo cargar tu oferta.",
+    "offerEmpty": "Aún no tienes ofertas.",
+    "offerSalary": "Salario",
+    "offerStartDate": "Fecha de inicio",
+    "offerContract": "Tipo de contrato",
+    "offerExpiresOn": "Vence el",
+    "offerReviewSign": "Revisar y firmar",
+    "offerStatusSent": "Pendiente de respuesta",
+    "offerStatusAccepted": "Aceptada",
+    "offerStatusDeclined": "Rechazada"
   }
 }

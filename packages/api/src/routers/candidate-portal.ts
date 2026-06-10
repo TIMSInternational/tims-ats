@@ -16,6 +16,15 @@ export const candidatePortalRouter = router({
       candidatePortalService.getMyApplications(ctx.supabaseAuth.email, input.orgSlug),
     ),
 
+  // The signed-in candidate's offers at this org. Each carries a signingToken (or
+  // null) for the /offers/sign/[token] deep-link — acceptance reuses that existing
+  // public flow rather than an in-portal accept.
+  myOffers: candidateProcedure
+    .input(z.object({ orgSlug }))
+    .query(({ ctx, input }) =>
+      candidatePortalService.getMyOffers(ctx.supabaseAuth.email, input.orgSlug),
+    ),
+
   // The signed-in candidate's upcoming interviews at this org (soonest first).
   myInterviews: candidateProcedure
     .input(z.object({ orgSlug }))

@@ -119,6 +119,29 @@ describe('candidate-portal repository — scoping', () => {
   it('uses explicit select/include (no unbounded record exposure)', () => {
     expect(REPO).toMatch(/select:|include:/);
   });
+
+  it('scopes offer reads by candidateId AND organizationId (Slice 4)', () => {
+    expect(REPO).toMatch(/offer\.findMany\(\{\s*where:\s*\{[^}]*candidateId[^}]*organizationId/s);
+    // Only candidate-facing statuses (never draft / internal approval states).
+    expect(REPO).toMatch(/status:\s*\{\s*in:\s*\[[^\]]*'sent'/s);
+    expect(REPO).not.toMatch(/'draft'/);
+  });
+});
+
+describe('candidate-portal offer service — safe DTO (Slice 4)', () => {
+  it('extracts the signing token server-side and does not leak raw settings', () => {
+    // The deep-link to /offers/sign/[token] needs the token from Offer.settings, but
+    // the service must map to a DTO — never return the raw settings JSON blob.
+    expect(SERVICE).toContain('signingToken');
+    expect(SERVICE).not.toMatch(/settings:\s*offer\.settings/);
+  });
+
+  it('only surfaces the signing token for a signable (sent, not expired) offer (codex)', () => {
+    // Accepted/declined/expired offers must NOT carry a reusable public-by-token
+    // signing URL in the payload.
+    expect(SERVICE).toMatch(/status === 'sent'/);
+    expect(SERVICE).toMatch(/signable\s*\?\s*extractSigningToken/);
+  });
 });
 
 describe('portal /me SSR gate — no privileged candidate read', () => {

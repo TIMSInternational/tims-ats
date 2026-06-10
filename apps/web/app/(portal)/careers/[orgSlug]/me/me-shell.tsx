@@ -6,11 +6,11 @@ import { createSupabaseBrowserClient } from '@tims/auth/client';
 import { useI18n } from '../../../../../lib/i18n';
 import { MeApplications } from './me-applications';
 import { MeInterviews } from './me-interviews';
+import { MeOffer } from './me-offer';
 
-// Candidate dashboard shell. Renders the authenticated frame; My Applications
-// (Slice 2) + My Interviews (Slice 3) are live, My Offer remains a placeholder
-// (Slice 4). If the signed-in email has no Candidate at this org, shows an empty
-// state instead.
+// Candidate dashboard shell. Renders the authenticated frame with the full Wave 1
+// dashboard: My Applications (Slice 2), My Interviews (Slice 3), My Offer (Slice 4).
+// If the signed-in email has no Candidate at this org, shows an empty state instead.
 export function PortalMeShell({
   orgSlug,
   orgName,
@@ -57,10 +57,7 @@ export function PortalMeShell({
           <div className="mt-6 space-y-4">
             <MeApplications orgSlug={orgSlug} />
             <MeInterviews orgSlug={orgSlug} />
-            <section className="bg-white rounded-2xl border border-[#EDEDED] p-5">
-              <h2 className="text-[14px] font-semibold text-[#1F114C] mb-2">{t.portalMe.offer}</h2>
-              <p className="text-[12px] text-[#8B8B8B]">{t.portalMe.sectionSoon}</p>
-            </section>
+            <MeOffer orgSlug={orgSlug} />
           </div>
         ) : (
           <div className="bg-white rounded-2xl border border-[#EDEDED] p-8 text-center mt-4">
