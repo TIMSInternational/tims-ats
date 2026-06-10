@@ -2,8 +2,16 @@ import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { router, permissionProcedure } from '../trpc';
 import { tenantDb as db } from '@tims/db';
+import { CHECKOUT_PLANS } from '../lib/stripe';
+import { billingService } from '../services/billing.service';
 
 export const billingRouter = router({
+  // Whether Stripe self-serve billing is configured for this deploy. The UI uses
+  // this to show/hide Upgrade/Manage — config presence IS the gate (no flag).
+  getBillingConfig: permissionProcedure('billing', 'read').query(() => ({
+    configured: billingService.isConfigured(),
+  })),
+
   // Get current subscription / plan
   getCurrentPlan: permissionProcedure('billing', 'read').query(async ({ ctx }) => {
     return db.subscription.findUnique({
@@ -75,19 +83,15 @@ export const billingRouter = router({
       });
     }),
 
-  // Stripe self-serve billing (checkout / customer portal / cancel) is NOT
-  // wired yet — Wave 2. These throw NOT_IMPLEMENTED rather than returning a
-  // fake checkout.stripe.com URL or flipping cancelledAt locally without
-  // telling Stripe (which would let a customer believe they cancelled while
-  // Stripe keeps billing) — rule #4. All three are currently unconsumed.
+  // Stripe Checkout (subscription create) for a self-serve plan. Returns a hosted
+  // checkout URL for the FE to redirect to. Fails closed when Stripe is not
+  // configured (rule #4 — never a fabricated checkout.stripe.com URL). Customer
+  // portal + cancel arrive in Slice 3.
   createCheckoutSession: permissionProcedure('billing', 'update')
-    .input(z.object({ plan: z.enum(['starter', 'professional', 'enterprise']) }))
-    .mutation(() => {
-      throw new TRPCError({
-        code: 'NOT_IMPLEMENTED',
-        message: 'El pago con Stripe aun no esta disponible.',
-      });
-    }),
+    .input(z.object({ plan: z.enum(CHECKOUT_PLANS) }))
+    .mutation(({ ctx, input }) =>
+      billingService.createCheckoutSession(ctx.user.organizationId, input.plan)
+    ),
 
   createPortalSession: permissionProcedure('billing', 'update').mutation(() => {
     throw new TRPCError({

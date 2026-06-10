@@ -1,6 +1,11 @@
 import 'server-only';
 import { z } from 'zod';
 
+// Optional secret that treats an empty string (a common Vercel / .env placeholder)
+// the same as absent — so an unset-but-present-empty var never fails validation.
+const optionalSecret = () =>
+  z.preprocess((v) => (v === '' ? undefined : v), z.string().min(1).optional());
+
 const envSchema = z.object({
   // Supabase
   NEXT_PUBLIC_SUPABASE_URL: z.string().url(),
@@ -28,6 +33,15 @@ const envSchema = z.object({
   // when both keys are set)
   NEXT_PUBLIC_TURNSTILE_SITE_KEY: z.string().min(1).optional(),
   TURNSTILE_SECRET_KEY: z.string().min(1).optional(),
+
+  // Stripe billing (Wave 2 — optional; tenant billing is "configured" only when
+  // the secret key AND both self-serve price ids are present, else endpoints fail
+  // closed and the UI hides Upgrade/Manage). Built/verified in test mode; live keys
+  // are a deploy handoff. STRIPE_WEBHOOK_SECRET arrives with the webhook (Slice 2).
+  // Empty string (a common Vercel/.env placeholder) is coerced to "absent".
+  STRIPE_SECRET_KEY: optionalSecret(),
+  STRIPE_PRICE_STARTER: optionalSecret(),
+  STRIPE_PRICE_PROFESSIONAL: optionalSecret(),
 
   // Vercel Cron shared secret. The alert-evaluation cron route requires
   // `Authorization: Bearer <CRON_SECRET>`; unset ⇒ the route 401s (fail-closed).

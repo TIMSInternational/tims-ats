@@ -37,6 +37,7 @@ function useNavSections() {
       { href: '/monitoring', label: t.sidebar.monitoring, icon: 'monitor' },
     ]},
     { label: null, items: [
+      { href: '/settings/billing', label: t.sidebar.billing, icon: 'dollar' },
       { href: '/settings/integrations', label: t.sidebar.integrations, icon: 'settings' },
     ]},
   ];

@@ -48,6 +48,7 @@
     "compensation": "Compensacion",
     "monitoring": "Monitoreo",
     "integrations": "Integraciones",
+    "billing": "Facturacion",
     "commandCenter": "Command Center"
   },
   "platformSidebar": {
@@ -1965,5 +1966,40 @@
     "offerStatusSent": "Pendiente de respuesta",
     "offerStatusAccepted": "Aceptada",
     "offerStatusDeclined": "Rechazada"
+  },
+  "billing": {
+    "breadcrumbParent": "Configuracion",
+    "title": "Facturacion",
+    "currentPlanTitle": "Plan actual",
+    "status": "Estado",
+    "renewsOn": "Se renueva el",
+    "statusTrialing": "En prueba",
+    "statusActive": "Activa",
+    "statusPastDue": "Pago vencido",
+    "statusCancelled": "Cancelada",
+    "planTrial": "Prueba",
+    "planStarter": "Starter",
+    "planProfessional": "Professional",
+    "planEnterprise": "Enterprise",
+    "usageTitle": "Uso",
+    "usageEmployees": "Usuarios activos",
+    "usageVacancies": "Vacantes abiertas",
+    "usageAssessments": "Evaluaciones",
+    "noLimit": "Sin limite",
+    "choosePlanTitle": "Planes",
+    "choosePlanSubtitle": "Elige un plan para tu organizacion.",
+    "starterDesc": "Para equipos pequenos que empiezan a contratar.",
+    "professionalDesc": "Para equipos en crecimiento con mayor volumen.",
+    "enterpriseTitle": "Enterprise",
+    "enterpriseDesc": "Precio y limites a la medida de tu organizacion.",
+    "contactSales": "Contactar ventas",
+    "currentBadge": "Plan actual",
+    "upgrade": "Actualizar",
+    "redirecting": "Redirigiendo a Stripe...",
+    "notConfiguredTitle": "Facturacion no disponible",
+    "notConfiguredDesc": "El pago con Stripe aun no esta configurado para esta cuenta.",
+    "checkoutSuccess": "Pago iniciado. Tu plan se actualizara en breve.",
+    "checkoutCancelled": "Pago cancelado.",
+    "checkoutError": "No se pudo iniciar el pago. Intenta de nuevo."
   }
 }

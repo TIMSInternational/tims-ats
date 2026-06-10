@@ -48,6 +48,7 @@
     "compensation": "Compensation",
     "monitoring": "Monitoring",
     "integrations": "Integrations",
+    "billing": "Billing",
     "commandCenter": "Command Center"
   },
   "platformSidebar": {
@@ -1965,5 +1966,40 @@
     "offerStatusSent": "Awaiting your response",
     "offerStatusAccepted": "Accepted",
     "offerStatusDeclined": "Declined"
+  },
+  "billing": {
+    "breadcrumbParent": "Settings",
+    "title": "Billing",
+    "currentPlanTitle": "Current plan",
+    "status": "Status",
+    "renewsOn": "Renews on",
+    "statusTrialing": "Trialing",
+    "statusActive": "Active",
+    "statusPastDue": "Past due",
+    "statusCancelled": "Cancelled",
+    "planTrial": "Trial",
+    "planStarter": "Starter",
+    "planProfessional": "Professional",
+    "planEnterprise": "Enterprise",
+    "usageTitle": "Usage",
+    "usageEmployees": "Active users",
+    "usageVacancies": "Open vacancies",
+    "usageAssessments": "Assessments",
+    "noLimit": "No limit",
+    "choosePlanTitle": "Plans",
+    "choosePlanSubtitle": "Choose a plan for your organization.",
+    "starterDesc": "For small teams getting started with hiring.",
+    "professionalDesc": "For growing teams with higher volume.",
+    "enterpriseTitle": "Enterprise",
+    "enterpriseDesc": "Custom pricing and limits for your organization.",
+    "contactSales": "Contact sales",
+    "currentBadge": "Current plan",
+    "upgrade": "Upgrade",
+    "redirecting": "Redirecting to Stripe...",
+    "notConfiguredTitle": "Billing unavailable",
+    "notConfiguredDesc": "Stripe payments are not configured for this account yet.",
+    "checkoutSuccess": "Checkout started. Your plan will update shortly.",
+    "checkoutCancelled": "Checkout cancelled.",
+    "checkoutError": "Could not start checkout. Please try again."
   }
 }
