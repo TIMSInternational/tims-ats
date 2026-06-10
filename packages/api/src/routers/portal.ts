@@ -287,31 +287,8 @@ export const portalRouter = router({
     }),
 
   // Get my interviews
-  getMyInterviews: protectedProcedure.query(async ({ ctx }) => {
-    const candidate = await db.candidate.findFirst({
-      where: { organizationId: ctx.user.organizationId, email: ctx.user.email },
-    });
-    if (!candidate) return [];
-
-    return db.interview.findMany({
-      where: {
-        candidateId: candidate.id,
-        organizationId: ctx.user.organizationId,
-        status: { in: ['scheduled', 'confirmed'] },
-      },
-      select: {
-        id: true,
-        type: true,
-        status: true,
-        scheduledAt: true,
-        duration: true,
-        location: true,
-        meetingUrl: true,
-        vacancy: { select: { title: true } },
-      },
-      orderBy: { scheduledAt: 'asc' },
-    });
-  }),
+  // My Interviews moved to candidatePortal.myInterviews (Wave 1 Slice 3) — same
+  // candidateProcedure pattern as My Applications. (Slice 4 migrates getMyOffer.)
 
   // Get my offer
   getMyOffer: protectedProcedure

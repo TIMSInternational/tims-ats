@@ -16,6 +16,13 @@ export const candidatePortalRouter = router({
       candidatePortalService.getMyApplications(ctx.supabaseAuth.email, input.orgSlug),
     ),
 
+  // The signed-in candidate's upcoming interviews at this org (soonest first).
+  myInterviews: candidateProcedure
+    .input(z.object({ orgSlug }))
+    .query(({ ctx, input }) =>
+      candidatePortalService.getMyInterviews(ctx.supabaseAuth.email, input.orgSlug),
+    ),
+
   // The stage timeline for one of the candidate's own applications.
   applicationStatus: candidateProcedure
     .input(z.object({ orgSlug, applicationId: z.string().uuid() }))

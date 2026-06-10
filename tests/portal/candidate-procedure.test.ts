@@ -97,6 +97,25 @@ describe('candidate-portal repository — scoping', () => {
     expect(REPO).toMatch(/findFirst\(\{\s*where:\s*\{[^}]*candidateId/s);
   });
 
+  it('scopes interview reads by candidateId AND organizationId (Slice 3)', () => {
+    // The interviews query must carry both filters, like applications — never just
+    // org. Only upcoming statuses are surfaced to the candidate.
+    expect(REPO).toMatch(/interview\.findMany\(\{\s*where:\s*\{[^}]*candidateId[^}]*organizationId/s);
+    expect(REPO).toMatch(/status:\s*\{\s*in:/);
+  });
+
+  it('keeps rescheduled interviews visible (codex) — matches the real lifecycle', () => {
+    // Reschedule writes status 'rescheduled'; a rescheduled interview is still live
+    // and must stay on the dashboard so the candidate sees the new time + link.
+    expect(REPO).toMatch(/status:\s*\{\s*in:\s*\[[^\]]*'rescheduled'/s);
+  });
+
+  it('bounds interviews by scheduledAt so past rows stop exposing join links (codex)', () => {
+    // No time bound would keep rendering a stale Join button (meeting-URL exposure)
+    // for past appointments.
+    expect(REPO).toMatch(/scheduledAt:\s*\{\s*gte:/);
+  });
+
   it('uses explicit select/include (no unbounded record exposure)', () => {
     expect(REPO).toMatch(/select:|include:/);
   });

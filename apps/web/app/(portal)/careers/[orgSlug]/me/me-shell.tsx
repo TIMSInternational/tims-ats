@@ -5,10 +5,12 @@ import Link from 'next/link';
 import { createSupabaseBrowserClient } from '@tims/auth/client';
 import { useI18n } from '../../../../../lib/i18n';
 import { MeApplications } from './me-applications';
+import { MeInterviews } from './me-interviews';
 
-// Candidate dashboard shell. Renders the authenticated frame; My Applications is
-// live (Slice 2), interviews + offer remain placeholders (Slices 3–4). If the
-// signed-in email has no Candidate at this org, shows an empty state instead.
+// Candidate dashboard shell. Renders the authenticated frame; My Applications
+// (Slice 2) + My Interviews (Slice 3) are live, My Offer remains a placeholder
+// (Slice 4). If the signed-in email has no Candidate at this org, shows an empty
+// state instead.
 export function PortalMeShell({
   orgSlug,
   orgName,
@@ -54,14 +56,11 @@ export function PortalMeShell({
         {hasCandidate ? (
           <div className="mt-6 space-y-4">
             <MeApplications orgSlug={orgSlug} />
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {[t.portalMe.interviews, t.portalMe.offer].map((label) => (
-                <section key={label} className="bg-white rounded-2xl border border-[#EDEDED] p-5">
-                  <h2 className="text-[14px] font-semibold text-[#1F114C] mb-2">{label}</h2>
-                  <p className="text-[12px] text-[#8B8B8B]">{t.portalMe.sectionSoon}</p>
-                </section>
-              ))}
-            </div>
+            <MeInterviews orgSlug={orgSlug} />
+            <section className="bg-white rounded-2xl border border-[#EDEDED] p-5">
+              <h2 className="text-[14px] font-semibold text-[#1F114C] mb-2">{t.portalMe.offer}</h2>
+              <p className="text-[12px] text-[#8B8B8B]">{t.portalMe.sectionSoon}</p>
+            </section>
           </div>
         ) : (
           <div className="bg-white rounded-2xl border border-[#EDEDED] p-8 text-center mt-4">

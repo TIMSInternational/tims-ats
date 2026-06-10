@@ -1944,6 +1944,15 @@
     "statusActive": "In progress",
     "statusRejected": "Rejected",
     "statusHired": "Hired",
-    "statusWithdrawn": "Withdrawn"
+    "statusWithdrawn": "Withdrawn",
+    "intLoading": "Loading your interviews…",
+    "intError": "We couldn't load your interviews.",
+    "intEmpty": "You have no scheduled interviews.",
+    "intJoin": "Join",
+    "intMinutes": "min",
+    "intLocation": "Location",
+    "intStatusScheduled": "Scheduled",
+    "intStatusConfirmed": "Confirmed",
+    "intStatusRescheduled": "Rescheduled"
   }
 }

@@ -1,5 +1,10 @@
 import { db, tenantDb } from '@tims/db';
 
+// How long after its scheduled start an interview stays in the candidate's upcoming
+// list (so an in-progress meeting remains joinable). Past this, it drops off and the
+// join link is no longer exposed.
+const INTERVIEW_JOIN_GRACE_MS = 2 * 60 * 60 * 1000; // 2 hours
+
 // Data access for the authenticated candidate portal. Org-by-slug uses the
 // privileged `db` (the org must be resolvable BEFORE a tenant context exists, and
 // the careers site already exposes orgs by slug). Everything candidate-scoped goes
@@ -47,6 +52,43 @@ export const candidatePortalRepo = {
         currentStage: { select: { id: true, name: true } },
       },
       orderBy: { appliedAt: 'desc' },
+    });
+  },
+
+  // A candidate's UPCOMING interviews, soonest first. Scoped to BOTH candidate and
+  // org. Includes meetingUrl for the join link — rendered safely on the client
+  // (https-only guard).
+  //
+  // Status set matches the interview lifecycle that actually WRITES rows: create →
+  // 'scheduled', reschedule → 'rescheduled' (a rescheduled interview is still live
+  // and MUST stay visible — that's exactly when the candidate needs the new time +
+  // link). 'confirmed' is kept defensively though no path writes it today;
+  // 'cancelled'/'completed' are deliberately excluded.
+  //
+  // Time bound: only interviews whose start is within a grace window of now or in
+  // the future. Without it, a past 'scheduled' row would keep rendering a stale Join
+  // button (needless exposure of a meeting-room URL after the appointment). The
+  // grace keeps an in-progress interview joinable.
+  findInterviews(organizationId: string, candidateId: string) {
+    const cutoff = new Date(Date.now() - INTERVIEW_JOIN_GRACE_MS);
+    return tenantDb.interview.findMany({
+      where: {
+        candidateId,
+        organizationId,
+        status: { in: ['scheduled', 'confirmed', 'rescheduled'] },
+        scheduledAt: { gte: cutoff },
+      },
+      select: {
+        id: true,
+        type: true,
+        status: true,
+        scheduledAt: true,
+        duration: true,
+        location: true,
+        meetingUrl: true,
+        vacancy: { select: { title: true } },
+      },
+      orderBy: { scheduledAt: 'asc' },
     });
   },
 

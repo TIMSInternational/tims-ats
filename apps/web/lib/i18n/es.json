@@ -1944,6 +1944,15 @@
     "statusActive": "En proceso",
     "statusRejected": "Rechazada",
     "statusHired": "Contratada",
-    "statusWithdrawn": "Retirada"
+    "statusWithdrawn": "Retirada",
+    "intLoading": "Cargando tus entrevistas…",
+    "intError": "No se pudieron cargar tus entrevistas.",
+    "intEmpty": "No tienes entrevistas programadas.",
+    "intJoin": "Unirse",
+    "intMinutes": "min",
+    "intLocation": "Ubicación",
+    "intStatusScheduled": "Programada",
+    "intStatusConfirmed": "Confirmada",
+    "intStatusRescheduled": "Reprogramada"
   }
 }

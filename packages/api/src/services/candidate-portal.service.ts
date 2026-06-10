@@ -38,6 +38,17 @@ export const candidatePortalService = {
     });
   },
 
+  // The candidate's upcoming interviews at one org. Like applications, an
+  // authenticated email with no Candidate record here is a valid empty state.
+  async getMyInterviews(email: string, orgSlug: string) {
+    const org = await resolveOrg(orgSlug);
+    return runWithTenant(org.id, async () => {
+      const candidate = await candidatePortalRepo.findActiveCandidate(org.id, email);
+      if (!candidate) return [];
+      return candidatePortalRepo.findInterviews(org.id, candidate.id);
+    });
+  },
+
   // One application's stage timeline. Requires both a candidate for this session and
   // that the application belongs to them — otherwise NOT_FOUND (never reveal that an
   // id exists under another candidate).
