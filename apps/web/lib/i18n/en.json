@@ -1929,6 +1929,21 @@
     "sectionSoon": "This information will appear here soon.",
     "noCandidateTitle": "No applications",
     "noCandidateDesc": "We found no applications associated with this email at this company.",
-    "backToJobs": "View jobs"
+    "backToJobs": "View jobs",
+    "listLoading": "Loading your applications…",
+    "listError": "We couldn't load your applications.",
+    "listEmpty": "You don't have any applications yet.",
+    "appliedOn": "Applied on",
+    "currentStage": "Current stage",
+    "viewTimeline": "View history",
+    "hideTimeline": "Hide history",
+    "timelineTitle": "Stage history",
+    "timelineLoading": "Loading history…",
+    "timelineError": "We couldn't load the history.",
+    "timelineEmpty": "No stage movements yet.",
+    "statusActive": "In progress",
+    "statusRejected": "Rejected",
+    "statusHired": "Hired",
+    "statusWithdrawn": "Withdrawn"
   }
 }

@@ -62,6 +62,27 @@ const isAuthed = t.middleware(({ ctx, next }) => {
   });
 });
 
+// Candidate auth middleware — for the public-facing candidate portal. Candidates
+// authenticate via Supabase magic-link but have NO staff `User`/org row, so the
+// staff `isAuthed` gate can never serve them. This gate requires only a Supabase
+// session (ctx.supabaseAuth) and narrows it to non-null downstream. It does NOT
+// establish a tenant context: the org is not known until the procedure's input is
+// validated, so candidate services resolve org-from-slug and call runWithTenant
+// per request (see services/candidate-portal.service.ts).
+const isCandidate = t.middleware(({ ctx, next }) => {
+  if (!ctx.supabaseAuth) {
+    throw new TRPCError({
+      code: 'UNAUTHORIZED',
+      message: 'Debes iniciar sesion para acceder a tu portal',
+    });
+  }
+  return next({
+    ctx: {
+      supabaseAuth: ctx.supabaseAuth,
+    },
+  });
+});
+
 // Tenant-context middleware — establishes the per-request org context (read by the
 // `tenantDb` RLS client via AsyncLocalStorage). Tenant routers import `tenantDb` and
 // their queries are scoped to this org; platform owners run unscoped (they use the
@@ -175,6 +196,12 @@ const withAudit = t.middleware(async ({ ctx, next, path }) => {
 export const publicProcedure = t.procedure.use(withRateLimit);
 export const protectedProcedure = publicProcedure.use(isAuthed).use(withTenantContext);
 export const auditedProcedure = protectedProcedure.use(withAudit);
+
+// Candidate portal procedure — rate-limited + Supabase-session-gated. Built from
+// publicProcedure (NOT protectedProcedure): candidates have no staff `user`. Org
+// scope is per-call (resolved from input), so tenant RLS is applied inside the
+// service via runWithTenant, not by withTenantContext.
+export const candidateProcedure = publicProcedure.use(isCandidate);
 
 // Helper to create permission-gated procedures
 export function permissionProcedure(module: string, action: string) {

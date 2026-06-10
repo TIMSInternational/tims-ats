@@ -1929,6 +1929,21 @@
     "sectionSoon": "Pronto verás esta información aquí.",
     "noCandidateTitle": "Sin postulaciones",
     "noCandidateDesc": "No encontramos postulaciones asociadas a este correo en esta empresa.",
-    "backToJobs": "Ver vacantes"
+    "backToJobs": "Ver vacantes",
+    "listLoading": "Cargando tus postulaciones…",
+    "listError": "No se pudieron cargar tus postulaciones.",
+    "listEmpty": "Todavía no tienes postulaciones.",
+    "appliedOn": "Postulaste el",
+    "currentStage": "Etapa actual",
+    "viewTimeline": "Ver historial",
+    "hideTimeline": "Ocultar historial",
+    "timelineTitle": "Historial de etapas",
+    "timelineLoading": "Cargando historial…",
+    "timelineError": "No se pudo cargar el historial.",
+    "timelineEmpty": "Aún no hay movimientos de etapa.",
+    "statusActive": "En proceso",
+    "statusRejected": "Rechazada",
+    "statusHired": "Contratada",
+    "statusWithdrawn": "Retirada"
   }
 }

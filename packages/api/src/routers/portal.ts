@@ -232,40 +232,12 @@ export const portalRouter = router({
     }),
 
   // ── Authenticated (candidate portal) ───────────────────────
-
-  // Get my applications
-  getMyApplications: protectedProcedure.query(async ({ ctx }) => {
-    const candidate = await db.candidate.findFirst({
-      where: { organizationId: ctx.user.organizationId, email: ctx.user.email },
-    });
-    if (!candidate) return [];
-
-    return db.application.findMany({
-      where: { candidateId: candidate.id, organizationId: ctx.user.organizationId },
-      include: {
-        vacancy: { select: { id: true, title: true, company: { select: { name: true } } } },
-        currentStage: { select: { id: true, name: true } },
-      },
-      orderBy: { appliedAt: 'desc' },
-    });
-  }),
-
-  // Get single application status
-  getApplicationStatus: protectedProcedure
-    .input(z.object({ applicationId: z.string().uuid() }))
-    .query(async ({ ctx, input }) => {
-      return db.application.findFirstOrThrow({
-        where: { id: input.applicationId, organizationId: ctx.user.organizationId },
-        include: {
-          vacancy: { select: { title: true } },
-          currentStage: { select: { name: true } },
-          movements: {
-            select: { toStage: { select: { name: true } }, movedAt: true },
-            orderBy: { movedAt: 'desc' },
-          },
-        },
-      });
-    }),
+  //
+  // NOTE: My Applications + the application stage timeline moved to the
+  // `candidatePortal` router (Wave 1 Slice 2). They now run on `candidateProcedure`
+  // (Supabase-session identity, org-from-route) instead of `protectedProcedure`,
+  // which required a staff `User` that candidates never have. The remaining
+  // protectedProcedure endpoints below are migrated in Slices 3–4.
 
   // Upload document — stub
   uploadDocument: protectedProcedure

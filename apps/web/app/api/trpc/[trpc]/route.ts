@@ -36,8 +36,15 @@ const handler = (req: Request) =>
       const supabase = await createSupabaseServerClient();
       const { data: { user: supabaseUser } } = await supabase.auth.getUser();
 
+      // Surface the Supabase identity regardless of whether a staff `User` exists.
+      // Candidate (portal) sessions never resolve to a `User`, but they ARE
+      // authenticated — `candidateProcedure` reads this to resolve a `Candidate`.
+      const supabaseAuth = supabaseUser?.email
+        ? { email: supabaseUser.email, userId: supabaseUser.id }
+        : null;
+
       if (!supabaseUser) {
-        return { user: null, headers: new Headers(req.headers) };
+        return { user: null, supabaseAuth, headers: new Headers(req.headers) };
       }
 
       // Look up the app user from supabase ID
@@ -51,6 +58,14 @@ const handler = (req: Request) =>
       });
 
       // Auto-link: if no user found by supabaseUserId, try by email
+      // NOTE (codex review, Wave 1 Slice 2): this email-based staff linking is a
+      // KNOWN cross-trust-boundary weakness — it runs for every Supabase session
+      // (including candidate portal sessions) and the same pattern exists in
+      // /auth/callback and the admin layout. It is ALSO load-bearing: password-login
+      // staff (signInWithPassword, no /auth/callback) get linked here. Closing the
+      // boundary safely requires invitation/onboarding-token-based linking applied
+      // consistently across all four sites + staff-login regression tests — tracked
+      // as a dedicated security PR (see docs/REMAINING-WORK.md), NOT this slice.
       if (!appUser && supabaseUser.email) {
         const byEmail = await db.user.findFirst({
           where: { email: supabaseUser.email },
@@ -70,7 +85,7 @@ const handler = (req: Request) =>
           // magic-link session whose email happens to match a staff user). Treat as
           // no staff identity.
           if (byEmail.supabaseUserId && byEmail.supabaseUserId !== supabaseUser.id) {
-            return { user: null, headers: new Headers(req.headers) };
+            return { user: null, supabaseAuth, headers: new Headers(req.headers) };
           }
           appUser = await db.user.update({
             where: { id: byEmail.id },
@@ -115,7 +130,10 @@ const handler = (req: Request) =>
       }
 
       if (!appUser) {
-        return { user: null, headers: new Headers(req.headers) };
+        // Authenticated Supabase session with no staff `User` = a candidate (or a
+        // not-yet-provisioned account). Keep `user` null but carry supabaseAuth so
+        // the candidate portal can resolve them by email.
+        return { user: null, supabaseAuth, headers: new Headers(req.headers) };
       }
 
       // Update last login
@@ -163,6 +181,7 @@ const handler = (req: Request) =>
                 isPlatformOwner: false,
                 impersonatorId: appUser.id,
               },
+              supabaseAuth,
               headers: new Headers(req.headers),
             };
           }
@@ -171,6 +190,7 @@ const handler = (req: Request) =>
 
       return {
         user: realUser,
+        supabaseAuth,
         headers: new Headers(req.headers),
       };
     },

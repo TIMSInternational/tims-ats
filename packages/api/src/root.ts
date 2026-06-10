@@ -26,6 +26,7 @@ import { featureFlagRouter } from './routers/featureFlag';
 import { portalRouter } from './routers/portal';
 import { notificationRouter } from './routers/notification';
 import { platformRouter } from './routers/platform';
+import { candidatePortalRouter } from './routers/candidate-portal';
 
 export { createContext } from './context';
 export type { TRPCContext } from './context';
@@ -37,6 +38,7 @@ export {
 } from './lib/impersonation';
 export { evaluateAlertRules } from './services/alert-evaluation.service';
 export type { AlertEvaluationSummary } from './services/alert-evaluation.service';
+export { candidatePortalService } from './services/candidate-portal.service';
 
 export const appRouter = router({
   auth: authRouter,
@@ -64,6 +66,7 @@ export const appRouter = router({
   billing: billingRouter,
   featureFlag: featureFlagRouter,
   portal: portalRouter,
+  candidatePortal: candidatePortalRouter,
   notification: notificationRouter,
   platform: platformRouter,
 });

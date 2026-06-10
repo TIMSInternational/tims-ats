@@ -2,11 +2,14 @@ import 'server-only';
 import { getUser } from '@tims/auth/server';
 import { redirect, notFound } from 'next/navigation';
 import { db } from '@tims/db';
+import { candidatePortalService } from '@tims/api';
 import { PortalMeShell } from './me-shell';
 
 // Authenticated candidate landing. Server-resolves identity by (Supabase email) ×
 // (org from the route) → Candidate. No staff User / org-membership involved. The
-// org filter is explicit (privileged db, same pattern as the careers layout).
+// org-by-slug lookup uses the privileged db (same pattern as the careers layout),
+// but the CANDIDATE read goes through the tenant-scoped service (runWithTenant +
+// tenantDb) so it runs under RLS like every other candidate read in the portal.
 export default async function PortalMePage({
   params,
 }: {
@@ -23,10 +26,7 @@ export default async function PortalMePage({
   });
   if (!org || !org.isActive) notFound();
 
-  const candidate = await db.candidate.findFirst({
-    where: { organizationId: org.id, email: supabaseUser.email, isActive: true, deletedAt: null },
-    select: { firstName: true, lastName: true },
-  });
+  const candidate = await candidatePortalService.getDisplayCandidate(org.id, supabaseUser.email);
 
   const displayName = candidate
     ? `${candidate.firstName} ${candidate.lastName}`.trim()
