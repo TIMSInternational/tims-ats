@@ -60,4 +60,16 @@ describe('billingService.createCheckoutSession — unconfigured', () => {
       billingService.createCheckoutSession('00000000-0000-0000-0000-000000000000', 'starter'),
     ).rejects.toMatchObject({ code: 'PRECONDITION_FAILED' });
   });
+
+  it('createPortalSession rejects with PRECONDITION_FAILED when unconfigured', async () => {
+    await expect(
+      billingService.createPortalSession('00000000-0000-0000-0000-000000000000', { id: 'actor-1' }),
+    ).rejects.toMatchObject({ code: 'PRECONDITION_FAILED' });
+  });
+
+  it('cancelSubscription rejects with PRECONDITION_FAILED when unconfigured', async () => {
+    await expect(
+      billingService.cancelSubscription('00000000-0000-0000-0000-000000000000', { id: 'actor-1' }),
+    ).rejects.toMatchObject({ code: 'PRECONDITION_FAILED' });
+  });
 });

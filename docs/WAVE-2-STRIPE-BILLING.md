@@ -156,6 +156,11 @@ Before the first prod deploy that includes Wave 2:
 1. Set `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_STARTER`,
    `STRIPE_PRICE_PROFESSIONAL` in Vercel prod (test → live at go-live).
 2. Register the webhook endpoint (`/api/webhooks/stripe`) in the Stripe dashboard for the
-   three subscription events; copy its signing secret into `STRIPE_WEBHOOK_SECRET`.
+   three subscription events (+ `checkout.session.completed`); copy its signing secret
+   into `STRIPE_WEBHOOK_SECRET`.
+2b. Create a **Billing Portal configuration** with subscription cancel = **at period
+   end** (never "immediately") and set its id as `STRIPE_PORTAL_CONFIGURATION_ID` —
+   otherwise the portal falls back to the account default, which may allow immediate
+   destructive cancel.
 3. Note: this rides on the **B2 deploy handoff** (service-role key + backfill) — Wave 2
    does not change that ordering.

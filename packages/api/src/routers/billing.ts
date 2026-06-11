@@ -1,9 +1,8 @@
 import { z } from 'zod';
-import { TRPCError } from '@trpc/server';
 import { router, permissionProcedure } from '../trpc';
 import { tenantDb as db } from '@tims/db';
 import { CHECKOUT_PLANS } from '../lib/stripe';
-import { billingService } from '../services/billing.service';
+import { billingService, type BillingAuditActor } from '../services/billing.service';
 
 export const billingRouter = router({
   // Whether Stripe self-serve billing is configured for this deploy. The UI uses
@@ -85,27 +84,29 @@ export const billingRouter = router({
 
   // Stripe Checkout (subscription create) for a self-serve plan. Returns a hosted
   // checkout URL for the FE to redirect to. Fails closed when Stripe is not
-  // configured (rule #4 — never a fabricated checkout.stripe.com URL). Customer
-  // portal + cancel arrive in Slice 3.
+  // configured (rule #4 — never a fabricated checkout.stripe.com URL).
   createCheckoutSession: permissionProcedure('billing', 'update')
     .input(z.object({ plan: z.enum(CHECKOUT_PLANS) }))
     .mutation(({ ctx, input }) =>
       billingService.createCheckoutSession(ctx.user.organizationId, input.plan)
     ),
 
-  createPortalSession: permissionProcedure('billing', 'update').mutation(() => {
-    throw new TRPCError({
-      code: 'NOT_IMPLEMENTED',
-      message: 'El portal de facturacion de Stripe aun no esta disponible.',
-    });
-  }),
+  // Stripe Billing Portal (manage / cancel / payment method) — returns a hosted URL.
+  createPortalSession: permissionProcedure('billing', 'update').mutation(({ ctx }) =>
+    billingService.createPortalSession(ctx.user.organizationId, auditActor(ctx.user))
+  ),
 
-  cancelSubscription: permissionProcedure('billing', 'update')
-    .input(z.object({ reason: z.string().optional(), cancelAtPeriodEnd: z.boolean().default(true) }))
-    .mutation(() => {
-      throw new TRPCError({
-        code: 'NOT_IMPLEMENTED',
-        message: 'La cancelacion de suscripcion aun no esta disponible.',
-      });
-    }),
+  // Cancel at period end (no client-controlled immediate cancel — that destructive
+  // mode is intentionally not exposed to tenant self-service). Webhook syncs state.
+  cancelSubscription: permissionProcedure('billing', 'update').mutation(({ ctx }) =>
+    billingService.cancelSubscription(ctx.user.organizationId, auditActor(ctx.user))
+  ),
 });
+
+// Attribute billing actions to the real operator during impersonation (mirrors the
+// audit middleware): actor = impersonator if present, impersonated account in metadata.
+function auditActor(user: { id: string; impersonatorId?: string | null }): BillingAuditActor {
+  return user.impersonatorId
+    ? { id: user.impersonatorId, impersonatedUserId: user.id }
+    : { id: user.id };
+}

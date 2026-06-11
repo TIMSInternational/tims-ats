@@ -42,4 +42,29 @@ export const billingRepository = {
     });
     return row?.stripeCustomerId ?? stripeCustomerId;
   },
+
+  // Write an attributable audit record for a self-service billing action (portal /
+  // cancel) so a mistaken or compromised billing-admin action is investigable from
+  // TIMS data, not just Stripe. Best-effort: never fail the billing action on an
+  // audit-write error.
+  async recordBillingAudit(entry: {
+    organizationId: string;
+    actorId: string;
+    action: string;
+    metadata: Record<string, unknown>;
+  }): Promise<void> {
+    await tenantDb.auditLog
+      .create({
+        data: {
+          organizationId: entry.organizationId,
+          actorId: entry.actorId,
+          action: entry.action,
+          entity: 'billing',
+          metadata: entry.metadata as object,
+        },
+      })
+      .catch(() => {
+        /* audit is best-effort — don't fail the billing action */
+      });
+  },
 };

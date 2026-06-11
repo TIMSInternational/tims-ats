@@ -52,6 +52,21 @@ export default function BillingPage() {
   const config = trpc.billing.getBillingConfig.useQuery();
   const plan = trpc.billing.getCurrentPlan.useQuery();
   const usage = trpc.billing.getUsage.useQuery();
+  const utils = trpc.useUtils();
+
+  const portal = trpc.billing.createPortalSession.useMutation({
+    onSuccess: ({ url }) => {
+      window.location.href = url;
+    },
+    onError: () => toast(t.billing.manageError, { type: 'error' }),
+  });
+  const cancel = trpc.billing.cancelSubscription.useMutation({
+    onSuccess: () => {
+      toast(t.billing.cancelScheduled, { type: 'success' });
+      utils.billing.getCurrentPlan.invalidate();
+    },
+    onError: () => toast(t.billing.cancelError, { type: 'error' }),
+  });
 
   // Surface the Stripe checkout return state (?checkout=success|cancelled) once.
   const params = useSearchParams();
@@ -73,6 +88,12 @@ export default function BillingPage() {
   const renewsOn = plan.data?.currentPeriodEnd
     ? new Date(plan.data.currentPeriodEnd).toLocaleDateString()
     : null;
+  const hasCustomer = Boolean(plan.data?.stripeCustomerId);
+  const hasActiveSub = Boolean(plan.data?.stripeSubscriptionId) && plan.data?.status !== 'cancelled';
+
+  const onCancel = () => {
+    if (window.confirm(t.billing.cancelConfirm)) cancel.mutate();
+  };
 
   return (
     <div className="flex flex-col flex-1 min-w-0 h-full">
@@ -101,6 +122,28 @@ export default function BillingPage() {
             </div>
             {renewsOn && (
               <p className="text-[12px] text-[#8B8B8B] mt-2">{t.billing.renewsOn} {renewsOn}</p>
+            )}
+            {configured && hasCustomer && (
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => portal.mutate()}
+                  disabled={portal.isPending}
+                  className="h-9 px-4 rounded-lg border border-[#EDEDED] text-[#1F114C] text-[12px] font-medium disabled:opacity-50"
+                >
+                  {portal.isPending ? t.billing.redirecting : t.billing.manageBilling}
+                </button>
+                {hasActiveSub && (
+                  <button
+                    type="button"
+                    onClick={onCancel}
+                    disabled={cancel.isPending}
+                    className="h-9 px-4 rounded-lg border border-[#F3C0C2] text-[#DD0C15] text-[12px] font-medium disabled:opacity-50"
+                  >
+                    {t.billing.cancelSubscription}
+                  </button>
+                )}
+              </div>
             )}
           </div>
 

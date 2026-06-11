@@ -46,6 +46,11 @@ const envSchema = z.object({
   // this is unset or the signature does not verify — an unverified event is never
   // processed.
   STRIPE_WEBHOOK_SECRET: optionalSecret(),
+  // Stripe Billing Portal configuration id. When set, portal sessions use this
+  // explicit configuration (created in the Stripe dashboard with subscription cancel
+  // = at_period_end) instead of the account default — so the portal can never offer
+  // an immediate destructive cancel. Configured at the deploy handoff.
+  STRIPE_PORTAL_CONFIGURATION_ID: optionalSecret(),
 
   // Vercel Cron shared secret. The alert-evaluation cron route requires
   // `Authorization: Bearer <CRON_SECRET>`; unset ⇒ the route 401s (fail-closed).

@@ -15,6 +15,30 @@ function assertConfigured(): void {
   }
 }
 
+// Who to attribute a billing action to. Mirrors the audit middleware: during
+// impersonation the action is attributed to the real operator (id) and the
+// impersonated account is recorded in metadata — never misattributed to the target.
+export interface BillingAuditActor {
+  id: string;
+  impersonatedUserId?: string;
+}
+
+function recordAudit(
+  orgId: string,
+  actor: BillingAuditActor,
+  action: string,
+  metadata: Record<string, unknown>,
+): Promise<void> {
+  return repo.recordBillingAudit({
+    organizationId: orgId,
+    actorId: actor.id,
+    action,
+    metadata: actor.impersonatedUserId
+      ? { ...metadata, impersonatedUserId: actor.impersonatedUserId }
+      : metadata,
+  });
+}
+
 // Return URLs must be absolute. NEXT_PUBLIC_APP_URL is set in every deployed env;
 // fall back to the known prod origin so a missing var never yields a relative URL
 // that Stripe rejects.
@@ -110,5 +134,53 @@ export const billingService = {
       });
     }
     return { url: session.url };
+  },
+
+  // Stripe Billing Portal — the primary self-service surface for plan change /
+  // payment method / cancel. Requires an existing Stripe customer (created at first
+  // checkout). When STRIPE_PORTAL_CONFIGURATION_ID is set the session uses that
+  // explicit configuration (cancel = at_period_end) so the portal can never offer an
+  // immediate destructive cancel — otherwise it falls back to the account default.
+  // Audited.
+  async createPortalSession(orgId: string, actor: BillingAuditActor): Promise<{ url: string }> {
+    assertConfigured();
+    const ctx = await repo.getOrgBillingContext(orgId);
+    const customerId = ctx?.subscription?.stripeCustomerId;
+    if (!customerId) {
+      throw new TRPCError({
+        code: 'PRECONDITION_FAILED',
+        message: 'Aun no tienes una cuenta de facturacion de Stripe.',
+      });
+    }
+    const configuration = process.env.STRIPE_PORTAL_CONFIGURATION_ID;
+    const session = await getStripe().billingPortal.sessions.create({
+      customer: customerId,
+      return_url: `${appOrigin()}/settings/billing`,
+      ...(configuration ? { configuration } : {}),
+    });
+    await recordAudit(orgId, actor, 'billing.portal_opened', { customerId });
+    return { url: session.url };
+  },
+
+  // Cancel via the Stripe API at PERIOD END (tenant self-service never does an
+  // immediate destructive cancel — that bypasses the product warning). The webhook
+  // syncs the resulting status/cancelledAt; we do not flip local state here (Stripe
+  // is the source of truth — rule #4). Audited with the acting (or impersonating) user.
+  async cancelSubscription(orgId: string, actor: BillingAuditActor): Promise<{ cancelAtPeriodEnd: true }> {
+    assertConfigured();
+    const ctx = await repo.getOrgBillingContext(orgId);
+    const subscriptionId = ctx?.subscription?.stripeSubscriptionId;
+    if (!subscriptionId) {
+      throw new TRPCError({
+        code: 'PRECONDITION_FAILED',
+        message: 'No hay una suscripcion de Stripe activa para cancelar.',
+      });
+    }
+    await getStripe().subscriptions.update(subscriptionId, { cancel_at_period_end: true });
+    await recordAudit(orgId, actor, 'billing.subscription_cancel_scheduled', {
+      subscriptionId,
+      cancelAtPeriodEnd: true,
+    });
+    return { cancelAtPeriodEnd: true };
   },
 };
