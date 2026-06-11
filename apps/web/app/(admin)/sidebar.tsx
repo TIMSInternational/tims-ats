@@ -16,6 +16,7 @@ function useNavSections() {
       { href: '/recruitment/vacancies', label: t.sidebar.vacancies, icon: 'briefcase' },
       { href: '/recruitment/candidates', label: t.sidebar.candidates, icon: 'user' },
       { href: '/recruitment/interviews', label: t.sidebar.interviews, icon: 'video' },
+      { href: '/recruitment/assessments', label: t.sidebar.assessments, icon: 'clipboard' },
       { href: '/recruitment/offers', label: t.sidebar.offers, icon: 'clipboard' },
       { href: '/recruitment/talent-pools', label: t.sidebar.talentPool, icon: 'users' },
       { href: '/recruitment/analytics', label: t.sidebar.analytics, icon: 'chart' },

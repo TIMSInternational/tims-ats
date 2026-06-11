@@ -3,7 +3,7 @@ import { logger } from '@tims/shared';
 import * as Sentry from '@sentry/nextjs';
 
 // Stripe webhook entrypoint. Reads the RAW body (required for signature
-// verification) and never processes an unverified event: any verification failure
+// verification) and never processes an unverified event — every verification failure
 // (missing secret/header, bad signature) → 400; handler failures → 500. Stripe
 // retries on non-2xx, so a transient 500 is re-delivered and re-applied idempotently.
 export const dynamic = 'force-dynamic';

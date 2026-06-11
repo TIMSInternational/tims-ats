@@ -49,7 +49,8 @@
     "monitoring": "Monitoreo",
     "integrations": "Integraciones",
     "billing": "Facturacion",
-    "commandCenter": "Command Center"
+    "commandCenter": "Command Center",
+    "assessments": "Evaluaciones"
   },
   "platformSidebar": {
     "platform": "Plataforma",
@@ -2007,5 +2008,57 @@
     "checkoutSuccess": "Pago iniciado. Tu plan se actualizara en breve.",
     "checkoutCancelled": "Pago cancelado.",
     "checkoutError": "No se pudo iniciar el pago. Intenta de nuevo."
+  },
+  "assessments": {
+    "title": "Autoria de Evaluaciones",
+    "subtitle": "Crea y administra las preguntas que responderan los candidatos.",
+    "selectType": "Tipo de evaluacion",
+    "selectTypePlaceholder": "Selecciona un tipo de evaluacion…",
+    "noTypes": "Aun no hay tipos de evaluacion",
+    "noTypesDesc": "Crea un tipo de evaluacion antes de redactar preguntas.",
+    "noQuestions": "Aun no hay preguntas",
+    "noQuestionsDesc": "Agrega la primera pregunta para esta evaluacion.",
+    "addQuestion": "Agregar pregunta",
+    "createTitle": "Nueva pregunta",
+    "editTitle": "Editar pregunta",
+    "questionCount": "{n} preguntas",
+    "inactive": "Inactiva",
+    "confirmDelete": "¿Eliminar esta pregunta? Esta accion no se puede deshacer.",
+    "delete": "Eliminar",
+    "cancel": "Cancelar",
+    "save": "Guardar cambios",
+    "create": "Crear pregunta",
+    "created": "Pregunta creada",
+    "updated": "Pregunta actualizada",
+    "deleted": "Pregunta eliminada",
+    "promptRequired": "Ingresa el enunciado de la pregunta.",
+    "cannotDeleteWithResponses": "Esta pregunta tiene respuestas de candidatos. Desactivala en lugar de eliminarla.",
+    "fields": {
+      "type": "Tipo de pregunta",
+      "prompt": "Enunciado",
+      "promptPlaceholder": "Escribe la pregunta…",
+      "options": "Opciones de respuesta",
+      "optionPlaceholder": "Texto de la opcion",
+      "addOption": "Agregar opcion",
+      "markCorrect": "Marca la(s) respuesta(s) correcta(s)",
+      "points": "Puntos",
+      "order": "Orden",
+      "active": "Activa"
+    },
+    "types": {
+      "single_choice": "Opcion unica",
+      "multi_choice": "Opcion multiple",
+      "free_text": "Texto libre / ensayo"
+    },
+    "errors": {
+      "free_text_no_options": "Las preguntas de texto libre no pueden tener opciones.",
+      "free_text_no_correct": "Las preguntas de texto libre no pueden tener respuestas correctas.",
+      "choice_needs_options": "Agrega al menos dos opciones.",
+      "duplicate_option_ids": "Cada opcion debe ser unica.",
+      "single_needs_one_correct": "Selecciona exactamente una respuesta correcta.",
+      "multi_needs_correct": "Selecciona al menos una respuesta correcta.",
+      "correct_not_in_options": "Una respuesta correcta hace referencia a una opcion inexistente.",
+      "duplicate_correct_ids": "Las respuestas correctas deben ser unicas."
+    }
   }
 }

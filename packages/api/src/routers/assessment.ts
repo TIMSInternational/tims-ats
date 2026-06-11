@@ -3,6 +3,13 @@ import { router, protectedProcedure, permissionProcedure } from '../trpc';
 import { tenantDb as db } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
+import {
+  createQuestionSchema,
+  updateQuestionSchema,
+  listQuestionsSchema,
+  deleteQuestionSchema,
+} from '@tims/shared';
+import { assessmentQuestionService } from '../services/assessment-question.service';
 
 // ---------------------------------------------------------------------------
 // Router
@@ -425,4 +432,37 @@ export const assessmentRouter = router({
 
       return { ranked, unscored };
     }),
+
+  // -------------------------------------------------------------------------
+  // Question authoring (Wave 1.5a slice 1). Clean arch: router → service → repo.
+  // Coherence (type ↔ options ↔ correct ids) enforced in the service.
+  // -------------------------------------------------------------------------
+
+  // 7.13 — List questions for an assessment type. Authoring view: the DTO
+  // includes the answer key (correctOptionIds), so it requires the authoring
+  // permission ('update'), NOT the broad 'read' shared with result viewers.
+  listQuestions: permissionProcedure('assessment', 'update')
+    .input(listQuestionsSchema)
+    .query(({ ctx, input }) => assessmentQuestionService.list(ctx.user.organizationId, input)),
+
+  // 7.14 — Create a question
+  createQuestion: permissionProcedure('assessment', 'create')
+    .input(createQuestionSchema)
+    .mutation(({ ctx, input }) =>
+      assessmentQuestionService.create(ctx.user.organizationId, input),
+    ),
+
+  // 7.15 — Update a question
+  updateQuestion: permissionProcedure('assessment', 'update')
+    .input(updateQuestionSchema)
+    .mutation(({ ctx, input }) =>
+      assessmentQuestionService.update(ctx.user.organizationId, input),
+    ),
+
+  // 7.16 — Delete a question
+  deleteQuestion: permissionProcedure('assessment', 'delete')
+    .input(deleteQuestionSchema)
+    .mutation(({ ctx, input }) =>
+      assessmentQuestionService.remove(ctx.user.organizationId, input.id),
+    ),
 });

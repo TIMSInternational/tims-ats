@@ -49,7 +49,8 @@
     "monitoring": "Monitoring",
     "integrations": "Integrations",
     "billing": "Billing",
-    "commandCenter": "Command Center"
+    "commandCenter": "Command Center",
+    "assessments": "Assessments"
   },
   "platformSidebar": {
     "platform": "Platform",
@@ -2007,5 +2008,57 @@
     "checkoutSuccess": "Checkout started. Your plan will update shortly.",
     "checkoutCancelled": "Checkout cancelled.",
     "checkoutError": "Could not start checkout. Please try again."
+  },
+  "assessments": {
+    "title": "Assessment Authoring",
+    "subtitle": "Create and manage the questions candidates will answer.",
+    "selectType": "Assessment type",
+    "selectTypePlaceholder": "Select an assessment type…",
+    "noTypes": "No assessment types yet",
+    "noTypesDesc": "Create an assessment type before authoring questions.",
+    "noQuestions": "No questions yet",
+    "noQuestionsDesc": "Add the first question for this assessment.",
+    "addQuestion": "Add question",
+    "createTitle": "New question",
+    "editTitle": "Edit question",
+    "questionCount": "{n} questions",
+    "inactive": "Inactive",
+    "confirmDelete": "Delete this question? This cannot be undone.",
+    "delete": "Delete",
+    "cancel": "Cancel",
+    "save": "Save changes",
+    "create": "Create question",
+    "created": "Question created",
+    "updated": "Question updated",
+    "deleted": "Question deleted",
+    "promptRequired": "Enter a question prompt.",
+    "cannotDeleteWithResponses": "This question has candidate responses. Deactivate it instead of deleting.",
+    "fields": {
+      "type": "Question type",
+      "prompt": "Prompt",
+      "promptPlaceholder": "Write the question…",
+      "options": "Answer options",
+      "optionPlaceholder": "Option text",
+      "addOption": "Add option",
+      "markCorrect": "Mark correct answer(s)",
+      "points": "Points",
+      "order": "Order",
+      "active": "Active"
+    },
+    "types": {
+      "single_choice": "Single choice",
+      "multi_choice": "Multiple choice",
+      "free_text": "Free text / essay"
+    },
+    "errors": {
+      "free_text_no_options": "Free-text questions cannot have options.",
+      "free_text_no_correct": "Free-text questions cannot have correct answers.",
+      "choice_needs_options": "Add at least two options.",
+      "duplicate_option_ids": "Each option must be unique.",
+      "single_needs_one_correct": "Select exactly one correct answer.",
+      "multi_needs_correct": "Select at least one correct answer.",
+      "correct_not_in_options": "A correct answer references a missing option.",
+      "duplicate_correct_ids": "Correct answers must be unique."
+    }
   }
 }

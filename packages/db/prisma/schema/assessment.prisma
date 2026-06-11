@@ -11,6 +11,7 @@ model AssessmentType {
   updatedAt      DateTime @updatedAt @map("updated_at")
 
   assignments AssessmentAssignment[]
+  questions   AssessmentQuestion[]
 
   @@unique([organizationId, code])
   @@index([organizationId])
@@ -39,6 +40,8 @@ model AssessmentAssignment {
   assigner       User               @relation("AssessmentAssigner", fields: [assignedById], references: [id])
   result         AssessmentResult?
   session        ProctoringSession?
+  responses      AssessmentResponse[]
+  consent        AssessmentConsent?
 
   @@index([organizationId])
   @@index([candidateId])
@@ -84,6 +87,79 @@ model ProctoringSession {
 
   @@index([organizationId])
   @@map("proctoring_sessions")
+}
+
+enum QuestionType {
+  single_choice
+  multi_choice
+  free_text
+}
+
+model AssessmentQuestion {
+  id               String       @id @default(uuid()) @db.Uuid
+  organizationId   String       @map("organization_id") @db.Uuid
+  assessmentTypeId String       @map("assessment_type_id") @db.Uuid
+  order            Int
+  type             QuestionType
+  prompt           String       @db.Text
+  options          Json
+  correctOptionIds Json         @map("correct_option_ids")
+  points           Int          @default(1)
+  isActive         Boolean      @default(true) @map("is_active")
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+
+  assessmentType AssessmentType       @relation(fields: [assessmentTypeId], references: [id], onDelete: Cascade)
+  responses      AssessmentResponse[]
+
+  @@index([organizationId])
+  @@index([assessmentTypeId])
+  @@map("assessment_questions")
+}
+
+model AssessmentResponse {
+  id                String    @id @default(uuid()) @db.Uuid
+  organizationId    String    @map("organization_id") @db.Uuid
+  assignmentId      String    @map("assignment_id") @db.Uuid
+  questionId        String    @map("question_id") @db.Uuid
+  selectedOptionIds Json?     @map("selected_option_ids")
+  freeText          String?   @map("free_text") @db.Text
+  isCorrect         Boolean?  @map("is_correct")
+  pointsAwarded     Float?    @map("points_awarded")
+  submittedAt       DateTime? @map("submitted_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  assignment AssessmentAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  // Restrict (not cascade): a question with submitted responses must be
+  // deactivated (isActive=false), never hard-deleted — preserves answer history.
+  question   AssessmentQuestion   @relation(fields: [questionId], references: [id], onDelete: Restrict)
+
+  @@unique([assignmentId, questionId])
+  @@index([organizationId])
+  @@index([assignmentId])
+  @@index([questionId])
+  @@map("assessment_responses")
+}
+
+model AssessmentConsent {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  assignmentId   String   @unique @map("assignment_id") @db.Uuid
+  candidateId    String   @map("candidate_id") @db.Uuid
+  consentType    String   @map("consent_type")
+  textVersion    String   @map("text_version")
+  agreedAt       DateTime @default(now()) @map("agreed_at")
+  ipAddress      String?  @map("ip_address")
+  userAgent      String?  @map("user_agent")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  assignment AssessmentAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([candidateId])
+  @@map("assessment_consents")
 }
 
 model FitScore {
