@@ -1,5 +1,6 @@
 import { TRPCError } from '@trpc/server';
 import { db } from '@tims/db';
+import { getAppUrl } from '@tims/shared';
 
 // B2 — invite-time staff linking (see docs/SECURITY-staff-candidate-auth-linking.md).
 //
@@ -41,7 +42,7 @@ export async function resolveStaffSupabaseUserId(email: string): Promise<string>
     const admin = createClient(supabaseUrl, serviceKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.timsats.com';
+    const appUrl = getAppUrl();
     const { data, error } = await admin.auth.admin.inviteUserByEmail(email, {
       redirectTo: `${appUrl}/auth/callback`,
     });

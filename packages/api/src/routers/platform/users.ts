@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
+import { getAppUrl } from '@tims/shared';
 import { router } from '../../trpc';
 import { db } from '@tims/db';
 import type { Prisma } from '@tims/db';
@@ -216,7 +217,7 @@ export const usersRouter = router({
       const admin = createClient(supabaseUrl, serviceKey, {
         auth: { autoRefreshToken: false, persistSession: false },
       });
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.timsats.com';
+      const appUrl = getAppUrl();
       const { error } = await admin.auth.resetPasswordForEmail(input.email, {
         redirectTo: `${appUrl}/reset-password`,
       });

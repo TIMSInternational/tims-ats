@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { getAppUrl } from '@tims/shared';
 import { router, publicProcedure } from '../../trpc';
 import { db, InvitationType, InvitationStatus } from '@tims/db';
 import type { Prisma } from '@tims/db';
@@ -117,7 +118,7 @@ export const invitationsRouter = router({
         select: invitationListSelect,
       });
 
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.timsats.com';
+      const appUrl = getAppUrl();
       await sendEmail({
         to: input.email,
         subject: `Invitacion para administrar ${input.organizationName} en TIMS ATS`,
@@ -168,7 +169,7 @@ export const invitationsRouter = router({
       });
 
       const roleLabel = input.roleSlug?.replace(/_/g, ' ') || 'usuario';
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.timsats.com';
+      const appUrl = getAppUrl();
       await sendEmail({
         to: input.email,
         subject: `Invitacion para unirte a ${org.name} en TIMS ATS`,
@@ -202,7 +203,7 @@ export const invitationsRouter = router({
       }
 
       const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.timsats.com';
+      const appUrl = getAppUrl();
 
       await sendEmail({
         to: invitation.email,

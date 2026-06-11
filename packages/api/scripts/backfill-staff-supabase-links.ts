@@ -16,6 +16,7 @@
  * Requires NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY in the environment.
  */
 import { db } from '@tims/db';
+import { getAppUrl } from '@tims/shared';
 import { createClient } from '@supabase/supabase-js';
 
 const APPLY = process.argv.includes('--apply');
@@ -26,12 +27,20 @@ async function main() {
   if (!supabaseUrl || !serviceKey) {
     throw new Error('NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required');
   }
+  // --apply sends invite emails whose links embed the app URL. Refuse to fall back
+  // to the canonical prod default here: this script may be run against staging/local,
+  // and a prod link would point invitees at the wrong Supabase project AFTER we've
+  // already written their supabaseUserId. Require it explicitly for writes.
+  if (APPLY && !process.env.NEXT_PUBLIC_APP_URL?.trim()) {
+    throw new Error('NEXT_PUBLIC_APP_URL must be set explicitly for --apply (invite links embed it; refusing to default to production to avoid wrong-environment onboarding)');
+  }
   const admin = createClient(supabaseUrl, serviceKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.timsats.com';
+  const appUrl = getAppUrl();
 
   console.log(`Mode: ${APPLY ? 'APPLY' : 'DRY-RUN'}`);
+  console.log(`App URL: ${appUrl}`);
 
   // PASS 1 — tombstone legacy artifacts FIRST. These are org-less, non-owner rows
   // that already hold a real Supabase id (minted by the now-removed register-
