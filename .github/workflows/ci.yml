@@ -27,9 +27,9 @@ jobs:
       matrix:
         target: [api, web]
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: pnpm
@@ -49,9 +49,9 @@ jobs:
     name: Security Audit (56 tests)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: pnpm
@@ -69,10 +69,10 @@ jobs:
       contents: read
       pull-requests: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - uses: gitleaks/gitleaks-action@v2
+      - uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -83,14 +83,20 @@ jobs:
     name: Code Quality
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: No any types in frontend
         run: |
-          count=$(grep -rn ": any\b" apps/web/app/ --include="*.tsx" --include="*.ts" 2>/dev/null | grep -v node_modules | grep -v ".test." | wc -l | tr -d ' ')
+          # Exclude tests and comment lines (// line comments, /* */ block
+          # comments) so the word "any" in prose doesn't false-trip the gate.
+          matches=$(grep -rn ": any\b" apps/web/app/ --include="*.tsx" --include="*.ts" 2>/dev/null \
+            | grep -v node_modules \
+            | grep -v ".test." \
+            | grep -vE ':[0-9]+:[[:space:]]*(//|\*|/\*)' || true)
+          count=$(printf '%s' "$matches" | grep -c . || true)
           if [ "$count" -gt "0" ]; then
             echo "::error::Found $count 'any' type annotations in frontend"
-            grep -rn ": any\b" apps/web/app/ --include="*.tsx" --include="*.ts" | grep -v node_modules | grep -v ".test."
+            printf '%s\n' "$matches"
             exit 1
           fi
 
@@ -144,9 +150,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: [typecheck, security-tests, code-quality]
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: pnpm
