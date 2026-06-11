@@ -142,6 +142,14 @@ jobs:
             exit 1
           fi
 
+      # Tripwire for the obvious spelling only — aliasing/Object.assign slip it; real enforcement = scopeWhereFor() API + review
+      - name: Scope fragments compose via AND, never spread
+        run: |
+          if grep -rn '\.\.\.[[:alnum:]_$.]*access\.where\|\.\.\.[[:alnum:]_$.]*scopeWhere' packages/api/src --include="*.ts" 2>/dev/null; then
+            echo "::error::access/scope where-fragments must compose inside AND: [...], never object spread (scope-widening)"
+            exit 1
+          fi
+
   # ========================================
   # Build (depends on typecheck + security)
   # ========================================

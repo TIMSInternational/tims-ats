@@ -3,7 +3,7 @@ import superjson from 'superjson';
 import type { Context } from './context';
 import { db, runWithTenant } from '@tims/db';
 import { checkRateLimit, getRateLimitCategory } from './middleware/rate-limit';
-import { getCachedPermission, setCachedPermission } from './lib/cache';
+import { buildAccessForUser, createAnchorLoader, type AccessContext } from './access';
 
 const t = initTRPC.context<Context>().create({
   transformer: superjson,
@@ -85,14 +85,23 @@ const isCandidate = t.middleware(({ ctx, next }) => {
 
 // Tenant-context middleware — establishes the per-request org context (read by the
 // `tenantDb` RLS client via AsyncLocalStorage). Tenant routers import `tenantDb` and
-// their queries are scoped to this org; platform owners run unscoped (they use the
-// privileged `db` in platform routers).
+// their queries are scoped to this org. Platform owners WITH an org row of their own
+// flow through the SAME runWithTenant path as staff: platform routers use the
+// privileged `db` (so setting the GUC costs nothing there), and on tenant routers
+// this restores the RLS backstop — an empty ALS would make tenantDb short-circuit
+// before SET LOCAL ROLE and run UNSCOPED on the BYPASSRLS login role. Only org-less
+// owners skip tenant context entirely.
 const withTenantContext = t.middleware(({ ctx, next }) => {
+  let orgId: string | null | undefined;
   if (ctx.user?.isPlatformOwner) {
-    return next();
+    const ownOrg = ctx.user.organizationId;
+    if (!ownOrg) return next(); // platform routers use the privileged db; no tenant ctx needed
+    // fallthrough to the same UUID validation + runWithTenant below
+    orgId = ownOrg;
+  } else {
+    orgId = ctx.user?.organizationId;
   }
 
-  const orgId = ctx.user?.organizationId;
   if (!orgId) {
     throw new TRPCError({
       code: 'FORBIDDEN',
@@ -107,62 +116,34 @@ const withTenantContext = t.middleware(({ ctx, next }) => {
   return runWithTenant(orgId, () => next());
 });
 
-// HR admin module access — explicit ALLOWLIST (fail-closed). A newly added module
-// is NOT granted to hr_admin until added here, unlike the previous "everything
-// except [billing, integration]" denylist which auto-granted new (possibly
-// sensitive) modules. This set preserves the exact access hr_admin already had.
-// REVIEW: audit / feature_flags / monitoring / organization are likely not HR
-// concerns — remove once product confirms no hr_admin workflow relies on them.
-const HR_ADMIN_MODULES = new Set<string>([
-  'assessment', 'audit', 'candidate', 'compensation', 'dei', 'engagement',
-  'feature_flags', 'interview', 'learning', 'monitoring', 'ninebox', 'offer',
-  'onboarding', 'organization', 'performance', 'pipeline', 'succession',
-  'team_intel', 'user', 'vacancy',
-]);
-
-// Permission middleware factory
+// Permission middleware factory — resolves a full scoped access decision
+// (buildAccessForUser: privileged classes get an EXPLICIT org-scope decision,
+// everyone else is DB-checked against rolePermission grants; the old hr_admin
+// allowlist and silent platform/super_admin bypass are gone — see
+// docs/WAVE-2.5-ACCESS-CONTROL.md) and injects it as `ctx.access` so
+// repositories can apply scope filters. Anchors are request-local (never
+// cached across requests — they are the team/unit/panel authorization boundary).
 function requirePermission(module: string, action: string) {
   return t.middleware(async ({ ctx, next }) => {
     if (!ctx.user) {
       throw new TRPCError({ code: 'UNAUTHORIZED' });
     }
 
-    // Platform owner and super admin bypass all permission checks
-    if (ctx.user.isPlatformOwner || ctx.user.roles.includes('platform_owner') || ctx.user.roles.includes('super_admin')) {
-      return next();
-    }
-
-    // HR admin: explicit allowlist (see HR_ADMIN_MODULES above)
-    if (ctx.user.roles.includes('hr_admin') && HR_ADMIN_MODULES.has(module)) {
-      return next();
-    }
-
-    // Check specific permissions — cache-aside (5 min) keyed by org+roles+module+
-    // action. The role→permission grants aren't mutated at runtime, so this is a
-    // pure hot-path optimization; role-assignment writes invalidate the org's
-    // entries defensively (see invalidatePermissionCache).
-    const orgId = ctx.user.organizationId;
-    let allowed = await getCachedPermission(orgId, ctx.user.roles, module, action);
-
-    if (allowed === null) {
-      const permission = await db.rolePermission.findFirst({
-        where: {
-          role: { slug: { in: ctx.user.roles }, organizationId: orgId },
-          permission: { module, action },
-        },
-      });
-      allowed = !!permission;
-      await setCachedPermission(orgId, ctx.user.roles, module, action, allowed);
-    }
-
-    if (!allowed) {
+    const access = await buildAccessForUser(ctx.user, module, action);
+    if (!access.allowed) {
       throw new TRPCError({
         code: 'FORBIDDEN',
         message: `No tienes permiso para ${action} en ${module}`,
       });
     }
 
-    return next();
+    const anchors = ctx.user.organizationId
+      ? createAnchorLoader(ctx.user.organizationId, ctx.user.id)
+      : null;
+    const accessContext: AccessContext = { ...access, anchors };
+    // Pass `user` explicitly (narrowed non-null above) — spreading `...ctx` would
+    // re-widen user to nullable and break every downstream `ctx.user.x` access.
+    return next({ ctx: { user: ctx.user, access: accessContext } });
   });
 }
 

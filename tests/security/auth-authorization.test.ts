@@ -62,6 +62,15 @@ describe('Authentication & Authorization', () => {
     expect(content).toContain('permissionProcedure');
   });
 
+  it('withTenantContext routes org-bearing platform owners through runWithTenant (RLS GUC set)', () => {
+    const content = readFileSync(TRPC_FILE, 'utf8');
+    // The platform-owner branch must NOT be an unconditional early return — an
+    // org-bearing owner has to flow into the same runWithTenant path as staff,
+    // otherwise tenantDb runs with the ALS empty → unscoped (BYPASSRLS login role).
+    expect(content).not.toMatch(/if \(ctx\.user\?\.isPlatformOwner\) \{\s*return next\(\);\s*\}/);
+    expect(content).toMatch(/isPlatformOwner[\s\S]*?ownOrg[\s\S]*?runWithTenant/);
+  });
+
   it('should verify organizationId in user mutation WHERE clauses', () => {
     const userRouter = readFileSync(join(ROUTERS_DIR, 'user.ts'), 'utf8');
     // The deactivate mutation must check organizationId

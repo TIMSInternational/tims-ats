@@ -13,7 +13,13 @@
     "forceConsistentCasingInFileNames": true,
     "isolatedModules": true,
     "jsx": "preserve",
-    "incremental": true
+    "incremental": true,
+    "baseUrl": ".",
+    "paths": {
+      "@tims/db": ["packages/db/src/index.ts"],
+      "@tims/shared": ["packages/shared/src/index.ts"],
+      "@tims/ai": ["packages/ai/src/index.ts"]
+    }
   },
   "exclude": ["node_modules"]
 }

@@ -45,6 +45,48 @@
 - [x] **Bedrock Guardrail wired** — `tims-ats-pii` (us-east-2) ANONYMIZE financial/SSN-class PII (not name/email/phone — cv-parser must extract those); `BEDROCK_GUARDRAIL_ID`/`_VERSION` set in Vercel → MASK defense-in-depth ACTIVE
 - [x] Tests 103 → **141**
 
+## WAVE 2.5 — Full access-control layer (design: docs/WAVE-2.5-ACCESS-CONTROL.md)
+
+**Slice 1 SHIPPED (branch feat/access-engine): engine + schema + seeds + middleware.**
+`packages/api/src/access/` (resolveAccess deny-by-default kernel w/ union/widest stacking
++ malformed-scope rejection; request-local anchor loader team/unit/panel), 3 new RLS'd
+models (UserBusinessUnit, DataAccessLog, DataConsent) + migration `20260612000000`,
+reconciling `seed-access.ts` (9 roles × full scoped matrix; DRY-RUN default), middleware
+rewrite (`ctx.access` injection; **HR_ADMIN_MODULES allowlist DELETED** — hr_admin is
+DB-checked; privileged users get explicit org-scope decisions; org-less platform owner
+on tenant modules → BAD_REQUEST; **org-bearing platform owners now run under the RLS
+GUC** — was silently unscoped/BYPASSRLS). 281 tests. AND-composition tripwire in CI.
+
+**Slices 2–7 pending** (each gets its own plan): 2 endpoint hardening (ungated
+notification.create/bulkCreate, organization.list*, dead portal stubs, /platform server
+gate) · 3 scope enforcement: recruitment (entity policy builders) · 4 scope enforcement:
+people (own/team/unit live here) · 5 role-aware UI (PermissionsProvider, filtered
+sidebars, page guards, AccessDenied) · 6 sensitive-data layer (selectFor, +AUDIT
+data_access_logs, min-5 aggregates, consent) · 7 new-role surfaces (hrbp unit admin,
+committee wiring, external API keys).
+
+**⚠️ WAVE 2.5 DEPLOY-ORDERING (fail-open hazard — do NOT partially deploy):**
+the new matrix's own/team/unit grants (employee compensation:read@own etc.) behave
+**org-wide** under scope-ignorant code — repos only compose scope filters from slice
+3-4 onward. Therefore: (1) `seed-access.ts --apply` MUST NOT run against prod until
+slices 1–4 deploy TOGETHER; (2) at wave deploy, order is: migration
+(`npx prisma db execute --file=packages/db/prisma/migrations/20260612000000_access_control_models/migration.sql`)
+→ `npx tsx packages/db/prisma/seed-access.ts --apply` (review the DELETIONS block of a
+dry-run first) → code deploy. The allowlist deletion needs hr_admin's seeded grants
+present or hr_admin breaks (fail-closed). Slice-1 code WITHOUT the seed: legacy
+'all'-scope roles keep working via the build.ts compat mapping (behavior-neutral);
+hr_admin breaks fail-closed (allowlist gone, no rows) until the seed runs. Narrow
+(own/team/unit) grants MUST NOT be seeded before slices 3-4 enforce them (fail-open).
+In practice: hold the whole wave; deploy order migration → seed --apply → cache flush
+→ code.
+
+**Wave 2.5 follow-ups (recorded, not faked):** `data_access_logs` purge job + the
+`@@index([organizationId, createdAt])` it needs (add WITH the job); shared const/Zod
+unions for dataType/action/consentType values when the writers land (slice 6); consent
+30-day anonymization job; field-level encryption (separate security wave); candidate→
+employee role transition (needs product definition); `tims:perm:` legacy cache-prefix
+removal after deploy.
+
 ## Remaining — code work
 
 | Priority | Task |

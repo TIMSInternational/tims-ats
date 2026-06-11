@@ -70,6 +70,9 @@ model User {
   // Invitations
   sentInvitations          PlatformInvitation[] @relation("InvitationSender")
 
+  // Access control
+  businessUnitAssignments  UserBusinessUnit[]
+
   // Assessment
   assessmentAssignments    AssessmentAssignment[] @relation("AssessmentAssigner")
 

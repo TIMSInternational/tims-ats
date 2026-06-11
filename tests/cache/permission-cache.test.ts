@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  cacheGet, cacheSet, cacheInvalidatePrefix,
-  permissionCacheKey, getCachedPermission, setCachedPermission, invalidatePermissionCache,
+  cacheGet, cacheSet, cacheInvalidatePrefix, invalidatePermissionCache,
 } from '../../packages/api/src/lib/cache';
 
 // No UPSTASH_* env in CI/dev → exercises the in-memory fallback deterministically.
@@ -32,32 +31,16 @@ describe('cache-aside layer', () => {
   });
 });
 
-describe('permission cache', () => {
-  it('builds a role-order-independent key', () => {
-    expect(permissionCacheKey('org1', ['b', 'a'], 'candidate', 'read'))
-      .toBe(permissionCacheKey('org1', ['a', 'b'], 'candidate', 'read'));
-  });
-
-  it('keys differ by org / module / action', () => {
-    const base = permissionCacheKey('org1', ['recruiter'], 'candidate', 'read');
-    expect(permissionCacheKey('org2', ['recruiter'], 'candidate', 'read')).not.toBe(base);
-    expect(permissionCacheKey('org1', ['recruiter'], 'vacancy', 'read')).not.toBe(base);
-    expect(permissionCacheKey('org1', ['recruiter'], 'candidate', 'update')).not.toBe(base);
-  });
-
-  it('caches both allow (true) and deny (false), distinct from a miss', async () => {
-    await setCachedPermission('orgA', ['recruiter'], 'candidate', 'read', true);
-    await setCachedPermission('orgA', ['recruiter'], 'candidate', 'delete', false);
-    expect(await getCachedPermission('orgA', ['recruiter'], 'candidate', 'read')).toBe(true);
-    expect(await getCachedPermission('orgA', ['recruiter'], 'candidate', 'delete')).toBe(false);
-    expect(await getCachedPermission('orgA', ['recruiter'], 'candidate', 'create')).toBeNull();
-  });
-
-  it('invalidatePermissionCache clears only that org', async () => {
-    await setCachedPermission('orgClear', ['hr_admin'], 'compensation', 'read', true);
-    await setCachedPermission('orgKeep', ['hr_admin'], 'compensation', 'read', true);
+describe('invalidatePermissionCache', () => {
+  it('clears both legacy tims:perm: and scoped tims:access: entries, only for that org', async () => {
+    await cacheSet('tims:perm:orgClear:hr_admin:compensation:read', true, 60);
+    await cacheSet('tims:access:orgClear:hr_admin:compensation:read', { allowed: true }, 60);
+    await cacheSet('tims:perm:orgKeep:hr_admin:compensation:read', true, 60);
+    await cacheSet('tims:access:orgKeep:hr_admin:compensation:read', { allowed: true }, 60);
     await invalidatePermissionCache('orgClear');
-    expect(await getCachedPermission('orgClear', ['hr_admin'], 'compensation', 'read')).toBeNull();
-    expect(await getCachedPermission('orgKeep', ['hr_admin'], 'compensation', 'read')).toBe(true);
+    expect(await cacheGet('tims:perm:orgClear:hr_admin:compensation:read')).toBeNull();
+    expect(await cacheGet('tims:access:orgClear:hr_admin:compensation:read')).toBeNull();
+    expect(await cacheGet('tims:perm:orgKeep:hr_admin:compensation:read')).toBe(true);
+    expect(await cacheGet('tims:access:orgKeep:hr_admin:compensation:read')).toEqual({ allowed: true });
   });
 });

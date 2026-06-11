@@ -41,6 +41,7 @@ pnpm --filter @tims/db exec prisma generate --schema prisma/schema
 | 10 | AI single door (rule #2) | `grep -rn "@ai-sdk\|createAmazonBedrock\|bedrockGenerate\|from 'ai'\|from \"ai\"" packages apps --include="*.ts" --include="*.tsx" \| grep -v node_modules \| grep -v "packages/ai/"` → must be empty |
 | 11 | Build | `SKIP_ENV_VALIDATION=true pnpm --filter @tims/web build` |
 | 12 | Secret scan | `gitleaks git --no-banner .` (full history, same as CI) |
+| 13 | Scope AND-composition | `grep -rn '\.\.\.[[:alnum:]_$.]*access\.where\|\.\.\.[[:alnum:]_$.]*scopeWhere' packages/api/src --include="*.ts"` → must be empty |
 
 Notes:
 - Run greps 4–10 together in one Bash call — they are fast and independent.

@@ -97,6 +97,7 @@ model BusinessUnit {
   children       BusinessUnit[] @relation("UnitHierarchy")
   teams          Team[]
   vacancies      Vacancy[]
+  hrbpAssignments UserBusinessUnit[]
 
   @@index([organizationId])
   @@index([companyId])

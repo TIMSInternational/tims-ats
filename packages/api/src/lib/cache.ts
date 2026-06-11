@@ -77,27 +77,16 @@ export async function cacheInvalidatePrefix(prefix: string): Promise<void> {
   }
 }
 
-// ── Permission cache helpers ───────────────────────────────────────────────
-
-const PERMISSION_TTL_SECONDS = 300; // 5 min (CLAUDE.md §8)
-
-export function permissionCacheKey(orgId: string, roles: string[], module: string, action: string): string {
-  const rolesKey = [...roles].sort().join(',');
-  return `tims:perm:${orgId}:${rolesKey}:${module}:${action}`;
-}
-
-export function getCachedPermission(orgId: string, roles: string[], module: string, action: string) {
-  return cacheGet<boolean>(permissionCacheKey(orgId, roles, module, action));
-}
-
-export function setCachedPermission(orgId: string, roles: string[], module: string, action: string, allowed: boolean) {
-  return cacheSet(permissionCacheKey(orgId, roles, module, action), allowed, PERMISSION_TTL_SECONDS);
-}
-
 /**
  * Invalidate all cached permission decisions for an org. Call whenever role
- * assignments or role→permission grants change for that org.
+ * assignments or role→permission grants change for that org. Clears the scoped
+ * access-decision entries (`tims:access:`) written by buildAccessForUser
+ * (packages/api/src/access/build.ts), plus the legacy boolean `tims:perm:`
+ * entries written by the pre-wave permission cache.
  */
-export function invalidatePermissionCache(orgId: string): Promise<void> {
-  return cacheInvalidatePrefix(`tims:perm:${orgId}:`);
+export async function invalidatePermissionCache(orgId: string): Promise<void> {
+  await Promise.all([
+    cacheInvalidatePrefix(`tims:perm:${orgId}:`), // TODO remove after deploy flushes pre-wave entries
+    cacheInvalidatePrefix(`tims:access:${orgId}:`),
+  ]);
 }
