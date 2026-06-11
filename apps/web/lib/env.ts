@@ -42,6 +42,10 @@ const envSchema = z.object({
   STRIPE_SECRET_KEY: optionalSecret(),
   STRIPE_PRICE_STARTER: optionalSecret(),
   STRIPE_PRICE_PROFESSIONAL: optionalSecret(),
+  // Webhook signing secret. The /api/webhooks/stripe route fails closed (400) when
+  // this is unset or the signature does not verify — an unverified event is never
+  // processed.
+  STRIPE_WEBHOOK_SECRET: optionalSecret(),
 
   // Vercel Cron shared secret. The alert-evaluation cron route requires
   // `Authorization: Bearer <CRON_SECRET>`; unset ⇒ the route 401s (fail-closed).

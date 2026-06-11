@@ -39,6 +39,11 @@ export {
 export { evaluateAlertRules } from './services/alert-evaluation.service';
 export type { AlertEvaluationSummary } from './services/alert-evaluation.service';
 export { candidatePortalService } from './services/candidate-portal.service';
+export {
+  handleStripeWebhook,
+  isWebhookVerificationError,
+} from './services/billing-webhook.service';
+export type { WebhookResult } from './services/billing-webhook.service';
 
 export const appRouter = router({
   auth: authRouter,

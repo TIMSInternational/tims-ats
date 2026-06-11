@@ -8,14 +8,19 @@ enum InvoiceStatus {
 model Subscription {
   id                     String             @id @default(uuid()) @db.Uuid
   organizationId         String             @unique @map("organization_id") @db.Uuid
-  stripeCustomerId       String?            @map("stripe_customer_id")
-  stripeSubscriptionId   String?            @map("stripe_subscription_id")
+  // Unique so the Stripe webhook resolves ownership authoritatively (one customer
+  // per org, one row per subscription). NULLs stay distinct under Postgres unique.
+  stripeCustomerId       String?            @unique @map("stripe_customer_id")
+  stripeSubscriptionId   String?            @unique @map("stripe_subscription_id")
   plan                   OrgPlan            @default(trial)
   status                 SubscriptionStatus @default(trialing)
   currentPeriodStart     DateTime?          @map("current_period_start")
   currentPeriodEnd       DateTime?          @map("current_period_end")
   trialEndsAt            DateTime?          @map("trial_ends_at")
   cancelledAt            DateTime?          @map("cancelled_at")
+  // Created-time of the most recent Stripe event applied — older/out-of-order
+  // webhook deliveries are dropped so stale state never regresses a newer one.
+  lastStripeEventAt      DateTime?          @map("last_stripe_event_at")
   createdAt              DateTime           @default(now()) @map("created_at")
   updatedAt              DateTime           @updatedAt @map("updated_at")
 

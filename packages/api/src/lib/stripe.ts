@@ -56,6 +56,43 @@ export function priceIdToPlan(priceId: string, env: StripeBillingEnv = defaultEn
   return null;
 }
 
+// An incoming subscription is a duplicate/foreign one if the org already has a
+// DIFFERENT, non-cancelled subscription. Used (inside the org-locked transaction) to
+// cancel a duplicate at checkout AND to ignore later events for that duplicate, so
+// they never overwrite the good subscription with the cancelled duplicate's state.
+export function isDuplicateSubscription(
+  existing: { stripeSubscriptionId: string | null; status: string } | null | undefined,
+  incomingSubscriptionId: string,
+): boolean {
+  return (
+    Boolean(existing?.stripeSubscriptionId) &&
+    existing!.stripeSubscriptionId !== incomingSubscriptionId &&
+    existing!.status !== 'cancelled'
+  );
+}
+
+// Decide whether to DROP an incoming subscription event as stale/regressive.
+// event.created is second-granularity, so a tie does NOT mean "duplicate":
+//   - strictly newer  → apply (false)
+//   - strictly older  → drop  (true)
+//   - same second     → drop ONLY if it would un-cancel a terminal cancelled state
+//     (so an out-of-order same-second `updated(active)` cannot reactivate a
+//     `deleted(cancelled)`), otherwise apply (e.g. created→updated, or →cancelled).
+// Exact retries re-apply idempotently (the upsert writes identical values).
+export function shouldDropEvent(
+  current: { status: string; lastStripeEventAt: Date | null } | null | undefined,
+  incomingStatus: string,
+  eventAt: Date,
+): boolean {
+  const lastAt = current?.lastStripeEventAt ?? null;
+  if (!lastAt) return false;
+  const last = lastAt.getTime();
+  const incoming = eventAt.getTime();
+  if (incoming > last) return false;
+  if (incoming < last) return true;
+  return current!.status === 'cancelled' && incomingStatus !== 'cancelled';
+}
+
 let client: Stripe | null = null;
 
 // Lazy Stripe client singleton. Throws a plain Error (services translate to a tRPC
@@ -69,4 +106,15 @@ export function getStripe(): Stripe {
     client = new Stripe(key);
   }
   return client;
+}
+
+// Verify + parse a Stripe webhook payload. Throws when the signing secret or the
+// signature header is missing, or when the signature does not verify — the caller
+// turns any throw into a 400 (never process an unverified event). Uses the raw
+// request body string exactly as received.
+export function constructWebhookEvent(rawBody: string, signature: string | null): Stripe.Event {
+  const secret = process.env.STRIPE_WEBHOOK_SECRET;
+  if (!secret) throw new Error('Stripe webhook secret is not configured');
+  if (!signature) throw new Error('Missing Stripe-Signature header');
+  return getStripe().webhooks.constructEvent(rawBody, signature, secret);
 }
