@@ -36,13 +36,25 @@ function statusLabel(t: T, status: string | null | undefined): string {
 }
 
 function UsageRow({ label, used, limit, noLimit }: { label: string; used: number; limit: number | null; noLimit: string }) {
+  const pct = limit && limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : null;
+  const over = limit != null && used > limit;
   return (
-    <div className="flex items-center justify-between py-2 border-b border-[#F2F2F2] last:border-0">
-      <span className="text-[12px] text-[#585858]">{label}</span>
-      <span className="text-[13px] font-medium text-[#1F114C]">
-        {used}
-        <span className="text-[#8B8B8B] font-normal"> / {limit ?? noLimit}</span>
-      </span>
+    <div className="py-2 border-b border-[#F2F2F2] last:border-0">
+      <div className="flex items-center justify-between">
+        <span className="text-[12px] text-[#585858]">{label}</span>
+        <span className="text-[13px] font-medium text-[#1F114C]">
+          {used}
+          <span className="text-[#8B8B8B] font-normal"> / {limit ?? noLimit}</span>
+        </span>
+      </div>
+      {pct !== null && (
+        <div className="mt-1.5 h-1.5 w-full rounded-full bg-[#F2F2F2] overflow-hidden">
+          <div
+            className={`h-full rounded-full ${over ? 'bg-[#DD0C15]' : 'bg-[#1F114C]'}`}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      )}
     </div>
   );
 }

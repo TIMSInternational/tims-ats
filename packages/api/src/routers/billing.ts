@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { router, permissionProcedure } from '../trpc';
 import { tenantDb as db } from '@tims/db';
+import { planLimits, entitledPlan } from '@tims/shared';
 import { CHECKOUT_PLANS } from '../lib/stripe';
 import { billingService, type BillingAuditActor } from '../services/billing.service';
 
@@ -25,9 +26,13 @@ export const billingRouter = router({
     const orgId = ctx.user.organizationId;
     const sub = await db.subscription.findUnique({
       where: { organizationId: orgId },
-      select: { currentPeriodStart: true, currentPeriodEnd: true },
+      select: { currentPeriodStart: true, currentPeriodEnd: true, plan: true, status: true },
     });
     const periodStart = sub?.currentPeriodStart ?? null;
+    // Limits come from the org's ENTITLED plan (a cancelled sub falls back to trial,
+    // not its old paid/enterprise caps). storage/apiCalls have no metering source
+    // yet, so they stay null regardless of plan (honest, rule #4).
+    const limits = planLimits(entitledPlan(sub?.plan, sub?.status));
 
     const [employees, vacancies, assessments] = await Promise.all([
       db.user.count({ where: { organizationId: orgId, isActive: true } }),
@@ -40,9 +45,9 @@ export const billingRouter = router({
     ]);
 
     return {
-      employees: { used: employees, limit: null },
-      vacancies: { used: vacancies, limit: null },
-      assessments: { used: assessments, limit: null },
+      employees: { used: employees, limit: limits.employees },
+      vacancies: { used: vacancies, limit: limits.vacancies },
+      assessments: { used: assessments, limit: limits.assessments },
       storage: { usedMb: null, limitMb: null },
       apiCalls: { used: null, limit: null },
       periodStart: periodStart?.toISOString() ?? null,
