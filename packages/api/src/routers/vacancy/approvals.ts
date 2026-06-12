@@ -1,7 +1,9 @@
 import { z } from 'zod';
 import { router, permissionProcedure } from '../../trpc';
 import { tenantDb as db } from '@tims/db';
+import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
+import { scopeWhereFor, assertScoped } from '../../access';
 
 // ---------------------------------------------------------------------------
 // Shared selects
@@ -34,6 +36,8 @@ export const vacancyApprovalsRouter = router({
       approverIds: z.array(z.string().uuid()).min(1).max(10),
     }))
     .mutation(async ({ ctx, input }) => {
+      await assertScoped('vacancy', input.id, ctx.access, ctx.user.id, ctx.user.organizationId);
+
       const vacancy = await db.vacancy.findFirst({
         where: { id: input.id, organizationId: ctx.user.organizationId, status: 'draft', deletedAt: null },
         select: { id: true },
@@ -71,6 +75,8 @@ export const vacancyApprovalsRouter = router({
       comment: z.string().max(1000).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
+      await assertScoped('vacancy', input.id, ctx.access, ctx.user.id, ctx.user.organizationId);
+
       const approval = await db.vacancyApproval.findFirst({
         where: {
           vacancyId: input.id,
@@ -111,6 +117,8 @@ export const vacancyApprovalsRouter = router({
       comment: z.string().min(1).max(1000),
     }))
     .mutation(async ({ ctx, input }) => {
+      await assertScoped('vacancy', input.id, ctx.access, ctx.user.id, ctx.user.organizationId);
+
       const approval = await db.vacancyApproval.findFirst({
         where: {
           vacancyId: input.id,
@@ -149,8 +157,14 @@ export const vacancyApprovalsRouter = router({
   getApprovalChain: permissionProcedure('vacancy', 'read')
     .input(z.object({ vacancyId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
+      const scopeWhere = await scopeWhereFor('vacancy', ctx.access, ctx.user.id);
       const vacancy = await db.vacancy.findFirst({
-        where: { id: input.vacancyId, organizationId: ctx.user.organizationId, deletedAt: null },
+        where: {
+          AND: [
+            { id: input.vacancyId, organizationId: ctx.user.organizationId, deletedAt: null },
+            scopeWhere as Prisma.VacancyWhereInput,
+          ],
+        },
         select: { id: true },
       });
       if (!vacancy) {

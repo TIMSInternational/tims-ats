@@ -111,6 +111,19 @@ export const pipelineRepository = {
     });
   },
 
+  // Scope-count for bulkMove: counts only the ids that are in-scope.
+  // Applications have no deletedAt column (design fact — no soft-delete guard needed).
+  async countApplicationsInScope(orgId: string, applicationIds: string[], scopeWhere: Prisma.ApplicationWhereInput) {
+    return db.application.count({
+      where: {
+        AND: [
+          { id: { in: applicationIds }, organizationId: orgId },
+          scopeWhere,
+        ],
+      },
+    });
+  },
+
   // Stage lookup
   async findStage(orgId: string, stageId: string) {
     return db.pipelineStage.findFirst({

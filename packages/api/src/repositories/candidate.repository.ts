@@ -5,31 +5,37 @@ import type { Prisma } from '@tims/db';
 // Explicit select objects — never return full records (CLAUDE.md §4)
 // ---------------------------------------------------------------------------
 
-const candidateListSelect = {
-  id: true,
-  firstName: true,
-  lastName: true,
-  email: true,
-  phone: true,
-  source: true,
-  poolType: true,
-  avatar: true,
-  location: true,
-  currentTitle: true,
-  currentCompany: true,
-  skills: true,
-  yearsExperience: true,
-  isActive: true,
-  createdAt: true,
-  updatedAt: true,
-  tags: { select: { id: true, tag: true, source: true } },
-  fitScores: {
-    orderBy: { calculatedAt: 'desc' as const },
-    take: 1,
-    select: { id: true, overallScore: true, calculatedAt: true },
-  },
-  _count: { select: { applications: true } },
-} satisfies Prisma.CandidateSelect;
+// Codex re-review: list children (latest fitScore, application count) carry the
+// application-level fragment so a candidate visible via one in-scope application
+// does not surface fit scores / counts from out-of-scope vacancies. {} at org
+// scope → identical to the previous static select.
+const buildCandidateListSelect = (appScopeWhere: Prisma.ApplicationWhereInput) =>
+  ({
+    id: true,
+    firstName: true,
+    lastName: true,
+    email: true,
+    phone: true,
+    source: true,
+    poolType: true,
+    avatar: true,
+    location: true,
+    currentTitle: true,
+    currentCompany: true,
+    skills: true,
+    yearsExperience: true,
+    isActive: true,
+    createdAt: true,
+    updatedAt: true,
+    tags: { select: { id: true, tag: true, source: true } },
+    fitScores: {
+      where: appScopeWhere as Prisma.FitScoreWhereInput,
+      orderBy: { calculatedAt: 'desc' as const },
+      take: 1,
+      select: { id: true, overallScore: true, calculatedAt: true },
+    },
+    _count: { select: { applications: { where: appScopeWhere } } },
+  }) satisfies Prisma.CandidateSelect;
 
 const candidateDetailSelect = {
   id: true,
@@ -63,34 +69,49 @@ const candidateDetailSelect = {
       uploadedAt: true,
     },
   },
-  applications: {
-    select: {
-      id: true,
-      status: true,
-      source: true,
-      appliedAt: true,
-      vacancy: { select: { id: true, title: true, status: true } },
-      currentStage: { select: { id: true, name: true, order: true } },
-    },
-  },
-  fitScores: {
-    orderBy: { calculatedAt: 'desc' as const },
-    select: { id: true, overallScore: true, breakdown: true, calculatedAt: true },
-  },
-  assessmentAssignments: {
-    select: {
-      id: true,
-      status: true,
-      assignedAt: true,
-      completedAt: true,
-      assessmentType: { select: { id: true, name: true, code: true } },
-      result: { select: { id: true, rawScore: true, normalizedScore: true, breakdown: true } },
-    },
-  },
   createdBy: {
     select: { id: true, firstName: true, lastName: true, avatar: true },
   },
 } satisfies Prisma.CandidateSelect;
+
+// Codex F1: the candidate-detail child relations (applications / fitScores /
+// assessmentAssignments) are built per-request with the application-level scope
+// fragment threaded in as their `where`, so a narrow-scoped user who reaches the
+// candidate via ONE in-scope application cannot read their out-of-scope children.
+// FitScore + AssessmentAssignment both relate to Vacancy with the same shape, so
+// the SAME {vacancy: frag} fragment scopes all three. At org/company scope the
+// fragment is {} → no behavior change.
+const buildCandidateDetailSelect = (appScopeWhere: Prisma.ApplicationWhereInput) =>
+  ({
+    ...candidateDetailSelect,
+    applications: {
+      where: appScopeWhere,
+      select: {
+        id: true,
+        status: true,
+        source: true,
+        appliedAt: true,
+        vacancy: { select: { id: true, title: true, status: true } },
+        currentStage: { select: { id: true, name: true, order: true } },
+      },
+    },
+    fitScores: {
+      where: appScopeWhere as Prisma.FitScoreWhereInput,
+      orderBy: { calculatedAt: 'desc' as const },
+      select: { id: true, overallScore: true, breakdown: true, calculatedAt: true },
+    },
+    assessmentAssignments: {
+      where: appScopeWhere as Prisma.AssessmentAssignmentWhereInput,
+      select: {
+        id: true,
+        status: true,
+        assignedAt: true,
+        completedAt: true,
+        assessmentType: { select: { id: true, name: true, code: true } },
+        result: { select: { id: true, rawScore: true, normalizedScore: true, breakdown: true } },
+      },
+    },
+  }) satisfies Prisma.CandidateSelect;
 
 const candidateMutationSelect = {
   id: true,
@@ -115,6 +136,7 @@ const candidateSearchSelect = {
 
 const documentSelect = {
   id: true,
+  candidateId: true,
   type: true,
   fileName: true,
   fileUrl: true,
@@ -138,6 +160,8 @@ const tagSelect = {
 export const candidateRepository = {
   async list(
     orgId: string,
+    scopeWhere: Prisma.CandidateWhereInput,
+    appScopeWhere: Prisma.ApplicationWhereInput,
     filters: {
       cursor?: string;
       limit: number;
@@ -152,16 +176,12 @@ export const candidateRepository = {
   ) {
     const { cursor, limit, search, poolType, source, tags, skills, fitMin, fitMax } = filters;
 
-    const where: Prisma.CandidateWhereInput = {
-      organizationId: orgId,
-      isActive: true,
-      deletedAt: null,
-    };
+    const filterClause: Prisma.CandidateWhereInput = {};
 
-    if (poolType) where.poolType = poolType;
-    if (source) where.source = source;
+    if (poolType) filterClause.poolType = poolType;
+    if (source) filterClause.source = source;
     if (search) {
-      where.OR = [
+      filterClause.OR = [
         { firstName: { contains: search, mode: 'insensitive' } },
         { lastName: { contains: search, mode: 'insensitive' } },
         { email: { contains: search, mode: 'insensitive' } },
@@ -170,35 +190,57 @@ export const candidateRepository = {
       ];
     }
     if (tags && tags.length > 0) {
-      where.tags = { some: { tag: { in: tags } } };
+      filterClause.tags = { some: { tag: { in: tags } } };
     }
     if (skills && skills.length > 0) {
-      where.skills = { array_contains: skills };
+      filterClause.skills = { array_contains: skills };
     }
     if (fitMin !== undefined || fitMax !== undefined) {
-      where.fitScores = {
+      // The fit filter must only consider IN-SCOPE fit scores (codex re-review).
+      filterClause.fitScores = {
         some: {
-          overallScore: {
-            ...(fitMin !== undefined ? { gte: fitMin } : {}),
-            ...(fitMax !== undefined ? { lte: fitMax } : {}),
-          },
+          AND: [
+            {
+              overallScore: {
+                ...(fitMin !== undefined ? { gte: fitMin } : {}),
+                ...(fitMax !== undefined ? { lte: fitMax } : {}),
+              },
+            },
+            appScopeWhere as Prisma.FitScoreWhereInput,
+          ],
         },
       };
     }
 
     return db.candidate.findMany({
-      where,
+      where: {
+        AND: [
+          { organizationId: orgId, isActive: true, deletedAt: null },
+          scopeWhere as Prisma.CandidateWhereInput,
+          filterClause,
+        ],
+      },
       take: limit + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       orderBy: { createdAt: 'desc' },
-      select: candidateListSelect,
+      select: buildCandidateListSelect(appScopeWhere),
     });
   },
 
-  async getById(orgId: string, id: string) {
+  async getById(
+    orgId: string,
+    scopeWhere: Prisma.CandidateWhereInput,
+    id: string,
+    appScopeWhere: Prisma.ApplicationWhereInput,
+  ) {
     return db.candidate.findFirst({
-      where: { id, organizationId: orgId, deletedAt: null },
-      select: candidateDetailSelect,
+      where: {
+        AND: [
+          { id, organizationId: orgId, deletedAt: null },
+          scopeWhere as Prisma.CandidateWhereInput,
+        ],
+      },
+      select: buildCandidateDetailSelect(appScopeWhere),
     });
   },
 
@@ -233,18 +275,21 @@ export const candidateRepository = {
     });
   },
 
-  async search(orgId: string, query: string, limit: number) {
+  async search(orgId: string, scopeWhere: Prisma.CandidateWhereInput, query: string, limit: number) {
     return db.candidate.findMany({
       where: {
-        organizationId: orgId,
-        isActive: true,
-        deletedAt: null,
-        OR: [
-          { firstName: { contains: query, mode: 'insensitive' } },
-          { lastName: { contains: query, mode: 'insensitive' } },
-          { email: { contains: query, mode: 'insensitive' } },
-          { currentTitle: { contains: query, mode: 'insensitive' } },
-          { currentCompany: { contains: query, mode: 'insensitive' } },
+        AND: [
+          { organizationId: orgId, isActive: true, deletedAt: null },
+          scopeWhere as Prisma.CandidateWhereInput,
+          {
+            OR: [
+              { firstName: { contains: query, mode: 'insensitive' } },
+              { lastName: { contains: query, mode: 'insensitive' } },
+              { email: { contains: query, mode: 'insensitive' } },
+              { currentTitle: { contains: query, mode: 'insensitive' } },
+              { currentCompany: { contains: query, mode: 'insensitive' } },
+            ],
+          },
         ],
       },
       take: limit,
@@ -309,9 +354,14 @@ export const candidateRepository = {
     return db.candidateTag.createMany({ data, skipDuplicates: true });
   },
 
-  async countCandidatesInOrg(orgId: string, candidateIds: string[]) {
+  async countCandidatesInScope(orgId: string, candidateIds: string[], scopeWhere: Prisma.CandidateWhereInput) {
     return db.candidate.count({
-      where: { id: { in: candidateIds }, organizationId: orgId, deletedAt: null },
+      where: {
+        AND: [
+          { id: { in: candidateIds }, organizationId: orgId, deletedAt: null },
+          scopeWhere as Prisma.CandidateWhereInput,
+        ],
+      },
     });
   },
 
@@ -324,10 +374,15 @@ export const candidateRepository = {
     });
   },
 
-  async getPoolStats(orgId: string) {
+  async getPoolStats(orgId: string, scopeWhere: Prisma.CandidateWhereInput) {
     return db.candidate.groupBy({
       by: ['poolType'],
-      where: { organizationId: orgId, isActive: true, deletedAt: null },
+      where: {
+        AND: [
+          { organizationId: orgId, isActive: true, deletedAt: null },
+          scopeWhere as Prisma.CandidateWhereInput,
+        ],
+      },
       _count: { id: true },
     });
   },
@@ -381,10 +436,17 @@ export const candidateRepository = {
   },
 
   // Timeline
-  async getTimelineData(orgId: string, candidateId: string) {
+  // Codex F1: application/assessment child loads are scope-filtered via the
+  // threaded appScopeWhere ({vacancy: frag}) so out-of-scope rows never surface
+  // in the timeline. At org scope appScopeWhere is {} → no behavior change.
+  async getTimelineData(
+    orgId: string,
+    candidateId: string,
+    appScopeWhere: Prisma.ApplicationWhereInput,
+  ) {
     return Promise.all([
       db.application.findMany({
-        where: { candidateId, organizationId: orgId },
+        where: { AND: [{ candidateId, organizationId: orgId }, appScopeWhere] },
         select: {
           id: true,
           status: true,
@@ -406,7 +468,7 @@ export const candidateRepository = {
         orderBy: { appliedAt: 'desc' },
       }),
       db.assessmentAssignment.findMany({
-        where: { candidateId, organizationId: orgId },
+        where: { AND: [{ candidateId, organizationId: orgId }, appScopeWhere as Prisma.AssessmentAssignmentWhereInput] },
         select: {
           id: true,
           status: true,
@@ -455,13 +517,20 @@ export const candidateRepository = {
   },
 
   // Risks
-  async getCandidateForRisks(orgId: string, candidateId: string) {
+  async getCandidateForRisks(
+    orgId: string,
+    candidateId: string,
+    appScopeWhere: Prisma.ApplicationWhereInput,
+  ) {
+    // Codex re-review: risk factors must derive only from IN-SCOPE applications
+    // and fit scores. {} at org scope → previous behavior.
     return db.candidate.findFirst({
       where: { id: candidateId, organizationId: orgId, deletedAt: null },
       select: {
         id: true,
-        applications: { select: { status: true } },
+        applications: { where: appScopeWhere, select: { status: true } },
         fitScores: {
+          where: appScopeWhere as Prisma.FitScoreWhereInput,
           orderBy: { calculatedAt: 'desc' as const },
           take: 1,
           select: { overallScore: true },
@@ -471,17 +540,44 @@ export const candidateRepository = {
   },
 
   // KPIs
-  async getDashboardKpis(orgId: string) {
+  async getDashboardKpis(
+    orgId: string,
+    scopeWhere: Prisma.CandidateWhereInput,
+    appScopeWhere: Prisma.ApplicationWhereInput,
+  ) {
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
     return Promise.all([
-      db.candidate.count({ where: { organizationId: orgId, isActive: true, deletedAt: null } }),
-      db.candidate.count({ where: { organizationId: orgId, isActive: true, deletedAt: null, createdAt: { gte: monthStart } } }),
-      db.application.count({ where: { organizationId: orgId, status: 'active' } }),
+      db.candidate.count({
+        where: {
+          AND: [
+            { organizationId: orgId, isActive: true, deletedAt: null },
+            scopeWhere as Prisma.CandidateWhereInput,
+          ],
+        },
+      }),
+      db.candidate.count({
+        where: {
+          AND: [
+            { organizationId: orgId, isActive: true, deletedAt: null, createdAt: { gte: monthStart } },
+            scopeWhere as Prisma.CandidateWhereInput,
+          ],
+        },
+      }),
+      // Codex F4: the active-application KPI composes the application fragment —
+      // a narrow-scoped dashboard must not show the org-wide count.
+      db.application.count({
+        where: { AND: [{ organizationId: orgId, status: 'active' }, appScopeWhere] },
+      }),
       db.candidate.groupBy({
         by: ['poolType'],
-        where: { organizationId: orgId, isActive: true, deletedAt: null },
+        where: {
+          AND: [
+            { organizationId: orgId, isActive: true, deletedAt: null },
+            scopeWhere as Prisma.CandidateWhereInput,
+          ],
+        },
         _count: { id: true },
       }),
     ]);

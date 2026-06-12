@@ -1,7 +1,9 @@
 import { z } from 'zod';
 import { router, permissionProcedure } from '../../trpc';
 import { tenantDb as db } from '@tims/db';
+import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
+import { scopeWhereFor, assertScoped } from '../../access';
 
 const channelSelect = {
   id: true,
@@ -18,8 +20,14 @@ export const vacancyChannelsRouter = router({
   listChannels: permissionProcedure('vacancy', 'read')
     .input(z.object({ vacancyId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
+      const scopeWhere = await scopeWhereFor('vacancy', ctx.access, ctx.user.id);
       const vacancy = await db.vacancy.findFirst({
-        where: { id: input.vacancyId, organizationId: ctx.user.organizationId, deletedAt: null },
+        where: {
+          AND: [
+            { id: input.vacancyId, organizationId: ctx.user.organizationId, deletedAt: null },
+            scopeWhere as Prisma.VacancyWhereInput,
+          ],
+        },
         select: { id: true },
       });
       if (!vacancy) {
@@ -40,6 +48,8 @@ export const vacancyChannelsRouter = router({
       channelType: z.enum(['internal', 'linkedin', 'indeed', 'computrabajo', 'elempleo', 'website', 'other']),
     }))
     .mutation(async ({ ctx, input }) => {
+      await assertScoped('vacancy', input.vacancyId, ctx.access, ctx.user.id, ctx.user.organizationId);
+
       const vacancy = await db.vacancy.findFirst({
         where: {
           id: input.vacancyId,
@@ -83,11 +93,15 @@ export const vacancyChannelsRouter = router({
     .mutation(async ({ ctx, input }) => {
       const channel = await db.publicationChannel.findFirst({
         where: { id: input.channelId, organizationId: ctx.user.organizationId },
-        select: { id: true },
+        select: { id: true, vacancyId: true },
       });
       if (!channel) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Canal no encontrado' });
       }
+
+      // Scope-probe the parent vacancy: a narrow-scoped user must not unpublish
+      // a channel on an out-of-scope vacancy (the channel itself carries no anchor).
+      await assertScoped('vacancy', channel.vacancyId, ctx.access, ctx.user.id, ctx.user.organizationId);
 
       return db.publicationChannel.update({
         where: { id: input.channelId },

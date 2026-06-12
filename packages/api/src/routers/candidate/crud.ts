@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { router, permissionProcedure } from '../../trpc';
 import { candidateService } from '../../services/candidate.service';
+import { scopeWhereFor, assertScoped } from '../../access';
 
 const cursorPaginationInput = z.object({
   cursor: z.string().uuid().optional(),
@@ -37,11 +38,23 @@ export const candidateCrudRouter = router({
         skills: z.array(z.string().max(100)).max(50).optional(),
       }),
     )
-    .query(({ ctx, input }) => candidateService.list(ctx.user.organizationId, input)),
+    .query(async ({ ctx, input }) => {
+      const scopeWhere = await scopeWhereFor('candidate', ctx.access, ctx.user.id);
+      // List children (fit scores, app counts) + fit filters carry the
+      // application fragment (codex re-review).
+      const appScopeWhere = await scopeWhereFor('application', ctx.access, ctx.user.id);
+      return candidateService.list(ctx.user.organizationId, scopeWhere, appScopeWhere, input);
+    }),
 
   getById: permissionProcedure('candidate', 'read')
     .input(z.object({ id: z.string().uuid() }))
-    .query(({ ctx, input }) => candidateService.getById(ctx.user.organizationId, input.id)),
+    .query(async ({ ctx, input }) => {
+      const scopeWhere = await scopeWhereFor('candidate', ctx.access, ctx.user.id);
+      // Codex F1: child relations (applications/fitScores/assessments) are
+      // filtered by the application-level fragment, not just the parent gate.
+      const appScopeWhere = await scopeWhereFor('application', ctx.access, ctx.user.id);
+      return candidateService.getById(ctx.user.organizationId, scopeWhere, input.id, appScopeWhere);
+    }),
 
   create: permissionProcedure('candidate', 'create')
     .input(candidateCreateInput)
@@ -49,15 +62,24 @@ export const candidateCrudRouter = router({
 
   update: permissionProcedure('candidate', 'update')
     .input(candidateCreateInput.partial().extend({ id: z.string().uuid() }))
-    .mutation(({ ctx, input }) => {
+    .mutation(async ({ ctx, input }) => {
       const { id, ...data } = input;
+      await assertScoped('candidate', id, ctx.access, ctx.user.id, ctx.user.organizationId);
       return candidateService.update(ctx.user.organizationId, id, data);
     }),
 
   search: permissionProcedure('candidate', 'read')
     .input(z.object({ query: z.string().min(1).max(200), limit: z.number().int().min(1).max(50).default(20) }))
-    .query(({ ctx, input }) => candidateService.search(ctx.user.organizationId, input.query, input.limit)),
+    .query(async ({ ctx, input }) => {
+      const scopeWhere = await scopeWhereFor('candidate', ctx.access, ctx.user.id);
+      return candidateService.search(ctx.user.organizationId, scopeWhere, input.query, input.limit);
+    }),
 
   getDashboardKpis: permissionProcedure('candidate', 'read')
-    .query(({ ctx }) => candidateService.getDashboardKpis(ctx.user.organizationId)),
+    .query(async ({ ctx }) => {
+      const scopeWhere = await scopeWhereFor('candidate', ctx.access, ctx.user.id);
+      // Codex F4: the active-application KPI carries the application fragment.
+      const appScopeWhere = await scopeWhereFor('application', ctx.access, ctx.user.id);
+      return candidateService.getDashboardKpis(ctx.user.organizationId, scopeWhere, appScopeWhere);
+    }),
 });

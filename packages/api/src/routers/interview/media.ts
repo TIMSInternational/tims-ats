@@ -1,8 +1,10 @@
 import { z } from 'zod';
 import { router, permissionProcedure } from '../../trpc';
 import { tenantDb as db } from '@tims/db';
+import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { videoService } from '../../services/video.service';
+import { assertScoped, scopeWhereFor } from '../../access';
 
 export const interviewMediaRouter = router({
   // 8.12a — Create or reuse a Daily.co video room for an interview
@@ -10,8 +12,17 @@ export const interviewMediaRouter = router({
   createVideoRoom: permissionProcedure('interview', 'create')
     .input(z.object({ interviewId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
+      const scopeWhere = await scopeWhereFor('interview', ctx.access, ctx.user.id);
+
+      // Compose scope into the existing findFirst which also fetches meetingUrl
+      // (used below) — cannot replace with bare assertScoped.
       const interview = await db.interview.findFirst({
-        where: { id: input.interviewId, organizationId: ctx.user.organizationId },
+        where: {
+          AND: [
+            { id: input.interviewId, organizationId: ctx.user.organizationId },
+            scopeWhere as Prisma.InterviewWhereInput,
+          ],
+        },
         select: { id: true, meetingUrl: true },
       });
 
@@ -51,8 +62,17 @@ export const interviewMediaRouter = router({
   getVideoToken: permissionProcedure('interview', 'read')
     .input(z.object({ interviewId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
+      const scopeWhere = await scopeWhereFor('interview', ctx.access, ctx.user.id);
+
+      // Compose scope into the existing findFirst which also fetches meetingUrl
+      // (used for room-name extraction below) — cannot replace with bare assertScoped.
       const interview = await db.interview.findFirst({
-        where: { id: input.interviewId, organizationId: ctx.user.organizationId },
+        where: {
+          AND: [
+            { id: input.interviewId, organizationId: ctx.user.organizationId },
+            scopeWhere as Prisma.InterviewWhereInput,
+          ],
+        },
         select: { id: true, meetingUrl: true },
       });
 
@@ -98,13 +118,9 @@ export const interviewMediaRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const interview = await db.interview.findFirst({
-        where: { id: input.interviewId, organizationId: ctx.user.organizationId },
-      });
-
-      if (!interview) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Entrevista no encontrada' });
-      }
+      // assertScoped replaces the bare org-check findFirst — saveTranscript only
+      // uses the probe result as an existence check (no fields consumed after).
+      await assertScoped('interview', input.interviewId, ctx.access, ctx.user.id, ctx.user.organizationId);
 
       return db.interview.update({
         where: { id: input.interviewId },
@@ -120,12 +136,18 @@ export const interviewMediaRouter = router({
     const now = new Date();
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000);
+    const scopeWhere = await scopeWhereFor('interview', ctx.access, ctx.user.id);
 
     return db.interview.findMany({
       where: {
-        organizationId: ctx.user.organizationId,
-        scheduledAt: { gte: startOfDay, lt: endOfDay },
-        status: { not: 'cancelled' },
+        AND: [
+          {
+            organizationId: ctx.user.organizationId,
+            scheduledAt: { gte: startOfDay, lt: endOfDay },
+            status: { not: 'cancelled' },
+          },
+          scopeWhere as Prisma.InterviewWhereInput,
+        ],
       },
       include: {
         candidate: {

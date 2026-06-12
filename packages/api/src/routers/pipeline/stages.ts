@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { router, permissionProcedure } from '../../trpc';
+import { TRPCError } from '@trpc/server';
 import { pipelineService } from '../../services/pipeline.service';
+import { assertScoped } from '../../access';
 
 const checklistItemSchema = z.object({
   key: z.string().max(100),
@@ -10,10 +12,28 @@ const checklistItemSchema = z.object({
   completedAt: z.string().datetime().optional(),
 });
 
+// Helper: fetch a stage's parent vacancyId then scope-probe the vacancy.
+// Throws NOT_FOUND if the stage is not org-owned or the vacancy is out of scope.
+async function probeStageVacancy(
+  orgId: string,
+  stageId: string,
+  access: Parameters<typeof assertScoped>[2],
+  userId: string,
+): Promise<void> {
+  const vacancyId = await pipelineService.getStageVacancyId(orgId, stageId);
+  if (!vacancyId) {
+    throw new TRPCError({ code: 'NOT_FOUND', message: 'Etapa no encontrada' });
+  }
+  await assertScoped('vacancy', vacancyId, access, userId, orgId);
+}
+
 export const pipelineStagesRouter = router({
   listStages: permissionProcedure('pipeline', 'read')
     .input(z.object({ vacancyId: z.string().uuid() }))
-    .query(({ ctx, input }) => pipelineService.listStages(ctx.user.organizationId, input.vacancyId)),
+    .query(async ({ ctx, input }) => {
+      await assertScoped('vacancy', input.vacancyId, ctx.access, ctx.user.id, ctx.user.organizationId);
+      return pipelineService.listStages(ctx.user.organizationId, input.vacancyId);
+    }),
 
   createStage: permissionProcedure('pipeline', 'create')
     .input(z.object({
@@ -24,8 +44,13 @@ export const pipelineStagesRouter = router({
       checklist: z.array(checklistItemSchema).max(30).optional(),
       isDefault: z.boolean().default(false),
     }))
-    .mutation(({ ctx, input }) => pipelineService.createStage(ctx.user.organizationId, input)),
+    .mutation(async ({ ctx, input }) => {
+      await assertScoped('vacancy', input.vacancyId, ctx.access, ctx.user.id, ctx.user.organizationId);
+      return pipelineService.createStage(ctx.user.organizationId, input);
+    }),
 
+  // Fetch-then-probe: stageId → vacancyId → probe vacancy scope.
+  // A PipelineStage always has a non-null vacancyId (schema: required FK, no org-global templates).
   updateStage: permissionProcedure('pipeline', 'update')
     .input(z.object({
       id: z.string().uuid(),
@@ -35,25 +60,33 @@ export const pipelineStagesRouter = router({
       checklist: z.array(checklistItemSchema).max(30).nullish(),
       isDefault: z.boolean().optional(),
     }))
-    .mutation(({ ctx, input }) => {
+    .mutation(async ({ ctx, input }) => {
+      await probeStageVacancy(ctx.user.organizationId, input.id, ctx.access, ctx.user.id);
       const { id, ...data } = input;
       return pipelineService.updateStage(ctx.user.organizationId, id, data);
     }),
 
   deleteStage: permissionProcedure('pipeline', 'delete')
     .input(z.object({ id: z.string().uuid() }))
-    .mutation(({ ctx, input }) => pipelineService.deleteStage(ctx.user.organizationId, input.id)),
+    .mutation(async ({ ctx, input }) => {
+      await probeStageVacancy(ctx.user.organizationId, input.id, ctx.access, ctx.user.id);
+      return pipelineService.deleteStage(ctx.user.organizationId, input.id);
+    }),
 
   getStageChecklist: permissionProcedure('pipeline', 'read')
     .input(z.object({ stageId: z.string().uuid() }))
-    .query(({ ctx, input }) => pipelineService.getStageChecklist(ctx.user.organizationId, input.stageId)),
+    .query(async ({ ctx, input }) => {
+      await probeStageVacancy(ctx.user.organizationId, input.stageId, ctx.access, ctx.user.id);
+      return pipelineService.getStageChecklist(ctx.user.organizationId, input.stageId);
+    }),
 
   updateChecklist: permissionProcedure('pipeline', 'update')
     .input(z.object({
       stageId: z.string().uuid(),
       checklist: z.array(checklistItemSchema).max(30),
     }))
-    .mutation(({ ctx, input }) =>
-      pipelineService.updateChecklist(ctx.user.organizationId, input.stageId, input.checklist),
-    ),
+    .mutation(async ({ ctx, input }) => {
+      await probeStageVacancy(ctx.user.organizationId, input.stageId, ctx.access, ctx.user.id);
+      return pipelineService.updateChecklist(ctx.user.organizationId, input.stageId, input.checklist);
+    }),
 });

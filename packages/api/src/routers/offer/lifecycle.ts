@@ -1,8 +1,10 @@
 import { z } from 'zod';
 import { router, permissionProcedure } from '../../trpc';
 import { tenantDb as db } from '@tims/db';
+import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { resolveStaffSupabaseUserId } from '../../services/staff-provisioning.service';
+import { scopeWhereFor } from '../../access';
 
 export const offerLifecycleRouter = router({
   // NOTE: offer send + e-signature live in offer/signing.ts — the REAL flow
@@ -24,8 +26,18 @@ export const offerLifecycleRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      const scopeWhere = await scopeWhereFor('offer', ctx.access, ctx.user.id);
+
+      // Compose scope into the business findFirst — it fetches candidate and
+      // vacancy fields consumed downstream (used to create the new User record).
+      // Cannot use assertScoped alone as those fields would be lost.
       const offer = await db.offer.findFirst({
-        where: { id: input.offerId, organizationId: ctx.user.organizationId },
+        where: {
+          AND: [
+            { id: input.offerId, organizationId: ctx.user.organizationId },
+            scopeWhere as Prisma.OfferWhereInput,
+          ],
+        },
         include: {
           candidate: true,
           vacancy: { select: { companyId: true, businessUnitId: true, teamId: true } },

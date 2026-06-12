@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { router, permissionProcedure } from '../../trpc';
 import { candidateService } from '../../services/candidate.service';
+import { scopeWhereFor, assertScoped } from '../../access';
 
 export const candidatePoolRouter = router({
   addToPool: permissionProcedure('candidate', 'update')
@@ -8,12 +9,16 @@ export const candidatePoolRouter = router({
       candidateId: z.string().uuid(),
       poolType: z.string().min(1).max(100),
     }))
-    .mutation(({ ctx, input }) =>
-      candidateService.addToPool(ctx.user.organizationId, input.candidateId, input.poolType),
-    ),
+    .mutation(async ({ ctx, input }) => {
+      await assertScoped('candidate', input.candidateId, ctx.access, ctx.user.id, ctx.user.organizationId);
+      return candidateService.addToPool(ctx.user.organizationId, input.candidateId, input.poolType);
+    }),
 
   getPoolStats: permissionProcedure('candidate', 'read')
-    .query(({ ctx }) => candidateService.getPoolStats(ctx.user.organizationId)),
+    .query(async ({ ctx }) => {
+      const scopeWhere = await scopeWhereFor('candidate', ctx.access, ctx.user.id);
+      return candidateService.getPoolStats(ctx.user.organizationId, scopeWhere);
+    }),
 
   export: permissionProcedure('candidate', 'read')
     .input(z.object({

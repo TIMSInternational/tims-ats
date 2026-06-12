@@ -2,6 +2,8 @@ import { z } from 'zod';
 import { router, permissionProcedure } from '../../trpc';
 import { tenantDb as db } from '@tims/db';
 import { TRPCError } from '@trpc/server';
+import { assertScoped, scopeWhereFor } from '../../access';
+import type { Prisma } from '@tims/db';
 
 export const interviewScorecardsRouter = router({
   // 8.6 — Get scorecard for a specific interview + evaluator
@@ -13,6 +15,7 @@ export const interviewScorecardsRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
+      await assertScoped('interview', input.interviewId, ctx.access, ctx.user.id, ctx.user.organizationId);
       const evaluatorId = input.evaluatorId ?? ctx.user.id;
 
       const scorecard = await db.interviewScorecard.findFirst({
@@ -40,12 +43,17 @@ export const interviewScorecardsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const interview = await db.interview.findFirst({
-        where: { id: input.interviewId, organizationId: ctx.user.organizationId },
-      });
+      await assertScoped('interview', input.interviewId, ctx.access, ctx.user.id, ctx.user.organizationId);
 
-      if (!interview) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Entrevista no encontrada' });
+      // Slice-1 codex carry-over: only an ASSIGNED evaluator may submit a
+      // scorecard — without this, any org member could upsert one (the upsert
+      // keys on evaluatorId: ctx.user.id, so they'd forge their own row).
+      const evaluator = await db.interviewEvaluator.findFirst({
+        where: { interviewId: input.interviewId, userId: ctx.user.id },
+        select: { id: true },
+      });
+      if (!evaluator) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Solo un evaluador asignado puede enviar la evaluacion' });
       }
 
       return db.interviewScorecard.upsert({
@@ -77,6 +85,8 @@ export const interviewScorecardsRouter = router({
   compareEvaluators: permissionProcedure('interview', 'read')
     .input(z.object({ interviewId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
+      await assertScoped('interview', input.interviewId, ctx.access, ctx.user.id, ctx.user.organizationId);
+
       const scorecards = await db.interviewScorecard.findMany({
         where: {
           organizationId: ctx.user.organizationId,
@@ -131,13 +141,17 @@ export const interviewScorecardsRouter = router({
 
   // 8.15 — Get pending scorecards for current user
   getPendingScorecards: permissionProcedure('interview', 'read').query(async ({ ctx }) => {
+    const scopeWhere = await scopeWhereFor('interview', ctx.access, ctx.user.id) as Prisma.InterviewWhereInput;
+
     const evaluatorAssignments = await db.interviewEvaluator.findMany({
       where: {
         userId: ctx.user.id,
         status: 'pending',
         interview: {
-          organizationId: ctx.user.organizationId,
-          status: { in: ['scheduled', 'rescheduled', 'completed'] },
+          AND: [
+            { organizationId: ctx.user.organizationId, status: { in: ['scheduled', 'rescheduled', 'completed'] } },
+            scopeWhere,
+          ],
         },
       },
       include: {

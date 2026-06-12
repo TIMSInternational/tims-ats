@@ -76,26 +76,46 @@ is active (consistency with platformProcedure)). Static tripwire
 tests in tests/access/endpoint-hardening.test.ts +
 tests/security/platform-layout-gate.test.ts. Tests 282 → 298.
 
-**Slices 3–7 pending** (each gets its own plan): 3 scope enforcement: recruitment
-(entity policy builders) · 4 scope enforcement: people (own/team/unit live here) ·
+**Slice 3 SHIPPED (branch feat/access-scope-recruitment): scope enforcement —
+recruitment.** `packages/api/src/access/entity-policies.ts` (`scopeWhereFor`:
+vacancy team→OR(led-team ids, assignedTo); unit→businessUnitId∈units;
+candidate via applications.some.vacancy — `some` is the invariant-#5 shape;
+interview adds the evaluators-some panel arm; offer/application/
+assessmentAssignment wrap the vacancy fragment; organization/company→`{}` =
+the deploy-neutrality invariant) + `assertScoped` by-id ownership probe
+(NOT_FOUND, entity-specific messages, soft-delete guard for vacancy/candidate)
++ `ledTeamIds` anchor. Wired through ALL SIX recruitment modules: vacancy +
+interview + offer + assessment router-inline; candidate + pipeline threaded
+router→service→repository (services take a required `scopeWhere` param — never
+defaulted, a default would fail open). Child-id endpoints use fetch-then-probe
+hops (org-scoped child → parent probe): offer validations/legal checks,
+pipeline stages, proctoring sessions, candidate documents. Bulk endpoints
+(bulkMove/bulkTag/compare) use deduped scoped count-checks. submitScorecard now
+requires an ASSIGNED evaluator (slice-1 codex carry-over CLOSED). Public offer
+token flows + assessment question bank deliberately untouched. Tests 298 → 358
+(entity-policies behavior table + per-module AND-composition tripwires).
+
+**Slices 4–7 pending** (each gets its own plan): 4 scope enforcement: people (own/team/unit live here) ·
 5 role-aware UI (PermissionsProvider, filtered sidebars, page guards, AccessDenied) ·
 6 sensitive-data layer (selectFor, +AUDIT data_access_logs, min-5 aggregates, consent) ·
 7 new-role surfaces (hrbp unit admin, committee wiring, external API keys).
 
 **⚠️ WAVE 2.5 DEPLOY-ORDERING (fail-open hazard — do NOT partially deploy):**
-the new matrix's own/team/unit grants (employee compensation:read@own etc.) behave
-**org-wide** under scope-ignorant code — repos only compose scope filters from slice
-3-4 onward. Therefore: (1) `seed-access.ts --apply` MUST NOT run against prod until
-slices 1–4 deploy TOGETHER; (2) at wave deploy, order is: migration
-(`npx prisma db execute --file=packages/db/prisma/migrations/20260612000000_access_control_models/migration.sql`)
-→ `npx tsx packages/db/prisma/seed-access.ts --apply` (review the DELETIONS block of a
-dry-run first) → code deploy. The allowlist deletion needs hr_admin's seeded grants
-present or hr_admin breaks (fail-closed). Slice-1 code WITHOUT the seed: legacy
-'all'-scope roles keep working via the build.ts compat mapping (behavior-neutral);
-hr_admin breaks fail-closed (allowlist gone, no rows) until the seed runs. Narrow
-(own/team/unit) grants MUST NOT be seeded before slices 3-4 enforce them (fail-open).
-In practice: hold the whole wave; deploy order migration → seed --apply → cache flush
-→ code.
+Code auto-deploys on merge (verified Jun 12: #67/#68 → prod deploys within
+seconds of the main merge). Every slice is behavior-neutral pre-seed
+(org-equivalent grants → `{}` fragments — prod's 104 legacy rows are all
+scope `'all'`). RECRUITMENT scopes are enforced from slice 3; PEOPLE-module
+narrow grants (employee compensation:read@own etc.) remain fail-open until
+slice 4 lands — `seed-access.ts --apply` therefore stays FORBIDDEN until
+slice 4 is merged+deployed. At wave-DATA deploy (after slice 4): (1) migration
+`npx prisma db execute --file=packages/db/prisma/migrations/20260612000000_access_control_models/migration.sql`
+(not yet run; the 3 new tables are dormant until narrow scopes exist);
+(2) `npx tsx packages/db/prisma/seed-access.ts --apply` (review the DELETIONS
+block of a dry-run first); (3) cache flush (`tims:access:*`). Until the seed
+runs, every legacy role — INCLUDING hr_admin — works through the build.ts
+compat mapping over the 104 existing `'all'`-scope rows (verified against prod
+Jun 12: hr_admin has 32 rows; the earlier "hr_admin breaks without the seed"
+claim assumed zero rows and was wrong).
 
 **Wave 2.5 follow-ups (recorded, not faked):** `data_access_logs` purge job + the
 `@@index([organizationId, createdAt])` it needs (add WITH the job); shared const/Zod
@@ -103,7 +123,7 @@ unions for dataType/action/consentType values when the writers land (slice 6); c
 30-day anonymization job; field-level encryption (separate security wave); candidate→
 employee role transition (needs product definition); `tims:perm:` legacy cache-prefix
 removal after deploy.
-Slice-2 review carry-overs: scoped `organization:read` grants for
+Slice-2/3 review carry-overs: scoped `organization:read` grants for
 recruiter/hrbp/leader must be added to seed-access.ts WHEN a later slice
 introduces team/unit picker dropdowns (today only hr_admin/super_admin hold it —
 a future picker 403 would be a seeds gap, not a regression); the submit endpoint
@@ -116,6 +136,16 @@ data deletion (right-to-erasure) lost its last code marker with the
 requestDataDeletion stub — platform-side subject EXPORT exists, deletion is
 manual (backlog if product commits to self-service); NPS submission has no
 backing feature anymore (deleted submitNps stub was its last trace).
+Slice-3 carry-overs: `recruitment-analytics` module aggregates stay org-scoped
+(no per-resource input; scope-aware analytics = later slice, flagged by
+quality review); narrow-scope WRITE semantics (may a team-scope leader create
+vacancies outside their team?) = slice-4 write-rules — create endpoints are
+deliberately unprobed (no target row); child-existence oracle on
+fetch-then-probe hops (a narrow-scoped caller can distinguish "out-of-scope
+parent has child X" vs "has none" via NOT_FOUND message differences) =
+accepted uniform tradeoff, revisit only if id-enumeration becomes a concern;
+applyToVacancy duplicate application still surfaces raw P2002 (pre-existing,
+@@unique exists — map to CONFLICT in a cleanup pass).
 
 ## Remaining — code work
 

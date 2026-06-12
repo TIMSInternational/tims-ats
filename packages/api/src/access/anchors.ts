@@ -9,12 +9,14 @@ export interface AnchorLoader {
   teamMemberIds(): Promise<string[]>;
   unitIds(): Promise<string[]>;
   panelInterviewIds(): Promise<string[]>;
+  ledTeamIds(): Promise<string[]>;
 }
 
 export function createAnchorLoader(organizationId: string, userId: string): AnchorLoader {
   let teams: Promise<string[]> | null = null;
   let units: Promise<string[]> | null = null;
   let panels: Promise<string[]> | null = null;
+  let ledTeams: Promise<string[]> | null = null;
 
   return {
     teamMemberIds() {
@@ -44,6 +46,15 @@ export function createAnchorLoader(organizationId: string, userId: string): Anch
         .findMany({ where: { userId, interview: { organizationId } }, select: { interviewId: true } })
         .then((rows) => rows.map((r) => r.interviewId));
       return panels;
+    },
+    ledTeamIds() {
+      // Vacancy team-scope anchor: the TEAM ids the user leads (vs teamMemberIds,
+      // which returns member USER ids). Floor is [] — a team-scope grant with no
+      // led teams matches no team rows; user-anchored OR-arms (assignedTo) still apply.
+      ledTeams ??= tenantDb.team
+        .findMany({ where: { organizationId, leaderId: userId, isActive: true }, select: { id: true } })
+        .then((rows) => rows.map((r) => r.id));
+      return ledTeams;
     },
   };
 }

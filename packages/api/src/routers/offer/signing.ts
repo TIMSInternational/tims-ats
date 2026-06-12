@@ -1,17 +1,29 @@
 import { z } from 'zod';
 import { router, publicProcedure, permissionProcedure } from '../../trpc';
 import { tenantDb as db } from '@tims/db';
+import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import crypto from 'crypto';
 import { emailService } from '../../services/email.service';
+import { scopeWhereFor } from '../../access';
 
 export const offerSigningRouter = router({
   // Generate a unique signing link for an offer
   generateSigningLink: permissionProcedure('offer', 'update')
     .input(z.object({ offerId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
+      const scopeWhere = await scopeWhereFor('offer', ctx.access, ctx.user.id);
+
+      // Compose scope into the business findFirst — it fetches candidate email
+      // and vacancy title consumed by the email send below, so we cannot replace
+      // it with a bare assertScoped (would lose those fields).
       const offer = await db.offer.findFirst({
-        where: { id: input.offerId, organizationId: ctx.user.organizationId },
+        where: {
+          AND: [
+            { id: input.offerId, organizationId: ctx.user.organizationId },
+            scopeWhere as Prisma.OfferWhereInput,
+          ],
+        },
         select: {
           id: true, status: true, settings: true,
           candidate: { select: { firstName: true, lastName: true, email: true } },

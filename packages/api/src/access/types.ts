@@ -14,3 +14,14 @@ export interface Grant {
 export type AccessDecision =
   | { allowed: false }
   | { allowed: true; scope: AccessScope; roles: string[] };
+
+/**
+ * The shape requirePermission (trpc.ts) injects as `ctx.access`: an ALLOWED
+ * decision (denied requests never reach the handler) plus the request-local
+ * anchor loader (null only when there is no org context, i.e. platform paths).
+ * Lives here (not index.ts) so sibling access modules can import it without
+ * a barrel cycle.
+ */
+export type AccessContext = Extract<AccessDecision, { allowed: true }> & {
+  anchors: import('./anchors').AnchorLoader | null;
+};

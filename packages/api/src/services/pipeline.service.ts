@@ -1,4 +1,5 @@
 import { TRPCError } from '@trpc/server';
+import type { Prisma } from '@tims/db';
 import { pipelineRepository } from '../repositories/pipeline.repository';
 
 // ---------------------------------------------------------------------------
@@ -33,9 +34,23 @@ export const pipelineService = {
     return pipelineRepository.moveCandidate(orgId, userId, applicationId, application.currentStageId, toStageId, reason);
   },
 
-  // Bulk move
-  async bulkMove(orgId: string, userId: string, applicationIds: string[], toStageId: string, reason?: string) {
-    const applications = await pipelineRepository.findApplications(orgId, applicationIds);
+  // Bulk move — scopeWhere is computed in the router (access machinery is not
+  // imported in services) and is REQUIRED: a defaulted fragment would fail open.
+  async bulkMove(
+    orgId: string,
+    userId: string,
+    applicationIds: string[],
+    toStageId: string,
+    scopeWhere: Prisma.ApplicationWhereInput,
+    reason?: string,
+  ) {
+    const uniqueIds = [...new Set(applicationIds)];
+    const inScopeCount = await pipelineRepository.countApplicationsInScope(orgId, uniqueIds, scopeWhere);
+    if (inScopeCount !== uniqueIds.length) {
+      throw new TRPCError({ code: 'NOT_FOUND', message: 'Aplicacion no encontrada' });
+    }
+
+    const applications = await pipelineRepository.findApplications(orgId, uniqueIds);
     if (applications.length === 0) throw new TRPCError({ code: 'NOT_FOUND', message: 'Aplicaciones no encontradas' });
 
     const vacancyIds = [...new Set(applications.map((a) => a.vacancyId))];
@@ -77,6 +92,14 @@ export const pipelineService = {
     const vacancy = await pipelineRepository.vacancyExists(orgId, input.vacancyId);
     if (!vacancy) throw new TRPCError({ code: 'NOT_FOUND', message: 'Vacante no encontrada' });
     return pipelineRepository.createStage(orgId, input);
+  },
+
+  // Thin lookup used by routers to get a stage's parent vacancyId so they can
+  // probe 'vacancy' scope before delegating the full mutation. Returns null when
+  // the stage does not exist or does not belong to the org.
+  async getStageVacancyId(orgId: string, stageId: string): Promise<string | null> {
+    const stage = await pipelineRepository.findStage(orgId, stageId);
+    return stage?.vacancyId ?? null;
   },
 
   async updateStage(orgId: string, stageId: string, data: Record<string, unknown>) {

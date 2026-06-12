@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { router, permissionProcedure } from '../../trpc';
 import { tenantDb as db } from '@tims/db';
 import type { Prisma } from '@tims/db';
-import { TRPCError } from '@trpc/server';
+import { assertScoped } from '../../access';
 
 // ---------------------------------------------------------------------------
 // Typed Zod schemas for JSON fields (no z.unknown)
@@ -72,13 +72,7 @@ export const vacancyJobProfileRouter = router({
   getJobProfile: permissionProcedure('vacancy', 'read')
     .input(z.object({ vacancyId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
-      const vacancy = await db.vacancy.findFirst({
-        where: { id: input.vacancyId, organizationId: ctx.user.organizationId, deletedAt: null },
-        select: { id: true },
-      });
-      if (!vacancy) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Vacante no encontrada' });
-      }
+      await assertScoped('vacancy', input.vacancyId, ctx.access, ctx.user.id, ctx.user.organizationId);
 
       return db.jobProfile.findUnique({
         where: { vacancyId: input.vacancyId },
@@ -97,13 +91,7 @@ export const vacancyJobProfileRouter = router({
       requirements: requirementsSchema,
     }))
     .mutation(async ({ ctx, input }) => {
-      const vacancy = await db.vacancy.findFirst({
-        where: { id: input.vacancyId, organizationId: ctx.user.organizationId, deletedAt: null },
-        select: { id: true },
-      });
-      if (!vacancy) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Vacante no encontrada' });
-      }
+      await assertScoped('vacancy', input.vacancyId, ctx.access, ctx.user.id, ctx.user.organizationId);
 
       const { vacancyId, ...data } = input;
 

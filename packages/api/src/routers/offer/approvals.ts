@@ -1,7 +1,9 @@
 import { z } from 'zod';
 import { router, permissionProcedure } from '../../trpc';
 import { tenantDb as db } from '@tims/db';
+import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
+import { scopeWhereFor, assertScoped } from '../../access';
 
 export const offerApprovalsRouter = router({
   // 9.5 — Submit offer for approval
@@ -13,8 +15,17 @@ export const offerApprovalsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      const scopeWhere = await scopeWhereFor('offer', ctx.access, ctx.user.id);
+
+      // Compose scope into the business findFirst — it fetches `status` used by
+      // the draft-guard below, so we must preserve that field.
       const offer = await db.offer.findFirst({
-        where: { id: input.id, organizationId: ctx.user.organizationId },
+        where: {
+          AND: [
+            { id: input.id, organizationId: ctx.user.organizationId },
+            scopeWhere as Prisma.OfferWhereInput,
+          ],
+        },
       });
 
       if (!offer) {
@@ -64,6 +75,9 @@ export const offerApprovalsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // Probe the offer through scope before acting on the approval record.
+      await assertScoped('offer', input.id, ctx.access, ctx.user.id, ctx.user.organizationId);
+
       const approval = await db.offerApproval.findFirst({
         where: {
           organizationId: ctx.user.organizationId,
@@ -118,6 +132,9 @@ export const offerApprovalsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // Probe the offer through scope before acting on the approval record.
+      await assertScoped('offer', input.id, ctx.access, ctx.user.id, ctx.user.organizationId);
+
       const approval = await db.offerApproval.findFirst({
         where: {
           organizationId: ctx.user.organizationId,
@@ -155,6 +172,9 @@ export const offerApprovalsRouter = router({
   getApprovalChain: permissionProcedure('offer', 'read')
     .input(z.object({ offerId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
+      // Probe the offer through scope before returning its approval chain.
+      await assertScoped('offer', input.offerId, ctx.access, ctx.user.id, ctx.user.organizationId);
+
       return db.offerApproval.findMany({
         where: {
           organizationId: ctx.user.organizationId,
@@ -169,12 +189,20 @@ export const offerApprovalsRouter = router({
 
   // 9.18 — Get pending offers (awaiting action by current user)
   getPending: permissionProcedure('offer', 'read').query(async ({ ctx }) => {
-    // Get offers pending the current user's approval
+    const scopeWhere = await scopeWhereFor('offer', ctx.access, ctx.user.id);
+
+    // Get offers pending the current user's approval; AND-compose scope on the
+    // offer relation so narrow-scoped approvers only see offers they can reach.
     const pendingApprovals = await db.offerApproval.findMany({
       where: {
-        organizationId: ctx.user.organizationId,
-        approverId: ctx.user.id,
-        status: 'pending',
+        AND: [
+          {
+            organizationId: ctx.user.organizationId,
+            approverId: ctx.user.id,
+            status: 'pending',
+          },
+          { offer: scopeWhere as Prisma.OfferWhereInput },
+        ],
       },
       include: {
         offer: {

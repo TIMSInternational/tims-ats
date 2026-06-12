@@ -73,4 +73,28 @@ describe('createAnchorLoader', () => {
       expect.objectContaining({ where: { userId: ME, interview: { organizationId: ORG } } }),
     );
   });
+
+  it('ledTeamIds = ids of active teams the user LEADS (floor [], fail-narrow)', async () => {
+    vi.mocked(tenantDb.team.findMany).mockResolvedValue([{ id: 't1' }, { id: 't2' }] as never);
+    const anchors = createAnchorLoader(ORG, ME);
+    expect(await anchors.ledTeamIds()).toEqual(['t1', 't2']);
+    expect(tenantDb.team.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ organizationId: ORG, leaderId: ME, isActive: true }),
+      }),
+    );
+  });
+
+  it('ledTeamIds floors to [] when the user leads nothing (NOT [self])', async () => {
+    vi.mocked(tenantDb.team.findMany).mockResolvedValue([] as never);
+    expect(await createAnchorLoader(ORG, ME).ledTeamIds()).toEqual([]);
+  });
+
+  it('ledTeamIds memoizes within the request', async () => {
+    vi.mocked(tenantDb.team.findMany).mockResolvedValue([] as never);
+    const anchors = createAnchorLoader(ORG, ME);
+    await anchors.ledTeamIds();
+    await anchors.ledTeamIds();
+    expect(tenantDb.team.findMany).toHaveBeenCalledTimes(1);
+  });
 });

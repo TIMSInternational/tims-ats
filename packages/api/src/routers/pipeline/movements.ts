@@ -1,14 +1,23 @@
 import { z } from 'zod';
 import { router, permissionProcedure } from '../../trpc';
 import { pipelineService } from '../../services/pipeline.service';
+import type { Prisma } from '@tims/db';
+import { assertScoped, scopeWhereFor } from '../../access';
 
 export const pipelineMovementsRouter = router({
+  // Probe the parent vacancy so a narrow-scoped user cannot read board data
+  // for an out-of-scope vacancy by guessing its id. All applications on this
+  // board belong to a single vacancy; the single-id vacancy gate covers them
+  // (same justification as vacancy stats.ts getStats).
   getBoard: permissionProcedure('pipeline', 'read')
     .input(z.object({
       vacancyId: z.string().uuid(),
       status: z.enum(['active', 'rejected', 'all']).default('active'),
     }))
-    .query(({ ctx, input }) => pipelineService.getBoard(ctx.user.organizationId, input.vacancyId, input.status)),
+    .query(async ({ ctx, input }) => {
+      await assertScoped('vacancy', input.vacancyId, ctx.access, ctx.user.id, ctx.user.organizationId);
+      return pipelineService.getBoard(ctx.user.organizationId, input.vacancyId, input.status);
+    }),
 
   moveCandidate: permissionProcedure('pipeline', 'update')
     .input(z.object({
@@ -16,19 +25,24 @@ export const pipelineMovementsRouter = router({
       toStageId: z.string().uuid(),
       reason: z.string().max(500).optional(),
     }))
-    .mutation(({ ctx, input }) =>
-      pipelineService.moveCandidate(ctx.user.organizationId, ctx.user.id, input.applicationId, input.toStageId, input.reason),
-    ),
+    .mutation(async ({ ctx, input }) => {
+      await assertScoped('application', input.applicationId, ctx.access, ctx.user.id, ctx.user.organizationId);
+      return pipelineService.moveCandidate(ctx.user.organizationId, ctx.user.id, input.applicationId, input.toStageId, input.reason);
+    }),
 
+  // Count-check pattern (application has no deletedAt — no soft-delete guard needed).
+  // Dedup ids in the router, compute scope fragment, pass both through to service.
   bulkMove: permissionProcedure('pipeline', 'update')
     .input(z.object({
       applicationIds: z.array(z.string().uuid()).min(1).max(50),
       toStageId: z.string().uuid(),
       reason: z.string().max(500).optional(),
     }))
-    .mutation(({ ctx, input }) =>
-      pipelineService.bulkMove(ctx.user.organizationId, ctx.user.id, input.applicationIds, input.toStageId, input.reason),
-    ),
+    .mutation(async ({ ctx, input }) => {
+      const uniqueIds = [...new Set(input.applicationIds)];
+      const scopeWhere = await scopeWhereFor('application', ctx.access, ctx.user.id) as Prisma.ApplicationWhereInput;
+      return pipelineService.bulkMove(ctx.user.organizationId, ctx.user.id, uniqueIds, input.toStageId, scopeWhere, input.reason);
+    }),
 
   rejectCandidate: permissionProcedure('pipeline', 'update')
     .input(z.object({
@@ -36,13 +50,15 @@ export const pipelineMovementsRouter = router({
       reason: z.string().min(1).max(500),
       feedback: z.string().max(2000).optional(),
     }))
-    .mutation(({ ctx, input }) =>
-      pipelineService.rejectCandidate(ctx.user.organizationId, input.applicationId, input.reason, input.feedback),
-    ),
+    .mutation(async ({ ctx, input }) => {
+      await assertScoped('application', input.applicationId, ctx.access, ctx.user.id, ctx.user.organizationId);
+      return pipelineService.rejectCandidate(ctx.user.organizationId, input.applicationId, input.reason, input.feedback);
+    }),
 
   getMovementHistory: permissionProcedure('pipeline', 'read')
     .input(z.object({ applicationId: z.string().uuid() }))
-    .query(({ ctx, input }) =>
-      pipelineService.getMovementHistory(ctx.user.organizationId, input.applicationId),
-    ),
+    .query(async ({ ctx, input }) => {
+      await assertScoped('application', input.applicationId, ctx.access, ctx.user.id, ctx.user.organizationId);
+      return pipelineService.getMovementHistory(ctx.user.organizationId, input.applicationId);
+    }),
 });

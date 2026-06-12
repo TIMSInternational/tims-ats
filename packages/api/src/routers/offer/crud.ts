@@ -3,6 +3,7 @@ import { router, permissionProcedure } from '../../trpc';
 import { tenantDb as db } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
+import { scopeWhereFor, assertScoped } from '../../access';
 
 export const offerCrudRouter = router({
   // 9.1 — List offers with filters
@@ -18,12 +19,18 @@ export const offerCrudRouter = router({
     )
     .query(async ({ ctx, input }) => {
       const { page, pageSize, ...filters } = input;
+      const scopeWhere = await scopeWhereFor('offer', ctx.access, ctx.user.id);
 
       const where: Prisma.OfferWhereInput = {
-        organizationId: ctx.user.organizationId,
-        ...(filters.vacancyId && { vacancyId: filters.vacancyId }),
-        ...(filters.candidateId && { candidateId: filters.candidateId }),
-        ...(filters.status && { status: filters.status }),
+        AND: [
+          { organizationId: ctx.user.organizationId },
+          scopeWhere as Prisma.OfferWhereInput,
+          {
+            ...(filters.vacancyId && { vacancyId: filters.vacancyId }),
+            ...(filters.candidateId && { candidateId: filters.candidateId }),
+            ...(filters.status && { status: filters.status }),
+          },
+        ],
       };
 
       const [items, total] = await Promise.all([
@@ -56,6 +63,12 @@ export const offerCrudRouter = router({
   getById: permissionProcedure('offer', 'read')
     .input(z.object({ id: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
+      // Probe first — the subsequent findFirst uses `include` (no `select`),
+      // and Prisma does not support mixing AND scope fragments with `include` in
+      // a type-safe way; the two-query pattern keeps the full include block
+      // intact while still enforcing scope.
+      await assertScoped('offer', input.id, ctx.access, ctx.user.id, ctx.user.organizationId);
+
       const offer = await db.offer.findFirst({
         where: { id: input.id, organizationId: ctx.user.organizationId },
         include: {
@@ -112,20 +125,20 @@ export const offerCrudRouter = router({
     .mutation(async ({ ctx, input }) => {
       const orgId = ctx.user.organizationId;
 
-      // Verify referenced resources belong to the caller's org (prevents
-      // cross-tenant references and PII leak via the candidate include below).
-      const [candidate, vacancy] = await Promise.all([
-        db.candidate.findFirst({ where: { id: input.candidateId, organizationId: orgId }, select: { id: true } }),
-        db.vacancy.findFirst({ where: { id: input.vacancyId, organizationId: orgId }, select: { id: true } }),
-      ]);
-      if (!candidate) throw new Error('Candidato no encontrado en esta organizacion');
-      if (!vacancy) throw new Error('Vacante no encontrada en esta organizacion');
+      // Probe parent vacancy through scope — ensures the creating user can reach
+      // the vacancy under their current scope, not just org-wide.
+      await assertScoped('vacancy', input.vacancyId, ctx.access, ctx.user.id, orgId);
+
+      // Candidate and optional application get plain org-checks (not scope-filtered:
+      // users are permitted to create offers for any org candidate once the vacancy
+      // is in scope).
+      const candidate = await db.candidate.findFirst({
+        where: { id: input.candidateId, organizationId: orgId },
+        select: { id: true },
+      });
+      if (!candidate) throw new TRPCError({ code: 'NOT_FOUND', message: 'Candidato no encontrado en esta organizacion' });
       if (input.applicationId) {
-        const application = await db.application.findFirst({
-          where: { id: input.applicationId, organizationId: orgId },
-          select: { id: true },
-        });
-        if (!application) throw new Error('Aplicacion no encontrada en esta organizacion');
+        await assertScoped('application', input.applicationId, ctx.access, ctx.user.id, orgId);
       }
 
       const { benefits, terms, ...rest } = input;
@@ -163,9 +176,18 @@ export const offerCrudRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       const { id, ...data } = input;
+      const scopeWhere = await scopeWhereFor('offer', ctx.access, ctx.user.id);
 
+      // Compose scope into the business findFirst — it also fetches the `status`
+      // field used by the draft-guard below, so we cannot replace it with a
+      // bare assertScoped (would lose that field).
       const existing = await db.offer.findFirst({
-        where: { id, organizationId: ctx.user.organizationId },
+        where: {
+          AND: [
+            { id, organizationId: ctx.user.organizationId },
+            scopeWhere as Prisma.OfferWhereInput,
+          ],
+        },
       });
 
       if (!existing) {

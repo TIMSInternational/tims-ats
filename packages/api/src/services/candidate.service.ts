@@ -1,4 +1,5 @@
 import { TRPCError } from '@trpc/server';
+import type { Prisma } from '@tims/db';
 import { candidateRepository } from '../repositories/candidate.repository';
 
 // ---------------------------------------------------------------------------
@@ -8,6 +9,8 @@ import { candidateRepository } from '../repositories/candidate.repository';
 export const candidateService = {
   async list(
     orgId: string,
+    scopeWhere: Prisma.CandidateWhereInput,
+    appScopeWhere: Prisma.ApplicationWhereInput,
     input: {
       cursor?: string;
       limit: number;
@@ -20,7 +23,7 @@ export const candidateService = {
       fitMax?: number;
     },
   ) {
-    const items = await candidateRepository.list(orgId, input);
+    const items = await candidateRepository.list(orgId, scopeWhere, appScopeWhere, input);
 
     let nextCursor: string | undefined;
     if (items.length > input.limit) {
@@ -31,8 +34,13 @@ export const candidateService = {
     return { items, nextCursor };
   },
 
-  async getById(orgId: string, id: string) {
-    const candidate = await candidateRepository.getById(orgId, id);
+  async getById(
+    orgId: string,
+    scopeWhere: Prisma.CandidateWhereInput,
+    id: string,
+    appScopeWhere: Prisma.ApplicationWhereInput,
+  ) {
+    const candidate = await candidateRepository.getById(orgId, scopeWhere, id, appScopeWhere);
     if (!candidate) {
       throw new TRPCError({ code: 'NOT_FOUND', message: 'Candidato no encontrado' });
     }
@@ -81,13 +89,17 @@ export const candidateService = {
     return candidateRepository.update(id, data);
   },
 
-  async search(orgId: string, query: string, limit: number) {
-    return candidateRepository.search(orgId, query, limit);
+  async search(orgId: string, scopeWhere: Prisma.CandidateWhereInput, query: string, limit: number) {
+    return candidateRepository.search(orgId, scopeWhere, query, limit);
   },
 
-  async getDashboardKpis(orgId: string) {
+  async getDashboardKpis(
+    orgId: string,
+    scopeWhere: Prisma.CandidateWhereInput,
+    appScopeWhere: Prisma.ApplicationWhereInput,
+  ) {
     const [total, newThisMonth, activeApplications, poolStats] =
-      await candidateRepository.getDashboardKpis(orgId);
+      await candidateRepository.getDashboardKpis(orgId, scopeWhere, appScopeWhere);
 
     return {
       total,
@@ -98,9 +110,9 @@ export const candidateService = {
   },
 
   // Timeline
-  async getTimeline(orgId: string, candidateId: string) {
+  async getTimeline(orgId: string, candidateId: string, appScopeWhere: Prisma.ApplicationWhereInput) {
     const [applications, assessments, documents] =
-      await candidateRepository.getTimelineData(orgId, candidateId);
+      await candidateRepository.getTimelineData(orgId, candidateId, appScopeWhere);
 
     type TimelineEvent = {
       id: string;
@@ -190,8 +202,8 @@ export const candidateService = {
   },
 
   // Risks
-  async getRisks(orgId: string, candidateId: string) {
-    const candidate = await candidateRepository.getCandidateForRisks(orgId, candidateId);
+  async getRisks(orgId: string, candidateId: string, appScopeWhere: Prisma.ApplicationWhereInput) {
+    const candidate = await candidateRepository.getCandidateForRisks(orgId, candidateId, appScopeWhere);
     if (!candidate) {
       throw new TRPCError({ code: 'NOT_FOUND', message: 'Candidato no encontrado' });
     }
@@ -235,6 +247,10 @@ export const candidateService = {
     return { document: doc, uploadUrl: mockUrl };
   },
 
+  async getDocument(orgId: string, documentId: string) {
+    return candidateRepository.findDocument(orgId, documentId);
+  },
+
   async deleteDocument(orgId: string, documentId: string) {
     const doc = await candidateRepository.findDocument(orgId, documentId);
     if (!doc) throw new TRPCError({ code: 'NOT_FOUND', message: 'Documento no encontrado' });
@@ -257,14 +273,15 @@ export const candidateService = {
     return { success: true };
   },
 
-  async bulkTag(orgId: string, candidateIds: string[], tag: string, source: string) {
-    const count = await candidateRepository.countCandidatesInOrg(orgId, candidateIds);
-    if (count !== candidateIds.length) {
-      throw new TRPCError({ code: 'BAD_REQUEST', message: 'Uno o mas candidatos no encontrados' });
+  async bulkTag(orgId: string, scopeWhere: Prisma.CandidateWhereInput, candidateIds: string[], tag: string, source: string) {
+    const uniqueIds = [...new Set(candidateIds)];
+    const count = await candidateRepository.countCandidatesInScope(orgId, uniqueIds, scopeWhere);
+    if (count !== uniqueIds.length) {
+      throw new TRPCError({ code: 'NOT_FOUND', message: 'Candidato no encontrado' });
     }
 
     const result = await candidateRepository.bulkCreateTags(
-      candidateIds.map((candidateId) => ({ organizationId: orgId, candidateId, tag, source })),
+      uniqueIds.map((candidateId) => ({ organizationId: orgId, candidateId, tag, source })),
     );
     return { tagged: result.count };
   },
@@ -276,8 +293,8 @@ export const candidateService = {
     return candidateRepository.updatePool(candidateId, poolType);
   },
 
-  async getPoolStats(orgId: string) {
-    const stats = await candidateRepository.getPoolStats(orgId);
+  async getPoolStats(orgId: string, scopeWhere: Prisma.CandidateWhereInput) {
+    const stats = await candidateRepository.getPoolStats(orgId, scopeWhere);
     const total = stats.reduce((sum, s) => sum + s._count.id, 0);
     return { total, byPool: stats.map((s) => ({ poolType: s.poolType, count: s._count.id })) };
   },

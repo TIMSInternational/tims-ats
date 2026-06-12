@@ -3,6 +3,7 @@ import { router, permissionProcedure } from '../../trpc';
 import { tenantDb as db } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
+import { scopeWhereFor, assertScoped } from '../../access';
 
 // ---------------------------------------------------------------------------
 // Shared selects — explicit field selection (CLAUDE.md: never return full records)
@@ -173,17 +174,22 @@ export const vacancyCrudRouter = router({
     )
     .query(async ({ ctx, input }) => {
       const { cursor, limit, status, priority, companyId, businessUnitId, teamId, assignedTo, search } = input;
+      const scopeWhere = await scopeWhereFor('vacancy', ctx.access, ctx.user.id);
 
       const where: Prisma.VacancyWhereInput = {
-        organizationId: ctx.user.organizationId,
-        deletedAt: null,
-        ...(status && { status }),
-        ...(priority && { priority }),
-        ...(companyId && { companyId }),
-        ...(businessUnitId && { businessUnitId }),
-        ...(teamId && { teamId }),
-        ...(assignedTo && { assignedTo }),
-        ...(search && { title: { contains: search, mode: 'insensitive' as const } }),
+        AND: [
+          { organizationId: ctx.user.organizationId, deletedAt: null },
+          scopeWhere as Prisma.VacancyWhereInput,
+          {
+            ...(status && { status }),
+            ...(priority && { priority }),
+            ...(companyId && { companyId }),
+            ...(businessUnitId && { businessUnitId }),
+            ...(teamId && { teamId }),
+            ...(assignedTo && { assignedTo }),
+            ...(search && { title: { contains: search, mode: 'insensitive' as const } }),
+          },
+        ],
       };
 
       const items = await db.vacancy.findMany({
@@ -206,11 +212,13 @@ export const vacancyCrudRouter = router({
   getById: permissionProcedure('vacancy', 'read')
     .input(z.object({ id: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
+      const scopeWhere = await scopeWhereFor('vacancy', ctx.access, ctx.user.id);
       const vacancy = await db.vacancy.findFirst({
         where: {
-          id: input.id,
-          organizationId: ctx.user.organizationId,
-          deletedAt: null,
+          AND: [
+            { id: input.id, organizationId: ctx.user.organizationId, deletedAt: null },
+            scopeWhere as Prisma.VacancyWhereInput,
+          ],
         },
         select: vacancyDetailSelect,
       });
@@ -242,13 +250,7 @@ export const vacancyCrudRouter = router({
     .mutation(async ({ ctx, input }) => {
       const { id, ...data } = input;
 
-      const vacancy = await db.vacancy.findFirst({
-        where: { id, organizationId: ctx.user.organizationId, deletedAt: null },
-        select: { id: true },
-      });
-      if (!vacancy) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Vacante no encontrada' });
-      }
+      await assertScoped('vacancy', id, ctx.access, ctx.user.id, ctx.user.organizationId);
 
       return db.vacancy.update({
         where: { id },
@@ -267,13 +269,7 @@ export const vacancyCrudRouter = router({
       reason: z.string().min(1).max(1000),
     }))
     .mutation(async ({ ctx, input }) => {
-      const vacancy = await db.vacancy.findFirst({
-        where: { id: input.id, organizationId: ctx.user.organizationId, deletedAt: null },
-        select: { id: true, status: true },
-      });
-      if (!vacancy) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Vacante no encontrada' });
-      }
+      await assertScoped('vacancy', input.id, ctx.access, ctx.user.id, ctx.user.organizationId);
 
       return db.vacancy.update({
         where: { id: input.id },
@@ -289,13 +285,7 @@ export const vacancyCrudRouter = router({
   freeze: permissionProcedure('vacancy', 'update')
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
-      const vacancy = await db.vacancy.findFirst({
-        where: { id: input.id, organizationId: ctx.user.organizationId, deletedAt: null },
-        select: { id: true, status: true },
-      });
-      if (!vacancy) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Vacante no encontrada' });
-      }
+      await assertScoped('vacancy', input.id, ctx.access, ctx.user.id, ctx.user.organizationId);
 
       return db.vacancy.update({
         where: { id: input.id },
@@ -307,6 +297,8 @@ export const vacancyCrudRouter = router({
   duplicate: permissionProcedure('vacancy', 'create')
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
+      await assertScoped('vacancy', input.id, ctx.access, ctx.user.id, ctx.user.organizationId);
+
       const original = await db.vacancy.findFirst({
         where: { id: input.id, organizationId: ctx.user.organizationId, deletedAt: null },
         select: {

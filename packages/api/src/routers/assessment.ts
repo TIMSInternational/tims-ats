@@ -10,6 +10,7 @@ import {
   deleteQuestionSchema,
 } from '@tims/shared';
 import { assessmentQuestionService } from '../services/assessment-question.service';
+import { scopeWhereFor, assertScoped } from '../access';
 
 // ---------------------------------------------------------------------------
 // Router
@@ -48,22 +49,23 @@ export const assessmentRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       const orgId = ctx.user.organizationId;
-      // Verify assessment type, candidate AND vacancy all belong to the org —
-      // otherwise an attacker could assign against another tenant's candidate and
-      // read their PII back via getResults / listPending includes.
-      const [assessmentType, candidate, vacancy] = await Promise.all([
+
+      // Probe parent vacancy through scope — a narrow-scoped user must only
+      // assign assessments for vacancies they can reach, not org-wide.
+      await assertScoped('vacancy', input.vacancyId, ctx.access, ctx.user.id, orgId);
+
+      // AssessmentType and candidate get plain org-checks (not scope-filtered:
+      // assessment types are org-catalog items; users are permitted to assess
+      // any org candidate once the vacancy is in scope).
+      const [assessmentType, candidate] = await Promise.all([
         db.assessmentType.findFirst({ where: { id: input.assessmentTypeId, organizationId: orgId, isActive: true }, select: { id: true } }),
         db.candidate.findFirst({ where: { id: input.candidateId, organizationId: orgId }, select: { id: true } }),
-        db.vacancy.findFirst({ where: { id: input.vacancyId, organizationId: orgId }, select: { id: true } }),
       ]);
       if (!assessmentType) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Tipo de evaluacion no encontrado' });
       }
       if (!candidate) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Candidato no encontrado' });
-      }
-      if (!vacancy) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Vacante no encontrada' });
       }
 
       return db.assessmentAssignment.create({
@@ -96,16 +98,16 @@ export const assessmentRouter = router({
     .mutation(async ({ ctx, input }) => {
       const orgId = ctx.user.organizationId;
       const uniqueCandidateIds = [...new Set(input.candidateIds)];
-      const [assessmentType, vacancy, candidateCount] = await Promise.all([
+
+      // Probe parent vacancy through scope once (one vacancyId, many candidates).
+      await assertScoped('vacancy', input.vacancyId, ctx.access, ctx.user.id, orgId);
+
+      const [assessmentType, candidateCount] = await Promise.all([
         db.assessmentType.findFirst({ where: { id: input.assessmentTypeId, organizationId: orgId, isActive: true }, select: { id: true } }),
-        db.vacancy.findFirst({ where: { id: input.vacancyId, organizationId: orgId }, select: { id: true } }),
         db.candidate.count({ where: { id: { in: uniqueCandidateIds }, organizationId: orgId } }),
       ]);
       if (!assessmentType) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Tipo de evaluacion no encontrado' });
-      }
-      if (!vacancy) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Vacante no encontrada' });
       }
       if (candidateCount !== uniqueCandidateIds.length) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Uno o mas candidatos no encontrados en esta organizacion' });
@@ -139,13 +141,19 @@ export const assessmentRouter = router({
     )
     .query(async ({ ctx, input }) => {
       const { cursor, limit, vacancyId, assessmentTypeId } = input;
+      const scopeWhere = await scopeWhereFor('assessmentAssignment', ctx.access, ctx.user.id);
 
       const where: Prisma.AssessmentAssignmentWhereInput = {
-        organizationId: ctx.user.organizationId,
-        vacancyId,
-        status: 'completed',
+        AND: [
+          {
+            organizationId: ctx.user.organizationId,
+            vacancyId,
+            status: 'completed',
+            ...(assessmentTypeId ? { assessmentTypeId } : {}),
+          },
+          scopeWhere as Prisma.AssessmentAssignmentWhereInput,
+        ],
       };
-      if (assessmentTypeId) where.assessmentTypeId = assessmentTypeId;
 
       const items = await db.assessmentAssignment.findMany({
         where,
@@ -172,6 +180,12 @@ export const assessmentRouter = router({
   getResultDetail: permissionProcedure('assessment', 'read')
     .input(z.object({ assignmentId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
+      // Probe first — the subsequent findFirst uses `include` (no `select`), and
+      // Prisma does not support mixing AND scope fragments with `include` in a
+      // type-safe way; the two-query pattern keeps the full include block intact
+      // while still enforcing scope.
+      await assertScoped('assessmentAssignment', input.assignmentId, ctx.access, ctx.user.id, ctx.user.organizationId);
+
       const assignment = await db.assessmentAssignment.findFirst({
         where: { id: input.assignmentId, organizationId: ctx.user.organizationId },
         include: {
@@ -200,12 +214,18 @@ export const assessmentRouter = router({
     )
     .query(async ({ ctx, input }) => {
       const { cursor, limit, vacancyId } = input;
+      const scopeWhere = await scopeWhereFor('assessmentAssignment', ctx.access, ctx.user.id);
 
       const where: Prisma.AssessmentAssignmentWhereInput = {
-        organizationId: ctx.user.organizationId,
-        status: { in: ['assigned', 'in_progress'] },
+        AND: [
+          {
+            organizationId: ctx.user.organizationId,
+            status: { in: ['assigned', 'in_progress'] },
+            ...(vacancyId ? { vacancyId } : {}),
+          },
+          scopeWhere as Prisma.AssessmentAssignmentWhereInput,
+        ],
       };
-      if (vacancyId) where.vacancyId = vacancyId;
 
       const items = await db.assessmentAssignment.findMany({
         where,
@@ -236,11 +256,20 @@ export const assessmentRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      const scopeWhere = await scopeWhereFor('assessmentAssignment', ctx.access, ctx.user.id);
+
+      // Compose scope into the business findFirst — it also checks the `status`
+      // business condition, so we cannot replace it with a bare assertScoped.
       const assignment = await db.assessmentAssignment.findFirst({
         where: {
-          id: input.assignmentId,
-          organizationId: ctx.user.organizationId,
-          status: { in: ['assigned', 'in_progress'] },
+          AND: [
+            {
+              id: input.assignmentId,
+              organizationId: ctx.user.organizationId,
+              status: { in: ['assigned', 'in_progress'] },
+            },
+            scopeWhere as Prisma.AssessmentAssignmentWhereInput,
+          ],
         },
       });
 
@@ -261,11 +290,20 @@ export const assessmentRouter = router({
   resend: permissionProcedure('assessment', 'update')
     .input(z.object({ assignmentId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
+      const scopeWhere = await scopeWhereFor('assessmentAssignment', ctx.access, ctx.user.id);
+
+      // Compose scope into the business findFirst — it checks the `status`
+      // business condition and its `include` block feeds the response payload.
       const assignment = await db.assessmentAssignment.findFirst({
         where: {
-          id: input.assignmentId,
-          organizationId: ctx.user.organizationId,
-          status: { in: ['assigned', 'in_progress'] },
+          AND: [
+            {
+              id: input.assignmentId,
+              organizationId: ctx.user.organizationId,
+              status: { in: ['assigned', 'in_progress'] },
+            },
+            scopeWhere as Prisma.AssessmentAssignmentWhereInput,
+          ],
         },
         include: {
           candidate: { select: { email: true, firstName: true } },
@@ -298,6 +336,9 @@ export const assessmentRouter = router({
   getProctoringEvents: permissionProcedure('assessment', 'read')
     .input(z.object({ assignmentId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
+      // Fetch-then-probe hop: ProctoringSession is keyed by assignmentId (no
+      // direct scope policy on it). Fetch the session org-scoped first, then
+      // probe the assignment it belongs to — ensures the caller can reach it.
       const session = await db.proctoringSession.findFirst({
         where: {
           assignmentId: input.assignmentId,
@@ -308,6 +349,8 @@ export const assessmentRouter = router({
       if (!session) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Sesion de proctoring no encontrada' });
       }
+
+      await assertScoped('assessmentAssignment', session.assignmentId, ctx.access, ctx.user.id, ctx.user.organizationId);
 
       return {
         sessionId: session.id,
@@ -334,6 +377,7 @@ export const assessmentRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      // Fetch-then-probe hop (same as getProctoringEvents — see comment there).
       const session = await db.proctoringSession.findFirst({
         where: {
           assignmentId: input.assignmentId,
@@ -344,6 +388,8 @@ export const assessmentRouter = router({
       if (!session) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Sesion de proctoring no encontrada' });
       }
+
+      await assertScoped('assessmentAssignment', session.assignmentId, ctx.access, ctx.user.id, ctx.user.organizationId);
 
       const existingEvents = (session.events as Array<Record<string, unknown>>) ?? [];
       const updatedEvents = [...existingEvents, input.event];
@@ -374,7 +420,10 @@ export const assessmentRouter = router({
   // impersonate a real AI feature). Wire the gated agent here when it lands.
   getExplainability: permissionProcedure('assessment', 'read')
     .input(z.object({ assignmentId: z.string().uuid() }))
-    .query(() => {
+    .query(async ({ ctx, input }) => {
+      // Defense-in-depth: scope-probe before the 501 so a narrow-scoped user
+      // cannot enumerate assignment ids via timing or error-code differences.
+      await assertScoped('assessmentAssignment', input.assignmentId, ctx.access, ctx.user.id, ctx.user.organizationId);
       throw new TRPCError({
         code: 'NOT_IMPLEMENTED',
         message: 'La explicabilidad con IA aun no esta disponible (agente de evaluacion pendiente).',
@@ -389,9 +438,31 @@ export const assessmentRouter = router({
       }),
     )
     .query(async ({ ctx, input }) => {
+      const uniqueIds = [...new Set(input.assignmentIds)];
+      const scopeWhere = await scopeWhereFor('assessmentAssignment', ctx.access, ctx.user.id);
+
+      // Count-check pattern: a single scoped count confirms every id in the set
+      // is reachable under the caller's scope. AssessmentAssignment has no
+      // deletedAt column so no soft-delete guard is needed here.
+      const scopedCount = await db.assessmentAssignment.count({
+        where: {
+          AND: [
+            { id: { in: uniqueIds }, organizationId: ctx.user.organizationId },
+            scopeWhere as Prisma.AssessmentAssignmentWhereInput,
+          ],
+        },
+      });
+
+      if (scopedCount !== uniqueIds.length) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Una o mas asignaciones no encontradas',
+        });
+      }
+
       const assignments = await db.assessmentAssignment.findMany({
         where: {
-          id: { in: input.assignmentIds },
+          id: { in: uniqueIds },
           organizationId: ctx.user.organizationId,
         },
         include: {
@@ -400,13 +471,6 @@ export const assessmentRouter = router({
           result: true,
         },
       });
-
-      if (assignments.length !== input.assignmentIds.length) {
-        throw new TRPCError({
-          code: 'NOT_FOUND',
-          message: 'Una o mas asignaciones no encontradas',
-        });
-      }
 
       // Sort by score descending
       const ranked = assignments

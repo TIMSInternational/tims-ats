@@ -4,6 +4,7 @@ import { tenantDb as db } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { emailService } from '../../services/email.service';
+import { scopeWhereFor, assertScoped } from '../../access';
 
 export const interviewCrudRouter = router({
   // 8.1 — List interviews with filters
@@ -22,21 +23,27 @@ export const interviewCrudRouter = router({
     )
     .query(async ({ ctx, input }) => {
       const { page, pageSize, ...filters } = input;
+      const scopeWhere = await scopeWhereFor('interview', ctx.access, ctx.user.id);
 
       const where: Prisma.InterviewWhereInput = {
-        organizationId: ctx.user.organizationId,
-        ...(filters.vacancyId && { vacancyId: filters.vacancyId }),
-        ...(filters.candidateId && { candidateId: filters.candidateId }),
-        ...(filters.status && { status: filters.status }),
-        ...(filters.type && { type: filters.type }),
-        ...(filters.from || filters.to
-          ? {
-              scheduledAt: {
-                ...(filters.from && { gte: filters.from }),
-                ...(filters.to && { lte: filters.to }),
-              },
-            }
-          : {}),
+        AND: [
+          { organizationId: ctx.user.organizationId },
+          scopeWhere as Prisma.InterviewWhereInput,
+          {
+            ...(filters.vacancyId && { vacancyId: filters.vacancyId }),
+            ...(filters.candidateId && { candidateId: filters.candidateId }),
+            ...(filters.status && { status: filters.status }),
+            ...(filters.type && { type: filters.type }),
+            ...(filters.from || filters.to
+              ? {
+                  scheduledAt: {
+                    ...(filters.from && { gte: filters.from }),
+                    ...(filters.to && { lte: filters.to }),
+                  },
+                }
+              : {}),
+          },
+        ],
       };
 
       const [items, total] = await Promise.all([
@@ -67,6 +74,12 @@ export const interviewCrudRouter = router({
   getById: permissionProcedure('interview', 'read')
     .input(z.object({ id: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
+      // Probe first — the subsequent findFirst uses `include` (no `select`),
+      // and Prisma does not support mixing AND scope fragments with `include` in
+      // a way that is type-safe; the two-query pattern (probe + fetch) keeps the
+      // full include block intact while still enforcing scope.
+      await assertScoped('interview', input.id, ctx.access, ctx.user.id, ctx.user.organizationId);
+
       const interview = await db.interview.findFirst({
         where: { id: input.id, organizationId: ctx.user.organizationId },
         include: {
@@ -117,26 +130,49 @@ export const interviewCrudRouter = router({
       const { evaluatorIds, ...data } = input;
       const orgId = ctx.user.organizationId;
 
-      // Verify referenced resources belong to the caller's org. Without this, an
-      // attacker could schedule against another tenant's candidate — leaking their
-      // PII via the include AND emailing them an interview invitation.
+      // Probe parent vacancy and candidate through scope — ensures the scheduling
+      // user can reach those resources under their current scope, not just org-wide.
+      // Evaluator count check uses plain org check (users are not scope-filtered).
       const uniqueEvaluators = [...new Set(evaluatorIds)];
-      const [candidate, vacancy, evaluatorCount] = await Promise.all([
-        db.candidate.findFirst({ where: { id: input.candidateId, organizationId: orgId }, select: { id: true } }),
-        db.vacancy.findFirst({ where: { id: input.vacancyId, organizationId: orgId }, select: { id: true } }),
-        db.user.count({ where: { id: { in: uniqueEvaluators }, organizationId: orgId } }),
-      ]);
-      if (!candidate) throw new Error('Candidato no encontrado en esta organizacion');
-      if (!vacancy) throw new Error('Vacante no encontrada en esta organizacion');
+      await assertScoped('vacancy', input.vacancyId, ctx.access, ctx.user.id, orgId);
+      // Codex re-review: the candidate must ALSO be scope-probed — an org-only
+      // check let a narrow-scoped scheduler pull any org candidate's PII into
+      // the interview + invitation email. A candidate applying to the probed
+      // vacancy has an in-scope application, so legit flows pass.
+      await assertScoped('candidate', input.candidateId, ctx.access, ctx.user.id, orgId);
+      const evaluatorCount = await db.user.count({
+        where: { id: { in: uniqueEvaluators }, organizationId: orgId },
+      });
       if (evaluatorCount !== uniqueEvaluators.length) {
-        throw new Error('Evaluador no encontrado en esta organizacion');
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Evaluador no encontrado en esta organizacion' });
       }
       if (input.applicationId) {
-        const application = await db.application.findFirst({
-          where: { id: input.applicationId, organizationId: orgId },
+        await assertScoped('application', input.applicationId, ctx.access, ctx.user.id, orgId);
+        // Integrity: the application must bind the SAME candidate and vacancy.
+        const bound = await db.application.findFirst({
+          where: { id: input.applicationId, organizationId: orgId, candidateId: input.candidateId, vacancyId: input.vacancyId },
           select: { id: true },
         });
-        if (!application) throw new Error('Aplicacion no encontrada en esta organizacion');
+        if (!bound) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'La aplicacion no corresponde al candidato y la vacante indicados' });
+        }
+      } else {
+        // Codex round-3: an omitted applicationId must not bypass the
+        // candidate↔vacancy binding. Auto-resolve and persist the application
+        // when one exists (data-quality improvement, behavior-neutral). When
+        // NONE exists: org-scope callers keep today's interview-first workflow
+        // (the schedule modal pairs any searched candidate with any vacancy);
+        // narrow scopes are rejected fail-closed — their only justification
+        // for reaching the candidate is an application path.
+        const boundApp = await db.application.findFirst({
+          where: { organizationId: orgId, candidateId: input.candidateId, vacancyId: input.vacancyId },
+          select: { id: true },
+        });
+        if (boundApp) {
+          data.applicationId = boundApp.id;
+        } else if (ctx.access.scope !== 'organization' && ctx.access.scope !== 'company') {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'El candidato no tiene aplicacion a esta vacante' });
+        }
       }
 
       const interview = await db.interview.create({
@@ -201,9 +237,18 @@ export const interviewCrudRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       const { id, ...data } = input;
+      const scopeWhere = await scopeWhereFor('interview', ctx.access, ctx.user.id);
 
+      // Compose scope into the business findFirst — it also fetches status/type
+      // fields used by the reschedule-guard and email below, so we cannot replace
+      // it with a bare assertScoped (would lose those fields).
       const existing = await db.interview.findFirst({
-        where: { id, organizationId: ctx.user.organizationId },
+        where: {
+          AND: [
+            { id, organizationId: ctx.user.organizationId },
+            scopeWhere as Prisma.InterviewWhereInput,
+          ],
+        },
       });
 
       if (!existing) {
@@ -263,13 +308,9 @@ export const interviewCrudRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const existing = await db.interview.findFirst({
-        where: { id: input.id, organizationId: ctx.user.organizationId },
-      });
-
-      if (!existing) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Entrevista no encontrada' });
-      }
+      // assertScoped replaces the bare org-check findFirst — cancel only uses
+      // the probe result as an existence check (no fields from it are consumed).
+      await assertScoped('interview', input.id, ctx.access, ctx.user.id, ctx.user.organizationId);
 
       const cancelled = await db.interview.update({
         where: { id: input.id },
