@@ -14,12 +14,30 @@ export type ScopedEntity =
   | 'application'
   | 'interview'
   | 'offer'
-  | 'assessmentAssignment';
+  | 'assessmentAssignment'
+  | 'okr'
+  | 'coachingSession'
+  | 'feedback'
+  | 'onboardingPlan'
+  | 'enrollment'
+  | 'certificate'
+  | 'nineBoxEvaluation'
+  | 'successor'
+  | 'criticalRole'
+  | 'employeeCompensation'
+  | 'salaryAdjustment'
+  | 'team'
+  | 'actionPlan'
+  | 'leaderCommitment'
+  | 'commitment';
 
 type Fragment = Record<string, unknown>;
 
 const ENTITIES: ReadonlySet<string> = new Set([
   'vacancy', 'candidate', 'application', 'interview', 'offer', 'assessmentAssignment',
+  'okr', 'coachingSession', 'feedback', 'onboardingPlan', 'enrollment', 'certificate',
+  'nineBoxEvaluation', 'successor', 'criticalRole', 'employeeCompensation',
+  'salaryAdjustment', 'team', 'actionPlan', 'leaderCommitment', 'commitment',
 ]);
 
 export async function scopeWhereFor(
@@ -57,6 +75,15 @@ export async function scopeWhereFor(
   // SOFT_DELETABLE. At org/company scope this never runs ({} early-return above).
   const viaVacancy: Fragment = { vacancy: { AND: [vacancyFragment, { deletedAt: null }] } };
 
+  // People entities anchor on the row's EMPLOYEE-user field. The subject set per
+  // scope: own → [userId] (emitted as a SCALAR, not an `in`); team →
+  // teamMemberIds (floors to [self]); unit → unitMemberIds (floors to []).
+  const subjectFragment = async (): Promise<unknown> => {
+    if (scope === 'own') return userId; // scalar equality
+    if (scope === 'team') return { in: await anchors.teamMemberIds() };
+    return { in: await anchors.unitMemberIds() }; // unit
+  };
+
   switch (entity) {
     case 'vacancy':
       return vacancyFragment;
@@ -74,5 +101,46 @@ export async function scopeWhereFor(
     case 'offer':
     case 'assessmentAssignment':
       return viaVacancy;
+    // --- People entities (Wave 2.5 slice 4) ---------------------------------
+    case 'okr':
+    case 'enrollment':
+    case 'certificate':
+    case 'nineBoxEvaluation':
+    case 'successor':
+    case 'employeeCompensation':
+    case 'salaryAdjustment':
+      return { userId: await subjectFragment() };
+    case 'coachingSession':
+      // Subject = the coached employee; the coach (leaderId) always sees their
+      // own sessions regardless of scope.
+      return { OR: [{ employeeId: await subjectFragment() }, { leaderId: userId }] };
+    case 'commitment':
+      // Subject = the committed employee; the creator (coach) always sees
+      // commitments they created regardless of scope.
+      return { OR: [{ employeeId: await subjectFragment() }, { createdById: userId }] };
+    case 'feedback':
+      // Subject = the recipient (toUserId); the giver (fromUserId) always sees
+      // feedback they authored.
+      return { OR: [{ toUserId: await subjectFragment() }, { fromUserId: userId }] };
+    case 'onboardingPlan':
+      // Subject = the new hire (userId); the assigned buddy always sees the plan.
+      return { OR: [{ userId: await subjectFragment() }, { buddyId: userId }] };
+    case 'criticalRole':
+      // Anchored on the (nullable) current holder. Prisma `in` never matches
+      // NULL → an unfilled critical role is hidden from narrow scopes (fail-narrow).
+      return { currentHolderId: await subjectFragment() };
+    case 'team':
+      // Teams the user leads (team/own) or the teams of their assigned units (unit).
+      return scope === 'unit'
+        ? { businessUnitId: { in: await anchors.unitIds() } }
+        : { id: { in: await anchors.ledTeamIds() } };
+    case 'actionPlan':
+      // ActionPlan anchors on responsibleId (the person responsible for the plan).
+      // own → scalar equality; team/unit → subject set via the people anchor.
+      return { responsibleId: await subjectFragment() };
+    case 'leaderCommitment':
+      // ActionPlan anchors on leaderId (the person responsible for the plan).
+      // own → scalar equality; team/unit → subject set via the people anchor.
+      return { leaderId: await subjectFragment() };
   }
 }

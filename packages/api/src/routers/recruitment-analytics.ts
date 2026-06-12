@@ -1,20 +1,12 @@
 import { z } from 'zod';
-import { TRPCError } from '@trpc/server';
 import { router, permissionProcedure } from '../trpc';
 import { recruitmentAnalyticsService } from '../services/recruitment-analytics.service';
-import type { AccessContext } from '../access';
+import { requireOrgScope } from '../access';
 
 // Codex F3 (Wave 2.5 slice 3): these aggregates query ORG-WIDE pipeline/offer
 // data. Until they are scope-aware (follow-up in REMAINING-WORK), narrow-scoped
-// roles (team/unit/own vacancy:read) must not read them — fail closed.
-function requireOrgScope(access: AccessContext): void {
-  if (access.scope !== 'organization' && access.scope !== 'company') {
-    throw new TRPCError({
-      code: 'FORBIDDEN',
-      message: 'Analitica disponible solo con alcance de organizacion',
-    });
-  }
-}
+// roles (team/unit/own vacancy:read) must not read them — fail closed via the
+// shared org-gate (Wave 2.5 slice 4 promoted requireOrgScope to access/org-gate).
 
 // ---------------------------------------------------------------------------
 // Recruitment analytics router — thin controller over real pipeline/offer

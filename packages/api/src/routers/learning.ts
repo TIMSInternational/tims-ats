@@ -1,8 +1,12 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
-import { router, protectedProcedure, permissionProcedure } from '../trpc';
+import { router, permissionProcedure } from '../trpc';
 import { tenantDb as db } from '@tims/db';
 import type { Prisma } from '@tims/db';
+import { scopeWhereFor, assertScoped, assertSubjectInScope, requireOrgScope } from '../access';
+
+// Courses + learning paths are an ORG-LEVEL catalog — deliberately unscoped
+// (people scoping applies to enrollments/certificates, the user-anchored rows).
 
 export const learningRouter = router({
   // ── Courses ──────────────────────────────────────────────────────────
@@ -52,11 +56,16 @@ export const learningRouter = router({
   getCourseById: permissionProcedure('learning', 'read')
     .input(z.object({ id: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
+      // The course itself is org-catalog, but the embedded enrollments are
+      // people rows — scope them (codex: catalog exception must not leak
+      // out-of-scope users' progress/identity). {} at org scope.
+      const enrollScope = await scopeWhereFor('enrollment', ctx.access, ctx.user.id);
       return db.course.findFirstOrThrow({
         where: { id: input.id, organizationId: ctx.user.organizationId },
         include: {
           createdBy: { select: { id: true, firstName: true, lastName: true } },
           enrollments: {
+            where: enrollScope as Prisma.EnrollmentWhereInput,
             include: {
               user: { select: { id: true, firstName: true, lastName: true, avatar: true } },
             },
@@ -128,6 +137,8 @@ export const learningRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      await assertSubjectInScope(ctx.access, ctx.user.id, input.userId, 'No puedes inscribir a este usuario');
+
       return db.enrollment.create({
         data: {
           organizationId: ctx.user.organizationId,
@@ -146,7 +157,30 @@ export const learningRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const data = input.userIds.map((userId) => ({
+      // Dedupe target ids first to avoid redundant checks.
+      const uniqueTargets = [...new Set(input.userIds)];
+
+      // At narrow scope every target must be within the caller's subject set.
+      // Compute the set once (mirrors assertSubjectInScope logic) and set-diff.
+      const { scope, anchors } = ctx.access;
+      if (scope !== 'organization' && scope !== 'company') {
+        if (!anchors) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Sin contexto de organizacion para alcance restringido' });
+        }
+        const subjects =
+          scope === 'own'
+            ? [ctx.user.id]
+            : scope === 'team'
+              ? await anchors.teamMemberIds()
+              : await anchors.unitMemberIds();
+        const subjectSet = new Set(subjects);
+        const outOfScope = uniqueTargets.filter((id) => !subjectSet.has(id));
+        if (outOfScope.length > 0) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Uno o mas usuarios estan fuera de tu alcance' });
+        }
+      }
+
+      const data = uniqueTargets.map((userId) => ({
         organizationId: ctx.user.organizationId,
         userId,
         courseId: input.courseId,
@@ -170,6 +204,10 @@ export const learningRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      // Keyed by enrollmentId — probe the enrollment row so narrow-scoped users
+      // cannot update enrollments of out-of-scope users.
+      await assertScoped('enrollment', input.enrollmentId, ctx.access, ctx.user.id, ctx.user.organizationId);
+
       const { enrollmentId, progress, ...scores } = input;
       const status = progress >= 100 ? 'completed' : 'in_progress';
       const completedAt = progress >= 100 ? new Date() : undefined;
@@ -254,14 +292,23 @@ export const learningRouter = router({
       }),
     )
     .query(async ({ ctx, input }) => {
+      // Scope-compose via enrollment fragment: only show test results for
+      // enrollments within the caller's people scope.
+      const scopeWhere = (await scopeWhereFor('enrollment', ctx.access, ctx.user.id)) as Prisma.EnrollmentWhereInput;
+
       return db.enrollment.findMany({
         where: {
-          organizationId: ctx.user.organizationId,
-          ...(input.courseId && { courseId: input.courseId }),
-          ...(input.userId && { userId: input.userId }),
-          OR: [
-            { preTestScore: { not: null } },
-            { postTestScore: { not: null } },
+          AND: [
+            { organizationId: ctx.user.organizationId },
+            scopeWhere,
+            {
+              ...(input.courseId && { courseId: input.courseId }),
+              ...(input.userId && { userId: input.userId }),
+              OR: [
+                { preTestScore: { not: null } },
+                { postTestScore: { not: null } },
+              ],
+            },
           ],
         },
         include: {
@@ -281,10 +328,17 @@ export const learningRouter = router({
       });
       const memberIds = members.map((m) => m.userId);
 
+      // AND-compose the enrollment scope fragment so that narrow-scoped callers
+      // can only view progress for users within their subject set.
+      const scopeWhere = (await scopeWhereFor('enrollment', ctx.access, ctx.user.id)) as Prisma.EnrollmentWhereInput;
+
       const enrollments = await db.enrollment.findMany({
         where: {
-          organizationId: ctx.user.organizationId,
-          userId: { in: memberIds },
+          AND: [
+            { organizationId: ctx.user.organizationId },
+            scopeWhere,
+            { userId: { in: memberIds } },
+          ],
         },
         include: {
           user: { select: { id: true, firstName: true, lastName: true, avatar: true } },
@@ -331,6 +385,10 @@ export const learningRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      // Probe the enrollment first: enforces that the issuer can only issue
+      // certificates for enrollments within their people scope.
+      await assertScoped('enrollment', input.enrollmentId, ctx.access, ctx.user.id, ctx.user.organizationId);
+
       const enrollment = await db.enrollment.findFirstOrThrow({
         where: {
           id: input.enrollmentId,
@@ -354,6 +412,10 @@ export const learningRouter = router({
 
   getDashboardKpis: permissionProcedure('learning', 'read')
     .query(async ({ ctx }) => {
+      // Org-rollup aggregate: only available at org/company scope until slice-6
+      // introduces scope-aware aggregation (recorded in REMAINING-WORK).
+      requireOrgScope(ctx.access);
+
       const orgId = ctx.user.organizationId;
 
       const [

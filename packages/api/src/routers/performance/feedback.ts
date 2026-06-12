@@ -1,9 +1,15 @@
 import { z } from 'zod';
 import { router, protectedProcedure, permissionProcedure } from '../../trpc';
 import { tenantDb as db } from '@tims/db';
+import type { Prisma } from '@tims/db';
+import { scopeWhereFor } from '../../access';
 
 export const performanceFeedbackRouter = router({
   // 11.12 — Submit feedback
+  // DELIBERATELY UNPROBED — giving feedback/recognition to anyone in the org is
+  // cross-team by design (peer recognition is a company-wide product feature).
+  // There is no row to probe and no subject-in-scope rule: a narrow-scope user
+  // may send feedback to any colleague. Reads (listFeedback) ARE scope-filtered.
   submitFeedback: protectedProcedure
     .input(
       z.object({
@@ -36,12 +42,18 @@ export const performanceFeedbackRouter = router({
     )
     .query(async ({ ctx, input }) => {
       const { cursor, limit, toUserId, fromUserId, type } = input;
+      const scopeWhere = (await scopeWhereFor('feedback', ctx.access, ctx.user.id)) as Prisma.FeedbackWhereInput;
 
-      const where = {
-        organizationId: ctx.user.organizationId,
-        ...(toUserId ? { toUserId } : {}),
-        ...(fromUserId ? { fromUserId } : {}),
-        ...(type ? { type } : {}),
+      const where: Prisma.FeedbackWhereInput = {
+        AND: [
+          { organizationId: ctx.user.organizationId },
+          scopeWhere,
+          {
+            ...(toUserId ? { toUserId } : {}),
+            ...(fromUserId ? { fromUserId } : {}),
+            ...(type ? { type } : {}),
+          },
+        ],
       };
 
       const feedbacks = await db.feedback.findMany({

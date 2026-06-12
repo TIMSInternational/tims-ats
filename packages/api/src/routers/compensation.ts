@@ -1,9 +1,13 @@
 import { z } from 'zod';
-import { router, protectedProcedure, permissionProcedure } from '../trpc';
+import { router, permissionProcedure } from '../trpc';
 import { tenantDb as db } from '@tims/db';
+import type { Prisma } from '@tims/db';
+import { scopeWhereFor, assertScoped, assertSubjectInScope, requireOrgScope } from '../access';
 
 export const compensationRouter = router({
   // ── Salary Bands ───────────────────────────────────────────────────
+  // Org-level catalog: band definitions contain no per-person salary data.
+  // Scoping is unnecessary and would break HR-admin band management.
   getSalaryBands: permissionProcedure('compensation', 'read')
     .input(
       z.object({
@@ -20,7 +24,9 @@ export const compensationRouter = router({
     }),
 
   // ── Band Distribution (employees plotted within their band) ────────
+  // Salary aggregates must not leak to narrow scopes — slice-6 min-5 replaces this gate.
   getBandDistribution: permissionProcedure('compensation', 'read').query(async ({ ctx }) => {
+    requireOrgScope(ctx.access);
     const comps = await db.employeeCompensation.findMany({
       where: { organizationId: ctx.user.organizationId, bandId: { not: null } },
       select: { currentSalary: true, band: { select: { id: true, level: true, title: true, minSalary: true, midSalary: true, maxSalary: true } } },
@@ -44,6 +50,7 @@ export const compensationRouter = router({
   }),
 
   // ── Compa-Ratio Distribution ───────────────────────────────────────
+  // Salary aggregates must not leak to narrow scopes — slice-6 min-5 replaces this gate.
   getCompaRatioDistribution: permissionProcedure('compensation', 'read')
     .input(
       z.object({
@@ -52,6 +59,7 @@ export const compensationRouter = router({
       }).optional(),
     )
     .query(async ({ ctx, input }) => {
+      requireOrgScope(ctx.access);
       const compensations = await db.employeeCompensation.findMany({
         where: {
           organizationId: ctx.user.organizationId,
@@ -92,6 +100,7 @@ export const compensationRouter = router({
     }),
 
   // ── Pay Equity ─────────────────────────────────────────────────────
+  // Salary aggregates must not leak to narrow scopes — slice-6 min-5 replaces this gate.
   getPayEquity: permissionProcedure('compensation', 'read')
     .input(
       z.object({
@@ -100,6 +109,7 @@ export const compensationRouter = router({
       }).optional(),
     )
     .query(async ({ ctx }) => {
+      requireOrgScope(ctx.access);
       const compensations = await db.employeeCompensation.findMany({
         where: {
           organizationId: ctx.user.organizationId,
@@ -120,11 +130,13 @@ export const compensationRouter = router({
     }),
 
   // ── Benefits Utilization ───────────────────────────────────────────
+  // Salary aggregates must not leak to narrow scopes — slice-6 min-5 replaces this gate.
   getBenefitsUtilization: permissionProcedure('compensation', 'read')
     .input(
       z.object({ companyId: z.string().uuid().optional() }).optional(),
     )
     .query(async ({ ctx }) => {
+      requireOrgScope(ctx.access);
       const benefits = await db.benefitPlan.findMany({
         where: {
           organizationId: ctx.user.organizationId,
@@ -154,11 +166,16 @@ export const compensationRouter = router({
     }),
 
   // ── Adjustments ────────────────────────────────────────────────────
+  // Row-level: each SalaryAdjustment is anchored on userId (the employee being
+  // adjusted). Compose the salaryAdjustment scope fragment via AND.
   listPendingAdjustments: permissionProcedure('compensation', 'read').query(async ({ ctx }) => {
+    const scopeWhere = (await scopeWhereFor('salaryAdjustment', ctx.access, ctx.user.id)) as Prisma.SalaryAdjustmentWhereInput;
     return db.salaryAdjustment.findMany({
       where: {
-        organizationId: ctx.user.organizationId,
-        status: 'pending',
+        AND: [
+          { organizationId: ctx.user.organizationId, status: 'pending' },
+          scopeWhere,
+        ],
       },
       include: {
         user: { select: { id: true, firstName: true, lastName: true, jobTitle: true } },
@@ -180,6 +197,15 @@ export const compensationRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      // Write-rule: no row exists yet — gate on whether the TARGET user is within
+      // the caller's subject set (own/team/unit). Most sensitive check in the module.
+      await assertSubjectInScope(
+        ctx.access,
+        ctx.user.id,
+        input.userId,
+        'No puedes crear ajustes para este usuario',
+      );
+
       return db.salaryAdjustment.create({
         data: {
           userId: input.userId,
@@ -204,6 +230,10 @@ export const compensationRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      // Scope probe (belt-and-braces): the approve action requires an explicit
+      // org grant in the matrix; the probe adds an extra narrow-scope guard.
+      await assertScoped('salaryAdjustment', input.id, ctx.access, ctx.user.id, ctx.user.organizationId);
+
       const adjustment = await db.salaryAdjustment.findFirst({
         where: { id: input.id, organizationId: ctx.user.organizationId, status: 'pending' },
       });
@@ -237,6 +267,14 @@ export const compensationRouter = router({
       }),
     )
     .query(async ({ ctx, input }) => {
+      // Per-person read: caller must be authorized to view this employee's compensation.
+      await assertSubjectInScope(
+        ctx.access,
+        ctx.user.id,
+        input.userId,
+        'No puedes simular ajustes para este usuario',
+      );
+
       const compensation = await db.employeeCompensation.findFirst({
         where: { userId: input.userId, organizationId: ctx.user.organizationId },
         select: { currentSalary: true, compaRatio: true, bandId: true },
@@ -272,6 +310,8 @@ export const compensationRouter = router({
     }),
 
   // ── Market Comparison ──────────────────────────────────────────────
+  // Org-level catalog: reads only salaryBand definitions, no per-person data.
+  // Scoping is unnecessary — same justification as getSalaryBands.
   getMarketComparison: permissionProcedure('compensation', 'read')
     .input(
       z.object({
@@ -297,6 +337,7 @@ export const compensationRouter = router({
     }),
 
   // ── Total Comp Breakdown ───────────────────────────────────────────
+  // Salary aggregates must not leak to narrow scopes — slice-6 min-5 replaces this gate.
   getTotalCompBreakdown: permissionProcedure('compensation', 'read')
     .input(
       z.object({
@@ -304,6 +345,7 @@ export const compensationRouter = router({
       }).optional(),
     )
     .query(async ({ ctx }) => {
+      requireOrgScope(ctx.access);
       const compensations = await db.employeeCompensation.findMany({
         where: {
           organizationId: ctx.user.organizationId,
@@ -335,9 +377,17 @@ export const compensationRouter = router({
     }),
 
   // ── Employee Compensation Detail ───────────────────────────────────
+  // Per-person read: caller must be authorized to view this employee's compensation.
   getEmployeeComp: permissionProcedure('compensation', 'read')
     .input(z.object({ userId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
+      await assertSubjectInScope(
+        ctx.access,
+        ctx.user.id,
+        input.userId,
+        'No puedes ver la compensacion de este usuario',
+      );
+
       const compensation = await db.employeeCompensation.findFirst({
         where: { userId: input.userId, organizationId: ctx.user.organizationId },
         include: {
@@ -363,7 +413,9 @@ export const compensationRouter = router({
     }),
 
   // ── Dashboard KPIs ─────────────────────────────────────────────────
+  // Salary aggregates must not leak to narrow scopes — slice-6 min-5 replaces this gate.
   getDashboardKpis: permissionProcedure('compensation', 'read').query(async ({ ctx }) => {
+    requireOrgScope(ctx.access);
     const orgId = ctx.user.organizationId;
 
     const [payrollAgg, pendingAdjustments, avgCompaRatio, activeEmployees, benefitPlans] = await Promise.all([

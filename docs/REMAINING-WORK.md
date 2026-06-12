@@ -95,20 +95,39 @@ requires an ASSIGNED evaluator (slice-1 codex carry-over CLOSED). Public offer
 token flows + assessment question bank deliberately untouched. Tests 298 → 358
 (entity-policies behavior table + per-module AND-composition tripwires).
 
-**Slices 4–7 pending** (each gets its own plan): 4 scope enforcement: people (own/team/unit live here) ·
-5 role-aware UI (PermissionsProvider, filtered sidebars, page guards, AccessDenied) ·
+**Slice 4 SHIPPED (branch feat/access-scope-people): scope enforcement — people.**
+People entities joined the policy registry, anchored on the row's EMPLOYEE-user
+field (okr·userId, coachingSession·employeeId+coach-arm, feedback·toUserId+
+giver-arm, onboardingPlan·userId+buddy-arm, enrollment/certificate·userId,
+nineBoxEvaluation·userId, successor·userId, criticalRole·currentHolderId,
+employeeCompensation/salaryAdjustment·userId, actionPlan·responsibleId,
+leaderCommitment·leaderId, team·id/businessUnitId) — own→scalar, team→
+teamMemberIds, unit→NEW `unitMemberIds` anchor (User.businessUnitId ∪
+team-membership, floor []). NEW `assertSubjectInScope` write-rule (creates/
+point-reads targeting a user must target the caller's subject set) +
+`requireOrgScope` promoted to a shared gate. ALL SEVEN people routers wired:
+performance (okrs/coaching/feedback; dashboards org-gated; completeCoachingSession
+previously had ZERO org check — fixed), onboarding (plan probes, task/check-in
+hops, create write-rule), learning (enrollment scoping; course/path catalog
+deliberately org-level), engagement (9 aggregate reads org-gated until slice-6
+min-5; actionPlan/leaderCommitment row-lists composed), compensation (salary
+aggregates org-gated; adjustments probed; per-person reads subject-checked),
+ninebox (grid/history composed; calibration votes now require committee
+MEMBERSHIP — mirrors submitScorecard; session creation org-gated), succession +
+teamIntel (team entity probes). Tests 372 → 445.
+
+**Slices 5–7 pending** (each gets its own plan): 5 role-aware UI (PermissionsProvider, filtered sidebars, page guards, AccessDenied) ·
 6 sensitive-data layer (selectFor, +AUDIT data_access_logs, min-5 aggregates, consent) ·
 7 new-role surfaces (hrbp unit admin, committee wiring, external API keys).
 
-**⚠️ WAVE 2.5 DEPLOY-ORDERING (fail-open hazard — do NOT partially deploy):**
+**✅ WAVE 2.5 DEPLOY-ORDERING — WAVE-DATA DEPLOY NOW UNBLOCKED (slices 1–4 all merged + auto-deployed):**
 Code auto-deploys on merge (verified Jun 12: #67/#68 → prod deploys within
 seconds of the main merge). Every slice is behavior-neutral pre-seed
 (org-equivalent grants → `{}` fragments — prod's 104 legacy rows are all
-scope `'all'`). RECRUITMENT scopes are enforced from slice 3; PEOPLE-module
-narrow grants (employee compensation:read@own etc.) remain fail-open until
-slice 4 lands — `seed-access.ts --apply` therefore stays FORBIDDEN until
-slice 4 is merged+deployed. At wave-DATA deploy (after slice 4): (1) migration
-`npx prisma db execute --file=packages/db/prisma/migrations/20260612000000_access_control_models/migration.sql`
+scope `'all'`). Slices 1–4 are all merged and deployed; the wave-DATA deploy
+is UNBLOCKED. Runbook (Federico runs this deliberately — it is NOT automatic;
+until he does, prod keeps legacy org-equivalent behavior, verified safe):
+(1) migration `npx prisma db execute --file=packages/db/prisma/migrations/20260612000000_access_control_models/migration.sql`
 (not yet run; the 3 new tables are dormant until narrow scopes exist);
 (2) `npx tsx packages/db/prisma/seed-access.ts --apply` (review the DELETIONS
 block of a dry-run first); (3) cache flush (`tims:access:*`). Until the seed
@@ -146,6 +165,15 @@ parent has child X" vs "has none" via NOT_FOUND message differences) =
 accepted uniform tradeoff, revisit only if id-enumeration becomes a concern;
 applyToVacancy duplicate application still surfaces raw P2002 (pre-existing,
 @@unique exists — map to CONFLICT in a cleanup pass).
+Slice-2/3/4 review carry-overs: scope-aware people dashboards + engagement/
+compensation aggregates (the org-gates are the interim; slice-6 min-5 replaces
+them); feedback/recognition creates are deliberately cross-team (no
+`assertSubjectInScope` gate — a giver may target any employee in the org);
+`getLowProgressAlerts` returns row-level OKRs behind the org-gate (slice-6
+candidate for scope-aware listing — narrow-scoped callers currently see all
+low-progress OKRs in the org); benefitEnrollment has no row-level endpoints
+today (registry entry deferred until one exists — no subject-check needed
+until then).
 
 ## Remaining — code work
 

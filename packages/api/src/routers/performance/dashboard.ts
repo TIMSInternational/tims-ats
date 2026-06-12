@@ -1,10 +1,14 @@
 import { z } from 'zod';
 import { router, permissionProcedure } from '../../trpc';
 import { tenantDb as db } from '@tims/db';
+import { requireOrgScope } from '../../access';
 
 export const performanceDashboardRouter = router({
   // 11.16 — Dashboard KPIs
   getDashboardKpis: permissionProcedure('performance', 'read').query(async ({ ctx }) => {
+    // Org-rollup aggregates over every user's performance data — interim org-gate
+    // until scope-aware aggregation lands (slice 6). No-op at org/company scope.
+    requireOrgScope(ctx.access);
     const orgId = ctx.user.organizationId;
 
     const [
@@ -71,6 +75,9 @@ export const performanceDashboardRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
+      // Org-rollup alert list across every user's OKRs/commitments — interim
+      // org-gate until scope-aware aggregation lands (slice 6).
+      requireOrgScope(ctx.access);
       const { threshold, period } = input;
 
       const lowOkrs = await db.okr.findMany({

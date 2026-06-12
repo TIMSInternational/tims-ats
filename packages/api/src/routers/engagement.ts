@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
-import { router, protectedProcedure, permissionProcedure } from '../trpc';
+import { router, permissionProcedure } from '../trpc';
 import { tenantDb as db } from '@tims/db';
 import type { Prisma } from '@tims/db';
+import { scopeWhereFor, assertScoped, assertSubjectInScope, requireOrgScope } from '../access';
 
 export const engagementRouter = router({
   // ── Surveys ────────────────────────────────────────────────────────
@@ -76,6 +77,10 @@ export const engagementRouter = router({
   getSurveyResults: permissionProcedure('engagement', 'read')
     .input(z.object({ surveyId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
+      // Aggregate over all respondents — org-only until slice-6 min-5
+      // scope-aware aggregation (recorded in REMAINING-WORK).
+      requireOrgScope(ctx.access);
+
       const survey = await db.survey.findFirst({
         where: {
           id: input.surveyId,
@@ -158,6 +163,10 @@ export const engagementRouter = router({
       }).optional(),
     )
     .query(async ({ ctx, input }) => {
+      // Aggregate over all respondents — org-only until slice-6 min-5
+      // scope-aware aggregation (recorded in REMAINING-WORK).
+      requireOrgScope(ctx.access);
+
       const { period = 'quarter' } = input ?? {};
       const now = new Date();
       const since = new Date(now);
@@ -204,6 +213,10 @@ export const engagementRouter = router({
       }).optional(),
     )
     .query(async ({ ctx, input }) => {
+      // Aggregate over all respondents — org-only until slice-6 min-5
+      // scope-aware aggregation (recorded in REMAINING-WORK).
+      requireOrgScope(ctx.access);
+
       const surveys = await db.survey.findMany({
         where: {
           organizationId: ctx.user.organizationId,
@@ -242,6 +255,10 @@ export const engagementRouter = router({
       }),
     )
     .query(async ({ ctx, input }) => {
+      // Aggregate over all respondents — org-only until slice-6 min-5
+      // scope-aware aggregation (recorded in REMAINING-WORK).
+      requireOrgScope(ctx.access);
+
       const survey = await db.survey.findFirst({
         where: { id: input.surveyId, organizationId: ctx.user.organizationId },
         include: {
@@ -283,14 +300,22 @@ export const engagementRouter = router({
   // ── Stubs ──────────────────────────────────────────────────────────
   getWordCloud: permissionProcedure('engagement', 'read')
     .input(z.object({ surveyId: z.string().uuid() }))
-    .query(async () => {
+    .query(async ({ ctx }) => {
+      // Aggregate over all respondents — org-only until slice-6 min-5
+      // scope-aware aggregation (recorded in REMAINING-WORK).
+      requireOrgScope(ctx.access);
+
       // TODO: integrate NLP service for word frequency extraction
       return { words: [] as { text: string; weight: number }[] };
     }),
 
   getSentiment: permissionProcedure('engagement', 'read')
     .input(z.object({ surveyId: z.string().uuid() }))
-    .query(async () => {
+    .query(async ({ ctx }) => {
+      // Aggregate over all respondents — org-only until slice-6 min-5
+      // scope-aware aggregation (recorded in REMAINING-WORK).
+      requireOrgScope(ctx.access);
+
       // TODO: integrate NLP/AI service for sentiment analysis
       return { positive: 0, neutral: 0, negative: 0, highlights: [] as string[] };
     }),
@@ -301,6 +326,10 @@ export const engagementRouter = router({
       z.object({ threshold: z.number().min(0).max(10).default(3) }).optional(),
     )
     .query(async ({ ctx }) => {
+      // Aggregate over all respondents — org-only until slice-6 min-5
+      // scope-aware aggregation (recorded in REMAINING-WORK).
+      requireOrgScope(ctx.access);
+
       // No EngagementAlert model; use the Alert model from monitoring
       const alerts = await db.alert.findMany({
         where: {
@@ -321,10 +350,18 @@ export const engagementRouter = router({
       }).optional(),
     )
     .query(async ({ ctx, input }) => {
+      // Row-level list: compose the actionPlan scope fragment so narrow-scoped
+      // callers only see plans they are responsible for (own) or within their
+      // team/unit subject set.
+      const scopeWhere = (await scopeWhereFor('actionPlan', ctx.access, ctx.user.id)) as Prisma.ActionPlanWhereInput;
+
       return db.actionPlan.findMany({
         where: {
-          organizationId: ctx.user.organizationId,
-          ...(input?.status ? { status: input.status } : {}),
+          AND: [
+            { organizationId: ctx.user.organizationId },
+            scopeWhere,
+            { ...(input?.status ? { status: input.status } : {}) },
+          ],
         },
         include: {
           responsible: { select: { id: true, firstName: true, lastName: true, avatar: true } },
@@ -344,6 +381,9 @@ export const engagementRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      // Write-rule: the responsible person must be within the caller's subject set.
+      await assertSubjectInScope(ctx.access, ctx.user.id, input.responsibleId, 'No puedes asignar este plan a ese usuario');
+
       return db.actionPlan.create({
         data: {
           title: input.title,
@@ -369,6 +409,14 @@ export const engagementRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      // Probe the action plan so narrow-scoped callers cannot update out-of-scope plans.
+      await assertScoped('actionPlan', input.id, ctx.access, ctx.user.id, ctx.user.organizationId);
+      // Codex: reassigning responsibility must also target the caller's
+      // subject set — otherwise an in-scope plan can be pushed out of scope.
+      if (input.responsibleId) {
+        await assertSubjectInScope(ctx.access, ctx.user.id, input.responsibleId, 'No puedes asignar este plan a ese usuario');
+      }
+
       const { id, dueDate, ...data } = input;
       return db.actionPlan.update({
         where: { id, organizationId: ctx.user.organizationId },
@@ -388,11 +436,20 @@ export const engagementRouter = router({
       }).optional(),
     )
     .query(async ({ ctx, input }) => {
+      // LeaderCommitment rows anchor on leaderId — the fragment scopes them
+      // (own → only mine; team/unit → leaders in my subject set; org → all).
+      // The input leaderId filter can only intersect, never widen.
+      const scopeWhere = await scopeWhereFor('leaderCommitment', ctx.access, ctx.user.id);
       return db.leaderCommitment.findMany({
         where: {
-          organizationId: ctx.user.organizationId,
-          ...(input?.leaderId ? { leaderId: input.leaderId } : {}),
-          ...(input?.status ? { status: input.status } : {}),
+          AND: [
+            { organizationId: ctx.user.organizationId },
+            scopeWhere as Prisma.LeaderCommitmentWhereInput,
+            {
+              ...(input?.leaderId ? { leaderId: input.leaderId } : {}),
+              ...(input?.status ? { status: input.status } : {}),
+            },
+          ],
         },
         include: {
           leader: { select: { id: true, firstName: true, lastName: true, avatar: true } },
@@ -410,6 +467,10 @@ export const engagementRouter = router({
       }).optional(),
     )
     .query(async ({ ctx, input }) => {
+      // Aggregate over org users — org-only until slice-6 min-5
+      // scope-aware aggregation (recorded in REMAINING-WORK).
+      requireOrgScope(ctx.access);
+
       // User model doesn't have rotation risk fields; return empty
       const total = await db.user.count({
         where: {
@@ -428,6 +489,10 @@ export const engagementRouter = router({
 
   // ── Dashboard KPIs ─────────────────────────────────────────────────
   getDashboardKpis: permissionProcedure('engagement', 'read').query(async ({ ctx }) => {
+    // Org-rollup aggregate: only available at org/company scope until slice-6
+    // introduces scope-aware aggregation (recorded in REMAINING-WORK).
+    requireOrgScope(ctx.access);
+
     const orgId = ctx.user.organizationId;
 
     const [activeSurveys, totalResponses, actionPlansOpen] = await Promise.all([

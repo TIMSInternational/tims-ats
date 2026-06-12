@@ -8,6 +8,19 @@ vi.mock('@tims/db', () => ({
     interview: { findFirst: vi.fn() },
     offer: { findFirst: vi.fn() },
     assessmentAssignment: { findFirst: vi.fn() },
+    okr: { findFirst: vi.fn() },
+    coachingSession: { findFirst: vi.fn() },
+    feedback: { findFirst: vi.fn() },
+    onboardingPlan: { findFirst: vi.fn() },
+    enrollment: { findFirst: vi.fn() },
+    certificate: { findFirst: vi.fn() },
+    nineBoxEvaluation: { findFirst: vi.fn() },
+    successor: { findFirst: vi.fn() },
+    criticalRole: { findFirst: vi.fn() },
+    employeeCompensation: { findFirst: vi.fn() },
+    salaryAdjustment: { findFirst: vi.fn() },
+    team: { findFirst: vi.fn() },
+    actionPlan: { findFirst: vi.fn() },
   },
 }));
 
@@ -20,6 +33,7 @@ const anchors = {
   unitIds: vi.fn(async () => ['bu1']),
   panelInterviewIds: vi.fn(async () => []),
   ledTeamIds: vi.fn(async () => ['t1']),
+  unitMemberIds: vi.fn(async () => ['me', 'u2']),
 };
 const ACCESS = { allowed: true, scope: 'team', roles: ['leader'], anchors } as unknown as AccessContext;
 beforeEach(() => {
@@ -80,6 +94,54 @@ describe('assertScoped', () => {
     await expect(assertScoped('vacancy', 'vx', ACCESS, 'me', 'org-1')).rejects.toMatchObject({
       code: 'NOT_FOUND',
       message: 'Vacante no encontrada',
+    });
+  });
+
+  it('okr probes tenantDb.okr.findFirst with the user fragment and throws the OKR message', async () => {
+    vi.mocked(tenantDb.okr.findFirst).mockResolvedValue(null as never);
+    await expect(assertScoped('okr', 'o1', ACCESS, 'me', 'org-1')).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+      message: 'OKR no encontrado',
+    });
+    expect(tenantDb.okr.findFirst).toHaveBeenCalledWith({
+      where: {
+        AND: [
+          { id: 'o1' },
+          { organizationId: 'org-1' },
+          { userId: { in: ['me'] } },
+        ],
+      },
+      select: { id: true },
+    });
+  });
+
+  it('people entities are NOT soft-delete-guarded (no people model has deletedAt)', async () => {
+    vi.mocked(tenantDb.okr.findFirst).mockResolvedValue({ id: 'o1' } as never);
+    await assertScoped('okr', 'o1', ACCESS, 'me', 'org-1');
+    expect(tenantDb.okr.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          AND: expect.not.arrayContaining([{ deletedAt: null }]),
+        }),
+      }),
+    );
+  });
+
+  it('actionPlan probes tenantDb.actionPlan.findFirst with responsibleId fragment and throws the actionPlan message', async () => {
+    vi.mocked(tenantDb.actionPlan.findFirst).mockResolvedValue(null as never);
+    await expect(assertScoped('actionPlan', 'ap1', ACCESS, 'me', 'org-1')).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+      message: 'Plan de accion no encontrado',
+    });
+    expect(tenantDb.actionPlan.findFirst).toHaveBeenCalledWith({
+      where: {
+        AND: [
+          { id: 'ap1' },
+          { organizationId: 'org-1' },
+          { responsibleId: { in: ['me'] } },
+        ],
+      },
+      select: { id: true },
     });
   });
 });

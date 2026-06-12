@@ -6,6 +6,7 @@ vi.mock('@tims/db', () => ({
     userTeam: { findMany: vi.fn() },
     userBusinessUnit: { findMany: vi.fn() },
     interviewEvaluator: { findMany: vi.fn() },
+    user: { findMany: vi.fn() },
   },
 }));
 
@@ -96,5 +97,38 @@ describe('createAnchorLoader', () => {
     await anchors.ledTeamIds();
     await anchors.ledTeamIds();
     expect(tenantDb.team.findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('unitMemberIds = users in assigned units via direct FK OR team membership (deduped)', async () => {
+    vi.mocked(tenantDb.userBusinessUnit.findMany).mockResolvedValue([{ businessUnitId: 'bu1' }] as never);
+    vi.mocked(tenantDb.user.findMany).mockResolvedValue([{ id: 'u1' }, { id: 'u2' }] as never);
+    const anchors = createAnchorLoader(ORG, ME);
+    expect(await anchors.unitMemberIds()).toEqual(['u1', 'u2']);
+    expect(tenantDb.user.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          organizationId: ORG,
+          OR: [
+            { businessUnitId: { in: ['bu1'] } },
+            { teams: { some: { team: { businessUnitId: { in: ['bu1'] } } } } },
+          ],
+        }),
+        select: { id: true },
+      }),
+    );
+  });
+
+  it('unitMemberIds floors to [] when no units are assigned (no user query)', async () => {
+    vi.mocked(tenantDb.userBusinessUnit.findMany).mockResolvedValue([] as never);
+    expect(await createAnchorLoader(ORG, ME).unitMemberIds()).toEqual([]);
+    expect(tenantDb.user.findMany).not.toHaveBeenCalled();
+  });
+
+  it('unitMemberIds memoizes within the request', async () => {
+    vi.mocked(tenantDb.userBusinessUnit.findMany).mockResolvedValue([] as never);
+    const anchors = createAnchorLoader(ORG, ME);
+    await anchors.unitMemberIds();
+    await anchors.unitMemberIds();
+    expect(tenantDb.userBusinessUnit.findMany).toHaveBeenCalledTimes(1);
   });
 });

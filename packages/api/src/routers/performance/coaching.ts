@@ -1,6 +1,9 @@
 import { z } from 'zod';
+import { TRPCError } from '@trpc/server';
 import { router, permissionProcedure } from '../../trpc';
 import { tenantDb as db } from '@tims/db';
+import type { Prisma } from '@tims/db';
+import { scopeWhereFor, assertScoped, assertSubjectInScope } from '../../access';
 
 export const performanceCoachingRouter = router({
   // 11.6 — List coaching sessions
@@ -16,12 +19,18 @@ export const performanceCoachingRouter = router({
     )
     .query(async ({ ctx, input }) => {
       const { cursor, limit, employeeId, leaderId, status } = input;
+      const scopeWhere = (await scopeWhereFor('coachingSession', ctx.access, ctx.user.id)) as Prisma.CoachingSessionWhereInput;
 
-      const where = {
-        organizationId: ctx.user.organizationId,
-        ...(employeeId ? { employeeId } : {}),
-        ...(leaderId ? { leaderId } : {}),
-        ...(status ? { status } : {}),
+      const where: Prisma.CoachingSessionWhereInput = {
+        AND: [
+          { organizationId: ctx.user.organizationId },
+          scopeWhere,
+          {
+            ...(employeeId ? { employeeId } : {}),
+            ...(leaderId ? { leaderId } : {}),
+            ...(status ? { status } : {}),
+          },
+        ],
       };
 
       const sessions = await db.coachingSession.findMany({
@@ -58,6 +67,14 @@ export const performanceCoachingRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // Narrow scopes may only schedule coaching for employees in their subject set.
+      await assertSubjectInScope(
+        ctx.access,
+        ctx.user.id,
+        input.employeeId,
+        'No puedes crear sesiones de coaching para este empleado',
+      );
+
       return db.coachingSession.create({
         data: {
           ...input,
@@ -79,8 +96,11 @@ export const performanceCoachingRouter = router({
         duration: z.number().int().positive().optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const { id, ...data } = input;
+
+      // Scope + IDOR probe: a narrow scope must not complete an out-of-scope session.
+      await assertScoped('coachingSession', id, ctx.access, ctx.user.id, ctx.user.organizationId);
 
       return db.coachingSession.update({
         where: { id },
@@ -108,11 +128,17 @@ export const performanceCoachingRouter = router({
     .query(async ({ ctx, input }) => {
       const { cursor, limit, employeeId, coachingSessionId, status } = input;
 
-      const where = {
-        organizationId: ctx.user.organizationId,
-        ...(employeeId ? { employeeId } : {}),
-        ...(coachingSessionId ? { coachingSessionId } : {}),
-        ...(status ? { status } : {}),
+      const scopeWhere = await scopeWhereFor('commitment', ctx.access, ctx.user.id);
+      const where: Prisma.CommitmentWhereInput = {
+        AND: [
+          { organizationId: ctx.user.organizationId },
+          scopeWhere as Prisma.CommitmentWhereInput,
+          {
+            ...(employeeId ? { employeeId } : {}),
+            ...(coachingSessionId ? { coachingSessionId } : {}),
+            ...(status ? { status } : {}),
+          },
+        ],
       };
 
       const commitments = await db.commitment.findMany({
@@ -147,6 +173,22 @@ export const performanceCoachingRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // Codex: the committed employee must be in the caller's subject set; an
+      // optional parent session must itself be in scope.
+      await assertSubjectInScope(ctx.access, ctx.user.id, input.employeeId, 'No puedes crear compromisos para este usuario');
+      if (input.coachingSessionId) {
+        await assertScoped('coachingSession', input.coachingSessionId, ctx.access, ctx.user.id, ctx.user.organizationId);
+        // Codex: the parent session must belong to the SAME employee — without
+        // this, a commitment can be attached to another employee's session
+        // (data corruption + session metadata leak through the include).
+        const session = await db.coachingSession.findFirst({
+          where: { id: input.coachingSessionId, organizationId: ctx.user.organizationId, employeeId: input.employeeId },
+          select: { id: true },
+        });
+        if (!session) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'La sesion no corresponde a este empleado' });
+        }
+      }
       return db.commitment.create({
         data: {
           ...input,
@@ -169,8 +211,10 @@ export const performanceCoachingRouter = router({
         status: z.enum(['pending', 'in_progress', 'completed', 'cancelled']).optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const { id, status, ...rest } = input;
+      // Codex: was a bare update-by-id with NO org/ownership check at all.
+      await assertScoped('commitment', id, ctx.access, ctx.user.id, ctx.user.organizationId);
 
       return db.commitment.update({
         where: { id },

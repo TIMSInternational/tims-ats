@@ -20,6 +20,22 @@ const NOT_FOUND_MESSAGES: Record<ScopedEntity, string> = {
   interview: 'Entrevista no encontrada',
   offer: 'Oferta no encontrada',
   assessmentAssignment: 'Asignacion no encontrada',
+  // People entities (Wave 2.5 slice 4) — match existing router messages where present.
+  okr: 'OKR no encontrado',
+  coachingSession: 'Sesion de coaching no encontrada',
+  feedback: 'Feedback no encontrado',
+  onboardingPlan: 'Plan de onboarding no encontrado',
+  enrollment: 'Inscripcion no encontrada',
+  certificate: 'Certificado no encontrado',
+  nineBoxEvaluation: 'Evaluacion no encontrada',
+  successor: 'Sucesor no encontrado',
+  criticalRole: 'Rol critico no encontrado',
+  employeeCompensation: 'Compensacion no encontrada',
+  salaryAdjustment: 'Ajuste salarial no encontrado',
+  team: 'Equipo no encontrado',
+  actionPlan: 'Plan de accion no encontrado',
+  leaderCommitment: 'Compromiso no encontrado',
+  commitment: 'Compromiso no encontrado',
 };
 
 const DELEGATES = {
@@ -29,6 +45,21 @@ const DELEGATES = {
   interview: () => tenantDb.interview,
   offer: () => tenantDb.offer,
   assessmentAssignment: () => tenantDb.assessmentAssignment,
+  okr: () => tenantDb.okr,
+  coachingSession: () => tenantDb.coachingSession,
+  feedback: () => tenantDb.feedback,
+  onboardingPlan: () => tenantDb.onboardingPlan,
+  enrollment: () => tenantDb.enrollment,
+  certificate: () => tenantDb.certificate,
+  nineBoxEvaluation: () => tenantDb.nineBoxEvaluation,
+  successor: () => tenantDb.successor,
+  criticalRole: () => tenantDb.criticalRole,
+  employeeCompensation: () => tenantDb.employeeCompensation,
+  salaryAdjustment: () => tenantDb.salaryAdjustment,
+  team: () => tenantDb.team,
+  actionPlan: () => tenantDb.actionPlan,
+  leaderCommitment: () => tenantDb.leaderCommitment,
+  commitment: () => tenantDb.commitment,
 } as const;
 
 export async function assertScoped(

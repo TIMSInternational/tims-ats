@@ -10,6 +10,7 @@ export interface AnchorLoader {
   unitIds(): Promise<string[]>;
   panelInterviewIds(): Promise<string[]>;
   ledTeamIds(): Promise<string[]>;
+  unitMemberIds(): Promise<string[]>;
 }
 
 export function createAnchorLoader(organizationId: string, userId: string): AnchorLoader {
@@ -17,8 +18,9 @@ export function createAnchorLoader(organizationId: string, userId: string): Anch
   let units: Promise<string[]> | null = null;
   let panels: Promise<string[]> | null = null;
   let ledTeams: Promise<string[]> | null = null;
+  let unitMembers: Promise<string[]> | null = null;
 
-  return {
+  const loader: AnchorLoader = {
     teamMemberIds() {
       teams ??= (async () => {
         const led = await tenantDb.team.findMany({
@@ -56,5 +58,30 @@ export function createAnchorLoader(organizationId: string, userId: string): Anch
         .then((rows) => rows.map((r) => r.id));
       return ledTeams;
     },
+    unitMemberIds() {
+      // People-entity unit scope: every user belonging to the caller's assigned
+      // units — via the direct User.businessUnitId FK OR membership in a team of
+      // that unit (both forms exist in the schema; union + dedupe). Floor []
+      // (no units assigned → no unit rows). Request-local like every anchor;
+      // reuses the memoized unitIds() so units load at most once per request.
+      unitMembers ??= (async () => {
+        const units = await loader.unitIds();
+        if (units.length === 0) return [];
+        const users = await tenantDb.user.findMany({
+          where: {
+            organizationId,
+            OR: [
+              { businessUnitId: { in: units } },
+              { teams: { some: { team: { businessUnitId: { in: units } } } } },
+            ],
+          },
+          select: { id: true },
+        });
+        return [...new Set(users.map((u) => u.id))];
+      })();
+      return unitMembers;
+    },
   };
+
+  return loader;
 }

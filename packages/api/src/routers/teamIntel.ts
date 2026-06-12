@@ -1,7 +1,9 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
-import { router, protectedProcedure, permissionProcedure } from '../trpc';
+import { router, permissionProcedure } from '../trpc';
 import { tenantDb as db } from '@tims/db';
+import type { Prisma } from '@tims/db';
+import { scopeWhereFor, assertScoped, requireOrgScope } from '../access';
 
 export const teamIntelRouter = router({
   // ── Team Profile ─────────────────────────────────────────────────────
@@ -9,6 +11,10 @@ export const teamIntelRouter = router({
   getTeamProfile: permissionProcedure('team_intel', 'read')
     .input(z.object({ teamId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
+      // Team-scope probe: narrow scopes (leader/hrbp) may only read teams they
+      // lead / teams in their assigned units (NOT_FOUND otherwise). Precedes
+      // the org-check fetch below (which keeps the team fields the handler uses).
+      await assertScoped('team', input.teamId, ctx.access, ctx.user.id, ctx.user.organizationId);
       const team = await db.team.findFirstOrThrow({
         where: { id: input.teamId, organizationId: ctx.user.organizationId },
         include: {
@@ -48,11 +54,8 @@ export const teamIntelRouter = router({
   getMembers: permissionProcedure('team_intel', 'read')
     .input(z.object({ teamId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
-      // Verify the team belongs to the org
-      await db.team.findFirstOrThrow({
-        where: { id: input.teamId, organizationId: ctx.user.organizationId },
-        select: { id: true },
-      });
+      // Team-scope probe (replaces the prior org-only existence check).
+      await assertScoped('team', input.teamId, ctx.access, ctx.user.id, ctx.user.organizationId);
 
       const members = await db.userTeam.findMany({
         where: { teamId: input.teamId },
@@ -80,11 +83,8 @@ export const teamIntelRouter = router({
   getBalanceScore: permissionProcedure('team_intel', 'read')
     .input(z.object({ teamId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
-      // Verify org ownership
-      await db.team.findFirstOrThrow({
-        where: { id: input.teamId, organizationId: ctx.user.organizationId },
-        select: { id: true },
-      });
+      // Team-scope probe (replaces the prior org-only existence check).
+      await assertScoped('team', input.teamId, ctx.access, ctx.user.id, ctx.user.organizationId);
 
       const members = await db.userTeam.findMany({
         where: { teamId: input.teamId },
@@ -131,7 +131,10 @@ export const teamIntelRouter = router({
   // Returns 501 rather than fabricated skill-gap/tenure alerts (rule #4).
   getBalanceAlerts: permissionProcedure('team_intel', 'read')
     .input(z.object({ teamId: z.string().uuid() }))
-    .query(() => {
+    .query(async ({ ctx, input }) => {
+      // Scope-probe the team even though the body is a stub — the contract is
+      // teamId-keyed, so the access check is wired now (no leak when implemented).
+      await assertScoped('team', input.teamId, ctx.access, ctx.user.id, ctx.user.organizationId);
       throw new TRPCError({
         code: 'NOT_IMPLEMENTED',
         message: 'Las alertas de balance con IA aun no estan disponibles (agente pendiente).',
@@ -143,7 +146,9 @@ export const teamIntelRouter = router({
   // Returns 501 rather than fabricated role recommendations (rule #4).
   getRecommendedHires: permissionProcedure('team_intel', 'read')
     .input(z.object({ teamId: z.string().uuid() }))
-    .query(() => {
+    .query(async ({ ctx, input }) => {
+      // Scope-probe the team (teamId-keyed contract) ahead of the stub body.
+      await assertScoped('team', input.teamId, ctx.access, ctx.user.id, ctx.user.organizationId);
       throw new TRPCError({
         code: 'NOT_IMPLEMENTED',
         message: 'Las recomendaciones de contratacion con IA aun no estan disponibles (agente pendiente).',
@@ -159,10 +164,15 @@ export const teamIntelRouter = router({
       }),
     )
     .query(async ({ ctx, input }) => {
+      // Row-level multi-team read → compose the team scope fragment so narrow
+      // scopes only compare teams within their grant (out-of-scope ids drop).
+      const scopeWhere = (await scopeWhereFor('team', ctx.access, ctx.user.id)) as Prisma.TeamWhereInput;
       const teams = await db.team.findMany({
         where: {
-          id: { in: input.teamIds },
-          organizationId: ctx.user.organizationId,
+          AND: [
+            { id: { in: input.teamIds }, organizationId: ctx.user.organizationId },
+            scopeWhere,
+          ],
         },
         include: {
           leader: {
@@ -213,6 +223,9 @@ export const teamIntelRouter = router({
 
   getDashboardKpis: permissionProcedure('team_intel', 'read')
     .query(async ({ ctx }) => {
+      // Org-rollup dashboard aggregate → interim org-gate (slice-6 follow-up).
+      requireOrgScope(ctx.access);
+
       const orgId = ctx.user.organizationId;
 
       const [totalTeams, totalMembers, teamsWithLeader] = await Promise.all([

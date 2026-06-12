@@ -1,6 +1,9 @@
 import { z } from 'zod';
 import { router, permissionProcedure } from '../../trpc';
 import { tenantDb as db } from '@tims/db';
+import type { Prisma } from '@tims/db';
+import { TRPCError } from '@trpc/server';
+import { scopeWhereFor, assertScoped, assertSubjectInScope } from '../../access';
 
 export const performanceOkrsRouter = router({
   // 11.1 — List OKRs
@@ -17,13 +20,19 @@ export const performanceOkrsRouter = router({
     )
     .query(async ({ ctx, input }) => {
       const { cursor, limit, userId, teamId, period, status } = input;
+      const scopeWhere = (await scopeWhereFor('okr', ctx.access, ctx.user.id)) as Prisma.OkrWhereInput;
 
-      const where = {
-        organizationId: ctx.user.organizationId,
-        ...(userId ? { userId } : {}),
-        ...(teamId ? { teamId } : {}),
-        ...(period ? { period } : {}),
-        ...(status ? { status } : {}),
+      const where: Prisma.OkrWhereInput = {
+        AND: [
+          { organizationId: ctx.user.organizationId },
+          scopeWhere,
+          {
+            ...(userId ? { userId } : {}),
+            ...(teamId ? { teamId } : {}),
+            ...(period ? { period } : {}),
+            ...(status ? { status } : {}),
+          },
+        ],
       };
 
       const okrs = await db.okr.findMany({
@@ -51,10 +60,10 @@ export const performanceOkrsRouter = router({
   getOkrById: permissionProcedure('performance', 'read')
     .input(z.object({ id: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
+      const scopeWhere = (await scopeWhereFor('okr', ctx.access, ctx.user.id)) as Prisma.OkrWhereInput;
       const okr = await db.okr.findFirst({
         where: {
-          id: input.id,
-          organizationId: ctx.user.organizationId,
+          AND: [{ id: input.id, organizationId: ctx.user.organizationId }, scopeWhere],
         },
         include: {
           user: { select: { id: true, firstName: true, lastName: true, email: true, avatar: true } },
@@ -101,6 +110,15 @@ export const performanceOkrsRouter = router({
         throw new Error('Usuario referenciado no encontrado en esta organizacion');
       }
 
+      // Narrow scopes may only create OKRs for users inside their subject set
+      // (no row exists yet, so the target itself is the thing to authorize).
+      await assertSubjectInScope(
+        ctx.access,
+        ctx.user.id,
+        input.userId,
+        'No puedes crear OKRs para este usuario',
+      );
+
       return db.okr.create({
         data: {
           ...okrData,
@@ -138,12 +156,8 @@ export const performanceOkrsRouter = router({
     .mutation(async ({ ctx, input }) => {
       const { id, ...data } = input;
 
-      // Verify the OKR belongs to the caller's org (IDOR prevention)
-      const okr = await db.okr.findFirst({
-        where: { id, organizationId: ctx.user.organizationId },
-        select: { id: true },
-      });
-      if (!okr) throw new Error('OKR no encontrado');
+      // Scope + IDOR probe: a narrow scope must not reach an out-of-scope OKR by id.
+      await assertScoped('okr', id, ctx.access, ctx.user.id, ctx.user.organizationId);
 
       return db.okr.update({
         where: { id },
@@ -166,12 +180,15 @@ export const performanceOkrsRouter = router({
     .mutation(async ({ ctx, input }) => {
       const { id, ...data } = input;
 
-      // Verify the key result belongs to the caller's org (IDOR prevention)
+      // Child table: fetch the (org-scoped) key result to find its parent OKR,
+      // then probe the parent so narrow scopes can't reach an out-of-scope OKR's
+      // key results by id.
       const existing = await db.keyResult.findFirst({
         where: { id, organizationId: ctx.user.organizationId },
-        select: { id: true },
+        select: { id: true, okrId: true },
       });
       if (!existing) throw new Error('Key Result no encontrado');
+      await assertScoped('okr', existing.okrId, ctx.access, ctx.user.id, ctx.user.organizationId);
 
       const keyResult = await db.keyResult.update({
         where: { id },

@@ -8,6 +8,7 @@ const anchors = {
   unitIds: vi.fn(async () => ['bu1', 'bu2']),
   panelInterviewIds: vi.fn(async () => ['i1']),
   ledTeamIds: vi.fn(async () => ['t1', 't2']),
+  unitMemberIds: vi.fn(async () => ['u1', 'u2']),
 };
 const ctx = (scope: string): AccessContext =>
   ({ allowed: true, scope, roles: ['x'], anchors }) as unknown as AccessContext;
@@ -90,6 +91,81 @@ describe('scopeWhereFor — interview adds the panel arm', () => {
         { evaluators: { some: { userId: ME } } },
       ],
     });
+  });
+});
+
+describe('scopeWhereFor — people entities (user-anchored)', () => {
+  for (const entity of ['okr', 'onboardingPlan', 'enrollment', 'certificate', 'nineBoxEvaluation', 'successor', 'employeeCompensation', 'salaryAdjustment'] as const) {
+    it(`${entity} @organization → {} (deploy-safety invariant)`, async () => {
+      expect(await scopeWhereFor(entity, ctx('organization'), ME)).toEqual({});
+    });
+  }
+
+  it('okr team → userId in teamMemberIds', async () => {
+    expect(await scopeWhereFor('okr', ctx('team'), ME)).toEqual({ userId: { in: ['me', 'u2'] } });
+  });
+  it('okr unit → userId in unitMemberIds', async () => {
+    expect(await scopeWhereFor('okr', ctx('unit'), ME)).toEqual({ userId: { in: ['u1', 'u2'] } });
+  });
+  it('leaderCommitment anchors on leaderId (own scalar, team in-list)', async () => {
+    expect(await scopeWhereFor('leaderCommitment', ctx('own'), ME)).toEqual({ leaderId: ME });
+    expect(await scopeWhereFor('leaderCommitment', ctx('team'), ME)).toEqual({ leaderId: { in: ['me', 'u2'] } });
+    expect(await scopeWhereFor('leaderCommitment', ctx('organization'), ME)).toEqual({});
+  });
+
+  it('okr own → userId me', async () => {
+    expect(await scopeWhereFor('okr', ctx('own'), ME)).toEqual({ userId: ME });
+  });
+
+  it('coachingSession adds the coach arm (leaderId) at every narrow scope', async () => {
+    expect(await scopeWhereFor('coachingSession', ctx('team'), ME)).toEqual({
+      OR: [{ employeeId: { in: ['me', 'u2'] } }, { leaderId: ME }],
+    });
+    expect(await scopeWhereFor('coachingSession', ctx('own'), ME)).toEqual({
+      OR: [{ employeeId: ME }, { leaderId: ME }],
+    });
+  });
+
+  it('feedback: subject is the recipient; own adds the giver arm', async () => {
+    expect(await scopeWhereFor('feedback', ctx('team'), ME)).toEqual({
+      OR: [{ toUserId: { in: ['me', 'u2'] } }, { fromUserId: ME }],
+    });
+    expect(await scopeWhereFor('feedback', ctx('own'), ME)).toEqual({
+      OR: [{ toUserId: ME }, { fromUserId: ME }],
+    });
+  });
+
+  it('onboardingPlan adds the buddy arm', async () => {
+    expect(await scopeWhereFor('onboardingPlan', ctx('team'), ME)).toEqual({
+      OR: [{ userId: { in: ['me', 'u2'] } }, { buddyId: ME }],
+    });
+  });
+
+  it('criticalRole anchors on currentHolderId (nullable → no null-match)', async () => {
+    expect(await scopeWhereFor('criticalRole', ctx('team'), ME)).toEqual({
+      currentHolderId: { in: ['me', 'u2'] },
+    });
+  });
+
+  it('team entity: team scope → led teams; unit → unit teams', async () => {
+    expect(await scopeWhereFor('team', ctx('team'), ME)).toEqual({ id: { in: ['t1', 't2'] } });
+    expect(await scopeWhereFor('team', ctx('unit'), ME)).toEqual({ businessUnitId: { in: ['bu1', 'bu2'] } });
+    expect(await scopeWhereFor('team', ctx('own'), ME)).toEqual({ id: { in: ['t1', 't2'] } });
+  });
+});
+
+describe('scopeWhereFor — actionPlan (engagement, responsibleId anchor)', () => {
+  it('actionPlan @organization → {} (deploy-safety invariant)', async () => {
+    expect(await scopeWhereFor('actionPlan', ctx('organization'), ME)).toEqual({});
+  });
+  it('actionPlan own → responsibleId me (scalar)', async () => {
+    expect(await scopeWhereFor('actionPlan', ctx('own'), ME)).toEqual({ responsibleId: ME });
+  });
+  it('actionPlan team → responsibleId in teamMemberIds', async () => {
+    expect(await scopeWhereFor('actionPlan', ctx('team'), ME)).toEqual({ responsibleId: { in: ['me', 'u2'] } });
+  });
+  it('actionPlan unit → responsibleId in unitMemberIds', async () => {
+    expect(await scopeWhereFor('actionPlan', ctx('unit'), ME)).toEqual({ responsibleId: { in: ['u1', 'u2'] } });
   });
 });
 

@@ -7,3 +7,5 @@ export type { AccessUser } from './build';
 export { scopeWhereFor } from './entity-policies';
 export type { ScopedEntity } from './entity-policies';
 export { assertScoped } from './scoped-probe';
+export { requireOrgScope } from './org-gate';
+export { assertSubjectInScope } from './write-rules';
