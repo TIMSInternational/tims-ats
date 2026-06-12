@@ -100,7 +100,8 @@ Route under the candidate portal (logged-in): `/(portal)/careers/[orgSlug]/me/as
    CRUD + minimal authoring UI. TDD: option/correct coherence validation.
 2. **Candidate take backend** — `getMyAssessments / startAssessment(consent) /
    getAssessmentQuestions / submitAssessment(auto-score)` via candidateProcedure; remove
-   dead `portal.getMyAssessments`/`startAssessment` stubs. TDD: `scoreChoice`,
+   dead `portal.getMyAssessments`/`startAssessment` stubs (ALREADY REMOVED — Wave 2.5 slice 2 deleted all eight dead staff-session portal
+   stubs; this step is a no-op, skip it.). TDD: `scoreChoice`,
    `computeResult`, ownership/expiry/no-correct-leak/double-submit guards.
    **Carry-over from slice-1 codex review (medium):** the `submitAssessment` writer
    MUST enforce, in-transaction, that every `questionId` belongs to the assignment's

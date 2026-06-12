@@ -57,13 +57,30 @@ DB-checked; privileged users get explicit org-scope decisions; org-less platform
 on tenant modules → BAD_REQUEST; **org-bearing platform owners now run under the RLS
 GUC** — was silently unscoped/BYPASSRLS). 281 tests. AND-composition tripwire in CI.
 
-**Slices 2–7 pending** (each gets its own plan): 2 endpoint hardening (ungated
-notification.create/bulkCreate, organization.list*, dead portal stubs, /platform server
-gate) · 3 scope enforcement: recruitment (entity policy builders) · 4 scope enforcement:
-people (own/team/unit live here) · 5 role-aware UI (PermissionsProvider, filtered
-sidebars, page guards, AccessDenied) · 6 sensitive-data layer (selectFor, +AUDIT
-data_access_logs, min-5 aggregates, consent) · 7 new-role surfaces (hrbp unit admin,
-committee wiring, external API keys).
+**Slice 2 SHIPPED (branch feat/access-endpoint-hardening): endpoint hardening.**
+`notification.create`/`bulkCreate` → `permissionProcedure('notification','create')`
+(was: any staffer could notify anyone — phishing vector); `organization.list*` →
+`organization:read` (`getCurrent` deliberately stays protected — own-org lookup);
+`engagement.submitSurveyResponse` → `engagement:create` + bounded answers record
+(≤100 keys, ≤200-char keys, ≤5000-char strings; respondent identity was already
+ctx-derived; duplicate submissions now map P2002 → CONFLICT instead of 500; the
+caller-controlled `anonymous` flag was REMOVED — responses are always
+identity-keyed);
+ALL EIGHT dead staff-session portal stubs deleted (uploadDocument,
+getMyAssessments, startAssessment, acceptOffer, declineOffer, updateProfile,
+requestDataDeletion, submitNps — zero callers; live flows are candidatePortal +
+/offers/sign/[token]; pre-completes the Wave 1.5a slice-2 stub removal);
+server-side `/platform` layout gate (non-owners redirect to /dashboard before
+render; checks the REAL identity; gate also denies while an impersonation cookie
+is active (consistency with platformProcedure)). Static tripwire
+tests in tests/access/endpoint-hardening.test.ts +
+tests/security/platform-layout-gate.test.ts. Tests 282 → 298.
+
+**Slices 3–7 pending** (each gets its own plan): 3 scope enforcement: recruitment
+(entity policy builders) · 4 scope enforcement: people (own/team/unit live here) ·
+5 role-aware UI (PermissionsProvider, filtered sidebars, page guards, AccessDenied) ·
+6 sensitive-data layer (selectFor, +AUDIT data_access_logs, min-5 aggregates, consent) ·
+7 new-role surfaces (hrbp unit admin, committee wiring, external API keys).
 
 **⚠️ WAVE 2.5 DEPLOY-ORDERING (fail-open hazard — do NOT partially deploy):**
 the new matrix's own/team/unit grants (employee compensation:read@own etc.) behave
@@ -86,6 +103,19 @@ unions for dataType/action/consentType values when the writers land (slice 6); c
 30-day anonymization job; field-level encryption (separate security wave); candidate→
 employee role transition (needs product definition); `tims:perm:` legacy cache-prefix
 removal after deploy.
+Slice-2 review carry-overs: scoped `organization:read` grants for
+recruiter/hrbp/leader must be added to seed-access.ts WHEN a later slice
+introduces team/unit picker dropdowns (today only hr_admin/super_admin hold it —
+a future picker 403 would be a seeds gap, not a regression); the submit endpoint
+no longer accepts an `anonymous` flag (codex: userId NULL bypassed the @@unique
+dedup — ballot-stuffing); responses are always identity-keyed and
+display-anonymity + targetGroups enforcement land with the slice-6
+aggregation/anonymity layer (respondentKey hash if product wants true stored
+anonymity); candidate self-service
+data deletion (right-to-erasure) lost its last code marker with the
+requestDataDeletion stub — platform-side subject EXPORT exists, deletion is
+manual (backlog if product commits to self-service); NPS submission has no
+backing feature anymore (deleted submitNps stub was its last trace).
 
 ## Remaining — code work
 

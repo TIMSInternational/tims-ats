@@ -34,7 +34,7 @@ export const organizationRouter = router({
     }),
 
   // Company CRUD
-  listCompanies: protectedProcedure.query(async ({ ctx }) => {
+  listCompanies: permissionProcedure('organization', 'read').query(async ({ ctx }) => {
     return db.company.findMany({
       where: { organizationId: ctx.user.organizationId, isActive: true },
       include: { businessUnits: { where: { isActive: true } } },
@@ -54,7 +54,7 @@ export const organizationRouter = router({
     }),
 
   // Business Unit CRUD
-  listBusinessUnits: protectedProcedure
+  listBusinessUnits: permissionProcedure('organization', 'read')
     .input(z.object({ companyId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       return db.businessUnit.findMany({
@@ -80,7 +80,7 @@ export const organizationRouter = router({
     }),
 
   // Team CRUD
-  listTeams: protectedProcedure
+  listTeams: permissionProcedure('organization', 'read')
     .input(z.object({ businessUnitId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       return db.team.findMany({

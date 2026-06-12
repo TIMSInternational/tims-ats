@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { TRPCError } from '@trpc/server';
 import { router, protectedProcedure, permissionProcedure } from '../trpc';
 import { tenantDb as db } from '@tims/db';
 import type { Prisma } from '@tims/db';
@@ -107,12 +108,15 @@ export const engagementRouter = router({
       return { surveyId: survey.id, title: survey.title, totalResponses, questionSummaries };
     }),
 
-  submitSurveyResponse: protectedProcedure
+  submitSurveyResponse: permissionProcedure('engagement', 'create')
     .input(
       z.object({
         surveyId: z.string().uuid(),
-        answers: z.record(z.string(), z.union([z.string(), z.number()])),
-        anonymous: z.boolean().default(false),
+        answers: z
+          .record(z.string().max(200), z.union([z.string().max(5000), z.number()]))
+          .refine((obj) => Object.keys(obj).length <= 100, {
+            message: 'Demasiadas respuestas (max 100)',
+          }),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -128,14 +132,21 @@ export const engagementRouter = router({
         throw new Error('Encuesta no encontrada o no activa');
       }
 
-      return db.surveyResponse.create({
-        data: {
-          surveyId: input.surveyId,
-          userId: input.anonymous ? null : ctx.user.id,
-          answers: input.answers as unknown as Prisma.JsonObject,
-          organizationId: ctx.user.organizationId,
-        },
-      });
+      try {
+        return await db.surveyResponse.create({
+          data: {
+            surveyId: input.surveyId,
+            userId: ctx.user.id,
+            answers: input.answers as unknown as Prisma.JsonObject,
+            organizationId: ctx.user.organizationId,
+          },
+        });
+      } catch (err) {
+        if ((err as { code?: string }).code === 'P2002') {
+          throw new TRPCError({ code: 'CONFLICT', message: 'Ya respondiste esta encuesta' });
+        }
+        throw err;
+      }
     }),
 
   // ── eNPS ───────────────────────────────────────────────────────────

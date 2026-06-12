@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { router, protectedProcedure } from '../trpc';
+import { router, protectedProcedure, permissionProcedure } from '../trpc';
 import { tenantDb as db } from '@tims/db';
 
 const notificationSelect = {
@@ -148,7 +148,7 @@ export const notificationRouter = router({
       });
     }),
 
-  create: protectedProcedure
+  create: permissionProcedure('notification', 'create')
     .input(z.object({
       userId: z.string().uuid(),
       type: z.enum(['critical', 'warning', 'info', 'success']),
@@ -166,7 +166,7 @@ export const notificationRouter = router({
       });
     }),
 
-  bulkCreate: protectedProcedure
+  bulkCreate: permissionProcedure('notification', 'create')
     .input(z.object({
       userIds: z.array(z.string().uuid()).min(1).max(500),
       type: z.enum(['critical', 'warning', 'info', 'success']),
