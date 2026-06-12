@@ -9,6 +9,7 @@ import { SupportChat } from './support-chat';
 import { ImpersonationBanner } from './impersonation-banner';
 import { TRPCProvider } from '../../lib/trpc-provider';
 import { I18nProvider } from '../../lib/i18n';
+import { PermissionsProvider, RouteAccessGuard } from '../../lib/permissions';
 
 const SIDEBAR_KEY = 'tims-sidebar-expanded';
 
@@ -53,6 +54,7 @@ export function AdminShell({
   return (
     <I18nProvider>
     <TRPCProvider>
+      <PermissionsProvider isPlatformOwner={isPlatformOwner}>
       <div className="flex h-screen overflow-hidden">
         {/* Mobile backdrop */}
         {mobileOpen && (
@@ -85,11 +87,14 @@ export function AdminShell({
             onMenuClick={() => setMobileOpen(true)}
           />
           <main className="flex-1 overflow-y-auto overflow-x-hidden bg-[#F6F6F6]">
+            <RouteAccessGuard>
             {children}
+            </RouteAccessGuard>
           </main>
         </div>
       </div>
       <SupportChat open={chatOpen} onClose={() => setChatOpen(false)} />
+      </PermissionsProvider>
     </TRPCProvider>
     </I18nProvider>
   );

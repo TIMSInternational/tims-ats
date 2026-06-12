@@ -1,4 +1,19 @@
 {
+  "accessDenied": {
+    "title": "Acceso denegado",
+    "message": "No tienes permiso para ver esta seccion. Si crees que es un error, contacta a tu administrador.",
+    "back": "Volver al inicio"
+  },
+  "roles": {
+    "platform_owner": "Dueño de plataforma",
+    "super_admin": "Administrador",
+    "hr_admin": "Administrador RRHH",
+    "hrbp": "HRBP",
+    "recruiter": "Reclutador",
+    "leader": "Líder",
+    "committee": "Comité",
+    "employee": "Empleado"
+  },
   "nav": {
     "dashboard": "Dashboard",
     "search": "Buscar...",

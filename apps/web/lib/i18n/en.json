@@ -1,4 +1,19 @@
 {
+  "accessDenied": {
+    "title": "Access denied",
+    "message": "You do not have permission to view this section. If you think this is a mistake, contact your administrator.",
+    "back": "Back to dashboard"
+  },
+  "roles": {
+    "platform_owner": "Platform owner",
+    "super_admin": "Administrator",
+    "hr_admin": "HR Administrator",
+    "hrbp": "HRBP",
+    "recruiter": "Recruiter",
+    "leader": "Leader",
+    "committee": "Committee",
+    "employee": "Employee"
+  },
   "nav": {
     "dashboard": "Dashboard",
     "search": "Search...",

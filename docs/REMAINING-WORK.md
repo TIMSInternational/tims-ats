@@ -116,7 +116,21 @@ ninebox (grid/history composed; calibration votes now require committee
 MEMBERSHIP — mirrors submitScorecard; session creation org-gated), succession +
 teamIntel (team entity probes). Tests 372 → 445.
 
-**Slices 5–7 pending** (each gets its own plan): 5 role-aware UI (PermissionsProvider, filtered sidebars, page guards, AccessDenied) ·
+**Slice 5 SHIPPED (branch feat/access-role-aware-ui): role-aware UI.**
+`apps/web/lib/permissions.tsx`: PermissionsProvider (one `auth.getSessionInfo`
+fetch) → `usePermissions()/useCan()`; privileged bypass mirrors build.ts
+(platform owner / super_admin → all-allow, else empty app for owners); shared
+PATH_MODULE map (25 routes) drives BOTH the sidebar filter AND a single
+shell-level RouteAccessGuard rendering an es/en AccessDenied card (DESIGN
+ADAPTATION: per-page `<RequireAccess>` from the design doc superseded by the
+one shell guard — zero per-page edits). Sidebar items derive their module from
+the shared map; sections hide when empty; loading shows only ungated items (no
+flash); real role label (i18n `roles.*`) replaces the hardcoded "admin". UI
+gating is UX ONLY — the API stays the boundary (sessionInfo fetch failure
+fails OPEN for rendering, console.warn). /platform + candidate portal
+untouched. Tests 452 → 466.
+
+**Slices 6–7 pending** (each gets its own plan):
 6 sensitive-data layer (selectFor, +AUDIT data_access_logs, min-5 aggregates, consent) ·
 7 new-role surfaces (hrbp unit admin, committee wiring, external API keys).
 

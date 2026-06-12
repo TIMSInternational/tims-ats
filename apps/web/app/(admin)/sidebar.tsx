@@ -4,10 +4,11 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { createSupabaseBrowserClient } from '@tims/auth/client';
 import { useI18n } from '../../lib/i18n';
+import { moduleForPath, usePermissions } from '../../lib/permissions';
 
 function useNavSections() {
   const { t } = useI18n();
-  return [
+  const rawSections = [
     { label: null, items: [
       { href: '/dashboard', label: t.sidebar.commandCenter, icon: 'grid' },
     ]},
@@ -42,6 +43,15 @@ function useNavSections() {
       { href: '/settings/integrations', label: t.sidebar.integrations, icon: 'settings' },
     ]},
   ];
+
+  // Annotate each item with its module, derived from the shared PATH_MODULE map.
+  return rawSections.map((section) => ({
+    ...section,
+    items: section.items.map((item) => ({
+      ...item,
+      module: moduleForPath(item.href) ?? null,
+    })),
+  }));
 }
 
 function Icon({ name, className }: { name: string; className: string }) {
@@ -94,7 +104,20 @@ export function Sidebar({ userInitials, displayName, expanded, onToggle, ready =
   const pathname = usePathname();
   const router = useRouter();
   const { t } = useI18n();
+  const { can, roleLabel, isLoading } = usePermissions();
   const NAV_SECTIONS = useNavSections();
+
+  // Filter sections: while loading, show only null-module items (no flash-then-vanish).
+  // After load, show items where module === null OR can(module, 'read').
+  // A section renders only if it has at least one visible item.
+  const VISIBLE_SECTIONS = NAV_SECTIONS.map((section) => ({
+    ...section,
+    items: section.items.filter((item) => {
+      if (item.module === null) return true;
+      if (isLoading) return false;
+      return can(item.module, 'read');
+    }),
+  })).filter((section) => section.items.length > 0);
 
   return (
     <aside
@@ -119,7 +142,7 @@ export function Sidebar({ userInitials, displayName, expanded, onToggle, ready =
 
       {/* Navigation */}
       <nav className="flex-1 py-3 flex flex-col gap-0.5 overflow-y-auto overflow-x-hidden">
-        {NAV_SECTIONS.map((section, si) => (
+        {VISIBLE_SECTIONS.map((section, si) => (
           <div key={si}>
             {si > 0 && (
               <div className={`border-t border-white/10 my-2.5 ${expanded ? 'mx-4' : 'mx-4'}`} />
@@ -196,7 +219,7 @@ export function Sidebar({ userInitials, displayName, expanded, onToggle, ready =
             <>
               <div className="min-w-0 flex-1">
                 <p className="text-[12px] text-white font-medium truncate">{displayName}</p>
-                <p className="text-[10px] text-white/40 truncate">{t.nav.admin}</p>
+                <p className="text-[10px] text-white/40 truncate">{roleLabel ?? t.nav.admin}</p>
               </div>
               <Link
                 href="/mfa"
