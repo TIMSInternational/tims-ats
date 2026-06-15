@@ -6,7 +6,7 @@ interface MonitoringKpisProps {
   data: {
     totalEmployees: number;
     activeVacancies: number;
-    pendingAdjustments: number;
+    pendingAdjustments: number | null;
     activeSurveys: number;
     openAlerts: number;
   } | null;
@@ -28,11 +28,14 @@ export function MonitoringKpis({ data, loading }: MonitoringKpisProps) {
     );
   }
 
+  // pendingAdjustments is null when k-anonymity-suppressed (sub-floor 1..4 count over
+  // the restricted SalaryAdjustment population) — render a mask glyph, neutral color.
+  const pendingValue = data.pendingAdjustments === null ? '—' : data.pendingAdjustments;
   const items = [
     { label: t.monitoring.kpiHeadcount, value: data.totalEmployees, color: 'text-[#1F114C]' },
     { label: t.monitoring.kpiVacancies, value: data.activeVacancies, color: 'text-[#1F114C]' },
     { label: t.monitoring.kpiAlerts, value: data.openAlerts, color: data.openAlerts > 0 ? 'text-[#DD0C15]' : 'text-[#1F114C]' },
-    { label: t.monitoring.kpiPending, value: data.pendingAdjustments, color: data.pendingAdjustments > 0 ? 'text-amber-500' : 'text-[#1F114C]' },
+    { label: t.monitoring.kpiPending, value: pendingValue, color: (data.pendingAdjustments ?? 0) > 0 ? 'text-amber-500' : 'text-[#1F114C]' },
     { label: t.monitoring.kpiSurveys, value: data.activeSurveys, color: 'text-[#1F114C]' },
   ];
 

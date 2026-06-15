@@ -41,7 +41,9 @@ export function DeiKpis() {
   }
 
   const d = kpis.data;
-  const byGender = Object.fromEntries((genders.data ?? []).map((g) => [g.gender, g.percentage]));
+  // Suppressed gender distribution (round 7) returns empty groups → ratio bar shows 0%
+  // for all (never a real share). Read from the { groups, suppressed } shape.
+  const byGender = Object.fromEntries((genders.data?.groups ?? []).map((g) => [g.gender, g.percentage ?? 0]));
   const male = byGender.male ?? 0;
   const female = byGender.female ?? 0;
   const nb = byGender.non_binary ?? 0;
@@ -63,10 +65,10 @@ export function DeiKpis() {
         </div>
       </KpiCard>
 
-      {/* Parity index */}
+      {/* Parity index — null when any gender group is min-5 suppressed (cross-endpoint differencing guard). */}
       <KpiCard label={t.dei.kpiParity} sub={t.dei.kpiParityHint}>
-        <p className="text-[20px] md:text-[24px] font-bold text-[#1F114C]">{d.genderParityIndex.toFixed(2)}</p>
-        <p className="text-[10px] text-[#8B8B8B]">{d.womenPct}{t.dei.womenSuffix}</p>
+        <p className="text-[20px] md:text-[24px] font-bold text-[#1F114C]">{d.genderParityIndex === null ? t.dei.na : d.genderParityIndex.toFixed(2)}</p>
+        <p className="text-[10px] text-[#8B8B8B]">{d.womenPct === null ? t.dei.na : `${d.womenPct}${t.dei.womenSuffix}`}</p>
       </KpiCard>
 
       {/* Pay gap */}
@@ -87,7 +89,7 @@ export function DeiKpis() {
 
       {/* Demographics coverage */}
       <KpiCard label={t.dei.kpiCoverage} sub={`${d.totalEmployees} ${t.dei.employeesSuffix}`}>
-        <p className="text-[20px] md:text-[24px] font-bold text-[#1F114C]">{d.demographicsCoverage}%</p>
+        <p className="text-[20px] md:text-[24px] font-bold text-[#1F114C]">{d.demographicsCoverage === null ? t.dei.na : `${d.demographicsCoverage}%`}</p>
         <p className="text-[10px] text-[#8B8B8B]">{d.totalNationalities} {t.dei.nationalitiesSuffix}</p>
       </KpiCard>
     </div>

@@ -26,7 +26,9 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
 export function AgeDistribution() {
   const { t } = useI18n();
   const q = trpc.dei.getAgeDistribution.useQuery();
-  const total = (q.data ?? []).reduce((sum, a) => sum + a.count, 0);
+  // round 7: distribution is now { groups, suppressed }; empty groups when suppressed.
+  const groups = q.data?.groups ?? [];
+  const total = groups.reduce((sum, a) => sum + (a.count ?? 0), 0);
 
   return (
     <Card title={t.dei.ageDistribution}>
@@ -39,15 +41,16 @@ export function AgeDistribution() {
       ) : (
         <>
           <div className="space-y-2">
-            {q.data!.map((a) => (
+            {groups.map((a) => (
               <div key={a.range} className="flex items-center gap-2">
                 <span className="text-[11px] text-[#585858] w-12 shrink-0">{a.range}</span>
                 <div className="flex-1 bg-[#F6F6F6] rounded-full h-5 overflow-hidden">
-                  <div className="h-5 rounded-full flex items-center px-2" style={{ width: `${Math.max(a.percentage, a.count > 0 ? 6 : 0)}%`, backgroundColor: AGE_COLORS[a.range] ?? '#5C4B99' }}>
-                    {a.percentage >= 10 && <span className="text-[9px] text-white font-medium">{a.count}</span>}
+                  {/* min-5 suppressed bands (1..4 people) render no bar and a masked label. */}
+                  <div className="h-5 rounded-full flex items-center px-2" style={{ width: `${Math.max(a.percentage ?? 0, (a.count ?? 0) > 0 ? 6 : 0)}%`, backgroundColor: AGE_COLORS[a.range] ?? '#5C4B99' }}>
+                    {(a.percentage ?? 0) >= 10 && <span className="text-[9px] text-white font-medium">{a.count}</span>}
                   </div>
                 </div>
-                <span className="text-[10px] text-[#8B8B8B] w-8">{a.percentage}%</span>
+                <span className="text-[10px] text-[#8B8B8B] w-8">{a.percentage === null ? t.dei.na : `${a.percentage}%`}</span>
               </div>
             ))}
           </div>
@@ -82,9 +85,10 @@ export function NationalityDiversity() {
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-24 bg-[#F6F6F6] rounded-full h-3 overflow-hidden">
-                  <div className="h-3 rounded-full" style={{ width: `${n.percentage}%`, backgroundColor: NAT_COLORS[i % NAT_COLORS.length] }} />
+                  {/* min-5 suppressed nationalities (1..4 people) render no bar and a masked label. */}
+                  <div className="h-3 rounded-full" style={{ width: `${n.percentage ?? 0}%`, backgroundColor: NAT_COLORS[i % NAT_COLORS.length] }} />
                 </div>
-                <span className="text-[11px] font-medium text-[#1F114C] w-8 text-right">{n.percentage}%</span>
+                <span className="text-[11px] font-medium text-[#1F114C] w-8 text-right">{n.percentage === null ? t.dei.na : `${n.percentage}%`}</span>
               </div>
             </div>
           ))}

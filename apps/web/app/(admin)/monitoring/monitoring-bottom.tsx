@@ -8,7 +8,9 @@ export function CrossModuleTrend() {
   const { t } = useI18n();
   const q = trpc.monitoring.getCrossModuleTrend.useQuery({ metric: 'headcount', period: '6m' });
   const data = q.data?.data ?? [];
-  const max = data.reduce((m, d) => Math.max(m, d.value), 0) || 1;
+  // value is null for k-anonymity-suppressed points (sub-floor engagement months);
+  // treat null as 0 for the bar height and show a mask glyph instead of the count.
+  const max = data.reduce((m, d) => Math.max(m, d.value ?? 0), 0) || 1;
 
   return (
     <div className="w-full h-[165px] md:h-auto md:flex-1 bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4 flex flex-col min-w-0">
@@ -23,8 +25,8 @@ export function CrossModuleTrend() {
         <div className="flex-1 flex items-end justify-between gap-2 pt-2">
           {data.map((d) => (
             <div key={d.month} className="flex-1 flex flex-col items-center gap-1 justify-end h-full">
-              <span className="text-[9px] text-[#585858] font-medium">{d.value}</span>
-              <div className="w-full rounded-t bg-[#1F114C]" style={{ height: `${Math.max((d.value / max) * 100, 4)}%` }} />
+              <span className="text-[9px] text-[#585858] font-medium">{d.value === null ? '—' : d.value}</span>
+              <div className="w-full rounded-t bg-[#1F114C]" style={{ height: `${Math.max(((d.value ?? 0) / max) * 100, 4)}%` }} />
               <span className="text-[9px] text-[#8B8B8B]">{d.month.slice(5)}</span>
             </div>
           ))}

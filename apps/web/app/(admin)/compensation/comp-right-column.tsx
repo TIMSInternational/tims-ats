@@ -30,8 +30,15 @@ export function CompaRatioDistribution() {
       ) : (
         <div className="space-y-2.5">
           {CR_BUCKETS.map((b) => {
-            const count = q.data?.distribution[b.key] ?? 0;
-            const pct = total ? Math.round((count / total) * 100) : 0;
+            // Slice 6: each bucket is now a min-5 SuppressedCount. A 1..4-person
+            // bucket arrives as { suppressed: true, count: null }, AND (round 2,
+            // all-or-nothing differencing guard) when ANY bucket is sub-floor EVERY
+            // bucket's count is nulled — so mask whenever count is null, not just on
+            // the bucket's own `suppressed` flag.
+            const bucket = q.data?.distribution[b.key];
+            const count = bucket?.count ?? null;
+            const masked = count === null;
+            const pct = total && !masked ? Math.round((count / total) * 100) : 0;
             return (
               <div key={b.key} className="flex items-center gap-3">
                 <div className="w-[80px] text-[10px] text-[#585858] shrink-0">{b.label}</div>
@@ -39,7 +46,7 @@ export function CompaRatioDistribution() {
                   <div className={`h-full ${b.color} rounded-full`} style={{ width: `${pct}%` }} />
                 </div>
                 <div className="w-[64px] flex items-center gap-1 shrink-0">
-                  <span className={`text-[11px] font-semibold ${b.textColor}`}>{count}</span>
+                  <span className={`text-[11px] font-semibold ${b.textColor}`}>{masked ? '–' : count}</span>
                   <span className="text-[9px] text-[#8B8B8B]">{t.compensation[b.tag]}</span>
                 </div>
               </div>
@@ -114,14 +121,19 @@ export function PendingAdjustments() {
           </thead>
           <tbody className="text-[#333]">
             {q.data.map((a, i) => {
-              const prev = Number(a.previousSalary);
-              const next = Number(a.newSalary);
-              const pct = prev ? Math.round(((next - prev) / prev) * 1000) / 10 : 0;
+              // §21 field-auth (slice 6): previousSalary/newSalary/type are present only
+              // for callers entitled to those salaryAdjustment fields (super/hr; type also
+              // hrbp). For a leader/hrbp without them, mask the change %. Guard each.
+              const adj = a as Partial<{ previousSalary: unknown; newSalary: unknown; type: string }> & { id: string; user: { firstName: string; lastName: string } };
+              const hasSalaries = adj.previousSalary != null && adj.newSalary != null;
+              const prev = Number(adj.previousSalary);
+              const next = Number(adj.newSalary);
+              const pct = hasSalaries && prev ? Math.round(((next - prev) / prev) * 1000) / 10 : null;
               return (
-                <tr key={a.id} className={i < q.data!.length - 1 ? 'border-b border-[#EDEDED]/60' : ''}>
-                  <td className="py-1.5 font-medium">{a.user.firstName} {a.user.lastName}</td>
-                  <td className="py-1.5 text-[#8B8B8B]">{t.compensation[ADJ_LABEL[a.type] ?? 'adjOther']}</td>
-                  <td className="py-1.5 text-right"><span className="font-semibold text-green-600">+{pct}%</span></td>
+                <tr key={adj.id} className={i < q.data!.length - 1 ? 'border-b border-[#EDEDED]/60' : ''}>
+                  <td className="py-1.5 font-medium">{adj.user.firstName} {adj.user.lastName}</td>
+                  <td className="py-1.5 text-[#8B8B8B]">{adj.type ? t.compensation[ADJ_LABEL[adj.type] ?? 'adjOther'] : '–'}</td>
+                  <td className="py-1.5 text-right">{pct === null ? <span className="text-[#8B8B8B]">–</span> : <span className="font-semibold text-green-600">+{pct}%</span>}</td>
                 </tr>
               );
             })}

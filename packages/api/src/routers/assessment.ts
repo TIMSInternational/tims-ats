@@ -10,7 +10,62 @@ import {
   deleteQuestionSchema,
 } from '@tims/shared';
 import { assessmentQuestionService } from '../services/assessment-question.service';
-import { scopeWhereFor, assertScoped } from '../access';
+import { scopeWhereFor, assertScoped, selectFor, logDataAccess } from '../access';
+
+// ---------------------------------------------------------------------------
+// AssessmentResult field-level gating (Wave 2.5 slice 6)
+// ---------------------------------------------------------------------------
+// `selectFor(roles, 'assessmentResult')` returns a runtime-built select, so
+// Prisma's static result type for the relation cannot know which conditional
+// fields are present. This explicit partial shape lets the mapped output read
+// the score/raw fields without `any`; absent fields are simply `undefined`,
+// which is exactly what we want to return to non-entitled callers.
+interface AssessmentResultRow {
+  id: string;
+  organizationId: string;
+  assignmentId: string;
+  normalizedScore?: number | null;
+  percentile?: number | null;
+  interpretation?: string | null;
+  // restricted — present ONLY when selectFor included them (super_admin):
+  rawScore?: number | null;
+  breakdown?: unknown;
+}
+
+/**
+ * Audit every returned result. `includesRaw` (true only when the caller's
+ * select carried the restricted breakdown/rawScore fields, i.e. super_admin)
+ * forces fail-CLOSED auditing; a recruiter/hr reading only confidential score
+ * fields is audited fail-SOFT so one lost audit row cannot abort their bulk
+ * read. Awaited (Promise.all) BEFORE serialization so a fail-closed super_admin
+ * read aborts pre-response.
+ */
+async function auditResults(
+  ctx: { user: { id: string; impersonatorId?: string | null; organizationId: string }; headers: Headers },
+  results: ReadonlyArray<{ id: string; assignmentId: string }>,
+  includesRaw: boolean,
+): Promise<void> {
+  if (results.length === 0) return;
+  const actorId = ctx.user.impersonatorId ?? ctx.user.id;
+  const ipAddress = ctx.headers.get('x-forwarded-for') || ctx.headers.get('x-real-ip');
+  const userAgent = ctx.headers.get('user-agent');
+  await Promise.all(
+    results.map((r) =>
+      logDataAccess(
+        {
+          organizationId: ctx.user.organizationId,
+          actorId,
+          entity: 'assessmentResult',
+          recordId: r.id ?? r.assignmentId,
+          action: 'read',
+          ipAddress,
+          userAgent,
+        },
+        { failClosed: includesRaw },
+      ),
+    ),
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Router
@@ -143,6 +198,12 @@ export const assessmentRouter = router({
       const { cursor, limit, vacancyId, assessmentTypeId } = input;
       const scopeWhere = await scopeWhereFor('assessmentAssignment', ctx.access, ctx.user.id);
 
+      // Field-level gating: only the result fields this caller's roles may read
+      // are SELECTed (raw breakdown/rawScore for super_admin only). Never select
+      // a restricted field and null it afterward — it would still leave the DB.
+      const resultSelect = selectFor(ctx.access.roles, 'assessmentResult');
+      const includesRaw = 'breakdown' in resultSelect || 'rawScore' in resultSelect;
+
       const where: Prisma.AssessmentAssignmentWhereInput = {
         AND: [
           {
@@ -163,7 +224,7 @@ export const assessmentRouter = router({
         include: {
           candidate: { select: { id: true, firstName: true, lastName: true, email: true, avatar: true } },
           assessmentType: { select: { id: true, name: true, code: true } },
-          result: true,
+          result: { select: resultSelect },
         },
       });
 
@@ -172,6 +233,13 @@ export const assessmentRouter = router({
         const extra = items.pop()!;
         nextCursor = extra.id;
       }
+
+      // Audit each returned result BEFORE serialization (Promise.all). For a
+      // super_admin (includesRaw) a failed audit write fails-closed and aborts.
+      const presentResults = items
+        .map((i) => i.result as AssessmentResultRow | null)
+        .filter((r): r is AssessmentResultRow => r != null);
+      await auditResults(ctx, presentResults, includesRaw);
 
       return { items, nextCursor };
     }),
@@ -186,12 +254,17 @@ export const assessmentRouter = router({
       // while still enforcing scope.
       await assertScoped('assessmentAssignment', input.assignmentId, ctx.access, ctx.user.id, ctx.user.organizationId);
 
+      // Field-level gating on the result relation (raw breakdown/rawScore are
+      // super_admin only). Other relations are non-psychometric and unchanged.
+      const resultSelect = selectFor(ctx.access.roles, 'assessmentResult');
+      const includesRaw = 'breakdown' in resultSelect || 'rawScore' in resultSelect;
+
       const assignment = await db.assessmentAssignment.findFirst({
         where: { id: input.assignmentId, organizationId: ctx.user.organizationId },
         include: {
           candidate: { select: { id: true, firstName: true, lastName: true, email: true } },
           assessmentType: true,
-          result: true,
+          result: { select: resultSelect },
           session: true,
         },
       });
@@ -199,6 +272,10 @@ export const assessmentRouter = router({
       if (!assignment) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Asignacion no encontrada' });
       }
+
+      // Audit the result read BEFORE returning (fail-closed for super_admin raw).
+      const result = assignment.result as AssessmentResultRow | null;
+      if (result) await auditResults(ctx, [result], includesRaw);
 
       return assignment;
     }),
@@ -460,6 +537,11 @@ export const assessmentRouter = router({
         });
       }
 
+      // Field-level gating: a recruiter (assessment:read) gets normalizedScore/
+      // percentile/interpretation only — NOT rawScore/breakdown (super_admin).
+      const resultSelect = selectFor(ctx.access.roles, 'assessmentResult');
+      const includesRaw = 'breakdown' in resultSelect || 'rawScore' in resultSelect;
+
       const assignments = await db.assessmentAssignment.findMany({
         where: {
           id: { in: uniqueIds },
@@ -468,22 +550,33 @@ export const assessmentRouter = router({
         include: {
           candidate: { select: { id: true, firstName: true, lastName: true, avatar: true } },
           assessmentType: { select: { id: true, name: true, code: true } },
-          result: true,
+          result: { select: resultSelect },
         },
       });
 
-      // Sort by score descending
+      // Audit every result read BEFORE serialization. For super_admin (includesRaw)
+      // a failed audit write fails-closed and aborts the whole compare; for a
+      // recruiter/hr it fails-soft so one lost row cannot break a 10-candidate compare.
+      const presentResults = assignments
+        .map((a) => a.result as AssessmentResultRow | null)
+        .filter((r): r is AssessmentResultRow => r != null);
+      await auditResults(ctx, presentResults, includesRaw);
+
+      // Sort by score descending. rawScore/breakdown are read through the typed
+      // partial shape — `undefined` (omitted from the payload) for non-super callers
+      // since selectFor never SELECTed them, so they never leave the DB.
       const ranked = assignments
-        .filter((a) => a.result)
-        .sort((a, b) => (b.result?.normalizedScore ?? 0) - (a.result?.normalizedScore ?? 0))
-        .map((a, idx) => ({
+        .map((a) => ({ a, result: a.result as AssessmentResultRow | null }))
+        .filter((x): x is { a: (typeof assignments)[number]; result: AssessmentResultRow } => x.result != null)
+        .sort((x, y) => (y.result.normalizedScore ?? 0) - (x.result.normalizedScore ?? 0))
+        .map(({ a, result }, idx) => ({
           rank: idx + 1,
           candidate: a.candidate,
           assessmentType: a.assessmentType,
-          rawScore: a.result?.rawScore,
-          normalizedScore: a.result?.normalizedScore,
-          percentile: a.result?.percentile,
-          breakdown: a.result?.breakdown,
+          rawScore: result.rawScore ?? undefined,
+          normalizedScore: result.normalizedScore ?? undefined,
+          percentile: result.percentile ?? undefined,
+          breakdown: result.breakdown ?? undefined,
         }));
 
       const unscored = assignments

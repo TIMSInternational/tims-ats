@@ -3,6 +3,7 @@ import { router, permissionProcedure } from '../trpc';
 import { tenantDb as db } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { ALERT_METRIC_KEYS } from '@tims/shared';
+import { suppressBelowMin5 } from '../access';
 
 export const monitoringRouter = router({
   // ── Executive KPIs ─────────────────────────────────────────────────
@@ -23,10 +24,19 @@ export const monitoringRouter = router({
       db.alert.count({ where: { organizationId: orgId, status: 'active' } }),
     ]);
 
+    // Raw-scalar floor (slice 6 round 8): pendingAdjustments is a raw COUNT over
+    // SalaryAdjustment, a §21-restricted sensitive population. monitoring:read (which
+    // hr_admin holds per seed) would otherwise receive an exact 1..4 count — a sub-floor
+    // disclosure. Route it through suppressBelowMin5: null + suppressed flag for 1..4
+    // (mirrors compensation getDashboardKpis). 0 passes through (reveals no one). The
+    // other KPIs (users/vacancies/surveys/alerts) are not over a restricted model.
+    const pendingFloor = suppressBelowMin5(pendingAdjustments);
+
     return {
       totalEmployees: totalUsers,
       activeVacancies,
-      pendingAdjustments,
+      pendingAdjustments: pendingFloor.count,
+      pendingAdjustmentsSuppressed: pendingFloor.suppressed,
       activeSurveys,
       openAlerts,
       turnoverRate: 0,
@@ -140,16 +150,68 @@ export const monitoringRouter = router({
     .query(async ({ ctx, input }) => {
       const orgId = ctx.user.organizationId;
       const months = input.period === '6m' ? 6 : input.period === '12m' ? 12 : 24;
-      const dataPoints: { month: string; value: number }[] = [];
 
+      // Build the month window labels and date boundaries first.
+      const window: { label: string; monthStart: Date; monthEnd: Date }[] = [];
       for (let i = months - 1; i >= 0; i--) {
         const date = new Date();
         date.setMonth(date.getMonth() - i);
-        const monthStart = new Date(date.getFullYear(), date.getMonth(), 1);
-        const monthEnd = new Date(date.getFullYear(), date.getMonth() + 1, 0);
         const label = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        window.push({
+          label,
+          monthStart: new Date(date.getFullYear(), date.getMonth(), 1),
+          monthEnd: new Date(date.getFullYear(), date.getMonth() + 1, 0),
+        });
+      }
 
-        let value = 0;
+      // Non-sensitive metrics: headcount (User), alerts (Alert). Apply per-point as before.
+      // Sensitive metrics: engagement (SurveyResponse) — §21-restricted population.
+      //
+      // SLICE 6 (all-or-nothing, round 11): per-point suppression on the engagement metric
+      // is insufficient — a caller who knows the window total (e.g. from
+      // getExecutiveKpis or getDashboardKpis) can subtract visible months to recover a
+      // suppressed month's exact count (monthly-differencing oracle). Example: 1 survey,
+      // 8 responses, Jan=5 Feb=3 → per-point: Jan=5, Feb=null; caller computes 8−5=3.
+      //
+      // Fix: compute ALL monthly counts first, then if ANY month is 1..4 (sub-floor),
+      // null EVERY month in the series and mark suppressed=true on every point. This
+      // removes every complementary bucket a differencing attack could use.
+      //
+      // Metrics treated as SENSITIVE here (count a §21-restricted model):
+      //   • engagement → surveyResponse
+      // Non-sensitive (headcount → User; alerts → Alert; turnover → not tracked):
+      //   those models are not §21-restricted; per-point suppression is not needed.
+
+      if (input.metric === 'engagement') {
+        // Phase 1: fetch all monthly raw counts.
+        const rawCounts = await Promise.all(
+          window.map(({ monthStart, monthEnd }) =>
+            db.surveyResponse.count({
+              where: {
+                organizationId: orgId,
+                submittedAt: { gte: monthStart, lte: monthEnd },
+              },
+            }),
+          ),
+        );
+
+        // Phase 2: all-or-nothing gate. If ANY month is sub-floor (1..4), suppress all.
+        const anyMonthSubFloor = rawCounts.some((c) => suppressBelowMin5(c).suppressed);
+        const dataPoints = window.map(({ label }, idx) => ({
+          month: label,
+          value: anyMonthSubFloor ? null : rawCounts[idx] ?? null,
+          suppressed: anyMonthSubFloor,
+        }));
+
+        return { metric: input.metric, period: input.period, data: dataPoints };
+      }
+
+      // Non-sensitive metrics: compute and return per point (no floor needed).
+      // value is nullable for shape compatibility with the engagement branch.
+      const dataPoints: { month: string; value: number | null; suppressed: boolean }[] = [];
+
+      for (const { label, monthStart, monthEnd } of window) {
+        let value: number | null = 0;
 
         if (input.metric === 'headcount') {
           value = await db.user.count({
@@ -157,13 +219,6 @@ export const monitoringRouter = router({
               organizationId: orgId,
               isActive: true,
               createdAt: { lte: monthEnd },
-            },
-          });
-        } else if (input.metric === 'engagement') {
-          value = await db.surveyResponse.count({
-            where: {
-              organizationId: orgId,
-              submittedAt: { gte: monthStart, lte: monthEnd },
             },
           });
         } else if (input.metric === 'alerts') {
@@ -174,9 +229,9 @@ export const monitoringRouter = router({
             },
           });
         }
-        // 'turnover' not tracked without Employee model
+        // 'turnover' not tracked without Employee model — value stays 0.
 
-        dataPoints.push({ month: label, value });
+        dataPoints.push({ month: label, value, suppressed: false });
       }
 
       return { metric: input.metric, period: input.period, data: dataPoints };

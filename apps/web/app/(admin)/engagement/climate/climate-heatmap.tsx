@@ -6,7 +6,10 @@ import { useI18n } from '../../../../lib/i18n';
 export function ClimateHeatmap() {
   const { t } = useI18n();
   const q = trpc.engagement.getClimateHeatmap.useQuery({});
-  const data = q.data?.data ?? [];
+  // round 7: category scores are min-5 suppressed (null) uniformly when any category
+  // has a sub-floor distinct-respondent set, or the whole survey is < 5 respondents
+  // (data empty). Drop null-score cells so a suppressed heatmap shows the empty state.
+  const data = (q.data?.data ?? []).filter((d): d is { category: string; score: number } => d.score !== null);
   const max = data.reduce((m, d) => Math.max(m, d.score), 0) || 1;
 
   function color(score: number): string {

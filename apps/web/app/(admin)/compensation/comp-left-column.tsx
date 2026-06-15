@@ -89,9 +89,10 @@ export function PayEquityCard() {
               {q.data.results.map((row, i) => (
                 <tr key={row.group} className={i < q.data!.results.length - 1 ? 'border-b border-[#EDEDED]/60' : ''}>
                   <td className="py-2 pr-3 font-medium">{genderLabel(t, row.group)}</td>
-                  <td className="py-2 px-2 text-right">{row.count}</td>
-                  <td className="py-2 px-2 text-right">{fmtCOP(row.averageSalary)}</td>
-                  <td className="py-2 px-2 text-right">{fmtCOP(row.medianSalary)}</td>
+                  {/* min-5 suppressed groups mask count + salary stats (a small group's average IS individual pay). */}
+                  <td className="py-2 px-2 text-right">{row.suppressed ? t.dei.na : row.count}</td>
+                  <td className="py-2 px-2 text-right">{row.suppressed || row.averageSalary === null ? t.dei.na : fmtCOP(row.averageSalary)}</td>
+                  <td className="py-2 px-2 text-right">{row.suppressed || row.medianSalary === null ? t.dei.na : fmtCOP(row.medianSalary)}</td>
                 </tr>
               ))}
             </tbody>

@@ -7,13 +7,16 @@ export function ClimateResults() {
   const { t } = useI18n();
   const q = trpc.engagement.getEnps.useQuery({});
 
-  const segments = q.data
-    ? [
-        { label: t.climate.promoters, value: q.data.promoters, cls: 'bg-green-500' },
-        { label: t.climate.passives, value: q.data.passives, cls: 'bg-amber-400' },
-        { label: t.climate.detractors, value: q.data.detractors, cls: 'bg-red-500' },
-      ]
-    : [];
+  // eNPS is suppressed (min-5 k-anonymity) when the backend nulls its head-counts.
+  const suppressed = q.data?.suppressed === true || (q.data != null && q.data.promoters == null);
+  const segments =
+    q.data && !suppressed
+      ? [
+          { label: t.climate.promoters, value: q.data.promoters ?? 0, cls: 'bg-green-500' },
+          { label: t.climate.passives, value: q.data.passives ?? 0, cls: 'bg-amber-400' },
+          { label: t.climate.detractors, value: q.data.detractors ?? 0, cls: 'bg-red-500' },
+        ]
+      : [];
   const total = q.data?.totalResponses ?? 0;
 
   return (
@@ -23,6 +26,8 @@ export function ClimateResults() {
         <div className="h-20 bg-gray-50 rounded animate-pulse" />
       ) : q.isError ? (
         <p className="text-[12px] text-[#DD0C15]">{t.climate.errClimate}</p>
+      ) : suppressed ? (
+        <p className="text-[12px] text-[#8B8B8B]">{t.climate.enpsSuppressed}</p>
       ) : total === 0 ? (
         <p className="text-[12px] text-[#8B8B8B]">{t.climate.noClimateData}</p>
       ) : (

@@ -4,11 +4,15 @@ import { useI18n } from '../../../lib/i18n';
 
 interface CompKpisProps {
   data: {
-    totalMonthlyPayroll: number;
-    avgSalary: number;
+    // min-5 suppression (round 6): payroll/avgSalary/compensatedEmployees are nulled
+    // when the compensated population is 1..4; avgCompaRatio when the compaRatio
+    // population is <5. Render a mask ('N/D') for null values.
+    totalMonthlyPayroll: number | null;
+    avgSalary: number | null;
     activeEmployees: number;
-    compensatedEmployees: number;
-    pendingAdjustments: number;
+    compensatedEmployees: number | null;
+    // pendingAdjustments is min-5 floored (round 7): null when 1..4 pending. Mask it.
+    pendingAdjustments: number | null;
     benefitsUtilizationPct: number;
     avgCompaRatio: number | null;
   } | null;
@@ -37,13 +41,13 @@ export function CompKpis({ data, loading }: CompKpisProps) {
     <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
       <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4">
         <div className="text-[11px] text-[#8B8B8B] font-medium mb-1">{t.compensation.kpiPayroll}</div>
-        <span className="text-[20px] md:text-[26px] font-bold text-[#333] leading-none">${data.totalMonthlyPayroll.toLocaleString()}</span>
-        <div className="text-[10px] text-[#8B8B8B] mt-1.5">{data.compensatedEmployees} {t.compensation.employeesShort}</div>
+        <span className="text-[20px] md:text-[26px] font-bold text-[#333] leading-none">{data.totalMonthlyPayroll === null ? t.dei.na : `$${data.totalMonthlyPayroll.toLocaleString()}`}</span>
+        <div className="text-[10px] text-[#8B8B8B] mt-1.5">{data.compensatedEmployees === null ? t.dei.na : data.compensatedEmployees} {t.compensation.employeesShort}</div>
       </div>
 
       <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4">
         <div className="text-[11px] text-[#8B8B8B] font-medium mb-1">{t.compensation.kpiAvgSalary}</div>
-        <span className="text-[20px] md:text-[26px] font-bold text-[#333] leading-none">${data.avgSalary.toLocaleString()}</span>
+        <span className="text-[20px] md:text-[26px] font-bold text-[#333] leading-none">{data.avgSalary === null ? t.dei.na : `$${data.avgSalary.toLocaleString()}`}</span>
         <div className="text-[10px] text-[#8B8B8B] mt-1.5">{data.activeEmployees} {t.compensation.activeEmployeesSuffix}</div>
       </div>
 
@@ -64,7 +68,7 @@ export function CompKpis({ data, loading }: CompKpisProps) {
 
       <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4">
         <div className="text-[11px] text-[#8B8B8B] font-medium mb-1">{t.compensation.kpiPending}</div>
-        <span className={`text-[20px] md:text-[26px] font-bold leading-none ${data.pendingAdjustments > 0 ? 'text-[#DD0C15]' : 'text-[#333]'}`}>{data.pendingAdjustments}</span>
+        <span className={`text-[20px] md:text-[26px] font-bold leading-none ${(data.pendingAdjustments ?? 0) > 0 ? 'text-[#DD0C15]' : 'text-[#333]'}`}>{data.pendingAdjustments === null ? t.dei.na : data.pendingAdjustments}</span>
       </div>
     </div>
   );

@@ -18,7 +18,8 @@
     "paths": {
       "@tims/db": ["packages/db/src/index.ts"],
       "@tims/shared": ["packages/shared/src/index.ts"],
-      "@tims/ai": ["packages/ai/src/index.ts"]
+      "@tims/ai": ["packages/ai/src/index.ts"],
+      "@trpc/server": ["packages/api/node_modules/@trpc/server"]
     }
   },
   "exclude": ["node_modules"]

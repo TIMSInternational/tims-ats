@@ -108,7 +108,14 @@ const buildCandidateDetailSelect = (appScopeWhere: Prisma.ApplicationWhereInput)
         assignedAt: true,
         completedAt: true,
         assessmentType: { select: { id: true, name: true, code: true } },
-        result: { select: { id: true, rawScore: true, normalizedScore: true, breakdown: true } },
+        // Field-level safety (Wave 2.5 slice 6): rawScore + breakdown are
+        // Psychometric Raw = restricted, super_admin ONLY (matrix §21). This
+        // candidate-detail path carries no role check that could gate them, so
+        // they are OMITTED here (fail-safe). Raw psychometrics are read only via
+        // the assessment router's selectFor-gated + audited readers. Threading
+        // ctx.access.roles down to this nested aggregate select is the documented
+        // follow-on if a super_admin ever needs raw data on this path.
+        result: { select: { id: true, normalizedScore: true } },
       },
     },
   }) satisfies Prisma.CandidateSelect;
@@ -475,7 +482,10 @@ export const candidateRepository = {
           assignedAt: true,
           completedAt: true,
           assessmentType: { select: { name: true, code: true } },
-          result: { select: { rawScore: true, normalizedScore: true } },
+          // Restricted rawScore omitted here (super_admin-only, no role gate on
+          // this timeline path). See buildCandidateDetailSelect note. The
+          // timeline only needs normalizedScore for display.
+          result: { select: { normalizedScore: true } },
         },
         orderBy: { assignedAt: 'desc' },
       }),

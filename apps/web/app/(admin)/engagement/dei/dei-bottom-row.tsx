@@ -36,7 +36,7 @@ export function PromotionEquity() {
         <p className="text-[12px] text-[#DD0C15]">{t.dei.errPromotions}</p>
       ) : (
         <>
-          <p className="text-[24px] font-bold text-[#1F114C]">{q.data?.totalPromotions ?? 0}</p>
+          <p className="text-[24px] font-bold text-[#1F114C]">{q.data?.totalPromotions == null ? t.dei.na : q.data.totalPromotions}</p>
           <p className="text-[10px] text-[#8B8B8B] mt-1">
             {t.dei.promotionsIn} {q.data?.year}. {t.dei.promotionsBreakdownNote}
           </p>
@@ -56,13 +56,13 @@ export function LeadershipDiversity() {
         <div className="h-24 bg-gray-50 rounded animate-pulse" />
       ) : q.isError ? (
         <p className="text-[12px] text-[#DD0C15]">{t.dei.errLeadership}</p>
-      ) : !q.data || q.data.totalLeaders === 0 ? (
+      ) : !q.data || q.data.byGender.length === 0 ? (
         <p className="text-[12px] text-[#8B8B8B]">{t.dei.noLeaders}</p>
       ) : (
         <>
           <div className="flex h-6 rounded-full overflow-hidden mb-3">
             {q.data.byGender.map((g) => (
-              <div key={g.gender} className={`${GENDER_BAR[g.gender] ?? 'bg-gray-300'}`} style={{ width: `${g.percentage}%` }} />
+              <div key={g.gender} className={`${GENDER_BAR[g.gender] ?? 'bg-gray-300'}`} style={{ width: `${g.percentage ?? 0}%` }} />
             ))}
           </div>
           <div className="space-y-1.5">
@@ -72,12 +72,14 @@ export function LeadershipDiversity() {
                   <span className={`w-2.5 h-2.5 rounded-sm ${GENDER_BAR[g.gender] ?? 'bg-gray-300'}`} />
                   <span className="text-[11px] text-[#333]">{genderLabel(t, g.gender)}</span>
                 </div>
-                <span className="text-[11px] font-semibold text-[#1F114C]">{g.percentage}%</span>
+                {/* min-5 mask: percentage is nulled when this leader group is sub-floor
+                    OR when any sibling is (all-or-nothing differencing guard). */}
+                <span className="text-[11px] font-semibold text-[#1F114C]">{g.percentage === null ? t.dei.na : `${g.percentage}%`}</span>
               </div>
             ))}
           </div>
           <p className="text-[10px] text-[#8B8B8B] mt-2 pt-2 border-t border-[#F0F0F0]">
-            {q.data.totalLeaders} {t.dei.leadersSuffix} · {t.dei.leadershipGoalPrefix} <strong className="text-[#1F114C]">{t.dei.leadershipGoalValue}</strong>
+            {q.data.totalLeaders ?? t.dei.na} {t.dei.leadersSuffix} · {t.dei.leadershipGoalPrefix} <strong className="text-[#1F114C]">{t.dei.leadershipGoalValue}</strong>
           </p>
         </>
       )}

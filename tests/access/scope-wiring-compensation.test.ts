@@ -62,4 +62,61 @@ describe('compensation module scope wiring', () => {
   it('no file spreads a scope fragment (AND-composition invariant, CI check 13)', () => {
     expect(read()).not.toMatch(/\.\.\.(await\s+)?scopeWhere/);
   });
+
+  // ── Slice 6: min-5 k-anonymity suppression on aggregate counts ──────────
+  // Defense in depth ON TOP of requireOrgScope. A salary bucket/band/group of
+  // 1..4 employees must report a suppressed marker, never a raw count/avg/median.
+  it('imports suppressBelowMin5 from the access barrel', () => {
+    expect(read()).toMatch(/suppressBelowMin5.*from '\.\.\/access'/);
+  });
+
+  it('getBandDistribution routes bands through suppressBelowMin5 (EMPTY bands when any band suppressed, round 7)', () => {
+    const src = read();
+    // dots.length count is suppressed; round 7 (present-key cardinality) returns an EMPTY
+    // bands array — no per-band keys at all — when ANY band or the unbanded bucket is sub-floor.
+    expect(src).toMatch(/suppressBelowMin5\(band\.dots\.length\)/);
+    expect(src).toMatch(/anyBandSuppressed\) return \[\]/);
+  });
+
+  // ── Slice 6 round 3: implicit-bucket oracle (unbanded employees) ─────────
+  // Source tripwire — behavioral mock omitted because compensation.ts calls `db`
+  // (tenantDb) directly with no injected repository seam, so unit-mocking the DB
+  // would require heavy vitest module-level mocking that does not exist elsewhere
+  // in this test suite. A source tripwire is the established pattern here (see the
+  // slice 6 round 2 tripwires above) and gives the same CI guarantee.
+  //
+  // Attack the tripwire guards against:
+  //   20 banded employees (4 bands × 5 each) + 3 with bandId=null
+  //   → WITHOUT fix: unassignedCount=3 is NOT fed to the trigger
+  //     → anyBandSuppressed=false (all bands ≥5) → dots exposed
+  //     → attacker reads Σ(dots.length)=20, sees getTotalCompBreakdown.employeeCount=23
+  //     → 23−20 = 3 unbanded employees recovered
+  //   → WITH fix: suppressBelowMin5(3).suppressed=true added to the trigger
+  //     → anyBandSuppressed=true → all bands return dots:[]
+  //     → no visible dot-counts → oracle closed.
+  it('getBandDistribution counts bandId:null rows into the suppression trigger (implicit-bucket oracle, round 3)', () => {
+    const src = read();
+    // The fix must query unassigned rows separately …
+    expect(src).toMatch(/bandId:\s*null/);
+    // … and feed the resulting count into the trigger expression.
+    expect(src).toMatch(/suppressBelowMin5\(unassignedCount\)\.suppressed/);
+    // The trigger must OR the unbanded result with the per-band results.
+    expect(src).toMatch(/anyBandSuppressed\s*=\s*[\s\S]{0,200}suppressBelowMin5\(unassignedCount\)/);
+  });
+
+  it('getCompaRatioDistribution routes every bucket count through suppressBelowMin5', () => {
+    expect(read()).toMatch(/suppressBelowMin5\(count\)/);
+  });
+
+  it('getPayEquity routes each group count through suppressBelowMin5', () => {
+    const src = read();
+    expect(src).toMatch(/suppressBelowMin5\(count\)/);
+    // suppressed group nulls the sensitive salary stats
+    expect(src).toMatch(/averageSalary:\s*null,\s*medianSalary:\s*null/);
+  });
+
+  it('at least three aggregate endpoints invoke suppressBelowMin5', () => {
+    const calls = read().match(/suppressBelowMin5\(/g) ?? [];
+    expect(calls.length).toBeGreaterThanOrEqual(3);
+  });
 });

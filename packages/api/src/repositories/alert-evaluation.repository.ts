@@ -1,5 +1,6 @@
 import { db } from '@tims/db';
 import type { AlertMetricKey } from '@tims/shared';
+import { suppressBelowMin5 } from '../access';
 
 // Data access for the cron alert-evaluation engine. Runs in a cron context (no
 // per-request tenant), so it uses the privileged `db` and scopes EVERY query by
@@ -8,6 +9,27 @@ import type { AlertMetricKey } from '@tims/shared';
 
 const MS_PER_HOUR = 3_600_000;
 const SIXTY_DAYS_MS = 60 * 24 * MS_PER_HOUR;
+
+// ── Sensitive-metric oracle guard (slice 6 round 8) ─────────────────────────
+// An alert RULE is an exact-count oracle: a monitoring updater can configure a
+// rule `metric eq 3` (or lt/lte) and observe whether an alert fires, recovering a
+// sub-floor count over a §21-restricted population WITHOUT ever calling a read
+// endpoint. So for metrics computed OVER one of the four restricted models
+// (employeeCompensation / employeeDemographics / surveyResponse / salaryAdjustment),
+// a value in 1..4 is itself a sub-floor disclosure — we floor it to `null` here so
+// `evaluateCondition(null, …)` returns false (the rule cannot fire as an oracle)
+// AND no sub-floor value is persisted into the fired alert's metadata. 0 and >=5
+// pass through unchanged. NON-sensitive metrics (headcount, vacancy/alert counts,
+// SLA breaches — none over the four models) are unaffected and evaluate normally.
+//
+// Of the current ALERT_METRIC_KEYS, only `pending_salary_adjustments` counts a
+// restricted model (SalaryAdjustment). `active_surveys` counts Survey definitions
+// (not surveyResponse), `headcount`/`active_alerts`/`vacancies_open_60d`/
+// `sla_active_breaches` are non-sensitive. The set is keyed off the metric, so any
+// future metric added over one of the four models must be listed here.
+const SENSITIVE_ALERT_METRICS: ReadonlySet<AlertMetricKey> = new Set<AlertMetricKey>([
+  'pending_salary_adjustments',
+]);
 
 export const alertEvaluationRepository = {
   // All active rules across all orgs (the cron evaluates the whole platform).
@@ -61,8 +83,20 @@ export const alertEvaluationRepository = {
   },
 
   // Compute the current value of a metric for one org. Returns null for an
-  // unrecognized key so the engine skips (rather than fires) the rule.
+  // unrecognized key so the engine skips (rather than fires) the rule. For a
+  // SENSITIVE metric (over a §21-restricted model) a sub-floor 1..4 value is also
+  // floored to null so a rule cannot be used as an exact-count oracle (see
+  // SENSITIVE_ALERT_METRICS above): a null value never fires and is never persisted.
   async computeMetric(orgId: string, metric: AlertMetricKey): Promise<number | null> {
+    const value = await this.computeRawMetric(orgId, metric);
+    if (value !== null && SENSITIVE_ALERT_METRICS.has(metric)) {
+      // 1..4 → null (no oracle, nothing persisted); 0 and >=5 pass through.
+      return suppressBelowMin5(value).count;
+    }
+    return value;
+  },
+
+  async computeRawMetric(orgId: string, metric: AlertMetricKey): Promise<number | null> {
     switch (metric) {
       case 'vacancies_open_60d':
         return db.vacancy.count({

@@ -29,6 +29,9 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
 export function GenderByDepartment() {
   const { t } = useI18n();
   const q = trpc.dei.getGenderRepresentation.useQuery();
+  // round 7: distribution is now { groups, suppressed }. When suppressed (any group
+  // 1..4) groups is empty + suppressed:true → render the no-demographics empty state.
+  const groups = q.data?.groups ?? [];
 
   return (
     <Card title={t.dei.genderRepresentation}>
@@ -36,25 +39,30 @@ export function GenderByDepartment() {
         <div className="h-24 bg-gray-50 rounded animate-pulse" />
       ) : q.isError ? (
         <p className="text-[12px] text-[#DD0C15]">{t.dei.errGenderRep}</p>
-      ) : !q.data || q.data.length === 0 ? (
+      ) : groups.length === 0 ? (
         <p className="text-[12px] text-[#8B8B8B]">{t.dei.noDemographics}</p>
       ) : (
         <>
           <div className="flex h-6 rounded-full overflow-hidden mb-3">
-            {q.data.map((g) => (
-              <div key={g.gender} className={`${GENDER_BAR[g.gender] ?? 'bg-gray-300'} flex items-center justify-center`} style={{ width: `${g.percentage}%` }}>
-                {g.percentage >= 8 && <span className="text-[9px] text-white font-medium">{g.percentage}%</span>}
+            {groups.map((g) => (
+              <div key={g.gender} className={`${GENDER_BAR[g.gender] ?? 'bg-gray-300'} flex items-center justify-center`} style={{ width: `${g.percentage ?? 0}%` }}>
+                {(g.percentage ?? 0) >= 8 && <span className="text-[9px] text-white font-medium">{g.percentage}%</span>}
               </div>
             ))}
           </div>
           <div className="space-y-1.5">
-            {q.data.map((g) => (
+            {groups.map((g) => (
               <div key={g.gender} className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5">
                   <span className={`w-2.5 h-2.5 rounded-sm ${GENDER_BAR[g.gender] ?? 'bg-gray-300'}`} />
                   <span className="text-[11px] text-[#333]">{genderLabel(t, g.gender)}</span>
                 </div>
-                <span className="text-[11px] text-[#8B8B8B]">{g.count} · {g.percentage}%</span>
+                {/* min-5 mask: a group is masked when its own count is sub-floor OR
+                    when a sibling group is suppressed (all counts/percentages nulled
+                    to block denominator-differencing). Key off the nulled value. */}
+                <span className="text-[11px] text-[#8B8B8B]">
+                  {g.count === null || g.percentage === null ? t.dei.na : `${g.count} · ${g.percentage}%`}
+                </span>
               </div>
             ))}
           </div>
@@ -92,9 +100,12 @@ export function PayEquityTable() {
               {q.data.results.map((row, i) => (
                 <tr key={row.group} className={i < q.data!.results.length - 1 ? 'border-b border-[#F6F6F6]' : ''}>
                   <td className="py-2 font-medium">{genderLabel(t, row.group)}</td>
-                  <td className="text-right py-2">{row.count}</td>
-                  <td className="text-right py-2">{fmtCOP(row.averageSalary)}</td>
-                  <td className="text-right py-2">{fmtCOP(row.medianSalary)}</td>
+                  {/* min-5 mask: count + salary stats are nulled either when this group
+                      is sub-floor OR when any sibling group is (all-or-nothing
+                      differencing guard). Key off the nulled value directly. */}
+                  <td className="text-right py-2">{row.count === null ? t.dei.na : row.count}</td>
+                  <td className="text-right py-2">{row.averageSalary === null ? t.dei.na : fmtCOP(row.averageSalary)}</td>
+                  <td className="text-right py-2">{row.medianSalary === null ? t.dei.na : fmtCOP(row.medianSalary)}</td>
                 </tr>
               ))}
             </tbody>

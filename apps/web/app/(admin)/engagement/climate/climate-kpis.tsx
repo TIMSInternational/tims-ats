@@ -3,8 +3,16 @@
 import { useI18n } from '../../../../lib/i18n';
 
 interface ClimateKpisProps {
-  enps: { enps: number; promoters: number; passives: number; detractors: number; totalResponses: number } | null;
-  dashKpis: { activeSurveys: number; totalResponses: number; actionPlansOpen: number; highRiskCount: number } | null;
+  enps: {
+    enps: number | null;
+    promoters: number | null;
+    passives: number | null;
+    detractors: number | null;
+    totalResponses: number | null;
+    suppressed?: boolean;
+  } | null;
+  // totalResponses is nulled by min-5 suppression (round 6) when 1..4 org-wide responses.
+  dashKpis: { activeSurveys: number; totalResponses: number | null; totalResponsesSuppressed?: boolean; actionPlansOpen: number; highRiskCount: number } | null;
   loading: boolean;
 }
 
@@ -33,17 +41,26 @@ export function ClimateKpis({ enps, dashKpis, loading }: ClimateKpisProps) {
     );
   }
 
+  // eNPS is suppressed (min-5 k-anonymity) when the backend nulls its head-counts.
+  const enpsSuppressed = enps?.suppressed === true || enps?.enps == null;
   const enpsScore = enps?.enps ?? 0;
   const enpsColor = enpsScore >= 30 ? 'text-green-600' : enpsScore >= 0 ? 'text-amber-500' : 'text-[#DD0C15]';
-  const promoterPct = enps && enps.totalResponses ? Math.round((enps.promoters / enps.totalResponses) * 100) : 0;
+  const promoterPct =
+    enps && enps.totalResponses && enps.promoters != null
+      ? Math.round((enps.promoters / enps.totalResponses) * 100)
+      : 0;
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
-      <Card label={t.climate.kpiEnps}>
-        <p className={`text-[20px] md:text-[26px] font-bold ${enpsColor}`}>{enpsScore > 0 ? '+' : ''}{enpsScore}</p>
+      <Card label={t.climate.kpiEnps} sub={enpsSuppressed ? t.climate.enpsSuppressed : undefined}>
+        {enpsSuppressed ? (
+          <p className="text-[20px] md:text-[26px] font-bold text-[#8B8B8B]">—</p>
+        ) : (
+          <p className={`text-[20px] md:text-[26px] font-bold ${enpsColor}`}>{enpsScore > 0 ? '+' : ''}{enpsScore}</p>
+        )}
       </Card>
       <Card label={t.climate.kpiResponses}>
-        <p className="text-[20px] md:text-[26px] font-bold text-[#1F114C]">{enps?.totalResponses ?? 0}</p>
+        <p className="text-[20px] md:text-[26px] font-bold text-[#1F114C]">{enpsSuppressed ? '—' : enps?.totalResponses ?? 0}</p>
       </Card>
       <Card label={t.climate.kpiActiveSurveys}>
         <p className="text-[20px] md:text-[26px] font-bold text-[#1F114C]">{dashKpis?.activeSurveys ?? 0}</p>
@@ -51,8 +68,8 @@ export function ClimateKpis({ enps, dashKpis, loading }: ClimateKpisProps) {
       <Card label={t.climate.kpiOpenPlans}>
         <p className={`text-[20px] md:text-[26px] font-bold ${(dashKpis?.actionPlansOpen ?? 0) > 0 ? 'text-[#DD0C15]' : 'text-[#1F114C]'}`}>{dashKpis?.actionPlansOpen ?? 0}</p>
       </Card>
-      <Card label={t.climate.kpiPromoters} sub={`${promoterPct}%`}>
-        <p className="text-[20px] md:text-[26px] font-bold text-green-600">{enps?.promoters ?? 0}</p>
+      <Card label={t.climate.kpiPromoters} sub={enpsSuppressed ? undefined : `${promoterPct}%`}>
+        <p className="text-[20px] md:text-[26px] font-bold text-green-600">{enpsSuppressed ? '—' : enps?.promoters ?? 0}</p>
       </Card>
     </div>
   );

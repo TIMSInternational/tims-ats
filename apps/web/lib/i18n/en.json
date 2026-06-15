@@ -1730,6 +1730,7 @@
     "dimensionScores": "Score by Dimension",
     "scaleNote": "Scale 1-100",
     "noClimateData": "No climate survey with results yet.",
+    "enpsSuppressed": "Data hidden (fewer than 5 responses) to protect anonymity.",
     "errClimate": "Could not load climate data.",
     "wordCloud": "Word Cloud",
     "wordCloudUnavailable": "Text analysis not available (requires NLP service).",

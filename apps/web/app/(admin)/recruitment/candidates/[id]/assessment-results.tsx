@@ -9,7 +9,10 @@ interface Assignment {
   assignedAt: Date | string;
   completedAt: Date | string | null;
   assessmentType: { id: string; name: string; code: string };
-  result: { id: string; rawScore: number | null; normalizedScore: number | null; breakdown: unknown } | null;
+  // rawScore + breakdown are restricted Psychometric Raw (super_admin only) and
+  // are no longer returned on the candidate-detail path (Wave 2.5 slice 6), so
+  // they are optional here. The render guards below already null/undefined-check.
+  result: { id: string; rawScore?: number | null; normalizedScore: number | null; breakdown?: unknown } | null;
 }
 
 interface FitScore {

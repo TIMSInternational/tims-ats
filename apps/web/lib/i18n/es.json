@@ -1730,6 +1730,7 @@
     "dimensionScores": "Puntaje por Dimensión",
     "scaleNote": "Escala 1-100",
     "noClimateData": "Sin encuesta de clima con resultados aún.",
+    "enpsSuppressed": "Datos ocultos (menos de 5 respuestas) para proteger el anonimato.",
     "errClimate": "No se pudo cargar el clima.",
     "wordCloud": "Nube de Palabras",
     "wordCloudUnavailable": "Análisis de texto no disponible (requiere servicio NLP).",

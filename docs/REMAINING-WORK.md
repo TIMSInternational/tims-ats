@@ -130,9 +130,64 @@ gating is UX ONLY — the API stays the boundary (sessionInfo fetch failure
 fails OPEN for rendering, console.warn). /platform + candidate portal
 untouched. Tests 452 → 466.
 
-**Slices 6–7 pending** (each gets its own plan):
-6 sensitive-data layer (selectFor, +AUDIT data_access_logs, min-5 aggregates, consent) ·
-7 new-role surfaces (hrbp unit admin, committee wiring, external API keys).
+**Slice 6 SHIPPED (branch feat/access-sensitive-data): sensitive-data layer.**
+Plan: `docs/plans/2026-06-12-wave-2.5-slice-6-sensitive-data.md`. Five new pure-ish
+modules under `packages/api/src/access/` driven by the §21 matrix (`docs/TIMS ATS -
+Architecture.md:2472-2553`):
+- `classification.ts` — `(entity,field) → dataClass × roles[]` registry for the 5
+  backed models (employeeCompensation/salaryAdjustment = restricted; assessmentResult
+  breakdown/rawScore = restricted super-only, normalized/percentile/interpretation =
+  confidential; employeeDemographics + surveyResponse = confidential). Frozen
+  (`Readonly`), monotonicity-tested (entity class ≥ max field class).
+- `select-for.ts` — `selectFor(roles, entity)` fail-closed Prisma select (anchors
+  always; union across roles; unknown→`{id:true}`; drift `logger.warn`).
+- `aggregate.ts` — `suppressBelowMin5` (1..4→null, 0 and ≥5 pass) + `aggregateGroups`
+  (total<5 suppresses all). JSDoc WARNING: callers must not also disclose total-N when
+  any group is suppressed (differencing).
+- `audit.ts` — `logDataAccess(event, opts?)` writes `data_access_logs`; fail-CLOSED
+  (throws) for restricted, fail-SOFT for confidential; `opts.failClosed` override for
+  mixed-class tables (assessment: super gets raw→closed, others→soft).
+- `consent.ts` — `hasConsent`/`assertConsent` over `DataConsent` (withdrawnAt=null = active).
+Wired: **compensation** (getBandDistribution/CompaRatio/PayEquity bucket+band+group
+counts → min-5; org-gate kept as defense-in-depth; small bands drop `dots`, small
+groups null count+avg+median); **engagement** (getSurveyResults survey-level + per-
+question; getResultsByArea per-area; getEnps + getClimateHeatmap survey-level floors);
+**DEI** (all 6 distribution methods + getPayEquity — and CRITICAL fix: when ANY group
+is suppressed, ALL visible-group percentages + total-N are nulled, else `total =
+count/(pct/100)` recovers the suppressed group exactly; getPayEquity gapPct suppressed
+unless BOTH gender groups clear the floor); **assessmentResult** (3 router readers use
+`selectFor` so breakdown/rawScore reach super_admin only + per-result audit;
+candidate-detail/timeline repo selects + the candidate-detail DISC-grid UI had a real
+prior leak of `breakdown` to recruiters — closed by omitting raw fields). Frontend:
+DEI/compensation/climate/assessment consumers null-guard + render a mask for suppressed
+groups. Tests 466 → **688**. ~30 commits, **codex adversarially hardened across 14 rounds**.
+
+**The k-anonymity invariant (codex-verified):** NO count/sum/avg/ratio, present-key-set,
+partition/time-series bucket, restricted field, or raw row over a **1..4 population** of
+the 5 sensitive models is exposed to any client — nor recoverable by cross-endpoint
+differencing. The hardening loop closed, in order: (1) within-endpoint %-differencing →
+null ALL visible-group %s + total-N when any group suppressed; (2) cross-endpoint
+denominator oracles (dashboard ratios, sibling population totals); (3) implicit
+**unbanded/skipped/null/contributor** buckets folded into every all-or-nothing trigger;
+(4) **present-key cardinality** (key-set + N pins singletons) → **empty distribution when
+any group suppressed** (no keys survive); (5) **contributor-vs-respondent** + skip buckets
+gated on every survey aggregate; (6) the **monitoring + alert-evaluation** surface
+(getExecutiveKpis/getCrossModuleTrend floored; the alert-rule "eq 3" cron oracle closed);
+(7) **complementary-bucket class** → the **canonical-definition invariant**: every count
+over `employeeCompensation` uses ONE positive-salary definition so cross-endpoint
+subtractions collapse to 0, and every filtered-population aggregate folds its dropped-row
+complement into suppression. Plus field-level: `selectFor` projection on comp + assessment
+reads (raw psychometrics super-only; salary fields per registry), audited restricted reads
+(fail-closed), minimal selects on all sensitive create/update/find paths.
+
+**Slice-6 follow-ups not in scope (recorded):** consent-withdrawal 30-day anonymization
+job (matrix-compliant deferral, not real-time aggregate filtering); `getBenefitsUtilization`
+enrolled count (benefits not in §21); `approveAdjustment` was made atomic+conditional
+(incidental correctness, not sensitive-data); `data_access_logs` purge job + its
+`@@index([organizationId, createdAt])`; shared Zod unions for dataType/action/consentType.
+
+**Slice 7 pending** (own plan): new-role surfaces — hrbp unit admin, committee wiring,
+external API keys.
 
 **✅ WAVE 2.5 DEPLOY-ORDERING — WAVE-DATA DEPLOY NOW UNBLOCKED (slices 1–4 all merged + auto-deployed):**
 Code auto-deploys on merge (verified Jun 12: #67/#68 → prod deploys within
@@ -188,8 +243,35 @@ candidate for scope-aware listing — narrow-scoped callers currently see all
 low-progress OKRs in the org); benefitEnrollment has no row-level endpoints
 today (registry entry deferred until one exists — no subject-check needed
 until then).
-
-## Remaining — code work
+Slice-6 follow-ons (recorded, not faked): (a) **consent gating is module-only**
+(`assertConsent` exists + tested) — NO per-person demographic reader that reads
+someone ELSE's demographics by userId exists today (the only readers are the DEI
+aggregates + the subject's own Habeas-Data export), so there is no wire-in point yet;
+gate it when such a reader is added. **Consent-WITHDRAWAL on DEI aggregates** (codex
+slice-6 finding): a withdrawn subject currently remains in gender/DOB/nationality/
+leadership/pay-equity aggregates. This is matrix-COMPLIANT as designed — §21 CONSENT
+ENFORCEMENT mandates "withdrawn → anonymized within 30 days" via a BATCH job, NOT
+real-time aggregate exclusion. The 30-day anonymization job (also listed below) is the
+fix; until it lands, withdrawn subjects persist in aggregates within the 30-day window.
+If product wants immediate exclusion, filter every demographics aggregate source on
+`DataConsent.withdrawnAt: null` for `consentType:'dei_demographics'` — but that is a
+stricter-than-matrix product decision, not a slice-6 bug. (b) **getBenefitsUtilization** exposes a per-plan
+`enrolled` head-count that could be <5 in a small org — NOT in the §21 matrix so left
+un-suppressed deliberately; suppress if product classifies benefits enrollment as
+sensitive. (c) **org-wide ratio residual**: compensation/DEI `getDashboardKpis` keep
+org-wide ratios (womenPct, avgSalary, etc.) over the full population — a very small
+known population could approach disclosure; band/coarsen the denominator if it matters.
+(d) **candidate-detail/timeline raw psychometrics**: repo selects now OMIT
+breakdown/rawScore (fail-safe) rather than threading `ctx.access.roles` into the nested
+aggregate select — thread roles if a super_admin ever needs raw psychometrics on the
+candidate-detail page (today they use the audited assessment-router readers); the
+candidate-detail DISC `BreakdownGrid` render is now dead code (harmless, guarded). (e)
+`data_access_logs` purge job + `@@index([organizationId, createdAt])` (shared with the
+wave-level follow-up). (f) shared const/Zod unions for dataType/action/consentType
+string values (currently free strings). (g) `getEnps` returns `passives:1` at exactly 0
+responses (pre-existing `scores.length||1` div-guard artifact — display only, not a
+privacy issue). (h) tighten DEI/engagement tests from mostly-source-tripwires toward
+more behavioral coverage as the data layer stabilizes.
 
 | Priority | Task |
 |----------|------|
