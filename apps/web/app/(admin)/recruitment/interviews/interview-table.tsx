@@ -11,6 +11,7 @@ interface InterviewTableProps {
   isLoading: boolean;
   onCancel: (id: string) => void;
   isCancelling: boolean;
+  onManageEvaluators: (id: string) => void;
 }
 
 const STATUS_MAP: Record<string, { cls: string; label: string }> = {
@@ -40,7 +41,7 @@ const TYPE_ICONS: Record<string, React.ReactNode> = {
   cultural: <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" /></svg>,
 };
 
-export function InterviewTable({ interviews, isLoading, onCancel, isCancelling }: InterviewTableProps) {
+export function InterviewTable({ interviews, isLoading, onCancel, isCancelling, onManageEvaluators }: InterviewTableProps) {
   const { t } = useI18n();
 
   const columns = [
@@ -132,6 +133,12 @@ export function InterviewTable({ interviews, isLoading, onCancel, isCancelling }
           </td>
           <td className="px-4 py-3 text-right">
             <div className="flex items-center justify-end gap-1">
+              <button
+                onClick={() => onManageEvaluators(iv.id)}
+                className="h-7 px-2.5 rounded-md text-[11px] text-[#585858] border border-[#EDEDED] hover:bg-[#F6F6F6] transition"
+              >
+                {t.interviews.manageEvaluators}
+              </button>
               {iv.status === 'scheduled' && (
                 <button
                   onClick={() => onCancel(iv.id)}

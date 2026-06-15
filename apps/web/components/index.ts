@@ -6,6 +6,7 @@ export { Modal } from './modal';
 export { Drawer } from './drawer';
 export { Skeleton } from './skeleton';
 export { CandidateAvatar } from './candidate-avatar';
+export { UserPicker } from './user-picker';
 export { FitScoreBadge } from './fit-score-badge';
 export { StageBadge } from './stage-badge';
 export { AssessmentBadge } from './assessment-badge';

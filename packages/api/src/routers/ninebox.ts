@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { router, permissionProcedure } from '../trpc';
 import { tenantDb as db } from '@tims/db';
 import { TRPCError } from '@trpc/server';
@@ -279,6 +280,27 @@ export const nineboxRouter = router({
       });
     }),
 
+  listCalibrations: permissionProcedure('ninebox', 'read')
+    .query(async ({ ctx }) => {
+      // Listing all calibration sessions is org-governance (committee-membership
+      // administration reads the same list). Committee members hold ninebox@team
+      // and must NOT enumerate every org session → org/company scope only.
+      requireOrgScope(ctx.access);
+      return db.calibrationSession.findMany({
+        where: { organizationId: ctx.user.organizationId },
+        select: {
+          id: true,
+          period: true,
+          status: true,
+          scheduledAt: true,
+          createdAt: true,
+          _count: { select: { members: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+      });
+    }),
+
   getCalibration: permissionProcedure('ninebox', 'read')
     .input(getCalibrationInput)
     .query(async ({ ctx, input }) => {
@@ -386,6 +408,62 @@ export const nineboxRouter = router({
           justification: input.justification,
         },
       });
+    }),
+
+  // ── Calibration committee membership on an EXISTING session ──────────
+  // Populates CalibrationMember, the committee anchor. ninebox:update; session
+  // org-verified (NOT_FOUND otherwise) and the member must be in-org.
+  addCalibrationMember: permissionProcedure('ninebox', 'update')
+    .input(z.object({ sessionId: z.string().uuid(), userId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      // Committee membership is ORG-GOVERNANCE (sessions have no team/unit
+      // anchor). A committee user holds ninebox@team — without this gate they
+      // could self-add to ANY session and then vote (self-promotion). Restrict
+      // membership writes to org/company-scope admins.
+      requireOrgScope(ctx.access);
+      try {
+        return await db.$transaction(async (tx) => {
+          const [session, user] = await Promise.all([
+            tx.calibrationSession.findFirst({
+              where: { id: input.sessionId, organizationId: ctx.user.organizationId },
+              select: { id: true },
+            }),
+            tx.user.findFirst({
+              where: { id: input.userId, organizationId: ctx.user.organizationId },
+              select: { id: true },
+            }),
+          ]);
+          if (!session) throw new TRPCError({ code: 'NOT_FOUND', message: 'Sesion de calibracion no encontrada' });
+          if (!user) throw new TRPCError({ code: 'NOT_FOUND', message: 'Usuario no encontrado' });
+          return tx.calibrationMember.create({
+            data: { sessionId: input.sessionId, userId: input.userId, status: 'invited' },
+            select: { id: true },
+          });
+        });
+      } catch (err) {
+        if (err && typeof err === 'object' && 'code' in err && (err as { code?: string }).code === 'P2002') {
+          throw new TRPCError({ code: 'CONFLICT', message: 'El usuario ya es miembro de este comite' });
+        }
+        throw err;
+      }
+    }),
+
+  removeCalibrationMember: permissionProcedure('ninebox', 'update')
+    .input(z.object({ sessionId: z.string().uuid(), userId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      // Committee membership administration is org-governance (mirror of
+      // addCalibrationMember) → org/company scope only.
+      requireOrgScope(ctx.access);
+      const session = await db.calibrationSession.findFirst({
+        where: { id: input.sessionId, organizationId: ctx.user.organizationId },
+        select: { id: true },
+      });
+      if (!session) throw new TRPCError({ code: 'NOT_FOUND', message: 'Sesion de calibracion no encontrada' });
+      const result = await db.calibrationMember.deleteMany({
+        where: { sessionId: input.sessionId, userId: input.userId },
+      });
+      if (result.count === 0) throw new TRPCError({ code: 'NOT_FOUND', message: 'Miembro no encontrado' });
+      return { success: true };
     }),
 
   finalizeCalibration: permissionProcedure('ninebox', 'update')

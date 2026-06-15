@@ -10,12 +10,14 @@ import { InterviewTable } from './interview-table';
 import { UpcomingPanel } from './upcoming-panel';
 import { MiniCalendar } from './mini-calendar';
 import { ScheduleModal } from './schedule-modal';
+import { EvaluatorsModal } from './evaluators-modal';
 
 export default function InterviewsPage() {
   const { t } = useI18n();
   const [statusFilter, setStatusFilter] = useState('');
   const [showSchedule, setShowSchedule] = useState(false);
   const [typeFilter, setTypeFilter] = useState('');
+  const [evaluatorsInterviewId, setEvaluatorsInterviewId] = useState<string | null>(null);
 
   const interviews = trpc.interview.list.useQuery({
     pageSize: 50,
@@ -127,6 +129,7 @@ export default function InterviewsPage() {
           isLoading={interviews.isLoading}
           onCancel={(id) => cancelInterview.mutate({ id, cancelReason: 'Cancelled by recruiter' })}
           isCancelling={cancelInterview.isPending}
+          onManageEvaluators={(id) => setEvaluatorsInterviewId(id)}
         />
       </div>
 
@@ -150,6 +153,14 @@ export default function InterviewsPage() {
             setShowSchedule(false);
             utils.interview.list.invalidate();
           }}
+        />
+      )}
+
+      {/* Evaluators Modal */}
+      {evaluatorsInterviewId && (
+        <EvaluatorsModal
+          interviewId={evaluatorsInterviewId}
+          onClose={() => setEvaluatorsInterviewId(null)}
         />
       )}
     </div>

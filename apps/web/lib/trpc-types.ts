@@ -52,5 +52,16 @@ export type PipelineFunnel = RouterOutput['pipeline']['getFunnel'];
 // Interview
 export type InterviewListItem = RouterOutput['interview']['list']['items'][number];
 export type InterviewListResult = RouterOutput['interview']['list'];
+export type InterviewDetail = RouterOutput['interview']['getById'];
+export type InterviewEvaluator = InterviewDetail['evaluators'][number];
+
+// Organization — business units & membership (Wave 2.5 slice 7a)
+export type CompanyListItem = RouterOutput['organization']['listCompanies'][number];
+export type BusinessUnitListItem = RouterOutput['organization']['listBusinessUnits'][number];
+export type UnitMember = RouterOutput['organization']['listUnitMembers'][number];
+
+// Nine-box — calibration committee (Wave 2.5 slice 7a)
+export type CalibrationDetail = RouterOutput['ninebox']['getCalibration'];
+export type CalibrationMember = CalibrationDetail['members'][number];
 
 // Offer (types will be added when offer service is refactored in Phase 1.4)

@@ -64,6 +64,7 @@
     "monitoring": "Monitoreo",
     "integrations": "Integraciones",
     "billing": "Facturacion",
+    "businessUnits": "Unidades de Negocio",
     "commandCenter": "Command Center",
     "assessments": "Evaluaciones"
   },
@@ -1538,7 +1539,8 @@
     "calendar": "Calendario",
     "today": "Hoy",
     "tomorrow": "Manana",
-    "thisWeekLabel": "Esta Semana"
+    "thisWeekLabel": "Esta Semana",
+    "manageEvaluators": "Evaluadores"
   },
   "offers": {
     "title": "Centro de Ofertas y Validacion",
@@ -2076,5 +2078,56 @@
       "correct_not_in_options": "Una respuesta correcta hace referencia a una opcion inexistente.",
       "duplicate_correct_ids": "Las respuestas correctas deben ser unicas."
     }
+  },
+  "units": {
+    "breadcrumbParent": "Configuracion",
+    "title": "Unidades de Negocio",
+    "selectCompany": "Selecciona una empresa",
+    "selectUnit": "Selecciona una unidad",
+    "membersTitle": "Miembros de la unidad",
+    "assignUser": "Asignar usuario",
+    "member": "Miembro",
+    "email": "Email",
+    "actions": "Acciones",
+    "remove": "Quitar",
+    "removeConfirm": "Quitar a este usuario de la unidad de negocio?",
+    "noMembers": "Esta unidad no tiene miembros asignados.",
+    "pickUser": "Selecciona un usuario para asignarlo a esta unidad.",
+    "searchUser": "Buscar por nombre o email...",
+    "loadingUsers": "Cargando usuarios...",
+    "noUsers": "Sin usuarios disponibles",
+    "assign": "Asignar",
+    "cancel": "Cancelar",
+    "assigned": "Usuario asignado a la unidad",
+    "removed": "Usuario removido de la unidad"
+  },
+  "committee": {
+    "committeeTitle": "Comite de Calibracion",
+    "startCalibration": "Iniciar Calibracion",
+    "evaluators": "Evaluadores",
+    "members": "Miembros del comite",
+    "addEvaluator": "Agregar evaluador",
+    "addMember": "Agregar miembro",
+    "remove": "Quitar",
+    "removeConfirm": "Quitar a esta persona?",
+    "noEvaluators": "Esta entrevista no tiene evaluadores.",
+    "noMembers": "Este comite no tiene miembros.",
+    "pickUser": "Selecciona un usuario.",
+    "searchUser": "Buscar por nombre o email...",
+    "loadingUsers": "Cargando usuarios...",
+    "noUsers": "Sin usuarios disponibles",
+    "add": "Agregar",
+    "cancel": "Cancelar",
+    "close": "Cerrar",
+    "added": "Persona agregada",
+    "removed": "Persona removida",
+    "sessionsTitle": "Sesiones de Calibracion",
+    "manage": "Gestionar comite",
+    "newSession": "Nueva sesion",
+    "noSessions": "Sin sesiones de calibracion aun",
+    "membersCount": "miembro(s)",
+    "statusDraft": "Borrador",
+    "statusActive": "Activa",
+    "statusFinalized": "Finalizada"
   }
 }

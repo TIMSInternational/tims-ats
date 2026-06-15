@@ -38,6 +38,7 @@ export const PATH_MODULE: Record<string, string | null> = {
   '/monitoring': 'monitoring',
   '/settings/billing': 'billing',
   '/settings/integrations': 'integration',
+  '/settings/business-units': 'user',
   '/settings': null,
   '/platform': null, // server-gated in its own layout
   '/mfa': null,

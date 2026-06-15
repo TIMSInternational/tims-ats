@@ -6,6 +6,7 @@ import { useI18n } from '../../../../lib/i18n';
 import { KpiCard, KpiCardSkeleton, CandidateAvatar, EmptyState, Skeleton } from '../../../../components';
 import { toast } from '../../../../lib/toast';
 import { NineBoxGrid } from './nine-box-grid';
+import { CalibrationModal } from './calibration-modal';
 
 const PERIOD = new Date().getFullYear().toString();
 
@@ -39,12 +40,106 @@ const AUTO_PLANS = [
   { color: '#FEE2E2', name: 'Riesgo', desc: 'PIP 90 dias + Seguimiento semanal + Decision Go/No-Go' },
 ];
 
+// ── Types inferred from tRPC ─────────────────────────────────────────────────
+type CalibrationSessionSummary = {
+  id: string;
+  period: string;
+  status: string;
+  scheduledAt: Date | null;
+  createdAt: Date;
+  _count: { members: number };
+};
+
+type CommitteeT = {
+  sessionsTitle: string;
+  manage: string;
+  noSessions: string;
+  membersCount: string;
+  statusDraft: string;
+  statusActive: string;
+  statusFinalized: string;
+};
+
+const STATUS_BADGE: Record<string, string> = {
+  draft: 'text-amber-700 bg-amber-50',
+  active: 'text-emerald-700 bg-emerald-50',
+  finalized: 'text-gray-600 bg-gray-100',
+};
+
+function CalibrationSessionsList({
+  sessions,
+  isLoading,
+  onManage,
+  t,
+}: {
+  sessions: CalibrationSessionSummary[];
+  isLoading: boolean;
+  onManage: (id: string) => void;
+  t: CommitteeT;
+}) {
+  const statusLabel = (status: string, tc: CommitteeT) => {
+    if (status === 'draft') return tc.statusDraft;
+    if (status === 'active') return tc.statusActive;
+    if (status === 'finalized') return tc.statusFinalized;
+    return status;
+  };
+
+  return (
+    <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4">
+      <p className="text-[11px] font-semibold text-[#1F114C] mb-2">{t.sessionsTitle}</p>
+      {isLoading ? (
+        <Skeleton className="h-20 w-full rounded-lg" />
+      ) : sessions.length === 0 ? (
+        <p className="text-[10px] text-[#8B8B8B] py-3 text-center">{t.noSessions}</p>
+      ) : (
+        <ul className="space-y-1.5">
+          {sessions.map((s) => (
+            <li key={s.id} className="flex items-center gap-2 px-3 py-2 rounded-lg border border-[#EDEDED]">
+              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${STATUS_BADGE[s.status] ?? 'text-gray-600 bg-gray-100'}`}>
+                {statusLabel(s.status, t)}
+              </span>
+              <span className="text-[11px] text-[#333] font-medium flex-1">{s.period}</span>
+              <span className="text-[10px] text-[#8B8B8B] shrink-0">{s._count.members} {t.membersCount}</span>
+              <button
+                onClick={() => onManage(s.id)}
+                className="shrink-0 h-7 px-2.5 rounded-md text-[11px] text-[#1F114C] border border-[#EDEDED] hover:bg-[#F6F6F6] transition"
+              >
+                {t.manage}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export default function NineBoxPage() {
   const { t } = useI18n();
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [calibrationSessionId, setCalibrationSessionId] = useState<string | null>(null);
 
   const gridQ = trpc.ninebox.getGrid.useQuery({ period: PERIOD });
   const kpisQ = trpc.ninebox.getDashboardKpis.useQuery({ period: PERIOD });
+
+  // listCalibrations is org-governance (slice-7a): narrow-scope users (committee
+  // leaders) can still reach this page via 'ninebox' read but get a FORBIDDEN
+  // here. Treat that as "no calibration sessions visible" — don't retry the
+  // 403 and let the list fall back to an empty state, never a crash.
+  const sessionsQ = trpc.ninebox.listCalibrations.useQuery(undefined, {
+    retry: (failureCount, err) =>
+      err.data?.code === 'FORBIDDEN' ? false : failureCount < 3,
+  });
+
+  const startCalibration = trpc.ninebox.createCalibration.useMutation({
+    onSuccess: (session) => {
+      setCalibrationSessionId(session.id);
+      sessionsQ.refetch();
+    },
+    onError: (err) => {
+      toast(err.message, { type: 'error' });
+    },
+  });
   const benchQ = trpc.ninebox.getBenchStrength.useQuery({ period: PERIOD });
   const successionQ = trpc.succession.listCriticalRoles.useQuery({});
   const detailQ = trpc.ninebox.getEmployeeDetail.useQuery(
@@ -114,9 +209,9 @@ export default function NineBoxPage() {
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
             Exportar
           </button>
-          <button onClick={() => toast('Iniciar Calibracion: proximamente', { type: 'info' })} className="flex items-center gap-1.5 bg-[#DD0C15] text-white px-4 h-8 rounded-lg text-[12px] font-medium hover:bg-[#c40b13] transition">
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-            Iniciar Calibracion
+          <button onClick={() => startCalibration.mutate({ period: PERIOD })} disabled={startCalibration.isPending} className="flex items-center gap-1.5 bg-[#DD0C15] text-white px-4 h-8 rounded-lg text-[12px] font-medium hover:bg-[#c40b13] transition disabled:opacity-50">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 4.5v15m7.5-7.5h-15" /></svg>
+            {t.committee.newSession}
           </button>
         </div>
       </div>
@@ -250,26 +345,13 @@ export default function NineBoxPage() {
 
         {/* Bottom row */}
         <div className="grid grid-cols-2 gap-4">
-          {/* Calibration Committee */}
-          <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-[11px] font-semibold text-[#1F114C]">Calibracion de Comite</p>
-              <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">
-                {kpisQ.data?.activeCalibrations ?? 0} Pendiente{(kpisQ.data?.activeCalibrations ?? 0) !== 1 ? 's' : ''}
-              </span>
-            </div>
-            <div className="flex items-center gap-3 text-[10px] mb-2">
-              <div className="flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                <span className="text-[#585858]">{kpisQ.data?.calibrationSessions ?? 0} sesiones totales</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                <span className="text-[#585858]">{kpisQ.data?.activeCalibrations ?? 0} activas</span>
-              </div>
-            </div>
-            <p className="text-[10px] text-[#8B8B8B]">Periodo: {PERIOD}</p>
-          </div>
+          {/* Calibration Sessions List */}
+          <CalibrationSessionsList
+            sessions={sessionsQ.data ?? []}
+            isLoading={sessionsQ.isLoading}
+            onManage={(id) => setCalibrationSessionId(id)}
+            t={t.committee}
+          />
 
           {/* Auto-Plan by Quadrant */}
           <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4">
@@ -286,6 +368,17 @@ export default function NineBoxPage() {
           </div>
         </div>
       </div>
+
+      {calibrationSessionId && (
+        <CalibrationModal
+          sessionId={calibrationSessionId}
+          period={PERIOD}
+          onClose={() => {
+            setCalibrationSessionId(null);
+            kpisQ.refetch();
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -64,6 +64,7 @@
     "monitoring": "Monitoring",
     "integrations": "Integrations",
     "billing": "Billing",
+    "businessUnits": "Business Units",
     "commandCenter": "Command Center",
     "assessments": "Assessments"
   },
@@ -1538,7 +1539,8 @@
     "calendar": "Calendar",
     "today": "Today",
     "tomorrow": "Tomorrow",
-    "thisWeekLabel": "This Week"
+    "thisWeekLabel": "This Week",
+    "manageEvaluators": "Evaluators"
   },
   "offers": {
     "title": "Offer & Validation Center",
@@ -2076,5 +2078,56 @@
       "correct_not_in_options": "A correct answer references a missing option.",
       "duplicate_correct_ids": "Correct answers must be unique."
     }
+  },
+  "units": {
+    "breadcrumbParent": "Settings",
+    "title": "Business Units",
+    "selectCompany": "Select a company",
+    "selectUnit": "Select a unit",
+    "membersTitle": "Unit members",
+    "assignUser": "Assign user",
+    "member": "Member",
+    "email": "Email",
+    "actions": "Actions",
+    "remove": "Remove",
+    "removeConfirm": "Remove this user from the business unit?",
+    "noMembers": "This unit has no assigned members.",
+    "pickUser": "Pick a user to assign to this unit.",
+    "searchUser": "Search by name or email...",
+    "loadingUsers": "Loading users...",
+    "noUsers": "No users available",
+    "assign": "Assign",
+    "cancel": "Cancel",
+    "assigned": "User assigned to unit",
+    "removed": "User removed from unit"
+  },
+  "committee": {
+    "committeeTitle": "Calibration Committee",
+    "startCalibration": "Start Calibration",
+    "evaluators": "Evaluators",
+    "members": "Committee members",
+    "addEvaluator": "Add evaluator",
+    "addMember": "Add member",
+    "remove": "Remove",
+    "removeConfirm": "Remove this person?",
+    "noEvaluators": "This interview has no evaluators.",
+    "noMembers": "This committee has no members.",
+    "pickUser": "Pick a user.",
+    "searchUser": "Search by name or email...",
+    "loadingUsers": "Loading users...",
+    "noUsers": "No users available",
+    "add": "Add",
+    "cancel": "Cancel",
+    "close": "Close",
+    "added": "Person added",
+    "removed": "Person removed",
+    "sessionsTitle": "Calibration Sessions",
+    "manage": "Manage committee",
+    "newSession": "New session",
+    "noSessions": "No calibration sessions yet",
+    "membersCount": "member(s)",
+    "statusDraft": "Draft",
+    "statusActive": "Active",
+    "statusFinalized": "Finalized"
   }
 }

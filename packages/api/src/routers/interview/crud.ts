@@ -300,6 +300,54 @@ export const interviewCrudRouter = router({
     }),
 
   // 8.5 — Cancel an interview
+  // ── Evaluator (committee panel) management on an EXISTING interview ───
+  // Populates InterviewEvaluator, the anchor panelInterviewIds() reads.
+  addEvaluator: permissionProcedure('interview', 'update')
+    .input(z.object({
+      interviewId: z.string().uuid(),
+      userId: z.string().uuid(),
+      role: z.string().max(50).default('evaluator'),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      // SCOPED probe — replaces the prior org-only parent existence check. The
+      // InterviewEvaluator row is a committee-arm anchor (grants future read
+      // access), so a narrow (team-scoped) caller must NOT be able to grab an
+      // out-of-scope interview by id and self-add as evaluator. assertScoped
+      // throws NOT_FOUND unless the interview is already in the caller's scope.
+      await assertScoped('interview', input.interviewId, ctx.access, ctx.user.id, ctx.user.organizationId);
+      try {
+        return await db.$transaction(async (tx) => {
+          const user = await tx.user.findFirst({
+            where: { id: input.userId, organizationId: ctx.user.organizationId },
+            select: { id: true },
+          });
+          if (!user) throw new TRPCError({ code: 'NOT_FOUND', message: 'Usuario no encontrado' });
+          return tx.interviewEvaluator.create({
+            data: { interviewId: input.interviewId, userId: input.userId, role: input.role },
+            select: { id: true },
+          });
+        });
+      } catch (err) {
+        if (err && typeof err === 'object' && 'code' in err && (err as { code?: string }).code === 'P2002') {
+          throw new TRPCError({ code: 'CONFLICT', message: 'El evaluador ya esta asignado a esta entrevista' });
+        }
+        throw err;
+      }
+    }),
+
+  removeEvaluator: permissionProcedure('interview', 'update')
+    .input(z.object({ interviewId: z.string().uuid(), userId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      // SCOPED probe — same escalation guard as addEvaluator: a narrow caller
+      // must not manage the panel of an out-of-scope interview by id.
+      await assertScoped('interview', input.interviewId, ctx.access, ctx.user.id, ctx.user.organizationId);
+      const result = await db.interviewEvaluator.deleteMany({
+        where: { interviewId: input.interviewId, userId: input.userId },
+      });
+      if (result.count === 0) throw new TRPCError({ code: 'NOT_FOUND', message: 'Evaluador no encontrado' });
+      return { success: true };
+    }),
+
   cancel: permissionProcedure('interview', 'update')
     .input(
       z.object({

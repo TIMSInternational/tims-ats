@@ -186,8 +186,34 @@ enrolled count (benefits not in §21); `approveAdjustment` was made atomic+condi
 (incidental correctness, not sensitive-data); `data_access_logs` purge job + its
 `@@index([organizationId, createdAt])`; shared Zod unions for dataType/action/consentType.
 
-**Slice 7 pending** (own plan): new-role surfaces — hrbp unit admin, committee wiring,
-external API keys.
+**Slice 7 = two PRs (Federico's call).** 7a = membership admin; 7b = external API-key auth.
+
+**Slice 7a SHIPPED (branch feat/access-membership-admin): membership admin.**
+Plan: `docs/plans/2026-06-15-wave-2.5-slice-7a-membership-admin.md`. The admin surfaces
+that POPULATE the access anchor tables (code-only, no migration). Backend (all
+IDOR-guarded: org-verify parent + target user in a `$transaction` before write;
+`deleteMany`-scoped removes → count===0 NOT_FOUND; P2002→CONFLICT):
+- **hrbp unit-assignment** (`organization.ts`): `assignUserToUnit`/`unassignUserFromUnit`/
+  `listUnitMembers` over `UserBusinessUnit` — gated under the **`user` module** (NOT
+  `organization`: hr_admin holds user CRUD@org but only organization:read, so user-module
+  gating lets hr_admin administer without over-granting org-structure create powers).
+- **committee panel wiring**: interview `addEvaluator`/`removeEvaluator` (`interview/crud.ts`)
+  over `InterviewEvaluator` — gated `interview:update` + **`assertScoped('interview')`** so a
+  narrow caller can only manage panels already in scope; calibration `addCalibrationMember`/
+  `removeCalibrationMember`/`listCalibrations` (`ninebox.ts`) over `CalibrationMember` —
+  gated `ninebox:update`/`read` + **`requireOrgScope`** (committee membership admin is
+  org-governance; committee members can't self-promote).
+- UI: `/settings/business-units` page, interview evaluators modal, nine-box committee panel +
+  session list, shared `UserPicker`.
+**Codex 3 rounds → SHIP.** Round 1 caught 2 real anchor-write privilege escalations (a
+team-scope caller self-adding to an out-of-scope panel/committee to WIDEN its own scope →
+fixed with assertScoped/requireOrgScope); round 2 caught the gating-vs-seed mismatch
+(hr_admin couldn't actually use the feature → re-homed to user module). Tests 703→711.
+
+**Slice 7b pending** (own plan, branch feat/access-external-api): `external` role API-key
+AUTH path (the API-key CRUD already exists in `integration.ts`; greenfield = `externalProcedure`
++ requireApiKey middleware + external read endpoint for assessment results) + create/revoke
+key-management UI. Security-critical new auth boundary — final Wave 2.5 piece.
 
 **✅ WAVE 2.5 DEPLOY-ORDERING — WAVE-DATA DEPLOY NOW UNBLOCKED (slices 1–4 all merged + auto-deployed):**
 Code auto-deploys on merge (verified Jun 12: #67/#68 → prod deploys within
