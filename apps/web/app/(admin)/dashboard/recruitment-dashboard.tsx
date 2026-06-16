@@ -10,21 +10,28 @@ import { VacanciesByDimension, VacanciesByDimensionSkeleton } from './vacancies-
 import { AlertsSlaPanel } from './alerts-sla-panel';
 import { AlertsPendingPanel } from './alerts-pending-panel';
 import { AlertsRiskPanel } from './alerts-risk-panel';
+import { pickPrimaryDashboard } from './pick-dashboard';
+import { OrgCommandCenter } from './org-command-center';
 
 interface RecruitmentDashboardProps {
   roleSlugs: string[];
 }
 
-const RECRUITER_ROLES = ['super_admin', 'hr_admin', 'recruiter', 'hrbp'];
-const LEADER_ROLES = ['leader', 'committee'];
-
 export function RecruitmentDashboard({ roleSlugs }: RecruitmentDashboardProps) {
-  const isRecruiter = roleSlugs.some((r) => RECRUITER_ROLES.includes(r));
-  const isLeader = roleSlugs.some((r) => LEADER_ROLES.includes(r));
-
-  if (isRecruiter) return <RecruiterDashboard />;
-  if (isLeader) return <LeaderDashboard />;
-  return <EmployeeDashboard />;
+  const key = pickPrimaryDashboard(roleSlugs);
+  switch (key) {
+    case 'org': return <OrgCommandCenter />;
+    case 'recruiter': return <RecruiterDashboard />;
+    case 'leader': return <LeaderDashboard />;
+    case 'employee': return <EmployeeDashboard />;
+    default: {
+      // Exhaustiveness guard: if DashboardKey grows (e.g. Slice 4 'participant')
+      // without a case here, this line becomes a compile error instead of a
+      // silent fallthrough to EmployeeDashboard.
+      const _exhaustive: never = key;
+      return <EmployeeDashboard />;
+    }
+  }
 }
 
 function RecruiterDashboard() {

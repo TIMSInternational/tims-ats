@@ -135,6 +135,7 @@
     "poweredBy": "Powered by"
   },
   "common": {
+    "notDisclosed": "N/D",
     "export": "Exportar",
     "comingSoon": "proximamente",
     "loading": "Cargando...",
@@ -2144,5 +2145,27 @@
     "statusDraft": "Borrador",
     "statusActive": "Activa",
     "statusFinalized": "Finalizada"
+  },
+  "orgCommandCenter": {
+    "title": "Centro de Mando",
+    "subtitle": "Salud de la organizacion",
+    "headcount": "Headcount",
+    "activeEmployees": "colaboradores activos",
+    "openVacancies": "Vacantes Abiertas",
+    "activeOkrs": "OKRs Activos",
+    "avgProgress": "progreso promedio",
+    "enps": "eNPS",
+    "activeSurveys": "Encuestas Activas",
+    "openAlerts": "Alertas Abiertas",
+    "recruitingFunnel": "Embudo de Reclutamiento",
+    "performance": "Desempeno",
+    "coachingSessions": "Sesiones de Coaching",
+    "commitmentRate": "Cumplimiento de Compromisos",
+    "culturePulse": "Pulso de Cultura",
+    "responseRate": "Respuestas",
+    "highRisk": "Areas en Riesgo",
+    "actionPlans": "Planes de Accion",
+    "noData": "Sin datos suficientes",
+    "loadError": "No se pudieron cargar los datos"
   }
 }

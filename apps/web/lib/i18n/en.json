@@ -135,6 +135,7 @@
     "poweredBy": "Powered by"
   },
   "common": {
+    "notDisclosed": "N/D",
     "export": "Export",
     "comingSoon": "coming soon",
     "loading": "Loading...",
@@ -2144,5 +2145,27 @@
     "statusDraft": "Draft",
     "statusActive": "Active",
     "statusFinalized": "Finalized"
+  },
+  "orgCommandCenter": {
+    "title": "Command Center",
+    "subtitle": "Organization health",
+    "headcount": "Headcount",
+    "activeEmployees": "active employees",
+    "openVacancies": "Open Vacancies",
+    "activeOkrs": "Active OKRs",
+    "avgProgress": "avg progress",
+    "enps": "eNPS",
+    "activeSurveys": "Active Surveys",
+    "openAlerts": "Open Alerts",
+    "recruitingFunnel": "Recruiting Funnel",
+    "performance": "Performance",
+    "coachingSessions": "Coaching Sessions",
+    "commitmentRate": "Commitment Completion",
+    "culturePulse": "Culture Pulse",
+    "responseRate": "Responses",
+    "highRisk": "At-Risk Areas",
+    "actionPlans": "Action Plans",
+    "noData": "Not enough data",
+    "loadError": "Couldn't load data"
   }
 }
