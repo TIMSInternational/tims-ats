@@ -4,56 +4,8 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { createSupabaseBrowserClient } from '@tims/auth/client';
 import { useI18n } from '../../lib/i18n';
-import { moduleForPath, usePermissions } from '../../lib/permissions';
-
-function useNavSections() {
-  const { t } = useI18n();
-  const rawSections = [
-    { label: null, items: [
-      { href: '/dashboard', label: t.sidebar.commandCenter, icon: 'grid' },
-    ]},
-    { label: t.sidebar.recruitment, items: [
-      { href: '/recruitment/pipeline', label: t.sidebar.pipeline, icon: 'kanban' },
-      { href: '/recruitment/vacancies', label: t.sidebar.vacancies, icon: 'briefcase' },
-      { href: '/recruitment/candidates', label: t.sidebar.candidates, icon: 'user' },
-      { href: '/recruitment/interviews', label: t.sidebar.interviews, icon: 'video' },
-      { href: '/recruitment/assessments', label: t.sidebar.assessments, icon: 'clipboard' },
-      { href: '/recruitment/offers', label: t.sidebar.offers, icon: 'clipboard' },
-      { href: '/recruitment/talent-pools', label: t.sidebar.talentPool, icon: 'users' },
-      { href: '/recruitment/analytics', label: t.sidebar.analytics, icon: 'chart' },
-    ]},
-    { label: t.sidebar.people, items: [
-      { href: '/people/onboarding', label: t.sidebar.onboarding, icon: 'rocket' },
-      { href: '/people/performance', label: t.sidebar.performance, icon: 'target' },
-      { href: '/learning', label: t.sidebar.training, icon: 'book' },
-    ]},
-    { label: t.sidebar.talent, items: [
-      { href: '/talent/nine-box', label: t.sidebar.nineBox, icon: 'ninebox' },
-      { href: '/talent/succession', label: t.sidebar.succession, icon: 'succession' },
-      { href: '/talent/team-intelligence', label: t.sidebar.teamIntel, icon: 'team' },
-    ]},
-    { label: t.sidebar.organization, items: [
-      { href: '/engagement/climate', label: t.sidebar.climate, icon: 'heart' },
-      { href: '/engagement/dei', label: t.sidebar.dei, icon: 'dei' },
-      { href: '/compensation', label: t.sidebar.compensation, icon: 'dollar' },
-      { href: '/monitoring', label: t.sidebar.monitoring, icon: 'monitor' },
-    ]},
-    { label: null, items: [
-      { href: '/settings/business-units', label: t.sidebar.businessUnits, icon: 'team' },
-      { href: '/settings/billing', label: t.sidebar.billing, icon: 'dollar' },
-      { href: '/settings/integrations', label: t.sidebar.integrations, icon: 'settings' },
-    ]},
-  ];
-
-  // Annotate each item with its module, derived from the shared PATH_MODULE map.
-  return rawSections.map((section) => ({
-    ...section,
-    items: section.items.map((item) => ({
-      ...item,
-      module: moduleForPath(item.href) ?? null,
-    })),
-  }));
-}
+import { usePermissions } from '../../lib/permissions';
+import { manifestFor, computeVisibleSections, resolveLabel } from '../../lib/nav/manifest';
 
 function Icon({ name, className }: { name: string; className: string }) {
   const c = className;
@@ -105,20 +57,8 @@ export function Sidebar({ userInitials, displayName, expanded, onToggle, ready =
   const pathname = usePathname();
   const router = useRouter();
   const { t } = useI18n();
-  const { can, roleLabel, isLoading } = usePermissions();
-  const NAV_SECTIONS = useNavSections();
-
-  // Filter sections: while loading, show only null-module items (no flash-then-vanish).
-  // After load, show items where module === null OR can(module, 'read').
-  // A section renders only if it has at least one visible item.
-  const VISIBLE_SECTIONS = NAV_SECTIONS.map((section) => ({
-    ...section,
-    items: section.items.filter((item) => {
-      if (item.module === null) return true;
-      if (isLoading) return false;
-      return can(item.module, 'read');
-    }),
-  })).filter((section) => section.items.length > 0);
+  const { can, roles, roleLabel, isLoading } = usePermissions();
+  const VISIBLE_SECTIONS = computeVisibleSections(manifestFor(roles).sections, can, isLoading);
 
   return (
     <aside
@@ -148,9 +88,9 @@ export function Sidebar({ userInitials, displayName, expanded, onToggle, ready =
             {si > 0 && (
               <div className={`border-t border-white/10 my-2.5 ${expanded ? 'mx-4' : 'mx-4'}`} />
             )}
-            {expanded && section.label && (
+            {expanded && section.labelKey && (
               <p className="text-[10px] uppercase tracking-wider text-white/30 font-semibold px-5 mb-1.5 whitespace-nowrap">
-                {section.label}
+                {resolveLabel(t, section.labelKey)}
               </p>
             )}
             <div className="flex flex-col gap-0.5">
@@ -160,7 +100,7 @@ export function Sidebar({ userInitials, displayName, expanded, onToggle, ready =
                   <Link
                     key={item.href}
                     href={item.href}
-                    title={!expanded ? item.label : undefined}
+                    title={!expanded ? resolveLabel(t, item.labelKey) : undefined}
                     className={`group flex items-center gap-3 mx-2 rounded-lg transition-colors h-10 ${
                       expanded ? 'px-3' : 'justify-center'
                     } ${
@@ -175,7 +115,7 @@ export function Sidebar({ userInitials, displayName, expanded, onToggle, ready =
                     />
                     {expanded && (
                       <span className={`text-[13px] whitespace-nowrap ${isActive ? 'font-medium' : ''}`}>
-                        {item.label}
+                        {resolveLabel(t, item.labelKey)}
                       </span>
                     )}
                   </Link>
@@ -238,7 +178,7 @@ export function Sidebar({ userInitials, displayName, expanded, onToggle, ready =
                   router.push('/login');
                   router.refresh();
                 }}
-                title="Cerrar sesion"
+                title={t.nav.logout}
                 className="w-8 h-8 rounded-md flex items-center justify-center text-white/40 hover:text-white/70 hover:bg-white/[0.07] transition-colors shrink-0"
               >
                 <svg className="w-[16px] h-[16px]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">

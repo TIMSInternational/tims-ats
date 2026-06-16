@@ -6,6 +6,9 @@ const root = resolve(__dirname, '../..');
 const read = (p: string) => readFileSync(resolve(root, p), 'utf8');
 
 const PERMISSIONS = 'apps/web/lib/permissions.tsx';
+// PATH_MODULE / moduleForPath were extracted into a pure, React-free module
+// (re-exported from permissions.tsx). The route-map tripwire reads from here.
+const NAV_ROUTES = 'apps/web/lib/nav/routes.ts';
 const ADMIN_SHELL = 'apps/web/app/(admin)/admin-shell.tsx';
 const ES = 'apps/web/lib/i18n/es.json';
 const EN = 'apps/web/lib/i18n/en.json';
@@ -23,12 +26,14 @@ describe('slice 5 — permissions provider (static tripwires)', () => {
     expect(src).toContain('platform_owner');
   });
 
-  it('permissions.tsx exports PATH_MODULE with >= 20 entries', () => {
-    const src = read(PERMISSIONS);
-    expect(src).toContain('PATH_MODULE');
+  it('PATH_MODULE is defined (nav/routes) with >= 20 entries and re-exported from permissions.tsx', () => {
+    const navSrc = read(NAV_ROUTES);
+    expect(navSrc).toContain('PATH_MODULE');
     // count "'/...': " style map entries
-    const entries = src.match(/'\/[a-z-]/g) ?? [];
+    const entries = navSrc.match(/'\/[a-z-]/g) ?? [];
     expect(entries.length).toBeGreaterThanOrEqual(20);
+    // permissions.tsx still surfaces it for existing importers
+    expect(read(PERMISSIONS)).toContain('PATH_MODULE');
   });
 
   it('permissions.tsx exposes RouteAccessGuard + AccessDenied + usePermissions/useCan', () => {
@@ -108,13 +113,18 @@ describe('slice 5 — i18n keys (both locales)', () => {
 
 const SIDEBAR = 'apps/web/app/(admin)/sidebar.tsx';
 
-describe('role-aware sidebar (task 2)', () => {
+describe('role-aware sidebar (task 3 — manifest-driven)', () => {
   const src = () => read(SIDEBAR);
-  it('derives item modules from the shared map (no duplicated mapping)', () => {
-    expect(src()).toMatch(/moduleForPath|PATH_MODULE/);
+  it('derives nav from the role manifest (no duplicated section/module mapping)', () => {
+    // Task 3 deleted the inline useNavSections()/moduleForPath wiring; the
+    // manifest now carries modules. The sidebar renders from manifestFor(roles).
+    expect(src()).toMatch(/manifestFor\(roles\)/);
+    expect(src()).not.toMatch(/useNavSections/);
   });
-  it('filters items through can() and hides empty sections', () => {
-    expect(src()).toMatch(/can\(/);
+  it('filters items through can() via computeVisibleSections and hides empty sections', () => {
+    // can()-based pruning + empty-section drop moved into the pure manifest
+    // helper (covered behaviourally by tests/nav/manifest.test.ts).
+    expect(src()).toMatch(/computeVisibleSections\(.*\bcan\b/);
   });
   it('renders the real role label with t.nav.admin only as fallback', () => {
     expect(src()).toMatch(/roleLabel\s*\?\?\s*t\.nav\.admin|roleLabel \|\| t\.nav\.admin/);

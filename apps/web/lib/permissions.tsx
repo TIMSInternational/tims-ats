@@ -4,46 +4,14 @@ import { createContext, useContext, useMemo } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { trpc } from './trpc';
 import { useI18n } from './i18n';
+import { moduleForPath } from './nav/routes';
 
-// ---------------------------------------------------------------------------
-// Route → module map. A single source of truth shared by the shell-level
-// RouteAccessGuard AND the sidebar filter (Task 2). Prefix match, LONGEST-FIRST.
-// `null` = always allowed (no module gate). Matching mirrors the API's module
-// names so the UI gate lines up with build.ts decisions.
-//
-// IMPORTANT: this map is UX only. The tRPC API is the real enforcement
-// boundary — never weaken a server check on the strength of a UI gate. Any
-// route not present here falls through to ALLOWED (see moduleForPath), with the
-// API still enforcing access on every call it makes.
-// ---------------------------------------------------------------------------
-export const PATH_MODULE: Record<string, string | null> = {
-  '/dashboard': null,
-  '/recruitment/pipeline': 'pipeline',
-  '/recruitment/vacancies': 'vacancy',
-  '/recruitment/candidates': 'candidate',
-  '/recruitment/interviews': 'interview',
-  '/recruitment/assessments': 'assessment',
-  '/recruitment/offers': 'offer',
-  '/recruitment/talent-pools': 'candidate',
-  '/recruitment/analytics': 'vacancy',
-  '/people/onboarding': 'onboarding',
-  '/people/performance': 'performance',
-  '/learning': 'learning',
-  '/talent/nine-box': 'ninebox',
-  '/talent/succession': 'succession',
-  '/talent/team-intelligence': 'team_intel',
-  '/engagement/climate': 'engagement',
-  '/engagement/dei': 'dei',
-  '/compensation': 'compensation',
-  '/monitoring': 'monitoring',
-  '/settings/billing': 'billing',
-  '/settings/integrations': 'integration',
-  '/settings/business-units': 'user',
-  '/settings': null,
-  '/platform': null, // server-gated in its own layout
-  '/mfa': null,
-  '/profile': null,
-};
+// PATH_MODULE (route → module map) and moduleForPath (longest-prefix matcher)
+// now live in the pure, React-free `./nav/routes` module so node tests and the
+// sidebar manifest can import them without dragging React/tRPC in. Re-exported
+// here so existing importers of `lib/permissions` keep working unchanged.
+// (moduleForPath is also imported above for RouteAccessGuard's local use.)
+export { PATH_MODULE, moduleForPath } from './nav/routes';
 
 // Role-label precedence: widest first. roleLabel = the top-ranked role the user
 // holds, resolved through i18n roles.*.
@@ -59,18 +27,6 @@ const ROLE_PRECEDENCE = [
 ] as const;
 
 type RoleSlug = (typeof ROLE_PRECEDENCE)[number];
-
-// Longest-prefix match against PATH_MODULE. Returns the module (or null) for a
-// pathname, or undefined when no entry matches (→ treated as allowed).
-export function moduleForPath(pathname: string): string | null | undefined {
-  let best: { key: string; module: string | null } | undefined;
-  for (const [key, module] of Object.entries(PATH_MODULE)) {
-    if (pathname === key || pathname.startsWith(`${key}/`)) {
-      if (!best || key.length > best.key.length) best = { key, module };
-    }
-  }
-  return best?.module;
-}
 
 interface PermissionsContextValue {
   /** True if the user may read/act on `module`. UX gate only. */
