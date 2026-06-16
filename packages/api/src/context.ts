@@ -18,6 +18,11 @@ export interface TRPCContext {
   // email. Present whenever a Supabase session exists (staff OR candidate); null
   // only for genuinely anonymous requests.
   supabaseAuth: { email: string; userId: string } | null;
+  // The API-key-authenticated external principal, INDEPENDENT of `user`/`supabaseAuth`.
+  // Populated by the `requireApiKey` middleware (NOT by createContext) for the
+  // `external` integration surface. Optional so existing context construction in
+  // route.ts (which never sets it) stays valid; null/absent for all other requests.
+  externalAuth?: { apiKeyId: string; organizationId: string; scopes: string[] } | null;
   headers: Headers;
 }
 

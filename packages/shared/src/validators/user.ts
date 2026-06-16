@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { SYSTEM_ROLES } from '../types/roles';
+import { ASSIGNABLE_STAFF_ROLES } from '../types/roles';
 
 export const createUserSchema = z.object({
   email: z.string().email(),
@@ -9,7 +9,7 @@ export const createUserSchema = z.object({
   phone: z.string().max(20).optional(),
   companyId: z.string().uuid().optional(),
   businessUnitId: z.string().uuid().optional(),
-  roleSlug: z.enum(SYSTEM_ROLES).default('employee'),
+  roleSlug: z.enum(ASSIGNABLE_STAFF_ROLES).default('employee'),
   locale: z.enum(['es', 'en']).default('es'),
 });
 
@@ -32,7 +32,7 @@ export const updateProfileSchema = z.object({
 
 export const assignRoleSchema = z.object({
   userId: z.string().uuid(),
-  roleSlug: z.enum(SYSTEM_ROLES),
+  roleSlug: z.enum(ASSIGNABLE_STAFF_ROLES),
   companyScope: z.string().uuid().optional(),
   unitScope: z.string().uuid().optional(),
 });

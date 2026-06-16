@@ -45,6 +45,10 @@ const HRBP = 'hrbp';
 const RECRUITER = 'recruiter';
 const LEADER = 'leader';
 const EMPLOYEE = 'employee';
+// external = API-key integrations (Wave 2.5 slice 7b). On assessmentResult ONLY:
+// the analysis-engine consumer reads the full normed psychometric profile (Federico
+// Jun 15). Deliberately exceeds human roles on raw fields — see plan + memory.
+const EXTERNAL = 'external';
 
 export const CLASSIFICATION: Readonly<Record<string, EntityClassification>> = {
   // Compensation/Salary → restricted. FULL+AUDIT super/hr; READ+AUDIT(assigned) hrbp;
@@ -77,15 +81,18 @@ export const CLASSIFICATION: Readonly<Record<string, EntityClassification>> = {
   //   raw (breakdown/rawScore) = restricted, super_admin ONLY (matrix: Psychometric Raw).
   //   scores (normalized/percentile/interpretation) = confidential
   //     (super/hr READ+AUDIT; hrbp/recruiter READ+AUDIT assigned; employee OWN summary).
+  //   external (API integrations) reads the full profile via the external API surface
+  //     (slice 7b) — analysis-engine consumer is second-most-privileged reader, per
+  //     Federico Jun 15.
   assessmentResult: {
     dataClass: 'restricted',
     fields: {
-      breakdown: { dataClass: 'restricted', roles: [SUPER] },
-      rawScore: { dataClass: 'restricted', roles: [SUPER] },
-      normalizedScore: { dataClass: 'confidential', roles: [SUPER, HR, HRBP, RECRUITER, EMPLOYEE] },
-      percentile: { dataClass: 'confidential', roles: [SUPER, HR, HRBP, RECRUITER, EMPLOYEE] },
-      interpretation: { dataClass: 'confidential', roles: [SUPER, HR, HRBP, RECRUITER, EMPLOYEE] },
-      modelVersion: { dataClass: 'internal', roles: [SUPER, HR] },
+      breakdown: { dataClass: 'restricted', roles: [SUPER, EXTERNAL] },
+      rawScore: { dataClass: 'restricted', roles: [SUPER, EXTERNAL] },
+      normalizedScore: { dataClass: 'confidential', roles: [SUPER, HR, HRBP, RECRUITER, EMPLOYEE, EXTERNAL] },
+      percentile: { dataClass: 'confidential', roles: [SUPER, HR, HRBP, RECRUITER, EMPLOYEE, EXTERNAL] },
+      interpretation: { dataClass: 'confidential', roles: [SUPER, HR, HRBP, RECRUITER, EMPLOYEE, EXTERNAL] },
+      modelVersion: { dataClass: 'internal', roles: [SUPER, HR, EXTERNAL] },
     },
   },
 

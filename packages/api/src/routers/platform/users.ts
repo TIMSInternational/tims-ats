@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
-import { getAppUrl } from '@tims/shared';
+import { getAppUrl, ASSIGNABLE_STAFF_ROLES } from '@tims/shared';
 import { router } from '../../trpc';
 import { db } from '@tims/db';
 import type { Prisma } from '@tims/db';
@@ -298,6 +298,14 @@ export const usersRouter = router({
       roleSlug: z.string().max(50),
     }))
     .mutation(async ({ ctx, input }) => {
+      // Defense-in-depth: non-User principals (external, candidate) must never be
+      // assigned to a staff User row even if their Role rows exist in the org seed.
+      // The Zod schemas in user.ts already block the staff-facing paths; this guard
+      // closes the platform-admin path which accepts a raw string roleSlug.
+      if (!ASSIGNABLE_STAFF_ROLES.includes(input.roleSlug as never)) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Ese rol no puede asignarse a un usuario' });
+      }
+
       const role = await db.role.findFirst({
         where: { organizationId: input.organizationId, slug: input.roleSlug },
         select: { id: true, slug: true },

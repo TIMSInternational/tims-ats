@@ -27,6 +27,7 @@ import { portalRouter } from './routers/portal';
 import { notificationRouter } from './routers/notification';
 import { platformRouter } from './routers/platform';
 import { candidatePortalRouter } from './routers/candidate-portal';
+import { externalRouter } from './routers/external';
 
 export { createContext } from './context';
 export type { TRPCContext } from './context';
@@ -72,6 +73,7 @@ export const appRouter = router({
   featureFlag: featureFlagRouter,
   portal: portalRouter,
   candidatePortal: candidatePortalRouter,
+  external: externalRouter,
   notification: notificationRouter,
   platform: platformRouter,
 });

@@ -14,6 +14,33 @@ export const SYSTEM_ROLES = [
 
 export type SystemRole = typeof SYSTEM_ROLES[number];
 
+// Roles a human STAFF User may hold. Excludes non-User principals:
+//   - `external`: API-key integrations (Wave 2.5 slice 7b). It carries the
+//     assessmentResult psychometric field grants, so a staff User assigned it would
+//     read raw scores through staff endpoints, bypassing the API-key boundary.
+//   - `candidate`: portal magic-link logins authenticate via Supabase with NO staff
+//     User row (see route.ts) — never a staff role.
+// These roles still exist in SYSTEM_ROLES (seeded as Role rows so buildAccessForUser
+// can resolve the API-key principal's grants) but must NEVER be assigned to a User.
+export const ASSIGNABLE_STAFF_ROLES = [
+  'super_admin', 'hr_admin', 'hrbp', 'recruiter', 'leader', 'committee', 'employee',
+] as const;
+export type AssignableStaffRole = (typeof ASSIGNABLE_STAFF_ROLES)[number];
+
+const ASSIGNABLE_STAFF_ROLE_SET: ReadonlySet<string> = new Set(ASSIGNABLE_STAFF_ROLES);
+
+/**
+ * Drop non-staff principal roles (`external`, `candidate`) from a staff User's role
+ * slugs at SESSION CONSTRUCTION. Defense in depth: even if a stale/drifted UserRole
+ * row exists for a non-User principal, the slug never reaches ctx.user.roles, so it
+ * can never grant staff-side access (e.g. external's assessmentResult field grants).
+ * The API-key path builds its own roles:['external'] principal directly and does NOT
+ * go through this filter.
+ */
+export function filterStaffRoleSlugs(slugs: string[]): string[] {
+  return slugs.filter((s) => ASSIGNABLE_STAFF_ROLE_SET.has(s));
+}
+
 export interface RoleDefinition {
   slug: SystemRole;
   name: string;

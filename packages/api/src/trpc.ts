@@ -4,6 +4,8 @@ import type { Context } from './context';
 import { db, runWithTenant } from '@tims/db';
 import { checkRateLimit, getRateLimitCategory } from './middleware/rate-limit';
 import { buildAccessForUser, createAnchorLoader, type AccessContext } from './access';
+import { resolveApiKeyPrincipal, buildExternalAccessUser } from './access/external-auth';
+import { touchApiKeyLastUsed } from './repositories/external-auth.repository';
 
 const t = initTRPC.context<Context>().create({
   transformer: superjson,
@@ -183,6 +185,65 @@ export const auditedProcedure = protectedProcedure.use(withAudit);
 // scope is per-call (resolved from input), so tenant RLS is applied inside the
 // service via runWithTenant, not by withTenantContext.
 export const candidateProcedure = publicProcedure.use(isCandidate);
+
+// ── External API-key surface (Wave 2.5 slice 7b) ──────────────────────────────
+// API-key-authenticated, results-only read surface for the `external` role. There
+// is NO staff `user` and NO Supabase session — the KEY is the principal. Built from
+// publicProcedure (rate-limited), mirroring candidateProcedure. requireApiKey both
+// authenticates AND establishes tenant context (the org is known from the key at
+// auth time, like staff withTenantContext), so downstream repos use tenantDb under
+// the key's org RLS GUC only.
+const requireApiKey = t.middleware(async ({ ctx, next, path, type }) => {
+  const principal = await resolveApiKeyPrincipal(ctx.headers, new Date());
+  if (!principal) {
+    throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Clave de API invalida o expirada' });
+  }
+  // Per-KEY rate limit. publicProcedure's withRateLimit runs BEFORE this middleware
+  // and keys on source IP (no apiKeyId yet); a paid integration surface needs per-key
+  // quotas too, so we add a second limit keyed on the resolved key id (defense in
+  // depth — IP flood protection AND per-key throughput).
+  await checkRateLimit(`apikey:${principal.apiKeyId}`, getRateLimitCategory(path, type as 'query' | 'mutation'));
+  // Fire-and-forget: must not block or change the timing of the request.
+  touchApiKeyLastUsed(principal.apiKeyId);
+  return runWithTenant(principal.organizationId, () =>
+    next({
+      ctx: {
+        externalAuth: {
+          apiKeyId: principal.apiKeyId,
+          organizationId: principal.organizationId,
+          scopes: principal.scopes,
+        },
+      },
+    }),
+  );
+});
+
+export const externalProcedure = publicProcedure.use(requireApiKey);
+
+// Permission gate for external endpoints. Resolves a scoped ctx.access through the
+// SAME buildAccessForUser kernel as staff (the `external` role's seeded grants), and
+// honors ApiKey.scopes[] as a NARROWING filter: a non-empty scopes[] that omits the
+// endpoint's requiredScope denies even though the role grant would allow it. anchors
+// is null — external is org-scoped only (scopeWhereFor early-returns {} at org scope).
+function requireExternalPermission(module: string, action: string, requiredScope?: string) {
+  return t.middleware(async ({ ctx, next }) => {
+    const ext = ctx.externalAuth;
+    if (!ext) throw new TRPCError({ code: 'UNAUTHORIZED' });
+    if (requiredScope && ext.scopes.length > 0 && !ext.scopes.includes(requiredScope)) {
+      throw new TRPCError({ code: 'FORBIDDEN', message: 'La clave de API no incluye este alcance' });
+    }
+    const access = await buildAccessForUser(buildExternalAccessUser(ext), module, action);
+    if (!access.allowed) {
+      throw new TRPCError({ code: 'FORBIDDEN', message: `Sin permiso para ${action} en ${module}` });
+    }
+    const accessContext: AccessContext = { ...access, anchors: null };
+    return next({ ctx: { externalAuth: ext, access: accessContext } });
+  });
+}
+
+export function externalPermissionProcedure(module: string, action: string, requiredScope?: string) {
+  return externalProcedure.use(requireExternalPermission(module, action, requiredScope));
+}
 
 // Helper to create permission-gated procedures
 export function permissionProcedure(module: string, action: string) {

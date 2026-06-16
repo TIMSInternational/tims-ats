@@ -2,7 +2,7 @@ import { fetchRequestHandler } from '@trpc/server/adapters/fetch';
 import { appRouter, verifyImpersonationToken, readImpersonationCookie } from '@tims/api';
 import { createSupabaseServerClient } from '@tims/auth/server';
 import { db } from '@tims/db';
-import { logger } from '@tims/shared';
+import { logger, filterStaffRoleSlugs } from '@tims/shared';
 import * as Sentry from '@sentry/nextjs';
 
 const handler = (req: Request) =>
@@ -120,7 +120,7 @@ const handler = (req: Request) =>
         organizationId: appUser.organizationId || '',
         roles: appUser.isPlatformOwner
           ? ['platform_owner']
-          : appUser.userRoles.map((ur) => ur.role.slug),
+          : filterStaffRoleSlugs(appUser.userRoles.map((ur) => ur.role.slug)),
         isPlatformOwner: appUser.isPlatformOwner,
       };
 
@@ -146,7 +146,7 @@ const handler = (req: Request) =>
                 supabaseUserId: target.supabaseUserId,
                 email: target.email,
                 organizationId: target.organizationId,
-                roles: target.userRoles.map((ur) => ur.role.slug),
+                roles: filterStaffRoleSlugs(target.userRoles.map((ur) => ur.role.slug)),
                 isPlatformOwner: false,
                 impersonatorId: appUser.id,
               },

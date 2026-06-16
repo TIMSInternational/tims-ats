@@ -5,7 +5,8 @@ import { useI18n } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
 import { IntegrationKpis } from './integration-kpis';
 import { ActiveConnectors, WebhooksConfig } from './integration-connectors';
-import { ErrorLog, SyncActivity, ApiKeysPanel } from './integration-right-column';
+import { ErrorLog, SyncActivity } from './integration-right-column';
+import { ApiKeyManager } from './api-keys-manager';
 import { AuditTrail, SystemHealth } from './integration-bottom';
 
 export default function IntegrationsPage() {
@@ -46,7 +47,7 @@ export default function IntegrationsPage() {
           <div className="w-full md:w-[45%] flex flex-col gap-4">
             <ErrorLog />
             <SyncActivity />
-            <ApiKeysPanel />
+            <ApiKeyManager />
           </div>
         </div>
 

@@ -2,7 +2,8 @@ import { z } from 'zod';
 import { router, protectedProcedure, permissionProcedure } from '../trpc';
 import { tenantDb as db } from '@tims/db';
 import type { Prisma } from '@tims/db';
-import { randomBytes, createHash } from 'crypto';
+import { randomBytes } from 'crypto';
+import { hashApiKey } from '../lib/api-key';
 
 // Webhook fields safe to return to clients — deliberately EXCLUDES `secret`
 // (the HMAC signing secret) so it is never exposed via read/create/update.
@@ -225,13 +226,13 @@ export const integrationRouter = router({
       z.object({
         name: z.string().min(1).max(100),
         environment: z.enum(['production', 'staging', 'development']).default('production'),
-        scopes: z.array(z.string().max(100)),
+        scopes: z.array(z.string().max(100)).max(20),
         expiresAt: z.date().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
       const rawKey = `tims_${input.environment.slice(0, 4)}_${randomBytes(32).toString('hex')}`;
-      const keyHash = createHash('sha256').update(rawKey).digest('hex');
+      const keyHash = hashApiKey(rawKey);
       const keyPrefix = rawKey.slice(0, 12);
 
       await db.apiKey.create({
