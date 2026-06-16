@@ -1,15 +1,17 @@
+// Permission modules, grouped by ATS lifecycle phase (sourcing → interviews → post-offer → talent → culture → admin).
+// Must stay a superset of every module used in seed-access-matrix.ts (enforced by tests/access/permission-vocabulary.test.ts).
 export const MODULES = [
-  'vacancy', 'pipeline', 'assessment', 'interview',
-  'offer', 'candidate', 'onboarding', 'performance',
-  'coaching', 'evaluation', 'commitment', 'ninebox',
-  'talent', 'team', 'engagement', 'lnd',
-  'compensation', 'monitoring', 'dei', 'organization',
-  'billing', 'integration', 'audit', 'user',
+  'vacancy', 'pipeline', 'candidate', 'assessment',
+  'interview', 'offer', 'onboarding', 'performance',
+  'learning', 'ninebox', 'succession', 'team_intel',
+  'engagement', 'dei', 'compensation', 'monitoring',
+  'organization', 'user', 'notification', 'audit',
+  'feature_flags', 'billing', 'integration',
 ] as const;
 
 export type Module = typeof MODULES[number];
 
-export const ACTIONS = ['create', 'read', 'update', 'delete', 'approve', 'export'] as const;
+export const ACTIONS = ['create', 'read', 'update', 'delete', 'approve', 'export', 'publish'] as const;
 export type Action = typeof ACTIONS[number];
 
 export const SCOPES = ['own', 'team', 'unit', 'company', 'organization'] as const;

@@ -1,4 +1,4 @@
-import type { Module, Action, Scope } from './permissions';
+import type { Scope } from './permissions';
 
 export const SYSTEM_ROLES = [
   'super_admin',
@@ -123,86 +123,4 @@ export const ROLE_DEFINITIONS: Record<SystemRole, RoleDefinition> = {
     defaultScope: 'own',
     mfaRequired: false,
   },
-};
-
-// Default permissions per role — maps role to allowed module:action:scope triples
-export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, Array<{ module: Module; action: Action; scope: Scope }>> = {
-  super_admin: [], // Gets ALL permissions dynamically
-  hr_admin: [],    // Gets all HR module permissions dynamically
-  hrbp: [
-    { module: 'vacancy', action: 'read', scope: 'unit' },
-    { module: 'vacancy', action: 'create', scope: 'unit' },
-    { module: 'vacancy', action: 'update', scope: 'unit' },
-    { module: 'pipeline', action: 'read', scope: 'unit' },
-    { module: 'pipeline', action: 'update', scope: 'unit' },
-    { module: 'candidate', action: 'read', scope: 'unit' },
-    { module: 'candidate', action: 'update', scope: 'unit' },
-    { module: 'assessment', action: 'read', scope: 'unit' },
-    { module: 'interview', action: 'read', scope: 'unit' },
-    { module: 'interview', action: 'create', scope: 'unit' },
-    { module: 'offer', action: 'read', scope: 'unit' },
-    { module: 'offer', action: 'approve', scope: 'unit' },
-    { module: 'onboarding', action: 'read', scope: 'unit' },
-    { module: 'onboarding', action: 'update', scope: 'unit' },
-    { module: 'performance', action: 'read', scope: 'unit' },
-    { module: 'performance', action: 'update', scope: 'unit' },
-    { module: 'talent', action: 'read', scope: 'unit' },
-    { module: 'engagement', action: 'read', scope: 'unit' },
-    { module: 'monitoring', action: 'read', scope: 'unit' },
-  ],
-  recruiter: [
-    { module: 'vacancy', action: 'create', scope: 'organization' },
-    { module: 'vacancy', action: 'read', scope: 'organization' },
-    { module: 'vacancy', action: 'update', scope: 'organization' },
-    { module: 'pipeline', action: 'read', scope: 'organization' },
-    { module: 'pipeline', action: 'update', scope: 'organization' },
-    { module: 'candidate', action: 'create', scope: 'organization' },
-    { module: 'candidate', action: 'read', scope: 'organization' },
-    { module: 'candidate', action: 'update', scope: 'organization' },
-    { module: 'assessment', action: 'read', scope: 'organization' },
-    { module: 'assessment', action: 'create', scope: 'organization' },
-    { module: 'interview', action: 'create', scope: 'organization' },
-    { module: 'interview', action: 'read', scope: 'organization' },
-    { module: 'interview', action: 'update', scope: 'organization' },
-    { module: 'offer', action: 'create', scope: 'organization' },
-    { module: 'offer', action: 'read', scope: 'organization' },
-  ],
-  leader: [
-    { module: 'vacancy', action: 'read', scope: 'team' },
-    { module: 'vacancy', action: 'approve', scope: 'team' },
-    { module: 'pipeline', action: 'read', scope: 'team' },
-    { module: 'candidate', action: 'read', scope: 'team' },
-    { module: 'interview', action: 'read', scope: 'team' },
-    { module: 'interview', action: 'create', scope: 'team' },
-    { module: 'offer', action: 'approve', scope: 'team' },
-    { module: 'onboarding', action: 'read', scope: 'team' },
-    { module: 'onboarding', action: 'update', scope: 'team' },
-    { module: 'performance', action: 'read', scope: 'team' },
-    { module: 'performance', action: 'update', scope: 'team' },
-    { module: 'coaching', action: 'read', scope: 'team' },
-    { module: 'coaching', action: 'create', scope: 'team' },
-    { module: 'team', action: 'read', scope: 'team' },
-  ],
-  committee: [
-    { module: 'evaluation', action: 'read', scope: 'own' },
-    { module: 'evaluation', action: 'update', scope: 'own' },
-    { module: 'ninebox', action: 'read', scope: 'own' },
-    { module: 'talent', action: 'read', scope: 'own' },
-  ],
-  employee: [
-    { module: 'performance', action: 'read', scope: 'own' },
-    { module: 'coaching', action: 'read', scope: 'own' },
-    { module: 'lnd', action: 'read', scope: 'own' },
-    { module: 'evaluation', action: 'read', scope: 'own' },
-    { module: 'commitment', action: 'read', scope: 'own' },
-    { module: 'commitment', action: 'update', scope: 'own' },
-    { module: 'engagement', action: 'read', scope: 'own' },
-    { module: 'compensation', action: 'read', scope: 'own' },
-  ],
-  candidate: [
-    { module: 'candidate', action: 'read', scope: 'own' },
-    { module: 'candidate', action: 'update', scope: 'own' },
-    { module: 'assessment', action: 'read', scope: 'own' },
-  ],
-  external: [],
 };

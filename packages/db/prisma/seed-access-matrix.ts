@@ -1,0 +1,132 @@
+/**
+ * packages/db/prisma/seed-access-matrix.ts
+ *
+ * PURE DATA — the single source of truth for every role's grants.
+ * No side effects (no PrismaClient, no main()). Imported by the seed runner
+ * (seed-access.ts) AND by tests. Keep Scope in sync with SCOPE_LADDER in
+ * packages/api/src/access/types.ts.
+ */
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+// keep in sync with SCOPE_LADDER in packages/api/src/access/types.ts (db→api import would invert dependency direction)
+export type Scope = 'own' | 'team' | 'unit' | 'company' | 'organization';
+export type Entry = { module: string; actions: string[]; scope: Scope };
+export type Triple = { module: string; action: string; scope: Scope };
+
+// ---------------------------------------------------------------------------
+// MATRIX — single source of truth for every role's grants in this system.
+//
+// hr_admin INTENTIONAL changes vs the old code allowlist (product-confirmed Jun 11):
+//   loses audit + feature_flags entirely; organization becomes read-only.
+//
+// external: limited API surface for integrations.
+//
+// candidate: [] — reconciliation strips any stray candidate grants;
+//   candidates use candidateProcedure, never staff RBAC.
+// ---------------------------------------------------------------------------
+export const MATRIX: Record<string, Entry[]> = {
+  super_admin: [
+    ...[
+      'vacancy', 'pipeline', 'candidate', 'assessment', 'interview', 'offer',
+      'onboarding', 'performance', 'learning', 'ninebox', 'succession', 'team_intel',
+      'engagement', 'dei', 'compensation', 'monitoring', 'organization', 'user',
+      'notification', 'audit', 'feature_flags', 'billing', 'integration',
+    ].map((m) => ({ module: m, actions: ['read', 'create', 'update', 'delete'], scope: 'organization' as Scope })),
+    { module: 'vacancy',      actions: ['approve', 'publish'], scope: 'organization' },
+    { module: 'offer',        actions: ['approve'],            scope: 'organization' },
+    { module: 'compensation', actions: ['approve'],            scope: 'organization' },
+    { module: 'audit',        actions: ['export'],             scope: 'organization' },
+    { module: 'dei',          actions: ['export'],             scope: 'organization' },
+  ],
+
+  hr_admin: [
+    ...[
+      'vacancy', 'pipeline', 'candidate', 'assessment', 'interview', 'offer',
+      'onboarding', 'performance', 'learning', 'ninebox', 'succession', 'team_intel',
+      'engagement', 'compensation', 'user', 'notification',
+    ].map((m) => ({ module: m, actions: ['read', 'create', 'update', 'delete'], scope: 'organization' as Scope })),
+    { module: 'vacancy',      actions: ['approve', 'publish'],         scope: 'organization' },
+    { module: 'offer',        actions: ['approve'],                    scope: 'organization' },
+    { module: 'compensation', actions: ['approve'],                    scope: 'organization' },
+    { module: 'dei',          actions: ['read', 'export'],             scope: 'organization' },
+    { module: 'monitoring',   actions: ['read', 'update'],             scope: 'organization' },
+    { module: 'organization', actions: ['read'],                       scope: 'organization' },
+  ],
+
+  hrbp: [
+    { module: 'vacancy',     actions: ['read', 'create', 'update'], scope: 'unit' }, // spec §2 "gestionar procesos de HR"
+    { module: 'pipeline',    actions: ['read', 'update'],           scope: 'unit' },
+    { module: 'candidate',   actions: ['read', 'update'],           scope: 'unit' },
+    { module: 'assessment',  actions: ['read'],                     scope: 'unit' },
+    { module: 'interview',   actions: ['read', 'create'],           scope: 'unit' },
+    { module: 'offer',       actions: ['read'],                     scope: 'unit' }, // D1: read-only, no approve
+    { module: 'onboarding',  actions: ['read', 'create', 'update'], scope: 'unit' },
+    { module: 'performance', actions: ['read', 'update'],           scope: 'unit' },
+    ...['learning', 'ninebox', 'succession', 'engagement', 'compensation'].map(
+      (m) => ({ module: m, actions: ['read'], scope: 'unit' as Scope }),
+    ),
+    { module: 'monitoring',  actions: ['read'],                     scope: 'unit' }, // spec §2 "monitoreo estratégico de sus áreas"
+  ],
+
+  recruiter: [
+    ...['pipeline', 'candidate', 'interview'].map((m) => ({
+      module: m, actions: ['read', 'create', 'update', 'delete'], scope: 'organization' as Scope,
+    })),
+    { module: 'vacancy',    actions: ['read', 'create', 'update', 'delete', 'publish'], scope: 'organization' }, // +publish: posts to job boards
+    { module: 'assessment', actions: ['read', 'create', 'update'],                      scope: 'organization' },
+    { module: 'offer',      actions: ['read', 'create'],                                scope: 'organization' }, // +create: spec §2 "crear ofertas"
+  ],
+
+  leader: [
+    { module: 'vacancy',      actions: ['read', 'create', 'approve'], scope: 'team' }, // +create: spec §2 "solicitar vacantes"
+    { module: 'candidate',    actions: ['read'],                      scope: 'team' }, // spec §2 "revisar candidatos finalistas"
+    { module: 'pipeline',     actions: ['read', 'update'],            scope: 'team' },
+    { module: 'interview',    actions: ['read', 'create', 'update'],  scope: 'team' },
+    { module: 'offer',        actions: ['read', 'approve'],           scope: 'team' },
+    { module: 'onboarding',   actions: ['read', 'update'],            scope: 'team' },
+    { module: 'performance',  actions: ['read', 'create', 'update'],  scope: 'team' },
+    { module: 'learning',     actions: ['read'],                      scope: 'team' },
+    { module: 'ninebox',      actions: ['read'],                      scope: 'team' },
+    { module: 'succession',   actions: ['read'],                      scope: 'team' },
+    { module: 'team_intel',   actions: ['read'],                      scope: 'team' },
+    { module: 'engagement',   actions: ['read'],                      scope: 'team' },
+    { module: 'compensation', actions: ['read'],                      scope: 'team' },
+  ],
+
+  committee: [
+    // create = submitScorecard (gated interview:create); slice 3 must add evaluator-ownership enforcement
+    { module: 'interview', actions: ['read', 'create', 'update'], scope: 'team' },
+    { module: 'ninebox',   actions: ['read', 'update'], scope: 'team' },
+  ],
+
+  employee: [
+    { module: 'performance', actions: ['read', 'create', 'update'], scope: 'own' },
+    { module: 'onboarding',  actions: ['read', 'update'],           scope: 'own' },
+    { module: 'learning',    actions: ['read'],                     scope: 'own' },
+    { module: 'engagement',  actions: ['read', 'create'],           scope: 'own' },
+    { module: 'compensation',actions: ['read'],                     scope: 'own' },
+  ],
+
+  external: [
+    { module: 'assessment', actions: ['read'], scope: 'organization' },
+  ],
+
+  // candidates use candidateProcedure, never staff RBAC — any stray grants stripped.
+  candidate: [],
+};
+
+// ---------------------------------------------------------------------------
+// Flatten matrix to a canonical set of { module, action, scope } triples
+// ---------------------------------------------------------------------------
+export function flattenEntries(entries: Entry[]): Triple[] {
+  return entries.flatMap((e) =>
+    e.actions.map((action) => ({ module: e.module, action, scope: e.scope })),
+  );
+}
+
+/** All { module, action, scope } triples granted to a role slug. */
+export function grantsFor(role: string): Triple[] {
+  return flattenEntries(MATRIX[role] ?? []);
+}

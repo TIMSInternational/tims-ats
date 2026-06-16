@@ -6,6 +6,7 @@ import { checkRateLimit, getRateLimitCategory } from './middleware/rate-limit';
 import { buildAccessForUser, createAnchorLoader, type AccessContext } from './access';
 import { resolveApiKeyPrincipal, buildExternalAccessUser } from './access/external-auth';
 import { touchApiKeyLastUsed } from './repositories/external-auth.repository';
+import type { Module, Action } from '@tims/shared';
 
 const t = initTRPC.context<Context>().create({
   transformer: superjson,
@@ -241,11 +242,11 @@ function requireExternalPermission(module: string, action: string, requiredScope
   });
 }
 
-export function externalPermissionProcedure(module: string, action: string, requiredScope?: string) {
+export function externalPermissionProcedure(module: Module, action: Action, requiredScope?: string) {
   return externalProcedure.use(requireExternalPermission(module, action, requiredScope));
 }
 
 // Helper to create permission-gated procedures
-export function permissionProcedure(module: string, action: string) {
+export function permissionProcedure(module: Module, action: Action) {
   return protectedProcedure.use(requirePermission(module, action));
 }

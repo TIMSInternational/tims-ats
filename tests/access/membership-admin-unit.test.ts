@@ -4,7 +4,10 @@ import { join } from 'path';
 
 const ROOT = join(__dirname, '..', '..');
 const org = () => readFileSync(join(ROOT, 'packages/api/src/routers/organization.ts'), 'utf8');
-const seed = () => readFileSync(join(ROOT, 'packages/db/prisma/seed-access.ts'), 'utf8');
+// The grant MATRIX was extracted into a pure, importable module (seed-access-matrix.ts);
+// the seed runner (seed-access.ts) now imports it. These text-based tripwires assert on
+// the MATRIX source of truth, so they read the matrix module.
+const seed = () => readFileSync(join(ROOT, 'packages/db/prisma/seed-access-matrix.ts'), 'utf8');
 
 describe('hrbp unit-assignment endpoints', () => {
   it('assignUserToUnit is gated by user:create', () => {
