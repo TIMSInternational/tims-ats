@@ -2189,5 +2189,40 @@
     "noOffers": "No tienes ofertas pendientes de aprobar",
     "noScorecards": "No tienes scorecards pendientes",
     "loadError": "No se pudieron cargar los datos"
+  },
+  "hrExecDashboard": {
+    "title": "Panel Ejecutivo de RRHH",
+    "subtitle": "Tu organizacion: gente, cultura y compensacion",
+    "headcount": "Plantilla",
+    "activeEmployees": "empleados activos",
+    "openReqs": "Vacantes Abiertas",
+    "activeOkrs": "OKRs Activos",
+    "avgProgress": "progreso promedio",
+    "enps": "eNPS",
+    "monthlyPayroll": "Nomina Mensual",
+    "diversity": "Diversidad",
+    "recruitingFunnel": "Embudo de Reclutamiento",
+    "performance": "Desempeno",
+    "culturePulse": "Pulso de Cultura",
+    "compTitle": "Compensacion",
+    "benefitsUtilization": "Uso de Beneficios",
+    "avgCompaRatio": "Compa-Ratio Promedio",
+    "loadError": "No se pudieron cargar los datos"
+  },
+  "unitHealthDashboard": {
+    "title": "Mis Unidades",
+    "subtitle": "Salud de tus unidades asignadas",
+    "recruiting": "Reclutamiento de la Unidad",
+    "people": "Gente de la Unidad",
+    "openVacancies": "Vacantes Abiertas",
+    "pendingApproval": "Pendientes de Aprobacion",
+    "activeCandidates": "Candidatos Activos",
+    "totalApplications": "Postulaciones",
+    "activeOkrs": "OKRs Activos",
+    "openActionPlans": "Planes de Accion Abiertos",
+    "leaderCommitments": "Compromisos de Lideres",
+    "recentVacanciesTitle": "Vacantes Recientes de tus Unidades",
+    "noVacancies": "No hay vacantes en tus unidades",
+    "loadError": "No se pudieron cargar los datos"
   }
 }

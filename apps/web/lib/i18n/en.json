@@ -2189,5 +2189,40 @@
     "noOffers": "No offers pending your approval",
     "noScorecards": "No pending scorecards",
     "loadError": "Couldn't load data"
+  },
+  "hrExecDashboard": {
+    "title": "HR Executive Dashboard",
+    "subtitle": "Your organization: people, culture & compensation",
+    "headcount": "Headcount",
+    "activeEmployees": "active employees",
+    "openReqs": "Open Reqs",
+    "activeOkrs": "Active OKRs",
+    "avgProgress": "avg progress",
+    "enps": "eNPS",
+    "monthlyPayroll": "Monthly Payroll",
+    "diversity": "Diversity",
+    "recruitingFunnel": "Recruiting Funnel",
+    "performance": "Performance",
+    "culturePulse": "Culture Pulse",
+    "compTitle": "Compensation",
+    "benefitsUtilization": "Benefits Utilization",
+    "avgCompaRatio": "Avg Compa-Ratio",
+    "loadError": "Couldn't load data"
+  },
+  "unitHealthDashboard": {
+    "title": "My Units",
+    "subtitle": "Health of your assigned units",
+    "recruiting": "Unit Recruiting",
+    "people": "Unit People",
+    "openVacancies": "Open Vacancies",
+    "pendingApproval": "Pending Approval",
+    "activeCandidates": "Active Candidates",
+    "totalApplications": "Applications",
+    "activeOkrs": "Active OKRs",
+    "openActionPlans": "Open Action Plans",
+    "leaderCommitments": "Leader Commitments",
+    "recentVacanciesTitle": "Recent Vacancies in Your Units",
+    "noVacancies": "No vacancies in your units",
+    "loadError": "Couldn't load data"
   }
 }

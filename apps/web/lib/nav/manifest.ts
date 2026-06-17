@@ -87,6 +87,22 @@ const LEADER_MY_TEAM: NavSection = {
 };
 const LEADER_COCKPIT: NavSection[] = [COMMAND_CENTER, LEADER_MY_HIRING, LEADER_MY_TEAM];
 
+// hr_admin = org-wide HR steward, people-first IA + a reduced admin section (business units only;
+// no billing/integrations — org-config is read-only per the access spec). can() still prunes.
+const HR_ADMIN_SETTINGS: NavSection = {
+  labelKey: null,
+  items: [
+    { href: '/settings/business-units', labelKey: 'sidebar.businessUnits', icon: 'team', module: 'user' },
+  ],
+};
+const HR_ADMIN_PEOPLE_FIRST: NavSection[] = [
+  COMMAND_CENTER, PEOPLE, TALENT, CULTURE, RECRUITMENT, HR_ADMIN_SETTINGS,
+];
+
+// hrbp = HR business partner scoped to assigned units ("Mis Unidades"). Unit-native IA, no org-admin
+// chrome. CULTURE keeps monitoring (hrbp has monitoring:read@unit); can() prunes DEI (no dei grant).
+const HRBP_UNITS: NavSection[] = [COMMAND_CENTER, RECRUITMENT, PEOPLE, TALENT, CULTURE];
+
 // Base admin IA = today's full sidebar. can() prunes per role → no regression.
 const BASE_ADMIN: NavSection[] = [COMMAND_CENTER, RECRUITMENT, PEOPLE, TALENT, CULTURE, SETTINGS];
 // Recruiter = purpose-built ATS shell (declared, not subtracted).
@@ -96,8 +112,8 @@ const adminManifest = (sections: NavSection[]): RoleManifest => ({ shell: 'admin
 
 export const MANIFESTS: Record<NavRole, RoleManifest> = {
   super_admin: adminManifest(BASE_ADMIN),
-  hr_admin: adminManifest(BASE_ADMIN),
-  hrbp: adminManifest(BASE_ADMIN),
+  hr_admin: adminManifest(HR_ADMIN_PEOPLE_FIRST),
+  hrbp: adminManifest(HRBP_UNITS),
   recruiter: adminManifest(RECRUITER_ATS),
   leader: adminManifest(LEADER_COCKPIT),
   committee: adminManifest(BASE_ADMIN), // participant shell arrives in Slice 4

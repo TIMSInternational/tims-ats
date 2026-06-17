@@ -1,19 +1,28 @@
-export type DashboardKey = 'org' | 'recruiter' | 'manager' | 'leader' | 'employee';
+export type DashboardKey =
+  | 'org'
+  | 'hrExec'
+  | 'unit'
+  | 'recruiter'
+  | 'manager'
+  | 'leader'
+  | 'employee';
 
-// super_admin removed from RECRUITER_ROLES → gets its own Org Command Center.
-// leader → its purpose-built Manager Dashboard ('manager').
-// committee stays on the thin LeaderDashboard ('leader') until Slice 4 builds
-// its participant "My Tasks".
-const RECRUITER_ROLES = ['hr_admin', 'recruiter', 'hrbp'] as const;
-
-function isOneOf(roles: readonly string[], slug: string): boolean {
-  return roles.includes(slug);
-}
-
-// Precedence: super_admin > recruiter-tier > leader > committee > employee.
+// Each admin-tier role gets its own purpose-built landing:
+//   super_admin → Org Command Center ('org')
+//   hr_admin    → HR-Exec dashboard ('hrExec')
+//   hrbp        → Unit Health dashboard ('unit')
+//   recruiter   → Recruiter dashboard ('recruiter')
+//   leader      → Manager dashboard ('manager')
+//   committee   → thin Leader dashboard ('leader') until Slice 4 gives it "My Tasks"
+//   everyone else → Employee dashboard ('employee')
+//
+// Precedence on multi-role collisions:
+//   super_admin > hr_admin > hrbp > recruiter > leader > committee > employee.
 export function pickPrimaryDashboard(roleSlugs: readonly string[]): DashboardKey {
   if (roleSlugs.includes('super_admin')) return 'org';
-  if (roleSlugs.some((r) => isOneOf(RECRUITER_ROLES, r))) return 'recruiter';
+  if (roleSlugs.includes('hr_admin')) return 'hrExec';
+  if (roleSlugs.includes('hrbp')) return 'unit';
+  if (roleSlugs.includes('recruiter')) return 'recruiter';
   if (roleSlugs.includes('leader')) return 'manager';
   if (roleSlugs.includes('committee')) return 'leader';
   return 'employee';

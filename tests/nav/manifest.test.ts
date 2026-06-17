@@ -60,6 +60,34 @@ describe('nav manifest', () => {
     for (const m of ['user', 'billing', 'integration', 'monitoring', 'dei', 'succession', 'team_intel'])
       expect(all, `leader nav should not include ${m}`).not.toContain(m);
   });
+  it('hr_admin gets a people-first IA (People/Talent/Culture before Recruitment) with a reduced admin section', () => {
+    const labels = MANIFESTS.hr_admin.sections.map((s) => s.labelKey);
+    const peopleIdx = labels.indexOf('sidebar.people');
+    const recruitmentIdx = labels.indexOf('sidebar.recruitment');
+    expect(peopleIdx).toBeGreaterThanOrEqual(0);
+    expect(recruitmentIdx).toBeGreaterThan(peopleIdx);
+    const allModules = MANIFESTS.hr_admin.sections.flatMap((s) => s.items.map((i) => i.module));
+    expect(allModules).toContain('user');        // business units
+    expect(allModules).not.toContain('billing');
+    expect(allModules).not.toContain('integration');
+  });
+
+  it('hrbp gets a unit-scoped IA (recruitment + people + talent + culture, NO org-admin settings)', () => {
+    const sections = MANIFESTS.hrbp.sections;
+    const labels = sections.map((s) => s.labelKey);
+    expect(labels).toContain('sidebar.recruitment');
+    expect(labels).toContain('sidebar.people');
+    expect(labels).toContain('sidebar.organization'); // = the CULTURE section (climate/dei/comp/monitoring)
+    // Unit-native ordering: recruitment leads (distinguishes HRBP_UNITS from BASE_ADMIN/people-first).
+    expect(labels.indexOf('sidebar.recruitment')).toBeLessThan(labels.indexOf('sidebar.people'));
+    const allModules = sections.flatMap((s) => s.items.map((i) => i.module));
+    for (const m of ['user', 'billing', 'integration'])
+      expect(allModules, `hrbp nav should not include ${m}`).not.toContain(m);
+    // No org-admin settings section at all (the only null-label section is the command center).
+    const nullLabelSections = sections.filter((s) => s.labelKey === null);
+    expect(nullLabelSections).toHaveLength(1);
+    expect(nullLabelSections[0]?.items.every((i) => i.module === null)).toBe(true);
+  });
 });
 
 describe('computeVisibleSections', () => {
