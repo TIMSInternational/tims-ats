@@ -2202,7 +2202,16 @@
     "pendingScorecards": "Pending Scorecards",
     "panelsTitle": "Interviews Needing Your Scorecard",
     "noScorecards": "No pending scorecards",
-    "loadError": "Couldn't load data"
+    "loadError": "Couldn't load data",
+    "calibrationsTitle": "My Calibrations",
+    "noCalibrations": "You have no assigned calibrations",
+    "membersCount": "members",
+    "votesCount": "votes",
+    "noDate": "No date scheduled",
+    "statusDraft": "Draft",
+    "statusScheduled": "Scheduled",
+    "statusInProgress": "In progress",
+    "statusFinalized": "Finalized"
   },
   "employeeHome": {
     "title": "My Home",

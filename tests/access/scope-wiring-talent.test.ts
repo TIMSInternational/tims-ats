@@ -66,6 +66,49 @@ describe('ninebox module scope wiring', () => {
   it('org-rollup / lifecycle endpoints gated via requireOrgScope', () => {
     expect(src()).toMatch(/requireOrgScope/);
   });
+
+  // Slice 5A — committee "Mis Calibraciones": a member-scoped read of the
+  // caller's OWN calibration sessions. Mirrors getCalibration's member-anchor
+  // (createdById OR a CalibrationMember row), NOT requireOrgScope, NOT
+  // scopeWhereFor (calibrationSession is not a registered ENTITY).
+  describe('myCalibrations (committee landing)', () => {
+    // Isolate the procedure block so requireOrgScope on OTHER endpoints can't
+    // satisfy these assertions.
+    const block = () => {
+      const s = src();
+      const start = s.indexOf('myCalibrations:');
+      expect(start).toBeGreaterThan(-1);
+      // next top-level procedure after myCalibrations
+      const rest = s.slice(start + 'myCalibrations:'.length);
+      const nextProc = rest.search(/\n {2}\w+:\s*permissionProcedure/);
+      return nextProc === -1 ? rest : rest.slice(0, nextProc);
+    };
+
+    it('anchors on createdById OR a CalibrationMember userId (own/member, not org-wide)', () => {
+      const b = block();
+      expect(b).toMatch(/createdById:\s*ctx\.user\.id/);
+      expect(b).toMatch(/members:\s*\{\s*some:\s*\{\s*userId:\s*ctx\.user\.id/);
+      expect(b).toMatch(/OR:\s*\[/);
+    });
+
+    it('does NOT use requireOrgScope (committee is team-scoped)', () => {
+      expect(block()).not.toMatch(/requireOrgScope/);
+    });
+
+    it('does NOT call scopeWhereFor for calibrationSession (not a registered ENTITY)', () => {
+      expect(block()).not.toMatch(/scopeWhereFor\('calibrationSession'/);
+    });
+
+    it('always filters by organizationId (tenant isolation)', () => {
+      expect(block()).toMatch(/organizationId:\s*ctx\.user\.organizationId/);
+    });
+
+    it('uses an explicit select (no full-record leak) and bounds the list', () => {
+      const b = block();
+      expect(b).toMatch(/select:\s*\{/);
+      expect(b).toMatch(/take:\s*\d+/);
+    });
+  });
 });
 
 describe('succession module scope wiring', () => {

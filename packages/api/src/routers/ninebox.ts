@@ -350,6 +350,40 @@ export const nineboxRouter = router({
       });
     }),
 
+  // "Mis Calibraciones" — the committee landing's member-scoped list. Surfaces
+  // ONLY the caller's own sessions: those they CREATED or are a CalibrationMember
+  // of. NOT org-wide (listCalibrations is requireOrgScope and FORBIDDEN here) and
+  // NOT via scopeWhereFor (calibrationSession is not a registered ENTITY — that
+  // would throw). Hand-roll the createdById-OR-membership anchor, exactly like
+  // getCalibration. Tenant-isolated, explicit select, bounded.
+  myCalibrations: permissionProcedure('ninebox', 'read')
+    .query(async ({ ctx }) => {
+      return db.calibrationSession.findMany({
+        where: {
+          AND: [
+            { organizationId: ctx.user.organizationId },
+            {
+              OR: [
+                { createdById: ctx.user.id },
+                { members: { some: { userId: ctx.user.id } } },
+              ],
+            },
+          ],
+        },
+        select: {
+          id: true,
+          period: true,
+          status: true,
+          scheduledAt: true,
+          completedAt: true,
+          createdAt: true,
+          _count: { select: { members: true, votes: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+      });
+    }),
+
   submitCalibrationVote: permissionProcedure('ninebox', 'update')
     .input(submitCalibrationVoteInput)
     .mutation(async ({ ctx, input }) => {

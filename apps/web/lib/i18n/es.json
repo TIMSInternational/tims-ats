@@ -2202,7 +2202,16 @@
     "pendingScorecards": "Scorecards Pendientes",
     "panelsTitle": "Entrevistas que Requieren tu Scorecard",
     "noScorecards": "No tienes scorecards pendientes",
-    "loadError": "No se pudieron cargar los datos"
+    "loadError": "No se pudieron cargar los datos",
+    "calibrationsTitle": "Mis Calibraciones",
+    "noCalibrations": "No tienes calibraciones asignadas",
+    "membersCount": "miembros",
+    "votesCount": "votos",
+    "noDate": "Sin fecha programada",
+    "statusDraft": "Borrador",
+    "statusScheduled": "Programada",
+    "statusInProgress": "En curso",
+    "statusFinalized": "Finalizada"
   },
   "employeeHome": {
     "title": "Mi Espacio",

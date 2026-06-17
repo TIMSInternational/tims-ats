@@ -116,8 +116,9 @@ const adminManifest = (sections: NavSection[]): RoleManifest => ({ shell: 'admin
 
 const participantManifest = (sections: NavSection[]): RoleManifest => ({ shell: 'participant', landing: '/dashboard', sections });
 
-// committee = interview panels they're assigned to (their real task). Calibrations omitted until a
-// scope-aware "my sessions" endpoint ships (D5).
+// committee = interview panels they're assigned to (their real task). "Mis Calibraciones" is now
+// surfaced as a panel ON the committee landing (ninebox.myCalibrations, member-scoped) rather than a
+// nav route — there is no committee-reachable /talent/calibrations page, so no nav item is added here.
 const COMMITTEE_TASKS: NavSection[] = [
   {
     labelKey: 'sidebar.myTasks',
