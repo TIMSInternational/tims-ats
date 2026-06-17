@@ -89,8 +89,12 @@ export const MATRIX: Record<string, Entry[]> = {
     { module: 'performance',  actions: ['read', 'create', 'update'],  scope: 'team' },
     { module: 'learning',     actions: ['read'],                      scope: 'team' },
     { module: 'ninebox',      actions: ['read'],                      scope: 'team' },
-    { module: 'succession',   actions: ['read'],                      scope: 'team' },
-    { module: 'team_intel',   actions: ['read'],                      scope: 'team' },
+    // NOTE: succession + team_intel deliberately NOT granted to leader. Both pages
+    // (/talent/succession, /talent/team-intelligence) are org-rollup views whose
+    // endpoints requireOrgScope → they FORBIDDEN a team-scoped leader on load. They
+    // are curated OUT of the leader nav (manifest.test.ts locks their absence), so a
+    // read grant would only let a leader URL-reach a page that 403s — incoherent.
+    // Both modules are single-use (one page each), so withholding them is isolated.
     { module: 'engagement',   actions: ['read'],                      scope: 'team' },
     { module: 'compensation', actions: ['read'],                      scope: 'team' },
   ],

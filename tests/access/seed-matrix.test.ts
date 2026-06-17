@@ -19,6 +19,13 @@ describe('seed grant matrix (Slice 0 corrections, client spec §2)', () => {
     expect(has('leader', 'candidate', 'read', 'team')).toBe(true);   // "revisar candidatos finalistas"
     expect(has('leader', 'vacancy', 'create', 'team')).toBe(true);   // "solicitar vacantes"
   });
+  it('leader does NOT hold org-gated succession/team_intel grants (nav/grant coherence)', () => {
+    // These pages requireOrgScope (FORBIDDEN for a team-scoped leader) and are curated
+    // out of leader nav — a read grant would only expose a URL-reachable page that 403s.
+    // Mirror of the nav-side lock in tests/nav/manifest.test.ts.
+    expect(has('leader', 'succession', 'read', 'team')).toBe(false);
+    expect(has('leader', 'team_intel', 'read', 'team')).toBe(false);
+  });
   it('recruiter can create offers + publish vacancies (@organization)', () => {
     expect(has('recruiter', 'offer', 'create', 'organization')).toBe(true);   // "crear ofertas"
     expect(has('recruiter', 'vacancy', 'publish', 'organization')).toBe(true);

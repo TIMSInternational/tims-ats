@@ -103,6 +103,8 @@ const HR_ADMIN_PEOPLE_FIRST: NavSection[] = [
 
 // hrbp = HR business partner scoped to assigned units ("Mis Unidades"). Unit-native IA, no org-admin
 // chrome. CULTURE keeps monitoring (hrbp has monitoring:read@unit); can() prunes DEI (no dei grant).
+// TALENT shows Nine-Box + Succession (hrbp has both @unit); can() prunes Team Intelligence (no
+// team_intel grant — hrbp's grant set omits it, same mechanism as the DEI prune above).
 const HRBP_UNITS: NavSection[] = [COMMAND_CENTER, RECRUITMENT, PEOPLE, TALENT, CULTURE];
 
 // Base admin IA = today's full sidebar. can() prunes per role → no regression.
