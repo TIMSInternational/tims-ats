@@ -200,6 +200,45 @@ export const engagementRouter = router({
       return { surveyId: survey.id, title: survey.title, totalResponses: totalResponses as number | null, suppressed: false, questionSummaries: rawSummaries };
     }),
 
+  // ── My Pending Surveys (Slice 5B) ──────────────────────────────────
+  // OWN-scoped self-service read: the ACTIVE surveys the caller has NOT yet
+  // responded to. NOT an org rollup, so NO requireOrgScope (it would FORBID the
+  // own-scoped employee caller). `survey` is NOT a scopeWhereFor entity, so the
+  // org + anti-join filter is hand-rolled rather than composed via the helper.
+  //
+  // "Pending" = active Survey rows (status active + within the start/end window)
+  // MINUS the surveys this user already answered, expressed as an anti-join on the
+  // `responses` relation: `responses: { none: { userId: ctx.user.id } }`. The
+  // user filter lives INSIDE the relation `none`, so it narrows to the caller —
+  // it cannot widen. Explicit select (list-UI fields only, never the raw
+  // responseCount scalar) + bounded take.
+  myPendingSurveys: permissionProcedure('engagement', 'read').query(async ({ ctx }) => {
+    const now = new Date();
+    return db.survey.findMany({
+      where: {
+        AND: [
+          { organizationId: ctx.user.organizationId },
+          // Active window: status active AND (no startsAt or already started) AND
+          // (no endsAt or not yet ended). Open-ended dates are treated as active.
+          { status: 'active' },
+          { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
+          { OR: [{ endsAt: null }, { endsAt: { gte: now } }] },
+          // Anti-join: exclude surveys the CALLER has already responded to.
+          { responses: { none: { userId: ctx.user.id } } },
+        ],
+      },
+      select: {
+        id: true,
+        title: true,
+        type: true,
+        startsAt: true,
+        endsAt: true,
+      },
+      orderBy: { endsAt: 'asc' },
+      take: 50,
+    });
+  }),
+
   submitSurveyResponse: permissionProcedure('engagement', 'create')
     .input(
       z.object({

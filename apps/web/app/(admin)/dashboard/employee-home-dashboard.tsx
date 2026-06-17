@@ -4,6 +4,9 @@ import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
 import { KpiCard, KpiCardSkeleton, EmptyState, Skeleton } from '../../../components';
 import { LoadError } from './load-error';
+import { EmployeeSurveys } from './employee-surveys';
+import { EmployeeCompensation } from './employee-compensation';
+import { EmployeePrivacy } from './employee-privacy';
 
 // employee is OWN-scoped: every query below is auto-narrowed to the caller by
 // scopeWhereFor (we pass NO userId — that would widen, not narrow). No
@@ -215,6 +218,17 @@ export function EmployeeHomeDashboard() {
             </div>
           )}
         </div>
+
+        {/* ── SECTION 4 — Mis Encuestas (own-scoped pending surveys) ── */}
+        <div className="mt-8">
+          <EmployeeSurveys />
+        </div>
+
+        {/* ── SECTION 5 — Mi Compensacion (own-scoped, sensitive) ── */}
+        <EmployeeCompensation />
+
+        {/* ── SECTION 6 — Privacidad (own-scoped consent ledger) ── */}
+        <EmployeePrivacy />
       </div>
     </div>
   );

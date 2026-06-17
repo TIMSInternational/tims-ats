@@ -13,6 +13,14 @@ import { suppressBelowMin5, aggregateGroups } from '../../packages/api/src/acces
 
 const ROOT = join(__dirname, '..', '..');
 const readComp = () => readFileSync(join(ROOT, 'packages/api/src/routers/compensation.ts'), 'utf8');
+// The per-person employeeCompensation read (selectFor + FULL+AUDIT logDataAccess)
+// lives in the shared compensation.service.ts helper (getEmployeeCompForSubject),
+// reused by BOTH compensation.getEmployeeComp and compensation.myCompensation
+// (Slice 5B). Audit-guarantee tripwires that count the employeeCompensation audit
+// path read the router + service together so the guarantee is enforced wherever
+// the code physically lives.
+const readCompAudited = () =>
+  readComp() + readFileSync(join(ROOT, 'packages/api/src/services/compensation.service.ts'), 'utf8');
 const readDeiService = () => readFileSync(join(ROOT, 'packages/api/src/services/dei.service.ts'), 'utf8');
 const readEngagement = () => readFileSync(join(ROOT, 'packages/api/src/routers/engagement.ts'), 'utf8');
 const readAssessment = () => readFileSync(join(ROOT, 'packages/api/src/routers/assessment.ts'), 'utf8');
@@ -393,8 +401,10 @@ describe('restricted compensation reads are audited fail-closed (fix 4)', () => 
     expect(readComp()).toMatch(/import\s*\{[^}]*\blogDataAccess\b[^}]*\}\s*from '\.\.\/access'/);
   });
 
-  it('getEmployeeComp + simulateAdjustment audit on employeeCompensation', () => {
-    const calls = readComp().match(/entity:\s*'employeeCompensation'/g) ?? [];
+  it('getEmployeeComp (via service) + simulateAdjustment audit on employeeCompensation', () => {
+    // getEmployeeComp's audit now lives in the shared service helper; count across
+    // router + service so the relocated guarantee is still enforced.
+    const calls = readCompAudited().match(/entity:\s*'employeeCompensation'/g) ?? [];
     expect(calls.length).toBeGreaterThanOrEqual(2);
   });
 
@@ -472,8 +482,10 @@ describe('createAdjustment + approveAdjustment use minimal selects (slice 6 writ
     expect(readComp()).toMatch(/return \{ id: input\.id, status: newStatus \}/);
   });
 
-  it('four or more logDataAccess calls now exist (getEmployeeComp + simulateAdjustment + listPendingAdjustments + approveAdjustment)', () => {
-    const calls = readComp().match(/logDataAccess\(/g) ?? [];
+  it('four or more logDataAccess calls now exist (getEmployeeComp[service] + simulateAdjustment + listPendingAdjustments + approveAdjustment)', () => {
+    // getEmployeeComp's logDataAccess moved into compensation.service.ts; count
+    // across router + service so the four restricted-read audits are all present.
+    const calls = readCompAudited().match(/logDataAccess\(/g) ?? [];
     expect(calls.length).toBeGreaterThanOrEqual(4);
   });
 });

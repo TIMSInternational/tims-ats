@@ -28,6 +28,7 @@ import { notificationRouter } from './routers/notification';
 import { platformRouter } from './routers/platform';
 import { candidatePortalRouter } from './routers/candidate-portal';
 import { externalRouter } from './routers/external';
+import { consentRouter } from './routers/consent';
 
 export { createContext } from './context';
 export type { TRPCContext } from './context';
@@ -74,6 +75,7 @@ export const appRouter = router({
   portal: portalRouter,
   candidatePortal: candidatePortalRouter,
   external: externalRouter,
+  consent: consentRouter,
   notification: notificationRouter,
   platform: platformRouter,
 });

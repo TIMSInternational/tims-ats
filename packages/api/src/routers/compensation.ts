@@ -4,6 +4,7 @@ import { router, permissionProcedure } from '../trpc';
 import { tenantDb as db } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { scopeWhereFor, assertScoped, assertSubjectInScope, requireOrgScope, suppressBelowMin5, logDataAccess, selectFor } from '../access';
+import { getEmployeeCompForSubject } from '../services/compensation.service';
 
 export const compensationRouter = router({
   // ── Salary Bands ───────────────────────────────────────────────────
@@ -710,78 +711,50 @@ export const compensationRouter = router({
 
   // ── Employee Compensation Detail ───────────────────────────────────
   // Per-person read: caller must be authorized to view this employee's compensation.
+  // Delegates to the shared service helper so the §21 field-auth (selectFor) and
+  // FULL+AUDIT logging live in ONE place (reused by myCompensation below).
   getEmployeeComp: permissionProcedure('compensation', 'read')
     .input(z.object({ userId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
-      await assertSubjectInScope(
+      const dto = await getEmployeeCompForSubject(
         ctx.access,
+        ctx.user.organizationId,
         ctx.user.id,
         input.userId,
+        {
+          actorId: ctx.user.impersonatorId ?? ctx.user.id,
+          ipAddress: ctx.headers.get('x-forwarded-for') || ctx.headers.get('x-real-ip'),
+          userAgent: ctx.headers.get('user-agent'),
+        },
         'No puedes ver la compensacion de este usuario',
       );
 
-      // §21 field-auth (slice 6 round 5): build the Prisma select from the caller's
-      // role entitlements via selectFor('employeeCompensation') instead of selecting
-      // every field and returning it. currentSalary/currency/effectiveDate reach
-      // super/hr/hrbp/leader/employee; compaRatio/variablePay/bandId reach only
-      // super/hr/hrbp. A leader/employee thus NEVER receives compaRatio/variablePay,
-      // and band bounds (which co-disclose band position = compa-ratio-class info) are
-      // gated on the same bandId entitlement. Construct the DTO ONLY from selected fields.
-      const sel = selectFor(ctx.access.roles, 'employeeCompensation');
-      const canSeeVariablePay = sel.variablePay === true;
-      const canSeeCompaRatio = sel.compaRatio === true;
-      const canSeeBand = sel.bandId === true;
+      if (!dto) throw new Error('Compensacion no encontrada');
+      return dto;
+    }),
 
-      const compensation = await db.employeeCompensation.findFirst({
-        where: { userId: input.userId, organizationId: ctx.user.organizationId },
-        select: {
-          id: true,
-          userId: true,
-          ...(sel.currentSalary ? { currentSalary: true } : {}),
-          ...(canSeeVariablePay ? { variablePay: true } : {}),
-          ...(canSeeCompaRatio ? { compaRatio: true } : {}),
-          // Band relation only loaded when the caller is entitled to bandId — its
-          // min/mid/max bounds reveal the employee's band position (restricted analytics).
-          ...(canSeeBand ? { band: { select: { level: true, title: true, minSalary: true, midSalary: true, maxSalary: true } } } : {}),
-        },
-      });
-
-      if (!compensation) throw new Error('Compensacion no encontrada');
-
-      // §21 matrix: employeeCompensation is FULL+AUDIT (restricted). Audit the read
-      // BEFORE returning so a fail-closed audit-write failure aborts pre-serialization.
-      await logDataAccess({
-        organizationId: ctx.user.organizationId,
+  // ── My Compensation (Slice 5B) ─────────────────────────────────────
+  // OWN-scoped self-service read. No input → the subject is HARD-PINNED to
+  // ctx.user.id (never a client-supplied userId, which would widen). Routes
+  // through the SAME getEmployeeCompForSubject service as getEmployeeComp, so
+  // the field-level selectFor gating AND the restricted-data audit are
+  // preserved identically. assertSubjectInScope(own scope, subject == actor)
+  // passes trivially. No requireOrgScope — this is own, not an org rollup. A
+  // missing comp row returns null gracefully (not an error) for the landing UI.
+  myCompensation: permissionProcedure('compensation', 'read').query(async ({ ctx }) => {
+    return getEmployeeCompForSubject(
+      ctx.access,
+      ctx.user.organizationId,
+      ctx.user.id,
+      ctx.user.id, // subject hard-pinned to the caller — own-only, no widening
+      {
         actorId: ctx.user.impersonatorId ?? ctx.user.id,
-        entity: 'employeeCompensation',
-        recordId: compensation.id,
-        action: 'read',
         ipAddress: ctx.headers.get('x-forwarded-for') || ctx.headers.get('x-real-ip'),
         userAgent: ctx.headers.get('user-agent'),
-      });
-
-      // DTO built ONLY from selected fields — unentitled fields are absent, not nulled,
-      // so a leader/employee payload carries no compaRatio/variablePay/band key at all.
-      return {
-        userId: compensation.userId,
-        ...(sel.currentSalary ? { currentSalary: Number(compensation.currentSalary) } : {}),
-        ...(canSeeVariablePay ? { variablePay: Number(compensation.variablePay) || 0 } : {}),
-        ...(canSeeCompaRatio ? { compaRatio: Number(compensation.compaRatio) || null } : {}),
-        ...(canSeeBand
-          ? {
-              band: compensation.band
-                ? {
-                    level: compensation.band.level,
-                    title: compensation.band.title,
-                    min: Number(compensation.band.minSalary),
-                    mid: Number(compensation.band.midSalary),
-                    max: Number(compensation.band.maxSalary),
-                  }
-                : null,
-            }
-          : {}),
-      };
-    }),
+      },
+      'No puedes ver esta compensacion',
+    );
+  }),
 
   // ── Dashboard KPIs ─────────────────────────────────────────────────
   // Org-scope gate only.
