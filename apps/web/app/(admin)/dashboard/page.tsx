@@ -1,42 +1,18 @@
-import { getUser } from '@tims/auth/server';
-import { redirect } from 'next/navigation';
-import { db } from '@tims/db';
 import { PlatformDashboard } from './platform-dashboard';
 import { RecruitmentDashboard } from './recruitment-dashboard';
+import { getEffectiveIdentity } from '../../../lib/auth/effective-identity';
 
 export default async function DashboardPage() {
-  const supabaseUser = await getUser();
-  if (!supabaseUser) redirect('/login');
+  // Effective (impersonation-aware) identity: when a platform owner impersonates an
+  // org user, this resolves to the target so the page renders their dashboard, not
+  // PlatformDashboard. Staff guard + /login,/logout redirects live in the helper.
+  const { effective } = await getEffectiveIdentity();
 
-  // Recognize by LINKED Supabase id only (staff linked at invite time — B2). An
-  // unlinked authenticated session is signed out (non-looping; see admin layout).
-  const appUser = await db.user.findUnique({
-    where: { supabaseUserId: supabaseUser.id },
-    select: {
-      id: true,
-      isPlatformOwner: true,
-      organizationId: true,
-      isActive: true,
-      userRoles: {
-        select: {
-          role: { select: { slug: true } },
-        },
-      },
-    },
-  });
-
-  // Must be a linked, active staff identity that is org-scoped or a platform owner.
-  if (!appUser || !appUser.isActive || (!appUser.isPlatformOwner && !appUser.organizationId)) {
-    redirect('/logout');
-  }
-
-  // Platform owner sees platform dashboard
-  if (appUser.isPlatformOwner) {
+  // Platform owner (not impersonating) sees the platform dashboard.
+  if (effective.isPlatformOwner) {
     return <PlatformDashboard />;
   }
 
-  // Org users see recruitment dashboard
-  const roleSlugs = appUser.userRoles.map((ur) => ur.role.slug);
-
-  return <RecruitmentDashboard roleSlugs={roleSlugs} />;
+  // Org users (incl. an impersonated target) see the recruitment dashboard.
+  return <RecruitmentDashboard roleSlugs={effective.roleSlugs} />;
 }

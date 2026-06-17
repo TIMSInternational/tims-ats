@@ -17,8 +17,10 @@ const USER_ROUTER = read('packages/api/src/routers/user.ts');
 const OFFER_LIFECYCLE = read('packages/api/src/routers/offer/lifecycle.ts');
 const TRPC_ROUTE = read('apps/web/app/api/trpc/[trpc]/route.ts');
 const CALLBACK = read('apps/web/app/auth/callback/route.ts');
-const ADMIN_LAYOUT = read('apps/web/app/(admin)/layout.tsx');
-const DASHBOARD = read('apps/web/app/(admin)/dashboard/page.tsx');
+// The admin layout + dashboard page now resolve identity through this shared
+// server-only helper (impersonation-effective identity), so the staff-recognition
+// guard + /logout redirect live here. The RSCs are thin consumers of it.
+const EFFECTIVE_IDENTITY = read('apps/web/lib/auth/effective-identity.ts');
 const LOGOUT = read('apps/web/app/logout/route.ts');
 
 describe('staff provisioning service (invite-time linking)', () => {
@@ -79,24 +81,22 @@ describe('every recognition site matches by supabaseUserId only (no email-join)'
   });
 
   it('staff recognition requires active + org-scoped-or-owner (rejects legacy org-less rows)', () => {
-    // tRPC context + admin SSR must not treat an inactive or org-less non-owner row
-    // as staff just because it shares the Supabase id.
+    // tRPC context + admin SSR (via the shared effective-identity helper) must not
+    // treat an inactive or org-less non-owner row as staff just because it shares
+    // the Supabase id.
     expect(TRPC_ROUTE).toMatch(/!appUser\.isActive\s*\|\|\s*\(!appUser\.isPlatformOwner\s*&&\s*!appUser\.organizationId\)/);
-    expect(ADMIN_LAYOUT).toMatch(/isPlatformOwner\s*&&\s*!appUser\.organizationId/);
+    expect(EFFECTIVE_IDENTITY).toMatch(/!appUser\.isActive\s*\|\|\s*\(!appUser\.isPlatformOwner\s*&&\s*!appUser\.organizationId\)/);
   });
 
-  it('admin layout + dashboard use findUnique by supabaseUserId and never email', () => {
-    for (const src of [ADMIN_LAYOUT, DASHBOARD]) {
-      expect(src).toMatch(/findUnique\(\{\s*where:\s*\{\s*supabaseUserId/);
-      expect(src).not.toMatch(/email:\s*supabaseUser\.email/);
-    }
+  it('the effective-identity helper looks up the staff row by supabaseUserId and never email', () => {
+    expect(EFFECTIVE_IDENTITY).toMatch(/findUnique\(\{\s*where:\s*\{\s*supabaseUserId/);
+    expect(EFFECTIVE_IDENTITY).not.toMatch(/email:\s*supabaseUser\.email/);
   });
 });
 
 describe('unlinked sessions exit without a redirect loop', () => {
-  it('admin layout + dashboard send unlinked sessions to /logout (not /login)', () => {
-    expect(ADMIN_LAYOUT).toMatch(/redirect\('\/logout'\)/);
-    expect(DASHBOARD).toMatch(/redirect\('\/logout'\)/);
+  it('the admin SSR identity helper sends unlinked sessions to /logout (not /login)', () => {
+    expect(EFFECTIVE_IDENTITY).toMatch(/redirect\('\/logout'\)/);
   });
 
   it('/logout clears the Supabase session then redirects to /login', () => {
