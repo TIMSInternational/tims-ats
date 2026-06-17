@@ -12,6 +12,7 @@ import { AlertsPendingPanel } from './alerts-pending-panel';
 import { AlertsRiskPanel } from './alerts-risk-panel';
 import { pickPrimaryDashboard } from './pick-dashboard';
 import { OrgCommandCenter } from './org-command-center';
+import { ManagerDashboard } from './manager-dashboard';
 
 interface RecruitmentDashboardProps {
   roleSlugs: string[];
@@ -22,6 +23,7 @@ export function RecruitmentDashboard({ roleSlugs }: RecruitmentDashboardProps) {
   switch (key) {
     case 'org': return <OrgCommandCenter />;
     case 'recruiter': return <RecruiterDashboard />;
+    case 'manager': return <ManagerDashboard />;
     case 'leader': return <LeaderDashboard />;
     case 'employee': return <EmployeeDashboard />;
     default: {

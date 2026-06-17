@@ -11,14 +11,15 @@ describe('pickPrimaryDashboard', () => {
     expect(pickPrimaryDashboard(['recruiter'])).toBe('recruiter');
     expect(pickPrimaryDashboard(['hrbp'])).toBe('recruiter');
   });
-  it('leader → leader dashboard', () => {
-    expect(pickPrimaryDashboard(['leader'])).toBe('leader');
-  });
-  it('committee stays on leader dashboard for now (Slice 4 gives it My Tasks)', () => {
+  it('leader → manager dashboard (NEW); committee stays on leader dashboard (Slice 4 gives it My Tasks)', () => {
+    expect(pickPrimaryDashboard(['leader'])).toBe('manager');
+    expect(pickPrimaryDashboard(['leader', 'committee'])).toBe('manager'); // leader wins
     expect(pickPrimaryDashboard(['committee'])).toBe('leader');
   });
-  it('recruiter-tier outranks leader-tier in a multi-role collision', () => {
+  it('recruiter-tier still outranks leader', () => {
     expect(pickPrimaryDashboard(['leader', 'recruiter'])).toBe('recruiter');
+  });
+  it('recruiter-tier outranks committee in a multi-role collision', () => {
     expect(pickPrimaryDashboard(['committee', 'hr_admin'])).toBe('recruiter');
   });
   it('employee (or unknown) → employee dashboard', () => {

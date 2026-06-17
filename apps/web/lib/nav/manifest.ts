@@ -65,6 +65,28 @@ const SETTINGS: NavSection = {
   ],
 };
 
+// Leader = a two-world cockpit: hiring objects + team people. All @team via can()/API scope.
+const LEADER_MY_HIRING: NavSection = {
+  labelKey: 'sidebar.myHiring',
+  items: [
+    { href: '/recruitment/vacancies', labelKey: 'sidebar.vacancies', icon: 'briefcase', module: 'vacancy' },
+    { href: '/recruitment/candidates', labelKey: 'sidebar.finalistCandidates', icon: 'user', module: 'candidate' },
+    { href: '/recruitment/interviews', labelKey: 'sidebar.interviews', icon: 'video', module: 'interview' },
+    { href: '/recruitment/offers', labelKey: 'sidebar.offersToApprove', icon: 'clipboard', module: 'offer' },
+  ],
+};
+const LEADER_MY_TEAM: NavSection = {
+  labelKey: 'sidebar.myTeam',
+  items: [
+    { href: '/people/performance', labelKey: 'sidebar.performance', icon: 'target', module: 'performance' },
+    { href: '/learning', labelKey: 'sidebar.training', icon: 'book', module: 'learning' },
+    { href: '/talent/nine-box', labelKey: 'sidebar.nineBox', icon: 'ninebox', module: 'ninebox' },
+    { href: '/engagement/climate', labelKey: 'sidebar.climate', icon: 'heart', module: 'engagement' },
+    { href: '/compensation', labelKey: 'sidebar.compensation', icon: 'dollar', module: 'compensation' },
+  ],
+};
+const LEADER_COCKPIT: NavSection[] = [COMMAND_CENTER, LEADER_MY_HIRING, LEADER_MY_TEAM];
+
 // Base admin IA = today's full sidebar. can() prunes per role → no regression.
 const BASE_ADMIN: NavSection[] = [COMMAND_CENTER, RECRUITMENT, PEOPLE, TALENT, CULTURE, SETTINGS];
 // Recruiter = purpose-built ATS shell (declared, not subtracted).
@@ -77,7 +99,7 @@ export const MANIFESTS: Record<NavRole, RoleManifest> = {
   hr_admin: adminManifest(BASE_ADMIN),
   hrbp: adminManifest(BASE_ADMIN),
   recruiter: adminManifest(RECRUITER_ATS),
-  leader: adminManifest(BASE_ADMIN),
+  leader: adminManifest(LEADER_COCKPIT),
   committee: adminManifest(BASE_ADMIN), // participant shell arrives in Slice 4
   employee: adminManifest(BASE_ADMIN),  // participant shell arrives in Slice 4
 };

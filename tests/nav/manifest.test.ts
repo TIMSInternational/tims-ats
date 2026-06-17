@@ -43,6 +43,23 @@ describe('nav manifest', () => {
         }
       }
   });
+  it('leader gets a bespoke two-world manifest (My Hiring + My Team), not BASE_ADMIN', () => {
+    const labels = MANIFESTS.leader.sections.map((s) => s.labelKey);
+    expect(labels).toContain('sidebar.myHiring');
+    expect(labels).toContain('sidebar.myTeam');
+    // My Hiring = the leader's hiring objects
+    const hiring = MANIFESTS.leader.sections.find((s) => s.labelKey === 'sidebar.myHiring');
+    const hiringModules = hiring?.items.map((i) => i.module) ?? [];
+    expect(hiringModules).toEqual(expect.arrayContaining(['vacancy', 'candidate', 'interview', 'offer']));
+    // My Team = team people modules
+    const team = MANIFESTS.leader.sections.find((s) => s.labelKey === 'sidebar.myTeam');
+    const teamModules = team?.items.map((i) => i.module) ?? [];
+    expect(teamModules).toEqual(expect.arrayContaining(['performance', 'learning', 'ninebox', 'engagement', 'compensation']));
+    // Curated: leader should NOT see admin/settings or org-only modules in nav
+    const all = MANIFESTS.leader.sections.flatMap((s) => s.items.map((i) => i.module));
+    for (const m of ['user', 'billing', 'integration', 'monitoring', 'dei', 'succession', 'team_intel'])
+      expect(all, `leader nav should not include ${m}`).not.toContain(m);
+  });
 });
 
 describe('computeVisibleSections', () => {

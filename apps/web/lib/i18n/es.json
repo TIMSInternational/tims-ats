@@ -66,7 +66,11 @@
     "billing": "Facturacion",
     "businessUnits": "Unidades de Negocio",
     "commandCenter": "Command Center",
-    "assessments": "Evaluaciones"
+    "assessments": "Evaluaciones",
+    "myHiring": "Mi Reclutamiento",
+    "myTeam": "Mi Equipo",
+    "finalistCandidates": "Candidatos Finalistas",
+    "offersToApprove": "Ofertas por Aprobar"
   },
   "platformSidebar": {
     "platform": "Plataforma",
@@ -2166,6 +2170,24 @@
     "highRisk": "Areas en Riesgo",
     "actionPlans": "Planes de Accion",
     "noData": "Sin datos suficientes",
+    "loadError": "No se pudieron cargar los datos"
+  },
+  "managerDashboard": {
+    "title": "Mi Gestion",
+    "subtitle": "Tu equipo y tu reclutamiento",
+    "myHiring": "Mi Reclutamiento",
+    "myTeam": "Mi Equipo",
+    "openVacancies": "Vacantes Abiertas",
+    "activeCandidates": "Candidatos Activos",
+    "offersToApprove": "Ofertas por Aprobar",
+    "scorecardsToSubmit": "Scorecards Pendientes",
+    "activeOkrs": "OKRs Activos",
+    "openActionPlans": "Planes de Accion Abiertos",
+    "myCommitments": "Mis Compromisos",
+    "approveOffersTitle": "Ofertas Pendientes de tu Aprobacion",
+    "scorecardsTitle": "Entrevistas que Requieren tu Scorecard",
+    "noOffers": "No tienes ofertas pendientes de aprobar",
+    "noScorecards": "No tienes scorecards pendientes",
     "loadError": "No se pudieron cargar los datos"
   }
 }

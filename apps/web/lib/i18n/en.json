@@ -66,7 +66,11 @@
     "billing": "Billing",
     "businessUnits": "Business Units",
     "commandCenter": "Command Center",
-    "assessments": "Assessments"
+    "assessments": "Assessments",
+    "myHiring": "My Hiring",
+    "myTeam": "My Team",
+    "finalistCandidates": "Finalist Candidates",
+    "offersToApprove": "Offers to Approve"
   },
   "platformSidebar": {
     "platform": "Platform",
@@ -2166,6 +2170,24 @@
     "highRisk": "At-Risk Areas",
     "actionPlans": "Action Plans",
     "noData": "Not enough data",
+    "loadError": "Couldn't load data"
+  },
+  "managerDashboard": {
+    "title": "My Management",
+    "subtitle": "Your team and your hiring",
+    "myHiring": "My Hiring",
+    "myTeam": "My Team",
+    "openVacancies": "Open Vacancies",
+    "activeCandidates": "Active Candidates",
+    "offersToApprove": "Offers to Approve",
+    "scorecardsToSubmit": "Pending Scorecards",
+    "activeOkrs": "Active OKRs",
+    "openActionPlans": "Open Action Plans",
+    "myCommitments": "My Commitments",
+    "approveOffersTitle": "Offers Pending Your Approval",
+    "scorecardsTitle": "Interviews Needing Your Scorecard",
+    "noOffers": "No offers pending your approval",
+    "noScorecards": "No pending scorecards",
     "loadError": "Couldn't load data"
   }
 }
