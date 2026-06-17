@@ -69,6 +69,7 @@ const SETTINGS: NavSection = {
 const LEADER_MY_HIRING: NavSection = {
   labelKey: 'sidebar.myHiring',
   items: [
+    { href: '/recruitment/pipeline', labelKey: 'sidebar.pipeline', icon: 'kanban', module: 'pipeline' },
     { href: '/recruitment/vacancies', labelKey: 'sidebar.vacancies', icon: 'briefcase', module: 'vacancy' },
     { href: '/recruitment/candidates', labelKey: 'sidebar.finalistCandidates', icon: 'user', module: 'candidate' },
     { href: '/recruitment/interviews', labelKey: 'sidebar.interviews', icon: 'video', module: 'interview' },
@@ -78,6 +79,7 @@ const LEADER_MY_HIRING: NavSection = {
 const LEADER_MY_TEAM: NavSection = {
   labelKey: 'sidebar.myTeam',
   items: [
+    { href: '/people/onboarding', labelKey: 'sidebar.onboarding', icon: 'rocket', module: 'onboarding' },
     { href: '/people/performance', labelKey: 'sidebar.performance', icon: 'target', module: 'performance' },
     { href: '/learning', labelKey: 'sidebar.training', icon: 'book', module: 'learning' },
     { href: '/talent/nine-box', labelKey: 'sidebar.nineBox', icon: 'ninebox', module: 'ninebox' },
