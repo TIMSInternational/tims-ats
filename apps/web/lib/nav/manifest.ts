@@ -110,14 +110,40 @@ const RECRUITER_ATS: NavSection[] = [COMMAND_CENTER, RECRUITMENT];
 
 const adminManifest = (sections: NavSection[]): RoleManifest => ({ shell: 'admin', landing: '/dashboard', sections });
 
+const participantManifest = (sections: NavSection[]): RoleManifest => ({ shell: 'participant', landing: '/dashboard', sections });
+
+// committee = interview panels they're assigned to (their real task). Calibrations omitted until a
+// scope-aware "my sessions" endpoint ships (D5).
+const COMMITTEE_TASKS: NavSection[] = [
+  {
+    labelKey: 'sidebar.myTasks',
+    items: [
+      { href: '/recruitment/interviews', labelKey: 'sidebar.myPanels', icon: 'video', module: 'interview' },
+    ],
+  },
+];
+
+// employee = self-service "My Home". Only sections with a real own-scoped endpoint (D5):
+// performance, learning, onboarding. Surveys/comp/360/privacy omitted until their backend ships.
+const EMPLOYEE_HOME: NavSection[] = [
+  {
+    labelKey: 'sidebar.myHome',
+    items: [
+      { href: '/people/performance', labelKey: 'sidebar.myPerformance', icon: 'target', module: 'performance' },
+      { href: '/learning', labelKey: 'sidebar.myLearning', icon: 'book', module: 'learning' },
+      { href: '/people/onboarding', labelKey: 'sidebar.myOnboarding', icon: 'rocket', module: 'onboarding' },
+    ],
+  },
+];
+
 export const MANIFESTS: Record<NavRole, RoleManifest> = {
   super_admin: adminManifest(BASE_ADMIN),
   hr_admin: adminManifest(HR_ADMIN_PEOPLE_FIRST),
   hrbp: adminManifest(HRBP_UNITS),
   recruiter: adminManifest(RECRUITER_ATS),
   leader: adminManifest(LEADER_COCKPIT),
-  committee: adminManifest(BASE_ADMIN), // participant shell arrives in Slice 4
-  employee: adminManifest(BASE_ADMIN),  // participant shell arrives in Slice 4
+  committee: participantManifest(COMMITTEE_TASKS),
+  employee: participantManifest(EMPLOYEE_HOME),
 };
 
 const FALLBACK_MANIFEST: RoleManifest = adminManifest(BASE_ADMIN);
@@ -126,6 +152,19 @@ const FALLBACK_MANIFEST: RoleManifest = adminManifest(BASE_ADMIN);
 export function manifestFor(roles: readonly string[]): RoleManifest {
   const primary = PRECEDENCE.find((r) => roles.includes(r));
   return primary ? MANIFESTS[primary] : FALLBACK_MANIFEST;
+}
+
+/** Which sidebar chrome to render. Platform owner always wins; participant manifests get the
+ *  lighter ParticipantSidebar; everything else gets the admin Sidebar. */
+export function pickSidebarVariant(isPlatformOwner: boolean, shell: Shell): 'platform' | 'participant' | 'admin' {
+  if (isPlatformOwner) return 'platform';
+  if (shell === 'participant') return 'participant';
+  return 'admin';
+}
+
+/** Whether a nav item is the active route: exact match or a parent of the current path. */
+export function isNavItemActive(pathname: string, href: string): boolean {
+  return pathname === href || pathname.startsWith(href + '/');
 }
 
 /** Resolve a dot-path label key against an i18n message object. Falls back to the key. */

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  MANIFESTS, manifestFor, resolveLabel, computeVisibleSections, NAV_ROLES,
+  MANIFESTS, manifestFor, resolveLabel, computeVisibleSections, NAV_ROLES, pickSidebarVariant, isNavItemActive,
 } from '../../apps/web/lib/nav/manifest';
 import { moduleForPath } from '../../apps/web/lib/nav/routes';
 import es from '../../apps/web/lib/i18n/es.json';
@@ -87,6 +87,37 @@ describe('nav manifest', () => {
     const nullLabelSections = sections.filter((s) => s.labelKey === null);
     expect(nullLabelSections).toHaveLength(1);
     expect(nullLabelSections[0]?.items.every((i) => i.module === null)).toBe(true);
+  });
+
+  it('committee + employee use the participant shell (not admin)', () => {
+    expect(MANIFESTS.committee.shell).toBe('participant');
+    expect(MANIFESTS.employee.shell).toBe('participant');
+    for (const r of ['super_admin', 'hr_admin', 'hrbp', 'recruiter', 'leader'] as const)
+      expect(MANIFESTS[r].shell).toBe('admin');
+  });
+
+  it('committee = My Tasks (panels); employee = My Home (performance/learning/onboarding); no admin/org modules', () => {
+    const committeeMods = MANIFESTS.committee.sections.flatMap((s) => s.items.map((i) => i.module));
+    expect(committeeMods).toEqual(expect.arrayContaining(['interview']));
+    const employeeMods = MANIFESTS.employee.sections.flatMap((s) => s.items.map((i) => i.module));
+    expect(employeeMods).toEqual(expect.arrayContaining(['performance', 'learning', 'onboarding']));
+    const all = [...committeeMods, ...employeeMods];
+    for (const m of ['user', 'billing', 'integration', 'monitoring', 'dei', 'vacancy', 'offer'])
+      expect(all, `participant nav should not include ${m}`).not.toContain(m);
+  });
+
+  it('isNavItemActive: exact match or parent path, not sibling prefix', () => {
+    expect(isNavItemActive('/people/performance', '/people/performance')).toBe(true);   // exact
+    expect(isNavItemActive('/people/performance/123', '/people/performance')).toBe(true); // child
+    expect(isNavItemActive('/people', '/people/performance')).toBe(false);              // parent ≠ active
+    expect(isNavItemActive('/people/performance-review', '/people/performance')).toBe(false); // sibling prefix, NOT active
+  });
+
+  it('pickSidebarVariant: platform > participant > admin', () => {
+    expect(pickSidebarVariant(true, 'participant')).toBe('platform');
+    expect(pickSidebarVariant(false, 'participant')).toBe('participant');
+    expect(pickSidebarVariant(false, 'admin')).toBe('admin');
+    expect(pickSidebarVariant(false, 'platform')).toBe('admin');
   });
 });
 

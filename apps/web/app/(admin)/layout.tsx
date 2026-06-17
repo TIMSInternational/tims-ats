@@ -6,6 +6,7 @@ import { verifyImpersonationToken, IMPERSONATION_COOKIE } from '@tims/api';
 import { env } from '../../lib/env';
 import { isMfaEnforced, isMfaGateBlocking } from '../../lib/mfa';
 import { AdminShell } from './admin-shell';
+import { manifestFor } from '../../lib/nav/manifest';
 
 export default async function AdminLayout({
   children,
@@ -48,11 +49,10 @@ export default async function AdminLayout({
   // platform_owner / super_admin role slugs (any of which fully bypass permission
   // checks). Keep these in sync — a role the API treats as privileged but the gate
   // doesn't would silently escape MFA enforcement.
+  const roleSlugs = (appUser?.userRoles ?? []).map((ur) => ur.role.slug);
   const isPrivileged =
     !!appUser?.isPlatformOwner ||
-    (appUser?.userRoles ?? []).some(
-      (ur) => ur.role.slug === 'super_admin' || ur.role.slug === 'platform_owner',
-    );
+    roleSlugs.some((slug) => slug === 'super_admin' || slug === 'platform_owner');
   if (isMfaEnforced(env.MFA_ENFORCED) && isPrivileged) {
     const supabase = await createSupabaseServerClient();
     const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
@@ -107,11 +107,17 @@ export default async function AdminLayout({
     ? `${effective.firstName} ${effective.lastName}`
     : supabaseUser.email || 'Usuario';
 
+  // Pick the shell from the primary role's manifest (committee/employee → participant).
+  // Reuses the role slugs already loaded for the MFA gate (no extra query). Platform
+  // owners always render PlatformSidebar regardless of shell (pickSidebarVariant).
+  const shell = manifestFor(roleSlugs).shell;
+
   return (
     <AdminShell
       userInitials={initials}
       displayName={displayName}
       isPlatformOwner={effective?.isPlatformOwner || false}
+      shell={shell}
       avatar={effective?.avatar || supabaseUser.user_metadata?.avatar_url}
     >
       {children}

@@ -70,7 +70,13 @@
     "myHiring": "My Hiring",
     "myTeam": "My Team",
     "finalistCandidates": "Finalist Candidates",
-    "offersToApprove": "Offers to Approve"
+    "offersToApprove": "Offers to Approve",
+    "myTasks": "My Tasks",
+    "myHome": "My Home",
+    "myPanels": "My Panels",
+    "myPerformance": "My Performance",
+    "myLearning": "My Learning",
+    "myOnboarding": "My Onboarding"
   },
   "platformSidebar": {
     "platform": "Platform",
@@ -2188,6 +2194,31 @@
     "scorecardsTitle": "Interviews Needing Your Scorecard",
     "noOffers": "No offers pending your approval",
     "noScorecards": "No pending scorecards",
+    "loadError": "Couldn't load data"
+  },
+  "committeeTasks": {
+    "title": "My Tasks",
+    "subtitle": "What needs your attention",
+    "pendingScorecards": "Pending Scorecards",
+    "panelsTitle": "Interviews Needing Your Scorecard",
+    "noScorecards": "No pending scorecards",
+    "loadError": "Couldn't load data"
+  },
+  "employeeHome": {
+    "title": "My Home",
+    "subtitle": "Your growth and your to-dos",
+    "performance": "My Performance",
+    "learning": "My Learning",
+    "onboarding": "My Onboarding",
+    "activeOkrs": "Active OKRs",
+    "avgProgress": "avg progress",
+    "coachingSessions": "Coaching Sessions",
+    "feedback": "Feedback",
+    "myOkrsTitle": "My OKRs",
+    "noOkrs": "No OKRs assigned yet",
+    "enrolledCourses": "Enrolled Courses",
+    "onboardingProgress": "Onboarding Progress",
+    "noOnboarding": "No active onboarding plan",
     "loadError": "Couldn't load data"
   },
   "hrExecDashboard": {

@@ -70,7 +70,13 @@
     "myHiring": "Mi Reclutamiento",
     "myTeam": "Mi Equipo",
     "finalistCandidates": "Candidatos Finalistas",
-    "offersToApprove": "Ofertas por Aprobar"
+    "offersToApprove": "Ofertas por Aprobar",
+    "myTasks": "Mis Tareas",
+    "myHome": "Mi Espacio",
+    "myPanels": "Mis Paneles",
+    "myPerformance": "Mi Desempeno",
+    "myLearning": "Mi Aprendizaje",
+    "myOnboarding": "Mi Onboarding"
   },
   "platformSidebar": {
     "platform": "Plataforma",
@@ -2188,6 +2194,31 @@
     "scorecardsTitle": "Entrevistas que Requieren tu Scorecard",
     "noOffers": "No tienes ofertas pendientes de aprobar",
     "noScorecards": "No tienes scorecards pendientes",
+    "loadError": "No se pudieron cargar los datos"
+  },
+  "committeeTasks": {
+    "title": "Mis Tareas",
+    "subtitle": "Lo que requiere tu atencion",
+    "pendingScorecards": "Scorecards Pendientes",
+    "panelsTitle": "Entrevistas que Requieren tu Scorecard",
+    "noScorecards": "No tienes scorecards pendientes",
+    "loadError": "No se pudieron cargar los datos"
+  },
+  "employeeHome": {
+    "title": "Mi Espacio",
+    "subtitle": "Tu desarrollo y tus pendientes",
+    "performance": "Mi Desempeno",
+    "learning": "Mi Aprendizaje",
+    "onboarding": "Mi Onboarding",
+    "activeOkrs": "OKRs Activos",
+    "avgProgress": "progreso promedio",
+    "coachingSessions": "Sesiones de Coaching",
+    "feedback": "Feedback",
+    "myOkrsTitle": "Mis OKRs",
+    "noOkrs": "Aun no tienes OKRs asignados",
+    "enrolledCourses": "Cursos Inscritos",
+    "onboardingProgress": "Progreso de Onboarding",
+    "noOnboarding": "No tienes un plan de onboarding activo",
     "loadError": "No se pudieron cargar los datos"
   },
   "hrExecDashboard": {

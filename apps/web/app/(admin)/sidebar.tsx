@@ -5,9 +5,9 @@ import { usePathname, useRouter } from 'next/navigation';
 import { createSupabaseBrowserClient } from '@tims/auth/client';
 import { useI18n } from '../../lib/i18n';
 import { usePermissions } from '../../lib/permissions';
-import { manifestFor, computeVisibleSections, resolveLabel } from '../../lib/nav/manifest';
+import { manifestFor, computeVisibleSections, resolveLabel, isNavItemActive } from '../../lib/nav/manifest';
 
-function Icon({ name, className }: { name: string; className: string }) {
+export function Icon({ name, className }: { name: string; className: string }) {
   const c = className;
   switch (name) {
     case 'grid':
@@ -95,7 +95,7 @@ export function Sidebar({ userInitials, displayName, expanded, onToggle, ready =
             )}
             <div className="flex flex-col gap-0.5">
               {section.items.map((item) => {
-                const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
+                const isActive = isNavItemActive(pathname, item.href);
                 return (
                   <Link
                     key={item.href}

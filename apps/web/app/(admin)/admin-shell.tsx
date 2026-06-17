@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import { Sidebar } from './sidebar';
 import { PlatformSidebar } from './platform-sidebar';
+import { ParticipantSidebar } from './participant-sidebar';
+import { pickSidebarVariant, type Shell } from '../../lib/nav/manifest';
 import { Navbar } from './navbar/index';
 import { SupportChat } from './support-chat';
 import { ImpersonationBanner } from './impersonation-banner';
@@ -18,12 +20,14 @@ export function AdminShell({
   userInitials,
   displayName,
   isPlatformOwner,
+  shell,
   avatar,
 }: {
   children: React.ReactNode;
   userInitials: string;
   displayName: string;
   isPlatformOwner: boolean;
+  shell: Shell;
   avatar?: string | null;
 }) {
   const [expanded, setExpanded] = useState(true);
@@ -49,7 +53,9 @@ export function AdminShell({
     localStorage.setItem(SIDEBAR_KEY, String(next));
   };
 
-  const SidebarComponent = isPlatformOwner ? PlatformSidebar : Sidebar;
+  const variant = pickSidebarVariant(isPlatformOwner, shell);
+  const SidebarComponent =
+    variant === 'platform' ? PlatformSidebar : variant === 'participant' ? ParticipantSidebar : Sidebar;
 
   return (
     <I18nProvider>
