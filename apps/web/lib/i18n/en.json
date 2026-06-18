@@ -2246,7 +2246,18 @@
     "consentActive": "Active",
     "consentWithdrawn": "Withdrawn",
     "consentAgreedOn": "Agreed",
-    "consentWithdrawnOn": "Withdrawn on"
+    "consentWithdrawnOn": "Withdrawn on",
+    "recognition": "Recognition",
+    "noRecognitions": "You haven't received any recognition yet",
+    "recognitionFrom": "From",
+    "commitments": "My Commitments",
+    "noCommitments": "You have no commitments on record",
+    "commitmentDue": "Due",
+    "commitmentNoDue": "No date",
+    "commitmentStatusPending": "Pending",
+    "commitmentStatusInProgress": "In progress",
+    "commitmentStatusCompleted": "Completed",
+    "commitmentStatusCancelled": "Cancelled"
   },
   "hrExecDashboard": {
     "title": "HR Executive Dashboard",

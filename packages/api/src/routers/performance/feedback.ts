@@ -143,4 +143,50 @@ export const performanceFeedbackRouter = router({
 
       return { recognitions, nextCursor };
     }),
+
+  // 11.16 — My recognitions (employee own surface — recognition I RECEIVED)
+  // Dedicated own-scoped read for the employee My Home landing. Hard-pinned to
+  // the caller via `toUserId: ctx.user.id` — deliberately NOT the enumerable
+  // listRecognitions({ toUserId }) filter, which an employee could point at
+  // another user's id. protectedProcedure: reading recognition given to YOU is
+  // inherently safe peer data. Recognition has NO isAnonymous flag (only
+  // Feedback does), so surfacing the sender's display name is fine; the explicit
+  // select on fromUser exposes ONLY firstName/lastName (no id/email/avatar).
+  myRecognitions: protectedProcedure
+    .input(
+      z.object({
+        cursor: z.string().uuid().optional(),
+        limit: z.number().min(1).max(100).default(25),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const { cursor, limit } = input;
+
+      const where: Prisma.RecognitionWhereInput = {
+        organizationId: ctx.user.organizationId,
+        toUserId: ctx.user.id,
+      };
+
+      const recognitions = await db.recognition.findMany({
+        where,
+        take: limit + 1,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          category: true,
+          message: true,
+          createdAt: true,
+          fromUser: { select: { firstName: true, lastName: true } },
+        },
+      });
+
+      let nextCursor: string | undefined;
+      if (recognitions.length > limit) {
+        const nextItem = recognitions.pop();
+        nextCursor = nextItem?.id;
+      }
+
+      return { recognitions, nextCursor };
+    }),
 });

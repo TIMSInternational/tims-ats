@@ -2246,7 +2246,18 @@
     "consentActive": "Activo",
     "consentWithdrawn": "Retirado",
     "consentAgreedOn": "Otorgado",
-    "consentWithdrawnOn": "Retirado el"
+    "consentWithdrawnOn": "Retirado el",
+    "recognition": "Reconocimientos",
+    "noRecognitions": "Aun no has recibido reconocimientos",
+    "recognitionFrom": "De",
+    "commitments": "Mis Compromisos",
+    "noCommitments": "No tienes compromisos registrados",
+    "commitmentDue": "Vence",
+    "commitmentNoDue": "Sin fecha",
+    "commitmentStatusPending": "Pendiente",
+    "commitmentStatusInProgress": "En progreso",
+    "commitmentStatusCompleted": "Completado",
+    "commitmentStatusCancelled": "Cancelado"
   },
   "hrExecDashboard": {
     "title": "Panel Ejecutivo de RRHH",

@@ -7,6 +7,8 @@ import { LoadError } from './load-error';
 import { EmployeeSurveys } from './employee-surveys';
 import { EmployeeCompensation } from './employee-compensation';
 import { EmployeePrivacy } from './employee-privacy';
+import { EmployeeRecognition } from './employee-recognition';
+import { EmployeeCommitments } from './employee-commitments';
 
 // employee is OWN-scoped: every query below is auto-narrowed to the caller by
 // scopeWhereFor (we pass NO userId — that would widen, not narrow). No
@@ -229,6 +231,12 @@ export function EmployeeHomeDashboard() {
 
         {/* ── SECTION 6 — Privacidad (own-scoped consent ledger) ── */}
         <EmployeePrivacy />
+
+        {/* ── SECTION 7 — Reconocimientos (own-scoped, recognition received) ── */}
+        <EmployeeRecognition />
+
+        {/* ── SECTION 8 — Mis Compromisos (own-scoped coaching commitments) ── */}
+        <EmployeeCommitments />
       </div>
     </div>
   );

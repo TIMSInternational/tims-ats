@@ -162,6 +162,58 @@ export const performanceCoachingRouter = router({
       return { commitments, nextCursor };
     }),
 
+  // 11.9b — My commitments (employee own surface — my coaching commitments)
+  // Own-scoped read for the employee My Home landing. Resolves the subject via
+  // the registered `commitment` entity (own → OR(employeeId=me, createdById=me)),
+  // AND-composed with organizationId exactly like listLeaderCommitments — the
+  // fragment is a discrete AND element, never spread. NO requireOrgScope (that
+  // would FORBID the own-scoped caller). No userId/employeeId input: the subject
+  // is the caller. Explicit select, bounded take.
+  myCommitments: permissionProcedure('performance', 'read')
+    .input(
+      z.object({
+        cursor: z.string().uuid().optional(),
+        limit: z.number().min(1).max(100).default(25),
+        status: z.string().optional(),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const { cursor, limit, status } = input;
+
+      const scopeWhere = await scopeWhereFor('commitment', ctx.access, ctx.user.id);
+      const where: Prisma.CommitmentWhereInput = {
+        AND: [
+          { organizationId: ctx.user.organizationId },
+          scopeWhere as Prisma.CommitmentWhereInput,
+          {
+            ...(status ? { status } : {}),
+          },
+        ],
+      };
+
+      const commitments = await db.commitment.findMany({
+        where,
+        take: limit + 1,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        orderBy: { dueDate: 'asc' },
+        select: {
+          id: true,
+          description: true,
+          status: true,
+          dueDate: true,
+          completedAt: true,
+        },
+      });
+
+      let nextCursor: string | undefined;
+      if (commitments.length > limit) {
+        const nextItem = commitments.pop();
+        nextCursor = nextItem?.id;
+      }
+
+      return { commitments, nextCursor };
+    }),
+
   // 11.10 — Create commitment
   createCommitment: permissionProcedure('performance', 'create')
     .input(
