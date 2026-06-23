@@ -4,11 +4,22 @@ import { useState } from 'react';
 import { trpc } from '../lib/trpc';
 import { CandidateAvatar } from './candidate-avatar';
 
+/** Minimal user shape the picker hands back alongside the id. */
+export interface PickedUser {
+  id: string;
+  firstName: string;
+  lastName: string;
+}
+
 interface UserPickerProps {
   /** User ids to hide from the list (e.g. already-assigned members). */
   excludeIds?: string[];
-  /** Called when a user is selected. */
-  onSelect: (userId: string) => void;
+  /**
+   * Called when a user is selected. The selected user object is passed as a
+   * second argument so callers that hold a recipient before submitting can
+   * display the real name (callers that mutate immediately can ignore it).
+   */
+  onSelect: (userId: string, user: PickedUser) => void;
   /** Disables the buttons while a mutation is in flight. */
   disabled?: boolean;
   searchPlaceholder: string;
@@ -18,7 +29,8 @@ interface UserPickerProps {
 
 /**
  * Searchable org-user picker. Backed by `trpc.user.list` (the only org-member
- * query the admin UI exposes). Returns a userId via onSelect on click.
+ * query the admin UI exposes). Returns a userId (and the user object) via
+ * onSelect on click.
  */
 export function UserPicker({
   excludeIds = [],
@@ -55,7 +67,7 @@ export function UserPicker({
               key={u.id}
               type="button"
               disabled={disabled}
-              onClick={() => onSelect(u.id)}
+              onClick={() => onSelect(u.id, { id: u.id, firstName: u.firstName, lastName: u.lastName })}
               className="w-full text-left px-3 py-2.5 flex items-center gap-2.5 hover:bg-[#F6F6F6] transition disabled:opacity-50 disabled:cursor-not-allowed border-b border-[#F6F6F6] last:border-0"
             >
               <CandidateAvatar firstName={u.firstName} lastName={u.lastName} avatar={u.avatar} size="sm" />

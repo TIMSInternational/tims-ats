@@ -1,7 +1,9 @@
 'use client';
 
+import { useState } from 'react';
 import { useI18n } from '../../../../lib/i18n';
-import { toast } from '../../../../lib/toast';
+import { RecognitionModal } from './recognition-modal';
+import { FeedbackModal } from './feedback-modal';
 
 interface FeedbackUser {
   id: string;
@@ -105,14 +107,19 @@ interface FeedbackPanelProps {
 
 export function FeedbackPanel({ feedbacks, recognitions, isLoading }: FeedbackPanelProps) {
   const { t } = useI18n();
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [showRecognitionModal, setShowRecognitionModal] = useState(false);
 
   return (
     <div className="grid grid-cols-2 gap-4">
+      {showFeedbackModal && <FeedbackModal onClose={() => setShowFeedbackModal(false)} />}
+      {showRecognitionModal && <RecognitionModal onClose={() => setShowRecognitionModal(false)} />}
+
       {/* Continuous Feedback */}
       <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
         <div className="flex items-center justify-between px-5 py-3 border-b border-[#EDEDED]">
           <h3 className="text-[13px] font-semibold text-[#333]">{t.performance.feedbackTitle}</h3>
-          <button onClick={() => toast('Dar Retroalimentacion: proximamente', { type: 'info' })} className="text-[10px] text-[#DD0C15] font-medium hover:underline">
+          <button onClick={() => setShowFeedbackModal(true)} className="text-[10px] text-[#DD0C15] font-medium hover:underline">
             {t.performance.giveFeedback}
           </button>
         </div>
@@ -160,7 +167,7 @@ export function FeedbackPanel({ feedbacks, recognitions, isLoading }: FeedbackPa
       <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
         <div className="flex items-center justify-between px-5 py-3 border-b border-[#EDEDED]">
           <h3 className="text-[13px] font-semibold text-[#333]">{t.performance.recognitionTitle}</h3>
-          <button onClick={() => toast('Reconocer: proximamente', { type: 'info' })} className="text-[10px] text-[#DD0C15] font-medium hover:underline">
+          <button onClick={() => setShowRecognitionModal(true)} className="text-[10px] text-[#DD0C15] font-medium hover:underline">
             {t.performance.recognize}
           </button>
         </div>
