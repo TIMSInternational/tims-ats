@@ -1,18 +1,21 @@
 'use client';
 
 import { useState } from 'react';
+import { useI18n } from '../../../../../../lib/i18n';
+import { InterviewAiPanel } from './interview-ai-panel';
 
 const COMPETENCIES = [
-  { id: 'leadership', label: 'Liderazgo Tecnico', aiQuestion: 'Describe una situacion donde tuviste que tomar una decision tecnica impopular. Como la comunicaste al equipo?' },
-  { id: 'analytical', label: 'Pensamiento Analitico', aiQuestion: 'Cuentame sobre un problema complejo que descompusiste en partes manejables. Cual fue tu enfoque?' },
-  { id: 'communication', label: 'Comunicacion', aiQuestion: 'Cuentame sobre una vez que tuviste que explicar un concepto tecnico complejo a un stakeholder no tecnico. Que enfoque usaste?' },
-  { id: 'problem_solving', label: 'Resolucion de Problemas', aiQuestion: 'Describe el bug mas complejo que hayas resuelto. Cual fue tu proceso de debugging?' },
+  { id: 'leadership', label: 'Liderazgo Tecnico' },
+  { id: 'analytical', label: 'Pensamiento Analitico' },
+  { id: 'communication', label: 'Comunicacion' },
+  { id: 'problem_solving', label: 'Resolucion de Problemas' },
 ];
 
-const TABS = ['Scorecard', 'AI Coach', 'Notas', 'Candidato'] as const;
+const TABS = ['Scorecard', 'AI', 'Notas', 'Candidato'] as const;
 type Tab = (typeof TABS)[number];
 
 interface ScorecardPanelProps {
+  interviewId: string;
   candidateName: string;
   candidateInitials: string;
   vacancyTitle: string;
@@ -39,7 +42,8 @@ function StarRating({ value, onChange }: { value: number; onChange: (v: number) 
   );
 }
 
-export function ScorecardPanel({ candidateName, candidateInitials, vacancyTitle, fitScore }: ScorecardPanelProps) {
+export function ScorecardPanel({ interviewId, candidateName, candidateInitials, vacancyTitle, fitScore }: ScorecardPanelProps) {
+  const { t } = useI18n();
   const [activeTab, setActiveTab] = useState<Tab>('Scorecard');
   const [ratings, setRatings] = useState<Record<string, number>>({});
   const [notes, setNotes] = useState<Record<string, string>>({});
@@ -49,6 +53,8 @@ export function ScorecardPanel({ candidateName, candidateInitials, vacancyTitle,
 
   const setRating = (id: string, value: number) => setRatings((prev) => ({ ...prev, [id]: value }));
   const setNote = (id: string, value: string) => setNotes((prev) => ({ ...prev, [id]: value }));
+
+  const tabLabel = (tab: Tab) => (tab === 'AI' ? t.interviews.aiTab : tab);
 
   return (
     <div className="flex-1 md:flex-[40] flex flex-col bg-white border-t md:border-t-0 md:border-l border-[#EDEDED] min-h-0">
@@ -64,7 +70,7 @@ export function ScorecardPanel({ candidateName, candidateInitials, vacancyTitle,
                 : 'text-[#8B8B8B] hover:text-[#585858]'
             }`}
           >
-            {tab}
+            {tabLabel(tab)}
           </button>
         ))}
       </div>
@@ -83,7 +89,7 @@ export function ScorecardPanel({ candidateName, candidateInitials, vacancyTitle,
             onNote={setNote}
           />
         )}
-        {activeTab === 'AI Coach' && <AiCoachTab />}
+        {activeTab === 'AI' && <InterviewAiPanel interviewId={interviewId} />}
         {activeTab === 'Notas' && <NotasTab />}
         {activeTab === 'Candidato' && <CandidatoTab candidateName={candidateName} candidateInitials={candidateInitials} />}
       </div>
@@ -146,28 +152,9 @@ function ScorecardTabContent({
               className="w-full bg-[#F6F6F6] rounded border border-[#EDEDED] p-2 text-[11px] h-12 outline-none resize-none placeholder:text-[#8B8B8B]"
               maxLength={2000}
             />
-            <div className="flex items-start gap-1.5 bg-teal-50 rounded p-2 mt-2 border border-teal-200">
-              <svg className="w-3.5 h-3.5 text-teal-600 mt-0.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-                <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25" />
-              </svg>
-              <p className="text-[10px] text-teal-700"><strong>IA sugiere preguntar:</strong> &quot;{comp.aiQuestion}&quot;</p>
-            </div>
           </div>
         );
       })}
-
-      {/* Bias detection alert */}
-      <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
-        <div className="flex items-start gap-2">
-          <svg className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-            <path d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
-          </svg>
-          <div>
-            <p className="text-[11px] text-amber-700 font-medium">Deteccion de Sesgo</p>
-            <p className="text-[10px] text-amber-600">Asegurar evaluacion objetiva basada en evidencia. Utilice ejemplos concretos y comportamientos observables.</p>
-          </div>
-        </div>
-      </div>
 
       {/* Evaluator comparison */}
       <div className="bg-[#F6F6F6] rounded-lg p-3 mb-4">
@@ -194,19 +181,6 @@ function ScorecardTabContent({
         </div>
       </div>
     </>
-  );
-}
-
-/* ---- AI Coach Tab ---- */
-function AiCoachTab() {
-  return (
-    <div className="flex flex-col items-center justify-center py-12 text-center">
-      <svg className="w-10 h-10 text-[#8B8B8B] mb-3" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-        <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
-      </svg>
-      <p className="text-[13px] text-[#585858] font-medium mb-1">AI Coach</p>
-      <p className="text-[11px] text-[#8B8B8B]">El coach de IA proporcionara sugerencias en tiempo real durante la entrevista.</p>
-    </div>
   );
 }
 

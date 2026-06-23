@@ -125,6 +125,7 @@ export default function InterviewRoomPage({
             <VideoControls />
           </div>
           <ScorecardPanel
+            interviewId={data.id}
             candidateName={candidateName}
             candidateInitials={candidateInitials}
             vacancyTitle={data.vacancy.title}

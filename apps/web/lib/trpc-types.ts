@@ -55,6 +55,13 @@ export type InterviewListResult = RouterOutput['interview']['list'];
 export type InterviewDetail = RouterOutput['interview']['getById'];
 export type InterviewEvaluator = InterviewDetail['evaluators'][number];
 
+// Interview AI (interview-room buttons — all three are budget-spending mutations)
+export type InterviewGuideResult = RouterOutput['interview']['generateGuide'];
+export type InterviewGuideSection = InterviewGuideResult['sections'][number];
+export type InterviewSummaryResult = RouterOutput['interview']['generateSummary'];
+export type InterviewBiasResult = RouterOutput['interview']['detectBias'];
+export type InterviewBiasIndicator = InterviewBiasResult['biasIndicators'][number];
+
 // Organization — business units & membership (Wave 2.5 slice 7a)
 export type CompanyListItem = RouterOutput['organization']['listCompanies'][number];
 export type BusinessUnitListItem = RouterOutput['organization']['listBusinessUnits'][number];

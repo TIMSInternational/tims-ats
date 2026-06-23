@@ -96,37 +96,129 @@
     "supportPage": "Support"
   },
   "breadcrumbs": {
-    "/dashboard": { "label": "Dashboard" },
-    "/platform/organizations": { "parent": "Platform", "label": "Organizations" },
-    "/platform/subscriptions": { "parent": "Platform", "label": "Subscriptions" },
-    "/platform/users": { "parent": "Platform", "label": "Users" },
-    "/platform/health": { "parent": "System", "label": "System Health" },
-    "/platform/feature-flags": { "parent": "System", "label": "Feature Flags" },
-    "/platform/analytics": { "parent": "System", "label": "Analytics" },
-    "/platform/ai-agents": { "parent": "System", "label": "AI Agents" },
-    "/platform/notifications": { "parent": "Platform", "label": "Notifications" },
-    "/platform/invoices": { "parent": "Platform", "label": "Invoices" },
-    "/platform/invitations": { "parent": "Platform", "label": "Invitations" },
-    "/platform/audit": { "parent": "Support", "label": "Audit" },
-    "/platform/support": { "parent": "Support", "label": "Support" },
-    "/recruitment/pipeline": { "parent": "Recruitment", "label": "Pipeline" },
-    "/recruitment/vacancies": { "parent": "Recruitment", "label": "Vacancies" },
-    "/recruitment/candidates": { "parent": "Recruitment", "label": "Candidates" },
-    "/recruitment/interviews": { "parent": "Recruitment", "label": "Interviews" },
-    "/recruitment/offers": { "parent": "Recruitment", "label": "Offers" },
-    "/recruitment/talent-pools": { "parent": "Recruitment", "label": "Talent Pool" },
-    "/recruitment/analytics": { "parent": "Recruitment", "label": "Analytics" },
-    "/people/onboarding": { "parent": "People", "label": "Onboarding" },
-    "/people/performance": { "parent": "People", "label": "Performance & OKR" },
-    "/learning": { "parent": "People", "label": "Training & Development" },
-    "/talent/nine-box": { "parent": "Talent", "label": "Nine Box Predictive" },
-    "/talent/succession": { "parent": "Talent", "label": "Succession Map" },
-    "/talent/team-intelligence": { "parent": "Talent", "label": "Team Intelligence" },
-    "/engagement/climate": { "parent": "Organization", "label": "Engagement & Climate" },
-    "/engagement/dei": { "parent": "Organization", "label": "DEI Analytics" },
-    "/compensation": { "parent": "Organization", "label": "Compensation & Benefits" },
-    "/monitoring": { "parent": "Strategy", "label": "Strategic Monitoring" },
-    "/settings/integrations": { "parent": "Settings", "label": "HRIS & Integrations" }
+    "/dashboard": {
+      "label": "Dashboard"
+    },
+    "/platform/organizations": {
+      "parent": "Platform",
+      "label": "Organizations"
+    },
+    "/platform/subscriptions": {
+      "parent": "Platform",
+      "label": "Subscriptions"
+    },
+    "/platform/users": {
+      "parent": "Platform",
+      "label": "Users"
+    },
+    "/platform/health": {
+      "parent": "System",
+      "label": "System Health"
+    },
+    "/platform/feature-flags": {
+      "parent": "System",
+      "label": "Feature Flags"
+    },
+    "/platform/analytics": {
+      "parent": "System",
+      "label": "Analytics"
+    },
+    "/platform/ai-agents": {
+      "parent": "System",
+      "label": "AI Agents"
+    },
+    "/platform/notifications": {
+      "parent": "Platform",
+      "label": "Notifications"
+    },
+    "/platform/invoices": {
+      "parent": "Platform",
+      "label": "Invoices"
+    },
+    "/platform/invitations": {
+      "parent": "Platform",
+      "label": "Invitations"
+    },
+    "/platform/audit": {
+      "parent": "Support",
+      "label": "Audit"
+    },
+    "/platform/support": {
+      "parent": "Support",
+      "label": "Support"
+    },
+    "/recruitment/pipeline": {
+      "parent": "Recruitment",
+      "label": "Pipeline"
+    },
+    "/recruitment/vacancies": {
+      "parent": "Recruitment",
+      "label": "Vacancies"
+    },
+    "/recruitment/candidates": {
+      "parent": "Recruitment",
+      "label": "Candidates"
+    },
+    "/recruitment/interviews": {
+      "parent": "Recruitment",
+      "label": "Interviews"
+    },
+    "/recruitment/offers": {
+      "parent": "Recruitment",
+      "label": "Offers"
+    },
+    "/recruitment/talent-pools": {
+      "parent": "Recruitment",
+      "label": "Talent Pool"
+    },
+    "/recruitment/analytics": {
+      "parent": "Recruitment",
+      "label": "Analytics"
+    },
+    "/people/onboarding": {
+      "parent": "People",
+      "label": "Onboarding"
+    },
+    "/people/performance": {
+      "parent": "People",
+      "label": "Performance & OKR"
+    },
+    "/learning": {
+      "parent": "People",
+      "label": "Training & Development"
+    },
+    "/talent/nine-box": {
+      "parent": "Talent",
+      "label": "Nine Box Predictive"
+    },
+    "/talent/succession": {
+      "parent": "Talent",
+      "label": "Succession Map"
+    },
+    "/talent/team-intelligence": {
+      "parent": "Talent",
+      "label": "Team Intelligence"
+    },
+    "/engagement/climate": {
+      "parent": "Organization",
+      "label": "Engagement & Climate"
+    },
+    "/engagement/dei": {
+      "parent": "Organization",
+      "label": "DEI Analytics"
+    },
+    "/compensation": {
+      "parent": "Organization",
+      "label": "Compensation & Benefits"
+    },
+    "/monitoring": {
+      "parent": "Strategy",
+      "label": "Strategic Monitoring"
+    },
+    "/settings/integrations": {
+      "parent": "Settings",
+      "label": "HRIS & Integrations"
+    }
   },
   "auth": {
     "login": "Sign In",
@@ -1357,7 +1449,6 @@
     "confirmCloseDesc": "Active candidates will be notified.",
     "confirmFreeze": "Freeze this vacancy?",
     "confirmFreezeDesc": "The vacancy will be temporarily paused.",
-    "rejected": "Rejected",
     "cancelled": "Cancelled",
     "kpiTotal": "Total Vacancies",
     "kpiTimeToFill": "Avg Time-to-Fill",
@@ -1565,7 +1656,35 @@
     "today": "Today",
     "tomorrow": "Tomorrow",
     "thisWeekLabel": "This Week",
-    "manageEvaluators": "Evaluators"
+    "manageEvaluators": "Evaluators",
+    "aiTab": "AI Assistant",
+    "aiEmptyState": "Generate a guide, a summary, or a bias analysis with AI. Each action consumes AI budget.",
+    "generating": "Generating...",
+    "generateGuide": "Generate Interview Guide",
+    "generateSummary": "Generate Summary",
+    "detectBias": "Detect Bias",
+    "guideHeading": "Interview Guide",
+    "summaryHeading": "Interview Summary",
+    "keyPointsHeading": "Key Points",
+    "strengthsHeading": "Strengths",
+    "concernsHeading": "Concerns",
+    "biasHeading": "Bias Analysis",
+    "biasIndicatorsHeading": "Bias Indicators",
+    "recommendationsHeading": "Recommendations",
+    "scorecardsAnalyzedLabel": "Scorecards analyzed",
+    "overallRiskLabel": "Overall risk",
+    "riskNone": "None",
+    "riskLow": "Low",
+    "riskMedium": "Medium",
+    "riskHigh": "High",
+    "riskUnknown": "Unknown",
+    "severityNone": "None",
+    "severityLow": "Low",
+    "severityMedium": "Medium",
+    "severityHigh": "High",
+    "noBiasIndicators": "No bias indicators detected.",
+    "noScorecardsError": "You need at least one submitted scorecard for this action.",
+    "modelLabel": "Model"
   },
   "offers": {
     "title": "Offer & Validation Center",
