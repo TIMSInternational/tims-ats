@@ -239,6 +239,51 @@ export const engagementRouter = router({
     });
   }),
 
+  // ── Take a Survey (own-scoped renderable definition) ───────────────
+  // OWN-scoped self-service read used by the take form. The employee holds the
+  // engagement:read@own grant, so this is permissionProcedure('engagement',
+  // 'read') and intentionally does no org-rollup gate (an org-rollup gate would
+  // FORBID the own-scoped caller — contrast the org-only aggregate reads above).
+  //
+  // `survey` is not a row-scoped entity, so the org filter + answerability gate
+  // is hand-rolled in the where-clause: a survey is renderable to the caller
+  // ONLY if it is `status: 'active'`, within its `[startsAt, endsAt]` window
+  // (null bounds = open), and in the caller's organization. Anything else →
+  // NOT_FOUND (never leak the existence of an out-of-window / cross-org survey).
+  //
+  // Explicit select of the RENDERABLE fields only (id/title/type/questions) —
+  // never the raw responseCount scalar and never other respondents' answers.
+  // already-answered is intentionally NOT pre-checked here: the submit endpoint
+  // owns the duplicate-response CONFLICT, which the take UI handles.
+  getSurveyForResponse: permissionProcedure('engagement', 'read')
+    .input(z.object({ surveyId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const now = new Date();
+      const survey = await db.survey.findFirst({
+        where: {
+          AND: [
+            { id: input.surveyId },
+            { organizationId: ctx.user.organizationId },
+            { status: 'active' },
+            { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
+            { OR: [{ endsAt: null }, { endsAt: { gte: now } }] },
+          ],
+        },
+        select: {
+          id: true,
+          title: true,
+          type: true,
+          questions: true,
+        },
+      });
+
+      if (!survey) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Encuesta no encontrada o no disponible' });
+      }
+
+      return survey;
+    }),
+
   submitSurveyResponse: permissionProcedure('engagement', 'create')
     .input(
       z.object({
