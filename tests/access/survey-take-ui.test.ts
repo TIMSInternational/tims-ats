@@ -87,18 +87,20 @@ describe('survey-take-modal — query + mutation wiring', () => {
 describe('survey-question-field — per-type rendering', () => {
   const src = () => read(QUESTION_FIELD);
 
-  it('handles all four question types', () => {
+  it('renders all four normalized question kinds', () => {
     const s = src();
-    expect(s).toContain('scale');
-    expect(s).toContain('text');
-    expect(s).toContain('multiple_choice');
-    expect(s).toContain('yes_no');
+    // The field component switches on the NORMALIZED discriminant `kind`
+    // (scale/text/choice/yes_no), not the raw stored `type` vocabulary.
+    expect(s).toMatch(/kind === 'scale'/);
+    expect(s).toMatch(/kind === 'text'/);
+    expect(s).toMatch(/kind === 'choice'/);
+    expect(s).toMatch(/kind === 'yes_no'/);
   });
 
-  it('renders a 1-5 likert selector for scale questions producing a NUMBER answer', () => {
+  it('renders a numeric scale selector over the ACTUAL min..max range (not hardcoded 1-5)', () => {
     const s = src();
-    // five scale values 1..5
-    expect(s).toMatch(/\[1,\s*2,\s*3,\s*4,\s*5\]/);
+    // Range comes from the question's stored min/max (covers scale 1..5 and nps 0..10).
+    expect(s).toMatch(/scaleValues\(question\.min,\s*question\.max\)/);
   });
 
   it('renders a textarea for text questions (bounded <=5000)', () => {
@@ -107,7 +109,7 @@ describe('survey-question-field — per-type rendering', () => {
     expect(s).toMatch(/5000/);
   });
 
-  it('renders options for multiple_choice from question.options', () => {
+  it('renders options for choice questions from question.options', () => {
     expect(src()).toMatch(/question\.options/);
   });
 
@@ -136,8 +138,19 @@ describe('survey-question — typed Zod parse guard over the JsonValue questions
     expect(s).not.toMatch(/as any\b/);
   });
 
-  it('mirrors the four authoritative question types', () => {
+  it('is per-question tolerant (parses elements independently, not all-or-nothing)', () => {
     const s = src();
+    // The fix: iterate elements and safeParse each, instead of one array safeParse.
+    expect(s).toMatch(/for\s*\(const/);
+    expect(s).toMatch(/Array\.isArray/);
+  });
+
+  it('accepts BOTH stored vocabularies (legacy seed + authoring)', () => {
+    const s = src();
+    // Legacy/seed shape
+    expect(s).toMatch(/'open_text'/);
+    expect(s).toMatch(/'nps'/);
+    // Authoring shape
     expect(s).toMatch(/'scale'/);
     expect(s).toMatch(/'text'/);
     expect(s).toMatch(/'multiple_choice'/);
@@ -173,6 +186,7 @@ describe('survey-take i18n keys (both locales)', () => {
     'surveyScaleLow',
     'surveyScaleHigh',
     'surveyNotFound',
+    'surveyNoQuestions',
   ];
 
   it('es.json employeeHome.* has all new keys', () => {

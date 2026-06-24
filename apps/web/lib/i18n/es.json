@@ -2377,6 +2377,7 @@
     "surveyScaleLow": "Muy en desacuerdo",
     "surveyScaleHigh": "Muy de acuerdo",
     "surveyNotFound": "No se pudo cargar la encuesta",
+    "surveyNoQuestions": "Esta encuesta no tiene preguntas disponibles",
     "compensation": "Mi Compensacion",
     "compUnavailable": "No disponible",
     "compSalary": "Salario actual",

@@ -4,7 +4,6 @@ import { useI18n } from '../../../lib/i18n';
 import type { SurveyQuestion, SurveyAnswer } from './survey-question';
 
 const MAX_TEXT = 5000;
-const SCALE_VALUES = [1, 2, 3, 4, 5] as const;
 
 interface SurveyQuestionFieldProps {
   question: SurveyQuestion;
@@ -13,8 +12,15 @@ interface SurveyQuestionFieldProps {
   onChange: (value: SurveyAnswer) => void;
 }
 
-// Renders ONE survey question as the input matching its type. Extracted from
-// survey-take-modal.tsx to keep both files under the 300-line limit.
+// Inclusive integer range [min..max] for a numeric scale (scale + nps both map
+// to `kind: 'scale'` with their actual stored range — never hardcoded 1..5).
+function scaleValues(min: number, max: number): number[] {
+  if (!Number.isFinite(min) || !Number.isFinite(max) || max < min) return [];
+  return Array.from({ length: max - min + 1 }, (_, i) => min + i);
+}
+
+// Renders ONE survey question as the input matching its normalized `kind`.
+// Extracted from survey-take-modal.tsx to keep both files under the 300-line limit.
 export function SurveyQuestionField({ question, value, disabled, onChange }: SurveyQuestionFieldProps) {
   const { t } = useI18n();
   const e = t.employeeHome;
@@ -26,10 +32,10 @@ export function SurveyQuestionField({ question, value, disabled, onChange }: Sur
         {question.required ? <span className="text-[#DD0C15] ml-0.5">*</span> : null}
       </label>
 
-      {question.type === 'scale' ? (
+      {question.kind === 'scale' ? (
         <div>
-          <div className="flex gap-2">
-            {SCALE_VALUES.map((n) => (
+          <div className="flex flex-wrap gap-2">
+            {scaleValues(question.min, question.max).map((n) => (
               <button
                 key={n}
                 type="button"
@@ -53,7 +59,7 @@ export function SurveyQuestionField({ question, value, disabled, onChange }: Sur
         </div>
       ) : null}
 
-      {question.type === 'text' ? (
+      {question.kind === 'text' ? (
         <textarea
           value={typeof value === 'string' ? value : ''}
           onChange={(ev) => onChange(ev.target.value.slice(0, MAX_TEXT))}
@@ -64,9 +70,9 @@ export function SurveyQuestionField({ question, value, disabled, onChange }: Sur
         />
       ) : null}
 
-      {question.type === 'multiple_choice' ? (
+      {question.kind === 'choice' ? (
         <div className="space-y-1.5">
-          {(question.options ?? []).map((opt) => (
+          {question.options.map((opt) => (
             <label key={opt} className="flex items-center gap-2 text-[13px] text-[#333]">
               <input
                 type="radio"
@@ -81,7 +87,7 @@ export function SurveyQuestionField({ question, value, disabled, onChange }: Sur
         </div>
       ) : null}
 
-      {question.type === 'yes_no' ? (
+      {question.kind === 'yes_no' ? (
         <div className="flex gap-4">
           {[
             { v: 'yes', label: e.surveyYes },

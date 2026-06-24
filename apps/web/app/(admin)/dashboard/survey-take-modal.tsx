@@ -81,7 +81,7 @@ export function SurveyTakeModal({ surveyId, onClose }: SurveyTakeModalProps) {
       ) : survey.isError ? (
         <LoadError message={e.surveyNotFound} />
       ) : questions.length === 0 ? (
-        <p className="text-[13px] text-[#8B8B8B]">{e.noSurveys}</p>
+        <p className="text-[13px] text-[#8B8B8B]">{e.surveyNoQuestions}</p>
       ) : (
         <div className="space-y-4">
           {questions.map((q) => (

@@ -2377,6 +2377,7 @@
     "surveyScaleLow": "Strongly disagree",
     "surveyScaleHigh": "Strongly agree",
     "surveyNotFound": "Couldn't load the survey",
+    "surveyNoQuestions": "This survey has no available questions",
     "compensation": "My Compensation",
     "compUnavailable": "Not available",
     "compSalary": "Current salary",
