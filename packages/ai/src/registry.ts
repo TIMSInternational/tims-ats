@@ -29,6 +29,11 @@ export const AGENT_REGISTRY: Record<string, AgentDef> = {
   'interview-summarizer': { slug: 'interview-summarizer', name: 'Interview Summarizer', model: 'sonnet', category: 'recruitment', batchEligible: false, cacheTtlSeconds: 0 },
   'interview-guide': { slug: 'interview-guide', name: 'Interview Guide Generator', model: 'sonnet', category: 'recruitment', batchEligible: false, cacheTtlSeconds: 0 },
   'bias-detector': { slug: 'bias-detector', name: 'Scorecard Bias Detector', model: 'sonnet', category: 'recruitment', batchEligible: false, cacheTtlSeconds: 0 },
+  // AI Voice Interview — ElevenLabs conversational agent + post-call analysis.
+  // Budget-gated via AiAgentOrgConfig.monthlyBudget; status starts as 'stub' until
+  // the ElevenLabs integration is live.
+  'ai-voice-interview': { slug: 'ai-voice-interview', name: 'AI Voice Interview', model: 'sonnet', category: 'recruitment', batchEligible: false, cacheTtlSeconds: 0 },
+  'interview-fit-score': { slug: 'interview-fit-score', name: 'Interview Fit Scorer', model: 'sonnet', category: 'recruitment', batchEligible: false, cacheTtlSeconds: 0 },
 };
 
 // Process-local memo (the ai_agents catalog is global/immutable enough that an

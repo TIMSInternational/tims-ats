@@ -11,6 +11,7 @@ import { UpcomingPanel } from './upcoming-panel';
 import { MiniCalendar } from './mini-calendar';
 import { ScheduleModal } from './schedule-modal';
 import { EvaluatorsModal } from './evaluators-modal';
+import { AiScreenModal } from './ai-screen-modal';
 
 export default function InterviewsPage() {
   const { t } = useI18n();
@@ -18,6 +19,7 @@ export default function InterviewsPage() {
   const [showSchedule, setShowSchedule] = useState(false);
   const [typeFilter, setTypeFilter] = useState('');
   const [evaluatorsInterviewId, setEvaluatorsInterviewId] = useState<string | null>(null);
+  const [aiScreenInterviewId, setAiScreenInterviewId] = useState<string | null>(null);
 
   const interviews = trpc.interview.list.useQuery({
     pageSize: 50,
@@ -130,6 +132,7 @@ export default function InterviewsPage() {
           onCancel={(id) => cancelInterview.mutate({ id, cancelReason: 'Cancelled by recruiter' })}
           isCancelling={cancelInterview.isPending}
           onManageEvaluators={(id) => setEvaluatorsInterviewId(id)}
+          onStartAiScreen={(id) => setAiScreenInterviewId(id)}
         />
       </div>
 
@@ -161,6 +164,14 @@ export default function InterviewsPage() {
         <EvaluatorsModal
           interviewId={evaluatorsInterviewId}
           onClose={() => setEvaluatorsInterviewId(null)}
+        />
+      )}
+
+      {/* AI Screen Modal */}
+      {aiScreenInterviewId && (
+        <AiScreenModal
+          interviewId={aiScreenInterviewId}
+          onClose={() => setAiScreenInterviewId(null)}
         />
       )}
     </div>

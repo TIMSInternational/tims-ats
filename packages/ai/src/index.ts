@@ -20,3 +20,5 @@ export { generateInterviewGuide } from './agents/interview-guide';
 export type { InterviewGuideResult } from './agents/interview-guide';
 export { detectScorecardBias } from './agents/bias-detector';
 export type { BiasAnalysisResult } from './agents/bias-detector';
+export { scoreInterviewFit, fitScoreOutputSchema } from './agents/interview-fit-score';
+export type { FitScoreResult, FitScoreInput } from './agents/interview-fit-score';

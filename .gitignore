@@ -15,6 +15,9 @@ dist/
 .env.local
 .env.*.local
 
+# sdd scratch (subagent-driven-development working files)
+.superpowers/
+
 # ide
 .vscode/
 .idea/

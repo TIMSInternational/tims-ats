@@ -17,6 +17,7 @@
     "baseUrl": ".",
     "paths": {
       "@tims/db": ["packages/db/src/index.ts"],
+      "@tims/api": ["packages/api/src/root.ts"],
       "@tims/shared": ["packages/shared/src/index.ts"],
       "@tims/ai": ["packages/ai/src/index.ts"],
       "@trpc/server": ["packages/api/node_modules/@trpc/server"]

@@ -29,6 +29,7 @@ import { platformRouter } from './routers/platform';
 import { candidatePortalRouter } from './routers/candidate-portal';
 import { externalRouter } from './routers/external';
 import { consentRouter } from './routers/consent';
+import { aiInterviewRouter } from './routers/ai-interview';
 
 export { createContext } from './context';
 export type { TRPCContext } from './context';
@@ -46,6 +47,9 @@ export {
   isWebhookVerificationError,
 } from './services/billing-webhook.service';
 export type { WebhookResult } from './services/billing-webhook.service';
+export { verifyWebhookSignature } from './integrations/elevenlabs';
+export { aiInterviewService } from './services/ai-interview.service';
+export type { TranscriptTurn } from './services/ai-interview.service';
 
 export const appRouter = router({
   auth: authRouter,
@@ -78,6 +82,7 @@ export const appRouter = router({
   consent: consentRouter,
   notification: notificationRouter,
   platform: platformRouter,
+  aiInterview: aiInterviewRouter,
 });
 
 export const createCaller = createCallerFactory(appRouter);

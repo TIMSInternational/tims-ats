@@ -1,0 +1,46 @@
+enum AiInterviewStatus {
+  pending
+  in_progress
+  completed
+  failed
+  expired
+}
+
+enum AiAnalysisStatus {
+  pending
+  completed
+  failed
+}
+
+model AiInterviewSession {
+  id                       String            @id @default(uuid()) @db.Uuid
+  organizationId           String            @map("organization_id") @db.Uuid
+  interviewId              String            @unique @map("interview_id") @db.Uuid
+  candidateId              String            @map("candidate_id") @db.Uuid
+  vacancyId                String            @map("vacancy_id") @db.Uuid
+  status                   AiInterviewStatus @default(pending)
+  elevenlabsAgentId        String?           @map("elevenlabs_agent_id")
+  elevenlabsConversationId String?           @unique @map("elevenlabs_conversation_id")
+  guideQuestions           Json              @map("guide_questions")
+  transcript               Json?
+  audioUrl                 String?           @map("audio_url")
+  durationSeconds          Int?              @map("duration_seconds")
+  candidateToken           String            @unique @default(uuid()) @map("candidate_token")
+  consentedAt              DateTime?         @map("consented_at")
+  consentTextVersion       String?           @map("consent_text_version")
+  analysisStatus           AiAnalysisStatus  @default(pending) @map("analysis_status")
+  summary                  Json?
+  biasReport               Json?             @map("bias_report")
+  fitScore                 Int?              @map("fit_score")
+  analysisModel            String?           @map("analysis_model")
+  createdAt                DateTime          @default(now()) @map("created_at")
+  updatedAt                DateTime          @updatedAt @map("updated_at")
+
+  interview    Interview    @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([candidateId])
+  @@index([vacancyId])
+  @@map("ai_interview_sessions")
+}

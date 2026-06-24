@@ -23,9 +23,10 @@ model Interview {
   vacancy     Vacancy                @relation(fields: [vacancyId], references: [id], onDelete: Cascade)
   application Application?           @relation("ApplicationInterviews", fields: [applicationId], references: [id])
   creator     User                   @relation("InterviewCreator", fields: [createdById], references: [id])
-  evaluators  InterviewEvaluator[]
-  scorecards  InterviewScorecard[]
-  summary     InterviewSummary?
+  evaluators          InterviewEvaluator[]
+  scorecards          InterviewScorecard[]
+  summary             InterviewSummary?
+  aiInterviewSession  AiInterviewSession?
 
   @@index([organizationId])
   @@index([organizationId, scheduledAt])

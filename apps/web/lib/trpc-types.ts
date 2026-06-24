@@ -55,6 +55,10 @@ export type InterviewListResult = RouterOutput['interview']['list'];
 export type InterviewDetail = RouterOutput['interview']['getById'];
 export type InterviewEvaluator = InterviewDetail['evaluators'][number];
 
+// AI Voice Interview (recruiter result view — Task 8)
+export type AiInterviewResult = RouterOutput['aiInterview']['getResult'];
+export type AiInterviewCreateResult = RouterOutput['aiInterview']['create'];
+
 // Interview AI (interview-room buttons — all three are budget-spending mutations)
 export type InterviewGuideResult = RouterOutput['interview']['generateGuide'];
 export type InterviewGuideSection = InterviewGuideResult['sections'][number];

@@ -1,6 +1,6 @@
 export { db } from "./client";
 export type { PrismaClient } from "@prisma/client";
-export { Prisma, OrgPlan, SubscriptionStatus, InvoiceStatus, InvitationType, InvitationStatus, Gender, Ethnicity, DisabilityStatus, QuestionType } from "@prisma/client";
+export { Prisma, OrgPlan, SubscriptionStatus, InvoiceStatus, InvitationType, InvitationStatus, Gender, Ethnicity, DisabilityStatus, QuestionType, AiInterviewStatus, AiAnalysisStatus } from "@prisma/client";
 // Tenant isolation (Postgres RLS). See docs/security/RLS-MIGRATION-PLAN.md.
 export { tenantDb } from "./tenant-client";
 export type { TenantDb } from "./tenant-client";

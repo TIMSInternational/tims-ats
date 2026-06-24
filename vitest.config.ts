@@ -7,6 +7,7 @@ export default defineConfig({
       // Resolve workspace packages to their source so vi.mock('@tims/...') works
       // reliably without pnpm symlink path mismatches.
       '@tims/db': resolve(__dirname, 'packages/db/src/index.ts'),
+      '@tims/api': resolve(__dirname, 'packages/api/src/root.ts'),
       '@tims/shared': resolve(__dirname, 'packages/shared/src/index.ts'),
       '@tims/ai': resolve(__dirname, 'packages/ai/src/index.ts'),
       // Allow tests to import @trpc/server (hosted under packages/api's node_modules via pnpm)

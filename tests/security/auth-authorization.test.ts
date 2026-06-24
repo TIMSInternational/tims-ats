@@ -40,6 +40,9 @@ describe('Authentication & Authorization', () => {
       'getBySigningToken',
       'acceptByToken',
       'declineByToken',
+      // AI voice interview — candidate accesses session via a magic-link candidateToken (no account)
+      'recordConsent',
+      'start',
     ];
     const violations: string[] = [];
 
