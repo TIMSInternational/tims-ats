@@ -26,14 +26,18 @@ export const AGENT_REGISTRY: Record<string, AgentDef> = {
   'vacancy-writer': { slug: 'vacancy-writer', name: 'Vacancy Writer', model: 'sonnet', category: 'recruitment', batchEligible: false, cacheTtlSeconds: 2_592_000 },
   'inclusive-language': { slug: 'inclusive-language', name: 'Inclusive Language Checker', model: 'haiku', category: 'recruitment', batchEligible: false, cacheTtlSeconds: 86_400 },
   // Interview agents — all operate on candidate PII / evaluator opinions ⇒ ttl 0 (never cached).
-  'interview-summarizer': { slug: 'interview-summarizer', name: 'Interview Summarizer', model: 'sonnet', category: 'recruitment', batchEligible: false, cacheTtlSeconds: 0 },
-  'interview-guide': { slug: 'interview-guide', name: 'Interview Guide Generator', model: 'sonnet', category: 'recruitment', batchEligible: false, cacheTtlSeconds: 0 },
-  'bias-detector': { slug: 'bias-detector', name: 'Scorecard Bias Detector', model: 'sonnet', category: 'recruitment', batchEligible: false, cacheTtlSeconds: 0 },
+  // On 'haiku' (Haiku 4.5) deliberately: the Bedrock account's Sonnet 4.5 Marketplace subscription
+  // can't complete until a valid payment instrument is on file. Haiku 4.5 is current-gen and capable
+  // for guide/analysis. Upgrade these back to 'sonnet' once the account billing is fixed.
+  'interview-summarizer': { slug: 'interview-summarizer', name: 'Interview Summarizer', model: 'haiku', category: 'recruitment', batchEligible: false, cacheTtlSeconds: 0 },
+  'interview-guide': { slug: 'interview-guide', name: 'Interview Guide Generator', model: 'haiku', category: 'recruitment', batchEligible: false, cacheTtlSeconds: 0 },
+  'bias-detector': { slug: 'bias-detector', name: 'Scorecard Bias Detector', model: 'haiku', category: 'recruitment', batchEligible: false, cacheTtlSeconds: 0 },
   // AI Voice Interview — ElevenLabs conversational agent + post-call analysis.
   // Budget-gated via AiAgentOrgConfig.monthlyBudget; status starts as 'stub' until
   // the ElevenLabs integration is live.
   'ai-voice-interview': { slug: 'ai-voice-interview', name: 'AI Voice Interview', model: 'sonnet', category: 'recruitment', batchEligible: false, cacheTtlSeconds: 0 },
-  'interview-fit-score': { slug: 'interview-fit-score', name: 'Interview Fit Scorer', model: 'sonnet', category: 'recruitment', batchEligible: false, cacheTtlSeconds: 0 },
+  // 'haiku' (Haiku 4.5) pending the account's Sonnet 4.5 billing fix — see note above; upgrade to 'sonnet' after.
+  'interview-fit-score': { slug: 'interview-fit-score', name: 'Interview Fit Scorer', model: 'haiku', category: 'recruitment', batchEligible: false, cacheTtlSeconds: 0 },
 };
 
 // Process-local memo (the ai_agents catalog is global/immutable enough that an

@@ -15,15 +15,26 @@ import { bedrockGuardrailOptions } from './pii';
 // Bedrock Guardrail is provisioned, references it so PII is masked server-side.
 // ---------------------------------------------------------------------------
 
+// Bedrock may run in a DIFFERENT AWS account than the rest of the app (SES etc.):
+// the primary account's Bedrock daily-token quota is a hard non-adjustable cap, so
+// Bedrock is pointed at an account with real quota via BEDROCK_AWS_* env vars.
+// Falls back to the shared AWS_* credentials when the dedicated ones are unset, so
+// nothing breaks if both services live in the same account.
 const bedrock = createAmazonBedrock({
-  region: process.env.AWS_REGION ?? 'us-east-2',
-  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  region: process.env.BEDROCK_AWS_REGION ?? process.env.AWS_REGION ?? 'us-east-2',
+  accessKeyId: process.env.BEDROCK_AWS_ACCESS_KEY_ID ?? process.env.AWS_ACCESS_KEY_ID,
+  secretAccessKey: process.env.BEDROCK_AWS_SECRET_ACCESS_KEY ?? process.env.AWS_SECRET_ACCESS_KEY,
 });
 
+// Current-generation Claude models, invoked through US cross-region inference
+// profiles (the `us.` prefix is required — bare ids return "on-demand throughput
+// isn't supported"). The previous ids were stale: Claude 3.5 Haiku reached EOL and
+// Sonnet 4's per-day on-demand quota is a hard, non-adjustable cap. Haiku 4.5 and
+// Sonnet 4.5 are the current actively-supported equivalents (verified ACTIVE +
+// invokable in-account). Region is a US one (us-east-2 default).
 const MODELS = {
-  haiku: bedrock('anthropic.claude-3-5-haiku-20241022-v1:0'),
-  sonnet: bedrock('anthropic.claude-sonnet-4-20250514-v1:0'),
+  haiku: bedrock('us.anthropic.claude-haiku-4-5-20251001-v1:0'),
+  sonnet: bedrock('us.anthropic.claude-sonnet-4-5-20250929-v1:0'),
 } as const;
 
 export type ModelId = keyof typeof MODELS;
