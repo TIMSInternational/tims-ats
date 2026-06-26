@@ -2478,6 +2478,22 @@
     "transcript": "Transcript",
     "loading": "Loading...",
     "invalidToken": "This interview link is invalid or has expired.",
-    "completed": "The interview has concluded. Thank you for your time."
+    "completed": "The interview has concluded. Thank you for your time.",
+    "lobbyHeading": "Ready to start your interview",
+    "lobbyMicCheck": "Microphone check",
+    "lobbyMicWorking": "We can hear you",
+    "lobbyMicDevice": "Microphone",
+    "lobbyJoin": "Join the interview",
+    "lobbyMicDenied": "We need microphone access to run the interview. Enable it in your browser and try again.",
+    "liveTranscript": "Live transcript",
+    "callView": "Call view",
+    "focusView": "Focus view",
+    "aiSpeaking": "Speaking",
+    "aiListening": "Listening",
+    "you": "You",
+    "muteMic": "Mute microphone",
+    "unmuteMic": "Unmute microphone",
+    "reconnecting": "Reconnecting…",
+    "interviewer": "AI interviewer"
   }
 }

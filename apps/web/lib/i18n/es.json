@@ -2478,6 +2478,22 @@
     "transcript": "Transcripcion",
     "loading": "Cargando...",
     "invalidToken": "Este enlace de entrevista no es valido o ha expirado.",
-    "completed": "La entrevista ha concluido. Gracias por tu tiempo."
+    "completed": "La entrevista ha concluido. Gracias por tu tiempo.",
+    "lobbyHeading": "Listo para comenzar tu entrevista",
+    "lobbyMicCheck": "Prueba de micrófono",
+    "lobbyMicWorking": "Te escuchamos",
+    "lobbyMicDevice": "Micrófono",
+    "lobbyJoin": "Unirse a la entrevista",
+    "lobbyMicDenied": "Necesitamos acceso al micrófono para la entrevista. Actívalo en tu navegador e inténtalo de nuevo.",
+    "liveTranscript": "Transcripción en vivo",
+    "callView": "Vista de llamada",
+    "focusView": "Vista de enfoque",
+    "aiSpeaking": "Hablando",
+    "aiListening": "Escuchando",
+    "you": "Tú",
+    "muteMic": "Silenciar micrófono",
+    "unmuteMic": "Activar micrófono",
+    "reconnecting": "Reconectando…",
+    "interviewer": "Entrevistador IA"
   }
 }

@@ -14,6 +14,7 @@ const AI_DIR = 'apps/web/app/(portal)/ai-interview/[token]';
 const PAGE = `${AI_DIR}/page.tsx`;
 const CONSENT = `${AI_DIR}/consent-screen.tsx`;
 const VOICE = `${AI_DIR}/voice-room.tsx`;
+const HOOK = `${AI_DIR}/use-interview-call.ts`;
 const ES = 'apps/web/lib/i18n/es.json';
 const EN = 'apps/web/lib/i18n/en.json';
 
@@ -33,6 +34,22 @@ const AI_I18N_KEYS = [
   'loading',
   'invalidToken',
   'completed',
+  'lobbyHeading',
+  'lobbyMicCheck',
+  'lobbyMicWorking',
+  'lobbyMicDevice',
+  'lobbyJoin',
+  'lobbyMicDenied',
+  'liveTranscript',
+  'callView',
+  'focusView',
+  'aiSpeaking',
+  'aiListening',
+  'you',
+  'muteMic',
+  'unmuteMic',
+  'reconnecting',
+  'interviewer',
 ];
 
 describe('page.tsx — consent gate', () => {
@@ -125,30 +142,30 @@ describe('voice-room.tsx — ElevenLabs session', () => {
   });
 
   it('calls aiInterview.start mutation', () => {
-    expect(read(VOICE)).toContain('aiInterview.start');
+    expect(read(HOOK)).toContain('aiInterview.start');
   });
 
   it('uses signedUrl from start response in startSession', () => {
-    const src = read(VOICE);
+    const src = read(HOOK);
     expect(src).toContain('signedUrl');
     expect(src).toContain('startSession');
   });
 
   it('forwards dynamicVariables from start to the session', () => {
-    const src = read(VOICE);
+    const src = read(HOOK);
     expect(src).toContain('dynamicVariables');
     // dynamicVariables appear in the same block as startSession
     expect(src).toMatch(/dynamicVariables[\s\S]{0,300}startSession|startSession[\s\S]{0,300}dynamicVariables/);
   });
 
   it('handles loading / error / empty states', () => {
-    const src = read(VOICE);
-    expect(src).toMatch(/isPending|isLoading/);
-    expect(src).toMatch(/error|Error/);
+    // isPending lives in the hook (use-interview-call.ts) after the state-machine refactor
+    expect(read(HOOK)).toMatch(/isPending|isLoading/);
+    expect(read(VOICE)).toMatch(/error|Error/);
   });
 
-  it('renders an End button', () => {
-    const src = read(VOICE);
+  it('exposes endSession', () => {
+    const src = read(HOOK);
     expect(src).toContain('endSession');
   });
 
@@ -167,6 +184,7 @@ describe('voice-room.tsx — ElevenLabs session', () => {
   });
 
   it('ELEVENLABS_API_KEY never appears client-side', () => {
+    expect(read(HOOK)).not.toContain('ELEVENLABS_API_KEY');
     expect(read(VOICE)).not.toContain('ELEVENLABS_API_KEY');
     expect(read(CONSENT)).not.toContain('ELEVENLABS_API_KEY');
     expect(read(PAGE)).not.toContain('ELEVENLABS_API_KEY');
