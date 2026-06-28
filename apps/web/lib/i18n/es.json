@@ -360,7 +360,8 @@
     "voidBtn": "Anular",
     "internalNoteLabel": "Nota interna",
     "filteringByOrg": "Filtrando por organizacion",
-    "clearFilter": "Limpiar"
+    "clearFilter": "Limpiar",
+    "loadAiInterviewCharges": "Cargar cargos de entrevista IA"
   },
   "invitations": {
     "title": "Invitaciones",
@@ -624,7 +625,13 @@
     "batchLabel": "Batch Eligible",
     "descriptionLabel": "Descripcion",
     "saveChanges": "Guardar Cambios",
-    "noCache": "Sin cache"
+    "noCache": "Sin cache",
+    "addonFeeLabel": "Tarifa mensual del complemento (USD)",
+    "perMinuteLabel": "Cobro por minuto (USD)",
+    "defaultCapLabel": "Límite de duración predeterminado (min)",
+    "perTypeCapsLabel": "Límites por tipo (JSON: { \"tipo\": minutos })",
+    "accruedUsageLabel": "Uso acumulado este mes",
+    "addonInvalidJson": "JSON inválido — se espera un objeto tipo → minutos"
   },
   "featureFlags": {
     "title": "Feature Flags",
@@ -1709,7 +1716,9 @@
     "aiBiasHeading": "Analisis de sesgo",
     "aiOverallRiskLabel": "Riesgo general",
     "aiNoBiasIndicators": "No se detectaron indicadores de sesgo.",
-    "viewAiResult": "Ver resultado de la entrevista IA"
+    "viewAiResult": "Ver resultado de la entrevista IA",
+    "aiScreenUpsellTitle": "Complemento de Entrevista IA por voz",
+    "aiScreenUpsellBody": "Disponible como complemento — contacte a su ejecutivo de cuenta para habilitar la entrevista por voz con IA."
   },
   "offers": {
     "title": "Centro de Ofertas y Validacion",
@@ -2494,6 +2503,7 @@
     "muteMic": "Silenciar micrófono",
     "unmuteMic": "Activar micrófono",
     "reconnecting": "Reconectando…",
-    "interviewer": "Entrevistador IA"
+    "interviewer": "Entrevistador IA",
+    "timeUp": "Se acabó el tiempo — finalizando la entrevista."
   }
 }

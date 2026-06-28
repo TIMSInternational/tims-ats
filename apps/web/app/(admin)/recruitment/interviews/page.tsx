@@ -26,6 +26,7 @@ export default function InterviewsPage() {
     status: statusFilter || undefined,
     type: typeFilter || undefined,
   });
+  const aiScreenEnabled = trpc.aiInterview.isEnabled.useQuery().data ?? false;
 
   const utils = trpc.useUtils();
   const cancelInterview = trpc.interview.cancel.useMutation({
@@ -133,6 +134,7 @@ export default function InterviewsPage() {
           isCancelling={cancelInterview.isPending}
           onManageEvaluators={(id) => setEvaluatorsInterviewId(id)}
           onStartAiScreen={(id) => setAiScreenInterviewId(id)}
+          aiScreenEnabled={aiScreenEnabled}
         />
       </div>
 

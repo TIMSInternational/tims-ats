@@ -6,6 +6,8 @@ import { getAppUrl } from '@tims/shared';
 import { logger } from '@tims/shared';
 import { aiInterviewRepository } from '../repositories/ai-interview.repository';
 import { analyzeAiInterview } from './ai-interview-analysis.service';
+import { assertAiInterviewEnabled, loadAiInterviewConfig, resolveMaxDurationSeconds } from './ai-interview-access.service';
+import { computeInterviewBillableUsd } from './ai-interview-billing';
 
 // ---------------------------------------------------------------------------
 // AI Interview Service — business logic only; no db or tRPC imports.
@@ -66,6 +68,8 @@ export const aiInterviewService = {
   }): Promise<{ sessionId: string; candidateLink: string }> {
     const { interviewId, organizationId, scopeWhere } = args;
 
+    const config = await assertAiInterviewEnabled(organizationId);
+
     const interview = await aiInterviewRepository.findInterviewWithContext(
       organizationId,
       interviewId,
@@ -74,6 +78,8 @@ export const aiInterviewService = {
     if (!interview) {
       throw new TRPCError({ code: 'NOT_FOUND', message: 'Entrevista no encontrada' });
     }
+
+    const maxDurationSeconds = resolveMaxDurationSeconds(interview.type, config);
 
     const { result: guideQuestions } = await generateInterviewGuide(organizationId, {
       vacancyTitle: interview.vacancy.title,
@@ -94,6 +100,7 @@ export const aiInterviewService = {
       status: 'pending',
       elevenlabsAgentId,
       guideQuestions: guideQuestions as Prisma.InputJsonValue,
+      maxDurationSeconds,
     });
 
     // candidateToken is a dedicated random UUID — distinct from the PK (session.id).
@@ -154,6 +161,12 @@ export const aiInterviewService = {
 
     const costUsd = (payload.durationSeconds / 60) * VOICE_USD_PER_MINUTE;
 
+    const billingConfig = await loadAiInterviewConfig(session.organizationId);
+    const billableUsd = computeInterviewBillableUsd(
+      payload.durationSeconds,
+      billingConfig?.billableUsdPerMinute ?? null,
+    );
+
     // Step 4: Atomic transaction — race-safe session completion + spend log.
     //
     // The pre-check (step 2) stops the common duplicate case cheaply, but two
@@ -185,6 +198,7 @@ export const aiInterviewService = {
             agentId: agent.id,
             organizationId: session.organizationId,
             costUsd,
+            billableUsd,
             inputTokens: 0,
             outputTokens: 0,
             latencyMs: payload.durationSeconds * 1000,

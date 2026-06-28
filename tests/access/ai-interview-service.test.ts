@@ -16,6 +16,21 @@ vi.mock('../../packages/ai/src/index', () => ({
   generateInterviewGuide: vi.fn(),
 }));
 
+vi.mock('../../packages/api/src/services/ai-interview-access.service', () => ({
+  assertAiInterviewEnabled: vi.fn().mockResolvedValue({
+    enabled: true,
+    monthlyBudget: null,
+    billableUsdPerMinute: null,
+    addonMonthlyFeeUsd: null,
+    aiInterviewDefaultMaxMinutes: null,
+    aiInterviewMaxMinutesByType: null,
+  }),
+  loadAiInterviewConfig: vi.fn().mockResolvedValue({ billableUsdPerMinute: 0.2 }),
+  resolveMaxDurationSeconds: vi.fn().mockReturnValue(900),
+  AI_VOICE_INTERVIEW_SLUG: 'ai-voice-interview',
+  AI_INTERVIEW_DEFAULT_MAX_MINUTES: 15,
+}));
+
 import { aiInterviewService } from '../../packages/api/src/services/ai-interview.service';
 import { aiInterviewRepository } from '../../packages/api/src/repositories/ai-interview.repository';
 import { generateInterviewGuide } from '../../packages/ai/src/index';

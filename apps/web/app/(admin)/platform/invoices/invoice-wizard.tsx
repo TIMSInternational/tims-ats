@@ -48,6 +48,25 @@ export function InvoiceWizard({ onClose, onSuccess, preselectedOrgId }: { onClos
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preselectedOrgQuery.data]);
 
+  const previewQuery = trpc.platform.getAiInterviewBillingPreview.useQuery(
+    { organizationId: orgId },
+    { enabled: false },
+  );
+
+  const loadAiInterviewCharges = async () => {
+    const result = await previewQuery.refetch();
+    if (!result.data) return;
+    const incoming: LineItem[] = result.data.lineItems.map((li) => ({
+      description: li.description,
+      quantity: li.quantity,
+      unitPrice: li.unitPrice,
+    }));
+    setLineItems((prev) => {
+      const isPlaceholder = prev.length === 1 && !prev[0].description && prev[0].unitPrice === 0;
+      return isPlaceholder ? incoming : [...prev, ...incoming];
+    });
+  };
+
   const nextNum = trpc.platform.getNextInvoiceNumber.useQuery();
   const createInvoice = trpc.platform.createInvoice.useMutation({
     onSuccess: () => { toast('Factura creada exitosamente', { type: 'success' }); onSuccess(); },
@@ -174,7 +193,20 @@ export function InvoiceWizard({ onClose, onSuccess, preselectedOrgId }: { onClos
                     </button>
                   </div>
                 ))}
-                <button onClick={addLine} className="text-xs text-[#1F114C] font-medium hover:underline flex items-center gap-1 mt-1"><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4" /></svg>{t.invoices.addItem}</button>
+                <div className="flex items-center gap-3 mt-1">
+                  <button onClick={addLine} className="text-xs text-[#1F114C] font-medium hover:underline flex items-center gap-1"><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4" /></svg>{t.invoices.addItem}</button>
+                  {orgId && (
+                    <button
+                      type="button"
+                      onClick={loadAiInterviewCharges}
+                      disabled={previewQuery.isFetching}
+                      className="text-xs text-[#1F114C] font-medium hover:underline flex items-center gap-1 disabled:opacity-50"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                      {previewQuery.isFetching ? '...' : t.invoices.loadAiInterviewCharges}
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="flex justify-between items-center py-3 border-t border-[#EDEDED]">
                 <span className="text-base font-semibold text-[#333]">{t.invoices.total}</span>

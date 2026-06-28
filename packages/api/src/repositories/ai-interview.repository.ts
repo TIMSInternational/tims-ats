@@ -53,6 +53,7 @@ const SESSION_CANDIDATE_SELECT = {
   consentedAt: true,
   elevenlabsAgentId: true,
   guideQuestions: true,
+  maxDurationSeconds: true,
 } satisfies Prisma.AiInterviewSessionSelect;
 
 /**
@@ -87,6 +88,7 @@ export type CreateSessionInput = {
   status: AiInterviewStatus;
   elevenlabsAgentId: string | null;
   guideQuestions: Prisma.InputJsonValue;
+  maxDurationSeconds: number;
 };
 
 export const aiInterviewRepository = {
@@ -118,6 +120,7 @@ export const aiInterviewRepository = {
         status: data.status,
         elevenlabsAgentId: data.elevenlabsAgentId,
         guideQuestions: data.guideQuestions,
+        maxDurationSeconds: data.maxDurationSeconds,
       },
       select: SESSION_CREATE_SELECT,
     });

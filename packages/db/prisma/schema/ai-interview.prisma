@@ -25,6 +25,7 @@ model AiInterviewSession {
   transcript               Json?
   audioUrl                 String?           @map("audio_url")
   durationSeconds          Int?              @map("duration_seconds")
+  maxDurationSeconds       Int?              @map("max_duration_seconds")
   candidateToken           String            @unique @default(uuid()) @map("candidate_token")
   consentedAt              DateTime?         @map("consented_at")
   consentTextVersion       String?           @map("consent_text_version")

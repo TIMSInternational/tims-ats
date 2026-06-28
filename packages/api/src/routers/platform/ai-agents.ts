@@ -1,9 +1,10 @@
 import { z } from 'zod';
 import { router } from '../../trpc';
-import { db } from '@tims/db';
-import type { Prisma } from '@tims/db';
+import { db, db as systemDb, Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { platformProcedure } from './_common';
+import { loadAiInterviewConfig, AI_VOICE_INTERVIEW_SLUG } from '../../services/ai-interview-access.service';
+import { buildAiInterviewInvoiceLines } from '../../services/ai-interview-billing';
 
 const agentListSelect = {
   id: true,
@@ -87,6 +88,10 @@ export const aiAgentsRouter = router({
               id: true,
               enabled: true,
               monthlyBudget: true,
+              addonMonthlyFeeUsd: true,
+              billableUsdPerMinute: true,
+              aiInterviewDefaultMaxMinutes: true,
+              aiInterviewMaxMinutesByType: true,
               organization: { select: { id: true, name: true } },
             },
           },
@@ -142,9 +147,19 @@ export const aiAgentsRouter = router({
       // nullable so clearing the field sends null (Prisma strips undefined, so
       // undefined could never clear an existing cap).
       monthlyBudget: z.number().min(0).max(100000).nullable().optional(),
+      addonMonthlyFeeUsd: z.number().min(0).max(100000).nullable().optional(),
+      billableUsdPerMinute: z.number().min(0).max(1000).nullable().optional(),
+      aiInterviewDefaultMaxMinutes: z.number().int().min(1).max(180).nullable().optional(),
+      aiInterviewMaxMinutesByType: z.record(z.string().max(50), z.number().int().min(1).max(180)).nullable().optional(),
     }))
     .mutation(async ({ input }) => {
-      const { agentId, organizationId, ...data } = input;
+      const { agentId, organizationId, aiInterviewMaxMinutesByType, ...rest } = input;
+      const data = {
+        ...rest,
+        ...(aiInterviewMaxMinutesByType === undefined
+          ? {}
+          : { aiInterviewMaxMinutesByType: aiInterviewMaxMinutesByType === null ? Prisma.DbNull : aiInterviewMaxMinutesByType }),
+      };
       return db.aiAgentOrgConfig.upsert({
         where: { agentId_organizationId: { agentId, organizationId } },
         create: { agentId, organizationId, ...data },
@@ -153,6 +168,10 @@ export const aiAgentsRouter = router({
           id: true,
           enabled: true,
           monthlyBudget: true,
+          addonMonthlyFeeUsd: true,
+          billableUsdPerMinute: true,
+          aiInterviewDefaultMaxMinutes: true,
+          aiInterviewMaxMinutesByType: true,
           organization: { select: { id: true, name: true } },
         },
       });
@@ -167,6 +186,10 @@ export const aiAgentsRouter = router({
           id: true,
           enabled: true,
           monthlyBudget: true,
+          addonMonthlyFeeUsd: true,
+          billableUsdPerMinute: true,
+          aiInterviewDefaultMaxMinutes: true,
+          aiInterviewMaxMinutesByType: true,
           agent: {
             select: { id: true, name: true, slug: true, category: true, model: true, status: true, costPerCall: true },
           },
@@ -235,6 +258,41 @@ export const aiAgentsRouter = router({
     ].join(','));
     return { csv: [header, ...rows].join('\n'), count: agents.length };
   }),
+
+  getAiInterviewBillingPreview: platformProcedure
+    .input(z.object({
+      organizationId: z.string().uuid(),
+      periodStart: z.date().optional(),
+      periodEnd: z.date().optional(),
+    }))
+    .query(async ({ input }) => {
+      const config = await loadAiInterviewConfig(input.organizationId);
+      const now = new Date();
+      const start = input.periodStart ?? new Date(now.getFullYear(), now.getMonth(), 1);
+      const end = input.periodEnd ?? now;
+      const agg = await systemDb.aiAgentUsageLog.aggregate({
+        where: {
+          organizationId: input.organizationId,
+          agent: { slug: AI_VOICE_INTERVIEW_SLUG },
+          createdAt: { gte: start, lte: end },
+        },
+        _sum: { billableUsd: true },
+      });
+      const usageUsd = agg._sum.billableUsd ?? 0;
+      const addonFeeUsd = config?.addonMonthlyFeeUsd ?? 0;
+      const lineItems = buildAiInterviewInvoiceLines({
+        addonMonthlyFeeUsd: config?.enabled ? config.addonMonthlyFeeUsd : null,
+        usageUsd,
+        addonLabel: 'AI Voice Interview — monthly add-on',
+        usageLabel: 'AI Voice Interview — usage',
+      });
+      return {
+        enabled: config?.enabled === true,
+        addonFeeUsd: config?.enabled ? addonFeeUsd : 0,
+        usageUsd,
+        lineItems,
+      };
+    }),
 
   seedAiAgents: platformProcedure.mutation(async () => {
     const existing = await db.aiAgent.count();

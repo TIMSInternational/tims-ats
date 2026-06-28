@@ -14,6 +14,7 @@ export interface InterviewCall {
   transcript: TranscriptState;
   micMuted: boolean;
   error: string | null;
+  maxDurationSeconds: number | null;
   start: () => Promise<void>;
   end: () => void;
   toggleMute: () => void;
@@ -25,6 +26,7 @@ export function useInterviewCall(candidateToken: string): InterviewCall {
   const [error, setError] = useState<string | null>(null);
   const [micMuted, setMicMuted] = useState(false);
   const [ended, setEnded] = useState(false);
+  const [maxDurationSeconds, setMaxDurationSeconds] = useState<number | null>(null);
 
   const conversation = useConversation({
     onConnect: () => setError(null),
@@ -63,7 +65,8 @@ export function useInterviewCall(candidateToken: string): InterviewCall {
     startMutation.mutate(
       { candidateToken },
       {
-        onSuccess: ({ signedUrl, dynamicVariables }) => {
+        onSuccess: ({ signedUrl, dynamicVariables, maxDurationSeconds: cap }) => {
+          setMaxDurationSeconds(cap ?? null);
           void conversation.startSession({ signedUrl, dynamicVariables });
         },
       },
@@ -96,5 +99,5 @@ export function useInterviewCall(candidateToken: string): InterviewCall {
   // Real @elevenlabs/react@1.7.1 API: isSpeaking boolean on useConversation return
   const isAiSpeaking = conversation.isSpeaking && status === 'connected';
 
-  return { status, isAiSpeaking, transcript, micMuted, error, start, end, toggleMute };
+  return { status, isAiSpeaking, transcript, micMuted, error, maxDurationSeconds, start, end, toggleMute };
 }

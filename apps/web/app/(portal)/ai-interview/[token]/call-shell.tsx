@@ -7,8 +7,9 @@ import { AiOrb } from './ai-orb';
 import { ParticipantTile } from './participant-tile';
 import { TranscriptPanel } from './transcript-panel';
 import { CallControls } from './call-controls';
+import { shouldAutoEnd } from './should-auto-end';
 
-function useElapsed(running: boolean): string {
+function useElapsed(running: boolean): { label: string; secs: number } {
   const [secs, setSecs] = useState(0);
   useEffect(() => {
     if (!running) return;
@@ -17,13 +18,19 @@ function useElapsed(running: boolean): string {
   }, [running]);
   const mm = String(Math.floor(secs / 60)).padStart(2, '0');
   const ss = String(secs % 60).padStart(2, '0');
-  return `${mm}:${ss}`;
+  return { label: `${mm}:${ss}`, secs };
 }
 
 export function CallShell({ call }: { call: InterviewCall }) {
   const { t } = useI18n();
   const [view, setView] = useState<'call' | 'focus'>('call');
-  const elapsed = useElapsed(call.status === 'connected');
+  const { label: elapsed, secs } = useElapsed(call.status === 'connected');
+
+  useEffect(() => {
+    if (call.status === 'connected' && shouldAutoEnd(secs, call.maxDurationSeconds)) {
+      call.end();
+    }
+  }, [secs, call.status, call.maxDurationSeconds, call.end]);
   const orbState =
     call.status === 'connecting'
       ? 'connecting'

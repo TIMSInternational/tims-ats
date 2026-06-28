@@ -156,6 +156,11 @@ vi.mock('../../packages/api/src/services/ai-interview.service', () => ({
   },
 }));
 
+vi.mock('../../packages/api/src/services/ai-interview-access.service', () => ({
+  assertAiInterviewEnabled: vi.fn().mockResolvedValue({ enabled: true }),
+  AI_INTERVIEW_DEFAULT_MAX_MINUTES: 15,
+}));
+
 vi.mock('../../packages/api/src/repositories/ai-interview.repository', () => ({
   aiInterviewRepository: {
     findSessionByCandidateToken: vi.fn(),
@@ -238,6 +243,7 @@ vi.mock('../../packages/api/src/middleware/rate-limit', () => ({
 
 import { aiInterviewRepository } from '../../packages/api/src/repositories/ai-interview.repository';
 import { getSignedUrl } from '../../packages/api/src/integrations/elevenlabs';
+import { assertAiInterviewEnabled } from '../../packages/api/src/services/ai-interview-access.service';
 // candidateDb = systemDb (db): candidate token-path and webhook writes run without an org RLS GUC.
 // tenantDb: staff-path budget reads run under an authenticated tenant context.
 import { db as candidateDb, tenantDb } from '@tims/db';
@@ -277,6 +283,8 @@ beforeEach(() => {
   // Re-establish sensible defaults after clearAllMocks.
   vi.mocked(aiInterviewRepository.findSessionByCandidateToken).mockResolvedValue(null);
   vi.mocked(getSignedUrl).mockResolvedValue({ signedUrl: 'wss://example.com/signed', conversationId: 'conv-1' });
+  // assertAiInterviewEnabled is cleared by clearAllMocks — restore the pass-through default.
+  vi.mocked(assertAiInterviewEnabled).mockResolvedValue({ enabled: true } as never);
 });
 
 // ---------------------------------------------------------------------------
@@ -302,6 +310,7 @@ describe('aiInterview.recordConsent', () => {
       consentedAt: null,
       elevenlabsAgentId: null,
       guideQuestions: null,
+      maxDurationSeconds: null,
     });
 
     const caller = await makeCaller({ user: undefined });
@@ -319,6 +328,7 @@ describe('aiInterview.recordConsent', () => {
       consentedAt: new Date(),
       elevenlabsAgentId: null,
       guideQuestions: null,
+      maxDurationSeconds: null,
     });
 
     const caller = await makeCaller({ user: undefined });
@@ -336,6 +346,7 @@ describe('aiInterview.recordConsent', () => {
       consentedAt: null,
       elevenlabsAgentId: null,
       guideQuestions: null,
+      maxDurationSeconds: null,
     });
 
     const caller = await makeCaller({ user: undefined });
@@ -353,6 +364,7 @@ describe('aiInterview.recordConsent', () => {
       consentedAt: null,
       elevenlabsAgentId: null,
       guideQuestions: null,
+      maxDurationSeconds: null,
     });
 
     // Mock the candidateDb (systemDb) calls that recordConsent makes.
@@ -389,6 +401,7 @@ describe('aiInterview.start', () => {
       consentedAt: null,           // <-- no consent
       elevenlabsAgentId: 'agent-1',
       guideQuestions: { questions: [] },
+      maxDurationSeconds: null,
     });
 
     const caller = await makeCaller({ user: undefined });
@@ -406,6 +419,7 @@ describe('aiInterview.start', () => {
       consentedAt: new Date(),     // consent OK
       elevenlabsAgentId: 'agent-1',
       guideQuestions: { questions: [] },
+      maxDurationSeconds: null,
     });
 
     // Budget config exists with limit — uses tenantDb (staff-path budget reads)
@@ -430,6 +444,7 @@ describe('aiInterview.start', () => {
       consentedAt: new Date(),
       elevenlabsAgentId: 'agent-xyz',
       guideQuestions: { questions: [{ text: 'Tell me about yourself' }] },
+      maxDurationSeconds: null,
     });
 
     // No budget config → default $25 cap applies; spend is 0 so gate passes
@@ -456,6 +471,10 @@ describe('aiInterview.start', () => {
     // The API key must never appear in the response
     expect(JSON.stringify(result)).not.toContain('ELEVENLABS_API_KEY');
     expect(JSON.stringify(result)).not.toContain(process.env.ELEVENLABS_API_KEY ?? '__no_key__');
+    // Gate invocation guard: assertAiInterviewEnabled MUST have been called with the
+    // session's organizationId ('org-uuid-1'). If the gate call is deleted from the
+    // start procedure this assertion will fail even if all other assertions pass.
+    expect(vi.mocked(assertAiInterviewEnabled)).toHaveBeenCalledWith('org-uuid-1');
   });
 
   it('throws NOT_FOUND when token resolves to no session', async () => {
@@ -476,6 +495,7 @@ describe('aiInterview.start', () => {
       consentedAt: new Date(),
       elevenlabsAgentId: 'agent-1',
       guideQuestions: null,
+      maxDurationSeconds: null,
     });
 
     // No config row → default cap of $25 applies — budget reads use tenantDb.
@@ -500,6 +520,7 @@ describe('aiInterview.start', () => {
       consentedAt: new Date(),
       elevenlabsAgentId: 'agent-1',
       guideQuestions: null,
+      maxDurationSeconds: null,
     });
 
     // No config row → default cap of $25 applies — budget reads use tenantDb.
@@ -534,6 +555,7 @@ describe('aiInterview.start', () => {
       consentedAt: new Date(),
       elevenlabsAgentId: 'agent-1',
       guideQuestions: null,
+      maxDurationSeconds: null,
     });
 
     vi.mocked(tenantDb.aiAgentOrgConfig.findFirst as unknown as (a: unknown) => Promise<unknown>)

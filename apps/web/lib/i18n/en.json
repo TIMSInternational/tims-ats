@@ -360,7 +360,8 @@
     "voidBtn": "Void",
     "internalNoteLabel": "Internal note",
     "filteringByOrg": "Filtering by organization",
-    "clearFilter": "Clear"
+    "clearFilter": "Clear",
+    "loadAiInterviewCharges": "Load AI interview charges"
   },
   "invitations": {
     "title": "Invitations",
@@ -624,7 +625,13 @@
     "batchLabel": "Batch Eligible",
     "descriptionLabel": "Description",
     "saveChanges": "Save Changes",
-    "noCache": "No cache"
+    "noCache": "No cache",
+    "addonFeeLabel": "Monthly add-on fee (USD)",
+    "perMinuteLabel": "Billable per minute (USD)",
+    "defaultCapLabel": "Default duration cap (min)",
+    "perTypeCapsLabel": "Per-type duration caps (JSON: { \"type\": minutes })",
+    "accruedUsageLabel": "Accrued usage this month",
+    "addonInvalidJson": "Invalid JSON — expected an object of type → minutes"
   },
   "featureFlags": {
     "title": "Feature Flags",
@@ -1709,7 +1716,9 @@
     "aiBiasHeading": "Bias analysis",
     "aiOverallRiskLabel": "Overall risk",
     "aiNoBiasIndicators": "No bias indicators detected.",
-    "viewAiResult": "View AI interview result"
+    "viewAiResult": "View AI interview result",
+    "aiScreenUpsellTitle": "AI Voice Interview add-on",
+    "aiScreenUpsellBody": "Available as an add-on — contact your account manager to enable AI voice screening."
   },
   "offers": {
     "title": "Offer & Validation Center",
@@ -2494,6 +2503,7 @@
     "muteMic": "Mute microphone",
     "unmuteMic": "Unmute microphone",
     "reconnecting": "Reconnecting…",
-    "interviewer": "AI interviewer"
+    "interviewer": "AI interviewer",
+    "timeUp": "Time's up — ending the interview."
   }
 }

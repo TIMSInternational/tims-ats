@@ -5,6 +5,7 @@ import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
 import type { AiAgentItem } from '../../../../lib/trpc-types';
+import { AiInterviewOrgControls, AI_VOICE_INTERVIEW_SLUG } from './ai-interview-org-controls';
 
 type Tab = 'config' | 'orgs' | 'usage';
 
@@ -123,47 +124,57 @@ export function AgentDetailDrawer({ agent, onClose, onSuccess }: { agent: AiAgen
                 </div>
               ) : (
                 (agentDetail.data?.orgConfigs ?? []).map(config => (
-                  <div key={config.id} className="px-6 py-3 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-[#1F114C] flex items-center justify-center text-white text-[10px] font-bold">
-                        {(config.organization?.name || 'OR').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
-                      </div>
-                      <div>
-                        <p className="text-[13px] font-medium text-[#1F114C]">{config.organization?.name}</p>
-                        <div className="flex items-center gap-1 mt-0.5">
-                          <span className="text-[10px] text-[#8B8B8B]">{t.aiAgents.budgetLabel}: $</span>
-                          <input
-                            key={`${config.id}-${config.monthlyBudget ?? ''}`}
-                            type="number"
-                            min={0}
-                            max={100000}
-                            step={1}
-                            defaultValue={config.monthlyBudget ?? ''}
-                            placeholder={t.aiAgents.noBudget}
-                            onBlur={(e) => {
-                              const raw = e.target.value.trim();
-                              const val = raw === '' ? null : Number(raw);
-                              if (val !== null && (Number.isNaN(val) || val < 0 || val > 100000)) return;
-                              if ((config.monthlyBudget ?? null) === val) return;
-                              updateOrgConfig.mutate({ agentId: agent.id, organizationId: config.organization.id, monthlyBudget: val });
-                            }}
-                            className="w-20 text-[10px] border border-[#EDEDED] rounded px-1.5 py-0.5 outline-none focus:border-[#1F114C]"
-                          />
-                          <span className="text-[10px] text-[#8B8B8B]">/mo</span>
+                  <div key={config.id} className="px-6 py-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-[#1F114C] flex items-center justify-center text-white text-[10px] font-bold">
+                          {(config.organization?.name || 'OR').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
+                        </div>
+                        <div>
+                          <p className="text-[13px] font-medium text-[#1F114C]">{config.organization?.name}</p>
+                          <div className="flex items-center gap-1 mt-0.5">
+                            <span className="text-[10px] text-[#8B8B8B]">{t.aiAgents.budgetLabel}: $</span>
+                            <input
+                              key={`${config.id}-${config.monthlyBudget ?? ''}`}
+                              type="number"
+                              min={0}
+                              max={100000}
+                              step={1}
+                              defaultValue={config.monthlyBudget ?? ''}
+                              placeholder={t.aiAgents.noBudget}
+                              onBlur={(e) => {
+                                const raw = e.target.value.trim();
+                                const val = raw === '' ? null : Number(raw);
+                                if (val !== null && (Number.isNaN(val) || val < 0 || val > 100000)) return;
+                                if ((config.monthlyBudget ?? null) === val) return;
+                                updateOrgConfig.mutate({ agentId: agent.id, organizationId: config.organization.id, monthlyBudget: val });
+                              }}
+                              className="w-20 text-[10px] border border-[#EDEDED] rounded px-1.5 py-0.5 outline-none focus:border-[#1F114C]"
+                            />
+                            <span className="text-[10px] text-[#8B8B8B]">/mo</span>
+                          </div>
                         </div>
                       </div>
+                      <div className="flex items-center gap-3">
+                        <span className={`text-[11px] font-medium ${config.enabled ? 'text-green-600' : 'text-[#DD0C15]'}`}>
+                          {config.enabled ? t.aiAgents.statusActive : t.aiAgents.statusDisabled}
+                        </span>
+                        <button
+                          onClick={() => updateOrgConfig.mutate({ agentId: agent.id, organizationId: config.organization.id, enabled: !config.enabled })}
+                          className={`relative w-9 h-5 rounded-full transition-colors duration-200 ${config.enabled ? 'bg-[#1F114C]' : 'bg-gray-300'}`}
+                        >
+                          <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${config.enabled ? 'translate-x-4' : 'translate-x-0'}`} />
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <span className={`text-[11px] font-medium ${config.enabled ? 'text-green-600' : 'text-[#DD0C15]'}`}>
-                        {config.enabled ? t.aiAgents.statusActive : t.aiAgents.statusDisabled}
-                      </span>
-                      <button
-                        onClick={() => updateOrgConfig.mutate({ agentId: agent.id, organizationId: config.organization.id, enabled: !config.enabled })}
-                        className={`relative w-9 h-5 rounded-full transition-colors duration-200 ${config.enabled ? 'bg-[#1F114C]' : 'bg-gray-300'}`}
-                      >
-                        <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${config.enabled ? 'translate-x-4' : 'translate-x-0'}`} />
-                      </button>
-                    </div>
+                    {agent.slug === AI_VOICE_INTERVIEW_SLUG && (
+                      <AiInterviewOrgControls
+                        config={config}
+                        agentId={agent.id}
+                        onMutate={updateOrgConfig.mutate}
+                        isPending={updateOrgConfig.isPending}
+                      />
+                    )}
                   </div>
                 ))
               )}

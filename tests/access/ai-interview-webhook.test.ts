@@ -79,6 +79,26 @@ vi.mock('../../packages/api/src/services/ai-interview-analysis.service', () => (
   analyzeAiInterview: vi.fn(),
 }));
 
+vi.mock('../../packages/api/src/services/ai-interview-access.service', () => ({
+  assertAiInterviewEnabled: vi.fn().mockResolvedValue({
+    enabled: true,
+    monthlyBudget: null,
+    billableUsdPerMinute: null,
+    addonMonthlyFeeUsd: null,
+    aiInterviewDefaultMaxMinutes: null,
+    aiInterviewMaxMinutesByType: null,
+  }),
+  loadAiInterviewConfig: vi.fn().mockResolvedValue({ billableUsdPerMinute: 0.2 }),
+  resolveMaxDurationSeconds: vi.fn().mockReturnValue(900),
+  AI_VOICE_INTERVIEW_SLUG: 'ai-voice-interview',
+  AI_INTERVIEW_DEFAULT_MAX_MINUTES: 15,
+}));
+
+vi.mock('../../packages/api/src/services/ai-interview-billing', () => ({
+  computeInterviewBillableUsd: vi.fn().mockReturnValue(1.0),
+  buildAiInterviewInvoiceLines: vi.fn().mockReturnValue([]),
+}));
+
 vi.mock('../../packages/shared/src/index', () => ({
   logger: {
     warn: vi.fn(),
@@ -335,13 +355,14 @@ describe('(b) valid signed payload', () => {
       }),
     );
 
-    // Usage log created with the correct cost
+    // Usage log created with the correct cost AND frozen billableUsd
     expect(db.aiAgentUsageLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           agentId: AGENT_ID,
           organizationId: ORG_ID,
           costUsd: expect.closeTo(EXPECTED_COST, 6),
+          billableUsd: 1.0,
         }),
       }),
     );

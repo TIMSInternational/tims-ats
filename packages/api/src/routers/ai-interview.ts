@@ -21,11 +21,12 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import type { Prisma } from '@tims/db';
+import { assertAiInterviewEnabled, isAiInterviewEnabled, AI_INTERVIEW_DEFAULT_MAX_MINUTES } from '../services/ai-interview-access.service';
 // tenantDb is used by staff-path queries (budget check reads) that run inside a
 // tenant-scoped request context. systemDb (aliased as candidateDb here) is used for
 // all candidate token-path writes — the public candidate flow sets no org RLS GUC.
 import { db as candidateDb, tenantDb as db, AiInterviewStatus } from '@tims/db';
-import { router, publicProcedure, permissionProcedure } from '../trpc';
+import { router, publicProcedure, protectedProcedure, permissionProcedure } from '../trpc';
 import { assertScoped, scopeWhereFor } from '../access';
 import { aiInterviewService } from '../services/ai-interview.service';
 import { aiInterviewRepository } from '../repositories/ai-interview.repository';
@@ -198,6 +199,9 @@ export const aiInterviewRouter = router({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Enlace de entrevista invalido' });
       }
 
+      // Feature gate: AI Voice Interview must be enabled for this org (paid add-on).
+      await assertAiInterviewEnabled(session.organizationId);
+
       // Gate 3: Session must still be pending.
       if (session.status !== AiInterviewStatus.pending) {
         throw new TRPCError({
@@ -262,7 +266,7 @@ export const aiInterviewRouter = router({
       const result = await getSignedUrl({
         agentId,
         dynamicVariables: {},   // client-side only — see module doc above
-        maxDurationSeconds: 3600,
+        maxDurationSeconds: session.maxDurationSeconds ?? AI_INTERVIEW_DEFAULT_MAX_MINUTES * 60,
       });
 
       // Mark session as in_progress and record the conversation id for webhook correlation.
@@ -285,6 +289,7 @@ export const aiInterviewRouter = router({
       return {
         signedUrl: result.signedUrl,
         dynamicVariables,
+        maxDurationSeconds: session.maxDurationSeconds ?? AI_INTERVIEW_DEFAULT_MAX_MINUTES * 60,
       };
     }),
 
@@ -303,4 +308,13 @@ export const aiInterviewRouter = router({
         scopeWhere: scopeWhere as Prisma.InterviewWhereInput,
       });
     }),
+
+  /**
+   * Returns whether the AI Voice Interview add-on is enabled for the recruiter's org.
+   * Recruiter-facing: any authenticated staff user may query this flag to conditionally
+   * show/hide the AI interview UI. Uses protectedProcedure (tenant auth context).
+   */
+  isEnabled: protectedProcedure.query(async ({ ctx }) => {
+    return isAiInterviewEnabled(ctx.user.organizationId);
+  }),
 });
