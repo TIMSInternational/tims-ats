@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { Skeleton } from '../../../components';
+import { EnrollModal } from './enroll-modal';
+import { useI18n } from '../../../lib/i18n';
 
 interface Course {
   id: string;
@@ -36,8 +38,10 @@ const TAG_STYLES: Record<string, { bg: string; text: string; label: string }> = 
 type Filter = 'all' | 'required' | 'gap' | 'company';
 
 export function CourseCatalog({ courses, loading, t }: CourseCatalogProps) {
+  const { t: tI18n } = useI18n();
   const [filter, setFilter] = useState<Filter>('all');
   const [search, setSearch] = useState('');
+  const [enrollCourse, setEnrollCourse] = useState<{ id: string; title: string } | null>(null);
 
   const filtered = courses.filter((c) => {
     if (search && !c.title.toLowerCase().includes(search.toLowerCase())) return false;
@@ -135,12 +139,26 @@ export function CourseCatalog({ courses, loading, t }: CourseCatalogProps) {
                     <div className={`h-full ${prog.bar} rounded-full`} style={{ width: `${pct}%` }} />
                   </div>
                   <span className={`text-[10px] font-medium ${prog.text}`}>{pct}%</span>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setEnrollCourse({ id: course.id, title: course.title }); }}
+                    className="h-6 px-2 rounded text-[10px] bg-[#1F114C] text-white hover:bg-[#1F114C]/80 transition"
+                  >
+                    {tI18n.learning.enrollAction}
+                  </button>
                 </div>
               </div>
             </div>
           );
         })}
       </div>
+      {enrollCourse && (
+        <EnrollModal
+          courseId={enrollCourse.id}
+          courseTitle={enrollCourse.title}
+          onClose={() => setEnrollCourse(null)}
+        />
+      )}
     </div>
   );
 }

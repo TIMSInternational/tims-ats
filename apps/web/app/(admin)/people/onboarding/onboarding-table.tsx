@@ -1,14 +1,16 @@
 'use client';
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { CandidateAvatar } from '../../../../components';
 import { formatDate } from '../../../../lib/format-utils';
 import { useI18n } from '../../../../lib/i18n';
+import { OnboardingTaskList } from './onboarding-task-list';
 
 type Phase = 'all' | 'day1_30' | 'day31_60' | 'day61_90';
 
 interface OnboardingTask {
   id: string;
+  title: string;
   completed: boolean;
   responsible: string;
   phase: string;
@@ -97,6 +99,7 @@ export function OnboardingTable({
   onPhaseChange: (phase: string) => void;
 }) {
   const [activeTab, setActiveTab] = useState<Phase>('all');
+  const [expanded, setExpanded] = useState<string | null>(null);
   const { t } = useI18n();
 
   const handleTab = (key: Phase) => {
@@ -189,8 +192,8 @@ export function OnboardingTable({
                 const day60Overdue = !day60Done && day > 60;
 
                 return (
+                  <React.Fragment key={plan.id}>
                   <tr
-                    key={plan.id}
                     className={`border-b border-[#F0F0F0] hover:bg-[#FAFAFA] cursor-pointer transition ${
                       idx % 2 === 1 ? 'bg-[#FAFAFA]' : ''
                     } ${isAtRisk ? 'border-l-[3px] border-l-[#DD0C15]' : isWarning ? 'border-l-[3px] border-l-amber-500' : ''}`}
@@ -223,7 +226,21 @@ export function OnboardingTable({
                     </td>
 
                     <td className="py-3 px-3 text-center">
-                      <span className={`text-[11px] ${fractionColor(doneTasks, totalTasks, risk)}`}>{doneTasks}/{totalTasks}</span>
+                      <div className="flex flex-col items-center gap-0.5">
+                        <span className={`text-[11px] ${fractionColor(doneTasks, totalTasks, risk)}`}>{doneTasks}/{totalTasks}</span>
+                        {totalTasks > 0 && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setExpanded((prev) => (prev === plan.id ? null : plan.id));
+                            }}
+                            className="text-[9px] text-[#1F114C] underline hover:text-[#DD0C15] transition"
+                          >
+                            {t.onboarding.expandTasks}
+                          </button>
+                        )}
+                      </div>
                     </td>
 
                     <td className="py-3 px-3 text-center">
@@ -247,6 +264,10 @@ export function OnboardingTable({
                       </div>
                     </td>
                   </tr>
+                  {expanded === plan.id && (
+                    <OnboardingTaskList tasks={plan.tasks} />
+                  )}
+                  </React.Fragment>
                 );
               })}
           </tbody>

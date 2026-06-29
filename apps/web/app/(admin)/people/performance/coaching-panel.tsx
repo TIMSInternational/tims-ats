@@ -1,7 +1,10 @@
 'use client';
 
+import { useState } from 'react';
 import { useI18n } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
+import { LogCoachingModal } from './log-coaching-modal';
+import { CreateCommitmentModal } from './create-commitment-modal';
 
 interface SessionUser {
   id: string;
@@ -93,6 +96,8 @@ interface CoachingPanelProps {
 
 export function CoachingPanel({ sessions, commitments, isLoading }: CoachingPanelProps) {
   const { t } = useI18n();
+  const [showCoach, setShowCoach] = useState(false);
+  const [showCommit, setShowCommit] = useState(false);
 
   return (
     <div className="grid grid-cols-[1fr_480px] gap-4">
@@ -100,7 +105,13 @@ export function CoachingPanel({ sessions, commitments, isLoading }: CoachingPane
       <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
         <div className="flex items-center justify-between px-5 py-3 border-b border-[#EDEDED]">
           <h3 className="text-[13px] font-semibold text-[#333]">{t.performance.coachingTitle}</h3>
-          <span className="text-[10px] text-[#8B8B8B]">{t.performance.next7Days}</span>
+          <button
+            type="button"
+            onClick={() => setShowCoach(true)}
+            className="text-[10px] bg-[#DD0C15] text-white rounded-md px-2.5 py-1 font-medium hover:bg-red-700 transition"
+          >
+            {t.performance.logCoachingAction}
+          </button>
         </div>
         {isLoading ? (
           <SkeletonRows count={4} />
@@ -141,9 +152,18 @@ export function CoachingPanel({ sessions, commitments, isLoading }: CoachingPane
       <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
         <div className="flex items-center justify-between px-5 py-3 border-b border-[#EDEDED]">
           <h3 className="text-[13px] font-semibold text-[#333]">{t.performance.commitmentsTitle}</h3>
-          <button onClick={() => toast(t.performance.viewAllComingSoon, { type: 'info' })} className="text-[10px] text-[#DD0C15] font-medium hover:underline">
-            {t.performance.viewAll}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowCommit(true)}
+              className="text-[10px] bg-[#DD0C15] text-white rounded-md px-2.5 py-1 font-medium hover:bg-red-700 transition"
+            >
+              {t.performance.newCommitment}
+            </button>
+            <button onClick={() => toast(t.performance.viewAllComingSoon, { type: 'info' })} className="text-[10px] text-[#DD0C15] font-medium hover:underline">
+              {t.performance.viewAll}
+            </button>
+          </div>
         </div>
         {isLoading ? (
           <SkeletonRows count={4} />
@@ -178,6 +198,8 @@ export function CoachingPanel({ sessions, commitments, isLoading }: CoachingPane
           </div>
         )}
       </div>
+      {showCoach && <LogCoachingModal onClose={() => setShowCoach(false)} />}
+      {showCommit && <CreateCommitmentModal onClose={() => setShowCommit(false)} />}
     </div>
   );
 }

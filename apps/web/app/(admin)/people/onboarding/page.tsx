@@ -6,6 +6,7 @@ import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
 import { KpiCard, KpiCardSkeleton } from '../../../../components';
 import { OnboardingTable, type OnboardingPlan } from './onboarding-table';
+import { CreatePlanModal } from './create-plan-modal';
 import {
   TasksByResponsible,
   PendingDocuments,
@@ -76,6 +77,7 @@ function PlusIcon() {
 export default function OnboardingPage() {
   const { t } = useI18n();
   const [phase, setPhase] = useState<string | undefined>(undefined);
+  const [showCreate, setShowCreate] = useState(false);
 
   const kpis = trpc.onboarding.getDashboardKpis.useQuery();
   const plans = trpc.onboarding.list.useQuery({
@@ -108,11 +110,12 @@ export default function OnboardingPage() {
           <button onClick={() => toast(`${t.common.export}: ${t.common.comingSoon}`, { type: 'info' })} className="flex items-center gap-1.5 border border-[#EDEDED] text-[#585858] px-3 h-8 rounded-lg text-[12px] hover:bg-[#F6F6F6] transition">
             <ExportIcon />{t.common.export}
           </button>
-          <button onClick={() => toast(`${t.common.create}: ${t.common.comingSoon}`, { type: 'info' })} className="flex items-center gap-1.5 bg-[#DD0C15] text-white px-4 h-8 rounded-lg text-[12px] font-medium hover:bg-[#c40b13] transition">
-            <PlusIcon />Nuevo Onboarding
+          <button onClick={() => setShowCreate(true)} className="flex items-center gap-1.5 bg-[#DD0C15] text-white px-4 h-8 rounded-lg text-[12px] font-medium hover:bg-[#c40b13] transition">
+            <PlusIcon />{t.onboarding.createPlanTitle}
           </button>
         </div>
       </div>
+      {showCreate && <CreatePlanModal onClose={() => setShowCreate(false)} />}
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-6">

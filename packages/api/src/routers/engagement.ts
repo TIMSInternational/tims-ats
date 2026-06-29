@@ -97,6 +97,21 @@ export const engagementRouter = router({
       });
     }),
 
+  activateSurvey: permissionProcedure('engagement', 'create')
+    .input(z.object({ id: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const existing = await db.survey.findFirst({
+        where: { id: input.id, organizationId: ctx.user.organizationId },
+        select: { id: true, startsAt: true },
+      });
+      if (!existing) throw new TRPCError({ code: 'NOT_FOUND' });
+      return db.survey.update({
+        where: { id: existing.id },
+        data: { status: 'active', startsAt: existing.startsAt ?? new Date() },
+        select: { id: true, status: true },
+      });
+    }),
+
   getSurveyResults: permissionProcedure('engagement', 'read')
     .input(z.object({ surveyId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {

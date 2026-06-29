@@ -1,7 +1,9 @@
 'use client';
 
+import { useState } from 'react';
 import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
+import { ApproveAdjustmentModal } from './approve-adjustment-modal';
 
 const fmtCOP = (n: number) => `$${Math.round(n / 1000).toLocaleString('es-CO')}K`;
 
@@ -97,6 +99,7 @@ const ADJ_LABEL: Record<string, 'adjMerit' | 'adjPromotion' | 'adjMarket' | 'adj
 export function PendingAdjustments() {
   const { t } = useI18n();
   const q = trpc.compensation.listPendingAdjustments.useQuery();
+  const [target, setTarget] = useState<{ id: string; name: string; mode: 'approve' | 'reject' } | null>(null);
 
   return (
     <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
@@ -117,6 +120,7 @@ export function PendingAdjustments() {
               <th className="text-left font-medium pb-2">{t.compensation.colEmployee}</th>
               <th className="text-left font-medium pb-2">{t.compensation.colType}</th>
               <th className="text-right font-medium pb-2">{t.compensation.colChange}</th>
+              <th className="text-right font-medium pb-2"></th>
             </tr>
           </thead>
           <tbody className="text-[#333]">
@@ -129,16 +133,43 @@ export function PendingAdjustments() {
               const prev = Number(adj.previousSalary);
               const next = Number(adj.newSalary);
               const pct = hasSalaries && prev ? Math.round(((next - prev) / prev) * 1000) / 10 : null;
+              const name = `${adj.user.firstName} ${adj.user.lastName}`;
               return (
                 <tr key={adj.id} className={i < q.data!.length - 1 ? 'border-b border-[#EDEDED]/60' : ''}>
-                  <td className="py-1.5 font-medium">{adj.user.firstName} {adj.user.lastName}</td>
+                  <td className="py-1.5 font-medium">{name}</td>
                   <td className="py-1.5 text-[#8B8B8B]">{adj.type ? t.compensation[ADJ_LABEL[adj.type] ?? 'adjOther'] : '–'}</td>
                   <td className="py-1.5 text-right">{pct === null ? <span className="text-[#8B8B8B]">–</span> : <span className="font-semibold text-green-600">+{pct}%</span>}</td>
+                  <td className="py-1.5 text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setTarget({ id: adj.id, name, mode: 'approve' })}
+                        className="h-6 px-2 rounded text-[10px] bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 transition"
+                      >
+                        {t.compensation.approveAction}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setTarget({ id: adj.id, name, mode: 'reject' })}
+                        className="h-6 px-2 rounded text-[10px] bg-red-50 text-[#DD0C15] border border-red-200 hover:bg-red-100 transition"
+                      >
+                        {t.compensation.rejectAction}
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               );
             })}
           </tbody>
         </table>
+      )}
+      {target && (
+        <ApproveAdjustmentModal
+          adjustmentId={target.id}
+          employeeName={target.name}
+          mode={target.mode}
+          onClose={() => setTarget(null)}
+        />
       )}
     </div>
   );

@@ -8,12 +8,14 @@ import { PerformanceKpis } from './performance-kpis';
 import { OkrTable } from './okr-table';
 import { CoachingPanel } from './coaching-panel';
 import { FeedbackPanel } from './feedback-panel';
+import { CreateOkrModal } from './create-okr-modal';
 
 type Tab = 'okrs' | 'coaching' | 'feedback';
 
 export default function PerformancePage() {
   const { t } = useI18n();
   const [tab, setTab] = useState<Tab>('okrs');
+  const [showOkr, setShowOkr] = useState(false);
 
   // --- tRPC queries ---
   const kpisQuery = trpc.performance.getDashboardKpis.useQuery();
@@ -59,8 +61,8 @@ export default function PerformancePage() {
           <button onClick={() => toast(t.performance.exportComingSoon, { type: 'info' })} className="text-[12px] border border-[#EDEDED] rounded-lg px-4 py-1.5 text-[#585858] hover:bg-gray-50 font-medium">
             {t.performance.export}
           </button>
-          <button onClick={() => toast(t.performance.createComingSoon, { type: 'info' })} className="text-[12px] bg-[#DD0C15] text-white rounded-lg px-4 py-1.5 font-medium hover:bg-red-700">
-            {t.performance.newEvaluation}
+          <button onClick={() => setShowOkr(true)} className="text-[12px] bg-[#DD0C15] text-white rounded-lg px-4 py-1.5 font-medium hover:bg-red-700">
+            {t.performance.newOkr}
           </button>
         </div>
       </div>
@@ -109,6 +111,8 @@ export default function PerformancePage() {
           />
         )}
       </div>
+
+      {showOkr && <CreateOkrModal onClose={() => setShowOkr(false)} />}
     </div>
   );
 }

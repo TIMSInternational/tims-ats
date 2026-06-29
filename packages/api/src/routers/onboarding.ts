@@ -67,7 +67,7 @@ export const onboardingRouter = router({
         include: {
           user: { select: { id: true, firstName: true, lastName: true, avatar: true, jobTitle: true } },
           buddy: { select: { id: true, firstName: true, lastName: true, avatar: true } },
-          tasks: { select: { id: true, completed: true, responsible: true, phase: true } },
+          tasks: { select: { id: true, title: true, completed: true, responsible: true, phase: true } },
           checkIns: { select: { id: true, status: true, type: true, scheduledDate: true, completedAt: true } },
         },
       });
