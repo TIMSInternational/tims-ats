@@ -1,332 +1,118 @@
 # Known Issues & Remaining Work
 
 > Single backlog/status reference (rule #1: docs are code — update in the SAME PR as the change).
-> Originally CLAUDE.md §9; truthed-up 2026-06-06 (PRs #1–#41), then 2026-06-08 (PRs #43–#53 + Bedrock guardrail).
-> **`docs/PRODUCT-MAP.md` is STALE — this file is canonical for status.** Roadmap detail: the build roadmap (5-agent audit, Jun 8) tracks Waves 0–4.
+> **Truthed-up 2026-06-29 against HEAD `main` (PR #96, commit `5115a83`)** via a 4-area audit
+> (docs, AI, frontend, integrations) + direct prod verification. Supersedes the prior truth-up
+> (which only covered PRs #1–#53 and had drifted materially).
+> **`docs/PRODUCT-MAP.md` is STALE — this file is canonical for status.** Per-feature detail lives
+> in the wave/spec docs cited below.
 
-## DONE (June 2026 sessions — verified, not aspirational)
+---
 
-### Security
-- [x] SQL injection in RLS middleware; IDOR fixes (user, onboarding, okrs, offer/interview/assessment parents)
-- [x] **RLS tenant isolation LIVE** — migration `20260604100000`, fail-closed policy on 81 tables, `tenantDb` + `SET LOCAL ROLE app_tenant`, `RLS_ENFORCED=true` in prod, verified cross-org fail-closed (PRs #4–#9)
-- [x] `hr_admin` denylist → **fail-closed allowlist** (20 modules) (PR #3)
-- [x] **Turnstile CAPTCHA** on public `applyToVacancy` (env-gated, fail-closed) (PR #3)
-- [x] **Nonce-based CSP** — prod drops `'unsafe-inline'`/`'unsafe-eval'` from script-src (PR #11)
-- [x] Rate limiter → Upstash sliding window (tenant/user/expensive tiers)
-- [x] Email HTML escaping (stored-XSS via public apply), offer-signing expiry, webhook secret redaction, open-redirect validation (PR #2)
-- [x] 56 security tests → 103 total tests, CI grep-gates (any/raw-SQL/XSS/ts-ignore/eval/service_role/AI-door)
+## ✅ DONE (verified in code + prod, not aspirational)
 
-### AI (Phases 0–2)
-- [x] **Single gated door** `invokeAgent`: budget(fail-closed $25 default)→cache(org-scoped TTL)→PII(sanitize+wrap+env-gated Bedrock Guardrails MASK)→circuit→Zod-validate→log (PRs #15–#19)
-- [x] CI grep-gate + Vitest test enforce "no Bedrock outside `packages/ai`" (PR #19)
-- [x] **cv-parser** (`candidate.parseCV`, text-based) + **candidate-screener** (`candidate.screen` → FitScore) wired through the gate (PRs #20–#21) + candidate-detail AI cards UI (PR #30)
+Detail for each lives in its wave/spec doc; this is the scannable status roll-up.
 
-### Architecture / quality
-- [x] God components split (largest now ≤365 LOC); `platform.ts` split into sub-routers (PR #12 + prior)
-- [x] Service layer live on candidate, pipeline, dei, candidate-ai, email, video, calendar — **standard for all new features**
-- [x] Sentry (env-gated, source-maps pending token) + Pino structured logging; pino worker-thread fatal fixed (PRs #13, #14, #37)
-- [x] Caching layer (`lib/cache.ts`, Upstash + in-mem fallback); permission checks cached 5 min w/ invalidation (PR #29)
-- [x] Supavisor pooling in prod (`pooler.supabase.com:6543`, pgbouncer mode)
-- [x] i18n complete: es/en parity 1802 keys, CI-guarded (PRs #24–#28)
-- [x] DEI vertical slice live (EmployeeDemographics, aggregates-only, live-DB seeded) (PRs #22–#23)
-- [x] 4 HR shells data-wired: compensation, climate, monitoring, integrations (PRs #25–#28)
-- [x] **Full mobile sweep** — all ~35 routes + modals/wizards QA'd @390×844, zero overflow (PRs #31–#36, #38)
-- [x] Vercel prod deploy + alias (tims-ats.vercel.app); Prisma serverless engine fix (PR #10)
-- [x] Agentic tooling: `/gate` `/ship` `/mobile-qa`, CLAUDE.md→`.claude/rules/` split, prettier hook, allowlist (PRs #39–#41)
+### Platform foundation
+- **Security:** RLS tenant isolation LIVE (`RLS_ENFORCED=true`, fail-closed policies); SQL-injection/IDOR fixes; `hr_admin` fail-closed allowlist; Turnstile on public apply; nonce CSP; Upstash rate limiting; CI grep-gates (any/raw-SQL/XSS/ts-ignore/eval/service_role/AI-door). (PRs #2–#11)
+- **AI safety:** single gated door `invokeAgent` (fail-closed budget → cache → PII sanitize + Bedrock Guardrails MASK → circuit breaker → Zod-validate → usage log); CI + vitest enforce "no Bedrock outside `packages/ai`". (PRs #15–#19, guardrail wired #53)
+- **Architecture:** Router→Service→Repository standard; god-components split; Sentry (token pending) + Pino; caching layer; Supavisor pooling; mobile sweep (~35 routes @390×844); Vercel prod + alias.
+- **MFA/TOTP** for platform owners + super_admins (built; `MFA_ENFORCED` off by default). (PR #51)
+- **Platform console → 100%** (real reset, AI budget editor, audit export, signed-cookie impersonation, GDPR/Habeas-Data export, force-logout, alert-rule cron engine). (PRs #47–#53)
 
-### June 8 session — analytics, AI agents, Wave 0 integrity, platform console 100%, guardrail
-- [x] **recruitment/analytics data-wired** — was fabricated (inline literal KPIs); now real aggregation endpoints (TTF/TTH, accept rate, funnel, sources, trend, SLA) (PR #43)
-- [x] **Interview AI agents** through the gate: interview-summarizer, interview-guide, bias-detector (PR #44)
-- [x] **Wave 0 integrity** — 5 fake-AI endpoints + fake billing usage + mock Stripe-esign stubs → honest `NOT_IMPLEMENTED`/real counts (PRs #45–#46)
-- [x] **Platform console → 100%** — real password reset, AI per-org budget editor, audit JSON export + org filter, honest health panel, GDPR/Habeas-Data subject export, REAL signed-cookie impersonation (PRs #47–#50)
-- [x] **MFA/TOTP** for platform owners + super_admins — Supabase Auth MFA, `/mfa` enroll+step-up, enforcement gate (env-flag `MFA_ENFORCED`, default off, fail-open flag/fail-closed gate) (PR #51)
-- [x] **Alert-rule evaluation backend** — Vercel cron `/api/cron/evaluate-alerts` (fail-closed `CRON_SECRET`), per-org metric engine (6 real metrics), + rule-config UI replacing "coming soon" (PR #52)
-- [x] **Session force-logout** — `platform.forceLogoutUser` revokes a user's Supabase sessions (auth.sessions delete), surfaced in support console (PR #53)
-- [x] **Bedrock Guardrail wired** — `tims-ats-pii` (us-east-2) ANONYMIZE financial/SSN-class PII (not name/email/phone — cv-parser must extract those); `BEDROCK_GUARDRAIL_ID`/`_VERSION` set in Vercel → MASK defense-in-depth ACTIVE
-- [x] Tests 103 → **141**
+### Wave 2.5 — Access control — **COMPLETE + LIVE IN PROD** (`docs/WAVE-2.5-ACCESS-CONTROL.md`)
+- All 7 slices shipped (PRs #67–#74): deny-by-default kernel, endpoint hardening, scope enforcement (recruitment + people), role-aware UI, sensitive-data k-anonymity (min-5, codex-hardened 14 rounds), membership admin, **external API-key auth (7b, #74)**.
+- **✅ Wave-DATA deploy IS APPLIED in prod** (verified 2026-06-29 by direct query): the `seed-access --apply` matrix ran — 9 roles with correct scoped grants (super_admin/hr_admin/recruiter/external→`organization`, hrbp→`unit`, leader/committee→`team`, employee→`own`) replicated across all 11 orgs (98 permissions × roles); legacy recruiter over-grants (`offer:approve`, `vacancy:approve`) removed. The role matrix is genuinely enforced. *(The prior doc's "seed not yet run" note was stale.)*
 
-## WAVE 2.5 — Full access-control layer (design: docs/WAVE-2.5-ACCESS-CONTROL.md)
+### Role-native experience — **COMPLETE** (`docs/ROLE-EXPERIENCE-REBUILD-SPEC.md`)
+- Slices 0–4 shipped (PRs #75–#80 + follow-ups #81–#90): manifest-driven IA, all 7 org roles + platform_owner have distinct purpose-built tRPC-backed shells + landings; impersonation propagates effective identity to RSCs (#83).
 
-**Slice 1 SHIPPED (branch feat/access-engine): engine + schema + seeds + middleware.**
-`packages/api/src/access/` (resolveAccess deny-by-default kernel w/ union/widest stacking
-+ malformed-scope rejection; request-local anchor loader team/unit/panel), 3 new RLS'd
-models (UserBusinessUnit, DataAccessLog, DataConsent) + migration `20260612000000`,
-reconciling `seed-access.ts` (9 roles × full scoped matrix; DRY-RUN default), middleware
-rewrite (`ctx.access` injection; **HR_ADMIN_MODULES allowlist DELETED** — hr_admin is
-DB-checked; privileged users get explicit org-scope decisions; org-less platform owner
-on tenant modules → BAD_REQUEST; **org-bearing platform owners now run under the RLS
-GUC** — was silently unscoped/BYPASSRLS). 281 tests. AND-composition tripwire in CI.
+### Recruitment ATS (the spine) — **REAL**
+- Pipeline, vacancies, candidates, interviews, assessment *authoring*, offers, talent pools, recruitment analytics — all functional with working mutations.
 
-**Slice 2 SHIPPED (branch feat/access-endpoint-hardening): endpoint hardening.**
-`notification.create`/`bulkCreate` → `permissionProcedure('notification','create')`
-(was: any staffer could notify anyone — phishing vector); `organization.list*` →
-`organization:read` (`getCurrent` deliberately stays protected — own-org lookup);
-`engagement.submitSurveyResponse` → `engagement:create` + bounded answers record
-(≤100 keys, ≤200-char keys, ≤5000-char strings; respondent identity was already
-ctx-derived; duplicate submissions now map P2002 → CONFLICT instead of 500; the
-caller-controlled `anonymous` flag was REMOVED — responses are always
-identity-keyed);
-ALL EIGHT dead staff-session portal stubs deleted (uploadDocument,
-getMyAssessments, startAssessment, acceptOffer, declineOffer, updateProfile,
-requestDataDeletion, submitNps — zero callers; live flows are candidatePortal +
-/offers/sign/[token]; pre-completes the Wave 1.5a slice-2 stub removal);
-server-side `/platform` layout gate (non-owners redirect to /dashboard before
-render; checks the REAL identity; gate also denies while an impersonation cookie
-is active (consistency with platformProcedure)). Static tripwire
-tests in tests/access/endpoint-hardening.test.ts +
-tests/security/platform-layout-gate.test.ts. Tests 282 → 298.
+### Candidate portal — **REAL** (`docs/WAVE-1-CANDIDATE-PORTAL.md`)
+- Job board, apply (Turnstile), magic-link login, status dashboard (My Applications/Interviews/Offers + timelines), offer e-signing. (Slices 1–4)
+- **Staff/candidate auth boundary RESOLVED** — token-based linking (B2), `docs/SECURITY-staff-candidate-auth-linking.md`. *(Prior doc listed this as an open SECURITY/HIGH; it shipped 2026-06-10.)*
 
-**Slice 3 SHIPPED (branch feat/access-scope-recruitment): scope enforcement —
-recruitment.** `packages/api/src/access/entity-policies.ts` (`scopeWhereFor`:
-vacancy team→OR(led-team ids, assignedTo); unit→businessUnitId∈units;
-candidate via applications.some.vacancy — `some` is the invariant-#5 shape;
-interview adds the evaluators-some panel arm; offer/application/
-assessmentAssignment wrap the vacancy fragment; organization/company→`{}` =
-the deploy-neutrality invariant) + `assertScoped` by-id ownership probe
-(NOT_FOUND, entity-specific messages, soft-delete guard for vacancy/candidate)
-+ `ledTeamIds` anchor. Wired through ALL SIX recruitment modules: vacancy +
-interview + offer + assessment router-inline; candidate + pipeline threaded
-router→service→repository (services take a required `scopeWhere` param — never
-defaulted, a default would fail open). Child-id endpoints use fetch-then-probe
-hops (org-scoped child → parent probe): offer validations/legal checks,
-pipeline stages, proctoring sessions, candidate documents. Bulk endpoints
-(bulkMove/bulkTag/compare) use deduped scoped count-checks. submitScorecard now
-requires an ASSIGNED evaluator (slice-1 codex carry-over CLOSED). Public offer
-token flows + assessment question bank deliberately untouched. Tests 298 → 358
-(entity-policies behavior table + per-module AND-composition tripwires).
+### AI Voice Interview (ElevenLabs) — **COMPLETE** (specs 2026-06-24/26/28)
+- Live conversational pre-screen (Slice 1, #92), Zoom-style call redesign (#94), **paid per-org add-on + per-type duration caps (#95)**. Gated, billed (frozen per-minute usage + add-on fee), platform-admin controlled. Ships dark per org until enabled.
 
-**Slice 4 SHIPPED (branch feat/access-scope-people): scope enforcement — people.**
-People entities joined the policy registry, anchored on the row's EMPLOYEE-user
-field (okr·userId, coachingSession·employeeId+coach-arm, feedback·toUserId+
-giver-arm, onboardingPlan·userId+buddy-arm, enrollment/certificate·userId,
-nineBoxEvaluation·userId, successor·userId, criticalRole·currentHolderId,
-employeeCompensation/salaryAdjustment·userId, actionPlan·responsibleId,
-leaderCommitment·leaderId, team·id/businessUnitId) — own→scalar, team→
-teamMemberIds, unit→NEW `unitMemberIds` anchor (User.businessUnitId ∪
-team-membership, floor []). NEW `assertSubjectInScope` write-rule (creates/
-point-reads targeting a user must target the caller's subject set) +
-`requireOrgScope` promoted to a shared gate. ALL SEVEN people routers wired:
-performance (okrs/coaching/feedback; dashboards org-gated; completeCoachingSession
-previously had ZERO org check — fixed), onboarding (plan probes, task/check-in
-hops, create write-rule), learning (enrollment scoping; course/path catalog
-deliberately org-level), engagement (9 aggregate reads org-gated until slice-6
-min-5; actionPlan/leaderCommitment row-lists composed), compensation (salary
-aggregates org-gated; adjustments probed; per-person reads subject-checked),
-ninebox (grid/history composed; calibration votes now require committee
-MEMBERSHIP — mirrors submitScorecard; session creation org-gated), succession +
-teamIntel (team entity probes). Tests 372 → 445.
+### i18n enforcement — **COMPLETE** (#96, `tests/security/i18n-no-hardcoded-strings.test.ts`)
+- Absolute vitest gate blocking hardcoded user-facing strings in `apps/web` (CI Security-Audit + local `/gate`). ~393 hardcoded strings across 86 files swept to `t.*` (both locales). *(The prior doc's "i18n complete, 1802 keys" was inaccurate — strings were leaking; now genuinely enforced.)* See [[tims-i18n-enforcement]].
 
-**Slice 5 SHIPPED (branch feat/access-role-aware-ui): role-aware UI.**
-`apps/web/lib/permissions.tsx`: PermissionsProvider (one `auth.getSessionInfo`
-fetch) → `usePermissions()/useCan()`; privileged bypass mirrors build.ts
-(platform owner / super_admin → all-allow, else empty app for owners); shared
-PATH_MODULE map (25 routes) drives BOTH the sidebar filter AND a single
-shell-level RouteAccessGuard rendering an es/en AccessDenied card (DESIGN
-ADAPTATION: per-page `<RequireAccess>` from the design doc superseded by the
-one shell guard — zero per-page edits). Sidebar items derive their module from
-the shared map; sections hide when empty; loading shows only ungated items (no
-flash); real role label (i18n `roles.*`) replaces the hardcoded "admin". UI
-gating is UX ONLY — the API stays the boundary (sessionInfo fetch failure
-fails OPEN for rendering, console.warn). /platform + candidate portal
-untouched. Tests 452 → 466.
+### 8 live gate-wired AI agents
+- cv-parser, candidate-screener, vacancy-writer, inclusive-language, interview-guide, interview-summarizer, bias-detector, ai-voice-interview. Interview AI endpoints surfaced in the room UI (#89).
 
-**Slice 6 SHIPPED (branch feat/access-sensitive-data): sensitive-data layer.**
-Plan: `docs/plans/2026-06-12-wave-2.5-slice-6-sensitive-data.md`. Five new pure-ish
-modules under `packages/api/src/access/` driven by the §21 matrix (`docs/TIMS ATS -
-Architecture.md:2472-2553`):
-- `classification.ts` — `(entity,field) → dataClass × roles[]` registry for the 5
-  backed models (employeeCompensation/salaryAdjustment = restricted; assessmentResult
-  breakdown/rawScore = restricted super-only, normalized/percentile/interpretation =
-  confidential; employeeDemographics + surveyResponse = confidential). Frozen
-  (`Readonly`), monotonicity-tested (entity class ≥ max field class).
-- `select-for.ts` — `selectFor(roles, entity)` fail-closed Prisma select (anchors
-  always; union across roles; unknown→`{id:true}`; drift `logger.warn`).
-- `aggregate.ts` — `suppressBelowMin5` (1..4→null, 0 and ≥5 pass) + `aggregateGroups`
-  (total<5 suppresses all). JSDoc WARNING: callers must not also disclose total-N when
-  any group is suppressed (differencing).
-- `audit.ts` — `logDataAccess(event, opts?)` writes `data_access_logs`; fail-CLOSED
-  (throws) for restricted, fail-SOFT for confidential; `opts.failClosed` override for
-  mixed-class tables (assessment: super gets raw→closed, others→soft).
-- `consent.ts` — `hasConsent`/`assertConsent` over `DataConsent` (withdrawnAt=null = active).
-Wired: **compensation** (getBandDistribution/CompaRatio/PayEquity bucket+band+group
-counts → min-5; org-gate kept as defense-in-depth; small bands drop `dots`, small
-groups null count+avg+median); **engagement** (getSurveyResults survey-level + per-
-question; getResultsByArea per-area; getEnps + getClimateHeatmap survey-level floors);
-**DEI** (all 6 distribution methods + getPayEquity — and CRITICAL fix: when ANY group
-is suppressed, ALL visible-group percentages + total-N are nulled, else `total =
-count/(pct/100)` recovers the suppressed group exactly; getPayEquity gapPct suppressed
-unless BOTH gender groups clear the floor); **assessmentResult** (3 router readers use
-`selectFor` so breakdown/rawScore reach super_admin only + per-result audit;
-candidate-detail/timeline repo selects + the candidate-detail DISC-grid UI had a real
-prior leak of `breakdown` to recruiters — closed by omitting raw fields). Frontend:
-DEI/compensation/climate/assessment consumers null-guard + render a mask for suppressed
-groups. Tests 466 → **688**. ~30 commits, **codex adversarially hardened across 14 rounds**.
+---
 
-**The k-anonymity invariant (codex-verified):** NO count/sum/avg/ratio, present-key-set,
-partition/time-series bucket, restricted field, or raw row over a **1..4 population** of
-the 5 sensitive models is exposed to any client — nor recoverable by cross-endpoint
-differencing. The hardening loop closed, in order: (1) within-endpoint %-differencing →
-null ALL visible-group %s + total-N when any group suppressed; (2) cross-endpoint
-denominator oracles (dashboard ratios, sibling population totals); (3) implicit
-**unbanded/skipped/null/contributor** buckets folded into every all-or-nothing trigger;
-(4) **present-key cardinality** (key-set + N pins singletons) → **empty distribution when
-any group suppressed** (no keys survive); (5) **contributor-vs-respondent** + skip buckets
-gated on every survey aggregate; (6) the **monitoring + alert-evaluation** surface
-(getExecutiveKpis/getCrossModuleTrend floored; the alert-rule "eq 3" cron oracle closed);
-(7) **complementary-bucket class** → the **canonical-definition invariant**: every count
-over `employeeCompensation` uses ONE positive-salary definition so cross-endpoint
-subtractions collapse to 0, and every filtered-population aggregate folds its dropped-row
-complement into suppression. Plus field-level: `selectFor` projection on comp + assessment
-reads (raw psychometrics super-only; salary fields per registry), audited restricted reads
-(fail-closed), minimal selects on all sensitive create/update/find paths.
+## 🔧 REMAINING — by tier (effort × impact)
 
-**Slice-6 follow-ups not in scope (recorded):** consent-withdrawal 30-day anonymization
-job (matrix-compliant deferral, not real-time aggregate filtering); `getBenefitsUtilization`
-enrolled count (benefits not in §21); `approveAdjustment` was made atomic+conditional
-(incidental correctness, not sensitive-data); `data_access_logs` purge job + its
-`@@index([organizationId, createdAt])`; shared Zod unions for dataType/action/consentType.
+### Tier 0 — Operational flips & config (cheap, high-leverage; mostly owner-action)
+| Owner | Item |
+|---|---|
+| Federico | **Stripe go-live** — set `STRIPE_SECRET_KEY` + `STRIPE_PRICE_STARTER` + `STRIPE_PRICE_PROFESSIONAL` (latter two missing from `.env.example`), register webhook, configure Billing Portal. Code is complete + verified in test mode (`docs/WAVE-2-STRIPE-BILLING.md`); dormant until keys set. |
+| Federico | **`DAILY_API_KEY`** — human video interviews (`interview.createVideoRoom`) are code-complete (Daily.co) but throw at runtime without the key (absent from `.env.example`). The AI voice interview uses ElevenLabs and is unaffected. |
+| Federico | **Fix Bedrock payment instrument (AWS acct 747814092517)** — Sonnet 4.5 Marketplace subscription can't activate; 5 analysis agents (interview-summarizer/guide, bias-detector, interview-fit-score, candidate-screener) are downgraded to Haiku 4.5 as a stopgap. Restore to Sonnet in `registry.ts` once billing clears. |
+| Federico | **MFA enforce** — enroll TOTP at `/mfa`, set `MFA_ENFORCED=true` in Vercel prod. |
+| Federico | **GitHub Actions billing** — every CI job fails in ~3s (empty steps); merges use admin-override + local `/gate`. Fix at github.com/settings/billing. |
+| Federico | Branch protection on `main` (6 required checks ready); `SENTRY_AUTH_TOKEN` for readable stack traces. |
+| TIMS/product | **Per-org `AiAgentOrgConfig` budgets** — a fail-closed $25/mo cap applies until set (AI silently stops at the cap). |
+| TIMS/product | **ai-voice-interview activation** per org (platform admin → AI Agents → Orgs: enable + `billableUsdPerMinute`/`addonMonthlyFeeUsd`/caps). |
 
-**Slice 7 = two PRs (Federico's call).** 7a = membership admin; 7b = external API-key auth.
+### Tier 1 — Last-mile UI wiring (backends EXIST; primary buttons are `toast('próximamente')`)
+Highest value-per-effort: the mutations are real, no UI invokes them. Wire the action UI for:
+- **Succession** — Add Successor / Export (`addSuccessor`/`addCriticalRole` exist).
+- **Engagement** — Launch Survey (create flow; survey-TAKING already works on the employee dashboard).
+- **Learning** — enroll / complete (backend exists; UI read-only).
+- **Compensation** — approve adjustment / simulate (mutations exist, unwired).
+- **Performance** — create OKR / commitment / coaching session (commitments UI is read-only).
+- **Onboarding** — task-toggle / create / export.
 
-**Slice 7a SHIPPED (branch feat/access-membership-admin): membership admin.**
-Plan: `docs/plans/2026-06-15-wave-2.5-slice-7a-membership-admin.md`. The admin surfaces
-that POPULATE the access anchor tables (code-only, no migration). Backend (all
-IDOR-guarded: org-verify parent + target user in a `$transaction` before write;
-`deleteMany`-scoped removes → count===0 NOT_FOUND; P2002→CONFLICT):
-- **hrbp unit-assignment** (`organization.ts`): `assignUserToUnit`/`unassignUserFromUnit`/
-  `listUnitMembers` over `UserBusinessUnit` — gated under the **`user` module** (NOT
-  `organization`: hr_admin holds user CRUD@org but only organization:read, so user-module
-  gating lets hr_admin administer without over-granting org-structure create powers).
-- **committee panel wiring**: interview `addEvaluator`/`removeEvaluator` (`interview/crud.ts`)
-  over `InterviewEvaluator` — gated `interview:update` + **`assertScoped('interview')`** so a
-  narrow caller can only manage panels already in scope; calibration `addCalibrationMember`/
-  `removeCalibrationMember`/`listCalibrations` (`ninebox.ts`) over `CalibrationMember` —
-  gated `ninebox:update`/`read` + **`requireOrgScope`** (committee membership admin is
-  org-governance; committee members can't self-promote).
-- UI: `/settings/business-units` page, interview evaluators modal, nine-box committee panel +
-  session list, shared `UserPicker`.
-**Codex 3 rounds → SHIP.** Round 1 caught 2 real anchor-write privilege escalations (a
-team-scope caller self-adding to an out-of-scope panel/committee to WIDEN its own scope →
-fixed with assertScoped/requireOrgScope); round 2 caught the gating-vs-seed mismatch
-(hr_admin couldn't actually use the feature → re-homed to user module). Tests 703→711.
+### Tier 2 — Fabricated / mock data surfaced as real (violates the "no fake data" rule)
+- **`integration.getSystemHealth`** returns hardcoded uptime 99.97 / latency 42ms / 3 connections as if real → return honest nulls or real metrics.
+- **Learning** course progress = `Math.random()` (`course-catalog.tsx:110`).
+- **Performance** OKR on-target/at-risk KPI split = invented ratios (`activeOkrs*0.53/0.32`).
+- **Team-Intelligence** page = mostly `DEMO_*` arrays + `getBalanceAlerts`/`getRecommendedHires` throw `NOT_IMPLEMENTED` (the least-real module).
 
-**Slice 7b pending** (own plan, branch feat/access-external-api): `external` role API-key
-AUTH path (the API-key CRUD already exists in `integration.ts`; greenfield = `externalProcedure`
-+ requireApiKey middleware + external read endpoint for assessment results) + create/revoke
-key-management UI. Security-critical new auth boundary — final Wave 2.5 piece.
+### Tier 3 — Big unbuilt features (net-new product scope)
+| Priority | Feature |
+|---|---|
+| HIGH (core differentiator) | **Assessment Player** (`docs/WAVE-1.5a-ASSESSMENT-PLAYER.md`, approved, slice 1 authoring shipped #65). Slices 2–4 unbuilt: candidate take-flow backend + UI + auto-scoring. **No scoring engine exists in TIMS** — `AssessmentResult` is only INGESTED via the external API (#74), never produced internally; **no band/norm/item-bank tables exist** (ties to the LIA gap). + **Wave 1.5b webcam proctoring** (deferred, own milestone). + Wave 3 `assessment-evaluator` agent for essay scoring (lights up `assessment.getExplainability`, currently honest 501). |
+| MEDIUM | **360° Evaluations** (`docs/plans/2026-06-17-360-evaluations-greenfield.md`) — fully greenfield (no model/router/service), ~5–6 slices. *(Continuous peer feedback already exists + is real; the structured 360 cycle is what's missing.)* |
+| MEDIUM | **Commitments** — backend real, UI read-only (no create form). |
+| MEDIUM | **Candidate CV/resume upload + real CV→text extraction** (S3 + PDF/DOCX) — apply is text-only today, yet `parseCV` expects CVs. |
 
-**✅ WAVE 2.5 DEPLOY-ORDERING — WAVE-DATA DEPLOY NOW UNBLOCKED (slices 1–4 all merged + auto-deployed):**
-Code auto-deploys on merge (verified Jun 12: #67/#68 → prod deploys within
-seconds of the main merge). Every slice is behavior-neutral pre-seed
-(org-equivalent grants → `{}` fragments — prod's 104 legacy rows are all
-scope `'all'`). Slices 1–4 are all merged and deployed; the wave-DATA deploy
-is UNBLOCKED. Runbook (Federico runs this deliberately — it is NOT automatic;
-until he does, prod keeps legacy org-equivalent behavior, verified safe):
-(1) migration `npx prisma db execute --file=packages/db/prisma/migrations/20260612000000_access_control_models/migration.sql`
-(not yet run; the 3 new tables are dormant until narrow scopes exist);
-(2) `npx tsx packages/db/prisma/seed-access.ts --apply` (review the DELETIONS
-block of a dry-run first); (3) cache flush (`tims:access:*`). Until the seed
-runs, every legacy role — INCLUDING hr_admin — works through the build.ts
-compat mapping over the 104 existing `'all'`-scope rows (verified against prod
-Jun 12: hr_admin has 32 rows; the earlier "hr_admin breaks without the seed"
-claim assumed zero rows and was wrong).
+### Tier 4 — Infrastructure (deferred by design / scale-gated)
+- **Background workers (`workers/`)** — empty one-line stub; no Trigger.dev jobs. Caps batch AI, async scoring, scheduled jobs (billing automation, data-retention purges). Emails/exports run in-process today.
+- **Real export generation** — audit, candidate-pool CSV, DEI report are stubs returning fake statuses; no CSV/XLSX pipeline wired.
+- **AI agents** — 22 of 32 catalog agents are pure stubs (`assessment-evaluator`, candidate-matcher, interview-question-gen, email-composer, etc.); `interview-fit-score` is **dead code** (implemented, no router → wire an endpoint or remove). Mock stubs to truth-up: pipeline `getNextBestAction`, candidate `getRecommendations`. Catalog `status` is hardcoded `'stub'` for all 32 even though 8 are live → drive from the registry.
+- **Automated invoice generation + usage metering** — invoicing is MANUAL via `platform.createInvoice`; the AI add-on bills through it. `getUsage` returns null for storage/apiCalls (no metering source); plan limits not enforced; Stripe `invoice.*` webhooks not handled.
+- **AI gateway microservice** (`services/ai-gateway`, Docker/ECS) — does not exist; in-process `packages/ai` door is the implementation.
 
-**Wave 2.5 follow-ups (recorded, not faked):** `data_access_logs` purge job + the
-`@@index([organizationId, createdAt])` it needs (add WITH the job); shared const/Zod
-unions for dataType/action/consentType values when the writers land (slice 6); consent
-30-day anonymization job; field-level encryption (separate security wave); candidate→
-employee role transition (needs product definition); `tims:perm:` legacy cache-prefix
-removal after deploy.
-Slice-2/3 review carry-overs: scoped `organization:read` grants for
-recruiter/hrbp/leader must be added to seed-access.ts WHEN a later slice
-introduces team/unit picker dropdowns (today only hr_admin/super_admin hold it —
-a future picker 403 would be a seeds gap, not a regression); the submit endpoint
-no longer accepts an `anonymous` flag (codex: userId NULL bypassed the @@unique
-dedup — ballot-stuffing); responses are always identity-keyed and
-display-anonymity + targetGroups enforcement land with the slice-6
-aggregation/anonymity layer (respondentKey hash if product wants true stored
-anonymity); candidate self-service
-data deletion (right-to-erasure) lost its last code marker with the
-requestDataDeletion stub — platform-side subject EXPORT exists, deletion is
-manual (backlog if product commits to self-service); NPS submission has no
-backing feature anymore (deleted submitNps stub was its last trace).
-Slice-3 carry-overs: `recruitment-analytics` module aggregates stay org-scoped
-(no per-resource input; scope-aware analytics = later slice, flagged by
-quality review); narrow-scope WRITE semantics (may a team-scope leader create
-vacancies outside their team?) = slice-4 write-rules — create endpoints are
-deliberately unprobed (no target row); child-existence oracle on
-fetch-then-probe hops (a narrow-scoped caller can distinguish "out-of-scope
-parent has child X" vs "has none" via NOT_FOUND message differences) =
-accepted uniform tradeoff, revisit only if id-enumeration becomes a concern;
-applyToVacancy duplicate application still surfaces raw P2002 (pre-existing,
-@@unique exists — map to CONFLICT in a cleanup pass).
-Slice-2/3/4 review carry-overs: scope-aware people dashboards + engagement/
-compensation aggregates (the org-gates are the interim; slice-6 min-5 replaces
-them); feedback/recognition creates are deliberately cross-team (no
-`assertSubjectInScope` gate — a giver may target any employee in the org);
-`getLowProgressAlerts` returns row-level OKRs behind the org-gate (slice-6
-candidate for scope-aware listing — narrow-scoped callers currently see all
-low-progress OKRs in the org); benefitEnrollment has no row-level endpoints
-today (registry entry deferred until one exists — no subject-check needed
-until then).
-Slice-6 follow-ons (recorded, not faked): (a) **consent gating is module-only**
-(`assertConsent` exists + tested) — NO per-person demographic reader that reads
-someone ELSE's demographics by userId exists today (the only readers are the DEI
-aggregates + the subject's own Habeas-Data export), so there is no wire-in point yet;
-gate it when such a reader is added. **Consent-WITHDRAWAL on DEI aggregates** (codex
-slice-6 finding): a withdrawn subject currently remains in gender/DOB/nationality/
-leadership/pay-equity aggregates. This is matrix-COMPLIANT as designed — §21 CONSENT
-ENFORCEMENT mandates "withdrawn → anonymized within 30 days" via a BATCH job, NOT
-real-time aggregate exclusion. The 30-day anonymization job (also listed below) is the
-fix; until it lands, withdrawn subjects persist in aggregates within the 30-day window.
-If product wants immediate exclusion, filter every demographics aggregate source on
-`DataConsent.withdrawnAt: null` for `consentType:'dei_demographics'` — but that is a
-stricter-than-matrix product decision, not a slice-6 bug. (b) **getBenefitsUtilization** exposes a per-plan
-`enrolled` head-count that could be <5 in a small org — NOT in the §21 matrix so left
-un-suppressed deliberately; suppress if product classifies benefits enrollment as
-sensitive. (c) **org-wide ratio residual**: compensation/DEI `getDashboardKpis` keep
-org-wide ratios (womenPct, avgSalary, etc.) over the full population — a very small
-known population could approach disclosure; band/coarsen the denominator if it matters.
-(d) **candidate-detail/timeline raw psychometrics**: repo selects now OMIT
-breakdown/rawScore (fail-safe) rather than threading `ctx.access.roles` into the nested
-aggregate select — thread roles if a super_admin ever needs raw psychometrics on the
-candidate-detail page (today they use the audited assessment-router readers); the
-candidate-detail DISC `BreakdownGrid` render is now dead code (harmless, guarded). (e)
-`data_access_logs` purge job + `@@index([organizationId, createdAt])` (shared with the
-wave-level follow-up). (f) shared const/Zod unions for dataType/action/consentType
-string values (currently free strings). (g) `getEnps` returns `passives:1` at exactly 0
-responses (pre-existing `scores.length||1` div-guard artifact — display only, not a
-privacy issue). (h) tighten DEI/engagement tests from mostly-source-tripwires toward
-more behavioral coverage as the data layer stabilizes.
+### Tier 5 — External integration blockers
+- **PCA auto-email read endpoints — MISSING** (active external blocker): the external service needs list-companies + list-candidates/results exposing **email + PcaCod + completion**. The `external` router exposes assessment results with `completedAt` only — **no email, no PcaCod, no companies/candidates listing**. See [[tims-pca-auto-email]].
+- **LIA band/norm tables — MISSING** (ties to Assessment Player scoring + the nexa-platform LIA battery). See [[lia-assessment-gap-analysis]].
+- **Google Calendar OAuth** for interviews (currently .ics only).
+- **Real-time notifications** (websocket/SSE) for pipeline updates.
 
-| Priority | Task |
-|----------|------|
-| **SECURITY / HIGH** | **Staff/candidate auth boundary — email-based account linking** (codex adversarial review, Wave 1 Slice 2). Four sites recognize/link a staff `User` to a Supabase identity BY EMAIL: the tRPC context builder (`apps/web/app/api/trpc/[trpc]/route.ts`), `/auth/callback`, `(admin)/layout.tsx`, `(admin)/dashboard/page.tsx`. Invited staff rows are created with `supabaseUserId: ''` (`user.ts:128`), and `User.email` is unique only **per org**, so a verified Supabase session (incl. a candidate portal magic-link, or a cross-tenant collision) whose email matches an unclaimed staff row can be promoted into that staff role. The context-builder link is ALSO load-bearing: password-login staff (`signInWithPassword`, which skips `/auth/callback`) get linked there — so it can't simply be removed (would strand staff). **Fix = dedicated PR**: invitation/onboarding-token-based linking that verifies email + org + unclaimed-row state, never overwrites an existing `supabaseUserId`, applied consistently across all four sites, with staff password/recovery + candidate-collision regression tests. Slice-1 added a claim-only guard (blocks re-pointing an already-claimed row) but the unclaimed-`''` path remains open. |
-| HIGH | **Wave 1 — Authenticated candidate portal** (chosen portal-first, Jun 8): passwordless magic-link/OTP candidate session + dashboard (My Applications + stage timeline, My Interviews + join link, My Offer → links to existing `/offers/sign/[token]`). **Slice 1 (auth + /me shell) + Slice 2 (`candidateProcedure` + My Applications + stage timeline) SHIPPED.** Remaining: Slice 3 (My Interviews + join link), Slice 4 (My Offer → `/offers/sign/[token]`). See `docs/WAVE-1-CANDIDATE-PORTAL.md`. |
-| HIGH | **Wave 1.5 — Assessment completion ("Player")** — PRODUCT-MAP Priority 2 / core differentiator. ENTIRE backend missing: no question/response/submit/scoring schema. Includes **full webcam proctoring** (ProctoringSession, Habeas-Data consent, review UI). Deferred after Wave 1 per Jun 8 decision. |
-| MEDIUM | Wire next AI agents through the gate (22 of 32 still stubbed; cv-parser, screener, interview-summarizer/guide/bias-detector live). Remaining mock stubs to truth-up: pipeline `getNextBestAction`, candidate `getRecommendations` |
-| MEDIUM | Surface the interview AI endpoints in the UI (generate-guide / summary / bias buttons on interview detail — backend live, no consumers yet) |
-| MEDIUM | Google Calendar OAuth for interviews (currently .ics only) |
-| MEDIUM | Real-time notifications (websocket/SSE) for pipeline updates |
-| LOW | Talent-pool mobile filter drawer (filters hidden <md — deliberate tradeoff) |
-| LOW | Honest-unavailable panels await backing features: external market salary feed (compensation), NLP service (climate wordcloud/sentiment), platform telemetry (integrations system-health) |
+### Hygiene / recorded debt
+- **ElevenLabs config**: the live gate (`routers/ai-interview.ts`) omits `ELEVENLABS_WEBHOOK_SECRET` (a missing secret → interviews run but never bill/analyze); the 3-var `lib/elevenlabs.ts` helper is dead. Consolidate; add EL vars to `.env.example` + `lib/env.ts`; rotate any committed secrets.
+- **i18n stragglers** the scanner can't catch (precision-first): a handful of detector-missed literals (e.g. a `'Iniciar Sesion'`-class button) + 2 server→client conversions (`auth/layout.tsx`, `why-work-section.tsx`) made to use the hook; `global-error.tsx` keeps a hardcoded ES fallback (no `I18nProvider` in scope) — allowlisted.
+- **Wave 2.5 follow-ups (recorded, not faked):** `data_access_logs` purge job + its `@@index([organizationId, createdAt])`; consent 30-day anonymization job (matrix-compliant deferral); shared Zod/const unions for dataType/action/consentType; `tims:perm:` legacy cache-prefix removal; candidate→employee role transition (needs product def); several accepted k-anonymity residuals (org-wide ratio denominators, `getBenefitsUtilization` head-count, `getEnps` div-guard artifact); tighten DEI/engagement tests toward behavioral.
+- **Talent-pool mobile filter drawer** (filters hidden <md — deliberate tradeoff).
+- **Honest-unavailable panels** awaiting backing features: external market salary feed (compensation), NLP service (climate wordcloud/sentiment).
+- **Nine-box** grid is select-only (no drag-to-persist; "Simulador" is a declared backend stub).
+
+---
 
 ## Remaining — blocked on user / product decisions
-
 | Owner | Task |
 |-------|------|
-| Federico | **Activate MFA** — enroll a TOTP factor at `/mfa`, then set `MFA_ENFORCED=true` in Vercel prod to enforce 2FA for platform owners + super_admins (built but off by default so it can't lock you out) |
-| Federico | **GitHub Actions billing** — every CI job fails in seconds; fix at github.com/settings/billing (merges currently use the local `/gate`) |
-| Federico | GitHub Pro → enable branch protection on `main` (saved PUT call with 6 required checks ready) |
-| Federico | Phone re-test of mobile sweep → report findings for surgical fixes |
-| Federico | `SENTRY_AUTH_TOKEN` → readable stack traces (add to `apps/web/.env.sentry-build-plugin` + Vercel) |
-| TIMS/product | Per-org `AiAgentOrgConfig` budgets (default fail-closed $25 cap applies until set) |
-| TIMS/product | Trim audit/feature_flags/monitoring/organization from `hr_admin` allowlist (needs product confirm) |
+| TIMS/product | Trim audit/feature_flags/monitoring/organization from `hr_admin` allowlist (needs product confirm). |
+| TIMS/product | Candidate self-service data deletion (right-to-erasure) — subject EXPORT exists; deletion is manual (backlog if product commits to self-service). |
+| Federico | Phone re-test of the mobile sweep → report findings for surgical fixes. |
 
 ## Deferred by design (rule #9 — build for the trigger, not the dream)
-
-- Presidio PII strip/re-inject (input sanitization + Bedrock Guardrails MASK cover today's scale)
-- Real CV file→text extraction (S3 + PDF/DOCX pipeline)
-- Trigger.dev background workers
-- AI gateway microservice (Docker + ECS) — in-process `packages/ai` door is the current implementation
-- Supabase sa-east-1 migration; Prisma read replicas
+- Presidio PII strip/re-inject (input sanitization + Bedrock Guardrails MASK cover today's scale).
+- Supabase sa-east-1 migration; Prisma read replicas; pgvector (Phase 4+).
+- Payroll/IT-provisioning integrations, external LMS, external eval vendors, custom connector SDK (per Architecture doc exclusions, Phase 10+).
