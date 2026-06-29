@@ -88,9 +88,9 @@ export function InvoiceDetail({ id, onBack }: { id: string; onBack: () => void }
           <div className="grid grid-cols-3 gap-6 mb-10 text-sm">
             <div>
               <p className="text-[#8B8B8B] text-xs mb-1 font-medium">From</p>
-              <p className="font-semibold text-[#333]">NEXA DEV LLC</p>
+              <p className="font-semibold text-[#333]">{t.invoices.fromCompanyName}</p>
               <p className="text-[#585858] text-xs">federico@nexadev.ai</p>
-              <p className="text-[#585858] text-xs mt-1">2 South Biscayne Boulevard<br />Ste 3200-5640<br />Miami, FL 33131</p>
+              <p className="text-[#585858] text-xs mt-1">{t.invoices.fromAddress1}<br />{t.invoices.fromAddress2}<br />{t.invoices.fromCity}</p>
             </div>
             <div>
               <p className="text-[#8B8B8B] text-xs mb-1 font-medium">To</p>
@@ -105,8 +105,8 @@ export function InvoiceDetail({ id, onBack }: { id: string; onBack: () => void }
             <div>
               <p className="text-[#8B8B8B] text-xs mb-1 font-medium">Details</p>
               <table className="text-xs"><tbody>
-                <tr><td className="text-[#8B8B8B] pr-3 py-0.5">Invoice no.</td><td className="font-semibold">INV-{inv.invoiceNumber}</td></tr>
-                {inv.poNumber && <tr><td className="text-[#8B8B8B] pr-3 py-0.5">PO no.</td><td className="font-semibold">{inv.poNumber}</td></tr>}
+                <tr><td className="text-[#8B8B8B] pr-3 py-0.5">{t.invoices.colInvoiceNo}</td><td className="font-semibold">INV-{inv.invoiceNumber}</td></tr>
+                {inv.poNumber && <tr><td className="text-[#8B8B8B] pr-3 py-0.5">{t.invoices.colPoNo}</td><td className="font-semibold">{inv.poNumber}</td></tr>}
               </tbody></table>
             </div>
           </div>
@@ -130,7 +130,7 @@ export function InvoiceDetail({ id, onBack }: { id: string; onBack: () => void }
                 </tr>
               ))}
               {inv.lineItems.length === 0 && (
-                <tr><td colSpan={4} className="py-4 text-center text-[#8B8B8B] text-xs">Sin items</td></tr>
+                <tr><td colSpan={4} className="py-4 text-center text-[#8B8B8B] text-xs">{t.invoices.noLineItems}</td></tr>
               )}
             </tbody>
           </table>

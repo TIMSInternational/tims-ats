@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { useI18n } from '../../lib/i18n';
 
 interface Message {
   id: string;
@@ -26,6 +27,8 @@ function getAutoReply(text: string): string {
 }
 
 export function SupportChat({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { t } = useI18n();
+  const s = t.support;
   const [messages, setMessages] = useState<Message[]>([
     { id: '0', text: 'Hola! Soy el asistente de TIMS. En que puedo ayudarte?', sender: 'bot', timestamp: new Date() },
   ]);
@@ -62,10 +65,10 @@ export function SupportChat({ open, onClose }: { open: boolean; onClose: () => v
             <span className="text-white text-[11px] font-bold">T</span>
           </div>
           <div>
-            <p className="text-white text-[13px] font-semibold">Soporte TIMS</p>
+            <p className="text-white text-[13px] font-semibold">{s.chatTitle}</p>
             <div className="flex items-center gap-1.5">
               <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
-              <span className="text-white/50 text-[10px]">En linea</span>
+              <span className="text-white/50 text-[10px]">{s.online}</span>
             </div>
           </div>
         </div>
@@ -108,7 +111,7 @@ export function SupportChat({ open, onClose }: { open: boolean; onClose: () => v
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Escribe tu mensaje..."
+            placeholder={s.messagePlaceholder}
             className="flex-1 h-10 px-4 rounded-xl border border-[#EDEDED] bg-[#FAFAFA] text-[13px] text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-1 focus:ring-[#1F114C]/20 focus:border-[#1F114C]/30"
           />
           <button

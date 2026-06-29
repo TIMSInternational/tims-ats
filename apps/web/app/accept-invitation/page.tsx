@@ -3,8 +3,11 @@
 import { useSearchParams } from 'next/navigation';
 import { useState, Suspense } from 'react';
 import { trpc } from '../../lib/trpc';
+import { useI18n } from '../../lib/i18n';
 
 function AcceptInvitationContent() {
+  const { t } = useI18n();
+  const ti = t.invitations;
   const searchParams = useSearchParams();
   const token = searchParams.get('token') || '';
   const [accepted, setAccepted] = useState(false);
@@ -25,8 +28,8 @@ function AcceptInvitationContent() {
           <div className="w-14 h-14 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
             <svg className="w-7 h-7 text-[#DD0C15]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M15 9l-6 6M9 9l6 6" /></svg>
           </div>
-          <h1 className="text-xl font-semibold text-[#333] mb-2">Enlace invalido</h1>
-          <p className="text-sm text-[#8B8B8B]">El enlace de invitacion no es valido. Verifica el enlace recibido por email.</p>
+          <h1 className="text-xl font-semibold text-[#333] mb-2">{ti.invalidLink}</h1>
+          <p className="text-sm text-[#8B8B8B]">{ti.invalidLinkDesc}</p>
         </div>
       </div>
     );
@@ -39,8 +42,8 @@ function AcceptInvitationContent() {
           <div className="w-14 h-14 rounded-full bg-[#1F114C]/10 flex items-center justify-center mx-auto mb-4 animate-pulse">
             <svg className="w-7 h-7 text-[#1F114C]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" /></svg>
           </div>
-          <h1 className="text-xl font-semibold text-[#333] mb-2">Verificando invitacion...</h1>
-          <p className="text-sm text-[#8B8B8B]">Un momento por favor.</p>
+          <h1 className="text-xl font-semibold text-[#333] mb-2">{ti.verifying}</h1>
+          <p className="text-sm text-[#8B8B8B]">{ti.oneMoment}</p>
         </div>
       </div>
     );
@@ -53,7 +56,7 @@ function AcceptInvitationContent() {
           <div className="w-14 h-14 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
             <svg className="w-7 h-7 text-[#DD0C15]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M15 9l-6 6M9 9l6 6" /></svg>
           </div>
-          <h1 className="text-xl font-semibold text-[#333] mb-2">Invitacion no encontrada</h1>
+          <h1 className="text-xl font-semibold text-[#333] mb-2">{ti.notFound}</h1>
           <p className="text-sm text-[#8B8B8B]">{invitation.error?.message || 'El enlace puede haber expirado o ser invalido.'}</p>
         </div>
       </div>
@@ -69,8 +72,8 @@ function AcceptInvitationContent() {
           <div className="w-14 h-14 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-4">
             <svg className="w-7 h-7 text-amber-600" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></svg>
           </div>
-          <h1 className="text-xl font-semibold text-[#333] mb-2">Invitacion expirada</h1>
-          <p className="text-sm text-[#8B8B8B] mb-4">Esta invitacion ha expirado. Contacta al administrador para solicitar una nueva invitacion.</p>
+          <h1 className="text-xl font-semibold text-[#333] mb-2">{ti.expired}</h1>
+          <p className="text-sm text-[#8B8B8B] mb-4">{ti.expiredDesc}</p>
           <p className="text-xs text-[#8B8B8B]">Organizacion: <strong>{inv.organizationName}</strong></p>
         </div>
       </div>
@@ -84,8 +87,8 @@ function AcceptInvitationContent() {
           <div className="w-14 h-14 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
             <svg className="w-7 h-7 text-[#DD0C15]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M15 9l-6 6M9 9l6 6" /></svg>
           </div>
-          <h1 className="text-xl font-semibold text-[#333] mb-2">Invitacion revocada</h1>
-          <p className="text-sm text-[#8B8B8B]">Esta invitacion ha sido revocada por el administrador.</p>
+          <h1 className="text-xl font-semibold text-[#333] mb-2">{ti.revoked}</h1>
+          <p className="text-sm text-[#8B8B8B]">{ti.revokedDesc}</p>
         </div>
       </div>
     );
@@ -98,7 +101,7 @@ function AcceptInvitationContent() {
           <div className="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
             <svg className="w-7 h-7 text-green-600" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 11-5.93-9.14" /><path d="M22 4L12 14.01l-3-3" /></svg>
           </div>
-          <h1 className="text-xl font-semibold text-[#333] mb-2">Invitacion aceptada</h1>
+          <h1 className="text-xl font-semibold text-[#333] mb-2">{ti.accepted}</h1>
           <p className="text-sm text-[#8B8B8B] mb-6">
             {inv.type === 'org_admin'
               ? `Tu organizacion ${inv.organizationName} esta lista. Crea tu cuenta para comenzar.`

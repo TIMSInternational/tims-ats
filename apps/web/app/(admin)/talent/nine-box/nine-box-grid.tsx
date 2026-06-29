@@ -2,6 +2,7 @@
 
 import { CandidateAvatar } from '../../../../components';
 import { toast } from '../../../../lib/toast';
+import { useI18n } from '../../../../lib/i18n';
 
 /* ── Grid cell colour matrix (row-col, top-left = 3-1) ────────────── */
 const CELL_BG: Record<string, string> = {
@@ -34,15 +35,16 @@ function toPercent(score: number): number {
 }
 
 export function NineBoxGrid({ allPeople, selectedUserId, onSelectUser }: NineBoxGridProps) {
+  const { t } = useI18n();
   return (
     <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-[13px] font-semibold text-[#1F114C]">Nine Box Predictivo TIMS</h2>
+        <h2 className="text-[13px] font-semibold text-[#1F114C]">{t.nineBox.predictiveTitleTims}</h2>
         <div className="flex items-center gap-2">
           <select className="text-[11px] border border-[#EDEDED] rounded-lg px-2 h-7 text-[#585858] bg-white">
-            <option>Q2 2026</option><option>Q1 2026</option><option>2026</option>
+            <option>{t.performance.quarterQ2_2026}</option><option>{t.performance.quarterQ1_2026}</option><option>2026</option>
           </select>
-          <button onClick={() => toast('Simulador: proximamente', { type: 'info' })} className="text-[11px] border border-[#EDEDED] rounded-lg px-2 h-7 text-[#585858] hover:bg-[#F6F6F6] transition">Simulador</button>
+          <button onClick={() => toast(t.nineBox.simulatorComingSoon, { type: 'info' })} className="text-[11px] border border-[#EDEDED] rounded-lg px-2 h-7 text-[#585858] hover:bg-[#F6F6F6] transition">Simulador</button>
         </div>
       </div>
 

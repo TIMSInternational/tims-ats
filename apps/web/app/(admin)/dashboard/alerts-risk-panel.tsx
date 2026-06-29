@@ -122,7 +122,7 @@ export function AlertsRiskPanel() {
           {Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-16 bg-gray-100 rounded" />)}
         </div>
       ) : riskCandidates.length === 0 ? (
-        <p className="text-[12px] text-[#8B8B8B] text-center py-6">Sin candidatos en riesgo</p>
+        <p className="text-[12px] text-[#8B8B8B] text-center py-6">{t.recruitingDashboard.noRiskCandidates}</p>
       ) : (
         <div className="space-y-4">
           {riskCandidates.map((c) => (

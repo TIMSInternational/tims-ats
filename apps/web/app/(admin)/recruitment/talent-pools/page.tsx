@@ -61,18 +61,18 @@ export default function TalentPoolsPage() {
   const utils = trpc.useUtils();
   const createMutation = trpc.candidate.create.useMutation({
     onSuccess: () => {
-      toast('Candidato agregado al pool');
+      toast(t.talentPool.candidateAdded);
       utils.candidate.list.invalidate();
       setShowCreateModal(false);
     },
-    onError: () => toast('Error al crear candidato', { type: 'error' }),
+    onError: () => toast(t.talentPool.candidateCreateError, { type: 'error' }),
   });
 
   const candidates = query.data?.items ?? [];
   const nextCursor = query.data?.nextCursor;
 
-  const handleExport = () => toast('Exportacion iniciada');
-  const handleRecontact = () => toast('Campana de recontacto iniciada');
+  const handleExport = () => toast(t.talentPool.exportStarted);
+  const handleRecontact = () => toast(t.talentPool.recontactStarted);
 
   return (
     <div className="h-full flex flex-col overflow-hidden">

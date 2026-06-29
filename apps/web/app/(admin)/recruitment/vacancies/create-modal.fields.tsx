@@ -1,6 +1,7 @@
 'use client';
 
 import { CONTRACT_TYPES, inputCls, labelCls, textareaCls } from './create-modal.helpers';
+import { useI18n } from '../../../../lib/i18n';
 
 interface Step1Props {
   title: string;
@@ -21,20 +22,21 @@ export function Step1BasicInfo({
   title, setTitle, location, setLocation, remotePolicy, setRemotePolicy,
   contractType, setContractType, positions, setPositions, priority, setPriority,
 }: Step1Props) {
+  const { t } = useI18n();
   return (
     <div className="space-y-4">
       <div>
-        <label className={labelCls}>Titulo del cargo *</label>
-        <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ej: Senior Software Engineer" maxLength={200} className={inputCls} autoFocus />
+        <label className={labelCls}>{t.vacancies.titleField}</label>
+        <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t.vacancies.titlePlaceholder} maxLength={200} className={inputCls} autoFocus />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div>
-          <label className={labelCls}>Ubicacion</label>
-          <input type="text" value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Bogota, Colombia" maxLength={200} className={inputCls} />
+          <label className={labelCls}>{t.vacancies.location}</label>
+          <input type="text" value={location} onChange={(e) => setLocation(e.target.value)} placeholder={t.vacancies.locationPlaceholder} maxLength={200} className={inputCls} />
         </div>
         <div>
-          <label className={labelCls}>Modalidad de trabajo</label>
+          <label className={labelCls}>{t.vacancies.workModality}</label>
           <div className="flex bg-[#F6F6F6] rounded-lg overflow-hidden h-10">
             {(['onsite', 'hybrid', 'remote'] as const).map((opt) => (
               <button key={opt} type="button" onClick={() => setRemotePolicy(opt)}
@@ -48,7 +50,7 @@ export function Step1BasicInfo({
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         <div>
-          <label className={labelCls}>Tipo de contrato</label>
+          <label className={labelCls}>{t.vacancies.contractTypeLabel}</label>
           <select value={contractType} onChange={(e) => setContractType(e.target.value)} className={`${inputCls} bg-white`}>
             {CONTRACT_TYPES.map((ct) => <option key={ct.value} value={ct.value}>{ct.label}</option>)}
           </select>
@@ -95,23 +97,24 @@ export function Step2Description({
   requirements, setRequirements, desiredQualifications, setDesiredQualifications,
   benefits, setBenefits,
 }: Step2Props) {
+  const { t } = useI18n();
   return (
     <div className="space-y-4">
       <div>
-        <label className={labelCls}>Sobre el cargo</label>
-        <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Descripcion general del cargo, proposito y contexto del equipo..." maxLength={2000} rows={3} className={textareaCls} autoFocus />
+        <label className={labelCls}>{t.vacancies.aboutRole}</label>
+        <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder={t.vacancies.descPlaceholder} maxLength={2000} rows={3} className={textareaCls} autoFocus />
       </div>
       <div>
-        <label className={labelCls}>Responsabilidades clave</label>
+        <label className={labelCls}>{t.vacancies.keyResponsibilities}</label>
         <textarea value={responsibilities} onChange={(e) => setResponsibilities(e.target.value)} placeholder="- Disenar y desarrollar soluciones escalables&#10;- Liderar revisiones de codigo&#10;- Colaborar con equipo de producto" maxLength={2000} rows={4} className={textareaCls} />
-        <p className="text-[10px] text-[#8B8B8B] mt-1">Usa una linea por responsabilidad</p>
+        <p className="text-[10px] text-[#8B8B8B] mt-1">{t.vacancies.oneLinePerResp}</p>
       </div>
       <div>
-        <label className={labelCls}>Requisitos minimos</label>
+        <label className={labelCls}>{t.vacancies.minRequirements}</label>
         <textarea value={requirements} onChange={(e) => setRequirements(e.target.value)} placeholder="- 5+ anos de experiencia en desarrollo de software&#10;- Ingenieria de Sistemas o afines&#10;- Ingles B2+" maxLength={2000} rows={3} className={textareaCls} />
       </div>
       <div>
-        <label className={labelCls}>Cualificaciones deseadas</label>
+        <label className={labelCls}>{t.vacancies.desiredQualifications}</label>
         <textarea value={desiredQualifications} onChange={(e) => setDesiredQualifications(e.target.value)} placeholder="- Experiencia con AWS/GCP&#10;- Certificaciones relevantes&#10;- Experiencia en startups" maxLength={2000} rows={2} className={textareaCls} />
       </div>
       <div>
@@ -150,10 +153,11 @@ export function Step3Compensation({
   autoPublish, setAutoPublish, requireApproval, setRequireApproval,
   title, location, remotePolicy, contractType, positions,
 }: Step3Props) {
+  const { t } = useI18n();
   return (
     <div className="space-y-5">
       <div>
-        <p className="text-[13px] font-medium text-[#1F114C] mb-3">Rango salarial</p>
+        <p className="text-[13px] font-medium text-[#1F114C] mb-3">{t.vacancies.salaryRange}</p>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div>
             <label className={labelCls}>Minimo</label>
@@ -188,10 +192,10 @@ export function Step3Compensation({
       </div>
 
       <div className="border-t border-[#EDEDED] pt-4">
-        <p className="text-[13px] font-medium text-[#1F114C] mb-3">Configuracion del proceso</p>
+        <p className="text-[13px] font-medium text-[#1F114C] mb-3">{t.vacancies.processConfig}</p>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
           <div>
-            <label className={labelCls}>SLA objetivo (dias)</label>
+            <label className={labelCls}>{t.vacancies.slaObjectiveLabel}</label>
             <input type="number" value={slaTargetDays} onChange={(e) => setSlaTargetDays(e.target.value)} min={1} max={365} className={inputCls} />
           </div>
         </div>
@@ -200,16 +204,16 @@ export function Step3Compensation({
             <input type="checkbox" checked={requireApproval} onChange={(e) => setRequireApproval(e.target.checked)}
               className="w-4 h-4 rounded border-[#EDEDED] text-[#1F114C] focus:ring-[#1F114C]/20" />
             <div>
-              <span className="text-[13px] text-[#333]">Requiere aprobacion</span>
-              <p className="text-[10px] text-[#8B8B8B]">La vacante debe ser aprobada antes de publicarse</p>
+              <span className="text-[13px] text-[#333]">{t.vacancies.requireApprovalLabel}</span>
+              <p className="text-[10px] text-[#8B8B8B]">{t.vacancies.requireApprovalDesc}</p>
             </div>
           </label>
           <label className="flex items-center gap-3 cursor-pointer">
             <input type="checkbox" checked={autoPublish} onChange={(e) => setAutoPublish(e.target.checked)}
               className="w-4 h-4 rounded border-[#EDEDED] text-[#1F114C] focus:ring-[#1F114C]/20" />
             <div>
-              <span className="text-[13px] text-[#333]">Publicar automaticamente</span>
-              <p className="text-[10px] text-[#8B8B8B]">Publicar en portal de empleo al ser aprobada</p>
+              <span className="text-[13px] text-[#333]">{t.vacancies.autoPublishLabel}</span>
+              <p className="text-[10px] text-[#8B8B8B]">{t.vacancies.autoPublishDesc}</p>
             </div>
           </label>
         </div>

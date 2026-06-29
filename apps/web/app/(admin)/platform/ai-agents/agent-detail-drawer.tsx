@@ -81,8 +81,8 @@ export function AgentDetailDrawer({ agent, onClose, onSuccess }: { agent: AiAgen
               <div>
                 <label className="block text-[11px] font-semibold text-[#8B8B8B] uppercase mb-1.5">{t.aiAgents.modelLabel}</label>
                 <select value={editModel} onChange={e => setEditModel(e.target.value as typeof editModel)} className="w-full h-9 px-3 text-[12px] border border-[#EDEDED] rounded-lg bg-white text-[#585858] focus:outline-none focus:ring-1 focus:ring-[#1F114C]/30">
-                  <option value="haiku">Claude Haiku</option>
-                  <option value="sonnet">Claude Sonnet</option>
+                  <option value="haiku">{t.aiAgents.modelHaiku}</option>
+                  <option value="sonnet">{t.aiAgents.modelSonnet}</option>
                 </select>
               </div>
               <div>
@@ -119,8 +119,8 @@ export function AgentDetailDrawer({ agent, onClose, onSuccess }: { agent: AiAgen
                 <div className="p-6 text-center text-[12px] text-[#8B8B8B]">{t.common.loading}</div>
               ) : (agentDetail.data?.orgConfigs ?? []).length === 0 ? (
                 <div className="p-8 text-center">
-                  <p className="text-[12px] text-[#8B8B8B]">No hay configuraciones por organizacion</p>
-                  <p className="text-[10px] text-[#ABABAB] mt-1">Este agente no tiene overrides de orgs</p>
+                  <p className="text-[12px] text-[#8B8B8B]">{t.aiAgents.noOrgConfigs}</p>
+                  <p className="text-[10px] text-[#ABABAB] mt-1">{t.aiAgents.noOrgConfigsDesc}</p>
                 </div>
               ) : (
                 (agentDetail.data?.orgConfigs ?? []).map(config => (
@@ -191,15 +191,15 @@ export function AgentDetailDrawer({ agent, onClose, onSuccess }: { agent: AiAgen
                   <div className="grid grid-cols-2 gap-3">
                     <div className="bg-[#F6F6F6] rounded-lg p-3 text-center">
                       <p className="text-[20px] font-bold text-[#1F114C]">{usage.data.totalCalls}</p>
-                      <p className="text-[10px] text-[#8B8B8B]">Llamadas (30d)</p>
+                      <p className="text-[10px] text-[#8B8B8B]">{t.aiAgents.calls30d}</p>
                     </div>
                     <div className="bg-[#F6F6F6] rounded-lg p-3 text-center">
                       <p className="text-[20px] font-bold text-[#1F114C]">${usage.data.totalCost.toFixed(2)}</p>
-                      <p className="text-[10px] text-[#8B8B8B]">Costo Total</p>
+                      <p className="text-[10px] text-[#8B8B8B]">{t.aiAgents.totalCost}</p>
                     </div>
                     <div className="bg-[#F6F6F6] rounded-lg p-3 text-center">
                       <p className="text-[20px] font-bold text-[#1F114C]">{usage.data.avgLatencyMs}ms</p>
-                      <p className="text-[10px] text-[#8B8B8B]">Latencia Promedio</p>
+                      <p className="text-[10px] text-[#8B8B8B]">{t.aiAgents.avgLatency}</p>
                     </div>
                     <div className="bg-[#F6F6F6] rounded-lg p-3 text-center">
                       <p className="text-[20px] font-bold text-[#1F114C]">${usage.data.avgCostPerCall.toFixed(4)}</p>
@@ -218,7 +218,7 @@ export function AgentDetailDrawer({ agent, onClose, onSuccess }: { agent: AiAgen
                     </div>
                   </div>
                   {usage.data.totalCalls === 0 && (
-                    <p className="text-[11px] text-[#ABABAB] text-center">No hay datos de uso aun. Los datos aparecen cuando el agente procesa solicitudes.</p>
+                    <p className="text-[11px] text-[#ABABAB] text-center">{t.aiAgents.noUsageData}</p>
                   )}
                 </>
               ) : null}

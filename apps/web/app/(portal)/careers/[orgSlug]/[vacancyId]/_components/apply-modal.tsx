@@ -5,6 +5,7 @@ import { trpc } from '../../../../../../lib/trpc';
 import { toast } from '../../../../../../lib/toast';
 import { Modal } from '../../../../../../components';
 import { TurnstileWidget } from '../../../../../../components/turnstile-widget';
+import { useI18n } from '../../../../../../lib/i18n';
 
 interface ApplyModalProps {
   vacancyId: string;
@@ -31,6 +32,8 @@ const labelCls = 'block text-xs font-medium text-[#585858] mb-1';
 const textareaCls = 'w-full px-3 py-2 rounded-lg border border-[#EDEDED] text-sm text-[#333] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 focus:border-[#1F114C] resize-none disabled:opacity-50';
 
 export function ApplyModal({ vacancyId, vacancyTitle, companyName, onClose }: ApplyModalProps) {
+  const { t } = useI18n();
+  const p = t.portal;
   const [step, setStep] = useState<Step>(1);
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -78,7 +81,7 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, onClose }: Ap
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Error al enviar la aplicacion';
       if (msg.includes('unique') || msg.includes('Unique') || msg.includes('already')) {
-        toast('Ya aplicaste a esta vacante anteriormente', { type: 'error' });
+        toast(p.applyModalDuplicateError, { type: 'error' });
       } else {
         toast(msg, { type: 'error' });
       }
@@ -95,7 +98,7 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, onClose }: Ap
               <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
             </svg>
           </div>
-          <h3 className="mb-2 text-[18px] font-bold text-[#1F114C]">Aplicacion enviada</h3>
+          <h3 className="mb-2 text-[18px] font-bold text-[#1F114C]">{p.applicationSentTitle}</h3>
           <p className="mb-1 text-[14px] text-[#585858]">
             Tu aplicacion a <span className="font-medium text-[#333]">{vacancyTitle}</span> ha sido recibida.
           </p>
@@ -137,17 +140,17 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, onClose }: Ap
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={labelCls}>Nombre *</label>
+              <label className={labelCls}>{p.firstNameLabel}</label>
               <input type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} maxLength={100} className={inputCls} placeholder="Maria" autoFocus />
             </div>
             <div>
-              <label className={labelCls}>Apellido *</label>
-              <input type="text" value={lastName} onChange={(e) => setLastName(e.target.value)} maxLength={100} className={inputCls} placeholder="Lopez Rodriguez" />
+              <label className={labelCls}>{p.lastNameLabel}</label>
+              <input type="text" value={lastName} onChange={(e) => setLastName(e.target.value)} maxLength={100} className={inputCls} placeholder={p.lastNamePlaceholder} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={labelCls}>Email *</label>
+              <label className={labelCls}>{p.emailLabel}</label>
               <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} maxLength={254} className={inputCls} placeholder="maria.lopez@gmail.com" />
             </div>
             <div>
@@ -157,7 +160,7 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, onClose }: Ap
           </div>
           <div>
             <label className={labelCls}>Ubicacion</label>
-            <input type="text" value={location} onChange={(e) => setLocation(e.target.value)} maxLength={200} className={inputCls} placeholder="Bogota, Colombia" />
+            <input type="text" value={location} onChange={(e) => setLocation(e.target.value)} maxLength={200} className={inputCls} placeholder={p.cityCountryPlaceholder} />
           </div>
         </div>
       )}
@@ -167,17 +170,17 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, onClose }: Ap
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={labelCls}>Cargo actual</label>
-              <input type="text" value={currentTitle} onChange={(e) => setCurrentTitle(e.target.value)} maxLength={200} className={inputCls} placeholder="Analista de Recursos Humanos" />
+              <label className={labelCls}>{p.currentTitleLabel}</label>
+              <input type="text" value={currentTitle} onChange={(e) => setCurrentTitle(e.target.value)} maxLength={200} className={inputCls} placeholder={p.currentTitlePlaceholder} />
             </div>
             <div>
-              <label className={labelCls}>Empresa actual</label>
-              <input type="text" value={currentCompany} onChange={(e) => setCurrentCompany(e.target.value)} maxLength={200} className={inputCls} placeholder="Empresa ABC" />
+              <label className={labelCls}>{p.currentCompanyLabel}</label>
+              <input type="text" value={currentCompany} onChange={(e) => setCurrentCompany(e.target.value)} maxLength={200} className={inputCls} placeholder={p.currentCompanyPlaceholder} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={labelCls}>Anos de experiencia</label>
+              <label className={labelCls}>{p.yearsExpLabel}</label>
               <select value={yearsExperience} onChange={(e) => setYearsExperience(e.target.value)} className={`${inputCls} bg-white`}>
                 {EXPERIENCE_LEVELS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
               </select>
@@ -188,14 +191,14 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, onClose }: Ap
             </div>
           </div>
           <div>
-            <label className={labelCls}>Por que te interesa este puesto?</label>
+            <label className={labelCls}>{p.coverLetterLabel}</label>
             <textarea
               value={coverLetter}
               onChange={(e) => setCoverLetter(e.target.value)}
               maxLength={5000}
               rows={5}
               className={textareaCls}
-              placeholder="Cuentanos sobre tu experiencia relevante y por que te gustaria trabajar con nosotros..."
+              placeholder={p.coverLetterPlaceholder}
             />
             <p className="mt-1 text-right text-[10px] text-[#8B8B8B]">{coverLetter.length}/5000</p>
           </div>
@@ -206,19 +209,19 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, onClose }: Ap
       {step === 3 && (
         <div className="space-y-5">
           <div className="rounded-lg bg-[#F6F6F6] p-4 space-y-2">
-            <SummaryRow label="Nombre" value={`${firstName} ${lastName}`} />
-            <SummaryRow label="Email" value={email} />
-            {phone && <SummaryRow label="Telefono" value={phone} />}
-            {location && <SummaryRow label="Ubicacion" value={location} />}
-            {currentTitle && <SummaryRow label="Cargo actual" value={`${currentTitle}${currentCompany ? ` en ${currentCompany}` : ''}`} />}
-            {yearsExperience && <SummaryRow label="Experiencia" value={EXPERIENCE_LEVELS.find((l) => l.value === yearsExperience)?.label ?? yearsExperience} />}
+            <SummaryRow label={p.summaryName} value={`${firstName} ${lastName}`} />
+            <SummaryRow label={p.summaryEmail} value={email} />
+            {phone && <SummaryRow label={p.summaryPhone} value={phone} />}
+            {location && <SummaryRow label={p.summaryLocation} value={location} />}
+            {currentTitle && <SummaryRow label={p.summaryCurrentTitle} value={`${currentTitle}${currentCompany ? ` en ${currentCompany}` : ''}`} />}
+            {yearsExperience && <SummaryRow label={p.summaryExperience} value={EXPERIENCE_LEVELS.find((l) => l.value === yearsExperience)?.label ?? yearsExperience} />}
             {linkedinUrl && <SummaryRow label="LinkedIn" value={linkedinUrl} />}
-            <SummaryRow label="Vacante" value={vacancyTitle} />
+            <SummaryRow label={p.summaryVacancy} value={vacancyTitle} />
           </div>
 
           {coverLetter.trim() && (
             <div>
-              <p className="mb-2 text-[12px] font-medium text-[#585858]">Tu mensaje:</p>
+              <p className="mb-2 text-[12px] font-medium text-[#585858]">{p.yourMessage}</p>
               <div className="rounded-lg border border-[#EDEDED] bg-white p-3 text-[13px] leading-relaxed text-[#585858] whitespace-pre-wrap max-h-32 overflow-y-auto">
                 {coverLetter}
               </div>

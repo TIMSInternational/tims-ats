@@ -4,6 +4,7 @@ import { use, useState } from 'react';
 import { DailyProvider } from '@daily-co/daily-react';
 import { trpc } from '../../../../../../lib/trpc';
 import { Skeleton } from '../../../../../../components';
+import { useI18n } from '../../../../../../lib/i18n';
 import { InterviewTopBar } from './interview-top-bar';
 import { VideoArea } from './video-area';
 import { VideoControls } from './video-controls';
@@ -24,6 +25,7 @@ export default function InterviewRoomPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const { t } = useI18n();
   const { id } = use(params);
   const [hasJoined, setHasJoined] = useState(false);
 
@@ -52,7 +54,7 @@ export default function InterviewRoomPage({
     return (
       <div className="h-full flex items-center justify-center bg-[#0a0a0a]">
         <div className="text-center">
-          <p className="text-white text-[14px] mb-2">No se pudo cargar la entrevista</p>
+          <p className="text-white text-[14px] mb-2">{t.interviews.couldNotLoadInterview}</p>
           <p className="text-white/50 text-[12px]">{interview.error?.message ?? 'Entrevista no encontrada'}</p>
         </div>
       </div>

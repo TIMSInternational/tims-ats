@@ -87,11 +87,12 @@ export function ScorecardPanel({ interviewId, candidateName, candidateInitials, 
             notes={notes}
             onRate={setRating}
             onNote={setNote}
+            t={t}
           />
         )}
         {activeTab === 'AI' && <InterviewAiPanel interviewId={interviewId} />}
-        {activeTab === 'Notas' && <NotasTab />}
-        {activeTab === 'Candidato' && <CandidatoTab candidateName={candidateName} candidateInitials={candidateInitials} />}
+        {activeTab === 'Notas' && <NotasTab t={t} />}
+        {activeTab === 'Candidato' && <CandidatoTab candidateName={candidateName} candidateInitials={candidateInitials} t={t} />}
       </div>
 
       {/* Submit footer */}
@@ -112,14 +113,17 @@ export function ScorecardPanel({ interviewId, candidateName, candidateInitials, 
   );
 }
 
+type I18nT = ReturnType<typeof useI18n>['t'];
+
 /* ---- Scorecard Tab ---- */
 function ScorecardTabContent({
   candidateName, candidateInitials, vacancyTitle, fitScore,
-  ratings, notes, onRate, onNote,
+  ratings, notes, onRate, onNote, t,
 }: {
   candidateName: string; candidateInitials: string; vacancyTitle: string; fitScore?: number;
   ratings: Record<string, number>; notes: Record<string, string>;
   onRate: (id: string, v: number) => void; onNote: (id: string, v: string) => void;
+  t: I18nT;
 }) {
   return (
     <>
@@ -134,7 +138,7 @@ function ScorecardTabContent({
         </div>
       </div>
 
-      <h3 className="text-[13px] font-semibold text-[#1F114C] mb-3">Evaluacion por Competencia</h3>
+      <h3 className="text-[13px] font-semibold text-[#1F114C] mb-3">{t.interviews.competencyEvaluation}</h3>
 
       {/* Competency cards */}
       {COMPETENCIES.map((comp) => {
@@ -146,7 +150,7 @@ function ScorecardTabContent({
               <StarRating value={ratings[comp.id] ?? 0} onChange={(v) => onRate(comp.id, v)} />
             </div>
             <textarea
-              placeholder="Evidencia observada..."
+              placeholder={t.interviews.evidencePlaceholder}
               value={notes[comp.id] ?? ''}
               onChange={(e) => onNote(comp.id, e.target.value)}
               className="w-full bg-[#F6F6F6] rounded border border-[#EDEDED] p-2 text-[11px] h-12 outline-none resize-none placeholder:text-[#8B8B8B]"
@@ -158,7 +162,7 @@ function ScorecardTabContent({
 
       {/* Evaluator comparison */}
       <div className="bg-[#F6F6F6] rounded-lg p-3 mb-4">
-        <p className="text-[11px] font-medium text-[#1F114C] mb-2">Comparacion entre Evaluadores</p>
+        <p className="text-[11px] font-medium text-[#1F114C] mb-2">{t.interviews.evaluatorComparison}</p>
         <div className="space-y-1.5">
           {[
             { name: 'Evaluador 1', type: 'Tecnica', score: 4.2, pending: false },
@@ -185,15 +189,15 @@ function ScorecardTabContent({
 }
 
 /* ---- Notas Tab ---- */
-function NotasTab() {
+function NotasTab({ t }: { t: I18nT }) {
   const [generalNotes, setGeneralNotes] = useState('');
   return (
     <div>
-      <h3 className="text-[13px] font-semibold text-[#1F114C] mb-3">Notas Generales</h3>
+      <h3 className="text-[13px] font-semibold text-[#1F114C] mb-3">{t.interviews.generalNotes}</h3>
       <textarea
         value={generalNotes}
         onChange={(e) => setGeneralNotes(e.target.value)}
-        placeholder="Escribe tus notas aqui..."
+        placeholder={t.interviews.notesPlaceholder}
         className="w-full bg-[#F6F6F6] rounded-lg border border-[#EDEDED] p-3 text-[12px] h-64 outline-none resize-none placeholder:text-[#8B8B8B]"
         maxLength={10000}
       />
@@ -203,17 +207,17 @@ function NotasTab() {
 }
 
 /* ---- Candidato Tab ---- */
-function CandidatoTab({ candidateName, candidateInitials }: { candidateName: string; candidateInitials: string }) {
+function CandidatoTab({ candidateName, candidateInitials, t }: { candidateName: string; candidateInitials: string; t: I18nT }) {
   return (
     <div>
       <div className="flex items-center gap-3 mb-4">
         <div className="w-12 h-12 rounded-full bg-[#1F114C] flex items-center justify-center text-white text-[14px] font-bold">{candidateInitials}</div>
         <div>
           <p className="text-[14px] font-medium text-[#333]">{candidateName}</p>
-          <p className="text-[11px] text-[#8B8B8B]">Informacion del candidato</p>
+          <p className="text-[11px] text-[#8B8B8B]">{t.interviews.candidateInfo}</p>
         </div>
       </div>
-      <p className="text-[11px] text-[#8B8B8B]">La informacion completa del candidato se cargara desde su perfil.</p>
+      <p className="text-[11px] text-[#8B8B8B]">{t.interviews.candidateFullInfo}</p>
     </div>
   );
 }

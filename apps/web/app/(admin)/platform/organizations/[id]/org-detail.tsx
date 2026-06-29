@@ -70,7 +70,7 @@ export function OrgDetail({ id }: { id: string }) {
   const suspendOrg = trpc.platform.suspendOrganization.useMutation({
     onSuccess: () => {
       utils.platform.getOrganization.invalidate({ id });
-      toast('Estado de organizacion actualizado', { type: 'success' });
+      toast(t.organizations.statusUpdated, { type: 'success' });
     },
     onError: (err) => {
       toast(err.message || 'Error al cambiar estado', { type: 'error' });
@@ -120,7 +120,7 @@ export function OrgDetail({ id }: { id: string }) {
         <svg className="w-12 h-12 text-[#EDEDED] mb-3" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
           <path d="M3 21h18M3 7v14m6-14v14m6-14v14m6-14v14M3 7l9-4 9 4" />
         </svg>
-        <p className="text-sm text-[#8B8B8B] mb-1">Organizacion no encontrada</p>
+        <p className="text-sm text-[#8B8B8B] mb-1">{t.organizations.notFound}</p>
         <Link href="/platform/organizations" className="text-sm text-[#1F114C] hover:underline font-medium mt-2">
           {t.common.back} a {t.organizations.title}
         </Link>

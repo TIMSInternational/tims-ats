@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useI18n } from '../../../../../lib/i18n';
 
 interface VacancyCardProps {
   vacancy: {
@@ -30,6 +31,7 @@ function formatSalary(n: number) {
 }
 
 export function VacancyCard({ vacancy, orgSlug }: VacancyCardProps) {
+  const { t } = useI18n();
   const initial = vacancy.company?.name?.charAt(0).toUpperCase() ?? 'T';
   const tags = [vacancy.contractType, vacancy.remotePolicy, vacancy.unit?.name].filter(Boolean);
   const currency = vacancy.salary?.currency ?? 'USD';
@@ -86,7 +88,7 @@ export function VacancyCard({ vacancy, orgSlug }: VacancyCardProps) {
                 <p className="text-[10px] text-[#8B8B8B]">{currency} / ano</p>
               </>
             ) : (
-              <p className="text-[12px] text-[#8B8B8B]">Salario a convenir</p>
+              <p className="text-[12px] text-[#8B8B8B]">{t.portal.salaryNegotiable}</p>
             )}
           </div>
           <span className="rounded-lg bg-[#1F114C] px-4 py-1.5 text-[12px] font-medium text-white transition-colors group-hover:bg-[#DD0C15]">

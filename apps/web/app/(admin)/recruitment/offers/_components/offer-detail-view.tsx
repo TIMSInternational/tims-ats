@@ -50,7 +50,7 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
   if (offer.error || !offer.data) {
     return (
       <div className="text-center py-16">
-        <p className="text-[#8B8B8B] text-sm">Oferta no encontrada</p>
+        <p className="text-[#8B8B8B] text-sm">{t.offers.notFound}</p>
         <button onClick={onBack} className="mt-3 text-[13px] text-[#1F114C] hover:underline">{t.offers.backToList}</button>
       </div>
     );

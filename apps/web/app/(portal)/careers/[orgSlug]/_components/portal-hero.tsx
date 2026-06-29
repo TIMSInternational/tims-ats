@@ -2,6 +2,7 @@
 
 import Image from 'next/image';
 import { Search, MapPin } from 'lucide-react';
+import { useI18n } from '../../../../../lib/i18n';
 
 interface PortalHeroProps {
   orgName: string;
@@ -22,6 +23,7 @@ export function PortalHero({
   onLocationChange,
   onSearch,
 }: PortalHeroProps) {
+  const { t } = useI18n();
   return (
     <section className="relative flex min-h-[420px] items-center justify-center overflow-hidden">
       {/* Background Image */}
@@ -62,7 +64,7 @@ export function PortalHero({
               type="text"
               value={search}
               onChange={(e) => onSearchChange(e.target.value)}
-              placeholder="Cargo, palabra clave..."
+              placeholder={t.portal.searchPlaceholder}
               className="w-full bg-transparent text-[14px] text-[#333333] placeholder:text-[#8B8B8B] outline-none"
             />
           </div>
@@ -75,7 +77,7 @@ export function PortalHero({
               type="text"
               value={location}
               onChange={(e) => onLocationChange(e.target.value)}
-              placeholder="Ciudad o departamento..."
+              placeholder={t.portal.locationPlaceholder}
               className="w-full bg-transparent text-[14px] text-[#333333] placeholder:text-[#8B8B8B] outline-none"
             />
           </div>

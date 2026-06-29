@@ -164,8 +164,8 @@ export default function PlatformUsersPage() {
           onChange={(e) => { setRoleFilter(e.target.value); setPage(0); }}
         >
           <option value="">{t.users.allRoles}</option>
-          <option value="super_admin">Super Admin</option>
-          <option value="hr_admin">HR Admin</option>
+          <option value="super_admin">{t.users.roleSuperAdmin}</option>
+          <option value="hr_admin">{t.users.roleHrAdmin}</option>
           <option value="recruiter">Recruiter</option>
           <option value="leader">Leader</option>
           <option value="employee">Employee</option>

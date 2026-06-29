@@ -2,18 +2,20 @@
 
 import { useRouter } from 'next/navigation';
 import { trpc } from '../../../../lib/trpc';
+import { useI18n } from '../../../../lib/i18n';
 import { HEALTH_CONFIG, PLAN_BG_CLASSES, PLAN_LABELS, Skeleton } from '../dashboard-utils';
 
 export function CustomerHealthGrid() {
   const router = useRouter();
+  const { t } = useI18n();
   const { data, isLoading } = trpc.platform.getCustomerHealth.useQuery();
 
   return (
     <div className="rounded-xl border border-border bg-white p-5 flex flex-col">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h3 className="text-sm font-semibold text-primary">Customer Health</h3>
-          <p className="text-xs text-muted">Health signals by organization</p>
+          <h3 className="text-sm font-semibold text-primary">{t.dashboard.customerHealthTitle}</h3>
+          <p className="text-xs text-muted">{t.dashboard.customerHealthSubtitle}</p>
         </div>
         {data && (
           <div className="flex items-center gap-3">

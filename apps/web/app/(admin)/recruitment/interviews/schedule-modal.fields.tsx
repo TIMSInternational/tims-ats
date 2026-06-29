@@ -6,6 +6,7 @@ import type { UseTRPCQueryResult } from '@trpc/react-query/shared';
 import type { TRPCClientErrorLike } from '@trpc/client';
 import { CandidateAvatar } from '../../../../components';
 import { INTERVIEW_TYPES, DURATIONS, inputCls, labelCls, textareaCls } from './schedule-modal.helpers';
+import { useI18n } from '../../../../lib/i18n';
 
 type RouterOutput = inferRouterOutputs<AppRouter>;
 type ClientError = TRPCClientErrorLike<AppRouter>;
@@ -41,11 +42,12 @@ export function Step1Fields({
   setSelectedVacancyId,
   setSelectedVacancyTitle,
 }: Step1FieldsProps) {
+  const { t } = useI18n();
   return (
     <div className="space-y-5">
       {/* Candidate search */}
       <div>
-        <label className={labelCls}>Candidato *</label>
+        <label className={labelCls}>{t.interviews.scheduleFieldCandidate}</label>
         {selectedCandidateId ? (
           <div className="flex items-center gap-3 bg-[#F0EEF5] rounded-lg px-3 py-2.5">
             <div className="w-8 h-8 rounded-full bg-[#1F114C] flex items-center justify-center text-white text-[10px] font-bold">
@@ -53,16 +55,16 @@ export function Step1Fields({
             </div>
             <span className="text-[13px] text-[#1F114C] font-medium flex-1">{selectedCandidateName}</span>
             <button onClick={() => { setSelectedCandidateId(''); setSelectedCandidateName(''); setCandidateSearch(''); }}
-              className="text-[11px] text-[#8B8B8B] hover:text-[#DD0C15]">Cambiar</button>
+              className="text-[11px] text-[#8B8B8B] hover:text-[#DD0C15]">{t.common.change}</button>
           </div>
         ) : (
           <div>
             <input type="text" value={candidateSearch} onChange={(e) => setCandidateSearch(e.target.value)}
-              placeholder="Buscar por nombre o email..." className={inputCls} autoFocus />
+              placeholder={t.interviews.scheduleFieldCandidatePlaceholder} className={inputCls} autoFocus />
             {candidateSearch.length > 0 && (
               <div className="mt-1 border border-[#EDEDED] rounded-lg max-h-[180px] overflow-y-auto bg-white shadow-sm">
-                {candidates.isLoading && <p className="px-3 py-2 text-[11px] text-[#8B8B8B]">Buscando...</p>}
-                {candidates.data?.length === 0 && <p className="px-3 py-2 text-[11px] text-[#8B8B8B]">Sin resultados</p>}
+                {candidates.isLoading && <p className="px-3 py-2 text-[11px] text-[#8B8B8B]">{t.nav.searching}</p>}
+                {candidates.data?.length === 0 && <p className="px-3 py-2 text-[11px] text-[#8B8B8B]">{t.interviews.scheduleFieldNoResults}</p>}
                 {(candidates.data ?? []).map((c) => (
                   <button key={c.id} onClick={() => { setSelectedCandidateId(c.id); setSelectedCandidateName(`${c.firstName} ${c.lastName}`); setCandidateSearch(''); }}
                     className="w-full text-left px-3 py-2 flex items-center gap-2 hover:bg-[#F6F6F6] transition">
@@ -81,7 +83,7 @@ export function Step1Fields({
 
       {/* Vacancy selector */}
       <div>
-        <label className={labelCls}>Vacante *</label>
+        <label className={labelCls}>{t.interviews.scheduleFieldVacancy}</label>
         <div className="space-y-1.5 max-h-[200px] overflow-y-auto">
           {(vacancies.data?.items ?? []).map((v) => (
             <button key={v.id} type="button"
@@ -93,7 +95,7 @@ export function Step1Fields({
               {v.location && <span className="text-[10px] text-[#8B8B8B] ml-2">· {v.location}</span>}
             </button>
           ))}
-          {vacancies.isLoading && <p className="text-[11px] text-[#8B8B8B] py-2">Cargando vacantes...</p>}
+          {vacancies.isLoading && <p className="text-[11px] text-[#8B8B8B] py-2">{t.interviews.scheduleFieldLoadingVacancies}</p>}
         </div>
       </div>
     </div>
@@ -125,10 +127,11 @@ export function Step2Fields({
   location,
   setLocation,
 }: Step2FieldsProps) {
+  const { t } = useI18n();
   return (
     <div className="space-y-5">
       <div>
-        <p className="text-[13px] font-medium text-[#1F114C] mb-3">Tipo de entrevista</p>
+        <p className="text-[13px] font-medium text-[#1F114C] mb-3">{t.interviews.scheduleFieldInterviewType}</p>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
           {INTERVIEW_TYPES.map((it) => (
             <button key={it.value} type="button" onClick={() => setInterviewType(it.value)}
@@ -147,15 +150,15 @@ export function Step2Fields({
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         <div>
-          <label className={labelCls}>Fecha *</label>
+          <label className={labelCls}>{t.interviews.scheduleFieldDate}</label>
           <input type="date" value={scheduledDate} onChange={(e) => setScheduledDate(e.target.value)} className={inputCls} />
         </div>
         <div>
-          <label className={labelCls}>Hora *</label>
+          <label className={labelCls}>{t.interviews.scheduleFieldTime}</label>
           <input type="time" value={scheduledTime} onChange={(e) => setScheduledTime(e.target.value)} className={inputCls} />
         </div>
         <div>
-          <label className={labelCls}>Duracion</label>
+          <label className={labelCls}>{t.interviews.scheduleFieldDuration}</label>
           <select value={duration} onChange={(e) => setDuration(parseInt(e.target.value))} className={`${inputCls} bg-white`}>
             {DURATIONS.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
           </select>
@@ -163,11 +166,11 @@ export function Step2Fields({
       </div>
 
       <div>
-        <label className={labelCls}>Ubicacion / Link</label>
+        <label className={labelCls}>{t.interviews.scheduleFieldLocationLink}</label>
         <input type="text" value={location} onChange={(e) => setLocation(e.target.value)} maxLength={500} className={inputCls}
           placeholder={interviewType === 'video' ? 'Se generara automaticamente con Daily.co' : interviewType === 'onsite' ? 'Oficina Bogota, Sala 3A' : 'Numero o enlace de reunion'} />
         {interviewType === 'video' && !location && (
-          <p className="text-[10px] text-teal-600 mt-1">La sala de video se creara automaticamente al unirse</p>
+          <p className="text-[10px] text-teal-600 mt-1">{t.interviews.scheduleFieldVideoAutoRoom}</p>
         )}
       </div>
     </div>
@@ -201,11 +204,12 @@ export function Step3Fields({
   scheduledTime,
   duration,
 }: Step3FieldsProps) {
+  const { t } = useI18n();
   return (
     <div className="space-y-5">
       <div>
-        <p className="text-[13px] font-medium text-[#1F114C] mb-1">Evaluadores *</p>
-        <p className="text-[10px] text-[#8B8B8B] mb-3">Selecciona al menos un evaluador</p>
+        <p className="text-[13px] font-medium text-[#1F114C] mb-1">{t.interviews.scheduleFieldEvaluators}</p>
+        <p className="text-[10px] text-[#8B8B8B] mb-3">{t.interviews.scheduleFieldSelectEvaluator}</p>
         <div className="space-y-1.5 max-h-[200px] overflow-y-auto">
           {(orgUsers.data?.users ?? []).map((u) => {
             const isSelected = selectedEvaluatorIds.includes(u.id);
@@ -228,14 +232,14 @@ export function Step3Fields({
               </label>
             );
           })}
-          {orgUsers.isLoading && <p className="text-[11px] text-[#8B8B8B] py-2">Cargando usuarios...</p>}
+          {orgUsers.isLoading && <p className="text-[11px] text-[#8B8B8B] py-2">{t.interviews.scheduleFieldLoadingUsers}</p>}
         </div>
       </div>
 
       <div>
-        <label className={labelCls}>Notas para los evaluadores</label>
+        <label className={labelCls}>{t.interviews.scheduleFieldEvaluatorNotes}</label>
         <textarea value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={5000} rows={3} className={textareaCls}
-          placeholder="Instrucciones especiales, competencias a evaluar, contexto del candidato..." />
+          placeholder={t.interviews.scheduleFieldEvaluatorNotesPlaceholder} />
       </div>
 
       {/* Summary */}

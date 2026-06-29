@@ -23,7 +23,7 @@ export function InviteOrgModal({ onClose, onSuccess }: { onClose: () => void; on
   const [plan, setPlan] = useState<'trial' | 'starter' | 'professional' | 'enterprise'>('trial');
 
   const create = trpc.platform.createOrgInvitation.useMutation({
-    onSuccess: () => { toast('Invitacion de organizacion enviada', { type: 'success' }); onSuccess(); },
+    onSuccess: () => { toast(t.invitations.orgInviteSent, { type: 'success' }); onSuccess(); },
     onError: (err) => { toast(err.message || 'Error al crear invitacion', { type: 'error' }); },
   });
 
@@ -57,7 +57,7 @@ export function InviteOrgModal({ onClose, onSuccess }: { onClose: () => void; on
           </div>
           <div>
             <label className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.orgName} *</label>
-            <input type="text" value={orgName} onChange={(e) => handleNameChange(e.target.value)} placeholder="Mi Empresa S.A.S." className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20" required />
+            <input type="text" value={orgName} onChange={(e) => handleNameChange(e.target.value)} placeholder={t.invitations.orgNamePlaceholder} className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20" required />
           </div>
           <div>
             <label className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.slug} *</label>
@@ -66,10 +66,10 @@ export function InviteOrgModal({ onClose, onSuccess }: { onClose: () => void; on
           <div>
             <label className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.plan}</label>
             <select value={plan} onChange={(e) => setPlan(e.target.value as typeof plan)} className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#333] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20">
-              <option value="trial">Trial (14 dias)</option>
-              <option value="starter">Starter ($499/mes)</option>
-              <option value="professional">Professional ($999/mes)</option>
-              <option value="enterprise">Enterprise ($2,499/mes)</option>
+              <option value="trial">{t.invitations.trialPlan}</option>
+              <option value="starter">{t.invitations.starterPlan}</option>
+              <option value="professional">{t.invitations.professionalPlan}</option>
+              <option value="enterprise">{t.invitations.enterprisePlan}</option>
             </select>
           </div>
           {create.error && (

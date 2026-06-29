@@ -2,6 +2,7 @@
 
 import { trpc } from '../../../../../../lib/trpc';
 import { toast } from '../../../../../../lib/toast';
+import { useI18n } from '../../../../../../lib/i18n';
 import { Skeleton } from '../../../../../../components';
 
 const FEATURE_DESCRIPTIONS: Record<string, string> = {
@@ -18,13 +19,14 @@ const FEATURE_DESCRIPTIONS: Record<string, string> = {
 };
 
 export function FeaturesSection({ organizationId }: { organizationId: string }) {
+  const { t } = useI18n();
   const utils = trpc.useUtils();
   const { data: flagGroups, isLoading } = trpc.platform.listAllFeatureFlags.useQuery();
 
   const updateFlag = trpc.platform.updateFeatureFlag.useMutation({
     onSuccess: () => {
       utils.platform.listAllFeatureFlags.invalidate();
-      toast('Feature flag actualizado', { type: 'success' });
+      toast(t.featureFlags.updated, { type: 'success' });
     },
     onError: (err) => {
       toast(err.message || 'Error al actualizar feature flag', { type: 'error' });
@@ -56,7 +58,7 @@ export function FeaturesSection({ organizationId }: { organizationId: string }) 
 
   return (
     <div className="space-y-4">
-      <h3 className="text-sm font-semibold text-[#333]">Feature Flags</h3>
+      <h3 className="text-sm font-semibold text-[#333]">{t.featureFlags.title}</h3>
 
       {isLoading ? (
         <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 space-y-4">
@@ -72,7 +74,7 @@ export function FeaturesSection({ organizationId }: { organizationId: string }) 
           <svg className="w-10 h-10 text-[#EDEDED] mx-auto mb-2" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
             <path d="M3 3v1.5M3 21v-6m0 0l2.77-.693a9 9 0 016.208.682l.108.054a9 9 0 006.208.682l3.454-.863V4.5l-3.454.863a9 9 0 01-6.208-.682l-.108-.054a9 9 0 00-6.208-.682L3 5.25v9.75z" />
           </svg>
-          <p className="text-xs text-[#8B8B8B]">No hay feature flags configurados</p>
+          <p className="text-xs text-[#8B8B8B]">{t.featureFlags.noFlags}</p>
         </div>
       ) : (
         <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] divide-y divide-[#F3F3F3]">

@@ -7,6 +7,7 @@ import { Modal } from '../../../../components';
 import { Step1Fields, Step2Fields, Step3Fields } from './add-candidate-modal.fields';
 import type { Step, ProcessStep } from './add-candidate-modal.helpers';
 import { STEP_LABELS } from './add-candidate-modal.helpers';
+import { useI18n } from '../../../../lib/i18n';
 
 interface AddCandidateModalProps {
   vacancyId: string;
@@ -16,6 +17,7 @@ interface AddCandidateModalProps {
 }
 
 export function AddCandidateModal({ vacancyId, vacancyTitle, onClose, onSuccess }: AddCandidateModalProps) {
+  const { t } = useI18n();
   const [step, setStep] = useState<Step>(1);
   const [processStep, setProcessStep] = useState<ProcessStep>('idle');
 
@@ -93,7 +95,7 @@ export function AddCandidateModal({ vacancyId, vacancyTitle, onClose, onSuccess 
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Error al agregar candidato';
       if (msg.includes('unique') || msg.includes('Unique') || msg.includes('already')) {
-        toast('Este candidato ya esta aplicando a esta vacante', { type: 'error' });
+        toast(t.pipeline.alreadyApplying, { type: 'error' });
       } else {
         toast(msg, { type: 'error' });
       }
@@ -102,14 +104,14 @@ export function AddCandidateModal({ vacancyId, vacancyTitle, onClose, onSuccess 
   };
 
   return (
-    <Modal title="Agregar Candidato al Pipeline" onClose={onClose} maxWidth="max-w-2xl">
+    <Modal title={t.pipeline.addCandidateTitle} onClose={onClose} maxWidth="max-w-2xl">
       {/* Vacancy badge */}
       <div className="flex items-center gap-2 bg-[#F0EEF5] rounded-lg px-3 py-2.5 mb-5">
         <svg className="w-4 h-4 text-[#1F114C]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
           <rect x="2" y="7" width="20" height="14" rx="2" /><path d="M16 7V5a4 4 0 00-8 0v2" />
         </svg>
         <span className="text-[12px] text-[#1F114C] font-medium">{vacancyTitle}</span>
-        <span className="text-[10px] text-[#8B8B8B] ml-auto">Se agregara a la primera etapa</span>
+        <span className="text-[10px] text-[#8B8B8B] ml-auto">{t.pipeline.willAddToFirstStage}</span>
       </div>
 
       {/* Step indicator */}

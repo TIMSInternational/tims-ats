@@ -200,14 +200,14 @@ export default function NineBoxPage() {
       {/* Top bar */}
       <div className="flex flex-wrap items-center justify-between gap-y-2 px-4 md:px-6 min-h-16 py-2 bg-white border-b border-[#EDEDED] shrink-0">
         <div className="flex items-center gap-2">
-          <span className="text-[13px] text-[#8B8B8B]">Talent</span>
+          <span className="text-[13px] text-[#8B8B8B]">{t.sidebar.talent}</span>
           <svg className="w-3 h-3 text-[#ccc]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" /></svg>
-          <span className="text-sm font-medium text-[#1F114C]">Nine Box Predictivo</span>
+          <span className="text-sm font-medium text-[#1F114C]">{t.nineBox.predictiveTitle}</span>
         </div>
         <div className="flex items-center gap-3">
-          <button onClick={() => toast('Exportar: proximamente', { type: 'info' })} className="flex items-center gap-1.5 border border-[#EDEDED] text-[#585858] px-3 h-8 rounded-lg text-[12px] hover:bg-[#F6F6F6] transition">
+          <button onClick={() => toast(t.nineBox.exportComingSoon, { type: 'info' })} className="flex items-center gap-1.5 border border-[#EDEDED] text-[#585858] px-3 h-8 rounded-lg text-[12px] hover:bg-[#F6F6F6] transition">
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
-            Exportar
+            {t.common.export}
           </button>
           <button onClick={() => startCalibration.mutate({ period: PERIOD })} disabled={startCalibration.isPending} className="flex items-center gap-1.5 bg-[#DD0C15] text-white px-4 h-8 rounded-lg text-[12px] font-medium hover:bg-[#c40b13] transition disabled:opacity-50">
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 4.5v15m7.5-7.5h-15" /></svg>
@@ -222,7 +222,7 @@ export default function NineBoxPage() {
           <KpiCard label={t.nineBox.kpiHighPotential} value={highPotentialCount} subtitle={total > 0 ? `${Math.round((highPotentialCount / total) * 100)}% del total` : ''} iconBg="bg-emerald-50" icon={<svg className="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22m0 0l-5.94-2.28m5.94 2.28l-2.28 5.941" /></svg>} valueColor="text-emerald-600" />
           <KpiCard label="En Riesgo" value={atRiskCount} subtitle="Plan urgente activo" iconBg="bg-red-50" icon={<svg className="w-4 h-4 text-[#DD0C15]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z" /><path d="M12 15.75h.007v.008H12v-.008z" /></svg>} valueColor="text-[#DD0C15]" highlight />
           <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
-            <span className="text-xs text-[#8B8B8B] font-medium uppercase tracking-wide block mb-3">Confianza Promedio</span>
+            <span className="text-xs text-[#8B8B8B] font-medium uppercase tracking-wide block mb-3">{t.nineBox.avgConfidence}</span>
             <div className="text-xl md:text-2xl font-bold text-[#1F114C]">{avgConfidence}%</div>
             <div className="w-full bg-gray-100 rounded-full h-1.5 mt-2">
               <div className="bg-[#1F114C] h-1.5 rounded-full transition-all" style={{ width: `${avgConfidence}%` }} />
@@ -241,7 +241,7 @@ export default function NineBoxPage() {
           <div className="w-full md:w-[42%] flex flex-col gap-4">
             {/* Selected Employee Detail */}
             <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4">
-              <p className="text-[11px] font-semibold text-[#1F114C] mb-3">Detalle del Empleado Seleccionado</p>
+              <p className="text-[11px] font-semibold text-[#1F114C] mb-3">{t.nineBox.selectedEmployeeDetail}</p>
               {detailQ.isLoading ? (
                 <div className="space-y-3"><Skeleton className="h-10 w-full" /><Skeleton className="h-16 w-full" /><Skeleton className="h-10 w-full" /></div>
               ) : detail ? (
@@ -270,7 +270,7 @@ export default function NineBoxPage() {
                   </div>
                   <div className="bg-[#F6F6F6] rounded-lg p-2.5 mb-3">
                     <div className="flex items-center justify-between mb-1">
-                      <p className="text-[10px] text-[#8B8B8B]">Nivel de Confianza</p>
+                      <p className="text-[10px] text-[#8B8B8B]">{t.nineBox.confidenceLevel}</p>
                       <p className="text-[12px] font-bold text-[#1F114C]">{Math.round(detail.confidence * 100)}%</p>
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-2">
@@ -279,7 +279,7 @@ export default function NineBoxPage() {
                   </div>
                   {history.length > 1 && (
                     <div>
-                      <p className="text-[10px] font-semibold text-[#1F114C] mb-1.5">Historial de Movimiento</p>
+                      <p className="text-[10px] font-semibold text-[#1F114C] mb-1.5">{t.nineBox.movementHistory}</p>
                       <div className="flex items-center gap-2 flex-wrap">
                         {history.map((h, i) => (
                           <div key={h.period} className="flex items-center gap-2">
@@ -295,23 +295,23 @@ export default function NineBoxPage() {
                   )}
                 </>
               ) : (
-                <p className="text-[11px] text-[#8B8B8B]">Selecciona un empleado del grid</p>
+                <p className="text-[11px] text-[#8B8B8B]">{t.nineBox.selectEmployeeFromGrid}</p>
               )}
             </div>
 
             {/* Bench Strength by Critical Role */}
             <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4 flex-1">
-              <p className="text-[11px] font-semibold text-[#1F114C] mb-2">Bench Strength por Rol Critico</p>
+              <p className="text-[11px] font-semibold text-[#1F114C] mb-2">{t.nineBox.benchStrengthTitle}</p>
               {successionQ.isLoading ? (
                 <Skeleton className="h-24 w-full" />
               ) : (
                 <table className="w-full text-[10px]">
                   <thead>
                     <tr className="text-[#8B8B8B] border-b border-[#EDEDED]">
-                      <th className="text-left pb-1.5 font-medium">Rol</th>
-                      <th className="text-center pb-1.5 font-medium">Listos</th>
-                      <th className="text-center pb-1.5 font-medium">En Desarrollo</th>
-                      <th className="text-center pb-1.5 font-medium">Brecha</th>
+                      <th className="text-left pb-1.5 font-medium">{t.succession.colRole}</th>
+                      <th className="text-center pb-1.5 font-medium">{t.succession.readyNow}</th>
+                      <th className="text-center pb-1.5 font-medium">{t.nineBox.inDevelopment}</th>
+                      <th className="text-center pb-1.5 font-medium">{t.learning.gap}</th>
                     </tr>
                   </thead>
                   <tbody className="text-[#333]">
@@ -334,7 +334,7 @@ export default function NineBoxPage() {
                       );
                     })}
                     {(successionQ.data ?? []).length === 0 && (
-                      <tr><td colSpan={4} className="py-4 text-center text-[#8B8B8B]">Sin roles criticos definidos</td></tr>
+                      <tr><td colSpan={4} className="py-4 text-center text-[#8B8B8B]">{t.nineBox.noCriticalRoles}</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -355,7 +355,7 @@ export default function NineBoxPage() {
 
           {/* Auto-Plan by Quadrant */}
           <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4">
-            <p className="text-[11px] font-semibold text-[#1F114C] mb-2">Plan Automatico por Cuadrante</p>
+            <p className="text-[11px] font-semibold text-[#1F114C] mb-2">{t.nineBox.autoPlanTitle}</p>
             <div className="space-y-1.5">
               {AUTO_PLANS.map((plan) => (
                 <div key={plan.name} className="flex items-center gap-2">

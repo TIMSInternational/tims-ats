@@ -35,7 +35,7 @@ export function InviteWizard({ onClose, onSuccess }: InviteWizardProps) {
 
   const orgs = trpc.platform.listOrganizations.useQuery({ search: (mode === 'single' ? orgSearch : bulkOrgSearch) || undefined, limit: 10, page: 0 });
   const createSingle = trpc.platform.createUserInvitation.useMutation({
-    onSuccess: () => { toast('Invitacion enviada', { type: 'success' }); onSuccess(); },
+    onSuccess: () => { toast(t.invitations.invitationSent, { type: 'success' }); onSuccess(); },
     onError: (err) => { toast(err.message, { type: 'error' }); },
   });
   const bulkInvite = trpc.platform.bulkInviteUsers.useMutation({
@@ -71,7 +71,7 @@ export function InviteWizard({ onClose, onSuccess }: InviteWizardProps) {
   }, []);
 
   const handleMapConfirm = () => {
-    if (!colMap.email) { toast('Mapea la columna de email', { type: 'error' }); return; }
+    if (!colMap.email) { toast(t.invitations.mapEmailColumn, { type: 'error' }); return; }
     const users: ParsedRow[] = rawRows.map(row => {
       const get = (field: string) => {
         const header = colMap[field];
@@ -109,7 +109,7 @@ export function InviteWizard({ onClose, onSuccess }: InviteWizardProps) {
   const setActiveOrgSearch = mode === 'single' ? setOrgSearch : setBulkOrgSearch;
 
   return (
-    <Modal title="Invitar Usuarios" onClose={onClose} maxWidth="max-w-2xl">
+    <Modal title={t.invitations.inviteUsersTitle} onClose={onClose} maxWidth="max-w-2xl">
       {/* Mode tabs */}
       <div className="flex gap-1 p-1 bg-[#F6F6F6] rounded-lg mb-5">
         <button onClick={() => setMode('single')} className={`flex-1 py-2 text-xs font-medium rounded-md transition ${mode === 'single' ? 'bg-white shadow-sm text-[#1F114C]' : 'text-[#8B8B8B]'}`}>
@@ -123,8 +123,8 @@ export function InviteWizard({ onClose, onSuccess }: InviteWizardProps) {
       {/* Org selector (shared) */}
       {((mode === 'single') || (mode === 'bulk' && bulkStep === 'upload')) && (
         <div className="mb-4">
-          <label className="text-xs font-medium text-[#585858] mb-1 block">Organizacion *</label>
-          <input type="text" value={activeOrgSearch} onChange={(e) => { setActiveOrgSearch(e.target.value); setActiveOrgId(''); }} placeholder="Buscar organizacion..." className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20" />
+          <label className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.organizationRequired}</label>
+          <input type="text" value={activeOrgSearch} onChange={(e) => { setActiveOrgSearch(e.target.value); setActiveOrgId(''); }} placeholder={t.invitations.searchOrganization} className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20" />
           {activeOrgSearch && !activeOrgId && orgs.data && (
             <div className="mt-1 bg-white border border-[#EDEDED] rounded-lg shadow-lg max-h-32 overflow-y-auto">
               {orgs.data.organizations.map((org) => (
@@ -134,7 +134,7 @@ export function InviteWizard({ onClose, onSuccess }: InviteWizardProps) {
               ))}
             </div>
           )}
-          {activeOrgId && <p className="text-[10px] text-green-600 mt-1">Organizacion seleccionada</p>}
+          {activeOrgId && <p className="text-[10px] text-green-600 mt-1">{t.invitations.organizationSelected}</p>}
         </div>
       )}
 
@@ -142,13 +142,13 @@ export function InviteWizard({ onClose, onSuccess }: InviteWizardProps) {
       {mode === 'single' && (
         <form onSubmit={(e) => { e.preventDefault(); if (email && orgId) createSingle.mutate({ email, organizationId: orgId, roleSlug: roleSlug || undefined }); }} className="space-y-4">
           <div>
-            <label className="text-xs font-medium text-[#585858] mb-1 block">Email *</label>
+            <label className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.emailRequired}</label>
             <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="usuario@empresa.com" className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20" required />
           </div>
           <div>
             <label className="text-xs font-medium text-[#585858] mb-1 block">Rol</label>
             <select value={roleSlug} onChange={(e) => setRoleSlug(e.target.value)} className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20">
-              <option value="">Seleccionar rol...</option>
+              <option value="">{t.invitations.selectRole}</option>
               {ROLES.map(r => <option key={r.slug} value={r.slug}>{r.label}</option>)}
             </select>
           </div>
@@ -166,8 +166,8 @@ export function InviteWizard({ onClose, onSuccess }: InviteWizardProps) {
         <div className="space-y-4">
           <div className="border-2 border-dashed border-[#EDEDED] rounded-xl p-8 text-center hover:border-[#1F114C]/30 transition">
             <svg className="w-10 h-10 mx-auto mb-3 text-[#8B8B8B]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" /></svg>
-            <p className="text-sm text-[#585858] mb-1">Arrastra un archivo CSV o Excel aqui</p>
-            <p className="text-xs text-[#8B8B8B] mb-3">o haz clic para seleccionar</p>
+            <p className="text-sm text-[#585858] mb-1">{t.invitations.dragCsvHere}</p>
+            <p className="text-xs text-[#8B8B8B] mb-3">{t.invitations.clickToSelect}</p>
             <label className="inline-block h-9 px-4 rounded-lg bg-[#1F114C] text-white text-sm font-medium hover:bg-[#2a1866] transition cursor-pointer leading-9">
               Seleccionar Archivo
               <input type="file" accept=".csv,.tsv,.txt,.xlsx" onChange={handleFileUpload} className="hidden" />
@@ -175,7 +175,7 @@ export function InviteWizard({ onClose, onSuccess }: InviteWizardProps) {
           </div>
           <div className="relative">
             <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-[#EDEDED]" /></div>
-            <div className="relative flex justify-center"><span className="px-3 bg-white text-xs text-[#8B8B8B]">o pega datos directamente</span></div>
+            <div className="relative flex justify-center"><span className="px-3 bg-white text-xs text-[#8B8B8B]">{t.invitations.pasteDataDirectly}</span></div>
           </div>
           <textarea
             rows={4}
@@ -185,7 +185,7 @@ export function InviteWizard({ onClose, onSuccess }: InviteWizardProps) {
             onChange={(e) => { if (e.target.value.includes('\n')) handlePaste(e.target.value); }}
           />
           <div className="p-3 rounded-lg bg-blue-50 text-xs text-blue-700">
-            <strong>Formato esperado:</strong> CSV con columnas: email (requerido), nombre, apellido, rol. La primera fila debe ser el encabezado.
+            <strong>{t.invitations.expectedFormat}</strong> CSV con columnas: email (requerido), nombre, apellido, rol. La primera fila debe ser el encabezado.
           </div>
         </div>
       )}

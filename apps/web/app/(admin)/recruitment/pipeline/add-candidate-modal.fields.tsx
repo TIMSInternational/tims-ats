@@ -8,6 +8,7 @@ import {
   labelCls,
   textareaCls,
 } from './add-candidate-modal.helpers';
+import { useI18n } from '../../../../lib/i18n';
 
 interface Step1FieldsProps {
   firstName: string;
@@ -34,31 +35,32 @@ export function Step1Fields({
   location,
   setLocation,
 }: Step1FieldsProps) {
+  const { t } = useI18n();
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className={labelCls}>Nombre *</label>
+          <label className={labelCls}>{t.candidates.formFirstName}</label>
           <input type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} maxLength={120} className={inputCls} placeholder="Maria" autoFocus />
         </div>
         <div>
-          <label className={labelCls}>Apellido *</label>
-          <input type="text" value={lastName} onChange={(e) => setLastName(e.target.value)} maxLength={120} className={inputCls} placeholder="Lopez Rodriguez" />
+          <label className={labelCls}>{t.candidates.formLastName}</label>
+          <input type="text" value={lastName} onChange={(e) => setLastName(e.target.value)} maxLength={120} className={inputCls} placeholder={t.candidates.formLastNamePlaceholder} />
         </div>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className={labelCls}>Email *</label>
+          <label className={labelCls}>{t.candidates.email} *</label>
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} maxLength={254} className={inputCls} placeholder="maria.lopez@gmail.com" />
         </div>
         <div>
-          <label className={labelCls}>Telefono</label>
+          <label className={labelCls}>{t.candidates.phone}</label>
           <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} maxLength={30} className={inputCls} placeholder="+57 310 123 4567" />
         </div>
       </div>
       <div>
-        <label className={labelCls}>Ubicacion</label>
-        <input type="text" value={location} onChange={(e) => setLocation(e.target.value)} maxLength={200} className={inputCls} placeholder="Bogota, Colombia" />
+        <label className={labelCls}>{t.candidates.location}</label>
+        <input type="text" value={location} onChange={(e) => setLocation(e.target.value)} maxLength={200} className={inputCls} placeholder={t.candidates.formLocationPlaceholder} />
       </div>
     </div>
   );
@@ -93,38 +95,39 @@ export function Step2Fields({
   notes,
   setNotes,
 }: Step2FieldsProps) {
+  const { t } = useI18n();
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className={labelCls}>Cargo actual</label>
-          <input type="text" value={currentTitle} onChange={(e) => setCurrentTitle(e.target.value)} maxLength={200} className={inputCls} placeholder="Senior Software Engineer" />
+          <label className={labelCls}>{t.candidates.formCurrentTitleLabel}</label>
+          <input type="text" value={currentTitle} onChange={(e) => setCurrentTitle(e.target.value)} maxLength={200} className={inputCls} placeholder={t.candidates.formCurrentTitlePlaceholder} />
         </div>
         <div>
-          <label className={labelCls}>Empresa actual</label>
+          <label className={labelCls}>{t.candidates.formCurrentCompanyLabel}</label>
           <input type="text" value={currentCompany} onChange={(e) => setCurrentCompany(e.target.value)} maxLength={200} className={inputCls} placeholder="MercadoLibre" />
         </div>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className={labelCls}>Anos de experiencia</label>
+          <label className={labelCls}>{t.candidates.formYearsExpLabel}</label>
           <select value={yearsExperience} onChange={(e) => setYearsExperience(e.target.value)} className={`${inputCls} bg-white`}>
             {EXPERIENCE_LEVELS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
           </select>
         </div>
         <div>
-          <label className={labelCls}>LinkedIn</label>
+          <label className={labelCls}>{t.candidates.linkedinUrl}</label>
           <input type="url" value={linkedinUrl} onChange={(e) => setLinkedinUrl(e.target.value)} maxLength={2048} className={inputCls} placeholder="https://linkedin.com/in/maria-lopez" />
         </div>
       </div>
       <div>
-        <label className={labelCls}>Habilidades clave</label>
-        <input type="text" value={skills} onChange={(e) => setSkills(e.target.value)} maxLength={500} className={inputCls} placeholder="React, TypeScript, Node.js, AWS (separadas por coma)" />
-        <p className="text-[10px] text-[#8B8B8B] mt-1">Separa cada habilidad con una coma</p>
+        <label className={labelCls}>{t.candidates.formKeySkillsLabel}</label>
+        <input type="text" value={skills} onChange={(e) => setSkills(e.target.value)} maxLength={500} className={inputCls} placeholder={t.candidates.formKeySkillsPlaceholder} />
+        <p className="text-[10px] text-[#8B8B8B] mt-1">{t.candidates.formSkillsHint}</p>
       </div>
       <div>
-        <label className={labelCls}>Notas del reclutador</label>
-        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={1000} rows={3} className={textareaCls} placeholder="Observaciones relevantes sobre el candidato, como fue contactado, impresiones iniciales..." />
+        <label className={labelCls}>{t.candidates.formRecruiterNotesLabel}</label>
+        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={1000} rows={3} className={textareaCls} placeholder={t.candidates.formRecruiterNotesPlaceholder} />
       </div>
     </div>
   );
@@ -161,10 +164,11 @@ export function Step3Fields({
   skills,
   vacancyTitle,
 }: Step3FieldsProps) {
+  const { t } = useI18n();
   return (
     <div className="space-y-5">
       <div>
-        <p className="text-[13px] font-medium text-[#1F114C] mb-3">Como llego este candidato?</p>
+        <p className="text-[13px] font-medium text-[#1F114C] mb-3">{t.candidates.formHowCandidateArrived}</p>
         <div className="grid grid-cols-2 gap-2">
           {SOURCES.map((s) => (
             <button
@@ -185,13 +189,13 @@ export function Step3Fields({
 
       {source === 'referral' && (
         <div>
-          <label className={labelCls}>Nombre del referente</label>
-          <input type="text" value={referrerName} onChange={(e) => setReferrerName(e.target.value)} maxLength={200} className={inputCls} placeholder="Juan Perez (Equipo Tecnologia)" />
+          <label className={labelCls}>{t.candidates.formReferrerNameLabel}</label>
+          <input type="text" value={referrerName} onChange={(e) => setReferrerName(e.target.value)} maxLength={200} className={inputCls} placeholder={t.candidates.formReferrerNamePlaceholder} />
         </div>
       )}
 
       <div>
-        <p className="text-[13px] font-medium text-[#1F114C] mb-3">Tipo de candidato</p>
+        <p className="text-[13px] font-medium text-[#1F114C] mb-3">{t.candidates.formCandidateTypeLabel}</p>
         <div className="space-y-2">
           {POOL_TYPES.map((p) => (
             <label

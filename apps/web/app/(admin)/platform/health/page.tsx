@@ -101,7 +101,7 @@ export default function PlatformHealthPage() {
             </div>
             <div>
               <p className="text-[18px] font-bold text-[#1F114C]">{stats.userCount}</p>
-              <p className="text-[10px] text-[#8B8B8B]">Usuarios totales</p>
+              <p className="text-[10px] text-[#8B8B8B]">{t.health.totalUsers}</p>
             </div>
           </div>
           <div className="bg-white rounded-xl px-4 py-3 shadow-[0_1px_4px_rgba(0,0,0,0.06)] flex items-center gap-3">
@@ -119,7 +119,7 @@ export default function PlatformHealthPage() {
             </div>
             <div>
               <p className="text-[18px] font-bold text-green-600">{stats.loginsToday}</p>
-              <p className="text-[10px] text-[#8B8B8B]">Logins hoy</p>
+              <p className="text-[10px] text-[#8B8B8B]">{t.health.loginsToday}</p>
             </div>
           </div>
           <div className="bg-white rounded-xl px-4 py-3 shadow-[0_1px_4px_rgba(0,0,0,0.06)] flex items-center gap-3">
@@ -128,7 +128,7 @@ export default function PlatformHealthPage() {
             </div>
             <div>
               <p className="text-[18px] font-bold text-[#1F114C]">{stats.auditLogsToday}</p>
-              <p className="text-[10px] text-[#8B8B8B]">Eventos hoy</p>
+              <p className="text-[10px] text-[#8B8B8B]">{t.health.eventsToday}</p>
             </div>
           </div>
         </div>

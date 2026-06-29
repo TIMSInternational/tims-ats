@@ -244,7 +244,7 @@ export default function AnalyticsPage() {
                   );
                 })}
               </div>
-            ) : <p className="text-sm text-[#8B8B8B] text-center py-6">Sin datos geograficos</p>}
+            ) : <p className="text-sm text-[#8B8B8B] text-center py-6">{t.analytics.noGeoData}</p>}
             <div className="mt-3 pt-3 border-t border-[#EDEDED] flex justify-between text-xs text-[#8B8B8B]">
               <span>{t.analytics.totalUsers}</span>
               <span className="font-semibold text-[#333]">{data.totalUsers.toLocaleString()}</span>

@@ -3,8 +3,10 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useDaily, useMeetingState, useDailyEvent } from '@daily-co/daily-react';
+import { useI18n } from '../../../../../../lib/i18n';
 
 export function VideoControls() {
+  const { t } = useI18n();
   const daily = useDaily();
   const router = useRouter();
   const meetingState = useMeetingState();
@@ -72,7 +74,7 @@ export function VideoControls() {
       </button>
 
       {/* Screen share */}
-      <button onClick={shareScreen} disabled={!isJoined} className={`${btnBase} ${!isJoined ? btnDisabled : btnOn}`} title="Compartir pantalla">
+      <button onClick={shareScreen} disabled={!isJoined} className={`${btnBase} ${!isJoined ? btnDisabled : btnOn}`} title={t.interviews.shareScreen}>
         <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
           <path d="M9 8.25H7.5a2.25 2.25 0 00-2.25 2.25v9a2.25 2.25 0 002.25 2.25h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25H15m0-3l-3-3m0 0l-3 3m3-3v11.25" />
         </svg>

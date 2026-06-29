@@ -3,6 +3,7 @@
 import { useParams } from 'next/navigation';
 import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
+import { useI18n } from '../../../../lib/i18n';
 
 const fmtCurrency = (n: number, c: string) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: c }).format(n);
 const fmtDate = (d: Date | string) => new Intl.DateTimeFormat('es-CO', { year: 'numeric', month: 'long', day: 'numeric' }).format(new Date(d));
@@ -10,6 +11,7 @@ const fmtDate = (d: Date | string) => new Intl.DateTimeFormat('es-CO', { year: '
 export default function OfferSignPage() {
   const params = useParams();
   const token = params.token as string;
+  const { t } = useI18n();
 
   const [accepted, setAccepted] = useState(false);
   const [declined, setDeclined] = useState(false);
@@ -30,25 +32,25 @@ export default function OfferSignPage() {
   });
 
   if (offer.isLoading) {
-    return <StatusScreen bg="bg-[#1F114C]/10" color="text-[#1F114C]" icon="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" title="Cargando oferta..." subtitle="Un momento por favor." pulse />;
+    return <StatusScreen bg="bg-[#1F114C]/10" color="text-[#1F114C]" icon="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" title={t.offers.signLoading} subtitle="Un momento por favor." pulse />;
   }
 
   if (offer.error || !offer.data) {
-    return <StatusScreen bg="bg-red-100" color="text-[#DD0C15]" icon="M15 9l-6 6M9 9l6 6" circle title="Enlace invalido" subtitle="Este enlace de firma no es valido o ha expirado. Contacta a recursos humanos." />;
+    return <StatusScreen bg="bg-red-100" color="text-[#DD0C15]" icon="M15 9l-6 6M9 9l6 6" circle title={t.offers.signInvalidLink} subtitle="Este enlace de firma no es valido o ha expirado. Contacta a recursos humanos." />;
   }
 
   const o = offer.data;
 
   if (o.status !== 'sent' && !accepted && !declined) {
-    return <StatusScreen bg="bg-amber-100" color="text-amber-600" icon="M12 6v6l4 2" circle title="Esta oferta ya fue respondida" subtitle={`Esta oferta ya ha sido ${o.status === 'accepted' ? 'aceptada' : 'procesada'}. No se requiere accion adicional.`} />;
+    return <StatusScreen bg="bg-amber-100" color="text-amber-600" icon="M12 6v6l4 2" circle title={t.offers.signAlreadyAnswered} subtitle={`Esta oferta ya ha sido ${o.status === 'accepted' ? 'aceptada' : 'procesada'}. No se requiere accion adicional.`} />;
   }
 
   if (accepted) {
-    return <StatusScreen bg="bg-green-100" color="text-green-600" icon="M22 11.08V12a10 10 0 11-5.93-9.14" title="Oferta aceptada exitosamente" subtitle={`Felicidades, ${o.candidate.firstName}. Tu aceptacion ha sido registrada. El equipo de recursos humanos se pondra en contacto contigo.`} />;
+    return <StatusScreen bg="bg-green-100" color="text-green-600" icon="M22 11.08V12a10 10 0 11-5.93-9.14" title={t.offers.signAccepted} subtitle={`Felicidades, ${o.candidate.firstName}. Tu aceptacion ha sido registrada. El equipo de recursos humanos se pondra en contacto contigo.`} />;
   }
 
   if (declined) {
-    return <StatusScreen bg="bg-gray-100" color="text-gray-500" icon="M6 18L18 6M6 6l12 12" title="Oferta declinada" subtitle="Tu respuesta ha sido registrada. Gracias por tu tiempo." />;
+    return <StatusScreen bg="bg-gray-100" color="text-gray-500" icon="M6 18L18 6M6 6l12 12" title={t.offers.signDeclined} subtitle="Tu respuesta ha sido registrada. Gracias por tu tiempo." />;
   }
 
   const benefits = o.benefits as Record<string, string> | null;
@@ -71,7 +73,7 @@ export default function OfferSignPage() {
             )}
             <div>
               <h2 className="text-white font-semibold text-lg">{o.organization.name}</h2>
-              <p className="text-white/70 text-xs">Carta de Oferta Laboral</p>
+              <p className="text-white/70 text-xs">{t.offers.signLetterTitle}</p>
             </div>
           </div>
 
@@ -91,7 +93,7 @@ export default function OfferSignPage() {
 
             {/* Offer details grid */}
             <div className="bg-[#F8F7FC] rounded-xl p-5 space-y-3">
-              <h3 className="text-sm font-semibold text-[#1F114C] mb-3">Detalles de la Oferta</h3>
+              <h3 className="text-sm font-semibold text-[#1F114C] mb-3">{t.offers.signOfferDetails}</h3>
               <div className="grid grid-cols-2 gap-3">
                 <div className="text-sm">
                   <span className="text-[#8B8B8B] block text-xs">Cargo</span>
@@ -102,11 +104,11 @@ export default function OfferSignPage() {
                   <span className="font-medium text-[#333]">{fmtCurrency(o.salary, o.currency)}</span>
                 </div>
                 <div className="text-sm">
-                  <span className="text-[#8B8B8B] block text-xs">Tipo de Contrato</span>
+                  <span className="text-[#8B8B8B] block text-xs">{t.offers.signContractType}</span>
                   <span className="font-medium text-[#333]">{o.contractType}</span>
                 </div>
                 <div className="text-sm">
-                  <span className="text-[#8B8B8B] block text-xs">Fecha de Inicio</span>
+                  <span className="text-[#8B8B8B] block text-xs">{t.offers.signStartDate}</span>
                   <span className="font-medium text-[#333]">{fmtDate(o.startDate)}</span>
                 </div>
               </div>
@@ -134,7 +136,7 @@ export default function OfferSignPage() {
 
             {/* Acceptance form */}
             <div className="space-y-4">
-              <h3 className="text-sm font-semibold text-[#1F114C]">Aceptacion de la Oferta</h3>
+              <h3 className="text-sm font-semibold text-[#1F114C]">{t.offers.signAcceptanceTitle}</h3>
 
               {/* Terms checkbox */}
               <label className="flex items-start gap-3 cursor-pointer">
@@ -159,7 +161,7 @@ export default function OfferSignPage() {
                   type="text"
                   value={signatureName}
                   onChange={(e) => setSignatureName(e.target.value)}
-                  placeholder="Ingresa tu nombre completo"
+                  placeholder={t.offers.signFullNamePlaceholder}
                   className="w-full h-10 px-3 rounded-lg border border-[#E5E5E5] text-sm text-[#333] placeholder:text-[#C4C4C4] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 focus:border-[#1F114C]"
                 />
               </div>

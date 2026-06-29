@@ -6,6 +6,7 @@ import { toast } from '../../../../lib/toast';
 import { Modal } from '../../../../components';
 import { type Step, stepLabels } from './schedule-modal.helpers';
 import { Step1Fields, Step2Fields, Step3Fields } from './schedule-modal.fields';
+import { useI18n } from '../../../../lib/i18n';
 
 interface ScheduleModalProps {
   onClose: () => void;
@@ -13,6 +14,7 @@ interface ScheduleModalProps {
 }
 
 export function ScheduleModal({ onClose, onSuccess }: ScheduleModalProps) {
+  const { t } = useI18n();
   const [step, setStep] = useState<Step>(1);
 
   // Step 1: Who
@@ -70,7 +72,7 @@ export function ScheduleModal({ onClose, onSuccess }: ScheduleModalProps) {
         notes: notes.trim() || undefined,
         evaluatorIds: selectedEvaluatorIds,
       });
-      toast('Entrevista agendada exitosamente', { type: 'success' });
+      toast(t.interviews.scheduledSuccess, { type: 'success' });
       onSuccess();
     } catch (err) {
       toast(err instanceof Error ? err.message : 'Error al agendar', { type: 'error' });
@@ -91,7 +93,7 @@ export function ScheduleModal({ onClose, onSuccess }: ScheduleModalProps) {
   }
 
   return (
-    <Modal title="Agendar Entrevista" onClose={onClose} maxWidth="max-w-2xl">
+    <Modal title={t.interviews.modalTitle} onClose={onClose} maxWidth="max-w-2xl">
       {/* Step indicator */}
       <div className="flex items-center gap-2 mb-6">
         {stepLabels.map((label, i) => (
@@ -182,7 +184,7 @@ export function ScheduleModal({ onClose, onSuccess }: ScheduleModalProps) {
           ) : (
             <button onClick={handleSubmit} disabled={!isStep3Valid || isPending}
               className="h-9 px-5 rounded-lg bg-[#DD0C15] text-white text-sm font-medium hover:bg-[#c00b13] transition disabled:opacity-50 flex items-center gap-2">
-              {isPending ? 'Agendando...' : 'Agendar Entrevista'}
+              {isPending ? t.portal.scheduling : t.interviews.modalTitle}
             </button>
           )}
         </div>

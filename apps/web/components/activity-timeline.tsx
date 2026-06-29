@@ -1,6 +1,7 @@
 'use client';
 
 import { formatRelativeTime } from '../lib/format-utils';
+import { useI18n } from '../lib/i18n';
 
 interface TimelineEvent {
   id: string;
@@ -37,10 +38,11 @@ function Icon({ type }: { type: string }) {
 }
 
 export function ActivityTimeline({ events, maxItems = 20 }: ActivityTimelineProps) {
+  const { t } = useI18n();
   const visible = events.slice(0, maxItems);
 
   if (visible.length === 0) {
-    return <p className="text-xs text-[#8B8B8B] py-4 text-center">No activity yet</p>;
+    return <p className="text-xs text-[#8B8B8B] py-4 text-center">{t.common.noActivity}</p>;
   }
 
   return (

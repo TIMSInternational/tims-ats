@@ -10,6 +10,7 @@ import {
 } from 'recharts';
 import { trpc } from '../../../../lib/trpc';
 import { PLAN_COLORS, PLAN_LABELS, Skeleton } from '../dashboard-utils';
+import { useI18n } from '../../../../lib/i18n';
 
 interface PlanTooltipProps {
   active?: boolean;
@@ -73,6 +74,7 @@ function CenterLabel({ cx, cy, total }: CenterLabelProps) {
 }
 
 export function PlanDistributionChart() {
+  const { t } = useI18n();
   const { data, isLoading } = trpc.platform.getPlanDistribution.useQuery();
 
   const total = data?.reduce((s, d) => s + d.count, 0) ?? 0;
@@ -80,8 +82,8 @@ export function PlanDistributionChart() {
   return (
     <div className="rounded-xl border border-border bg-white p-5 flex flex-col">
       <div className="mb-4">
-        <h3 className="text-sm font-semibold text-primary">Plan Distribution</h3>
-        <p className="text-xs text-muted">Customer breakdown by plan</p>
+        <h3 className="text-sm font-semibold text-primary">{t.dashboard.planDistributionTitle}</h3>
+        <p className="text-xs text-muted">{t.dashboard.customerByPlan}</p>
       </div>
 
       {isLoading ? (

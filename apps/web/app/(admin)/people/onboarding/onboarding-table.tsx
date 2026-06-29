@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { CandidateAvatar } from '../../../../components';
 import { formatDate } from '../../../../lib/format-utils';
+import { useI18n } from '../../../../lib/i18n';
 
 type Phase = 'all' | 'day1_30' | 'day31_60' | 'day61_90';
 
@@ -96,6 +97,7 @@ export function OnboardingTable({
   onPhaseChange: (phase: string) => void;
 }) {
   const [activeTab, setActiveTab] = useState<Phase>('all');
+  const { t } = useI18n();
 
   const handleTab = (key: Phase) => {
     setActiveTab(key);
@@ -105,7 +107,7 @@ export function OnboardingTable({
   return (
     <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] overflow-hidden mb-6">
       <div className="flex justify-between items-center px-5 py-4 border-b border-[#EDEDED]">
-        <h3 className="text-[14px] font-semibold text-[#1F114C]">Nuevos Ingresos Activos</h3>
+        <h3 className="text-[14px] font-semibold text-[#1F114C]">{t.onboarding.activeNewHires}</h3>
         <div className="flex bg-[#F6F6F6] rounded-lg overflow-hidden">
           {PHASE_TABS.map((tab) => (
             <button
@@ -201,7 +203,7 @@ export function OnboardingTable({
                           {plan.buddy ? (
                             <p className="text-[10px] text-[#8B8B8B]">Buddy: {plan.buddy.firstName} {plan.buddy.lastName.charAt(0)}.</p>
                           ) : (
-                            <p className="text-[10px] text-[#DD0C15] font-medium">Sin buddy asignado!</p>
+                            <p className="text-[10px] text-[#DD0C15] font-medium">{t.onboarding.noBuddyAssigned}</p>
                           )}
                         </div>
                       </div>

@@ -117,13 +117,14 @@ function LegalCheckItem({
   check: LegalCheck;
   offerId: string;
 }) {
+  const { t } = useI18n();
   const utils = trpc.useUtils();
   const updateCheck = trpc.offer.updateLegalCheck.useMutation({
     onSuccess: () => {
       utils.offer.getLegalChecklist.invalidate({ offerId });
       utils.offer.getById.invalidate({ id: offerId });
     },
-    onError: () => toast('Error al actualizar verificacion', { type: 'error' }),
+    onError: () => toast(t.offers.errorUpdateVerification, { type: 'error' }),
   });
 
   return (
@@ -214,7 +215,7 @@ export function OfferValidations({ offerId, validations, legalChecks }: OfferVal
               </div>
             ))}
           {validations.filter((v) => v.completedAt).length === 0 && (
-            <p className="text-[11px] text-[#8B8B8B] text-center py-2">Sin eventos de auditoria</p>
+            <p className="text-[11px] text-[#8B8B8B] text-center py-2">{t.offers.noAuditEvents}</p>
           )}
         </div>
       </div>

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { RegisterForm } from './register-form';
+import { useI18n } from '../../../lib/i18n';
 
 // Candidate self-registration was removed: candidates are not staff and never get a
 // `User` row — they apply through an employer's careers link, which creates a
@@ -11,6 +12,7 @@ import { RegisterForm } from './register-form';
 type AccountType = null | 'company';
 
 export default function RegisterPage() {
+  const { t } = useI18n();
   const [accountType, setAccountType] = useState<AccountType>(null);
 
   if (!accountType) {
@@ -23,8 +25,8 @@ export default function RegisterPage() {
         </div>
 
         <div className="bg-white rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.08)] p-8">
-          <h2 className="text-lg font-semibold text-[#1F114C] mb-1">Crear Cuenta de Empresa</h2>
-          <p className="text-[13px] text-[#8B8B8B] mb-8">Registra tu organizacion para gestionar tu talento humano</p>
+          <h2 className="text-lg font-semibold text-[#1F114C] mb-1">{t.auth.createCompanyAccount}</h2>
+          <p className="text-[13px] text-[#8B8B8B] mb-8">{t.auth.registerOrgDesc}</p>
 
           <div className="grid grid-cols-1 gap-4">
             <button
@@ -37,8 +39,8 @@ export default function RegisterPage() {
                 </svg>
               </div>
               <div>
-                <p className="text-[14px] font-semibold text-[#1F114C]">Soy Empresa</p>
-                <p className="text-[11px] text-[#8B8B8B] mt-1">Quiero gestionar el talento humano de mi organizacion</p>
+                <p className="text-[14px] font-semibold text-[#1F114C]">{t.auth.iAmCompany}</p>
+                <p className="text-[11px] text-[#8B8B8B] mt-1">{t.auth.manageTalentDesc}</p>
               </div>
             </button>
           </div>

@@ -30,11 +30,12 @@ const ASSIGNABLE_ROLES = [
 ];
 
 function RoleSelector({ userId, organizationId, currentRole }: { userId: string; organizationId: string; currentRole: string }) {
+  const { t } = useI18n();
   const utils = trpc.useUtils();
   const changeRole = trpc.platform.changeOrgUserRole.useMutation({
     onSuccess: () => {
       utils.platform.getOrgUsers.invalidate({ organizationId });
-      toast('Rol actualizado', { type: 'success' });
+      toast(t.users.roleUpdated, { type: 'success' });
     },
     onError: (err) => { toast(err.message || 'Error al cambiar rol', { type: 'error' }); },
   });
@@ -94,7 +95,7 @@ export function UsersSection({ organizationId, organizationName }: { organizatio
   const deactivateUser = trpc.platform.deactivateOrgUser.useMutation({
     onSuccess: () => {
       utils.platform.getOrgUsers.invalidate({ organizationId });
-      toast('Usuario desactivado', { type: 'success' });
+      toast(t.users.userDeactivatedOrg, { type: 'success' });
     },
     onError: (err) => { toast(err.message || 'Error al desactivar usuario', { type: 'error' }); },
   });
@@ -102,7 +103,7 @@ export function UsersSection({ organizationId, organizationName }: { organizatio
   const activateUser = trpc.platform.activateOrgUser.useMutation({
     onSuccess: () => {
       utils.platform.getOrgUsers.invalidate({ organizationId });
-      toast('Usuario activado', { type: 'success' });
+      toast(t.users.userActivatedOrg, { type: 'success' });
     },
     onError: (err) => { toast(err.message || 'Error al activar usuario', { type: 'error' }); },
   });
@@ -145,7 +146,7 @@ export function UsersSection({ organizationId, organizationName }: { organizatio
               <th className="px-4 py-3 text-[11px] font-semibold text-[#8B8B8B] uppercase tracking-wider">Rol</th>
               <th className="px-4 py-3 text-[11px] font-semibold text-[#8B8B8B] uppercase tracking-wider">Cargo</th>
               <th className="px-4 py-3 text-[11px] font-semibold text-[#8B8B8B] uppercase tracking-wider">{t.common.status}</th>
-              <th className="px-4 py-3 text-[11px] font-semibold text-[#8B8B8B] uppercase tracking-wider">Ultimo Login</th>
+              <th className="px-4 py-3 text-[11px] font-semibold text-[#8B8B8B] uppercase tracking-wider">{t.users.colLastLoginLabel}</th>
               <th className="px-4 py-3 text-[11px] font-semibold text-[#8B8B8B] uppercase tracking-wider">{t.common.actions}</th>
             </tr>
           </thead>
@@ -158,7 +159,7 @@ export function UsersSection({ organizationId, organizationName }: { organizatio
                   <svg className="w-10 h-10 mx-auto mb-3 text-[#ccc]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
                     <path d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
                   </svg>
-                  <p className="text-sm text-[#8B8B8B]">No hay usuarios en esta organizacion</p>
+                  <p className="text-sm text-[#8B8B8B]">{t.users.noUsersInOrg}</p>
                 </td>
               </tr>
             ) : (
@@ -223,7 +224,7 @@ export function UsersSection({ organizationId, organizationName }: { organizatio
       </div>
       {deactivateTarget && (
         <Modal title={`Desactivar a ${deactivateTarget.name}?`} onClose={() => setDeactivateTarget(null)} maxWidth="max-w-sm">
-          <p className="text-sm text-[#585858] mb-4">El usuario perdera acceso a la plataforma.</p>
+          <p className="text-sm text-[#585858] mb-4">{t.users.willLoseAccess}</p>
           <div className="flex gap-3">
             <button onClick={() => setDeactivateTarget(null)} className="flex-1 h-9 rounded-lg border border-[#EDEDED] text-sm font-medium text-[#585858] hover:bg-[#F6F6F6] transition">{t.common.cancel}</button>
             <button onClick={() => { deactivateUser.mutate({ userId: deactivateTarget.id, organizationId }); setDeactivateTarget(null); }} className="flex-1 h-9 rounded-lg bg-[#DD0C15] text-sm text-white font-medium hover:bg-[#c40b13] transition">Desactivar</button>

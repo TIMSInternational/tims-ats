@@ -4,6 +4,7 @@ import { useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createSupabaseBrowserClient } from '@tims/auth/client';
 import Link from 'next/link';
+import { useI18n } from '../../../lib/i18n';
 
 export default function ResetPasswordPage() {
   return (
@@ -16,6 +17,7 @@ export default function ResetPasswordPage() {
 function ResetPasswordForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { t } = useI18n();
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -59,8 +61,8 @@ function ResetPasswordForm() {
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#1F114C] mb-4">
             <span className="text-white text-xl font-bold">T</span>
           </div>
-          <h1 className="text-2xl font-bold text-[#1F114C]">Nueva Contrasena</h1>
-          <p className="text-sm text-[#8B8B8B] mt-1">Ingresa tu nueva contrasena</p>
+          <h1 className="text-2xl font-bold text-[#1F114C]">{t.auth.newPassword}</h1>
+          <p className="text-sm text-[#8B8B8B] mt-1">{t.auth.enterNewPassword}</p>
         </div>
 
         <div className="bg-white rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.08)] p-8">
@@ -69,8 +71,8 @@ function ResetPasswordForm() {
               <div className="w-12 h-12 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-4">
                 <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" /></svg>
               </div>
-              <h3 className="text-[15px] font-semibold text-[#1F114C] mb-2">Contrasena actualizada</h3>
-              <p className="text-[13px] text-[#585858]">Redirigiendo al dashboard...</p>
+              <h3 className="text-[15px] font-semibold text-[#1F114C] mb-2">{t.auth.passwordUpdated}</h3>
+              <p className="text-[13px] text-[#585858]">{t.auth.redirectingToDashboard}</p>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -79,7 +81,7 @@ function ResetPasswordForm() {
               )}
 
               <div>
-                <label className="block text-[12px] font-medium text-[#585858] mb-1.5">Nueva contrasena</label>
+                <label className="block text-[12px] font-medium text-[#585858] mb-1.5">{t.auth.newPasswordLabel}</label>
                 <div className="relative">
                   <input
                     type={showPassword ? 'text' : 'password'}
@@ -88,7 +90,7 @@ function ResetPasswordForm() {
                     required
                     minLength={8}
                     className="w-full h-11 px-4 pr-11 rounded-xl border border-[#EDEDED] text-[13px] text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 focus:border-[#1F114C] transition"
-                    placeholder="Minimo 8 caracteres"
+                    placeholder={t.auth.passwordMinPlaceholder}
                   />
                   <button
                     type="button"
@@ -105,7 +107,7 @@ function ResetPasswordForm() {
               </div>
 
               <div>
-                <label className="block text-[12px] font-medium text-[#585858] mb-1.5">Confirmar contrasena</label>
+                <label className="block text-[12px] font-medium text-[#585858] mb-1.5">{t.auth.confirmPasswordLabel}</label>
                 <input
                   type={showPassword ? 'text' : 'password'}
                   value={confirmPassword}
@@ -113,7 +115,7 @@ function ResetPasswordForm() {
                   required
                   minLength={8}
                   className="w-full h-11 px-4 rounded-xl border border-[#EDEDED] text-[13px] text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 focus:border-[#1F114C] transition"
-                  placeholder="Repite la contrasena"
+                  placeholder={t.auth.repeatPassword}
                 />
               </div>
 
@@ -122,7 +124,7 @@ function ResetPasswordForm() {
                 disabled={loading}
                 className="w-full h-11 rounded-xl bg-[#1F114C] text-white text-[13px] font-semibold hover:bg-[#2a1a5e] disabled:opacity-50 transition"
               >
-                {loading ? 'Actualizando...' : 'Actualizar contrasena'}
+                {loading ? t.auth.updatingPassword : t.auth.updatePassword}
               </button>
             </form>
           )}

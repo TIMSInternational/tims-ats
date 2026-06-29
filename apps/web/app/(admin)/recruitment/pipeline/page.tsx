@@ -95,7 +95,7 @@ export default function PipelinePage() {
           </div>
           {/* Add Candidate */}
           <button
-            onClick={() => selectedVacancyId ? setShowAddCandidate(true) : toast('Selecciona una vacante primero', { type: 'info' })}
+            onClick={() => selectedVacancyId ? setShowAddCandidate(true) : toast(t.pipeline.selectVacancyFirst, { type: 'info' })}
             className="flex items-center gap-2 bg-[#DD0C15] text-white px-4 h-9 rounded-lg text-[13px] font-medium shadow-[0_2px_8px_rgba(221,12,21,0.25)] hover:bg-[#c00b13] transition-colors"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">

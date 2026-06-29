@@ -2,6 +2,7 @@
 
 import type { OnboardingPlan } from './onboarding-table';
 import { toast } from '../../../../lib/toast';
+import { useI18n } from '../../../../lib/i18n';
 
 function DocIcon({ urgent }: { urgent: boolean }) {
   return (
@@ -12,6 +13,7 @@ function DocIcon({ urgent }: { urgent: boolean }) {
 }
 
 export function TasksByResponsible({ plans }: { plans: OnboardingPlan[] }) {
+  const { t } = useI18n();
   const allTasks = plans.flatMap((p) => p.tasks);
   const byRole: Record<string, { total: number; done: number }> = {};
   for (const t of allTasks) {
@@ -34,7 +36,7 @@ export function TasksByResponsible({ plans }: { plans: OnboardingPlan[] }) {
 
   return (
     <div className="w-full md:flex-1 bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-      <h3 className="text-[14px] font-semibold text-[#1F114C] mb-3">Tareas por Responsable</h3>
+      <h3 className="text-[14px] font-semibold text-[#1F114C] mb-3">{t.onboarding.tasksByResponsible}</h3>
       <div className="space-y-3">
         {roles.map(([role, { total, done }]) => {
           const pct = total > 0 ? Math.round((done / total) * 100) : 0;
@@ -56,7 +58,7 @@ export function TasksByResponsible({ plans }: { plans: OnboardingPlan[] }) {
             </div>
           );
         })}
-        {roles.length === 0 && <p className="text-[11px] text-[#8B8B8B]">Sin tareas registradas</p>}
+        {roles.length === 0 && <p className="text-[11px] text-[#8B8B8B]">{t.onboarding.noTasksRegistered}</p>}
       </div>
       {lowestRole && lowestRole[1].total > 0 && (
         <p className="text-[10px] text-[#DD0C15] mt-3 pt-3 border-t border-[#F0F0F0] font-medium">
@@ -68,6 +70,7 @@ export function TasksByResponsible({ plans }: { plans: OnboardingPlan[] }) {
 }
 
 export function PendingDocuments({ plans }: { plans: OnboardingPlan[] }) {
+  const { t } = useI18n();
   const incompleteTasks = plans.flatMap((p) =>
     p.tasks.filter((t) => !t.completed).map((t) => ({
       name: t.responsible,
@@ -82,14 +85,14 @@ export function PendingDocuments({ plans }: { plans: OnboardingPlan[] }) {
   return (
     <div className="w-full md:flex-1 bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
       <div className="flex justify-between items-center mb-3">
-        <h3 className="text-[14px] font-semibold text-[#1F114C]">Documentos Pendientes</h3>
+        <h3 className="text-[14px] font-semibold text-[#1F114C]">{t.onboarding.pendingDocuments}</h3>
         <span className="bg-amber-500 text-white text-[10px] font-bold w-6 h-6 rounded-full flex items-center justify-center">
           {totalPending}
         </span>
       </div>
       <div className="space-y-2">
         {incompleteTasks.length === 0 && (
-          <p className="text-[11px] text-[#8B8B8B]">No hay documentos pendientes</p>
+          <p className="text-[11px] text-[#8B8B8B]">{t.onboarding.noPendingDocuments}</p>
         )}
         {incompleteTasks.map((doc, i) => (
           <div key={i} className="flex items-center justify-between bg-[#F6F6F6] rounded-lg px-3 py-2.5">
@@ -116,6 +119,7 @@ export function PendingDocuments({ plans }: { plans: OnboardingPlan[] }) {
 }
 
 export function CoursesAndAccesses() {
+  const { t } = useI18n();
   const COURSES = [
     { name: 'Cultura Organizacional', pct: 87, color: 'bg-green-500', text: 'text-green-600' },
     { name: 'Seguridad de la Informacion', pct: 62, color: 'bg-amber-500', text: 'text-amber-600' },
@@ -124,9 +128,9 @@ export function CoursesAndAccesses() {
 
   return (
     <div className="w-full md:flex-1 bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-      <h3 className="text-[14px] font-semibold text-[#1F114C] mb-3">Cursos Iniciales & Accesos</h3>
+      <h3 className="text-[14px] font-semibold text-[#1F114C] mb-3">{t.onboarding.coursesAndAccesses}</h3>
       <div className="mb-4">
-        <p className="text-[11px] text-[#585858] font-medium mb-2">Cursos Obligatorios</p>
+        <p className="text-[11px] text-[#585858] font-medium mb-2">{t.onboarding.requiredCourses}</p>
         <div className="space-y-1.5">
           {COURSES.map((c) => (
             <div key={c.name} className="flex items-center justify-between">
@@ -142,11 +146,11 @@ export function CoursesAndAccesses() {
         </div>
       </div>
       <div className="border-t border-[#F0F0F0] pt-3">
-        <p className="text-[11px] text-[#585858] font-medium mb-2">Accesos Pendientes (TI)</p>
+        <p className="text-[11px] text-[#585858] font-medium mb-2">{t.onboarding.pendingAccessesIT}</p>
         <div className="space-y-1.5">
-          <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-[#DD0C15]" /><span className="text-[11px] text-[#333]">Email corporativo — pendiente</span></div>
-          <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-[#DD0C15]" /><span className="text-[11px] text-[#333]">VPN + Laptop — pendiente</span></div>
-          <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-amber-500" /><span className="text-[11px] text-[#333]">Jira/Confluence — en proceso</span></div>
+          <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-[#DD0C15]" /><span className="text-[11px] text-[#333]">{t.onboarding.corporateEmailPending}</span></div>
+          <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-[#DD0C15]" /><span className="text-[11px] text-[#333]">{t.onboarding.vpnLaptopPending}</span></div>
+          <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-amber-500" /><span className="text-[11px] text-[#333]">{t.onboarding.jiraConfluenceInProgress}</span></div>
         </div>
       </div>
     </div>
@@ -154,10 +158,11 @@ export function CoursesAndAccesses() {
 }
 
 export function LearningRoute() {
+  const { t } = useI18n();
   return (
     <div className="w-full md:flex-1 bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
       <div className="flex justify-between items-center mb-3">
-        <h3 className="text-[14px] font-semibold text-[#1F114C]">Ruta de Capacitacion Inicial</h3>
+        <h3 className="text-[14px] font-semibold text-[#1F114C]">{t.onboarding.initialLearningRoute}</h3>
         <span className="text-[10px] bg-teal-50 text-teal-600 px-2 py-0.5 rounded border border-teal-200">
           Generada desde brechas PCA
         </span>
@@ -165,13 +170,13 @@ export function LearningRoute() {
       <div className="space-y-2.5">
         <div className="bg-[#F6F6F6] rounded-lg p-3">
           <div className="flex justify-between items-center mb-1">
-            <p className="text-[12px] text-[#333] font-medium">Ruta personalizada</p>
-            <span className="text-[10px] text-[#8B8B8B]">Basada en evaluacion</span>
+            <p className="text-[12px] text-[#333] font-medium">{t.onboarding.customRoute}</p>
+            <span className="text-[10px] text-[#8B8B8B]">{t.onboarding.basedOnEvaluation}</span>
           </div>
           <div className="space-y-1">
-            <div className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-amber-500" /><span className="text-[10px] text-[#585858]">Comunicacion Efectiva para Lideres (brecha: Comunicacion -1)</span></div>
-            <div className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-[#8B8B8B]" /><span className="text-[10px] text-[#585858]">Metodologias Agiles TIMS</span></div>
-            <div className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-[#8B8B8B]" /><span className="text-[10px] text-[#585858]">Herramientas Internas (Jira, Confluence)</span></div>
+            <div className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-amber-500" /><span className="text-[10px] text-[#585858]">{t.onboarding.comunicacionLideres}</span></div>
+            <div className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-[#8B8B8B]" /><span className="text-[10px] text-[#585858]">{t.onboarding.metodologiasAgiles}</span></div>
+            <div className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-[#8B8B8B]" /><span className="text-[10px] text-[#585858]">{t.onboarding.herramientasInternas}</span></div>
           </div>
         </div>
       </div>

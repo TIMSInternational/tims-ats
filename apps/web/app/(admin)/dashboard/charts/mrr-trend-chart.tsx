@@ -11,6 +11,7 @@ import {
 } from 'recharts';
 import { trpc } from '../../../../lib/trpc';
 import { formatCurrency, BRAND_NAVY, Skeleton } from '../dashboard-utils';
+import { useI18n } from '../../../../lib/i18n';
 
 interface MrrTooltipProps {
   active?: boolean;
@@ -30,13 +31,14 @@ function MrrTooltip({ active, payload, label }: MrrTooltipProps) {
 
 export function MrrTrendChart() {
   const { data, isLoading } = trpc.platform.getMrrTrend.useQuery();
+  const { t } = useI18n();
 
   return (
     <div className="rounded-xl border border-border bg-white p-5 flex flex-col">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h3 className="text-sm font-semibold text-primary">MRR Trend</h3>
-          <p className="text-xs text-muted">Monthly recurring revenue (12 months)</p>
+          <h3 className="text-sm font-semibold text-primary">{t.dashboard.mrrTrendTitle}</h3>
+          <p className="text-xs text-muted">{t.dashboard.mrrTrendSubtitle}</p>
         </div>
         {data && data.length > 0 && (
           <span className="text-lg font-bold text-primary">

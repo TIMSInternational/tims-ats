@@ -106,7 +106,7 @@ export function CoachingPanel({ sessions, commitments, isLoading }: CoachingPane
           <SkeletonRows count={4} />
         ) : sessions.length === 0 ? (
           <div className="px-5 py-8 text-center text-[12px] text-[#8B8B8B]">
-            No hay sesiones programadas
+            {t.performance.noSessionsScheduled}
           </div>
         ) : (
           <div className="divide-y divide-[#EDEDED]">
@@ -141,7 +141,7 @@ export function CoachingPanel({ sessions, commitments, isLoading }: CoachingPane
       <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
         <div className="flex items-center justify-between px-5 py-3 border-b border-[#EDEDED]">
           <h3 className="text-[13px] font-semibold text-[#333]">{t.performance.commitmentsTitle}</h3>
-          <button onClick={() => toast('Ver todo: proximamente', { type: 'info' })} className="text-[10px] text-[#DD0C15] font-medium hover:underline">
+          <button onClick={() => toast(t.performance.viewAllComingSoon, { type: 'info' })} className="text-[10px] text-[#DD0C15] font-medium hover:underline">
             {t.performance.viewAll}
           </button>
         </div>
@@ -149,7 +149,7 @@ export function CoachingPanel({ sessions, commitments, isLoading }: CoachingPane
           <SkeletonRows count={4} />
         ) : commitments.length === 0 ? (
           <div className="px-5 py-8 text-center text-[12px] text-[#8B8B8B]">
-            No hay compromisos registrados
+            {t.performance.noCommitmentsRegistered}
           </div>
         ) : (
           <div className="divide-y divide-[#EDEDED]">

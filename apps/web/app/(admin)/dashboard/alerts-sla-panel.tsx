@@ -82,7 +82,7 @@ export function AlertsSlaPanel() {
               <path d="m4.5 12.75 6 6 9-13.5" />
             </svg>
           </div>
-          <p className="text-[12px] text-[#8B8B8B]">Sin candidatos con SLA vencido</p>
+          <p className="text-[12px] text-[#8B8B8B]">{rd.noSlaOverdue}</p>
         </div>
       ) : (
         <div className="space-y-3">

@@ -3,8 +3,10 @@
 import { useState } from 'react';
 import { createSupabaseBrowserClient } from '@tims/auth/client';
 import Link from 'next/link';
+import { useI18n } from '../../../lib/i18n';
 
 export default function ForgotPasswordPage() {
+  const { t } = useI18n();
   const [email, setEmail] = useState('');
   const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -36,8 +38,8 @@ export default function ForgotPasswordPage() {
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#1F114C] mb-4">
             <span className="text-white text-xl font-bold">T</span>
           </div>
-          <h1 className="text-2xl font-bold text-[#1F114C]">Recuperar Contrasena</h1>
-          <p className="text-sm text-[#8B8B8B] mt-1">Te enviaremos un enlace para restablecerla</p>
+          <h1 className="text-2xl font-bold text-[#1F114C]">{t.auth.recoverPassword}</h1>
+          <p className="text-sm text-[#8B8B8B] mt-1">{t.auth.recoverSubtitle}</p>
         </div>
 
         <div className="bg-white rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.08)] p-8">
@@ -46,12 +48,12 @@ export default function ForgotPasswordPage() {
               <div className="w-12 h-12 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-4">
                 <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" /></svg>
               </div>
-              <h3 className="text-[15px] font-semibold text-[#1F114C] mb-2">Email enviado</h3>
+              <h3 className="text-[15px] font-semibold text-[#1F114C] mb-2">{t.auth.emailSentTitle}</h3>
               <p className="text-[13px] text-[#585858] mb-4">
                 Revisa tu bandeja de entrada en <strong>{email}</strong> y sigue las instrucciones.
               </p>
               <Link href="/login" className="text-[13px] text-[#DD0C15] font-medium hover:underline">
-                Volver al login
+                {t.auth.backToLogin}
               </Link>
             </div>
           ) : (
@@ -75,10 +77,10 @@ export default function ForgotPasswordPage() {
                 disabled={loading}
                 className="w-full h-11 rounded-xl bg-[#1F114C] text-white text-[13px] font-semibold hover:bg-[#2a1a5e] disabled:opacity-50 transition"
               >
-                {loading ? 'Enviando...' : 'Enviar enlace'}
+                {loading ? t.auth.sendingLink : t.auth.sendLink}
               </button>
               <div className="text-center">
-                <Link href="/login" className="text-[12px] text-[#8B8B8B] hover:text-[#585858]">Volver al login</Link>
+                <Link href="/login" className="text-[12px] text-[#8B8B8B] hover:text-[#585858]">{t.auth.backToLogin}</Link>
               </div>
             </form>
           )}

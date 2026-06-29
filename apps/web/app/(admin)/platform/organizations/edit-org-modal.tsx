@@ -22,7 +22,7 @@ export function EditOrgModal({ org, onClose, onSuccess }: { org: OrganizationLis
     onSuccess: () => {
       utils.platform.listOrganizations.invalidate();
       utils.platform.getOrganizationKpis.invalidate();
-      toast('Organizacion actualizada', { type: 'success' });
+      toast(t.organizations.updated, { type: 'success' });
       onSuccess();
     },
     onError: (err) => { toast(err.message || 'Error al actualizar organizacion', { type: 'error' }); },
@@ -32,7 +32,7 @@ export function EditOrgModal({ org, onClose, onSuccess }: { org: OrganizationLis
     onSuccess: () => {
       utils.platform.listOrganizations.invalidate();
       utils.platform.getOrganizationKpis.invalidate();
-      toast('Estado de organizacion actualizado', { type: 'success' });
+      toast(t.organizations.statusUpdated, { type: 'success' });
       onClose();
     },
     onError: (err) => { toast(err.message || 'Error al cambiar estado de organizacion', { type: 'error' }); },

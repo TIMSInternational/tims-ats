@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Skeleton } from './skeleton';
+import { useI18n } from '../lib/i18n';
 
 interface Column {
   key: string;
@@ -76,6 +77,7 @@ export function DataTable({
   empty,
   pagination,
 }: DataTableProps) {
+  const { t } = useI18n();
   const totalPages = pagination
     ? Math.ceil(pagination.total / pagination.limit)
     : 0;
@@ -145,7 +147,7 @@ export function DataTable({
               }
               disabled={pagination.page === 0}
               className="w-8 h-8 rounded-lg border border-[#EDEDED] flex items-center justify-center text-[#8B8B8B] hover:bg-[#F6F6F6] transition disabled:opacity-40"
-              aria-label="Pagina anterior"
+              aria-label={t.common.prevPage}
             >
               <svg
                 className="w-4 h-4"
@@ -192,7 +194,7 @@ export function DataTable({
                 pagination.total
               }
               className="w-8 h-8 rounded-lg border border-[#EDEDED] flex items-center justify-center text-[#585858] hover:bg-[#F6F6F6] transition disabled:opacity-40"
-              aria-label="Pagina siguiente"
+              aria-label={t.common.nextPage}
             >
               <svg
                 className="w-4 h-4"

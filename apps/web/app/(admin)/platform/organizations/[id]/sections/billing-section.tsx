@@ -45,7 +45,7 @@ export function BillingSection({ organizationId }: { organizationId: string }) {
       {/* Billing profile card */}
       <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-semibold text-[#333]">Perfil de Facturacion</h3>
+          <h3 className="text-sm font-semibold text-[#333]">{t.billing.orgBillingProfileTitle}</h3>
           <button onClick={() => setShowDrawer(true)} className="h-8 px-3 rounded-lg border border-[#EDEDED] text-xs text-[#585858] font-medium hover:bg-[#F6F6F6] transition">
             {t.common.edit}
           </button>
@@ -59,14 +59,14 @@ export function BillingSection({ organizationId }: { organizationId: string }) {
         ) : bp ? (
           <div className="grid grid-cols-3 gap-4">
             <div><span className="text-xs text-[#8B8B8B]">Empresa</span><p className="text-sm text-[#333] mt-0.5">{bp.companyName || '\u2014'}</p></div>
-            <div><span className="text-xs text-[#8B8B8B]">NIT / Tax ID</span><p className="text-sm text-[#333] mt-0.5">{bp.taxId || '\u2014'}</p></div>
-            <div><span className="text-xs text-[#8B8B8B]">Email de Facturacion</span><p className="text-sm text-[#333] mt-0.5">{bp.billingEmail || '\u2014'}</p></div>
+            <div><span className="text-xs text-[#8B8B8B]">{t.invoices.taxId}</span><p className="text-sm text-[#333] mt-0.5">{bp.taxId || '\u2014'}</p></div>
+            <div><span className="text-xs text-[#8B8B8B]">{t.invoices.billingEmail}</span><p className="text-sm text-[#333] mt-0.5">{bp.billingEmail || '\u2014'}</p></div>
             <div><span className="text-xs text-[#8B8B8B]">Direccion</span><p className="text-sm text-[#333] mt-0.5">{bp.address || '\u2014'}</p></div>
             <div><span className="text-xs text-[#8B8B8B]">Telefono</span><p className="text-sm text-[#333] mt-0.5">{bp.billingPhone || '\u2014'}</p></div>
             <div><span className="text-xs text-[#8B8B8B]">Ciudad</span><p className="text-sm text-[#333] mt-0.5">{bp.city || '\u2014'}{bp.state ? `, ${bp.state}` : ''}</p></div>
           </div>
         ) : (
-          <p className="text-xs text-[#8B8B8B]">No hay perfil de facturacion configurado</p>
+          <p className="text-xs text-[#8B8B8B]">{t.billing.noOrgBillingProfile}</p>
         )}
       </div>
 
@@ -89,7 +89,7 @@ export function BillingSection({ organizationId }: { organizationId: string }) {
       {/* Recent invoices */}
       <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] overflow-hidden">
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#EDEDED]">
-          <h3 className="text-sm font-semibold text-[#333]">Facturas Recientes</h3>
+          <h3 className="text-sm font-semibold text-[#333]">{t.billing.orgRecentInvoices}</h3>
           <div className="flex items-center gap-3">
             <button
               onClick={() => router.push(`/platform/invoices?create=true&org=${organizationId}`)}
@@ -116,7 +116,7 @@ export function BillingSection({ organizationId }: { organizationId: string }) {
             <svg className="w-10 h-10 text-[#EDEDED] mx-auto mb-2" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
               <path d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
             </svg>
-            <p className="text-xs text-[#8B8B8B]">No hay facturas para esta organizacion</p>
+            <p className="text-xs text-[#8B8B8B]">{t.billing.noOrgInvoices}</p>
           </div>
         ) : (
           <div className="overflow-x-auto"><table className="w-full min-w-[560px] text-left">

@@ -74,7 +74,7 @@ export default function OrganizationsPage() {
     const a = document.createElement('a'); a.href = url;
     a.download = `organizaciones-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click(); URL.revokeObjectURL(url);
-    toast('CSV exportado', { type: 'success' });
+    toast(t.organizations.csvExported, { type: 'success' });
   };
 
   return (

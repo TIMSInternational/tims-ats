@@ -45,7 +45,7 @@ export function Step1Fields({
         </div>
         <div>
           <label className={labelCls}>{t.candidates.lastName} *</label>
-          <input type="text" value={lastName} onChange={(e) => setLastName(e.target.value)} maxLength={120} className={inputCls} placeholder="Lopez Rodriguez" />
+          <input type="text" value={lastName} onChange={(e) => setLastName(e.target.value)} maxLength={120} className={inputCls} placeholder={t.candidates.formLastNamePlaceholder} />
         </div>
       </div>
       <div className="grid grid-cols-2 gap-3">
@@ -60,7 +60,7 @@ export function Step1Fields({
       </div>
       <div>
         <label className={labelCls}>{t.candidates.location}</label>
-        <input type="text" value={location} onChange={(e) => setLocation(e.target.value)} maxLength={200} className={inputCls} placeholder="Bogota, Colombia" />
+        <input type="text" value={location} onChange={(e) => setLocation(e.target.value)} maxLength={200} className={inputCls} placeholder={t.candidates.formLocationPlaceholder} />
       </div>
     </div>
   );
@@ -101,7 +101,7 @@ export function Step2Fields({
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className={labelCls}>{t.candidates.currentTitle}</label>
-          <input type="text" value={currentTitle} onChange={(e) => setCurrentTitle(e.target.value)} maxLength={200} className={inputCls} placeholder="Senior Software Engineer" />
+          <input type="text" value={currentTitle} onChange={(e) => setCurrentTitle(e.target.value)} maxLength={200} className={inputCls} placeholder={t.candidates.formCurrentTitlePlaceholder} />
         </div>
         <div>
           <label className={labelCls}>{t.candidates.currentCompany}</label>
@@ -110,7 +110,7 @@ export function Step2Fields({
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className={labelCls}>Anos de experiencia</label>
+          <label className={labelCls}>{t.candidates.formYearsExpLabel}</label>
           <select value={yearsExperience} onChange={(e) => setYearsExperience(parseInt(e.target.value))} className={`${inputCls} bg-white`}>
             {EXPERIENCE_LEVELS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
           </select>
@@ -121,13 +121,13 @@ export function Step2Fields({
         </div>
       </div>
       <div>
-        <label className={labelCls}>Habilidades clave</label>
-        <input type="text" value={skills} onChange={(e) => setSkills(e.target.value)} maxLength={500} className={inputCls} placeholder="React, TypeScript, Node.js, AWS (separadas por coma)" />
-        <p className="text-[10px] text-[#8B8B8B] mt-1">Separa cada habilidad con una coma</p>
+        <label className={labelCls}>{t.candidates.formKeySkillsLabel}</label>
+        <input type="text" value={skills} onChange={(e) => setSkills(e.target.value)} maxLength={500} className={inputCls} placeholder={t.candidates.formKeySkillsPlaceholder} />
+        <p className="text-[10px] text-[#8B8B8B] mt-1">{t.candidates.formSkillsHint}</p>
       </div>
       <div>
-        <label className={labelCls}>Notas del reclutador</label>
-        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={5000} rows={3} className={textareaCls} placeholder="Observaciones, como fue contactado, impresiones iniciales..." />
+        <label className={labelCls}>{t.candidates.formRecruiterNotesLabel}</label>
+        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={5000} rows={3} className={textareaCls} placeholder={t.candidates.formRecruiterNotesPlaceholder} />
       </div>
     </div>
   );
@@ -164,10 +164,11 @@ export function Step3Fields({
   location,
   skills,
 }: Step3FieldsProps) {
+  const { t } = useI18n();
   return (
     <div className="space-y-5">
       <div>
-        <p className="text-[13px] font-medium text-[#1F114C] mb-3">Como llego este candidato?</p>
+        <p className="text-[13px] font-medium text-[#1F114C] mb-3">{t.candidates.formHowCandidateArrived}</p>
         <div className="grid grid-cols-2 gap-2">
           {SOURCES.map((s) => (
             <button key={s.value} type="button" onClick={() => setSource(s.value)}
@@ -182,13 +183,13 @@ export function Step3Fields({
 
       {source === 'referral' && (
         <div>
-          <label className={labelCls}>Nombre del referente</label>
-          <input type="text" value={referrerName} onChange={(e) => setReferrerName(e.target.value)} maxLength={200} className={inputCls} placeholder="Juan Perez (Equipo Tecnologia)" />
+          <label className={labelCls}>{t.candidates.formReferrerNameLabel}</label>
+          <input type="text" value={referrerName} onChange={(e) => setReferrerName(e.target.value)} maxLength={200} className={inputCls} placeholder={t.candidates.formReferrerNamePlaceholder} />
         </div>
       )}
 
       <div>
-        <p className="text-[13px] font-medium text-[#1F114C] mb-3">Clasificacion del candidato</p>
+        <p className="text-[13px] font-medium text-[#1F114C] mb-3">{t.candidates.formCandidateTypeLabel}</p>
         <div className="space-y-2">
           {POOL_TYPES.map((p) => (
             <label key={p.value}

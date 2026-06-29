@@ -187,7 +187,7 @@ export function TalentPoolTable({
                 </div>
                 <div className="flex-1 flex justify-end gap-1.5">
                   <button
-                    onClick={() => toast('Contacto iniciado')}
+                    onClick={() => toast(tp.contactStarted, { type: 'success' })}
                     className="text-[10px] text-[#DD0C15] bg-red-50 px-2 py-1 rounded font-medium"
                   >
                     {tp.contact}

@@ -81,7 +81,7 @@ export function CreateModal({ onConfirm, onClose, isPending }: CreateModalProps)
   const stepLabels = ['Informacion basica', 'Descripcion del cargo', 'Compensacion y ajustes'];
 
   return (
-    <Modal title="Crear nueva vacante" onClose={onClose} maxWidth="max-w-2xl">
+    <Modal title={t.vacancies.createNewVacancy} onClose={onClose} maxWidth="max-w-2xl">
       {/* Step indicator */}
       <div className="flex items-center gap-2 mb-6">
         {stepLabels.map((label, i) => (

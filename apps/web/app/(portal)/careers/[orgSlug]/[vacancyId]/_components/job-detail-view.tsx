@@ -6,6 +6,7 @@ import { trpc } from '../../../../../../lib/trpc';
 import { Skeleton } from '../../../../../../components';
 import { toast } from '../../../../../../lib/toast';
 import { ApplyModal } from './apply-modal';
+import { useI18n } from '../../../../../../lib/i18n';
 
 interface JobDetailViewProps {
   orgSlug: string;
@@ -42,6 +43,8 @@ function remoteLabel(p: string | null) {
 }
 
 export function JobDetailView({ orgSlug, vacancyId }: JobDetailViewProps) {
+  const { t } = useI18n();
+  const p = t.portal;
   const [search, setSearch] = useState('');
   const [showApply, setShowApply] = useState(false);
   const vacancy = trpc.portal.getVacancy.useQuery({ id: vacancyId });
@@ -74,8 +77,8 @@ export function JobDetailView({ orgSlug, vacancyId }: JobDetailViewProps) {
   if (!vacancy.data) {
     return (
       <div className="flex h-screen flex-col items-center justify-center gap-2 text-[#8B8B8B]">
-        <p className="text-sm">Vacante no encontrada</p>
-        <Link href={`/careers/${orgSlug}`} className="text-sm text-[#1F114C] hover:underline">Volver a vacantes</Link>
+        <p className="text-sm">{p.vacancyNotFound}</p>
+        <Link href={`/careers/${orgSlug}`} className="text-sm text-[#1F114C] hover:underline">{p.backToVacancies}</Link>
       </div>
     );
   }
@@ -94,7 +97,7 @@ export function JobDetailView({ orgSlug, vacancyId }: JobDetailViewProps) {
       <div className="flex h-14 shrink-0 items-center gap-3 border-b border-[#EDEDED] bg-white px-6">
         <Link href={`/careers/${orgSlug}`} className="flex items-center gap-2 text-[13px] font-medium text-[#585858] hover:text-[#1F114C]">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M10 12L6 8l4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-          Volver a vacantes
+          {p.backToVacancies}
         </Link>
         <span className="ml-auto text-[13px] font-bold tracking-tight text-[#1F114C]">TIMS ATS</span>
       </div>
@@ -107,7 +110,7 @@ export function JobDetailView({ orgSlug, vacancyId }: JobDetailViewProps) {
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar por titulo o palabra clave..."
+              placeholder={p.searchVacanciesPlaceholder}
               className="w-full rounded-lg border border-[#EDEDED] bg-white px-3 py-2 text-[13px] text-[#333] outline-none placeholder:text-[#8B8B8B] focus:border-[#1F114C]"
             />
           </div>
@@ -171,7 +174,7 @@ export function JobDetailView({ orgSlug, vacancyId }: JobDetailViewProps) {
               {salary && fmtSalary(salary) && <span className="rounded-md bg-[#F6F6F6] px-2.5 py-1 text-[12px] font-semibold text-[#1F114C]">{fmtSalary(salary)} / ano</span>}
             </div>
             <div className="flex items-center gap-3">
-              <button onClick={() => setShowApply(true)} className="h-11 rounded-lg bg-[#DD0C15] px-8 text-[14px] font-semibold text-white transition-colors hover:bg-[#c00b13]">Aplicar ahora</button>
+              <button onClick={() => setShowApply(true)} className="h-11 rounded-lg bg-[#DD0C15] px-8 text-[14px] font-semibold text-white transition-colors hover:bg-[#c00b13]">{p.applyNow}</button>
               <button onClick={() => toast('Guardado')} className="h-11 rounded-lg border border-[#1F114C] px-6 text-[14px] font-semibold text-[#1F114C] transition-colors hover:bg-[#F6F6F6]">Guardar</button>
             </div>
             {showApply && (
@@ -188,7 +191,7 @@ export function JobDetailView({ orgSlug, vacancyId }: JobDetailViewProps) {
           <div className="max-w-3xl space-y-8 px-8 py-6">
             {v.description && (
               <section>
-                <h2 className="mb-3 text-[16px] font-bold text-[#1F114C]">Sobre el puesto</h2>
+                <h2 className="mb-3 text-[16px] font-bold text-[#1F114C]">{p.aboutPosition}</h2>
                 <div className="text-[14px] leading-relaxed text-[#585858] whitespace-pre-wrap">{v.description}</div>
               </section>
             )}
@@ -230,7 +233,7 @@ export function JobDetailView({ orgSlug, vacancyId }: JobDetailViewProps) {
             </section>
 
             <section className="pb-12">
-              <h2 className="mb-3 text-[16px] font-bold text-[#1F114C]">Sobre la empresa</h2>
+              <h2 className="mb-3 text-[16px] font-bold text-[#1F114C]">{p.aboutCompany}</h2>
               <div className="mb-3 flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#1F114C] text-sm font-bold text-white">{companyInitial}</div>
                 <div>

@@ -4,6 +4,7 @@ import { useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createSupabaseBrowserClient } from '@tims/auth/client';
 import Link from 'next/link';
+import { useI18n } from '../../../lib/i18n';
 
 export default function LoginPage() {
   return (
@@ -14,6 +15,7 @@ export default function LoginPage() {
 }
 
 function LoginForm() {
+  const { t } = useI18n();
   const router = useRouter();
   const searchParams = useSearchParams();
   // Only accept same-origin relative paths (must start with a single '/', not
@@ -77,14 +79,14 @@ function LoginForm() {
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#1F114C] mb-4">
             <span className="text-white text-xl font-bold">T</span>
           </div>
-          <h1 className="text-2xl font-bold text-[#1F114C]">TIMS Platform</h1>
-          <p className="text-sm text-[#8B8B8B] mt-1">Gestion de Capital Humano</p>
+          <h1 className="text-2xl font-bold text-[#1F114C]">{t.auth.platformName}</h1>
+          <p className="text-sm text-[#8B8B8B] mt-1">{t.auth.humanCapitalMgmt}</p>
         </div>
 
         {/* Card */}
         <div className="bg-white rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.08)] p-8">
-          <h2 className="text-lg font-semibold text-[#1F114C] mb-1">Iniciar Sesion</h2>
-          <p className="text-[13px] text-[#8B8B8B] mb-6">Ingresa a tu cuenta para continuar</p>
+          <h2 className="text-lg font-semibold text-[#1F114C] mb-1">{t.auth.login}</h2>
+          <p className="text-[13px] text-[#8B8B8B] mb-6">{t.auth.loginSubtitle}</p>
 
           {/* SSO Buttons */}
           <div className="space-y-3 mb-6">
@@ -117,7 +119,7 @@ function LoginForm() {
           {/* Divider */}
           <div className="relative mb-6">
             <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-[#EDEDED]"></div></div>
-            <div className="relative flex justify-center"><span className="bg-white px-3 text-[12px] text-[#8B8B8B]">o con email</span></div>
+            <div className="relative flex justify-center"><span className="bg-white px-3 text-[12px] text-[#8B8B8B]">{t.auth.orWithEmail}</span></div>
           </div>
 
           {/* Form */}

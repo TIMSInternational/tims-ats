@@ -159,7 +159,7 @@ export function OverviewSection({ org }: OverviewProps) {
             </div>
             {sub.status === 'trialing' && sub.trialEndsAt && (
               <div>
-                <span className="text-xs text-[#8B8B8B]">Trial Vence</span>
+                <span className="text-xs text-[#8B8B8B]">{t.organizations.trialExpires}</span>
                 <div className={`text-sm mt-0.5 font-medium ${trialDateColor(sub.trialEndsAt)}`}>
                   {formatDate(sub.trialEndsAt)} ({trialDaysLeft} dias restantes)
                 </div>
@@ -167,7 +167,7 @@ export function OverviewSection({ org }: OverviewProps) {
             )}
             {sub.currentPeriodStart && (
               <div>
-                <span className="text-xs text-[#8B8B8B]">Periodo Actual</span>
+                <span className="text-xs text-[#8B8B8B]">{t.organizations.currentPeriod}</span>
                 <div className="text-sm text-[#585858] mt-0.5">
                   {formatDate(sub.currentPeriodStart)} - {formatDate(sub.currentPeriodEnd)}
                 </div>
@@ -199,9 +199,9 @@ export function OverviewSection({ org }: OverviewProps) {
 
       {/* Company hierarchy */}
       <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
-        <h3 className="text-sm font-semibold text-[#333] mb-4">Estructura Organizacional</h3>
+        <h3 className="text-sm font-semibold text-[#333] mb-4">{t.organizations.orgStructure}</h3>
         {org.companies.length === 0 ? (
-          <p className="text-xs text-[#8B8B8B]">No hay empresas configuradas</p>
+          <p className="text-xs text-[#8B8B8B]">{t.organizations.noCompaniesConfigured}</p>
         ) : (
           <div className="space-y-2">
             {org.companies.map((company) => {
@@ -248,7 +248,7 @@ export function OverviewSection({ org }: OverviewProps) {
       {org.billingProfile && (
         <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-[#333]">Perfil de Facturacion</h3>
+            <h3 className="text-sm font-semibold text-[#333]">{t.organizations.billingProfileLabel}</h3>
           </div>
           <div className="grid grid-cols-3 gap-4">
             <div>
@@ -256,11 +256,11 @@ export function OverviewSection({ org }: OverviewProps) {
               <p className="text-sm text-[#333] mt-0.5">{org.billingProfile.companyName || '\u2014'}</p>
             </div>
             <div>
-              <span className="text-xs text-[#8B8B8B]">NIT / Tax ID</span>
+              <span className="text-xs text-[#8B8B8B]">{t.organizations.nitTaxId}</span>
               <p className="text-sm text-[#333] mt-0.5">{org.billingProfile.taxId || '\u2014'}</p>
             </div>
             <div>
-              <span className="text-xs text-[#8B8B8B]">Email de Facturacion</span>
+              <span className="text-xs text-[#8B8B8B]">{t.organizations.billingEmailLabel}</span>
               <p className="text-sm text-[#333] mt-0.5">{org.billingProfile.billingEmail || '\u2014'}</p>
             </div>
           </div>

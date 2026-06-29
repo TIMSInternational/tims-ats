@@ -1,4 +1,9 @@
+'use client';
+
+import { useI18n } from '../../lib/i18n';
+
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
+  const { t } = useI18n();
   return (
     <div className="flex min-h-screen">
       {/* Left panel — brand + image */}
@@ -21,8 +26,8 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
           {/* Main caption */}
           <div>
             <h2 className="text-white text-[36px] font-bold leading-[1.15] mb-3 tracking-tight">
-              Gestion de Capital<br />Humano que impulsa<br />
-              <span className="text-white/60">el crecimiento</span>
+              {t.auth.humanCapitalMgmt}<br />{t.auth.humanDriving}<br />
+              <span className="text-white/60">{t.auth.growth}</span>
             </h2>
             <p className="text-white/45 text-[15px] leading-relaxed max-w-[420px] mb-8">
               Reclutamiento inteligente, evaluaciones predictivas y desarrollo de talento en una sola plataforma.
@@ -64,7 +69,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         </div>
         {/* Footer */}
         <div className="flex items-center justify-center gap-1.5 pb-6">
-          <span className="text-[11px] text-[#8B8B8B]">Powered by</span>
+          <span className="text-[11px] text-[#8B8B8B]">{t.auth.poweredBy}</span>
           <img src="/nexadev-logo.png" alt="NexaDev" className="h-[18px]" />
           <span className="text-[12px] font-medium text-[#585858]">NexaDev</span>
           <span className="text-[7px] text-[#8B8B8B] align-super -ml-0.5">TM</span>

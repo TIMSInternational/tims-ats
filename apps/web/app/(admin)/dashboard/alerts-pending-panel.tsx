@@ -53,7 +53,7 @@ export function AlertsPendingPanel() {
                   </p>
                 </div>
                 <button
-                  onClick={() => toast('Reenviar: proximamente', { type: 'info' })}
+                  onClick={() => toast(rd.resendComingSoon, { type: 'info' })}
                   className="text-xs text-[#DD0C15] hover:underline"
                 >
                   {rd.resend}
@@ -64,7 +64,7 @@ export function AlertsPendingPanel() {
               <span className="text-xs text-[#DD0C15]">+{tests.length - 3} {rd.more}</span>
             )}
             {tests.length === 0 && (
-              <p className="text-[11px] text-[#8B8B8B]">Sin pruebas pendientes</p>
+              <p className="text-[11px] text-[#8B8B8B]">{rd.noPendingTests}</p>
             )}
           </div>
 
@@ -85,7 +85,7 @@ export function AlertsPendingPanel() {
                     </p>
                   </div>
                   <button
-                    onClick={() => toast('Recordar: proximamente', { type: 'info' })}
+                    onClick={() => toast(rd.remindComingSoon, { type: 'info' })}
                     className="text-xs text-[#1F114C] hover:underline"
                   >
                     {rd.remind}
@@ -96,7 +96,7 @@ export function AlertsPendingPanel() {
                 <span className="text-xs text-[#DD0C15]">+{scorecards.length - 2} {rd.more}</span>
               )}
               {scorecards.length === 0 && (
-                <p className="text-[11px] text-[#8B8B8B]">Sin scorecards pendientes</p>
+                <p className="text-[11px] text-[#8B8B8B]">{rd.noPendingScorecards}</p>
               )}
             </div>
           </div>

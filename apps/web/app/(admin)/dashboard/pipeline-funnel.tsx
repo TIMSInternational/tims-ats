@@ -134,7 +134,7 @@ export function PipelineFunnel({ totalApplications }: PipelineFunnelProps) {
                   </button>
                 ))}
                 {vacancyList.length === 0 && (
-                  <p className="px-3 py-2 text-[11px] text-[#8B8B8B]">Sin vacantes publicadas</p>
+                  <p className="px-3 py-2 text-[11px] text-[#8B8B8B]">{rd.noVacanciesPublished}</p>
                 )}
               </div>
             )}

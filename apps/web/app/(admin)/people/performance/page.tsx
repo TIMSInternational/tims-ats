@@ -46,9 +46,9 @@ export default function PerformancePage() {
         </div>
         <div className="flex items-center gap-3">
           <select className="text-[12px] border border-[#EDEDED] rounded-lg px-3 py-1.5 text-[#585858] bg-white">
-            <option>Q2 2026</option>
-            <option>Q1 2026</option>
-            <option>Q4 2025</option>
+            <option>{t.performance.quarterQ2_2026}</option>
+            <option>{t.performance.quarterQ1_2026}</option>
+            <option>{t.performance.quarterQ4_2025}</option>
           </select>
           <select className="text-[12px] border border-[#EDEDED] rounded-lg px-3 py-1.5 text-[#585858] bg-white">
             <option>{t.performance.allTeams}</option>
@@ -56,10 +56,10 @@ export default function PerformancePage() {
             <option>Comercial</option>
             <option>Operaciones</option>
           </select>
-          <button onClick={() => toast('Exportar: proximamente', { type: 'info' })} className="text-[12px] border border-[#EDEDED] rounded-lg px-4 py-1.5 text-[#585858] hover:bg-gray-50 font-medium">
+          <button onClick={() => toast(t.performance.exportComingSoon, { type: 'info' })} className="text-[12px] border border-[#EDEDED] rounded-lg px-4 py-1.5 text-[#585858] hover:bg-gray-50 font-medium">
             {t.performance.export}
           </button>
-          <button onClick={() => toast('Crear: proximamente', { type: 'info' })} className="text-[12px] bg-[#DD0C15] text-white rounded-lg px-4 py-1.5 font-medium hover:bg-red-700">
+          <button onClick={() => toast(t.performance.createComingSoon, { type: 'info' })} className="text-[12px] bg-[#DD0C15] text-white rounded-lg px-4 py-1.5 font-medium hover:bg-red-700">
             {t.performance.newEvaluation}
           </button>
         </div>

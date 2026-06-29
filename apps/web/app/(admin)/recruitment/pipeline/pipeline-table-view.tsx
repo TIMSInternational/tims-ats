@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { CandidateAvatar, StatusBadge } from '../../../../components';
 import type { PipelineStageWithApps } from '../../../../lib/trpc-types';
+import { useI18n } from '../../../../lib/i18n';
 
 interface PipelineTableViewProps {
   stages: PipelineStageWithApps[];
@@ -80,6 +81,7 @@ function SortIcon({ active, dir }: { active: boolean; dir: SortDir }) {
 }
 
 export function PipelineTableView({ stages, onMove }: PipelineTableViewProps) {
+  const { t } = useI18n();
   const [sortKey, setSortKey] = useState<SortKey>('stage');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
 
@@ -224,7 +226,7 @@ export function PipelineTableView({ stages, onMove }: PipelineTableViewProps) {
               );
             })}
             {sorted.length === 0 && (
-              <tr><td colSpan={8} className="py-12 text-center text-[13px] text-[#8B8B8B]">No hay candidatos en este pipeline</td></tr>
+              <tr><td colSpan={8} className="py-12 text-center text-[13px] text-[#8B8B8B]">{t.pipeline.noCandidatesInPipeline}</td></tr>
             )}
           </tbody>
         </table>

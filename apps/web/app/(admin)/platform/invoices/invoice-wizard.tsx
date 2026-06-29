@@ -69,7 +69,7 @@ export function InvoiceWizard({ onClose, onSuccess, preselectedOrgId }: { onClos
 
   const nextNum = trpc.platform.getNextInvoiceNumber.useQuery();
   const createInvoice = trpc.platform.createInvoice.useMutation({
-    onSuccess: () => { toast('Factura creada exitosamente', { type: 'success' }); onSuccess(); },
+    onSuccess: () => { toast(t.invoices.created, { type: 'success' }); onSuccess(); },
     onError: (err) => { toast(err.message || 'Error al crear factura', { type: 'error' }); },
   });
 
@@ -153,7 +153,7 @@ export function InvoiceWizard({ onClose, onSuccess, preselectedOrgId }: { onClos
                 <button onClick={() => { setOrgId(''); setOrgSearch(''); setOrgName(''); }} className="text-xs text-[#1F114C] font-medium hover:underline">Cambiar</button>
               </div>}
               {orgSearch && !orgId && orgs.data && <div className="mt-1 bg-white border border-[#EDEDED] rounded-xl shadow-lg max-h-60 overflow-y-auto">
-                {orgs.data.organizations.length === 0 && <p className="px-4 py-3 text-sm text-[#8B8B8B]">Sin resultados</p>}
+                {orgs.data.organizations.length === 0 && <p className="px-4 py-3 text-sm text-[#8B8B8B]">{t.common.noResults}</p>}
                 {orgs.data.organizations.map((org) => (
                   <button key={org.id} type="button" onClick={() => selectOrg(org)} className="w-full text-left px-4 py-3 text-sm hover:bg-[#F6F6F6] transition flex items-center gap-3 border-b border-[#F6F6F6] last:border-0">
                     <div className="w-8 h-8 rounded-md bg-[#1F114C] flex items-center justify-center text-white text-[10px] font-bold">{org.name.slice(0, 2).toUpperCase()}</div>
@@ -167,7 +167,7 @@ export function InvoiceWizard({ onClose, onSuccess, preselectedOrgId }: { onClos
           {step === 1 && (
             <div>
               <h2 className="text-2xl font-semibold text-[#333] mb-2">{t.invoices.invoiceSetup}</h2>
-              <p className="text-sm text-[#8B8B8B] mb-6">Agrega los items y detalles de la factura.</p>
+              <p className="text-sm text-[#8B8B8B] mb-6">{t.invoices.setupDesc}</p>
               <div className="flex items-center gap-3 p-3 rounded-xl bg-[#F6F6F6] mb-6">
                 <div className="w-9 h-9 rounded-lg bg-[#1F114C] flex items-center justify-center text-white text-xs font-bold">{orgName.slice(0, 2).toUpperCase()}</div>
                 <div className="flex-1"><p className="text-sm font-semibold text-[#333]">{orgName}</p><p className="text-[11px] text-[#8B8B8B]">{orgEmail}</p></div>
@@ -182,7 +182,7 @@ export function InvoiceWizard({ onClose, onSuccess, preselectedOrgId }: { onClos
                 </div>
                 {lineItems.map((li, i) => (
                   <div key={i} className="grid grid-cols-[1fr_70px_100px_32px] gap-2 mb-2">
-                    <input type="text" value={li.description} onChange={(e) => updateLine(i, 'description', e.target.value)} placeholder="Descripcion del item..." className="h-10 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20" />
+                    <input type="text" value={li.description} onChange={(e) => updateLine(i, 'description', e.target.value)} placeholder={t.invoices.itemDescPlaceholder} className="h-10 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20" />
                     <input type="number" min="1" value={li.quantity} onChange={(e) => updateLine(i, 'quantity', parseInt(e.target.value) || 1)} className="h-10 px-2 rounded-lg border border-[#EDEDED] text-sm text-[#333] text-center focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20" />
                     <div className="relative">
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8B8B8B] text-sm">$</span>
@@ -214,7 +214,7 @@ export function InvoiceWizard({ onClose, onSuccess, preselectedOrgId }: { onClos
               </div>
               <div className="mt-4">
                 <label className="text-xs font-medium text-[#585858] mb-1 block">{t.invoices.memo}</label>
-                <textarea value={memo} onChange={(e) => setMemo(e.target.value)} rows={2} placeholder="Detalles adicionales para el cliente..." className="w-full px-3 py-2 rounded-lg border border-[#EDEDED] text-sm text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 resize-none" />
+                <textarea value={memo} onChange={(e) => setMemo(e.target.value)} rows={2} placeholder={t.invoices.memoPlaceholder} className="w-full px-3 py-2 rounded-lg border border-[#EDEDED] text-sm text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 resize-none" />
               </div>
             </div>
           )}
@@ -222,7 +222,7 @@ export function InvoiceWizard({ onClose, onSuccess, preselectedOrgId }: { onClos
           {step === 2 && (
             <div>
               <h2 className="text-2xl font-semibold text-[#333] mb-2">{t.invoices.invoiceDetails}</h2>
-              <p className="text-sm text-[#8B8B8B] mb-6">Numero de factura, fechas y referencia.</p>
+              <p className="text-sm text-[#8B8B8B] mb-6">{t.invoices.detailsDesc}</p>
               <div className="grid grid-cols-2 gap-4 mb-4">
                 <div><label className="text-xs font-medium text-[#585858] mb-1 block">{t.invoices.invoiceNumber}</label><input type="text" value={invNumber} readOnly className="w-full h-10 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#333] bg-[#F6F6F6] font-mono" /></div>
                 <div><label className="text-xs font-medium text-[#585858] mb-1 block">{t.invoices.poNumber}</label><input type="text" value={poNumber} onChange={(e) => setPoNumber(e.target.value)} placeholder="PO-12345" className="w-full h-10 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20" /></div>
@@ -234,10 +234,10 @@ export function InvoiceWizard({ onClose, onSuccess, preselectedOrgId }: { onClos
               <div className="mb-4">
                 <label className="text-xs font-medium text-[#585858] mb-1 block">{t.invoices.currency}</label>
                 <select value={currency} onChange={(e) => setCurrency(e.target.value)} className="w-full h-10 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#333] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20">
-                  <option value="USD">USD - Dolar americano</option><option value="COP">COP - Peso colombiano</option><option value="EUR">EUR - Euro</option><option value="MXN">MXN - Peso mexicano</option>
+                  <option value="USD">{t.invoices.currencyUsd}</option><option value="COP">{t.invoices.currencyCop}</option><option value="EUR">{t.invoices.currencyEur}</option><option value="MXN">{t.invoices.currencyMxn}</option>
                 </select>
               </div>
-              <div><label className="text-xs font-medium text-[#585858] mb-1 block">{t.invoices.internalNote}</label><textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Solo visible para el equipo..." className="w-full px-3 py-2 rounded-lg border border-[#EDEDED] text-sm text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 resize-none" /></div>
+              <div><label className="text-xs font-medium text-[#585858] mb-1 block">{t.invoices.internalNote}</label><textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder={t.invoices.internalNotePlaceholder} className="w-full px-3 py-2 rounded-lg border border-[#EDEDED] text-sm text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 resize-none" /></div>
             </div>
           )}
 

@@ -1,6 +1,7 @@
 'use client';
 
 import { formatCurrency, formatDate } from '../../../../../lib/format-utils';
+import { useI18n } from '../../../../../lib/i18n';
 
 interface OfferLetterProps {
   offer: {
@@ -23,6 +24,7 @@ export function OfferLetter({
   companyName = 'TIMS International',
   hrDirector = 'Director de Recursos Humanos',
 }: OfferLetterProps) {
+  const { t } = useI18n();
   const benefits = offer.benefits ? Object.values(offer.benefits) : [];
   const terms = offer.terms as Record<string, string> | null;
   const candidateName = `${offer.candidate.firstName} ${offer.candidate.lastName}`;
@@ -42,7 +44,7 @@ export function OfferLetter({
             </p>
           </div>
           <div className="text-right text-[11px] text-[#8B8B8B] font-sans leading-snug">
-            <p>Bogota, Colombia</p>
+            <p>{t.offers.cityCountry}</p>
             <p>info@timsinternational.com</p>
             <p>www.timsinternational.com</p>
           </div>
@@ -84,12 +86,12 @@ export function OfferLetter({
               </tr>
             )}
             <tr className="border-b border-[#F6F6F6]">
-              <td className="py-2 text-[#8B8B8B] font-sans">Fecha de inicio</td>
+              <td className="py-2 text-[#8B8B8B] font-sans">{t.offers.startDateLabel}</td>
               <td className="py-2">{offer.startDate ? formatDate(offer.startDate) : 'Por confirmar'}</td>
             </tr>
             {terms?.reportingTo && (
               <tr className="border-b border-[#F6F6F6]">
-                <td className="py-2 text-[#8B8B8B] font-sans">Reporta a</td>
+                <td className="py-2 text-[#8B8B8B] font-sans">{t.offers.reportingTo}</td>
                 <td className="py-2">{terms.reportingTo}</td>
               </tr>
             )}
@@ -105,7 +107,7 @@ export function OfferLetter({
         <table className="text-[13px] w-full">
           <tbody>
             <tr className="border-b border-[#F6F6F6]">
-              <td className="py-2 text-[#8B8B8B] w-40 font-sans">Salario base anual</td>
+              <td className="py-2 text-[#8B8B8B] w-40 font-sans">{t.offers.annualBaseSalary}</td>
               <td className="py-2 font-semibold text-[#1F114C]">
                 {formatCurrency(offer.salary, offer.currency)}
               </td>
@@ -150,7 +152,7 @@ export function OfferLetter({
         <table className="text-[13px] w-full">
           <tbody>
             <tr className="border-b border-[#F6F6F6]">
-              <td className="py-2 text-[#8B8B8B] w-40 font-sans">Tipo de contrato</td>
+              <td className="py-2 text-[#8B8B8B] w-40 font-sans">{t.offers.contractTypeLabel}</td>
               <td className="py-2">{offer.contractType || 'Termino indefinido'}</td>
             </tr>
             <tr className="border-b border-[#F6F6F6]">
@@ -200,7 +202,7 @@ export function OfferLetter({
         <div className="flex items-end gap-12">
           <div>
             <div className="w-52 border-b border-[#1a1a1a] mb-2" />
-            <p className="text-[12px] text-[#8B8B8B]">Firma del candidato</p>
+            <p className="text-[12px] text-[#8B8B8B]">{t.offers.candidateSignature}</p>
           </div>
           <div>
             <div className="w-36 border-b border-[#1a1a1a] mb-2" />

@@ -14,7 +14,7 @@ export function CreateOrgModal({ onClose, onSuccess }: { onClose: () => void; on
 
   const createOrg = trpc.platform.createOrganization.useMutation({
     onSuccess: () => {
-      toast('Organizacion creada exitosamente', { type: 'success' });
+      toast(t.organizations.created, { type: 'success' });
       onSuccess();
     },
     onError: (err) => { toast(err.message || 'Error al crear organizacion', { type: 'error' }); },
@@ -42,7 +42,7 @@ export function CreateOrgModal({ onClose, onSuccess }: { onClose: () => void; on
         </div>
         <form onSubmit={handleCreate} className="space-y-4">
           <div>
-            <label className="block text-xs font-medium text-[#585858] mb-1.5">Nombre de la Organizacion</label>
+            <label className="block text-xs font-medium text-[#585858] mb-1.5">{t.organizations.orgNameLabel}</label>
             <input
               type="text"
               required
@@ -51,7 +51,7 @@ export function CreateOrgModal({ onClose, onSuccess }: { onClose: () => void; on
                 setFormName(e.target.value);
                 setFormSlug(e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''));
               }}
-              placeholder="Ej: Constructora Bolivar"
+              placeholder={t.organizations.orgNamePlaceholder}
               className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm focus:outline-none focus:border-[#1F114C]"
             />
           </div>
@@ -80,7 +80,7 @@ export function CreateOrgModal({ onClose, onSuccess }: { onClose: () => void; on
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-[#585858] mb-1.5">Email del Administrador</label>
+            <label className="block text-xs font-medium text-[#585858] mb-1.5">{t.organizations.adminEmailLabel}</label>
             <input
               type="email"
               required

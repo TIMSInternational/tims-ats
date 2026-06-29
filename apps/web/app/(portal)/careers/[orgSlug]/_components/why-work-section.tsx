@@ -1,3 +1,7 @@
+'use client';
+
+import { useI18n } from '../../../../../lib/i18n';
+
 const values = [
   {
     title: 'Evaluacion Cientifica',
@@ -48,10 +52,11 @@ const values = [
 ];
 
 export function WhyWorkSection() {
+  const { t } = useI18n();
   return (
     <section className="bg-[#F6F6F6] px-8 py-10">
       <div className="mx-auto max-w-5xl text-center">
-        <h2 className="text-[20px] font-bold text-[#1F114C]">Por que trabajar con nosotros</h2>
+        <h2 className="text-[20px] font-bold text-[#1F114C]">{t.portal.whyWorkTitle}</h2>
         <p className="mx-auto mt-2 max-w-lg text-[13px] text-[#585858]">
           Nuestra plataforma conecta talento con las mejores oportunidades a traves de un proceso moderno y eficiente.
         </p>

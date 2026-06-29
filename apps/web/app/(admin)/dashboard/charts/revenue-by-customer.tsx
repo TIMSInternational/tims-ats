@@ -12,6 +12,7 @@ import {
 } from 'recharts';
 import { trpc } from '../../../../lib/trpc';
 import { formatCurrency, PLAN_COLORS, PLAN_LABELS, Skeleton } from '../dashboard-utils';
+import { useI18n } from '../../../../lib/i18n';
 
 interface RevenueTooltipProps {
   active?: boolean;
@@ -42,6 +43,7 @@ function RevenueTooltip({ active, payload }: RevenueTooltipProps) {
 }
 
 export function RevenueByCustomerChart() {
+  const { t } = useI18n();
   const router = useRouter();
   const { data, isLoading } = trpc.platform.getRevenueByCustomer.useQuery();
 
@@ -52,8 +54,8 @@ export function RevenueByCustomerChart() {
     <div className="rounded-xl border border-border bg-white p-5 flex flex-col">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h3 className="text-sm font-semibold text-primary">Revenue by Customer</h3>
-          <p className="text-xs text-muted">Top paying customers by MRR</p>
+          <h3 className="text-sm font-semibold text-primary">{t.dashboard.revenueByCustomer}</h3>
+          <p className="text-xs text-muted">{t.dashboard.topPayingCustomers}</p>
         </div>
         <span className="text-xs text-muted">{chartData.length} customers</span>
       </div>

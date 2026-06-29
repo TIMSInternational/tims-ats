@@ -1,6 +1,7 @@
 'use client';
 
 import { OfferLetter } from './offer-letter';
+import { useI18n } from '../../../../../lib/i18n';
 
 interface OfferLetterModalProps {
   offer: {
@@ -18,6 +19,7 @@ interface OfferLetterModalProps {
 }
 
 export function OfferLetterModal({ offer, onClose }: OfferLetterModalProps) {
+  const { t } = useI18n();
   const handlePrint = () => window.print();
 
   const handleDownloadPdf = () => {
@@ -28,7 +30,7 @@ export function OfferLetterModal({ offer, onClose }: OfferLetterModalProps) {
     <div className="fixed inset-0 z-50 flex flex-col bg-[#F6F6F6]">
       {/* Toolbar - hidden when printing */}
       <div className="print:hidden flex items-center justify-between px-6 py-3 bg-white border-b border-[#EDEDED] shadow-sm">
-        <h2 className="text-[15px] font-semibold text-[#1F114C]">Vista previa de la oferta</h2>
+        <h2 className="text-[15px] font-semibold text-[#1F114C]">{t.offers.offerPreview}</h2>
         <div className="flex items-center gap-3">
           <button
             onClick={handlePrint}

@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { CandidateAvatar } from '../../../../components';
+import { useI18n } from '../../../../lib/i18n';
 
 interface KanbanCardProps {
   application: {
@@ -71,6 +72,7 @@ function deriveFitScore(appId: string): number {
 }
 
 export function KanbanCard({ application: app, isDragging, slaHours }: KanbanCardProps) {
+  const { t } = useI18n();
   const candidate = app.candidate;
   const fitScore = deriveFitScore(app.id);
   const days = daysAgo(app.appliedAt);
@@ -127,12 +129,12 @@ export function KanbanCard({ application: app, isDragging, slaHours }: KanbanCar
 
       {isOverdue && (
         <div className="mt-1.5 pt-1.5 border-t border-[#F0F0F0]">
-          <p className="text-[10px] text-teal-600 italic">IA: Revisar urgente — SLA vencido</p>
+          <p className="text-[10px] text-teal-600 italic">{t.pipeline.iaReviewUrgent}</p>
         </div>
       )}
       {!isOverdue && fitScore >= 80 && (
         <div className="mt-1.5 pt-1.5 border-t border-[#F0F0F0]">
-          <p className="text-[10px] text-teal-600 italic">IA: Avanzar — alto FIT score</p>
+          <p className="text-[10px] text-teal-600 italic">{t.pipeline.iaAdvanceHighFit}</p>
         </div>
       )}
     </div>

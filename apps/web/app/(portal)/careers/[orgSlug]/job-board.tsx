@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { Skeleton } from '../../../../components';
+import { useI18n } from '../../../../lib/i18n';
 import { PortalNav } from './_components/portal-nav';
 import { PortalHero } from './_components/portal-hero';
 import { VacancyCard } from './_components/vacancy-card';
@@ -25,6 +26,7 @@ const CATEGORIES = [
 ];
 
 export function JobBoard({ organizationId, orgName, orgSlug }: JobBoardProps) {
+  const { t } = useI18n();
   const [search, setSearch] = useState('');
   const [location, setLocation] = useState('');
   const [appliedSearch, setAppliedSearch] = useState('');
@@ -68,8 +70,8 @@ export function JobBoard({ organizationId, orgName, orgSlug }: JobBoardProps) {
       <section id="vacantes" className="mx-auto max-w-6xl px-6 py-10">
         <div className="mb-6 flex items-center justify-between">
           <div>
-            <h2 className="text-[22px] font-bold text-[#1F114C]">Vacantes Destacadas</h2>
-            <p className="mt-1 text-[13px] text-[#585858]">Posiciones con alta demanda que podrian interesarte</p>
+            <h2 className="text-[22px] font-bold text-[#1F114C]">{t.portal.featuredVacancies}</h2>
+            <p className="mt-1 text-[13px] text-[#585858]">{t.portal.featuredVacanciesSubtitle}</p>
           </div>
           {allItems.length > 3 && (
             <a href="#todas" className="text-[13px] font-medium text-[#DD0C15] hover:underline">
@@ -92,7 +94,7 @@ export function JobBoard({ organizationId, orgName, orgSlug }: JobBoardProps) {
         ) : featured.length === 0 ? (
           <div className="py-16 text-center">
             <svg className="mx-auto mb-3 h-12 w-12 text-[#EDEDED]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2" /><path d="M16 7V5a4 4 0 00-8 0v2" /></svg>
-            <p className="text-sm text-[#8B8B8B]">No hay vacantes disponibles en este momento</p>
+            <p className="text-sm text-[#8B8B8B]">{t.portal.noVacanciesAvailable}</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
@@ -110,7 +112,7 @@ export function JobBoard({ organizationId, orgName, orgSlug }: JobBoardProps) {
 
       {/* Browse by Area */}
       <section className="mx-auto max-w-6xl px-6 py-10">
-        <h2 className="mb-6 text-[22px] font-bold text-[#1F114C]">Explorar por Area</h2>
+        <h2 className="mb-6 text-[22px] font-bold text-[#1F114C]">{t.portal.exploreByArea}</h2>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           {CATEGORIES.map((cat) => (
             <button

@@ -29,9 +29,9 @@ export function AiSection({ organizationId }: { organizationId: string }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-[#333]">Agentes de IA</h3>
+        <h3 className="text-sm font-semibold text-[#333]">{t.aiAgents.title}</h3>
         <Link href="/platform/ai-agents" className="text-xs text-[#1F114C] hover:underline font-medium flex items-center gap-1">
-          Gestionar Agentes de IA
+          {t.aiAgents.manageAgents}
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" /></svg>
         </Link>
       </div>
@@ -53,9 +53,9 @@ export function AiSection({ organizationId }: { organizationId: string }) {
           <svg className="w-12 h-12 text-[#EDEDED] mx-auto mb-3" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
             <path d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19 14.5M14.25 3.104c.251.023.501.05.75.082M19 14.5l-2.47 2.47a3.167 3.167 0 01-4.474-.001L9.584 14.5m4.916 0H9.584m4.916 0v4.25A2.25 2.25 0 0112.25 21h-.5A2.25 2.25 0 019.5 18.75V14.5" />
           </svg>
-          <p className="text-sm text-[#8B8B8B]">No hay agentes de IA configurados para esta organizacion</p>
+          <p className="text-sm text-[#8B8B8B]">{t.aiAgents.noAgentsForOrg}</p>
           <Link href="/platform/ai-agents" className="text-xs text-[#1F114C] hover:underline font-medium mt-2 inline-block">
-            Configurar Agentes
+            {t.aiAgents.configureAgents}
           </Link>
         </div>
       ) : (
@@ -63,11 +63,11 @@ export function AiSection({ organizationId }: { organizationId: string }) {
           <div className="overflow-x-auto"><table className="w-full min-w-[560px] text-left">
             <thead>
               <tr className="border-b border-[#EDEDED]">
-                <th className="px-5 py-3 text-[11px] font-semibold text-[#8B8B8B] uppercase tracking-wider">Agente</th>
-                <th className="px-4 py-3 text-[11px] font-semibold text-[#8B8B8B] uppercase tracking-wider">Categoria</th>
-                <th className="px-4 py-3 text-[11px] font-semibold text-[#8B8B8B] uppercase tracking-wider">Modelo</th>
-                <th className="px-4 py-3 text-[11px] font-semibold text-[#8B8B8B] uppercase tracking-wider">Estado</th>
-                <th className="px-4 py-3 text-[11px] font-semibold text-[#8B8B8B] uppercase tracking-wider">Presupuesto Mensual</th>
+                <th className="px-5 py-3 text-[11px] font-semibold text-[#8B8B8B] uppercase tracking-wider">{t.aiAgents.colAgent}</th>
+                <th className="px-4 py-3 text-[11px] font-semibold text-[#8B8B8B] uppercase tracking-wider">{t.aiAgents.descriptionLabel}</th>
+                <th className="px-4 py-3 text-[11px] font-semibold text-[#8B8B8B] uppercase tracking-wider">{t.aiAgents.modelLabel}</th>
+                <th className="px-4 py-3 text-[11px] font-semibold text-[#8B8B8B] uppercase tracking-wider">{t.aiAgents.statusLabel}</th>
+                <th className="px-4 py-3 text-[11px] font-semibold text-[#8B8B8B] uppercase tracking-wider">{t.aiAgents.monthlyBudget}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#F3F3F3]">
@@ -94,7 +94,7 @@ export function AiSection({ organizationId }: { organizationId: string }) {
                     <td className="px-4 py-3">
                       <span className="flex items-center gap-1.5 text-[12px] text-[#585858]">
                         <span className={`w-2 h-2 rounded-full ${cfg.enabled ? 'bg-green-500' : 'bg-gray-400'}`} />
-                        {cfg.enabled ? 'Activo' : 'Inactivo'}
+                        {cfg.enabled ? t.aiAgents.statusActive : t.users.statusInactive}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-sm text-[#333] font-medium">

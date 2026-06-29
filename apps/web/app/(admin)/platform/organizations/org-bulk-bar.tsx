@@ -65,7 +65,7 @@ export function OrgBulkBar({ selectedIds, organizations, onDeselectAll }: OrgBul
     a.download = `organizaciones-seleccionadas-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-    toast('CSV exportado', { type: 'success' });
+    toast(t.organizations.csvExported, { type: 'success' });
   };
 
   return (

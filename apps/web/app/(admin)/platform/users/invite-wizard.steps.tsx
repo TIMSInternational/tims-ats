@@ -13,14 +13,15 @@ interface BulkMapStepProps {
 }
 
 export function BulkMapStep({ rawHeaders, rawRows, colMap, setColMap, setBulkStep, onConfirm }: BulkMapStepProps) {
+  const { t } = useI18n();
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 mb-2">
         <button onClick={() => setBulkStep('upload')} className="text-xs text-[#1F114C] hover:underline">&larr; Volver</button>
-        <h3 className="text-sm font-semibold text-[#333]">Mapear Columnas</h3>
+        <h3 className="text-sm font-semibold text-[#333]">{t.users.mapColumns}</h3>
         <span className="text-xs text-[#8B8B8B]">{rawRows.length} filas detectadas</span>
       </div>
-      <p className="text-xs text-[#8B8B8B]">Asigna cada columna de tu archivo al campo correspondiente.</p>
+      <p className="text-xs text-[#8B8B8B]">{t.users.mapColumnsDesc}</p>
       <div className="grid grid-cols-2 gap-3">
         {['email', 'firstName', 'lastName', 'role'].map((field) => (
           <div key={field}>
@@ -42,7 +43,7 @@ export function BulkMapStep({ rawHeaders, rawRows, colMap, setColMap, setBulkSte
       </div>
       {rawRows.length > 0 && (
         <div className="bg-[#F6F6F6] rounded-lg p-3 overflow-x-auto">
-          <p className="text-[10px] font-semibold text-[#8B8B8B] mb-2">Vista previa (primeras 3 filas)</p>
+          <p className="text-[10px] font-semibold text-[#8B8B8B] mb-2">{t.users.previewFirst3}</p>
           <table className="text-xs w-full">
             <thead><tr className="border-b border-[#EDEDED]">{rawHeaders.map(h => <th key={h} className="px-2 py-1 text-left text-[#8B8B8B] font-medium">{h}</th>)}</tr></thead>
             <tbody>{rawRows.slice(0, 3).map((row, i) => <tr key={i} className="border-b border-[#EDEDED]">{row.map((c, j) => <td key={j} className="px-2 py-1 text-[#585858]">{c}</td>)}</tr>)}</tbody>
@@ -66,12 +67,13 @@ interface BulkPreviewStepProps {
 }
 
 export function BulkPreviewStep({ parsedUsers, bulkOrgId, isPending, setBulkStep, onSubmit }: BulkPreviewStepProps) {
+  const { t } = useI18n();
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <button onClick={() => setBulkStep('map')} className="text-xs text-[#1F114C] hover:underline">&larr; Volver</button>
-          <h3 className="text-sm font-semibold text-[#333]">Confirmar Importacion</h3>
+          <h3 className="text-sm font-semibold text-[#333]">{t.users.confirmImport}</h3>
         </div>
         <span className="text-xs font-medium text-[#1F114C] bg-[#1F114C]/10 px-2 py-1 rounded">{parsedUsers.length} usuarios validos</span>
       </div>
@@ -113,7 +115,7 @@ export function BulkResultStep({ bulkResult, onSuccess }: BulkResultStepProps) {
   return (
     <div className="space-y-4 text-center py-4">
       <svg className="w-14 h-14 mx-auto text-green-500" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-      <h3 className="text-lg font-semibold text-[#333]">Importacion Completa</h3>
+      <h3 className="text-lg font-semibold text-[#333]">{t.users.importComplete}</h3>
       <div className="grid grid-cols-3 gap-3">
         <div className="bg-green-50 rounded-lg p-3">
           <p className="text-2xl font-bold text-green-600">{bulkResult.sent}</p>

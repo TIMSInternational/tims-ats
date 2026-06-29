@@ -105,10 +105,10 @@ export default function OnboardingPage() {
           <span className="text-sm font-medium text-[#1F114C]">{t.onboarding.title} Dashboard</span>
         </div>
         <div className="flex items-center gap-3">
-          <button onClick={() => toast('Exportar: proximamente', { type: 'info' })} className="flex items-center gap-1.5 border border-[#EDEDED] text-[#585858] px-3 h-8 rounded-lg text-[12px] hover:bg-[#F6F6F6] transition">
-            <ExportIcon />Exportar
+          <button onClick={() => toast(`${t.common.export}: ${t.common.comingSoon}`, { type: 'info' })} className="flex items-center gap-1.5 border border-[#EDEDED] text-[#585858] px-3 h-8 rounded-lg text-[12px] hover:bg-[#F6F6F6] transition">
+            <ExportIcon />{t.common.export}
           </button>
-          <button onClick={() => toast('Crear: proximamente', { type: 'info' })} className="flex items-center gap-1.5 bg-[#DD0C15] text-white px-4 h-8 rounded-lg text-[12px] font-medium hover:bg-[#c40b13] transition">
+          <button onClick={() => toast(`${t.common.create}: ${t.common.comingSoon}`, { type: 'info' })} className="flex items-center gap-1.5 bg-[#DD0C15] text-white px-4 h-8 rounded-lg text-[12px] font-medium hover:bg-[#c40b13] transition">
             <PlusIcon />Nuevo Onboarding
           </button>
         </div>
@@ -185,22 +185,22 @@ export default function OnboardingPage() {
         {/* Row 3: Check-in Calendar + Learning Route */}
         <div className="flex flex-col md:flex-row gap-4">
           <div className="w-full md:flex-1 bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-            <h3 className="text-[14px] font-semibold text-[#1F114C] mb-3">Calendario de Check-ins</h3>
+            <h3 className="text-[14px] font-semibold text-[#1F114C] mb-3">{t.onboarding.checkinCalendar}</h3>
             <div className="overflow-x-auto rounded-lg border border-[#EDEDED]">
               <table className="w-full min-w-[420px] text-[11px]">
                 <thead>
                   <tr className="bg-[#FAFAFA]">
                     <th className="py-2 px-3 text-left text-[#585858] font-medium">Colaborador</th>
-                    <th className="py-2 px-3 text-center text-[#585858] font-medium">Dia 1</th>
-                    <th className="py-2 px-3 text-center text-[#585858] font-medium">Sem 1</th>
-                    <th className="py-2 px-3 text-center text-[#585858] font-medium">Dia 30</th>
-                    <th className="py-2 px-3 text-center text-[#585858] font-medium">Dia 60</th>
-                    <th className="py-2 px-3 text-center text-[#585858] font-medium">Dia 90</th>
+                    <th className="py-2 px-3 text-center text-[#585858] font-medium">{t.onboarding.day1}</th>
+                    <th className="py-2 px-3 text-center text-[#585858] font-medium">{t.onboarding.week1}</th>
+                    <th className="py-2 px-3 text-center text-[#585858] font-medium">{t.onboarding.day30}</th>
+                    <th className="py-2 px-3 text-center text-[#585858] font-medium">{t.onboarding.day60}</th>
+                    <th className="py-2 px-3 text-center text-[#585858] font-medium">{t.onboarding.day90}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {items.length === 0 && !plans.isLoading && (
-                    <tr><td colSpan={6} className="py-8 text-center text-[12px] text-[#8B8B8B]">Sin datos de check-in</td></tr>
+                    <tr><td colSpan={6} className="py-8 text-center text-[12px] text-[#8B8B8B]">{t.onboarding.noCheckinData}</td></tr>
                   )}
                   {items.map((plan, idx) => {
                     const day = Math.max(0, Math.floor((Date.now() - new Date(plan.startDate).getTime()) / 86400000));

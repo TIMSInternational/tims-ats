@@ -14,7 +14,7 @@ export function InviteUserModal({ onClose, onSuccess, preselectedOrgId, preselec
 
   const orgs = trpc.platform.listOrganizations.useQuery({ search: orgSearch || undefined, limit: 10, page: 0 });
   const create = trpc.platform.createUserInvitation.useMutation({
-    onSuccess: () => { toast('Invitacion de usuario enviada', { type: 'success' }); onSuccess(); },
+    onSuccess: () => { toast(t.invitations.userInvitationSent, { type: 'success' }); onSuccess(); },
     onError: (err) => { toast(err.message || 'Error al crear invitacion', { type: 'error' }); },
   });
 

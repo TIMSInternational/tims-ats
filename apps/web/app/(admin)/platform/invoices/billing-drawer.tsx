@@ -10,7 +10,7 @@ export function BillingProfileDrawer({ organizationId, onClose }: { organization
   const { t } = useI18n();
   const profile = trpc.platform.getBillingProfile.useQuery({ organizationId });
   const upsert = trpc.platform.upsertBillingProfile.useMutation({
-    onSuccess: () => { toast('Perfil de facturacion actualizado', { type: 'success' }); onClose(); },
+    onSuccess: () => { toast(t.invoices.billingProfileUpdated, { type: 'success' }); onClose(); },
     onError: (err) => { toast(err.message || 'Error al actualizar perfil de facturacion', { type: 'error' }); },
   });
   const [form, setForm] = useState({ companyName: '', taxId: '', address: '', city: '', state: '', country: '', zipCode: '', billingEmail: '', billingPhone: '' });

@@ -52,7 +52,7 @@ export function ActivitySection({ organizationId }: { organizationId: string }) 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-[#333]">Actividad Reciente</h3>
+        <h3 className="text-sm font-semibold text-[#333]">{t.organizations.orgRecentActivity}</h3>
         <Link href="/platform/audit" className="text-xs text-[#1F114C] hover:underline font-medium flex items-center gap-1">
           Ver Auditoria Completa
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" /></svg>
@@ -77,7 +77,7 @@ export function ActivitySection({ organizationId }: { organizationId: string }) 
           <svg className="w-10 h-10 text-[#EDEDED] mx-auto mb-2" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
             <path d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
           </svg>
-          <p className="text-sm text-[#8B8B8B]">No hay actividad reciente para esta organizacion</p>
+          <p className="text-sm text-[#8B8B8B]">{t.organizations.orgNoRecentActivity}</p>
         </div>
       ) : (
         <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] overflow-hidden">

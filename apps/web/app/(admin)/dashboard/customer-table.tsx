@@ -3,6 +3,7 @@
 import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { trpc } from '../../../lib/trpc';
+import { useI18n } from '../../../lib/i18n';
 import {
   formatCurrency,
   timeAgo,
@@ -24,6 +25,7 @@ const COLUMNS: { key: SortKey; label: string; className: string }[] = [
 ];
 
 export function CustomerTable() {
+  const { t } = useI18n();
   const router = useRouter();
   const { data, isLoading } = trpc.platform.getRevenueByCustomer.useQuery();
   const { data: healthData } = trpc.platform.getCustomerHealth.useQuery();
@@ -84,7 +86,7 @@ export function CustomerTable() {
     <div className="rounded-xl border border-border bg-white overflow-hidden">
       <div className="px-5 py-4 border-b border-border">
         <h3 className="text-sm font-semibold text-primary">Customers</h3>
-        <p className="text-xs text-muted">Click a row to view organization details</p>
+        <p className="text-xs text-muted">{t.dashboard.clickRowToView}</p>
       </div>
 
       {isLoading ? (

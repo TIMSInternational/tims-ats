@@ -2,6 +2,7 @@
 
 import { trpc } from '../../../lib/trpc';
 import { timeAgo, Skeleton } from './dashboard-utils';
+import { useI18n } from '../../../lib/i18n';
 
 const ACTIVITY_ICONS: Record<string, { icon: string; color: string }> = {
   org_created: { icon: '\u{1F3E2}', color: 'bg-emerald-100' },
@@ -36,6 +37,7 @@ function ServiceDot({ status, label, latency }: { status: string; label: string;
 }
 
 export function ActivityFeed() {
+  const { t } = useI18n();
   const { data: activity, isLoading: actLoading } = trpc.platform.getRecentActivity.useQuery();
   const { data: health, isLoading: healthLoading } = trpc.platform.getSystemHealth.useQuery();
 
@@ -44,8 +46,8 @@ export function ActivityFeed() {
       {/* Recent Activity */}
       <div className="rounded-xl border border-border bg-white p-5 flex flex-col">
         <div className="mb-4">
-          <h3 className="text-sm font-semibold text-primary">Recent Activity</h3>
-          <p className="text-xs text-muted">Latest platform events</p>
+          <h3 className="text-sm font-semibold text-primary">{t.dashboard.recentActivity}</h3>
+          <p className="text-xs text-muted">{t.dashboard.latestPlatformEvents}</p>
         </div>
 
         {actLoading ? (
@@ -77,7 +79,7 @@ export function ActivityFeed() {
               </div>
             ))}
             {(!activity || activity.length === 0) && (
-              <p className="text-xs text-muted py-6 text-center">No recent activity</p>
+              <p className="text-xs text-muted py-6 text-center">{t.dashboard.noRecentActivity}</p>
             )}
           </div>
         )}
@@ -87,8 +89,8 @@ export function ActivityFeed() {
       <div className="rounded-xl border border-border bg-white p-5 flex flex-col">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h3 className="text-sm font-semibold text-primary">System Status</h3>
-            <p className="text-xs text-muted">Service health overview</p>
+            <h3 className="text-sm font-semibold text-primary">{t.dashboard.systemStatus}</h3>
+            <p className="text-xs text-muted">{t.dashboard.serviceHealthOverview}</p>
           </div>
           {health && (
             <span
@@ -125,7 +127,7 @@ export function ActivityFeed() {
               );
             })}
             {health?.services.length === 0 && (
-              <p className="text-xs text-muted py-6 text-center">No services found</p>
+              <p className="text-xs text-muted py-6 text-center">{t.dashboard.noServicesFound}</p>
             )}
           </div>
         )}
@@ -135,11 +137,11 @@ export function ActivityFeed() {
           <div className="mt-auto pt-3 border-t border-border grid grid-cols-2 gap-2">
             <div className="text-center">
               <p className="text-lg font-bold text-primary">{health.stats.loginsToday}</p>
-              <p className="text-[10px] text-muted">Logins today</p>
+              <p className="text-[10px] text-muted">{t.dashboard.loginsToday}</p>
             </div>
             <div className="text-center">
               <p className="text-lg font-bold text-primary">{health.stats.auditLogsToday}</p>
-              <p className="text-[10px] text-muted">Events today</p>
+              <p className="text-[10px] text-muted">{t.dashboard.eventsToday}</p>
             </div>
           </div>
         )}
