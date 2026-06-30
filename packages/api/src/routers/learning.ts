@@ -4,6 +4,7 @@ import { router, permissionProcedure } from '../trpc';
 import { tenantDb as db } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { scopeWhereFor, assertScoped, assertSubjectInScope, requireOrgScope } from '../access';
+import { mergeAvgProgress } from './learning-progress';
 
 // Courses + learning paths are an ORG-LEVEL catalog — deliberately unscoped
 // (people scoping applies to enrollments/certificates, the user-anchored rows).
@@ -50,7 +51,13 @@ export const learningRouter = router({
         db.course.count({ where }),
       ]);
 
-      return { courses, total, page, pageSize };
+      const progressRows = await db.enrollment.groupBy({
+        by: ['courseId'],
+        where: { organizationId: ctx.user.organizationId, courseId: { in: courses.map((c) => c.id) } },
+        _avg: { progress: true },
+      });
+      const withProgress = mergeAvgProgress(courses, progressRows);
+      return { courses: withProgress, total, page, pageSize };
     }),
 
   getCourseById: permissionProcedure('learning', 'read')

@@ -59,27 +59,30 @@ Detail for each lives in its wave/spec doc; this is the scannable status roll-up
 | TIMS/product | **Per-org `AiAgentOrgConfig` budgets** — a fail-closed $25/mo cap applies until set (AI silently stops at the cap). |
 | TIMS/product | **ai-voice-interview activation** per org (platform admin → AI Agents → Orgs: enable + `billableUsdPerMinute`/`addonMonthlyFeeUsd`/caps). |
 
-### Tier 1 — Last-mile UI wiring (backends EXIST; primary buttons are `toast('próximamente')`)
-Highest value-per-effort: the mutations are real, no UI invokes them. Wire the action UI for:
-- **Succession** — Add Successor / Export (`addSuccessor`/`addCriticalRole` exist).
-- **Engagement** — Launch Survey (create flow; survey-TAKING already works on the employee dashboard).
-- **Learning** — enroll / complete (backend exists; UI read-only).
-- **Compensation** — approve adjustment / simulate (mutations exist, unwired).
-- **Performance** — create OKR / commitment / coaching session (commitments UI is read-only).
-- **Onboarding** — task-toggle / create / export.
+### Tier 1 — Last-mile UI wiring — **DONE (PR #98, 2026-06-29)** (`docs/superpowers/specs/2026-06-29-tier1-last-mile-wiring-design.md`)
+The mutations were real but no UI invoked them; all wired via shared modal pattern (useState + `Modal` + tRPC + invalidate + i18n). Shipped + live in prod:
+- **Succession** — Add Successor (`addSuccessor`). ✅
+- **Engagement** — Create + Launch Survey (`createSurvey` + new `activateSurvey` draft→active). ✅
+- **Learning** — Enroll per-course (`enrollUser`). ✅ *(enrollment "complete" deferred — needs an admin enrollment-list view; no surface exists yet.)*
+- **Compensation** — Approve/Reject adjustment (`approveAdjustment`, atomic). ✅
+- **Performance** — Create OKR / Commitment / Log Coaching session (`createOkr`/`createCommitment`/`createCoachingSession`). ✅
+- **Onboarding** — Create Plan (`onboarding.create`) + inline task toggle (`updateTask`). ✅
+- Out of scope (still open): Export buttons (Tier 4 CSV infra), Simulate stubs (Tier 2/sim).
 
-### Tier 2 — Fabricated / mock data surfaced as real (violates the "no fake data" rule)
-- **`integration.getSystemHealth`** returns hardcoded uptime 99.97 / latency 42ms / 3 connections as if real → return honest nulls or real metrics.
-- **Learning** course progress = `Math.random()` (`course-catalog.tsx:110`).
-- **Performance** OKR on-target/at-risk KPI split = invented ratios (`activeOkrs*0.53/0.32`).
-- **Team-Intelligence** page = mostly `DEMO_*` arrays + `getBalanceAlerts`/`getRecommendedHires` throw `NOT_IMPLEMENTED` (the least-real module).
+### Tier 2 — Fabricated / mock data surfaced as real — **DONE (branch `feat/tier2-honest-data`, 2026-06-29)** (`docs/superpowers/specs/2026-06-29-tier2-honest-data-design.md`)
+Honest-hybrid pass: real metric where data exists + cheap; honest `N/D`/`EmptyState` otherwise; fabricated trend chips deleted.
+- **Platform Health** (`system.helpers.ts`) — full honesty pass (was ~8 fabricated metrics, not just the 3 the prior doc named): real DB latency (dropped the `×3` fudge); uptime / storage / DB-connections / background-jobs / AI-Bedrock / email / realtime → `N/D`; fake progressBars removed; page banner `99.97%` → `N/D`. ✅
+- **Learning** course progress — `Math.random()` (`course-catalog.tsx`) replaced with the REAL per-course avg of `Enrollment.progress` (`listCourses` groupBy). ✅
+- **Team-Intelligence** — `DEMO_ALERTS`/`DEMO_HIRES` panels → honest `EmptyState` ("disponible con el agente de IA"); KPIs now real `avgTenureYears` + `diversityIndex` (`getDashboardKpis`); PCA-balance + avg-performance → `N/D`; fabricated trend chips + `?? 12` fallback removed; diversity KPI honestly relabeled (was mislabeled "Shannon index"; the real calc is uniqueRoles/count). ✅
+- ~~Performance OKR on-target/at-risk split (`activeOkrs*0.53/0.32`)~~ — **was never real**: no such fabricated split existed in code; `performance.getDashboardKpis` already returns a real active-OKR count + real average progress. Prior doc entry was inaccurate; nothing to fix.
+- **Deferred (honestly labeled `N/D`/empty, NOT faked):** email-from-`auditLog` aggregate, avg-performance aggregate (Feedback/Recognition/OKR), Supabase storage/uptime/realtime real sources, AI-usage reuse on the health page, and the Wave-3 DISC competency model behind balance-alerts/recommended-hires. Other still-fabricated KPIs to sweep next: succession-kpis `?? 12` fallback; a `'Tecnologia'` hardcoded label on the team-intel page.
 
 ### Tier 3 — Big unbuilt features (net-new product scope)
 | Priority | Feature |
 |---|---|
 | HIGH (core differentiator) | **Assessment Player** (`docs/WAVE-1.5a-ASSESSMENT-PLAYER.md`, approved, slice 1 authoring shipped #65). Slices 2–4 unbuilt: candidate take-flow backend + UI + auto-scoring. **No scoring engine exists in TIMS** — `AssessmentResult` is only INGESTED via the external API (#74), never produced internally; **no band/norm/item-bank tables exist** (ties to the LIA gap). + **Wave 1.5b webcam proctoring** (deferred, own milestone). + Wave 3 `assessment-evaluator` agent for essay scoring (lights up `assessment.getExplainability`, currently honest 501). |
 | MEDIUM | **360° Evaluations** (`docs/plans/2026-06-17-360-evaluations-greenfield.md`) — fully greenfield (no model/router/service), ~5–6 slices. *(Continuous peer feedback already exists + is real; the structured 360 cycle is what's missing.)* |
-| MEDIUM | **Commitments** — backend real, UI read-only (no create form). |
+| ~~MEDIUM~~ DONE | ~~**Commitments** — backend real, UI read-only (no create form).~~ Create form shipped (PR #98 S4, `createCommitment`). |
 | MEDIUM | **Candidate CV/resume upload + real CV→text extraction** (S3 + PDF/DOCX) — apply is text-only today, yet `parseCV` expects CVs. |
 
 ### Tier 4 — Infrastructure (deferred by design / scale-gated)

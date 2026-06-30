@@ -1,27 +1,15 @@
 'use client';
 
-interface RecommendedHiresProps {
-  t: { recommendedHires: string; priority: string };
-}
+import React from 'react';
+import { EmptyState } from '../../../../components/empty-state';
 
-const DEMO_HIRES = [
-  {
-    profile: 'Perfil Estable',
-    badge: 'S',
-    badgeColor: 'bg-green-500/10 text-green-600',
-    desc: 'Mid Developer con enfoque colaborativo para equilibrar dinamismo.',
-    priority: 'Alta',
-    priorityColor: 'text-[#DD0C15]',
-  },
-  {
-    profile: 'Perfil Analitico',
-    badge: 'CS',
-    badgeColor: 'bg-blue-500/10 text-blue-600',
-    desc: 'Sr. QA Engineer con pensamiento critico y orientacion al detalle.',
-    priority: 'Media',
-    priorityColor: 'text-amber-500',
-  },
-];
+interface RecommendedHiresProps {
+  t: {
+    recommendedHires: string;
+    aiPanelEmptyTitle: string;
+    aiPanelEmptyBody: string;
+  };
+}
 
 export function RecommendedHires({ t }: RecommendedHiresProps) {
   return (
@@ -32,20 +20,15 @@ export function RecommendedHires({ t }: RecommendedHiresProps) {
         </svg>
         <h3 className="text-[14px] font-semibold text-[#1F114C]">{t.recommendedHires}</h3>
       </div>
-      <div className="grid grid-cols-2 gap-2">
-        {DEMO_HIRES.map((hire) => (
-          <div key={hire.profile} className="p-2.5 rounded-lg border border-[#EDEDED] bg-[#F6F6F6]/50">
-            <div className="flex items-center gap-2 mb-1">
-              <span className={`px-1.5 py-0.5 rounded ${hire.badgeColor} text-[9px] font-bold`}>{hire.badge}</span>
-              <span className="text-[11px] font-semibold text-[#1F114C]">{hire.profile}</span>
-            </div>
-            <p className="text-[10px] text-[#585858]">{hire.desc}</p>
-            <p className="text-[9px] text-[#8B8B8B] mt-1">
-              {t.priority}: <span className={`${hire.priorityColor} font-semibold`}>{hire.priority}</span>
-            </p>
-          </div>
-        ))}
-      </div>
+      <EmptyState
+        icon={
+          <svg className="w-8 h-8 text-[#ccc]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+            <path d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09Z" />
+          </svg>
+        }
+        message={t.aiPanelEmptyTitle}
+        description={t.aiPanelEmptyBody}
+      />
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { router, permissionProcedure } from '../trpc';
 import { tenantDb as db } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { scopeWhereFor, assertScoped, requireOrgScope } from '../access';
+import { computeAvgTenureYears, computeRoleDiversity } from './team-intel-metrics';
 
 export const teamIntelRouter = router({
   // ── Team Profile ─────────────────────────────────────────────────────
@@ -228,13 +229,20 @@ export const teamIntelRouter = router({
 
       const orgId = ctx.user.organizationId;
 
-      const [totalTeams, totalMembers, teamsWithLeader] = await Promise.all([
+      // NOTE on populations: `totalMembers` (the "Team Size" KPI) counts userTeam
+      // membership rows, whereas `members` (used for tenure + diversity below) is the
+      // org's active headcount. Different sets by design — each KPI is labeled independently.
+      const [totalTeams, totalMembers, teamsWithLeader, members] = await Promise.all([
         db.team.count({ where: { organizationId: orgId, isActive: true } }),
         db.userTeam.count({
           where: { team: { organizationId: orgId, isActive: true } },
         }),
         db.team.count({
           where: { organizationId: orgId, isActive: true, leaderId: { not: null } },
+        }),
+        db.user.findMany({
+          where: { organizationId: orgId, isActive: true },
+          select: { createdAt: true, jobTitle: true },
         }),
       ]);
 
@@ -246,6 +254,8 @@ export const teamIntelRouter = router({
         teamsWithLeader,
         teamsWithoutLeader: totalTeams - teamsWithLeader,
         avgTeamSize,
+        avgTenureYears: computeAvgTenureYears(members, Date.now()),
+        diversityIndex: computeRoleDiversity(members),
       };
     }),
 });

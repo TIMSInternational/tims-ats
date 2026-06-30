@@ -6,9 +6,6 @@ import { formatRelativeTime } from '../../../../lib/format-utils';
 
 type ServiceStatus = 'operational' | 'degraded' | 'down';
 
-const PROGRESS_COLORS: Record<string, string> = {
-  blue: 'bg-blue-500', amber: 'bg-amber-500', green: 'bg-green-500', red: 'bg-red-500',
-};
 const METRIC_COLORS: Record<string, string> = {
   green: 'text-green-600', red: 'text-[#DD0C15]', amber: 'text-amber-600',
 };
@@ -83,7 +80,7 @@ export default function PlatformHealthPage() {
         </div>
         <div className="text-right mr-3">
           <p className={`text-[10px] ${isAllOperational ? 'text-green-600' : 'text-amber-600'}`}>{t.health.uptime30d}</p>
-          <p className={`text-[17px] font-bold ${isAllOperational ? 'text-green-700' : 'text-amber-700'}`}>99.97%</p>
+          <p className={`text-[17px] font-bold ${isAllOperational ? 'text-green-700' : 'text-amber-700'}`}>N/D</p>
         </div>
         <span className="text-[10px] text-[#8B8B8B]">{timeSinceUpdate ? `${t.health.updated}: ${timeSinceUpdate}` : ''}</span>
         <button onClick={() => refetch()} className="flex items-center gap-1.5 border border-[#EDEDED] text-[#585858] px-3 h-7 rounded-lg text-[11px] hover:bg-[#FAFAFA] bg-white shrink-0">
@@ -154,11 +151,6 @@ export default function PlatformHealthPage() {
                     <span className={`text-[12px] font-medium ${'color' in metric && metric.color ? METRIC_COLORS[metric.color] || 'text-[#1F114C]' : 'text-[#1F114C]'}`}>{metric.value}</span>
                   </div>
                 ))}
-                {service.progressBar && (
-                  <div className="w-full h-1.5 bg-[#EDEDED] rounded-full">
-                    <div className={`h-1.5 rounded-full ${PROGRESS_COLORS[service.progressBar.color] || 'bg-blue-500'}`} style={{ width: `${service.progressBar.percent}%` }} />
-                  </div>
-                )}
               </div>
             </div>
           );

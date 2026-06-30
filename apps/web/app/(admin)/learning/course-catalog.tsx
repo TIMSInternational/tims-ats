@@ -12,6 +12,7 @@ interface Course {
   type: string;
   duration: number;
   isRequired: boolean;
+  avgProgress: number;
   _count: { enrollments: number };
 }
 
@@ -111,7 +112,7 @@ export function CourseCatalog({ courses, loading, t }: CourseCatalogProps) {
       <div className="flex-1 overflow-y-auto space-y-2">
         {filtered.map((course) => {
           const tag = getTag(course);
-          const pct = Math.min(100, Math.round((course._count.enrollments / Math.max(1, course._count.enrollments)) * (50 + Math.random() * 50)));
+          const pct = course.avgProgress;
           const prog = getProgressColor(pct);
           return (
             <div

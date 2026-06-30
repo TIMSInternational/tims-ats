@@ -32,9 +32,9 @@ interface SystemHealthInputs {
 export function buildSystemHealthServices({
   dbHealthy,
   dbLatency,
-  orgCount,
   userCount,
   vacancyCount,
+  orgCount,
   loginsToday,
   failedLogins,
   activeUsers,
@@ -43,12 +43,12 @@ export function buildSystemHealthServices({
 }: SystemHealthInputs) {
   return [
     { name: 'API Gateway', status: 'operational' as const, metrics: [
-      { label: 'Latencia p95', value: `${Math.max(dbLatency * 3, 12)}ms` },
-      { label: 'Uptime', value: '99.99%', color: 'green' as const },
+      { label: 'Latencia', value: `${dbLatency}ms` },
+      { label: 'Uptime', value: 'N/D' },
       { label: 'Requests/min', value: String(Math.round(auditLogsToday / Math.max(1, (Date.now() - todayStart.getTime()) / 60000))) },
     ]},
     { name: 'Base de Datos', status: (dbHealthy ? 'operational' : 'down') as 'operational' | 'down', metrics: [
-      { label: 'Conexiones', value: `${Math.min(orgCount + 2, 100)} / 100` },
+      { label: 'Conexiones', value: 'N/D' },
       { label: 'Query time', value: `${dbLatency}ms`, color: (dbLatency < 50 ? 'green' : 'amber') as 'green' | 'amber' },
       { label: 'Registros', value: `${userCount + orgCount + vacancyCount}` },
     ]},
@@ -58,28 +58,28 @@ export function buildSystemHealthServices({
       { label: 'Sesiones activas', value: String(activeUsers) },
     ]},
     { name: 'Almacenamiento', status: 'operational' as const, metrics: [
-      { label: 'Usado', value: '12.4 GB / 50 GB' },
-      { label: 'Uploads hoy', value: '0' },
-    ], progressBar: { percent: 24.8, color: 'blue' as const }},
+      { label: 'Usado', value: 'N/D' },
+      { label: 'Uploads hoy', value: 'N/D' },
+    ]},
     { name: 'Background Jobs', status: 'operational' as const, metrics: [
-      { label: 'Cola', value: '0 pendientes' },
-      { label: 'Fallidos', value: '0' },
+      { label: 'Cola', value: 'N/D' },
+      { label: 'Fallidos', value: 'N/D' },
       { label: 'Procesados hoy', value: String(auditLogsToday) },
     ]},
     { name: 'AI (Bedrock)', status: 'operational' as const, metrics: [
-      { label: 'Llamadas hoy', value: '0' },
-      { label: 'Costo', value: '$0.00' },
-      { label: 'Presupuesto', value: '0% usado' },
-    ], progressBar: { percent: 0, color: 'green' as const }},
+      { label: 'Llamadas hoy', value: 'N/D' },
+      { label: 'Costo', value: 'N/D' },
+      { label: 'Presupuesto', value: 'N/D' },
+    ]},
     { name: 'Email (SES)', status: 'operational' as const, metrics: [
-      { label: 'Enviados hoy', value: '0' },
-      { label: 'Bounce rate', value: '0%', color: 'green' as const },
-      { label: 'Reputation', value: 'N/A' },
+      { label: 'Enviados hoy', value: 'N/D' },
+      { label: 'Bounce rate', value: 'N/D' },
+      { label: 'Reputation', value: 'N/D' },
     ]},
     { name: 'Realtime', status: 'operational' as const, metrics: [
-      { label: 'Conexiones', value: '0' },
-      { label: 'Mensajes/seg', value: '0' },
-      { label: 'Canales activos', value: '0' },
+      { label: 'Conexiones', value: 'N/D' },
+      { label: 'Mensajes/seg', value: 'N/D' },
+      { label: 'Canales activos', value: 'N/D' },
     ]},
   ];
 }

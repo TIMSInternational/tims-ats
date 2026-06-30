@@ -47,8 +47,8 @@ describe('S5 learning enroll wiring', () => {
     expect(catalog).toMatch(/<EnrollModal\b/);
   });
 
-  it('course-catalog.tsx STILL contains Math.random (Tier-2 guard — must not be refactored)', () => {
-    expect(catalog).toMatch(/Math\.random/);
+  it('course-catalog.tsx no longer contains Math.random (fixed by Tier-2 Slice A)', () => {
+    expect(catalog).not.toMatch(/Math\.random/);
   });
 
   it('i18n keys enrollTitle and enrollSuccess exist in BOTH locales', () => {
