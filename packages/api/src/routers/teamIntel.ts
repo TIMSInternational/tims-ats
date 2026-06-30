@@ -5,6 +5,7 @@ import { tenantDb as db } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { scopeWhereFor, assertScoped, requireOrgScope } from '../access';
 import { computeAvgTenureYears, computeRoleDiversity } from './team-intel-metrics';
+import { cacheGet, cacheSet } from '../lib/cache';
 
 export const teamIntelRouter = router({
   // ── Team Profile ─────────────────────────────────────────────────────
@@ -229,6 +230,24 @@ export const teamIntelRouter = router({
 
       const orgId = ctx.user.organizationId;
 
+      type KpiResult = {
+        totalTeams: number;
+        totalMembers: number;
+        teamsWithLeader: number;
+        teamsWithoutLeader: number;
+        avgTeamSize: number;
+        avgTenureYears: number;
+        diversityIndex: number;
+      };
+
+      // Safe to key on orgId alone: requireOrgScope() above gates this to org/company
+      // callers only (no sub-org scope reaches here), so all callers see the identical
+      // org rollup. If scope-aware aggregation is ever added, the key MUST include scope
+      // identity (see vacancy/stats.ts).
+      const cacheKey = `tims:kpis:teamintel:${orgId}`;
+      const cached = await cacheGet<KpiResult>(cacheKey);
+      if (cached) return cached;
+
       // NOTE on populations: `totalMembers` (the "Team Size" KPI) counts userTeam
       // membership rows, whereas `members` (used for tenure + diversity below) is the
       // org's active headcount. Different sets by design — each KPI is labeled independently.
@@ -248,7 +267,7 @@ export const teamIntelRouter = router({
 
       const avgTeamSize = totalTeams > 0 ? Math.round((totalMembers / totalTeams) * 10) / 10 : 0;
 
-      return {
+      const result: KpiResult = {
         totalTeams,
         totalMembers,
         teamsWithLeader,
@@ -257,5 +276,7 @@ export const teamIntelRouter = router({
         avgTenureYears: computeAvgTenureYears(members, Date.now()),
         diversityIndex: computeRoleDiversity(members),
       };
+      await cacheSet(cacheKey, result, 45);
+      return result;
     }),
 });

@@ -4,9 +4,29 @@ import { platformProcedure } from './_common';
 import { PLAN_PRICES } from '../../lib/plan-prices';
 import { searchInput } from './dashboard.schemas';
 import { buildAttentionItems, SEARCH_PAGES } from './dashboard.helpers';
+import { buildMonthSeries } from './time-series';
+import { cacheGet, cacheSet } from '../../lib/cache';
 
 export const dashboardRouter = router({
   getDashboardKpis: platformProcedure.query(async () => {
+    type KpiResult = {
+      totalOrgs: number;
+      totalOrgsChange: number;
+      totalUsers: number;
+      totalUsersChange: number;
+      mrr: number;
+      mrrPrevMonth: number;
+      activeTrials: number;
+      trialsExpiringThisWeek: number;
+      overdueInvoices: number;
+      outstandingAmount: number;
+    };
+
+    // Platform-owner view: no org scope, cache globally.
+    const cacheKey = 'tims:kpis:platform:global';
+    const cached = await cacheGet<KpiResult>(cacheKey);
+    if (cached) return cached;
+
     const now = new Date();
 
     // Start of current month
@@ -71,7 +91,7 @@ export const dashboardRouter = router({
     const mrr = activeSubs.reduce((sum, s) => sum + (PLAN_PRICES[s.plan] || 0), 0);
     const mrrPrevMonth = prevMonthSubs.reduce((sum, s) => sum + (PLAN_PRICES[s.plan] || 0), 0);
 
-    return {
+    const result: KpiResult = {
       totalOrgs,
       totalOrgsChange: newOrgsThisMonth,
       totalUsers,
@@ -83,6 +103,8 @@ export const dashboardRouter = router({
       overdueInvoices: overdueInvoices.length,
       outstandingAmount: overdueInvoices.reduce((sum, inv) => sum + inv.amount, 0),
     };
+    await cacheSet(cacheKey, result, 45);
+    return result;
   }),
 
   getAttentionItems: platformProcedure.query(async () => {
@@ -344,22 +366,23 @@ export const dashboardRouter = router({
   }),
 
   getUserGrowth: platformProcedure.query(async () => {
-    const months: { month: string; count: number }[] = [];
-    for (let i = 5; i >= 0; i--) {
-      const start = new Date();
-      start.setMonth(start.getMonth() - i, 1);
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(start);
-      end.setMonth(end.getMonth() + 1);
-      const count = await db.user.count({
-        where: { createdAt: { gte: start, lt: end } },
-      });
-      months.push({
-        month: start.toLocaleDateString('es', { month: 'short' }),
-        count,
-      });
-    }
-    return months;
+    const now = new Date();
+    const sixMonthsAgo = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 5, 1));
+    const rows = await db.$queryRaw<{ month: string; count: bigint }[]>`
+      SELECT to_char(date_trunc('month', "created_at" AT TIME ZONE 'UTC'), 'YYYY-MM') AS month,
+             COUNT(*)::bigint AS count
+        FROM "users"
+       WHERE "created_at" >= ${sixMonthsAgo}
+       GROUP BY 1`;
+    return buildMonthSeries(
+      rows.map((r: { month: string; count: bigint }) => ({ month: r.month, count: Number(r.count) })),
+      6,
+      now,
+    ).map((bucket) => {
+      const [year, mon] = bucket.month.split('-').map(Number);
+      const d = new Date(Date.UTC(year, mon - 1, 1));
+      return { month: d.toLocaleDateString('es', { month: 'short', timeZone: 'UTC' }), count: bucket.count };
+    });
   }),
 
   search: platformProcedure
@@ -409,23 +432,67 @@ export const dashboardRouter = router({
     }),
 
   getMrrTrend: platformProcedure.query(async () => {
-    const months: { month: string; mrr: number }[] = [];
+    const now = new Date();
+
+    // Single query: all currently-active subscriptions grouped by (plan, creation-month).
+    // No date lower-bound — we need the full history to reconstruct the cumulative
+    // MRR snapshot at each month boundary (matching the original createdAt < end logic).
+    const rows = await db.$queryRaw<{ month: string; plan: string; count: bigint }[]>`
+      SELECT to_char(date_trunc('month', "created_at" AT TIME ZONE 'UTC'), 'YYYY-MM') AS month,
+             "plan",
+             COUNT(*)::bigint AS count
+        FROM "subscriptions"
+       WHERE "status" = ${SubscriptionStatus.active}::"SubscriptionStatus"
+       GROUP BY 1, 2
+       ORDER BY 1`;
+
+    // Build a map: YYYY-MM → Map<plan, count>
+    const byMonth = new Map<string, Map<string, number>>();
+    for (const r of rows) {
+      if (!byMonth.has(r.month)) byMonth.set(r.month, new Map());
+      byMonth.get(r.month)!.set(r.plan, Number(r.count));
+    }
+
+    // Build the 12-month bucket keys (oldest first)
+    const bucketKeys: string[] = [];
     for (let i = 11; i >= 0; i--) {
-      const start = new Date();
-      start.setMonth(start.getMonth() - i, 1);
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(start);
-      end.setMonth(end.getMonth() + 1);
-      const subs = await db.subscription.findMany({
-        where: { status: SubscriptionStatus.active, createdAt: { lt: end } },
-        select: { plan: true },
-      });
-      const mrr = subs.reduce((sum, s) => sum + (PLAN_PRICES[s.plan] || 0), 0);
-      months.push({
-        month: start.toLocaleDateString('es', { month: 'short', year: '2-digit' }),
-        mrr,
+      let year = now.getUTCFullYear();
+      let mon = now.getUTCMonth() - i; // 0-based, may be negative
+      while (mon < 0) { mon += 12; year -= 1; }
+      bucketKeys.push(`${year}-${String(mon + 1).padStart(2, '0')}`);
+    }
+    const bucketSet = new Set(bucketKeys);
+
+    // Compute baseline MRR: all active subs created BEFORE the oldest bucket
+    // (they are included in every one of the 12 monthly snapshots)
+    let baselineMrr = 0;
+    for (const [month, planMap] of byMonth) {
+      if (!bucketSet.has(month)) {
+        for (const [plan, count] of planMap) {
+          baselineMrr += (PLAN_PRICES[plan as keyof typeof PLAN_PRICES] ?? 0) * count;
+        }
+      }
+    }
+
+    // Walk buckets oldest→newest, accumulating incremental MRR each month
+    let runningMrr = baselineMrr;
+    const result: { month: string; mrr: number }[] = [];
+
+    for (const key of bucketKeys) {
+      const newThisMonth = byMonth.get(key);
+      if (newThisMonth) {
+        for (const [plan, count] of newThisMonth) {
+          runningMrr += (PLAN_PRICES[plan as keyof typeof PLAN_PRICES] ?? 0) * count;
+        }
+      }
+      const [year, mon] = key.split('-').map(Number);
+      const d = new Date(Date.UTC(year, mon - 1, 1));
+      result.push({
+        month: d.toLocaleDateString('es', { month: 'short', year: '2-digit', timeZone: 'UTC' }),
+        mrr: runningMrr,
       });
     }
-    return months;
+
+    return result;
   }),
 });

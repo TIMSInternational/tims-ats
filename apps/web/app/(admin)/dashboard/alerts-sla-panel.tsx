@@ -13,20 +13,21 @@ interface SlaStage {
   severity: 'critical' | 'warning';
 }
 
-export function AlertsSlaPanel() {
+interface AlertsSlaPanelProps {
+  vacancyId: string | undefined;
+  vacanciesLoading: boolean;
+}
+
+export function AlertsSlaPanel({ vacancyId, vacanciesLoading }: AlertsSlaPanelProps) {
   const { t } = useI18n();
   const rd = t.recruitingDashboard;
 
-  // Get the first published vacancy for SLA data
-  const vacancies = trpc.vacancy.list.useQuery({ limit: 1, status: 'published' }, { staleTime: 60_000 });
-  const firstVacancyId = vacancies.data?.items?.[0]?.id;
-
   const slaQuery = trpc.pipeline.getSlaStatus.useQuery(
-    { vacancyId: firstVacancyId! },
-    { enabled: !!firstVacancyId, staleTime: 60_000 },
+    { vacancyId: vacancyId! },
+    { enabled: !!vacancyId, staleTime: 60_000 },
   );
 
-  const isLoading = vacancies.isLoading || slaQuery.isLoading;
+  const isLoading = vacanciesLoading || slaQuery.isLoading;
 
   const slaData = useMemo<SlaStage[]>(() => {
     if (!slaQuery.data?.items) return [];

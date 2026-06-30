@@ -44,10 +44,15 @@ function RecruiterDashboard() {
   const rd = t.recruitingDashboard;
   const vacancyKpis = trpc.vacancy.getDashboardKpis.useQuery();
   const candidateKpis = trpc.candidate.getDashboardKpis.useQuery();
+  const publishedVacancies = trpc.vacancy.list.useQuery(
+    { limit: 50, status: 'published' },
+    { staleTime: 60_000 },
+  );
 
   const isLoading = vacancyKpis.isLoading || candidateKpis.isLoading;
   const totalApplications = vacancyKpis.data?.totalApplications ?? 0;
   const totalOpen = vacancyKpis.data?.totalOpen ?? 0;
+  const firstVacancyId = publishedVacancies.data?.items?.[0]?.id;
 
   return (
     <div className="h-full flex flex-col overflow-hidden p-6">
@@ -59,7 +64,11 @@ function RecruiterDashboard() {
         </div>
 
         {/* KPI Cards Strip */}
-        <RecruitingKpiStrip />
+        <RecruitingKpiStrip
+          vacancyKpis={vacancyKpis.data}
+          candidateKpis={candidateKpis.data}
+          isLoading={isLoading}
+        />
 
         {/* Pipeline + Vacancies by Dimension */}
         <div className="flex flex-col md:flex-row gap-4 mb-6">
@@ -70,7 +79,7 @@ function RecruiterDashboard() {
             </>
           ) : (
             <>
-              <PipelineFunnel totalApplications={totalApplications} />
+              <PipelineFunnel totalApplications={totalApplications} vacancies={publishedVacancies.data?.items ?? []} />
               <VacanciesByDimension totalOpen={totalOpen} />
             </>
           )}
@@ -84,9 +93,9 @@ function RecruiterDashboard() {
 
         {/* 3-Column Alerts */}
         <div className="flex flex-col md:flex-row gap-4">
-          <AlertsSlaPanel />
+          <AlertsSlaPanel vacancyId={firstVacancyId} vacanciesLoading={publishedVacancies.isLoading} />
           <AlertsPendingPanel />
-          <AlertsRiskPanel />
+          <AlertsRiskPanel vacancyId={firstVacancyId} vacanciesLoading={publishedVacancies.isLoading} />
         </div>
       </div>
     </div>

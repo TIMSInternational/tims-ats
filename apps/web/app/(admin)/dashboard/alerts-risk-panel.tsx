@@ -36,17 +36,18 @@ interface RiskItem {
   days: number;
 }
 
-export function AlertsRiskPanel() {
+interface AlertsRiskPanelProps {
+  vacancyId: string | undefined;
+  vacanciesLoading: boolean;
+}
+
+export function AlertsRiskPanel({ vacancyId, vacanciesLoading }: AlertsRiskPanelProps) {
   const { t } = useI18n();
   const rd = t.recruitingDashboard;
 
-  // Fetch published vacancies to get their boards
-  const vacancies = trpc.vacancy.list.useQuery({ limit: 5, status: 'published' }, { staleTime: 60_000 });
-  const firstVacancyId = vacancies.data?.items?.[0]?.id;
-
   const board = trpc.pipeline.getBoard.useQuery(
-    { vacancyId: firstVacancyId!, status: 'active' },
-    { enabled: !!firstVacancyId, staleTime: 60_000 },
+    { vacancyId: vacancyId!, status: 'active' },
+    { enabled: !!vacancyId, staleTime: 60_000 },
   );
 
   const riskCandidates = useMemo<RiskItem[]>(() => {
@@ -103,7 +104,7 @@ export function AlertsRiskPanel() {
     return risks.sort((a, b) => b.days - a.days).slice(0, 4);
   }, [board.data]);
 
-  const isLoading = vacancies.isLoading || board.isLoading;
+  const isLoading = vacanciesLoading || board.isLoading;
 
   return (
     <div className="w-full md:flex-1 bg-white rounded-xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">

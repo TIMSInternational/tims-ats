@@ -1,7 +1,7 @@
 'use client';
 
-import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
+import type { VacancyDashboardKpis, CandidateKpis } from '../../../lib/trpc-types';
 
 interface KpiItem {
   dotColor: string;
@@ -46,18 +46,20 @@ function KpiStripSkeleton() {
   );
 }
 
-export function RecruitingKpiStrip() {
+interface RecruitingKpiStripProps {
+  vacancyKpis: VacancyDashboardKpis | undefined;
+  candidateKpis: CandidateKpis | undefined;
+  isLoading: boolean;
+}
+
+export function RecruitingKpiStrip({ vacancyKpis, candidateKpis, isLoading }: RecruitingKpiStripProps) {
   const { t } = useI18n();
   const rd = t.recruitingDashboard;
-  const vacancyKpis = trpc.vacancy.getDashboardKpis.useQuery();
-  const candidateKpis = trpc.candidate.getDashboardKpis.useQuery();
-
-  const isLoading = vacancyKpis.isLoading || candidateKpis.isLoading;
 
   if (isLoading) return <KpiStripSkeleton />;
 
-  const vk = vacancyKpis.data;
-  const ck = candidateKpis.data;
+  const vk = vacancyKpis;
+  const ck = candidateKpis;
 
   const cards: KpiItem[] = [
     {

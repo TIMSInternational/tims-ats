@@ -4,6 +4,7 @@ import type { Prisma } from '@tims/db';
 import { platformProcedure } from './_common';
 import { PLAN_PRICES } from '../../lib/plan-prices';
 import { auditLogSelect, SYSTEM_FLAG_KEYS, buildSystemHealthServices } from './system.helpers';
+import { cacheInvalidatePrefix } from '../../lib/cache';
 import {
   sendBulkNotificationInput,
   getRecentPlatformEventsInput,
@@ -409,6 +410,7 @@ export const systemRouter = router({
         },
       }).catch(() => {});
 
+      await cacheInvalidatePrefix(`tims:flagcheck:${input.organizationId}:`);
       return result;
     }),
 
@@ -427,22 +429,28 @@ export const systemRouter = router({
           created++;
         } catch { /* skip duplicates */ }
       }
+      // Affects all orgs — clear the entire flag-check namespace.
+      await cacheInvalidatePrefix('tims:flagcheck:');
       return { key: input.key, created, total: orgs.length };
     }),
 
   deleteFeatureFlag: platformProcedure
     .input(deleteFeatureFlagInput)
     .mutation(async ({ input }) => {
-      return db.featureFlag.delete({
+      const deleted = await db.featureFlag.delete({
         where: { id: input.id },
-        select: { id: true, key: true },
+        select: { id: true, key: true, organizationId: true },
       });
+      await cacheInvalidatePrefix(`tims:flagcheck:${deleted.organizationId}:`);
+      return deleted;
     }),
 
   deleteFeatureFlagByKey: platformProcedure
     .input(deleteFeatureFlagByKeyInput)
     .mutation(async ({ input }) => {
       const deleted = await db.featureFlag.deleteMany({ where: { key: input.key } });
+      // Affects all orgs — clear the entire flag-check namespace.
+      await cacheInvalidatePrefix('tims:flagcheck:');
       return { key: input.key, deleted: deleted.count };
     }),
 
@@ -461,6 +469,8 @@ export const systemRouter = router({
     );
 
     await db.featureFlag.createMany({ data, skipDuplicates: true });
+    // Prior checks may have cached enabled:false for not-yet-existent flags.
+    await cacheInvalidatePrefix('tims:flagcheck:');
     return { seeded: true, count: data.length };
   }),
 });

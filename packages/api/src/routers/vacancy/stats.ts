@@ -4,6 +4,7 @@ import { tenantDb as db } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { scopeWhereFor } from '../../access';
+import { cacheGet, cacheSet } from '../../lib/cache';
 
 export const vacancyStatsRouter = router({
   // 4.18 — Get vacancy stats (application counts by stage)
@@ -63,6 +64,48 @@ export const vacancyStatsRouter = router({
   getDashboardKpis: permissionProcedure('vacancy', 'read')
     .query(async ({ ctx }) => {
       const orgId = ctx.user.organizationId;
+
+      // Scope-dependent: team/unit/own users see different vacancy/application counts.
+      // Sub-org scopes (team/unit/own) are anchored per user (scopeWhereFor resolves
+      // ledTeamIds/unitIds/assignedTo from ctx.user.id). Two different team leaders
+      // share the same scope LEVEL but NOT the same data — so we must key on userId,
+      // not just scope. Org/company callers produce identical org-rollup data and
+      // may safely share one entry.
+      const isSubOrgScope = ctx.access.scope !== 'organization' && ctx.access.scope !== 'company';
+      const scopeDiscriminator = isSubOrgScope
+        ? `${ctx.access.scope}:${ctx.user.id}`   // sub-org scopes are user-anchored → key per user
+        : ctx.access.scope;                        // org/company callers share the identical org rollup
+      const cacheKey = `tims:kpis:vacancy:${orgId}:${scopeDiscriminator}`;
+
+      type RecentVacancy = {
+        id: string;
+        title: string;
+        status: string;
+        createdAt: Date;
+        _count: { applications: number };
+      };
+
+      type KpiResult = {
+        totalOpen: number;
+        totalDraft: number;
+        totalPendingApproval: number;
+        totalPublished: number;
+        totalClosed: number;
+        totalApplications: number;
+        recentVacancies: RecentVacancy[];
+      };
+
+      const cached = await cacheGet<KpiResult>(cacheKey);
+      if (cached) {
+        return {
+          ...cached,
+          recentVacancies: cached.recentVacancies.map((v) => ({
+            ...v,
+            createdAt: new Date(v.createdAt),
+          })),
+        };
+      }
+
       const scopeWhere = (await scopeWhereFor('vacancy', ctx.access, ctx.user.id)) as Prisma.VacancyWhereInput;
       const appScopeWhere = (await scopeWhereFor('application', ctx.access, ctx.user.id)) as Prisma.ApplicationWhereInput;
 
@@ -95,7 +138,7 @@ export const vacancyStatsRouter = router({
         }),
       ]);
 
-      return {
+      const result: KpiResult = {
         totalOpen,
         totalDraft,
         totalPendingApproval,
@@ -104,5 +147,7 @@ export const vacancyStatsRouter = router({
         totalApplications,
         recentVacancies,
       };
+      await cacheSet(cacheKey, result, 45);
+      return result;
     }),
 });

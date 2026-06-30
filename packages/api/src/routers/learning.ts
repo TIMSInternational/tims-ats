@@ -5,6 +5,7 @@ import { tenantDb as db } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { scopeWhereFor, assertScoped, assertSubjectInScope, requireOrgScope } from '../access';
 import { mergeAvgProgress } from './learning-progress';
+import { cacheGet, cacheSet } from '../lib/cache';
 
 // Courses + learning paths are an ORG-LEVEL catalog — deliberately unscoped
 // (people scoping applies to enrollments/certificates, the user-anchored rows).
@@ -425,6 +426,22 @@ export const learningRouter = router({
 
       const orgId = ctx.user.organizationId;
 
+      type KpiResult = {
+        totalCourses: number;
+        activeCourses: number;
+        totalEnrollments: number;
+        completedEnrollments: number;
+        completionRate: number;
+        avgProgress: number;
+        totalCertificates: number;
+        totalPaths: number;
+      };
+
+      // Safe to key on orgId alone ONLY while requireOrgScope() gates this to org/company callers (no sub-org scope reaches here). If scope-aware aggregation is added later, the key MUST include scope identity (see vacancy/stats.ts).
+      const cacheKey = `tims:kpis:learning:${orgId}`;
+      const cached = await cacheGet<KpiResult>(cacheKey);
+      if (cached) return cached;
+
       const [
         totalCourses,
         activeCourses,
@@ -446,7 +463,7 @@ export const learningRouter = router({
         _avg: { progress: true },
       });
 
-      return {
+      const result: KpiResult = {
         totalCourses,
         activeCourses,
         totalEnrollments,
@@ -459,5 +476,7 @@ export const learningRouter = router({
         totalCertificates,
         totalPaths,
       };
+      await cacheSet(cacheKey, result, 45);
+      return result;
     }),
 });

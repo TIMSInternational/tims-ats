@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { router, protectedProcedure, permissionProcedure } from '../trpc';
 import { tenantDb as db, Prisma } from '@tims/db';
+import { cacheGet, cacheSet, cacheInvalidatePrefix } from '../lib/cache';
 
 export const featureFlagRouter = router({
   // List all feature flags for the organization
@@ -22,7 +23,7 @@ export const featureFlagRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       const { id, ...data } = input;
-      return db.featureFlag.update({
+      const result = await db.featureFlag.update({
         where: {
           id,
           organizationId: ctx.user.organizationId,
@@ -34,12 +35,22 @@ export const featureFlagRouter = router({
             : data.payload as unknown as Prisma.InputJsonObject | undefined,
         },
       });
+      // Invalidate all cached flag checks for this org so the updated value is
+      // reflected within the next check TTL window (5 min).
+      await cacheInvalidatePrefix(`tims:flagcheck:${ctx.user.organizationId}:`);
+      return result;
     }),
 
   // Check a single flag by key (lightweight, used by client feature gates)
   check: protectedProcedure
     .input(z.object({ key: z.string().max(200) }))
     .query(async ({ ctx, input }) => {
+      type FlagResult = { enabled: boolean; payload: unknown };
+
+      const cacheKey = `tims:flagcheck:${ctx.user.organizationId}:${input.key}`;
+      const cached = await cacheGet<FlagResult>(cacheKey);
+      if (cached) return cached;
+
       const flag = await db.featureFlag.findUnique({
         where: {
           organizationId_key: {
@@ -49,6 +60,8 @@ export const featureFlagRouter = router({
         },
         select: { enabled: true, payload: true },
       });
-      return { enabled: flag?.enabled ?? false, payload: flag?.payload ?? null };
+      const result: FlagResult = { enabled: flag?.enabled ?? false, payload: flag?.payload ?? null };
+      await cacheSet(cacheKey, result, 300);
+      return result;
     }),
 });

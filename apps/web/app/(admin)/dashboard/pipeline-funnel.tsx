@@ -3,6 +3,7 @@
 import { useState, useMemo } from 'react';
 import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
+import type { VacancyListItem } from '../../../lib/trpc-types';
 
 const STAGE_COLORS = [
   'bg-[#E8E5F0] text-[#1F114C]',
@@ -18,9 +19,10 @@ type Period = '7d' | '30d' | '90d' | 'all';
 
 interface PipelineFunnelProps {
   totalApplications: number;
+  vacancies: VacancyListItem[];
 }
 
-export function PipelineFunnel({ totalApplications }: PipelineFunnelProps) {
+export function PipelineFunnel({ totalApplications, vacancies }: PipelineFunnelProps) {
   const { t } = useI18n();
   const rd = t.recruitingDashboard;
 
@@ -28,12 +30,7 @@ export function PipelineFunnel({ totalApplications }: PipelineFunnelProps) {
   const [period, setPeriod] = useState<Period>('30d');
   const [vacancyDropdownOpen, setVacancyDropdownOpen] = useState(false);
 
-  // Fetch published vacancies for the dropdown
-  const vacancies = trpc.vacancy.list.useQuery(
-    { limit: 50, status: 'published' },
-    { staleTime: 60_000 },
-  );
-  const vacancyList = vacancies.data?.items ?? [];
+  const vacancyList = vacancies ?? [];
 
   // Fetch funnel for selected vacancy (or first vacancy if "all")
   const targetVacancyId = selectedVacancyId !== 'all'

@@ -4,6 +4,20 @@ import { createSupabaseServerClient } from '@tims/auth/server';
 import { db } from '@tims/db';
 import { logger, filterStaffRoleSlugs } from '@tims/shared';
 import * as Sentry from '@sentry/nextjs';
+import {
+  resolveStaffContext,
+  NEEDS_FALLBACK,
+  type StaffDbLookup,
+  type StaffAppUser,
+} from '../../../../lib/auth/staff-context';
+
+// Vercel route segment config. `maxDuration` caps this Node function's runtime.
+// Region co-location with the Supabase DB (us-west-2) is enforced AUTHORITATIVELY by
+// `vercel.json` `regions: ["pdx1"]` (project-wide). `preferredRegion` below is a
+// redundant route-level hint: Vercel applies it on the Edge runtime, but this route
+// runs on Node (Prisma) so it is likely a no-op here — vercel.json is the real pin.
+export const maxDuration = 30;
+export const preferredRegion = ['pdx1']; // us-west-2; see note above — vercel.json is authoritative
 
 const handler = (req: Request) =>
   fetchRequestHandler({
@@ -33,6 +47,52 @@ const handler = (req: Request) =>
       }
     },
     createContext: async () => {
+      // ── Staff fast-path ────────────────────────────────────────────────────
+      // Middleware (updateSession) validates the Supabase session via getUser()
+      // on EVERY request, then forwards the proven identity via x-tims-auth-uid /
+      // x-tims-auth-email (stripping any inbound client-supplied values first).
+      // For the common authed-staff case we can use those trusted values directly,
+      // skipping a redundant second getUser() network call (~30–80 ms round trip).
+      //
+      // Fall-through cases handled by the full getUser() path below:
+      //  • header absent (unauthenticated / middleware path did not set it)
+      //  • uid present but no DB row (candidate, unprovisioned)
+      //  • row inactive or not org-scoped/owner
+      //  • first-login platform-owner needing user_metadata for auto-create
+      const trustedUid = req.headers.get('x-tims-auth-uid');
+      const trustedEmail = req.headers.get('x-tims-auth-email');
+
+      // Adapt the real `db` to the injectable StaffDbLookup interface used by the
+      // unit-testable seam. The shape mirrors the existing include in this file.
+      const staffDbLookup: StaffDbLookup = {
+        findUserBySupabaseId: (uid: string) =>
+          db.user.findUnique({
+            where: { supabaseUserId: uid },
+            include: { userRoles: { include: { role: { select: { slug: true } } } } },
+          }) as Promise<StaffAppUser | null>,
+        findUserById: (id: string) =>
+          db.user.findUnique({
+            where: { id },
+            include: { userRoles: { include: { role: { select: { slug: true } } } } },
+          }) as Promise<StaffAppUser | null>,
+        updateLastLogin: (id: string) => {
+          db.user.update({ where: { id }, data: { lastLoginAt: new Date() } }).catch(() => {});
+        },
+      };
+
+      const fastPathResult = await resolveStaffContext(
+        trustedUid,
+        trustedEmail,
+        req.headers.get('cookie'),
+        new Headers(req.headers),
+        staffDbLookup,
+      );
+
+      if (fastPathResult !== NEEDS_FALLBACK) {
+        return fastPathResult;
+      }
+      // ── End fast-path ──────────────────────────────────────────────────────
+
       const supabase = await createSupabaseServerClient();
       const { data: { user: supabaseUser } } = await supabase.auth.getUser();
 

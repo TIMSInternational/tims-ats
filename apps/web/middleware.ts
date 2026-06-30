@@ -105,5 +105,13 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|logo_tims.png|auth-hero.png|.*\\.png$|.*\\.jpg$|.*\\.svg$).*)'],
+  matcher: [
+    // All non-API, non-static routes (asset extensions excluded by the negative lookahead).
+    '/((?!_next/static|_next/image|favicon.ico|logo_tims.png|auth-hero.png|.*\\.png$|.*\\.jpg$|.*\\.svg$).*)',
+    // Security: ALWAYS run middleware for every /api/ path regardless of suffix so
+    // the auth fast-path's x-tims-auth-* strip-then-set cannot be bypassed via an
+    // asset-extension-shaped tRPC batch URL (e.g. /api/trpc/proc,x.svg?batch=1).
+    // The asset-extension exclusions in the entry above must NOT apply under /api.
+    '/api/:path*',
+  ],
 };
