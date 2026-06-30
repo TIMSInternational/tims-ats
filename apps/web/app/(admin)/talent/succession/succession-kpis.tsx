@@ -11,6 +11,7 @@ interface SuccessionKpisProps {
     totalSuccessors: number;
   } | undefined;
   loading: boolean;
+  isError: boolean;
   t: {
     kpiCriticalRoles: string;
     kpiReadyNow: string;
@@ -22,10 +23,11 @@ interface SuccessionKpisProps {
     activeDevelopment: string;
     requiresImmediate: string;
     keyEmployeesAtRisk: string;
+    loadError: string;
   };
 }
 
-export function SuccessionKpis({ data, loading, t }: SuccessionKpisProps) {
+export function SuccessionKpis({ data, loading, isError, t }: SuccessionKpisProps) {
   if (loading) {
     return (
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
@@ -36,10 +38,20 @@ export function SuccessionKpis({ data, loading, t }: SuccessionKpisProps) {
     );
   }
 
+  if (isError) {
+    return (
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+        <div className="col-span-2 md:col-span-5 bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4">
+          <p className="text-[12px] text-[#DD0C15]">{t.loadError}</p>
+        </div>
+      </div>
+    );
+  }
+
   const kpis = [
     {
       label: t.kpiCriticalRoles,
-      value: data?.totalCriticalRoles ?? 18,
+      value: data?.totalCriticalRoles ?? 0,
       sub: t.identifiedInOrg,
       iconBg: 'bg-[#1F114C]/10',
       iconColor: 'text-[#1F114C]',
@@ -48,7 +60,7 @@ export function SuccessionKpis({ data, loading, t }: SuccessionKpisProps) {
     },
     {
       label: t.kpiReadyNow,
-      value: data?.readyNowCount ?? 12,
+      value: data?.readyNowCount ?? 0,
       sub: t.readyImmediately,
       iconBg: 'bg-green-50',
       iconColor: 'text-green-600',
@@ -57,7 +69,7 @@ export function SuccessionKpis({ data, loading, t }: SuccessionKpisProps) {
     },
     {
       label: t.kpi1to2Years,
-      value: (data?.totalSuccessors ?? 9) - (data?.readyNowCount ?? 0),
+      value: (data?.totalSuccessors ?? 0) - (data?.readyNowCount ?? 0),
       sub: t.activeDevelopment,
       iconBg: 'bg-amber-50',
       iconColor: 'text-amber-600',
@@ -66,7 +78,7 @@ export function SuccessionKpis({ data, loading, t }: SuccessionKpisProps) {
     },
     {
       label: t.kpiNoSuccessor,
-      value: data?.rolesWithoutSuccessor ?? 5,
+      value: data?.rolesWithoutSuccessor ?? 0,
       sub: t.requiresImmediate,
       iconBg: 'bg-red-50',
       iconColor: 'text-[#DD0C15]',
@@ -77,7 +89,7 @@ export function SuccessionKpis({ data, loading, t }: SuccessionKpisProps) {
     },
     {
       label: t.kpiFlightRisk,
-      value: data?.highFlightRiskRoles ?? 7,
+      value: data?.highFlightRiskRoles ?? 0,
       sub: t.keyEmployeesAtRisk,
       iconBg: 'bg-orange-50',
       iconColor: 'text-orange-600',

@@ -1325,9 +1325,8 @@
     "rolesNoSuccessor": "Roles Without Identified Successor",
     "rolesUncovered": "uncovered roles",
     "colRole": "Role",
-    "colDepartment": "Department",
+    "colCurrentRole": "Current role",
     "colCriticality": "Criticality",
-    "colNoSuccessorSince": "No Successor Since",
     "colAction": "Action",
     "assign": "Assign",
     "exitSimulator": "Exit / Promotion Simulator",
@@ -1362,7 +1361,14 @@
     "readinessDeveloping": "Developing",
     "typeInternal": "Internal",
     "typeExternal": "External",
-    "selectRolePlaceholder": "Select a role"
+    "selectRolePlaceholder": "Select a role",
+    "rolesNoSuccessorEmpty": "No roles without successor",
+    "rolesNoSuccessorEmptyDesc": "All critical roles have an identified successor",
+    "flightRiskEmpty": "No flight risk detected",
+    "flightRiskEmptyDesc": "No employees at high turnover risk",
+    "competencyCoverageEmpty": "No coverage data",
+    "competencyCoverageEmptyDesc": "No roles with successors to calculate coverage",
+    "loadError": "Failed to load data"
   },
   "teamIntel": {
     "title": "Team Intelligence",

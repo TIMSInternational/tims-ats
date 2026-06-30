@@ -1,6 +1,7 @@
 'use client';
 
 import { Skeleton } from '../../../../components';
+import { EmptyState } from '../../../../components/empty-state';
 
 interface RoleWithoutSuccessor {
   id: string;
@@ -12,28 +13,23 @@ interface RoleWithoutSuccessor {
 interface RolesWithoutSuccessorProps {
   data: RoleWithoutSuccessor[] | undefined;
   loading: boolean;
+  isError: boolean;
   t: {
     rolesNoSuccessor: string;
     rolesUncovered: string;
     colRole: string;
-    colDepartment: string;
+    colCurrentRole: string;
     colCriticality: string;
-    colNoSuccessorSince: string;
     colAction: string;
     assign: string;
     critical: string;
     high: string;
     medium: string;
+    rolesNoSuccessorEmpty: string;
+    rolesNoSuccessorEmptyDesc: string;
+    loadError: string;
   };
 }
-
-const DEMO_ROLES = [
-  { role: 'Dir. Recursos Humanos', dept: 'RRHH', criticality: 'critical', since: '18 meses' },
-  { role: 'Gte. Seguridad Industrial', dept: 'Operaciones', criticality: 'critical', since: '12 meses' },
-  { role: 'Dir. Innovacion Digital', dept: 'Tecnologia', criticality: 'high', since: '8 meses' },
-  { role: 'Gte. Relaciones Institucionales', dept: 'Asuntos Corp.', criticality: 'high', since: '6 meses' },
-  { role: 'Gte. Cumplimiento Normativo', dept: 'Legal', criticality: 'medium', since: '3 meses' },
-];
 
 const CRIT_STYLES: Record<string, { bg: string; text: string }> = {
   critical: { bg: 'bg-[#DD0C15]', text: 'text-[#DD0C15]' },
@@ -47,7 +43,7 @@ function getCritLabel(crit: string, t: RolesWithoutSuccessorProps['t']) {
   return t.medium;
 }
 
-export function RolesWithoutSuccessor({ data, loading, t }: RolesWithoutSuccessorProps) {
+export function RolesWithoutSuccessor({ data, loading, isError, t }: RolesWithoutSuccessorProps) {
   if (loading) {
     return (
       <div className="w-full md:w-[58%] bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4">
@@ -59,14 +55,22 @@ export function RolesWithoutSuccessor({ data, loading, t }: RolesWithoutSuccesso
     );
   }
 
+  if (isError) {
+    return (
+      <div className="w-full md:w-[58%] bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4">
+        <h3 className="text-[13px] font-semibold text-[#1F114C] mb-3">{t.rolesNoSuccessor}</h3>
+        <p className="text-[12px] text-[#DD0C15]">{t.loadError}</p>
+      </div>
+    );
+  }
+
   const items = data && data.length > 0
     ? data.map((r) => ({
         role: r.title,
-        dept: r.currentHolder?.jobTitle ?? '',
+        currentRole: r.currentHolder?.jobTitle ?? '',
         criticality: r.criticality,
-        since: '-',
       }))
-    : DEMO_ROLES;
+    : [];
 
   return (
     <div className="w-full md:w-[58%] bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4">
@@ -77,45 +81,57 @@ export function RolesWithoutSuccessor({ data, loading, t }: RolesWithoutSuccesso
           </svg>
           <h3 className="text-[13px] font-semibold text-[#1F114C]">{t.rolesNoSuccessor}</h3>
         </div>
-        <span className="text-[10px] bg-red-50 text-[#DD0C15] px-2 py-0.5 rounded-full font-medium">
-          {items.length} {t.rolesUncovered}
-        </span>
+        {items.length > 0 && (
+          <span className="text-[10px] bg-red-50 text-[#DD0C15] px-2 py-0.5 rounded-full font-medium">
+            {items.length} {t.rolesUncovered}
+          </span>
+        )}
       </div>
-      <div className="overflow-hidden rounded-lg border border-[#EDEDED]">
-        <table className="w-full text-left">
-          <thead>
-            <tr className="bg-[#FAFAFA] text-[10px] text-[#585858] font-medium">
-              <th className="px-3 py-2">{t.colRole}</th>
-              <th className="px-3 py-2">{t.colDepartment}</th>
-              <th className="px-3 py-2">{t.colCriticality}</th>
-              <th className="px-3 py-2">{t.colNoSuccessorSince}</th>
-              <th className="px-3 py-2">{t.colAction}</th>
-            </tr>
-          </thead>
-          <tbody className="text-[11px] text-[#333]">
-            {items.map((item, i) => {
-              const style = CRIT_STYLES[item.criticality] ?? CRIT_STYLES.medium;
-              return (
-                <tr key={item.role} className={`border-t border-[#F0F0F0] ${i % 2 === 1 ? 'bg-[#FAFAFA]' : ''}`}>
-                  <td className="px-3 py-2 font-medium">{item.role}</td>
-                  <td className="px-3 py-2 text-[#585858]">{item.dept}</td>
-                  <td className="px-3 py-2">
-                    <span className={`text-[9px] ${style.bg} text-white px-2 py-0.5 rounded-full font-medium`}>
-                      {getCritLabel(item.criticality, t)}
-                    </span>
-                  </td>
-                  <td className={`px-3 py-2 ${style.text} font-medium`}>{item.since}</td>
-                  <td className="px-3 py-2">
-                    <button className="text-[9px] text-[#DD0C15] bg-red-50 px-2 py-1 rounded font-medium">
-                      {t.assign}
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+      {items.length === 0 ? (
+        <EmptyState
+          icon={
+            <svg className="w-8 h-8 text-[#ccc]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+              <path d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+            </svg>
+          }
+          message={t.rolesNoSuccessorEmpty}
+          description={t.rolesNoSuccessorEmptyDesc}
+        />
+      ) : (
+        <div className="overflow-hidden rounded-lg border border-[#EDEDED]">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="bg-[#FAFAFA] text-[10px] text-[#585858] font-medium">
+                <th className="px-3 py-2">{t.colRole}</th>
+                <th className="px-3 py-2">{t.colCurrentRole}</th>
+                <th className="px-3 py-2">{t.colCriticality}</th>
+                <th className="px-3 py-2">{t.colAction}</th>
+              </tr>
+            </thead>
+            <tbody className="text-[11px] text-[#333]">
+              {items.map((item, i) => {
+                const style = CRIT_STYLES[item.criticality] ?? CRIT_STYLES.medium;
+                return (
+                  <tr key={item.role} className={`border-t border-[#F0F0F0] ${i % 2 === 1 ? 'bg-[#FAFAFA]' : ''}`}>
+                    <td className="px-3 py-2 font-medium">{item.role}</td>
+                    <td className="px-3 py-2 text-[#585858]">{item.currentRole}</td>
+                    <td className="px-3 py-2">
+                      <span className={`text-[9px] ${style.bg} text-white px-2 py-0.5 rounded-full font-medium`}>
+                        {getCritLabel(item.criticality, t)}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2">
+                      <button className="text-[9px] text-[#DD0C15] bg-red-50 px-2 py-1 rounded font-medium">
+                        {t.assign}
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

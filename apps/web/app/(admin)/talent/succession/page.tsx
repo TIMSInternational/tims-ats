@@ -52,20 +52,20 @@ export default function SuccessionPage() {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-5">
-        <SuccessionKpis data={kpis.data} loading={kpis.isLoading} t={t.succession} />
+        <SuccessionKpis data={kpis.data} loading={kpis.isLoading} isError={kpis.isError} t={t.succession} />
 
         {/* Main 2-column */}
         <div className="flex flex-col md:flex-row gap-4 mb-4" style={{ minHeight: 370 }}>
           <SuccessionPipeline roles={roleItems} loading={roles.isLoading} t={t.succession} />
           <div className="w-full md:w-[45%] flex flex-col gap-4">
-            <CompetencyCoverage data={coverage.data} loading={coverage.isLoading} t={t.succession} />
-            <FlightRiskPanel data={flightRisk.data} loading={flightRisk.isLoading} t={t.succession} />
+            <CompetencyCoverage data={coverage.data} loading={coverage.isLoading} isError={coverage.isError} t={t.succession} />
+            <FlightRiskPanel data={flightRisk.data} loading={flightRisk.isLoading} isError={flightRisk.isError} t={t.succession} />
           </div>
         </div>
 
         {/* Bottom Row */}
         <div className="flex flex-col md:flex-row gap-4">
-          <RolesWithoutSuccessor data={noSuccessor.data} loading={noSuccessor.isLoading} t={t.succession} />
+          <RolesWithoutSuccessor data={noSuccessor.data} loading={noSuccessor.isLoading} isError={noSuccessor.isError} t={t.succession} />
           {roleItems.length > 0 ? (
             <ExitSimulator roles={roleItems} t={t.succession} />
           ) : (
