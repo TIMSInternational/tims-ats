@@ -30,6 +30,10 @@ const ALLOWLIST = new Set<string>([
   'PCA vs. JCA', // psychometric instrument codes (locale-invariant)
   'JCA vs. PCA',
   'Algo salió mal', // global-error.tsx root boundary renders OUTSIDE I18nProvider — hardcoded fallback by necessity
+  // route-error.tsx scoped boundaries: hardcoded by necessity — an error boundary must not
+  // depend on I18nProvider, which may itself be the failure it is catching.
+  'Ocurrió un error inesperado. Intenta de nuevo.',
+  'Reintentar',
 ]);
 
 // Tells that a `>...<` capture is actually a JS expression fragment caught
