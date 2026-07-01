@@ -200,13 +200,14 @@ export const successionRouter = router({
   getFlightRisk: permissionProcedure('succession', 'read')
     .input(
       z.object({
-        threshold: z.number().min(0).max(1).default(0.5),
+        // 0.7 = high-risk threshold (matches getDashboardKpis highFlightRiskRoles count)
+        threshold: z.number().min(0).max(1).default(0.7),
       }).optional(),
     )
     .query(async ({ ctx, input }) => {
       // Org-rollup risk register across all critical roles → interim org-gate.
       requireOrgScope(ctx.access);
-      const threshold = input?.threshold ?? 0.5;
+      const threshold = input?.threshold ?? 0.7;
       return db.criticalRole.findMany({
         where: {
           organizationId: ctx.user.organizationId,
@@ -358,9 +359,17 @@ export const successionRouter = router({
           }),
         ]);
 
-      const readyNow = await db.successor.count({
-        where: { organizationId: orgId, readiness: 'ready_now' },
-      });
+      const [readyNow, ready1to2Years] = await Promise.all([
+        db.successor.count({
+          where: { organizationId: orgId, readiness: 'ready_now' },
+        }),
+        db.successor.count({
+          where: {
+            organizationId: orgId,
+            readiness: { in: ['ready_1_year', 'ready_2_years'] },
+          },
+        }),
+      ]);
 
       return {
         totalCriticalRoles: totalRoles,
@@ -371,6 +380,7 @@ export const successionRouter = router({
             ? Math.round(((totalRoles - rolesWithoutSuccessor) / totalRoles) * 100)
             : 0,
         readyNowCount: readyNow,
+        ready1to2YearsCount: ready1to2Years,
         highFlightRiskRoles: highFlightRisk,
         avgSuccessorsPerRole:
           totalRoles > 0 ? Math.round((totalSuccessors / totalRoles) * 10) / 10 : 0,

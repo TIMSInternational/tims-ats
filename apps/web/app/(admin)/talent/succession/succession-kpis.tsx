@@ -6,6 +6,7 @@ interface SuccessionKpisProps {
   data: {
     totalCriticalRoles: number;
     readyNowCount: number;
+    ready1to2YearsCount: number;
     rolesWithoutSuccessor: number;
     highFlightRiskRoles: number;
     totalSuccessors: number;
@@ -69,7 +70,7 @@ export function SuccessionKpis({ data, loading, isError, t }: SuccessionKpisProp
     },
     {
       label: t.kpi1to2Years,
-      value: (data?.totalSuccessors ?? 0) - (data?.readyNowCount ?? 0),
+      value: data?.ready1to2YearsCount ?? 0,
       sub: t.activeDevelopment,
       iconBg: 'bg-amber-50',
       iconColor: 'text-amber-600',

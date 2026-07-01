@@ -892,21 +892,21 @@ async function main() {
   // ===========================
   const criticalRoleDefs = [
     { title: 'CTO', criticality: 'critical', holderId: federico.id, flightRisk: 0.15, successors: [
-      { userId: leader.id, readiness: 'ready_in_1_year', type: 'internal' },
-      { userId: extraUsers['santiago.ospina@tims.co']!.id, readiness: 'ready_in_2_years', type: 'internal' },
+      { userId: leader.id, readiness: 'ready_1_year', type: 'internal' },
+      { userId: extraUsers['santiago.ospina@tims.co']!.id, readiness: 'ready_2_years', type: 'internal' },
     ]},
     { title: 'HR Director', criticality: 'critical', holderId: admin.id, flightRisk: 0.20, successors: [
       { userId: hr.id, readiness: 'ready_now', type: 'internal' },
-      { userId: extraUsers['gabriela.luna@tims.co']!.id, readiness: 'ready_in_2_years', type: 'internal' },
+      { userId: extraUsers['gabriela.luna@tims.co']!.id, readiness: 'ready_2_years', type: 'internal' },
     ]},
     { title: 'Engineering Manager', criticality: 'high', holderId: leader.id, flightRisk: 0.35, successors: [
-      { userId: extraUsers['isabella.cardenas@tims.co']!.id, readiness: 'ready_in_1_year', type: 'internal' },
+      { userId: extraUsers['isabella.cardenas@tims.co']!.id, readiness: 'ready_1_year', type: 'internal' },
     ]},
     { title: 'Head of Product', criticality: 'high', holderId: null, flightRisk: null, successors: [
-      { userId: extraUsers['valentina.herrera@tims.co']!.id, readiness: 'ready_in_2_years', type: 'internal' },
+      { userId: extraUsers['valentina.herrera@tims.co']!.id, readiness: 'ready_2_years', type: 'internal' },
     ]},
     { title: 'Sales Director', criticality: 'medium', holderId: extraUsers['mateo.rios@tims.co']!.id, flightRisk: 0.45, successors: [
-      { userId: extraUsers['lucia.castro@tims.co']!.id, readiness: 'ready_in_1_year', type: 'internal' },
+      { userId: extraUsers['lucia.castro@tims.co']!.id, readiness: 'ready_1_year', type: 'internal' },
     ]},
   ];
 

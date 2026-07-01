@@ -25,6 +25,7 @@ interface RolesWithoutSuccessorProps {
     critical: string;
     high: string;
     medium: string;
+    low: string;
     rolesNoSuccessorEmpty: string;
     rolesNoSuccessorEmptyDesc: string;
     loadError: string;
@@ -35,11 +36,14 @@ const CRIT_STYLES: Record<string, { bg: string; text: string }> = {
   critical: { bg: 'bg-[#DD0C15]', text: 'text-[#DD0C15]' },
   high: { bg: 'bg-orange-500', text: 'text-orange-600' },
   medium: { bg: 'bg-amber-500', text: 'text-amber-600' },
+  low: { bg: 'bg-gray-400', text: 'text-gray-500' },
 };
 
-function getCritLabel(crit: string, t: RolesWithoutSuccessorProps['t']) {
+function getCritLabel(crit: string, t: RolesWithoutSuccessorProps['t']): string {
   if (crit === 'critical') return t.critical;
   if (crit === 'high') return t.high;
+  if (crit === 'medium') return t.medium;
+  if (crit === 'low') return t.low;
   return t.medium;
 }
 
