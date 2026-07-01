@@ -8,7 +8,6 @@ interface KanbanBoardProps {
   stages: PipelineStageWithApps[];
   onMove: (applicationId: string, toStageId: string) => void;
   onReject: (applicationId: string, reason: string) => void;
-  isMoving: boolean;
 }
 
 /** Progressive purple gradient — lighter to darker, left to right */
@@ -25,9 +24,9 @@ function getHeaderStyle(idx: number) {
   return HEADER_COLORS[Math.min(idx, HEADER_COLORS.length - 1)];
 }
 
-export function KanbanBoard({ stages, onMove, isMoving }: KanbanBoardProps) {
+export function KanbanBoard({ stages, onMove }: KanbanBoardProps) {
   const handleDragEnd = (result: DropResult) => {
-    if (!result.destination || isMoving) return;
+    if (!result.destination) return;
     if (result.source.droppableId === result.destination.droppableId) return;
     onMove(result.draggableId, result.destination.droppableId);
   };

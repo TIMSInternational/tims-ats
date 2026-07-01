@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
@@ -11,6 +11,7 @@ import { PipelineListView } from './pipeline-list-view';
 import { PipelineTableView } from './pipeline-table-view';
 import { PipelineFilters, applyFilters, EMPTY_FILTERS, type PipelineFilterState } from './pipeline-filters';
 import { AddCandidateModal } from './add-candidate-modal';
+import { moveApplicationOptimistic } from './pipeline-optimistic';
 
 type ViewMode = 'kanban' | 'list' | 'table';
 
@@ -29,13 +30,41 @@ export default function PipelinePage() {
 
   const utils = trpc.useUtils();
 
+  // Cards with an in-flight move. Blocks a second drag of the SAME card before
+  // its move settles (which would race two optimistic writes on one cache entry
+  // and could leave server ≠ UI). Different cards still move concurrently.
+  const pendingMoves = useRef<Set<string>>(new Set());
+
   const moveCandidate = trpc.pipeline.moveCandidate.useMutation({
-    onSuccess: () => {
-      if (selectedVacancyId) utils.pipeline.getBoard.invalidate({ vacancyId: selectedVacancyId });
-      toast(t.pipeline.moved, { type: 'success' });
+    // Optimistic move: commit the card to its new column on drop (single source
+    // of truth = the query cache), so it never snaps back to wait for the refetch.
+    onMutate: async ({ applicationId, toStageId }) => {
+      if (!selectedVacancyId) return;
+      const input = { vacancyId: selectedVacancyId, status: 'active' as const };
+      await utils.pipeline.getBoard.cancel(input);
+      const previous = utils.pipeline.getBoard.getData(input);
+      if (previous) {
+        utils.pipeline.getBoard.setData(input, moveApplicationOptimistic(previous, applicationId, toStageId));
+      }
+      return { previous, input };
     },
-    onError: (err) => { toast(err.message, { type: 'error' }); },
+    onError: (err, _vars, ctx) => {
+      if (ctx?.previous && ctx?.input) utils.pipeline.getBoard.setData(ctx.input, ctx.previous);
+      toast(err.message, { type: 'error' });
+    },
+    onSuccess: () => { toast(t.pipeline.moved, { type: 'success' }); },
+    // Reconcile with server truth once the write settles (success or rollback).
+    onSettled: (_data, _err, { applicationId }) => {
+      pendingMoves.current.delete(applicationId);
+      if (selectedVacancyId) utils.pipeline.getBoard.invalidate({ vacancyId: selectedVacancyId });
+    },
   });
+
+  const handleMove = (applicationId: string, toStageId: string) => {
+    if (pendingMoves.current.has(applicationId)) return; // same card already moving
+    pendingMoves.current.add(applicationId);
+    moveCandidate.mutate({ applicationId, toStageId });
+  };
 
   const rejectCandidate = trpc.pipeline.rejectCandidate.useMutation({
     onSuccess: () => {
@@ -144,20 +173,19 @@ export default function PipelinePage() {
           viewMode === 'kanban' ? (
             <KanbanBoard
               stages={filteredStages as typeof board.data.stages}
-              onMove={(applicationId, toStageId) => moveCandidate.mutate({ applicationId, toStageId })}
+              onMove={handleMove}
               onReject={(applicationId, reason) => rejectCandidate.mutate({ applicationId, reason })}
-              isMoving={moveCandidate.isPending}
             />
           ) : viewMode === 'list' ? (
             <PipelineListView
               stages={filteredStages as typeof board.data.stages}
-              onMove={(applicationId, toStageId) => moveCandidate.mutate({ applicationId, toStageId })}
+              onMove={handleMove}
               onReject={(applicationId, reason) => rejectCandidate.mutate({ applicationId, reason })}
             />
           ) : (
             <PipelineTableView
               stages={filteredStages as typeof board.data.stages}
-              onMove={(applicationId, toStageId) => moveCandidate.mutate({ applicationId, toStageId })}
+              onMove={handleMove}
               onReject={(applicationId, reason) => rejectCandidate.mutate({ applicationId, reason })}
             />
           )
