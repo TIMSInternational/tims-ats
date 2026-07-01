@@ -20,13 +20,38 @@ const WEBHOOK_PUBLIC_SELECT = {
   updatedAt: true,
 } satisfies Prisma.WebhookSelect;
 
+// Connector fields safe to return to clients — deliberately EXCLUDES `config`
+// (a Json blob that holds third-party integration credentials: API keys, OAuth
+// tokens, connection strings). Secrets are written on create/update but never
+// read back to any `integration:read` user.
+const CONNECTOR_PUBLIC_SELECT = {
+  id: true,
+  organizationId: true,
+  name: true,
+  type: true,
+  status: true,
+  lastSyncAt: true,
+  syncFrequency: true,
+  entitiesSynced: true,
+  createdById: true,
+  createdAt: true,
+  updatedAt: true,
+} satisfies Prisma.ConnectorSelect;
+
+// Connector config is a credential-bearing blob; bound its size to prevent
+// oversized-payload abuse (the values themselves are opaque to us).
+const connectorConfigSchema = z
+  .record(z.unknown())
+  .refine((v) => JSON.stringify(v).length <= 10_000, 'config demasiado grande');
+
 export const integrationRouter = router({
   // ── Connectors ──────────────────────────────────────────────
 
   listConnectors: permissionProcedure('integration', 'read').query(async ({ ctx }) => {
     return db.connector.findMany({
       where: { organizationId: ctx.user.organizationId },
-      include: {
+      select: {
+        ...CONNECTOR_PUBLIC_SELECT,
         creator: { select: { id: true, firstName: true, lastName: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -38,7 +63,8 @@ export const integrationRouter = router({
     .query(async ({ ctx, input }) => {
       return db.connector.findFirstOrThrow({
         where: { id: input.id, organizationId: ctx.user.organizationId },
-        include: {
+        select: {
+          ...CONNECTOR_PUBLIC_SELECT,
           creator: { select: { id: true, firstName: true, lastName: true } },
           syncs: { take: 10, orderBy: { startedAt: 'desc' } },
           errors: { where: { status: 'pending' }, take: 10, orderBy: { createdAt: 'desc' } },
@@ -51,7 +77,7 @@ export const integrationRouter = router({
       z.object({
         name: z.string().min(1).max(100),
         type: z.string().min(1).max(100),
-        config: z.record(z.unknown()),
+        config: connectorConfigSchema,
         syncFrequency: z.string().max(100).optional(),
       })
     )
@@ -63,6 +89,7 @@ export const integrationRouter = router({
           organizationId: ctx.user.organizationId,
           createdById: ctx.user.id,
         },
+        select: CONNECTOR_PUBLIC_SELECT,
       });
     }),
 
@@ -72,7 +99,7 @@ export const integrationRouter = router({
         id: z.string().uuid(),
         name: z.string().min(1).max(100).optional(),
         status: z.string().max(50).optional(),
-        config: z.record(z.unknown()).optional(),
+        config: connectorConfigSchema.optional(),
         syncFrequency: z.string().max(100).nullish(),
       })
     )
@@ -84,6 +111,7 @@ export const integrationRouter = router({
           ...data,
           config: data.config as unknown as Prisma.JsonObject,
         },
+        select: CONNECTOR_PUBLIC_SELECT,
       });
     }),
 
@@ -92,6 +120,7 @@ export const integrationRouter = router({
     .mutation(async ({ ctx, input }) => {
       return db.connector.delete({
         where: { id: input.id, organizationId: ctx.user.organizationId },
+        select: { id: true },
       });
     }),
 

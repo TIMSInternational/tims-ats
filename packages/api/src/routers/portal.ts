@@ -2,14 +2,15 @@ import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { router, publicProcedure } from '../trpc';
 import { db } from '@tims/db';
+import { captchaBypassAllowed } from './portal-helpers';
 
-// Verify a Cloudflare Turnstile token on the public apply form. Env-gated: when
-// TURNSTILE_SECRET_KEY is not configured (dev / not-yet-enabled), verification is
-// skipped so existing flows keep working. Once the secret is set, a valid token is
-// required — this throttles scripted spam/DoS against the unauthenticated endpoint.
+// Verify a Cloudflare Turnstile token on the public apply form. In production the
+// secret MUST be configured (else every apply is rejected — fail closed). Once the
+// secret is set, a valid token is required — this throttles scripted spam/DoS
+// against the unauthenticated endpoint.
 async function verifyCaptcha(token: string | undefined): Promise<boolean> {
   const secret = process.env.TURNSTILE_SECRET_KEY;
-  if (!secret) return true; // not configured — skip
+  if (!secret) return captchaBypassAllowed(secret, process.env.NODE_ENV);
   if (!token) return false;
   try {
     const res = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
@@ -49,8 +50,8 @@ export const portalRouter = router({
     .input(
       z.object({
         organizationId: z.string().uuid(),
-        location: z.string().optional(),
-        search: z.string().optional(),
+        location: z.string().trim().max(100).optional(),
+        search: z.string().trim().max(100).optional(),
         take: z.number().min(1).max(50).default(20),
         cursor: z.string().uuid().optional(),
       })
@@ -133,7 +134,7 @@ export const portalRouter = router({
         vacancyId: z.string().uuid(),
         firstName: z.string().min(1).max(100),
         lastName: z.string().min(1).max(100),
-        email: z.string().email(),
+        email: z.string().email().max(320),
         phone: z.string().max(30).optional(),
         source: z.string().max(50).default('portal'),
         linkedinUrl: z.string().url().max(2048).optional(),

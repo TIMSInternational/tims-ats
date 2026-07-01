@@ -175,8 +175,11 @@ export const offerSigningRouter = router({
         },
       });
 
-      await db.offer.update({
-        where: { id: offer.id },
+      // Atomic conditional transition: only the request that still sees status
+      // 'sent' wins. `updateMany` matches 0 rows for a concurrent second accept
+      // (status already flipped), so two clicks can't both be accepted (TOCTOU).
+      const transition = await db.offer.updateMany({
+        where: { id: offer.id, status: 'sent' },
         data: {
           status: 'accepted',
           respondedAt: now,
@@ -187,6 +190,12 @@ export const offerSigningRouter = router({
           },
         },
       });
+      if (transition.count !== 1) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Esta oferta ya fue respondida o no esta disponible para firma',
+        });
+      }
 
       // Fire-and-forget: notify HR team
       if (fullOffer) {
@@ -262,8 +271,10 @@ export const offerSigningRouter = router({
         },
       });
 
-      await db.offer.update({
-        where: { id: offer.id },
+      // Atomic conditional transition (see acceptByToken): guards against a
+      // concurrent accept/decline race — only the request still seeing 'sent' wins.
+      const transition = await db.offer.updateMany({
+        where: { id: offer.id, status: 'sent' },
         data: {
           status: 'declined',
           respondedAt: now,
@@ -273,6 +284,12 @@ export const offerSigningRouter = router({
           },
         },
       });
+      if (transition.count !== 1) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Esta oferta ya fue respondida',
+        });
+      }
 
       // Fire-and-forget: notify HR team
       if (fullOffer) {

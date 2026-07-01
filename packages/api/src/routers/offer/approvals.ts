@@ -4,6 +4,7 @@ import { tenantDb as db } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { scopeWhereFor, assertScoped } from '../../access';
+import { redactOfferSettings } from './offer-dto';
 
 export const offerApprovalsRouter = router({
   // 9.5 — Submit offer for approval
@@ -51,7 +52,7 @@ export const offerApprovalsRouter = router({
           })),
         });
 
-        return tx.offer.update({
+        const updated = await tx.offer.update({
           where: { id: input.id },
           data: { status: 'pending_approval' },
           include: {
@@ -63,6 +64,7 @@ export const offerApprovalsRouter = router({
             },
           },
         });
+        return redactOfferSettings(updated);
       });
     }),
 
@@ -113,13 +115,14 @@ export const offerApprovalsRouter = router({
         });
 
         if (pendingCount === 0) {
-          return tx.offer.update({
+          const approved = await tx.offer.update({
             where: { id: input.id },
             data: { status: 'approved' },
           });
+          return redactOfferSettings(approved);
         }
 
-        return tx.offer.findUnique({ where: { id: input.id } });
+        return redactOfferSettings(await tx.offer.findUnique({ where: { id: input.id } }));
       });
     }),
 
@@ -161,10 +164,11 @@ export const offerApprovalsRouter = router({
           },
         });
 
-        return tx.offer.update({
+        const rejected = await tx.offer.update({
           where: { id: input.id },
           data: { status: 'rejected' },
         });
+        return redactOfferSettings(rejected);
       });
     }),
 
@@ -221,7 +225,7 @@ export const offerApprovalsRouter = router({
     return pendingApprovals.map((a) => ({
       approvalId: a.id,
       step: a.step,
-      offer: a.offer,
+      offer: redactOfferSettings(a.offer),
     }));
   }),
 });

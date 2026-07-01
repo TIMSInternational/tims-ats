@@ -4,6 +4,7 @@ import { tenantDb as db } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { scopeWhereFor, assertScoped } from '../../access';
+import { redactOfferSettings } from './offer-dto';
 
 export const offerCrudRouter = router({
   // 9.1 — List offers with filters
@@ -56,7 +57,7 @@ export const offerCrudRouter = router({
         db.offer.count({ where }),
       ]);
 
-      return { items, total, page, pageSize };
+      return { items: items.map((o) => redactOfferSettings(o)), total, page, pageSize };
     }),
 
   // 9.2 — Get offer by ID
@@ -103,7 +104,7 @@ export const offerCrudRouter = router({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Oferta no encontrada' });
       }
 
-      return offer;
+      return redactOfferSettings(offer);
     }),
 
   // 9.3 — Create a new offer
@@ -142,7 +143,7 @@ export const offerCrudRouter = router({
       }
 
       const { benefits, terms, ...rest } = input;
-      return db.offer.create({
+      const created = await db.offer.create({
         data: {
           ...rest,
           benefits: benefits as Prisma.InputJsonValue | undefined,
@@ -158,6 +159,7 @@ export const offerCrudRouter = router({
           vacancy: { select: { id: true, title: true } },
         },
       });
+      return redactOfferSettings(created);
     }),
 
   // 9.4 — Update an offer (only while in draft)
@@ -202,7 +204,7 @@ export const offerCrudRouter = router({
       }
 
       const { benefits, terms, ...rest } = data;
-      return db.offer.update({
+      const updated = await db.offer.update({
         where: { id },
         data: {
           ...rest,
@@ -210,5 +212,6 @@ export const offerCrudRouter = router({
           ...(terms !== undefined && { terms: terms as Prisma.InputJsonValue }),
         },
       });
+      return redactOfferSettings(updated);
     }),
 });
