@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
+import { logger } from '@tims/shared';
 import { router } from '../../trpc';
 import { db } from '@tims/db';
 import { platformProcedure } from './_common';
@@ -17,7 +18,7 @@ import { platformProcedure } from './_common';
 export const dataRequestsRouter = router({
   exportSubjectData: platformProcedure
     .input(z.object({ email: z.string().email().max(255) }))
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
       // Don't pre-lowercase: stored emails aren't guaranteed normalized, so we
       // rely on Prisma `mode: 'insensitive'` to match regardless of casing.
       const email = input.email.trim();
@@ -101,6 +102,55 @@ export const dataRequestsRouter = router({
         recruitment: { applications, interviews, offers, assessments },
         hr: { demographics, compensation },
       };
+
+      // Audit the PII access: this is a cross-org, PII-bearing export (salary, DOB,
+      // demographics). Write ONE record per affected org, keyed to the *matched
+      // subjects'* real org ids — NOT ctx.user.organizationId, which is '' for an
+      // org-less platform owner and would fail the required-UUID FK (silently, via
+      // the .catch), leaving the export unaudited. Awaited (not fire-and-forget) so
+      // the record durably lands before the serverless function can freeze; the
+      // per-write .catch keeps a logging failure from blocking the right-of-access.
+      const affectedOrgIds = [
+        ...new Set(
+          [...users, ...candidates]
+            .map((r) => r.organizationId)
+            .filter((id): id is string => !!id),
+        ),
+      ];
+      // Fall back to the operator's own org so an org-less subject (User.organizationId
+      // is nullable) is still audited under the platform owner's org. `''` (org-less
+      // operator) is falsy and excluded.
+      const auditOrgIds =
+        affectedOrgIds.length > 0
+          ? affectedOrgIds
+          : ctx.user.organizationId
+            ? [ctx.user.organizationId]
+            : [];
+      const auditMeta = { email, matched: { users: users.length, candidates: candidates.length } };
+      if (auditOrgIds.length > 0) {
+        await Promise.all(
+          auditOrgIds.map((organizationId) =>
+            db.auditLog.create({
+              data: {
+                organizationId,
+                actorId: ctx.user.id,
+                action: 'data_subject_export',
+                entity: 'data_subject',
+                entityId: email,
+                metadata: auditMeta,
+              },
+            }).catch(() => {}),
+          ),
+        );
+      } else {
+        // Doubly org-less (org-less operator exporting an org-less subject): no valid
+        // AuditLog.organizationId exists, so record the access in the structured log
+        // rather than let a PII export go completely unaudited.
+        logger.warn(
+          { action: 'data_subject_export', actorId: ctx.user.id, ...auditMeta },
+          'PII data-subject export had no org context for auditLog — logged here instead',
+        );
+      }
 
       return {
         json: JSON.stringify(bundle, null, 2),

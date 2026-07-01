@@ -1,5 +1,6 @@
 import { db } from './client';
 import { getTenantOrgId } from './tenant-context';
+import { assertRlsEnforced } from './rls-guard';
 
 // Tenant-scoped Prisma client for RLS enforcement.
 //
@@ -23,8 +24,16 @@ export const tenantDb = db.$extends({
   query: {
     async $allOperations({ args, query }) {
       const orgId = getTenantOrgId();
-      // Not enforced, or no org in scope (platform owner / system job): run unscoped.
-      if (!RLS_ENFORCED || !orgId) {
+      // No org in scope (platform owner / system job): legitimately run unscoped.
+      if (!orgId) {
+        return query(args);
+      }
+      // Tenant op but RLS disabled: fail CLOSED in production so a misconfigured
+      // deploy never silently runs unscoped on the BYPASSRLS login role. Dev/test
+      // keep the unscoped convenience path. (Checked per-op, not at module load, so
+      // `next build` — which runs as production but executes no queries — is safe.)
+      if (!RLS_ENFORCED) {
+        assertRlsEnforced(process.env.NODE_ENV, RLS_ENFORCED);
         return query(args);
       }
       const [, , result] = await db.$transaction([
