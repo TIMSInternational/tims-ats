@@ -103,13 +103,14 @@ function AcceptInvitationContent() {
           </div>
           <h1 className="text-xl font-semibold text-[#333] mb-2">{ti.accepted}</h1>
           <p className="text-sm text-[#8B8B8B] mb-6">
-            {inv.type === 'org_admin'
-              ? `Tu organizacion ${inv.organizationName} esta lista. Crea tu cuenta para comenzar.`
-              : `Has sido agregado a ${inv.organizationName}. Inicia sesion para continuar.`
-            }
+            {inv.type === 'org_admin' ? (
+              <>{ti.orgReadyAdminPrefix} {inv.organizationName} {ti.orgReadyAdminSuffix}</>
+            ) : (
+              <>{ti.memberAddedPrefix} {inv.organizationName}. {ti.memberAddedSuffix}</>
+            )}
           </p>
           <a href="/login" className="inline-flex items-center gap-2 h-10 px-6 rounded-lg bg-[#1F114C] text-white text-sm font-medium hover:bg-[#2a1866] transition">
-            {inv.type === 'org_admin' ? 'Crear Cuenta' : 'Iniciar Sesion'}
+            {inv.type === 'org_admin' ? t.auth.createAccount : t.auth.login}
             <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" /></svg>
           </a>
         </div>
@@ -128,13 +129,17 @@ function AcceptInvitationContent() {
           </div>
         </div>
         <h1 className="text-2xl font-semibold text-[#333] mb-2">
-          {inv.type === 'org_admin' ? 'Administra tu organizacion' : 'Unete al equipo'}
+          {inv.type === 'org_admin' ? ti.manageOrgHeading : ti.joinTeamHeading}
         </h1>
         <p className="text-sm text-[#8B8B8B] mb-8">
-          {inv.type === 'org_admin'
-            ? `Has sido invitado a administrar ${inv.organizationName} en TIMS ATS.`
-            : `Has sido invitado a unirte a ${inv.organizationName} en TIMS ATS${inv.roleSlug ? ` como ${inv.roleSlug.replace(/_/g, ' ')}` : ''}.`
-          }
+          {inv.type === 'org_admin' ? (
+            <>{ti.invitedAdminPrefix} {inv.organizationName} {ti.invitedAdminSuffix}</>
+          ) : (
+            <>
+              {ti.invitedMemberPrefix} {inv.organizationName} {ti.invitedMemberMiddle}
+              {inv.roleSlug ? <> {ti.asRole} {inv.roleSlug.replace(/_/g, ' ')}</> : null}.
+            </>
+          )}
         </p>
 
         {/* Invitation details */}
@@ -172,11 +177,11 @@ function AcceptInvitationContent() {
           disabled={accept.isPending}
           className="w-full h-11 rounded-xl bg-[#1F114C] text-white text-sm font-semibold hover:bg-[#2a1866] transition disabled:opacity-50"
         >
-          {accept.isPending ? 'Aceptando...' : 'Aceptar Invitacion'}
+          {accept.isPending ? ti.accepting : ti.acceptButton}
         </button>
 
         <p className="text-[10px] text-[#8B8B8B] mt-6">
-          Al aceptar, confirmas que deseas unirte a esta organizacion en TIMS ATS.
+          {ti.confirmJoin}
         </p>
       </div>
     </div>

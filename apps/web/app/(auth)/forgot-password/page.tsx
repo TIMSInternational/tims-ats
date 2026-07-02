@@ -50,7 +50,7 @@ export default function ForgotPasswordPage() {
               </div>
               <h3 className="text-[15px] font-semibold text-[#1F114C] mb-2">{t.auth.emailSentTitle}</h3>
               <p className="text-[13px] text-[#585858] mb-4">
-                Revisa tu bandeja de entrada en <strong>{email}</strong> y sigue las instrucciones.
+                {t.auth.checkInboxAt} <strong>{email}</strong> {t.auth.followInstructions}
               </p>
               <Link href="/login" className="text-[13px] text-[#DD0C15] font-medium hover:underline">
                 {t.auth.backToLogin}

@@ -58,7 +58,7 @@ export function WhyWorkSection() {
       <div className="mx-auto max-w-5xl text-center">
         <h2 className="text-[20px] font-bold text-[#1F114C]">{t.portal.whyWorkTitle}</h2>
         <p className="mx-auto mt-2 max-w-lg text-[13px] text-[#585858]">
-          Nuestra plataforma conecta talento con las mejores oportunidades a traves de un proceso moderno y eficiente.
+          {t.portal.whyWorkSubtitle}
         </p>
         <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {values.map((v) => (

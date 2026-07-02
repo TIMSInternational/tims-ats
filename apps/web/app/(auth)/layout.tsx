@@ -30,7 +30,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
               <span className="text-white/60">{t.auth.growth}</span>
             </h2>
             <p className="text-white/45 text-[15px] leading-relaxed max-w-[420px] mb-8">
-              Reclutamiento inteligente, evaluaciones predictivas y desarrollo de talento en una sola plataforma.
+              {t.auth.heroTagline}
             </p>
 
             {/* Feature pills */}

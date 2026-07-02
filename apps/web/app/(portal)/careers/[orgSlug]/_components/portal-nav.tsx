@@ -3,6 +3,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { useState } from 'react';
+import { useI18n } from '../../../../../lib/i18n';
 
 interface PortalNavProps {
   orgName: string;
@@ -17,6 +18,7 @@ const navLinks = [
 ];
 
 export function PortalNav({ orgName, orgSlug }: PortalNavProps) {
+  const { t } = useI18n();
   const [activeLink, setActiveLink] = useState('Inicio');
 
   return (
@@ -62,7 +64,7 @@ export function PortalNav({ orgName, orgSlug }: PortalNavProps) {
             href="/auth/login"
             className="hidden rounded-lg border border-[#1F114C] px-4 py-2 text-[13px] font-medium text-[#1F114C] transition-colors hover:bg-[#1F114C] hover:text-white sm:block"
           >
-            Iniciar Sesion
+            {t.portal.signInNav}
           </Link>
 
           <Link

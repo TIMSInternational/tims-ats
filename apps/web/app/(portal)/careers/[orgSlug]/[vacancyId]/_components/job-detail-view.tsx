@@ -165,7 +165,7 @@ export function JobDetailView({ orgSlug, vacancyId }: JobDetailViewProps) {
                 </span>
               )}
               <span>Publicada {timeAgo(v.createdAt)}</span>
-              <span>{v.applicantCount} {v.applicantCount === 1 ? 'persona aplico' : 'personas aplicaron'}</span>
+              <span>{v.applicantCount} {v.applicantCount === 1 ? p.oneApplicant : p.manyApplicants}</span>
             </div>
             <div className="mb-4 flex flex-wrap items-center gap-2">
               {remote && <span className="rounded-md bg-blue-50 px-2.5 py-1 text-[12px] font-medium text-blue-700">{remote}</span>}
@@ -244,7 +244,7 @@ export function JobDetailView({ orgSlug, vacancyId }: JobDetailViewProps) {
                 </div>
               </div>
               <p className="text-[13px] leading-relaxed text-[#585858]">
-                {companyName} utiliza TIMS ATS para conectar con el mejor talento a traves de evaluaciones cientificas y procesos de seleccion transparentes.
+                {companyName} {p.companyUsesTimsSuffix}
               </p>
             </section>
           </div>

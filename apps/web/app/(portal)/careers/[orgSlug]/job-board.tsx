@@ -131,7 +131,7 @@ export function JobBoard({ organizationId, orgName, orgSlug }: JobBoardProps) {
       {(appliedSearch || appliedLocation || allItems.length > 3) && allItems.length > 0 && (
         <section id="todas" className="mx-auto max-w-6xl px-6 pb-10">
           <h2 className="mb-6 text-[22px] font-bold text-[#1F114C]">
-            {appliedSearch || appliedLocation ? 'Resultados de busqueda' : 'Todas las vacantes'}
+            {appliedSearch || appliedLocation ? t.portal.searchResultsTitle : t.portal.allVacanciesTitle}
           </h2>
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
             {allItems.map((v) => (

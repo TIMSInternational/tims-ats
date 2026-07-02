@@ -100,10 +100,10 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, onClose }: Ap
           </div>
           <h3 className="mb-2 text-[18px] font-bold text-[#1F114C]">{p.applicationSentTitle}</h3>
           <p className="mb-1 text-[14px] text-[#585858]">
-            Tu aplicacion a <span className="font-medium text-[#333]">{vacancyTitle}</span> ha sido recibida.
+            {p.applicationReceivedPrefix} <span className="font-medium text-[#333]">{vacancyTitle}</span> {p.applicationReceivedSuffix}
           </p>
           <p className="mb-6 text-[13px] text-[#8B8B8B]">
-            El equipo de {companyName} revisara tu perfil y te contactara si avanzas en el proceso.
+            {p.teamWillReviewPrefix} {companyName} {p.teamWillReviewSuffix}
           </p>
           <button
             onClick={onClose}
@@ -252,7 +252,7 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, onClose }: Ap
           {submitting && (
             <span className="flex items-center gap-1.5 text-[11px] text-[#8B8B8B]">
               <div className="h-3 w-3 animate-spin rounded-full border-2 border-[#DD0C15]/30 border-t-[#DD0C15]" />
-              Enviando aplicacion...
+              {p.submittingApplication}
             </span>
           )}
         </div>
@@ -275,7 +275,7 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, onClose }: Ap
               disabled={!isStep1Valid || submitting || !captchaSatisfied}
               className="flex h-9 items-center gap-2 rounded-lg bg-[#DD0C15] px-5 text-sm font-medium text-white transition hover:bg-[#c00b13] disabled:opacity-50"
             >
-              {submitting ? 'Enviando...' : 'Enviar aplicacion'}
+              {submitting ? p.sendingShort : p.submitApplication}
             </button>
           )}
         </div>

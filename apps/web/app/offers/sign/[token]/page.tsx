@@ -32,25 +32,25 @@ export default function OfferSignPage() {
   });
 
   if (offer.isLoading) {
-    return <StatusScreen bg="bg-[#1F114C]/10" color="text-[#1F114C]" icon="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" title={t.offers.signLoading} subtitle="Un momento por favor." pulse />;
+    return <StatusScreen bg="bg-[#1F114C]/10" color="text-[#1F114C]" icon="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" title={t.offers.signLoading} subtitle={t.offers.signOneMoment} pulse />;
   }
 
   if (offer.error || !offer.data) {
-    return <StatusScreen bg="bg-red-100" color="text-[#DD0C15]" icon="M15 9l-6 6M9 9l6 6" circle title={t.offers.signInvalidLink} subtitle="Este enlace de firma no es valido o ha expirado. Contacta a recursos humanos." />;
+    return <StatusScreen bg="bg-red-100" color="text-[#DD0C15]" icon="M15 9l-6 6M9 9l6 6" circle title={t.offers.signInvalidLink} subtitle={t.offers.signInvalidLinkDesc} />;
   }
 
   const o = offer.data;
 
   if (o.status !== 'sent' && !accepted && !declined) {
-    return <StatusScreen bg="bg-amber-100" color="text-amber-600" icon="M12 6v6l4 2" circle title={t.offers.signAlreadyAnswered} subtitle={`Esta oferta ya ha sido ${o.status === 'accepted' ? 'aceptada' : 'procesada'}. No se requiere accion adicional.`} />;
+    return <StatusScreen bg="bg-amber-100" color="text-amber-600" icon="M12 6v6l4 2" circle title={t.offers.signAlreadyAnswered} subtitle={`${t.offers.signAlreadyAnsweredPrefix} ${o.status === 'accepted' ? t.offers.signStatusAccepted : t.offers.signStatusProcessed}. ${t.offers.signAlreadyAnsweredSuffix}`} />;
   }
 
   if (accepted) {
-    return <StatusScreen bg="bg-green-100" color="text-green-600" icon="M22 11.08V12a10 10 0 11-5.93-9.14" title={t.offers.signAccepted} subtitle={`Felicidades, ${o.candidate.firstName}. Tu aceptacion ha sido registrada. El equipo de recursos humanos se pondra en contacto contigo.`} />;
+    return <StatusScreen bg="bg-green-100" color="text-green-600" icon="M22 11.08V12a10 10 0 11-5.93-9.14" title={t.offers.signAccepted} subtitle={`${t.offers.signAcceptedPrefix} ${o.candidate.firstName}. ${t.offers.signAcceptedSuffix}`} />;
   }
 
   if (declined) {
-    return <StatusScreen bg="bg-gray-100" color="text-gray-500" icon="M6 18L18 6M6 6l12 12" title={t.offers.signDeclined} subtitle="Tu respuesta ha sido registrada. Gracias por tu tiempo." />;
+    return <StatusScreen bg="bg-gray-100" color="text-gray-500" icon="M6 18L18 6M6 6l12 12" title={t.offers.signDeclined} subtitle={t.offers.signDeclinedDesc} />;
   }
 
   const benefits = o.benefits as Record<string, string> | null;
@@ -147,15 +147,14 @@ export default function OfferSignPage() {
                   className="mt-0.5 w-4 h-4 rounded border-[#D1D5DB] text-[#1F114C] focus:ring-[#1F114C]"
                 />
                 <span className="text-[13px] text-[#585858] leading-snug">
-                  He leido y acepto los terminos de esta oferta laboral. Entiendo que esta aceptacion
-                  constituye mi firma digital y compromiso.
+                  {t.offers.signTermsAgreement}
                 </span>
               </label>
 
               {/* Signature name */}
               <div>
                 <label className="block text-xs text-[#8B8B8B] mb-1.5">
-                  Nombre completo (firma digital)
+                  {t.offers.signFullNameLabel}
                 </label>
                 <input
                   type="text"
@@ -196,20 +195,20 @@ export default function OfferSignPage() {
                   disabled={!agreedTerms || signatureName.length < 2 || acceptMutation.isPending}
                   className="flex-1 h-11 rounded-xl bg-[#16A34A] text-white text-sm font-semibold hover:bg-[#15803D] transition disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  {acceptMutation.isPending ? 'Procesando...' : 'Aceptar Oferta'}
+                  {acceptMutation.isPending ? t.offers.signAccepting : t.offers.signAcceptButton}
                 </button>
               </div>
 
               <button
                 onClick={() => {
-                  if (confirm('Estas seguro de que deseas declinar esta oferta?')) {
+                  if (confirm(t.offers.signConfirmDecline)) {
                     declineMutation.mutate({ token });
                   }
                 }}
                 disabled={declineMutation.isPending}
                 className="w-full text-center text-xs text-[#8B8B8B] hover:text-[#DD0C15] transition py-2"
               >
-                Declinar Oferta
+                {t.offers.signDeclineButton}
               </button>
             </div>
           </div>
@@ -217,7 +216,7 @@ export default function OfferSignPage() {
           {/* Footer */}
           <div className="bg-[#FAFAFA] px-8 py-4 border-t border-[#EDEDED]">
             <p className="text-[10px] text-[#8B8B8B] text-center">
-              Este documento es confidencial. Al firmar digitalmente, aceptas los terminos de la oferta laboral.
+              {t.offers.signConfidentialFooter}
             </p>
           </div>
         </div>

@@ -1,4 +1,5 @@
 import Image from 'next/image';
+import { useI18n } from '../../../../../lib/i18n';
 
 interface PortalFooterProps {
   orgName: string;
@@ -20,6 +21,7 @@ const columns = [
 ];
 
 export function PortalFooter({ orgName }: PortalFooterProps) {
+  const { t } = useI18n();
   return (
     <footer className="bg-[#1F114C] px-8 py-8">
       <div className="mx-auto max-w-5xl">
@@ -35,7 +37,7 @@ export function PortalFooter({ orgName }: PortalFooterProps) {
               className="h-8 w-auto brightness-0 invert"
             />
             <p className="mt-3 text-[12px] leading-relaxed text-white/50">
-              {orgName} utiliza TIMS ATS para conectar con el mejor talento a traves de evaluaciones cientificas y procesos transparentes.
+              {orgName} {t.portal.footerUsesTimsSuffix}
             </p>
           </div>
 
@@ -63,10 +65,10 @@ export function PortalFooter({ orgName }: PortalFooterProps) {
         {/* Bottom */}
         <div className="mt-8 flex flex-col items-center justify-between gap-2 border-t border-white/10 pt-6 sm:flex-row">
           <p className="text-[11px] text-white/40">
-            &copy; {new Date().getFullYear()} {orgName}. Todos los derechos reservados.
+            &copy; {new Date().getFullYear()} {orgName}. {t.portal.allRightsReserved}
           </p>
           <p className="text-[11px] text-white/40">
-            Powered by <span className="font-semibold text-white/60">TIMS ATS</span>
+            {t.auth.poweredBy} <span className="font-semibold text-white/60">TIMS ATS</span>
           </p>
         </div>
       </div>

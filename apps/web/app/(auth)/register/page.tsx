@@ -46,12 +46,12 @@ export default function RegisterPage() {
           </div>
 
           <p className="text-center text-[12px] text-[#8B8B8B] mt-6">
-            Eres candidato? Postula directamente desde el enlace de empleos de la empresa.
+            {t.auth.candidateApplyHint}
           </p>
           <p className="text-center text-[12px] text-[#8B8B8B] mt-2">
-            Ya tienes cuenta?{' '}
+            {t.auth.alreadyHaveAccount}{' '}
             <Link href="/login" className="text-[#DD0C15] font-medium hover:underline">
-              Iniciar Sesion
+              {t.auth.login}
             </Link>
           </p>
         </div>

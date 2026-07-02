@@ -24,7 +24,7 @@ export function RegisterForm({ accountType, onBack }: { accountType: AccountType
     setError('');
 
     if (password.length < 8) {
-      setError('La contrasena debe tener al menos 8 caracteres');
+      setError(t.auth.passwordMinLength);
       return;
     }
 
@@ -48,7 +48,7 @@ export function RegisterForm({ accountType, onBack }: { accountType: AccountType
     if (signUpError) {
       setError(
         signUpError.message === 'User already registered'
-          ? 'Este email ya esta registrado. Intenta iniciar sesion.'
+          ? t.auth.emailAlreadyRegistered
           : signUpError.message
       );
       setLoading(false);
@@ -89,10 +89,10 @@ export function RegisterForm({ accountType, onBack }: { accountType: AccountType
         </div>
         <h3 className="text-[15px] font-semibold text-[#1F114C] mb-2">{t.auth.verifyEmail}</h3>
         <p className="text-[13px] text-[#585858] mb-4">
-          Enviamos un enlace de confirmacion a <strong>{email}</strong>.
+          {t.auth.confirmationSentTo} <strong>{email}</strong>.
         </p>
         <Link href="/login" className="text-[13px] text-[#DD0C15] font-medium hover:underline">
-          Ir al login
+          {t.auth.goToLogin}
         </Link>
       </div>
     );
@@ -109,12 +109,12 @@ export function RegisterForm({ accountType, onBack }: { accountType: AccountType
         </button>
         <div>
           <h2 className="text-lg font-semibold text-[#1F114C]">
-            {accountType === 'candidate' ? 'Cuenta de Candidato' : 'Cuenta de Empresa'}
+            {accountType === 'candidate' ? t.auth.candidateAccountTitle : t.auth.companyAccountTitle}
           </h2>
           <p className="text-[12px] text-[#8B8B8B]">
             {accountType === 'candidate'
-              ? 'Aplica a vacantes y gestiona tu perfil profesional'
-              : 'Comienza tu prueba gratuita de 14 dias'}
+              ? t.auth.candidateAccountDesc
+              : t.auth.startFreeTrialDesc}
           </p>
         </div>
       </div>
@@ -128,7 +128,7 @@ export function RegisterForm({ accountType, onBack }: { accountType: AccountType
             <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
             <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
           </svg>
-          Registrarse con Google
+          {t.auth.signUpGoogle}
         </button>
         <button onClick={handleMicrosoftSignUp} className="w-full flex items-center justify-center gap-3 h-11 rounded-xl border border-[#EDEDED] text-[13px] font-medium text-[#333] hover:bg-[#FAFAFA] transition">
           <svg className="w-5 h-5" viewBox="0 0 21 21">
@@ -137,7 +137,7 @@ export function RegisterForm({ accountType, onBack }: { accountType: AccountType
             <rect x="1" y="11" width="9" height="9" fill="#00A4EF"/>
             <rect x="11" y="11" width="9" height="9" fill="#FFB900"/>
           </svg>
-          Registrarse con Microsoft
+          {t.auth.signUpMicrosoft}
         </button>
       </div>
 
@@ -153,11 +153,11 @@ export function RegisterForm({ accountType, onBack }: { accountType: AccountType
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-[12px] font-medium text-[#585858] mb-1.5">Nombre</label>
+            <label className="block text-[12px] font-medium text-[#585858] mb-1.5">{t.auth.firstName}</label>
             <input type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} required className="w-full h-11 px-4 rounded-xl border border-[#EDEDED] text-[13px] text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 focus:border-[#1F114C] transition" placeholder="Juan" />
           </div>
           <div>
-            <label className="block text-[12px] font-medium text-[#585858] mb-1.5">Apellido</label>
+            <label className="block text-[12px] font-medium text-[#585858] mb-1.5">{t.auth.lastName}</label>
             <input type="text" value={lastName} onChange={(e) => setLastName(e.target.value)} required className="w-full h-11 px-4 rounded-xl border border-[#EDEDED] text-[13px] text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 focus:border-[#1F114C] transition" placeholder="Garcia" />
           </div>
         </div>
@@ -171,13 +171,13 @@ export function RegisterForm({ accountType, onBack }: { accountType: AccountType
 
         <div>
           <label className="block text-[12px] font-medium text-[#585858] mb-1.5">
-            {accountType === 'company' ? 'Email corporativo' : 'Email'}
+            {accountType === 'company' ? t.auth.corporateEmail : t.auth.email}
           </label>
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required className="w-full h-11 px-4 rounded-xl border border-[#EDEDED] text-[13px] text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 focus:border-[#1F114C] transition" placeholder="tu@empresa.com" />
         </div>
 
         <div>
-          <label className="block text-[12px] font-medium text-[#585858] mb-1.5">Contrasena</label>
+          <label className="block text-[12px] font-medium text-[#585858] mb-1.5">{t.auth.password}</label>
           <div className="relative">
             <input type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} className="w-full h-11 px-4 pr-11 rounded-xl border border-[#EDEDED] text-[13px] text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 focus:border-[#1F114C] transition" placeholder={t.auth.passwordMinPlaceholder} />
             <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8B8B8B] hover:text-[#585858] transition-colors">
@@ -192,16 +192,16 @@ export function RegisterForm({ accountType, onBack }: { accountType: AccountType
 
         <button type="submit" disabled={loading} className="w-full h-11 rounded-xl bg-[#1F114C] text-white text-[13px] font-semibold hover:bg-[#2a1a5e] disabled:opacity-50 disabled:cursor-not-allowed transition">
           {loading
-            ? 'Creando cuenta...'
+            ? t.auth.creatingAccount
             : accountType === 'company'
-              ? 'Comenzar Prueba Gratuita'
-              : 'Crear Cuenta'}
+              ? t.auth.startFreeTrialButton
+              : t.auth.createAccount}
         </button>
 
         <p className="text-center text-[12px] text-[#8B8B8B]">
-          Ya tienes cuenta?{' '}
+          {t.auth.alreadyHaveAccount}{' '}
           <Link href="/login" className="text-[#DD0C15] font-medium hover:underline">
-            Iniciar Sesion
+            {t.auth.login}
           </Link>
         </p>
       </form>

@@ -49,11 +49,11 @@ export function PortalHero({
         </span>
 
         <h1 className="mb-4 text-[42px] font-extrabold leading-tight text-white">
-          Construye tu futuro con nosotros
+          {t.portal.heroHeading}
         </h1>
 
         <p className="mb-10 max-w-[550px] text-[16px] leading-relaxed text-white/70">
-          Encuentra las mejores oportunidades laborales y da el siguiente paso en tu carrera profesional.
+          {t.portal.heroSubtitle}
         </p>
 
         {/* Search Bar */}
