@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Skeleton } from '../../../components';
+import { Skeleton, ErrorState } from '../../../components';
 import { EnrollModal } from './enroll-modal';
 import { useI18n } from '../../../lib/i18n';
 
@@ -19,6 +19,8 @@ interface Course {
 interface CourseCatalogProps {
   courses: Course[];
   loading: boolean;
+  isError?: boolean;
+  onRetry?: () => void;
   t: {
     courseCatalog: string;
     searchCourse: string;
@@ -38,7 +40,7 @@ const TAG_STYLES: Record<string, { bg: string; text: string; label: string }> = 
 
 type Filter = 'all' | 'required' | 'gap' | 'company';
 
-export function CourseCatalog({ courses, loading, t }: CourseCatalogProps) {
+export function CourseCatalog({ courses, loading, isError, onRetry, t }: CourseCatalogProps) {
   const { t: tI18n } = useI18n();
   const [filter, setFilter] = useState<Filter>('all');
   const [search, setSearch] = useState('');
@@ -78,6 +80,14 @@ export function CourseCatalog({ courses, loading, t }: CourseCatalogProps) {
         {Array.from({ length: 4 }).map((_, i) => (
           <Skeleton key={i} className="h-16 w-full mb-2" />
         ))}
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="w-full md:w-[55%] bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+        <ErrorState onRetry={onRetry} />
       </div>
     );
   }

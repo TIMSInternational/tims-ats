@@ -2,7 +2,7 @@
 
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
-import { KpiCard, KpiCardSkeleton } from '../../../../components';
+import { KpiCard, KpiCardSkeleton, ErrorState } from '../../../../components';
 import { formatCurrency } from '../../../../lib/format-utils';
 
 const PLAN_COLORS: Record<string, string> = {
@@ -20,7 +20,7 @@ const FLAG_LABELS: Record<string, string> = {
 
 export default function AnalyticsPage() {
   const { t } = useI18n();
-  const { data, isLoading } = trpc.platform.getAnalytics.useQuery();
+  const { data, isLoading, isError, refetch } = trpc.platform.getAnalytics.useQuery();
 
   if (isLoading) {
     return (
@@ -29,6 +29,16 @@ export default function AnalyticsPage() {
         <div className="flex flex-col md:flex-row gap-5">
           <div className="w-full md:w-[55%] space-y-5"><div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 h-[300px] animate-pulse" /><div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 h-[280px] animate-pulse" /></div>
           <div className="w-full md:w-[45%] space-y-5"><div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 h-[200px] animate-pulse" /><div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 h-[280px] animate-pulse" /></div>
+        </div>
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="h-full overflow-y-auto p-6">
+        <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+          <ErrorState onRetry={() => refetch()} />
         </div>
       </div>
     );

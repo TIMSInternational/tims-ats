@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { trpc } from '../../../../../../lib/trpc';
 import { useI18n } from '../../../../../../lib/i18n';
-import { Skeleton } from '../../../../../../components';
+import { Skeleton, ErrorState } from '../../../../../../components';
 import { BillingProfileDrawer } from '../../../invoices/billing-drawer';
 
 function fmtCurrency(value: number, currency = 'USD'): string {
@@ -56,6 +56,8 @@ export function BillingSection({ organizationId }: { organizationId: string }) {
               <div key={i}><Skeleton className="h-3 w-20 mb-1" /><Skeleton className="h-4 w-32" /></div>
             ))}
           </div>
+        ) : profile.isError ? (
+          <ErrorState onRetry={() => profile.refetch()} />
         ) : bp ? (
           <div className="grid grid-cols-3 gap-4">
             <div><span className="text-xs text-[#8B8B8B]">Empresa</span><p className="text-sm text-[#333] mt-0.5">{bp.companyName || '\u2014'}</p></div>
@@ -111,6 +113,8 @@ export function BillingSection({ organizationId }: { organizationId: string }) {
               </div>
             ))}
           </div>
+        ) : invoices.isError ? (
+          <ErrorState onRetry={() => invoices.refetch()} />
         ) : !invData || invData.invoices.length === 0 ? (
           <div className="py-12 text-center">
             <svg className="w-10 h-10 text-[#EDEDED] mx-auto mb-2" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">

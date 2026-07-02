@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
 import { formatCurrency, Skeleton } from '../dashboard-utils';
+import { ErrorState } from '../../../../components';
 
 const TYPE_CONFIG = {
   zero_usage: { bg: 'bg-amber-50', dot: 'bg-amber-500', label: 'Zero usage' },
@@ -14,7 +15,7 @@ const TYPE_CONFIG = {
 export function AiCostAnomalyPanel() {
   const { t } = useI18n();
   const router = useRouter();
-  const { data, isLoading } = trpc.platform.getAiCostAnomalies.useQuery();
+  const { data, isLoading, isError, refetch } = trpc.platform.getAiCostAnomalies.useQuery();
 
   if (isLoading) {
     return (
@@ -24,6 +25,14 @@ export function AiCostAnomalyPanel() {
         <div className="space-y-2">
           {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-12 w-full rounded-lg" />)}
         </div>
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="rounded-xl border border-[#EDEDED] bg-white p-5">
+        <ErrorState onRetry={() => refetch()} />
       </div>
     );
   }

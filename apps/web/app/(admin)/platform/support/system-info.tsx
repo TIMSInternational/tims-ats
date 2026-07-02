@@ -3,11 +3,12 @@
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
 import { formatRelativeTime } from '../../../../lib/format-utils';
+import { ErrorState } from '../../../../components';
 
 export function SystemInfo() {
   const { t } = useI18n();
-  const { data: health, isLoading: healthLoading } = trpc.platform.getSystemHealth.useQuery(undefined, { refetchInterval: 30_000 });
-  const { data: events, isLoading: eventsLoading } = trpc.platform.getRecentPlatformEvents.useQuery({ limit: 10 }, { refetchInterval: 30_000 });
+  const { data: health, isLoading: healthLoading, isError: healthError, refetch: refetchHealth } = trpc.platform.getSystemHealth.useQuery(undefined, { refetchInterval: 30_000 });
+  const { data: events, isLoading: eventsLoading, isError: eventsError, refetch: refetchEvents } = trpc.platform.getRecentPlatformEvents.useQuery({ limit: 10 }, { refetchInterval: 30_000 });
 
   const statusColor = (status: string) => {
     if (status === 'operational') return 'bg-green-500';
@@ -24,6 +25,8 @@ export function SystemInfo() {
 
       {healthLoading ? (
         <div className="space-y-2 mb-5">{Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-8 bg-[#F6F6F6] rounded-lg animate-pulse" />)}</div>
+      ) : healthError ? (
+        <ErrorState onRetry={() => refetchHealth()} />
       ) : health ? (
         <>
           <div className="flex items-center gap-2 mb-4">
@@ -64,6 +67,8 @@ export function SystemInfo() {
       <div className="text-[11px] text-[#8B8B8B] uppercase tracking-wide mb-2">{t.support.recentEvents}</div>
       {eventsLoading ? (
         <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-8 bg-[#F6F6F6] rounded-lg animate-pulse" />)}</div>
+      ) : eventsError ? (
+        <ErrorState onRetry={() => refetchEvents()} />
       ) : events && events.length > 0 ? (
         <div className="overflow-x-auto"><table className="w-full min-w-[560px]">
           <thead>

@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
-import { KpiCard, KpiCardSkeleton } from '../../../../components';
+import { ErrorState, KpiCard, KpiCardSkeleton } from '../../../../components';
 import { FilterBar } from './filter-bar';
 import { VacancyTable } from './vacancy-table';
 import { CreateModal } from './create-modal';
@@ -81,6 +81,10 @@ export default function VacanciesPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5 flex-shrink-0">
         {kpis.isLoading ? (
           Array.from({ length: 4 }).map((_, i) => <KpiCardSkeleton key={i} />)
+        ) : kpis.isError ? (
+          <div className="col-span-2 md:col-span-4">
+            <ErrorState onRetry={() => kpis.refetch()} />
+          </div>
         ) : k ? (
           <>
             <KpiCard
@@ -135,6 +139,8 @@ export default function VacanciesPage() {
       <VacancyTable
         vacancies={items}
         isLoading={vacancies.isLoading}
+        isError={vacancies.isError}
+        onRetry={() => vacancies.refetch()}
         onDuplicate={(id) => duplicateVacancy.mutate({ id })}
         onClose={setCloseTarget}
         onFreeze={setFreezeTarget}

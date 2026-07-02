@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
+import { ErrorState } from '../../../components';
 
 function useClickOutside(ref: React.RefObject<HTMLElement | null>, handler: () => void) {
   useEffect(() => {
@@ -40,11 +41,11 @@ export function NotificationDropdown({ onOpen }: { onOpen?: () => void }) {
   const notifRef = useRef<HTMLDivElement>(null);
   useClickOutside(notifRef, () => setNotifOpen(false));
 
-  const { data: unreadData } = trpc.notification.unreadCount.useQuery(undefined, {
+  const { data: unreadData, isError: unreadError, refetch: refetchUnread } = trpc.notification.unreadCount.useQuery(undefined, {
     refetchInterval: 30000,
   });
 
-  const { data: notifData, refetch: refetchNotifs } = trpc.notification.list.useQuery(
+  const { data: notifData, isError: notifError, refetch: refetchNotifs } = trpc.notification.list.useQuery(
     { limit: 10 },
     { enabled: notifOpen }
   );
@@ -107,7 +108,9 @@ export function NotificationDropdown({ onOpen }: { onOpen?: () => void }) {
           </div>
 
           <div className="max-h-[400px] overflow-y-auto">
-            {notifications.length === 0 ? (
+            {unreadError || notifError ? (
+              <ErrorState onRetry={() => { refetchUnread(); refetchNotifs(); }} />
+            ) : notifications.length === 0 ? (
               <div className="py-12 text-center">
                 <svg className="w-10 h-10 text-[#EDEDED] mx-auto mb-3" fill="none" stroke="currentColor" strokeWidth="1" viewBox="0 0 24 24">
                   <path d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />

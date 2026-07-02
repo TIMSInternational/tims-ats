@@ -1,6 +1,7 @@
 'use client';
 
 import { useI18n } from '../../../../lib/i18n';
+import { ErrorState } from '../../../../components';
 
 interface OkrUser {
   id: string;
@@ -74,9 +75,11 @@ function groupByTeam(rows: OkrItem[]): TeamGroup[] {
 interface OkrTableProps {
   okrs: OkrItem[];
   isLoading: boolean;
+  isError?: boolean;
+  onRetry?: () => void;
 }
 
-export function OkrTable({ okrs, isLoading }: OkrTableProps) {
+export function OkrTable({ okrs, isLoading, isError, onRetry }: OkrTableProps) {
   const { t } = useI18n();
 
   if (isLoading) {
@@ -100,6 +103,14 @@ export function OkrTable({ okrs, isLoading }: OkrTableProps) {
             </div>
           ))}
         </div>
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+        <ErrorState onRetry={onRetry} />
       </div>
     );
   }

@@ -2,16 +2,17 @@
 
 import Link from 'next/link';
 import { useI18n } from '../../../../../lib/i18n';
-import { Skeleton } from '../../../../../components';
+import { ErrorState, Skeleton } from '../../../../../components';
 import type { VacancyStats } from '../../../../../lib/trpc-types';
 
 interface CandidatesSummaryProps {
   vacancyId: string;
   stats: VacancyStats | null;
   isLoading: boolean;
+  isError?: boolean;
 }
 
-export function CandidatesSummary({ vacancyId, stats, isLoading }: CandidatesSummaryProps) {
+export function CandidatesSummary({ vacancyId, stats, isLoading, isError }: CandidatesSummaryProps) {
   const { t } = useI18n();
 
   if (isLoading) {
@@ -24,6 +25,15 @@ export function CandidatesSummary({ vacancyId, stats, isLoading }: CandidatesSum
         <div className="space-y-2">
           {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-3 w-full rounded" />)}
         </div>
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+        <h3 className="text-[14px] font-semibold text-[#1F114C] mb-3">{t.vacancies.candidatesAssociated}</h3>
+        <ErrorState />
       </div>
     );
   }

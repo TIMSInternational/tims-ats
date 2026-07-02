@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
-import { KpiCard, KpiCardSkeleton } from '../../../../components';
+import { KpiCard, KpiCardSkeleton, ErrorState } from '../../../../components';
 import { OnboardingTable, type OnboardingPlan } from './onboarding-table';
 import { CreatePlanModal } from './create-plan-modal';
 import {
@@ -123,6 +123,10 @@ export default function OnboardingPage() {
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
           {kpis.isLoading ? (
             Array.from({ length: 5 }).map((_, i) => <KpiCardSkeleton key={i} />)
+          ) : kpis.isError ? (
+            <div className="col-span-2 md:col-span-5">
+              <ErrorState onRetry={() => kpis.refetch()} />
+            </div>
           ) : (
             <>
               <KpiCard
@@ -172,16 +176,30 @@ export default function OnboardingPage() {
         </div>
 
         {/* Active Onboardings Table */}
-        <OnboardingTable
-          plans={items}
-          isLoading={plans.isLoading}
-          onPhaseChange={handlePhaseChange}
-        />
+        {plans.isError ? (
+          <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] mb-6">
+            <ErrorState onRetry={() => plans.refetch()} />
+          </div>
+        ) : (
+          <OnboardingTable
+            plans={items}
+            isLoading={plans.isLoading}
+            onPhaseChange={handlePhaseChange}
+          />
+        )}
 
         {/* Row 2: Tasks + Docs + Courses */}
         <div className="flex flex-col md:flex-row gap-4 mb-6">
-          <TasksByResponsible plans={items} />
-          <PendingDocuments plans={items} />
+          {plans.isError ? (
+            <div className="w-full md:flex-1 bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+              <ErrorState onRetry={() => plans.refetch()} />
+            </div>
+          ) : (
+            <>
+              <TasksByResponsible plans={items} />
+              <PendingDocuments plans={items} />
+            </>
+          )}
           <CoursesAndAccesses />
         </div>
 
@@ -189,6 +207,9 @@ export default function OnboardingPage() {
         <div className="flex flex-col md:flex-row gap-4">
           <div className="w-full md:flex-1 bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
             <h3 className="text-[14px] font-semibold text-[#1F114C] mb-3">{t.onboarding.checkinCalendar}</h3>
+            {plans.isError ? (
+              <ErrorState onRetry={() => plans.refetch()} />
+            ) : (
             <div className="overflow-x-auto rounded-lg border border-[#EDEDED]">
               <table className="w-full min-w-[420px] text-[11px]">
                 <thead>
@@ -228,6 +249,7 @@ export default function OnboardingPage() {
                 </tbody>
               </table>
             </div>
+            )}
           </div>
           <LearningRoute />
         </div>

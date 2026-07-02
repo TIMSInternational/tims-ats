@@ -5,7 +5,7 @@ import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
 import { formatDate } from '../../../../lib/format-utils';
-import { KpiCard, KpiCardSkeleton, DataTable, EmptyState, StatusBadge, Modal } from '../../../../components';
+import { KpiCard, KpiCardSkeleton, DataTable, EmptyState, ErrorState, StatusBadge, Modal } from '../../../../components';
 import { InviteOrgModal } from './invite-org-modal';
 import { InviteUserModal } from './invite-user-modal';
 
@@ -60,6 +60,10 @@ export default function InvitationsPage() {
   );
   const handleExport = async () => {
     const result = await exportCsv.refetch();
+    if (result.isError) {
+      toast(t.common.error, { type: 'error' });
+      return;
+    }
     if (result.data) {
       const blob = new Blob([result.data.csv], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
@@ -105,6 +109,10 @@ export default function InvitationsPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5 flex-shrink-0">
         {kpis.isLoading ? (
           Array.from({ length: 4 }).map((_, i) => <KpiCardSkeleton key={i} />)
+        ) : kpis.isError ? (
+          <div className="col-span-2 md:col-span-4 bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+            <ErrorState onRetry={() => kpis.refetch()} />
+          </div>
         ) : kpis.data ? (
           <>
             <KpiCard
@@ -168,6 +176,11 @@ export default function InvitationsPage() {
       </div>
 
       {/* Table */}
+      {invitations.isError ? (
+        <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] flex-1 flex flex-col min-h-0 overflow-hidden">
+          <ErrorState onRetry={() => invitations.refetch()} />
+        </div>
+      ) : (
       <DataTable
         columns={columns}
         loading={invitations.isLoading}
@@ -209,6 +222,7 @@ export default function InvitationsPage() {
           );
         })}
       </DataTable>
+      )}
 
       {/* Revoke Confirm Modal */}
       {revokeTarget && (

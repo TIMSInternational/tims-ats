@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { trpc } from '../../../../../../lib/trpc';
 import { useI18n } from '../../../../../../lib/i18n';
-import { Skeleton } from '../../../../../../components';
+import { Skeleton, ErrorState } from '../../../../../../components';
 
 const ACTION_COLORS: Record<string, { bg: string; text: string }> = {
   CREATE: { bg: 'bg-green-100', text: 'text-green-700' },
@@ -47,7 +47,7 @@ function formatTimestamp(date: string | Date): string {
 
 export function ActivitySection({ organizationId }: { organizationId: string }) {
   const { t } = useI18n();
-  const { data: logs, isLoading } = trpc.platform.getOrgAuditLogs.useQuery({ organizationId });
+  const { data: logs, isLoading, isError, refetch } = trpc.platform.getOrgAuditLogs.useQuery({ organizationId });
 
   return (
     <div className="space-y-4">
@@ -71,6 +71,10 @@ export function ActivitySection({ organizationId }: { organizationId: string }) 
               <Skeleton className="h-3 w-40 flex-1" />
             </div>
           ))}
+        </div>
+      ) : isError ? (
+        <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+          <ErrorState onRetry={() => refetch()} />
         </div>
       ) : !logs || logs.length === 0 ? (
         <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] py-16 text-center">

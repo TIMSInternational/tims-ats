@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
-import { CandidateAvatar, Skeleton } from '../../../../components';
+import { CandidateAvatar, Skeleton, ErrorState } from '../../../../components';
 import { AssignUserModal } from './assign-user-modal';
 
 export default function BusinessUnitsPage() {
@@ -65,6 +65,8 @@ export default function BusinessUnitsPage() {
               <label className="block text-[12px] font-medium text-[#585858] mb-1.5">{t.units.selectCompany}</label>
               {companies.isLoading ? (
                 <Skeleton className="h-9 w-full rounded-lg" />
+              ) : companies.isError ? (
+                <ErrorState onRetry={() => companies.refetch()} />
               ) : (
                 <select
                   value={companyId ?? ''}
@@ -83,17 +85,21 @@ export default function BusinessUnitsPage() {
             </div>
             <div>
               <label className="block text-[12px] font-medium text-[#585858] mb-1.5">{t.units.selectUnit}</label>
-              <select
-                value={unitId ?? ''}
-                onChange={(e) => setUnitId(e.target.value || null)}
-                disabled={!companyId || units.isLoading}
-                className="w-full bg-white border border-[#EDEDED] rounded-lg px-3 h-9 text-[13px] text-[#333] focus:outline-none focus:border-[#1F114C]/40 disabled:bg-[#F6F6F6] disabled:text-[#B8B8B8]"
-              >
-                <option value="">{t.units.selectUnit}</option>
-                {(units.data ?? []).map((u) => (
-                  <option key={u.id} value={u.id}>{u.name}</option>
-                ))}
-              </select>
+              {units.isError ? (
+                <ErrorState onRetry={() => units.refetch()} />
+              ) : (
+                <select
+                  value={unitId ?? ''}
+                  onChange={(e) => setUnitId(e.target.value || null)}
+                  disabled={!companyId || units.isLoading}
+                  className="w-full bg-white border border-[#EDEDED] rounded-lg px-3 h-9 text-[13px] text-[#333] focus:outline-none focus:border-[#1F114C]/40 disabled:bg-[#F6F6F6] disabled:text-[#B8B8B8]"
+                >
+                  <option value="">{t.units.selectUnit}</option>
+                  {(units.data ?? []).map((u) => (
+                    <option key={u.id} value={u.id}>{u.name}</option>
+                  ))}
+                </select>
+              )}
             </div>
           </div>
         </div>

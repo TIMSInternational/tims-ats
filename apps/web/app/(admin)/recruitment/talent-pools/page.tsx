@@ -118,6 +118,8 @@ export default function TalentPoolsPage() {
           <TalentPoolTable
             candidates={candidates}
             isLoading={query.isLoading}
+            isError={query.isError}
+            onRetry={() => query.refetch()}
             nextCursor={nextCursor}
             onNextPage={() => setCursor(nextCursor)}
             onPrevPage={() => setCursor(undefined)}

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
+import { ErrorState } from '../../../../components';
 import type { inferRouterOutputs } from '@trpc/server';
 import type { AppRouter } from '@tims/api';
 
@@ -151,13 +152,17 @@ export function AiInterviewOrgControls({ config, agentId, onMutate, isPending }:
       {/* Accrued usage preview */}
       <div className="flex items-center gap-1 pt-0.5">
         <span className="text-[10px] text-[#8B8B8B] w-40 shrink-0">{t.aiAgents.accruedUsageLabel}</span>
-        <span className="text-[10px] font-medium text-[#1F114C]">
-          {billingPreview.isLoading
-            ? '…'
-            : billingPreview.data?.usageUsd != null
-              ? `$${billingPreview.data.usageUsd.toFixed(2)}`
-              : '—'}
-        </span>
+        {billingPreview.isError ? (
+          <ErrorState onRetry={() => billingPreview.refetch()} />
+        ) : (
+          <span className="text-[10px] font-medium text-[#1F114C]">
+            {billingPreview.isLoading
+              ? '…'
+              : billingPreview.data?.usageUsd != null
+                ? `$${billingPreview.data.usageUsd.toFixed(2)}`
+                : '—'}
+          </span>
+        )}
       </div>
     </div>
   );

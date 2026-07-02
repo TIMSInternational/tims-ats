@@ -12,6 +12,7 @@ import {
   HEALTH_CONFIG,
   Skeleton,
 } from './dashboard-utils';
+import { ErrorState } from '../../../components';
 
 type SortKey = 'orgName' | 'plan' | 'mrr' | 'userCount' | 'lastActiveAt';
 type SortDir = 'asc' | 'desc';
@@ -27,8 +28,8 @@ const COLUMNS: { key: SortKey; label: string; className: string }[] = [
 export function CustomerTable() {
   const { t } = useI18n();
   const router = useRouter();
-  const { data, isLoading } = trpc.platform.getRevenueByCustomer.useQuery();
-  const { data: healthData } = trpc.platform.getCustomerHealth.useQuery();
+  const { data, isLoading, isError, refetch } = trpc.platform.getRevenueByCustomer.useQuery();
+  const { data: healthData, isError: healthError, refetch: refetchHealth } = trpc.platform.getCustomerHealth.useQuery();
   const [sortKey, setSortKey] = useState<SortKey>('mrr');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
 
@@ -95,6 +96,8 @@ export function CustomerTable() {
             <Skeleton key={i} className="h-10 w-full" />
           ))}
         </div>
+      ) : isError || healthError ? (
+        <ErrorState onRetry={() => { refetch(); refetchHealth(); }} />
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-left">

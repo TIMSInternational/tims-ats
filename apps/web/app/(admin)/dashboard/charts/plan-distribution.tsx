@@ -11,6 +11,7 @@ import {
 import { trpc } from '../../../../lib/trpc';
 import { PLAN_COLORS, PLAN_LABELS, Skeleton } from '../dashboard-utils';
 import { useI18n } from '../../../../lib/i18n';
+import { ErrorState } from '../../../../components';
 
 interface PlanTooltipProps {
   active?: boolean;
@@ -75,7 +76,7 @@ function CenterLabel({ cx, cy, total }: CenterLabelProps) {
 
 export function PlanDistributionChart() {
   const { t } = useI18n();
-  const { data, isLoading } = trpc.platform.getPlanDistribution.useQuery();
+  const { data, isLoading, isError, refetch } = trpc.platform.getPlanDistribution.useQuery();
 
   const total = data?.reduce((s, d) => s + d.count, 0) ?? 0;
 
@@ -88,6 +89,10 @@ export function PlanDistributionChart() {
 
       {isLoading ? (
         <Skeleton className="h-[240px] w-full" />
+      ) : isError ? (
+        <div className="h-[240px] flex items-center justify-center">
+          <ErrorState onRetry={() => refetch()} />
+        </div>
       ) : !data || total === 0 ? (
         <div className="h-[240px] flex items-center justify-center text-sm text-muted">
           No subscription data

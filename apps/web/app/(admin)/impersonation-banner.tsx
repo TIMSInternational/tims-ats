@@ -3,13 +3,22 @@
 import { useState } from 'react';
 import { trpc } from '../../lib/trpc';
 import { useI18n } from '../../lib/i18n';
+import { ErrorState } from '../../components';
 
 export function ImpersonationBanner() {
   const { t } = useI18n();
-  const { data } = trpc.auth.getImpersonationStatus.useQuery(undefined, {
+  const { data, isError, refetch } = trpc.auth.getImpersonationStatus.useQuery(undefined, {
     staleTime: 60_000,
   });
   const [exiting, setExiting] = useState(false);
+
+  if (isError) {
+    return (
+      <div className="bg-white border-b border-[#EDEDED]">
+        <ErrorState onRetry={() => refetch()} />
+      </div>
+    );
+  }
 
   if (!data?.isImpersonating) return null;
 

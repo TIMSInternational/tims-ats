@@ -3,6 +3,7 @@
 import { useMemo } from 'react';
 import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
+import { ErrorState } from '../../../components';
 
 interface SlaStage {
   name: string;
@@ -76,6 +77,8 @@ export function AlertsSlaPanel({ vacancyId, vacanciesLoading }: AlertsSlaPanelPr
         <div className="space-y-3 animate-pulse">
           {Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-12 bg-gray-100 rounded" />)}
         </div>
+      ) : slaQuery.isError ? (
+        <ErrorState onRetry={() => slaQuery.refetch()} />
       ) : slaData.length === 0 ? (
         <div className="text-center py-6">
           <div className="w-8 h-8 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-2">

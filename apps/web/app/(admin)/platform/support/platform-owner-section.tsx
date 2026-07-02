@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
+import { ErrorState } from '../../../../components';
 
 export function PlatformOwnerSection() {
   const { t } = useI18n();
@@ -11,7 +12,7 @@ export function PlatformOwnerSection() {
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const utils = trpc.useUtils();
 
-  const { data: emailsData, isLoading } = trpc.platform.listPlatformOwnerEmails.useQuery();
+  const { data: emailsData, isLoading, isError, refetch } = trpc.platform.listPlatformOwnerEmails.useQuery();
   const addEmail = trpc.platform.addPlatformOwnerEmail.useMutation({
     onSuccess: () => { setNewEmail(''); utils.platform.listPlatformOwnerEmails.invalidate(); toast(t.support.emailAdded, { type: 'success' }); },
     onError: (err) => { toast(err.message, { type: 'error' }); },
@@ -42,6 +43,8 @@ export function PlatformOwnerSection() {
       <div className="text-[11px] text-[#8B8B8B] uppercase tracking-wide mb-2">{t.support.currentWhitelist}</div>
       {isLoading ? (
         <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-10 bg-[#F6F6F6] rounded-lg animate-pulse" />)}</div>
+      ) : isError ? (
+        <ErrorState onRetry={() => refetch()} />
       ) : emails.length === 0 ? (
         <div className="py-6 text-center">
           <p className="text-sm text-[#8B8B8B]">{t.support.noEmails}</p>

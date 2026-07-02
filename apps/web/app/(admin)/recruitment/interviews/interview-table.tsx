@@ -3,17 +3,20 @@
 import Link from 'next/link';
 import { useI18n } from '../../../../lib/i18n';
 import { formatDate } from '../../../../lib/format-utils';
-import { DataTable, EmptyState, StatusBadge, CandidateAvatar } from '../../../../components';
+import { DataTable, EmptyState, ErrorState, StatusBadge, CandidateAvatar } from '../../../../components';
 import type { InterviewListItem } from '../../../../lib/trpc-types';
 
 interface InterviewTableProps {
   interviews: InterviewListItem[];
   isLoading: boolean;
+  isError?: boolean;
+  onRetry?: () => void;
   onCancel: (id: string) => void;
   isCancelling: boolean;
   onManageEvaluators: (id: string) => void;
   onStartAiScreen: (id: string) => void;
   aiScreenEnabled: boolean;
+  aiScreenError?: boolean;
 }
 
 const STATUS_MAP: Record<string, { cls: string; label: string }> = {
@@ -43,8 +46,16 @@ const TYPE_ICONS: Record<string, React.ReactNode> = {
   cultural: <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" /></svg>,
 };
 
-export function InterviewTable({ interviews, isLoading, onCancel, isCancelling, onManageEvaluators, onStartAiScreen, aiScreenEnabled }: InterviewTableProps) {
+export function InterviewTable({ interviews, isLoading, isError, onRetry, onCancel, isCancelling, onManageEvaluators, onStartAiScreen, aiScreenEnabled, aiScreenError }: InterviewTableProps) {
   const { t } = useI18n();
+
+  if (isError) {
+    return (
+      <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] flex-1 flex flex-col min-h-0 overflow-hidden">
+        <ErrorState onRetry={onRetry} />
+      </div>
+    );
+  }
 
   const columns = [
     { key: 'candidate', label: t.interviews.colCandidate },
@@ -153,7 +164,7 @@ export function InterviewTable({ interviews, isLoading, onCancel, isCancelling, 
                 <button
                   type="button"
                   disabled
-                  title={`${t.interviews.aiScreenUpsellTitle}: ${t.interviews.aiScreenUpsellBody}`}
+                  title={aiScreenError ? t.common.error : `${t.interviews.aiScreenUpsellTitle}: ${t.interviews.aiScreenUpsellBody}`}
                   className="h-7 px-2.5 rounded-md text-[11px] text-[#9CA3AF] border border-[#EDEDED] cursor-not-allowed"
                 >
                   {t.interviews.startAiScreen}

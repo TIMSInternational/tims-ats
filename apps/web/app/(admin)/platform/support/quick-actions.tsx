@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
+import { ErrorState } from '../../../../components';
 
 export function QuickActions() {
   const { t } = useI18n();
@@ -14,7 +15,7 @@ export function QuickActions() {
   const [notifMessage, setNotifMessage] = useState('');
   const [notifType, setNotifType] = useState<'info' | 'warning' | 'critical' | 'success'>('info');
 
-  const { data: orgs } = trpc.platform.listOrganizationsMinimal.useQuery();
+  const { data: orgs, isError: orgsError, refetch: refetchOrgs } = trpc.platform.listOrganizationsMinimal.useQuery();
 
   const resetMutation = trpc.platform.resetUserPassword.useMutation({
     onSuccess: (data) => { toast(`Reset enviado a ${data.email}`, { type: 'success' }); setResetEmail(''); },
@@ -65,10 +66,14 @@ export function QuickActions() {
         {/* Send Notification */}
         <form onSubmit={(e) => { e.preventDefault(); if (notifTitle.trim() && notifMessage.trim()) notifMutation.mutate({ organizationId: notifOrgId || undefined, title: notifTitle.trim(), message: notifMessage.trim(), type: notifType }); }} className="border border-[#EDEDED] rounded-lg p-4">
           <label className="text-xs text-[#8B8B8B] font-medium mb-2 block">{t.support.sendNotification}</label>
-          <select value={notifOrgId} onChange={(e) => setNotifOrgId(e.target.value)} className="w-full border border-[#EDEDED] rounded-lg px-3 py-2 text-sm text-[#585858] bg-white mb-2 focus:outline-none focus:ring-1 focus:ring-[#1F114C]/20">
-            <option value="">{t.support.allOrgs}</option>
-            {orgs?.map((org) => <option key={org.id} value={org.id}>{org.name}</option>)}
-          </select>
+          {orgsError ? (
+            <ErrorState onRetry={() => refetchOrgs()} />
+          ) : (
+            <select value={notifOrgId} onChange={(e) => setNotifOrgId(e.target.value)} className="w-full border border-[#EDEDED] rounded-lg px-3 py-2 text-sm text-[#585858] bg-white mb-2 focus:outline-none focus:ring-1 focus:ring-[#1F114C]/20">
+              <option value="">{t.support.allOrgs}</option>
+              {orgs?.map((org) => <option key={org.id} value={org.id}>{org.name}</option>)}
+            </select>
+          )}
           <select value={notifType} onChange={(e) => setNotifType(e.target.value as typeof notifType)} className="w-full border border-[#EDEDED] rounded-lg px-3 py-2 text-sm text-[#585858] bg-white mb-2 focus:outline-none focus:ring-1 focus:ring-[#1F114C]/20">
             <option value="info">{t.support.typeInfo}</option>
             <option value="warning">{t.support.typeWarning}</option>

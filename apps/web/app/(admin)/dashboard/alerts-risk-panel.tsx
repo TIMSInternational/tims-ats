@@ -2,7 +2,7 @@
 
 import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
-import { CandidateAvatar } from '../../../components';
+import { CandidateAvatar, ErrorState } from '../../../components';
 import { useMemo } from 'react';
 
 function daysAgo(date: Date | string): number {
@@ -130,6 +130,8 @@ export function AlertsRiskPanel({ vacancyId, vacanciesLoading }: AlertsRiskPanel
         <div className="space-y-4 animate-pulse">
           {Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-16 bg-gray-100 rounded" />)}
         </div>
+      ) : board.isError ? (
+        <ErrorState onRetry={() => board.refetch()} />
       ) : riskCandidates.length === 0 ? (
         <p className="text-[12px] text-[#8B8B8B] text-center py-6">{t.recruitingDashboard.noRiskCandidates}</p>
       ) : (

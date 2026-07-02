@@ -12,6 +12,7 @@ import {
 import { trpc } from '../../../../lib/trpc';
 import { formatCurrency, BRAND_NAVY, Skeleton } from '../dashboard-utils';
 import { useI18n } from '../../../../lib/i18n';
+import { ErrorState } from '../../../../components';
 
 interface MrrTooltipProps {
   active?: boolean;
@@ -30,7 +31,7 @@ function MrrTooltip({ active, payload, label }: MrrTooltipProps) {
 }
 
 export function MrrTrendChart() {
-  const { data, isLoading } = trpc.platform.getMrrTrend.useQuery();
+  const { data, isLoading, isError, refetch } = trpc.platform.getMrrTrend.useQuery();
   const { t } = useI18n();
 
   return (
@@ -49,6 +50,8 @@ export function MrrTrendChart() {
 
       {isLoading ? (
         <Skeleton className="h-[240px] w-full" />
+      ) : isError ? (
+        <ErrorState onRetry={() => refetch()} />
       ) : (
         <ResponsiveContainer width="100%" height={240}>
           <AreaChart data={data ?? []} margin={{ top: 4, right: 4, bottom: 0, left: -10 }}>

@@ -3,6 +3,7 @@
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
 import { formatRelativeTime } from '../../../../lib/format-utils';
+import { ErrorState } from '../../../../components';
 
 type ServiceStatus = 'operational' | 'degraded' | 'down';
 
@@ -12,7 +13,7 @@ const METRIC_COLORS: Record<string, string> = {
 
 export default function PlatformHealthPage() {
   const { t } = useI18n();
-  const { data, isLoading, refetch, dataUpdatedAt } = trpc.platform.getSystemHealth.useQuery(undefined, {
+  const { data, isLoading, isError, refetch, dataUpdatedAt } = trpc.platform.getSystemHealth.useQuery(undefined, {
     refetchInterval: 30000,
   });
 
@@ -52,6 +53,16 @@ export default function PlatformHealthPage() {
               </div>
             </div>
           ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="h-full flex flex-col overflow-y-auto p-5">
+        <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+          <ErrorState onRetry={() => refetch()} />
         </div>
       </div>
     );

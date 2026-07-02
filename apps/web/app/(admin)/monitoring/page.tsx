@@ -41,7 +41,12 @@ export default function MonitoringPage() {
       {/* Content */}
       <div className="flex-1 overflow-y-auto md:overflow-hidden p-5">
         <div className="flex flex-col md:h-full gap-4">
-          <MonitoringKpis data={kpis.data ?? null} loading={kpis.isLoading} />
+          <MonitoringKpis
+            data={kpis.data ?? null}
+            loading={kpis.isLoading}
+            isError={kpis.isError}
+            onRetry={() => kpis.refetch()}
+          />
 
           {/* Row 2: Module Health + Alerts */}
           <div className="flex flex-col md:flex-row gap-4 md:flex-1 min-h-0">

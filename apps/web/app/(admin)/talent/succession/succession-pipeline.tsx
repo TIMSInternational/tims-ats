@@ -1,6 +1,6 @@
 'use client';
 
-import { Skeleton } from '../../../../components';
+import { ErrorState, Skeleton } from '../../../../components';
 
 interface Successor {
   id: string;
@@ -21,6 +21,7 @@ interface CriticalRole {
 interface SuccessionPipelineProps {
   roles: CriticalRole[];
   loading: boolean;
+  isError: boolean;
   t: {
     successionPipeline: string;
     readyNow: string;
@@ -55,7 +56,7 @@ const READINESS_STYLES: Record<string, { border: string; bg: string; label: stri
 
 const AVATAR_COLORS = ['bg-[#1F114C]', 'bg-violet-600', 'bg-teal-600', 'bg-blue-600', 'bg-pink-600'];
 
-export function SuccessionPipeline({ roles, loading, t }: SuccessionPipelineProps) {
+export function SuccessionPipeline({ roles, loading, isError, t }: SuccessionPipelineProps) {
   if (loading) {
     return (
       <div className="w-full md:w-[55%] bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4">
@@ -63,6 +64,15 @@ export function SuccessionPipeline({ roles, loading, t }: SuccessionPipelineProp
         {Array.from({ length: 3 }).map((_, i) => (
           <Skeleton key={i} className="h-24 w-full mb-3" />
         ))}
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="w-full md:w-[55%] bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4">
+        <h3 className="text-[13px] font-semibold text-[#1F114C] mb-3">{t.successionPipeline}</h3>
+        <ErrorState />
       </div>
     );
   }

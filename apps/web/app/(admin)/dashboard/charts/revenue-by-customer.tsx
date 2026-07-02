@@ -13,6 +13,7 @@ import {
 import { trpc } from '../../../../lib/trpc';
 import { formatCurrency, PLAN_COLORS, PLAN_LABELS, Skeleton } from '../dashboard-utils';
 import { useI18n } from '../../../../lib/i18n';
+import { ErrorState } from '../../../../components';
 
 interface RevenueTooltipProps {
   active?: boolean;
@@ -45,7 +46,7 @@ function RevenueTooltip({ active, payload }: RevenueTooltipProps) {
 export function RevenueByCustomerChart() {
   const { t } = useI18n();
   const router = useRouter();
-  const { data, isLoading } = trpc.platform.getRevenueByCustomer.useQuery();
+  const { data, isLoading, isError, refetch } = trpc.platform.getRevenueByCustomer.useQuery();
 
   // Filter to only orgs with MRR > 0 for the chart
   const chartData = (data ?? []).filter((d) => d.mrr > 0).slice(0, 10);
@@ -62,6 +63,10 @@ export function RevenueByCustomerChart() {
 
       {isLoading ? (
         <Skeleton className="h-[240px] w-full" />
+      ) : isError ? (
+        <div className="h-[240px] flex items-center justify-center">
+          <ErrorState onRetry={() => refetch()} />
+        </div>
       ) : chartData.length === 0 ? (
         <div className="h-[240px] flex items-center justify-center text-sm text-muted">
           No revenue data yet

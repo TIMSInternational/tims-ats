@@ -1,6 +1,6 @@
 'use client';
 
-import { KpiCardSkeleton } from '../../../components';
+import { KpiCardSkeleton, ErrorState } from '../../../components';
 
 interface LearningKpisProps {
   data: {
@@ -11,6 +11,8 @@ interface LearningKpisProps {
     totalPaths: number;
   } | undefined;
   loading: boolean;
+  isError?: boolean;
+  onRetry?: () => void;
   t: {
     kpiTotalCourses: string;
     kpiActiveLearners: string;
@@ -22,13 +24,21 @@ interface LearningKpisProps {
   };
 }
 
-export function LearningKpis({ data, loading, t }: LearningKpisProps) {
+export function LearningKpis({ data, loading, isError, onRetry, t }: LearningKpisProps) {
   if (loading) {
     return (
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
         {Array.from({ length: 5 }).map((_, i) => (
           <KpiCardSkeleton key={i} />
         ))}
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="mb-4">
+        <ErrorState onRetry={onRetry} />
       </div>
     );
   }

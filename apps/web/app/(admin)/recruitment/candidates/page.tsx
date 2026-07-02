@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
-import { KpiCard, KpiCardSkeleton } from '../../../../components';
+import { ErrorState, KpiCard, KpiCardSkeleton } from '../../../../components';
 import { FilterBar } from './filter-bar';
 import { CandidateTable } from './candidate-table';
 import { CreateModal } from './create-modal';
@@ -46,6 +46,10 @@ export default function CandidatesPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5 flex-shrink-0">
         {kpis.isLoading ? (
           Array.from({ length: 4 }).map((_, i) => <KpiCardSkeleton key={i} />)
+        ) : kpis.isError ? (
+          <div className="col-span-2 md:col-span-4">
+            <ErrorState onRetry={() => kpis.refetch()} />
+          </div>
         ) : kpis.data ? (
           <>
             <KpiCard
@@ -97,6 +101,8 @@ export default function CandidatesPage() {
       <CandidateTable
         candidates={items}
         isLoading={candidates.isLoading}
+        isError={candidates.isError}
+        onRetry={() => candidates.refetch()}
       />
 
       {/* Create Modal */}

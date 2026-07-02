@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
+import { ErrorState } from '../../../../components';
 
 interface CriticalRole {
   id: string;
@@ -60,7 +61,11 @@ export function ExitSimulator({ roles, t }: ExitSimulatorProps) {
         </select>
       </div>
 
-      {sim.data ? (
+      {sim.isError ? (
+        <div className="bg-[#F6F6F6] rounded-lg p-6 text-center">
+          <ErrorState onRetry={() => sim.refetch()} />
+        </div>
+      ) : sim.data ? (
         <>
           <div className="bg-[#F6F6F6] rounded-lg p-3 mb-3">
             <div className="flex items-center gap-2 mb-2">

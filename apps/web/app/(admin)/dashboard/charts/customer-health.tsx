@@ -4,11 +4,12 @@ import { useRouter } from 'next/navigation';
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
 import { HEALTH_CONFIG, PLAN_BG_CLASSES, PLAN_LABELS, Skeleton } from '../dashboard-utils';
+import { ErrorState } from '../../../../components';
 
 export function CustomerHealthGrid() {
   const router = useRouter();
   const { t } = useI18n();
-  const { data, isLoading } = trpc.platform.getCustomerHealth.useQuery();
+  const { data, isLoading, isError, refetch } = trpc.platform.getCustomerHealth.useQuery();
 
   return (
     <div className="rounded-xl border border-border bg-white p-5 flex flex-col">
@@ -39,6 +40,10 @@ export function CustomerHealthGrid() {
           {[...Array(6)].map((_, i) => (
             <Skeleton key={i} className="h-20 rounded-lg" />
           ))}
+        </div>
+      ) : isError ? (
+        <div className="h-[200px] flex items-center justify-center">
+          <ErrorState onRetry={() => refetch()} />
         </div>
       ) : !data || data.length === 0 ? (
         <div className="h-[200px] flex items-center justify-center text-sm text-muted">

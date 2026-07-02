@@ -12,6 +12,7 @@ import { trpc } from '../../../lib/trpc';
 import { toast } from '../../../lib/toast';
 import { useI18n } from '../../../lib/i18n';
 import { Modal } from '../../../components/modal';
+import { ErrorState } from '../../../components';
 
 type Severity = 'info' | 'warning' | 'critical';
 
@@ -113,6 +114,8 @@ export function AlertRulesModal({ onClose }: { onClose: () => void }) {
 
       {rulesQuery.isLoading ? (
         <p className="text-[13px] text-[#585858] py-6 text-center">{t.common.loading}</p>
+      ) : rulesQuery.isError ? (
+        <ErrorState onRetry={() => rulesQuery.refetch()} />
       ) : (
         <>
           <div className="space-y-3 max-h-[55vh] overflow-y-auto pr-1">

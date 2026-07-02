@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
+import { ErrorState } from '../../../../components';
 import { BillingPlans } from './billing-plans';
 
 type T = ReturnType<typeof useI18n>['t'];
@@ -117,56 +118,70 @@ export default function BillingPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-4">
-        {!config.isLoading && !configured && (
-          <div className="bg-[#FFF7E6] border border-[#FFE2A8] rounded-xl p-4">
-            <div className="text-sm font-semibold text-[#7A5B00]">{t.billing.notConfiguredTitle}</div>
-            <p className="text-[12px] text-[#7A5B00]/80 mt-1">{t.billing.notConfiguredDesc}</p>
-          </div>
+        {config.isError ? (
+          <ErrorState onRetry={() => config.refetch()} />
+        ) : (
+          !config.isLoading && !configured && (
+            <div className="bg-[#FFF7E6] border border-[#FFE2A8] rounded-xl p-4">
+              <div className="text-sm font-semibold text-[#7A5B00]">{t.billing.notConfiguredTitle}</div>
+              <p className="text-[12px] text-[#7A5B00]/80 mt-1">{t.billing.notConfiguredDesc}</p>
+            </div>
+          )
         )}
 
         {/* Current plan + usage */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="bg-white border border-[#EDEDED] rounded-xl p-5">
             <h2 className="text-sm font-semibold text-[#1F114C]">{t.billing.currentPlanTitle}</h2>
-            <div className="mt-3 flex items-baseline gap-2">
-              <span className="text-2xl font-semibold text-[#1F114C]">{planLabel(t, currentPlan)}</span>
-              <span className="text-[12px] text-[#8B8B8B]">· {statusLabel(t, plan.data?.status)}</span>
-            </div>
-            {renewsOn && (
-              <p className="text-[12px] text-[#8B8B8B] mt-2">{t.billing.renewsOn} {renewsOn}</p>
-            )}
-            {configured && hasCustomer && (
-              <div className="mt-4 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => portal.mutate()}
-                  disabled={portal.isPending}
-                  className="h-9 px-4 rounded-lg border border-[#EDEDED] text-[#1F114C] text-[12px] font-medium disabled:opacity-50"
-                >
-                  {portal.isPending ? t.billing.redirecting : t.billing.manageBilling}
-                </button>
-                {hasActiveSub && (
-                  <button
-                    type="button"
-                    onClick={onCancel}
-                    disabled={cancel.isPending}
-                    className="h-9 px-4 rounded-lg border border-[#F3C0C2] text-[#DD0C15] text-[12px] font-medium disabled:opacity-50"
-                  >
-                    {t.billing.cancelSubscription}
-                  </button>
+            {plan.isError ? (
+              <ErrorState onRetry={() => plan.refetch()} />
+            ) : (
+              <>
+                <div className="mt-3 flex items-baseline gap-2">
+                  <span className="text-2xl font-semibold text-[#1F114C]">{planLabel(t, currentPlan)}</span>
+                  <span className="text-[12px] text-[#8B8B8B]">· {statusLabel(t, plan.data?.status)}</span>
+                </div>
+                {renewsOn && (
+                  <p className="text-[12px] text-[#8B8B8B] mt-2">{t.billing.renewsOn} {renewsOn}</p>
                 )}
-              </div>
+                {configured && hasCustomer && (
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => portal.mutate()}
+                      disabled={portal.isPending}
+                      className="h-9 px-4 rounded-lg border border-[#EDEDED] text-[#1F114C] text-[12px] font-medium disabled:opacity-50"
+                    >
+                      {portal.isPending ? t.billing.redirecting : t.billing.manageBilling}
+                    </button>
+                    {hasActiveSub && (
+                      <button
+                        type="button"
+                        onClick={onCancel}
+                        disabled={cancel.isPending}
+                        className="h-9 px-4 rounded-lg border border-[#F3C0C2] text-[#DD0C15] text-[12px] font-medium disabled:opacity-50"
+                      >
+                        {t.billing.cancelSubscription}
+                      </button>
+                    )}
+                  </div>
+                )}
+              </>
             )}
           </div>
 
           <div className="bg-white border border-[#EDEDED] rounded-xl p-5">
             <h2 className="text-sm font-semibold text-[#1F114C] mb-2">{t.billing.usageTitle}</h2>
-            {usage.data && (
-              <div>
-                <UsageRow label={t.billing.usageEmployees} used={usage.data.employees.used} limit={usage.data.employees.limit} noLimit={t.billing.noLimit} />
-                <UsageRow label={t.billing.usageVacancies} used={usage.data.vacancies.used} limit={usage.data.vacancies.limit} noLimit={t.billing.noLimit} />
-                <UsageRow label={t.billing.usageAssessments} used={usage.data.assessments.used} limit={usage.data.assessments.limit} noLimit={t.billing.noLimit} />
-              </div>
+            {usage.isError ? (
+              <ErrorState onRetry={() => usage.refetch()} />
+            ) : (
+              usage.data && (
+                <div>
+                  <UsageRow label={t.billing.usageEmployees} used={usage.data.employees.used} limit={usage.data.employees.limit} noLimit={t.billing.noLimit} />
+                  <UsageRow label={t.billing.usageVacancies} used={usage.data.vacancies.used} limit={usage.data.vacancies.limit} noLimit={t.billing.noLimit} />
+                  <UsageRow label={t.billing.usageAssessments} used={usage.data.assessments.used} limit={usage.data.assessments.limit} noLimit={t.billing.noLimit} />
+                </div>
+              )
             )}
           </div>
         </div>

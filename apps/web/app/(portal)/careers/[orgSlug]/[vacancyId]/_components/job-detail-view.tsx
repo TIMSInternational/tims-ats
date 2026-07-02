@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { trpc } from '../../../../../../lib/trpc';
-import { Skeleton } from '../../../../../../components';
+import { Skeleton, ErrorState } from '../../../../../../components';
 import { toast } from '../../../../../../lib/toast';
 import { ApplyModal } from './apply-modal';
 import { useI18n } from '../../../../../../lib/i18n';
@@ -74,6 +74,15 @@ export function JobDetailView({ orgSlug, vacancyId }: JobDetailViewProps) {
     );
   }
 
+  if (vacancy.isError) {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center gap-2">
+        <ErrorState onRetry={() => vacancy.refetch()} />
+        <Link href={`/careers/${orgSlug}`} className="text-sm text-[#1F114C] hover:underline">{p.backToVacancies}</Link>
+      </div>
+    );
+  }
+
   if (!vacancy.data) {
     return (
       <div className="flex h-screen flex-col items-center justify-center gap-2 text-[#8B8B8B]">
@@ -117,6 +126,10 @@ export function JobDetailView({ orgSlug, vacancyId }: JobDetailViewProps) {
           <div className="flex-1 overflow-y-auto">
             {vacancies.isLoading ? (
               <div className="space-y-3 p-4">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-20 w-full rounded-lg" />)}</div>
+            ) : vacancies.isError ? (
+              <div className="p-4">
+                <ErrorState onRetry={() => vacancies.refetch()} />
+              </div>
             ) : (
               filtered.map((item) => {
                 const isActive = item.id === vacancyId;

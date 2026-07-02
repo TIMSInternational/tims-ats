@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
+import { ErrorState } from '../../../../components';
 import type { AiAgentItem } from '../../../../lib/trpc-types';
 import { AiInterviewOrgControls, AI_VOICE_INTERVIEW_SLUG } from './ai-interview-org-controls';
 
@@ -117,6 +118,8 @@ export function AgentDetailDrawer({ agent, onClose, onSuccess }: { agent: AiAgen
             <div className="divide-y divide-[#F3F3F3]">
               {agentDetail.isLoading ? (
                 <div className="p-6 text-center text-[12px] text-[#8B8B8B]">{t.common.loading}</div>
+              ) : agentDetail.isError ? (
+                <ErrorState onRetry={() => agentDetail.refetch()} />
               ) : (agentDetail.data?.orgConfigs ?? []).length === 0 ? (
                 <div className="p-8 text-center">
                   <p className="text-[12px] text-[#8B8B8B]">{t.aiAgents.noOrgConfigs}</p>
@@ -186,6 +189,8 @@ export function AgentDetailDrawer({ agent, onClose, onSuccess }: { agent: AiAgen
             <div className="px-6 py-4 space-y-4">
               {usage.isLoading ? (
                 <div className="text-center text-[12px] text-[#8B8B8B] py-8">{t.common.loading}</div>
+              ) : usage.isError ? (
+                <ErrorState onRetry={() => usage.refetch()} />
               ) : usage.data ? (
                 <>
                   <div className="grid grid-cols-2 gap-3">

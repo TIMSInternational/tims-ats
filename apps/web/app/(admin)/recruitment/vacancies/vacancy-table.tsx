@@ -3,12 +3,14 @@
 import Link from 'next/link';
 import { useI18n } from '../../../../lib/i18n';
 import { formatDate, formatCurrency } from '../../../../lib/format-utils';
-import { DataTable, StatusBadge, EmptyState } from '../../../../components';
+import { DataTable, StatusBadge, EmptyState, ErrorState } from '../../../../components';
 import type { VacancyListItem } from '../../../../lib/trpc-types';
 
 interface VacancyTableProps {
   vacancies: VacancyListItem[];
   isLoading: boolean;
+  isError?: boolean;
+  onRetry?: () => void;
   onDuplicate: (id: string) => void;
   onClose: (vacancy: VacancyListItem) => void;
   onFreeze: (vacancy: VacancyListItem) => void;
@@ -35,11 +37,21 @@ function formatSalaryRange(salary: unknown, t: { naSalary: string }): string {
 export function VacancyTable({
   vacancies,
   isLoading,
+  isError,
+  onRetry,
   onDuplicate,
   onClose,
   onFreeze,
 }: VacancyTableProps) {
   const { t } = useI18n();
+
+  if (isError) {
+    return (
+      <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] flex-1 flex flex-col min-h-0 overflow-hidden">
+        <ErrorState onRetry={onRetry} />
+      </div>
+    );
+  }
 
   const statusMap: Record<string, { cls: string; label: string }> = {
     draft: { cls: 'bg-gray-100 text-gray-600', label: t.vacancies.statusDraft },

@@ -2,6 +2,7 @@
 
 import { useI18n } from '../../../lib/i18n';
 import type { VacancyDashboardKpis, CandidateKpis } from '../../../lib/trpc-types';
+import { ErrorState } from '../../../components';
 
 interface KpiItem {
   dotColor: string;
@@ -50,13 +51,23 @@ interface RecruitingKpiStripProps {
   vacancyKpis: VacancyDashboardKpis | undefined;
   candidateKpis: CandidateKpis | undefined;
   isLoading: boolean;
+  isError: boolean;
+  onRetry?: () => void;
 }
 
-export function RecruitingKpiStrip({ vacancyKpis, candidateKpis, isLoading }: RecruitingKpiStripProps) {
+export function RecruitingKpiStrip({ vacancyKpis, candidateKpis, isLoading, isError, onRetry }: RecruitingKpiStripProps) {
   const { t } = useI18n();
   const rd = t.recruitingDashboard;
 
   if (isLoading) return <KpiStripSkeleton />;
+
+  if (isError) {
+    return (
+      <div className="mb-6">
+        <ErrorState onRetry={onRetry} />
+      </div>
+    );
+  }
 
   const vk = vacancyKpis;
   const ck = candidateKpis;

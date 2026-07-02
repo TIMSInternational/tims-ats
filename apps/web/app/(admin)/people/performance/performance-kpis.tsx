@@ -1,5 +1,7 @@
 'use client';
 
+import { ErrorState } from '../../../../components';
+
 interface PerformanceKpi {
   label: string;
   value: string | number;
@@ -12,9 +14,11 @@ interface PerformanceKpi {
 interface PerformanceKpisProps {
   kpis: PerformanceKpi[];
   isLoading?: boolean;
+  isError?: boolean;
+  onRetry?: () => void;
 }
 
-export function PerformanceKpis({ kpis, isLoading }: PerformanceKpisProps) {
+export function PerformanceKpis({ kpis, isLoading, isError, onRetry }: PerformanceKpisProps) {
   if (isLoading) {
     return (
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
@@ -25,6 +29,16 @@ export function PerformanceKpis({ kpis, isLoading }: PerformanceKpisProps) {
             <div className="h-2 w-20 bg-gray-200 rounded animate-pulse" />
           </div>
         ))}
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div className="col-span-2 md:col-span-5">
+          <ErrorState onRetry={onRetry} />
+        </div>
       </div>
     );
   }

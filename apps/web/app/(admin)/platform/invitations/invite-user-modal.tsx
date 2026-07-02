@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
+import { ErrorState } from '../../../../components';
 
 export function InviteUserModal({ onClose, onSuccess, preselectedOrgId, preselectedOrgName }: { onClose: () => void; onSuccess: () => void; preselectedOrgId?: string; preselectedOrgName?: string }) {
   const { t } = useI18n();
@@ -50,6 +51,9 @@ export function InviteUserModal({ onClose, onSuccess, preselectedOrgId, preselec
           <div>
             <label className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.organization} *</label>
             <input type="text" value={orgSearch} onChange={(e) => { setOrgSearch(e.target.value); setOrgId(''); }} placeholder={t.organizations.searchOrg} className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20" />
+            {orgSearch && !orgId && orgs.isError && (
+              <ErrorState onRetry={() => orgs.refetch()} />
+            )}
             {orgSearch && !orgId && orgs.data && (
               <div className="mt-1 bg-white border border-[#EDEDED] rounded-lg shadow-lg max-h-40 overflow-y-auto">
                 {orgs.data.organizations.map((org) => (

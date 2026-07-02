@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
-import { KpiCard, KpiCardSkeleton, CandidateAvatar, EmptyState, Skeleton } from '../../../../components';
+import { KpiCard, KpiCardSkeleton, CandidateAvatar, EmptyState, ErrorState, Skeleton } from '../../../../components';
 import { toast } from '../../../../lib/toast';
 import { NineBoxGrid } from './nine-box-grid';
 import { CalibrationModal } from './calibration-modal';
@@ -69,11 +69,13 @@ const STATUS_BADGE: Record<string, string> = {
 function CalibrationSessionsList({
   sessions,
   isLoading,
+  isError,
   onManage,
   t,
 }: {
   sessions: CalibrationSessionSummary[];
   isLoading: boolean;
+  isError: boolean;
   onManage: (id: string) => void;
   t: CommitteeT;
 }) {
@@ -89,6 +91,8 @@ function CalibrationSessionsList({
       <p className="text-[11px] font-semibold text-[#1F114C] mb-2">{t.sessionsTitle}</p>
       {isLoading ? (
         <Skeleton className="h-20 w-full rounded-lg" />
+      ) : isError ? (
+        <ErrorState />
       ) : sessions.length === 0 ? (
         <p className="text-[10px] text-[#8B8B8B] py-3 text-center">{t.noSessions}</p>
       ) : (
@@ -130,6 +134,7 @@ export default function NineBoxPage() {
     retry: (failureCount, err) =>
       err.data?.code === 'FORBIDDEN' ? false : failureCount < 3,
   });
+  const sessionsForbidden = sessionsQ.error?.data?.code === 'FORBIDDEN';
 
   const startCalibration = trpc.ninebox.createCalibration.useMutation({
     onSuccess: (session) => {
@@ -176,6 +181,14 @@ export default function NineBoxPage() {
           <Skeleton className="h-[420px] rounded-xl" />
           <Skeleton className="h-[420px] rounded-xl" />
         </div>
+      </div>
+    );
+  }
+
+  if (gridQ.isError || kpisQ.isError) {
+    return (
+      <div className="h-full flex items-center justify-center p-6">
+        <ErrorState onRetry={() => { gridQ.refetch(); kpisQ.refetch(); }} />
       </div>
     );
   }
@@ -244,6 +257,8 @@ export default function NineBoxPage() {
               <p className="text-[11px] font-semibold text-[#1F114C] mb-3">{t.nineBox.selectedEmployeeDetail}</p>
               {detailQ.isLoading ? (
                 <div className="space-y-3"><Skeleton className="h-10 w-full" /><Skeleton className="h-16 w-full" /><Skeleton className="h-10 w-full" /></div>
+              ) : detailQ.isError ? (
+                <ErrorState />
               ) : detail ? (
                 <>
                   <div className="flex items-center gap-3 mb-3">
@@ -304,6 +319,8 @@ export default function NineBoxPage() {
               <p className="text-[11px] font-semibold text-[#1F114C] mb-2">{t.nineBox.benchStrengthTitle}</p>
               {successionQ.isLoading ? (
                 <Skeleton className="h-24 w-full" />
+              ) : successionQ.isError ? (
+                <ErrorState />
               ) : (
                 <table className="w-full text-[10px]">
                   <thead>
@@ -349,6 +366,7 @@ export default function NineBoxPage() {
           <CalibrationSessionsList
             sessions={sessionsQ.data ?? []}
             isLoading={sessionsQ.isLoading}
+            isError={sessionsQ.isError && !sessionsForbidden}
             onManage={(id) => setCalibrationSessionId(id)}
             t={t.committee}
           />

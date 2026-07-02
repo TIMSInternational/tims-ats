@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react';
 import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
 import type { VacancyListItem } from '../../../lib/trpc-types';
+import { ErrorState } from '../../../components';
 
 const STAGE_COLORS = [
   'bg-[#E8E5F0] text-[#1F114C]',
@@ -161,6 +162,8 @@ export function PipelineFunnel({ totalApplications, vacancies }: PipelineFunnelP
             <div key={i} className="h-6 bg-gray-100 rounded animate-pulse" style={{ width: `${100 - i * 12}%` }} />
           ))}
         </div>
+      ) : funnelQuery.isError && targetVacancyId ? (
+        <ErrorState onRetry={() => funnelQuery.refetch()} />
       ) : (
         <div className="space-y-2">
           {stages.map((stage, idx) => {

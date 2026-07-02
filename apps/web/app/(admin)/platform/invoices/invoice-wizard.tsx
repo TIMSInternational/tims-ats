@@ -6,6 +6,7 @@ import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
 import type { OrganizationListItem } from '../../../../lib/trpc-types';
 import { formatDateLong as fmtDateLong } from '../../../../lib/format-utils';
+import { ErrorState } from '../../../../components';
 import { fmtCurrency, type LineItem } from './invoice-wizard.helpers';
 import { PreviewPanel } from './invoice-wizard.parts';
 
@@ -48,6 +49,13 @@ export function InvoiceWizard({ onClose, onSuccess, preselectedOrgId }: { onClos
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preselectedOrgQuery.data]);
 
+  useEffect(() => {
+    if (preselectedOrgId && !orgId && preselectedOrgQuery.isError) {
+      toast(t.common.error, { type: 'error' });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preselectedOrgQuery.isError]);
+
   const previewQuery = trpc.platform.getAiInterviewBillingPreview.useQuery(
     { organizationId: orgId },
     { enabled: false },
@@ -55,6 +63,10 @@ export function InvoiceWizard({ onClose, onSuccess, preselectedOrgId }: { onClos
 
   const loadAiInterviewCharges = async () => {
     const result = await previewQuery.refetch();
+    if (result.isError) {
+      toast(t.common.error, { type: 'error' });
+      return;
+    }
     if (!result.data) return;
     const incoming: LineItem[] = result.data.lineItems.map((li) => ({
       description: li.description,
@@ -74,7 +86,7 @@ export function InvoiceWizard({ onClose, onSuccess, preselectedOrgId }: { onClos
   });
 
   const subtotal = lineItems.reduce((s, li) => s + li.quantity * li.unitPrice, 0);
-  const invNumber = `INV-${nextNum.data ?? '...'}`;
+  const invNumber = nextNum.isError ? t.common.error : `INV-${nextNum.data ?? '...'}`;
 
   const addLine = () => setLineItems([...lineItems, { description: '', quantity: 1, unitPrice: 0 }]);
   const removeLine = (i: number) => { if (lineItems.length > 1) setLineItems(lineItems.filter((_, idx) => idx !== i)); };
@@ -152,6 +164,7 @@ export function InvoiceWizard({ onClose, onSuccess, preselectedOrgId }: { onClos
                 <div className="flex-1"><p className="text-sm font-semibold text-[#333]">{orgName}</p><p className="text-xs text-[#8B8B8B]">{orgEmail || 'Sin email'}</p></div>
                 <button onClick={() => { setOrgId(''); setOrgSearch(''); setOrgName(''); }} className="text-xs text-[#1F114C] font-medium hover:underline">Cambiar</button>
               </div>}
+              {orgSearch && !orgId && orgs.isError && <ErrorState onRetry={() => orgs.refetch()} />}
               {orgSearch && !orgId && orgs.data && <div className="mt-1 bg-white border border-[#EDEDED] rounded-xl shadow-lg max-h-60 overflow-y-auto">
                 {orgs.data.organizations.length === 0 && <p className="px-4 py-3 text-sm text-[#8B8B8B]">{t.common.noResults}</p>}
                 {orgs.data.organizations.map((org) => (
@@ -224,7 +237,15 @@ export function InvoiceWizard({ onClose, onSuccess, preselectedOrgId }: { onClos
               <h2 className="text-2xl font-semibold text-[#333] mb-2">{t.invoices.invoiceDetails}</h2>
               <p className="text-sm text-[#8B8B8B] mb-6">{t.invoices.detailsDesc}</p>
               <div className="grid grid-cols-2 gap-4 mb-4">
-                <div><label className="text-xs font-medium text-[#585858] mb-1 block">{t.invoices.invoiceNumber}</label><input type="text" value={invNumber} readOnly className="w-full h-10 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#333] bg-[#F6F6F6] font-mono" /></div>
+                <div>
+                  <label className="text-xs font-medium text-[#585858] mb-1 block">{t.invoices.invoiceNumber}</label>
+                  <div className="flex items-center gap-2">
+                    <input type="text" value={invNumber} readOnly className="w-full h-10 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#333] bg-[#F6F6F6] font-mono" />
+                    {nextNum.isError && (
+                      <button type="button" onClick={() => nextNum.refetch()} className="shrink-0 text-xs text-[#1F114C] font-medium hover:underline">{t.common.retry}</button>
+                    )}
+                  </div>
+                </div>
                 <div><label className="text-xs font-medium text-[#585858] mb-1 block">{t.invoices.poNumber}</label><input type="text" value={poNumber} onChange={(e) => setPoNumber(e.target.value)} placeholder="PO-12345" className="w-full h-10 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20" /></div>
               </div>
               <div className="grid grid-cols-2 gap-4 mb-6">

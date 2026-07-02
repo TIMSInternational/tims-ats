@@ -1,6 +1,6 @@
 'use client';
 
-import { KpiCard, KpiCardSkeleton } from '../../../../../components';
+import { KpiCard, KpiCardSkeleton, ErrorState } from '../../../../../components';
 import { useI18n } from '../../../../../lib/i18n/index';
 import { formatCurrency } from '../../../../../lib/format-utils';
 
@@ -10,9 +10,19 @@ interface OfferKpisProps {
   avgSalary: number;
   pendingApprovals: number;
   loading: boolean;
+  isError: boolean;
+  onRetry?: () => void;
 }
 
-export function OfferKpis({ activeCount, acceptanceRate, avgSalary, pendingApprovals, loading }: OfferKpisProps) {
+export function OfferKpis({
+  activeCount,
+  acceptanceRate,
+  avgSalary,
+  pendingApprovals,
+  loading,
+  isError,
+  onRetry,
+}: OfferKpisProps) {
   const { t } = useI18n();
 
   if (loading) {
@@ -21,6 +31,14 @@ export function OfferKpis({ activeCount, acceptanceRate, avgSalary, pendingAppro
         {Array.from({ length: 4 }).map((_, i) => (
           <KpiCardSkeleton key={i} />
         ))}
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <ErrorState onRetry={onRetry} />
       </div>
     );
   }

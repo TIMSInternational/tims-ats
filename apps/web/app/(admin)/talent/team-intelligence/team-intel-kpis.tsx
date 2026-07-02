@@ -1,6 +1,6 @@
 'use client';
 
-import { KpiCardSkeleton } from '../../../../components';
+import { ErrorState, KpiCardSkeleton } from '../../../../components';
 
 // A KPI value is either a real number or the honest-unavailable marker.
 // Keep this union explicit so a future numeric formatter can't silently break on 'N/D'.
@@ -16,6 +16,7 @@ interface TeamIntelKpisProps {
     diversityIndex: number;
   } | undefined;
   loading: boolean;
+  isError: boolean;
   t: {
     kpiTeamSize: string;
     kpiAvgTenure: string;
@@ -30,13 +31,23 @@ interface TeamIntelKpisProps {
   };
 }
 
-export function TeamIntelKpis({ data, loading, t }: TeamIntelKpisProps) {
+export function TeamIntelKpis({ data, loading, isError, t }: TeamIntelKpisProps) {
   if (loading) {
     return (
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
         {Array.from({ length: 5 }).map((_, i) => (
           <KpiCardSkeleton key={i} />
         ))}
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+        <div className="col-span-2 md:col-span-5 bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4">
+          <ErrorState />
+        </div>
       </div>
     );
   }

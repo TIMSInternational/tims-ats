@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
 import { formatCurrency, PLAN_BG_CLASSES, PLAN_LABELS, Skeleton } from '../dashboard-utils';
+import { ErrorState } from '../../../../components';
 
 const TIER_CONFIG = {
   green: { bg: 'bg-emerald-500', text: 'text-emerald-700', light: 'bg-emerald-50' },
@@ -26,7 +27,7 @@ function getActionLabel(action: string, t: ReturnType<typeof useI18n>['t']): str
 export function ChurnRiskPanel() {
   const { t } = useI18n();
   const router = useRouter();
-  const { data, isLoading } = trpc.platform.getChurnRisk.useQuery();
+  const { data, isLoading, isError, refetch } = trpc.platform.getChurnRisk.useQuery();
 
   if (isLoading) {
     return (
@@ -36,6 +37,14 @@ export function ChurnRiskPanel() {
         <div className="space-y-2">
           {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-12 w-full rounded-lg" />)}
         </div>
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="rounded-xl border border-[#EDEDED] bg-white p-5">
+        <ErrorState onRetry={() => refetch()} />
       </div>
     );
   }

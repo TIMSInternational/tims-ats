@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useI18n } from '../../../../lib/i18n';
+import { ErrorState } from '../../../../components';
 import { RecognitionModal } from './recognition-modal';
 import { FeedbackModal } from './feedback-modal';
 
@@ -103,9 +104,11 @@ interface FeedbackPanelProps {
   feedbacks: FeedbackItem[];
   recognitions: RecognitionItem[];
   isLoading: boolean;
+  isError?: boolean;
+  onRetry?: () => void;
 }
 
-export function FeedbackPanel({ feedbacks, recognitions, isLoading }: FeedbackPanelProps) {
+export function FeedbackPanel({ feedbacks, recognitions, isLoading, isError, onRetry }: FeedbackPanelProps) {
   const { t } = useI18n();
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [showRecognitionModal, setShowRecognitionModal] = useState(false);
@@ -125,6 +128,8 @@ export function FeedbackPanel({ feedbacks, recognitions, isLoading }: FeedbackPa
         </div>
         {isLoading ? (
           <SkeletonList count={3} />
+        ) : isError ? (
+          <ErrorState onRetry={onRetry} />
         ) : feedbacks.length === 0 ? (
           <div className="px-5 py-8 text-center text-[12px] text-[#8B8B8B]">
             No hay feedback registrado
@@ -173,6 +178,8 @@ export function FeedbackPanel({ feedbacks, recognitions, isLoading }: FeedbackPa
         </div>
         {isLoading ? (
           <SkeletonList count={3} />
+        ) : isError ? (
+          <ErrorState onRetry={onRetry} />
         ) : recognitions.length === 0 ? (
           <div className="px-5 py-8 text-center text-[12px] text-[#8B8B8B]">
             No hay reconocimientos registrados

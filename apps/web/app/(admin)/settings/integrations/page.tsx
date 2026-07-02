@@ -36,7 +36,12 @@ export default function IntegrationsPage() {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-5">
-        <IntegrationKpis data={kpis.data ?? null} loading={kpis.isLoading} />
+        <IntegrationKpis
+          data={kpis.data ?? null}
+          loading={kpis.isLoading}
+          isError={kpis.isError}
+          onRetry={() => kpis.refetch()}
+        />
 
         {/* Middle 2-Column */}
         <div className="flex flex-col md:flex-row gap-4 mb-4">

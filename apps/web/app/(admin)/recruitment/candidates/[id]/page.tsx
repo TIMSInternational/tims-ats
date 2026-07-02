@@ -4,7 +4,7 @@ import { use, useState } from 'react';
 import Link from 'next/link';
 import { trpc } from '../../../../../lib/trpc';
 import { useI18n } from '../../../../../lib/i18n';
-import { Skeleton } from '../../../../../components';
+import { ErrorState, Skeleton } from '../../../../../components';
 import { CandidateHeader } from './candidate-header';
 import { ProfileTab } from './profile-tab';
 import { AssessmentResults } from './assessment-results';
@@ -49,6 +49,14 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
             </div>
           </div>
         </div>
+      </div>
+    );
+  }
+
+  if (candidate.isError) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <ErrorState onRetry={() => candidate.refetch()} />
       </div>
     );
   }
@@ -128,7 +136,7 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
             <StageTimeline applications={c.applications} />
             <TagsCard tags={c.tags} candidateId={id} />
             <RiskFlags />
-            <CandidateTimeline events={timeline.data ?? []} isLoading={timeline.isLoading} />
+            <CandidateTimeline events={timeline.data ?? []} isLoading={timeline.isLoading} isError={timeline.isError} />
           </div>
         </div>
       </div>

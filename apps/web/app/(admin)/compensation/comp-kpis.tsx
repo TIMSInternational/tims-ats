@@ -1,6 +1,7 @@
 'use client';
 
 import { useI18n } from '../../../lib/i18n';
+import { ErrorState } from '../../../components';
 
 interface CompKpisProps {
   data: {
@@ -17,16 +18,34 @@ interface CompKpisProps {
     avgCompaRatio: number | null;
   } | null;
   loading: boolean;
+  isError?: boolean;
+  onRetry?: () => void;
 }
 
 function KpiSkeleton() {
   return <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4 animate-pulse"><div className="h-16 bg-gray-100 rounded" /></div>;
 }
 
-export function CompKpis({ data, loading }: CompKpisProps) {
+export function CompKpis({ data, loading, isError, onRetry }: CompKpisProps) {
   const { t } = useI18n();
 
-  if (loading || !data) {
+  if (loading) {
+    return (
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
+        {Array.from({ length: 5 }).map((_, i) => <KpiSkeleton key={i} />)}
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="mb-4">
+        <ErrorState onRetry={onRetry} />
+      </div>
+    );
+  }
+
+  if (!data) {
     return (
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
         {Array.from({ length: 5 }).map((_, i) => <KpiSkeleton key={i} />)}

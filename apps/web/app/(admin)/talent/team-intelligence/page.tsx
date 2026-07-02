@@ -48,7 +48,7 @@ export default function TeamIntelligencePage() {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-5">
-        <TeamIntelKpis data={kpis.data} loading={kpis.isLoading} t={t.teamIntel} />
+        <TeamIntelKpis data={kpis.data} loading={kpis.isLoading} isError={kpis.isError} t={t.teamIntel} />
 
         {/* Main 2-column */}
         <div className="flex flex-col md:flex-row gap-4 mb-4">

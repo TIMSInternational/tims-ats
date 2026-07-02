@@ -5,7 +5,7 @@ import { trpc } from '../../../../../../lib/trpc';
 import { toast } from '../../../../../../lib/toast';
 import { useI18n } from '../../../../../../lib/i18n';
 import { getInitials, getAvatarColor, formatDate } from '../../../../../../lib/format-utils';
-import { Skeleton, Modal } from '../../../../../../components';
+import { Skeleton, Modal, ErrorState } from '../../../../../../components';
 import { InviteUserModal } from '../../../invitations/invite-user-modal';
 
 const ROLE_COLORS: Record<string, { bg: string; text: string }> = {
@@ -90,7 +90,7 @@ export function UsersSection({ organizationId, organizationName }: { organizatio
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [deactivateTarget, setDeactivateTarget] = useState<{ id: string; name: string } | null>(null);
   const utils = trpc.useUtils();
-  const { data, isLoading } = trpc.platform.getOrgUsers.useQuery({ organizationId });
+  const { data, isLoading, isError, refetch } = trpc.platform.getOrgUsers.useQuery({ organizationId });
 
   const deactivateUser = trpc.platform.deactivateOrgUser.useMutation({
     onSuccess: () => {
@@ -153,6 +153,12 @@ export function UsersSection({ organizationId, organizationName }: { organizatio
           <tbody className="divide-y divide-[#F3F3F3]">
             {isLoading ? (
               Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} />)
+            ) : isError ? (
+              <tr>
+                <td colSpan={7} className="px-4 py-16 text-center">
+                  <ErrorState onRetry={() => refetch()} />
+                </td>
+              </tr>
             ) : users.length === 0 ? (
               <tr>
                 <td colSpan={7} className="px-4 py-16 text-center">

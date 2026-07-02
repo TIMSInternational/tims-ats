@@ -4,7 +4,7 @@ import type { AppRouter } from '@tims/api';
 import type { inferRouterOutputs } from '@trpc/server';
 import type { UseTRPCQueryResult } from '@trpc/react-query/shared';
 import type { TRPCClientErrorLike } from '@trpc/client';
-import { CandidateAvatar } from '../../../../components';
+import { CandidateAvatar, ErrorState } from '../../../../components';
 import { INTERVIEW_TYPES, DURATIONS, inputCls, labelCls, textareaCls } from './schedule-modal.helpers';
 import { useI18n } from '../../../../lib/i18n';
 
@@ -64,8 +64,9 @@ export function Step1Fields({
             {candidateSearch.length > 0 && (
               <div className="mt-1 border border-[#EDEDED] rounded-lg max-h-[180px] overflow-y-auto bg-white shadow-sm">
                 {candidates.isLoading && <p className="px-3 py-2 text-[11px] text-[#8B8B8B]">{t.nav.searching}</p>}
-                {candidates.data?.length === 0 && <p className="px-3 py-2 text-[11px] text-[#8B8B8B]">{t.interviews.scheduleFieldNoResults}</p>}
-                {(candidates.data ?? []).map((c) => (
+                {candidates.isError && <ErrorState onRetry={() => candidates.refetch()} />}
+                {!candidates.isLoading && !candidates.isError && candidates.data?.length === 0 && <p className="px-3 py-2 text-[11px] text-[#8B8B8B]">{t.interviews.scheduleFieldNoResults}</p>}
+                {!candidates.isError && (candidates.data ?? []).map((c) => (
                   <button key={c.id} onClick={() => { setSelectedCandidateId(c.id); setSelectedCandidateName(`${c.firstName} ${c.lastName}`); setCandidateSearch(''); }}
                     className="w-full text-left px-3 py-2 flex items-center gap-2 hover:bg-[#F6F6F6] transition">
                     <CandidateAvatar firstName={c.firstName} lastName={c.lastName} avatar={null} size="sm" />
@@ -85,16 +86,20 @@ export function Step1Fields({
       <div>
         <label className={labelCls}>{t.interviews.scheduleFieldVacancy}</label>
         <div className="space-y-1.5 max-h-[200px] overflow-y-auto">
-          {(vacancies.data?.items ?? []).map((v) => (
-            <button key={v.id} type="button"
-              onClick={() => { setSelectedVacancyId(v.id); setSelectedVacancyTitle(v.title); }}
-              className={`w-full text-left px-3 py-2.5 rounded-lg border text-[12px] transition ${
-                selectedVacancyId === v.id ? 'border-[#1F114C] bg-[#F0EEF5] text-[#1F114C] font-medium' : 'border-[#EDEDED] text-[#585858] hover:bg-[#F6F6F6]'
-              }`}>
-              <span>{v.title}</span>
-              {v.location && <span className="text-[10px] text-[#8B8B8B] ml-2">· {v.location}</span>}
-            </button>
-          ))}
+          {vacancies.isError ? (
+            <ErrorState onRetry={() => vacancies.refetch()} />
+          ) : (
+            (vacancies.data?.items ?? []).map((v) => (
+              <button key={v.id} type="button"
+                onClick={() => { setSelectedVacancyId(v.id); setSelectedVacancyTitle(v.title); }}
+                className={`w-full text-left px-3 py-2.5 rounded-lg border text-[12px] transition ${
+                  selectedVacancyId === v.id ? 'border-[#1F114C] bg-[#F0EEF5] text-[#1F114C] font-medium' : 'border-[#EDEDED] text-[#585858] hover:bg-[#F6F6F6]'
+                }`}>
+                <span>{v.title}</span>
+                {v.location && <span className="text-[10px] text-[#8B8B8B] ml-2">· {v.location}</span>}
+              </button>
+            ))
+          )}
           {vacancies.isLoading && <p className="text-[11px] text-[#8B8B8B] py-2">{t.interviews.scheduleFieldLoadingVacancies}</p>}
         </div>
       </div>
@@ -211,27 +216,31 @@ export function Step3Fields({
         <p className="text-[13px] font-medium text-[#1F114C] mb-1">{t.interviews.scheduleFieldEvaluators}</p>
         <p className="text-[10px] text-[#8B8B8B] mb-3">{t.interviews.scheduleFieldSelectEvaluator}</p>
         <div className="space-y-1.5 max-h-[200px] overflow-y-auto">
-          {(orgUsers.data?.users ?? []).map((u) => {
-            const isSelected = selectedEvaluatorIds.includes(u.id);
-            return (
-              <label key={u.id}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border cursor-pointer transition ${
-                  isSelected ? 'border-[#1F114C] bg-[#F0EEF5]' : 'border-[#EDEDED] hover:bg-[#F6F6F6]'
-                }`}>
-                <input type="checkbox" checked={isSelected} onChange={() => toggleEvaluator(u.id)}
-                  className="w-4 h-4 rounded text-[#1F114C] focus:ring-[#1F114C]/20" />
-                <div className="flex items-center gap-2 flex-1">
-                  <div className="w-7 h-7 rounded-full bg-[#1F114C] flex items-center justify-center text-white text-[9px] font-bold">
-                    {u.firstName[0]}{u.lastName[0]}
+          {orgUsers.isError ? (
+            <ErrorState onRetry={() => orgUsers.refetch()} />
+          ) : (
+            (orgUsers.data?.users ?? []).map((u) => {
+              const isSelected = selectedEvaluatorIds.includes(u.id);
+              return (
+                <label key={u.id}
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border cursor-pointer transition ${
+                    isSelected ? 'border-[#1F114C] bg-[#F0EEF5]' : 'border-[#EDEDED] hover:bg-[#F6F6F6]'
+                  }`}>
+                  <input type="checkbox" checked={isSelected} onChange={() => toggleEvaluator(u.id)}
+                    className="w-4 h-4 rounded text-[#1F114C] focus:ring-[#1F114C]/20" />
+                  <div className="flex items-center gap-2 flex-1">
+                    <div className="w-7 h-7 rounded-full bg-[#1F114C] flex items-center justify-center text-white text-[9px] font-bold">
+                      {u.firstName[0]}{u.lastName[0]}
+                    </div>
+                    <div>
+                      <p className={`text-[12px] ${isSelected ? 'text-[#1F114C] font-medium' : 'text-[#333]'}`}>{u.firstName} {u.lastName}</p>
+                      <p className="text-[10px] text-[#8B8B8B]">{u.jobTitle ?? u.email}</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className={`text-[12px] ${isSelected ? 'text-[#1F114C] font-medium' : 'text-[#333]'}`}>{u.firstName} {u.lastName}</p>
-                    <p className="text-[10px] text-[#8B8B8B]">{u.jobTitle ?? u.email}</p>
-                  </div>
-                </div>
-              </label>
-            );
-          })}
+                </label>
+              );
+            })
+          )}
           {orgUsers.isLoading && <p className="text-[11px] text-[#8B8B8B] py-2">{t.interviews.scheduleFieldLoadingUsers}</p>}
         </div>
       </div>

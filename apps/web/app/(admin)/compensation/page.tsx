@@ -29,7 +29,12 @@ export default function CompensationPage() {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-5 space-y-4">
-        <CompKpis data={kpis.data ?? null} loading={kpis.isLoading} />
+        <CompKpis
+          data={kpis.data ?? null}
+          loading={kpis.isLoading}
+          isError={kpis.isError}
+          onRetry={() => kpis.refetch()}
+        />
 
         {/* Main Two-Column */}
         <div className="grid grid-cols-12 gap-4">

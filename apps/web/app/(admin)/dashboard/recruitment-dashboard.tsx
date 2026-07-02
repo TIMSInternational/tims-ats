@@ -2,6 +2,7 @@
 
 import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
+import { ErrorState } from '../../../components';
 import { RecruitingKpiStrip } from './recruiting-kpi-strip';
 import { PipelineFunnel, PipelineFunnelSkeleton } from './pipeline-funnel';
 import { VacanciesByDimension, VacanciesByDimensionSkeleton } from './vacancies-by-dimension';
@@ -50,6 +51,7 @@ function RecruiterDashboard() {
   );
 
   const isLoading = vacancyKpis.isLoading || candidateKpis.isLoading;
+  const kpiIsError = vacancyKpis.isError || candidateKpis.isError;
   const totalApplications = vacancyKpis.data?.totalApplications ?? 0;
   const totalOpen = vacancyKpis.data?.totalOpen ?? 0;
   const firstVacancyId = publishedVacancies.data?.items?.[0]?.id;
@@ -68,6 +70,8 @@ function RecruiterDashboard() {
           vacancyKpis={vacancyKpis.data}
           candidateKpis={candidateKpis.data}
           isLoading={isLoading}
+          isError={kpiIsError}
+          onRetry={() => { vacancyKpis.refetch(); candidateKpis.refetch(); }}
         />
 
         {/* Pipeline + Vacancies by Dimension */}
@@ -77,6 +81,8 @@ function RecruiterDashboard() {
               <PipelineFunnelSkeleton />
               <VacanciesByDimensionSkeleton />
             </>
+          ) : publishedVacancies.isError ? (
+            <ErrorState onRetry={() => publishedVacancies.refetch()} />
           ) : (
             <>
               <PipelineFunnel totalApplications={totalApplications} vacancies={publishedVacancies.data?.items ?? []} />

@@ -3,6 +3,7 @@
 import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
 import { toast } from '../../../lib/toast';
+import { ErrorState } from '../../../components';
 
 export function AlertsPendingPanel() {
   const { t } = useI18n();
@@ -14,6 +15,7 @@ export function AlertsPendingPanel() {
   const tests = pendingAssessments.data?.items ?? [];
   const scorecards = pendingScorecards.data ?? [];
   const isLoading = pendingAssessments.isLoading || pendingScorecards.isLoading;
+  const isError = pendingAssessments.isError || pendingScorecards.isError;
 
   const totalPending = tests.length + scorecards.length;
 
@@ -35,6 +37,8 @@ export function AlertsPendingPanel() {
         <div className="space-y-3 animate-pulse">
           {Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-10 bg-gray-100 rounded" />)}
         </div>
+      ) : isError ? (
+        <ErrorState onRetry={() => { pendingAssessments.refetch(); pendingScorecards.refetch(); }} />
       ) : (
         <>
           {/* Pending Assessments */}

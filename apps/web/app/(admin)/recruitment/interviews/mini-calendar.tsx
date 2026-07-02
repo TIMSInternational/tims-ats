@@ -2,12 +2,14 @@
 
 import { useMemo } from 'react';
 import { useI18n } from '../../../../lib/i18n';
-import { Skeleton } from '../../../../components';
+import { ErrorState, Skeleton } from '../../../../components';
 import type { InterviewListItem } from '../../../../lib/trpc-types';
 
 interface MiniCalendarProps {
   interviews: InterviewListItem[];
   isLoading: boolean;
+  isError?: boolean;
+  onRetry?: () => void;
 }
 
 const WEEKDAYS = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom'];
@@ -21,7 +23,7 @@ function getMonthDays(year: number, month: number): (number | null)[] {
   return cells;
 }
 
-export function MiniCalendar({ interviews, isLoading }: MiniCalendarProps) {
+export function MiniCalendar({ interviews, isLoading, isError, onRetry }: MiniCalendarProps) {
   const { t } = useI18n();
   const now = new Date();
   const year = now.getFullYear();
@@ -52,6 +54,14 @@ export function MiniCalendar({ interviews, isLoading }: MiniCalendarProps) {
             <Skeleton key={i} className="h-8 w-8 rounded" />
           ))}
         </div>
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
+        <ErrorState onRetry={onRetry} />
       </div>
     );
   }

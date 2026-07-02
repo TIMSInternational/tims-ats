@@ -3,7 +3,7 @@
 import { trpc } from '../../../../../../lib/trpc';
 import { toast } from '../../../../../../lib/toast';
 import { useI18n } from '../../../../../../lib/i18n';
-import { Skeleton } from '../../../../../../components';
+import { Skeleton, ErrorState } from '../../../../../../components';
 
 const FEATURE_DESCRIPTIONS: Record<string, string> = {
   ai_cv_parser: 'Parsing automatico de hojas de vida con IA',
@@ -21,7 +21,7 @@ const FEATURE_DESCRIPTIONS: Record<string, string> = {
 export function FeaturesSection({ organizationId }: { organizationId: string }) {
   const { t } = useI18n();
   const utils = trpc.useUtils();
-  const { data: flagGroups, isLoading } = trpc.platform.listAllFeatureFlags.useQuery();
+  const { data: flagGroups, isLoading, isError, refetch } = trpc.platform.listAllFeatureFlags.useQuery();
 
   const updateFlag = trpc.platform.updateFeatureFlag.useMutation({
     onSuccess: () => {
@@ -68,6 +68,10 @@ export function FeaturesSection({ organizationId }: { organizationId: string }) 
               <Skeleton className="h-6 w-11 rounded-full" />
             </div>
           ))}
+        </div>
+      ) : isError ? (
+        <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+          <ErrorState onRetry={() => refetch()} />
         </div>
       ) : orgFlags.length === 0 ? (
         <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] py-12 text-center">

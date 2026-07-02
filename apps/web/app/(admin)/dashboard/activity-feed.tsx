@@ -3,6 +3,7 @@
 import { trpc } from '../../../lib/trpc';
 import { timeAgo, Skeleton } from './dashboard-utils';
 import { useI18n } from '../../../lib/i18n';
+import { ErrorState } from '../../../components';
 
 const ACTIVITY_ICONS: Record<string, { icon: string; color: string }> = {
   org_created: { icon: '\u{1F3E2}', color: 'bg-emerald-100' },
@@ -38,8 +39,8 @@ function ServiceDot({ status, label, latency }: { status: string; label: string;
 
 export function ActivityFeed() {
   const { t } = useI18n();
-  const { data: activity, isLoading: actLoading } = trpc.platform.getRecentActivity.useQuery();
-  const { data: health, isLoading: healthLoading } = trpc.platform.getSystemHealth.useQuery();
+  const { data: activity, isLoading: actLoading, isError: actError, refetch: refetchActivity } = trpc.platform.getRecentActivity.useQuery();
+  const { data: health, isLoading: healthLoading, isError: healthError, refetch: refetchHealth } = trpc.platform.getSystemHealth.useQuery();
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -62,6 +63,8 @@ export function ActivityFeed() {
               </div>
             ))}
           </div>
+        ) : actError ? (
+          <ErrorState onRetry={() => refetchActivity()} />
         ) : (
           <div className="space-y-1 overflow-y-auto max-h-[260px]">
             {(activity ?? []).slice(0, 10).map((item) => (
@@ -111,6 +114,8 @@ export function ActivityFeed() {
               <Skeleton key={i} className="h-6 w-full" />
             ))}
           </div>
+        ) : healthError ? (
+          <ErrorState onRetry={() => refetchHealth()} />
         ) : (
           <div className="space-y-0 overflow-y-auto max-h-[260px]">
             {(health?.services ?? []).slice(0, 8).map((svc) => {

@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { DataTable, EmptyState, StatusBadge, CandidateAvatar } from '../../../../../components';
+import { DataTable, EmptyState, StatusBadge, CandidateAvatar, ErrorState } from '../../../../../components';
 import { useI18n } from '../../../../../lib/i18n/index';
 import { formatDate, formatCurrency } from '../../../../../lib/format-utils';
 
@@ -31,12 +31,22 @@ interface OfferItem {
 interface OfferTableProps {
   items: OfferItem[];
   loading: boolean;
+  isError: boolean;
+  onRetry?: () => void;
   statusFilter: string;
   onStatusChange: (status: string) => void;
   onSelectOffer: (id: string) => void;
 }
 
-export function OfferTable({ items, loading, statusFilter, onStatusChange, onSelectOffer }: OfferTableProps) {
+export function OfferTable({
+  items,
+  loading,
+  isError,
+  onRetry,
+  statusFilter,
+  onStatusChange,
+  onSelectOffer,
+}: OfferTableProps) {
   const { t } = useI18n();
 
   const columns = [
@@ -74,6 +84,9 @@ export function OfferTable({ items, loading, statusFilter, onStatusChange, onSel
         )}
       </div>
 
+      {isError ? (
+        <ErrorState onRetry={onRetry} />
+      ) : (
       <DataTable
         columns={columns}
         loading={loading}
@@ -174,6 +187,7 @@ export function OfferTable({ items, loading, statusFilter, onStatusChange, onSel
           );
         })}
       </DataTable>
+      )}
     </>
   );
 }

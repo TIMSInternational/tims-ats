@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useI18n } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
 import { CandidateAvatar } from '../../../../components/candidate-avatar';
+import { ErrorState } from '../../../../components/error-state';
 import { Skeleton } from '../../../../components/skeleton';
 
 interface CandidateItem {
@@ -31,6 +32,8 @@ interface CandidateItem {
 interface TalentPoolTableProps {
   candidates: CandidateItem[];
   isLoading: boolean;
+  isError?: boolean;
+  onRetry?: () => void;
   nextCursor?: string;
   currentCursor?: string;
   onNextPage: () => void;
@@ -105,6 +108,8 @@ function TableSkeleton() {
 export function TalentPoolTable({
   candidates,
   isLoading,
+  isError,
+  onRetry,
   nextCursor,
   currentCursor,
   onNextPage,
@@ -112,6 +117,14 @@ export function TalentPoolTable({
 }: TalentPoolTableProps) {
   const { t } = useI18n();
   const tp = t.talentPool;
+
+  if (isError) {
+    return (
+      <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] overflow-hidden">
+        <ErrorState onRetry={onRetry} />
+      </div>
+    );
+  }
 
   return (
     <>

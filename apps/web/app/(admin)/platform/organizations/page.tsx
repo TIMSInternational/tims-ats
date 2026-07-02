@@ -9,7 +9,7 @@ import { CreateOrgModal } from './create-org-modal';
 import { EditOrgModal } from './edit-org-modal';
 import { OrgTable } from './org-table';
 import { OrgBulkBar } from './org-bulk-bar';
-import { Skeleton } from '../../../../components';
+import { Skeleton, ErrorState } from '../../../../components';
 
 const PLAN_MRR: Record<string, number> = { trial: 0, starter: 499, professional: 999, enterprise: 2499 };
 
@@ -85,7 +85,11 @@ export default function OrganizationsPage() {
           <div key={i} className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 animate-pulse">
             <Skeleton className="h-3 w-24 mb-3" /><Skeleton className="h-7 w-12 mb-2" /><Skeleton className="h-3 w-20" />
           </div>
-        )) : kpis.data ? <>
+        )) : kpis.isError ? (
+          <div className="col-span-2 md:col-span-4 bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+            <ErrorState onRetry={() => kpis.refetch()} />
+          </div>
+        ) : kpis.data ? <>
           <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
             <div className="flex items-center justify-between mb-3">
               <span className="text-xs text-[#8B8B8B] font-medium uppercase tracking-wide">{t.organizations.kpiTotal}</span>
@@ -165,16 +169,20 @@ export default function OrganizationsPage() {
       {/* Table */}
       <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] flex-1 flex flex-col min-h-0 overflow-hidden">
         <div className="flex-1 overflow-y-auto min-h-0">
-          <OrgTable
-            organizations={organizations}
-            isLoading={orgs.isLoading}
-            selectedIds={selectedIds}
-            onSelectIds={setSelectedIds}
-            sortBy={sortBy}
-            sortDir={sortDir}
-            onSort={handleSort}
-            onEdit={setEditOrg}
-          />
+          {orgs.isError ? (
+            <ErrorState onRetry={() => orgs.refetch()} />
+          ) : (
+            <OrgTable
+              organizations={organizations}
+              isLoading={orgs.isLoading}
+              selectedIds={selectedIds}
+              onSelectIds={setSelectedIds}
+              sortBy={sortBy}
+              sortDir={sortDir}
+              onSort={handleSort}
+              onEdit={setEditOrg}
+            />
+          )}
         </div>
         <div className="flex items-center justify-between px-5 py-3 border-t border-[#EDEDED] flex-shrink-0">
           <span className="text-xs text-[#8B8B8B]">{t.common.showing} {organizations.length > 0 ? page * limit + 1 : 0}-{page * limit + organizations.length} {t.common.of} {total}</span>

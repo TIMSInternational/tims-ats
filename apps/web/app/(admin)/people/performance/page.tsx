@@ -87,13 +87,20 @@ export default function PerformancePage() {
       {/* Scrollable Body */}
       <div className="flex-1 overflow-y-auto p-5 space-y-4">
         {/* KPIs - visible on all tabs */}
-        <PerformanceKpis kpis={kpis} isLoading={kpisQuery.isLoading} />
+        <PerformanceKpis
+          kpis={kpis}
+          isLoading={kpisQuery.isLoading}
+          isError={kpisQuery.isError}
+          onRetry={() => kpisQuery.refetch()}
+        />
 
         {/* Tab Content */}
         {tab === 'okrs' && (
           <OkrTable
             okrs={okrsQuery.data?.okrs ?? []}
             isLoading={okrsQuery.isLoading}
+            isError={okrsQuery.isError}
+            onRetry={() => okrsQuery.refetch()}
           />
         )}
         {tab === 'coaching' && (
@@ -101,6 +108,8 @@ export default function PerformancePage() {
             sessions={sessionsQuery.data?.sessions ?? []}
             commitments={commitmentsQuery.data?.commitments ?? []}
             isLoading={sessionsQuery.isLoading || commitmentsQuery.isLoading}
+            isError={sessionsQuery.isError || commitmentsQuery.isError}
+            onRetry={() => { sessionsQuery.refetch(); commitmentsQuery.refetch(); }}
           />
         )}
         {tab === 'feedback' && (
@@ -108,6 +117,8 @@ export default function PerformancePage() {
             feedbacks={feedbackQuery.data?.feedbacks ?? []}
             recognitions={recognitionsQuery.data?.recognitions ?? []}
             isLoading={feedbackQuery.isLoading || recognitionsQuery.isLoading}
+            isError={feedbackQuery.isError || recognitionsQuery.isError}
+            onRetry={() => { feedbackQuery.refetch(); recognitionsQuery.refetch(); }}
           />
         )}
       </div>

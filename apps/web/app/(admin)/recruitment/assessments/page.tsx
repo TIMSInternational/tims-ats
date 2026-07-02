@@ -5,7 +5,7 @@ import type { QuestionType, QuestionOption } from '@tims/shared';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
-import { EmptyState, Skeleton } from '../../../../components';
+import { EmptyState, ErrorState, Skeleton } from '../../../../components';
 import { QuestionModal, type EditableQuestion } from './question-modal';
 
 export default function AssessmentAuthoringPage() {
@@ -97,6 +97,8 @@ export default function AssessmentAuthoringPage() {
         <label className="block text-xs font-medium text-[#8B8B8B] mb-1.5">{t.assessments.selectType}</label>
         {types.isLoading ? (
           <Skeleton className="h-10 w-full" />
+        ) : types.isError ? (
+          <ErrorState onRetry={() => types.refetch()} />
         ) : types.data && types.data.length > 0 ? (
           <select
             value={typeId}
@@ -122,6 +124,8 @@ export default function AssessmentAuthoringPage() {
               <Skeleton key={i} className="h-16 w-full" />
             ))}
           </div>
+        ) : questions.isError ? (
+          <ErrorState onRetry={() => questions.refetch()} />
         ) : items.length === 0 ? (
           <EmptyState
             icon={<span className="text-3xl">📝</span>}

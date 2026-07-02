@@ -4,7 +4,7 @@ import { useState, useMemo, useRef } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
-import { EmptyState, Skeleton } from '../../../../components';
+import { EmptyState, ErrorState, Skeleton } from '../../../../components';
 import { VacancySelector } from './vacancy-selector';
 import { KanbanBoard } from './kanban-board';
 import { PipelineListView } from './pipeline-list-view';
@@ -137,7 +137,11 @@ export default function PipelinePage() {
 
       {/* Content area */}
       <div className={`flex-1 ${viewMode === 'kanban' ? 'overflow-x-auto overflow-y-hidden' : 'overflow-y-auto'} p-4`}>
-        {!selectedVacancyId ? (
+        {vacancies.isError ? (
+          <div className="h-full flex items-center justify-center">
+            <ErrorState onRetry={() => vacancies.refetch()} />
+          </div>
+        ) : !selectedVacancyId ? (
           <div className="h-full flex items-center justify-center">
             <EmptyState
               icon={<svg className="w-10 h-10 text-[#ccc]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M9 3v18M15 3v18" /></svg>}
@@ -169,6 +173,10 @@ export default function PipelinePage() {
               ))}
             </div>
           )
+        ) : board.isError ? (
+          <div className="h-full flex items-center justify-center">
+            <ErrorState onRetry={() => board.refetch()} />
+          </div>
         ) : board.data ? (
           viewMode === 'kanban' ? (
             <KanbanBoard

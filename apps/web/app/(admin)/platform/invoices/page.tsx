@@ -6,7 +6,7 @@ import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
 import { formatCurrency, formatDate } from '../../../../lib/format-utils';
-import { KpiCard, KpiCardSkeleton, DataTable, EmptyState } from '../../../../components';
+import { KpiCard, KpiCardSkeleton, DataTable, EmptyState, ErrorState } from '../../../../components';
 import { InvoiceStatusBadge } from './invoice-status-badge';
 import { ConfirmModal } from './confirm-modal';
 import { InvoiceWizard } from './invoice-wizard';
@@ -65,6 +65,10 @@ export default function InvoicesPage() {
 
   const handleExport = async () => {
     const result = await exportCsv.refetch();
+    if (result.isError) {
+      toast(t.common.error, { type: 'error' });
+      return;
+    }
     if (result.data) {
       const blob = new Blob([result.data], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
@@ -121,6 +125,10 @@ export default function InvoicesPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5 flex-shrink-0">
         {kpis.isLoading ? (
           Array.from({ length: 4 }).map((_, i) => <KpiCardSkeleton key={i} />)
+        ) : kpis.isError ? (
+          <div className="col-span-2 md:col-span-4 bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+            <ErrorState onRetry={() => kpis.refetch()} />
+          </div>
         ) : kpis.data ? (
           <>
             <KpiCard
@@ -198,6 +206,11 @@ export default function InvoicesPage() {
       </div>
 
       {/* Table */}
+      {invoices.isError ? (
+        <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] flex-1 flex flex-col min-h-0 overflow-hidden">
+          <ErrorState onRetry={() => invoices.refetch()} />
+        </div>
+      ) : (
       <DataTable
         columns={columns}
         loading={invoices.isLoading}
@@ -273,6 +286,7 @@ export default function InvoicesPage() {
           );
         })}
       </DataTable>
+      )}
 
       {/* Confirm Modal */}
       {confirmAction && confirmMeta && (

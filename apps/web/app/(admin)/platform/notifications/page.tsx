@@ -5,6 +5,7 @@ import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
 import { formatRelativeTime } from '../../../../lib/format-utils';
+import { ErrorState } from '../../../../components';
 
 type FilterTab = 'all' | 'unread' | 'critical' | 'warning' | 'info' | 'success';
 
@@ -67,7 +68,7 @@ export default function NotificationsPage() {
     onSuccess: () => { invalidateAll(); toast(t.notifications.delete, { type: 'success' }); },
   });
 
-  const { data: unreadData } = trpc.notification.unreadCount.useQuery();
+  const { data: unreadData, isError: unreadCountError, refetch: refetchUnreadCount } = trpc.notification.unreadCount.useQuery();
   const unreadCount = unreadData?.count ?? 0;
 
   return (
@@ -77,9 +78,13 @@ export default function NotificationsPage() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-[22px] font-bold text-[#1F114C]">{t.notifications.title}</h1>
-            <p className="text-[13px] text-[#8B8B8B] mt-0.5">
-              {unreadCount > 0 ? `${unreadCount} ${t.notifications.unreadCount}` : t.notifications.allCaughtUp}
-            </p>
+            {unreadCountError ? (
+              <ErrorState onRetry={() => refetchUnreadCount()} />
+            ) : (
+              <p className="text-[13px] text-[#8B8B8B] mt-0.5">
+                {unreadCount > 0 ? `${unreadCount} ${t.notifications.unreadCount}` : t.notifications.allCaughtUp}
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-2">
             {unreadCount > 0 && (

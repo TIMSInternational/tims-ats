@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
-import { KpiCard, KpiCardSkeleton, Modal } from '../../../../components';
+import { KpiCard, KpiCardSkeleton, Modal, ErrorState } from '../../../../components';
 import { UserTable } from './user-table';
 import { RoleChangeModal } from './role-change-modal';
 import { InviteWizard } from './invite-wizard';
@@ -25,7 +25,7 @@ export default function PlatformUsersPage() {
   const kpis = trpc.platform.getUserKpis.useQuery();
   const orgs = trpc.platform.listOrganizationsMinimal.useQuery();
 
-  const { data, isLoading } = trpc.platform.listAllUsers.useQuery({
+  const { data, isLoading, isError, refetch } = trpc.platform.listAllUsers.useQuery({
     page,
     limit,
     search: search || undefined,
@@ -69,6 +69,10 @@ export default function PlatformUsersPage() {
 
   const handleExport = async () => {
     const result = await exportCsv.refetch();
+    if (result.isError) {
+      toast(t.common.error, { type: 'error' });
+      return;
+    }
     if (result.data) {
       const blob = new Blob([result.data.csv], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
@@ -98,6 +102,10 @@ export default function PlatformUsersPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4 flex-shrink-0">
         {kpis.isLoading ? (
           Array.from({ length: 4 }).map((_, i) => <KpiCardSkeleton key={i} />)
+        ) : kpis.isError ? (
+          <div className="col-span-2 md:col-span-4 bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+            <ErrorState onRetry={() => kpis.refetch()} />
+          </div>
         ) : kpis.data ? (
           <>
             <KpiCard
@@ -148,16 +156,20 @@ export default function PlatformUsersPage() {
             onChange={(e) => { setSearch(e.target.value); setPage(0); }}
           />
         </div>
-        <select
-          className="h-9 px-3 border border-[#EDEDED] rounded-lg text-[12px] bg-white text-[#585858] focus:outline-none"
-          value={orgFilter}
-          onChange={(e) => { setOrgFilter(e.target.value); setPage(0); }}
-        >
-          <option value="">{t.users.allOrgs}</option>
-          {orgs.data?.map((org) => (
-            <option key={org.id} value={org.id}>{org.name}</option>
-          ))}
-        </select>
+        {orgs.isError ? (
+          <ErrorState onRetry={() => orgs.refetch()} />
+        ) : (
+          <select
+            className="h-9 px-3 border border-[#EDEDED] rounded-lg text-[12px] bg-white text-[#585858] focus:outline-none"
+            value={orgFilter}
+            onChange={(e) => { setOrgFilter(e.target.value); setPage(0); }}
+          >
+            <option value="">{t.users.allOrgs}</option>
+            {orgs.data?.map((org) => (
+              <option key={org.id} value={org.id}>{org.name}</option>
+            ))}
+          </select>
+        )}
         <select
           className="h-9 px-3 border border-[#EDEDED] rounded-lg text-[12px] bg-white text-[#585858] focus:outline-none"
           value={roleFilter}
@@ -206,17 +218,23 @@ export default function PlatformUsersPage() {
       </div>
 
       {/* Table */}
-      <UserTable
-        users={users}
-        isLoading={isLoading}
-        page={page}
-        limit={limit}
-        total={total}
-        onPageChange={setPage}
-        onDeactivate={(user) => setConfirmTarget({ user, action: 'deactivate' })}
-        onActivate={(user) => setConfirmTarget({ user, action: 'activate' })}
-        onEditRole={setEditRoleTarget}
-      />
+      {isError ? (
+        <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] flex-1 flex flex-col min-h-0 overflow-hidden">
+          <ErrorState onRetry={() => refetch()} />
+        </div>
+      ) : (
+        <UserTable
+          users={users}
+          isLoading={isLoading}
+          page={page}
+          limit={limit}
+          total={total}
+          onPageChange={setPage}
+          onDeactivate={(user) => setConfirmTarget({ user, action: 'deactivate' })}
+          onActivate={(user) => setConfirmTarget({ user, action: 'activate' })}
+          onEditRole={setEditRoleTarget}
+        />
+      )}
 
       {/* Confirm Modal */}
       {confirmTarget && (

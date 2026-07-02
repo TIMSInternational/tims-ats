@@ -5,7 +5,7 @@ import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
 import { formatDate } from '../../../../lib/format-utils';
-import { Modal } from '../../../../components';
+import { Modal, ErrorState } from '../../../../components';
 
 const FLAG_DESCRIPTIONS: Record<string, string> = {
   ai_enabled: 'Habilita funcionalidades de IA (screening, matching, sugerencias)',
@@ -23,7 +23,7 @@ const FLAG_DESCRIPTIONS: Record<string, string> = {
 export default function PlatformFeatureFlagsPage() {
   const { t } = useI18n();
   const utils = trpc.useUtils();
-  const { data: flagGroups, isLoading } = trpc.platform.listAllFeatureFlags.useQuery();
+  const { data: flagGroups, isLoading, isError, refetch } = trpc.platform.listAllFeatureFlags.useQuery();
 
   const [localToggles, setLocalToggles] = useState<Record<string, boolean>>({});
   const [selectedFlagKey, setSelectedFlagKey] = useState<string>('');
@@ -80,6 +80,16 @@ export default function PlatformFeatureFlagsPage() {
         <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4 animate-pulse h-[52px]" />
         <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-8 text-center">
           <p className="text-[13px] text-[#8B8B8B]">{t.featureFlags.loading}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="h-full overflow-y-auto p-5">
+        <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+          <ErrorState onRetry={() => refetch()} />
         </div>
       </div>
     );

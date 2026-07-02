@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
-import { Skeleton } from '../../../../components';
+import { Skeleton, ErrorState } from '../../../../components';
 import { useI18n } from '../../../../lib/i18n';
 import { PortalNav } from './_components/portal-nav';
 import { PortalHero } from './_components/portal-hero';
@@ -66,6 +66,12 @@ export function JobBoard({ organizationId, orgName, orgSlug }: JobBoardProps) {
         onSearch={handleSearch}
       />
 
+      {stats.isError && (
+        <div className="mx-auto max-w-6xl px-6 pt-6">
+          <ErrorState onRetry={() => stats.refetch()} />
+        </div>
+      )}
+
       {/* Featured Positions */}
       <section id="vacantes" className="mx-auto max-w-6xl px-6 py-10">
         <div className="mb-6 flex items-center justify-between">
@@ -90,6 +96,10 @@ export function JobBoard({ organizationId, orgName, orgSlug }: JobBoardProps) {
                 <Skeleton className="h-8 w-20 rounded-lg" />
               </div>
             ))}
+          </div>
+        ) : vacancies.isError ? (
+          <div className="py-16">
+            <ErrorState onRetry={() => vacancies.refetch()} />
           </div>
         ) : featured.length === 0 ? (
           <div className="py-16 text-center">

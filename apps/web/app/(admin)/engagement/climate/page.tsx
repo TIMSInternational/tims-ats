@@ -41,7 +41,13 @@ export default function ClimatePage() {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-5">
-        <ClimateKpis enps={enps.data ?? null} dashKpis={kpis.data ?? null} loading={enps.isLoading || kpis.isLoading} />
+        <ClimateKpis
+          enps={enps.data ?? null}
+          dashKpis={kpis.data ?? null}
+          loading={enps.isLoading || kpis.isLoading}
+          isError={enps.isError || kpis.isError}
+          onRetry={() => { enps.refetch(); kpis.refetch(); }}
+        />
 
         {/* Main Two Columns */}
         <div className="flex flex-col md:flex-row gap-4 mb-4">

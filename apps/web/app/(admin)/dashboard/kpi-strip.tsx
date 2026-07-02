@@ -2,6 +2,7 @@
 
 import { trpc } from '../../../lib/trpc';
 import { formatCurrency, trendArrow, Skeleton } from './dashboard-utils';
+import { ErrorState } from '../../../components';
 
 interface SparklineProps {
   data: number[];
@@ -76,8 +77,8 @@ function KpiCard({ label, value, trendLabel, trendColor, trendUp, sparkData, spa
 }
 
 export function KpiStrip() {
-  const { data: kpis, isLoading } = trpc.platform.getDashboardKpis.useQuery();
-  const { data: mrrTrend } = trpc.platform.getMrrTrend.useQuery();
+  const { data: kpis, isLoading, isError, refetch } = trpc.platform.getDashboardKpis.useQuery();
+  const { data: mrrTrend, isError: mrrTrendError, refetch: refetchMrrTrend } = trpc.platform.getMrrTrend.useQuery();
 
   if (isLoading) {
     return (
@@ -89,6 +90,14 @@ export function KpiStrip() {
             <Skeleton className="h-3 w-12" />
           </div>
         ))}
+      </div>
+    );
+  }
+
+  if (isError || mrrTrendError) {
+    return (
+      <div className="mb-5">
+        <ErrorState onRetry={() => { refetch(); refetchMrrTrend(); }} />
       </div>
     );
   }

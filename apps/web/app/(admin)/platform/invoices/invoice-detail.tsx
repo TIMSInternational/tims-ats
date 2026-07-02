@@ -5,7 +5,7 @@ import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
 import { formatCurrency, formatDateLong } from '../../../../lib/format-utils';
-import { Skeleton } from '../../../../components';
+import { Skeleton, ErrorState } from '../../../../components';
 import { InvoiceStatusBadge } from './invoice-status-badge';
 import { ConfirmModal } from './confirm-modal';
 
@@ -36,6 +36,9 @@ export function InvoiceDetail({ id, onBack }: { id: string; onBack: () => void }
         <div className="text-center"><Skeleton className="h-8 w-32 mb-4 mx-auto" /><Skeleton className="h-4 w-48 mx-auto" /></div>
       </div>
     );
+  }
+  if (invoice.isError) {
+    return <div className="h-full flex items-center justify-center"><ErrorState onRetry={() => invoice.refetch()} /></div>;
   }
   if (!invoice.data) {
     return <div className="h-full flex items-center justify-center"><p className="text-[#8B8B8B]">{t.invoices.notFound}</p></div>;

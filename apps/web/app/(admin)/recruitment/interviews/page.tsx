@@ -4,7 +4,7 @@ import { useState, useMemo } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
-import { KpiCard, KpiCardSkeleton } from '../../../../components';
+import { ErrorState, KpiCard, KpiCardSkeleton } from '../../../../components';
 import { InterviewFilterBar } from './interview-filter-bar';
 import { InterviewTable } from './interview-table';
 import { UpcomingPanel } from './upcoming-panel';
@@ -26,7 +26,8 @@ export default function InterviewsPage() {
     status: statusFilter || undefined,
     type: typeFilter || undefined,
   });
-  const aiScreenEnabled = trpc.aiInterview.isEnabled.useQuery().data ?? false;
+  const aiScreenEnabledQuery = trpc.aiInterview.isEnabled.useQuery();
+  const aiScreenEnabled = aiScreenEnabledQuery.data ?? false;
 
   const utils = trpc.useUtils();
   const cancelInterview = trpc.interview.cancel.useMutation({
@@ -62,6 +63,10 @@ export default function InterviewsPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5 flex-shrink-0">
           {interviews.isLoading ? (
             Array.from({ length: 4 }).map((_, i) => <KpiCardSkeleton key={i} />)
+          ) : interviews.isError ? (
+            <div className="col-span-2 md:col-span-4">
+              <ErrorState onRetry={() => interviews.refetch()} />
+            </div>
           ) : kpis ? (
             <>
               <KpiCard
@@ -130,11 +135,14 @@ export default function InterviewsPage() {
         <InterviewTable
           interviews={items}
           isLoading={interviews.isLoading}
+          isError={interviews.isError}
+          onRetry={() => interviews.refetch()}
           onCancel={(id) => cancelInterview.mutate({ id, cancelReason: 'Cancelled by recruiter' })}
           isCancelling={cancelInterview.isPending}
           onManageEvaluators={(id) => setEvaluatorsInterviewId(id)}
           onStartAiScreen={(id) => setAiScreenInterviewId(id)}
           aiScreenEnabled={aiScreenEnabled}
+          aiScreenError={aiScreenEnabledQuery.isError}
         />
       </div>
 
@@ -143,10 +151,14 @@ export default function InterviewsPage() {
         <MiniCalendar
           interviews={items}
           isLoading={interviews.isLoading}
+          isError={interviews.isError}
+          onRetry={() => interviews.refetch()}
         />
         <UpcomingPanel
           interviews={items}
           isLoading={interviews.isLoading}
+          isError={interviews.isError}
+          onRetry={() => interviews.refetch()}
         />
       </div>
 

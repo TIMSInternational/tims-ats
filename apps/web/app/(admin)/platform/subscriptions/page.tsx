@@ -5,7 +5,7 @@ import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
 import { formatCurrency } from '../../../../lib/format-utils';
-import { KpiCard, KpiCardSkeleton } from '../../../../components';
+import { KpiCard, KpiCardSkeleton, ErrorState } from '../../../../components';
 import { FilterBar } from './filter-bar';
 import { SubTable } from './sub-table';
 import { TrialsAlert } from './trials-alert';
@@ -67,6 +67,10 @@ export default function SubscriptionsPage() {
 
   const handleExportCsv = async () => {
     const result = await exportCsv.refetch();
+    if (result.isError) {
+      toast(t.common.error, { type: 'error' });
+      return;
+    }
     if (result.data) {
       const blob = new Blob([result.data.csv], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
@@ -124,6 +128,10 @@ export default function SubscriptionsPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5 flex-shrink-0">
         {kpis.isLoading ? (
           Array.from({ length: 4 }).map((_, i) => <KpiCardSkeleton key={i} />)
+        ) : kpis.isError ? (
+          <div className="col-span-2 md:col-span-4 bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+            <ErrorState onRetry={() => kpis.refetch()} />
+          </div>
         ) : kpis.data ? (
           <>
             <KpiCard
@@ -169,6 +177,8 @@ export default function SubscriptionsPage() {
         </div>
         {mrrTrend.isLoading ? (
           <div className="h-[130px] animate-pulse"><div className="h-full w-full bg-gray-100 rounded" /></div>
+        ) : mrrTrend.isError ? (
+          <ErrorState onRetry={() => mrrTrend.refetch()} />
         ) : mrrTrend.data ? (
           (() => {
             const last6 = mrrTrend.data.slice(-6);
@@ -218,18 +228,24 @@ export default function SubscriptionsPage() {
       />
 
       {/* Table */}
-      <SubTable
-        subscriptions={subscriptions}
-        isLoading={subs.isLoading}
-        page={page}
-        limit={limit}
-        total={total}
-        onPageChange={setPage}
-        onChangePlan={setPlanChangeTarget}
-        onCancel={setCancelTarget}
-        onReactivate={handleReactivate}
-        onSendReminder={handleSendReminder}
-      />
+      {subs.isError ? (
+        <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] flex-1 flex flex-col min-h-0 overflow-hidden">
+          <ErrorState onRetry={() => subs.refetch()} />
+        </div>
+      ) : (
+        <SubTable
+          subscriptions={subscriptions}
+          isLoading={subs.isLoading}
+          page={page}
+          limit={limit}
+          total={total}
+          onPageChange={setPage}
+          onChangePlan={setPlanChangeTarget}
+          onCancel={setCancelTarget}
+          onReactivate={handleReactivate}
+          onSendReminder={handleSendReminder}
+        />
+      )}
 
       {/* Trials Alert */}
       {kpis.data && kpis.data.expiringTrials.length > 0 && (

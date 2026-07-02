@@ -4,7 +4,7 @@ import { useState, useCallback } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
-import { Modal } from '../../../../components';
+import { Modal, ErrorState } from '../../../../components';
 import { ROLES, parseCSV, autoMap, type Mode, type BulkStep, type ParsedRow } from './invite-wizard.helpers';
 import { BulkMapStep, BulkPreviewStep, BulkResultStep } from './invite-wizard.steps';
 
@@ -125,6 +125,9 @@ export function InviteWizard({ onClose, onSuccess }: InviteWizardProps) {
         <div className="mb-4">
           <label className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.organizationRequired}</label>
           <input type="text" value={activeOrgSearch} onChange={(e) => { setActiveOrgSearch(e.target.value); setActiveOrgId(''); }} placeholder={t.invitations.searchOrganization} className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20" />
+          {activeOrgSearch && !activeOrgId && orgs.isError && (
+            <ErrorState onRetry={() => orgs.refetch()} />
+          )}
           {activeOrgSearch && !activeOrgId && orgs.data && (
             <div className="mt-1 bg-white border border-[#EDEDED] rounded-lg shadow-lg max-h-32 overflow-y-auto">
               {orgs.data.organizations.map((org) => (

@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
-import { KpiCard, KpiCardSkeleton, DataTable, EmptyState } from '../../../../components';
+import { KpiCard, KpiCardSkeleton, DataTable, EmptyState, ErrorState } from '../../../../components';
 import type { AiAgentItem } from '../../../../lib/trpc-types';
 import { AgentDetailDrawer } from './agent-detail-drawer';
 
@@ -44,8 +44,8 @@ export default function PlatformAiAgentsPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('');
   const [selectedAgent, setSelectedAgent] = useState<AiAgentItem | null>(null);
 
-  const { data: kpis } = trpc.platform.getAiAgentKpis.useQuery();
-  const { data: agents, isLoading } = trpc.platform.listAiAgents.useQuery({
+  const { data: kpis, isError: kpisError, refetch: refetchKpis } = trpc.platform.getAiAgentKpis.useQuery();
+  const { data: agents, isLoading, isError: agentsError, refetch: refetchAgents } = trpc.platform.listAiAgents.useQuery({
     search: search || undefined,
     status: statusFilter || undefined,
   });
@@ -67,6 +67,10 @@ export default function PlatformAiAgentsPage() {
   const exportCsv = trpc.platform.exportAgentsCsv.useQuery(undefined, { enabled: false });
   const handleExport = async () => {
     const result = await exportCsv.refetch();
+    if (result.isError) {
+      toast(t.common.error, { type: 'error' });
+      return;
+    }
     if (result.data) {
       const blob = new Blob([result.data.csv], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
@@ -118,6 +122,10 @@ export default function PlatformAiAgentsPage() {
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4 shrink-0">
         {isLoading ? (
           Array.from({ length: 5 }).map((_, i) => <KpiCardSkeleton key={i} />)
+        ) : kpisError ? (
+          <div className="col-span-2 md:col-span-5 bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+            <ErrorState onRetry={() => refetchKpis()} />
+          </div>
         ) : (
           <>
             <KpiCard
@@ -189,6 +197,11 @@ export default function PlatformAiAgentsPage() {
       </div>
 
       {/* Table */}
+      {agentsError ? (
+        <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] flex-1 flex flex-col min-h-0 overflow-hidden">
+          <ErrorState onRetry={() => refetchAgents()} />
+        </div>
+      ) : (
       <DataTable
         columns={columns}
         loading={isLoading}
@@ -243,6 +256,7 @@ export default function PlatformAiAgentsPage() {
           );
         })}
       </DataTable>
+      )}
 
       {/* Detail Drawer */}
       {selectedAgent && (

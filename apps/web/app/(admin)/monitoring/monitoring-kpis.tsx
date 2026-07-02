@@ -1,6 +1,7 @@
 'use client';
 
 import { useI18n } from '../../../lib/i18n';
+import { ErrorState } from '../../../components';
 
 interface MonitoringKpisProps {
   data: {
@@ -11,16 +12,34 @@ interface MonitoringKpisProps {
     openAlerts: number;
   } | null;
   loading: boolean;
+  isError?: boolean;
+  onRetry?: () => void;
 }
 
 function KpiSkeleton() {
   return <div className="bg-white rounded-xl p-3.5 shadow-[0_1px_4px_rgba(0,0,0,0.06)] animate-pulse"><div className="h-14 bg-gray-100 rounded" /></div>;
 }
 
-export function MonitoringKpis({ data, loading }: MonitoringKpisProps) {
+export function MonitoringKpis({ data, loading, isError, onRetry }: MonitoringKpisProps) {
   const { t } = useI18n();
 
-  if (loading || !data) {
+  if (loading) {
+    return (
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 shrink-0">
+        {Array.from({ length: 5 }).map((_, i) => <KpiSkeleton key={i} />)}
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="shrink-0">
+        <ErrorState onRetry={onRetry} />
+      </div>
+    );
+  }
+
+  if (!data) {
     return (
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 shrink-0">
         {Array.from({ length: 5 }).map((_, i) => <KpiSkeleton key={i} />)}

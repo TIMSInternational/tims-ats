@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
+import { ErrorState } from '../../../components';
 
 function useClickOutside(ref: React.RefObject<HTMLElement | null>, handler: () => void) {
   useEffect(() => {
@@ -101,6 +102,8 @@ export function SearchCommand({ onFocus }: { onFocus?: () => void }) {
               <div className="w-5 h-5 border-2 border-[#1F114C]/20 border-t-[#1F114C] rounded-full animate-spin mx-auto mb-2" />
               <p className="text-[11px] text-[#8B8B8B]">{t.nav.searching}</p>
             </div>
+          ) : searchResults.isError ? (
+            <ErrorState onRetry={() => searchResults.refetch()} />
           ) : !hasResults ? (
             <div className="px-4 py-6 text-center">
               <svg className="w-8 h-8 text-[#EDEDED] mx-auto mb-2" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" /></svg>

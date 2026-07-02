@@ -2,12 +2,14 @@
 
 import { useMemo } from 'react';
 import { useI18n } from '../../../../lib/i18n';
-import { CandidateAvatar, Skeleton } from '../../../../components';
+import { CandidateAvatar, ErrorState, Skeleton } from '../../../../components';
 import type { InterviewListItem } from '../../../../lib/trpc-types';
 
 interface UpcomingPanelProps {
   interviews: InterviewListItem[];
   isLoading: boolean;
+  isError?: boolean;
+  onRetry?: () => void;
 }
 
 function isToday(date: Date): boolean {
@@ -40,7 +42,7 @@ const TYPE_COLORS: Record<string, string> = {
   cultural: 'bg-emerald-500',
 };
 
-export function UpcomingPanel({ interviews, isLoading }: UpcomingPanelProps) {
+export function UpcomingPanel({ interviews, isLoading, isError, onRetry }: UpcomingPanelProps) {
   const { t } = useI18n();
 
   const upcoming = useMemo(() => {
@@ -75,6 +77,14 @@ export function UpcomingPanel({ interviews, isLoading }: UpcomingPanelProps) {
             </div>
           </div>
         ))}
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
+        <ErrorState onRetry={onRetry} />
       </div>
     );
   }

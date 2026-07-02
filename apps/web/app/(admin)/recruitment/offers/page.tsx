@@ -62,10 +62,14 @@ export default function OffersPage() {
         avgSalary={kpis.avgSalary}
         pendingApprovals={kpis.pendingApprovals}
         loading={offers.isLoading}
+        isError={offers.isError}
+        onRetry={() => offers.refetch()}
       />
       <OfferTable
         items={items}
         loading={offers.isLoading}
+        isError={offers.isError}
+        onRetry={() => offers.refetch()}
         statusFilter={statusFilter}
         onStatusChange={setStatusFilter}
         onSelectOffer={setSelectedOfferId}

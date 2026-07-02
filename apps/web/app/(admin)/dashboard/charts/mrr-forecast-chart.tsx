@@ -13,6 +13,7 @@ import {
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
 import { formatCurrency, BRAND_NAVY, Skeleton } from '../dashboard-utils';
+import { ErrorState } from '../../../../components';
 
 interface ForecastTooltipProps {
   active?: boolean;
@@ -40,7 +41,7 @@ function ForecastTooltip({ active, payload, label }: ForecastTooltipProps) {
 
 export function MrrForecastChart() {
   const { t } = useI18n();
-  const { data, isLoading } = trpc.platform.getMrrForecast.useQuery();
+  const { data, isLoading, isError, refetch } = trpc.platform.getMrrForecast.useQuery();
 
   if (isLoading) {
     return (
@@ -48,6 +49,14 @@ export function MrrForecastChart() {
         <Skeleton className="h-4 w-40 mb-2" />
         <Skeleton className="h-3 w-24 mb-4" />
         <Skeleton className="h-[280px] w-full" />
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="rounded-xl border border-[#EDEDED] bg-white p-5">
+        <ErrorState onRetry={() => refetch()} />
       </div>
     );
   }

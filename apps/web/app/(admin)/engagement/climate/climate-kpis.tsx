@@ -1,6 +1,7 @@
 'use client';
 
 import { useI18n } from '../../../../lib/i18n';
+import { ErrorState } from '../../../../components';
 
 interface ClimateKpisProps {
   enps: {
@@ -14,6 +15,8 @@ interface ClimateKpisProps {
   // totalResponses is nulled by min-5 suppression (round 6) when 1..4 org-wide responses.
   dashKpis: { activeSurveys: number; totalResponses: number | null; totalResponsesSuppressed?: boolean; actionPlansOpen: number; highRiskCount: number } | null;
   loading: boolean;
+  isError?: boolean;
+  onRetry?: () => void;
 }
 
 function KpiSkeleton() {
@@ -30,13 +33,21 @@ function Card({ label, children, sub }: { label: string; children: React.ReactNo
   );
 }
 
-export function ClimateKpis({ enps, dashKpis, loading }: ClimateKpisProps) {
+export function ClimateKpis({ enps, dashKpis, loading, isError, onRetry }: ClimateKpisProps) {
   const { t } = useI18n();
 
   if (loading) {
     return (
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
         {Array.from({ length: 5 }).map((_, i) => <KpiSkeleton key={i} />)}
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="mb-4">
+        <ErrorState onRetry={onRetry} />
       </div>
     );
   }

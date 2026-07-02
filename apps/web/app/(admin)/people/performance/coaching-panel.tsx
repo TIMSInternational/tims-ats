@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useI18n } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
+import { ErrorState } from '../../../../components';
 import { LogCoachingModal } from './log-coaching-modal';
 import { CreateCommitmentModal } from './create-commitment-modal';
 
@@ -92,9 +93,11 @@ interface CoachingPanelProps {
   sessions: CoachingSessionItem[];
   commitments: CommitmentItem[];
   isLoading: boolean;
+  isError?: boolean;
+  onRetry?: () => void;
 }
 
-export function CoachingPanel({ sessions, commitments, isLoading }: CoachingPanelProps) {
+export function CoachingPanel({ sessions, commitments, isLoading, isError, onRetry }: CoachingPanelProps) {
   const { t } = useI18n();
   const [showCoach, setShowCoach] = useState(false);
   const [showCommit, setShowCommit] = useState(false);
@@ -115,6 +118,8 @@ export function CoachingPanel({ sessions, commitments, isLoading }: CoachingPane
         </div>
         {isLoading ? (
           <SkeletonRows count={4} />
+        ) : isError ? (
+          <ErrorState onRetry={onRetry} />
         ) : sessions.length === 0 ? (
           <div className="px-5 py-8 text-center text-[12px] text-[#8B8B8B]">
             {t.performance.noSessionsScheduled}
@@ -167,6 +172,8 @@ export function CoachingPanel({ sessions, commitments, isLoading }: CoachingPane
         </div>
         {isLoading ? (
           <SkeletonRows count={4} />
+        ) : isError ? (
+          <ErrorState onRetry={onRetry} />
         ) : commitments.length === 0 ? (
           <div className="px-5 py-8 text-center text-[12px] text-[#8B8B8B]">
             {t.performance.noCommitmentsRegistered}

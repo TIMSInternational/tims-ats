@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { trpc } from '../../../../../../lib/trpc';
 import { useI18n } from '../../../../../../lib/i18n';
-import { Skeleton } from '../../../../../../components';
+import { Skeleton, ErrorState } from '../../../../../../components';
 
 const MODEL_BADGES: Record<string, { bg: string; text: string }> = {
   haiku: { bg: 'bg-teal-100', text: 'text-teal-700' },
@@ -24,7 +24,7 @@ function fmtCurrency(value: number): string {
 
 export function AiSection({ organizationId }: { organizationId: string }) {
   const { t } = useI18n();
-  const { data: configs, isLoading } = trpc.platform.getOrgAiConfigs.useQuery({ organizationId });
+  const { data: configs, isLoading, isError, refetch } = trpc.platform.getOrgAiConfigs.useQuery({ organizationId });
 
   return (
     <div className="space-y-4">
@@ -47,6 +47,10 @@ export function AiSection({ organizationId }: { organizationId: string }) {
               <Skeleton className="h-4 w-16" />
             </div>
           ))}
+        </div>
+      ) : isError ? (
+        <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+          <ErrorState onRetry={() => refetch()} />
         </div>
       ) : !configs || configs.length === 0 ? (
         <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] py-16 text-center">

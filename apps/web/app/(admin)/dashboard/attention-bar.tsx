@@ -6,11 +6,12 @@ import { trpc } from '../../../lib/trpc';
 import { toast } from '../../../lib/toast';
 import { SEVERITY_CONFIG, Skeleton } from './dashboard-utils';
 import { useI18n } from '../../../lib/i18n';
+import { ErrorState } from '../../../components';
 
 export function AttentionBar() {
   const { t } = useI18n();
   const router = useRouter();
-  const { data, isLoading } = trpc.platform.getAttentionItems.useQuery();
+  const { data, isLoading, isError, refetch } = trpc.platform.getAttentionItems.useQuery();
   const [collapsed, setCollapsed] = useState(false);
 
   if (isLoading) {
@@ -20,6 +21,14 @@ export function AttentionBar() {
           <Skeleton className="h-5 w-5 rounded-full" />
           <Skeleton className="h-4 w-48" />
         </div>
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="rounded-xl border border-border bg-white mb-5">
+        <ErrorState onRetry={() => refetch()} />
       </div>
     );
   }

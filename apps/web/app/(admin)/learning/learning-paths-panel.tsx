@@ -1,6 +1,6 @@
 'use client';
 
-import { Skeleton } from '../../../components';
+import { Skeleton, ErrorState } from '../../../components';
 
 interface LearningPath {
   id: string;
@@ -13,6 +13,8 @@ interface LearningPath {
 interface LearningPathsPanelProps {
   paths: LearningPath[];
   loading: boolean;
+  isError?: boolean;
+  onRetry?: () => void;
   t: {
     learningPaths: string;
     aiGenerated: string;
@@ -58,7 +60,7 @@ function StepIndicator({ total, current }: { total: number; current: number }) {
   );
 }
 
-export function LearningPathsPanel({ paths, loading, t }: LearningPathsPanelProps) {
+export function LearningPathsPanel({ paths, loading, isError, onRetry, t }: LearningPathsPanelProps) {
   if (loading) {
     return (
       <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 max-h-[195px]">
@@ -66,6 +68,14 @@ export function LearningPathsPanel({ paths, loading, t }: LearningPathsPanelProp
         {Array.from({ length: 3 }).map((_, i) => (
           <Skeleton key={i} className="h-10 w-full mb-2" />
         ))}
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+        <ErrorState onRetry={onRetry} />
       </div>
     );
   }

@@ -3,12 +3,14 @@
 import Link from 'next/link';
 import { useI18n } from '../../../../lib/i18n';
 import { formatDate } from '../../../../lib/format-utils';
-import { DataTable, EmptyState, CandidateAvatar, FitScoreBadge, StageBadge } from '../../../../components';
+import { DataTable, EmptyState, ErrorState, CandidateAvatar, FitScoreBadge, StageBadge } from '../../../../components';
 import type { CandidateListItem } from '../../../../lib/trpc-types';
 
 interface CandidateTableProps {
   candidates: CandidateListItem[];
   isLoading: boolean;
+  isError?: boolean;
+  onRetry?: () => void;
 }
 
 const POOL_STYLES: Record<string, string> = {
@@ -19,8 +21,16 @@ const POOL_STYLES: Record<string, string> = {
   passive: 'bg-gray-100 text-gray-600',
 };
 
-export function CandidateTable({ candidates, isLoading }: CandidateTableProps) {
+export function CandidateTable({ candidates, isLoading, isError, onRetry }: CandidateTableProps) {
   const { t } = useI18n();
+
+  if (isError) {
+    return (
+      <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] flex-1 flex flex-col min-h-0 overflow-hidden">
+        <ErrorState onRetry={onRetry} />
+      </div>
+    );
+  }
 
   const poolLabels: Record<string, string> = {
     applicant: t.candidates.poolApplicant,

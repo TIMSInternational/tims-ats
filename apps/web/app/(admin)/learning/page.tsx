@@ -48,13 +48,31 @@ export default function LearningPage() {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-5">
-        <LearningKpis data={kpis.data} loading={kpis.isLoading} t={t.learning} />
+        <LearningKpis
+          data={kpis.data}
+          loading={kpis.isLoading}
+          isError={kpis.isError}
+          onRetry={() => kpis.refetch()}
+          t={t.learning}
+        />
 
         {/* Middle: 2-column */}
         <div className="flex flex-col md:flex-row gap-4 mb-4">
-          <CourseCatalog courses={courseItems} loading={courses.isLoading} t={t.learning} />
+          <CourseCatalog
+            courses={courseItems}
+            loading={courses.isLoading}
+            isError={courses.isError}
+            onRetry={() => courses.refetch()}
+            t={t.learning}
+          />
           <div className="w-full md:w-[45%] flex flex-col gap-4">
-            <LearningPathsPanel paths={pathItems} loading={paths.isLoading} t={t.learning} />
+            <LearningPathsPanel
+              paths={pathItems}
+              loading={paths.isLoading}
+              isError={paths.isError}
+              onRetry={() => paths.refetch()}
+              t={t.learning}
+            />
             <PrePostTest t={t.learning} />
           </div>
         </div>

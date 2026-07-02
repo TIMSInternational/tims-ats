@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
 import { formatCurrency, PLAN_BG_CLASSES, PLAN_LABELS, Skeleton } from '../dashboard-utils';
+import { ErrorState } from '../../../../components';
 
 const CONFIDENCE_CONFIG = {
   high: { bg: 'bg-emerald-50 border-emerald-200', text: 'text-emerald-700', badge: 'bg-emerald-100 text-emerald-700' },
@@ -14,7 +15,7 @@ const CONFIDENCE_CONFIG = {
 export function UpsellPanel() {
   const { t } = useI18n();
   const router = useRouter();
-  const { data, isLoading } = trpc.platform.getUpsellOpportunities.useQuery();
+  const { data, isLoading, isError, refetch } = trpc.platform.getUpsellOpportunities.useQuery();
 
   if (isLoading) {
     return (
@@ -24,6 +25,14 @@ export function UpsellPanel() {
         <div className="space-y-2">
           {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-14 w-full rounded-lg" />)}
         </div>
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="rounded-xl border border-[#EDEDED] bg-white p-5">
+        <ErrorState onRetry={() => refetch()} />
       </div>
     );
   }

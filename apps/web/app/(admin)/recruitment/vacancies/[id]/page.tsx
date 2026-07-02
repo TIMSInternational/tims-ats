@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { trpc } from '../../../../../lib/trpc';
 import { useI18n } from '../../../../../lib/i18n';
 import { formatDate, formatCurrency } from '../../../../../lib/format-utils';
-import { StatusBadge, Skeleton } from '../../../../../components';
+import { StatusBadge, ErrorState, Skeleton } from '../../../../../components';
 import { GeneralInfo } from './general-info';
 import { JobProfileCard } from './job-profile-card';
 import { ChannelsCard } from './channels-card';
@@ -46,6 +46,14 @@ export default function VacancyDetailPage({ params }: { params: Promise<{ id: st
             </div>
           </div>
         </div>
+      </div>
+    );
+  }
+
+  if (vacancy.isError) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <ErrorState onRetry={() => vacancy.refetch()} />
       </div>
     );
   }
@@ -105,6 +113,7 @@ export default function VacancyDetailPage({ params }: { params: Promise<{ id: st
               vacancyId={id}
               stats={stats.data ?? null}
               isLoading={stats.isLoading}
+              isError={stats.isError}
             />
             <SlaCard vacancy={v} />
             {v.approvals.length > 0 && <ApprovalChain approvals={v.approvals} />}

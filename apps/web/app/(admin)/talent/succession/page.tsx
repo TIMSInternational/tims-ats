@@ -56,7 +56,7 @@ export default function SuccessionPage() {
 
         {/* Main 2-column */}
         <div className="flex flex-col md:flex-row gap-4 mb-4" style={{ minHeight: 370 }}>
-          <SuccessionPipeline roles={roleItems} loading={roles.isLoading} t={t.succession} />
+          <SuccessionPipeline roles={roleItems} loading={roles.isLoading} isError={roles.isError} t={t.succession} />
           <div className="w-full md:w-[45%] flex flex-col gap-4">
             <CompetencyCoverage data={coverage.data} loading={coverage.isLoading} isError={coverage.isError} t={t.succession} />
             <FlightRiskPanel data={flightRisk.data} loading={flightRisk.isLoading} isError={flightRisk.isError} t={t.succession} />
