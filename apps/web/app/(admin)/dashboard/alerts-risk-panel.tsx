@@ -10,6 +10,11 @@ function daysAgo(date: Date | string): number {
   return Math.max(0, Math.floor((Date.now() - d.getTime()) / 86400000));
 }
 
+function hoursAgo(date: Date | string): number {
+  const d = typeof date === 'string' ? new Date(date) : date;
+  return Math.max(0, (Date.now() - d.getTime()) / 3600000);
+}
+
 function fitColor(score: number): string {
   if (score >= 75) return 'bg-green-500';
   if (score >= 50) return 'bg-amber-500';
@@ -57,8 +62,11 @@ export function AlertsRiskPanel({ vacancyId, vacanciesLoading }: AlertsRiskPanel
 
     for (const stage of board.data.stages) {
       for (const app of stage.applications) {
-        const days = daysAgo(app.appliedAt);
-        const isOverdue = stage.slaHours != null && days * 24 > stage.slaHours;
+        // Risk is measured by time-in-CURRENT-stage, not time since the
+        // original application — a card long in the pipeline overall but
+        // freshly moved into this stage isn't overdue or stalled.
+        const days = daysAgo(app.enteredStageAt);
+        const isOverdue = stage.slaHours != null && hoursAgo(app.enteredStageAt) > stage.slaHours;
         const isStalled = days > 7;
 
         if (!isOverdue && !isStalled) continue;

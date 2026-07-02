@@ -60,7 +60,7 @@ vi.mock('@tims/db', () => ({
     user: { findMany: vi.fn().mockResolvedValue([]) },
     // vacancy KPIs
     vacancy: { count: vi.fn().mockResolvedValue(0), findMany: vi.fn().mockResolvedValue([]) },
-    application: { count: vi.fn().mockResolvedValue(0) },
+    application: { count: vi.fn().mockResolvedValue(0), findMany: vi.fn().mockResolvedValue([]) },
     featureFlag: {
       findUnique: vi.fn().mockResolvedValue(null),
       update: vi.fn().mockResolvedValue({ id: 'flag-1', key: 'some_flag', enabled: true, payload: null, organizationId: 'org-uuid-1' }),
@@ -352,6 +352,7 @@ describe('vacancy.getDashboardKpis — sub-org scope key includes userId', () =>
     vi.mocked(tenantDb.vacancy.count).mockResolvedValue(0);
     vi.mocked(tenantDb.vacancy.findMany).mockResolvedValue([]);
     vi.mocked(tenantDb.application.count).mockResolvedValue(0);
+    vi.mocked(tenantDb.application.findMany).mockResolvedValue([]);
   });
 
   it('two team-scope callers (different userIds) use DIFFERENT cache keys', async () => {

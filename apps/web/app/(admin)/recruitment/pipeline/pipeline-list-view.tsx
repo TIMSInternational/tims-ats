@@ -28,6 +28,11 @@ function daysAgo(date: Date | string): number {
   return Math.max(0, Math.floor((Date.now() - d.getTime()) / 86400000));
 }
 
+function hoursAgo(date: Date | string): number {
+  const d = typeof date === 'string' ? new Date(date) : date;
+  return Math.max(0, (Date.now() - d.getTime()) / 3600000);
+}
+
 function deriveFitScore(id: string): number {
   let hash = 0;
   for (let i = 0; i < id.length; i++) hash = id.charCodeAt(i) + ((hash << 5) - hash);
@@ -78,7 +83,9 @@ export function PipelineListView({ stages, onMove }: PipelineListViewProps) {
                 const c = app.candidate as { id: string; firstName: string; lastName: string; avatar: string | null; currentTitle?: string | null; email: string };
                 const days = daysAgo(app.appliedAt);
                 const fit = deriveFitScore(app.id);
-                const isOverdue = stage.slaHours != null && days * 24 > stage.slaHours;
+                // SLA overdue is time-in-CURRENT-stage, not time since the original
+                // application, and uses precise hours so sub-24h SLAs can trigger same-day.
+                const isOverdue = stage.slaHours != null && hoursAgo(app.enteredStageAt) > stage.slaHours;
                 const nextStage = stages[stageIdx + 1];
 
                 return (

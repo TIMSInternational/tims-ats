@@ -173,7 +173,7 @@ export function PipelineFilters({ filters, onChange }: Props) {
 
 /** Apply filters to board stages (client-side filtering) */
 export function applyFilters(
-  stages: Array<{ id: string; name: string; order: number; slaHours: number | null; applications: Array<{ id: string; source: string; appliedAt: Date | string; [key: string]: unknown }> }>,
+  stages: Array<{ id: string; name: string; order: number; slaHours: number | null; applications: Array<{ id: string; source: string; appliedAt: Date | string; enteredStageAt: Date | string; [key: string]: unknown }> }>,
   filters: PipelineFilterState,
 ): typeof stages {
   if (!filters.source && !filters.fitMin && !filters.maxDays && !filters.slaOnly) {
@@ -196,14 +196,14 @@ export function applyFilters(
 
       // Date filter (days in stage)
       if (filters.maxDays) {
-        const days = Math.floor((Date.now() - new Date(app.appliedAt).getTime()) / 86400000);
-        if (days > filters.maxDays) return false;
+        const daysInStage = Math.floor((Date.now() - new Date(app.enteredStageAt).getTime()) / 86400000);
+        if (daysInStage > filters.maxDays) return false;
       }
 
-      // SLA filter
+      // SLA filter — precise hours, not floored days*24, so sub-24h SLAs count.
       if (filters.slaOnly && stage.slaHours) {
-        const days = Math.floor((Date.now() - new Date(app.appliedAt).getTime()) / 86400000);
-        if (days * 24 <= stage.slaHours) return false;
+        const hoursInStage = (Date.now() - new Date(app.enteredStageAt).getTime()) / 3600000;
+        if (hoursInStage <= stage.slaHours) return false;
       }
 
       return true;

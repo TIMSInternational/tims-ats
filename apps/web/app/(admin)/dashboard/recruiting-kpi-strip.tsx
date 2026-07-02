@@ -72,7 +72,7 @@ export function RecruitingKpiStrip({ vacancyKpis, candidateKpis, isLoading }: Re
     {
       dotColor: 'bg-amber-500',
       label: rd.slaOverdue,
-      value: vk?.totalPendingApproval ?? 0,
+      value: vk?.totalSlaOverdue ?? 0,
       valueColor: 'text-[#DD0C15]',
       subtitle: rd.requireAction,
       subtitleColor: 'text-amber-500',

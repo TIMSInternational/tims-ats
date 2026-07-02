@@ -38,11 +38,13 @@ export function KanbanBoard({ stages, onMove }: KanbanBoardProps) {
           const style = getHeaderStyle(idx);
           const isDark = idx >= 2;
 
-          // Count overdue applications in this stage
+          // Count overdue applications in this stage — time-in-CURRENT-stage,
+          // not time since the original application (matches kanban-card.tsx).
+          // Precise hours, not floored days*24, so sub-24h SLAs can trigger same-day.
           const overdueCount = stage.slaHours
             ? stage.applications.filter((app) => {
-                const days = Math.floor((Date.now() - new Date(app.appliedAt).getTime()) / 86400000);
-                return days * 24 > stage.slaHours!;
+                const hoursInStage = (Date.now() - new Date(app.enteredStageAt).getTime()) / 3600000;
+                return hoursInStage > stage.slaHours!;
               }).length
             : 0;
 

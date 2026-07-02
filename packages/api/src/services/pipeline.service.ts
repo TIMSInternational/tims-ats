@@ -19,6 +19,13 @@ export const pipelineService = {
       stages: stages.map((stage) => ({
         ...stage,
         count: stage.applications.length,
+        applications: stage.applications.map(({ movements, ...app }) => ({
+          ...app,
+          // Same derivation as getSlaStatus: time-in-CURRENT-stage, not time
+          // since the original application — a card that's been in the
+          // pipeline a long time but just moved into this stage isn't overdue.
+          enteredStageAt: movements[0]?.movedAt ?? app.appliedAt,
+        })),
       })),
     };
   },
@@ -131,6 +138,22 @@ export const pipelineService = {
   },
 
   // Analytics — SLA
+  // Org-wide SLA-overdue count (dashboard KPI strip). scopeWhere is computed
+  // in the router (access machinery is not imported in services) and is
+  // REQUIRED: a defaulted fragment would fail open, same as bulkMove above.
+  async getOrgSlaOverdueCount(orgId: string, appScopeWhere: Prisma.ApplicationWhereInput) {
+    const applications = await pipelineRepository.getActiveApplicationsForOrgSla(orgId, appScopeWhere);
+    const now = Date.now();
+
+    return applications.filter((app) => {
+      const slaHours = app.currentStage.slaHours;
+      if (slaHours == null) return false;
+      const enteredStageAt = app.movements[0]?.movedAt ?? app.appliedAt;
+      const hoursInStage = (now - enteredStageAt.getTime()) / (1000 * 60 * 60);
+      return hoursInStage > slaHours;
+    }).length;
+  },
+
   async getSlaStatus(orgId: string, vacancyId: string) {
     const vacancy = await pipelineRepository.vacancyExists(orgId, vacancyId);
     if (!vacancy) throw new TRPCError({ code: 'NOT_FOUND', message: 'Vacante no encontrada' });
@@ -142,8 +165,13 @@ export const pipelineService = {
     const items = applications.map((app) => {
       const stage = stages.find((s) => s.id === app.currentStageId);
       const enteredStageAt = app.movements[0]?.movedAt ?? app.appliedAt;
-      const hoursInStage = Math.floor((now.getTime() - enteredStageAt.getTime()) / (1000 * 60 * 60));
-      const isOverdue = stage?.slaHours != null && hoursInStage > stage.slaHours;
+      // hoursInStage is floored for display (e.g. "8h in stage"); isOverdue
+      // must compare against the PRECISE elapsed time so a sub-hour SLA
+      // breach (e.g. 8.5h against an 8h SLA) is caught immediately instead
+      // of only after the floored value ticks over to a full extra hour.
+      const preciseHoursInStage = (now.getTime() - enteredStageAt.getTime()) / (1000 * 60 * 60);
+      const hoursInStage = Math.floor(preciseHoursInStage);
+      const isOverdue = stage?.slaHours != null && preciseHoursInStage > stage.slaHours;
 
       return {
         applicationId: app.id,

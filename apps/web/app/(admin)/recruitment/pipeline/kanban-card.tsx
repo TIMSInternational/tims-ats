@@ -10,6 +10,7 @@ interface KanbanCardProps {
     status: string;
     source: string;
     appliedAt: Date | string;
+    enteredStageAt: Date | string;
     candidate: {
       id: string;
       firstName: string;
@@ -27,6 +28,11 @@ interface KanbanCardProps {
 function daysAgo(date: Date | string): number {
   const d = typeof date === 'string' ? new Date(date) : date;
   return Math.max(0, Math.floor((Date.now() - d.getTime()) / (1000 * 60 * 60 * 24)));
+}
+
+function hoursAgo(date: Date | string): number {
+  const d = typeof date === 'string' ? new Date(date) : date;
+  return Math.max(0, (Date.now() - d.getTime()) / (1000 * 60 * 60));
 }
 
 function fitBorderColor(score: number): string {
@@ -76,7 +82,11 @@ export function KanbanCard({ application: app, isDragging, slaHours }: KanbanCar
   const candidate = app.candidate;
   const fitScore = deriveFitScore(app.id);
   const days = daysAgo(app.appliedAt);
-  const isOverdue = slaHours != null && days * 24 > slaHours;
+  // SLA overdue is time-in-CURRENT-stage, not time since the original
+  // application — a card that's been in the pipeline a while but just moved
+  // into this stage isn't overdue. Uses precise hours, not floored days*24,
+  // so sub-24h SLAs (e.g. an 8h stage) can actually trigger same-day.
+  const isOverdue = slaHours != null && hoursAgo(app.enteredStageAt) > slaHours;
   const sourceStyle = getSourceStyle(app.source);
 
   return (

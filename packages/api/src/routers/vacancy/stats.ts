@@ -5,6 +5,7 @@ import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { scopeWhereFor } from '../../access';
 import { cacheGet, cacheSet } from '../../lib/cache';
+import { pipelineService } from '../../services/pipeline.service';
 
 export const vacancyStatsRouter = router({
   // 4.18 — Get vacancy stats (application counts by stage)
@@ -92,6 +93,7 @@ export const vacancyStatsRouter = router({
         totalPublished: number;
         totalClosed: number;
         totalApplications: number;
+        totalSlaOverdue: number;
         recentVacancies: RecentVacancy[];
       };
 
@@ -116,6 +118,7 @@ export const vacancyStatsRouter = router({
         totalPublished,
         totalClosed,
         totalApplications,
+        totalSlaOverdue,
         recentVacancies,
       ] = await Promise.all([
         db.vacancy.count({ where: { AND: [{ organizationId: orgId, status: { in: ['approved', 'published'] }, deletedAt: null }, scopeWhere] } }),
@@ -124,6 +127,7 @@ export const vacancyStatsRouter = router({
         db.vacancy.count({ where: { AND: [{ organizationId: orgId, status: 'published', deletedAt: null }, scopeWhere] } }),
         db.vacancy.count({ where: { AND: [{ organizationId: orgId, status: 'closed', deletedAt: null }, scopeWhere] } }),
         db.application.count({ where: { AND: [{ organizationId: orgId }, appScopeWhere] } }),
+        pipelineService.getOrgSlaOverdueCount(orgId, appScopeWhere),
         db.vacancy.findMany({
           where: { AND: [{ organizationId: orgId, deletedAt: null }, scopeWhere] },
           orderBy: { createdAt: 'desc' },
@@ -145,6 +149,7 @@ export const vacancyStatsRouter = router({
         totalPublished,
         totalClosed,
         totalApplications,
+        totalSlaOverdue,
         recentVacancies,
       };
       await cacheSet(cacheKey, result, 45);

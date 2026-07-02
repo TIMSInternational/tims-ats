@@ -10,6 +10,11 @@ const boardApplicationSelect = {
   status: true,
   source: true,
   appliedAt: true,
+  movements: {
+    orderBy: { movedAt: 'desc' as const },
+    take: 1,
+    select: { movedAt: true },
+  },
   candidate: {
     select: {
       id: true,
@@ -291,6 +296,25 @@ export const pipelineRepository = {
     });
   },
 
+  // Analytics — org-wide (across vacancies), used by the dashboard KPI strip.
+  // Kept separate from getActiveApplicationsWithMovements (single-vacancy) so
+  // callers can't accidentally drop the org/scope filter on a cross-org query.
+  async getActiveApplicationsForOrgSla(orgId: string, appScopeWhere: Prisma.ApplicationWhereInput) {
+    return db.application.findMany({
+      where: { AND: [{ organizationId: orgId, status: 'active' }, appScopeWhere] },
+      select: {
+        id: true,
+        appliedAt: true,
+        currentStage: { select: { slaHours: true } },
+        movements: {
+          orderBy: { movedAt: 'desc' as const },
+          take: 1,
+          select: { movedAt: true },
+        },
+      },
+    });
+  },
+
   // Analytics
   async getActiveApplicationsWithMovements(vacancyId: string) {
     return db.application.findMany({
@@ -331,15 +355,21 @@ export const pipelineRepository = {
   async getFunnelCounts(vacancyId: string, stages: Array<{ id: string }>) {
     return Promise.all(
       stages.map(async (stage) => {
-        const [currentCount, everReachedCount] = await Promise.all([
+        const [currentCount, everReachedRows] = await Promise.all([
           db.application.count({
             where: { vacancyId, currentStageId: stage.id, status: 'active' },
           }),
-          db.stageMovement.count({
+          // Distinct applicationId — an application bounced out and later
+          // reconsidered into the same stage produces multiple StageMovement
+          // rows, which would otherwise inflate this above the true headcount
+          // and push downstream conversion rates over 100%.
+          db.stageMovement.findMany({
             where: { toStageId: stage.id, application: { vacancyId } },
+            distinct: ['applicationId'],
+            select: { applicationId: true },
           }),
         ]);
-        return { stageId: stage.id, currentCount, everReachedCount };
+        return { stageId: stage.id, currentCount, everReachedCount: everReachedRows.length };
       }),
     );
   },
