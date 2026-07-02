@@ -84,8 +84,8 @@ packages/api/src/
 - **Zod env validation** (`lib/env.ts`). Fail fast on missing vars in production.
 - **Never return tokens** in API responses.
 
-### RBAC (known follow-up)
-- `hr_admin` uses a denylist short-circuit in `trpc.ts` that bypasses the DB `rolePermission` check. Move to least-privilege once per-org `rolePermission` coverage is verified for every `hr_admin` role.
+### RBAC
+- Least-privilege is live: every role (including `hr_admin`) is DB-checked against `rolePermission` grants via `buildAccessForUser` in `trpc.ts`. The old `hr_admin` denylist short-circuit and silent platform/super_admin bypass have been removed — see `docs/WAVE-2.5-ACCESS-CONTROL.md`.
 
 ## Caching (Upstash Redis)
 

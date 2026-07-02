@@ -152,6 +152,16 @@ export const integrationRouter = router({
           organizationId: ctx.user.organizationId,
           connectorId: input.connectorId,
         },
+        select: {
+          id: true,
+          connectorId: true,
+          status: true,
+          entitiesProcessed: true,
+          duration: true,
+          error: true,
+          startedAt: true,
+          completedAt: true,
+        },
         take: input.take + 1,
         ...(input.cursor ? { cursor: { id: input.cursor }, skip: 1 } : {}),
         orderBy: { startedAt: 'desc' },
@@ -169,9 +179,18 @@ export const integrationRouter = router({
     .query(async ({ ctx, input }) => {
       return db.connectorSync.findMany({
         where: { organizationId: ctx.user.organizationId },
+        select: {
+          id: true,
+          status: true,
+          entitiesProcessed: true,
+          duration: true,
+          error: true,
+          startedAt: true,
+          completedAt: true,
+          connector: { select: { name: true, type: true } },
+        },
         take: input?.take ?? 15,
         orderBy: { startedAt: 'desc' },
-        include: { connector: { select: { name: true, type: true } } },
       });
     }),
 

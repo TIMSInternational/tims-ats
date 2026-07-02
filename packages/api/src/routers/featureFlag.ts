@@ -8,6 +8,14 @@ export const featureFlagRouter = router({
   list: permissionProcedure('feature_flags', 'read').query(async ({ ctx }) => {
     return db.featureFlag.findMany({
       where: { organizationId: ctx.user.organizationId },
+      select: {
+        id: true,
+        key: true,
+        enabled: true,
+        payload: true,
+        createdAt: true,
+        updatedAt: true,
+      },
       orderBy: { key: 'asc' },
     });
   }),
