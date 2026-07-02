@@ -12,7 +12,7 @@ export const offerApprovalsRouter = router({
     .input(
       z.object({
         id: z.string().uuid(),
-        approverIds: z.array(z.string().uuid()).min(1),
+        approverIds: z.array(z.string().uuid()).max(100).min(1),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -73,7 +73,7 @@ export const offerApprovalsRouter = router({
     .input(
       z.object({
         id: z.string().uuid(),
-        comment: z.string().optional(),
+        comment: z.string().max(20000).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -131,7 +131,7 @@ export const offerApprovalsRouter = router({
     .input(
       z.object({
         id: z.string().uuid(),
-        comment: z.string().min(1),
+        comment: z.string().max(20000).min(1),
       })
     )
     .mutation(async ({ ctx, input }) => {

@@ -123,7 +123,7 @@ export const interviewCrudRouter = router({
         location: z.string().max(500).optional(),
         meetingUrl: z.string().url().max(2048).optional(),
         notes: z.string().max(5000).optional(),
-        evaluatorIds: z.array(z.string().uuid()).min(1),
+        evaluatorIds: z.array(z.string().uuid()).min(1).max(100),
       })
     )
     .mutation(async ({ ctx, input }) => {

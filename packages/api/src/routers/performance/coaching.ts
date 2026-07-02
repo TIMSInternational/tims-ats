@@ -14,7 +14,7 @@ export const performanceCoachingRouter = router({
         limit: z.number().min(1).max(100).default(25),
         employeeId: z.string().uuid().optional(),
         leaderId: z.string().uuid().optional(),
-        status: z.string().optional(),
+        status: z.string().max(100).optional(),
       })
     )
     .query(async ({ ctx, input }) => {
@@ -63,7 +63,7 @@ export const performanceCoachingRouter = router({
         scheduledAt: z.coerce.date(),
         duration: z.number().int().positive().optional(),
         topic: z.string().min(1).max(500),
-        type: z.string().default('scheduled'),
+        type: z.string().max(100).default('scheduled'),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -92,7 +92,7 @@ export const performanceCoachingRouter = router({
     .input(
       z.object({
         id: z.string().uuid(),
-        notes: z.string().optional(),
+        notes: z.string().max(20000).optional(),
         duration: z.number().int().positive().optional(),
       })
     )
@@ -122,7 +122,7 @@ export const performanceCoachingRouter = router({
         limit: z.number().min(1).max(100).default(25),
         employeeId: z.string().uuid().optional(),
         coachingSessionId: z.string().uuid().optional(),
-        status: z.string().optional(),
+        status: z.string().max(100).optional(),
       })
     )
     .query(async ({ ctx, input }) => {
@@ -174,7 +174,7 @@ export const performanceCoachingRouter = router({
       z.object({
         cursor: z.string().uuid().optional(),
         limit: z.number().min(1).max(100).default(25),
-        status: z.string().optional(),
+        status: z.string().max(100).optional(),
       }),
     )
     .query(async ({ ctx, input }) => {

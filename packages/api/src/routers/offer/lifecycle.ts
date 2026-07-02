@@ -19,7 +19,7 @@ export const offerLifecycleRouter = router({
     .input(
       z.object({
         offerId: z.string().uuid(),
-        jobTitle: z.string(),
+        jobTitle: z.string().max(200),
         companyId: z.string().uuid().optional(),
         businessUnitId: z.string().uuid().optional(),
         teamId: z.string().uuid().optional(),

@@ -55,8 +55,8 @@ export const userRouter = router({
       z.object({
         cursor: z.string().uuid().optional(),
         limit: z.number().min(1).max(100).default(25),
-        search: z.string().optional(),
-        roleSlug: z.string().optional(),
+        search: z.string().max(200).optional(),
+        roleSlug: z.string().max(100).optional(),
         isActive: z.boolean().optional(),
       })
     )

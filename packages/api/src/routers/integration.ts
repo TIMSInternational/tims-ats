@@ -189,7 +189,7 @@ export const integrationRouter = router({
     .input(
       z.object({
         url: z.string().url(),
-        events: z.array(z.string().max(100)),
+        events: z.array(z.string().max(100)).max(100),
         secret: z.string().max(500).optional(),
       })
     )
@@ -209,7 +209,7 @@ export const integrationRouter = router({
       z.object({
         id: z.string().uuid(),
         url: z.string().url().optional(),
-        events: z.array(z.string()).optional(),
+        events: z.array(z.string().max(100)).max(100).optional(),
         isActive: z.boolean().optional(),
       })
     )

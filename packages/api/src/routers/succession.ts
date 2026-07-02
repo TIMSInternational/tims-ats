@@ -17,8 +17,8 @@ export const successionRouter = router({
       z.object({
         companyId: z.string().uuid().optional(),
         unitId: z.string().uuid().optional(),
-        criticality: z.string().optional(),
-        search: z.string().optional(),
+        criticality: z.string().max(100).optional(),
+        search: z.string().max(200).optional(),
       }).optional(),
     )
     .query(async ({ ctx, input }) => {
@@ -107,7 +107,7 @@ export const successionRouter = router({
     .input(
       z.object({
         title: z.string().min(1).max(255),
-        positionId: z.string().optional(),
+        positionId: z.string().max(100).optional(),
         currentHolderId: z.string().uuid().optional(),
         companyId: z.string().uuid().optional(),
         unitId: z.string().uuid().optional(),
@@ -136,7 +136,7 @@ export const successionRouter = router({
         userId: z.string().uuid(),
         readiness: z.enum(['ready_now', 'ready_1_year', 'ready_2_years', 'developing']),
         type: z.enum(['internal', 'external']),
-        developmentPlan: z.string().optional(),
+        developmentPlan: z.string().max(20000).optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -183,7 +183,7 @@ export const successionRouter = router({
       z.object({
         id: z.string().uuid(),
         readiness: z.enum(['ready_now', 'ready_1_year', 'ready_2_years', 'developing']),
-        developmentPlan: z.string().optional(),
+        developmentPlan: z.string().max(20000).optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {

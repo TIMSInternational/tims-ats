@@ -14,7 +14,7 @@ export const performanceFeedbackRouter = router({
     .input(
       z.object({
         toUserId: z.string().uuid(),
-        type: z.string(),
+        type: z.string().max(100),
         message: z.string().min(1).max(2000),
         isAnonymous: z.boolean().default(false),
       })
@@ -37,7 +37,7 @@ export const performanceFeedbackRouter = router({
         limit: z.number().min(1).max(100).default(25),
         toUserId: z.string().uuid().optional(),
         fromUserId: z.string().uuid().optional(),
-        type: z.string().optional(),
+        type: z.string().max(100).optional(),
       })
     )
     .query(async ({ ctx, input }) => {
@@ -88,7 +88,7 @@ export const performanceFeedbackRouter = router({
     .input(
       z.object({
         toUserId: z.string().uuid(),
-        category: z.string(),
+        category: z.string().max(100),
         message: z.string().min(1).max(2000),
       })
     )
@@ -112,7 +112,7 @@ export const performanceFeedbackRouter = router({
         cursor: z.string().uuid().optional(),
         limit: z.number().min(1).max(100).default(25),
         toUserId: z.string().uuid().optional(),
-        category: z.string().optional(),
+        category: z.string().max(100).optional(),
       })
     )
     .query(async ({ ctx, input }) => {

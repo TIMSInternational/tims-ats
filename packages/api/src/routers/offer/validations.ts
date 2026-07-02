@@ -30,7 +30,7 @@ export const offerValidationsRouter = router({
       z.object({
         id: z.string().uuid(),
         status: z.enum(['pending', 'passed', 'failed', 'waived']),
-        result: z.record(z.unknown()).optional(),
+        result: z.record(z.unknown()).refine((v) => JSON.stringify(v ?? {}).length <= 100000, 'Payload demasiado grande').optional(),
         notes: z.string().max(5000).optional(),
       })
     )

@@ -30,8 +30,8 @@ export const onboardingRouter = router({
         cursor: z.string().uuid().optional(),
         limit: z.number().min(1).max(100).default(25),
         status: z.enum(['active', 'completed', 'cancelled']).optional(),
-        phase: z.string().optional(),
-        search: z.string().optional(),
+        phase: z.string().max(100).optional(),
+        search: z.string().max(200).optional(),
       })
     )
     .query(async ({ ctx, input }) => {
@@ -124,7 +124,7 @@ export const onboardingRouter = router({
         userId: z.string().uuid(),
         buddyId: z.string().uuid().optional(),
         startDate: z.coerce.date(),
-        phase: z.string().default('day1_30'),
+        phase: z.string().max(100).default('day1_30'),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -158,7 +158,7 @@ export const onboardingRouter = router({
     .input(
       z.object({
         id: z.string().uuid(),
-        phase: z.string().optional(),
+        phase: z.string().max(100).optional(),
         status: z.enum(['active', 'completed', 'cancelled']).optional(),
         buddyId: z.string().uuid().nullish(),
         riskScore: z.number().min(0).max(100).optional(),
@@ -189,7 +189,7 @@ export const onboardingRouter = router({
     .input(
       z.object({
         planId: z.string().uuid(),
-        phase: z.string().optional(),
+        phase: z.string().max(100).optional(),
         completed: z.boolean().optional(),
       })
     )
@@ -218,9 +218,9 @@ export const onboardingRouter = router({
       z.object({
         planId: z.string().uuid(),
         title: z.string().min(1).max(500),
-        description: z.string().optional(),
-        responsible: z.string(),
-        phase: z.string(),
+        description: z.string().max(20000).optional(),
+        responsible: z.string().max(200),
+        phase: z.string().max(100),
         dueDate: z.coerce.date().optional(),
         order: z.number().int().default(0),
       })
@@ -244,9 +244,9 @@ export const onboardingRouter = router({
       z.object({
         id: z.string().uuid(),
         title: z.string().min(1).max(500).optional(),
-        description: z.string().optional(),
-        responsible: z.string().optional(),
-        phase: z.string().optional(),
+        description: z.string().max(20000).optional(),
+        responsible: z.string().max(200).optional(),
+        phase: z.string().max(100).optional(),
         dueDate: z.coerce.date().nullish(),
         completed: z.boolean().optional(),
         order: z.number().int().optional(),
@@ -284,7 +284,7 @@ export const onboardingRouter = router({
   getTasksByResponsible: permissionProcedure('onboarding', 'read')
     .input(
       z.object({
-        responsible: z.string(),
+        responsible: z.string().max(200),
         completed: z.boolean().optional(),
       })
     )
@@ -328,8 +328,8 @@ export const onboardingRouter = router({
     .input(
       z.object({
         planId: z.string().uuid(),
-        name: z.string(),
-        description: z.string().optional(),
+        name: z.string().max(200),
+        description: z.string().max(20000).optional(),
         dueDate: z.coerce.date().optional(),
       })
     )
@@ -363,7 +363,7 @@ export const onboardingRouter = router({
     .input(
       z.object({
         id: z.string().uuid(),
-        notes: z.string().optional(),
+        notes: z.string().max(20000).optional(),
         score: z.number().int().min(1).max(10).optional(),
       })
     )

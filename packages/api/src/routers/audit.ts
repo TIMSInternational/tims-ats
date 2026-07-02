@@ -8,8 +8,8 @@ export const auditRouter = router({
     .input(
       z.object({
         userId: z.string().uuid().optional(),
-        entity: z.string().optional(),
-        action: z.string().optional(),
+        entity: z.string().max(200).optional(),
+        action: z.string().max(200).optional(),
         dateFrom: z.date().optional(),
         dateTo: z.date().optional(),
         take: z.number().min(1).max(100).default(25),
@@ -112,8 +112,8 @@ export const auditRouter = router({
   getChangesByEntity: permissionProcedure('audit', 'read')
     .input(
       z.object({
-        entity: z.string(),
-        entityId: z.string(),
+        entity: z.string().max(200),
+        entityId: z.string().max(200),
         take: z.number().min(1).max(100).default(25),
         cursor: z.string().uuid().optional(),
       })

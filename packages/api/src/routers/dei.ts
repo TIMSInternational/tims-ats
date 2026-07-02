@@ -164,7 +164,7 @@ export const deiRouter = router({
 
   // ── Report (stub) ──────────────────────────────────────────────────
   generateReport: permissionProcedure('dei', 'export')
-    .input(z.object({ format: z.enum(['pdf', 'xlsx']).default('pdf'), sections: z.array(z.string().max(100)).optional() }))
+    .input(z.object({ format: z.enum(['pdf', 'xlsx']).default('pdf'), sections: z.array(z.string().max(100)).max(100).optional() }))
     .mutation(async () => {
       return { status: 'pending' as const, message: 'Generacion de reportes no implementada aun' };
     }),

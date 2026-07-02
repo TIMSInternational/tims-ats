@@ -239,7 +239,7 @@ export const compensationRouter = router({
     .input(
       z.object({
         groupBy: z.enum(['gender', 'ethnicity']).default('gender'),
-        jobLevel: z.string().optional(),
+        jobLevel: z.string().max(100).optional(),
       }).optional(),
     )
     .query(async ({ ctx }) => {
@@ -583,7 +583,7 @@ export const compensationRouter = router({
   getMarketComparison: permissionProcedure('compensation', 'read')
     .input(
       z.object({
-        jobLevel: z.string().optional(),
+        jobLevel: z.string().max(100).optional(),
       }).optional(),
     )
     .query(async ({ ctx, input }) => {

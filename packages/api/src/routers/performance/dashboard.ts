@@ -91,7 +91,7 @@ export const performanceDashboardRouter = router({
     .input(
       z.object({
         threshold: z.number().min(0).max(100).default(30),
-        period: z.string().optional(),
+        period: z.string().max(100).optional(),
       })
     )
     .query(async ({ ctx, input }) => {

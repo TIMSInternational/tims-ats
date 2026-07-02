@@ -94,7 +94,7 @@ export const learningRouter = router({
         type: z.string().max(100),
         category: z.string().max(100).optional(),
         duration: z.number().int().min(1),
-        content: z.record(z.unknown()).optional(),
+        content: z.record(z.unknown()).refine((v) => JSON.stringify(v ?? {}).length <= 100000, 'Payload demasiado grande').optional(),
         isRequired: z.boolean().default(false),
       }),
     )
@@ -119,7 +119,7 @@ export const learningRouter = router({
         type: z.string().max(100).optional(),
         category: z.string().max(100).optional(),
         duration: z.number().int().min(1).optional(),
-        content: z.record(z.unknown()).optional(),
+        content: z.record(z.unknown()).refine((v) => JSON.stringify(v ?? {}).length <= 100000, 'Payload demasiado grande').optional(),
         isRequired: z.boolean().optional(),
         isActive: z.boolean().optional(),
       }),
@@ -160,7 +160,7 @@ export const learningRouter = router({
   bulkEnroll: permissionProcedure('learning', 'create')
     .input(
       z.object({
-        userIds: z.array(z.string().uuid()).min(1),
+        userIds: z.array(z.string().uuid()).min(1).max(1000),
         courseId: z.string().uuid(),
       }),
     )
@@ -253,7 +253,7 @@ export const learningRouter = router({
         name: z.string().min(1).max(255),
         description: z.string().max(2000).optional(),
         targetGap: z.string().max(200).optional(),
-        courseIds: z.array(z.string().uuid()).optional(),
+        courseIds: z.array(z.string().uuid()).max(100).optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {

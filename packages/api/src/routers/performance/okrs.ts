@@ -14,8 +14,8 @@ export const performanceOkrsRouter = router({
         limit: z.number().min(1).max(100).default(25),
         userId: z.string().uuid().optional(),
         teamId: z.string().uuid().optional(),
-        period: z.string().optional(),
-        status: z.string().optional(),
+        period: z.string().max(100).optional(),
+        status: z.string().max(100).optional(),
       })
     )
     .query(async ({ ctx, input }) => {
@@ -87,13 +87,13 @@ export const performanceOkrsRouter = router({
         userId: z.string().uuid(),
         teamId: z.string().uuid().optional(),
         title: z.string().min(1).max(500),
-        period: z.string(),
+        period: z.string().max(100),
         keyResults: z
           .array(
             z.object({
               title: z.string().min(1).max(500),
               targetValue: z.number(),
-              unit: z.string().optional(),
+              unit: z.string().max(100).optional(),
             })
           )
           .optional(),
@@ -148,8 +148,8 @@ export const performanceOkrsRouter = router({
       z.object({
         id: z.string().uuid(),
         title: z.string().min(1).max(500).optional(),
-        period: z.string().optional(),
-        status: z.string().optional(),
+        period: z.string().max(100).optional(),
+        status: z.string().max(100).optional(),
         progress: z.number().min(0).max(100).optional(),
       })
     )
@@ -173,7 +173,7 @@ export const performanceOkrsRouter = router({
         id: z.string().uuid(),
         currentValue: z.number().optional(),
         targetValue: z.number().optional(),
-        status: z.string().optional(),
+        status: z.string().max(100).optional(),
         title: z.string().min(1).max(500).optional(),
       })
     )
