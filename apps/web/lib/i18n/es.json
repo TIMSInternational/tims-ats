@@ -4,6 +4,11 @@
     "message": "No tienes permiso para ver esta seccion. Si crees que es un error, contacta a tu administrador.",
     "back": "Volver al inicio"
   },
+  "notFound": {
+    "title": "Página no encontrada",
+    "message": "La página que buscas no existe o fue movida.",
+    "backToDashboard": "Volver al dashboard"
+  },
   "roles": {
     "platform_owner": "Dueño de plataforma",
     "super_admin": "Administrador",

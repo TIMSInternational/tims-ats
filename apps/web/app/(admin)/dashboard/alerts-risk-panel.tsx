@@ -133,7 +133,14 @@ export function AlertsRiskPanel({ vacancyId, vacanciesLoading }: AlertsRiskPanel
       ) : board.isError ? (
         <ErrorState onRetry={() => board.refetch()} />
       ) : riskCandidates.length === 0 ? (
-        <p className="text-[12px] text-[#8B8B8B] text-center py-6">{t.recruitingDashboard.noRiskCandidates}</p>
+        <div className="text-center py-6">
+          <div className="w-8 h-8 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-2">
+            <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <path d="m4.5 12.75 6 6 9-13.5" />
+            </svg>
+          </div>
+          <p className="text-[12px] text-[#8B8B8B]">{t.recruitingDashboard.noRiskCandidates}</p>
+        </div>
       ) : (
         <div className="space-y-4">
           {riskCandidates.map((c) => (

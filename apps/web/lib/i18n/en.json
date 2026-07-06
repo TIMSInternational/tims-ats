@@ -4,6 +4,11 @@
     "message": "You do not have permission to view this section. If you think this is a mistake, contact your administrator.",
     "back": "Back to dashboard"
   },
+  "notFound": {
+    "title": "Page not found",
+    "message": "The page you're looking for doesn't exist or was moved.",
+    "backToDashboard": "Back to dashboard"
+  },
   "roles": {
     "platform_owner": "Platform owner",
     "super_admin": "Administrator",

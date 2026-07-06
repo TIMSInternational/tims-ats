@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
@@ -29,6 +29,27 @@ export default function PipelinePage() {
   );
 
   const utils = trpc.useUtils();
+
+  // Tracks whether the user has manually picked a view via the toggle, so the
+  // mobile auto-switch below only applies a smart DEFAULT on initial narrow
+  // load — it never fights a deliberate choice (e.g. a user who explicitly
+  // re-selects 'kanban' on a phone keeps it, cramped-but-functional).
+  const userSetViewMode = useRef(false);
+
+  // Auto-switch to list view on mobile viewports (kanban is unusably cramped
+  // below md/768px). Only overrides the initial 'kanban' default, and only
+  // while the user hasn't manually interacted with the view toggle.
+  useEffect(() => {
+    const mql = window.matchMedia('(max-width: 767px)');
+    const applyIfNarrow = () => {
+      if (mql.matches && !userSetViewMode.current) {
+        setViewMode((current) => (current === 'kanban' ? 'list' : current));
+      }
+    };
+    applyIfNarrow();
+    mql.addEventListener('change', applyIfNarrow);
+    return () => mql.removeEventListener('change', applyIfNarrow);
+  }, []);
 
   // Cards with an in-flight move. Blocks a second drag of the SAME card before
   // its move settles (which would race two optimistic writes on one cache entry
@@ -111,7 +132,10 @@ export default function PipelinePage() {
             {VIEW_OPTIONS.map((opt) => (
               <button
                 key={opt.key}
-                onClick={() => setViewMode(opt.key)}
+                onClick={() => {
+                  userSetViewMode.current = true;
+                  setViewMode(opt.key);
+                }}
                 className={`px-3 h-8 text-[12px] font-medium transition-colors ${
                   viewMode === opt.key
                     ? 'bg-[#1F114C] text-white'
