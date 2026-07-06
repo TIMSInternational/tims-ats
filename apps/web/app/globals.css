@@ -28,6 +28,43 @@
   --color-text-muted: #8B8B8B;
 }
 
+/* ── Shell chrome tokens (sidebar + top bar) — FormMaps shell replication, dark-blue variant ── */
+:root {
+  --chrome-bg: #052642;
+  --chrome-text-primary: #ffffff;
+  --chrome-text-secondary: rgba(255, 255, 255, 0.78);
+  --chrome-text-tertiary: rgba(255, 255, 255, 0.55);
+  --chrome-text-light: rgba(255, 255, 255, 0.4);
+  --chrome-hover: rgba(255, 255, 255, 0.08);
+  --chrome-border-light: rgba(255, 255, 255, 0.14);
+  --chrome-accent-active: #2e9098;
+  --chrome-logo-bg: #ffffff;
+  --chrome-logo-text: #052642;
+
+  /* Content-panel tokens — FormMaps colorsLight, verbatim. The white main panel and any
+     chrome-adjacent popover (e.g. the profile menu) use these, never --chrome-*. */
+  --content-bg-panel: #ffffff;
+  --content-bg-hover: rgba(0, 0, 0, 0.04);
+  --content-border-default: #e0e0e0;
+  --content-border-light: #eee;
+  --content-font-primary: #141414;
+  --content-font-secondary: #474747;
+  --content-font-tertiary: #818181;
+  --content-font-light: #999;
+
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 8px;
+  --r-xl: 12px;
+  --sidebar-w-expanded: 220px;
+  --sidebar-w-collapsed: 52px;
+  --nav-item-h: 28px;
+}
+
+.tims-sidebar {
+  font-family: var(--font-poppins), 'Poppins', var(--font-inter), 'Inter', system-ui, sans-serif;
+}
+
 body {
   font-family: var(--font-inter), 'Inter', system-ui, sans-serif;
 }

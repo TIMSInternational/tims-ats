@@ -1,9 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
-import { createSupabaseBrowserClient } from '@tims/auth/client';
+import { usePathname } from 'next/navigation';
 import { useI18n } from '../../lib/i18n';
+import { SidebarCollapseToggle } from './sidebar-collapse-toggle';
+import { SidebarProfileMenu } from './sidebar-profile-menu';
 
 function useNavSections() {
   const { t } = useI18n();
@@ -80,40 +81,42 @@ export function PlatformSidebar({ userInitials, displayName, expanded, onToggle,
   avatar?: string | null;
 }) {
   const pathname = usePathname();
-  const router = useRouter();
   const { t } = useI18n();
   const NAV_SECTIONS = useNavSections();
 
   return (
     <aside
-      className={`flex flex-col h-full bg-[#0F0A2A] shrink-0 overflow-hidden ${
-        ready ? 'transition-all duration-300 ease-in-out' : ''
+      className={`tims-sidebar flex flex-col h-full bg-[var(--chrome-bg)] shrink-0 overflow-hidden ${
+        expanded ? 'w-[var(--sidebar-w-expanded)]' : 'w-[var(--sidebar-w-collapsed)]'
       } ${
-        expanded ? 'w-[240px]' : 'w-[72px]'
+        ready ? 'transition-all duration-300 ease-in-out' : ''
       }`}
     >
-      {/* Logo */}
-      <div className={`flex items-center justify-center h-[72px] border-b border-white/[0.06] shrink-0 ${expanded ? 'px-5' : 'px-0'}`}>
+      {/* Logo bar */}
+      <div className={`flex items-center justify-between shrink-0 ${expanded ? 'px-3.5 py-3' : 'px-1.5 py-3 justify-center'}`}>
         <Link href="/dashboard" className="flex items-center overflow-hidden">
           {expanded ? (
-            <img src="/logo_tims.png" alt="TIMS International" className="h-12 brightness-0 invert" />
+            <img src="/logo_tims.png" alt="TIMS International" className="h-7 brightness-0 invert" />
           ) : (
-            <div className="w-9 h-9 rounded-lg bg-[#DD0C15] flex items-center justify-center">
-              <span className="text-white text-[13px] font-bold">T</span>
+            <div className="w-7 h-7 rounded-[var(--r-md)] bg-[#DD0C15] flex items-center justify-center">
+              <span className="text-white text-[12px] font-bold">T</span>
             </div>
           )}
         </Link>
+        {expanded && <SidebarCollapseToggle expanded={expanded} onToggle={onToggle} collapseLabel={t.nav.collapse} expandLabel={t.nav.expand} />}
       </div>
+      {!expanded && (
+        <div className="flex justify-center pb-2">
+          <SidebarCollapseToggle expanded={expanded} onToggle={onToggle} collapseLabel={t.nav.collapse} expandLabel={t.nav.expand} />
+        </div>
+      )}
 
       {/* Navigation */}
-      <nav className="flex-1 py-3 flex flex-col gap-0.5 overflow-y-auto overflow-x-hidden">
+      <nav className="flex-1 py-1 px-2 flex flex-col gap-2 overflow-y-auto overflow-x-hidden">
         {NAV_SECTIONS.map((section, si) => (
           <div key={si}>
-            {si > 0 && (
-              <div className={`border-t border-white/[0.06] my-2.5 ${expanded ? 'mx-4' : 'mx-4'}`} />
-            )}
             {expanded && section.label && (
-              <p className="text-[10px] uppercase tracking-wider text-white/25 font-semibold px-5 mb-1.5 whitespace-nowrap">
+              <p className="text-[10px] uppercase tracking-wider text-[var(--chrome-text-light)] font-semibold px-2 pb-1.5 whitespace-nowrap">
                 {section.label}
               </p>
             )}
@@ -125,20 +128,22 @@ export function PlatformSidebar({ userInitials, displayName, expanded, onToggle,
                     key={item.href}
                     href={item.href}
                     title={!expanded ? item.label : undefined}
-                    className={`group flex items-center gap-3 mx-2 rounded-lg transition-colors h-10 ${
-                      expanded ? 'px-3' : 'justify-center'
+                    className={`group flex items-center gap-2 h-[var(--nav-item-h)] rounded-[var(--r-sm)] transition-colors ${
+                      expanded ? 'px-2' : 'justify-center'
                     } ${
-                      isActive
-                        ? 'bg-white/10 text-white'
-                        : 'text-white/50 hover:bg-white/[0.06] hover:text-white/80'
+                      isActive ? 'bg-[var(--chrome-accent-active)]' : 'hover:bg-[var(--chrome-hover)]'
+                    } ${
+                      isActive ? 'text-white' : 'text-[var(--chrome-text-secondary)]'
                     }`}
                   >
                     <Icon
                       name={item.icon}
-                      className={`w-[20px] h-[20px] shrink-0 ${isActive ? 'text-white' : 'text-white/50 group-hover:text-white/80'}`}
+                      className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-[var(--chrome-text-tertiary)]'} ${
+                        isActive ? '' : 'group-hover:text-[var(--chrome-text-secondary)]'
+                      }`}
                     />
                     {expanded && (
-                      <span className={`text-[13px] whitespace-nowrap ${isActive ? 'font-medium' : ''}`}>
+                      <span className="text-[13px] font-medium whitespace-nowrap flex-1 overflow-hidden text-ellipsis">
                         {item.label}
                       </span>
                     )}
@@ -150,66 +155,17 @@ export function PlatformSidebar({ userInitials, displayName, expanded, onToggle,
         ))}
       </nav>
 
-      {/* Bottom */}
-      <div className="border-t border-white/[0.06] shrink-0">
-        <button
-          onClick={onToggle}
-          className={`flex items-center gap-3 w-full h-10 transition-colors text-white/30 hover:text-white/60 hover:bg-white/[0.04] ${
-            expanded ? 'px-5' : 'justify-center'
-          }`}
-        >
-          <svg
-            className={`w-[18px] h-[18px] shrink-0 transition-transform duration-300 ${expanded ? '' : 'rotate-180'}`}
-            fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"
-          >
-            <path d="M11 19l-7-7 7-7" />
-            <path d="M18 5v14" />
-          </svg>
-          {expanded && (
-            <span className="text-[12px] whitespace-nowrap">{t.nav.collapse}</span>
-          )}
-        </button>
-
-        <div className={`flex items-center py-3 ${expanded ? 'px-5 gap-3' : 'justify-center'}`}>
-          {avatar ? (
-            <img src={avatar} alt="" className="w-9 h-9 rounded-full shrink-0 object-cover" />
-          ) : (
-            <div className="w-9 h-9 rounded-full bg-[#DD0C15] flex items-center justify-center text-white text-[11px] font-bold shrink-0">
-              {userInitials}
-            </div>
-          )}
-          {expanded && (
-            <>
-              <div className="min-w-0 flex-1">
-                <p className="text-[12px] text-white font-medium truncate">{displayName}</p>
-                <p className="text-[10px] text-white/40 truncate">{t.nav.admin}</p>
-              </div>
-              <Link
-                href="/mfa"
-                title={t.nav.security}
-                className="w-8 h-8 rounded-md flex items-center justify-center text-white/30 hover:text-white/60 hover:bg-white/[0.06] transition-colors shrink-0"
-              >
-                <svg className="w-[16px] h-[16px]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-                  <path d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z" />
-                </svg>
-              </Link>
-              <button
-                onClick={async () => {
-                  const supabase = createSupabaseBrowserClient();
-                  await supabase.auth.signOut();
-                  router.push('/login');
-                  router.refresh();
-                }}
-                title={t.nav.logout}
-                className="w-8 h-8 rounded-md flex items-center justify-center text-white/30 hover:text-white/60 hover:bg-white/[0.06] transition-colors shrink-0"
-              >
-                <svg className="w-[16px] h-[16px]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-                  <path d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
-                </svg>
-              </button>
-            </>
-          )}
-        </div>
+      {/* Bottom: profile menu */}
+      <div className={`border-t border-[var(--chrome-border-light)] shrink-0 ${expanded ? 'p-2' : 'p-1.5'}`}>
+        <SidebarProfileMenu
+          userInitials={userInitials}
+          displayName={displayName}
+          roleLabel={t.nav.admin}
+          avatar={avatar}
+          expanded={expanded}
+          securityLabel={t.nav.security}
+          logoutLabel={t.nav.logout}
+        />
       </div>
     </aside>
   );

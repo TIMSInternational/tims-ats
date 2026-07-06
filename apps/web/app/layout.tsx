@@ -1,8 +1,9 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
+import { Inter, Poppins } from 'next/font/google';
 import './globals.css';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
+const poppins = Poppins({ subsets: ['latin'], weight: ['500', '600', '700'], variable: '--font-poppins' });
 
 // Render every route dynamically so Next.js can stamp the per-request CSP nonce
 // (set in middleware.ts) onto its inline bootstrap scripts. Statically
@@ -22,7 +23,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="es" className={inter.variable}>
+    <html lang="es" className={`${inter.variable} ${poppins.variable}`}>
       <body className="font-sans antialiased bg-[#F6F6F6] text-[#333]">
         {children}
       </body>

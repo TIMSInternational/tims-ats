@@ -61,7 +61,7 @@ export function AdminShell({
     <I18nProvider>
     <TRPCProvider>
       <PermissionsProvider isPlatformOwner={isPlatformOwner}>
-      <div className="flex h-screen overflow-hidden">
+      <div className="flex h-screen overflow-hidden bg-[var(--chrome-bg)]">
         {/* Mobile backdrop */}
         {mobileOpen && (
           <div
@@ -85,17 +85,19 @@ export function AdminShell({
             avatar={avatar}
           />
         </div>
-        <div className="flex flex-col flex-1 min-w-0">
+        <div className="flex flex-col flex-1 min-w-0 pr-3 pb-3 min-h-0">
           <ImpersonationBanner />
           <Navbar
             isPlatformOwner={isPlatformOwner}
             onHelpClick={() => setChatOpen(!chatOpen)}
             onMenuClick={() => setMobileOpen(true)}
           />
-          <main className="flex-1 overflow-y-auto overflow-x-hidden bg-[#F6F6F6]">
-            <RouteAccessGuard>
-            {children}
-            </RouteAccessGuard>
+          <main className="flex-1 min-h-0 flex flex-col bg-[var(--content-bg-panel)] border border-[var(--content-border-default)] rounded-[var(--r-lg)] overflow-hidden">
+            <div className="flex-1 overflow-y-auto overflow-x-hidden">
+              <RouteAccessGuard>
+              {children}
+              </RouteAccessGuard>
+            </div>
           </main>
         </div>
       </div>

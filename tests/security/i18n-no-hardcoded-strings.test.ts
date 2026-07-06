@@ -108,6 +108,11 @@ const ALLOWLIST = new Set<string>([
   // depend on I18nProvider, which may itself be the failure it is catching.
   'Ocurrió un error inesperado. Intenta de nuevo.',
   'Reintentar',
+  // sidebar-profile-menu.tsx popover positioning ternary: Tailwind classNames
+  // using calc()/% arbitrary values, which looksLikeClassName's token regex
+  // doesn't recognize (it disallows `(`, `%`, `+`) — not user-facing prose.
+  'absolute bottom-[calc(100%+4px)] left-2',
+  'fixed bottom-2 left-[calc(var(--sidebar-w-collapsed)+8px)]',
 ]);
 
 // Tells that a `>...<` capture is actually a JS expression fragment caught

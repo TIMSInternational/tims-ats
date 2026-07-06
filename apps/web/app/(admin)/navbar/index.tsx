@@ -29,26 +29,26 @@ export function Navbar({ isPlatformOwner = false, onHelpClick, onMenuClick }: { 
   useClickOutside(langRef, () => setLangOpen(false));
 
   return (
-    <header className="flex items-center justify-between px-4 md:px-6 h-[56px] bg-white border-b border-[#EDEDED] shrink-0">
+    <header className="flex items-center justify-between px-2 md:px-3 min-h-[40px] shrink-0">
       {/* Breadcrumb */}
       <div className="flex items-center gap-1.5 min-w-0">
         {/* Mobile hamburger — opens the sidebar drawer */}
         <button
           onClick={onMenuClick}
-          className="md:hidden -ml-1 mr-1 w-9 h-9 rounded-lg flex items-center justify-center hover:bg-[#F6F6F6] transition-colors shrink-0"
+          className="md:hidden -ml-1 mr-1 w-8 h-8 rounded-[var(--r-md)] flex items-center justify-center hover:bg-[var(--chrome-hover)] transition-colors shrink-0"
           aria-label="Menu"
         >
-          <svg className="w-5 h-5 text-[#585858]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M3.75 6.75h16.5M3.75 12h16.5M3.75 17.25h16.5" /></svg>
+          <svg className="w-4.5 h-4.5 text-[var(--chrome-text-tertiary)]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M3.75 6.75h16.5M3.75 12h16.5M3.75 17.25h16.5" /></svg>
         </button>
         {crumb.parent && (
           <>
-            <span className="hidden md:inline text-[13px] text-[#8B8B8B]">{crumb.parent}</span>
-            <svg className="hidden md:block w-3.5 h-3.5 text-[#ccc]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <span className="hidden md:inline text-[12px] text-[var(--chrome-text-tertiary)]">{crumb.parent}</span>
+            <svg className="hidden md:block w-3 h-3 text-[var(--chrome-text-light)]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
               <path d="m9 18 6-6-6-6" />
             </svg>
           </>
         )}
-        <span className="text-[13px] font-medium text-[#1F114C] truncate">{crumb.label}</span>
+        <span className="text-[12px] font-semibold text-[var(--chrome-text-primary)] truncate">{crumb.label}</span>
       </div>
 
       {/* Right actions — search + help collapse on mobile so the cluster fits */}
@@ -62,10 +62,10 @@ export function Navbar({ isPlatformOwner = false, onHelpClick, onMenuClick }: { 
         {/* Help */}
         <button
           onClick={onHelpClick}
-          className="w-9 h-9 rounded-lg hidden md:flex items-center justify-center hover:bg-[#F6F6F6] transition-colors"
+          className="w-8 h-8 rounded-[var(--r-md)] hidden md:flex items-center justify-center hover:bg-[var(--chrome-hover)] transition-colors"
           title={t.nav.helpCenter}
         >
-          <svg className="w-[18px] h-[18px] text-[#585858]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+          <svg className="w-[16px] h-[16px] text-[var(--chrome-text-tertiary)]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
             <path d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
           </svg>
         </button>
@@ -74,12 +74,12 @@ export function Navbar({ isPlatformOwner = false, onHelpClick, onMenuClick }: { 
         <div ref={langRef} className="relative">
           <button
             onClick={() => setLangOpen(!langOpen)}
-            className={`h-8 px-2.5 rounded-lg border border-[#EDEDED] flex items-center gap-1.5 transition-colors ${
-              langOpen ? 'bg-[#FAFAFA] border-[#ccc]' : 'hover:bg-[#FAFAFA]'
+            className={`h-7 px-2 rounded-[var(--r-md)] flex items-center gap-1.5 transition-colors ${
+              langOpen ? 'bg-[var(--chrome-hover)]' : 'hover:bg-[var(--chrome-hover)]'
             }`}
           >
-            <span className="text-[12px] text-[#585858] font-medium">{locale}</span>
-            <svg className={`w-3 h-3 text-[#8B8B8B] transition-transform ${langOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <span className="text-[12px] text-[var(--chrome-text-secondary)] font-medium">{locale}</span>
+            <svg className={`w-3 h-3 text-[var(--chrome-text-tertiary)] transition-transform ${langOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
               <path d="m6 9 6 6 6-6" />
             </svg>
           </button>

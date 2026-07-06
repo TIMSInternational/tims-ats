@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   MANIFESTS, manifestFor, resolveLabel, computeVisibleSections, NAV_ROLES, pickSidebarVariant, isNavItemActive,
+  type NavSection,
 } from '../../apps/web/lib/nav/manifest';
 import { moduleForPath } from '../../apps/web/lib/nav/routes';
 import es from '../../apps/web/lib/i18n/es.json';
@@ -140,5 +141,40 @@ describe('computeVisibleSections', () => {
   it('drops sections that end up empty', () => {
     const out = computeVisibleSections(base, () => false, false);
     for (const s of out) expect(s.items.length).toBeGreaterThan(0);
+  });
+});
+
+describe('manifest sub-item type support (non-regression)', () => {
+  const sectionWithSub: NavSection = {
+    labelKey: 'sidebar.recruitment',
+    items: [
+      {
+        href: '/recruitment/pipeline',
+        labelKey: 'sidebar.pipeline',
+        icon: 'kanban',
+        module: 'pipeline',
+        sub: [
+          { href: '/recruitment/pipeline/kanban', labelKey: 'sidebar.pipelineKanban', icon: 'kanban' },
+          { href: '/recruitment/pipeline/list', labelKey: 'sidebar.pipelineList', icon: 'clipboard' },
+        ],
+      },
+    ],
+  };
+
+  it('keeps an item with sub-items when the user can read its module', () => {
+    const visible = computeVisibleSections([sectionWithSub], () => true, false);
+    expect(visible).toHaveLength(1);
+    expect(visible[0].items[0].sub).toHaveLength(2);
+  });
+
+  it('prunes an item with sub-items when the user cannot read its module (same as a sub-less item)', () => {
+    const visible = computeVisibleSections([sectionWithSub], () => false, false);
+    expect(visible).toHaveLength(0);
+  });
+
+  it('isNavItemActive matches a sub-item href the same way it matches a top-level href', () => {
+    expect(isNavItemActive('/recruitment/pipeline/kanban', '/recruitment/pipeline/kanban')).toBe(true);
+    expect(isNavItemActive('/recruitment/pipeline/kanban/123', '/recruitment/pipeline/kanban')).toBe(true);
+    expect(isNavItemActive('/recruitment/vacancies', '/recruitment/pipeline/kanban')).toBe(false);
   });
 });

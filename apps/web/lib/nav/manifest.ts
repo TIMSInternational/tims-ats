@@ -1,6 +1,11 @@
 import type { Module } from '@tims/shared';
 
-export type NavItem = { readonly href: string; readonly labelKey: string; readonly icon: string; readonly module: Module | null };
+export type NavSubItem = { readonly href: string; readonly labelKey: string; readonly icon: string };
+// `sub` is infrastructure only as of this change — no entry in MANIFESTS below populates it yet, and
+// sub-items inherit their parent's module-gate rather than being independently permission-checked
+// (there is no real case requiring per-sub-item permissions today; add one only when a manifest
+// actually needs it).
+export type NavItem = { readonly href: string; readonly labelKey: string; readonly icon: string; readonly module: Module | null; readonly sub?: readonly NavSubItem[] };
 export type NavSection = { readonly labelKey: string | null; readonly items: readonly NavItem[] };
 export type Shell = 'admin' | 'participant' | 'platform';
 export type RoleManifest = { readonly shell: Shell; readonly landing: string; readonly sections: readonly NavSection[] };
