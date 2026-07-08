@@ -410,7 +410,7 @@ describe('aiInterview.start', () => {
     ).rejects.toMatchObject({ code: 'FORBIDDEN' });
   });
 
-  it('throws FORBIDDEN when voice budget is exhausted', async () => {
+  it('meter-and-bill: proceeds (never throws) when voice budget is exhausted', async () => {
     vi.mocked(aiInterviewRepository.findSessionByCandidateToken).mockResolvedValue({
       id: 'session-1',
       organizationId: 'org-uuid-1',
@@ -429,10 +429,18 @@ describe('aiInterview.start', () => {
     vi.mocked(tenantDb.aiAgentUsageLog.aggregate as unknown as (a: unknown) => Promise<unknown>)
       .mockResolvedValue({ _sum: { costUsd: 55 } });
 
+    vi.mocked(getSignedUrl).mockResolvedValue({
+      signedUrl: 'wss://api.elevenlabs.io/signed-over-budget',
+      conversationId: 'conv-over-budget',
+    });
+    vi.mocked(candidateDb.aiInterviewSession.update as unknown as (a: unknown) => Promise<unknown>)
+      .mockResolvedValue({});
+
+    // Per the owner decision, entitlement enforcement is meter-and-bill and NEVER
+    // hard-blocks — an over-budget org must still get a signed URL, not FORBIDDEN.
     const caller = await makeCaller({ user: undefined });
-    await expect(
-      caller.aiInterview.start({ candidateToken: 'valid-token' }),
-    ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    const result = await caller.aiInterview.start({ candidateToken: 'valid-token' });
+    expect(result).toHaveProperty('signedUrl');
   });
 
   it('returns signedUrl and dynamicVariables (never includes ELEVENLABS_API_KEY)', async () => {
@@ -486,7 +494,7 @@ describe('aiInterview.start', () => {
     ).rejects.toMatchObject({ code: 'NOT_FOUND' });
   });
 
-  it('blocks start when NO config row exists but spend >= $25 (default cap)', async () => {
+  it('meter-and-bill: proceeds when NO config row exists and spend >= $25 (default cap)', async () => {
     vi.mocked(aiInterviewRepository.findSessionByCandidateToken).mockResolvedValue({
       id: 'session-1',
       organizationId: 'org-uuid-1',
@@ -501,14 +509,20 @@ describe('aiInterview.start', () => {
     // No config row → default cap of $25 applies — budget reads use tenantDb.
     vi.mocked(tenantDb.aiAgentOrgConfig.findFirst as unknown as (a: unknown) => Promise<unknown>)
       .mockResolvedValue(null);
-    // Spend exactly at the default cap
+    // Spend exactly at the default cap — must NOT block (meter-and-bill only).
     vi.mocked(tenantDb.aiAgentUsageLog.aggregate as unknown as (a: unknown) => Promise<unknown>)
       .mockResolvedValue({ _sum: { costUsd: 25 } });
 
+    vi.mocked(getSignedUrl).mockResolvedValue({
+      signedUrl: 'wss://api.elevenlabs.io/signed-default-cap',
+      conversationId: 'conv-default-cap',
+    });
+    vi.mocked(candidateDb.aiInterviewSession.update as unknown as (a: unknown) => Promise<unknown>)
+      .mockResolvedValue({});
+
     const caller = await makeCaller({ user: undefined });
-    await expect(
-      caller.aiInterview.start({ candidateToken: 'valid-token' }),
-    ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    const result = await caller.aiInterview.start({ candidateToken: 'valid-token' });
+    expect(result).toHaveProperty('signedUrl');
   });
 
   it('allows start when NO config row exists and spend < $25 (under default cap)', async () => {

@@ -1,0 +1,63 @@
+// packages/db/prisma/schema/entitlement.prisma
+
+model Module {
+  code             String   @id
+  name             String
+  description      String?
+  kind             String // 'core' | 'addon'
+  metered          Boolean  @default(false)
+  unit             String? // 'minutes' | 'screenings' | 'exams' | 'checks'
+  defaultUnitPrice Float?   @map("default_unit_price")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  planModules     PlanModule[]
+  orgEntitlements OrgEntitlement[]
+
+  @@map("modules")
+}
+
+model Plan {
+  code        String   @id
+  name        String
+  description String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  modules PlanModule[]
+
+  @@map("plans")
+}
+
+model PlanModule {
+  id         String @id @default(uuid()) @db.Uuid
+  planCode   String @map("plan_code")
+  moduleCode String @map("module_code")
+  limit      Int?
+
+  plan   Plan   @relation(fields: [planCode], references: [code], onDelete: Cascade)
+  module Module @relation(fields: [moduleCode], references: [code], onDelete: Cascade)
+
+  @@unique([planCode, moduleCode])
+  @@map("plan_modules")
+}
+
+model OrgEntitlement {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  moduleCode     String   @map("module_code")
+  enabled        Boolean  @default(true)
+  source         String // 'plan' | 'addon' | 'override'
+  limit          Int?
+  unitPrice      Float?   @map("unit_price")
+  activatedAt    DateTime @default(now()) @map("activated_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  module       Module       @relation(fields: [moduleCode], references: [code], onDelete: Cascade)
+
+  @@unique([organizationId, moduleCode])
+  @@index([organizationId])
+  @@map("org_entitlements")
+}

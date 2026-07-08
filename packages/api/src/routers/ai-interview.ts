@@ -21,6 +21,7 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import type { Prisma } from '@tims/db';
+import { logger } from '@tims/shared';
 import { assertAiInterviewEnabled, isAiInterviewEnabled, AI_INTERVIEW_DEFAULT_MAX_MINUTES } from '../services/ai-interview-access.service';
 // tenantDb is used by staff-path queries (budget check reads) that run inside a
 // tenant-scoped request context. systemDb (aliased as candidateDb here) is used for
@@ -172,13 +173,14 @@ export const aiInterviewRouter = router({
    * signed WebSocket URL and return it alongside the dynamic variables the client
    * must forward to ElevenLabs.
    *
-   * Gates (fail-closed, evaluated in this order):
-   *   1. ElevenLabs must be configured (API key + agent id present).
-   *   2. Token must resolve to an existing session.
-   *   3. Session must be pending (not started / completed / expired).
-   *   4. Candidate must have consented (consentedAt is non-null).
-   *   5. Monthly voice budget must not be exhausted.
-   *   6. An agent id must be determinable.
+   * Gates (evaluated in this order):
+   *   1. ElevenLabs must be configured (API key + agent id present). Fail-closed.
+   *   2. Token must resolve to an existing session. Fail-closed.
+   *   3. Session must be pending (not started / completed / expired). Fail-closed.
+   *   4. Candidate must have consented (consentedAt is non-null). Fail-closed.
+   *   5. Monthly voice budget — meter-and-bill, NON-BLOCKING. Never throws; logs a
+   *      structured warning when month-to-date spend is over the soft cap.
+   *   6. An agent id must be determinable. Fail-closed.
    *
    * PUBLIC — token-authorised; no Supabase login required.
    */
@@ -218,9 +220,18 @@ export const aiInterviewRouter = router({
         });
       }
 
-      // Gate 5: Monthly voice budget check (fail-closed).
-      // Effective cap = per-org config.monthlyBudget if set, otherwise DEFAULT_VOICE_BUDGET_USD.
-      // An unconfigured org is never unlimited — it gets the conservative default.
+      // Gate 5 (meter-and-bill, non-blocking): monthly voice spend vs soft cap.
+      // Entitlement enforcement NEVER hard-blocks (owner decision, 2026-07-08) — the
+      // interview always proceeds regardless of budget/usage. We still compute the
+      // month-to-date spend and, when it is over the soft cap, emit a structured
+      // non-blocking log so ops/billing has visibility; per-session cost continues to
+      // be recorded in aiAgentUsageLog downstream by the webhook path.
+      // Effective cap = per-org config.monthlyBudget if set, otherwise
+      // DEFAULT_VOICE_BUDGET_USD (soft threshold for the metering log only).
+      // NOTE: EffectiveEntitlement.limit for `ai_voice_interview` is denominated in
+      // MINUTES (and may be null = unlimited), while this aggregate is in USD spend —
+      // they are not directly comparable. Precise minute-based entitlement metering
+      // and invoice line-item generation from this signal is Slice 2.
       const now = new Date();
       const config = await db.aiAgentOrgConfig.findFirst({
         where: { organizationId: session.organizationId, agent: { slug: 'ai-voice-interview' } },
@@ -239,10 +250,16 @@ export const aiInterviewRouter = router({
       });
       const totalSpend = usageAgg._sum.costUsd ?? 0;
       if (totalSpend >= effectiveCap) {
-        throw new TRPCError({
-          code: 'FORBIDDEN',
-          message: 'AI screening unavailable — budget reached',
-        });
+        logger.warn(
+          {
+            organizationId: session.organizationId,
+            module: 'ai_voice_interview',
+            monthlyCapUsd: effectiveCap,
+            monthToDateSpendUsd: totalSpend,
+            overageUsd: totalSpend - effectiveCap,
+          },
+          'ai-interview: monthly voice spend over soft cap — meter-and-bill, interview proceeds',
+        );
       }
 
       // Gate 6: Resolve the ElevenLabs agent id (session-specific → env fallback).

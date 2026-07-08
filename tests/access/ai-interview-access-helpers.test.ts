@@ -20,8 +20,11 @@ describe('ai-interview-access.service impure loaders', () => {
     expect(src).toContain('organizationId');
     expect(src).toContain('AI_VOICE_INTERVIEW_SLUG');
   });
-  it('assert throws FORBIDDEN when off', () => {
-    expect(src).toContain("code: 'FORBIDDEN'");
+  it('assert gates via the ai_voice_interview entitlement (fail-closed, delegated to requireEntitlement)', () => {
+    // Task 5: enablement moved from a local FORBIDDEN throw on aiAgentOrgConfig.enabled
+    // to requireEntitlement — it throws FORBIDDEN (entitlement_missing:<code>) itself.
+    expect(src).toMatch(/import\s+\{[^}]*\brequireEntitlement\b[^}]*\}\s+from\s+'\.\/entitlement\.service'/);
+    expect(src).toContain("requireEntitlement(organizationId, 'ai_voice_interview')");
     expect(src).toContain('isEnabledConfig');
   });
   it('selects the cap + billing columns it returns', () => {

@@ -3038,5 +3038,9 @@
     "reconnecting": "Reconectando…",
     "interviewer": "Entrevistador IA",
     "timeUp": "Se acabó el tiempo — finalizando la entrevista."
+  },
+  "entitlements": {
+    "notIncluded": "No incluido en tu plan",
+    "contactSales": "Contactar a ventas para activar"
   }
 }

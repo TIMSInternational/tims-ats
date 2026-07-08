@@ -1,4 +1,5 @@
 import { PrismaClient, OrgPlan, SubscriptionStatus, InvoiceStatus, InvitationType, InvitationStatus, Gender, Ethnicity, DisabilityStatus } from '@prisma/client';
+import { seedEntitlementCatalog, provisionInvu } from './seed-entitlements';
 
 const db = new PrismaClient();
 
@@ -42,6 +43,12 @@ async function main() {
     },
   });
   console.log(`[Org] ${org.name}`);
+
+  await seedEntitlementCatalog(db);
+  console.log('[Entitlements] Module catalog + ats-base plan seeded');
+
+  const { orgId: invuOrgId } = await provisionInvu(db);
+  console.log(`[Org] INVU provisioned (${invuOrgId}) — ats-base + ai_voice_interview add-on, ai_screening capped at 5000`);
 
   const company = await db.company.findFirst({ where: { organizationId: org.id } })
     ?? await db.company.create({

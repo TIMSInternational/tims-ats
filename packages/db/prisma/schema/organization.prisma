@@ -28,32 +28,33 @@ enum OrgPlan {
 }
 
 model Organization {
-  id          String   @id @default(uuid()) @db.Uuid
-  name        String
-  slug        String   @unique
-  domain      String?  @unique
-  logo        String?
-  plan        OrgPlan  @default(trial)
-  settings    Json     @default("{}")
-  billingEmail String? @map("billing_email")
-  isActive    Boolean  @default(true) @map("is_active")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-  deletedAt   DateTime? @map("deleted_at")
+  id           String    @id @default(uuid()) @db.Uuid
+  name         String
+  slug         String    @unique
+  domain       String?   @unique
+  logo         String?
+  plan         OrgPlan   @default(trial)
+  settings     Json      @default("{}")
+  billingEmail String?   @map("billing_email")
+  isActive     Boolean   @default(true) @map("is_active")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at")
 
-  companies     Company[]
-  users         User[]
-  roles         Role[]
-  featureFlags       FeatureFlag[]
-  auditLogs          AuditLog[]
-  vacancies          Vacancy[]
-  subscription       Subscription?
-  invoices           Invoice[]
-  billingProfile     BillingProfile?
-  invitations        PlatformInvitation[]
-  aiAgentOrgConfigs    AiAgentOrgConfig[]
-  offers               Offer[]            @relation("OrganizationOffers")
-  aiInterviewSessions  AiInterviewSession[]
+  companies           Company[]
+  users               User[]
+  roles               Role[]
+  featureFlags        FeatureFlag[]
+  auditLogs           AuditLog[]
+  vacancies           Vacancy[]
+  subscription        Subscription?
+  invoices            Invoice[]
+  billingProfile      BillingProfile?
+  invitations         PlatformInvitation[]
+  aiAgentOrgConfigs   AiAgentOrgConfig[]
+  offers              Offer[]              @relation("OrganizationOffers")
+  aiInterviewSessions AiInterviewSession[]
+  entitlements        OrgEntitlement[]
 
   @@map("organizations")
 }
@@ -73,9 +74,9 @@ model Company {
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  businessUnits  BusinessUnit[]
-  vacancies      Vacancy[]
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  businessUnits BusinessUnit[]
+  vacancies     Vacancy[]
 
   @@index([organizationId])
   @@map("companies")
@@ -93,11 +94,11 @@ model BusinessUnit {
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
-  company        Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  parent         BusinessUnit? @relation("UnitHierarchy", fields: [parentId], references: [id])
-  children       BusinessUnit[] @relation("UnitHierarchy")
-  teams          Team[]
-  vacancies      Vacancy[]
+  company         Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  parent          BusinessUnit?      @relation("UnitHierarchy", fields: [parentId], references: [id])
+  children        BusinessUnit[]     @relation("UnitHierarchy")
+  teams           Team[]
+  vacancies       Vacancy[]
   hrbpAssignments UserBusinessUnit[]
 
   @@index([organizationId])
@@ -117,11 +118,11 @@ model Team {
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
-  businessUnit   BusinessUnit @relation(fields: [businessUnitId], references: [id], onDelete: Cascade)
-  leader         User?        @relation("TeamLeader", fields: [leaderId], references: [id])
-  members        UserTeam[]
-  vacancies      Vacancy[]
-  okrs           Okr[]
+  businessUnit BusinessUnit @relation(fields: [businessUnitId], references: [id], onDelete: Cascade)
+  leader       User?        @relation("TeamLeader", fields: [leaderId], references: [id])
+  members      UserTeam[]
+  vacancies    Vacancy[]
+  okrs         Okr[]
 
   @@index([organizationId])
   @@index([businessUnitId])

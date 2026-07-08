@@ -30,6 +30,7 @@ import { candidatePortalRouter } from './routers/candidate-portal';
 import { externalRouter } from './routers/external';
 import { consentRouter } from './routers/consent';
 import { aiInterviewRouter } from './routers/ai-interview';
+import { entitlementRouter } from './routers/entitlement';
 
 export { createContext } from './context';
 export type { TRPCContext } from './context';
@@ -83,6 +84,7 @@ export const appRouter = router({
   notification: notificationRouter,
   platform: platformRouter,
   aiInterview: aiInterviewRouter,
+  entitlement: entitlementRouter,
 });
 
 export const createCaller = createCallerFactory(appRouter);

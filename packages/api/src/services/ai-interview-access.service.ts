@@ -4,7 +4,7 @@
 // covered by static-source tripwires.
 
 import { db as systemDb } from '@tims/db';
-import { TRPCError } from '@trpc/server';
+import { hasEntitlement, requireEntitlement } from './entitlement.service';
 
 /** The single source of truth for the voice-interview agent slug. */
 export const AI_VOICE_INTERVIEW_SLUG = 'ai-voice-interview';
@@ -73,25 +73,47 @@ export async function loadAiInterviewConfig(
   return config;
 }
 
-/** True iff the feature is enabled for the org. */
+/**
+ * True iff the feature is enabled for the org — this is the UI-facing visibility
+ * signal (drives `aiScreenEnabled` in the recruiter Interviews table, which shows
+ * either the "Start AI Screen" action or the disabled/upsell state). Must agree
+ * with `assertAiInterviewEnabled` (the hard runtime gate): the `ai_voice_interview`
+ * `OrgEntitlement` module is the SINGLE enablement switch (toggled by the platform
+ * owner). `aiAgentOrgConfig` (and its `enabled` field / `isEnabledConfig`) supplies
+ * BILLING params only (budget, per-minute price, minute caps) — it does not gate
+ * visibility. Gating on config too previously caused a divergence: an entitled org
+ * with `aiAgentOrgConfig.enabled = false`, or with no config row at all (e.g. org
+ * "INVU"), had the UI button hidden while the server-side mutation still allowed
+ * it. Entitlement-only keeps both gates in agreement.
+ */
 export async function isAiInterviewEnabled(organizationId: string): Promise<boolean> {
-  return isEnabledConfig(await loadAiInterviewConfig(organizationId));
+  return hasEntitlement(organizationId, 'ai_voice_interview');
 }
 
 /**
- * Fail-closed gate. Throws FORBIDDEN when the feature is off for the org;
- * returns the config (so callers reuse billing/cap fields without a 2nd query).
+ * Fail-closed gate. Enablement is decided by the `ai_voice_interview` entitlement
+ * (contract-driven) — `requireEntitlement` throws FORBIDDEN when the org's company
+ * lacks the module. `aiAgentOrgConfig` no longer gates access; it only supplies
+ * billing params (budget, per-minute price, minute caps) once the gate passes.
  */
 export async function assertAiInterviewEnabled(
   organizationId: string,
 ): Promise<AiInterviewConfig> {
+  // Gate: the company must have the ai_voice_interview module entitled (contract-driven).
+  await requireEntitlement(organizationId, 'ai_voice_interview');
+  // Billing params still come from aiAgentOrgConfig (budget, per-minute price, minute caps).
   const config = await loadAiInterviewConfig(organizationId);
-  if (!isEnabledConfig(config)) {
-    throw new TRPCError({
-      code: 'FORBIDDEN',
-      message: 'AI Voice Interview is not enabled for this organization',
-    });
-  }
-  // isEnabledConfig narrowed config to non-null.
-  return config as AiInterviewConfig;
+  return (
+    config ?? {
+      // Non-gating / billing-era vestigial: kept only to satisfy the required
+      // `enabled` field on AiInterviewConfig. Enablement is decided solely by the
+      // entitlement above; no consumer reads `.enabled` off this return.
+      enabled: true,
+      monthlyBudget: null,
+      billableUsdPerMinute: null,
+      addonMonthlyFeeUsd: null,
+      aiInterviewDefaultMaxMinutes: null,
+      aiInterviewMaxMinutesByType: null,
+    }
+  );
 }

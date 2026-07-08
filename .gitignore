@@ -14,6 +14,8 @@ dist/
 .env
 .env.local
 .env.*.local
+# local prod-config backups (may contain real secrets — never track)
+*.prod.bak
 
 # sdd scratch (subagent-driven-development working files)
 .superpowers/
