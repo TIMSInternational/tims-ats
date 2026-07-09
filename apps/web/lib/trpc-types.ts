@@ -70,6 +70,10 @@ export type InterviewBiasIndicator = InterviewBiasResult['biasIndicators'][numbe
 export type EntitlementItem = RouterOutput['platform']['getOrgEntitlements'][number];
 export type EntitlementPlanItem = RouterOutput['platform']['listPlans'][number];
 
+// Usage billing console (Slice 2b)
+export type UsageBillingPreview = RouterOutput['platform']['getUsageBillingPreview'];
+export type UsageBillingLine = UsageBillingPreview['lines'][number];
+
 // Organization — business units & membership (Wave 2.5 slice 7a)
 export type CompanyListItem = RouterOutput['organization']['listCompanies'][number];
 export type BusinessUnitListItem = RouterOutput['organization']['listBusinessUnits'][number];

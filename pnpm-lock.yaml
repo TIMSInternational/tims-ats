@@ -209,6 +209,9 @@ importers:
       '@aws-sdk/client-ses':
         specifier: ^3.1057.0
         version: 3.1057.0
+      '@prisma/client':
+        specifier: ^6.8.2
+        version: 6.8.2(prisma@6.8.2(typescript@5.9.3))(typescript@5.9.3)
       '@supabase/supabase-js':
         specifier: ^2.49.0
         version: 2.106.1

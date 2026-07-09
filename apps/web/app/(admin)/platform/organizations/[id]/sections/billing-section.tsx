@@ -7,6 +7,7 @@ import { trpc } from '../../../../../../lib/trpc';
 import { useI18n } from '../../../../../../lib/i18n';
 import { Skeleton, ErrorState } from '../../../../../../components';
 import { BillingProfileDrawer } from '../../../invoices/billing-drawer';
+import { UsageBillingPanel } from './usage-billing-panel';
 
 function fmtCurrency(value: number, currency = 'USD'): string {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency, minimumFractionDigits: 2 }).format(value);
@@ -151,6 +152,9 @@ export function BillingSection({ organizationId }: { organizationId: string }) {
           </table></div>
         )}
       </div>
+
+      {/* Usage billing */}
+      <UsageBillingPanel orgId={organizationId} />
 
       {showDrawer && <BillingProfileDrawer organizationId={organizationId} onClose={() => setShowDrawer(false)} />}
     </div>

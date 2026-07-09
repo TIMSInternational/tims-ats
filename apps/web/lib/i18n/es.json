@@ -3061,5 +3061,21 @@
     "sourcePlan": "Plan",
     "sourceAddon": "Add-on",
     "sourceOverride": "Override"
+  },
+  "usageBilling": {
+    "title": "Facturacion por uso",
+    "periodLabel": "Periodo",
+    "moduleCol": "Modulo",
+    "usageCol": "Uso",
+    "includedCol": "Incluido",
+    "billableCol": "Facturable",
+    "unitPriceCol": "Precio unitario",
+    "amountCol": "Monto",
+    "subtotal": "Subtotal",
+    "generate": "Generar factura borrador",
+    "generateConfirm": "Esto generara una factura borrador para el periodo seleccionado con base en el uso facturable. Continuar?",
+    "generated": "Factura borrador generada",
+    "noUsage": "No hay uso facturable en este periodo",
+    "emptyPeriod": "Selecciona un periodo para ver el uso"
   }
 }

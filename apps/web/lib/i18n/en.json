@@ -3061,5 +3061,21 @@
     "sourcePlan": "Plan",
     "sourceAddon": "Add-on",
     "sourceOverride": "Override"
+  },
+  "usageBilling": {
+    "title": "Usage billing",
+    "periodLabel": "Period",
+    "moduleCol": "Module",
+    "usageCol": "Usage",
+    "includedCol": "Included",
+    "billableCol": "Billable",
+    "unitPriceCol": "Unit price",
+    "amountCol": "Amount",
+    "subtotal": "Subtotal",
+    "generate": "Generate draft invoice",
+    "generateConfirm": "This will generate a draft invoice for the selected period based on billable usage. Continue?",
+    "generated": "Draft invoice generated",
+    "noUsage": "No billable usage for this period",
+    "emptyPeriod": "Select a period to preview usage"
   }
 }

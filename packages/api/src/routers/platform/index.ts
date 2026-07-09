@@ -12,6 +12,7 @@ import { aiAgentsRouter } from './ai-agents';
 import { systemRouter } from './system';
 import { dataRequestsRouter } from './data-requests';
 import { entitlementsAdminRouter } from './entitlements';
+import { usageBillingRouter } from './usage-billing';
 
 export const platformRouter = mergeRouters(
   dashboardRouter,
@@ -27,4 +28,5 @@ export const platformRouter = mergeRouters(
   systemRouter,
   dataRequestsRouter,
   entitlementsAdminRouter,
+  usageBillingRouter,
 );

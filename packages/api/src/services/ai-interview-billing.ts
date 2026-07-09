@@ -14,7 +14,7 @@ export interface InvoiceLine {
  * noise first (e.g. 0.10+0.20 → 0.30000000000000004; toFixed(10) snaps it
  * back to 0.3000000000 before ceil, giving 0.30 not 0.31).
  */
-function ceilUsd(value: number): number {
+export function ceilUsd(value: number): number {
   return Math.ceil(parseFloat((value * 100).toFixed(10))) / 100;
 }
 
