@@ -12,6 +12,9 @@ export default defineConfig({
       '@tims/ai': resolve(__dirname, 'packages/ai/src/index.ts'),
       // Allow tests to import @trpc/server (hosted under packages/api's node_modules via pnpm)
       '@trpc/server': resolve(__dirname, 'packages/api/node_modules/@trpc/server'),
+      // Allow tests to import @prisma/client directly (e.g. Prisma.PrismaClientKnownRequestError
+      // for P2002 error-shaped mocks), hosted under packages/api's node_modules via pnpm.
+      '@prisma/client': resolve(__dirname, 'packages/api/node_modules/@prisma/client'),
       // `import 'server-only'` throws when imported outside the Next.js server bundler
       // (its default export is a hard `throw`). Alias it to an empty module so the
       // pure, unit-testable core of server-only helpers can be imported under vitest.

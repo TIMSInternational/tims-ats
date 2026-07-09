@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
+import { Prisma } from '@prisma/client';
 import { db } from '@tims/db';
 import { router } from '../../trpc';
 import { platformProcedure } from './_common';
@@ -59,7 +60,18 @@ export const usageBillingRouter = router({
         throw new TRPCError({ code: 'CONFLICT', message: 'draft_invoice_exists' });
       }
 
-      const result = await createUsageInvoice(input.orgId, input.periodStart, input.periodEnd, preview);
+      // Pre-check above is the fast path; the partial unique index
+      // (invoices_org_period_draft_key, migration 20260709000000) is the
+      // race-proof backstop for a concurrent duplicate-draft insert.
+      let result;
+      try {
+        result = await createUsageInvoice(input.orgId, input.periodStart, input.periodEnd, preview);
+      } catch (err) {
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+          throw new TRPCError({ code: 'CONFLICT', message: 'draft_invoice_exists' });
+        }
+        throw err;
+      }
 
       await db.auditLog.create({
         data: {

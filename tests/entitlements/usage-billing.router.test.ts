@@ -10,6 +10,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { Prisma } from '@prisma/client';
 
 vi.mock('../../packages/api/src/services/usage-billing.service', () => ({
   computeUsageBilling: vi.fn(),
@@ -280,6 +281,43 @@ describe('usageBillingRouter — generateUsageInvoice', () => {
         }),
       }),
     );
+  });
+
+  it('rejects with CONFLICT when createUsageInvoice throws a P2002 unique-constraint race', async () => {
+    vi.mocked(organizationExists).mockResolvedValue(true);
+    const preview = {
+      lines: [
+        {
+          moduleCode: 'ai_screening',
+          name: 'AI Screening',
+          unit: 'call',
+          quantity: 200,
+          includedQty: 100,
+          billableQty: 100,
+          unitPrice: 0.5,
+          amountUsd: 50,
+        },
+      ],
+      subtotalUsd: 50,
+    };
+    vi.mocked(computeUsageBilling).mockResolvedValue(preview);
+    vi.mocked(findDraftInvoiceForPeriod).mockResolvedValue(null);
+    vi.mocked(createUsageInvoice).mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'x',
+      }),
+    );
+
+    const caller = await makeCaller();
+
+    await expect(
+      caller.platform.generateUsageInvoice({
+        orgId: ORG_ID,
+        periodStart: PERIOD_START,
+        periodEnd: PERIOD_END,
+      }),
+    ).rejects.toMatchObject({ code: 'CONFLICT', message: 'draft_invoice_exists' });
   });
 
   it('is best-effort on audit logging: an auditLog.create rejection does NOT fail the mutation', async () => {
