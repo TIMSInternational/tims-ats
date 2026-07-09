@@ -3042,5 +3042,24 @@
   "entitlements": {
     "notIncluded": "Not included in your plan",
     "contactSales": "Contact sales to activate"
+  },
+  "entitlementsAdmin": {
+    "title": "Entitlements",
+    "tabLabel": "Entitlements",
+    "planLabel": "Plan",
+    "selectPlan": "Select a plan",
+    "applyPlan": "Apply plan",
+    "applyPlanConfirm": "Applying this plan resets any per-module overrides on the plan's modules back to the plan baseline. Continue?",
+    "moduleCol": "Module",
+    "enabledCol": "Enabled",
+    "limitCol": "Limit",
+    "unitPriceCol": "Unit price",
+    "sourceCol": "Source",
+    "catalogDefault": "Catalog default",
+    "saved": "Entitlement updated",
+    "empty": "No modules found",
+    "sourcePlan": "Plan",
+    "sourceAddon": "Add-on",
+    "sourceOverride": "Override"
   }
 }

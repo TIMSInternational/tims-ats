@@ -3042,5 +3042,24 @@
   "entitlements": {
     "notIncluded": "No incluido en tu plan",
     "contactSales": "Contactar a ventas para activar"
+  },
+  "entitlementsAdmin": {
+    "title": "Entitlements",
+    "tabLabel": "Entitlements",
+    "planLabel": "Plan",
+    "selectPlan": "Selecciona un plan",
+    "applyPlan": "Aplicar plan",
+    "applyPlanConfirm": "Aplicar este plan reinicia los overrides por modulo de los modulos del plan a su linea base. Continuar?",
+    "moduleCol": "Modulo",
+    "enabledCol": "Activado",
+    "limitCol": "Limite",
+    "unitPriceCol": "Precio unitario",
+    "sourceCol": "Origen",
+    "catalogDefault": "Valor por defecto del catalogo",
+    "saved": "Entitlement actualizado",
+    "empty": "No se encontraron modulos",
+    "sourcePlan": "Plan",
+    "sourceAddon": "Add-on",
+    "sourceOverride": "Override"
   }
 }

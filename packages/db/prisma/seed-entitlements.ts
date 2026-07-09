@@ -16,7 +16,7 @@ export const MODULES = [
 ] as const;
 
 // Modules included in the base ATS license.
-const ATS_BASE_MODULES = [
+const ATS_BASE_MODULES: readonly (typeof MODULES)[number]['code'][] = [
   'vacancies', 'candidate_portal', 'ai_screening', 'compliance_matrix',
   'assessments', 'interviews', 'validations',
 ];

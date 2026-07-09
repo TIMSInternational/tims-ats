@@ -44,23 +44,26 @@ import { BillingSection } from './sections/billing-section';
 import { FeaturesSection } from './sections/features-section';
 import { AiSection } from './sections/ai-section';
 import { ActivitySection } from './sections/activity-section';
+import { EntitlementsSection } from './sections/entitlements-section';
 
-const TABS = [
-  { key: 'overview', label: 'Overview' },
-  { key: 'users', label: 'Users' },
-  { key: 'billing', label: 'Billing' },
-  { key: 'features', label: 'Features' },
-  { key: 'ai', label: 'AI' },
-  { key: 'activity', label: 'Activity' },
-] as const;
+const TAB_KEYS = ['overview', 'users', 'billing', 'features', 'ai', 'activity', 'entitlements'] as const;
 
-type TabKey = (typeof TABS)[number]['key'];
+type TabKey = (typeof TAB_KEYS)[number];
 
 export function OrgDetail({ id }: { id: string }) {
   const { t } = useI18n();
   const searchParams = useSearchParams();
   const initialTab = (searchParams.get('tab') as TabKey) || 'overview';
-  const [activeTab, setActiveTab] = useState<TabKey>(TABS.some(t => t.key === initialTab) ? initialTab : 'overview');
+  const TABS: { key: TabKey; label: string }[] = [
+    { key: 'overview', label: 'Overview' },
+    { key: 'users', label: 'Users' },
+    { key: 'billing', label: 'Billing' },
+    { key: 'features', label: 'Features' },
+    { key: 'ai', label: 'AI' },
+    { key: 'activity', label: 'Activity' },
+    { key: 'entitlements', label: t.entitlementsAdmin.tabLabel },
+  ];
+  const [activeTab, setActiveTab] = useState<TabKey>(TAB_KEYS.includes(initialTab) ? initialTab : 'overview');
   const [showEdit, setShowEdit] = useState(false);
   const [showSuspendConfirm, setShowSuspendConfirm] = useState(false);
 
@@ -201,6 +204,7 @@ export function OrgDetail({ id }: { id: string }) {
         {activeTab === 'features' && <FeaturesSection organizationId={id} />}
         {activeTab === 'ai' && <AiSection organizationId={id} />}
         {activeTab === 'activity' && <ActivitySection organizationId={id} />}
+        {activeTab === 'entitlements' && <EntitlementsSection orgId={id} />}
       </div>
 
       {/* Edit modal */}
