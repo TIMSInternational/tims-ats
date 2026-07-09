@@ -88,13 +88,16 @@ describe('recruiter UI gating', () => {
   });
   it('table gates the AI screen button on aiScreenEnabled and offers an upsell', () => {
     expect(table).toContain('aiScreenEnabled');
-    expect(table).toContain('aiScreenUpsell');
+    // Slice 2a.1: the not-entitled branch renders the reusable UpsellNotice
+    // fed by the entitlements upsell copy (replaced the old interviews.aiScreenUpsell* keys).
+    expect(table).toContain('UpsellNotice');
+    expect(table).toContain('entitlements.notIncluded');
     expect(table).not.toContain('style={{');
   });
   it('both locales define the upsell keys', () => {
     for (const dict of [en, es]) {
-      expect(dict.interviews.aiScreenUpsellTitle).toBeTruthy();
-      expect(dict.interviews.aiScreenUpsellBody).toBeTruthy();
+      expect(dict.entitlements.notIncluded).toBeTruthy();
+      expect(dict.entitlements.contactSales).toBeTruthy();
     }
   });
 });

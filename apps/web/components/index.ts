@@ -13,3 +13,4 @@ export { StageBadge } from './stage-badge';
 export { AssessmentBadge } from './assessment-badge';
 export { DiscChart } from './disc-chart';
 export { ActivityTimeline } from './activity-timeline';
+export { UpsellNotice } from './upsell-notice';

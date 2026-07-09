@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useI18n } from '../../../../lib/i18n';
 import { formatDate } from '../../../../lib/format-utils';
-import { DataTable, EmptyState, ErrorState, StatusBadge, CandidateAvatar } from '../../../../components';
+import { DataTable, EmptyState, ErrorState, StatusBadge, CandidateAvatar, UpsellNotice } from '../../../../components';
 import type { InterviewListItem } from '../../../../lib/trpc-types';
 
 interface InterviewTableProps {
@@ -160,15 +160,17 @@ export function InterviewTable({ interviews, isLoading, isError, onRetry, onCanc
                 >
                   {t.interviews.startAiScreen}
                 </button>
-              ) : (
+              ) : aiScreenError ? (
                 <button
                   type="button"
                   disabled
-                  title={aiScreenError ? t.common.error : `${t.interviews.aiScreenUpsellTitle}: ${t.interviews.aiScreenUpsellBody}`}
+                  title={t.common.error}
                   className="h-7 px-2.5 rounded-md text-[11px] text-[#9CA3AF] border border-[#EDEDED] cursor-not-allowed"
                 >
                   {t.interviews.startAiScreen}
                 </button>
+              ) : (
+                <UpsellNotice message={t.entitlements.notIncluded} ctaLabel={t.entitlements.contactSales} />
               )}
               {iv.status === 'scheduled' && (
                 <button
