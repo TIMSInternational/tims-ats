@@ -66,26 +66,32 @@ export const vacancyChannelsRouter = router({
         });
       }
 
-      const channel = await db.publicationChannel.create({
-        data: {
-          organizationId: ctx.user.organizationId,
-          vacancyId: input.vacancyId,
-          channelName: input.channelName,
-          channelType: input.channelType,
-          status: 'published',
-          publishedAt: new Date(),
-        },
-        select: channelSelect,
-      });
-
-      if (vacancy.status !== 'published') {
-        await db.vacancy.update({
-          where: { id: input.vacancyId },
-          data: { status: 'published' },
+      // Codex PR #120 finding #4: the channel-create + conditional vacancy
+      // status-update were two separate writes -- a failure between them could
+      // leave a published channel on a non-published vacancy, or risk a
+      // duplicate channel on client retry. Wrap in one transaction.
+      return db.$transaction(async (tx) => {
+        const channel = await tx.publicationChannel.create({
+          data: {
+            organizationId: ctx.user.organizationId,
+            vacancyId: input.vacancyId,
+            channelName: input.channelName,
+            channelType: input.channelType,
+            status: 'published',
+            publishedAt: new Date(),
+          },
+          select: channelSelect,
         });
-      }
 
-      return channel;
+        if (vacancy.status !== 'published') {
+          await tx.vacancy.update({
+            where: { id: input.vacancyId },
+            data: { status: 'published' },
+          });
+        }
+
+        return channel;
+      });
     }),
 
   unpublish: permissionProcedure('vacancy', 'publish')

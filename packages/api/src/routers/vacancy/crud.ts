@@ -3,7 +3,7 @@ import { router, permissionProcedure } from '../../trpc';
 import { tenantDb as db } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
-import { scopeWhereFor, assertScoped } from '../../access';
+import { scopeWhereFor, assertScoped, buildAccessForUser } from '../../access';
 
 // ---------------------------------------------------------------------------
 // Shared selects — explicit field selection (CLAUDE.md: never return full records)
@@ -233,14 +233,87 @@ export const vacancyCrudRouter = router({
   create: permissionProcedure('vacancy', 'create')
     .input(createVacancyInput)
     .mutation(async ({ ctx, input }) => {
+      const requireApproval = input.settings?.requireApproval ?? false;
+      const autoPublish = input.settings?.autoPublish ?? false;
+
+      // Status-resolution matrix (Codex PR #120 fix wave, finding #2):
+      //   requireApproval=false, autoPublish=false -> created directly as 'approved'
+      //     (skips the draft->pending_approval->approved chain; still needs a manual
+      //     vacancy:publish call to actually go live -- no more draft dead end).
+      //   requireApproval=false, autoPublish=true  -> 'approved' + published in one
+      //     transaction below, gated by an explicit vacancy:publish check.
+      //   requireApproval=true,  autoPublish=false -> 'draft' (unchanged), proceeds
+      //     through submitForApproval/approve.
+      //   requireApproval=true,  autoPublish=true   -> rejected up front: combining an
+      //     approval requirement with an immediate auto-publish is a contradictory
+      //     request in this router (cross-cutting wiring into approve() is deferred).
+      if (requireApproval && autoPublish) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'autoPublish requiere requireApproval en false',
+        });
+      }
+
+      const baseData = {
+        ...input,
+        salary: (input.salary ?? undefined) as Prisma.InputJsonValue | undefined,
+        settings: (input.settings ?? {}) as Prisma.InputJsonValue,
+        organizationId: ctx.user.organizationId,
+        createdBy: ctx.user.id,
+        status: requireApproval ? 'draft' : 'approved',
+      };
+
+      if (autoPublish) {
+        // This mutation is gated only by vacancy:create (see permissionProcedure
+        // above) -- but the autoPublish branch also performs a publish in the same
+        // call, so it must additionally hold vacancy:publish. Otherwise a user who
+        // can create vacancies but not publish them could bypass that control via
+        // this flag (Codex PR #120 finding #1). Check BEFORE the transaction so we
+        // never partially create then fail.
+        const publishAccess = await buildAccessForUser(
+          {
+            id: ctx.user.id,
+            organizationId: ctx.user.organizationId,
+            roles: ctx.user.roles,
+            isPlatformOwner: ctx.user.isPlatformOwner,
+          },
+          'vacancy',
+          'publish',
+        );
+        if (!publishAccess.allowed) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: 'No tiene permiso para publicar vacantes',
+          });
+        }
+
+        return db.$transaction(async (tx) => {
+          const vacancy = await tx.vacancy.create({
+            data: baseData,
+            select: vacancyMutationSelect,
+          });
+
+          await tx.publicationChannel.create({
+            data: {
+              organizationId: ctx.user.organizationId,
+              vacancyId: vacancy.id,
+              channelName: 'Portal de candidatos',
+              channelType: 'internal',
+              status: 'published',
+              publishedAt: new Date(),
+            },
+          });
+
+          return tx.vacancy.update({
+            where: { id: vacancy.id },
+            data: { status: 'published' },
+            select: vacancyMutationSelect,
+          });
+        });
+      }
+
       return db.vacancy.create({
-        data: {
-          ...input,
-          salary: (input.salary ?? undefined) as Prisma.InputJsonValue | undefined,
-          settings: (input.settings ?? {}) as Prisma.InputJsonValue,
-          organizationId: ctx.user.organizationId,
-          createdBy: ctx.user.id,
-        },
+        data: baseData,
         select: vacancyMutationSelect,
       });
     }),

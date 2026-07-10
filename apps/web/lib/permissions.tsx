@@ -37,6 +37,8 @@ interface PermissionsContextValue {
   isLoading: boolean;
   /** True for platform owner / super_admin — bypasses all module gates. */
   isPrivileged: boolean;
+  /** The signed-in user's id, or null while session info is still loading. */
+  userId: string | null;
 }
 
 const PermissionsContext = createContext<PermissionsContextValue>({
@@ -45,6 +47,7 @@ const PermissionsContext = createContext<PermissionsContextValue>({
   roleLabel: '',
   isLoading: false,
   isPrivileged: false,
+  userId: null,
 });
 
 export function PermissionsProvider({
@@ -100,7 +103,9 @@ export function PermissionsProvider({
       : ROLE_PRECEDENCE.find((r) => roles.includes(r));
     const roleLabel = top ? t.roles[top] : '';
 
-    return { can, roles, roleLabel, isLoading, isPrivileged };
+    const userId = data?.user?.id ?? null;
+
+    return { can, roles, roleLabel, isLoading, isPrivileged, userId };
   }, [data, isLoading, isError, isPlatformOwner, t]);
 
   return (

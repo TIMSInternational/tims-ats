@@ -18,7 +18,7 @@ export const monitoringRouter = router({
       openAlerts,
     ] = await Promise.all([
       db.user.count({ where: { organizationId: orgId, isActive: true } }),
-      db.vacancy.count({ where: { organizationId: orgId, status: 'open' } }),
+      db.vacancy.count({ where: { organizationId: orgId, status: { in: ['approved', 'published'] }, deletedAt: null } }),
       db.salaryAdjustment.count({ where: { organizationId: orgId, status: 'pending' } }),
       db.survey.count({ where: { organizationId: orgId, status: 'active' } }),
       db.alert.count({ where: { organizationId: orgId, status: 'active' } }),

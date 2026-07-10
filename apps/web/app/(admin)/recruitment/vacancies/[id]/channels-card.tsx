@@ -1,7 +1,11 @@
 'use client';
 
+import { useState } from 'react';
 import { useI18n } from '../../../../../lib/i18n';
 import { formatRelativeTime } from '../../../../../lib/format-utils';
+import { trpc } from '../../../../../lib/trpc';
+import { toast } from '../../../../../lib/toast';
+import { AddChannelModal } from './add-channel-modal';
 
 interface ChannelStats {
   applications?: number;
@@ -19,6 +23,8 @@ interface Channel {
 }
 
 interface ChannelsCardProps {
+  vacancyId: string;
+  vacancyStatus: string;
   channels: Channel[];
 }
 
@@ -32,14 +38,35 @@ const CHANNEL_COLORS: Record<string, { bg: string; text: string }> = {
   other: { bg: 'bg-gray-500', text: '?' },
 };
 
-export function ChannelsCard({ channels }: ChannelsCardProps) {
+export function ChannelsCard({ vacancyId, vacancyStatus, channels }: ChannelsCardProps) {
   const { t } = useI18n();
+  const utils = trpc.useUtils();
+  const [showAdd, setShowAdd] = useState(false);
+
+  const canPublish = vacancyStatus === 'approved' || vacancyStatus === 'published';
+
+  const publish = trpc.vacancy.publish.useMutation({
+    onSuccess: () => {
+      utils.vacancy.getById.invalidate({ id: vacancyId });
+      utils.vacancy.list.invalidate();
+      setShowAdd(false);
+      toast(t.vacancies.addChannelSuccess, { type: 'success' });
+    },
+    onError: (err) => { toast(err.message, { type: 'error' }); },
+  });
 
   return (
     <div className="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
       <div className="flex justify-between items-center mb-4">
         <h3 className="text-[14px] font-semibold text-[#1F114C]">{t.vacancies.channels}</h3>
-        <button className="text-[12px] text-[#DD0C15] font-medium">+ {t.vacancies.addChannel}</button>
+        <button
+          onClick={() => setShowAdd(true)}
+          disabled={!canPublish}
+          title={canPublish ? undefined : t.vacancies.approveBeforePublish}
+          className="text-[12px] text-[#DD0C15] font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          + {t.vacancies.addChannel}
+        </button>
       </div>
       <div className="space-y-2">
         {channels.map((ch) => {
@@ -87,6 +114,14 @@ export function ChannelsCard({ channels }: ChannelsCardProps) {
           );
         })}
       </div>
+
+      {showAdd && (
+        <AddChannelModal
+          onConfirm={(channelName, channelType) => publish.mutate({ vacancyId, channelName, channelType })}
+          onClose={() => setShowAdd(false)}
+          isPending={publish.isPending}
+        />
+      )}
     </div>
   );
 }

@@ -3,7 +3,8 @@ import { router, permissionProcedure } from '../../trpc';
 import { tenantDb as db } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
-import { scopeWhereFor, assertScoped } from '../../access';
+import { scopeWhereFor, assertScoped, buildAccessForUser, createAnchorLoader } from '../../access';
+import { filterStaffRoleSlugs } from '@tims/shared';
 
 // ---------------------------------------------------------------------------
 // Shared selects
@@ -44,6 +45,69 @@ export const vacancyApprovalsRouter = router({
       });
       if (!vacancy) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Vacante no encontrada o no esta en borrador' });
+      }
+
+      // Validate every approverId server-side (Codex PR #120 finding #3): without
+      // this, a vacancy can get assigned to a nonexistent/inactive/wrong-org user,
+      // or one who doesn't hold vacancy:approve, silently stuck in
+      // pending_approval forever. Reject the WHOLE submission if any ID fails.
+      const approvers = await db.user.findMany({
+        where: { id: { in: input.approverIds }, organizationId: ctx.user.organizationId, isActive: true },
+        select: { id: true, userRoles: { select: { role: { select: { slug: true } } } } },
+      });
+      const approversById = new Map(approvers.map((u) => [u.id, u]));
+
+      for (const approverId of input.approverIds) {
+        const approver = approversById.get(approverId);
+        if (!approver) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Uno o mas aprobadores no son validos (inactivo, de otra organizacion, o inexistente)',
+          });
+        }
+        const roles = filterStaffRoleSlugs(approver.userRoles.map((ur) => ur.role.slug));
+        const approverAccess = await buildAccessForUser(
+          { id: approver.id, organizationId: ctx.user.organizationId, roles, isPlatformOwner: false },
+          'vacancy',
+          'approve',
+        );
+        if (!approverAccess.allowed) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Uno o mas aprobadores no tienen permiso para aprobar vacantes',
+          });
+        }
+
+        // Codex PR #120 round-2 re-review: the check above only confirms the
+        // approver holds vacancy:approve at the MODULE level -- vacancy:approve can
+        // be a scope-limited grant (own < team < unit < company < organization), so
+        // a team-scoped approver could still be assigned to a vacancy outside their
+        // scope. approve() enforces per-vacancy scope via assertScoped and would
+        // reject them later, leaving the vacancy stuck in pending_approval forever
+        // (the exact failure mode finding #3 was meant to close, one level down).
+        // Probe THIS vacancy against the APPROVER's own access, not the caller's.
+        const approverAccessContext = {
+          allowed: true as const,
+          scope: approverAccess.scope,
+          roles: approverAccess.roles,
+          anchors: createAnchorLoader(ctx.user.organizationId, approverId),
+        };
+        try {
+          await assertScoped('vacancy', input.id, approverAccessContext, approverId, ctx.user.organizationId);
+        } catch (err) {
+          // assertScoped throws NOT_FOUND specifically for scope denial (see
+          // scoped-probe.ts) — translate only that into a submission-level
+          // rejection. Any other error (DB failure, internal bug) must propagate
+          // unchanged rather than being silently reported as an out-of-scope
+          // approver, which would mask real failures.
+          if (err instanceof TRPCError && err.code === 'NOT_FOUND') {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: 'Uno o mas aprobadores no tienen esta vacante dentro de su alcance',
+            });
+          }
+          throw err;
+        }
       }
 
       return db.$transaction(async (tx) => {
@@ -89,21 +153,28 @@ export const vacancyApprovalsRouter = router({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'No hay aprobacion pendiente para este usuario' });
       }
 
-      await db.vacancyApproval.update({
-        where: { id: approval.id },
-        data: { status: 'approved', comment: input.comment, decidedAt: new Date() },
-      });
-
-      const pendingCount = await db.vacancyApproval.count({
-        where: { vacancyId: input.id, status: 'pending' },
-      });
-
-      if (pendingCount === 0) {
-        await db.vacancy.update({
-          where: { id: input.id },
-          data: { status: 'approved' },
+      // Codex PR #120 finding #5: the approval-update + pending-count +
+      // vacancy-status-update sequence was three separate writes -- a failure
+      // between them could leave the vacancy's status inconsistent with its
+      // approvals. Wrap in one transaction; the final read stays outside (it's a
+      // read, and reflects whatever the transaction committed).
+      await db.$transaction(async (tx) => {
+        await tx.vacancyApproval.update({
+          where: { id: approval.id },
+          data: { status: 'approved', comment: input.comment, decidedAt: new Date() },
         });
-      }
+
+        const pendingCount = await tx.vacancyApproval.count({
+          where: { vacancyId: input.id, status: 'pending' },
+        });
+
+        if (pendingCount === 0) {
+          await tx.vacancy.update({
+            where: { id: input.id },
+            data: { status: 'approved' },
+          });
+        }
+      });
 
       return db.vacancy.findUniqueOrThrow({
         where: { id: input.id },

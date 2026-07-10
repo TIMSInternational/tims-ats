@@ -104,7 +104,9 @@ export default function VacancyDetailPage({ params }: { params: Promise<{ id: st
           <div className="w-full md:flex-[65] space-y-4">
             <GeneralInfo vacancy={v} />
             {v.jobProfile && <JobProfileCard jobProfile={v.jobProfile} />}
-            {v.channels.length > 0 && <ChannelsCard channels={v.channels} />}
+            {v.status !== 'draft' && v.status !== 'pending_approval' && (
+              <ChannelsCard vacancyId={id} vacancyStatus={v.status} channels={v.channels} />
+            )}
           </div>
 
           {/* Right Column 35% */}
@@ -116,7 +118,9 @@ export default function VacancyDetailPage({ params }: { params: Promise<{ id: st
               isError={stats.isError}
             />
             <SlaCard vacancy={v} />
-            {v.approvals.length > 0 && <ApprovalChain approvals={v.approvals} />}
+            {(v.approvals.length > 0 || v.status === 'draft') && (
+              <ApprovalChain vacancyId={id} vacancyStatus={v.status} approvals={v.approvals} />
+            )}
           </div>
         </div>
       </div>
