@@ -71,6 +71,7 @@
     "integrations": "Integraciones",
     "billing": "Facturacion",
     "businessUnits": "Unidades de Negocio",
+    "branding": "Marca",
     "commandCenter": "Command Center",
     "assessments": "Evaluaciones",
     "myHiring": "Mi Reclutamiento",
@@ -1984,6 +1985,16 @@
     "remindComingSoon": "Recordar: próximamente",
     "noPendingScorecards": "Sin scorecards pendientes"
   },
+  "setupChecklist": {
+    "title": "Lista de configuración inicial",
+    "hideForNow": "Ocultar por ahora",
+    "goTo": "Ir",
+    "companyStructureReady": "Estructura organizacional lista",
+    "teamInvited": "Invita a tu equipo",
+    "brandingSet": "Configura la marca de tu portal de candidatos",
+    "firstVacancyPosted": "Publica tu primera vacante",
+    "firstVacancyPublished": "Publícala"
+  },
   "health": {
     "title": "Salud del Sistema",
     "latencyUnavailable": "Telemetria de latencia no disponible",
@@ -2796,6 +2807,19 @@
     "cancel": "Cancelar",
     "assigned": "Usuario asignado a la unidad",
     "removed": "Usuario removido de la unidad"
+  },
+  "branding": {
+    "breadcrumbParent": "Configuracion",
+    "title": "Marca",
+    "description": "Configura el logo que se muestra en tu organizacion.",
+    "logoLabel": "URL del logo",
+    "logoPlaceholder": "https://ejemplo.com/logo.png",
+    "logoHint": "Pega la URL de una imagen alojada publicamente (PNG, JPG o SVG).",
+    "previewAlt": "Vista previa del logo",
+    "previewError": "No se pudo cargar la imagen",
+    "noLogo": "Sin logo configurado",
+    "invalidUrl": "Ingresa una URL valida (http:// o https://)",
+    "saved": "Logo actualizado"
   },
   "committee": {
     "committeeTitle": "Comite de Calibracion",

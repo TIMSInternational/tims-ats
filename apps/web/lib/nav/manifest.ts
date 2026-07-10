@@ -65,6 +65,7 @@ const SETTINGS: NavSection = {
   labelKey: null,
   items: [
     { href: '/settings/business-units', labelKey: 'sidebar.businessUnits', icon: 'team', module: 'user' },
+    { href: '/settings/branding', labelKey: 'sidebar.branding', icon: 'image', module: 'organization' },
     { href: '/settings/billing', labelKey: 'sidebar.billing', icon: 'dollar', module: 'billing' },
     { href: '/settings/integrations', labelKey: 'sidebar.integrations', icon: 'settings', module: 'integration' },
   ],

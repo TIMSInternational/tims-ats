@@ -1,6 +1,7 @@
 import { createSupabaseServerClient } from '@tims/auth/server';
 import { NextResponse } from 'next/server';
 import { db } from '@tims/db';
+import { provisionOrgDefaults, provisionOrgEntitlements } from '@tims/api';
 import { isSafePortalNext } from '../../../lib/portal-auth';
 
 async function isPlatformOwnerEmail(email: string): Promise<boolean> {
@@ -84,6 +85,12 @@ export async function GET(request: Request) {
           billingEmail: supabaseUser.email!,
         },
       });
+
+      // Default Company + BusinessUnit + Team + starter entitlements bundle,
+      // so a brand-new org is immediately usable instead of an empty shell
+      // that needs manual setup first (Sprint 1.2 onboarding automation).
+      await provisionOrgDefaults(tx, org.id, companyName);
+      await provisionOrgEntitlements(tx, org.id);
 
       // Create default super_admin role for the org
       const role = await tx.role.create({

@@ -15,8 +15,11 @@ export const MODULES = [
   { code: 'custom_reports',     name: 'Reportes personalizados',kind: 'addon', metered: false, unit: null,        defaultUnitPrice: null },
 ] as const;
 
-// Modules included in the base ATS license.
-const ATS_BASE_MODULES: readonly (typeof MODULES)[number]['code'][] = [
+// Modules included in the base ATS license. Exported so callers that must
+// stay in lockstep with this catalog (e.g. org-provisioning's test asserting
+// no addon-kind module is ever granted) can import the real list instead of
+// hardcoding a duplicate that could drift.
+export const ATS_BASE_MODULES: readonly (typeof MODULES)[number]['code'][] = [
   'vacancies', 'candidate_portal', 'ai_screening', 'compliance_matrix',
   'assessments', 'interviews', 'validations',
 ];

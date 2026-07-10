@@ -5,6 +5,12 @@ export const createOrganizationSchema = z.object({
   slug: z.string().min(2).max(50).regex(/^[a-z0-9-]+$/, 'Solo letras minusculas, numeros y guiones'),
   domain: z.string().optional(),
   billingEmail: z.string().email().optional(),
+  // z.string().url() alone accepts any URL scheme (e.g. javascript:, data:) —
+  // restrict to http/https server-side too (the branding page already does
+  // this client-side, but the API must not rely on that alone).
+  logo: z.string().url().max(500).refine((v) => /^https?:\/\//i.test(v), {
+    message: 'El logo debe ser una URL http/https',
+  }).optional(),
 });
 
 export const updateOrganizationSchema = createOrganizationSchema.partial();

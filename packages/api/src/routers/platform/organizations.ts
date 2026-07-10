@@ -4,6 +4,7 @@ import { db, SubscriptionStatus, OrgPlan, InvitationStatus, InvoiceStatus } from
 import { TRPCError } from '@trpc/server';
 import { notify } from '../../lib/notify';
 import { platformProcedure } from './_common';
+import { provisionOrgDefaults, provisionOrgEntitlements } from '../../services/org-provisioning';
 
 export const organizationsRouter = router({
   getOrganizationKpis: platformProcedure.query(async () => {
@@ -118,6 +119,16 @@ export const organizationsRouter = router({
             billingEmail: input.billingEmail || input.adminEmail,
           },
         });
+
+        // Default Company + BusinessUnit + Team + starter entitlements bundle,
+        // so a platform-owner-provisioned org is immediately usable instead of
+        // an empty shell that needs manual setup first (Sprint 1.2 onboarding
+        // automation). Applies regardless of the legacy OrgPlan value, same
+        // precedent as INVU's `provisionInvu` (professional plan, full ats-base
+        // bundle) — this is a sane starter default, fully operator-editable
+        // afterward via the platform entitlements admin UI.
+        await provisionOrgDefaults(tx, org.id, input.name);
+        await provisionOrgEntitlements(tx, org.id);
 
         const role = await tx.role.create({
           data: { organizationId: org.id, name: 'Super Administrador', slug: 'super_admin', isSystem: true },

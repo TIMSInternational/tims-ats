@@ -10,6 +10,52 @@ import {
   createTeamSchema,
 } from '@tims/shared';
 
+// Setup-checklist widget (first-login "what to do first" prompt, Sprint 1.2
+// Task 2). The 5 derived booleans are always read live — NOT cached.
+// Whole-branch review found the original per-org 60s cache had no
+// invalidation on any of the write paths that flip these booleans
+// (organization.update's logo, vacancy create/publish, user creation), so
+// a completed item could stay "incomplete" for up to 60s, directly
+// contradicting the plan's "reflects it without more than the app's normal
+// query invalidation" acceptance criterion. These are 1 findUnique + 3
+// counts on organizationId-indexed columns — cheap enough that correctness
+// beats a cache here; wiring invalidation into 3 separate write paths
+// would add more surface area (and more ways to silently miss one) than a
+// live read costs.
+const SETUP_STATUS_REOPEN_AFTER_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+interface SetupChecklistItems {
+  companyStructureReady: boolean;
+  teamInvited: boolean;
+  brandingSet: boolean;
+  firstVacancyPosted: boolean;
+  firstVacancyPublished: boolean;
+}
+
+async function loadSetupChecklistItems(organizationId: string): Promise<SetupChecklistItems> {
+  const [org, companyCount, userCount, vacancyCount, publishedVacancyCount] = await Promise.all([
+    db.organization.findUnique({ where: { id: organizationId }, select: { logo: true } }),
+    // Live check, NOT hardcoded true: provisionOrgDefaults (Sprint 1.2 Task 1)
+    // guarantees a Company for every org created from this sprint onward, but
+    // any org created BEFORE Task 1 shipped (e.g. INVU, already live in prod)
+    // has no such guarantee — a hardcoded true would silently misreport
+    // "ready" for those orgs. This count is one more entry in the existing
+    // parallel query, on an organizationId-indexed table.
+    db.company.count({ where: { organizationId } }),
+    db.user.count({ where: { organizationId } }),
+    db.vacancy.count({ where: { organizationId, deletedAt: null } }),
+    db.vacancy.count({ where: { organizationId, status: 'published', deletedAt: null } }),
+  ]);
+
+  return {
+    companyStructureReady: companyCount > 0,
+    teamInvited: userCount > 1,
+    brandingSet: org?.logo != null,
+    firstVacancyPosted: vacancyCount > 0,
+    firstVacancyPublished: publishedVacancyCount > 0,
+  };
+}
+
 export const organizationRouter = router({
   // Get current organization
   getCurrent: protectedProcedure.query(async ({ ctx }) => {
@@ -186,4 +232,50 @@ export const organizationRouter = router({
       }
       return { success: true };
     }),
+
+  // ── First-login "Setup Checklist" widget (Sprint 1.2 Task 2) ─────────────
+  getSetupStatus: permissionProcedure('organization', 'read').query(async ({ ctx }) => {
+    const organizationId = ctx.user.organizationId;
+    const [items, currentUser] = await Promise.all([
+      loadSetupChecklistItems(organizationId),
+      db.user.findUnique({
+        where: { id: ctx.user.id },
+        select: { setupChecklistDismissedAt: true },
+      }),
+    ]);
+
+    const allComplete = Object.values(items).every(Boolean);
+    const dismissedAt = currentUser?.setupChecklistDismissedAt ?? null;
+
+    // Auto re-show after 7 days if the checklist is still incomplete — a
+    // read-time projection only, never mutates the stored dismissal.
+    const isStale =
+      dismissedAt !== null &&
+      !allComplete &&
+      Date.now() - dismissedAt.getTime() > SETUP_STATUS_REOPEN_AFTER_MS;
+
+    return {
+      items,
+      allComplete,
+      dismissedAt: isStale ? null : dismissedAt?.toISOString() ?? null,
+    };
+  }),
+
+  dismissSetupChecklist: protectedProcedure.mutation(async ({ ctx }) => {
+    // Own-record write, NOT gated on organization:update — this is a per-user
+    // UI preference (dismiss my own checklist), not an org-level mutation.
+    // Whole-branch review caught that gating it on organization:update broke
+    // "Hide for now" for hr_admin, who the widget is explicitly shown to but
+    // who holds organization:read only (org-config is read-only for hr_admin
+    // by deliberate product design — see seed-access-matrix.ts). Matches the
+    // same protectedProcedure "own record" convention already used by
+    // user.ts's updateProfile. ctx.user.id is the authenticated caller (never
+    // input-driven), scoped by tenantDb's RLS to ctx.user.organizationId.
+    await db.user.update({
+      where: { id: ctx.user.id },
+      data: { setupChecklistDismissedAt: new Date() },
+      select: { id: true },
+    });
+    return { success: true };
+  }),
 });

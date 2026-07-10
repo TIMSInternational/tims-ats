@@ -51,6 +51,7 @@ export type { WebhookResult } from './services/billing-webhook.service';
 export { verifyWebhookSignature } from './integrations/elevenlabs';
 export { aiInterviewService } from './services/ai-interview.service';
 export type { TranscriptTurn } from './services/ai-interview.service';
+export { provisionOrgDefaults, provisionOrgEntitlements } from './services/org-provisioning';
 
 export const appRouter = router({
   auth: authRouter,

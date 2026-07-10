@@ -20,6 +20,7 @@ model User {
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
   deletedAt        DateTime? @map("deleted_at")
+  setupChecklistDismissedAt DateTime? @map("setup_checklist_dismissed_at")
 
   organization     Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   userRoles        UserRole[]

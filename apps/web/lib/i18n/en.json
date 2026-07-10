@@ -71,6 +71,7 @@
     "integrations": "Integrations",
     "billing": "Billing",
     "businessUnits": "Business Units",
+    "branding": "Branding",
     "commandCenter": "Command Center",
     "assessments": "Assessments",
     "myHiring": "My Hiring",
@@ -1984,6 +1985,16 @@
     "remindComingSoon": "Remind: coming soon",
     "noPendingScorecards": "No pending scorecards"
   },
+  "setupChecklist": {
+    "title": "Setup Checklist",
+    "hideForNow": "Hide for now",
+    "goTo": "Go",
+    "companyStructureReady": "Company structure ready",
+    "teamInvited": "Invite your team",
+    "brandingSet": "Set your candidate-portal branding",
+    "firstVacancyPosted": "Post your first vacancy",
+    "firstVacancyPublished": "Publish it"
+  },
   "health": {
     "title": "System Health",
     "latencyUnavailable": "Latency telemetry unavailable",
@@ -2796,6 +2807,19 @@
     "cancel": "Cancel",
     "assigned": "User assigned to unit",
     "removed": "User removed from unit"
+  },
+  "branding": {
+    "breadcrumbParent": "Settings",
+    "title": "Branding",
+    "description": "Configure the logo shown for your organization.",
+    "logoLabel": "Logo URL",
+    "logoPlaceholder": "https://example.com/logo.png",
+    "logoHint": "Paste the URL of a publicly hosted image (PNG, JPG or SVG).",
+    "previewAlt": "Logo preview",
+    "previewError": "Could not load the image",
+    "noLogo": "No logo configured",
+    "invalidUrl": "Enter a valid URL (http:// or https://)",
+    "saved": "Logo updated"
   },
   "committee": {
     "committeeTitle": "Calibration Committee",

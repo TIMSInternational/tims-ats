@@ -7,6 +7,7 @@ import { TRPCError } from '@trpc/server';
 import { sendEmail } from '../../lib/ses';
 import { randomUUID } from 'crypto';
 import { platformProcedure } from './_common';
+import { provisionOrgDefaults, provisionOrgEntitlements } from '../../services/org-provisioning';
 
 const INVITATION_TYPE = z.enum(['org_admin', 'user']);
 const INVITATION_STATUS = z.enum(['pending', 'sent', 'accepted', 'expired', 'revoked']);
@@ -87,6 +88,17 @@ export const invitationsRouter = router({
             billingEmail: input.email,
           },
         });
+
+        // Sprint 1.2 onboarding automation: this is a THIRD org-creation path
+        // (alongside self-serve signup and platform.createOrganization) that
+        // Codex's whole-branch adversarial review caught missing this entirely
+        // — the org exists in the DB the instant this mutation runs (before
+        // the invitee ever accepts), so it needs the same default Company/
+        // BusinessUnit/Team + starter entitlements bundle or it's an empty
+        // shell exactly like the two paths this sprint fixed.
+        await provisionOrgDefaults(tx, org.id, input.organizationName);
+        await provisionOrgEntitlements(tx, org.id);
+
         await tx.role.create({
           data: { organizationId: org.id, name: 'Super Administrador', slug: 'super_admin', isSystem: true },
         });
