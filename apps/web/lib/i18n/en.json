@@ -1655,7 +1655,18 @@
     "willAddToFirstStage": "Will be added to the first stage",
     "iaReviewUrgent": "AI: Review urgently — SLA overdue",
     "iaAdvanceHighFit": "AI: Advance — high FIT score",
-    "selectVacancyFirst": "Select a vacancy first"
+    "selectVacancyFirst": "Select a vacancy first",
+    "checklistIncompleteWarning": "Pending from the previous stage: {items}",
+    "checklistTitle": "Stage checklist",
+    "checklistItemCompletedBy": "Completed",
+    "nextAction": {
+      "postulado": "Review the candidate's profile",
+      "preseleccion": "Continue screening",
+      "evaluaciones": "Assign the assessment battery now",
+      "entrevistas": "Schedule the interview now",
+      "oferta": "Prepare the offer now",
+      "contratado": "Start onboarding now"
+    }
   },
   "vacancies": {
     "title": "Vacancies",
@@ -1839,7 +1850,22 @@
     "requireApprovalDesc": "The vacancy must be approved before being published",
     "autoPublishLabel": "Auto-publish",
     "autoPublishDesc": "Publish to job portal once approved",
-    "createNewVacancy": "Create new vacancy"
+    "createNewVacancy": "Create new vacancy",
+    "aiGenerateTitle": "Generate with AI",
+    "aiGenerateDesc": "Create 3 variants (formal, social media, and WhatsApp) from the role's title",
+    "aiGenerateAction": "Generate with AI",
+    "aiGenerating": "Generating...",
+    "aiGenerateNeedsTitle": "Enter a title in the previous step to generate with AI",
+    "aiVariantsGenerated": "Variants generated",
+    "aiVariantFormal": "Formal",
+    "aiVariantSocial": "Social media",
+    "aiVariantWhatsapp": "WhatsApp",
+    "aiUseVariant": "Use this variant",
+    "aiVariantApplied": "Variant applied",
+    "inclusiveCheckAction": "Check for biased language",
+    "inclusiveChecking": "Checking...",
+    "inclusiveScoreLabel": "Inclusive language score",
+    "inclusiveNoSuggestions": "No suggestions found, the text looks inclusive"
   },
   "dashboard": {
     "recentActivity": "Recent Activity",

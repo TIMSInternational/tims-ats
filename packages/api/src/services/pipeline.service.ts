@@ -6,6 +6,41 @@ import { pipelineRepository } from '../repositories/pipeline.repository';
 // Pipeline Service — business logic, no db imports
 // ---------------------------------------------------------------------------
 
+// Shape of a PipelineStage.checklist entry (matches checklistItemSchema in
+// routers/pipeline/stages.ts — `completed` there is just the item's config
+// default, NOT per-application state, which lives separately below).
+interface ChecklistItemConfig {
+  key: string;
+  label: string;
+}
+
+// Shape of Application.checklistProgress — per-application, per-stage
+// completion state. Only stages the candidate has actually progressed
+// through get an entry.
+type ChecklistProgress = Record<string, Record<string, {
+  completed: boolean;
+  completedBy: string;
+  completedAt: string;
+}>>;
+
+// Diffs a stage's configured checklist against this application's recorded
+// progress for that SAME stage, returning the labels of items not yet marked
+// complete. Returns [] when the stage has no checklist configured. Plain
+// module-level helper (not a pipelineService method) so it never depends on
+// `this` binding.
+async function getIncompleteChecklistWarnings(
+  orgId: string,
+  stageId: string,
+  checklistProgress: ChecklistProgress | null,
+): Promise<string[]> {
+  const stage = await pipelineRepository.getStageChecklist(orgId, stageId);
+  const checklist = (stage?.checklist as ChecklistItemConfig[] | null) ?? [];
+  if (checklist.length === 0) return [];
+
+  const stageProgress = checklistProgress?.[stageId] ?? {};
+  return checklist.filter((item) => !stageProgress[item.key]?.completed).map((item) => item.label);
+}
+
 export const pipelineService = {
   // Board
   async getBoard(orgId: string, vacancyId: string, status: string) {
@@ -30,7 +65,11 @@ export const pipelineService = {
     };
   },
 
-  // Move
+  // Move — SOFT checklist gate: if the SOURCE stage (the one being left) has
+  // an incomplete checklist, the move still proceeds and the result carries a
+  // `warnings` array naming the incomplete items. Never throws for this —
+  // configuring a checklist makes stage moves proactive (surfaced), not
+  // blocking.
   async moveCandidate(orgId: string, userId: string, applicationId: string, toStageId: string, reason?: string) {
     const application = await pipelineRepository.findApplication(orgId, applicationId);
     if (!application) throw new TRPCError({ code: 'NOT_FOUND', message: 'Aplicacion no encontrada' });
@@ -38,7 +77,17 @@ export const pipelineService = {
     const targetStage = await pipelineRepository.stageExistsForVacancy(toStageId, application.vacancyId);
     if (!targetStage) throw new TRPCError({ code: 'BAD_REQUEST', message: 'La etapa destino no pertenece a esta vacante' });
 
-    return pipelineRepository.moveCandidate(orgId, userId, applicationId, application.currentStageId, toStageId, reason);
+    const warnings = await getIncompleteChecklistWarnings(
+      orgId,
+      application.currentStageId,
+      application.checklistProgress as ChecklistProgress | null,
+    );
+
+    const moved = await pipelineRepository.moveCandidate(orgId, userId, applicationId, application.currentStageId, toStageId, reason);
+    // Always the same static shape (never a union across branches) so tRPC's
+    // inferred router output type carries `warnings` as one stable optional
+    // field instead of two incompatible object shapes.
+    return { ...moved, warnings: warnings.length > 0 ? warnings : undefined };
   },
 
   // Bulk move — scopeWhere is computed in the router (access machinery is not
@@ -135,6 +184,29 @@ export const pipelineService = {
     const stage = await pipelineRepository.findStage(orgId, stageId);
     if (!stage) throw new TRPCError({ code: 'NOT_FOUND', message: 'Etapa no encontrada' });
     return pipelineRepository.updateChecklist(stageId, checklist);
+  },
+
+  // Per-application checklist item toggle. SINGLE atomic UPDATE (Postgres
+  // jsonb_set) — no read-merge-write. Only the [stageId][itemKey] entry is
+  // touched at the DB level, so two toggles for DIFFERENT items on the SAME
+  // application firing concurrently (two tabs/users) both survive instead of
+  // one silently clobbering the other (see setChecklistItem in the repository
+  // for why a plain $transaction around a read-then-write would NOT have
+  // fixed this). The org check is folded into the UPDATE's WHERE clause
+  // (no separate findApplication read) — a null result means the
+  // application doesn't exist or doesn't belong to this org.
+  async updateApplicationChecklist(
+    orgId: string,
+    userId: string,
+    applicationId: string,
+    stageId: string,
+    itemKey: string,
+    completed: boolean,
+  ) {
+    const entry = { completed, completedBy: userId, completedAt: new Date().toISOString() };
+    const updated = await pipelineRepository.setChecklistItem(orgId, applicationId, stageId, itemKey, entry);
+    if (!updated) throw new TRPCError({ code: 'NOT_FOUND', message: 'Aplicacion no encontrada' });
+    return updated;
   },
 
   // Analytics — SLA

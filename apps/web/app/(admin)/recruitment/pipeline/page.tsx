@@ -12,6 +12,7 @@ import { PipelineTableView } from './pipeline-table-view';
 import { PipelineFilters, applyFilters, EMPTY_FILTERS, type PipelineFilterState } from './pipeline-filters';
 import { AddCandidateModal } from './add-candidate-modal';
 import { moveApplicationOptimistic } from './pipeline-optimistic';
+import { getNextActionForStage } from '../../../../lib/pipeline-next-actions';
 
 type ViewMode = 'kanban' | 'list' | 'table';
 
@@ -73,7 +74,36 @@ export default function PipelinePage() {
       if (ctx?.previous && ctx?.input) utils.pipeline.getBoard.setData(ctx.input, ctx.previous);
       toast(err.message, { type: 'error' });
     },
-    onSuccess: () => { toast(t.pipeline.moved, { type: 'success' }); },
+    onSuccess: (data, variables) => {
+      // Soft checklist gate (Sprint 1.3 Task 1): the move ALWAYS succeeds —
+      // `warnings` just names the source stage's still-incomplete checklist
+      // items, surfaced as a plain warning toast instead of silently
+      // dropped. This answers "did I leave anything undone" and always
+      // fires when there's something incomplete.
+      if (data.warnings && data.warnings.length > 0) {
+        toast(`${t.pipeline.moved} ${t.pipeline.checklistIncompleteWarning.replace('{items}', data.warnings.join(', '))}`, { type: 'warning' });
+      }
+
+      // Proactive next-action toast (Sprint 1.3 Task 2): looks up the
+      // DESTINATION stage (forward-looking — "what should I do now"),
+      // distinct from the backward-looking checklist warning above. Both can
+      // fire together; they answer different questions. Fuzzy/heuristic
+      // stage-name matching gracefully returns null for org-custom stage
+      // names, so unrecognized stages fall back to today's bare "moved" toast.
+      const destinationStage = board.data?.stages.find((stage) => stage.id === variables.toStageId);
+      const nextAction = destinationStage ? getNextActionForStage(destinationStage.name) : null;
+
+      if (nextAction) {
+        toast(t.pipeline.moved, {
+          type: 'success',
+          action: { label: t.pipeline.nextAction[nextAction.labelKey], href: nextAction.href },
+        });
+      } else if (!data.warnings || data.warnings.length === 0) {
+        // No suggestion for this (likely custom/org-renamed) stage and
+        // nothing left incomplete — today's exact bare "moved" toast.
+        toast(t.pipeline.moved, { type: 'success' });
+      }
+    },
     // Reconcile with server truth once the write settles (success or rollback).
     onSettled: (_data, _err, { applicationId }) => {
       pendingMoves.current.delete(applicationId);
@@ -85,6 +115,17 @@ export default function PipelinePage() {
     if (pendingMoves.current.has(applicationId)) return; // same card already moving
     pendingMoves.current.add(applicationId);
     moveCandidate.mutate({ applicationId, toStageId });
+  };
+
+  const updateApplicationChecklist = trpc.pipeline.updateApplicationChecklist.useMutation({
+    onSuccess: () => {
+      if (selectedVacancyId) utils.pipeline.getBoard.invalidate({ vacancyId: selectedVacancyId });
+    },
+    onError: (err) => { toast(err.message, { type: 'error' }); },
+  });
+
+  const handleToggleChecklistItem = (applicationId: string, stageId: string, itemKey: string, completed: boolean) => {
+    updateApplicationChecklist.mutate({ applicationId, stageId, itemKey, completed });
   };
 
   const rejectCandidate = trpc.pipeline.rejectCandidate.useMutation({
@@ -207,6 +248,7 @@ export default function PipelinePage() {
               stages={filteredStages as typeof board.data.stages}
               onMove={handleMove}
               onReject={(applicationId, reason) => rejectCandidate.mutate({ applicationId, reason })}
+              onToggleChecklistItem={handleToggleChecklistItem}
             />
           ) : viewMode === 'list' ? (
             <PipelineListView

@@ -36,6 +36,8 @@ export type VacancyListItem = RouterOutput['vacancy']['list']['items'][number];
 export type VacancyDetail = RouterOutput['vacancy']['getById'];
 export type VacancyDashboardKpis = RouterOutput['vacancy']['getDashboardKpis'];
 export type VacancyStats = RouterOutput['vacancy']['getStats'];
+export type VacancyDescriptionVariants = RouterOutput['vacancy']['generateDescription'];
+export type InclusiveLanguageResult = RouterOutput['vacancy']['checkInclusiveLanguage'];
 
 // Candidate
 export type CandidateListItem = RouterOutput['candidate']['list']['items'][number];

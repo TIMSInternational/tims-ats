@@ -1,6 +1,10 @@
 export interface VacancyFormData {
   title: string;
   description?: string;
+  // AI-generated "social"/"whatsapp" variants (vacancy-writer agent), set only
+  // when the user picks "Use this" for that variant in Step 2 — otherwise omitted.
+  socialDescription?: string;
+  whatsappDescription?: string;
   positions: number;
   priority: 'low' | 'medium' | 'high' | 'urgent';
   contractType?: string;

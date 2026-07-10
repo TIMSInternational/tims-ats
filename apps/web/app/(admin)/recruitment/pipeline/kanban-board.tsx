@@ -9,6 +9,7 @@ interface KanbanBoardProps {
   stages: PipelineStageWithApps[];
   onMove: (applicationId: string, toStageId: string) => void;
   onReject: (applicationId: string, reason: string) => void;
+  onToggleChecklistItem?: (applicationId: string, stageId: string, itemKey: string, completed: boolean) => void;
 }
 
 /** Progressive purple gradient — lighter to darker, left to right */
@@ -25,7 +26,7 @@ function getHeaderStyle(idx: number) {
   return HEADER_COLORS[Math.min(idx, HEADER_COLORS.length - 1)];
 }
 
-export function KanbanBoard({ stages, onMove }: KanbanBoardProps) {
+export function KanbanBoard({ stages, onMove, onToggleChecklistItem }: KanbanBoardProps) {
   const handleDragEnd = (result: DropResult) => {
     if (!result.destination) return;
     if (result.source.droppableId === result.destination.droppableId) return;
@@ -140,6 +141,9 @@ export function KanbanBoard({ stages, onMove }: KanbanBoardProps) {
                                 application={app}
                                 isDragging={dragSnapshot.isDragging}
                                 slaHours={stage.slaHours}
+                                stageId={stage.id}
+                                checklist={stage.checklist}
+                                onToggleChecklistItem={onToggleChecklistItem}
                               />
                             </div>
                           )}

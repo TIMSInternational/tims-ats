@@ -9,6 +9,7 @@ export type { BedrockGuardrailConfig } from './pii';
 export { logInvocation } from './logger';
 export { resolveAgentId, seedLiveAgents, AGENT_REGISTRY } from './registry';
 export { generateVacancyDescription } from './agents/vacancy-writer';
+export type { VacancyDescriptionVariants } from './agents/vacancy-writer';
 export { checkInclusiveLanguage } from './agents/inclusive-language';
 export { parseCV } from './agents/cv-parser';
 export type { ParsedCVData } from './agents/cv-parser';

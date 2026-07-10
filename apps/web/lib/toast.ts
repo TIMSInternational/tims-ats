@@ -14,13 +14,28 @@ function getContainer(): HTMLDivElement {
   return toastContainer;
 }
 
+interface ToastAction {
+  label: string;
+  href: string;
+}
+
 interface ToastOptions {
   type?: 'success' | 'error' | 'warning' | 'info';
   duration?: number;
+  /**
+   * Optional clickable action rendered below the message (e.g. a proactive
+   * "next step" suggestion after a pipeline stage move). Strictly additive —
+   * omitting it preserves today's exact plain-message toast, so every
+   * existing bare `toast(message, options)` call keeps working unchanged.
+   * `label`/`href` are always internal strings (i18n copy + app routes),
+   * never raw user input, but construction stays explicit createElement-based
+   * (no innerHTML) to match this file's existing vanilla-DOM style.
+   */
+  action?: ToastAction;
 }
 
 export function toast(message: string, options: ToastOptions = {}) {
-  const { type = 'info', duration = 4000 } = options;
+  const { type = 'info', duration = 4000, action } = options;
   const container = getContainer();
 
   const colors = {
@@ -33,7 +48,20 @@ export function toast(message: string, options: ToastOptions = {}) {
 
   const el = document.createElement('div');
   el.style.cssText = `background:${c.bg};border:1px solid ${c.border};color:${c.text};padding:12px 16px;border-radius:10px;font-size:13px;font-family:inherit;box-shadow:0 4px 12px rgba(0,0,0,0.1);pointer-events:auto;animation:slideIn 0.2s ease;max-width:360px;`;
-  el.textContent = message;
+
+  const messageEl = document.createElement('span');
+  messageEl.style.cssText = 'display:block;';
+  messageEl.textContent = message;
+  el.appendChild(messageEl);
+
+  if (action) {
+    const link = document.createElement('a');
+    link.href = action.href;
+    link.textContent = action.label;
+    link.style.cssText = `display:inline-block;margin-top:6px;color:${c.text};font-weight:600;text-decoration:underline;cursor:pointer;`;
+    el.appendChild(link);
+  }
+
   container.appendChild(el);
 
   // Add animation keyframes if not already added

@@ -2,6 +2,7 @@
 
 import { CONTRACT_TYPES, inputCls, labelCls, textareaCls } from './create-modal.helpers';
 import { useI18n } from '../../../../lib/i18n';
+import { AiGeneratePanel, InclusiveCheckPanel } from './create-modal.ai-panel';
 
 interface Step1Props {
   title: string;
@@ -80,6 +81,8 @@ export function Step1BasicInfo({
 }
 
 interface Step2Props {
+  title: string;
+  location: string;
   description: string;
   setDescription: (v: string) => void;
   responsibilities: string;
@@ -90,19 +93,36 @@ interface Step2Props {
   setDesiredQualifications: (v: string) => void;
   benefits: string;
   setBenefits: (v: string) => void;
+  setSocialDescription: (v: string) => void;
+  setWhatsappDescription: (v: string) => void;
 }
 
 export function Step2Description({
-  description, setDescription, responsibilities, setResponsibilities,
+  title, location, description, setDescription, responsibilities, setResponsibilities,
   requirements, setRequirements, desiredQualifications, setDesiredQualifications,
-  benefits, setBenefits,
+  benefits, setBenefits, setSocialDescription, setWhatsappDescription,
 }: Step2Props) {
   const { t } = useI18n();
   return (
     <div className="space-y-4">
+      <AiGeneratePanel
+        title={title}
+        location={location}
+        onUseFormal={(desc, sections) => {
+          setDescription(desc);
+          setResponsibilities(sections.responsibilities.map((r) => `- ${r}`).join('\n'));
+          setRequirements(sections.requirements.map((r) => `- ${r}`).join('\n'));
+          setBenefits(sections.benefits.map((r) => `- ${r}`).join('\n'));
+        }}
+        onUseSocial={setSocialDescription}
+        onUseWhatsapp={setWhatsappDescription}
+      />
       <div>
         <label className={labelCls}>{t.vacancies.aboutRole}</label>
         <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder={t.vacancies.descPlaceholder} maxLength={2000} rows={3} className={textareaCls} autoFocus />
+        <div className="mt-2">
+          <InclusiveCheckPanel text={description} />
+        </div>
       </div>
       <div>
         <label className={labelCls}>{t.vacancies.keyResponsibilities}</label>

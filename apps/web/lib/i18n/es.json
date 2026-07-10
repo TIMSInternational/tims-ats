@@ -1655,7 +1655,18 @@
     "willAddToFirstStage": "Se agregará a la primera etapa",
     "iaReviewUrgent": "IA: Revisar urgente — SLA vencido",
     "iaAdvanceHighFit": "IA: Avanzar — alto FIT score",
-    "selectVacancyFirst": "Selecciona una vacante primero"
+    "selectVacancyFirst": "Selecciona una vacante primero",
+    "checklistIncompleteWarning": "Pendiente en la etapa anterior: {items}",
+    "checklistTitle": "Checklist de la etapa",
+    "checklistItemCompletedBy": "Completado",
+    "nextAction": {
+      "postulado": "Revisar el perfil del candidato",
+      "preseleccion": "Continuar la preselección",
+      "evaluaciones": "Asignar la batería de evaluaciones ahora",
+      "entrevistas": "Programar la entrevista ahora",
+      "oferta": "Preparar la oferta ahora",
+      "contratado": "Iniciar el onboarding ahora"
+    }
   },
   "vacancies": {
     "title": "Vacantes",
@@ -1839,7 +1850,22 @@
     "requireApprovalDesc": "La vacante debe ser aprobada antes de publicarse",
     "autoPublishLabel": "Publicar automáticamente",
     "autoPublishDesc": "Publicar en portal de empleo al ser aprobada",
-    "createNewVacancy": "Crear nueva vacante"
+    "createNewVacancy": "Crear nueva vacante",
+    "aiGenerateTitle": "Generar con IA",
+    "aiGenerateDesc": "Crea 3 variantes (formal, redes sociales y WhatsApp) a partir del título del cargo",
+    "aiGenerateAction": "Generar con IA",
+    "aiGenerating": "Generando...",
+    "aiGenerateNeedsTitle": "Ingresa un título en el paso anterior para generar con IA",
+    "aiVariantsGenerated": "Variantes generadas",
+    "aiVariantFormal": "Formal",
+    "aiVariantSocial": "Redes sociales",
+    "aiVariantWhatsapp": "WhatsApp",
+    "aiUseVariant": "Usar esta variante",
+    "aiVariantApplied": "Variante aplicada",
+    "inclusiveCheckAction": "Revisar lenguaje sesgado",
+    "inclusiveChecking": "Revisando...",
+    "inclusiveScoreLabel": "Puntaje de inclusividad",
+    "inclusiveNoSuggestions": "No se encontraron sugerencias, el texto luce inclusivo"
   },
   "dashboard": {
     "recentActivity": "Actividad Reciente",

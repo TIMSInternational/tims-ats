@@ -30,6 +30,10 @@ export function CreateModal({ onConfirm, onClose, isPending }: CreateModalProps)
   const [requirements, setRequirements] = useState('');
   const [desiredQualifications, setDesiredQualifications] = useState('');
   const [benefits, setBenefits] = useState('');
+  // AI-generated variants (vacancy-writer agent) — only sent on submit when
+  // the user picked "Use this" for that variant; otherwise left empty/omitted.
+  const [socialDescription, setSocialDescription] = useState('');
+  const [whatsappDescription, setWhatsappDescription] = useState('');
 
   // Step 3: Compensation & settings
   const [salaryMin, setSalaryMin] = useState('');
@@ -64,6 +68,8 @@ export function CreateModal({ onConfirm, onClose, isPending }: CreateModalProps)
     onConfirm({
       title: title.trim(),
       description: buildDescription(),
+      socialDescription: socialDescription.trim() || undefined,
+      whatsappDescription: whatsappDescription.trim() || undefined,
       positions,
       priority,
       contractType,
@@ -112,11 +118,14 @@ export function CreateModal({ onConfirm, onClose, isPending }: CreateModalProps)
 
       {step === 2 && (
         <Step2Description
+          title={title} location={location}
           description={description} setDescription={setDescription}
           responsibilities={responsibilities} setResponsibilities={setResponsibilities}
           requirements={requirements} setRequirements={setRequirements}
           desiredQualifications={desiredQualifications} setDesiredQualifications={setDesiredQualifications}
           benefits={benefits} setBenefits={setBenefits}
+          setSocialDescription={setSocialDescription}
+          setWhatsappDescription={setWhatsappDescription}
         />
       )}
 

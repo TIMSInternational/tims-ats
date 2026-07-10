@@ -92,7 +92,7 @@ const KNOWN_DEBT = new Set<string>([
   'apps/web/app/(admin)/recruitment/talent-pools/talent-pool-filters.tsx:163:jsx-text',
   'apps/web/app/(admin)/recruitment/talent-pools/talent-pool-filters.tsx:166:jsx-text',
   'apps/web/app/(admin)/recruitment/talent-pools/talent-pool-table.tsx:150:jsx-text',
-  'apps/web/app/(admin)/recruitment/vacancies/create-modal.tsx:166:ternary',
+  'apps/web/app/(admin)/recruitment/vacancies/create-modal.tsx:175:ternary',
   'apps/web/app/(admin)/talent/succession/exit-simulator.tsx:111:ternary',
   'apps/web/app/(admin)/talent/succession/exit-simulator.tsx:127:ternary',
 ]);

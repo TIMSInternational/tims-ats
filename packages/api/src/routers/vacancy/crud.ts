@@ -120,6 +120,11 @@ const settingsSchema = z.object({
 const createVacancyInput = z.object({
   title: z.string().min(1).max(200),
   description: z.string().max(5000).optional(),
+  // AI-generated "social"/"whatsapp" description variants (packages/ai's
+  // vacancy-writer agent) — populated only when the user picks "Use this"
+  // for that variant in the creation wizard; otherwise left unset.
+  socialDescription: z.string().max(2000).optional(),
+  whatsappDescription: z.string().max(1000).optional(),
   companyId: z.string().uuid().optional(),
   businessUnitId: z.string().uuid().optional(),
   teamId: z.string().uuid().optional(),

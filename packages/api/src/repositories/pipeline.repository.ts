@@ -10,6 +10,7 @@ const boardApplicationSelect = {
   status: true,
   source: true,
   appliedAt: true,
+  checklistProgress: true,
   movements: {
     orderBy: { movedAt: 'desc' as const },
     take: 1,
@@ -105,7 +106,7 @@ export const pipelineRepository = {
   async findApplication(orgId: string, applicationId: string) {
     return db.application.findFirst({
       where: { id: applicationId, organizationId: orgId },
-      select: { id: true, vacancyId: true, currentStageId: true, status: true },
+      select: { id: true, vacancyId: true, currentStageId: true, status: true, checklistProgress: true },
     });
   },
 
@@ -294,6 +295,59 @@ export const pipelineRepository = {
       data: { checklist: checklist as Prisma.InputJsonValue },
       select: { id: true, name: true, checklist: true },
     });
+  },
+
+  // Per-application checklist-item toggle — SINGLE atomic UPDATE, no
+  // read-then-write. Two toggles for DIFFERENT items on the SAME application
+  // firing concurrently (two tabs/users) must both survive: a read-merge-write
+  // (read full JSON map, mutate in JS, write the full map back) would let
+  // whichever write commits last silently clobber the other's item under
+  // Postgres's default READ COMMITTED isolation — wrapping that same
+  // read-then-write in $transaction would NOT fix it either, since both
+  // transactions could still each read the pre-update state before either
+  // commits. Postgres resolves this correctly at the row level: this UPDATE
+  // never reads application-side state into the app at all — `jsonb_set`
+  // computes the new value FROM THE ROW BEING UPDATED, so Postgres's own
+  // row-level write lock serializes the two concurrent UPDATEs (second one
+  // blocks until the first commits, then applies jsonb_set against the
+  // ALREADY-updated value) — accumulation instead of a lost update.
+  //
+  // jsonb_set with a multi-level path ({stageId, itemKey}) does NOT create a
+  // missing intermediate key — if `stageId` isn't already a top-level key,
+  // create_missing on the multi-level call is a no-op. So this nests two
+  // single-level jsonb_set calls: the INNER one builds the stage's item map
+  // (keyed by itemKey, starting from the stage's existing sub-object or {}),
+  // the OUTER one sets that whole sub-object back onto the top-level map
+  // keyed by stageId (where stageId IS the last path element, so
+  // create_missing correctly creates it when absent).
+  //
+  // orgId is part of the WHERE clause (not a separate findApplication read)
+  // — this doubles as the tenant-ownership check: 0 rows back means either
+  // the application doesn't exist or doesn't belong to this org.
+  async setChecklistItem(
+    orgId: string,
+    applicationId: string,
+    stageId: string,
+    itemKey: string,
+    entry: { completed: boolean; completedBy: string; completedAt: string },
+  ) {
+    const rows = await db.$queryRaw<Array<{ id: string; currentStageId: string; checklistProgress: unknown }>>`
+      UPDATE applications
+      SET checklist_progress = jsonb_set(
+        COALESCE(checklist_progress, '{}'::jsonb),
+        ARRAY[${stageId}]::text[],
+        jsonb_set(
+          COALESCE(checklist_progress -> ${stageId}, '{}'::jsonb),
+          ARRAY[${itemKey}]::text[],
+          ${JSON.stringify(entry)}::jsonb,
+          true
+        ),
+        true
+      )
+      WHERE id = ${applicationId}::uuid AND organization_id = ${orgId}::uuid
+      RETURNING id, current_stage_id AS "currentStageId", checklist_progress AS "checklistProgress"
+    `;
+    return rows[0] ?? null;
   },
 
   // Analytics — org-wide (across vacancies), used by the dashboard KPI strip.

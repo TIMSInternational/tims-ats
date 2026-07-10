@@ -11,6 +11,9 @@ interface KanbanCardProps {
     source: string;
     appliedAt: Date | string;
     enteredStageAt: Date | string;
+    // Prisma.JsonValue (read via isItemComplete below) — only the
+    // current stage's completion map is ever written (Sprint 1.3 Task 1).
+    checklistProgress?: unknown;
     candidate: {
       id: string;
       firstName: string;
@@ -23,6 +26,33 @@ interface KanbanCardProps {
   };
   isDragging: boolean;
   slaHours?: number | null;
+  // Current stage's checklist config (Prisma.JsonValue — PipelineStage.checklist)
+  // + the stage id it belongs to, so a completion toggle can be attributed to
+  // the right key in checklistProgress[stageId][itemKey].
+  stageId: string;
+  checklist?: unknown;
+  onToggleChecklistItem?: (applicationId: string, stageId: string, itemKey: string, completed: boolean) => void;
+}
+
+interface ChecklistItem {
+  key: string;
+  label: string;
+}
+
+function coerceChecklist(value: unknown): ChecklistItem[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((v): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v))
+    .map((v) => ({ key: typeof v.key === 'string' ? v.key : '', label: typeof v.label === 'string' ? v.label : '' }))
+    .filter((item) => item.key !== '');
+}
+
+function isItemComplete(progress: unknown, stageId: string, itemKey: string): boolean {
+  if (!progress || typeof progress !== 'object' || Array.isArray(progress)) return false;
+  const stageProgress = (progress as Record<string, unknown>)[stageId];
+  if (!stageProgress || typeof stageProgress !== 'object' || Array.isArray(stageProgress)) return false;
+  const entry = (stageProgress as Record<string, unknown>)[itemKey];
+  return !!entry && typeof entry === 'object' && (entry as { completed?: unknown }).completed === true;
 }
 
 function daysAgo(date: Date | string): number {
@@ -77,7 +107,7 @@ function deriveFitScore(appId: string): number {
   return 40 + Math.abs(hash % 55);
 }
 
-export function KanbanCard({ application: app, isDragging, slaHours }: KanbanCardProps) {
+export function KanbanCard({ application: app, isDragging, slaHours, stageId, checklist, onToggleChecklistItem }: KanbanCardProps) {
   const { t } = useI18n();
   const candidate = app.candidate;
   const fitScore = deriveFitScore(app.id);
@@ -88,6 +118,7 @@ export function KanbanCard({ application: app, isDragging, slaHours }: KanbanCar
   // so sub-24h SLAs (e.g. an 8h stage) can actually trigger same-day.
   const isOverdue = slaHours != null && hoursAgo(app.enteredStageAt) > slaHours;
   const sourceStyle = getSourceStyle(app.source);
+  const checklistItems = coerceChecklist(checklist);
 
   return (
     <div
@@ -145,6 +176,33 @@ export function KanbanCard({ application: app, isDragging, slaHours }: KanbanCar
       {!isOverdue && fitScore >= 80 && (
         <div className="mt-1.5 pt-1.5 border-t border-[#F0F0F0]">
           <p className="text-[10px] text-teal-600 italic">{t.pipeline.iaAdvanceHighFit}</p>
+        </div>
+      )}
+
+      {checklistItems.length > 0 && (
+        // stopPropagation on mousedown so a checkbox click never starts a
+        // drag on the @hello-pangea/dnd handle wrapping this whole card.
+        <div
+          className="mt-1.5 pt-1.5 border-t border-[#F0F0F0] space-y-1"
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <p className="text-[9px] font-medium text-[#8B8B8B] uppercase tracking-wide">{t.pipeline.checklistTitle}</p>
+          {checklistItems.map((item) => {
+            const completed = isItemComplete(app.checklistProgress, stageId, item.key);
+            return (
+              <label key={item.key} className="flex items-center gap-1.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={completed}
+                  onChange={(e) => onToggleChecklistItem?.(app.id, stageId, item.key, e.target.checked)}
+                  className="w-3 h-3 accent-[#1F114C]"
+                />
+                <span className={`text-[10px] ${completed ? 'text-[#8B8B8B] line-through' : 'text-[#333]'}`}>
+                  {item.label}
+                </span>
+              </label>
+            );
+          })}
         </div>
       )}
     </div>

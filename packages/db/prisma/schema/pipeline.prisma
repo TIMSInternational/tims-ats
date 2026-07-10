@@ -34,6 +34,12 @@ model Application {
   feedback       String?
   coverLetter    String?   @map("cover_letter")
   referralToken  String?   @map("referral_token")
+  // Per-application checklist completion, keyed by stage:
+  // Record<stageId, Record<itemKey, { completed, completedBy, completedAt }>>.
+  // Only stages the candidate has actually progressed through get an entry —
+  // NOT pre-populated for every stage on the vacancy. Powers the soft
+  // (warn-but-allow) gate on moveCandidate — see pipeline.service.ts.
+  checklistProgress Json?  @map("checklist_progress")
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
 

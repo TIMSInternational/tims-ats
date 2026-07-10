@@ -1,43 +1,45 @@
 model Vacancy {
-  id             String    @id @default(uuid()) @db.Uuid
-  organizationId String    @map("organization_id") @db.Uuid
-  companyId      String?   @map("company_id") @db.Uuid
-  businessUnitId String?   @map("business_unit_id") @db.Uuid
-  teamId         String?   @map("team_id") @db.Uuid
-  title          String
-  description    String?
-  positions      Int       @default(1)
-  priority       String    @default("medium")
-  status         String    @default("draft")
-  salary         Json?
-  contractType   String?   @map("contract_type")
-  location       String?
-  remotePolicy   String?   @map("remote_policy")
-  createdBy      String    @map("created_by") @db.Uuid
-  assignedTo     String?   @map("assigned_to") @db.Uuid
-  closedAt       DateTime? @map("closed_at")
-  closedReason   String?   @map("closed_reason")
-  settings       Json      @default("{}")
-  createdAt      DateTime  @default(now()) @map("created_at")
-  updatedAt      DateTime  @updatedAt @map("updated_at")
-  deletedAt      DateTime? @map("deleted_at")
+  id                  String    @id @default(uuid()) @db.Uuid
+  organizationId      String    @map("organization_id") @db.Uuid
+  companyId           String?   @map("company_id") @db.Uuid
+  businessUnitId      String?   @map("business_unit_id") @db.Uuid
+  teamId              String?   @map("team_id") @db.Uuid
+  title               String
+  description         String?
+  socialDescription   String?   @map("social_description")
+  whatsappDescription String?   @map("whatsapp_description")
+  positions           Int       @default(1)
+  priority            String    @default("medium")
+  status              String    @default("draft")
+  salary              Json?
+  contractType        String?   @map("contract_type")
+  location            String?
+  remotePolicy        String?   @map("remote_policy")
+  createdBy           String    @map("created_by") @db.Uuid
+  assignedTo          String?   @map("assigned_to") @db.Uuid
+  closedAt            DateTime? @map("closed_at")
+  closedReason        String?   @map("closed_reason")
+  settings            Json      @default("{}")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+  deletedAt           DateTime? @map("deleted_at")
 
-  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  company        Company?          @relation(fields: [companyId], references: [id])
-  unit           BusinessUnit?     @relation(fields: [businessUnitId], references: [id])
-  team           Team?             @relation(fields: [teamId], references: [id])
-  creator        User              @relation("VacancyCreator", fields: [createdBy], references: [id])
-  assignee       User?             @relation("VacancyAssignee", fields: [assignedTo], references: [id])
-  jobProfile     JobProfile?
-  channels       PublicationChannel[]
-  applications   Application[]
-  approvals      VacancyApproval[]
-  interviews     Interview[]
-  stages         PipelineStage[]
+  organization          Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company               Company?               @relation(fields: [companyId], references: [id])
+  unit                  BusinessUnit?          @relation(fields: [businessUnitId], references: [id])
+  team                  Team?                  @relation(fields: [teamId], references: [id])
+  creator               User                   @relation("VacancyCreator", fields: [createdBy], references: [id])
+  assignee              User?                  @relation("VacancyAssignee", fields: [assignedTo], references: [id])
+  jobProfile            JobProfile?
+  channels              PublicationChannel[]
+  applications          Application[]
+  approvals             VacancyApproval[]
+  interviews            Interview[]
+  stages                PipelineStage[]
   assessmentAssignments AssessmentAssignment[] @relation("VacancyAssessments")
-  fitScores      FitScore[]                    @relation("VacancyFitScores")
-  offers         Offer[]                       @relation("VacancyOffers")
-  referrals      Referral[]
+  fitScores             FitScore[]             @relation("VacancyFitScores")
+  offers                Offer[]                @relation("VacancyOffers")
+  referrals             Referral[]
 
   @@index([organizationId])
   @@index([organizationId, status])
@@ -62,7 +64,7 @@ model JobProfile {
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
-  vacancy        Vacancy  @relation(fields: [vacancyId], references: [id], onDelete: Cascade)
+  vacancy Vacancy @relation(fields: [vacancyId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
   @@map("job_profiles")
@@ -82,7 +84,7 @@ model PublicationChannel {
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
 
-  vacancy        Vacancy   @relation(fields: [vacancyId], references: [id], onDelete: Cascade)
+  vacancy Vacancy @relation(fields: [vacancyId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
   @@index([vacancyId])
@@ -101,8 +103,8 @@ model VacancyApproval {
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
 
-  vacancy        Vacancy   @relation(fields: [vacancyId], references: [id], onDelete: Cascade)
-  approver       User      @relation("VacancyApprover", fields: [approverId], references: [id])
+  vacancy  Vacancy @relation(fields: [vacancyId], references: [id], onDelete: Cascade)
+  approver User    @relation("VacancyApprover", fields: [approverId], references: [id])
 
   @@index([organizationId])
   @@index([vacancyId])

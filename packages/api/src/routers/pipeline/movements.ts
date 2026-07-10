@@ -61,4 +61,28 @@ export const pipelineMovementsRouter = router({
       await assertScoped('application', input.applicationId, ctx.access, ctx.user.id, ctx.user.organizationId);
       return pipelineService.getMovementHistory(ctx.user.organizationId, input.applicationId);
     }),
+
+  // Per-application checklist item toggle — powers the checkboxes on the
+  // candidate's stage card. stageId is normally the application's CURRENT
+  // stage (the frontend only renders checkboxes for the current stage's
+  // checklist), but the mutation itself is stage-agnostic: it just upserts
+  // one entry under checklistProgress[stageId][itemKey].
+  updateApplicationChecklist: permissionProcedure('pipeline', 'update')
+    .input(z.object({
+      applicationId: z.string().uuid(),
+      stageId: z.string().uuid(),
+      itemKey: z.string().max(100),
+      completed: z.boolean(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await assertScoped('application', input.applicationId, ctx.access, ctx.user.id, ctx.user.organizationId);
+      return pipelineService.updateApplicationChecklist(
+        ctx.user.organizationId,
+        ctx.user.id,
+        input.applicationId,
+        input.stageId,
+        input.itemKey,
+        input.completed,
+      );
+    }),
 });
