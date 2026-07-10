@@ -3,7 +3,7 @@ import { router, permissionProcedure } from '../trpc';
 import { tenantDb as db } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { ALERT_METRIC_KEYS } from '@tims/shared';
-import { suppressBelowMin5 } from '../access';
+import { suppressBelowMin5, scopeWhereFor } from '../access';
 
 export const monitoringRouter = router({
   // ── Executive KPIs ─────────────────────────────────────────────────
@@ -138,6 +138,49 @@ export const monitoringRouter = router({
         select: { id: true, status: true },
       });
     }),
+
+  // ── Action Plan Alerts (Sprint 1.4 Task 3) ──────────────────────────
+  // Overdue (or soon-due) Climate ActionPlans surfaced on the exec Monitoring
+  // dashboard. ActionPlan CRUD itself lives in engagement.ts — this is a
+  // read-only cross-module query, never touches actionPlan.create/update.
+  getActionPlanAlerts: permissionProcedure('monitoring', 'read').query(async ({ ctx }) => {
+    const orgId = ctx.user.organizationId;
+    const now = new Date();
+    const horizon = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
+
+    // Row-level scope, same pattern as engagement.ts's listActionPlans:
+    // monitoring:read is granted to hrbp at UNIT scope (not org scope) per
+    // seed-access-matrix.ts, so a unit-scoped caller must only see action
+    // plans within their own scope (own/team/unit subject set), not every
+    // org-wide plan.
+    const scopeWhere = (await scopeWhereFor('actionPlan', ctx.access, ctx.user.id)) as Prisma.ActionPlanWhereInput;
+
+    const items = await db.actionPlan.findMany({
+      where: {
+        AND: [
+          { organizationId: orgId },
+          scopeWhere,
+          {
+            status: { not: 'completed' },
+            dueDate: { lte: horizon },
+          },
+        ],
+      },
+      select: {
+        id: true,
+        title: true,
+        area: true,
+        status: true,
+        dueDate: true,
+        responsible: {
+          select: { id: true, firstName: true, lastName: true, avatar: true },
+        },
+      },
+      orderBy: { dueDate: 'asc' },
+    });
+
+    return { items, total: items.length };
+  }),
 
   // ── Cross-Module Trend ─────────────────────────────────────────────
   getCrossModuleTrend: permissionProcedure('monitoring', 'read')

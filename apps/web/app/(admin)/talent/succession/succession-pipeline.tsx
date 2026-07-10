@@ -1,6 +1,10 @@
 'use client';
 
+import { useState } from 'react';
+import { trpc } from '../../../../lib/trpc';
+import { toast } from '../../../../lib/toast';
 import { ErrorState, Skeleton } from '../../../../components';
+import { RequestAdjustmentModal } from './request-adjustment-modal';
 
 interface Successor {
   id: string;
@@ -14,14 +18,33 @@ interface CriticalRole {
   title: string;
   criticality: string;
   flightRisk?: number | null;
+  targetBandLevel?: string | null;
   currentHolder?: { id: string; firstName: string; lastName: string; avatar?: string | null; jobTitle?: string | null } | null;
   successors: Successor[];
+}
+
+interface SalaryBandOption {
+  level: string;
+  title?: string | null;
+}
+
+interface CompGapAlert {
+  successorId: string;
+  roleId: string;
+  userId: string;
+  currentSalary: number;
+  currency: string;
+  midSalary: number;
+  bandLevel: string;
+  gapPercent: number;
 }
 
 interface SuccessionPipelineProps {
   roles: CriticalRole[];
   loading: boolean;
   isError: boolean;
+  bands: SalaryBandOption[];
+  compGapAlerts: CompGapAlert[];
   t: {
     successionPipeline: string;
     readyNow: string;
@@ -33,6 +56,13 @@ interface SuccessionPipelineProps {
     noSuccessor: string;
     noSuccessorsIdentified: string;
     assignSuccessor: string;
+    targetBandLabel: string;
+    targetBandNone: string;
+    targetBandUpdateSuccess: string;
+    targetBandUpdateError: string;
+    compGapBadge: string;
+    compGapBadgeDesc: string;
+    requestAdjustment: string;
   };
 }
 
@@ -56,7 +86,24 @@ const READINESS_STYLES: Record<string, { border: string; bg: string; label: stri
 
 const AVATAR_COLORS = ['bg-[#1F114C]', 'bg-violet-600', 'bg-teal-600', 'bg-blue-600', 'bg-pink-600'];
 
-export function SuccessionPipeline({ roles, loading, isError, t }: SuccessionPipelineProps) {
+export function SuccessionPipeline({ roles, loading, isError, bands, compGapAlerts, t }: SuccessionPipelineProps) {
+  const utils = trpc.useUtils();
+  const [adjustmentTarget, setAdjustmentTarget] = useState<{
+    userId: string;
+    employeeName: string;
+    previousSalary: number;
+    suggestedNewSalary: number;
+  } | null>(null);
+
+  const updateBand = trpc.succession.updateCriticalRoleBand.useMutation({
+    onSuccess: () => {
+      utils.succession.listCriticalRoles.invalidate();
+      utils.succession.getCompGapAlerts.invalidate();
+      toast(t.targetBandUpdateSuccess, { type: 'success' });
+    },
+    onError: () => toast(t.targetBandUpdateError, { type: 'error' }),
+  });
+
   if (loading) {
     return (
       <div className="w-full md:w-[55%] bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4">
@@ -87,6 +134,10 @@ export function SuccessionPipeline({ roles, loading, isError, t }: SuccessionPip
     if (level === 'high') return t.riskHigh;
     if (level === 'medium') return t.riskMedium;
     return t.riskLow;
+  }
+
+  function compGapFor(successorId: string) {
+    return compGapAlerts.find((a) => a.successorId === successorId);
   }
 
   return (
@@ -134,6 +185,31 @@ export function SuccessionPipeline({ roles, loading, isError, t }: SuccessionPip
               )}
             </div>
 
+            {/* Sprint 1.4 Task 4 — minimal inline target-band control. Not a
+                new page/form: a single select wired to the single-field
+                updateCriticalRoleBand mutation. */}
+            <div className="flex items-center gap-1.5 mb-2 ml-11">
+              <span className="text-[9px] text-[#8B8B8B]">{t.targetBandLabel}:</span>
+              <select
+                value={role.targetBandLevel ?? ''}
+                onChange={(e) =>
+                  updateBand.mutate({
+                    criticalRoleId: role.id,
+                    targetBandLevel: e.target.value || null,
+                  })
+                }
+                disabled={updateBand.isPending}
+                className="text-[9px] border border-[#EDEDED] rounded px-1.5 py-0.5 text-[#333] bg-white focus:outline-none focus:border-[#1F114C]/40 disabled:opacity-50"
+              >
+                <option value="">{t.targetBandNone}</option>
+                {bands.map((b) => (
+                  <option key={b.level} value={b.level}>
+                    {b.title ? `${b.level} — ${b.title}` : b.level}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <div className={`ml-6 pl-4 border-l-2 border-dashed ${noSuccessor ? 'border-red-200' : 'border-[#EDEDED]'}`}>
               {noSuccessor ? (
                 <div className="border border-red-200 bg-red-50 rounded-lg p-2 text-center">
@@ -146,6 +222,7 @@ export function SuccessionPipeline({ roles, loading, isError, t }: SuccessionPip
                 <div className="flex gap-2">
                   {role.successors.map((s) => {
                     const style = READINESS_STYLES[s.readiness] ?? READINESS_STYLES.developing;
+                    const gap = compGapFor(s.id);
                     return (
                       <div key={s.id} className={`flex-1 border ${style.border} ${style.bg} rounded-lg p-2`}>
                         <p className={`text-[9px] ${style.text} font-semibold mb-1`}>{style.label}</p>
@@ -158,6 +235,27 @@ export function SuccessionPipeline({ roles, loading, isError, t }: SuccessionPip
                             <p className="text-[9px] text-[#8B8B8B]">{s.user.jobTitle ?? ''}</p>
                           </div>
                         </div>
+                        {gap && (
+                          <div className="mt-1.5 pt-1.5 border-t border-dashed border-amber-300">
+                            <span className="text-[8px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-full font-semibold">
+                              {t.compGapBadge} -{gap.gapPercent}% {t.compGapBadgeDesc}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setAdjustmentTarget({
+                                  userId: gap.userId,
+                                  employeeName: `${s.user.firstName} ${s.user.lastName}`,
+                                  previousSalary: gap.currentSalary,
+                                  suggestedNewSalary: gap.midSalary,
+                                })
+                              }
+                              className="block mt-1 text-[8px] text-white bg-[#1F114C] px-2 py-1 rounded font-medium hover:bg-[#2a1866] transition"
+                            >
+                              {t.requestAdjustment}
+                            </button>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -167,6 +265,16 @@ export function SuccessionPipeline({ roles, loading, isError, t }: SuccessionPip
           </div>
         );
       })}
+
+      {adjustmentTarget && (
+        <RequestAdjustmentModal
+          userId={adjustmentTarget.userId}
+          employeeName={adjustmentTarget.employeeName}
+          previousSalary={adjustmentTarget.previousSalary}
+          suggestedNewSalary={adjustmentTarget.suggestedNewSalary}
+          onClose={() => setAdjustmentTarget(null)}
+        />
+      )}
     </div>
   );
 }

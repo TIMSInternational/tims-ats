@@ -10,6 +10,14 @@ import type { PickedUser } from '../../../../components/user-picker';
 interface AddSuccessorModalProps {
   roles: { id: string; title: string }[];
   onClose: () => void;
+  /**
+   * Optional pre-fill (e.g. from the "Suggested Successors" Nine Box panel).
+   * The form still opens for the human to review/edit before confirming
+   * submit — nothing is auto-submitted.
+   */
+  initialRoleId?: string;
+  initialCandidate?: PickedUser | null;
+  initialReadiness?: (typeof READINESS_KEYS)[number]['value'];
 }
 
 const READINESS_KEYS = [
@@ -24,13 +32,21 @@ const TYPE_KEYS = [
   { value: 'external', labelKey: 'typeExternal' },
 ] as const;
 
-export function AddSuccessorModal({ roles, onClose }: AddSuccessorModalProps) {
+export function AddSuccessorModal({
+  roles,
+  onClose,
+  initialRoleId,
+  initialCandidate,
+  initialReadiness,
+}: AddSuccessorModalProps) {
   const { t } = useI18n();
   const utils = trpc.useUtils();
 
-  const [roleId, setRoleId] = useState('');
-  const [candidate, setCandidate] = useState<PickedUser | null>(null);
-  const [readiness, setReadiness] = useState<(typeof READINESS_KEYS)[number]['value']>('ready_now');
+  const [roleId, setRoleId] = useState(initialRoleId ?? '');
+  const [candidate, setCandidate] = useState<PickedUser | null>(initialCandidate ?? null);
+  const [readiness, setReadiness] = useState<(typeof READINESS_KEYS)[number]['value']>(
+    initialReadiness ?? 'ready_now',
+  );
   const [type, setType] = useState<(typeof TYPE_KEYS)[number]['value']>('internal');
   const [developmentPlan, setDevelopmentPlan] = useState('');
 
@@ -40,6 +56,12 @@ export function AddSuccessorModal({ roles, onClose }: AddSuccessorModalProps) {
       utils.succession.getDashboardKpis.invalidate();
       utils.succession.getCompetencyCoverage.invalidate();
       utils.succession.getRolesWithoutSuccessor.invalidate();
+      // Sprint 1.4 Task 1 → Task 4 cross-feature handoff: adding a suggested
+      // successor (from the Nine Box panel) must live-refresh both the
+      // comp-gap check (now sees the new ready_now successor) and the
+      // suggestion list itself (must drop the just-added candidate).
+      utils.succession.getCompGapAlerts.invalidate();
+      utils.succession.getSuggestedSuccessors.invalidate();
       toast(t.succession.addSuccessorSuccess, { type: 'success' });
       onClose();
     },

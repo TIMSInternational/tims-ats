@@ -86,3 +86,8 @@ export type CalibrationDetail = RouterOutput['ninebox']['getCalibration'];
 export type CalibrationMember = CalibrationDetail['members'][number];
 
 // Offer (types will be added when offer service is refactored in Phase 1.4)
+
+// Performance — low-progress alerts panel (Sprint 1.4 Task 2)
+export type LowProgressAlertsResult = RouterOutput['performance']['getLowProgressAlerts'];
+export type LowProgressOkr = LowProgressAlertsResult['lowProgressOkrs'][number];
+export type OverdueCommitment = LowProgressAlertsResult['overdueCommitments'][number];

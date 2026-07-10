@@ -11,17 +11,29 @@ import { FlightRiskPanel } from './flight-risk-panel';
 import { RolesWithoutSuccessor } from './roles-without-successor';
 import { ExitSimulator } from './exit-simulator';
 import { AddSuccessorModal } from './add-successor-modal';
+import { SuggestedSuccessors } from './suggested-successors';
+import type { PickedUser } from '../../../../components/user-picker';
 
 export default function SuccessionPage() {
   const { t } = useI18n();
   const [showAdd, setShowAdd] = useState(false);
+  const [suggestedPrefill, setSuggestedPrefill] = useState<{
+    roleId: string;
+    candidate: PickedUser;
+    readiness: 'ready_now' | 'ready_1_year';
+  } | null>(null);
   const kpis = trpc.succession.getDashboardKpis.useQuery();
   const roles = trpc.succession.listCriticalRoles.useQuery({});
   const coverage = trpc.succession.getCompetencyCoverage.useQuery();
   const flightRisk = trpc.succession.getFlightRisk.useQuery({});
   const noSuccessor = trpc.succession.getRolesWithoutSuccessor.useQuery();
+  // Sprint 1.4 Task 4 — Compensation <-> Succession readiness check.
+  const salaryBands = trpc.compensation.getSalaryBands.useQuery({});
+  const compGapAlerts = trpc.succession.getCompGapAlerts.useQuery();
 
   const roleItems = Array.isArray(roles.data) ? roles.data : [];
+  const bandItems = Array.isArray(salaryBands.data) ? salaryBands.data : [];
+  const compGapItems = Array.isArray(compGapAlerts.data) ? compGapAlerts.data : [];
 
   return (
     <div className="flex flex-col flex-1 min-w-0 h-full">
@@ -56,7 +68,14 @@ export default function SuccessionPage() {
 
         {/* Main 2-column */}
         <div className="flex flex-col md:flex-row gap-4 mb-4" style={{ minHeight: 370 }}>
-          <SuccessionPipeline roles={roleItems} loading={roles.isLoading} isError={roles.isError} t={t.succession} />
+          <SuccessionPipeline
+            roles={roleItems}
+            loading={roles.isLoading}
+            isError={roles.isError}
+            bands={bandItems}
+            compGapAlerts={compGapItems}
+            t={t.succession}
+          />
           <div className="w-full md:w-[45%] flex flex-col gap-4">
             <CompetencyCoverage data={coverage.data} loading={coverage.isLoading} isError={coverage.isError} t={t.succession} />
             <FlightRiskPanel data={flightRisk.data} loading={flightRisk.isLoading} isError={flightRisk.isError} t={t.succession} />
@@ -64,7 +83,7 @@ export default function SuccessionPage() {
         </div>
 
         {/* Bottom Row */}
-        <div className="flex flex-col md:flex-row gap-4">
+        <div className="flex flex-col md:flex-row gap-4 mb-4">
           <RolesWithoutSuccessor data={noSuccessor.data} loading={noSuccessor.isLoading} isError={noSuccessor.isError} t={t.succession} />
           {roleItems.length > 0 ? (
             <ExitSimulator roles={roleItems} t={t.succession} />
@@ -75,9 +94,30 @@ export default function SuccessionPage() {
             </div>
           )}
         </div>
+
+        {/* Nine Box → Succession suggestions (Sprint 1.4 Task 1) */}
+        <SuggestedSuccessors
+          roles={roleItems}
+          t={t.succession}
+          onAddSuggested={(prefill) => {
+            setSuggestedPrefill(prefill);
+            setShowAdd(true);
+          }}
+        />
       </div>
 
-      {showAdd && <AddSuccessorModal roles={roleItems} onClose={() => setShowAdd(false)} />}
+      {showAdd && (
+        <AddSuccessorModal
+          roles={roleItems}
+          initialRoleId={suggestedPrefill?.roleId}
+          initialCandidate={suggestedPrefill?.candidate}
+          initialReadiness={suggestedPrefill?.readiness}
+          onClose={() => {
+            setShowAdd(false);
+            setSuggestedPrefill(null);
+          }}
+        />
+      )}
     </div>
   );
 }

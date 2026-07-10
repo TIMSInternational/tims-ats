@@ -7,6 +7,7 @@ import { toast } from '../../../lib/toast';
 import { MonitoringKpis } from './monitoring-kpis';
 import { ModuleHealthGrid } from './monitoring-modules';
 import { AlertsPanel } from './monitoring-alerts';
+import { ActionPlanAlerts } from './monitoring-action-plans';
 import { CrossModuleTrend, QuickActions } from './monitoring-bottom';
 import { AlertRulesModal } from './alert-rules-modal';
 
@@ -48,10 +49,11 @@ export default function MonitoringPage() {
             onRetry={() => kpis.refetch()}
           />
 
-          {/* Row 2: Module Health + Alerts */}
+          {/* Row 2: Module Health + Alerts + Climate Action Plans */}
           <div className="flex flex-col md:flex-row gap-4 md:flex-1 min-h-0">
             <ModuleHealthGrid />
             <AlertsPanel />
+            <ActionPlanAlerts />
           </div>
 
           {/* Row 3: Trend + Quick Actions */}

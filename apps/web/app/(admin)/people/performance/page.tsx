@@ -4,7 +4,9 @@ import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
+import { usePermissions } from '../../../../lib/permissions';
 import { PerformanceKpis } from './performance-kpis';
+import { LowProgressAlertsPanel } from './low-progress-alerts';
 import { OkrTable } from './okr-table';
 import { CoachingPanel } from './coaching-panel';
 import { FeedbackPanel } from './feedback-panel';
@@ -14,8 +16,18 @@ type Tab = 'okrs' | 'coaching' | 'feedback';
 
 export default function PerformancePage() {
   const { t } = useI18n();
+  const { roles } = usePermissions();
   const [tab, setTab] = useState<Tab>('okrs');
   const [showOkr, setShowOkr] = useState(false);
+
+  // performance.getLowProgressAlerts calls requireOrgScope(ctx.access) — only
+  // super_admin/hr_admin hold an ORG-scoped performance:read grant per
+  // seed-access-matrix.ts (hrbp=unit, leader=team, employee=own). Those other
+  // roles legitimately reach this same Performance page via their own scoped
+  // grant, so rendering this panel unconditionally would 403 them (Codex
+  // finding) — gate it to the same two roles the org-rollup KPI widgets on
+  // the main dashboard use (pickPrimaryDashboard's 'org'/'hrExec' keys).
+  const showLowProgressAlerts = roles.includes('super_admin') || roles.includes('hr_admin');
 
   // --- tRPC queries ---
   const kpisQuery = trpc.performance.getDashboardKpis.useQuery();
@@ -93,6 +105,16 @@ export default function PerformancePage() {
           isError={kpisQuery.isError}
           onRetry={() => kpisQuery.refetch()}
         />
+
+        {/* Low-progress alerts - visible on all tabs, links jump to the tab that lists the item.
+            Gated to super_admin/hr_admin: the only roles with an org-scoped
+            performance:read grant that getLowProgressAlerts requires. */}
+        {showLowProgressAlerts && (
+          <LowProgressAlertsPanel
+            onSelectOkr={() => setTab('okrs')}
+            onSelectCommitment={() => setTab('coaching')}
+          />
+        )}
 
         {/* Tab Content */}
         {tab === 'okrs' && (

@@ -8,6 +8,10 @@ model CriticalRole {
   unitId          String?  @map("unit_id") @db.Uuid
   criticality     String
   flightRisk      Float?   @map("flight_risk")
+  // Sprint 1.4 Task 4: soft string match to SalaryBand.level (no FK — bands
+  // are looked up by (organizationId, level) at query time). Nullable/additive:
+  // a role with no target band simply never surfaces a comp-gap alert.
+  targetBandLevel String?  @map("target_band_level")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 

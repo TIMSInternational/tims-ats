@@ -113,6 +113,13 @@ describe('S4 performance OKR/commitment/coaching wiring', () => {
     expect(page).not.toMatch(/createComingSoon.*newOkr|newOkr.*createComingSoon/);
   });
 
+  // --- LowProgressAlertsPanel role-gating (Sprint 1.4 Codex fix) ---
+  it('page.tsx gates LowProgressAlertsPanel to super_admin/hr_admin (getLowProgressAlerts requires org scope; hrbp/leader/employee hold only unit/team/own performance:read)', () => {
+    expect(page).toMatch(/usePermissions/);
+    expect(page).toMatch(/showLowProgressAlerts\s*=\s*roles\.includes\(['"]super_admin['"]\)\s*\|\|\s*roles\.includes\(['"]hr_admin['"]\)/);
+    expect(page).toMatch(/\{showLowProgressAlerts\s*&&\s*\(?\s*<LowProgressAlertsPanel\b/);
+  });
+
   // --- coaching-panel.tsx triggers ---
   it('coaching-panel.tsx mounts LogCoachingModal', () => {
     expect(coachPanel).toMatch(/<LogCoachingModal\b/);

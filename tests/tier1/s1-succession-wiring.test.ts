@@ -20,6 +20,11 @@ describe('S1 succession wiring', () => {
     expect(modal).toMatch(/utils\.succession\.getDashboardKpis\.invalidate/);
     expect(modal).toMatch(/utils\.succession\.getCompetencyCoverage\.invalidate/);
     expect(modal).toMatch(/utils\.succession\.getRolesWithoutSuccessor\.invalidate/);
+    // Sprint 1.4 Task 1 -> Task 4 cross-feature handoff: adding a suggested
+    // successor must live-refresh the comp-gap check and drop the candidate
+    // from the suggestion list, not just wait for next reload.
+    expect(modal).toMatch(/utils\.succession\.getCompGapAlerts\.invalidate/);
+    expect(modal).toMatch(/utils\.succession\.getSuggestedSuccessors\.invalidate/);
   });
 
   it('renders inside the shared Modal', () => {
