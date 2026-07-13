@@ -28,19 +28,25 @@ export const candidateDocumentsRouter = router({
     }),
 
   // Parses CV TEXT (paste-in / extracted upstream) via the gated cv-parser
-  // agent. Optionally persists the result to a document. Real file→text
-  // extraction (S3 + PDF/DOCX) is a separate future phase.
+  // agent. Optionally persists the result to a document, and always promotes
+  // the parsed education/languages onto the owning Candidate row (so the FIT
+  // Engine's education/languages dimensions can read them — see
+  // candidateAiService.parseCV). Real file→text extraction (S3 + PDF/DOCX) is
+  // a separate future phase.
   parseCV: permissionProcedure('candidate', 'update')
     .input(z.object({
+      candidateId: z.string().uuid(),
       text: z.string().min(1).max(20000),
       documentId: z.string().uuid().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
+      await assertScoped('candidate', input.candidateId, ctx.access, ctx.user.id, ctx.user.organizationId);
       if (input.documentId) {
         const doc = await candidateService.getDocument(ctx.user.organizationId, input.documentId);
-        if (!doc) throw new TRPCError({ code: 'NOT_FOUND', message: 'Documento no encontrado' });
-        await assertScoped('candidate', doc.candidateId, ctx.access, ctx.user.id, ctx.user.organizationId);
+        if (!doc || doc.candidateId !== input.candidateId) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Documento no encontrado' });
+        }
       }
-      return candidateAiService.parseCV(ctx.user.organizationId, input.text, input.documentId);
+      return candidateAiService.parseCV(ctx.user.organizationId, input.text, input.documentId, input.candidateId);
     }),
 });

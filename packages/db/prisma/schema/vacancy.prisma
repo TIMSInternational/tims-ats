@@ -11,6 +11,7 @@ model Vacancy {
   positions           Int       @default(1)
   priority            String    @default("medium")
   status              String    @default("draft")
+  roleFamily          String?   @map("role_family")
   salary              Json?
   contractType        String?   @map("contract_type")
   location            String?
@@ -52,22 +53,38 @@ model Vacancy {
 }
 
 model JobProfile {
-  id             String   @id @default(uuid()) @db.Uuid
-  organizationId String   @map("organization_id") @db.Uuid
-  vacancyId      String   @unique @map("vacancy_id") @db.Uuid
-  discTargets    Json     @default("{}") @map("disc_targets")
-  competencies   Json     @default("{}")
-  pcaExpected    Json?    @map("pca_expected")
-  milExpected    Json?    @map("mil_expected")
-  kpis           Json?
-  requirements   Json?
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  id              String   @id @default(uuid()) @db.Uuid
+  organizationId  String   @map("organization_id") @db.Uuid
+  vacancyId       String   @unique @map("vacancy_id") @db.Uuid
+  discTargets     Json     @default("{}") @map("disc_targets")
+  competencies    Json     @default("{}")
+  pcaExpected     Json?    @map("pca_expected")
+  milExpected     Json?    @map("mil_expected")
+  kpis            Json?
+  requirements    Json?
+  fitRequirements Json?    @map("fit_requirements")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
   vacancy Vacancy @relation(fields: [vacancyId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
   @@map("job_profiles")
+}
+
+model RoleFamilyWeightProfile {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String
+  weights        Json
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@map("role_family_weight_profiles")
 }
 
 model PublicationChannel {

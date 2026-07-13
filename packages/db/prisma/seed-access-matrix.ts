@@ -32,7 +32,7 @@ export const MATRIX: Record<string, Entry[]> = {
       'vacancy', 'pipeline', 'candidate', 'assessment', 'interview', 'offer',
       'onboarding', 'performance', 'learning', 'ninebox', 'succession', 'team_intel',
       'engagement', 'dei', 'compensation', 'monitoring', 'organization', 'user',
-      'notification', 'audit', 'feature_flags', 'billing', 'integration',
+      'notification', 'audit', 'feature_flags', 'billing', 'integration', 'fit_engine',
     ].map((m) => ({ module: m, actions: ['read', 'create', 'update', 'delete'], scope: 'organization' as Scope })),
     { module: 'vacancy',      actions: ['approve', 'publish'], scope: 'organization' },
     { module: 'offer',        actions: ['approve'],            scope: 'organization' },
@@ -45,7 +45,7 @@ export const MATRIX: Record<string, Entry[]> = {
     ...[
       'vacancy', 'pipeline', 'candidate', 'assessment', 'interview', 'offer',
       'onboarding', 'performance', 'learning', 'ninebox', 'succession', 'team_intel',
-      'engagement', 'compensation', 'user', 'notification',
+      'engagement', 'compensation', 'user', 'notification', 'fit_engine',
     ].map((m) => ({ module: m, actions: ['read', 'create', 'update', 'delete'], scope: 'organization' as Scope })),
     { module: 'vacancy',      actions: ['approve', 'publish'],         scope: 'organization' },
     { module: 'offer',        actions: ['approve'],                    scope: 'organization' },
@@ -67,7 +67,8 @@ export const MATRIX: Record<string, Entry[]> = {
     ...['learning', 'ninebox', 'succession', 'engagement', 'compensation'].map(
       (m) => ({ module: m, actions: ['read'], scope: 'unit' as Scope }),
     ),
-    { module: 'monitoring',  actions: ['read'],                     scope: 'unit' }, // spec §2 "monitoreo estratégico de sus áreas"
+    { module: 'monitoring',   actions: ['read'],  scope: 'unit' }, // spec §2 "monitoreo estratégico de sus áreas"
+    { module: 'fit_engine',   actions: ['read'],  scope: 'unit' },
   ],
 
   recruiter: [
@@ -77,6 +78,7 @@ export const MATRIX: Record<string, Entry[]> = {
     { module: 'vacancy',    actions: ['read', 'create', 'update', 'delete', 'publish'], scope: 'organization' }, // +publish: posts to job boards
     { module: 'assessment', actions: ['read', 'create', 'update'],                      scope: 'organization' },
     { module: 'offer',      actions: ['read', 'create'],                                scope: 'organization' }, // +create: spec §2 "crear ofertas"
+    { module: 'fit_engine', actions: ['read', 'create'],                                scope: 'organization' },
   ],
 
   leader: [
@@ -97,6 +99,7 @@ export const MATRIX: Record<string, Entry[]> = {
     // Both modules are single-use (one page each), so withholding them is isolated.
     { module: 'engagement',   actions: ['read'],                      scope: 'team' },
     { module: 'compensation', actions: ['read'],                      scope: 'team' },
+    { module: 'fit_engine',   actions: ['read'],                      scope: 'team' },
   ],
 
   committee: [

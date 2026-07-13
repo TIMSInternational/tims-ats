@@ -5,7 +5,7 @@ import { trpc } from '../../../../../lib/trpc';
 import { useI18n } from '../../../../../lib/i18n';
 import { toast } from '../../../../../lib/toast';
 
-export function CvParseCard() {
+export function CvParseCard({ candidateId }: { candidateId: string }) {
   const { t } = useI18n();
   const [text, setText] = useState('');
   const parse = trpc.candidate.parseCV.useMutation({
@@ -29,7 +29,7 @@ export function CvParseCard() {
       <div className="flex items-center justify-between mt-2">
         <span className="text-[10px] text-[#8B8B8B]">{t.candidateAi.parseHint}</span>
         <button
-          onClick={() => parse.mutate({ text })}
+          onClick={() => parse.mutate({ text, candidateId })}
           disabled={!text.trim() || parse.isPending}
           className="bg-[#DD0C15] text-white px-4 h-8 rounded-lg text-[12px] font-medium disabled:opacity-50"
         >

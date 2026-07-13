@@ -2,6 +2,7 @@ import { TRPCError } from '@trpc/server';
 import { parseCV as parseCVAgent, screenCandidate as screenCandidateAgent } from '@tims/ai';
 import { candidateRepository } from '../repositories/candidate.repository';
 import { candidateAiRepository } from '../repositories/candidate-ai.repository';
+import { fitEngineService } from './fit-engine.service';
 
 /** Coerce an unknown JSON value into a clean string[] (skills can be Json/null). */
 function toStringArray(value: unknown): string[] {
@@ -26,9 +27,11 @@ export const candidateAiService = {
    * document store is still a mock with no extracted text, and faking it would
    * violate rule #4. Real file → text extraction (S3 + PDF/DOCX) is a separate,
    * future phase (rule #9). When a documentId is given, the parse result is
-   * persisted to that document.
+   * persisted to that document. When a candidateId is given, the parsed
+   * education/languages are additionally promoted onto the Candidate row so
+   * the FIT Engine's experience/education/languages dimensions can read them.
    */
-  async parseCV(orgId: string, text: string, documentId?: string) {
+  async parseCV(orgId: string, text: string, documentId?: string, candidateId?: string) {
     // Verify document ownership BEFORE spending an AI call on it.
     if (documentId) {
       const doc = await candidateRepository.findDocument(orgId, documentId);
@@ -55,13 +58,23 @@ export const candidateAiService = {
       await candidateRepository.updateDocumentParsedData(documentId, parsedData);
     }
 
+    if (candidateId) {
+      await candidateRepository.updateCandidateParsedFields(orgId, candidateId, {
+        education: data.education,
+        languages: data.languages,
+      });
+    }
+
     return parsedData;
   },
 
   /**
    * Screen a candidate against a vacancy via the gated candidate-screener agent,
-   * then persist the assessment as the candidate↔vacancy FitScore. Both records
-   * are loaded org-scoped and verified to exist before any AI spend.
+   * then delegate to fitEngineService.computeFitScore — the single writer of the
+   * candidate↔vacancy FitScore — passing the screener's result as narrative-only
+   * llmJudgment context (never part of the weighted score math). Both candidate
+   * and vacancy records are loaded org-scoped and verified to exist before any
+   * AI spend.
    */
   async screenCandidate(orgId: string, candidateId: string, vacancyId: string) {
     const [candidate, vacancy] = await Promise.all([
@@ -88,8 +101,16 @@ export const candidateAiService = {
       },
     );
 
-    const fit = await candidateAiRepository.upsertFitScore(orgId, candidateId, vacancyId, result.score, result);
+    const fit = await fitEngineService.computeFitScore(orgId, candidateId, vacancyId, {
+      llmJudgment: {
+        score: result.score,
+        recommendation: result.recommendation,
+        reasoning: result.reasoning,
+        strengths: result.strengths,
+        gaps: result.gaps,
+      },
+    });
 
-    return { ...result, model, fitScoreId: fit.id };
+    return { ...result, model, fitScoreId: fit.fitScoreId, overallScore: fit.overallScore, isPartial: fit.isPartial };
   },
 };

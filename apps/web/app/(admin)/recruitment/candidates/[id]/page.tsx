@@ -132,7 +132,7 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
             )}
             {c.fitScores.length > 0 && <FitBreakdown fitScores={c.fitScores} />}
             <ScreenCandidateCard candidateId={id} vacancies={c.applications.map((a) => a.vacancy)} />
-            <CvParseCard />
+            <CvParseCard candidateId={id} />
             <StageTimeline applications={c.applications} />
             <TagsCard tags={c.tags} candidateId={id} />
             <RiskFlags />

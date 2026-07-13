@@ -38,6 +38,8 @@ export const AGENT_REGISTRY: Record<string, AgentDef> = {
   'ai-voice-interview': { slug: 'ai-voice-interview', name: 'AI Voice Interview', model: 'sonnet', category: 'recruitment', batchEligible: false, cacheTtlSeconds: 0 },
   // 'haiku' (Haiku 4.5) pending the account's Sonnet 4.5 billing fix — see note above; upgrade to 'sonnet' after.
   'interview-fit-score': { slug: 'interview-fit-score', name: 'Interview Fit Scorer', model: 'haiku', category: 'recruitment', batchEligible: false, cacheTtlSeconds: 0 },
+  // Consequential candidate-evaluation narrative (not interview-analysis-cluster) ⇒ 'sonnet', matching candidate-screener.
+  'fit-explainer': { slug: 'fit-explainer', name: 'FIT Score Explainer', model: 'sonnet', category: 'recruitment', batchEligible: false, cacheTtlSeconds: 0 },
 };
 
 // Process-local memo (the ai_agents catalog is global/immutable enough that an

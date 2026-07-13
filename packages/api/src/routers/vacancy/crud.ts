@@ -41,6 +41,7 @@ const vacancyDetailSelect = {
   contractType: true,
   salary: true,
   settings: true,
+  roleFamily: true,
   createdAt: true,
   updatedAt: true,
   closedAt: true,
@@ -60,6 +61,7 @@ const vacancyDetailSelect = {
       milExpected: true,
       kpis: true,
       requirements: true,
+      fitRequirements: true,
     },
   },
   channels: {
@@ -369,6 +371,18 @@ export const vacancyCrudRouter = router({
         where: { id: input.id },
         data: { status: 'frozen' },
         select: vacancyMutationSelect,
+      });
+    }),
+
+  updateRoleFamily: permissionProcedure('vacancy', 'update')
+    .input(z.object({ vacancyId: z.string().uuid(), roleFamily: z.string().max(100).nullable() }))
+    .mutation(async ({ ctx, input }) => {
+      await assertScoped('vacancy', input.vacancyId, ctx.access, ctx.user.id, ctx.user.organizationId);
+
+      return db.vacancy.update({
+        where: { id: input.vacancyId, organizationId: ctx.user.organizationId },
+        data: { roleFamily: input.roleFamily },
+        select: { id: true, roleFamily: true },
       });
     }),
 

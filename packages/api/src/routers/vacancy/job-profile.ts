@@ -3,6 +3,7 @@ import { router, permissionProcedure } from '../../trpc';
 import { tenantDb as db } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { assertScoped } from '../../access';
+import { EDUCATION_LEVELS } from '../../services/fit-engine.service';
 
 // ---------------------------------------------------------------------------
 // Typed Zod schemas for JSON fields (no z.unknown)
@@ -47,6 +48,18 @@ const requirementSchema = z.object({
 
 const requirementsSchema = z.array(requirementSchema).max(20).nullish();
 
+// FIT Engine's own structured requirements — separate from the free-text
+// `requirements` checklist above. Consumed by fitEngineService.computeFitScore
+// via fitEngineRepository.getVacancyForFit (jobProfile.fitRequirements), not
+// by the free-text `requirements` field, which parseRequirements() cannot
+// safely parse (arbitrary HR-authored prose, not structured data).
+const fitRequirementsInputSchema = z.object({
+  vacancyId: z.string().uuid(),
+  minYearsExperience: z.number().min(0).max(60).optional(),
+  requiredEducationLevel: z.enum(EDUCATION_LEVELS).optional(),
+  requiredLanguages: z.array(z.string().min(1).max(50)).max(20).optional(),
+});
+
 // ---------------------------------------------------------------------------
 // Selects
 // ---------------------------------------------------------------------------
@@ -60,6 +73,7 @@ const jobProfileSelect = {
   milExpected: true,
   kpis: true,
   requirements: true,
+  fitRequirements: true,
   createdAt: true,
   updatedAt: true,
 } as const;
@@ -116,6 +130,30 @@ export const vacancyJobProfileRouter = router({
           ...(data.requirements !== undefined && { requirements: data.requirements as Prisma.InputJsonValue }),
         },
         select: jobProfileSelect,
+      });
+    }),
+
+  updateFitRequirements: permissionProcedure('vacancy', 'update')
+    .input(fitRequirementsInputSchema)
+    .mutation(async ({ ctx, input }) => {
+      await assertScoped('vacancy', input.vacancyId, ctx.access, ctx.user.id, ctx.user.organizationId);
+
+      const { vacancyId, ...fields } = input;
+      const fitRequirements = {
+        ...(fields.minYearsExperience !== undefined && { minYearsExperience: fields.minYearsExperience }),
+        ...(fields.requiredEducationLevel !== undefined && { requiredEducationLevel: fields.requiredEducationLevel }),
+        ...(fields.requiredLanguages !== undefined && { requiredLanguages: fields.requiredLanguages }),
+      } as Prisma.InputJsonValue;
+
+      return db.jobProfile.upsert({
+        where: { vacancyId },
+        create: {
+          organizationId: ctx.user.organizationId,
+          vacancyId,
+          fitRequirements,
+        },
+        update: { fitRequirements },
+        select: { id: true, vacancyId: true, fitRequirements: true },
       });
     }),
 });

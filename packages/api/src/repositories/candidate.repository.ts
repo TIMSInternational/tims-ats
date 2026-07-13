@@ -338,6 +338,18 @@ export const candidateRepository = {
     });
   },
 
+  async updateCandidateParsedFields(
+    orgId: string,
+    candidateId: string,
+    fields: { education: Prisma.InputJsonValue; languages: Prisma.InputJsonValue },
+  ) {
+    return db.candidate.update({
+      where: { id: candidateId, organizationId: orgId },
+      data: { education: fields.education, languages: fields.languages },
+      select: { id: true },
+    });
+  },
+
   // Tags
   async createTag(orgId: string, data: { candidateId: string; tag: string; source: string }) {
     return db.candidateTag.create({

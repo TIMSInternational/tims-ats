@@ -12,6 +12,8 @@ model Candidate {
   currentTitle    String?   @map("current_title")
   currentCompany  String?   @map("current_company")
   yearsExperience Int?      @map("years_experience")
+  education       Json?
+  languages       Json?
   skills          Json?
   linkedinUrl     String?   @map("linkedin_url")
   notes           String?

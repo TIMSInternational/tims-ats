@@ -12,6 +12,9 @@ import { ChannelsCard } from './channels-card';
 import { CandidatesSummary } from './candidates-summary';
 import { SlaCard } from './sla-card';
 import { ApprovalChain } from './approval-chain';
+import { FitRanking } from './fit-ranking';
+import { RoleFamilyCard } from './role-family-card';
+import { FitRequirementsCard } from './fit-requirements-card';
 
 export default function VacancyDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -118,10 +121,16 @@ export default function VacancyDetailPage({ params }: { params: Promise<{ id: st
               isError={stats.isError}
             />
             <SlaCard vacancy={v} />
+            <RoleFamilyCard vacancyId={id} roleFamily={v.roleFamily ?? null} />
+            <FitRequirementsCard vacancyId={id} fitRequirements={v.jobProfile?.fitRequirements ?? null} />
             {(v.approvals.length > 0 || v.status === 'draft') && (
               <ApprovalChain vacancyId={id} vacancyStatus={v.status} approvals={v.approvals} />
             )}
           </div>
+        </div>
+
+        <div className="mt-6">
+          <FitRanking vacancyId={id} />
         </div>
       </div>
     </div>

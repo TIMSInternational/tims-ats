@@ -4,12 +4,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // so the mock intercepts the service's import and tsc can resolve the specifier.
 vi.mock('../../packages/ai/src/index', () => ({ parseCV: vi.fn() }));
 vi.mock('../../packages/api/src/repositories/candidate.repository', () => ({
-  candidateRepository: { findDocument: vi.fn(), updateDocumentParsedData: vi.fn() },
+  candidateRepository: { findDocument: vi.fn(), updateDocumentParsedData: vi.fn(), updateCandidateParsedFields: vi.fn() },
 }));
 
 import { candidateAiService } from '../../packages/api/src/services/candidate-ai.service';
 import { parseCV as parseCVAgent } from '../../packages/ai/src/index';
 import { candidateRepository } from '../../packages/api/src/repositories/candidate.repository';
+
+const ORG_ID = 'org-1';
+const CANDIDATE_ID = 'cand-1';
 
 const AGENT_RESULT = {
   data: {
@@ -47,5 +50,38 @@ describe('candidateAiService.parseCV', () => {
     vi.mocked(candidateRepository.findDocument).mockResolvedValue(null as never);
     await expect(candidateAiService.parseCV('org-1', 'cv text', 'doc-x')).rejects.toThrow();
     expect(parseCVAgent).not.toHaveBeenCalled();
+  });
+
+  it('promotes education and languages onto the Candidate row when candidateId is provided', async () => {
+    vi.mocked(parseCVAgent).mockResolvedValue({
+      data: {
+        name: 'Ana Gomez', email: 'a@x.com', phone: null,
+        skills: ['React'], experience: [],
+        education: [{ institution: 'MIT', degree: 'Bachelor', year: 2020 }],
+        languages: ['English', 'Spanish'], summary: 'x',
+      },
+      model: 'haiku', confidence: 0.9,
+    } as never);
+
+    await candidateAiService.parseCV(ORG_ID, 'cv text', undefined, CANDIDATE_ID);
+
+    expect(candidateRepository.updateCandidateParsedFields).toHaveBeenCalledWith(ORG_ID, CANDIDATE_ID, {
+      education: [{ institution: 'MIT', degree: 'Bachelor', year: 2020 }],
+      languages: ['English', 'Spanish'],
+    });
+  });
+
+  it('does not touch the Candidate row when no candidateId is provided', async () => {
+    vi.mocked(parseCVAgent).mockResolvedValue({
+      data: {
+        name: 'Ana Gomez', email: 'a@x.com', phone: null,
+        skills: [], experience: [], education: [], languages: [], summary: 'x',
+      },
+      model: 'haiku', confidence: 0.9,
+    } as never);
+
+    await candidateAiService.parseCV(ORG_ID, 'cv text');
+
+    expect(candidateRepository.updateCandidateParsedFields).not.toHaveBeenCalled();
   });
 });

@@ -4,7 +4,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('../../packages/ai/src/index', () => ({ parseCV: vi.fn(), screenCandidate: vi.fn() }));
 vi.mock('../../packages/api/src/repositories/candidate.repository', () => ({ candidateRepository: {} }));
 vi.mock('../../packages/api/src/repositories/candidate-ai.repository', () => ({
-  candidateAiRepository: { getCandidateProfile: vi.fn(), getVacancyForScreening: vi.fn(), upsertFitScore: vi.fn() },
+  candidateAiRepository: { getCandidateProfile: vi.fn(), getVacancyForScreening: vi.fn() },
+}));
+const computeFitScoreMock = vi.fn();
+vi.mock('../../packages/api/src/services/fit-engine.service', () => ({
+  fitEngineService: { computeFitScore: (...a: unknown[]) => computeFitScoreMock(...a) },
 }));
 
 import { candidateAiService } from '../../packages/api/src/services/candidate-ai.service';
@@ -28,11 +32,11 @@ beforeEach(() => {
   vi.mocked(candidateAiRepository.getVacancyForScreening).mockResolvedValue({
     id: 'v1', title: 'Senior Dev', description: 'Build stuff', settings: { skills: ['ts'], requirements: ['5+ yrs'] },
   } as never);
-  vi.mocked(candidateAiRepository.upsertFitScore).mockResolvedValue({ id: 'fit-1', overallScore: 80 } as never);
+  computeFitScoreMock.mockResolvedValue({ fitScoreId: 'fitscore-1', overallScore: 82, isPartial: true, breakdown: {}, weights: {} });
 });
 
 describe('candidateAiService.screenCandidate', () => {
-  it('maps profile + vacancy, runs the gated agent, and persists a FitScore', async () => {
+  it('maps profile + vacancy and runs the gated agent', async () => {
     const r = await candidateAiService.screenCandidate('org-1', 'c1', 'v1');
 
     expect(screenCandidateAgent).toHaveBeenCalledWith(
@@ -40,8 +44,27 @@ describe('candidateAiService.screenCandidate', () => {
       { name: 'Ana Gómez', title: 'Dev', skills: ['ts', 'react'], experience: 5 },
       { title: 'Senior Dev', requirements: ['5+ yrs', 'Build stuff'], skills: ['ts'] },
     );
-    expect(candidateAiRepository.upsertFitScore).toHaveBeenCalledWith('org-1', 'c1', 'v1', 80, SCREEN_RESULT.result);
-    expect(r).toMatchObject({ score: 80, recommendation: 'advance', model: 'sonnet', fitScoreId: 'fit-1' });
+    expect(r).toMatchObject({ score: 80, recommendation: 'advance', model: 'sonnet', fitScoreId: 'fitscore-1' });
+  });
+
+  it('delegates FitScore computation to fitEngineService with the screener result as llmJudgment', async () => {
+    const result = await candidateAiService.screenCandidate('org-1', 'c1', 'v1');
+
+    expect(computeFitScoreMock).toHaveBeenCalledWith(
+      'org-1', 'c1', 'v1',
+      {
+        llmJudgment: {
+          score: SCREEN_RESULT.result.score,
+          recommendation: SCREEN_RESULT.result.recommendation,
+          reasoning: SCREEN_RESULT.result.reasoning,
+          strengths: SCREEN_RESULT.result.strengths,
+          gaps: SCREEN_RESULT.result.gaps,
+        },
+      },
+    );
+    expect(result.fitScoreId).toBe('fitscore-1');
+    expect(result.overallScore).toBe(82);
+    expect(result.isPartial).toBe(true);
   });
 
   it('coerces non-array skills/requirements to empty arrays', async () => {
