@@ -118,6 +118,7 @@ export const MATRIX: Record<string, Entry[]> = {
 
   external: [
     { module: 'assessment', actions: ['read'], scope: 'organization' },
+    { module: 'validation', actions: ['update'], scope: 'organization' },
   ],
 
   // candidates use candidateProcedure, never staff RBAC — any stray grants stripped.

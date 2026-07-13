@@ -93,6 +93,7 @@ model ApiKey {
   revokedAt      DateTime? @map("revoked_at")
 
   creator User @relation("ApiKeyCreator", fields: [createdById], references: [id])
+  completedValidations PreemploymentValidation[] @relation("ValidationCompletedByApiKey")
 
   @@index([keyHash])
   @@index([organizationId])

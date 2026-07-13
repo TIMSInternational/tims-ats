@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { router, externalPermissionProcedure } from '../trpc';
 import { externalAssessmentService, type ExternalAuditMeta } from '../services/external-assessment.service';
+import { externalValidationService } from '../services/external-validation.service';
+import { ExternalValidationSubmitInput } from '../dto/external-validation';
 
 // `external` API surface (Wave 2.5 slice 7b). API-key-authenticated, read-only,
 // org-scoped to the key's tenant. The key is the principal — NEVER accept it as
@@ -39,4 +41,13 @@ export const externalRouter = router({
   ).query(({ ctx, input }) =>
     externalAssessmentService.getOne(ctx.access, auditMeta(ctx), input.assignmentId),
   ),
+
+  // Inbound vendor write (Sprint 1.6): submit a preemployment-validation result.
+  // Requires the 'validation:update' role grant AND the 'validation:write' scope
+  // UNCONDITIONALLY (alwaysEnforceScope=true) — an empty-scope key can NOT reach this
+  // write via the wildcard, so seeding the role grant never silently widens an
+  // existing key. Pending-only, atomic, audited.
+  submitValidationResult: externalPermissionProcedure('validation', 'update', 'validation:write', true)
+    .input(ExternalValidationSubmitInput)
+    .mutation(({ ctx, input }) => externalValidationService.submitResult(auditMeta(ctx), input)),
 });

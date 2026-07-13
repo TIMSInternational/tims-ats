@@ -5,6 +5,7 @@ import { db, runWithTenant } from '@tims/db';
 import { checkRateLimit, getRateLimitCategory } from './middleware/rate-limit';
 import { buildAccessForUser, createAnchorLoader, type AccessContext } from './access';
 import { resolveApiKeyPrincipal, buildExternalAccessUser } from './access/external-auth';
+import { externalScopeSatisfied } from './access/external-scope';
 import { touchApiKeyLastUsed } from './repositories/external-auth.repository';
 import type { Module, Action } from '@tims/shared';
 
@@ -226,11 +227,11 @@ export const externalProcedure = publicProcedure.use(requireApiKey);
 // honors ApiKey.scopes[] as a NARROWING filter: a non-empty scopes[] that omits the
 // endpoint's requiredScope denies even though the role grant would allow it. anchors
 // is null — external is org-scoped only (scopeWhereFor early-returns {} at org scope).
-function requireExternalPermission(module: string, action: string, requiredScope?: string) {
+function requireExternalPermission(module: string, action: string, requiredScope?: string, alwaysEnforceScope = false) {
   return t.middleware(async ({ ctx, next }) => {
     const ext = ctx.externalAuth;
     if (!ext) throw new TRPCError({ code: 'UNAUTHORIZED' });
-    if (requiredScope && ext.scopes.length > 0 && !ext.scopes.includes(requiredScope)) {
+    if (!externalScopeSatisfied(requiredScope, ext.scopes, alwaysEnforceScope)) {
       throw new TRPCError({ code: 'FORBIDDEN', message: 'La clave de API no incluye este alcance' });
     }
     const access = await buildAccessForUser(buildExternalAccessUser(ext), module, action);
@@ -242,8 +243,8 @@ function requireExternalPermission(module: string, action: string, requiredScope
   });
 }
 
-export function externalPermissionProcedure(module: Module, action: Action, requiredScope?: string) {
-  return externalProcedure.use(requireExternalPermission(module, action, requiredScope));
+export function externalPermissionProcedure(module: Module, action: Action, requiredScope?: string, alwaysEnforceScope = false) {
+  return externalProcedure.use(requireExternalPermission(module, action, requiredScope, alwaysEnforceScope));
 }
 
 // Helper to create permission-gated procedures

@@ -7,8 +7,8 @@ describe('permission vocabulary', () => {
     for (const m of ['succession', 'team_intel', 'learning', 'feature_flags', 'notification'])
       expect(MODULES).toContain(m);
   });
-  it('MODULES has exactly 24 entries (no phantom additions)', () => {
-    expect(MODULES).toHaveLength(24);
+  it('MODULES has exactly 25 entries (no phantom additions)', () => {
+    expect(MODULES).toHaveLength(25);
   });
   it('drops the 6 dead modules', () => {
     for (const m of ['coaching', 'evaluation', 'commitment', 'talent', 'team', 'lnd'])

@@ -66,6 +66,7 @@ model PreemploymentValidation {
   isBlocking     Boolean   @default(true) @map("is_blocking")
   result         Json?
   completedById  String?   @map("completed_by_id") @db.Uuid
+  completedByApiKeyId String? @map("completed_by_api_key_id") @db.Uuid
   completedAt    DateTime? @map("completed_at")
   notes          String?
   createdAt      DateTime  @default(now()) @map("created_at")
@@ -73,10 +74,12 @@ model PreemploymentValidation {
 
   offer           Offer @relation(fields: [offerId], references: [id], onDelete: Cascade)
   completedByUser User? @relation("ValidationCompletedBy", fields: [completedById], references: [id])
+  completedByApiKey ApiKey? @relation("ValidationCompletedByApiKey", fields: [completedByApiKeyId], references: [id], onDelete: SetNull)
 
   @@index([organizationId])
   @@index([offerId])
   @@index([completedById])
+  @@index([completedByApiKeyId])
   @@map("preemployment_validations")
 }
 

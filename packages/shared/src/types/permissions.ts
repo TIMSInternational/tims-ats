@@ -6,7 +6,7 @@ export const MODULES = [
   'learning', 'ninebox', 'succession', 'team_intel',
   'engagement', 'dei', 'compensation', 'monitoring',
   'organization', 'user', 'notification', 'audit',
-  'feature_flags', 'billing', 'integration', 'fit_engine',
+  'feature_flags', 'billing', 'integration', 'fit_engine', 'validation',
 ] as const;
 
 export type Module = typeof MODULES[number];

@@ -56,6 +56,7 @@ export const offerValidationsRouter = router({
           result: (input.result as Prisma.InputJsonValue) ?? undefined,
           notes: input.notes,
           completedById: ctx.user.id,
+          completedByApiKeyId: null,
           completedAt: input.status !== 'pending' ? new Date() : null,
         },
       });
