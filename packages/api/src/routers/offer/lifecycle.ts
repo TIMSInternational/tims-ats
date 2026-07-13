@@ -5,6 +5,7 @@ import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { resolveStaffSupabaseUserId } from '../../services/staff-provisioning.service';
 import { DEFAULT_ONBOARDING_TASKS } from '../../services/onboarding-defaults';
+import { hirePredictionService } from '../../services/hire-prediction.service';
 import { scopeWhereFor } from '../../access';
 
 export const offerLifecycleRouter = router({
@@ -80,6 +81,14 @@ export const offerLifecycleRouter = router({
       // call, so it runs before the tx.
       const supabaseUserId = await resolveStaffSupabaseUserId(candidate.email);
 
+      // Read the candidate's current FIT prediction BEFORE the tx (a standalone
+      // tenantDb read must not run nested inside the interactive transaction).
+      const fitScore = await hirePredictionService.readFitForHire(
+        ctx.user.organizationId,
+        offer.candidateId,
+        offer.vacancyId,
+      );
+
       return db.$transaction(async (tx) => {
         // Create the user record, linked to its Supabase identity from birth.
         const newUser = await tx.user.create({
@@ -137,6 +146,21 @@ export const offerLifecycleRouter = router({
         await tx.offer.update({
           where: { id: input.offerId },
           data: { status: 'converted' },
+        });
+
+        // Sprint 1.1.f — capture an immutable FIT-prediction snapshot at hire time
+        // (Quality-of-Hire instrumentation). Always writes one row per hire; the
+        // score may be null/partial. Runs inside this tx so it commits atomically
+        // with the hire.
+        await hirePredictionService.writeSnapshot(tx as unknown as import('@tims/db').Prisma.TransactionClient, {
+          organizationId: ctx.user.organizationId,
+          userId: newUser.id,
+          candidateId: offer.candidateId,
+          vacancyId: offer.vacancyId,
+          offerId: offer.id,
+          applicationId: offer.applicationId,
+          hiredById: ctx.user.id,
+          fitScore,
         });
 
         return newUser;

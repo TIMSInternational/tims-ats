@@ -36,6 +36,13 @@ vi.mock('../../packages/api/src/services/staff-provisioning.service', () => ({
   resolveStaffSupabaseUserId: vi.fn().mockResolvedValue('supabase-uid-1'),
 }));
 
+vi.mock('../../packages/api/src/services/hire-prediction.service', () => ({
+  hirePredictionService: {
+    readFitForHire: vi.fn().mockResolvedValue(null),
+    writeSnapshot: vi.fn().mockResolvedValue(undefined),
+  },
+}));
+
 vi.mock('../../packages/api/src/access/build', () => ({
   buildAccessForUser: vi.fn().mockResolvedValue({ allowed: true, scope: 'organization', roles: ['hr_admin'] }),
 }));

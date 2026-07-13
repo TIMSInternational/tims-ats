@@ -113,6 +113,23 @@ export const fitEngineRepository = {
     });
   },
 
+  /**
+   * Full FitScore fields for a candidate+vacancy, for hire-time snapshotting.
+   * Returns null when the candidate has no computed score for this vacancy.
+   */
+  async getFullFitScoreForSnapshot(orgId: string, candidateId: string, vacancyId: string) {
+    return db.fitScore.findFirst({
+      where: { candidateId, vacancyId, organizationId: orgId },
+      select: {
+        overallScore: true,
+        breakdown: true,
+        weights: true,
+        isPartial: true,
+        calculatedAt: true,
+      },
+    });
+  },
+
   /** Distinct active candidate ids currently in this vacancy's pipeline. */
   async getPipelineCandidateIds(orgId: string, vacancyId: string) {
     const applications = await db.application.findMany({

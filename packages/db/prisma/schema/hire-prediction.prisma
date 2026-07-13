@@ -1,0 +1,41 @@
+/// Write-once snapshot (no update path is built; enforced by convention + the
+/// unique offer_id, not a DB trigger) of a candidate's FIT prediction captured
+/// at hire time (offer.convertToEmployee). Instrumentation for the
+/// Quality-of-Hire Analyst. Scalar FK columns + DB-level FK constraints (see
+/// migration) — no Prisma relations declared (nothing navigates them yet; YAGNI).
+enum HirePredictionStatus {
+  scored
+  partial
+  none
+}
+
+model HirePrediction {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+
+  userId        String  @map("user_id") @db.Uuid
+  candidateId   String  @map("candidate_id") @db.Uuid
+  vacancyId     String  @map("vacancy_id") @db.Uuid
+  offerId       String  @unique @map("offer_id") @db.Uuid
+  applicationId String? @map("application_id") @db.Uuid
+
+  overallScore     Float?               @map("overall_score")
+  breakdown        Json?
+  weights          Json?
+  isPartial        Boolean?             @map("is_partial")
+  fitCalculatedAt  DateTime?            @map("fit_calculated_at")
+  predictionStatus HirePredictionStatus @map("prediction_status")
+
+  hiredById  String?  @map("hired_by_id") @db.Uuid
+  capturedAt DateTime @default(now())   @map("captured_at")
+  createdAt  DateTime @default(now())   @map("created_at")
+  updatedAt  DateTime @updatedAt        @map("updated_at")
+
+  @@index([organizationId])
+  @@index([userId])
+  @@index([candidateId])
+  @@index([vacancyId])
+  @@index([applicationId])
+  @@index([hiredById])
+  @@map("hire_predictions")
+}
