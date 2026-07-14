@@ -51,7 +51,7 @@ Detail for each lives in its wave/spec doc; this is the scannable status roll-up
 | Owner | Item |
 |---|---|
 | Federico | **Stripe go-live** — set `STRIPE_SECRET_KEY` + `STRIPE_PRICE_STARTER` + `STRIPE_PRICE_PROFESSIONAL` (latter two missing from `.env.example`), register webhook, configure Billing Portal. Code is complete + verified in test mode (`docs/WAVE-2-STRIPE-BILLING.md`); dormant until keys set. |
-| Federico | **`DAILY_API_KEY`** — human video interviews (`interview.createVideoRoom`) are code-complete (Daily.co) but throw at runtime without the key (absent from `.env.example`). The AI voice interview uses ElevenLabs and is unaffected. |
+| Federico | **`DAILY_API_KEY`** — human video interviews (`interview.createVideoRoom`) now fail closed with a clear provider-config error and `.env.example` documents the required Daily.co vars. The prod/local Daily key checked on 2026-07-14 reached Daily but returned `authentication-error`, so it must be replaced with a valid key. The AI voice interview uses ElevenLabs and is unaffected. |
 | Federico | **Fix Bedrock payment instrument (AWS acct 747814092517)** — Sonnet 4.5 Marketplace subscription can't activate; 5 analysis agents (interview-summarizer/guide, bias-detector, interview-fit-score, candidate-screener) are downgraded to Haiku 4.5 as a stopgap. Restore to Sonnet in `registry.ts` once billing clears. |
 | Federico | **MFA enforce** — enroll TOTP at `/mfa`, set `MFA_ENFORCED=true` in Vercel prod. |
 | Federico | **GitHub Actions billing** — every CI job fails in ~3s (empty steps); merges use admin-override + local `/gate`. Fix at github.com/settings/billing. |

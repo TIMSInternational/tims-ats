@@ -5,6 +5,8 @@ import { z } from 'zod';
 // the same as absent — so an unset-but-present-empty var never fails validation.
 const optionalSecret = () =>
   z.preprocess((v) => (v === '' ? undefined : v), z.string().min(1).optional());
+const optionalUrl = () =>
+  z.preprocess((v) => (v === '' ? undefined : v), z.string().url().optional());
 
 const envSchema = z.object({
   // Supabase
@@ -24,6 +26,11 @@ const envSchema = z.object({
   // Platform
   PLATFORM_EMAIL_FROM: z.string().email().default('noreply@nexadev.ai'),
   NEXT_PUBLIC_APP_URL: z.string().url().optional(),
+
+  // Daily.co human video interviews. Missing/blank key keeps the room-creation
+  // endpoint fail-closed; DAILY_API_URL is optional for tests/proxies.
+  DAILY_API_KEY: optionalSecret(),
+  DAILY_API_URL: optionalUrl(),
 
   // Upstash Redis (rate limiting — optional for local dev)
   UPSTASH_REDIS_REST_URL: z.string().url().optional(),

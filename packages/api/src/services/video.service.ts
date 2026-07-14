@@ -5,17 +5,40 @@
 
 import { TRPCError } from '@trpc/server';
 
-const DAILY_API_BASE = 'https://api.daily.co/v1';
+const DEFAULT_DAILY_API_BASE = 'https://api.daily.co/v1';
 
-function getApiKey(): string {
-  const key = process.env.DAILY_API_KEY;
-  if (!key) {
+function dailyApiBase(): string {
+  return (process.env.DAILY_API_URL || DEFAULT_DAILY_API_BASE).replace(/\/$/, '');
+}
+
+function dailyApiKey(): string | null {
+  const key = process.env.DAILY_API_KEY?.trim();
+  return key || null;
+}
+
+function assertConfigured(): { apiBase: string; apiKey: string } {
+  const apiKey = dailyApiKey();
+  if (!apiKey) {
     throw new TRPCError({
-      code: 'INTERNAL_SERVER_ERROR',
-      message: 'DAILY_API_KEY is not configured',
+      code: 'PRECONDITION_FAILED',
+      message: 'La sala de video no esta configurada. Falta DAILY_API_KEY.',
     });
   }
-  return key;
+  return { apiBase: dailyApiBase(), apiKey };
+}
+
+function dailyProviderError(status: number, statusText: string, errorBody: DailyErrorResponse): TRPCError {
+  if (status === 401 || status === 403) {
+    return new TRPCError({
+      code: 'PRECONDITION_FAILED',
+      message: 'Daily.co rechazo la clave configurada. Revisa DAILY_API_KEY.',
+    });
+  }
+
+  return new TRPCError({
+    code: 'INTERNAL_SERVER_ERROR',
+    message: `Daily.co API error (${status}): ${errorBody.error || errorBody.info || statusText}`,
+  });
 }
 
 function twoHoursFromNow(): number {
@@ -42,9 +65,9 @@ async function dailyFetch<T>(
   path: string,
   body: Record<string, unknown>,
 ): Promise<T> {
-  const apiKey = getApiKey();
+  const { apiBase, apiKey } = assertConfigured();
 
-  const res = await fetch(`${DAILY_API_BASE}${path}`, {
+  const res = await fetch(`${apiBase}${path}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -55,26 +78,27 @@ async function dailyFetch<T>(
 
   if (!res.ok) {
     const errorBody = (await res.json().catch(() => ({}))) as DailyErrorResponse;
-    throw new TRPCError({
-      code: 'INTERNAL_SERVER_ERROR',
-      message: `Daily.co API error (${res.status}): ${errorBody.error || errorBody.info || res.statusText}`,
-    });
+    throw dailyProviderError(res.status, res.statusText, errorBody);
   }
 
   return res.json() as Promise<T>;
 }
 
 export const videoService = {
+  isConfigured(): boolean {
+    return dailyApiKey() !== null;
+  },
+
   /**
    * Create or retrieve a private Daily.co room for an interview.
    * If room already exists, fetches it. Room expires 2 hours from creation.
    */
   async createRoom(interviewId: string): Promise<{ url: string; roomName: string }> {
     const roomName = `tims-${interviewId.slice(0, 8)}`;
-    const apiKey = getApiKey();
+    const { apiBase, apiKey } = assertConfigured();
 
     // Try to create the room
-    const createRes = await fetch(`${DAILY_API_BASE}/rooms/`, {
+    const createRes = await fetch(`${apiBase}/rooms/`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -98,7 +122,7 @@ export const videoService = {
 
     // Room already exists — fetch it instead
     if (createRes.status === 400) {
-      const getRes = await fetch(`${DAILY_API_BASE}/rooms/${roomName}`, {
+      const getRes = await fetch(`${apiBase}/rooms/${roomName}`, {
         method: 'GET',
         headers: { Authorization: `Bearer ${apiKey}` },
       });
@@ -110,10 +134,7 @@ export const videoService = {
     }
 
     const errorBody = (await createRes.json().catch(() => ({}))) as DailyErrorResponse;
-    throw new TRPCError({
-      code: 'INTERNAL_SERVER_ERROR',
-      message: `Daily.co API error (${createRes.status}): ${errorBody.error || errorBody.info || createRes.statusText}`,
-    });
+    throw dailyProviderError(createRes.status, createRes.statusText, errorBody);
   },
 
   /**
