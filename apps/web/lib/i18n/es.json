@@ -83,7 +83,9 @@
     "myPanels": "Mis Paneles",
     "myPerformance": "Mi Desempeno",
     "myLearning": "Mi Aprendizaje",
-    "myOnboarding": "Mi Onboarding"
+    "myOnboarding": "Mi Onboarding",
+    "my360": "Mi 360",
+    "evaluations360": "Evaluacion 360"
   },
   "platformSidebar": {
     "platform": "Plataforma",
@@ -3262,5 +3264,89 @@
     "saveButton": "Guardar Requisitos",
     "saving": "Guardando...",
     "saved": "Requisitos FIT guardados"
+  },
+  "my360": {
+    "pageTitle": "Mi 360°",
+    "breadcrumb": "Mi Espacio",
+    "tasksTitle": "Evaluaciones pendientes",
+    "tasksEmpty": "No tienes evaluaciones pendientes",
+    "tasksEmptyDescription": "Cuando te asignen una evaluación 360° aparecerá aquí",
+    "reportsTitle": "Mis reportes",
+    "reportsEmpty": "Aún no tienes reportes 360° disponibles",
+    "reportsEmptyDescription": "Los reportes aparecen aquí cuando se publica un ciclo en el que participaste",
+    "cycleReportEmpty": "Aún no hay resultados disponibles para este ciclo",
+    "anonymityNote": "La retroalimentación de pares y reportes directos aparece únicamente cuando al menos 3 colegas de cada grupo han respondido, para proteger su anonimato.",
+    "commentLabel": "Comentario (opcional)",
+    "commentPlaceholder": "Comparte contexto adicional para esta evaluación",
+    "submitButton": "Enviar evaluación",
+    "submitSuccess": "Evaluación enviada correctamente",
+    "raterCountLabel": "{n} evaluadores",
+    "relationshipLabels": {
+      "self": "Autoevaluación",
+      "manager": "Jefe directo",
+      "peer": "Pares",
+      "direct_report": "Reportes directos"
+    },
+    "competencyLabels": {
+      "leadership": "Liderazgo",
+      "communication": "Comunicación",
+      "collaboration": "Colaboración",
+      "execution": "Ejecución",
+      "adaptability": "Adaptabilidad",
+      "integrity": "Integridad"
+    }
+  },
+  "evaluation360": {
+    "pageTitle": "Evaluación 360°",
+    "breadcrumb": "Talento",
+    "createButton": "Nuevo Ciclo",
+    "cycleNameLabel": "Nombre del ciclo",
+    "cycleNamePlaceholder": "ej. Evaluación 360° Q3 2026",
+    "saveButton": "Crear Ciclo",
+    "cycleCreated": "Ciclo creado",
+    "cyclesEmpty": "No hay ciclos de evaluación 360°",
+    "cyclesEmptyDescription": "Crea un ciclo para comenzar a asignar evaluadores",
+    "columnName": "Nombre",
+    "columnStatus": "Estado",
+    "columnCreated": "Creado",
+    "columnPublished": "Publicado",
+    "columnActions": "Acciones",
+    "statusLabels": {
+      "draft": "Borrador",
+      "open": "Abierto",
+      "closed": "Cerrado",
+      "published": "Publicado"
+    },
+    "openButton": "Abrir",
+    "closeButton": "Cerrar",
+    "publishButton": "Publicar",
+    "manageButton": "Gestionar",
+    "closeManageButton": "Cerrar panel",
+    "cycleOpened": "Ciclo abierto",
+    "cycleClosed": "Ciclo cerrado",
+    "cyclePublished": "Ciclo publicado",
+    "assignRatersTitle": "Asignar evaluadores",
+    "subjectLabel": "Evaluado",
+    "changeSubjectButton": "Cambiar",
+    "selectSubjectPrompt": "Selecciona un evaluado para comenzar",
+    "raterLabel": "Evaluador",
+    "relationshipLabel": "Relación",
+    "addRaterButton": "Agregar evaluador",
+    "removeRaterButton": "Quitar",
+    "assignSubmitButton": "Guardar asignaciones",
+    "assignSuccess": "Evaluadores asignados",
+    "assignmentsEmptyHint": "Agrega al menos un evaluador antes de guardar",
+    "progressTitle": "Progreso del ciclo",
+    "progressSubmittedOfTotal": "{submitted} de {total} enviadas",
+    "relationshipLabels": {
+      "self": "Autoevaluación",
+      "manager": "Jefe directo",
+      "peer": "Pares",
+      "direct_report": "Reportes directos"
+    },
+    "searchSubjectPlaceholder": "Buscar evaluado por nombre...",
+    "searchRaterPlaceholder": "Buscar evaluador por nombre...",
+    "loadingUsers": "Cargando usuarios...",
+    "noUsersFound": "No se encontraron usuarios"
   }
 }

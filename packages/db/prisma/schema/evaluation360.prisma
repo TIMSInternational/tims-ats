@@ -1,0 +1,86 @@
+/// Sprint 1.7 — 360 Evaluation greenfield foundation. A ReviewCycle groups
+/// RaterAssignments (subject × rater × relationship); each assignment collects
+/// RaterResponses (one per competency, from the FRESH packages/shared
+/// EVAL360_COMPETENCIES set — no DB Competency table). Anonymity rules
+/// (self shown, manager attributed, peer/direct_report suppressed below 3
+/// raters) are enforced in the service layer in a later slice, not here.
+enum ReviewCycleStatus {
+  draft
+  open
+  closed
+  published
+}
+
+enum RaterRelationship {
+  self
+  manager
+  peer
+  direct_report
+}
+
+enum RaterAssignmentStatus {
+  pending
+  submitted
+}
+
+model ReviewCycle {
+  id             String            @id @default(uuid()) @db.Uuid
+  organizationId String            @map("organization_id") @db.Uuid
+  name           String
+  status         ReviewCycleStatus @default(draft)
+  opensAt        DateTime?         @map("opens_at")
+  closesAt       DateTime?         @map("closes_at")
+  publishedAt    DateTime?         @map("published_at")
+  createdById    String            @map("created_by_id") @db.Uuid
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
+
+  createdBy   User               @relation("ReviewCycleCreatedBy", fields: [createdById], references: [id])
+  assignments RaterAssignment[]
+
+  @@index([organizationId])
+  @@map("review_cycles")
+}
+
+model RaterAssignment {
+  id             String                 @id @default(uuid()) @db.Uuid
+  organizationId String                 @map("organization_id") @db.Uuid
+  cycleId        String                 @map("cycle_id") @db.Uuid
+  subjectUserId  String                 @map("subject_user_id") @db.Uuid
+  raterUserId    String                 @map("rater_user_id") @db.Uuid
+  relationship   RaterRelationship
+  status         RaterAssignmentStatus  @default(pending)
+  submittedAt    DateTime?              @map("submitted_at")
+  createdAt      DateTime               @default(now()) @map("created_at")
+  updatedAt      DateTime               @updatedAt @map("updated_at")
+
+  cycle     ReviewCycle      @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  subject   User             @relation("RaterAssignmentSubject", fields: [subjectUserId], references: [id])
+  rater     User             @relation("RaterAssignmentRater", fields: [raterUserId], references: [id])
+  responses RaterResponse[]
+
+  @@unique([cycleId, subjectUserId, raterUserId])
+  @@index([organizationId])
+  @@index([cycleId])
+  @@index([raterUserId])
+  @@index([subjectUserId])
+  @@map("rater_assignments")
+}
+
+model RaterResponse {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  assignmentId   String   @map("assignment_id") @db.Uuid
+  competencyKey  String   @map("competency_key")
+  rating         Int
+  comment        String?  @db.VarChar(5000)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  assignment RaterAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+
+  @@unique([assignmentId, competencyKey])
+  @@index([organizationId])
+  @@index([assignmentId])
+  @@map("rater_responses")
+}

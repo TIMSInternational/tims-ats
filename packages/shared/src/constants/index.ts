@@ -1,3 +1,5 @@
+export * from './eval360';
+
 export const APP_NAME = 'TIMS Platform';
 export const APP_DOMAIN = 'tims.com';
 export const SUPPORT_EMAIL = 'soporte@tims.com';

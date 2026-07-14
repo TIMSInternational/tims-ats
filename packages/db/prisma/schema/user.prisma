@@ -121,6 +121,11 @@ model User {
   // Demographics (1:1, sensitive self-ID — see employee.prisma)
   demographics                 EmployeeDemographics?
 
+  // 360 Evaluation (Sprint 1.7)
+  reviewCyclesCreated           ReviewCycle[]           @relation("ReviewCycleCreatedBy")
+  raterAssignmentsAsSubject     RaterAssignment[]       @relation("RaterAssignmentSubject")
+  raterAssignmentsAsRater       RaterAssignment[]       @relation("RaterAssignmentRater")
+
   @@unique([organizationId, email])
   @@index([organizationId])
   @@index([supabaseUserId])

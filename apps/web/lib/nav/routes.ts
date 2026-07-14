@@ -17,6 +17,12 @@ export const PATH_MODULE: Record<string, string | null> = {
   '/talent/nine-box': 'ninebox',
   '/talent/succession': 'succession',
   '/talent/team-intelligence': 'team_intel',
+  '/talent/360': 'evaluation360',
+  // Fix wave (FIX C): always-allowed, like /dashboard/profile — self-service
+  // (myRaterTasks/submitRatings/myReport/myReportCycles) is now identity-
+  // authorized via protectedProcedure, not RBAC-gated, so every staff role
+  // can reach their own 360 tasks/reports regardless of evaluation360 grant.
+  '/my-360': null,
   '/engagement/climate': 'engagement',
   '/engagement/dei': 'dei',
   '/compensation': 'compensation',

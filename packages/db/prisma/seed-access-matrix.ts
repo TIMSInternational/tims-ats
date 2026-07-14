@@ -32,7 +32,7 @@ export const MATRIX: Record<string, Entry[]> = {
       'vacancy', 'pipeline', 'candidate', 'assessment', 'interview', 'offer',
       'onboarding', 'performance', 'learning', 'ninebox', 'succession', 'team_intel',
       'engagement', 'dei', 'compensation', 'monitoring', 'organization', 'user',
-      'notification', 'audit', 'feature_flags', 'billing', 'integration', 'fit_engine',
+      'notification', 'audit', 'feature_flags', 'billing', 'integration', 'fit_engine', 'evaluation360',
     ].map((m) => ({ module: m, actions: ['read', 'create', 'update', 'delete'], scope: 'organization' as Scope })),
     { module: 'vacancy',      actions: ['approve', 'publish'], scope: 'organization' },
     { module: 'offer',        actions: ['approve'],            scope: 'organization' },
@@ -45,7 +45,7 @@ export const MATRIX: Record<string, Entry[]> = {
     ...[
       'vacancy', 'pipeline', 'candidate', 'assessment', 'interview', 'offer',
       'onboarding', 'performance', 'learning', 'ninebox', 'succession', 'team_intel',
-      'engagement', 'compensation', 'user', 'notification', 'fit_engine',
+      'engagement', 'compensation', 'user', 'notification', 'fit_engine', 'evaluation360',
     ].map((m) => ({ module: m, actions: ['read', 'create', 'update', 'delete'], scope: 'organization' as Scope })),
     { module: 'vacancy',      actions: ['approve', 'publish'],         scope: 'organization' },
     { module: 'offer',        actions: ['approve'],                    scope: 'organization' },
@@ -69,6 +69,10 @@ export const MATRIX: Record<string, Entry[]> = {
     ),
     { module: 'monitoring',   actions: ['read'],  scope: 'unit' }, // spec §2 "monitoreo estratégico de sus áreas"
     { module: 'fit_engine',   actions: ['read'],  scope: 'unit' },
+    // evaluation360 deliberately NOT granted: the admin cycle CRUD/read endpoints
+    // are org-only (requireOrgScope), so a unit-scoped read grant would be dead/
+    // misleading — a unit-scoped hrbp could reach the grant check but then 403 on
+    // every call. Scoped unit-level monitoring is deferred to a later slice.
   ],
 
   recruiter: [
@@ -100,6 +104,9 @@ export const MATRIX: Record<string, Entry[]> = {
     { module: 'engagement',   actions: ['read'],                      scope: 'team' },
     { module: 'compensation', actions: ['read'],                      scope: 'team' },
     { module: 'fit_engine',   actions: ['read'],                      scope: 'team' },
+    // evaluation360 deliberately NOT granted: same reasoning as hrbp above — the
+    // admin endpoints are org-only (requireOrgScope), so a team-scoped read grant
+    // would be dead/misleading. Scoped team-level monitoring is deferred.
   ],
 
   committee: [
@@ -114,6 +121,11 @@ export const MATRIX: Record<string, Entry[]> = {
     { module: 'learning',    actions: ['read'],                     scope: 'own' },
     { module: 'engagement',  actions: ['read', 'create'],           scope: 'own' },
     { module: 'compensation',actions: ['read'],                     scope: 'own' },
+    // evaluation360 deliberately NOT granted: myRaterTasks/submitRatings/
+    // myReport/myReportCycles are protectedProcedure (identity-anchored on
+    // raterUserId/subjectUserId === ctx.user.id), not RBAC-gated, so
+    // self-service needs no grant. Only super_admin/hr_admin hold the
+    // evaluation360 grant, for the org-admin cycle CRUD endpoints.
   ],
 
   external: [

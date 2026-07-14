@@ -19,9 +19,21 @@ export type NavRole = (typeof NAV_ROLES)[number];
 // which renders the separate PlatformSidebar). The primary role wins for nav.
 const PRECEDENCE: NavRole[] = ['super_admin', 'hr_admin', 'hrbp', 'recruiter', 'leader', 'committee', 'employee'];
 
+// Fix wave (FIX C): /my-360 is always-allowed (module: null) — self-service
+// (myRaterTasks/submitRatings/myReport/myReportCycles) is identity-authorized
+// via protectedProcedure, not RBAC-gated, so every staff role must be able to
+// reach their own 360 tasks/reports. COMMAND_CENTER is shared by every
+// admin-shell manifest (BASE_ADMIN, HR_ADMIN_PEOPLE_FIRST, HRBP_UNITS,
+// RECRUITER_ATS, LEADER_COCKPIT), so adding it here covers super_admin,
+// hr_admin, hrbp, recruiter, and leader in one place. Committee (participant
+// shell, no COMMAND_CENTER) gets its own entry in COMMITTEE_TASKS below.
+// Employee already has it in EMPLOYEE_HOME.
 const COMMAND_CENTER: NavSection = {
   labelKey: null,
-  items: [{ href: '/dashboard', labelKey: 'sidebar.commandCenter', icon: 'grid', module: null }],
+  items: [
+    { href: '/dashboard', labelKey: 'sidebar.commandCenter', icon: 'grid', module: null },
+    { href: '/my-360', labelKey: 'sidebar.my360', icon: 'target', module: null },
+  ],
 };
 const RECRUITMENT: NavSection = {
   labelKey: 'sidebar.recruitment',
@@ -50,6 +62,7 @@ const TALENT: NavSection = {
     { href: '/talent/nine-box', labelKey: 'sidebar.nineBox', icon: 'ninebox', module: 'ninebox' },
     { href: '/talent/succession', labelKey: 'sidebar.succession', icon: 'succession', module: 'succession' },
     { href: '/talent/team-intelligence', labelKey: 'sidebar.teamIntel', icon: 'team', module: 'team_intel' },
+    { href: '/talent/360', labelKey: 'sidebar.evaluations360', icon: 'clipboard', module: 'evaluation360' },
   ],
 };
 const CULTURE: NavSection = {
@@ -130,12 +143,18 @@ const COMMITTEE_TASKS: NavSection[] = [
     labelKey: 'sidebar.myTasks',
     items: [
       { href: '/recruitment/interviews', labelKey: 'sidebar.myPanels', icon: 'video', module: 'interview' },
+      // Fix wave (FIX C): always-allowed self-service, see COMMAND_CENTER docstring.
+      { href: '/my-360', labelKey: 'sidebar.my360', icon: 'target', module: null },
     ],
   },
 ];
 
 // employee = self-service "My Home". Only sections with a real own-scoped endpoint (D5):
-// performance, learning, onboarding. Surveys/comp/360/privacy omitted until their backend ships.
+// performance, learning, onboarding, 360 (Sprint 1.7 Slice 5 — myRaterTasks/submitRatings/
+// myReport are identity-anchored own-scope endpoints). Surveys/comp/privacy omitted until
+// their backend ships.
+// Fix wave (FIX C): /my-360's module is null (always-allowed) — self-service is
+// identity-authorized via protectedProcedure, not RBAC-gated, so it needs no grant.
 const EMPLOYEE_HOME: NavSection[] = [
   {
     labelKey: 'sidebar.myHome',
@@ -143,6 +162,7 @@ const EMPLOYEE_HOME: NavSection[] = [
       { href: '/people/performance', labelKey: 'sidebar.myPerformance', icon: 'target', module: 'performance' },
       { href: '/learning', labelKey: 'sidebar.myLearning', icon: 'book', module: 'learning' },
       { href: '/people/onboarding', labelKey: 'sidebar.myOnboarding', icon: 'rocket', module: 'onboarding' },
+      { href: '/my-360', labelKey: 'sidebar.my360', icon: 'target', module: null },
     ],
   },
 ];

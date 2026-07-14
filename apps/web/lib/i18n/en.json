@@ -83,7 +83,9 @@
     "myPanels": "My Panels",
     "myPerformance": "My Performance",
     "myLearning": "My Learning",
-    "myOnboarding": "My Onboarding"
+    "myOnboarding": "My Onboarding",
+    "my360": "My 360",
+    "evaluations360": "360 Evaluation"
   },
   "platformSidebar": {
     "platform": "Platform",
@@ -3262,5 +3264,89 @@
     "saveButton": "Save Requirements",
     "saving": "Saving...",
     "saved": "FIT requirements saved"
+  },
+  "my360": {
+    "pageTitle": "My 360",
+    "breadcrumb": "My Home",
+    "tasksTitle": "Pending evaluations",
+    "tasksEmpty": "You have no pending evaluations",
+    "tasksEmptyDescription": "When you're assigned a 360 evaluation, it will appear here",
+    "reportsTitle": "My reports",
+    "reportsEmpty": "You don't have any 360 reports yet",
+    "reportsEmptyDescription": "Reports appear here once a cycle you took part in is published",
+    "cycleReportEmpty": "No results are available for this cycle yet",
+    "anonymityNote": "Peer and direct-report feedback only appears once at least 3 colleagues from each group have responded, to protect their anonymity.",
+    "commentLabel": "Comment (optional)",
+    "commentPlaceholder": "Share additional context for this evaluation",
+    "submitButton": "Submit evaluation",
+    "submitSuccess": "Evaluation submitted successfully",
+    "raterCountLabel": "{n} raters",
+    "relationshipLabels": {
+      "self": "Self-assessment",
+      "manager": "Direct manager",
+      "peer": "Peers",
+      "direct_report": "Direct reports"
+    },
+    "competencyLabels": {
+      "leadership": "Leadership",
+      "communication": "Communication",
+      "collaboration": "Collaboration",
+      "execution": "Execution",
+      "adaptability": "Adaptability",
+      "integrity": "Integrity"
+    }
+  },
+  "evaluation360": {
+    "pageTitle": "360 Evaluation",
+    "breadcrumb": "Talent",
+    "createButton": "New Cycle",
+    "cycleNameLabel": "Cycle name",
+    "cycleNamePlaceholder": "e.g. Q3 2026 360 Review",
+    "saveButton": "Create Cycle",
+    "cycleCreated": "Cycle created",
+    "cyclesEmpty": "No 360 evaluation cycles yet",
+    "cyclesEmptyDescription": "Create a cycle to start assigning raters",
+    "columnName": "Name",
+    "columnStatus": "Status",
+    "columnCreated": "Created",
+    "columnPublished": "Published",
+    "columnActions": "Actions",
+    "statusLabels": {
+      "draft": "Draft",
+      "open": "Open",
+      "closed": "Closed",
+      "published": "Published"
+    },
+    "openButton": "Open",
+    "closeButton": "Close",
+    "publishButton": "Publish",
+    "manageButton": "Manage",
+    "closeManageButton": "Close panel",
+    "cycleOpened": "Cycle opened",
+    "cycleClosed": "Cycle closed",
+    "cyclePublished": "Cycle published",
+    "assignRatersTitle": "Assign raters",
+    "subjectLabel": "Subject",
+    "changeSubjectButton": "Change",
+    "selectSubjectPrompt": "Select a subject to get started",
+    "raterLabel": "Rater",
+    "relationshipLabel": "Relationship",
+    "addRaterButton": "Add rater",
+    "removeRaterButton": "Remove",
+    "assignSubmitButton": "Save assignments",
+    "assignSuccess": "Raters assigned",
+    "assignmentsEmptyHint": "Add at least one rater before saving",
+    "progressTitle": "Cycle progress",
+    "progressSubmittedOfTotal": "{submitted} of {total} submitted",
+    "relationshipLabels": {
+      "self": "Self-assessment",
+      "manager": "Direct manager",
+      "peer": "Peers",
+      "direct_report": "Direct reports"
+    },
+    "searchSubjectPlaceholder": "Search subject by name...",
+    "searchRaterPlaceholder": "Search rater by name...",
+    "loadingUsers": "Loading users...",
+    "noUsersFound": "No users found"
   }
 }
