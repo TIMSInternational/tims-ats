@@ -15,6 +15,16 @@ describe('seed grant matrix (baseline, pre-corrections)', () => {
 });
 
 describe('seed grant matrix (Slice 0 corrections, client spec §2)', () => {
+  it('FIT engine grants are present for recruitment roles that render FIT panels', () => {
+    expect(has('super_admin', 'fit_engine', 'read', 'organization')).toBe(true);
+    expect(has('hr_admin', 'fit_engine', 'read', 'organization')).toBe(true);
+    expect(has('hr_admin', 'fit_engine', 'create', 'organization')).toBe(true);
+    expect(has('recruiter', 'fit_engine', 'read', 'organization')).toBe(true);
+    expect(has('recruiter', 'fit_engine', 'create', 'organization')).toBe(true);
+    expect(has('hrbp', 'fit_engine', 'read', 'unit')).toBe(true);
+    expect(has('leader', 'fit_engine', 'read', 'team')).toBe(true);
+  });
+
   it('leader can review finalists + request vacancies (@team)', () => {
     expect(has('leader', 'candidate', 'read', 'team')).toBe(true);   // "revisar candidatos finalistas"
     expect(has('leader', 'vacancy', 'create', 'team')).toBe(true);   // "solicitar vacantes"

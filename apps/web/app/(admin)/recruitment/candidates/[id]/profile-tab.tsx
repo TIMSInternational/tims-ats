@@ -6,7 +6,7 @@ import { formatDate } from '../../../../../lib/format-utils';
 import { StageBadge, StatusBadge } from '../../../../../components';
 import type { CandidateDetail } from '../../../../../lib/trpc-types';
 
-function PersonalInfoCard({ candidate: c }: { candidate: CandidateDetail }) {
+export function PersonalInfoCard({ candidate: c }: { candidate: CandidateDetail }) {
   const { t } = useI18n();
 
   const fields = [
@@ -67,7 +67,7 @@ function PersonalInfoCard({ candidate: c }: { candidate: CandidateDetail }) {
   );
 }
 
-function ApplicationsCard({ applications }: { applications: CandidateDetail['applications'] }) {
+export function ApplicationsCard({ applications }: { applications: CandidateDetail['applications'] }) {
   const { t } = useI18n();
 
   const statusMap: Record<string, { cls: string; label: string }> = {
