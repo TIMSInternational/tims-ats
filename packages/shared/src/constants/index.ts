@@ -1,4 +1,5 @@
 export * from './eval360';
+export * from './currencies';
 
 export const APP_NAME = 'TIMS Platform';
 export const APP_DOMAIN = 'tims.com';

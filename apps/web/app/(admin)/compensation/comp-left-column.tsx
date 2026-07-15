@@ -2,8 +2,9 @@
 
 import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
+import { formatCurrency } from '../../../lib/format-utils';
 
-const fmtCOP = (n: number) => `$${Math.round(n / 1000).toLocaleString('es-CO')}K`;
+const fmtCompactCurrency = (n: number, currency: string) => formatCurrency(Math.round(n / 1000) * 1000, currency);
 
 function genderLabel(t: ReturnType<typeof useI18n>['t'], g: string): string {
   return g === 'male' ? t.dei.genderMale : g === 'female' ? t.dei.genderFemale
@@ -44,7 +45,7 @@ export function SalaryBands() {
                   ))}
                 </div>
                 <div className="flex gap-2 text-[9px] text-[#8B8B8B] shrink-0 w-[130px] justify-end">
-                  <span>{fmtCOP(b.min)}</span><span>{fmtCOP(b.mid)}</span><span>{fmtCOP(b.max)}</span>
+                  <span>{fmtCompactCurrency(b.min, b.currency ?? 'USD')}</span><span>{fmtCompactCurrency(b.mid, b.currency ?? 'USD')}</span><span>{fmtCompactCurrency(b.max, b.currency ?? 'USD')}</span>
                 </div>
               </div>
             ))}
@@ -91,8 +92,8 @@ export function PayEquityCard() {
                   <td className="py-2 pr-3 font-medium">{genderLabel(t, row.group)}</td>
                   {/* min-5 suppressed groups mask count + salary stats (a small group's average IS individual pay). */}
                   <td className="py-2 px-2 text-right">{row.suppressed ? t.dei.na : row.count}</td>
-                  <td className="py-2 px-2 text-right">{row.suppressed || row.averageSalary === null ? t.dei.na : fmtCOP(row.averageSalary)}</td>
-                  <td className="py-2 px-2 text-right">{row.suppressed || row.medianSalary === null ? t.dei.na : fmtCOP(row.medianSalary)}</td>
+                  <td className="py-2 px-2 text-right">{row.suppressed || row.averageSalary === null ? t.dei.na : formatCurrency(row.averageSalary, q.data?.currency ?? 'USD')}</td>
+                  <td className="py-2 px-2 text-right">{row.suppressed || row.medianSalary === null ? t.dei.na : formatCurrency(row.medianSalary, q.data?.currency ?? 'USD')}</td>
                 </tr>
               ))}
             </tbody>

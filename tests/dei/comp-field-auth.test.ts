@@ -79,15 +79,16 @@ const COMP_ROW = {
   id: 'comp-1',
   userId: 'target-1',
   currentSalary: 5_000_000,
+  currency: 'COP',
   variablePay: 1_000_000,
   compaRatio: 1.05,
-  band: { level: 'L3', title: 'Senior', minSalary: 4_000_000, midSalary: 5_000_000, maxSalary: 6_000_000 },
+  band: { level: 'L3', title: 'Senior', minSalary: 4_000_000, midSalary: 5_000_000, maxSalary: 6_000_000, currency: 'COP' },
 };
 
 beforeEach(() => {
   vi.clearAllMocks();
   compFindFirst.mockResolvedValue({ ...COMP_ROW });
-  bandFindUnique.mockResolvedValue({ minSalary: 4_000_000, midSalary: 5_000_000, maxSalary: 6_000_000 });
+  bandFindUnique.mockResolvedValue({ minSalary: 4_000_000, midSalary: 5_000_000, maxSalary: 6_000_000, currency: 'COP' });
 });
 
 describe('getEmployeeComp field-auth (HIGH 1)', () => {
@@ -165,6 +166,7 @@ describe('listPendingAdjustments field-auth (HIGH 1)', () => {
     createdAt: new Date(),
     previousSalary: 4_000_000,
     newSalary: 5_000_000,
+    currency: 'COP',
     reason: 'merit cycle',
     type: 'merit',
     status: 'pending',

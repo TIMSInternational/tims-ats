@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../../packages/api/src/repositories/dei.repository', () => ({
   deiRepository: {
@@ -11,6 +11,7 @@ vi.mock('../../packages/api/src/repositories/dei.repository', () => ({
     nullNationalityCount: vi.fn(),
     birthDates: vi.fn(),
     nullBirthDateCount: vi.fn(),
+    displayCurrency: vi.fn(),
     salaryWithGender: vi.fn(),
     leadershipGenders: vi.fn(),
   },
@@ -18,21 +19,28 @@ vi.mock('../../packages/api/src/repositories/dei.repository', () => ({
 
 import { deiService } from '../../packages/api/src/services/dei.service';
 import { deiRepository } from '../../packages/api/src/repositories/dei.repository';
+import { clearFxRateCacheForTest } from '../../packages/api/src/lib/currency';
 
 const gc = (g: string, n: number) => ({ gender: g, _count: { _all: n } });
 const yearsAgo = (age: number) => new Date(new Date().getFullYear() - age, 0, 1); // Jan 1 → exact age
 
 beforeEach(() => {
+  clearFxRateCacheForTest();
   vi.clearAllMocks();
   // Default the round-8 null-bucket counts to 0 (no missing-value bucket) so existing
   // tests exercise only the explicit-group suppression; specific tests override these.
   vi.mocked(deiRepository.nullNationalityCount).mockResolvedValue(0 as never);
   vi.mocked(deiRepository.nullBirthDateCount).mockResolvedValue(0 as never);
+  vi.mocked(deiRepository.displayCurrency).mockResolvedValue({ currency: 'USD' } as never);
   // Default the round-13-14 per-gender demographic counts to empty so getPayEquity tests
   // that don't model the demographic population fall back to each group's salaried count
   // (complement = 0 → no complement-driven suppression). Tests targeting the complement
   // oracle override this with explicit per-gender demographic counts.
   vi.mocked(deiRepository.genderCounts).mockResolvedValue([] as never);
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 describe('deiService', () => {
@@ -182,6 +190,35 @@ describe('deiService', () => {
     expect(f.count).toBe(5);
     expect(m.medianSalary).toBe(4000);
     expect(r.gapPct).toBe(-20); // median female 3200 vs male 4000 → (3200-4000)/4000
+  });
+
+  it('getPayEquity converts salaries into the company display currency before averaging', async () => {
+    const female = (s: number) => ({ currentSalary: s, currency: 'COP', user: { demographics: { gender: 'female' } } });
+    const male = (s: number) => ({ currentSalary: s, currency: 'USD', user: { demographics: { gender: 'male' } } });
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ date: '2026-07-15', base: 'USD', quote: 'COP', rate: 4000 }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    vi.mocked(deiRepository.displayCurrency).mockResolvedValue({ currency: 'COP' } as never);
+    vi.mocked(deiRepository.genderCounts).mockResolvedValue([gc('female', 5), gc('male', 5)] as never);
+    vi.mocked(deiRepository.salaryWithGender).mockResolvedValue([
+      female(12_000_000), female(12_400_000), female(12_800_000), female(13_200_000), female(13_600_000),
+      male(3_400), male(3_600), male(3_800), male(4_000), male(4_200),
+    ] as never);
+
+    const r = await deiService.getPayEquity('org-1');
+    const f = r.results.find((x) => x.group === 'female')!;
+    const m = r.results.find((x) => x.group === 'male')!;
+
+    expect(r.currency).toBe('COP');
+    expect(f.medianSalary).toBe(12_800_000);
+    expect(m.medianSalary).toBe(15_200_000);
+    expect(r.gapPct).toBe(-15.8);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.frankfurter.dev/v2/rate/USD/COP',
+      expect.objectContaining({ cache: 'no-store' }),
+    );
   });
 
   it('getGenderRepresentation returns percentages when all groups clear the min-5 floor', async () => {

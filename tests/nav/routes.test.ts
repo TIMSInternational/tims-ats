@@ -16,6 +16,7 @@ describe('route→module map', () => {
   });
   it('PATH_MODULE still covers the known admin routes', () => {
     expect(PATH_MODULE['/talent/team-intelligence']).toBe('team_intel');
+    expect(PATH_MODULE['/settings/fit-weights']).toBe('fit_engine');
   });
   it('longer entry wins over a shorter prefix match (billing over /settings)', () => {
     expect(moduleForPath('/settings/billing')).toBe('billing');

@@ -32,10 +32,11 @@ export interface CompAuditMeta {
 
 export interface EmployeeCompDto {
   userId: string;
+  currency?: string;
   currentSalary?: number;
   variablePay?: number;
   compaRatio?: number | null;
-  band?: { level: string | null; title: string | null; min: number; mid: number; max: number } | null;
+  band?: { level: string | null; title: string | null; min: number; mid: number; max: number; currency: string } | null;
 }
 
 export async function getEmployeeCompForSubject(
@@ -63,9 +64,10 @@ export async function getEmployeeCompForSubject(
       id: true,
       userId: true,
       ...(sel.currentSalary ? { currentSalary: true } : {}),
+      ...(sel.currency ? { currency: true } : {}),
       ...(canSeeVariablePay ? { variablePay: true } : {}),
       ...(canSeeCompaRatio ? { compaRatio: true } : {}),
-      ...(canSeeBand ? { band: { select: { level: true, title: true, minSalary: true, midSalary: true, maxSalary: true } } } : {}),
+      ...(canSeeBand ? { band: { select: { level: true, title: true, minSalary: true, midSalary: true, maxSalary: true, currency: true } } } : {}),
     },
   });
 
@@ -87,6 +89,7 @@ export async function getEmployeeCompForSubject(
   // DTO built ONLY from selected fields — unentitled fields are absent, not nulled.
   return {
     userId: compensation.userId,
+    ...(sel.currency ? { currency: compensation.currency } : {}),
     ...(sel.currentSalary ? { currentSalary: Number(compensation.currentSalary) } : {}),
     ...(canSeeVariablePay ? { variablePay: Number(compensation.variablePay) || 0 } : {}),
     ...(canSeeCompaRatio ? { compaRatio: Number(compensation.compaRatio) || null } : {}),
@@ -99,6 +102,7 @@ export async function getEmployeeCompForSubject(
                 min: Number(compensation.band.minSalary),
                 mid: Number(compensation.band.midSalary),
                 max: Number(compensation.band.maxSalary),
+                currency: compensation.band.currency,
               }
             : null,
         }

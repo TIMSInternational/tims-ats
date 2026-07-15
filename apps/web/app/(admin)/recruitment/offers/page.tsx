@@ -29,15 +29,16 @@ export default function OffersPage() {
     ).length;
     const acceptanceRate = sentOrResolved > 0 ? Math.round((accepted / sentOrResolved) * 100) : 0;
     const acceptedItems = items.filter((o) => o.status === 'accepted');
+    const salaryItems = acceptedItems.length > 0 ? acceptedItems : items;
+    const salaryCurrencies = new Set(salaryItems.map((o) => o.currency ?? 'USD'));
     const avgSalary =
-      acceptedItems.length > 0
-        ? Math.round(acceptedItems.reduce((sum, o) => sum + o.salary, 0) / acceptedItems.length)
-        : items.length > 0
-          ? Math.round(items.reduce((sum, o) => sum + o.salary, 0) / items.length)
-          : 0;
+      salaryItems.length > 0 && salaryCurrencies.size === 1
+        ? Math.round(salaryItems.reduce((sum, o) => sum + o.salary, 0) / salaryItems.length)
+        : null;
+    const avgSalaryCurrency = salaryCurrencies.size === 1 ? [...salaryCurrencies][0] : null;
     const pendingApprovals = items.filter((o) => o.status === 'pending_approval').length;
 
-    return { activeCount, acceptanceRate, avgSalary, pendingApprovals };
+    return { activeCount, acceptanceRate, avgSalary, avgSalaryCurrency, pendingApprovals };
   }, [items]);
 
   // If an offer is selected, show detail view
@@ -60,6 +61,7 @@ export default function OffersPage() {
         activeCount={kpis.activeCount}
         acceptanceRate={kpis.acceptanceRate}
         avgSalary={kpis.avgSalary}
+        avgSalaryCurrency={kpis.avgSalaryCurrency}
         pendingApprovals={kpis.pendingApprovals}
         loading={offers.isLoading}
         isError={offers.isError}

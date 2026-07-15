@@ -79,6 +79,7 @@ const SETTINGS: NavSection = {
   items: [
     { href: '/settings/business-units', labelKey: 'sidebar.businessUnits', icon: 'team', module: 'user' },
     { href: '/settings/branding', labelKey: 'sidebar.branding', icon: 'image', module: 'organization' },
+    { href: '/settings/fit-weights', labelKey: 'sidebar.fitWeights', icon: 'settings', module: 'fit_engine' },
     { href: '/settings/billing', labelKey: 'sidebar.billing', icon: 'dollar', module: 'billing' },
     { href: '/settings/integrations', labelKey: 'sidebar.integrations', icon: 'settings', module: 'integration' },
   ],

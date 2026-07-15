@@ -32,11 +32,12 @@ export function EmployeeCompensation() {
 
   const rows: { label: string; value: string }[] = [];
   if (data) {
+    const currency = data.currency ?? 'USD';
     if (typeof data.currentSalary === 'number') {
-      rows.push({ label: e.compSalary, value: formatCurrency(data.currentSalary) });
+      rows.push({ label: e.compSalary, value: formatCurrency(data.currentSalary, currency) });
     }
     if (typeof data.variablePay === 'number') {
-      rows.push({ label: e.compVariablePay, value: formatCurrency(data.variablePay) });
+      rows.push({ label: e.compVariablePay, value: formatCurrency(data.variablePay, currency) });
     }
     if (typeof data.compaRatio === 'number') {
       rows.push({ label: e.compCompaRatio, value: data.compaRatio.toFixed(2) });

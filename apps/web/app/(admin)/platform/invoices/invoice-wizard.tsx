@@ -9,6 +9,7 @@ import { formatDateLong as fmtDateLong } from '../../../../lib/format-utils';
 import { ErrorState } from '../../../../components';
 import { fmtCurrency, type LineItem } from './invoice-wizard.helpers';
 import { PreviewPanel } from './invoice-wizard.parts';
+import { currencyOptions } from '../../../../lib/currency-options';
 
 export function InvoiceWizard({ onClose, onSuccess, preselectedOrgId }: { onClose: () => void; onSuccess: () => void; preselectedOrgId?: string }) {
   const { t } = useI18n();
@@ -28,6 +29,7 @@ export function InvoiceWizard({ onClose, onSuccess, preselectedOrgId }: { onClos
   const [notes, setNotes] = useState('');
   const [emailTo, setEmailTo] = useState('');
   const [emailCc, setEmailCc] = useState('');
+  const currencyChoices = currencyOptions();
 
   const orgs = trpc.platform.listOrganizations.useQuery({ search: orgSearch || undefined, limit: 10, page: 0 });
   const preselectedOrgQuery = trpc.platform.getOrganization.useQuery(
@@ -198,8 +200,8 @@ export function InvoiceWizard({ onClose, onSuccess, preselectedOrgId }: { onClos
                     <input type="text" value={li.description} onChange={(e) => updateLine(i, 'description', e.target.value)} placeholder={t.invoices.itemDescPlaceholder} className="h-10 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20" />
                     <input type="number" min="1" value={li.quantity} onChange={(e) => updateLine(i, 'quantity', parseInt(e.target.value) || 1)} className="h-10 px-2 rounded-lg border border-[#EDEDED] text-sm text-[#333] text-center focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20" />
                     <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8B8B8B] text-sm">$</span>
-                      <input type="number" step="0.01" min="0" value={li.unitPrice || ''} onChange={(e) => updateLine(i, 'unitPrice', parseFloat(e.target.value) || 0)} placeholder="0.00" className="h-10 pl-7 pr-2 rounded-lg border border-[#EDEDED] text-sm text-[#333] w-full focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20" />
+                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[#8B8B8B] text-[10px] font-semibold">{currency}</span>
+                      <input type="number" step="0.01" min="0" value={li.unitPrice || ''} onChange={(e) => updateLine(i, 'unitPrice', parseFloat(e.target.value) || 0)} placeholder="0.00" className="h-10 pl-10 pr-2 rounded-lg border border-[#EDEDED] text-sm text-[#333] w-full focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20" />
                     </div>
                     <button onClick={() => removeLine(i)} className="h-10 w-8 rounded-lg hover:bg-red-50 flex items-center justify-center text-[#8B8B8B] hover:text-[#DD0C15] transition" disabled={lineItems.length <= 1}>
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" /></svg>
@@ -255,7 +257,9 @@ export function InvoiceWizard({ onClose, onSuccess, preselectedOrgId }: { onClos
               <div className="mb-4">
                 <label className="text-xs font-medium text-[#585858] mb-1 block">{t.invoices.currency}</label>
                 <select value={currency} onChange={(e) => setCurrency(e.target.value)} className="w-full h-10 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#333] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20">
-                  <option value="USD">{t.invoices.currencyUsd}</option><option value="COP">{t.invoices.currencyCop}</option><option value="EUR">{t.invoices.currencyEur}</option><option value="MXN">{t.invoices.currencyMxn}</option>
+                  {currencyChoices.map((opt) => (
+                    <option key={opt.code} value={opt.code}>{opt.label}</option>
+                  ))}
                 </select>
               </div>
               <div><label className="text-xs font-medium text-[#585858] mb-1 block">{t.invoices.internalNote}</label><textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder={t.invoices.internalNotePlaceholder} className="w-full px-3 py-2 rounded-lg border border-[#EDEDED] text-sm text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 resize-none" /></div>

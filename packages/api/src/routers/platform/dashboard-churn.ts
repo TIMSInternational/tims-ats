@@ -2,6 +2,8 @@ import { router } from '../../trpc';
 import { db, SubscriptionStatus, InvoiceStatus } from '@tims/db';
 import { platformProcedure } from './_common';
 import { PLAN_PRICES } from '../../lib/plan-prices';
+import { sumMoney } from '../../lib/currency';
+import { PLATFORM_BILLING_CURRENCY } from '@tims/shared';
 
 export const dashboardChurnRouter = router({
   getChurnRisk: platformProcedure.query(async () => {
@@ -19,7 +21,7 @@ export const dashboardChurnRouter = router({
         },
         invoices: {
           where: { status: InvoiceStatus.pending, dueDate: { lt: now } },
-          select: { id: true, amount: true },
+          select: { id: true, amount: true, currency: true },
         },
         users: {
           where: { isActive: true },
@@ -31,7 +33,7 @@ export const dashboardChurnRouter = router({
       },
     });
 
-    const results = orgs.map((org) => {
+    const results = await Promise.all(orgs.map(async (org) => {
       const plan = org.subscription?.plan ?? 'trial';
       const mrr = org.subscription?.status === SubscriptionStatus.active
         ? (PLAN_PRICES[plan] || 0)
@@ -50,7 +52,7 @@ export const dashboardChurnRouter = router({
       // Signal 2: Invoice Health (0-25 pts)
       // 0 overdue = 25, 1 = 10, 2+ = 0
       const overdueCount = org.invoices.length;
-      const overdueAmount = org.invoices.reduce((sum, inv) => sum + inv.amount, 0);
+      const overdueAmount = await sumMoney(org.invoices, PLATFORM_BILLING_CURRENCY);
       const invoiceScore = overdueCount === 0 ? 25 : overdueCount === 1 ? 10 : 0;
 
       // Signal 3: Recency (0-20 pts)
@@ -101,7 +103,7 @@ export const dashboardChurnRouter = router({
       const actions: string[] = [];
 
       if (overdueCount > 0) {
-        risks.push(`${overdueCount} overdue invoice${overdueCount > 1 ? 's' : ''} ($${overdueAmount.toLocaleString()})`);
+        risks.push(`${overdueCount} overdue invoice${overdueCount > 1 ? 's' : ''} (${PLATFORM_BILLING_CURRENCY} ${overdueAmount.amount.toLocaleString()})`);
         actions.push('send_dunning');
       }
       if (daysSinceLastLogin >= 14) {
@@ -143,7 +145,9 @@ export const dashboardChurnRouter = router({
         loginRate: Math.round(loginRate * 100),
         daysSinceLastLogin: daysSinceLastLogin === 999 ? null : daysSinceLastLogin,
         overdueInvoices: overdueCount,
-        overdueAmount,
+        overdueAmount: overdueAmount.amount,
+        currency: PLATFORM_BILLING_CURRENCY,
+        overdueAmountConverted: overdueAmount.converted,
         featureCount,
         primaryRisk,
         risks,
@@ -156,7 +160,7 @@ export const dashboardChurnRouter = router({
           tenureScore,
         },
       };
-    });
+    }));
 
     // Sort: worst health first
     results.sort((a, b) => a.healthScore - b.healthScore);

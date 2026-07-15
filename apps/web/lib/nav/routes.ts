@@ -31,6 +31,7 @@ export const PATH_MODULE: Record<string, string | null> = {
   '/settings/integrations': 'integration',
   '/settings/business-units': 'user',
   '/settings/branding': 'organization',
+  '/settings/fit-weights': 'fit_engine',
   '/settings': null,
   '/platform': null, // server-gated in its own layout
   '/mfa': null,

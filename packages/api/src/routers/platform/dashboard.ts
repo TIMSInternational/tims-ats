@@ -6,6 +6,8 @@ import { searchInput } from './dashboard.schemas';
 import { buildAttentionItems, SEARCH_PAGES } from './dashboard.helpers';
 import { buildMonthSeries } from './time-series';
 import { cacheGet, cacheSet } from '../../lib/cache';
+import { sumMoney } from '../../lib/currency';
+import { PLATFORM_BILLING_CURRENCY } from '@tims/shared';
 
 export const dashboardRouter = router({
   getDashboardKpis: platformProcedure.query(async () => {
@@ -20,6 +22,9 @@ export const dashboardRouter = router({
       trialsExpiringThisWeek: number;
       overdueInvoices: number;
       outstandingAmount: number;
+      currency: string;
+      outstandingConverted: boolean;
+      outstandingRatesAsOf: string | null;
     };
 
     // Platform-owner view: no org scope, cache globally.
@@ -84,12 +89,13 @@ export const dashboardRouter = router({
           status: InvoiceStatus.pending,
           dueDate: { lt: now },
         },
-        select: { amount: true },
+        select: { amount: true, currency: true },
       }),
     ]);
 
     const mrr = activeSubs.reduce((sum, s) => sum + (PLAN_PRICES[s.plan] || 0), 0);
     const mrrPrevMonth = prevMonthSubs.reduce((sum, s) => sum + (PLAN_PRICES[s.plan] || 0), 0);
+    const outstanding = await sumMoney(overdueInvoices, PLATFORM_BILLING_CURRENCY);
 
     const result: KpiResult = {
       totalOrgs,
@@ -101,7 +107,10 @@ export const dashboardRouter = router({
       activeTrials,
       trialsExpiringThisWeek: trialsExpiringSoon,
       overdueInvoices: overdueInvoices.length,
-      outstandingAmount: overdueInvoices.reduce((sum, inv) => sum + inv.amount, 0),
+      outstandingAmount: outstanding.amount,
+      currency: PLATFORM_BILLING_CURRENCY,
+      outstandingConverted: outstanding.converted,
+      outstandingRatesAsOf: outstanding.ratesAsOf,
     };
     await cacheSet(cacheKey, result, 45);
     return result;
@@ -200,7 +209,7 @@ export const dashboardRouter = router({
           select: { plan: true, status: true },
         },
         invoices: {
-          select: { amount: true, status: true, paidAt: true },
+          select: { amount: true, currency: true, status: true, paidAt: true },
         },
         users: {
           select: { lastLoginAt: true },
@@ -209,18 +218,24 @@ export const dashboardRouter = router({
       },
     });
 
-    const result = orgs.map((org) => {
+    const result = await Promise.all(orgs.map(async (org) => {
       const plan = org.subscription?.plan ?? 'trial';
       const isActive = org.subscription?.status === SubscriptionStatus.active;
       const mrr = isActive ? (PLAN_PRICES[plan] || 0) : 0;
 
-      const paidLast30d = org.invoices
-        .filter((inv) => inv.status === InvoiceStatus.paid && inv.paidAt && inv.paidAt >= thirtyDaysAgo)
-        .reduce((sum, inv) => sum + inv.amount, 0);
+      const paidLast30d = await sumMoney(
+        org.invoices
+          .filter((inv) => inv.status === InvoiceStatus.paid && inv.paidAt && inv.paidAt >= thirtyDaysAgo)
+          .map((inv) => ({ amount: inv.amount, currency: inv.currency })),
+        PLATFORM_BILLING_CURRENCY,
+      );
 
-      const outstandingAmount = org.invoices
-        .filter((inv) => inv.status === InvoiceStatus.pending || inv.status === InvoiceStatus.draft)
-        .reduce((sum, inv) => sum + inv.amount, 0);
+      const outstandingAmount = await sumMoney(
+        org.invoices
+          .filter((inv) => inv.status === InvoiceStatus.pending || inv.status === InvoiceStatus.draft)
+          .map((inv) => ({ amount: inv.amount, currency: inv.currency })),
+        PLATFORM_BILLING_CURRENCY,
+      );
 
       const userCount = org.users.length;
 
@@ -235,12 +250,14 @@ export const dashboardRouter = router({
         orgName: org.name,
         plan,
         mrr,
-        paidLast30d,
-        outstandingAmount,
+        paidLast30d: paidLast30d.amount,
+        outstandingAmount: outstandingAmount.amount,
+        currency: PLATFORM_BILLING_CURRENCY,
+        converted: paidLast30d.converted || outstandingAmount.converted,
         userCount,
         lastActiveAt,
       };
-    });
+    }));
 
     // Sort by MRR descending
     result.sort((a, b) => b.mrr - a.mrr);

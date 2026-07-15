@@ -29,6 +29,7 @@ const compFindFirst = vi.fn();
 const bandFindUnique = vi.fn();
 const salaryAdjustmentCount = vi.fn();
 const userCount = vi.fn();
+const companyFindFirst = vi.fn();
 const benefitPlanFindMany = vi.fn();
 const surveyFindFirst = vi.fn();
 const surveyFindMany = vi.fn();
@@ -48,6 +49,7 @@ vi.mock('@tims/db', () => ({
     salaryBand: { findUnique: (...a: unknown[]) => bandFindUnique(...a) },
     salaryAdjustment: { count: (...a: unknown[]) => salaryAdjustmentCount(...a) },
     user: { count: (...a: unknown[]) => userCount(...a) },
+    company: { findFirst: (...a: unknown[]) => companyFindFirst(...a) },
     benefitPlan: { findMany: (...a: unknown[]) => benefitPlanFindMany(...a) },
     survey: {
       findFirst: (...a: unknown[]) => surveyFindFirst(...a),
@@ -109,9 +111,12 @@ const engCaller = () =>
     listSurveys(input?: unknown): Promise<{ items: Array<{ id: string; responseCount: number | null; responseCountSuppressed: boolean }>; total: number }>;
   };
 
-const compRow = (cr: number) => ({ id: 'x', currentSalary: 5_000_000, compaRatio: cr, userId: 'u' });
+const compRow = (cr: number) => ({ id: 'x', currentSalary: 5_000_000, currency: 'USD', compaRatio: cr, userId: 'u' });
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  companyFindFirst.mockResolvedValue({ currency: 'USD' });
+});
 
 // ── HIGH 1: getCompaRatioDistribution avgCompaRatio null at sub-floor ─────────
 describe('getCompaRatioDistribution avgCompaRatio (HIGH 1)', () => {
@@ -221,9 +226,8 @@ describe('compensation getDashboardKpis (HIGH 3)', () => {
 
   it('compensated >=5 but compaRatio population <5 → only avgCompaRatio null', async () => {
     stubSecondary();
-    compAggregate
-      .mockResolvedValueOnce({ _sum: { currentSalary: 50_000_000 }, _avg: { currentSalary: 5_000_000 } })
-      .mockResolvedValueOnce({ _avg: { compaRatio: 1.02 } });
+    compFindMany.mockResolvedValue(Array.from({ length: 10 }, () => ({ currentSalary: 5_000_000, currency: 'USD' })));
+    compAggregate.mockResolvedValueOnce({ _avg: { compaRatio: 1.02 } });
     compCount
       .mockResolvedValueOnce(10) // compensated population clears floor
       .mockResolvedValueOnce(3); // only 3 compaRatio rows → sub-floor
@@ -236,9 +240,8 @@ describe('compensation getDashboardKpis (HIGH 3)', () => {
 
   it('all populations >= 5 → real values', async () => {
     stubSecondary();
-    compAggregate
-      .mockResolvedValueOnce({ _sum: { currentSalary: 50_000_000 }, _avg: { currentSalary: 5_000_000 } })
-      .mockResolvedValueOnce({ _avg: { compaRatio: 1.02 } });
+    compFindMany.mockResolvedValue(Array.from({ length: 10 }, () => ({ currentSalary: 5_000_000, currency: 'USD' })));
+    compAggregate.mockResolvedValueOnce({ _avg: { compaRatio: 1.02 } });
     compCount.mockResolvedValueOnce(10).mockResolvedValueOnce(10);
     const r = await compCaller().getDashboardKpis();
     expect(r.totalMonthlyPayroll).toBe(50_000_000);

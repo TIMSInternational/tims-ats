@@ -21,21 +21,22 @@ import {
   getBillingProfileInput,
   upsertBillingProfileInput,
 } from './invoices.schemas';
+import { sumMoney } from '../../lib/currency';
+import { PLATFORM_BILLING_CURRENCY } from '@tims/shared';
 
 export const invoicesRouter = router({
   getInvoiceKpis: platformProcedure.query(async () => {
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    const [paidThisMonth, pending, overdue, paidInvoices] = await Promise.all([
-      db.invoice.aggregate({
+    const [paidThisMonth, pendingInvoices, overdue, paidInvoices] = await Promise.all([
+      db.invoice.findMany({
         where: { status: InvoiceStatus.paid, paidAt: { gte: monthStart } },
-        _sum: { amount: true },
+        select: { amount: true, currency: true },
       }),
-      db.invoice.aggregate({
+      db.invoice.findMany({
         where: { status: InvoiceStatus.pending },
-        _sum: { amount: true },
-        _count: true,
+        select: { amount: true, currency: true },
       }),
       db.invoice.count({
         where: { status: InvoiceStatus.pending, dueDate: { lt: now } },
@@ -54,10 +55,17 @@ export const invoicesRouter = router({
           }, 0) / paidInvoices.length
         )
       : 0;
+    const [collected, outstanding] = await Promise.all([
+      sumMoney(paidThisMonth, PLATFORM_BILLING_CURRENCY),
+      sumMoney(pendingInvoices, PLATFORM_BILLING_CURRENCY),
+    ]);
 
     return {
-      collected: paidThisMonth._sum.amount ?? 0,
-      outstanding: pending._sum.amount ?? 0,
+      collected: collected.amount,
+      outstanding: outstanding.amount,
+      currency: PLATFORM_BILLING_CURRENCY,
+      converted: collected.converted || outstanding.converted,
+      ratesAsOf: [collected.ratesAsOf, outstanding.ratesAsOf].filter(Boolean).sort()[0] ?? null,
       overdueCount: overdue,
       avgDaysToPay,
     };
@@ -146,10 +154,11 @@ export const invoicesRouter = router({
 
       if (input.sendEmail && input.emailTo) {
         const amtFmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: input.currency }).format(amount);
+        const lineFmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: input.currency });
         const dueFmt = input.dueDate ? new Intl.DateTimeFormat('es', { day: '2-digit', month: 'long', year: 'numeric' }).format(input.dueDate) : 'N/A';
         const invNum = `INV-${invoice.invoiceNumber}`;
         const lineItemsHtml = invoice.lineItems.map(li =>
-          `<tr><td style="padding:8px;border-bottom:1px solid #eee;">${li.description}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:center;">${li.quantity}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right;">$${li.unitPrice.toFixed(2)}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right;">$${li.total.toFixed(2)}</td></tr>`
+          `<tr><td style="padding:8px;border-bottom:1px solid #eee;">${li.description}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:center;">${li.quantity}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right;">${lineFmt.format(li.unitPrice)}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right;">${lineFmt.format(li.total)}</td></tr>`
         ).join('');
 
         const ccAddresses = input.emailCc ? input.emailCc.split(',').map(e => e.trim()).filter(Boolean) : [];
@@ -307,17 +316,16 @@ export const invoicesRouter = router({
   getOrgInvoices: platformProcedure
     .input(getOrgInvoicesInput)
     .query(async ({ input }) => {
-      const [invoices, stats, overdueCount] = await Promise.all([
+      const [invoices, pendingInvoices, overdueCount, company] = await Promise.all([
         db.invoice.findMany({
           where: { organizationId: input.organizationId },
           take: input.limit,
           orderBy: { createdAt: 'desc' },
           select: invoiceListSelect,
         }),
-        db.invoice.aggregate({
+        db.invoice.findMany({
           where: { organizationId: input.organizationId, status: InvoiceStatus.pending },
-          _sum: { amount: true },
-          _count: true,
+          select: { amount: true, currency: true },
         }),
         db.invoice.count({
           where: {
@@ -326,12 +334,21 @@ export const invoicesRouter = router({
             dueDate: { lt: new Date() },
           },
         }),
+        db.company.findFirst({
+          where: { organizationId: input.organizationId },
+          select: { currency: true },
+          orderBy: { createdAt: 'asc' },
+        }),
       ]);
+      const outstanding = await sumMoney(pendingInvoices, company?.currency ?? PLATFORM_BILLING_CURRENCY);
 
       return {
         invoices,
-        outstandingAmount: stats._sum.amount ?? 0,
-        pendingCount: stats._count,
+        outstandingAmount: outstanding.amount,
+        outstandingCurrency: outstanding.currency,
+        outstandingConverted: outstanding.converted,
+        outstandingRatesAsOf: outstanding.ratesAsOf,
+        pendingCount: pendingInvoices.length,
         overdueCount,
       };
     }),

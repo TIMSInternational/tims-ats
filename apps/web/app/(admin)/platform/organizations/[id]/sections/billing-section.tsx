@@ -77,7 +77,7 @@ export function BillingSection({ organizationId }: { organizationId: string }) {
       {invData && (invData.pendingCount > 0 || invData.overdueCount > 0) && (
         <div className="flex flex-wrap gap-4">
           <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center gap-3">
-            <span className="text-xs text-amber-700 font-medium">Pendiente: {fmtCurrency(Number(invData.outstandingAmount))}</span>
+            <span className="text-xs text-amber-700 font-medium">Pendiente: {fmtCurrency(Number(invData.outstandingAmount), invData.outstandingCurrency ?? 'USD')}</span>
             <span className="text-[10px] text-amber-600">({invData.pendingCount} facturas)</span>
           </div>
           {invData.overdueCount > 0 && (

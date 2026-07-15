@@ -1030,6 +1030,7 @@ async function main() {
           type: ad.type,
           previousSalary: ad.previousSalary,
           newSalary: ad.newSalary,
+          currency: 'COP',
           status: ad.status,
           reason: ad.reason,
           requestedById: hr.id,

@@ -133,14 +133,14 @@ export default function InvoicesPage() {
           <>
             <KpiCard
               label={t.invoices.kpiCollected}
-              value={formatCurrency(kpis.data.collected, 'USD', 2)}
+              value={formatCurrency(kpis.data.collected, kpis.data.currency ?? 'USD', 2)}
               subtitle={t.common.paidInvoices}
               icon={<svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 100 7h5a3.5 3.5 0 110 7H6" /></svg>}
               iconBg="bg-green-50"
             />
             <KpiCard
               label={t.invoices.kpiOutstanding}
-              value={formatCurrency(kpis.data.outstanding, 'USD', 2)}
+              value={formatCurrency(kpis.data.outstanding, kpis.data.currency ?? 'USD', 2)}
               subtitle={t.common.pending}
               valueColor="text-amber-600"
               icon={<svg className="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></svg>}

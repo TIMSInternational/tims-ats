@@ -5,6 +5,8 @@ import { tenantDb as db } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { scopeWhereFor, assertScoped, assertSubjectInScope, requireOrgScope, suppressBelowMin5, logDataAccess, selectFor } from '../access';
 import { getEmployeeCompForSubject } from '../services/compensation.service';
+import { convertMoney, roundMoney, sumMoney } from '../lib/currency';
+import { normalizeCurrencyCode } from '@tims/shared';
 
 export const compensationRouter = router({
   // ── Salary Bands ───────────────────────────────────────────────────
@@ -45,7 +47,7 @@ export const compensationRouter = router({
     const [comps, unassignedCount] = await Promise.all([
       db.employeeCompensation.findMany({
         where: { organizationId: ctx.user.organizationId, bandId: { not: null } },
-        select: { currentSalary: true, band: { select: { id: true, level: true, title: true, minSalary: true, midSalary: true, maxSalary: true } } },
+        select: { currentSalary: true, currency: true, band: { select: { id: true, level: true, title: true, minSalary: true, midSalary: true, maxSalary: true, currency: true } } },
       }),
       db.employeeCompensation.count({
         where: { organizationId: ctx.user.organizationId, bandId: null },
@@ -64,7 +66,7 @@ export const compensationRouter = router({
     // into the all-or-nothing suppression trigger below. A non-positive-salary row also has
     // no meaningful band POSITION (salary <= min → pos clamps to 0), so excluding it from the
     // plot is correct on the merits, not just for the oracle.
-    const byBand = new Map<string, { level: string; title: string; min: number; mid: number; max: number; dots: { pos: number; outlier: boolean }[] }>();
+    const byBand = new Map<string, { level: string; title: string; min: number; mid: number; max: number; currency: string; dots: { pos: number; outlier: boolean }[] }>();
     let positiveBanded = 0;
     for (const c of comps) {
       if (!c.band) continue;
@@ -76,10 +78,12 @@ export const compensationRouter = router({
       const min = Number(c.band.minSalary);
       const max = Number(c.band.maxSalary);
       if (!byBand.has(c.band.id)) {
-        byBand.set(c.band.id, { level: c.band.level ?? '', title: c.band.title ?? '', min, mid: Number(c.band.midSalary), max, dots: [] });
+        byBand.set(c.band.id, { level: c.band.level ?? '', title: c.band.title ?? '', min, mid: Number(c.band.midSalary), max, currency: normalizeCurrencyCode(c.band.currency), dots: [] });
       }
       const span = max - min;
-      const rawPos = span > 0 ? ((salary - min) / span) * 100 : 50;
+      const bandCurrency = normalizeCurrencyCode(c.band.currency, normalizeCurrencyCode(c.currency));
+      const salaryInBandCurrency = (await convertMoney(salary, c.currency, bandCurrency)).amount;
+      const rawPos = span > 0 ? ((salaryInBandCurrency - min) / span) * 100 : 50;
       byBand.get(c.band.id)!.dots.push({ pos: Math.min(100, Math.max(0, rawPos)), outlier: rawPos < 0 || rawPos > 100 });
     }
     // Non-positive-salary banded complement = banded rows that were dropped from the dot plot.
@@ -110,7 +114,7 @@ export const compensationRouter = router({
     // (N present + band-key set pins singletons) and via N − Σ dots. No keys ⇒ nothing
     // recoverable. 0 population passes through as [] (reveals no individual).
     const bandedPopulation = allBands.reduce((sum, band) => sum + band.dots.length, 0) + unassignedCount;
-    type BandOut = { level: string; title: string; min: number; mid: number; max: number; dots: { pos: number; outlier: boolean }[]; suppressed: boolean };
+    type BandOut = { level: string; title: string; min: number; mid: number; max: number; currency: string; dots: { pos: number; outlier: boolean }[]; suppressed: boolean };
     // Non-positive-salary complement (round 13-14): fold the banded rows dropped from the dot
     // plot into the all-or-nothing trigger so a 1..4 non-positive-salary bucket is never
     // recoverable as `Σ dots − compensatedEmployees` (Σ dots = positive-salary banded count,
@@ -244,15 +248,29 @@ export const compensationRouter = router({
     )
     .query(async ({ ctx }) => {
       requireOrgScope(ctx.access);
-      const compensations = await db.employeeCompensation.findMany({
-        where: {
-          organizationId: ctx.user.organizationId,
-        },
-        select: { currentSalary: true, userId: true },
-      });
+      const [company, compensations] = await Promise.all([
+        db.company.findFirst({
+          where: { organizationId: ctx.user.organizationId },
+          select: { currency: true },
+          orderBy: { createdAt: 'asc' },
+        }),
+        db.employeeCompensation.findMany({
+          where: {
+            organizationId: ctx.user.organizationId,
+          },
+          select: { currentSalary: true, currency: true, userId: true },
+        }),
+      ]);
+      const displayCurrency = normalizeCurrencyCode(company?.currency, 'USD');
 
-      // Without an Employee model with gender/ethnicity, return raw salary data
-      const salaries = compensations.map((c) => Number(c.currentSalary)).filter(Boolean);
+      // Without a compensation-side demographic join, this endpoint remains a single
+      // org-wide "all" group. Normalize all salaries before computing its stats.
+      const salaries = await Promise.all(
+        compensations
+          .map((c) => ({ amount: Number(c.currentSalary) || 0, currency: c.currency }))
+          .filter((c) => c.amount > 0)
+          .map((c) => convertMoney(c.amount, c.currency, displayCurrency).then((m) => m.amount)),
+      );
       const avg = salaries.length ? salaries.reduce((a, b) => a + b, 0) / salaries.length : 0;
       const sorted = [...salaries].sort((a, b) => a - b);
       const median = sorted[Math.floor(sorted.length / 2)] ?? 0;
@@ -274,6 +292,7 @@ export const compensationRouter = router({
       return {
         groupBy: 'all',
         results: [buildGroup('all', salaries.length, Math.round(avg), median)],
+        currency: displayCurrency,
       };
     }),
 
@@ -341,6 +360,7 @@ export const compensationRouter = router({
         createdAt: true,
         ...(sel.previousSalary ? { previousSalary: true } : {}),
         ...(sel.newSalary ? { newSalary: true } : {}),
+        ...(sel.currency ? { currency: true } : {}),
         ...(sel.reason ? { reason: true } : {}),
         ...(sel.type ? { type: true } : {}),
         ...(sel.status ? { status: true } : {}),
@@ -379,6 +399,7 @@ export const compensationRouter = router({
         type: z.enum(['merit', 'promotion', 'market', 'equity', 'other']),
         previousSalary: z.number().positive(),
         newSalary: z.number().positive(),
+        currency: z.string().trim().length(3).transform((v) => v.toUpperCase()).optional(),
         reason: z.string().max(1000).optional(),
         effectiveDate: z.string().datetime(),
       }),
@@ -393,6 +414,12 @@ export const compensationRouter = router({
         'No puedes crear ajustes para este usuario',
       );
 
+      const currentComp = await db.employeeCompensation.findFirst({
+        where: { userId: input.userId, organizationId: ctx.user.organizationId },
+        select: { currency: true },
+      });
+      const currency = normalizeCurrencyCode(input.currency, currentComp?.currency ?? 'USD');
+
       // §21 minimal-select: create returns only id+status; the full restricted row
       // (previousSalary/newSalary/reason) must never be echoed back from a write
       // response. No audit is required here because no restricted field is returned.
@@ -402,6 +429,7 @@ export const compensationRouter = router({
           type: input.type,
           previousSalary: input.previousSalary,
           newSalary: input.newSalary,
+          currency,
           reason: input.reason,
           effectiveDate: new Date(input.effectiveDate),
           organizationId: ctx.user.organizationId,
@@ -431,7 +459,7 @@ export const compensationRouter = router({
       // reading a restricted field mandates an audit trail (fail-closed policy).
       const adjustment = await db.salaryAdjustment.findFirst({
         where: { id: input.id, organizationId: ctx.user.organizationId, status: 'pending' },
-        select: { id: true, userId: true, newSalary: true },
+        select: { id: true, userId: true, newSalary: true, currency: true },
       });
 
       if (!adjustment) throw new Error('Ajuste no encontrado o ya procesado');
@@ -476,7 +504,7 @@ export const compensationRouter = router({
         if (input.approved) {
           await tx.employeeCompensation.updateMany({
             where: { userId: adjustment.userId, organizationId: ctx.user.organizationId },
-            data: { currentSalary: adjustment.newSalary },
+            data: { currentSalary: adjustment.newSalary, currency: adjustment.currency },
           });
         }
       });
@@ -489,6 +517,7 @@ export const compensationRouter = router({
       z.object({
         userId: z.string().uuid(),
         proposedSalary: z.number().positive(),
+        currency: z.string().trim().length(3).transform((v) => v.toUpperCase()).optional(),
       }),
     )
     .query(async ({ ctx, input }) => {
@@ -513,6 +542,7 @@ export const compensationRouter = router({
           id: true,
           // currentSalary drives the %change every entitled scoped reader receives.
           ...(compSel.currentSalary ? { currentSalary: true } : {}),
+          ...(compSel.currency ? { currency: true } : {}),
           ...(canSeeCompaRatio ? { compaRatio: true } : {}),
           ...(compSel.bandId ? { bandId: true } : {}),
         },
@@ -534,10 +564,14 @@ export const compensationRouter = router({
 
       // `compensation` may omit currentSalary/compaRatio/bandId entirely (dynamic select
       // built from selectFor), so read each via a typed lens that tolerates absence.
-      const compRec = compensation as { currentSalary?: unknown; compaRatio?: unknown; bandId?: string | null };
+      const compRec = compensation as { currentSalary?: unknown; currency?: string | null; compaRatio?: unknown; bandId?: string | null };
       const currentSalary = Number(compRec.currentSalary) || 0;
+      const currentCurrency = normalizeCurrencyCode(compRec.currency, 'USD');
+      const proposedCurrency = normalizeCurrencyCode(input.currency, currentCurrency);
+      const convertedProposed = await convertMoney(input.proposedSalary, proposedCurrency, currentCurrency);
+      const proposedSalaryForComparison = convertedProposed.amount;
       const percentageChange = currentSalary
-        ? Math.round(((input.proposedSalary - currentSalary) / currentSalary) * 10000) / 100
+        ? Math.round(((proposedSalaryForComparison - currentSalary) / currentSalary) * 10000) / 100
         : 0;
 
       // §21 field-auth (slice 6 round 5 + round 6): compaRatio + bandId are HR-analytics
@@ -554,14 +588,22 @@ export const compensationRouter = router({
           : null;
 
       const midpoint = band ? Number(band.midSalary) : 0;
-      const newCompaRatio = midpoint ? Math.round((input.proposedSalary / midpoint) * 100) / 100 : null;
+      const bandCurrency = band ? normalizeCurrencyCode(band.currency, currentCurrency) : currentCurrency;
+      const proposedSalaryForBand = band
+        ? (await convertMoney(input.proposedSalary, proposedCurrency, bandCurrency)).amount
+        : proposedSalaryForComparison;
+      const newCompaRatio = midpoint ? Math.round((proposedSalaryForBand / midpoint) * 100) / 100 : null;
 
       // currentSalary-class fields (salary + projected salary + %change) reach every
       // entitled scoped reader. Compa-ratio/band internals are spread in ONLY when the
       // caller's roles grant compaRatio — absent (not nulled) otherwise.
       return {
         currentSalary,
+        currency: currentCurrency,
         proposedSalary: input.proposedSalary,
+        proposedCurrency,
+        proposedSalaryForComparison,
+        comparisonCurrency: currentCurrency,
         percentageChange,
         ...(canSeeCompaRatio
           ? {
@@ -569,8 +611,9 @@ export const compensationRouter = router({
               newCompaRatio,
               bandMin: band ? Number(band.minSalary) : null,
               bandMax: band ? Number(band.maxSalary) : null,
+              bandCurrency,
               withinBand: band
-                ? input.proposedSalary >= Number(band.minSalary) && input.proposedSalary <= Number(band.maxSalary)
+                ? proposedSalaryForBand >= Number(band.minSalary) && proposedSalaryForBand <= Number(band.maxSalary)
                 : null,
             }
           : {}),
@@ -601,6 +644,7 @@ export const compensationRouter = router({
         internalMin: Number(b.minSalary),
         internalMid: Number(b.midSalary),
         internalMax: Number(b.maxSalary),
+        currency: b.currency,
       }));
     }),
 
@@ -626,31 +670,34 @@ export const compensationRouter = router({
     )
     .query(async ({ ctx }) => {
       requireOrgScope(ctx.access);
-      const compensations = await db.employeeCompensation.findMany({
-        where: {
-          organizationId: ctx.user.organizationId,
-        },
-        select: {
-          currentSalary: true,
-          variablePay: true,
-        },
-      });
+      const [company, compensations] = await Promise.all([
+        db.company.findFirst({
+          where: { organizationId: ctx.user.organizationId },
+          select: { currency: true },
+          orderBy: { createdAt: 'asc' },
+        }),
+        db.employeeCompensation.findMany({
+          where: {
+            organizationId: ctx.user.organizationId,
+          },
+          select: {
+            currentSalary: true,
+            variablePay: true,
+            currency: true,
+          },
+        }),
+      ]);
+      const displayCurrency = normalizeCurrencyCode(company?.currency, 'USD');
 
-      let totalBase = 0;
-      let totalVariable = 0;
       let baseContributors = 0;
       let variableContributors = 0;
 
       for (const emp of compensations) {
         const base = Number(emp.currentSalary) || 0;
         const variable = Number(emp.variablePay) || 0;
-        totalBase += base;
-        totalVariable += variable;
         if (base > 0) baseContributors += 1;
         if (variable > 0) variableContributors += 1;
       }
-
-      const totalComp = totalBase + totalVariable;
 
       // Denominator alignment + complementary-bucket guard (slice 6 round 13):
       //
@@ -686,6 +733,9 @@ export const compensationRouter = router({
       if (suppressed) {
         return {
           totalComp: null as number | null,
+          currency: displayCurrency,
+          converted: false,
+          ratesAsOf: null as string | null,
           breakdown: {
             baseSalary: { total: null as number | null, percentage: null as number | null },
             variablePay: { total: null as number | null, percentage: null as number | null },
@@ -695,11 +745,33 @@ export const compensationRouter = router({
         };
       }
 
+      const [baseTotal, variableTotal] = await Promise.all([
+        sumMoney(
+          compensations
+            .map((emp) => ({ amount: Number(emp.currentSalary) || 0, currency: emp.currency }))
+            .filter((emp) => emp.amount > 0),
+          displayCurrency,
+        ),
+        sumMoney(
+          compensations
+            .map((emp) => ({ amount: Number(emp.variablePay) || 0, currency: emp.currency }))
+            .filter((emp) => emp.amount > 0),
+          displayCurrency,
+        ),
+      ]);
+
+      const normalizedTotalComp = roundMoney(baseTotal.amount + variableTotal.amount);
+      const converted = baseTotal.converted || variableTotal.converted;
+      const ratesAsOf = [baseTotal.ratesAsOf, variableTotal.ratesAsOf].filter(Boolean).sort()[0] ?? null;
+
       return {
-        totalComp: totalComp as number | null,
+        totalComp: normalizedTotalComp as number | null,
+        currency: displayCurrency,
+        converted,
+        ratesAsOf,
         breakdown: {
-          baseSalary: { total: totalBase as number | null, percentage: (totalComp ? Math.round((totalBase / totalComp) * 10000) / 100 : 0) as number | null },
-          variablePay: { total: totalVariable as number | null, percentage: (totalComp ? Math.round((totalVariable / totalComp) * 10000) / 100 : 0) as number | null },
+          baseSalary: { total: baseTotal.amount as number | null, percentage: (normalizedTotalComp ? Math.round((baseTotal.amount / normalizedTotalComp) * 10000) / 100 : 0) as number | null },
+          variablePay: { total: variableTotal.amount as number | null, percentage: (normalizedTotalComp ? Math.round((variableTotal.amount / normalizedTotalComp) * 10000) / 100 : 0) as number | null },
         },
         // Aligned to getDashboardKpis.compensatedEmployees: report the positive-salary
         // population (baseContributors), NOT the all-rows count. The two operands now
@@ -772,11 +844,15 @@ export const compensationRouter = router({
     requireOrgScope(ctx.access);
     const orgId = ctx.user.organizationId;
 
-    const [payrollAgg, compensatedCount, pendingAdjustments, compaRatioAgg, compaRatioCount, activeEmployees, benefitPlans] = await Promise.all([
-      db.employeeCompensation.aggregate({
+    const [company, compensatedRows, compensatedCount, pendingAdjustments, compaRatioAgg, compaRatioCount, activeEmployees, benefitPlans] = await Promise.all([
+      db.company.findFirst({
+        where: { organizationId: orgId },
+        select: { currency: true },
+        orderBy: { createdAt: 'asc' },
+      }),
+      db.employeeCompensation.findMany({
         where: { organizationId: orgId, currentSalary: { gt: 0 } },
-        _sum: { currentSalary: true },
-        _avg: { currentSalary: true },
+        select: { currentSalary: true, currency: true },
       }),
       db.employeeCompensation.count({
         where: { organizationId: orgId, currentSalary: { gt: 0 } },
@@ -794,6 +870,7 @@ export const compensationRouter = router({
       db.user.count({ where: { organizationId: orgId, isActive: true } }),
       db.benefitPlan.findMany({ where: { organizationId: orgId }, select: { _count: { select: { enrollments: true } } } }),
     ]);
+    const displayCurrency = normalizeCurrencyCode(company?.currency, 'USD');
 
     // Average benefit utilization = mean over plans of (enrollments / active employees).
     const benefitsUtilizationPct =
@@ -812,10 +889,22 @@ export const compensationRouter = router({
     // pending) is a sub-floor disclosure over that population — route it through
     // suppressBelowMin5: null + suppressed flag for 1..4. 0 passes through (no one).
     const pendingFloor = suppressBelowMin5(pendingAdjustments);
+    const payrollTotal = compensatedSuppressed
+      ? { amount: null as number | null, converted: false, ratesAsOf: null as string | null }
+      : await sumMoney(
+          compensatedRows.map((row) => ({ amount: Number(row.currentSalary) || 0, currency: row.currency })),
+          displayCurrency,
+        );
+    const avgSalary = compensatedSuppressed || payrollTotal.amount === null
+      ? null
+      : Math.round(payrollTotal.amount / compensatedCount);
 
     return {
-      totalMonthlyPayroll: compensatedSuppressed ? null : (Number(payrollAgg._sum.currentSalary) || 0),
-      avgSalary: compensatedSuppressed ? null : Math.round(Number(payrollAgg._avg.currentSalary) || 0),
+      totalMonthlyPayroll: compensatedSuppressed ? null : payrollTotal.amount,
+      avgSalary,
+      currency: displayCurrency,
+      converted: !compensatedSuppressed && payrollTotal.converted,
+      ratesAsOf: compensatedSuppressed ? null : payrollTotal.ratesAsOf,
       compensatedEmployees: compensatedSuppressed ? null : compensatedCount,
       compensatedSuppressed,
       activeEmployees,

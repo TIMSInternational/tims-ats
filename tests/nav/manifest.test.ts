@@ -26,6 +26,7 @@ describe('nav manifest', () => {
     expect(modules).toContain('performance');
     expect(modules).toContain('ninebox');
     expect(modules).toContain('engagement');
+    expect(modules).toContain('fit_engine');
   });
   it('NO-DRIFT: every manifest item.module matches the route map for its href', () => {
     for (const role of NAV_ROLES)

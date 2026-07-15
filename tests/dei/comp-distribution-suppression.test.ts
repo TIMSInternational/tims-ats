@@ -10,9 +10,11 @@ import { initTRPC } from '@trpc/server';
 
 const compFindMany = vi.fn();
 const compCount = vi.fn();
+const companyFindFirst = vi.fn();
 
 vi.mock('@tims/db', () => ({
   tenantDb: {
+    company: { findFirst: (...a: unknown[]) => companyFindFirst(...a) },
     employeeCompensation: {
       findMany: (...a: unknown[]) => compFindMany(...a),
       count: (...a: unknown[]) => compCount(...a),
@@ -67,9 +69,12 @@ const t = initTRPC.context<{ user: { organizationId: string; id: string }; acces
 const createCaller = t.createCallerFactory(compensationRouter as unknown as Parameters<typeof t.createCallerFactory>[0]);
 const caller = () => createCaller({ user: { organizationId: 'org-1', id: 'u-1' }, access: { roles: ['super_admin'] } }) as unknown as CompCaller;
 
-const compRow = (cr: number) => ({ id: 'x', currentSalary: 5_000_000, compaRatio: cr, userId: 'u' });
+const compRow = (cr: number) => ({ id: 'x', currentSalary: 5_000_000, currency: 'USD', compaRatio: cr, userId: 'u' });
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  companyFindFirst.mockResolvedValue({ currency: 'USD' });
+});
 
 describe('getCompaRatioDistribution suppression (round 7)', () => {
   it('N=6 with one sub-floor bucket → EMPTY distribution + null total + suppressed (no bucket keys)', async () => {
@@ -213,7 +218,7 @@ describe('getBandDistribution suppression (round 7)', () => {
 // (B) When the non-positive bucket is 1..4 the endpoint suppresses entirely (null totals).
 // (C) When all rows have positive salary, employeeCount == baseContributors (no hidden bucket).
 describe('getTotalCompBreakdown — denominator alignment + complementary-bucket guard (round 13)', () => {
-  const makeRow = (salary: number, variable = 0) => ({ currentSalary: salary, variablePay: variable });
+  const makeRow = (salary: number, variable = 0) => ({ currentSalary: salary, variablePay: variable, currency: 'USD' });
 
   it('(A) 5 positive-salary + 4 zero-salary rows → suppressed (non-positive bucket = 4, 1..4 trigger)', async () => {
     // 4 zero-salary rows → nonPositiveContributors = 4 → 1..4 → suppresses.

@@ -3,6 +3,7 @@
 import { CONTRACT_TYPES, inputCls, labelCls, textareaCls } from './create-modal.helpers';
 import { useI18n } from '../../../../lib/i18n';
 import { AiGeneratePanel, InclusiveCheckPanel } from './create-modal.ai-panel';
+import { currencyOptions } from '../../../../lib/currency-options';
 
 interface Step1Props {
   title: string;
@@ -174,6 +175,7 @@ export function Step3Compensation({
   title, location, remotePolicy, contractType, positions,
 }: Step3Props) {
   const { t } = useI18n();
+  const currencies = currencyOptions();
   return (
     <div className="space-y-5">
       <div>
@@ -190,10 +192,9 @@ export function Step3Compensation({
           <div>
             <label className={labelCls}>Moneda</label>
             <select value={currency} onChange={(e) => setCurrency(e.target.value)} className={`${inputCls} bg-white`}>
-              <option value="COP">COP</option>
-              <option value="USD">USD</option>
-              <option value="EUR">EUR</option>
-              <option value="MXN">MXN</option>
+              {currencies.map((opt) => (
+                <option key={opt.code} value={opt.code}>{opt.label}</option>
+              ))}
             </select>
           </div>
           <div>

@@ -455,15 +455,15 @@ describe('createAdjustment + approveAdjustment use minimal selects (slice 6 writ
     expect(src).toMatch(/salaryAdjustment\.findFirst\(\{[\s\S]*?status:\s*'pending'[\s\S]*?select:\s*\{/);
   });
 
-  it("approveAdjustment findFirst select includes userId and newSalary (needed by the approval logic) but NOT previousSalary or reason", () => {
+  it("approveAdjustment findFirst select includes userId/newSalary/currency (needed by the approval logic) but NOT previousSalary or reason", () => {
     const src = readComp();
     // Extract the findFirst block: from 'findFirst' up to the closing of that call.
     // We check the select fields that appear near it.
-    expect(src).toMatch(/select:\s*\{\s*id:\s*true,\s*userId:\s*true,\s*newSalary:\s*true\s*\}/);
+    expect(src).toMatch(/select:\s*\{\s*id:\s*true,\s*userId:\s*true,\s*newSalary:\s*true,\s*currency:\s*true\s*\}/);
     // previousSalary and reason must NOT appear in the findFirst select.
     // (They may appear elsewhere in the file — e.g. listPendingAdjustments — so we
     //  check that the findFirst select block specifically is minimal.)
-    expect(src).not.toMatch(/findFirst\(\{[\s\S]*?select:\s*\{[\s\S]*?\bpreviousSalary\b[\s\S]*?\}\s*\}\s*\)/);
+    expect(src).not.toMatch(/salaryAdjustment\.findFirst\(\{[\s\S]*?select:\s*\{[\s\S]*?\bpreviousSalary\b[\s\S]*?\}\s*\}\s*\)/);
   });
 
   it('approveAdjustment audits the restricted newSalary read via logDataAccess before the update', () => {

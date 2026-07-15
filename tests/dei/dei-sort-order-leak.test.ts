@@ -21,6 +21,7 @@ vi.mock('../../packages/api/src/repositories/dei.repository', () => ({
     nullNationalityCount: vi.fn(),
     birthDates: vi.fn(),
     nullBirthDateCount: vi.fn(),
+    displayCurrency: vi.fn(),
     salaryWithGender: vi.fn(),
     leadershipGenders: vi.fn(),
   },
@@ -35,6 +36,7 @@ beforeEach(() => {
   // exercise only the explicit-group/population suppression paths they were written for.
   vi.mocked(deiRepository.nullNationalityCount).mockResolvedValue(0 as never);
   vi.mocked(deiRepository.nullBirthDateCount).mockResolvedValue(0 as never);
+  vi.mocked(deiRepository.displayCurrency).mockResolvedValue({ currency: 'USD' } as never);
 });
 
 describe('getNationalityDiversity present-key cardinality (HIGH 4, round 7)', () => {

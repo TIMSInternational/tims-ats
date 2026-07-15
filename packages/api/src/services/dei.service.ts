@@ -1,5 +1,7 @@
 import { deiRepository } from '../repositories/dei.repository';
 import { suppressBelowMin5 } from '../access';
+import { convertMoney } from '../lib/currency';
+import { normalizeCurrencyCode } from '@tims/shared';
 
 // ---------------------------------------------------------------------------
 // DEI service — turns demographic aggregates into the metrics the dashboard
@@ -268,13 +270,15 @@ export const deiService = {
   },
 
   async getPayEquity(orgId: string) {
-    const [rows, genderDemographicCounts] = await Promise.all([
+    const [rows, genderDemographicCounts, currencySource] = await Promise.all([
       deiRepository.salaryWithGender(orgId),
       // Full per-gender demographic counts — the SAME population getGenderRepresentation
       // publishes. Needed to fold the non-positive-salary complement (round 13-14, below).
       deiRepository.genderCounts(orgId),
+      deiRepository.displayCurrency(orgId),
     ]);
-    const byGender = new Map<string, number[]>();
+    const displayCurrency = normalizeCurrencyCode(currencySource?.currency, 'USD');
+    const byGender = new Map<string, Array<{ amount: number; currency: string | null | undefined }>>();
     // Implicit skipped-salaried bucket (round 8): rows whose gender is missing or
     // 'undisclosed' are dropped from the visible per-gender groups, but they ARE salaried
     // contributors counted in getTotalCompBreakdown's org salary total / employeeCount. So
@@ -292,7 +296,7 @@ export const deiService = {
       if (!salary) continue;
       let arr = byGender.get(gender);
       if (!arr) { arr = []; byGender.set(gender, arr); }
-      arr.push(salary);
+      arr.push({ amount: salary, currency: r.currency });
     }
 
     // Per-gender non-positive-salary complement (round 13-14): getPayEquity's per-gender
@@ -339,17 +343,25 @@ export const deiService = {
       anyGenderComplementSubFloor ||
       [...byGender.values()].some((salaries) => suppressBelowMin5(salaries.length).suppressed);
     if (suppressed) {
-      return { results: [] as PayOut[], gapPct: null as number | null, suppressed: true };
+      return { results: [] as PayOut[], gapPct: null as number | null, suppressed: true, currency: displayCurrency };
     }
 
-    const results = [...byGender.entries()].map(([group, salaries]) => ({
-      group,
-      count: salaries.length,
-      averageSalary: Math.round(salaries.reduce((a, b) => a + b, 0) / salaries.length),
-      medianSalary: median(salaries),
-      suppressed: false,
-      _median: median(salaries) as number | null,
-    }));
+    const results = await Promise.all(
+      [...byGender.entries()].map(async ([group, salaries]) => {
+        const convertedSalaries = await Promise.all(
+          salaries.map((s) => convertMoney(s.amount, s.currency, displayCurrency).then((m) => m.amount)),
+        );
+        const medianSalary = median(convertedSalaries);
+        return {
+          group,
+          count: salaries.length,
+          averageSalary: Math.round(convertedSalaries.reduce((a, b) => a + b, 0) / convertedSalaries.length),
+          medianSalary,
+          suppressed: false,
+          _median: medianSalary as number | null,
+        };
+      }),
+    );
 
     // Headline gap: female vs male median (negative = women paid less). Every group
     // cleared the floor (else we returned suppressed above), so both medians exist.
@@ -359,7 +371,7 @@ export const deiService = {
       ? Math.round(((f._median - m._median) / m._median) * 1000) / 10
       : null;
 
-    return { results: results.map(({ _median, ...rest }): PayOut => rest), gapPct, suppressed: false };
+    return { results: results.map(({ _median, ...rest }): PayOut => rest), gapPct, suppressed: false, currency: displayCurrency };
   },
 
   async getLeadershipDiversity(orgId: string) {

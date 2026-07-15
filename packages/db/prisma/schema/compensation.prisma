@@ -47,6 +47,7 @@ model SalaryAdjustment {
   type           String
   previousSalary Float     @map("previous_salary")
   newSalary      Float     @map("new_salary")
+  currency       String    @default("USD")
   reason         String?
   status         String    @default("pending")
   approvedById   String?   @map("approved_by_id") @db.Uuid

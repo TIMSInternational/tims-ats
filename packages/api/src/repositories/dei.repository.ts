@@ -86,11 +86,19 @@ export const deiRepository = {
     });
   },
 
+  displayCurrency(orgId: string) {
+    return db.company.findFirst({
+      where: { organizationId: orgId },
+      select: { currency: true },
+      orderBy: { createdAt: 'asc' },
+    });
+  },
+
   /** Salary + gender pairs for pay-equity aggregation (aggregated in the service). */
   salaryWithGender(orgId: string) {
     return db.employeeCompensation.findMany({
       where: { organizationId: orgId },
-      select: { currentSalary: true, user: { select: { demographics: { select: { gender: true } } } } },
+      select: { currentSalary: true, currency: true, user: { select: { demographics: { select: { gender: true } } } } },
     });
   },
 

@@ -1,7 +1,7 @@
 'use client';
 
 import { useI18n } from '../../../../../lib/i18n';
-import { formatDate } from '../../../../../lib/format-utils';
+import { formatCurrency, formatDate } from '../../../../../lib/format-utils';
 import type { VacancyDetail } from '../../../../../lib/trpc-types';
 
 interface GeneralInfoProps {
@@ -32,8 +32,9 @@ export function GeneralInfo({ vacancy: v }: GeneralInfoProps) {
   const { t } = useI18n();
 
   const salary = v.salary as { min?: number; max?: number; currency?: string; period?: string } | null;
+  const salaryCurrency = salary?.currency ?? 'COP';
   const salaryText = salary
-    ? `$${(salary.min ?? 0).toLocaleString()} – $${(salary.max ?? 0).toLocaleString()} ${salary.currency ?? 'COP'}/${salary.period === 'yearly' ? t.vacancies.yearly : t.vacancies.monthly}`
+    ? `${salary.min ? formatCurrency(salary.min, salaryCurrency) : '—'} – ${salary.max ? formatCurrency(salary.max, salaryCurrency) : '—'} / ${salary.period === 'yearly' ? t.vacancies.yearly : t.vacancies.monthly}`
     : '—';
 
   const locationText = [v.location, v.remotePolicy ? REMOTE_LABELS[v.remotePolicy] : null].filter(Boolean).join(' (') + (v.remotePolicy ? ')' : '');

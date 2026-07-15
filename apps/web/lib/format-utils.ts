@@ -1,9 +1,15 @@
-export function formatCurrency(value: number, currency = 'USD', decimals = 0): string {
+import { normalizeCurrencyCode } from '@tims/shared';
+
+const ZERO_DECIMAL_CURRENCIES = new Set(['BIF', 'CLP', 'COP', 'DJF', 'GNF', 'ISK', 'JPY', 'KMF', 'KRW', 'PYG', 'RWF', 'UGX', 'VND', 'VUV', 'XAF', 'XOF', 'XPF']);
+
+export function formatCurrency(value: number, currency = 'USD', decimals?: number): string {
+  const normalizedCurrency = normalizeCurrencyCode(currency);
+  const fractionDigits = decimals ?? (ZERO_DECIMAL_CURRENCIES.has(normalizedCurrency) ? 0 : 2);
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
-    currency,
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
+    currency: normalizedCurrency,
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits,
   }).format(value);
 }
 

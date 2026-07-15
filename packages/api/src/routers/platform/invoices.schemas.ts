@@ -16,7 +16,7 @@ export const getInvoiceInput = z.object({ id: z.string().uuid() });
 
 export const createInvoiceInput = z.object({
   organizationId: z.string().uuid(),
-  currency: z.string().max(5).default('USD'),
+  currency: z.string().trim().length(3).transform((v) => v.toUpperCase()).default('USD'),
   description: z.string().max(500).optional(),
   invoiceDate: z.date().optional(),
   dueDate: z.date().optional(),

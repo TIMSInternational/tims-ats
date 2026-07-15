@@ -7,7 +7,8 @@ import { formatCurrency } from '../../../../../lib/format-utils';
 interface OfferKpisProps {
   activeCount: number;
   acceptanceRate: number;
-  avgSalary: number;
+  avgSalary: number | null;
+  avgSalaryCurrency: string | null;
   pendingApprovals: number;
   loading: boolean;
   isError: boolean;
@@ -18,6 +19,7 @@ export function OfferKpis({
   activeCount,
   acceptanceRate,
   avgSalary,
+  avgSalaryCurrency,
   pendingApprovals,
   loading,
   isError,
@@ -70,7 +72,7 @@ export function OfferKpis({
       />
       <KpiCard
         label={t.offers.kpiAvgSalary}
-        value={formatCurrency(avgSalary)}
+        value={avgSalary === null ? 'N/D' : formatCurrency(avgSalary, avgSalaryCurrency ?? 'USD')}
         subtitle={t.offers.avgOfAccepted}
         icon={
           <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">

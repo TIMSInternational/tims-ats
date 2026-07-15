@@ -71,6 +71,7 @@ export const CLASSIFICATION: Readonly<Record<string, EntityClassification>> = {
     fields: {
       previousSalary: { dataClass: 'restricted', roles: [SUPER, HR] },
       newSalary: { dataClass: 'restricted', roles: [SUPER, HR] },
+      currency: { dataClass: 'restricted', roles: [SUPER, HR] },
       reason: { dataClass: 'restricted', roles: [SUPER, HR] },
       type: { dataClass: 'confidential', roles: [SUPER, HR, HRBP] },
       status: { dataClass: 'internal', roles: [SUPER, HR, HRBP, LEADER, EMPLOYEE] },
