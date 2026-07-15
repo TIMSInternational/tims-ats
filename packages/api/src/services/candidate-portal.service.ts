@@ -1,5 +1,6 @@
 import { TRPCError } from '@trpc/server';
 import { runWithTenant } from '@tims/db';
+import { answerCandidateFaq, type CandidateFaqContext } from '@tims/ai';
 import { candidatePortalRepo } from '../repositories/candidate-portal.repository';
 
 // Business logic for the authenticated candidate portal. The trust anchor is the
@@ -26,6 +27,77 @@ async function resolveOrg(orgSlug: string) {
     throw new TRPCError({ code: 'NOT_FOUND', message: 'Organizacion no encontrada' });
   }
   return org;
+}
+
+type CandidateProfile = NonNullable<
+  Awaited<ReturnType<typeof candidatePortalRepo.findActiveCandidateProfile>>
+>;
+type CandidateApplication = Awaited<
+  ReturnType<typeof candidatePortalRepo.findApplications>
+>[number];
+type CandidateInterview = Awaited<ReturnType<typeof candidatePortalRepo.findInterviews>>[number];
+type CandidateOffer = Awaited<ReturnType<typeof candidatePortalRepo.findOffers>>[number];
+
+function isoDate(value: Date | null | undefined): string | null {
+  return value ? value.toISOString() : null;
+}
+
+function candidateDisplayName(candidate: CandidateProfile): string {
+  return `${candidate.firstName} ${candidate.lastName}`.trim();
+}
+
+// Pure DTO builder for the FAQ prompt. It intentionally mirrors only the data
+// candidates can already see in the portal: applications, upcoming interviews,
+// and candidate-facing offer terms. Internal notes, evaluator opinions, scores,
+// raw settings, and other candidates never enter the prompt.
+export function buildCandidateFaqContext(
+  orgName: string,
+  candidate: CandidateProfile,
+  applications: CandidateApplication[],
+  interviews: CandidateInterview[],
+  offers: CandidateOffer[],
+  focusApplicationId?: string,
+): CandidateFaqContext {
+  const focusedApplications = focusApplicationId
+    ? applications.filter((app) => app.id === focusApplicationId)
+    : applications;
+
+  return {
+    organizationName: orgName,
+    candidateName: candidateDisplayName(candidate),
+    applications: focusedApplications.slice(0, 10).map((app) => ({
+      id: app.id,
+      vacancyTitle: app.vacancy.title,
+      companyName: app.vacancy.company?.name ?? null,
+      status: app.status,
+      currentStage: app.currentStage?.name ?? null,
+      appliedAt: app.appliedAt.toISOString(),
+    })),
+    upcomingInterviews: interviews.slice(0, 10).map((interview) => ({
+      vacancyTitle: interview.vacancy.title,
+      type: interview.type,
+      status: interview.status,
+      scheduledAt: interview.scheduledAt.toISOString(),
+      durationMinutes: interview.duration ?? null,
+      location: interview.location ?? null,
+      hasJoinLink: Boolean(interview.meetingUrl),
+    })),
+    offers: offers.slice(0, 5).map((offer) => {
+      const signable =
+        offer.status === 'sent' && (!offer.expiresAt || offer.expiresAt.getTime() > Date.now());
+      return {
+        vacancyTitle: offer.vacancy.title,
+        companyName: offer.vacancy.company?.name ?? null,
+        status: offer.status,
+        salary: offer.salary,
+        currency: offer.currency,
+        startDate: offer.startDate.toISOString(),
+        contractType: offer.contractType,
+        expiresAt: isoDate(offer.expiresAt),
+        signable: signable && extractSigningToken(offer.settings) !== null,
+      };
+    }),
+  };
 }
 
 export const candidatePortalService = {
@@ -106,5 +178,45 @@ export const candidatePortalService = {
       }
       return application;
     });
+  },
+
+  // Candidate-facing FAQ assistant. The only client-controlled fields are the org
+  // slug, optional application focus, and question text. Candidate identity comes
+  // from the Supabase session email; the prompt context is built server-side from
+  // the same candidate-visible portal reads used by the dashboard.
+  async askFaq(
+    email: string,
+    orgSlug: string,
+    question: string,
+    applicationId?: string,
+  ) {
+    const org = await resolveOrg(orgSlug);
+    const context = await runWithTenant(org.id, async () => {
+      const candidate = await candidatePortalRepo.findActiveCandidateProfile(org.id, email);
+      if (!candidate) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Candidato no encontrado' });
+      }
+
+      const [applications, interviews, offers] = await Promise.all([
+        candidatePortalRepo.findApplications(org.id, candidate.id),
+        candidatePortalRepo.findInterviews(org.id, candidate.id),
+        candidatePortalRepo.findOffers(org.id, candidate.id),
+      ]);
+
+      if (applicationId && !applications.some((app) => app.id === applicationId)) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Postulacion no encontrada' });
+      }
+
+      return buildCandidateFaqContext(
+        org.name,
+        candidate,
+        applications,
+        interviews,
+        offers,
+        applicationId,
+      );
+    });
+
+    return answerCandidateFaq(org.id, { question, context });
   },
 };

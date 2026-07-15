@@ -7,6 +7,7 @@ import { candidatePortalService } from '../services/candidate-portal.service';
 // route slug as input. NO endpoint accepts an email/candidateId from the client;
 // that would let one candidate read another's data.
 const orgSlug = z.string().min(1).max(100).regex(/^[a-z0-9-]+$/, 'Slug invalido');
+const faqQuestion = z.string().trim().min(3).max(800);
 
 export const candidatePortalRouter = router({
   // The signed-in candidate's applications at this org (newest first).
@@ -39,6 +40,20 @@ export const candidatePortalRouter = router({
       candidatePortalService.getApplicationStatus(
         ctx.supabaseAuth.email,
         input.orgSlug,
+        input.applicationId,
+      ),
+    ),
+
+  // Candidate FAQ assistant. The question is free text, but identity is still
+  // derived ONLY from ctx.supabaseAuth.email; applicationId is an optional focus
+  // and is ownership-checked server-side before AI spend.
+  askFaq: candidateProcedure
+    .input(z.object({ orgSlug, question: faqQuestion, applicationId: z.string().uuid().optional() }))
+    .mutation(({ ctx, input }) =>
+      candidatePortalService.askFaq(
+        ctx.supabaseAuth.email,
+        input.orgSlug,
+        input.question,
         input.applicationId,
       ),
     ),

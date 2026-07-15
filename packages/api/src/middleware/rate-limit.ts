@@ -139,7 +139,7 @@ export async function checkRateLimit(
 const AI_PATH_KEYWORDS = [
   'generate', 'parse', 'analyze', 'inclusive', 'screen', 'recommend',
   'explainab', 'nextbestaction', 'detectbias', 'wordcloud', 'sentiment',
-  'medical', 'getguide',
+  'medical', 'getguide', 'faq', 'assistant',
 ];
 
 export function getRateLimitCategory(path: string, type: 'query' | 'mutation'): RateLimitCategory {

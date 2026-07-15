@@ -15,6 +15,8 @@ export { parseCV } from './agents/cv-parser';
 export type { ParsedCVData } from './agents/cv-parser';
 export { screenCandidate } from './agents/candidate-screener';
 export type { ScreeningResult } from './agents/candidate-screener';
+export { answerCandidateFaq } from './agents/candidate-faq';
+export type { CandidateFaqAnswer, CandidateFaqContext } from './agents/candidate-faq';
 export { summarizeInterview } from './agents/interview-summarizer';
 export type { InterviewSummaryResult, ScorecardInput } from './agents/interview-summarizer';
 export { generateInterviewGuide } from './agents/interview-guide';

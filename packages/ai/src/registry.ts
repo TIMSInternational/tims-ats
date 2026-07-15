@@ -23,6 +23,8 @@ export interface AgentDef {
 export const AGENT_REGISTRY: Record<string, AgentDef> = {
   'cv-parser': { slug: 'cv-parser', name: 'CV Parser', model: 'haiku', category: 'recruitment', batchEligible: true, cacheTtlSeconds: 0 },
   'candidate-screener': { slug: 'candidate-screener', name: 'Candidate Screener', model: 'sonnet', category: 'recruitment', batchEligible: true, cacheTtlSeconds: 0 },
+  // Candidate-specific portal FAQ. Prompt includes application/interview/offer context ⇒ no cache.
+  'candidate-faq': { slug: 'candidate-faq', name: 'Candidate FAQ Assistant', model: 'haiku', category: 'recruitment', batchEligible: false, cacheTtlSeconds: 0 },
   'vacancy-writer': { slug: 'vacancy-writer', name: 'Vacancy Writer', model: 'sonnet', category: 'recruitment', batchEligible: false, cacheTtlSeconds: 2_592_000 },
   'inclusive-language': { slug: 'inclusive-language', name: 'Inclusive Language Checker', model: 'haiku', category: 'recruitment', batchEligible: false, cacheTtlSeconds: 86_400 },
   // Interview agents — all operate on candidate PII / evaluator opinions ⇒ ttl 0 (never cached).

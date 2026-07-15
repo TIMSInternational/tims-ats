@@ -7,6 +7,7 @@ import { useI18n } from '../../../../../lib/i18n';
 import { MeApplications } from './me-applications';
 import { MeInterviews } from './me-interviews';
 import { MeOffer } from './me-offer';
+import { MeFaqChat } from './me-faq-chat';
 
 // Candidate dashboard shell. Renders the authenticated frame with the full Wave 1
 // dashboard: My Applications (Slice 2), My Interviews (Slice 3), My Offer (Slice 4).
@@ -58,6 +59,7 @@ export function PortalMeShell({
             <MeApplications orgSlug={orgSlug} />
             <MeInterviews orgSlug={orgSlug} />
             <MeOffer orgSlug={orgSlug} />
+            <MeFaqChat orgSlug={orgSlug} />
           </div>
         ) : (
           <div className="bg-white rounded-2xl border border-[#EDEDED] p-8 text-center mt-4">

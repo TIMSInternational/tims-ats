@@ -18,6 +18,7 @@ const CONTEXT = read('packages/api/src/context.ts');
 const ROUTER = read('packages/api/src/routers/candidate-portal.ts');
 const SERVICE = read('packages/api/src/services/candidate-portal.service.ts');
 const REPO = read('packages/api/src/repositories/candidate-portal.repository.ts');
+const RATE_LIMIT = read('packages/api/src/middleware/rate-limit.ts');
 const ME_PAGE = read('apps/web/app/(portal)/careers/[orgSlug]/me/page.tsx');
 
 describe('candidateProcedure infrastructure', () => {
@@ -61,6 +62,15 @@ describe('candidate-portal router', () => {
     // No `email` field accepted as router input (would let one candidate query another).
     expect(ROUTER).not.toMatch(/email:\s*z\./);
   });
+
+  it('askFaq accepts only orgSlug/question/optional application focus (never candidateId/email)', () => {
+    const askFaq = ROUTER.slice(ROUTER.indexOf('askFaq:'));
+    expect(askFaq).toMatch(/candidateProcedure/);
+    expect(askFaq).toMatch(/question:\s*faqQuestion/);
+    expect(askFaq).toMatch(/applicationId:\s*z\.string\(\)\.uuid\(\)\.optional\(\)/);
+    expect(askFaq).not.toMatch(/candidateId:\s*z\./);
+    expect(askFaq).not.toMatch(/email:\s*z\./);
+  });
 });
 
 describe('candidate-portal service — tenant isolation & IDOR', () => {
@@ -75,6 +85,16 @@ describe('candidate-portal service — tenant isolation & IDOR', () => {
   it('returns an empty/none result when no candidate matches the session email', () => {
     // A signed-in email with no Candidate at this org must not error into data.
     expect(SERVICE).toMatch(/findActiveCandidate|candidate\b/);
+  });
+
+  it('askFaq context is server-built and application focus is ownership-checked before AI spend', () => {
+    expect(SERVICE).toContain('buildCandidateFaqContext');
+    expect(SERVICE).toMatch(/findActiveCandidateProfile/);
+    expect(SERVICE).toMatch(/applications\.some\(\(app\) => app\.id === applicationId\)/);
+    const contextBuildIdx = SERVICE.indexOf('return buildCandidateFaqContext');
+    const aiSpendIdx = SERVICE.indexOf('return answerCandidateFaq');
+    expect(contextBuildIdx).toBeGreaterThan(0);
+    expect(aiSpendIdx).toBeGreaterThan(contextBuildIdx);
   });
 });
 
@@ -120,6 +140,12 @@ describe('candidate-portal repository — scoping', () => {
     expect(REPO).toMatch(/select:|include:/);
   });
 
+  it('FAQ profile lookup uses explicit select and avoids internal candidate fields', () => {
+    const method = REPO.slice(REPO.indexOf('findActiveCandidateProfile'));
+    expect(method).toMatch(/select:\s*\{\s*id:\s*true,\s*firstName:\s*true,\s*lastName:\s*true/s);
+    expect(method).not.toMatch(/notes:\s*true|tags:\s*true|fitScores|assessmentAssignments|documents/);
+  });
+
   it('scopes offer reads by candidateId AND organizationId (Slice 4)', () => {
     expect(REPO).toMatch(/offer\.findMany\(\{\s*where:\s*\{[^}]*candidateId[^}]*organizationId/s);
     // Only candidate-facing statuses (never draft / internal approval states).
@@ -151,5 +177,12 @@ describe('portal /me SSR gate — no privileged candidate read', () => {
     // goes through candidatePortalService (runWithTenant + tenantDb).
     expect(ME_PAGE).not.toMatch(/db\.candidate\b/);
     expect(ME_PAGE).toContain('candidatePortalService');
+  });
+});
+
+describe('candidate FAQ rate limiting', () => {
+  it('routes FAQ/chatbot endpoints through the AI rate-limit bucket', () => {
+    expect(RATE_LIMIT).toMatch(/'faq'/);
+    expect(RATE_LIMIT).toMatch(/'assistant'/);
   });
 });

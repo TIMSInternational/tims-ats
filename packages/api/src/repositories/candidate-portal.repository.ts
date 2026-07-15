@@ -30,6 +30,16 @@ export const candidatePortalRepo = {
     });
   },
 
+  // Candidate FAQ context anchor. Returns only the candidate's own display fields
+  // plus id; never returns recruiter notes, tags, fit scores, assessments, or CV
+  // content to the model.
+  findActiveCandidateProfile(organizationId: string, email: string) {
+    return tenantDb.candidate.findFirst({
+      where: { organizationId, email, isActive: true, deletedAt: null },
+      select: { id: true, firstName: true, lastName: true },
+    });
+  },
+
   // The candidate's display name for the portal /me header. Same tenant-scoped path
   // as everything else here — the SSR gate must NOT read candidate data on the
   // privileged db (that would bypass RLS).
