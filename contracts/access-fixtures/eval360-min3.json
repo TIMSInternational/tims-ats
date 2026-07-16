@@ -1,0 +1,172 @@
+{
+  "description": "360 report aggregation min-3 suppress-by-omission — packages/api/src/services/evaluation360-aggregate.ts (Sprint 1.7, LOCKED anonymity rules). self/manager: always shown, attributed, comments (non-null) included. peer/direct_report: per-competency average shown ONLY when the DISTINCT rater (assignmentId) count >= 3; below 3 (incl. 0/1/2) the bucket is OMITTED entirely (no bucket, no suppressed flag) so sub-threshold is indistinguishable from zero; comments NEVER surfaced. Emission order: self, manager, peer, direct_report. Averages rounded to 2 decimals (JS Math.round). Ported to Tims.Domain.Access.Eval360Aggregate.Aggregate360Report.",
+  "cases": [
+    {
+      "name": "self is always shown, attributed, with non-null comments",
+      "rows": [
+        { "assignmentId": "a1", "relationship": "self", "competencyKey": "communication", "rating": 4, "comment": "solid" },
+        { "assignmentId": "a1", "relationship": "self", "competencyKey": "leadership", "rating": 5, "comment": null }
+      ],
+      "expected": [
+        {
+          "relationship": "self",
+          "raterCount": 1,
+          "competencies": [
+            { "competencyKey": "communication", "average": 4 },
+            { "competencyKey": "leadership", "average": 5 }
+          ],
+          "comments": ["solid"]
+        }
+      ]
+    },
+    {
+      "name": "manager is always shown, attributed, with comments",
+      "rows": [
+        { "assignmentId": "m1", "relationship": "manager", "competencyKey": "communication", "rating": 3, "comment": "needs work" }
+      ],
+      "expected": [
+        {
+          "relationship": "manager",
+          "raterCount": 1,
+          "competencies": [{ "competencyKey": "communication", "average": 3 }],
+          "comments": ["needs work"]
+        }
+      ]
+    },
+    {
+      "name": "peer with 3 distinct raters -> shown, averaged, comments NULL",
+      "rows": [
+        { "assignmentId": "p1", "relationship": "peer", "competencyKey": "communication", "rating": 3, "comment": "a" },
+        { "assignmentId": "p2", "relationship": "peer", "competencyKey": "communication", "rating": 4, "comment": "b" },
+        { "assignmentId": "p3", "relationship": "peer", "competencyKey": "communication", "rating": 5, "comment": "c" }
+      ],
+      "expected": [
+        {
+          "relationship": "peer",
+          "raterCount": 3,
+          "competencies": [{ "competencyKey": "communication", "average": 4 }],
+          "comments": null
+        }
+      ]
+    },
+    {
+      "name": "peer with only 2 distinct raters -> bucket OMITTED entirely (suppress-by-omission)",
+      "rows": [
+        { "assignmentId": "p1", "relationship": "peer", "competencyKey": "communication", "rating": 5, "comment": "x" },
+        { "assignmentId": "p2", "relationship": "peer", "competencyKey": "communication", "rating": 5, "comment": "y" }
+      ],
+      "expected": []
+    },
+    {
+      "name": "direct_report with 1 rater -> omitted",
+      "rows": [
+        { "assignmentId": "d1", "relationship": "direct_report", "competencyKey": "leadership", "rating": 4, "comment": null }
+      ],
+      "expected": []
+    },
+    {
+      "name": "distinct rater count is by assignmentId: 3 rows but only 2 raters -> omitted",
+      "rows": [
+        { "assignmentId": "p1", "relationship": "peer", "competencyKey": "communication", "rating": 3, "comment": null },
+        { "assignmentId": "p1", "relationship": "peer", "competencyKey": "leadership", "rating": 4, "comment": null },
+        { "assignmentId": "p2", "relationship": "peer", "competencyKey": "communication", "rating": 5, "comment": null }
+      ],
+      "expected": []
+    },
+    {
+      "name": "peer 3 raters, averaging rounds to 2 decimals (13/3 -> 4.33)",
+      "rows": [
+        { "assignmentId": "p1", "relationship": "peer", "competencyKey": "communication", "rating": 4, "comment": null },
+        { "assignmentId": "p2", "relationship": "peer", "competencyKey": "communication", "rating": 4, "comment": null },
+        { "assignmentId": "p3", "relationship": "peer", "competencyKey": "communication", "rating": 5, "comment": null }
+      ],
+      "expected": [
+        {
+          "relationship": "peer",
+          "raterCount": 3,
+          "competencies": [{ "competencyKey": "communication", "average": 4.33 }],
+          "comments": null
+        }
+      ]
+    },
+    {
+      "name": "mixed: self(1) shown + peer(2) omitted -> only the self bucket, in order",
+      "rows": [
+        { "assignmentId": "pr1", "relationship": "peer", "competencyKey": "communication", "rating": 5, "comment": "x" },
+        { "assignmentId": "pr2", "relationship": "peer", "competencyKey": "communication", "rating": 5, "comment": "y" },
+        { "assignmentId": "s1", "relationship": "self", "competencyKey": "communication", "rating": 4, "comment": "me" }
+      ],
+      "expected": [
+        {
+          "relationship": "self",
+          "raterCount": 1,
+          "competencies": [{ "competencyKey": "communication", "average": 4 }],
+          "comments": ["me"]
+        }
+      ]
+    },
+    {
+      "name": "competency order is FIRST-SEEN, not sorted (leadership before communication)",
+      "rows": [
+        { "assignmentId": "p1", "relationship": "peer", "competencyKey": "leadership", "rating": 4, "comment": null },
+        { "assignmentId": "p1", "relationship": "peer", "competencyKey": "communication", "rating": 2, "comment": null },
+        { "assignmentId": "p2", "relationship": "peer", "competencyKey": "leadership", "rating": 4, "comment": null },
+        { "assignmentId": "p2", "relationship": "peer", "competencyKey": "communication", "rating": 2, "comment": null },
+        { "assignmentId": "p3", "relationship": "peer", "competencyKey": "leadership", "rating": 4, "comment": null },
+        { "assignmentId": "p3", "relationship": "peer", "competencyKey": "communication", "rating": 2, "comment": null }
+      ],
+      "expected": [
+        {
+          "relationship": "peer",
+          "raterCount": 3,
+          "competencies": [
+            { "competencyKey": "leadership", "average": 4 },
+            { "competencyKey": "communication", "average": 2 }
+          ],
+          "comments": null
+        }
+      ]
+    },
+    {
+      "name": "rounding: 5/3 -> 1.67 (repeating decimal rounds up at 2 dp)",
+      "rows": [
+        { "assignmentId": "p1", "relationship": "peer", "competencyKey": "communication", "rating": 1, "comment": null },
+        { "assignmentId": "p2", "relationship": "peer", "competencyKey": "communication", "rating": 2, "comment": null },
+        { "assignmentId": "p3", "relationship": "peer", "competencyKey": "communication", "rating": 2, "comment": null }
+      ],
+      "expected": [
+        { "relationship": "peer", "raterCount": 3, "competencies": [{ "competencyKey": "communication", "average": 1.67 }], "comments": null }
+      ]
+    },
+    {
+      "name": "rounding: 4/3 -> 1.33 (repeating decimal rounds down at 2 dp)",
+      "rows": [
+        { "assignmentId": "p1", "relationship": "peer", "competencyKey": "communication", "rating": 1, "comment": null },
+        { "assignmentId": "p2", "relationship": "peer", "competencyKey": "communication", "rating": 1, "comment": null },
+        { "assignmentId": "p3", "relationship": "peer", "competencyKey": "communication", "rating": 2, "comment": null }
+      ],
+      "expected": [
+        { "relationship": "peer", "raterCount": 3, "competencies": [{ "competencyKey": "communication", "average": 1.33 }], "comments": null }
+      ]
+    },
+    {
+      "name": "full set emits in fixed order self, manager, peer, direct_report",
+      "rows": [
+        { "assignmentId": "dr1", "relationship": "direct_report", "competencyKey": "communication", "rating": 4, "comment": null },
+        { "assignmentId": "dr2", "relationship": "direct_report", "competencyKey": "communication", "rating": 4, "comment": null },
+        { "assignmentId": "dr3", "relationship": "direct_report", "competencyKey": "communication", "rating": 4, "comment": null },
+        { "assignmentId": "p1", "relationship": "peer", "competencyKey": "communication", "rating": 3, "comment": null },
+        { "assignmentId": "p2", "relationship": "peer", "competencyKey": "communication", "rating": 3, "comment": null },
+        { "assignmentId": "p3", "relationship": "peer", "competencyKey": "communication", "rating": 3, "comment": null },
+        { "assignmentId": "m1", "relationship": "manager", "competencyKey": "communication", "rating": 5, "comment": "mgr" },
+        { "assignmentId": "s1", "relationship": "self", "competencyKey": "communication", "rating": 2, "comment": "self" }
+      ],
+      "expected": [
+        { "relationship": "self", "raterCount": 1, "competencies": [{ "competencyKey": "communication", "average": 2 }], "comments": ["self"] },
+        { "relationship": "manager", "raterCount": 1, "competencies": [{ "competencyKey": "communication", "average": 5 }], "comments": ["mgr"] },
+        { "relationship": "peer", "raterCount": 3, "competencies": [{ "competencyKey": "communication", "average": 3 }], "comments": null },
+        { "relationship": "direct_report", "raterCount": 3, "competencies": [{ "competencyKey": "communication", "average": 4 }], "comments": null }
+      ]
+    }
+  ]
+}

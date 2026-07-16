@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!-- Tims.Api: the ASP.NET host. Refs Application + Infrastructure. Runtime conventions
+       (health/ready, IOptions fail-fast, Serilog JSON, OpenTelemetry, OpenAPI) live here. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- Emit the OpenAPI document at build time into contracts/openapi/ (WP1.3). -->
+    <OpenApiDocumentsDirectory>$(MSBuildThisFileDirectory)../../../../contracts/openapi</OpenApiDocumentsDirectory>
+    <OpenApiGenerateDocumentsOnBuild>true</OpenApiGenerateDocumentsOnBuild>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Tims.Application\Tims.Application.csproj" />
+    <ProjectReference Include="..\Tims.Infrastructure\Tims.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.10" />
+    <PackageReference Include="Microsoft.Extensions.ApiDescription.Server" Version="10.0.10">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <!-- Pinned to override the vulnerable 2.0.0 that Microsoft.AspNetCore.OpenApi 10.0.10
+         pulls transitively (NuGet audit NU1903 / GHSA-v5pm-xwqc-g5wc). 2.11.0 stays on the
+         same major the ASP.NET layer targets (API-compatible) while clearing the advisory. -->
+    <PackageReference Include="Microsoft.OpenApi" Version="2.11.0" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.16.0" />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.16.0" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.16.0" />
+    <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
+    <PackageReference Include="Serilog.Formatting.Compact" Version="3.0.0" />
+    <PackageReference Include="StackExchange.Redis" Version="3.0.17" />
+  </ItemGroup>
+
+</Project>

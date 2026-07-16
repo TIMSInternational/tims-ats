@@ -1,0 +1,97 @@
+{
+  "description": "resolveAccess(grants, module, action) — packages/api/src/access/resolve.ts. Deny-by-default; union stacking (widest scope wins, all contributing roles carried, deduped in first-seen order); a grant whose scope is not a valid AccessScope (isAccessScope) is dropped. These fixtures are asserted IDENTICALLY by the TS suite (real resolveAccess) and Tims.UnitTests (AccessResolver.ResolveAccess).",
+  "cases": [
+    {
+      "name": "no grants -> denied",
+      "grants": [],
+      "module": "candidate",
+      "action": "read",
+      "expected": { "allowed": false }
+    },
+    {
+      "name": "single organization grant -> allowed organization",
+      "grants": [{ "role": "hr_admin", "module": "candidate", "action": "read", "scope": "organization" }],
+      "module": "candidate",
+      "action": "read",
+      "expected": { "allowed": true, "scope": "organization", "roles": ["hr_admin"] }
+    },
+    {
+      "name": "grant exists for a different action -> denied",
+      "grants": [{ "role": "recruiter", "module": "candidate", "action": "read", "scope": "organization" }],
+      "module": "candidate",
+      "action": "delete",
+      "expected": { "allowed": false }
+    },
+    {
+      "name": "grant exists for a different module -> denied",
+      "grants": [{ "role": "recruiter", "module": "candidate", "action": "read", "scope": "organization" }],
+      "module": "vacancy",
+      "action": "read",
+      "expected": { "allowed": false }
+    },
+    {
+      "name": "stack own + team -> team (widest wins), both roles carried",
+      "grants": [
+        { "role": "employee", "module": "performance", "action": "read", "scope": "own" },
+        { "role": "leader", "module": "performance", "action": "read", "scope": "team" }
+      ],
+      "module": "performance",
+      "action": "read",
+      "expected": { "allowed": true, "scope": "team", "roles": ["employee", "leader"] }
+    },
+    {
+      "name": "stack unit + company -> company",
+      "grants": [
+        { "role": "hrbp", "module": "people", "action": "read", "scope": "unit" },
+        { "role": "hr_admin", "module": "people", "action": "read", "scope": "company" }
+      ],
+      "module": "people",
+      "action": "read",
+      "expected": { "allowed": true, "scope": "company", "roles": ["hrbp", "hr_admin"] }
+    },
+    {
+      "name": "organization present in the stack always wins",
+      "grants": [
+        { "role": "leader", "module": "m", "action": "act", "scope": "team" },
+        { "role": "hr_admin", "module": "m", "action": "act", "scope": "organization" }
+      ],
+      "module": "m",
+      "action": "act",
+      "expected": { "allowed": true, "scope": "organization", "roles": ["leader", "hr_admin"] }
+    },
+    {
+      "name": "legacy scope 'all' is NOT a valid AccessScope -> dropped by resolveAccess -> denied",
+      "grants": [{ "role": "recruiter", "module": "candidate", "action": "read", "scope": "all" }],
+      "module": "candidate",
+      "action": "read",
+      "expected": { "allowed": false }
+    },
+    {
+      "name": "invalid scope dropped, valid sibling kept (roles reflect only matching grants)",
+      "grants": [
+        { "role": "ghost", "module": "m", "action": "act", "scope": "garbage" },
+        { "role": "hrbp", "module": "m", "action": "act", "scope": "unit" }
+      ],
+      "module": "m",
+      "action": "act",
+      "expected": { "allowed": true, "scope": "unit", "roles": ["hrbp"] }
+    },
+    {
+      "name": "same role granted at two scopes -> widest, role deduped",
+      "grants": [
+        { "role": "leader", "module": "m", "action": "act", "scope": "team" },
+        { "role": "leader", "module": "m", "action": "act", "scope": "own" }
+      ],
+      "module": "m",
+      "action": "act",
+      "expected": { "allowed": true, "scope": "team", "roles": ["leader"] }
+    },
+    {
+      "name": "own-only grant -> own",
+      "grants": [{ "role": "employee", "module": "m", "action": "act", "scope": "own" }],
+      "module": "m",
+      "action": "act",
+      "expected": { "allowed": true, "scope": "own", "roles": ["employee"] }
+    }
+  ]
+}

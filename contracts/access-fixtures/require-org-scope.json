@@ -1,0 +1,10 @@
+{
+  "description": "requireOrgScope — packages/api/src/access/org-gate.ts. Org-rollup endpoints are reachable only at organization or company scope; narrower scopes are rejected (TS: throws FORBIDDEN). Ported to Tims.Domain.Access.OrgGate.RequireOrgScopeSatisfied. The TS fixture test maps throw->false, return->true.",
+  "cases": [
+    { "name": "organization -> satisfied", "scope": "organization", "expected": true },
+    { "name": "company -> satisfied", "scope": "company", "expected": true },
+    { "name": "unit -> rejected", "scope": "unit", "expected": false },
+    { "name": "team -> rejected", "scope": "team", "expected": false },
+    { "name": "own -> rejected", "scope": "own", "expected": false }
+  ]
+}

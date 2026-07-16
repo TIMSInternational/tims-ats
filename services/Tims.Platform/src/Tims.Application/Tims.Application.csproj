@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Tims.Application: use cases / orchestration. Refs Domain ONLY — no infra deps
+       (no EF, no ASP.NET, no Npgsql). Enforced by ArchitectureTests. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Tims.Domain\Tims.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

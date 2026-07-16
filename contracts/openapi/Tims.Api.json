@@ -1,0 +1,27 @@
+{
+  "openapi": "3.1.1",
+  "info": {
+    "title": "Tims.Api | v1",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "ServiceInfo",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Tims.Api"
+    }
+  ]
+}

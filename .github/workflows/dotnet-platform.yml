@@ -1,0 +1,95 @@
+name: .NET Platform CI
+
+# WP1.2 — CI for the C# convergence platform (services/Tims.Platform). Separate from the
+# TypeScript CI so the two stacks fail independently. NOTE (CI billing trap): the existing
+# TS checks can "fail" in 3-5s on a $0 spend-limit; THIS job is distinguishable — it runs a
+# real multi-minute restore/build/Docker-integration cycle with real logs. If a genuine
+# billing-trap failure blocks a green local gate, admin-merge:
+#   gh pr merge <N> --squash --admin
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "services/Tims.Platform/**"
+      - "contracts/**"
+      - "packages/db/**"
+      - "scripts/**"
+      - ".github/workflows/dotnet-platform.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "services/Tims.Platform/**"
+      - "contracts/**"
+      - "packages/db/**"
+      - "scripts/**"
+      - ".github/workflows/dotnet-platform.yml"
+
+concurrency:
+  group: dotnet-platform-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build + Test (.NET 10)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/Tims.Platform
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      # Locked restore: a drifted/typosquatted NuGet version (vs the committed
+      # packages.lock.json) fails here rather than resolving silently.
+      - name: Restore (locked)
+        run: dotnet restore Tims.Platform.slnx --locked-mode
+
+      # TreatWarningsAsErrors + analyzers are on globally (Directory.Build.props) — the
+      # C# analog of TS-strict/no-any. A warning fails the build. This also regenerates
+      # contracts/openapi/Tims.Api.json (OpenApiGenerateDocumentsOnBuild).
+      - name: Build (warnings as errors)
+        run: dotnet build Tims.Platform.slnx --no-restore -c Release
+
+      # OpenAPI contract must not drift: fail if the freshly generated doc differs from
+      # the committed copy.
+      - name: OpenAPI contract is up to date
+        working-directory: .
+        run: git diff --exit-code contracts/openapi/
+
+      - name: Format check
+        run: dotnet format Tims.Platform.slnx --verify-no-changes --no-restore
+
+      # Unit tests (Spike B golden fixtures, arch rules, governance, comp diff-harness).
+      - name: Unit tests
+        run: dotnet test tests/Tims.UnitTests/Tims.UnitTests.csproj --no-build -c Release
+
+      # Integration tests (Spike A Testcontainers RLS proof + API health/ready/OpenAPI smoke).
+      # Docker is available on ubuntu-latest; Testcontainers pulls postgres and runs real DDL.
+      - name: Integration tests (Testcontainers)
+        run: dotnet test tests/Tims.IntegrationTests/Tims.IntegrationTests.csproj --no-build -c Release
+
+  container:
+    name: Container image builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build Tims.Api image
+        working-directory: services/Tims.Platform
+        run: docker build -f src/Tims.Api/Dockerfile -t tims-platform-api:ci .
+
+  table-ownership:
+    name: Table-ownership ledger check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      # Dependency-free (Node stdlib) — no install needed. Fails a cross-owner PR.
+      - name: Check table ownership
+        run: node scripts/table-ownership.mjs

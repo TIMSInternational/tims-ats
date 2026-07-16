@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Tims.Domain: entities, value objects, the Access authorization kernel,
+       k-anonymity, and policies. Clean-architecture core: ZERO outward project
+       references (enforced by ArchitectureTests). No infra, no EF, no ASP.NET. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

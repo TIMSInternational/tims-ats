@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Tims.Domain/Tims.Domain.csproj" />
+    <Project Path="src/Tims.Application/Tims.Application.csproj" />
+    <Project Path="src/Tims.Infrastructure/Tims.Infrastructure.csproj" />
+    <Project Path="src/Tims.Api/Tims.Api.csproj" />
+    <Project Path="src/Tims.Workers/Tims.Workers.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Tims.UnitTests/Tims.UnitTests.csproj" />
+    <Project Path="tests/Tims.IntegrationTests/Tims.IntegrationTests.csproj" />
+  </Folder>
+</Solution>

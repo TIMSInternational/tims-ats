@@ -1,0 +1,11 @@
+{
+  "description": "widestScope(scopes) — packages/api/src/access/resolve.ts. Ladder max (own<team<unit<company<organization); EMPTY input floors to the narrowest scope 'own' (the loop starts at index 0). resolveAccess never calls it with an empty list (it denies before widening), so this defensive floor needs its own fixture. Ported to Tims.Domain.Access.AccessScopes.WidestScope.",
+  "cases": [
+    { "name": "empty -> own floor", "scopes": [], "expected": "own" },
+    { "name": "single own", "scopes": ["own"], "expected": "own" },
+    { "name": "own + team -> team", "scopes": ["own", "team"], "expected": "team" },
+    { "name": "unit + company -> company", "scopes": ["unit", "company"], "expected": "company" },
+    { "name": "all five -> organization", "scopes": ["own", "team", "unit", "company", "organization"], "expected": "organization" },
+    { "name": "unordered team, organization, own -> organization (max, order-independent)", "scopes": ["team", "organization", "own"], "expected": "organization" }
+  ]
+}

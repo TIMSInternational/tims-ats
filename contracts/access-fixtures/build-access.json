@@ -1,0 +1,168 @@
+{
+  "description": "buildAccessForUser decision logic — packages/api/src/access/build.ts, minus the Redis cache + Prisma fetch (the pure decision given the already-resolved grant rows). Ported to Tims.Domain.Access.AccessKernel.Decide. TS asserts via the real buildAccessForUser with db.rolePermission.findMany + cache mocked to return the case's grants. `expectThrow: \"org_required\"` = the privileged-without-org BAD_REQUEST (TRPCError code BAD_REQUEST / TenantOrgRequiredException). SCOPE BOUNDARY: these grants are the rows the Prisma query ALREADY filtered (WHERE role.slug IN roles AND organizationId AND module AND action) — every `grants` entry here is kept realistic (its role is one the principal holds). The DB WHERE contract is infra (not part of the pure kernel) and is exercised where the query lives; the C# EF query replicating it is a Phase-2 concern.",
+  "cases": [
+    {
+      "name": "platform owner (isPlatformOwner flag), own org -> organization, roles=[platform_owner], grants ignored",
+      "principal": { "roles": [], "organizationId": "org-1", "isPlatformOwner": true },
+      "grants": [],
+      "module": "candidate",
+      "action": "read",
+      "expected": { "allowed": true, "scope": "organization", "roles": ["platform_owner"] }
+    },
+    {
+      "name": "platform owner without org context on a tenant module -> throws (never runs unscoped)",
+      "principal": { "roles": [], "organizationId": null, "isPlatformOwner": true },
+      "grants": [],
+      "module": "candidate",
+      "action": "read",
+      "expectThrow": "org_required"
+    },
+    {
+      "name": "super_admin role with org -> organization, roles as-is, no DB grants needed",
+      "principal": { "roles": ["super_admin"], "organizationId": "org-1", "isPlatformOwner": false },
+      "grants": [],
+      "module": "audit",
+      "action": "read",
+      "expected": { "allowed": true, "scope": "organization", "roles": ["super_admin"] }
+    },
+    {
+      "name": "super_admin role without org -> throws (privileged branch checks org first)",
+      "principal": { "roles": ["super_admin"], "organizationId": null, "isPlatformOwner": false },
+      "grants": [],
+      "module": "audit",
+      "action": "read",
+      "expectThrow": "org_required"
+    },
+    {
+      "name": "super_admin returns roles AS-IS incl. non-contributing roles (unlike the DB path)",
+      "principal": { "roles": ["super_admin", "employee"], "organizationId": "org-1", "isPlatformOwner": false },
+      "grants": [],
+      "module": "audit",
+      "action": "read",
+      "expected": { "allowed": true, "scope": "organization", "roles": ["super_admin", "employee"] }
+    },
+    {
+      "name": "platform_owner role (not the flag) with org -> organization, roles as-is",
+      "principal": { "roles": ["platform_owner"], "organizationId": "org-1", "isPlatformOwner": false },
+      "grants": [],
+      "module": "candidate",
+      "action": "read",
+      "expected": { "allowed": true, "scope": "organization", "roles": ["platform_owner"] }
+    },
+    {
+      "name": "hr_admin is DB-checked: no seeded grant -> denied",
+      "principal": { "roles": ["hr_admin"], "organizationId": "org-1", "isPlatformOwner": false },
+      "grants": [],
+      "module": "audit",
+      "action": "read",
+      "expected": { "allowed": false }
+    },
+    {
+      "name": "hr_admin with seeded organization grant -> allowed organization",
+      "principal": { "roles": ["hr_admin"], "organizationId": "org-1", "isPlatformOwner": false },
+      "grants": [{ "role": "hr_admin", "module": "candidate", "action": "read", "scope": "organization" }],
+      "module": "candidate",
+      "action": "read",
+      "expected": { "allowed": true, "scope": "organization", "roles": ["hr_admin"] }
+    },
+    {
+      "name": "hrbp with unit grant -> allowed unit",
+      "principal": { "roles": ["hrbp"], "organizationId": "org-1", "isPlatformOwner": false },
+      "grants": [{ "role": "hrbp", "module": "candidate", "action": "read", "scope": "unit" }],
+      "module": "candidate",
+      "action": "read",
+      "expected": { "allowed": true, "scope": "unit", "roles": ["hrbp"] }
+    },
+    {
+      "name": "recruiter with organization grant -> allowed organization",
+      "principal": { "roles": ["recruiter"], "organizationId": "org-1", "isPlatformOwner": false },
+      "grants": [{ "role": "recruiter", "module": "vacancy", "action": "read", "scope": "organization" }],
+      "module": "vacancy",
+      "action": "read",
+      "expected": { "allowed": true, "scope": "organization", "roles": ["recruiter"] }
+    },
+    {
+      "name": "leader with team grant -> allowed team",
+      "principal": { "roles": ["leader"], "organizationId": "org-1", "isPlatformOwner": false },
+      "grants": [{ "role": "leader", "module": "performance", "action": "read", "scope": "team" }],
+      "module": "performance",
+      "action": "read",
+      "expected": { "allowed": true, "scope": "team", "roles": ["leader"] }
+    },
+    {
+      "name": "committee with own grant -> allowed own",
+      "principal": { "roles": ["committee"], "organizationId": "org-1", "isPlatformOwner": false },
+      "grants": [{ "role": "committee", "module": "interview", "action": "read", "scope": "own" }],
+      "module": "interview",
+      "action": "read",
+      "expected": { "allowed": true, "scope": "own", "roles": ["committee"] }
+    },
+    {
+      "name": "employee with own grant -> allowed own",
+      "principal": { "roles": ["employee"], "organizationId": "org-1", "isPlatformOwner": false },
+      "grants": [{ "role": "employee", "module": "performance", "action": "read", "scope": "own" }],
+      "module": "performance",
+      "action": "read",
+      "expected": { "allowed": true, "scope": "own", "roles": ["employee"] }
+    },
+    {
+      "name": "candidate role with own grant -> allowed own",
+      "principal": { "roles": ["candidate"], "organizationId": "org-1", "isPlatformOwner": false },
+      "grants": [{ "role": "candidate", "module": "portal", "action": "read", "scope": "own" }],
+      "module": "portal",
+      "action": "read",
+      "expected": { "allowed": true, "scope": "own", "roles": ["candidate"] }
+    },
+    {
+      "name": "external role with organization grant -> allowed organization",
+      "principal": { "roles": ["external"], "organizationId": "org-1", "isPlatformOwner": false },
+      "grants": [{ "role": "external", "module": "assessmentResult", "action": "read", "scope": "organization" }],
+      "module": "assessmentResult",
+      "action": "read",
+      "expected": { "allowed": true, "scope": "organization", "roles": ["external"] }
+    },
+    {
+      "name": "non-privileged user with no org -> denied",
+      "principal": { "roles": ["employee"], "organizationId": null, "isPlatformOwner": false },
+      "grants": [],
+      "module": "performance",
+      "action": "read",
+      "expected": { "allowed": false }
+    },
+    {
+      "name": "legacy scope 'all' maps to organization (pre-seed compat)",
+      "principal": { "roles": ["recruiter"], "organizationId": "org-1", "isPlatformOwner": false },
+      "grants": [{ "role": "recruiter", "module": "candidate", "action": "read", "scope": "all" }],
+      "module": "candidate",
+      "action": "read",
+      "expected": { "allowed": true, "scope": "organization", "roles": ["recruiter"] }
+    },
+    {
+      "name": "multi-role stacking employee+leader -> team",
+      "principal": { "roles": ["employee", "leader"], "organizationId": "org-1", "isPlatformOwner": false },
+      "grants": [
+        { "role": "employee", "module": "performance", "action": "read", "scope": "own" },
+        { "role": "leader", "module": "performance", "action": "read", "scope": "team" }
+      ],
+      "module": "performance",
+      "action": "read",
+      "expected": { "allowed": true, "scope": "team", "roles": ["employee", "leader"] }
+    },
+    {
+      "name": "isPlatformOwner flag takes precedence over non-empty roles -> roles collapse to [platform_owner]",
+      "principal": { "roles": ["super_admin", "employee"], "organizationId": "org-1", "isPlatformOwner": true },
+      "grants": [],
+      "module": "audit",
+      "action": "read",
+      "expected": { "allowed": true, "scope": "organization", "roles": ["platform_owner"] }
+    },
+    {
+      "name": "platform_owner role (not the flag) without org -> throws org_required",
+      "principal": { "roles": ["platform_owner"], "organizationId": null, "isPlatformOwner": false },
+      "grants": [],
+      "module": "candidate",
+      "action": "read",
+      "expectThrow": "org_required"
+    }
+  ]
+}

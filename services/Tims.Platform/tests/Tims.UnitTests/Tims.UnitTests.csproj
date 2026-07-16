@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Tims.Domain\Tims.Domain.csproj" />
+  </ItemGroup>
+
+  <!-- The SAME golden fixtures the TS suite asserts (contracts/access-fixtures at the
+       repo root) are copied into the test output so the C# port is pinned to identical
+       expected outputs. A behavior change edits the JSON once; both stacks must agree. -->
+  <ItemGroup>
+    <Content Include="..\..\..\..\contracts\access-fixtures\*.json">
+      <Link>access-fixtures\%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <!-- WP1.6 throwaway comp diff-harness fixture. -->
+    <Content Include="..\..\..\..\contracts\comp-fixtures\*.json">
+      <Link>comp-fixtures\%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,64 @@
+{
+  "description": "k-anonymity min-5 suppression — packages/api/src/access/aggregate.ts. suppressBelowMin5: a count of 1..4 is suppressed (null); 0 passes through (empty bucket reveals no one); >=5 passes. aggregateGroups: groups the pre-computed per-row keys (in row order) and suppresses any group below 5, AND suppresses EVERY group when the total row count is below 5 (anti-differencing). Group emission order = first-seen key order. Ported to Tims.Domain.Access.KAnonymity.",
+  "suppressCases": [
+    { "name": "0 -> not suppressed, count 0", "count": 0, "expected": { "suppressed": false, "count": 0 } },
+    { "name": "1 -> suppressed", "count": 1, "expected": { "suppressed": true, "count": null } },
+    { "name": "4 -> suppressed", "count": 4, "expected": { "suppressed": true, "count": null } },
+    { "name": "5 -> not suppressed (threshold)", "count": 5, "expected": { "suppressed": false, "count": 5 } },
+    { "name": "6 -> not suppressed", "count": 6, "expected": { "suppressed": false, "count": 6 } }
+  ],
+  "groupCases": [
+    {
+      "name": "empty input -> empty result",
+      "keys": [],
+      "expected": []
+    },
+    {
+      "name": "total < 5 -> every group suppressed (anti-differencing)",
+      "keys": ["a", "a", "b", "b"],
+      "expected": [
+        { "key": "a", "count": null, "suppressed": true },
+        { "key": "b", "count": null, "suppressed": true }
+      ]
+    },
+    {
+      "name": "total >= 5: small group suppressed, large group shown, first-seen order",
+      "keys": ["x", "x", "x", "x", "x", "y", "y"],
+      "expected": [
+        { "key": "x", "count": 5, "suppressed": false },
+        { "key": "y", "count": null, "suppressed": true }
+      ]
+    },
+    {
+      "name": "total >= 5 but each group < 5 -> all suppressed",
+      "keys": ["a", "a", "a", "a", "b", "b", "b", "b"],
+      "expected": [
+        { "key": "a", "count": null, "suppressed": true },
+        { "key": "b", "count": null, "suppressed": true }
+      ]
+    },
+    {
+      "name": "single group of 6 -> shown",
+      "keys": ["g", "g", "g", "g", "g", "g"],
+      "expected": [
+        { "key": "g", "count": 6, "suppressed": false }
+      ]
+    },
+    {
+      "name": "two groups each >= 5 -> both shown",
+      "keys": ["a", "a", "a", "a", "a", "b", "b", "b", "b", "b"],
+      "expected": [
+        { "key": "a", "count": 5, "suppressed": false },
+        { "key": "b", "count": 5, "suppressed": false }
+      ]
+    },
+    {
+      "name": "group order is FIRST-SEEN, not sorted (b before a)",
+      "keys": ["b", "b", "b", "b", "b", "a", "a", "a", "a", "a"],
+      "expected": [
+        { "key": "b", "count": 5, "suppressed": false },
+        { "key": "a", "count": 5, "suppressed": false }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "description": "WP1.6 THROWAWAY diff-harness fixture. Validates the old-vs-new byte-identical diff methodology reused in Phase 5 (strangler parity) — it is NOT a committed compensation migration. Canonical output = roundMoney(amount * rate) formatted to exactly 2 decimals, invariant culture. roundMoney = Math.round((x + Number.EPSILON) * 100) / 100 (packages/api/src/lib/currency.ts). The EPSILON nudge is the interesting cross-language case: without the JS Number.EPSILON constant (2.220446049250313e-16, NOT C# double.Epsilon), 1.005 rounds to 1.00. Both the real TS roundMoney and the C# port must emit byte-identical strings.",
+  "cases": [
+    { "name": "epsilon boundary 1.005 -> 1.01", "amount": 1.005, "rate": 1, "expected": "1.01" },
+    { "name": "epsilon boundary 2.675 -> 2.68", "amount": 2.675, "rate": 1, "expected": "2.68" },
+    { "name": "conversion 1000 * 0.85 -> 850.00", "amount": 1000, "rate": 0.85, "expected": "850.00" },
+    { "name": "truncating fraction 1234.567 -> 1234.57", "amount": 1234.567, "rate": 1, "expected": "1234.57" },
+    { "name": "round up to whole 99.999 -> 100.00", "amount": 99.999, "rate": 1, "expected": "100.00" },
+    { "name": "zero amount -> 0.00", "amount": 0, "rate": 5, "expected": "0.00" },
+    { "name": "float artifact 3 * 1.10 -> 3.30", "amount": 3, "rate": 1.10, "expected": "3.30" },
+    { "name": "large conversion 87500.5 * 1 -> 87500.50", "amount": 87500.5, "rate": 1, "expected": "87500.50" }
+  ]
+}

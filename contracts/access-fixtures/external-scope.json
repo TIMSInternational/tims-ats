@@ -1,0 +1,14 @@
+{
+  "description": "externalScopeSatisfied(requiredScope, scopes, alwaysEnforceScope) — packages/api/src/access/external-scope.ts (Sprint 1.6). Empty scopes = wildcard by default; alwaysEnforceScope overrides that so the scope must be explicitly present (vendor writes). Ported to Tims.Domain.Access.ExternalScope.ExternalScopeSatisfied. requiredScope null models the TS `undefined`.",
+  "cases": [
+    { "name": "no required scope -> always satisfied", "requiredScope": null, "scopes": [], "alwaysEnforceScope": false, "expected": true },
+    { "name": "empty scopes, not enforced -> wildcard satisfied", "requiredScope": "validation:read", "scopes": [], "alwaysEnforceScope": false, "expected": true },
+    { "name": "empty scopes, ENFORCED -> denied (1.6: role grant cannot silently widen a key)", "requiredScope": "validation:write", "scopes": [], "alwaysEnforceScope": true, "expected": false },
+    { "name": "required scope present -> satisfied", "requiredScope": "validation:read", "scopes": ["validation:read"], "alwaysEnforceScope": false, "expected": true },
+    { "name": "required scope absent -> denied", "requiredScope": "validation:read", "scopes": ["other:read"], "alwaysEnforceScope": false, "expected": false },
+    { "name": "required scope present among several, enforced -> satisfied", "requiredScope": "validation:write", "scopes": ["validation:read", "validation:write"], "alwaysEnforceScope": true, "expected": true },
+    { "name": "required scope absent, enforced -> denied", "requiredScope": "validation:write", "scopes": ["validation:read"], "alwaysEnforceScope": true, "expected": false },
+    { "name": "required scope present but enforced with only that scope -> satisfied", "requiredScope": "validation:write", "scopes": ["validation:write"], "alwaysEnforceScope": true, "expected": true },
+    { "name": "no required scope even when enforced -> satisfied (requiredScope short-circuits first)", "requiredScope": null, "scopes": [], "alwaysEnforceScope": true, "expected": true }
+  ]
+}

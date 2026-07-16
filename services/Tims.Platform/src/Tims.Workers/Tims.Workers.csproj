@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Tims.Workers: background/recurring jobs (Phase 4). Refs Application + Infrastructure.
+       Empty of jobs today — the project exists so the skeleton + arch rules are in place. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <OutputType>Library</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Tims.Application\Tims.Application.csproj" />
+    <ProjectReference Include="..\Tims.Infrastructure\Tims.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>
