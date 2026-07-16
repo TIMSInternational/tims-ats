@@ -11,18 +11,19 @@ namespace Tims.UnitTests.Fixtures;
 /// </summary>
 internal static class Fx
 {
-    private static readonly string Dir = Path.Combine(AppContext.BaseDirectory, "access-fixtures");
-
     internal static readonly JsonSerializerOptions Options = new()
     {
         PropertyNameCaseInsensitive = true,
+        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() },
     };
 
-    internal static T Load<T>(string file)
+    internal static T Load<T>(string file) => Load<T>("access-fixtures", file);
+
+    internal static T Load<T>(string subdir, string file)
     {
-        var json = File.ReadAllText(Path.Combine(Dir, file));
+        var json = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, subdir, file));
         return JsonSerializer.Deserialize<T>(json, Options)
-               ?? throw new InvalidOperationException($"Fixture {file} deserialized to null");
+               ?? throw new InvalidOperationException($"Fixture {subdir}/{file} deserialized to null");
     }
 
     /// <summary>MemberData rows: (index, caseName) primitives — serializable, one test per case.</summary>

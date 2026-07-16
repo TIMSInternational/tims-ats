@@ -1,0 +1,71 @@
+{
+  "description": "resolveStaffContext decision — apps/web/lib/auth/staff-context.ts (the tRPC auth hot path), minus IO. Given the already-fetched staff appUser + an already-fetched impersonation target (or null), resolve the ITenantContext or NEEDS_FALLBACK (candidate/anonymous/inactive/unprovisioned). Ported to Tims.Domain.Identity.StaffContextResolver. TS parity: the real resolveStaffContext with @tims/api (cookie verify) + StaffDbLookup mocked. `resolved:false` = NEEDS_FALLBACK.",
+  "cases": [
+    {
+      "name": "no user row -> fallback (candidate/anonymous)",
+      "appUser": null,
+      "target": null,
+      "expected": { "resolved": false }
+    },
+    {
+      "name": "inactive staff -> fallback",
+      "appUser": { "id": "u1", "supabaseUserId": "s1", "email": "u1@x", "organizationId": "org-1", "isActive": false, "isPlatformOwner": false, "roleSlugs": ["recruiter"] },
+      "target": null,
+      "expected": { "resolved": false }
+    },
+    {
+      "name": "non-owner with no org -> fallback",
+      "appUser": { "id": "u1", "supabaseUserId": "s1", "email": "u1@x", "organizationId": null, "isActive": true, "isPlatformOwner": false, "roleSlugs": ["recruiter"] },
+      "target": null,
+      "expected": { "resolved": false }
+    },
+    {
+      "name": "normal org staff -> OrgUser, external role filtered out",
+      "appUser": { "id": "u1", "supabaseUserId": "s1", "email": "u1@x", "organizationId": "org-1", "isActive": true, "isPlatformOwner": false, "roleSlugs": ["recruiter", "external"] },
+      "target": null,
+      "expected": { "resolved": true, "principalType": "OrgUser", "organizationId": "org-1", "userId": "u1", "roles": ["recruiter"], "impersonatedBy": null }
+    },
+    {
+      "name": "platform owner (org-less) -> PlatformOwner, roles collapse to [platform_owner], org ''",
+      "appUser": { "id": "own1", "supabaseUserId": "s2", "email": "own@x", "organizationId": null, "isActive": true, "isPlatformOwner": true, "roleSlugs": ["super_admin"] },
+      "target": null,
+      "expected": { "resolved": true, "principalType": "PlatformOwner", "organizationId": "", "userId": "own1", "roles": ["platform_owner"], "impersonatedBy": null }
+    },
+    {
+      "name": "platform owner with own org -> PlatformOwner at that org",
+      "appUser": { "id": "own1", "supabaseUserId": "s2", "email": "own@x", "organizationId": "org-9", "isActive": true, "isPlatformOwner": true, "roleSlugs": ["super_admin"] },
+      "target": null,
+      "expected": { "resolved": true, "principalType": "PlatformOwner", "organizationId": "org-9", "userId": "own1", "roles": ["platform_owner"], "impersonatedBy": null }
+    },
+    {
+      "name": "valid impersonation -> target's org+roles, isPlatformOwner false, impersonatedBy owner",
+      "appUser": { "id": "own1", "supabaseUserId": "s2", "email": "own@x", "organizationId": null, "isActive": true, "isPlatformOwner": true, "roleSlugs": ["super_admin"] },
+      "target": { "id": "t1", "supabaseUserId": "s3", "email": "t1@x", "organizationId": "org-5", "isActive": true, "isPlatformOwner": false, "roleSlugs": ["leader", "external"] },
+      "expected": { "resolved": true, "principalType": "OrgUser", "organizationId": "org-5", "userId": "t1", "roles": ["leader"], "impersonatedBy": "own1" }
+    },
+    {
+      "name": "impersonation target is itself an owner -> invalid, falls through to real owner context",
+      "appUser": { "id": "own1", "supabaseUserId": "s2", "email": "own@x", "organizationId": "org-9", "isActive": true, "isPlatformOwner": true, "roleSlugs": ["super_admin"] },
+      "target": { "id": "t2", "supabaseUserId": "s4", "email": "t2@x", "organizationId": "org-5", "isActive": true, "isPlatformOwner": true, "roleSlugs": ["super_admin"] },
+      "expected": { "resolved": true, "principalType": "PlatformOwner", "organizationId": "org-9", "userId": "own1", "roles": ["platform_owner"], "impersonatedBy": null }
+    },
+    {
+      "name": "impersonation target inactive -> invalid, real owner context",
+      "appUser": { "id": "own1", "supabaseUserId": "s2", "email": "own@x", "organizationId": "org-9", "isActive": true, "isPlatformOwner": true, "roleSlugs": ["super_admin"] },
+      "target": { "id": "t3", "supabaseUserId": "s5", "email": "t3@x", "organizationId": "org-5", "isActive": false, "isPlatformOwner": false, "roleSlugs": ["leader"] },
+      "expected": { "resolved": true, "principalType": "PlatformOwner", "organizationId": "org-9", "userId": "own1", "roles": ["platform_owner"], "impersonatedBy": null }
+    },
+    {
+      "name": "impersonation target org-less -> invalid, real owner context",
+      "appUser": { "id": "own1", "supabaseUserId": "s2", "email": "own@x", "organizationId": "org-9", "isActive": true, "isPlatformOwner": true, "roleSlugs": ["super_admin"] },
+      "target": { "id": "t4", "supabaseUserId": "s6", "email": "t4@x", "organizationId": null, "isActive": true, "isPlatformOwner": false, "roleSlugs": ["leader"] },
+      "expected": { "resolved": true, "principalType": "PlatformOwner", "organizationId": "org-9", "userId": "own1", "roles": ["platform_owner"], "impersonatedBy": null }
+    },
+    {
+      "name": "non-owner cannot impersonate: target ignored -> real org-user context",
+      "appUser": { "id": "u2", "supabaseUserId": "s7", "email": "u2@x", "organizationId": "org-1", "isActive": true, "isPlatformOwner": false, "roleSlugs": ["hr_admin"] },
+      "target": { "id": "t1", "supabaseUserId": "s3", "email": "t1@x", "organizationId": "org-5", "isActive": true, "isPlatformOwner": false, "roleSlugs": ["leader"] },
+      "expected": { "resolved": true, "principalType": "OrgUser", "organizationId": "org-1", "userId": "u2", "roles": ["hr_admin"], "impersonatedBy": null }
+    }
+  ]
+}

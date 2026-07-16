@@ -1,0 +1,12 @@
+{
+  "description": "filterStaffRoleSlugs — packages/shared/src/types/roles.ts. Keeps only human staff roles (super_admin, hr_admin, hrbp, recruiter, leader, committee, employee), dropping non-User principals `external` and `candidate`, preserving order. Ported to Tims.Domain.Identity.RoleSlugs.FilterStaffRoleSlugs. Asserted by the real TS function AND Tims.UnitTests.",
+  "cases": [
+    { "name": "all staff roles kept", "slugs": ["super_admin", "hr_admin", "employee"], "expected": ["super_admin", "hr_admin", "employee"] },
+    { "name": "external dropped", "slugs": ["employee", "external"], "expected": ["employee"] },
+    { "name": "candidate dropped", "slugs": ["candidate", "recruiter"], "expected": ["recruiter"] },
+    { "name": "both non-staff dropped, order preserved", "slugs": ["leader", "external", "committee", "candidate"], "expected": ["leader", "committee"] },
+    { "name": "empty -> empty", "slugs": [], "expected": [] },
+    { "name": "all non-staff -> empty", "slugs": ["external", "candidate"], "expected": [] },
+    { "name": "platform_owner is not an assignable staff role (dropped)", "slugs": ["platform_owner", "hr_admin"], "expected": ["hr_admin"] }
+  ]
+}

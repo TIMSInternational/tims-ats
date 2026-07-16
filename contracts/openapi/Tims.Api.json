@@ -17,6 +17,19 @@
           }
         }
       }
+    },
+    "/whoami": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "WhoAmI",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
     }
   },
   "tags": [

@@ -35,6 +35,11 @@
       <Link>comp-fixtures\%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <!-- Phase 2 identity-plane parity fixtures. -->
+    <Content Include="..\..\..\..\contracts\identity-fixtures\*.json">
+      <Link>identity-fixtures\%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
 </Project>

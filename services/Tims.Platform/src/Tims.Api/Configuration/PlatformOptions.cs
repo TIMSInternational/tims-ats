@@ -36,4 +36,18 @@ public sealed class PlatformOptions
     /// when absent, traces are still produced but not exported (no-op exporter).
     /// </summary>
     public string? OtlpEndpoint { get; init; }
+
+    // --- Supabase JWT (WP2.1) ---------------------------------------------------------
+    // Optional in Phase 2 (no product traffic yet): when unset the JWT scheme is wired
+    // but fail-closed (no valid issuer/keys → every token rejected). Real values come from
+    // env at deploy. `sub` carries the Supabase user id → the TIMS principal (WP2.2).
+
+    /// <summary>Expected token issuer, e.g. https://&lt;project&gt;.supabase.co/auth/v1.</summary>
+    public string? SupabaseJwtIssuer { get; init; }
+
+    /// <summary>Expected audience. Supabase signs end-user tokens with aud "authenticated".</summary>
+    public string SupabaseJwtAudience { get; init; } = "authenticated";
+
+    /// <summary>JWKS metadata address (the .well-known/jwks.json URL) for asymmetric verification.</summary>
+    public string? SupabaseJwksMetadataAddress { get; init; }
 }
