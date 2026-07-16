@@ -26,6 +26,10 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Tims.Infrastructure\Tims.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Tims.Api\Tims.Api.csproj" />
+    <!-- WP3-remediation: the HRIS background-sweep job (Tims.Workers) is covered here for its
+         per-connector failure ISOLATION (fake-based, no DB). This project already carries the
+         Infrastructure graph the job depends on. -->
+    <ProjectReference Include="..\..\src\Tims.Workers\Tims.Workers.csproj" />
   </ItemGroup>
 
 </Project>

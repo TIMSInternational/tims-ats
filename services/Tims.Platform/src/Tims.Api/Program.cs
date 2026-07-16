@@ -21,6 +21,7 @@ using Tims.Domain.Access;
 using Tims.Domain.Identity;
 using Tims.Infrastructure.Access;
 using Tims.Infrastructure.Audit;
+using Tims.Infrastructure.Hris;
 using Tims.Infrastructure.Identity;
 using Tims.Infrastructure.RateLimiting;
 
@@ -121,6 +122,25 @@ try
     // RLS WITH CHECK passes for the caller's org. Same DB connection string as the identity plane.
     builder.Services.AddDbContext<DataAccessAuditDbContext>(options => options.UseNpgsql(databaseConnectionString));
     builder.Services.AddScoped<IDataAccessAuditor, DataAccessAuditWriter>();
+
+    // --- HRIS plane (WP3.1): the first EF-OWNED product context ------------------------
+    // HrisDbContext owns the DDL of the four `hris_`-prefixed tables and is write-capable. Like the
+    // tenant/audit contexts it is "dumb" about tenancy — every HRIS read/write runs UNDER TenantScope
+    // (SET LOCAL ROLE app_tenant + org GUC) so RLS engages. Additive registration on the same platform
+    // connection string; later slices add the connector/sync/secret services on top.
+    builder.Services.AddDbContext<HrisDbContext>(options => options.UseNpgsql(databaseConnectionString));
+
+    // --- HRIS connector plane (WP3.2): typed BambooHR client + resilience + secrets ----
+    // Bind + validate HrisOptions at startup (the Zod-env-gate analog, mirroring PlatformOptions),
+    // then wire the dev secret store, the provider factory, and the typed HttpClient carrying the
+    // Polly-v8 pipeline (total timeout → retry+backoff+jitter on 429/5xx → circuit breaker). Additive;
+    // no live BambooHR call is made — Slice 3 drives the connector from the sync use case.
+    builder.Services
+        .AddOptions<HrisOptions>()
+        .Bind(builder.Configuration.GetSection(HrisOptions.SectionName))
+        .ValidateDataAnnotations()
+        .ValidateOnStart();
+    builder.Services.AddHrisConnectors();
 
     builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         .AddJwtBearer(options =>

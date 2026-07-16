@@ -22,6 +22,17 @@ public static class DataClassification
             // DEI demographics + individual engagement responses = confidential.
             ["employeeDemographics"] = DataClass.Confidential,
             ["surveyResponse"] = DataClass.Confidential,
+            // HRIS-synced directory rows (names / work emails / titles) = confidential, so a read/write
+            // of external_employee is audit-required and the sync write audits fail-SOFT.
+            //
+            // C#-ONLY (deliberate, do NOT add to the TS classification.ts or the cross-stack audit golden):
+            // HRIS is a greenfield C# domain — the TS product has NO external_employee reader, so injecting
+            // this key into classification.ts would seed a dead entry into a stack that never reads the
+            // entity (not faithful). The shared golden (contracts/audit-fixtures/*.json) covers only the
+            // five entities BOTH stacks have; it stays untouched, and a C#-only unit test pins this entry.
+            // This is the correct pattern for every greenfield C# domain: classify in C#; the shared golden
+            // covers only shared entities.
+            ["external_employee"] = DataClass.Confidential,
         };
 
     /// <summary>

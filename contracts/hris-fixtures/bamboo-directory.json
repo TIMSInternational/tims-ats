@@ -1,0 +1,107 @@
+{
+  "description": "WP3.6-map golden characterization: BambooHR /v1/employees/directory rows (provider-neutral HrisSourceEmployee field-bags) mapped by BambooHrEmployeeMapper.Map to the canonical ExternalEmployee. C#-ONLY (greenfield: no TS counterpart). A behavior change edits this JSON once and the C# fixture test turns red. Covers: a full record, missing optional fields (workEmail/hireDate null via null + unset-date sentinel), and a per-connector field_map override.",
+  "cases": [
+    {
+      "name": "full record under the default field map",
+      "source": {
+        "externalId": "123",
+        "fields": {
+          "firstName": "Ada",
+          "lastName": "Lovelace",
+          "workEmail": "ada.lovelace@example.com",
+          "jobTitle": "Senior Engineer",
+          "department": "Engineering",
+          "division": "Product",
+          "hireDate": "2019-03-11",
+          "status": "Active",
+          "supervisorEId": "7"
+        }
+      },
+      "fieldMap": null,
+      "expected": {
+        "externalId": "123",
+        "firstName": "Ada",
+        "lastName": "Lovelace",
+        "workEmail": "ada.lovelace@example.com",
+        "jobTitle": "Senior Engineer",
+        "department": "Engineering",
+        "division": "Product",
+        "hireDate": "2019-03-11",
+        "employmentStatus": "Active",
+        "supervisorExternalId": "7"
+      }
+    },
+    {
+      "name": "missing optional fields (null work_email, unset hire_date, null supervisor)",
+      "source": {
+        "externalId": "456",
+        "fields": {
+          "firstName": "Grace",
+          "lastName": "Hopper",
+          "workEmail": null,
+          "jobTitle": "Rear Admiral",
+          "department": "Navy",
+          "division": "Ops",
+          "hireDate": "0000-00-00",
+          "status": "Active",
+          "supervisorEId": null
+        }
+      },
+      "fieldMap": null,
+      "expected": {
+        "externalId": "456",
+        "firstName": "Grace",
+        "lastName": "Hopper",
+        "workEmail": null,
+        "jobTitle": "Rear Admiral",
+        "department": "Navy",
+        "division": "Ops",
+        "hireDate": null,
+        "employmentStatus": "Active",
+        "supervisorExternalId": null
+      }
+    },
+    {
+      "name": "field_map override remaps first_name and job_title to alternate source keys",
+      "source": {
+        "externalId": "789",
+        "fields": {
+          "legalFirstName": "Katherine",
+          "firstName": "Kathy",
+          "lastName": "Johnson",
+          "workEmail": "katherine.johnson@example.com",
+          "jobInformationJobTitle": "Mathematician",
+          "jobTitle": "Human Computer",
+          "department": "Research",
+          "division": "Space",
+          "hireDate": "1953-06-01",
+          "status": "Active",
+          "supervisorEId": "3"
+        }
+      },
+      "fieldMap": {
+        "firstName": "legalFirstName",
+        "lastName": "lastName",
+        "workEmail": "workEmail",
+        "jobTitle": "jobInformationJobTitle",
+        "department": "department",
+        "division": "division",
+        "hireDate": "hireDate",
+        "employmentStatus": "status",
+        "supervisorExternalId": "supervisorEId"
+      },
+      "expected": {
+        "externalId": "789",
+        "firstName": "Katherine",
+        "lastName": "Johnson",
+        "workEmail": "katherine.johnson@example.com",
+        "jobTitle": "Mathematician",
+        "department": "Research",
+        "division": "Space",
+        "hireDate": "1953-06-01",
+        "employmentStatus": "Active",
+        "supervisorExternalId": "3"
+      }
+    }
+  ]
+}

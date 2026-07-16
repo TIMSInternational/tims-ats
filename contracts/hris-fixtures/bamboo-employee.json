@@ -1,0 +1,64 @@
+{
+  "description": "WP3.6-map golden characterization: BambooHR /v1/employees/{id} per-employee payloads (provider-neutral HrisSourceEmployee field-bags) mapped by BambooHrEmployeeMapper.Map to the canonical ExternalEmployee under BambooHrFieldMap.Default. C#-ONLY (greenfield). Covers: a full single-employee record with an extra unmapped source field (ignored), and one with an empty-string work_email plus entirely absent hire_date/supervisor keys (all null).",
+  "cases": [
+    {
+      "name": "full employee record ignores unmapped source fields",
+      "source": {
+        "externalId": "1001",
+        "fields": {
+          "firstName": "Alan",
+          "lastName": "Turing",
+          "workEmail": "alan.turing@example.com",
+          "jobTitle": "Cryptanalyst",
+          "department": "Intelligence",
+          "division": "Research",
+          "hireDate": "1938-09-04",
+          "status": "Active",
+          "supervisorEId": "2",
+          "mobilePhone": "555-0100"
+        }
+      },
+      "fieldMap": null,
+      "expected": {
+        "externalId": "1001",
+        "firstName": "Alan",
+        "lastName": "Turing",
+        "workEmail": "alan.turing@example.com",
+        "jobTitle": "Cryptanalyst",
+        "department": "Intelligence",
+        "division": "Research",
+        "hireDate": "1938-09-04",
+        "employmentStatus": "Active",
+        "supervisorExternalId": "2"
+      }
+    },
+    {
+      "name": "empty-string work_email and absent hire_date/supervisor collapse to null",
+      "source": {
+        "externalId": "1002",
+        "fields": {
+          "firstName": "Edsger",
+          "lastName": "Dijkstra",
+          "workEmail": "",
+          "jobTitle": "Computer Scientist",
+          "department": "Academia",
+          "division": "Computer Science",
+          "status": "Active"
+        }
+      },
+      "fieldMap": null,
+      "expected": {
+        "externalId": "1002",
+        "firstName": "Edsger",
+        "lastName": "Dijkstra",
+        "workEmail": null,
+        "jobTitle": "Computer Scientist",
+        "department": "Academia",
+        "division": "Computer Science",
+        "hireDate": null,
+        "employmentStatus": "Active",
+        "supervisorExternalId": null
+      }
+    }
+  ]
+}

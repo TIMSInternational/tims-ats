@@ -10,10 +10,22 @@
 
   <ItemGroup>
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+    <!-- WP3.1 HRIS: design-time EF tooling so `dotnet ef migrations` can build HrisDbContext (the
+         first EF-OWNED product context). PrivateAssets=all keeps it out of the runtime/consumer
+         surface (Api/Workers/tests never carry it). Pinned to the resolved EF Core 10.0.4. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.4">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
     <!-- WP2.6 rate limiter: raw Redis (EVAL of the exact Upstash slidingWindow Lua) so buckets
          are SHARED with the TS @upstash/ratelimit stack. Pinned to the version the Api host
          already carries (3.0.17) for a single resolved graph. -->
     <PackageReference Include="StackExchange.Redis" Version="3.0.17" />
+    <!-- WP3.2 HRIS connector resilience: the OFFICIAL Microsoft Polly-v8 resilience stack on a typed
+         HttpClient (timeout → retry+backoff+jitter on 429/5xx → circuit breaker). Pinned to 10.0.0,
+         aligned to the .NET 10 shared framework (clean transitive graph: Resilience/ObjectPool/
+         Http.Diagnostics 10.0.0). Brings Microsoft.Extensions.Http, so AddHttpClient is available. -->
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="10.0.0" />
   </ItemGroup>
 
   <ItemGroup>

@@ -20,6 +20,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Tims.Domain\Tims.Domain.csproj" />
+    <!-- WP3.3: the HRIS sync use case (Application) is unit-tested here over fakes for the Application
+         ports + a fake IHrisConnector. Application refs Domain only, so this stays infra-free. -->
+    <ProjectReference Include="..\..\src\Tims.Application\Tims.Application.csproj" />
   </ItemGroup>
 
   <!-- The SAME golden fixtures the TS suite asserts (contracts/access-fixtures at the
@@ -48,6 +51,11 @@
     <!-- WP2.7 audit-plane classification + audit-required parity fixtures (shared with the TS vitest suite). -->
     <Content Include="..\..\..\..\contracts\audit-fixtures\*.json">
       <Link>audit-fixtures\%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <!-- WP3.6-map HRIS mapper golden fixtures (C#-only characterization; greenfield, no TS counterpart). -->
+    <Content Include="..\..\..\..\contracts\hris-fixtures\*.json">
+      <Link>hris-fixtures\%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

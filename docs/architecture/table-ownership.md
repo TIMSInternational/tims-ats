@@ -27,7 +27,11 @@ Ownership transfers (Phase 5 strangler) move a table from `prisma` to `efcore` i
 {
   "defaultOwner": "prisma",
   "efcore": [
-    "widgets"
+    "widgets",
+    "hris_connectors",
+    "hris_external_employees",
+    "hris_sync_runs",
+    "hris_sync_record_errors"
   ],
   "efcoreReadOnly": [
     "users",
@@ -50,6 +54,7 @@ Ownership transfers (Phase 5 strangler) move a table from `prisma` to `efcore` i
   ],
   "notes": {
     "widgets": "Phase-1 Spike A test-only table (Testcontainers DDL + TenantWidgetDbContext). NOT a product table; created by hand-authored test SQL, never by an EF migration against prod.",
+    "hris": "Phase-3 HRIS (WP3.1): the FIRST EF-OWNED product tables — EF holds the DDL (migration 20260716000000_hris_domain, HrisDbContext) AND writes them. NOT @@map'd in Prisma. Deliberately `hris_`-prefixed so they are DISTINCT from the live Prisma-owned `connectors`/`connector_syncs`/`sync_errors` integration tables (reusing those names would be a cross-owner collision → red build). All four are org-scoped, so the migration wraps each with EnableTenantRls (ENABLE + FORCE ROW LEVEL SECURITY + fail-closed tenant_isolation policy) and GRANTs SELECT/INSERT/UPDATE/DELETE to app_tenant; every read/write runs UNDER TenantScope. Proven for real in Testcontainers (HrisRlsTests): org isolation, unset-GUC fail-closed, WITH-CHECK insert block.",
     "efcoreReadOnly": "Phase-2 identity plane reads these Prisma-OWNED tables via EF (IdentityDbContext, no writes) to resolve principals + API keys and to enforce permissions (WP2.5 reads role_permissions + permissions joined to roles for the grant fetch). WP2.5b adds the AnchorDbContext read-only maps (teams, user_teams, user_business_units, business_units, interview_evaluators, interviews) for the EF anchor loaders + the AssertScoped IDOR probe — run UNDER TenantScope (app_tenant/RLS), SELECT only. The candidate-resolution WP adds `candidates` (IdentityDbContext maps id, organization_id, email, is_active, deleted_at) — the privileged pre-tenant read that resolves the 4th principal type (a portal Supabase session with no staff User row → PrincipalType.Candidate by email+org), read-only like the rest. Prisma keeps the DDL; EF only SELECTs. NOT an ownership transfer — they still appear in the Prisma schema (that is expected, not a collision). Writes stay on the owning (Prisma/tRPC) stack until a Phase-5 strangler transfers a domain.",
     "efcoreAppendOnly": "WP2.7 audit plane: data_access_logs is Prisma-OWNED for schema/migrations. The C# WRITER (DataAccessAuditDbContext + DataAccessAuditWriter) only APPENDS — it INSERTs one audit row per sensitive read/export UNDER TenantScope (app_tenant + org GUC) so the RLS WITH CHECK passes, and it NEVER issues UPDATE/DELETE and touches no other table. IMPORTANT — append-only is a WRITER discipline, NOT yet a DB-enforced invariant: the live migration (20260612000000_access_control_models) still GRANTs UPDATE, DELETE on data_access_logs to app_tenant, and the tenant RLS policy only constrains rows to the caller's org — so a tenant-role SQLi/bug could still alter or erase same-org audit rows. DB-level insert-only enforcement is an OPEN security follow-up (see below). This category is deliberately NOT `efcore` (Prisma still owns the DDL — labeling it EF-OWNED would be a cross-owner collision) and NOT `efcoreReadOnly` (C# genuinely writes it — labeling it read-only would be dishonest). Like efcoreReadOnly, the table still appears in the Prisma schema — expected, not a collision."
   }
