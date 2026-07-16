@@ -1,0 +1,82 @@
+{
+  "description": "Golden parity for the field-classification kernel: fieldsVisibleTo(roles, entity) + selectFor(roles, entity) for assessmentResult. Asserted IDENTICALLY by the REAL TS fieldsVisibleTo/selectFor (tests/access/field-classification-fixtures.test.ts) and the C# FieldClassification kernel (Tims.UnitTests FieldClassificationFixtureTests). Field order = registry-declaration order; selectFor = anchors then visible fields. A behavior change (e.g. dropping 'external' from a field's roles) edits this JSON once and turns BOTH CIs red.",
+  "cases": [
+    {
+      "name": "fieldsVisibleTo external → the full six-field psychometric ceiling",
+      "kind": "fieldsVisibleTo",
+      "roles": ["external"],
+      "entity": "assessmentResult",
+      "expected": ["breakdown", "rawScore", "normalizedScore", "percentile", "interpretation", "modelVersion"]
+    },
+    {
+      "name": "fieldsVisibleTo super_admin → all six (raw + scores + modelVersion)",
+      "kind": "fieldsVisibleTo",
+      "roles": ["super_admin"],
+      "entity": "assessmentResult",
+      "expected": ["breakdown", "rawScore", "normalizedScore", "percentile", "interpretation", "modelVersion"]
+    },
+    {
+      "name": "fieldsVisibleTo hr_admin → scores + modelVersion (no raw)",
+      "kind": "fieldsVisibleTo",
+      "roles": ["hr_admin"],
+      "entity": "assessmentResult",
+      "expected": ["normalizedScore", "percentile", "interpretation", "modelVersion"]
+    },
+    {
+      "name": "fieldsVisibleTo hrbp → scores only (no raw, no modelVersion)",
+      "kind": "fieldsVisibleTo",
+      "roles": ["hrbp"],
+      "entity": "assessmentResult",
+      "expected": ["normalizedScore", "percentile", "interpretation"]
+    },
+    {
+      "name": "fieldsVisibleTo recruiter → scores only",
+      "kind": "fieldsVisibleTo",
+      "roles": ["recruiter"],
+      "entity": "assessmentResult",
+      "expected": ["normalizedScore", "percentile", "interpretation"]
+    },
+    {
+      "name": "fieldsVisibleTo employee → scores only",
+      "kind": "fieldsVisibleTo",
+      "roles": ["employee"],
+      "entity": "assessmentResult",
+      "expected": ["normalizedScore", "percentile", "interpretation"]
+    },
+    {
+      "name": "fieldsVisibleTo empty roles → none (fail-closed)",
+      "kind": "fieldsVisibleTo",
+      "roles": [],
+      "entity": "assessmentResult",
+      "expected": []
+    },
+    {
+      "name": "fieldsVisibleTo unknown entity → none (fail-closed)",
+      "kind": "fieldsVisibleTo",
+      "roles": ["super_admin"],
+      "entity": "doesNotExist",
+      "expected": []
+    },
+    {
+      "name": "selectFor external → anchors + the full six-field ceiling",
+      "kind": "selectFor",
+      "roles": ["external"],
+      "entity": "assessmentResult",
+      "expected": ["id", "organizationId", "assignmentId", "breakdown", "rawScore", "normalizedScore", "percentile", "interpretation", "modelVersion"]
+    },
+    {
+      "name": "selectFor empty roles → anchors only",
+      "kind": "selectFor",
+      "roles": [],
+      "entity": "assessmentResult",
+      "expected": ["id", "organizationId", "assignmentId"]
+    },
+    {
+      "name": "selectFor unknown entity → { id } only (safe minimum)",
+      "kind": "selectFor",
+      "roles": ["super_admin"],
+      "entity": "doesNotExist",
+      "expected": ["id"]
+    }
+  ]
+}

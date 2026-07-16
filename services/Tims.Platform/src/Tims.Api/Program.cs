@@ -14,13 +14,16 @@ using Tims.Api.Authentication;
 using Tims.Api.Configuration;
 using Tims.Api.HealthChecks;
 using Tims.Api.RateLimiting;
+using Tims.Api.ExternalVendor;
 using Tims.Application.Access;
 using Tims.Application.Audit;
+using Tims.Application.ExternalVendor;
 using Tims.Application.Identity;
 using Tims.Domain.Access;
 using Tims.Domain.Identity;
 using Tims.Infrastructure.Access;
 using Tims.Infrastructure.Audit;
+using Tims.Infrastructure.ExternalVendor;
 using Tims.Infrastructure.Hris;
 using Tims.Infrastructure.Identity;
 using Tims.Infrastructure.RateLimiting;
@@ -129,6 +132,16 @@ try
     // (SET LOCAL ROLE app_tenant + org GUC) so RLS engages. Additive registration on the same platform
     // connection string; later slices add the connector/sync/secret services on top.
     builder.Services.AddDbContext<HrisDbContext>(options => options.UseNpgsql(databaseConnectionString));
+
+    // --- External-vendor assessment read plane (Phase-5 Slice 1) ----------------------
+    // The FIRST strangler: the external-vendor assessment READ surface ported to C#. Read-only EF
+    // (efcoreReadOnly) over the Prisma-OWNED assessment_results ⋈ assessment_assignments ⋈
+    // assessment_types, run UNDER TenantScope (app_tenant + org GUC) so RLS engages. The use case audits
+    // every exported psychometric row fail-closed (IDataAccessAuditor, registered above) BEFORE returning
+    // any data. Cutover is deploy-gated (deferred) — no traffic is routed here yet.
+    builder.Services.AddDbContext<ExternalAssessmentDbContext>(options => options.UseNpgsql(databaseConnectionString));
+    builder.Services.AddScoped<IExternalAssessmentRepository, ExternalAssessmentRepository>();
+    builder.Services.AddScoped<ExternalAssessmentReadUseCase>();
 
     // --- HRIS connector plane (WP3.2): typed BambooHR client + resilience + secrets ----
     // Bind + validate HrisOptions at startup (the Zod-env-gate analog, mirroring PlatformOptions),
@@ -285,6 +298,11 @@ try
         // the C# analog of the TS per-key limit in requireApiKey (trpc.ts).
         .AddEndpointFilter<ApiKeyRateLimitFilter>()
         .WithName("ExternalWhoAmI");
+
+    // External-vendor assessment READ surface (Phase-5 Slice 1): GET /external/assessment-results (list,
+    // cursor) + /external/assessment-results/{assignmentId} (getOne). ApiKey scheme + assessment:read
+    // grant/scope + per-key rate limit; audits every exported row fail-closed. Cutover deferred.
+    app.MapExternalAssessmentEndpoints();
 
     // Authz probe (WP2.5): the C# equivalent of the tRPC `requirePermission` gate. Resolves the
     // TIMS principal from the JWT `sub` (PrincipalResolver, honoring the impersonation cookie +

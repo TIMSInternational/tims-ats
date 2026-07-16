@@ -69,6 +69,54 @@ internal sealed record SubjectInScopeCase(
     bool HasAnchors,
     bool Expected);
 
+// --- field-classification.json (access-fixtures) --------------------------------------
+internal sealed record FieldClassificationRoot(string Description, List<FieldClassificationCase> Cases);
+internal sealed record FieldClassificationCase(
+    string Name, string Kind, List<string> Roles, string Entity, List<string> Expected);
+
+// --- assessment-result-v1.json (external-fixtures) ------------------------------------
+internal sealed record V1Root(string Description, List<V1Case> Cases);
+internal sealed record V1Case(string Name, V1InputRow Input, V1Expected Expected);
+internal sealed record V1InputRow(
+    string Id,
+    string AssignmentId,
+    double? RawScore,
+    double? NormalizedScore,
+    double? Percentile,
+    System.Text.Json.Nodes.JsonNode? Interpretation,
+    System.Text.Json.Nodes.JsonNode? Breakdown,
+    string? ModelVersion,
+    DateTimeOffset ScoredAt,
+    V1InputAssignment Assignment);
+internal sealed record V1InputAssignment(
+    string CandidateId,
+    string VacancyId,
+    string Status,
+    DateTimeOffset AssignedAt,
+    DateTimeOffset? StartedAt,
+    DateTimeOffset? CompletedAt,
+    DateTimeOffset? ExpiresAt,
+    V1InputType? AssessmentType);
+internal sealed record V1InputType(string Name);
+internal sealed record V1Expected(
+    string SchemaVersion,
+    string AssignmentId,
+    string CandidateId,
+    string VacancyId,
+    string? AssessmentType,
+    string Status,
+    DateTimeOffset AssignedAt,
+    DateTimeOffset? StartedAt,
+    DateTimeOffset? CompletedAt,
+    DateTimeOffset? ExpiresAt,
+    DateTimeOffset ScoredAt,
+    double? RawScore,
+    double? NormalizedScore,
+    double? Percentile,
+    System.Text.Json.Nodes.JsonNode? Interpretation,
+    System.Text.Json.Nodes.JsonNode? Breakdown,
+    string? ModelVersion);
+
 // --- eval360-min3.json ----------------------------------------------------------------
 internal sealed record Eval360Root(string Description, List<Eval360Case> Cases);
 internal sealed record Eval360Case(string Name, List<Row360> Rows, List<ExpectedBucket> Expected);

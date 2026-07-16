@@ -44,6 +44,90 @@
         }
       }
     },
+    "/external/assessment-results": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "ExternalGetAssessmentResults",
+        "parameters": [
+          {
+            "name": "take",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/external/assessment-results/{assignmentId}": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "ExternalGetAssessmentResult",
+        "parameters": [
+          {
+            "name": "assignmentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExternalAssessmentResultV1"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
     "/require-permission/{module}/{action}": {
       "get": {
         "tags": [
@@ -105,6 +189,124 @@
           }
         }
       }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ExternalAssessmentResultV1": {
+        "required": [
+          "schemaVersion",
+          "assignmentId",
+          "candidateId",
+          "vacancyId",
+          "assessmentType",
+          "status",
+          "assignedAt",
+          "startedAt",
+          "completedAt",
+          "expiresAt",
+          "scoredAt",
+          "rawScore",
+          "normalizedScore",
+          "percentile",
+          "interpretation",
+          "breakdown",
+          "modelVersion"
+        ],
+        "type": "object",
+        "properties": {
+          "schemaVersion": {
+            "type": "string"
+          },
+          "assignmentId": {
+            "type": "string"
+          },
+          "candidateId": {
+            "type": "string"
+          },
+          "vacancyId": {
+            "type": "string"
+          },
+          "assessmentType": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "assignedAt": {
+            "format": "date-time"
+          },
+          "startedAt": {
+            "format": "date-time"
+          },
+          "completedAt": {
+            "format": "date-time"
+          },
+          "expiresAt": {
+            "format": "date-time"
+          },
+          "scoredAt": {
+            "format": "date-time"
+          },
+          "rawScore": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "normalizedScore": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "percentile": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "interpretation": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JsonNode"
+              }
+            ]
+          },
+          "breakdown": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JsonNode"
+              }
+            ]
+          },
+          "modelVersion": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "JsonNode": { }
     }
   },
   "tags": [
