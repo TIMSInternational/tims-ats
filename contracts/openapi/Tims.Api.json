@@ -128,6 +128,62 @@
         }
       }
     },
+    "/external/validations/{validationId}/result": {
+      "post": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "ExternalSubmitValidationResult",
+        "parameters": [
+          {
+            "name": "validationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitValidationBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExternalValidationResultV1"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict"
+          }
+        }
+      }
+    },
     "/require-permission/{module}/{action}": {
       "get": {
         "tags": [
@@ -306,7 +362,51 @@
           }
         }
       },
-      "JsonNode": { }
+      "ExternalValidationResultV1": {
+        "required": [
+          "schemaVersion",
+          "id",
+          "status",
+          "completedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "schemaVersion": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "completedAt": {
+            "format": "date-time"
+          }
+        }
+      },
+      "JsonNode": { },
+      "JsonObject": {
+        "type": "object"
+      },
+      "SubmitValidationBody": {
+        "required": [
+          "status",
+          "result"
+        ],
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "result": {
+            "$ref": "#/components/schemas/JsonObject"
+          },
+          "notes": {
+            "type": "string"
+          }
+        }
+      }
     }
   },
   "tags": [

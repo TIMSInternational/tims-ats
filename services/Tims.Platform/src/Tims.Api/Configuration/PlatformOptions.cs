@@ -60,4 +60,28 @@ public sealed class PlatformOptions
     /// returns null for every cookie), so a platform owner always resolves to their own context.
     /// </summary>
     public string? ImpersonationSecret { get; init; }
+
+    // --- Phase-5 strangler deploy flags (dark-by-default) ------------------------------
+    // The REAL per-surface deploy flags that make "exactly one active runtime writer/reader"
+    // a runtime FACT, not just a ledger claim. Both DEFAULT false (dark): when a flag is off
+    // the corresponding external route is NOT mapped (a request 404s), so deploying Tims.Api
+    // adds NO second live writer/reader — TS stays the sole active stack for the surface until
+    // Federico flips the flag per-surface at canary (dark → canary → full). The OpenAPI
+    // document still describes the routes at build time (see Program.cs — the GetDocument doc
+    // generation forces them mapped), so the contract stays accurate while runtime stays dark.
+
+    /// <summary>
+    /// Phase-5 Slice 2 (efcoreStranglerWrite): when true, the C# external-vendor validation WRITE
+    /// surface (<c>POST /external/validations/{id}/result</c>) is mapped and live. DEFAULT false
+    /// (dark) — the C# writer to <c>preemployment_validations</c> stays inert so TS remains the
+    /// single active writer until cutover.
+    /// </summary>
+    public bool ExternalVendorWriteEnabled { get; init; }
+
+    /// <summary>
+    /// Phase-5 Slice 1 (efcoreReadOnly): when true, the C# external-vendor assessment READ surface
+    /// (<c>GET /external/assessment-results[...]</c>) is mapped and live. DEFAULT false (dark) — TS
+    /// remains the single active reader until cutover.
+    /// </summary>
+    public bool ExternalVendorReadEnabled { get; init; }
 }

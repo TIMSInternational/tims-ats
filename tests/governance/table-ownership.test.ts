@@ -96,6 +96,48 @@ describe('table-ownership ledger check', () => {
     expect(violations[0]).toContain('ghost_log');
   });
 
+  it('allows a strangler-write EF mapping of a Prisma-owned table (Slice 2 vendor write, no collision)', () => {
+    const violations = checkOwnership({
+      efcore: ['widgets'],
+      efcoreStranglerWrite: ['preemployment_validations'],
+      prismaTables: ['preemployment_validations', 'candidate'],
+      efcoreTables: ['widgets', 'preemployment_validations'],
+    });
+    expect(violations).toEqual([]);
+  });
+
+  it('flags a strangler-write mapping of a table Prisma does not own', () => {
+    const violations = checkOwnership({
+      efcore: [],
+      efcoreStranglerWrite: ['ghost_validation'],
+      prismaTables: ['preemployment_validations'],
+      efcoreTables: [],
+    });
+    expect(violations).toHaveLength(1);
+    expect(violations[0]).toContain('strangler-write mapping of a non-Prisma table');
+    expect(violations[0]).toContain('ghost_validation');
+  });
+
+  it('does NOT treat a strangler-write table as a cross-owner collision (Prisma still owns the DDL)', () => {
+    // preemployment_validations is @@map'd in Prisma AND EF-mapped for the vendor write — this must be
+    // clean, proving efcoreStranglerWrite is the honest middle category (efcore WOULD collide).
+    const collision = checkOwnership({
+      efcore: ['preemployment_validations'],
+      prismaTables: ['preemployment_validations'],
+      efcoreTables: ['preemployment_validations'],
+    });
+    expect(collision).toHaveLength(1);
+    expect(collision[0]).toContain('cross-owner collision');
+
+    const stranglerWrite = checkOwnership({
+      efcore: [],
+      efcoreStranglerWrite: ['preemployment_validations'],
+      prismaTables: ['preemployment_validations'],
+      efcoreTables: ['preemployment_validations'],
+    });
+    expect(stranglerWrite).toEqual([]);
+  });
+
   it('does NOT treat an append-only table as a cross-owner collision (Prisma still owns the DDL)', () => {
     // data_access_logs is @@map'd in Prisma AND EF-mapped for appends — this must be clean,
     // proving efcoreAppendOnly is the honest middle category (not efcore, which WOULD collide).

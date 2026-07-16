@@ -117,6 +117,12 @@ internal sealed record V1Expected(
     System.Text.Json.Nodes.JsonNode? Breakdown,
     string? ModelVersion);
 
+// --- validation-result-v1.json (external-fixtures) ------------------------------------
+internal sealed record ValidationV1Root(string Description, List<ValidationV1Case> Cases);
+internal sealed record ValidationV1Case(string Name, ValidationV1Input Input, ValidationV1Expected Expected);
+internal sealed record ValidationV1Input(string Id, string Status, DateTimeOffset CompletedAt);
+internal sealed record ValidationV1Expected(string SchemaVersion, string Id, string Status, DateTimeOffset CompletedAt);
+
 // --- eval360-min3.json ----------------------------------------------------------------
 internal sealed record Eval360Root(string Description, List<Eval360Case> Cases);
 internal sealed record Eval360Case(string Name, List<Row360> Rows, List<ExpectedBucket> Expected);

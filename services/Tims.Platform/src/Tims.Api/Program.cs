@@ -1,8 +1,10 @@
 using System.Diagnostics;
+using System.Reflection;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using OpenTelemetry.Resources;
@@ -40,10 +42,17 @@ try
 
     // --- Structured JSON logging (Pino-parity), request/tenant correlation ids -------
     // NEVER logs request bodies / tokens / PII (rule: api-security.md §Observability).
-    builder.Host.UseSerilog((context, services, configuration) => configuration
-        .ReadFrom.Configuration(context.Configuration)
-        .ReadFrom.Services(services)
-        .WriteTo.Console(new RenderedCompactJsonFormatter()));
+    // preserveStaticLogger: true keeps each host's fully-configured Serilog instance INDEPENDENT of the
+    // shared static bootstrap `Log.Logger` (which stays the console bootstrap logger — used only by the
+    // startup Log.Fatal / CloseAndFlush below, never at runtime; the DI ILogger + request logging use this
+    // configured instance). Without it, every in-process host FREEZES the one static ReloadableLogger, so
+    // booting several WebApplicationFactory<Program> hosts concurrently throws "logger is already frozen".
+    builder.Host.UseSerilog(
+        (context, services, configuration) => configuration
+            .ReadFrom.Configuration(context.Configuration)
+            .ReadFrom.Services(services)
+            .WriteTo.Console(new RenderedCompactJsonFormatter()),
+        preserveStaticLogger: true);
 
     // --- Config: bind + validate at startup (fail-fast), the Zod-env-gate analog ------
     builder.Services
@@ -143,6 +152,19 @@ try
     builder.Services.AddScoped<IExternalAssessmentRepository, ExternalAssessmentRepository>();
     builder.Services.AddScoped<ExternalAssessmentReadUseCase>();
 
+    // --- External-vendor validation WRITE plane (Phase-5 Slice 2) ----------------------
+    // The FIRST C# write to a PRODUCT table: the external-vendor validation submit surface ported to C#.
+    // Write-capable EF (efcoreStranglerWrite) over the Prisma-OWNED preemployment_validations table, run
+    // UNDER TenantScope (app_tenant + org GUC) so RLS engages. The use case does the atomic pending-only
+    // update then a fail-SOFT audit (IDataAccessAuditor). Prisma still owns the DDL AND the staff
+    // updateValidation write, so the ownership flip is deferred; cutover is deploy-gated (no traffic here).
+    builder.Services.AddDbContext<ExternalValidationDbContext>(options => options.UseNpgsql(databaseConnectionString));
+    builder.Services.AddScoped<IExternalValidationRepository, ExternalValidationRepository>();
+    builder.Services.AddScoped<ExternalValidationSubmitUseCase>();
+    // The submit use case truncates its completion instant to whole milliseconds through TimeProvider so
+    // persisted (timestamp(3)) == returned (v1) == JS `new Date()` ms precision; register the system clock.
+    builder.Services.TryAddSingleton(TimeProvider.System);
+
     // --- HRIS connector plane (WP3.2): typed BambooHR client + resilience + secrets ----
     // Bind + validate HrisOptions at startup (the Zod-env-gate analog, mirroring PlatformOptions),
     // then wire the dev secret store, the provider factory, and the typed HttpClient carrying the
@@ -235,7 +257,27 @@ try
         sp.GetRequiredService<IHostEnvironment>()));
 
     // --- OpenAPI (emitted to contracts/openapi at build; served at /openapi/v1.json) --
-    builder.Services.AddOpenApi();
+    builder.Services.AddOpenApi(options =>
+    {
+        // Keep the SubmitValidationBody request schema faithful to the Zod contract: `notes` is OPTIONAL
+        // (drop it from `required`) and, when present, a NON-NULL string (drop the null type union the C#
+        // nullable annotation emits). status + result stay required non-null (the [Required] DTO members).
+        options.AddSchemaTransformer((schema, context, _) =>
+        {
+            if (context.JsonTypeInfo.Type == typeof(SubmitValidationBody))
+            {
+                schema.Required?.Remove("notes");
+                if (schema.Properties is not null
+                    && schema.Properties.TryGetValue("notes", out var notesSchema)
+                    && notesSchema is Microsoft.OpenApi.OpenApiSchema concreteNotes)
+                {
+                    concreteNotes.Type = Microsoft.OpenApi.JsonSchemaType.String;
+                }
+            }
+
+            return Task.CompletedTask;
+        });
+    });
 
     var app = builder.Build();
 
@@ -299,10 +341,32 @@ try
         .AddEndpointFilter<ApiKeyRateLimitFilter>()
         .WithName("ExternalWhoAmI");
 
+    // --- Phase-5 strangler deploy gating (dark-by-default) ----------------------------
+    // The external surfaces are mapped ONLY when their per-surface deploy flag is on, so deploying
+    // Tims.Api activates NO second live reader/writer — TS stays the single active stack until Federico
+    // flips the flag at canary. EXCEPTION: build-time OpenAPI document generation (GetDocument.Insider is
+    // the process entry assembly) forces both mapped so the emitted contract stays accurate even while the
+    // runtime default is dark; at real runtime the entry assembly is Tims.Api, so the flags fully govern.
+    var externalOptions = app.Services.GetRequiredService<IOptions<PlatformOptions>>().Value;
+    var isOpenApiDocGeneration =
+        string.Equals(Assembly.GetEntryAssembly()?.GetName().Name, "GetDocument.Insider", StringComparison.Ordinal);
+
     // External-vendor assessment READ surface (Phase-5 Slice 1): GET /external/assessment-results (list,
     // cursor) + /external/assessment-results/{assignmentId} (getOne). ApiKey scheme + assessment:read
-    // grant/scope + per-key rate limit; audits every exported row fail-closed. Cutover deferred.
-    app.MapExternalAssessmentEndpoints();
+    // grant/scope + per-key rate limit; audits every exported row fail-closed. Dark unless the flag is on.
+    if (externalOptions.ExternalVendorReadEnabled || isOpenApiDocGeneration)
+    {
+        app.MapExternalAssessmentEndpoints();
+    }
+
+    // External-vendor validation WRITE surface (Phase-5 Slice 2): POST
+    // /external/validations/{validationId}/result. ApiKey scheme + validation:update grant +
+    // validation:write scope (alwaysEnforce) + per-key rate limit; atomic pending-only update, fail-soft
+    // audit. First C# product-table write. Dark unless the flag is on (deploy-gated cutover).
+    if (externalOptions.ExternalVendorWriteEnabled || isOpenApiDocGeneration)
+    {
+        app.MapExternalValidationEndpoints();
+    }
 
     // Authz probe (WP2.5): the C# equivalent of the tRPC `requirePermission` gate. Resolves the
     // TIMS principal from the JWT `sub` (PrincipalResolver, honoring the impersonation cookie +

@@ -36,6 +36,14 @@ export function parseLedger(markdown) {
   if (ledger.efcoreAppendOnly !== undefined && !Array.isArray(ledger.efcoreAppendOnly)) {
     throw new Error('ledger.efcoreAppendOnly must be an array when present');
   }
+  // efcoreStranglerWrite (optional): Prisma-OWNED tables that EF UPDATEs for a specific documented vendor
+  // write during an in-progress Phase-5 strangler (Slice 2 preemployment_validations). Prisma still owns
+  // the DDL/migrations AND another (staff) write path to the same table, so a deploy flag keeps exactly
+  // one ACTIVE runtime writer — NOT yet an ownership transfer. Like efcoreReadOnly/efcoreAppendOnly they
+  // MUST appear in the Prisma schema (Prisma owns the schema), so it is NOT a cross-owner collision.
+  if (ledger.efcoreStranglerWrite !== undefined && !Array.isArray(ledger.efcoreStranglerWrite)) {
+    throw new Error('ledger.efcoreStranglerWrite must be an array when present');
+  }
   return ledger;
 }
 
@@ -76,13 +84,16 @@ export function parseEfCoreTables(srcDir) {
  *    mapping must point at a real Prisma-owned table).
  *  - append-only-not-prisma: a table in efcoreAppendOnly[] that Prisma does NOT @@map (an append-only
  *    mapping must point at a real Prisma-owned table — Prisma still owns the schema).
+ *  - strangler-write-not-prisma: a table in efcoreStranglerWrite[] that Prisma does NOT @@map (a
+ *    strangler-write mapping must point at a real Prisma-owned table — Prisma still owns the schema
+ *    until the ownership flip).
  *
- * @param {{ efcore: string[], efcoreReadOnly?: string[], efcoreAppendOnly?: string[], prismaTables: string[], efcoreTables?: string[] }} input
+ * @param {{ efcore: string[], efcoreReadOnly?: string[], efcoreAppendOnly?: string[], efcoreStranglerWrite?: string[], prismaTables: string[], efcoreTables?: string[] }} input
  * @returns {string[]}
  */
-export function checkOwnership({ efcore, efcoreReadOnly = [], efcoreAppendOnly = [], prismaTables, efcoreTables }) {
+export function checkOwnership({ efcore, efcoreReadOnly = [], efcoreAppendOnly = [], efcoreStranglerWrite = [], prismaTables, efcoreTables }) {
   const violations = [];
-  const registeredEfTables = new Set([...efcore, ...efcoreReadOnly, ...efcoreAppendOnly]);
+  const registeredEfTables = new Set([...efcore, ...efcoreReadOnly, ...efcoreAppendOnly, ...efcoreStranglerWrite]);
   const prismaSet = new Set(prismaTables);
 
   for (const t of efcore) {
@@ -100,9 +111,14 @@ export function checkOwnership({ efcore, efcoreReadOnly = [], efcoreAppendOnly =
       violations.push(`append-only mapping of a non-Prisma table: "${t}" is in efcoreAppendOnly[] but is not @@map'd in the Prisma schema`);
     }
   }
+  for (const t of efcoreStranglerWrite) {
+    if (!prismaSet.has(t)) {
+      violations.push(`strangler-write mapping of a non-Prisma table: "${t}" is in efcoreStranglerWrite[] but is not @@map'd in the Prisma schema`);
+    }
+  }
   for (const t of efcoreTables ?? []) {
     if (!registeredEfTables.has(t)) {
-      violations.push(`unregistered EF table: "${t}" is mapped by an EF DbContext (ToTable) but is not listed in the ledger's efcore[], efcoreReadOnly[] or efcoreAppendOnly[]`);
+      violations.push(`unregistered EF table: "${t}" is mapped by an EF DbContext (ToTable) but is not listed in the ledger's efcore[], efcoreReadOnly[], efcoreAppendOnly[] or efcoreStranglerWrite[]`);
     }
   }
   return violations;
@@ -117,6 +133,7 @@ export function checkRepo(root = REPO_ROOT) {
     efcore: ledger.efcore,
     efcoreReadOnly: ledger.efcoreReadOnly ?? [],
     efcoreAppendOnly: ledger.efcoreAppendOnly ?? [],
+    efcoreStranglerWrite: ledger.efcoreStranglerWrite ?? [],
     prismaTables,
     efcoreTables,
   });

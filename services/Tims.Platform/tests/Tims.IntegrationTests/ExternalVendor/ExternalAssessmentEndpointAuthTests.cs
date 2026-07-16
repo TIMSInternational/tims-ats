@@ -35,7 +35,11 @@ public sealed class ExternalAssessmentEndpointAuthTests(ExternalAssessmentFixtur
 
     private WebApplicationFactory<Program> Factory() =>
         new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
-            builder.UseSetting("Platform:DatabaseConnectionString", fixture.ConnectionString));
+        {
+            builder.UseSetting("Platform:DatabaseConnectionString", fixture.ConnectionString);
+            // FIX 1: the read surface is dark by default — enable the deploy flag so the routes are mapped.
+            builder.UseSetting("Platform:ExternalVendorReadEnabled", "true");
+        });
 
     private static async Task<HttpResponseMessage> Get(HttpClient client, string path, string? token)
     {
@@ -187,6 +191,7 @@ public sealed class ExternalAssessmentEndpointAuthTests(ExternalAssessmentFixtur
         new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
             builder.UseSetting("Platform:DatabaseConnectionString", fixture.ConnectionString);
+            builder.UseSetting("Platform:ExternalVendorReadEnabled", "true"); // FIX 1: map the read routes
             builder.UseSetting("Platform:SupabaseJwtIssuer", JwtIssuer);
             builder.UseSetting("Platform:SupabaseJwtAudience", JwtAudience);
 

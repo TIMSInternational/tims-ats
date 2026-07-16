@@ -1,0 +1,10 @@
+{
+  "description": "externalScopeSatisfied('validation:write', scopes, alwaysEnforceScope:true) for the Sprint 1.6 vendor WRITE — packages/api/src/access/external-scope.ts. UNLIKE the read surface (empty scope = wildcard), the write ENFORCES the scope unconditionally: an empty-scope key can NOT reach it via the wildcard, so seeding the validation:update grant never silently widens an existing key. Asserted by the REAL TS externalScopeSatisfied (tests/external-vendor/validation-submit-scope-fixtures.test.ts) and the C# Tims.Domain.Access.ExternalScope.ExternalScopeSatisfied (Tims.UnitTests). Bites: flipping alwaysEnforceScope to false makes the empty-scope case go TRUE. requiredScope null models the TS undefined.",
+  "cases": [
+    { "name": "empty scopes, ENFORCED -> denied (contrast the read's wildcard)", "requiredScope": "validation:write", "scopes": [], "alwaysEnforceScope": true, "expected": false },
+    { "name": "validation:write present, enforced -> satisfied", "requiredScope": "validation:write", "scopes": ["validation:write"], "alwaysEnforceScope": true, "expected": true },
+    { "name": "validation:write present among several, enforced -> satisfied", "requiredScope": "validation:write", "scopes": ["assessment:read", "validation:write"], "alwaysEnforceScope": true, "expected": true },
+    { "name": "other scope only, enforced -> denied", "requiredScope": "validation:write", "scopes": ["other"], "alwaysEnforceScope": true, "expected": false },
+    { "name": "no required scope even when enforced -> satisfied (requiredScope short-circuits first)", "requiredScope": null, "scopes": [], "alwaysEnforceScope": true, "expected": true }
+  ]
+}
