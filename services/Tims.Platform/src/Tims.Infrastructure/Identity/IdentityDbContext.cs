@@ -4,9 +4,10 @@ namespace Tims.Infrastructure.Identity;
 
 /// <summary>
 /// READ-ONLY EF Core context over the Prisma-OWNED identity tables (`users`, `user_roles`,
-/// `roles`, plus `api_keys` + `organizations` for external `tims_` key auth; efcoreReadOnly in
-/// docs/architecture/table-ownership.md). It maps only the columns the pre-tenant principal
-/// resolution needs and MUST NEVER write them — every query goes through
+/// `roles`, plus `api_keys` + `organizations` for external `tims_` key auth, and `candidates` for
+/// the portal-candidate principal; efcoreReadOnly in docs/architecture/table-ownership.md). It maps
+/// only the columns the pre-tenant principal resolution needs and MUST NEVER write them — every
+/// query goes through
 /// <c>.AsNoTracking()</c> and <c>SaveChanges</c> is never called.
 ///
 /// This is the PRIVILEGED / pre-tenant path (resolving WHICH org a user belongs to before any
@@ -31,6 +32,8 @@ public sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> option
     public DbSet<PermissionEntity> Permissions => Set<PermissionEntity>();
 
     public DbSet<RolePermissionEntity> RolePermissions => Set<RolePermissionEntity>();
+
+    public DbSet<CandidateEntity> Candidates => Set<CandidateEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -111,6 +114,17 @@ public sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> option
             entity.Property(o => o.Id).HasColumnName("id");
             entity.Property(o => o.IsActive).HasColumnName("is_active");
             entity.Property(o => o.DeletedAt).HasColumnName("deleted_at");
+        });
+
+        modelBuilder.Entity<CandidateEntity>(entity =>
+        {
+            entity.ToTable("candidates");
+            entity.HasKey(c => c.Id);
+            entity.Property(c => c.Id).HasColumnName("id");
+            entity.Property(c => c.OrganizationId).HasColumnName("organization_id");
+            entity.Property(c => c.Email).HasColumnName("email");
+            entity.Property(c => c.IsActive).HasColumnName("is_active");
+            entity.Property(c => c.DeletedAt).HasColumnName("deleted_at");
         });
     }
 }

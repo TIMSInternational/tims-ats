@@ -1,0 +1,14 @@
+{
+  "description": "dataClassOf(entity) — packages/api/src/access/classification.ts. The entity's HEADLINE data-class (the max of its fields), which drives the audit/consent decision. Only the five registered sensitive entities resolve to confidential/restricted; every unknown entity defaults to 'internal' (unknown != public/safe). Case-sensitive registry lookup. Ported to Tims.Domain.Audit.DataClassification.Of. Asserted by the REAL TS dataClassOf (tests/audit/audit-fixtures.test.ts) AND Tims.UnitTests (DataClassificationFixtureTests).",
+  "cases": [
+    { "name": "employeeCompensation is restricted", "entity": "employeeCompensation", "expected": "restricted" },
+    { "name": "salaryAdjustment is restricted", "entity": "salaryAdjustment", "expected": "restricted" },
+    { "name": "assessmentResult is restricted (raw psychometrics headline)", "entity": "assessmentResult", "expected": "restricted" },
+    { "name": "employeeDemographics is confidential", "entity": "employeeDemographics", "expected": "confidential" },
+    { "name": "surveyResponse is confidential", "entity": "surveyResponse", "expected": "confidential" },
+    { "name": "unknown entity defaults to internal (candidate)", "entity": "candidate", "expected": "internal" },
+    { "name": "unknown entity defaults to internal (vacancy)", "entity": "vacancy", "expected": "internal" },
+    { "name": "empty entity defaults to internal (unknown != public)", "entity": "", "expected": "internal" },
+    { "name": "registry lookup is case-sensitive (wrong case falls through to internal)", "entity": "EmployeeCompensation", "expected": "internal" }
+  ]
+}

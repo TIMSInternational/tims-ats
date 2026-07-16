@@ -1,0 +1,29 @@
+{
+  "description": "getRateLimitCategory(path, type) — packages/api/src/middleware/rate-limit.ts. Selects the rate-limit tier from a tRPC path + procedure type. Order: (1) `auth.` prefix wins; (2) any AI_PATH_KEYWORDS substring (case-insensitive) -> ai; (3) `export` substring -> export; (4) default query/mutation. Ported to Tims.Domain.RateLimiting.RateLimitPolicy.CategoryFor. Asserted by the REAL TS function (tests/ratelimit/ratelimit-fixtures.test.ts) AND Tims.UnitTests.",
+  "cases": [
+    { "name": "auth prefix wins", "path": "auth.login", "type": "mutation", "expected": "auth" },
+    { "name": "auth prefix beats ai keyword (generate)", "path": "auth.generateToken", "type": "mutation", "expected": "auth" },
+    { "name": "ai keyword generate", "path": "candidate.generateSummary", "type": "mutation", "expected": "ai" },
+    { "name": "ai keyword parse", "path": "cv.parseResume", "type": "mutation", "expected": "ai" },
+    { "name": "ai keyword analyze + sentiment", "path": "interview.analyzeSentiment", "type": "mutation", "expected": "ai" },
+    { "name": "ai is case-insensitive", "path": "Candidate.GenerateSummary", "type": "query", "expected": "ai" },
+    { "name": "ai beats export (analyze before export check)", "path": "report.analyzeAndExport", "type": "mutation", "expected": "ai" },
+    { "name": "ai keyword screen", "path": "candidate.screenResume", "type": "mutation", "expected": "ai" },
+    { "name": "ai keyword recommend", "path": "jobs.recommendCandidates", "type": "query", "expected": "ai" },
+    { "name": "ai keyword nextbestaction", "path": "pipeline.nextBestAction", "type": "query", "expected": "ai" },
+    { "name": "ai keyword wordcloud", "path": "analytics.wordCloud", "type": "query", "expected": "ai" },
+    { "name": "ai keyword faq", "path": "portal.faq", "type": "query", "expected": "ai" },
+    { "name": "ai keyword assistant", "path": "chat.assistant", "type": "mutation", "expected": "ai" },
+    { "name": "ai keyword explainab(le)", "path": "score.explainability", "type": "query", "expected": "ai" },
+    { "name": "ai keyword detectbias", "path": "eval.detectBias", "type": "mutation", "expected": "ai" },
+    { "name": "ai keyword medical", "path": "candidate.medicalHistory", "type": "query", "expected": "ai" },
+    { "name": "ai keyword inclusive", "path": "jd.inclusiveLanguage", "type": "mutation", "expected": "ai" },
+    { "name": "ai keyword getguide", "path": "help.getGuide", "type": "query", "expected": "ai" },
+    { "name": "export keyword query", "path": "report.exportCsv", "type": "query", "expected": "export" },
+    { "name": "export keyword mutation", "path": "candidates.exportAll", "type": "mutation", "expected": "export" },
+    { "name": "default query", "path": "candidate.list", "type": "query", "expected": "query" },
+    { "name": "default mutation", "path": "candidate.update", "type": "mutation", "expected": "mutation" },
+    { "name": "non-keyword read stays query", "path": "vacancy.get", "type": "query", "expected": "query" },
+    { "name": "non-keyword write stays mutation", "path": "vacancy.create", "type": "mutation", "expected": "mutation" }
+  ]
+}

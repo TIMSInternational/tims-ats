@@ -11,7 +11,8 @@ namespace Tims.IntegrationTests;
 /// <see cref="NullPermissionCache"/>, proving the grant fetch + <see cref="AccessKernel"/> decision
 /// match <c>buildAccessForUser</c> (build.ts). Read-only over the Prisma-owned RBAC tables.
 /// </summary>
-public sealed class PermissionServiceTests(PermissionFixture fixture) : IClassFixture<PermissionFixture>
+[Collection("Identity")]
+public sealed class PermissionServiceTests(IdentitySchemaFixture fixture)
 {
     private static readonly Guid SomeUserId = Guid.Parse("f0000000-0000-0000-0000-0000000000aa");
 
@@ -21,8 +22,8 @@ public sealed class PermissionServiceTests(PermissionFixture fixture) : IClassFi
     private TenantContext OrgUser(params string[] roles) =>
         new(PrincipalType.OrgUser, PermissionFixture.OrgA.ToString(), SomeUserId.ToString(), roles);
 
-    private static IdentityDbContext NewDb(PermissionFixture fixture) =>
-        new(IdentityFixture.BuildOptions(fixture.ConnectionString));
+    private static IdentityDbContext NewDb(IdentitySchemaFixture fixture) =>
+        new(IdentityFixture.BuildOptions(fixture.RbacConnectionString));
 
     // ---- Seeded grant → allowed at the seeded scope ---------------------------------
     [Fact]

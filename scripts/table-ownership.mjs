@@ -28,6 +28,14 @@ export function parseLedger(markdown) {
   if (ledger.efcoreReadOnly !== undefined && !Array.isArray(ledger.efcoreReadOnly)) {
     throw new Error('ledger.efcoreReadOnly must be an array when present');
   }
+  // efcoreAppendOnly (optional): Prisma-OWNED tables that EF maps APPEND-ONLY (INSERT only) during
+  // coexistence — the WP2.7 audit plane's single data_access_logs writer. Prisma still owns the
+  // DDL/migrations; EF only INSERTs (never UPDATE/DELETE) under tenant RLS. Like efcoreReadOnly they
+  // MUST appear in the Prisma schema (Prisma owns the schema), so it is NOT a cross-owner collision —
+  // but unlike efcoreReadOnly the intent is honestly "C# writes it", not "read-only".
+  if (ledger.efcoreAppendOnly !== undefined && !Array.isArray(ledger.efcoreAppendOnly)) {
+    throw new Error('ledger.efcoreAppendOnly must be an array when present');
+  }
   return ledger;
 }
 
@@ -63,16 +71,18 @@ export function parseEfCoreTables(srcDir) {
 /**
  * The pure check. Returns a list of violation strings (empty = clean).
  *  - collision: a table appears in BOTH efcore[] (EF-OWNED) and Prisma's @@map set.
- *  - unregistered: an EF ToTable(...) table not listed in efcore[] NOR efcoreReadOnly[].
+ *  - unregistered: an EF ToTable(...) table not listed in efcore[], efcoreReadOnly[] NOR efcoreAppendOnly[].
  *  - read-only-not-prisma: a table in efcoreReadOnly[] that Prisma does NOT @@map (a read-only
  *    mapping must point at a real Prisma-owned table).
+ *  - append-only-not-prisma: a table in efcoreAppendOnly[] that Prisma does NOT @@map (an append-only
+ *    mapping must point at a real Prisma-owned table — Prisma still owns the schema).
  *
- * @param {{ efcore: string[], efcoreReadOnly?: string[], prismaTables: string[], efcoreTables?: string[] }} input
+ * @param {{ efcore: string[], efcoreReadOnly?: string[], efcoreAppendOnly?: string[], prismaTables: string[], efcoreTables?: string[] }} input
  * @returns {string[]}
  */
-export function checkOwnership({ efcore, efcoreReadOnly = [], prismaTables, efcoreTables }) {
+export function checkOwnership({ efcore, efcoreReadOnly = [], efcoreAppendOnly = [], prismaTables, efcoreTables }) {
   const violations = [];
-  const registeredEfTables = new Set([...efcore, ...efcoreReadOnly]);
+  const registeredEfTables = new Set([...efcore, ...efcoreReadOnly, ...efcoreAppendOnly]);
   const prismaSet = new Set(prismaTables);
 
   for (const t of efcore) {
@@ -85,9 +95,14 @@ export function checkOwnership({ efcore, efcoreReadOnly = [], prismaTables, efco
       violations.push(`read-only mapping of a non-Prisma table: "${t}" is in efcoreReadOnly[] but is not @@map'd in the Prisma schema`);
     }
   }
+  for (const t of efcoreAppendOnly) {
+    if (!prismaSet.has(t)) {
+      violations.push(`append-only mapping of a non-Prisma table: "${t}" is in efcoreAppendOnly[] but is not @@map'd in the Prisma schema`);
+    }
+  }
   for (const t of efcoreTables ?? []) {
     if (!registeredEfTables.has(t)) {
-      violations.push(`unregistered EF table: "${t}" is mapped by an EF DbContext (ToTable) but is not listed in the ledger's efcore[] or efcoreReadOnly[]`);
+      violations.push(`unregistered EF table: "${t}" is mapped by an EF DbContext (ToTable) but is not listed in the ledger's efcore[], efcoreReadOnly[] or efcoreAppendOnly[]`);
     }
   }
   return violations;
@@ -101,6 +116,7 @@ export function checkRepo(root = REPO_ROOT) {
   return checkOwnership({
     efcore: ledger.efcore,
     efcoreReadOnly: ledger.efcoreReadOnly ?? [],
+    efcoreAppendOnly: ledger.efcoreAppendOnly ?? [],
     prismaTables,
     efcoreTables,
   });

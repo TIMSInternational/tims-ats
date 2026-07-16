@@ -40,6 +40,35 @@ internal sealed record ExpectedSuppress(bool Suppressed, int? Count);
 internal sealed record GroupCase(string Name, List<string> Keys, List<ExpectedGroup> Expected);
 internal sealed record ExpectedGroup(string Key, int? Count, bool Suppressed);
 
+// --- scope-where.json -----------------------------------------------------------------
+internal sealed record ScopeWhereRoot(string Description, List<ScopeWhereCase> Cases);
+internal sealed record AnchorArraysDto(
+    List<string> LedTeamIds,
+    List<string> UnitIds,
+    List<string> TeamMemberIds,
+    List<string> UnitMemberIds,
+    List<string> PanelInterviewIds);
+internal sealed record ScopeWhereCase(
+    string Name,
+    string Entity,
+    string Scope,
+    string UserId,
+    AnchorArraysDto? Anchors,
+    System.Text.Json.Nodes.JsonNode? Expected,
+    string? ExpectError);
+
+// --- subject-in-scope.json ------------------------------------------------------------
+internal sealed record SubjectInScopeRoot(string Description, List<SubjectInScopeCase> Cases);
+internal sealed record SubjectInScopeCase(
+    string Name,
+    string Scope,
+    string UserId,
+    string TargetUserId,
+    List<string> TeamMembers,
+    List<string> UnitMembers,
+    bool HasAnchors,
+    bool Expected);
+
 // --- eval360-min3.json ----------------------------------------------------------------
 internal sealed record Eval360Root(string Description, List<Eval360Case> Cases);
 internal sealed record Eval360Case(string Name, List<Row360> Rows, List<ExpectedBucket> Expected);

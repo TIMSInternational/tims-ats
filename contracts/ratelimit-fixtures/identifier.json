@@ -1,0 +1,28 @@
+{
+  "description": "The per-caller rate-limit bucket key — port of the identifier logic in packages/api/src/trpc.ts (anonymousIdentifier lines ~29-38, withRateLimit lines ~46-49, external per-key limit line ~207). Precedence: (1) external apiKeyId -> `apikey:{id}`; (2) ai tier with org -> `org:{orgId}`; (3) authed user -> raw user id; (4) anonymous -> x-real-ip, else LAST x-forwarded-for hop, else `anonymous`. Ported to Tims.Domain.RateLimiting.RateLimitIdentity.For. Asserted by the mirrored TS logic (tests/ratelimit/ratelimit-fixtures.test.ts) AND Tims.UnitTests. Includes the required historical-fix regressions: rl-xff-spoof-bucket, rl-per-apikey-quota, rl-ai-per-org-budget.",
+  "cases": [
+    { "name": "authed staff keys on raw user id (no prefix)", "category": "query", "userId": "user-1", "organizationId": "org-1", "apiKeyId": null, "xRealIp": null, "xForwardedFor": null, "expected": "user-1" },
+    { "name": "authed staff on mutation still raw user id", "category": "mutation", "userId": "user-2", "organizationId": "org-1", "apiKeyId": null, "xRealIp": null, "xForwardedFor": null, "expected": "user-2" },
+
+    { "name": "rl-ai-per-org-budget: ai tier with org -> per-org", "category": "ai", "userId": "user-1", "organizationId": "org-9", "apiKeyId": null, "xRealIp": null, "xForwardedFor": null, "expected": "org:org-9" },
+    { "name": "rl-ai-per-org-budget: userA in orgX shares ai bucket", "category": "ai", "userId": "user-A", "organizationId": "org-X", "apiKeyId": null, "xRealIp": null, "xForwardedFor": null, "expected": "org:org-X" },
+    { "name": "rl-ai-per-org-budget: userB in orgX shares SAME ai bucket", "category": "ai", "userId": "user-B", "organizationId": "org-X", "apiKeyId": null, "xRealIp": null, "xForwardedFor": null, "expected": "org:org-X" },
+    { "name": "rl-ai-per-org-budget: ai WITHOUT org falls back to user id", "category": "ai", "userId": "user-3", "organizationId": null, "apiKeyId": null, "xRealIp": null, "xForwardedFor": null, "expected": "user-3" },
+    { "name": "rl-ai-per-org-budget: non-ai stays per-user even with org", "category": "query", "userId": "user-A", "organizationId": "org-X", "apiKeyId": null, "xRealIp": null, "xForwardedFor": null, "expected": "user-A" },
+
+    { "name": "rl-per-apikey-quota: external surface keys on apikey:{id}", "category": "query", "userId": null, "organizationId": null, "apiKeyId": "key-abc", "xRealIp": null, "xForwardedFor": null, "expected": "apikey:key-abc" },
+    { "name": "rl-per-apikey-quota: same key from IP A", "category": "query", "userId": null, "organizationId": "org-7", "apiKeyId": "key-xyz", "xRealIp": "1.1.1.1", "xForwardedFor": null, "expected": "apikey:key-xyz" },
+    { "name": "rl-per-apikey-quota: same key from IP B -> SAME bucket", "category": "query", "userId": null, "organizationId": "org-7", "apiKeyId": "key-xyz", "xRealIp": "9.9.9.9", "xForwardedFor": null, "expected": "apikey:key-xyz" },
+
+    { "name": "rl-xff-spoof-bucket: x-real-ip wins over xff", "category": "query", "userId": null, "organizationId": null, "apiKeyId": null, "xRealIp": "203.0.113.5", "xForwardedFor": "1.1.1.1, 2.2.2.2", "expected": "ip:203.0.113.5" },
+    { "name": "rl-xff-spoof-bucket: last xff hop when no real-ip", "category": "query", "userId": null, "organizationId": null, "apiKeyId": null, "xRealIp": null, "xForwardedFor": "1.1.1.1, 2.2.2.2", "expected": "ip:2.2.2.2" },
+    { "name": "rl-xff-spoof-bucket: attacker rotating FIRST hop -> SAME bucket", "category": "query", "userId": null, "organizationId": null, "apiKeyId": null, "xRealIp": null, "xForwardedFor": "9.9.9.9, 2.2.2.2", "expected": "ip:2.2.2.2" },
+    { "name": "rl-xff-spoof-bucket: single xff hop", "category": "query", "userId": null, "organizationId": null, "apiKeyId": null, "xRealIp": null, "xForwardedFor": "5.5.5.5", "expected": "ip:5.5.5.5" },
+    { "name": "rl-xff-spoof-bucket: xff hops are trimmed", "category": "query", "userId": null, "organizationId": null, "apiKeyId": null, "xRealIp": null, "xForwardedFor": " 1.1.1.1 , 2.2.2.2 ", "expected": "ip:2.2.2.2" },
+    { "name": "rl-xff-spoof-bucket: x-real-ip is trimmed", "category": "query", "userId": null, "organizationId": null, "apiKeyId": null, "xRealIp": "  203.0.113.9  ", "xForwardedFor": null, "expected": "ip:203.0.113.9" },
+
+    { "name": "anonymous: no user, no headers -> anonymous", "category": "query", "userId": null, "organizationId": null, "apiKeyId": null, "xRealIp": null, "xForwardedFor": null, "expected": "anonymous" },
+    { "name": "anonymous: empty x-real-ip ignored, falls to xff", "category": "query", "userId": null, "organizationId": null, "apiKeyId": null, "xRealIp": "", "xForwardedFor": "7.7.7.7", "expected": "ip:7.7.7.7" },
+    { "name": "anonymous: empty/whitespace xff hops -> anonymous", "category": "query", "userId": null, "organizationId": null, "apiKeyId": null, "xRealIp": null, "xForwardedFor": " , ", "expected": "anonymous" }
+  ]
+}

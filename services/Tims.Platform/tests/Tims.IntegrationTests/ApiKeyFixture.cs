@@ -1,29 +1,25 @@
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using NpgsqlTypes;
-using Testcontainers.PostgreSql;
 using Tims.Domain.Identity;
 using Tims.Infrastructure.Identity;
 
 namespace Tims.IntegrationTests;
 
 /// <summary>
-/// Spins up one Postgres container with a MINIMAL hand-authored schema for the external `tims_`
-/// API-key plane (`organizations` + `api_keys` — only the columns <see cref="IdentityDbContext"/>
-/// maps, plus the jsonb `scopes`) and seeds the scenarios exercised by the WP2.3 tests: an active
-/// org, a suspended org, a soft-deleted org, and keys that are valid / empty-scope / revoked /
-/// expired / on a locked-out org / with malformed scopes.
+/// Owns the MINIMAL hand-authored schema for the external `tims_` API-key plane
+/// (`organizations` + `api_keys` — only the columns <see cref="IdentityDbContext"/> maps, plus the
+/// jsonb `scopes`) and the seed exercised by the WP2.3 tests: an active org, a suspended org, a
+/// soft-deleted org, and keys that are valid / empty-scope / revoked / expired / on a locked-out org
+/// / with malformed scopes. The container itself is now shared via <see cref="IdentitySchemaFixture"/>,
+/// which calls <see cref="SeedAsync"/> against the <c>tims_apikeys</c> database.
 ///
 /// This is the PRE-TENANT / privileged path, so — like <see cref="IdentityFixture"/> — there is no
 /// app_tenant role, no RLS, and no TenantScope. Key hashes are the SHA-256 of the raw tokens via
 /// the same <see cref="ApiKeyHash.Sha256Hex"/> the resolver uses, so the store↔verify hash matches.
 /// </summary>
-public sealed class ApiKeyFixture : IAsyncLifetime
+public static class ApiKeyFixture
 {
-    private const string LoginRole = "postgres";
-    private const string Password = "postgres";
-    private const string Database = "tims_apikeys";
-
     public static readonly Guid ActiveOrg = Guid.Parse("11111111-1111-1111-1111-111111111111");
     public static readonly Guid SuspendedOrg = Guid.Parse("22222222-2222-2222-2222-222222222222");
     public static readonly Guid DeletedOrg = Guid.Parse("33333333-3333-3333-3333-333333333333");
@@ -44,20 +40,9 @@ public sealed class ApiKeyFixture : IAsyncLifetime
     // The parsed scopes seeded for ValidToken (order-preserving).
     public static readonly string[] ValidScopes = ["read:candidates", "read:validations"];
 
-    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:16-alpine")
-        .WithUsername(LoginRole)
-        .WithPassword(Password)
-        .WithDatabase(Database)
-        .Build();
-
-    public string ConnectionString { get; private set; } = string.Empty;
-
-    public async Task InitializeAsync()
+    public static async Task SeedAsync(string connectionString)
     {
-        await _container.StartAsync();
-        ConnectionString = _container.GetConnectionString();
-
-        await using var connection = new NpgsqlConnection(ConnectionString);
+        await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync();
 
         await using (var setup = connection.CreateCommand())
@@ -135,11 +120,6 @@ public sealed class ApiKeyFixture : IAsyncLifetime
             });
             await insert.ExecuteNonQueryAsync();
         }
-    }
-
-    public async Task DisposeAsync()
-    {
-        await _container.DisposeAsync();
     }
 
     public static DbContextOptions<IdentityDbContext> BuildOptions(string connectionString)

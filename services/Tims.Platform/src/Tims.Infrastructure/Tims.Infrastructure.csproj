@@ -10,11 +10,21 @@
 
   <ItemGroup>
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+    <!-- WP2.6 rate limiter: raw Redis (EVAL of the exact Upstash slidingWindow Lua) so buckets
+         are SHARED with the TS @upstash/ratelimit stack. Pinned to the version the Api host
+         already carries (3.0.17) for a single resolved graph. -->
+    <PackageReference Include="StackExchange.Redis" Version="3.0.17" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Tims.Application\Tims.Application.csproj" />
     <ProjectReference Include="..\Tims.Domain\Tims.Domain.csproj" />
+  </ItemGroup>
+
+  <!-- Test seams: the deterministic-clock constructors on the rate limiters are internal so they
+       stay out of the production surface, but the WP2.6 tests drive them to pin bucket + weight. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Tims.IntegrationTests" />
   </ItemGroup>
 
 </Project>

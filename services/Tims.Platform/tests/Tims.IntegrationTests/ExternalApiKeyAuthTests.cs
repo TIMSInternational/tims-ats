@@ -16,7 +16,8 @@ namespace Tims.IntegrationTests;
 ///       condition → 401.
 /// Read-only over the Prisma-owned tables; no writes, no RLS scope.
 /// </summary>
-public sealed class ExternalApiKeyAuthTests(ApiKeyFixture fixture) : IClassFixture<ApiKeyFixture>
+[Collection("Identity")]
+public sealed class ExternalApiKeyAuthTests(IdentitySchemaFixture fixture)
 {
     private static string Bearer(string token) => $"Bearer {token}";
 
@@ -24,7 +25,7 @@ public sealed class ExternalApiKeyAuthTests(ApiKeyFixture fixture) : IClassFixtu
 
     private async Task<TenantContext?> Resolve(string? header)
     {
-        await using var db = new IdentityDbContext(ApiKeyFixture.BuildOptions(fixture.ConnectionString));
+        await using var db = new IdentityDbContext(ApiKeyFixture.BuildOptions(fixture.ApiKeyConnectionString));
         return await NewResolver(db).ResolveAsync(header, DateTime.UtcNow, CancellationToken.None);
     }
 
@@ -90,7 +91,7 @@ public sealed class ExternalApiKeyAuthTests(ApiKeyFixture fixture) : IClassFixtu
 
     private WebApplicationFactory<Program> Factory() =>
         new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
-            builder.UseSetting("Platform:DatabaseConnectionString", fixture.ConnectionString));
+            builder.UseSetting("Platform:DatabaseConnectionString", fixture.ApiKeyConnectionString));
 
     private static async Task<HttpResponseMessage> ExternalWhoAmI(HttpClient client, string? token)
     {

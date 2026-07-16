@@ -17,7 +17,8 @@ namespace Tims.IntegrationTests;
 /// endpoints enforce the resolved permission. This pins the JWT → PrincipalResolver →
 /// PermissionService → AccessKernel wiring the deferred Slice-2 registration promised.
 /// </summary>
-public sealed class ApiPermissionAuthTests(PermissionFixture fixture) : IClassFixture<PermissionFixture>
+[Collection("Identity")]
+public sealed class ApiPermissionAuthTests(IdentitySchemaFixture fixture)
 {
     private const string Issuer = "https://test-project.supabase.co/auth/v1";
     private const string Audience = "authenticated";
@@ -25,12 +26,12 @@ public sealed class ApiPermissionAuthTests(PermissionFixture fixture) : IClassFi
     private static readonly RSA SigningRsa = RSA.Create(2048);
     private static readonly RsaSecurityKey PrivateKey = new(SigningRsa) { KeyId = "test-key-1" };
 
-    private readonly PermissionFixture _fixture = fixture;
+    private readonly IdentitySchemaFixture _fixture = fixture;
 
     private WebApplicationFactory<Program> Factory() =>
         new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
-            builder.UseSetting("Platform:DatabaseConnectionString", _fixture.ConnectionString);
+            builder.UseSetting("Platform:DatabaseConnectionString", _fixture.RbacConnectionString);
             builder.UseSetting("Platform:SupabaseJwtIssuer", Issuer);
             builder.UseSetting("Platform:SupabaseJwtAudience", Audience);
 

@@ -300,6 +300,7 @@
         "type": "Project",
         "dependencies": {
           "Npgsql.EntityFrameworkCore.PostgreSQL": "[10.0.3, )",
+          "StackExchange.Redis": "[3.0.17, )",
           "Tims.Application": "[1.0.0, )",
           "Tims.Domain": "[1.0.0, )"
         }

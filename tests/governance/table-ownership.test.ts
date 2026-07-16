@@ -73,4 +73,46 @@ describe('table-ownership ledger check', () => {
     expect(violations[0]).toContain('unregistered EF table');
     expect(violations[0]).toContain('unregistered_tbl');
   });
+
+  it('allows an append-only EF mapping of a Prisma-owned table (WP2.7 audit writer, no collision)', () => {
+    const violations = checkOwnership({
+      efcore: ['widgets'],
+      efcoreAppendOnly: ['data_access_logs'],
+      prismaTables: ['data_access_logs', 'candidate'],
+      efcoreTables: ['widgets', 'data_access_logs'],
+    });
+    expect(violations).toEqual([]);
+  });
+
+  it('flags an append-only mapping of a table Prisma does not own', () => {
+    const violations = checkOwnership({
+      efcore: [],
+      efcoreAppendOnly: ['ghost_log'],
+      prismaTables: ['data_access_logs'],
+      efcoreTables: [],
+    });
+    expect(violations).toHaveLength(1);
+    expect(violations[0]).toContain('append-only mapping of a non-Prisma table');
+    expect(violations[0]).toContain('ghost_log');
+  });
+
+  it('does NOT treat an append-only table as a cross-owner collision (Prisma still owns the DDL)', () => {
+    // data_access_logs is @@map'd in Prisma AND EF-mapped for appends — this must be clean,
+    // proving efcoreAppendOnly is the honest middle category (not efcore, which WOULD collide).
+    const collision = checkOwnership({
+      efcore: ['data_access_logs'],
+      prismaTables: ['data_access_logs'],
+      efcoreTables: ['data_access_logs'],
+    });
+    expect(collision).toHaveLength(1);
+    expect(collision[0]).toContain('cross-owner collision');
+
+    const appendOnly = checkOwnership({
+      efcore: [],
+      efcoreAppendOnly: ['data_access_logs'],
+      prismaTables: ['data_access_logs'],
+      efcoreTables: ['data_access_logs'],
+    });
+    expect(appendOnly).toEqual([]);
+  });
 });

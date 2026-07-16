@@ -10,7 +10,8 @@ namespace Tims.IntegrationTests;
 /// through the pure <see cref="StaffContextResolver"/> to the correct <see cref="TenantContext"/>.
 /// Read-only over the Prisma-owned tables; no writes, no RLS scope.
 /// </summary>
-public sealed class IdentityResolutionTests(IdentityFixture fixture) : IClassFixture<IdentityFixture>
+[Collection("Identity")]
+public sealed class IdentityResolutionTests(IdentitySchemaFixture fixture)
 {
     private PrincipalResolver NewResolver(IdentityDbContext db) => new(new IdentityRepository(db));
 
@@ -18,7 +19,7 @@ public sealed class IdentityResolutionTests(IdentityFixture fixture) : IClassFix
     [Fact]
     public async Task ActiveOrgStaff_ResolvesToOrgUser_WithExternalRoleFiltered()
     {
-        await using var db = new IdentityDbContext(IdentityFixture.BuildOptions(fixture.ConnectionString));
+        await using var db = new IdentityDbContext(IdentityFixture.BuildOptions(fixture.IdentityConnectionString));
         var resolver = NewResolver(db);
 
         var result = await resolver.ResolveStaffAsync(IdentityFixture.ActiveStaffSub, CancellationToken.None);
@@ -36,7 +37,7 @@ public sealed class IdentityResolutionTests(IdentityFixture fixture) : IClassFix
     [Fact]
     public async Task PlatformOwner_ResolvesToPlatformOwner_WithCollapsedRoles()
     {
-        await using var db = new IdentityDbContext(IdentityFixture.BuildOptions(fixture.ConnectionString));
+        await using var db = new IdentityDbContext(IdentityFixture.BuildOptions(fixture.IdentityConnectionString));
         var resolver = NewResolver(db);
 
         var result = await resolver.ResolveStaffAsync(IdentityFixture.PlatformOwnerSub, CancellationToken.None);
@@ -52,7 +53,7 @@ public sealed class IdentityResolutionTests(IdentityFixture fixture) : IClassFix
     [Fact]
     public async Task InactiveUser_NeedsFallback()
     {
-        await using var db = new IdentityDbContext(IdentityFixture.BuildOptions(fixture.ConnectionString));
+        await using var db = new IdentityDbContext(IdentityFixture.BuildOptions(fixture.IdentityConnectionString));
         var resolver = NewResolver(db);
 
         var result = await resolver.ResolveStaffAsync(IdentityFixture.InactiveSub, CancellationToken.None);
@@ -65,7 +66,7 @@ public sealed class IdentityResolutionTests(IdentityFixture fixture) : IClassFix
     [Fact]
     public async Task UnknownSupabaseUserId_NeedsFallback()
     {
-        await using var db = new IdentityDbContext(IdentityFixture.BuildOptions(fixture.ConnectionString));
+        await using var db = new IdentityDbContext(IdentityFixture.BuildOptions(fixture.IdentityConnectionString));
         var resolver = NewResolver(db);
 
         var result = await resolver.ResolveStaffAsync(IdentityFixture.UnknownSub, CancellationToken.None);
@@ -78,7 +79,7 @@ public sealed class IdentityResolutionTests(IdentityFixture fixture) : IClassFix
     [Fact]
     public async Task FindBySupabaseUserId_MapsNullOrganizationId()
     {
-        await using var db = new IdentityDbContext(IdentityFixture.BuildOptions(fixture.ConnectionString));
+        await using var db = new IdentityDbContext(IdentityFixture.BuildOptions(fixture.IdentityConnectionString));
         var repository = new IdentityRepository(db);
 
         var row = await repository.FindBySupabaseUserIdAsync(IdentityFixture.OrglessOwnerSub, CancellationToken.None);

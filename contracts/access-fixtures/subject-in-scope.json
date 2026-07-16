@@ -1,0 +1,181 @@
+{
+  "description": "assertSubjectInScope({allowed:true, scope, roles:[], anchors}, userId, targetUserId, msg) — packages/api/src/access/write-rules.ts. Write-rule for creates that TARGET another user: the target must be inside the caller's subject set. organization/company → allowed; own → self only; team → teamMemberIds; unit → unitMemberIds; narrow scope with no anchor loader → forbidden. expected=true means allowed (TS resolves without throwing); expected=false means it throws FORBIDDEN. Asserted IDENTICALLY by the TS suite (real assertSubjectInScope, catch→false) and Tims.UnitTests (SubjectInScope.IsSatisfiedAsync → bool).",
+  "cases": [
+    {
+      "name": "organization → allowed (anchors never consulted)",
+      "scope": "organization",
+      "userId": "11111111-1111-1111-1111-111111111111",
+      "targetUserId": "99999999-9999-9999-9999-999999999999",
+      "teamMembers": [
+        "11111111-1111-1111-1111-111111111111",
+        "c3c3c3c3-0000-0000-0000-000000000002"
+      ],
+      "unitMembers": [
+        "d4d4d4d4-0000-0000-0000-000000000001",
+        "d4d4d4d4-0000-0000-0000-000000000002"
+      ],
+      "hasAnchors": true,
+      "expected": true
+    },
+    {
+      "name": "company → allowed (anchors never consulted)",
+      "scope": "company",
+      "userId": "11111111-1111-1111-1111-111111111111",
+      "targetUserId": "99999999-9999-9999-9999-999999999999",
+      "teamMembers": [
+        "11111111-1111-1111-1111-111111111111",
+        "c3c3c3c3-0000-0000-0000-000000000002"
+      ],
+      "unitMembers": [
+        "d4d4d4d4-0000-0000-0000-000000000001",
+        "d4d4d4d4-0000-0000-0000-000000000002"
+      ],
+      "hasAnchors": true,
+      "expected": true
+    },
+    {
+      "name": "own → self allowed",
+      "scope": "own",
+      "userId": "11111111-1111-1111-1111-111111111111",
+      "targetUserId": "11111111-1111-1111-1111-111111111111",
+      "teamMembers": [
+        "11111111-1111-1111-1111-111111111111",
+        "c3c3c3c3-0000-0000-0000-000000000002"
+      ],
+      "unitMembers": [
+        "d4d4d4d4-0000-0000-0000-000000000001",
+        "d4d4d4d4-0000-0000-0000-000000000002"
+      ],
+      "hasAnchors": true,
+      "expected": true
+    },
+    {
+      "name": "own → other forbidden",
+      "scope": "own",
+      "userId": "11111111-1111-1111-1111-111111111111",
+      "targetUserId": "99999999-9999-9999-9999-999999999999",
+      "teamMembers": [
+        "11111111-1111-1111-1111-111111111111",
+        "c3c3c3c3-0000-0000-0000-000000000002"
+      ],
+      "unitMembers": [
+        "d4d4d4d4-0000-0000-0000-000000000001",
+        "d4d4d4d4-0000-0000-0000-000000000002"
+      ],
+      "hasAnchors": true,
+      "expected": false
+    },
+    {
+      "name": "team → member allowed",
+      "scope": "team",
+      "userId": "11111111-1111-1111-1111-111111111111",
+      "targetUserId": "c3c3c3c3-0000-0000-0000-000000000002",
+      "teamMembers": [
+        "11111111-1111-1111-1111-111111111111",
+        "c3c3c3c3-0000-0000-0000-000000000002"
+      ],
+      "unitMembers": [
+        "d4d4d4d4-0000-0000-0000-000000000001",
+        "d4d4d4d4-0000-0000-0000-000000000002"
+      ],
+      "hasAnchors": true,
+      "expected": true
+    },
+    {
+      "name": "team → self (floor member) allowed",
+      "scope": "team",
+      "userId": "11111111-1111-1111-1111-111111111111",
+      "targetUserId": "11111111-1111-1111-1111-111111111111",
+      "teamMembers": [
+        "11111111-1111-1111-1111-111111111111",
+        "c3c3c3c3-0000-0000-0000-000000000002"
+      ],
+      "unitMembers": [
+        "d4d4d4d4-0000-0000-0000-000000000001",
+        "d4d4d4d4-0000-0000-0000-000000000002"
+      ],
+      "hasAnchors": true,
+      "expected": true
+    },
+    {
+      "name": "team → non-member forbidden",
+      "scope": "team",
+      "userId": "11111111-1111-1111-1111-111111111111",
+      "targetUserId": "99999999-9999-9999-9999-999999999999",
+      "teamMembers": [
+        "11111111-1111-1111-1111-111111111111",
+        "c3c3c3c3-0000-0000-0000-000000000002"
+      ],
+      "unitMembers": [
+        "d4d4d4d4-0000-0000-0000-000000000001",
+        "d4d4d4d4-0000-0000-0000-000000000002"
+      ],
+      "hasAnchors": true,
+      "expected": false
+    },
+    {
+      "name": "unit → member allowed",
+      "scope": "unit",
+      "userId": "11111111-1111-1111-1111-111111111111",
+      "targetUserId": "d4d4d4d4-0000-0000-0000-000000000001",
+      "teamMembers": [
+        "11111111-1111-1111-1111-111111111111",
+        "c3c3c3c3-0000-0000-0000-000000000002"
+      ],
+      "unitMembers": [
+        "d4d4d4d4-0000-0000-0000-000000000001",
+        "d4d4d4d4-0000-0000-0000-000000000002"
+      ],
+      "hasAnchors": true,
+      "expected": true
+    },
+    {
+      "name": "unit → non-member forbidden",
+      "scope": "unit",
+      "userId": "11111111-1111-1111-1111-111111111111",
+      "targetUserId": "99999999-9999-9999-9999-999999999999",
+      "teamMembers": [
+        "11111111-1111-1111-1111-111111111111",
+        "c3c3c3c3-0000-0000-0000-000000000002"
+      ],
+      "unitMembers": [
+        "d4d4d4d4-0000-0000-0000-000000000001",
+        "d4d4d4d4-0000-0000-0000-000000000002"
+      ],
+      "hasAnchors": true,
+      "expected": false
+    },
+    {
+      "name": "team → no anchor loader forbidden (never silently unscoped)",
+      "scope": "team",
+      "userId": "11111111-1111-1111-1111-111111111111",
+      "targetUserId": "c3c3c3c3-0000-0000-0000-000000000002",
+      "teamMembers": [
+        "11111111-1111-1111-1111-111111111111",
+        "c3c3c3c3-0000-0000-0000-000000000002"
+      ],
+      "unitMembers": [
+        "d4d4d4d4-0000-0000-0000-000000000001",
+        "d4d4d4d4-0000-0000-0000-000000000002"
+      ],
+      "hasAnchors": false,
+      "expected": false
+    },
+    {
+      "name": "unit → no anchor loader forbidden",
+      "scope": "unit",
+      "userId": "11111111-1111-1111-1111-111111111111",
+      "targetUserId": "d4d4d4d4-0000-0000-0000-000000000001",
+      "teamMembers": [
+        "11111111-1111-1111-1111-111111111111",
+        "c3c3c3c3-0000-0000-0000-000000000002"
+      ],
+      "unitMembers": [
+        "d4d4d4d4-0000-0000-0000-000000000001",
+        "d4d4d4d4-0000-0000-0000-000000000002"
+      ],
+      "hasAnchors": false,
+      "expected": false
+    }
+  ]
+}

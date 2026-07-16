@@ -1,13 +1,14 @@
 using Npgsql;
-using Testcontainers.PostgreSql;
 
 namespace Tims.IntegrationTests;
 
 /// <summary>
-/// Spins up one Postgres container with the identity + RBAC tables the permission check reads
-/// (`organizations`, `users`, `roles`, `user_roles`, `permissions`, `role_permissions` — only the
-/// columns the EF entities map plus required NOT NULLs) and seeds the WP2.5 scenarios exercised by
-/// <see cref="PermissionServiceTests"/> and <see cref="ApiPermissionAuthTests"/>.
+/// Owns the identity + RBAC tables the permission check reads (`organizations`, `users`, `roles`,
+/// `user_roles`, `permissions`, `role_permissions` — only the columns the EF entities map plus
+/// required NOT NULLs) and the WP2.5 seed exercised by <see cref="PermissionServiceTests"/> and
+/// <see cref="ApiPermissionAuthTests"/>. The container itself is now shared via
+/// <see cref="IdentitySchemaFixture"/>, which calls <see cref="SeedAsync"/> against the
+/// <c>tims_rbac</c> database.
 ///
 /// PRE-TENANT / privileged path (no app_tenant role, no RLS): the container's superuser connection
 /// is exactly the owner connection the permission service runs on in prod.
@@ -19,12 +20,8 @@ namespace Tims.IntegrationTests;
 ///   employee   → (no grants)
 /// HTTP user (<see cref="HttpUserSub"/>) holds [recruiter, leader].
 /// </summary>
-public sealed class PermissionFixture : IAsyncLifetime
+public static class PermissionFixture
 {
-    private const string LoginRole = "postgres";
-    private const string Password = "postgres";
-    private const string Database = "tims_rbac";
-
     public static readonly Guid OrgA = Guid.Parse("22222222-2222-2222-2222-222222222222");
 
     // Role slugs (stable) — the service queries by slug, so the tests reference these directly.
@@ -45,20 +42,9 @@ public sealed class PermissionFixture : IAsyncLifetime
     private static readonly Guid CandidateReadPermId = Guid.Parse("e0000000-0000-0000-0000-000000000001");
     private static readonly Guid PerformanceReadPermId = Guid.Parse("e0000000-0000-0000-0000-000000000002");
 
-    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:16-alpine")
-        .WithUsername(LoginRole)
-        .WithPassword(Password)
-        .WithDatabase(Database)
-        .Build();
-
-    public string ConnectionString { get; private set; } = string.Empty;
-
-    public async Task InitializeAsync()
+    public static async Task SeedAsync(string connectionString)
     {
-        await _container.StartAsync();
-        ConnectionString = _container.GetConnectionString();
-
-        await using var connection = new NpgsqlConnection(ConnectionString);
+        await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync();
 
         await using var setup = connection.CreateCommand();
@@ -144,10 +130,5 @@ public sealed class PermissionFixture : IAsyncLifetime
         seed.Parameters.AddWithValue("httpUser", HttpUserId);
         seed.Parameters.AddWithValue("httpUserSub", HttpUserSub);
         await seed.ExecuteNonQueryAsync();
-    }
-
-    public async Task DisposeAsync()
-    {
-        await _container.DisposeAsync();
     }
 }

@@ -1,0 +1,14 @@
+{
+  "description": "auditRequiredFor(entity) — packages/api/src/access/audit.ts: DATA_CLASS_RANK[dataClassOf(entity)] >= DATA_CLASS_RANK.confidential. confidential + restricted reads MUST be logged; public/internal need no audit row. Ported to Tims.Domain.Audit.AuditPolicy.AuditRequiredFor. Asserted by the REAL TS auditRequiredFor (tests/audit/audit-fixtures.test.ts) AND Tims.UnitTests (AuditPolicyFixtureTests).",
+  "cases": [
+    { "name": "restricted requires audit (employeeCompensation)", "entity": "employeeCompensation", "expected": true },
+    { "name": "restricted requires audit (salaryAdjustment)", "entity": "salaryAdjustment", "expected": true },
+    { "name": "restricted requires audit (assessmentResult)", "entity": "assessmentResult", "expected": true },
+    { "name": "confidential requires audit (employeeDemographics)", "entity": "employeeDemographics", "expected": true },
+    { "name": "confidential requires audit (surveyResponse)", "entity": "surveyResponse", "expected": true },
+    { "name": "internal (unknown) does NOT require audit (candidate)", "entity": "candidate", "expected": false },
+    { "name": "internal (unknown) does NOT require audit (vacancy)", "entity": "vacancy", "expected": false },
+    { "name": "empty entity (internal) does NOT require audit", "entity": "", "expected": false },
+    { "name": "wrong-case entity falls through to internal, no audit", "entity": "EmployeeCompensation", "expected": false }
+  ]
+}

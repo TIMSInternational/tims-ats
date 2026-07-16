@@ -40,6 +40,16 @@
       <Link>identity-fixtures\%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <!-- WP2.6 rate-limit category + identifier parity fixtures (shared with the TS vitest suite). -->
+    <Content Include="..\..\..\..\contracts\ratelimit-fixtures\*.json">
+      <Link>ratelimit-fixtures\%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <!-- WP2.7 audit-plane classification + audit-required parity fixtures (shared with the TS vitest suite). -->
+    <Content Include="..\..\..\..\contracts\audit-fixtures\*.json">
+      <Link>audit-fixtures\%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
 </Project>

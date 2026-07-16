@@ -9,13 +9,20 @@ using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using Serilog;
 using Serilog.Formatting.Compact;
+using StackExchange.Redis;
 using Tims.Api.Authentication;
 using Tims.Api.Configuration;
 using Tims.Api.HealthChecks;
+using Tims.Api.RateLimiting;
+using Tims.Application.Access;
+using Tims.Application.Audit;
 using Tims.Application.Identity;
 using Tims.Domain.Access;
 using Tims.Domain.Identity;
+using Tims.Infrastructure.Access;
+using Tims.Infrastructure.Audit;
 using Tims.Infrastructure.Identity;
+using Tims.Infrastructure.RateLimiting;
 
 // Two-stage Serilog init: a bootstrap logger captures failures during host build
 // (including config-validation failures), then the full logger is swapped in.
@@ -88,10 +95,32 @@ try
     // run AccessKernel.Decide. The permission cache defaults to the fail-soft null impl (no
     // Redis needed); a Redis-backed cache is a config-gated swap for this one registration.
     builder.Services.AddScoped<IIdentityRepository, IdentityRepository>();
+    // Candidate resolution (4th principal type): a portal Supabase session with NO staff User row
+    // resolves to PrincipalType.Candidate by email within a request-supplied org. Read-only over the
+    // Prisma-OWNED `candidates` table via IdentityDbContext. PrincipalResolver picks up CandidateResolver
+    // as an optional dependency to run staff-first / candidate-fallback (never an email-join to staff).
+    builder.Services.AddScoped<ICandidateRepository, CandidateRepository>();
+    builder.Services.AddScoped<CandidateResolver>();
     builder.Services.AddScoped<PrincipalResolver>();
     builder.Services.AddScoped<IPermissionGrantRepository, PermissionGrantRepository>();
     builder.Services.AddScoped<PermissionService>();
     builder.Services.AddSingleton<IPermissionCache, NullPermissionCache>();
+
+    // --- Scoped IDOR machinery (WP2.5b): anchor loaders + AssertScoped probe -----------
+    // AnchorDbContext runs UNDER TenantScope (SET LOCAL ROLE app_tenant + org GUC) on the SAME DB
+    // connection, but the tenant/RLS-scoped path — NOT the privileged IdentityDbContext. A context
+    // FACTORY (not a scoped context) so every request-local anchor loader + probe gets a fresh,
+    // isolated instance it owns and disposes (anchors must never be cached across requests).
+    builder.Services.AddDbContextFactory<AnchorDbContext>(options => options.UseNpgsql(databaseConnectionString));
+    builder.Services.AddScoped<IAnchorLoaderFactory, EfAnchorLoaderFactory>();
+    builder.Services.AddScoped<ScopedProbe>();
+
+    // --- Audit plane (WP2.7): the single data_access_log writer ------------------------
+    // The ONE legitimate, append-only C# write. DataAccessAuditDbContext maps the Prisma-OWNED,
+    // append-only `data_access_logs` table and writes UNDER TenantScope (app_tenant + org GUC) so the
+    // RLS WITH CHECK passes for the caller's org. Same DB connection string as the identity plane.
+    builder.Services.AddDbContext<DataAccessAuditDbContext>(options => options.UseNpgsql(databaseConnectionString));
+    builder.Services.AddScoped<IDataAccessAuditor, DataAccessAuditWriter>();
 
     builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         .AddJwtBearer(options =>
@@ -147,12 +176,49 @@ try
             policy.RequireAuthenticatedUser();
         }));
 
+    // --- Rate limiting (WP2.6) --------------------------------------------------------
+    // Shared-bucket sliding-window limiter that reproduces @upstash/ratelimit byte-for-byte, so
+    // C# and TS throttle against the SAME Redis keys. The Redis limiter is registered ONLY when a
+    // connection string is configured (Upstash exposes a Redis TCP endpoint); AbortOnConnectFail
+    // is false so a transient outage surfaces as a per-call RedisConnectionException the guard
+    // handles (fail-open-to-in-memory in Development, fail-closed in production) rather than
+    // crashing the host. The in-memory fallback is always registered but engaged Development-only.
+    var redisConnectionString = platformSection[nameof(PlatformOptions.RedisConnectionString)];
+    if (!string.IsNullOrWhiteSpace(redisConnectionString))
+    {
+        builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
+        {
+            var config = ConfigurationOptions.Parse(redisConnectionString);
+            config.AbortOnConnectFail = false;
+            return ConnectionMultiplexer.Connect(config);
+        });
+        builder.Services.AddSingleton<RedisSlidingWindowRateLimiter>();
+    }
+
+    builder.Services.AddSingleton<InMemorySlidingWindowRateLimiter>();
+    builder.Services.AddSingleton<RateLimitGuard>(sp => new RateLimitGuard(
+        sp.GetService<RedisSlidingWindowRateLimiter>(),
+        sp.GetRequiredService<InMemorySlidingWindowRateLimiter>(),
+        sp.GetRequiredService<IHostEnvironment>()));
+
     // --- OpenAPI (emitted to contracts/openapi at build; served at /openapi/v1.json) --
     builder.Services.AddOpenApi();
 
     var app = builder.Build();
 
     app.UseAuthentication();
+
+    // Principal resolution runs AFTER authentication and BEFORE rate limiting: it resolves the TIMS
+    // principal ONCE (JWT `sub` → TenantContext via PrincipalResolver) and stashes it, so the limiter
+    // keys authenticated staff/owner on the TIMS `users.id` (AI → `org:{orgId}`) — NOT the raw JWT
+    // `sub` — matching the TS `ctx.user.id` surface, and the authz probes reuse it (dedupe).
+    app.UseMiddleware<PrincipalResolutionMiddleware>();
+
+    // Rate limiting runs AFTER principal resolution (so the resolved TIMS principal is available to
+    // key the bucket) but BEFORE authorization/handlers. Infra + auth-probe paths are exempt inside
+    // the middleware; the API-key per-key quota is enforced by ApiKeyRateLimitFilter post-auth.
+    app.UseMiddleware<RateLimitMiddleware>();
+
     app.UseAuthorization();
 
     app.UseSerilogRequestLogging(options =>
@@ -195,6 +261,9 @@ try
                 scopes = user.FindAll(ApiKeyAuthenticationHandler.ScopeClaimType).Select(c => c.Value).ToArray(),
             }))
         .RequireAuthorization(ApiKeyAuthenticationHandler.SchemeName)
+        // Per-key rate-limit quota (apikey:{id}), enforced AFTER the ApiKey scheme authenticates —
+        // the C# analog of the TS per-key limit in requireApiKey (trpc.ts).
+        .AddEndpointFilter<ApiKeyRateLimitFilter>()
         .WithName("ExternalWhoAmI");
 
     // Authz probe (WP2.5): the C# equivalent of the tRPC `requirePermission` gate. Resolves the
@@ -278,6 +347,9 @@ try
 
     // Shared principal resolution for the authz probes: JWT `sub` → TenantContext (or null when the
     // caller is not resolvable staff). Honors the platform-owner impersonation cookie + secret.
+    // Reuses the principal already resolved by PrincipalResolutionMiddleware (stashed in
+    // HttpContext.Items) to avoid a second DB round-trip; falls back to resolving here if absent
+    // (e.g. a path the middleware exempts), staying robust.
     static async Task<TenantContext?> ResolvePrincipalAsync(
         ClaimsPrincipal user,
         HttpContext httpContext,
@@ -285,6 +357,12 @@ try
         PlatformOptions options,
         CancellationToken cancellationToken)
     {
+        if (httpContext.Items.TryGetValue(ResolvedPrincipal.HttpContextKey, out var stashed)
+            && stashed is ResolvedPrincipal resolvedPrincipal)
+        {
+            return resolvedPrincipal.Context;
+        }
+
         var sub = user.FindFirst("sub")?.Value;
         if (string.IsNullOrEmpty(sub))
         {

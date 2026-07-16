@@ -14,7 +14,8 @@ namespace Tims.IntegrationTests;
 /// Reuses <see cref="IdentityFixture"/>: PlatformOwner is the impersonator, ActiveStaff is the valid
 /// target (active, org, non-owner), and OrglessOwner is "another owner" (a rejected target).
 /// </summary>
-public sealed class ImpersonationResolutionTests(IdentityFixture fixture) : IClassFixture<IdentityFixture>
+[Collection("Identity")]
+public sealed class ImpersonationResolutionTests(IdentitySchemaFixture fixture)
 {
     private const string Secret = "integration-impersonation-secret";
     private static readonly DateTime Now = new(2026, 7, 16, 12, 0, 0, DateTimeKind.Utc);
@@ -28,7 +29,7 @@ public sealed class ImpersonationResolutionTests(IdentityFixture fixture) : ICla
     [Fact]
     public async Task Owner_WithValidCookie_ResolvesToTarget()
     {
-        await using var db = new IdentityDbContext(IdentityFixture.BuildOptions(fixture.ConnectionString));
+        await using var db = new IdentityDbContext(IdentityFixture.BuildOptions(fixture.IdentityConnectionString));
         var resolver = NewResolver(db);
 
         var token = ImpersonationCookie.SignImpersonationToken(
@@ -50,7 +51,7 @@ public sealed class ImpersonationResolutionTests(IdentityFixture fixture) : ICla
     [Fact]
     public async Task Owner_WithForgedCookie_ResolvesToOwnOwnerContext()
     {
-        await using var db = new IdentityDbContext(IdentityFixture.BuildOptions(fixture.ConnectionString));
+        await using var db = new IdentityDbContext(IdentityFixture.BuildOptions(fixture.IdentityConnectionString));
         var resolver = NewResolver(db);
 
         var token = ImpersonationCookie.SignImpersonationToken(
@@ -67,7 +68,7 @@ public sealed class ImpersonationResolutionTests(IdentityFixture fixture) : ICla
     [Fact]
     public async Task Owner_WithExpiredCookie_ResolvesToOwnOwnerContext()
     {
-        await using var db = new IdentityDbContext(IdentityFixture.BuildOptions(fixture.ConnectionString));
+        await using var db = new IdentityDbContext(IdentityFixture.BuildOptions(fixture.IdentityConnectionString));
         var resolver = NewResolver(db);
 
         // Signed two hours ago with the default 1h TTL → already expired at Now.
@@ -85,7 +86,7 @@ public sealed class ImpersonationResolutionTests(IdentityFixture fixture) : ICla
     [Fact]
     public async Task Owner_WithValidCookieButNoSecret_ResolvesToOwnOwnerContext()
     {
-        await using var db = new IdentityDbContext(IdentityFixture.BuildOptions(fixture.ConnectionString));
+        await using var db = new IdentityDbContext(IdentityFixture.BuildOptions(fixture.IdentityConnectionString));
         var resolver = NewResolver(db);
 
         var token = ImpersonationCookie.SignImpersonationToken(
@@ -101,7 +102,7 @@ public sealed class ImpersonationResolutionTests(IdentityFixture fixture) : ICla
     [Fact]
     public async Task NonOwner_WithValidCookie_ResolvesToOwnContext_TargetIgnored()
     {
-        await using var db = new IdentityDbContext(IdentityFixture.BuildOptions(fixture.ConnectionString));
+        await using var db = new IdentityDbContext(IdentityFixture.BuildOptions(fixture.IdentityConnectionString));
         var resolver = NewResolver(db);
 
         // A cookie that would impersonate the org-less owner — must be IGNORED for a non-owner caller.
@@ -123,7 +124,7 @@ public sealed class ImpersonationResolutionTests(IdentityFixture fixture) : ICla
     [Fact]
     public async Task Owner_ImpersonatingAnotherOwner_ResolvesToOwnOwnerContext()
     {
-        await using var db = new IdentityDbContext(IdentityFixture.BuildOptions(fixture.ConnectionString));
+        await using var db = new IdentityDbContext(IdentityFixture.BuildOptions(fixture.IdentityConnectionString));
         var resolver = NewResolver(db);
 
         // Target is the org-less owner — StaffContextResolver rejects an owner target (not-owner rule).
@@ -140,7 +141,7 @@ public sealed class ImpersonationResolutionTests(IdentityFixture fixture) : ICla
     [Fact]
     public async Task NoCookieOverload_ResolvesOwnerOwnContext()
     {
-        await using var db = new IdentityDbContext(IdentityFixture.BuildOptions(fixture.ConnectionString));
+        await using var db = new IdentityDbContext(IdentityFixture.BuildOptions(fixture.IdentityConnectionString));
         var resolver = NewResolver(db);
 
         var result = await resolver.ResolveStaffAsync(IdentityFixture.PlatformOwnerSub, CancellationToken.None);
