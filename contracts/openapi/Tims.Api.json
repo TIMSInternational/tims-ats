@@ -30,6 +30,19 @@
           }
         }
       }
+    },
+    "/external-whoami": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "ExternalWhoAmI",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
     }
   },
   "tags": [

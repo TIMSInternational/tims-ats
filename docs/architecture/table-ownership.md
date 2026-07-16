@@ -29,11 +29,23 @@ Ownership transfers (Phase 5 strangler) move a table from `prisma` to `efcore` i
   "efcore": [
     "widgets"
   ],
+  "efcoreReadOnly": [
+    "users",
+    "user_roles",
+    "roles",
+    "organizations",
+    "api_keys"
+  ],
   "notes": {
-    "widgets": "Phase-1 Spike A test-only table (Testcontainers DDL + TenantWidgetDbContext). NOT a product table; created by hand-authored test SQL, never by an EF migration against prod."
+    "widgets": "Phase-1 Spike A test-only table (Testcontainers DDL + TenantWidgetDbContext). NOT a product table; created by hand-authored test SQL, never by an EF migration against prod.",
+    "efcoreReadOnly": "Phase-2 identity plane reads these Prisma-OWNED tables via EF (IdentityDbContext, no writes) to resolve principals + API keys. Prisma keeps the DDL; EF only SELECTs. NOT an ownership transfer — they still appear in the Prisma schema (that is expected, not a collision). Writes stay on the owning (Prisma/tRPC) stack until a Phase-5 strangler transfers a domain."
   }
 }
 ```
+
+- **`efcore`** — EF-OWNED (DDL + writes). Must NOT be `@@map`'d in Prisma.
+- **`efcoreReadOnly`** — Prisma-OWNED, EF reads only. MUST be `@@map`'d in Prisma. Every EF `ToTable(...)`
+  in `Tims.Platform` must appear in one of the two lists, or the CI check fails.
 
 ## What the CI check enforces (Phase 1)
 

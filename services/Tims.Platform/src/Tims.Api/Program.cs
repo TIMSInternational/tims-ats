@@ -1,12 +1,17 @@
 using System.Diagnostics;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using Serilog;
 using Serilog.Formatting.Compact;
+using Tims.Api.Authentication;
 using Tims.Api.Configuration;
 using Tims.Api.HealthChecks;
+using Tims.Application.Identity;
+using Tims.Infrastructure.Identity;
 
 // Two-stage Serilog init: a bootstrap logger captures failures during host build
 // (including config-validation failures), then the full logger is swapped in.
@@ -64,6 +69,15 @@ try
     var jwtAudience = platformSection[nameof(PlatformOptions.SupabaseJwtAudience)] ?? "authenticated";
     var jwksMetadataAddress = platformSection[nameof(PlatformOptions.SupabaseJwksMetadataAddress)];
 
+    // --- Identity plane data sources (WP2.2 staff / WP2.3 external API keys) -----------
+    // READ-ONLY EF context over the Prisma-OWNED identity tables on the PRIVILEGED (pre-tenant)
+    // connection — never through TenantScope/RLS. The connection string is read raw here (same as
+    // the JWT bootstrap values); AddDbContext is lazy, so a placeholder value never blocks startup.
+    var databaseConnectionString = platformSection[nameof(PlatformOptions.DatabaseConnectionString)];
+    builder.Services.AddDbContext<IdentityDbContext>(options => options.UseNpgsql(databaseConnectionString));
+    builder.Services.AddScoped<IApiKeyRepository, ApiKeyRepository>();
+    builder.Services.AddScoped<ApiKeyResolver>();
+
     builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         .AddJwtBearer(options =>
         {
@@ -101,8 +115,22 @@ try
                     return Task.CompletedTask;
                 },
             };
-        });
-    builder.Services.AddAuthorization();
+        })
+        // --- External `tims_` API-key scheme (WP2.3) ----------------------------------
+        // A distinct scheme from the Supabase JWT: it authenticates integrations presenting
+        // `Authorization: Bearer tims_...`, resolving the key to an ExternalApiKey principal.
+        // Fail-closed inside the handler (no valid key → 401).
+        .AddScheme<AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>(
+            ApiKeyAuthenticationHandler.SchemeName, _ => { });
+
+    builder.Services.AddAuthorization(options =>
+        // Policy that authenticates ONLY the ApiKey scheme, so /external-whoami cannot be reached
+        // with a Supabase JWT (or any other scheme) — the API-key surface is isolated.
+        options.AddPolicy(ApiKeyAuthenticationHandler.SchemeName, policy =>
+        {
+            policy.AddAuthenticationSchemes(ApiKeyAuthenticationHandler.SchemeName);
+            policy.RequireAuthenticatedUser();
+        }));
 
     // --- OpenAPI (emitted to contracts/openapi at build; served at /openapi/v1.json) --
     builder.Services.AddOpenApi();
@@ -141,6 +169,18 @@ try
             Results.Ok(new { sub = user.FindFirst("sub")?.Value }))
         .RequireAuthorization()
         .WithName("WhoAmI");
+
+    // Auth-infra probe (WP2.3): the API-key analog of /whoami. Requires the ApiKey scheme (a valid
+    // `tims_` key), echoing the resolved org id + parsed scopes. Integration tests assert 401 for a
+    // revoked/expired/suspended-org/no-token/wrong-scheme credential. NOT a product endpoint.
+    app.MapGet("/external-whoami", (System.Security.Claims.ClaimsPrincipal user) =>
+            Results.Ok(new
+            {
+                organizationId = user.FindFirst(ApiKeyAuthenticationHandler.OrganizationIdClaimType)?.Value,
+                scopes = user.FindAll(ApiKeyAuthenticationHandler.ScopeClaimType).Select(c => c.Value).ToArray(),
+            }))
+        .RequireAuthorization(ApiKeyAuthenticationHandler.SchemeName)
+        .WithName("ExternalWhoAmI");
 
     app.Run();
 }

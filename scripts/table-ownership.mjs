@@ -22,6 +22,12 @@ export function parseLedger(markdown) {
   const ledger = JSON.parse(match[1]);
   if (ledger.defaultOwner !== 'prisma') throw new Error('ledger defaultOwner must be "prisma" in Phase 1');
   if (!Array.isArray(ledger.efcore)) throw new Error('ledger.efcore must be an array');
+  // efcoreReadOnly (optional): Prisma-OWNED tables that EF maps READ-ONLY during coexistence
+  // (identity/API-key reads, Phase 2). These are NOT ownership transfers — Prisma still owns the
+  // DDL; EF only SELECTs. They therefore DO appear in the Prisma schema (not a collision).
+  if (ledger.efcoreReadOnly !== undefined && !Array.isArray(ledger.efcoreReadOnly)) {
+    throw new Error('ledger.efcoreReadOnly must be an array when present');
+  }
   return ledger;
 }
 
@@ -56,22 +62,29 @@ export function parseEfCoreTables(srcDir) {
 
 /**
  * The pure check. Returns a list of violation strings (empty = clean).
- *  - collision: a table appears in BOTH efcore[] and Prisma's @@map set.
- *  - unregistered: an EF ToTable(...) table not listed in the ledger's efcore[].
+ *  - collision: a table appears in BOTH efcore[] (EF-OWNED) and Prisma's @@map set.
+ *  - unregistered: an EF ToTable(...) table not listed in efcore[] NOR efcoreReadOnly[].
+ *  - read-only-not-prisma: a table in efcoreReadOnly[] that Prisma does NOT @@map (a read-only
+ *    mapping must point at a real Prisma-owned table).
  */
-export function checkOwnership({ efcore, prismaTables, efcoreTables }) {
+export function checkOwnership({ efcore, efcoreReadOnly = [], prismaTables, efcoreTables }) {
   const violations = [];
-  const efcoreSet = new Set(efcore);
+  const registeredEfTables = new Set([...efcore, ...efcoreReadOnly]);
   const prismaSet = new Set(prismaTables);
 
   for (const t of efcore) {
     if (prismaSet.has(t)) {
-      violations.push(`cross-owner collision: "${t}" is efcore-owned in the ledger but also @@map'd in the Prisma schema`);
+      violations.push(`cross-owner collision: "${t}" is efcore-OWNED in the ledger but also @@map'd in the Prisma schema (an ownership transfer must remove the Prisma model)`);
+    }
+  }
+  for (const t of efcoreReadOnly) {
+    if (!prismaSet.has(t)) {
+      violations.push(`read-only mapping of a non-Prisma table: "${t}" is in efcoreReadOnly[] but is not @@map'd in the Prisma schema`);
     }
   }
   for (const t of efcoreTables ?? []) {
-    if (!efcoreSet.has(t)) {
-      violations.push(`unregistered EF table: "${t}" is mapped by an EF DbContext (ToTable) but not listed in the ledger's efcore[]`);
+    if (!registeredEfTables.has(t)) {
+      violations.push(`unregistered EF table: "${t}" is mapped by an EF DbContext (ToTable) but is not listed in the ledger's efcore[] or efcoreReadOnly[]`);
     }
   }
   return violations;
@@ -82,7 +95,12 @@ export function checkRepo(root = REPO_ROOT) {
   const ledger = parseLedger(readFileSync(join(root, 'docs/architecture/table-ownership.md'), 'utf8'));
   const prismaTables = parsePrismaTables(join(root, 'packages/db/prisma/schema'));
   const efcoreTables = parseEfCoreTables(join(root, 'services/Tims.Platform/src'));
-  return checkOwnership({ efcore: ledger.efcore, prismaTables, efcoreTables });
+  return checkOwnership({
+    efcore: ledger.efcore,
+    efcoreReadOnly: ledger.efcoreReadOnly ?? [],
+    prismaTables,
+    efcoreTables,
+  });
 }
 
 // CLI entrypoint
