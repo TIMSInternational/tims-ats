@@ -66,6 +66,9 @@ export function parseEfCoreTables(srcDir) {
  *  - unregistered: an EF ToTable(...) table not listed in efcore[] NOR efcoreReadOnly[].
  *  - read-only-not-prisma: a table in efcoreReadOnly[] that Prisma does NOT @@map (a read-only
  *    mapping must point at a real Prisma-owned table).
+ *
+ * @param {{ efcore: string[], efcoreReadOnly?: string[], prismaTables: string[], efcoreTables?: string[] }} input
+ * @returns {string[]}
  */
 export function checkOwnership({ efcore, efcoreReadOnly = [], prismaTables, efcoreTables }) {
   const violations = [];

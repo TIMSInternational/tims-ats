@@ -28,6 +28,10 @@ public sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> option
 
     public DbSet<OrganizationEntity> Organizations => Set<OrganizationEntity>();
 
+    public DbSet<PermissionEntity> Permissions => Set<PermissionEntity>();
+
+    public DbSet<RolePermissionEntity> RolePermissions => Set<RolePermissionEntity>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<UserEntity>(entity =>
@@ -64,7 +68,27 @@ public sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> option
             entity.ToTable("roles");
             entity.HasKey(r => r.Id);
             entity.Property(r => r.Id).HasColumnName("id");
+            entity.Property(r => r.OrganizationId).HasColumnName("organization_id");
             entity.Property(r => r.Slug).HasColumnName("slug");
+        });
+
+        modelBuilder.Entity<PermissionEntity>(entity =>
+        {
+            entity.ToTable("permissions");
+            entity.HasKey(p => p.Id);
+            entity.Property(p => p.Id).HasColumnName("id");
+            entity.Property(p => p.Module).HasColumnName("module");
+            entity.Property(p => p.Action).HasColumnName("action");
+        });
+
+        modelBuilder.Entity<RolePermissionEntity>(entity =>
+        {
+            entity.ToTable("role_permissions");
+            entity.HasKey(rp => rp.Id);
+            entity.Property(rp => rp.Id).HasColumnName("id");
+            entity.Property(rp => rp.RoleId).HasColumnName("role_id");
+            entity.Property(rp => rp.PermissionId).HasColumnName("permission_id");
+            entity.Property(rp => rp.Scope).HasColumnName("scope");
         });
 
         modelBuilder.Entity<ApiKeyEntity>(entity =>

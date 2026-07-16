@@ -34,11 +34,13 @@ Ownership transfers (Phase 5 strangler) move a table from `prisma` to `efcore` i
     "user_roles",
     "roles",
     "organizations",
-    "api_keys"
+    "api_keys",
+    "role_permissions",
+    "permissions"
   ],
   "notes": {
     "widgets": "Phase-1 Spike A test-only table (Testcontainers DDL + TenantWidgetDbContext). NOT a product table; created by hand-authored test SQL, never by an EF migration against prod.",
-    "efcoreReadOnly": "Phase-2 identity plane reads these Prisma-OWNED tables via EF (IdentityDbContext, no writes) to resolve principals + API keys. Prisma keeps the DDL; EF only SELECTs. NOT an ownership transfer — they still appear in the Prisma schema (that is expected, not a collision). Writes stay on the owning (Prisma/tRPC) stack until a Phase-5 strangler transfers a domain."
+    "efcoreReadOnly": "Phase-2 identity plane reads these Prisma-OWNED tables via EF (IdentityDbContext, no writes) to resolve principals + API keys and to enforce permissions (WP2.5 reads role_permissions + permissions joined to roles for the grant fetch). Prisma keeps the DDL; EF only SELECTs. NOT an ownership transfer — they still appear in the Prisma schema (that is expected, not a collision). Writes stay on the owning (Prisma/tRPC) stack until a Phase-5 strangler transfers a domain."
   }
 }
 ```

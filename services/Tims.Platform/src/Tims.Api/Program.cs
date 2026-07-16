@@ -1,7 +1,9 @@
 using System.Diagnostics;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
@@ -11,6 +13,8 @@ using Tims.Api.Authentication;
 using Tims.Api.Configuration;
 using Tims.Api.HealthChecks;
 using Tims.Application.Identity;
+using Tims.Domain.Access;
+using Tims.Domain.Identity;
 using Tims.Infrastructure.Identity;
 
 // Two-stage Serilog init: a bootstrap logger captures failures during host build
@@ -77,6 +81,17 @@ try
     builder.Services.AddDbContext<IdentityDbContext>(options => options.UseNpgsql(databaseConnectionString));
     builder.Services.AddScoped<IApiKeyRepository, ApiKeyRepository>();
     builder.Services.AddScoped<ApiKeyResolver>();
+
+    // --- Principal resolution + permission enforcement (WP2.2/WP2.5) -------------------
+    // Wires PrincipalResolver into the live request path (deferred Slice-2 wiring) and the
+    // WP2.5 authz kernel: resolve the JWT `sub` → TenantContext, fetch its grants read-only,
+    // run AccessKernel.Decide. The permission cache defaults to the fail-soft null impl (no
+    // Redis needed); a Redis-backed cache is a config-gated swap for this one registration.
+    builder.Services.AddScoped<IIdentityRepository, IdentityRepository>();
+    builder.Services.AddScoped<PrincipalResolver>();
+    builder.Services.AddScoped<IPermissionGrantRepository, PermissionGrantRepository>();
+    builder.Services.AddScoped<PermissionService>();
+    builder.Services.AddSingleton<IPermissionCache, NullPermissionCache>();
 
     builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         .AddJwtBearer(options =>
@@ -181,6 +196,110 @@ try
             }))
         .RequireAuthorization(ApiKeyAuthenticationHandler.SchemeName)
         .WithName("ExternalWhoAmI");
+
+    // Authz probe (WP2.5): the C# equivalent of the tRPC `requirePermission` gate. Resolves the
+    // TIMS principal from the JWT `sub` (PrincipalResolver, honoring the impersonation cookie +
+    // secret), runs PermissionService.CheckAsync, and returns 200 { allowed, scope } if allowed,
+    // else 403. NOT a product endpoint — it proves the end-to-end JWT → principal → authz wiring.
+    app.MapGet("/require-permission/{module}/{action}", async (
+            string module,
+            string action,
+            ClaimsPrincipal user,
+            HttpContext httpContext,
+            PrincipalResolver principalResolver,
+            PermissionService permissionService,
+            IOptions<PlatformOptions> platformOptions,
+            CancellationToken cancellationToken) =>
+        {
+            var context = await ResolvePrincipalAsync(
+                user, httpContext, principalResolver, platformOptions.Value, cancellationToken);
+            if (context is null)
+            {
+                // Valid signed JWT but `sub` is not a resolvable active staff/owner row (candidate
+                // session, deactivated/unprovisioned user) — this is `ctx.user === null` in the TS
+                // context, i.e. UNAUTHORIZED (401), distinct from a resolved-but-denied 403.
+                return Results.StatusCode(StatusCodes.Status401Unauthorized);
+            }
+
+            try
+            {
+                var decision = await permissionService.CheckAsync(context, module, action, cancellationToken);
+                return decision.Allowed
+                    ? Results.Ok(new { allowed = true, scope = decision.Scope?.ToWire() })
+                    : Results.StatusCode(StatusCodes.Status403Forbidden);
+            }
+            catch (TenantOrgRequiredException)
+            {
+                // Privileged principal with no org on a tenant module — the TS kernel raises
+                // BAD_REQUEST here rather than running unscoped.
+                return Results.BadRequest(new { error = "organization_required" });
+            }
+        })
+        .RequireAuthorization()
+        .WithName("RequirePermission");
+
+    // Authz probe (WP2.5): the org-rollup gate — the C# equivalent of `requireOrgScope`. Same
+    // principal resolution + permission check, then RequireOrgScopeSatisfied: a narrow scope on
+    // an org-rollup endpoint is FORBIDDEN (403); only organization/company scope passes.
+    app.MapGet("/require-org-scope/{module}/{action}", async (
+            string module,
+            string action,
+            ClaimsPrincipal user,
+            HttpContext httpContext,
+            PrincipalResolver principalResolver,
+            PermissionService permissionService,
+            IOptions<PlatformOptions> platformOptions,
+            CancellationToken cancellationToken) =>
+        {
+            var context = await ResolvePrincipalAsync(
+                user, httpContext, principalResolver, platformOptions.Value, cancellationToken);
+            if (context is null)
+            {
+                // Valid signed JWT but `sub` is not a resolvable active staff/owner row (candidate
+                // session, deactivated/unprovisioned user) — this is `ctx.user === null` in the TS
+                // context, i.e. UNAUTHORIZED (401), distinct from a resolved-but-denied 403.
+                return Results.StatusCode(StatusCodes.Status401Unauthorized);
+            }
+
+            try
+            {
+                var decision = await permissionService.CheckAsync(context, module, action, cancellationToken);
+                return decision is { Allowed: true, Scope: { } scope } && OrgGate.RequireOrgScopeSatisfied(scope)
+                    ? Results.Ok(new { allowed = true, scope = scope.ToWire() })
+                    : Results.StatusCode(StatusCodes.Status403Forbidden);
+            }
+            catch (TenantOrgRequiredException)
+            {
+                return Results.BadRequest(new { error = "organization_required" });
+            }
+        })
+        .RequireAuthorization()
+        .WithName("RequireOrgScope");
+
+    // Shared principal resolution for the authz probes: JWT `sub` → TenantContext (or null when the
+    // caller is not resolvable staff). Honors the platform-owner impersonation cookie + secret.
+    static async Task<TenantContext?> ResolvePrincipalAsync(
+        ClaimsPrincipal user,
+        HttpContext httpContext,
+        PrincipalResolver principalResolver,
+        PlatformOptions options,
+        CancellationToken cancellationToken)
+    {
+        var sub = user.FindFirst("sub")?.Value;
+        if (string.IsNullOrEmpty(sub))
+        {
+            return null;
+        }
+
+        var resolution = await principalResolver.ResolveStaffAsync(
+            sub,
+            httpContext.Request.Headers.Cookie.ToString(),
+            options.ImpersonationSecret,
+            DateTime.UtcNow,
+            cancellationToken);
+
+        return resolution is { Resolved: true, Context: { } context } ? context : null;
+    }
 
     app.Run();
 }

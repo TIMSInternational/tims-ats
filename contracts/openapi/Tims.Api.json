@@ -43,6 +43,68 @@
           }
         }
       }
+    },
+    "/require-permission/{module}/{action}": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "RequirePermission",
+        "parameters": [
+          {
+            "name": "module",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "action",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/require-org-scope/{module}/{action}": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "RequireOrgScope",
+        "parameters": [
+          {
+            "name": "module",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "action",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
     }
   },
   "tags": [

@@ -50,4 +50,14 @@ public sealed class PlatformOptions
 
     /// <summary>JWKS metadata address (the .well-known/jwks.json URL) for asymmetric verification.</summary>
     public string? SupabaseJwksMetadataAddress { get; init; }
+
+    // --- Platform-owner impersonation (WP2.4) -----------------------------------------
+
+    /// <summary>
+    /// HMAC secret for the platform-owner impersonation cookie (the C# analog of the TS
+    /// <c>NEXTAUTH_SECRET</c>). Optional and fail-closed: when unset, impersonation is simply
+    /// UNAVAILABLE (<see cref="Tims.Domain.Identity.ImpersonationCookie.VerifyImpersonationToken"/>
+    /// returns null for every cookie), so a platform owner always resolves to their own context.
+    /// </summary>
+    public string? ImpersonationSecret { get; init; }
 }
