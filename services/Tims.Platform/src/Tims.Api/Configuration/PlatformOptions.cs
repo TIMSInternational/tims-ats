@@ -99,4 +99,14 @@ public sealed class PlatformOptions
     /// <see cref="BillingReadEnabled"/> for finer per-surface canary control).
     /// </summary>
     public bool BillingUsageEnabled { get; init; }
+
+    /// <summary>
+    /// Phase-5 Slice 4 (efcoreStranglerWrite): when true, the C# Stripe billing WEBHOOK write surface
+    /// (<c>POST /billing/webhooks/stripe</c>) is mapped and live — the state-sync engine that upserts
+    /// <c>subscriptions</c> and mirrors <c>organizations.plan</c>. DEFAULT false (dark): the C# writer stays
+    /// inert so the TS webhook remains the SINGLE active writer to <c>subscriptions</c> until Federico flips
+    /// this at canary. This is a COEXISTENCE write, not the ownership flip (subscriptions still has other
+    /// non-webhook writers — see docs/architecture/csharp-migration/phase-5-slice-4-billing-webhook-writes.md).
+    /// </summary>
+    public bool BillingWebhookWriteEnabled { get; init; }
 }

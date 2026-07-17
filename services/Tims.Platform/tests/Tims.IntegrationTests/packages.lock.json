@@ -906,6 +906,24 @@
           "System.IO.Hashing": "10.0.5"
         }
       },
+      "Stripe.net": {
+        "type": "Transitive",
+        "resolved": "52.1.1",
+        "contentHash": "YR8RgHl5WEHbcNJUTv37PQzVPqt1I8i+2sepl+/aRDChqGh2EQwavbbAuytTu1hj+u42GLzUksbBlukTeONwUA==",
+        "dependencies": {
+          "Newtonsoft.Json": "13.0.3",
+          "System.Configuration.ConfigurationManager": "9.0.0"
+        }
+      },
+      "System.Configuration.ConfigurationManager": {
+        "type": "Transitive",
+        "resolved": "9.0.0",
+        "contentHash": "PdkuMrwDhXoKFo/JxISIi9E8L+QGn9Iquj2OKDWHB6Y/HnUOuBouF7uS3R4Hw3FoNmwwMo6hWgazQdyHIIs27A==",
+        "dependencies": {
+          "System.Diagnostics.EventLog": "9.0.0",
+          "System.Security.Cryptography.ProtectedData": "9.0.0"
+        }
+      },
       "System.Diagnostics.EventLog": {
         "type": "Transitive",
         "resolved": "10.0.10",
@@ -924,6 +942,11 @@
         "type": "Transitive",
         "resolved": "10.0.5",
         "contentHash": "8IBJWcCT9+e4Bmevm4T7+fQEiAh133KGiz4oiVTgJckd3Q76OFdR1falgn9lpz7+C4HJvogCDJeAa2QmvbeVtg=="
+      },
+      "System.Security.Cryptography.ProtectedData": {
+        "type": "Transitive",
+        "resolved": "9.0.0",
+        "contentHash": "CJW+x/F6fmRQ7N6K8paasTw9PDZp4t7G76UjGNlSDgoHPF0h08vTzLYbLZpOLEJSg35d5wy2jCXGo84EN05DpQ=="
       },
       "System.Threading.RateLimiting": {
         "type": "Transitive",
@@ -1013,6 +1036,7 @@
           "Microsoft.Extensions.Http.Resilience": "[10.0.0, )",
           "Npgsql.EntityFrameworkCore.PostgreSQL": "[10.0.3, )",
           "StackExchange.Redis": "[3.0.17, )",
+          "Stripe.net": "[52.1.1, )",
           "Tims.Application": "[1.0.0, )",
           "Tims.Domain": "[1.0.0, )"
         }
@@ -1022,7 +1046,6 @@
         "dependencies": {
           "OpenTelemetry.Exporter.OpenTelemetryProtocol": "[1.16.0, )",
           "OpenTelemetry.Extensions.Hosting": "[1.16.0, )",
-          "OpenTelemetry.Instrumentation.AspNetCore": "[1.16.0, )",
           "Quartz": "[3.18.2, )",
           "Quartz.Extensions.Hosting": "[3.18.2, )",
           "Serilog.AspNetCore": "[10.0.0, )",

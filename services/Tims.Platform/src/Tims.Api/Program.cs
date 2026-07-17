@@ -24,6 +24,7 @@ using Tims.Application.Billing;
 using Tims.Application.ExternalVendor;
 using Tims.Application.Identity;
 using Tims.Domain.Access;
+using Tims.Domain.Billing;
 using Tims.Domain.Identity;
 using Tims.Infrastructure.Access;
 using Tims.Infrastructure.Audit;
@@ -195,6 +196,34 @@ try
     // The submit use case truncates its completion instant to whole milliseconds through TimeProvider so
     // persisted (timestamp(3)) == returned (v1) == JS `new Date()` ms precision; register the system clock.
     builder.Services.TryAddSingleton(TimeProvider.System);
+
+    // --- Billing Stripe-webhook WRITE plane (Phase-5 Slice 4) --------------------------
+    // The state-sync engine that upserts subscriptions + mirrors organizations.plan from Stripe events. A
+    // COEXISTENCE efcoreStranglerWrite (subscriptions has other non-webhook writers, so the ownership flip is
+    // deferred). Runs on the PRIVILEGED connection, NOT TenantScope: the webhook carries no org GUC (Stripe is
+    // not a tenant), so it scopes every write by explicit organization_id on a role that bypasses RLS. Its
+    // EnableUnmappedTypes data source (for the native SubscriptionStatus enum read) is isolated behind a
+    // holder — exactly like BillingReadDbContext — so it never bleeds into the string-based contexts.
+    builder.Services.AddSingleton(_ =>
+        new BillingWebhookDataSourceHolder(BillingWebhookDataSource.Build(databaseConnectionString ?? string.Empty)));
+    builder.Services.AddDbContext<BillingWebhookDbContext>((sp, options) =>
+        options.UseNpgsql(sp.GetRequiredService<BillingWebhookDataSourceHolder>().DataSource));
+    builder.Services.AddScoped<IBillingWebhookRepository, BillingWebhookRepository>();
+    // The Stripe SDK boundary (signature verify + retrieve/cancel), fed the secret + webhook signing secret
+    // from StripeBillingOptions — the gateway takes plain values so Infrastructure never references the Api layer.
+    builder.Services.AddScoped<IStripeWebhookGateway>(sp =>
+    {
+        var stripe = sp.GetRequiredService<IOptions<StripeBillingOptions>>().Value;
+        return new StripeWebhookGateway(stripe.SecretKey, stripe.WebhookSecret);
+    });
+    // The self-serve price env the kernel maps a Stripe price id back to an OrgPlan with (no downgrade on unknown).
+    builder.Services.AddSingleton(sp =>
+    {
+        var stripe = sp.GetRequiredService<IOptions<StripeBillingOptions>>().Value;
+        return new StripeBillingEnv(stripe.PriceStarter, stripe.PriceProfessional);
+    });
+    builder.Services.AddScoped<IBillingWebhookLog, LoggerBillingWebhookLog>();
+    builder.Services.AddScoped<BillingWebhookUseCase>();
 
     // --- HRIS connector plane (WP3.2): typed BambooHR client + resilience + secrets ----
     // Bind + validate HrisOptions at startup (the Zod-env-gate analog, mirroring PlatformOptions),
@@ -441,6 +470,15 @@ try
     if (externalOptions.BillingUsageEnabled || isOpenApiDocGeneration)
     {
         app.MapBillingUsageEndpoints();
+    }
+
+    // Billing Stripe-webhook WRITE surface (Phase-5 Slice 4): POST /billing/webhooks/stripe. ANONYMOUS (the
+    // Stripe signature over the raw body is the auth); the state-sync engine upserts subscriptions + mirrors
+    // organizations.plan on the PRIVILEGED connection. First C# webhook + first privileged (non-TenantScope)
+    // write. Dark unless the flag is on (deploy-gated cutover; the TS webhook stays the sole active writer).
+    if (externalOptions.BillingWebhookWriteEnabled || isOpenApiDocGeneration)
+    {
+        app.MapBillingWebhookEndpoints();
     }
 
     // Authz probe (WP2.5): the C# equivalent of the tRPC `requirePermission` gate. Resolves the

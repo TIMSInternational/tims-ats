@@ -26,6 +26,11 @@
          aligned to the .NET 10 shared framework (clean transitive graph: Resilience/ObjectPool/
          Http.Diagnostics 10.0.0). Brings Microsoft.Extensions.Http, so AddHttpClient is available. -->
     <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="10.0.0" />
+    <!-- Phase-5 Slice 4 billing webhook: the OFFICIAL Stripe SDK, owning the security-critical HMAC
+         signature verification (EventUtility.ConstructEvent) + the typed outbound retrieve/cancel calls —
+         a vetted SDK should own the signature crypto + Stripe API request/response shapes (never hand-rolled).
+         Pinned exact; the committed packages.lock.json fails a locked restore on any drift/typosquat. -->
+    <PackageReference Include="Stripe.net" Version="52.1.1" />
   </ItemGroup>
 
   <ItemGroup>

@@ -22,7 +22,11 @@ public sealed class RateLimitMiddleware(RequestDelegate next)
     private readonly RequestDelegate _next = next;
 
     // Infra + non-product auth-probe paths that must never be throttled.
-    private static readonly string[] ExemptExactPaths = ["/", "/health", "/ready", "/whoami", "/external-whoami"];
+    // /billing/webhooks/stripe is ANONYMOUS + authenticated by the Stripe signature; Stripe delivers from a
+    // small shared-IP pool, so the anonymous IP-keyed limiter could 429 a delivery burst (a divergence from
+    // the un-throttled TS/Vercel route). Exempt it — the apply is idempotent, but a 429 forces needless retries.
+    private static readonly string[] ExemptExactPaths =
+        ["/", "/health", "/ready", "/whoami", "/external-whoami", "/billing/webhooks/stripe"];
     private static readonly string[] ExemptPrefixes = ["/openapi", "/require-permission", "/require-org-scope"];
 
     public async Task InvokeAsync(HttpContext context, RateLimitGuard guard)

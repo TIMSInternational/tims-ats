@@ -1,0 +1,137 @@
+{
+  "description": "Phase-5 Slice 4 — Stripe webhook PURE kernel golden corpus. Asserted by the REAL TS exports (packages/api: mapStripeStatus, mapStripeSubscriptionToFields, isDuplicateSubscription, shouldDropEvent from services/billing-webhook.service; priceIdToPlan from lib/stripe) in tests/billing/stripe-webhook.test.ts AND by the C# port Tims.Domain.Billing.StripeWebhookKernel in Tims.UnitTests/Fixtures/StripeWebhookKernelFixtureTests. A behavior change edits this JSON ONCE and both stacks must agree. Regression corpus pins (billing fix history): unknown/paused/incomplete status NEVER maps to active (access-safety); the same-second un-cancel guard in shouldDropEvent; unknown price -> plan null (no downgrade); a different non-cancelled subscription is a duplicate (double-bill prevention). Each 'fn' case is dispatched by the harness. Dates are canonical Node toISOString() (...fffZ); mapStripeSubscriptionToFields inputs use Stripe's native snake_case shape and second-granularity unix timestamps.",
+  "env": { "starterPriceId": "price_starter", "professionalPriceId": "price_pro" },
+  "cases": [
+    { "fn": "mapStripeStatus", "name": "active -> active", "input": "active", "expected": "active" },
+    { "fn": "mapStripeStatus", "name": "trialing -> trialing", "input": "trialing", "expected": "trialing" },
+    { "fn": "mapStripeStatus", "name": "past_due -> past_due", "input": "past_due", "expected": "past_due" },
+    { "fn": "mapStripeStatus", "name": "unpaid -> past_due (never active)", "input": "unpaid", "expected": "past_due" },
+    { "fn": "mapStripeStatus", "name": "incomplete -> past_due (never active)", "input": "incomplete", "expected": "past_due" },
+    { "fn": "mapStripeStatus", "name": "paused -> past_due (never active)", "input": "paused", "expected": "past_due" },
+    { "fn": "mapStripeStatus", "name": "canceled -> cancelled", "input": "canceled", "expected": "cancelled" },
+    { "fn": "mapStripeStatus", "name": "incomplete_expired -> cancelled", "input": "incomplete_expired", "expected": "cancelled" },
+    { "fn": "mapStripeStatus", "name": "unknown/new status -> past_due (never active)", "input": "something_new", "expected": "past_due" },
+
+    { "fn": "priceIdToPlan", "name": "known starter price -> starter", "input": "price_starter", "expected": "starter" },
+    { "fn": "priceIdToPlan", "name": "known professional price -> professional", "input": "price_pro", "expected": "professional" },
+    { "fn": "priceIdToPlan", "name": "unknown price -> null (no downgrade)", "input": "price_???", "expected": null },
+    { "fn": "priceIdToPlan", "name": "empty price -> null", "input": "", "expected": null },
+
+    {
+      "fn": "mapStripeSubscriptionToFields",
+      "name": "reads period from the ITEM and maps price -> plan",
+      "input": {
+        "id": "sub_1",
+        "status": "active",
+        "cancel_at_period_end": false,
+        "cancel_at": null,
+        "canceled_at": null,
+        "items": { "data": [{ "price": { "id": "price_pro" }, "current_period_start": 1609459200, "current_period_end": 1612137600 }] }
+      },
+      "expected": {
+        "stripeSubscriptionId": "sub_1",
+        "plan": "professional",
+        "status": "active",
+        "currentPeriodStart": "2021-01-01T00:00:00.000Z",
+        "currentPeriodEnd": "2021-02-01T00:00:00.000Z",
+        "cancelledAt": null
+      }
+    },
+    {
+      "fn": "mapStripeSubscriptionToFields",
+      "name": "unknown price -> plan null (repo never downgrades)",
+      "input": {
+        "id": "sub_1",
+        "status": "active",
+        "cancel_at_period_end": false,
+        "cancel_at": null,
+        "canceled_at": null,
+        "items": { "data": [{ "price": { "id": "price_???" }, "current_period_start": 1609459200, "current_period_end": 1612137600 }] }
+      },
+      "expected": {
+        "stripeSubscriptionId": "sub_1",
+        "plan": null,
+        "status": "active",
+        "currentPeriodStart": "2021-01-01T00:00:00.000Z",
+        "currentPeriodEnd": "2021-02-01T00:00:00.000Z",
+        "cancelledAt": null
+      }
+    },
+    {
+      "fn": "mapStripeSubscriptionToFields",
+      "name": "cancelledAt = canceled_at when present (status canceled -> cancelled)",
+      "input": {
+        "id": "sub_1",
+        "status": "canceled",
+        "cancel_at_period_end": false,
+        "cancel_at": null,
+        "canceled_at": 1609459200,
+        "items": { "data": [{ "price": { "id": "price_pro" }, "current_period_start": 1609459200, "current_period_end": 1612137600 }] }
+      },
+      "expected": {
+        "stripeSubscriptionId": "sub_1",
+        "plan": "professional",
+        "status": "cancelled",
+        "currentPeriodStart": "2021-01-01T00:00:00.000Z",
+        "currentPeriodEnd": "2021-02-01T00:00:00.000Z",
+        "cancelledAt": "2021-01-01T00:00:00.000Z"
+      }
+    },
+    {
+      "fn": "mapStripeSubscriptionToFields",
+      "name": "cancelledAt = cancel_at when cancel_at_period_end and no canceled_at",
+      "input": {
+        "id": "sub_1",
+        "status": "active",
+        "cancel_at_period_end": true,
+        "cancel_at": 1612137600,
+        "canceled_at": null,
+        "items": { "data": [{ "price": { "id": "price_pro" }, "current_period_start": 1609459200, "current_period_end": 1612137600 }] }
+      },
+      "expected": {
+        "stripeSubscriptionId": "sub_1",
+        "plan": "professional",
+        "status": "active",
+        "currentPeriodStart": "2021-01-01T00:00:00.000Z",
+        "currentPeriodEnd": "2021-02-01T00:00:00.000Z",
+        "cancelledAt": "2021-02-01T00:00:00.000Z"
+      }
+    },
+    {
+      "fn": "mapStripeSubscriptionToFields",
+      "name": "no items -> null plan and null periods (defensive)",
+      "input": {
+        "id": "sub_1",
+        "status": "active",
+        "cancel_at_period_end": false,
+        "cancel_at": null,
+        "canceled_at": null,
+        "items": { "data": [] }
+      },
+      "expected": {
+        "stripeSubscriptionId": "sub_1",
+        "plan": null,
+        "status": "active",
+        "currentPeriodStart": null,
+        "currentPeriodEnd": null,
+        "cancelledAt": null
+      }
+    },
+
+    { "fn": "isDuplicateSubscription", "name": "different non-cancelled existing -> duplicate", "input": { "existing": { "stripeSubscriptionId": "sub_old", "status": "active" }, "incoming": "sub_new" }, "expected": true },
+    { "fn": "isDuplicateSubscription", "name": "same subscription id -> not a duplicate (idempotent re-delivery)", "input": { "existing": { "stripeSubscriptionId": "sub_1", "status": "active" }, "incoming": "sub_1" }, "expected": false },
+    { "fn": "isDuplicateSubscription", "name": "existing is cancelled -> not a duplicate (re-subscribe ok)", "input": { "existing": { "stripeSubscriptionId": "sub_old", "status": "cancelled" }, "incoming": "sub_new" }, "expected": false },
+    { "fn": "isDuplicateSubscription", "name": "no existing subscription -> not a duplicate", "input": { "existing": null, "incoming": "sub_new" }, "expected": false },
+    { "fn": "isDuplicateSubscription", "name": "existing has null subscription id -> not a duplicate", "input": { "existing": { "stripeSubscriptionId": null, "status": "trialing" }, "incoming": "sub_new" }, "expected": false },
+    { "fn": "isDuplicateSubscription", "name": "gates a later event for a cancelled duplicate (sub_dup != current sub_good)", "input": { "existing": { "stripeSubscriptionId": "sub_good", "status": "active" }, "incoming": "sub_dup" }, "expected": true },
+    { "fn": "isDuplicateSubscription", "name": "does not gate the current live subscription (sub_good)", "input": { "existing": { "stripeSubscriptionId": "sub_good", "status": "active" }, "incoming": "sub_good" }, "expected": false },
+
+    { "fn": "shouldDropEvent", "name": "nothing applied yet -> apply", "input": { "current": null, "incomingStatus": "active", "eventAt": "2021-01-01T00:00:00.000Z" }, "expected": false },
+    { "fn": "shouldDropEvent", "name": "strictly older event -> drop", "input": { "current": { "status": "active", "lastStripeEventAt": "2021-01-02T00:00:00.000Z" }, "incomingStatus": "active", "eventAt": "2021-01-01T00:00:00.000Z" }, "expected": true },
+    { "fn": "shouldDropEvent", "name": "strictly newer event -> apply", "input": { "current": { "status": "active", "lastStripeEventAt": "2021-01-01T00:00:00.000Z" }, "incomingStatus": "cancelled", "eventAt": "2021-01-02T00:00:00.000Z" }, "expected": false },
+    { "fn": "shouldDropEvent", "name": "distinct same-second event (created->updated) -> apply, not a tie", "input": { "current": { "status": "active", "lastStripeEventAt": "2021-01-01T00:00:00.000Z" }, "incomingStatus": "active", "eventAt": "2021-01-01T00:00:00.000Z" }, "expected": false },
+    { "fn": "shouldDropEvent", "name": "same-second transition TO cancelled (updated->deleted) -> apply", "input": { "current": { "status": "active", "lastStripeEventAt": "2021-01-01T00:00:00.000Z" }, "incomingStatus": "cancelled", "eventAt": "2021-01-01T00:00:00.000Z" }, "expected": false },
+    { "fn": "shouldDropEvent", "name": "same-second event that would UN-cancel a terminal cancelled -> drop", "input": { "current": { "status": "cancelled", "lastStripeEventAt": "2021-01-01T00:00:00.000Z" }, "incomingStatus": "active", "eventAt": "2021-01-01T00:00:00.000Z" }, "expected": true },
+    { "fn": "shouldDropEvent", "name": "strictly older un-cancel -> drop (keep cancelled)", "input": { "current": { "status": "cancelled", "lastStripeEventAt": "2021-01-02T00:00:00.000Z" }, "incomingStatus": "active", "eventAt": "2021-01-01T00:00:00.000Z" }, "expected": true }
+  ]
+}
