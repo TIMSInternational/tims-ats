@@ -46,6 +46,7 @@ model Organization {
   roles                  Role[]
   featureFlags           FeatureFlag[]
   auditLogs              AuditLog[]
+  accessReviews          AccessReview[]
   vacancies              Vacancy[]
   roleFamilyWeightProfiles RoleFamilyWeightProfile[]
   subscription           Subscription?

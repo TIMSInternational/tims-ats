@@ -40,6 +40,32 @@ model AuditLog {
   @@map("audit_logs")
 }
 
+// CB-2b — a recorded quarterly access recertification for one organization: a
+// platform owner attested that the org's user↔role↔grant access was reviewed at a
+// point in time (SOC 2 CC6.2–6.3 / ISO A.5.18 evidence). Org-scoped + RLS like every
+// tenant table; written/read via the platform privileged path.
+model AccessReview {
+  id                  String   @id @default(uuid()) @db.Uuid
+  organizationId      String   @map("organization_id") @db.Uuid
+  reviewerId          String   @map("reviewer_id") @db.Uuid
+  reviewedAt          DateTime @default(now()) @map("reviewed_at")
+  userCount           Int      @map("user_count")
+  privilegedCount     Int      @map("privileged_count")
+  staleCount          Int      @map("stale_count")
+  deprovisionGapCount Int      @map("deprovision_gap_count")
+  expiredGapCount     Int      @map("expired_gap_count")
+  notes               String?  @db.VarChar(2000)
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  reviewer     User         @relation("AccessReviewReviewer", fields: [reviewerId], references: [id])
+
+  @@index([organizationId])
+  @@index([organizationId, reviewedAt])
+  @@index([reviewerId])
+  @@map("access_reviews")
+}
+
 model Session {
   id             String   @id @default(uuid()) @db.Uuid
   organizationId String   @map("organization_id") @db.Uuid

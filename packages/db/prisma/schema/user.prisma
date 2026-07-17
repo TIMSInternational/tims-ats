@@ -28,6 +28,7 @@ model User {
   ledTeams         Team[]      @relation("TeamLeader")
   auditLogs        AuditLog[]  @relation("AuditUser")
   createdAuditLogs AuditLog[]  @relation("AuditActor")
+  accessReviews    AccessReview[] @relation("AccessReviewReviewer")
   createdVacancies Vacancy[]   @relation("VacancyCreator")
   assignedVacancies Vacancy[]  @relation("VacancyAssignee")
   vacancyApprovals VacancyApproval[] @relation("VacancyApprover")

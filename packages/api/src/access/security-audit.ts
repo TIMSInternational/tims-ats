@@ -159,7 +159,7 @@ export function observeExternalDenial(args: {
  */
 export function logPlatformExport(
   ctx: SecurityAuditCtx,
-  info: { resource: string; count: number; format?: string; targetOrgId?: string | null },
+  info: { resource: string; count: number; format?: string; targetOrgId?: string | null; truncated?: boolean },
 ): void {
   safe(() => {
     const organizationId = info.targetOrgId || ctx.user?.organizationId;
@@ -174,6 +174,7 @@ export function logPlatformExport(
         count: info.count,
         ...(info.format ? { format: info.format } : {}),
         ...(info.targetOrgId ? { targetOrgId: info.targetOrgId } : {}),
+        ...(info.truncated ? { truncated: true } : {}),
       },
       ipAddress: ipOf(ctx.headers),
       userAgent: ctx.headers.get('user-agent'),
