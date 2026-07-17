@@ -17,3 +17,18 @@ public sealed record BillingInvoicePage(
 public sealed record BillingInvoiceListResult(
     IReadOnlyList<InvoiceListItemV1> Items,
     string? NextCursor);
+
+/// <summary>
+/// The inputs to <c>buildUsageView</c> gathered by the repository for <c>getUsage</c>: the subscription's
+/// plan/status/period (all nullable — a missing subscription yields all null → trial limits) plus the three
+/// real org-scoped counts. <see cref="PeriodStart"/>/<see cref="PeriodEnd"/> are the instants echoed on the
+/// wire; the assessments count was already period-gated by <see cref="PeriodStart"/> in the repository.
+/// </summary>
+public sealed record BillingUsageData(
+    string? Plan,
+    string? Status,
+    DateTimeOffset? PeriodStart,
+    DateTimeOffset? PeriodEnd,
+    int Employees,
+    int Vacancies,
+    int Assessments);

@@ -1,0 +1,110 @@
+{
+  "description": "Golden parity for billing.getUsage's response envelope: the PURE buildUsageView(input) in @tims/shared. Asserted IDENTICALLY by the REAL TS export (tests/billing/usage-plan-config-fixtures.test.ts — the same builder the router now returns) and the C# Tims.Domain.Billing.UsageViewBuilder (Tims.UnitTests, serialized camelCase). 'input.periodStart/periodEnd' are the subscription's period (ISO strings or null); 'expected' is the wire shape: used/limit metrics (limit null = unlimited/enterprise), storage/apiCalls ALWAYS null (no metering source yet), and the period echoed as canonical …fffZ ISO strings or null. The caller has already period-gated the assessments count; the builder only applies limits + formats. A dropped/renamed field, a wrong null, a non-…fffZ date, or a cancelled-sub keeping paid limits turns this (and the TS suite) RED.",
+  "cases": [
+    {
+      "name": "active professional with a billing period",
+      "input": {
+        "employees": 42,
+        "vacancies": 7,
+        "assessments": 130,
+        "plan": "professional",
+        "status": "active",
+        "periodStart": "2026-06-01T00:00:00.000Z",
+        "periodEnd": "2026-07-01T00:00:00.000Z"
+      },
+      "expected": {
+        "employees": { "used": 42, "limit": 100 },
+        "vacancies": { "used": 7, "limit": 50 },
+        "assessments": { "used": 130, "limit": 2000 },
+        "storage": { "usedMb": null, "limitMb": null },
+        "apiCalls": { "used": null, "limit": null },
+        "periodStart": "2026-06-01T00:00:00.000Z",
+        "periodEnd": "2026-07-01T00:00:00.000Z"
+      }
+    },
+    {
+      "name": "no subscription (null plan/status/period) -> trial limits, all-time counts, null period",
+      "input": {
+        "employees": 3,
+        "vacancies": 1,
+        "assessments": 12,
+        "plan": null,
+        "status": null,
+        "periodStart": null,
+        "periodEnd": null
+      },
+      "expected": {
+        "employees": { "used": 3, "limit": 5 },
+        "vacancies": { "used": 1, "limit": 3 },
+        "assessments": { "used": 12, "limit": 20 },
+        "storage": { "usedMb": null, "limitMb": null },
+        "apiCalls": { "used": null, "limit": null },
+        "periodStart": null,
+        "periodEnd": null
+      }
+    },
+    {
+      "name": "CANCELLED enterprise -> trial limits (not unlimited), period still echoed",
+      "input": {
+        "employees": 500,
+        "vacancies": 90,
+        "assessments": 9001,
+        "plan": "enterprise",
+        "status": "cancelled",
+        "periodStart": "2026-05-15T08:30:00.000Z",
+        "periodEnd": "2026-06-15T08:30:00.000Z"
+      },
+      "expected": {
+        "employees": { "used": 500, "limit": 5 },
+        "vacancies": { "used": 90, "limit": 3 },
+        "assessments": { "used": 9001, "limit": 20 },
+        "storage": { "usedMb": null, "limitMb": null },
+        "apiCalls": { "used": null, "limit": null },
+        "periodStart": "2026-05-15T08:30:00.000Z",
+        "periodEnd": "2026-06-15T08:30:00.000Z"
+      }
+    },
+    {
+      "name": "enterprise active -> unlimited (null) limits on every metric",
+      "input": {
+        "employees": 1200,
+        "vacancies": 300,
+        "assessments": 50000,
+        "plan": "enterprise",
+        "status": "active",
+        "periodStart": "2026-06-01T00:00:00.000Z",
+        "periodEnd": "2026-07-01T00:00:00.000Z"
+      },
+      "expected": {
+        "employees": { "used": 1200, "limit": null },
+        "vacancies": { "used": 300, "limit": null },
+        "assessments": { "used": 50000, "limit": null },
+        "storage": { "usedMb": null, "limitMb": null },
+        "apiCalls": { "used": null, "limit": null },
+        "periodStart": "2026-06-01T00:00:00.000Z",
+        "periodEnd": "2026-07-01T00:00:00.000Z"
+      }
+    },
+    {
+      "name": "period start present, end null (sub-millisecond-safe …fffZ)",
+      "input": {
+        "employees": 10,
+        "vacancies": 4,
+        "assessments": 55,
+        "plan": "starter",
+        "status": "active",
+        "periodStart": "2026-06-02T12:30:45.123Z",
+        "periodEnd": null
+      },
+      "expected": {
+        "employees": { "used": 10, "limit": 25 },
+        "vacancies": { "used": 4, "limit": 10 },
+        "assessments": { "used": 55, "limit": 200 },
+        "storage": { "usedMb": null, "limitMb": null },
+        "apiCalls": { "used": null, "limit": null },
+        "periodStart": "2026-06-02T12:30:45.123Z",
+        "periodEnd": null
+      }
+    }
+  ]
+}

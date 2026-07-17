@@ -95,3 +95,50 @@ public sealed class SubscriptionReadEntity
 
     public DateTime UpdatedAt { get; set; }
 }
+
+/// <summary>
+/// READ-ONLY minimal mapping of the Prisma-OWNED <c>users</c> table (efcoreReadOnly) — ONLY the columns the
+/// <c>billing.getUsage</c> employees count needs (<c>id</c>, <c>organization_id</c>, <c>is_active</c>). The
+/// count runs UNDER <see cref="TenantScope"/> (RLS) with an explicit org filter; never written.
+/// </summary>
+public sealed class UsageUserCountEntity
+{
+    public Guid Id { get; set; }
+
+    /// <summary>Nullable — platform-owner rows carry no org; they never match the explicit org filter.</summary>
+    public Guid? OrganizationId { get; set; }
+
+    public bool IsActive { get; set; }
+}
+
+/// <summary>
+/// READ-ONLY minimal mapping of the Prisma-OWNED <c>vacancies</c> table (efcoreReadOnly) — ONLY the columns
+/// the <c>billing.getUsage</c> vacancies count needs (<c>id</c>, <c>organization_id</c>, <c>status</c>,
+/// <c>deleted_at</c>). <c>status</c> is a plain <c>String</c> in Prisma (NOT a native enum). Read-only, under
+/// <see cref="TenantScope"/>.
+/// </summary>
+public sealed class UsageVacancyCountEntity
+{
+    public Guid Id { get; set; }
+
+    public Guid OrganizationId { get; set; }
+
+    public string Status { get; set; } = string.Empty;
+
+    public DateTime? DeletedAt { get; set; }
+}
+
+/// <summary>
+/// READ-ONLY minimal mapping of the Prisma-OWNED <c>assessment_assignments</c> table (efcoreReadOnly) — ONLY
+/// the columns the <c>billing.getUsage</c> assessments count needs (<c>id</c>, <c>organization_id</c>,
+/// <c>assigned_at</c>). Period-gated (<c>assigned_at &gt;= currentPeriodStart</c>) when the org has a billing
+/// period. Read-only, under <see cref="TenantScope"/>.
+/// </summary>
+public sealed class UsageAssignmentCountEntity
+{
+    public Guid Id { get; set; }
+
+    public Guid OrganizationId { get; set; }
+
+    public DateTime AssignedAt { get; set; }
+}

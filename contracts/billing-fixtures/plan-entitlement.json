@@ -1,0 +1,50 @@
+{
+  "description": "Golden parity for the pure billing entitlement kernel: (plan, status) -> entitledPlan(plan,status) and planLimits(entitledPlan(...)). Asserted IDENTICALLY by the REAL TS exports @tims/shared { entitledPlan, planLimits } (tests/billing/usage-plan-config-fixtures.test.ts) and the C# Tims.Domain.Billing.PlanEntitlement (Tims.UnitTests). The load-bearing invariant: a CANCELLED subscription (or a missing plan) falls back to trial limits, never its old paid/enterprise caps. 'input.plan' null models a missing subscription; an unknown plan exercises the defensive `?? trial` fallback.",
+  "cases": [
+    {
+      "name": "trial active -> trial limits",
+      "input": { "plan": "trial", "status": "trialing" },
+      "expected": { "entitledPlan": "trial", "limits": { "employees": 5, "vacancies": 3, "assessments": 20 } }
+    },
+    {
+      "name": "starter active -> starter limits",
+      "input": { "plan": "starter", "status": "active" },
+      "expected": { "entitledPlan": "starter", "limits": { "employees": 25, "vacancies": 10, "assessments": 200 } }
+    },
+    {
+      "name": "professional active -> professional limits",
+      "input": { "plan": "professional", "status": "active" },
+      "expected": { "entitledPlan": "professional", "limits": { "employees": 100, "vacancies": 50, "assessments": 2000 } }
+    },
+    {
+      "name": "professional past_due keeps the plan (only cancelled downgrades)",
+      "input": { "plan": "professional", "status": "past_due" },
+      "expected": { "entitledPlan": "professional", "limits": { "employees": 100, "vacancies": 50, "assessments": 2000 } }
+    },
+    {
+      "name": "enterprise active -> unlimited (null) limits",
+      "input": { "plan": "enterprise", "status": "active" },
+      "expected": { "entitledPlan": "enterprise", "limits": { "employees": null, "vacancies": null, "assessments": null } }
+    },
+    {
+      "name": "CANCELLED enterprise -> trial limits (loses paid entitlement, not unlimited)",
+      "input": { "plan": "enterprise", "status": "cancelled" },
+      "expected": { "entitledPlan": "trial", "limits": { "employees": 5, "vacancies": 3, "assessments": 20 } }
+    },
+    {
+      "name": "CANCELLED professional -> trial limits",
+      "input": { "plan": "professional", "status": "cancelled" },
+      "expected": { "entitledPlan": "trial", "limits": { "employees": 5, "vacancies": 3, "assessments": 20 } }
+    },
+    {
+      "name": "missing subscription (null plan/status) -> trial",
+      "input": { "plan": null, "status": null },
+      "expected": { "entitledPlan": "trial", "limits": { "employees": 5, "vacancies": 3, "assessments": 20 } }
+    },
+    {
+      "name": "unknown plan -> defensive trial fallback",
+      "input": { "plan": "mystery", "status": "active" },
+      "expected": { "entitledPlan": "mystery", "limits": { "employees": 5, "vacancies": 3, "assessments": 20 } }
+    }
+  ]
+}

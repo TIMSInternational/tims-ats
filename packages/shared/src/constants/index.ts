@@ -39,6 +39,52 @@ export function entitledPlan(plan: Plan | null | undefined, status: string | nul
   return plan;
 }
 
+// ── billing.getUsage view builder (Wave 2) ──────────────────────────────────
+// The PURE shape of billing.getUsage's response. Extracted from the router so the
+// exact envelope is a single source of truth shared by the tRPC procedure AND the
+// C# billing port's golden fixture (usage-view.json) — the fixture asserts THIS real
+// builder's output, never a hand-rolled mirror. The caller supplies the already-counted
+// usage (the `assessments` count is period-gated by the caller with `periodStart`) plus
+// the subscription's plan/status/period; the builder applies the entitled-plan limits and
+// serializes the period dates. storage/apiCalls have no metering source yet → always null
+// (honest, rule #4); `limit` is null for an unlimited (enterprise) metric.
+export interface UsageViewInput {
+  employees: number;
+  vacancies: number;
+  assessments: number;
+  plan: Plan | null | undefined;
+  status: string | null | undefined;
+  // The subscription's current billing period. `periodStart` is ALSO the boundary the
+  // caller uses to gate the `assessments` count; both are echoed as ISO strings (or null).
+  periodStart: Date | null;
+  periodEnd: Date | null;
+}
+
+export interface UsageView {
+  employees: { used: number; limit: number | null };
+  vacancies: { used: number; limit: number | null };
+  assessments: { used: number; limit: number | null };
+  storage: { usedMb: null; limitMb: null };
+  apiCalls: { used: null; limit: null };
+  periodStart: string | null;
+  periodEnd: string | null;
+}
+
+export function buildUsageView(input: UsageViewInput): UsageView {
+  // Limits come from the org's ENTITLED plan (a cancelled sub falls back to trial,
+  // not its old paid/enterprise caps).
+  const limits = planLimits(entitledPlan(input.plan, input.status));
+  return {
+    employees: { used: input.employees, limit: limits.employees },
+    vacancies: { used: input.vacancies, limit: limits.vacancies },
+    assessments: { used: input.assessments, limit: limits.assessments },
+    storage: { usedMb: null, limitMb: null },
+    apiCalls: { used: null, limit: null },
+    periodStart: input.periodStart?.toISOString() ?? null,
+    periodEnd: input.periodEnd?.toISOString() ?? null,
+  };
+}
+
 export const LOCALES = ['es', 'en'] as const;
 export type Locale = typeof LOCALES[number];
 export const DEFAULT_LOCALE: Locale = 'es';

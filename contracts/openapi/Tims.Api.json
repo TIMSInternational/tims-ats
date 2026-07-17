@@ -269,6 +269,100 @@
         }
       }
     },
+    "/billing/usage": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "BillingGetUsage",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsageV1"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/billing/plan": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "BillingGetCurrentPlan",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SubscriptionV1"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/billing/config": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "BillingGetConfig",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingConfigV1"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
     "/require-permission/{module}/{action}": {
       "get": {
         "tags": [
@@ -334,6 +428,17 @@
   },
   "components": {
     "schemas": {
+      "BillingConfigV1": {
+        "required": [
+          "configured"
+        ],
+        "type": "object",
+        "properties": {
+          "configured": {
+            "type": "boolean"
+          }
+        }
+      },
       "ExternalAssessmentResultV1": {
         "required": [
           "schemaVersion",
@@ -712,6 +817,121 @@
             "format": "date-time"
           },
           "updatedAt": {
+            "format": "date-time"
+          }
+        }
+      },
+      "UsageApiCalls": {
+        "required": [
+          "used",
+          "limit"
+        ],
+        "type": "object",
+        "properties": {
+          "used": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "limit": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "UsageMetric": {
+        "required": [
+          "used",
+          "limit"
+        ],
+        "type": "object",
+        "properties": {
+          "used": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "limit": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "UsageStorage": {
+        "required": [
+          "usedMb",
+          "limitMb"
+        ],
+        "type": "object",
+        "properties": {
+          "usedMb": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "limitMb": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "UsageV1": {
+        "required": [
+          "employees",
+          "vacancies",
+          "assessments",
+          "storage",
+          "apiCalls",
+          "periodStart",
+          "periodEnd"
+        ],
+        "type": "object",
+        "properties": {
+          "employees": {
+            "$ref": "#/components/schemas/UsageMetric"
+          },
+          "vacancies": {
+            "$ref": "#/components/schemas/UsageMetric"
+          },
+          "assessments": {
+            "$ref": "#/components/schemas/UsageMetric"
+          },
+          "storage": {
+            "$ref": "#/components/schemas/UsageStorage"
+          },
+          "apiCalls": {
+            "$ref": "#/components/schemas/UsageApiCalls"
+          },
+          "periodStart": {
+            "format": "date-time"
+          },
+          "periodEnd": {
             "format": "date-time"
           }
         }

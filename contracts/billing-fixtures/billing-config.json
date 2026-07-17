@@ -1,0 +1,12 @@
+{
+  "description": "Golden parity for billing.getBillingConfig's gating predicate: isBillingConfigured(env) — true ONLY when the Stripe secret key AND both self-serve price ids are present (non-empty). Asserted IDENTICALLY by the REAL TS export packages/api/src/lib/stripe.ts (mapping these neutral keys to STRIPE_SECRET_KEY / STRIPE_PRICE_STARTER / STRIPE_PRICE_PROFESSIONAL) and the C# Tims.Domain.Billing.StripeBillingConfig.IsConfigured. Fail-CLOSED: any missing or empty-string value -> not configured (never a fabricated checkout URL).",
+  "cases": [
+    { "name": "all three present -> configured", "input": { "secretKey": "sk_test_abc", "priceStarter": "price_starter_1", "priceProfessional": "price_pro_1" }, "expected": true },
+    { "name": "secret key missing -> not configured", "input": { "secretKey": null, "priceStarter": "price_starter_1", "priceProfessional": "price_pro_1" }, "expected": false },
+    { "name": "secret key empty string -> not configured", "input": { "secretKey": "", "priceStarter": "price_starter_1", "priceProfessional": "price_pro_1" }, "expected": false },
+    { "name": "starter price missing -> not configured", "input": { "secretKey": "sk_test_abc", "priceStarter": null, "priceProfessional": "price_pro_1" }, "expected": false },
+    { "name": "professional price empty -> not configured", "input": { "secretKey": "sk_test_abc", "priceStarter": "price_starter_1", "priceProfessional": "" }, "expected": false },
+    { "name": "all empty -> not configured", "input": { "secretKey": "", "priceStarter": "", "priceProfessional": "" }, "expected": false },
+    { "name": "all absent -> not configured", "input": { "secretKey": null, "priceStarter": null, "priceProfessional": null }, "expected": false }
+  ]
+}

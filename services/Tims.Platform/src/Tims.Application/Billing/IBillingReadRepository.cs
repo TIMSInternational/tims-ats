@@ -25,4 +25,19 @@ public interface IBillingReadRepository
     /// RLS), matching the TS <c>findFirstOrThrow</c> throwing NOT_FOUND.
     /// </summary>
     Task<InvoiceRow?> GetInvoiceAsync(string organizationId, string invoiceId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The org's subscription row (the FULL model) or <c>null</c> — the port of <c>getCurrentPlan</c>'s
+    /// <c>db.subscription.findUnique({ where:{ organizationId } })</c> (organizationId is unique). Read-only.
+    /// </summary>
+    Task<SubscriptionRow?> GetSubscriptionAsync(string organizationId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The <c>getUsage</c> inputs, gathered under ONE <c>TenantScope</c> (mirroring the TS router's
+    /// subscription <c>findUnique</c> + <c>Promise.all</c> of the three counts): the subscription's
+    /// plan/status/period plus the real org-scoped counts (active employees; not-deleted vacancies with
+    /// status ∉ {closed,cancelled}; assessment assignments gated to <c>assignedAt &gt;= currentPeriodStart</c>
+    /// when a period exists). All counts run with an explicit org filter under RLS.
+    /// </summary>
+    Task<BillingUsageData> GetUsageAsync(string organizationId, CancellationToken cancellationToken);
 }

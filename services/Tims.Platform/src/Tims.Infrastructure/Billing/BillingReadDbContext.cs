@@ -21,6 +21,13 @@ public sealed class BillingReadDbContext(DbContextOptions<BillingReadDbContext> 
 
     public DbSet<SubscriptionReadEntity> Subscriptions => Set<SubscriptionReadEntity>();
 
+    // getUsage count sources (read-only, minimal columns; run UNDER TenantScope/RLS with an explicit org filter).
+    public DbSet<UsageUserCountEntity> UsageUsers => Set<UsageUserCountEntity>();
+
+    public DbSet<UsageVacancyCountEntity> UsageVacancies => Set<UsageVacancyCountEntity>();
+
+    public DbSet<UsageAssignmentCountEntity> UsageAssignments => Set<UsageAssignmentCountEntity>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<InvoiceReadEntity>(entity =>
@@ -80,6 +87,35 @@ public sealed class BillingReadDbContext(DbContextOptions<BillingReadDbContext> 
             entity.Property(s => s.LastStripeEventAt).HasColumnName("last_stripe_event_at").HasColumnType("timestamp");
             entity.Property(s => s.CreatedAt).HasColumnName("created_at").HasColumnType("timestamp");
             entity.Property(s => s.UpdatedAt).HasColumnName("updated_at").HasColumnType("timestamp");
+        });
+
+        // getUsage count sources — minimal read-only maps (only the count-predicate columns).
+        modelBuilder.Entity<UsageUserCountEntity>(entity =>
+        {
+            entity.ToTable("users");
+            entity.HasKey(u => u.Id);
+            entity.Property(u => u.Id).HasColumnName("id");
+            entity.Property(u => u.OrganizationId).HasColumnName("organization_id");
+            entity.Property(u => u.IsActive).HasColumnName("is_active");
+        });
+
+        modelBuilder.Entity<UsageVacancyCountEntity>(entity =>
+        {
+            entity.ToTable("vacancies");
+            entity.HasKey(v => v.Id);
+            entity.Property(v => v.Id).HasColumnName("id");
+            entity.Property(v => v.OrganizationId).HasColumnName("organization_id");
+            entity.Property(v => v.Status).HasColumnName("status");
+            entity.Property(v => v.DeletedAt).HasColumnName("deleted_at").HasColumnType("timestamp");
+        });
+
+        modelBuilder.Entity<UsageAssignmentCountEntity>(entity =>
+        {
+            entity.ToTable("assessment_assignments");
+            entity.HasKey(a => a.Id);
+            entity.Property(a => a.Id).HasColumnName("id");
+            entity.Property(a => a.OrganizationId).HasColumnName("organization_id");
+            entity.Property(a => a.AssignedAt).HasColumnName("assigned_at").HasColumnType("timestamp");
         });
     }
 }

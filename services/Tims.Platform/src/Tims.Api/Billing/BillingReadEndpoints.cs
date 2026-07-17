@@ -1,13 +1,10 @@
 using System.Security.Claims;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Options;
-using Tims.Api.Authentication;
 using Tims.Api.Configuration;
 using Tims.Application.Billing;
 using Tims.Application.Identity;
-using Tims.Domain.Access;
 using Tims.Domain.Billing;
-using Tims.Domain.Identity;
 
 namespace Tims.Api.Billing;
 
@@ -56,7 +53,9 @@ public static class BillingReadEndpoints
                     return Results.BadRequest(new { error = "cursor must be a uuid" });
                 }
 
-                var gate = await AuthorizeAsync(user, httpContext, principalResolver, permissionService, platformOptions.Value, cancellationToken);
+                var gate = await BillingStaffGate.AuthorizeAsync(
+                    user, httpContext, principalResolver, permissionService, platformOptions.Value,
+                    BillingModule, ReadAction, cancellationToken);
                 if (gate.Failure is not null)
                 {
                     return gate.Failure;
@@ -92,7 +91,9 @@ public static class BillingReadEndpoints
                     return Results.BadRequest(new { error = "id must be a uuid" });
                 }
 
-                var gate = await AuthorizeAsync(user, httpContext, principalResolver, permissionService, platformOptions.Value, cancellationToken);
+                var gate = await BillingStaffGate.AuthorizeAsync(
+                    user, httpContext, principalResolver, permissionService, platformOptions.Value,
+                    BillingModule, ReadAction, cancellationToken);
                 if (gate.Failure is not null)
                 {
                     return gate.Failure;
@@ -117,92 +118,10 @@ public static class BillingReadEndpoints
             .WithName("BillingGetInvoice");
     }
 
-    // Staff-JWT gate (the permissionProcedure('billing','read') analog): resolve the TIMS principal from
-    // the JWT `sub` (unresolvable → 401, i.e. `ctx.user === null`), then enforce the billing:read grant
-    // via the SAME PermissionService kernel (denied → 403). A privileged, org-less principal on this
-    // tenant module raises BAD_REQUEST (400), mirroring the TS kernel / the /require-permission probe.
-    private static async Task<StaffGate> AuthorizeAsync(
-        ClaimsPrincipal user,
-        HttpContext httpContext,
-        PrincipalResolver principalResolver,
-        PermissionService permissionService,
-        PlatformOptions options,
-        CancellationToken cancellationToken)
-    {
-        var context = await ResolvePrincipalAsync(user, httpContext, principalResolver, options, cancellationToken);
-        if (context is null)
-        {
-            return StaffGate.Fail(Results.StatusCode(StatusCodes.Status401Unauthorized));
-        }
-
-        try
-        {
-            var decision = await permissionService.CheckAsync(context, BillingModule, ReadAction, cancellationToken);
-            return decision.Allowed
-                ? StaffGate.Ok(context)
-                : StaffGate.Fail(Results.StatusCode(StatusCodes.Status403Forbidden));
-        }
-        catch (TenantOrgRequiredException)
-        {
-            return StaffGate.Fail(Results.BadRequest(new { error = "organization_required" }));
-        }
-    }
-
-    // Shared principal resolution (the /require-permission ResolvePrincipalAsync pattern): reuse the
-    // principal already resolved by PrincipalResolutionMiddleware (stashed in HttpContext.Items) to avoid
-    // a second DB round-trip; fall back to resolving here if absent (staying robust). JWT `sub` →
-    // TenantContext (or null when the caller is not resolvable active staff/owner). Honors the
-    // platform-owner impersonation cookie + secret.
-    private static async Task<TenantContext?> ResolvePrincipalAsync(
-        ClaimsPrincipal user,
-        HttpContext httpContext,
-        PrincipalResolver principalResolver,
-        PlatformOptions options,
-        CancellationToken cancellationToken)
-    {
-        if (httpContext.Items.TryGetValue(ResolvedPrincipal.HttpContextKey, out var stashed)
-            && stashed is ResolvedPrincipal resolvedPrincipal)
-        {
-            return resolvedPrincipal.Context;
-        }
-
-        var sub = user.FindFirst("sub")?.Value;
-        if (string.IsNullOrEmpty(sub))
-        {
-            return null;
-        }
-
-        var resolution = await principalResolver.ResolveStaffAsync(
-            sub,
-            httpContext.Request.Headers.Cookie.ToString(),
-            options.ImpersonationSecret,
-            DateTime.UtcNow,
-            cancellationToken);
-
-        return resolution is { Resolved: true, Context: { } context } ? context : null;
-    }
-
     // The listInvoices envelope: items + an OPTIONAL nextCursor. WhenWritingNull OMITS the key on the last
     // page (TS `nextCursor: undefined` → no key), never emitting `"nextCursor":null`.
     private sealed record InvoiceListResponse(
         IReadOnlyList<InvoiceListItemV1> Items,
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         string? NextCursor);
-
-    private readonly struct StaffGate
-    {
-        private StaffGate(TenantContext? context, IResult? failure)
-        {
-            Context = context;
-            Failure = failure;
-        }
-
-        public TenantContext? Context { get; }
-
-        public IResult? Failure { get; }
-
-        public static StaffGate Ok(TenantContext context) => new(context, null);
-
-        public static StaffGate Fail(IResult failure) => new(null, failure);
-    }
 }

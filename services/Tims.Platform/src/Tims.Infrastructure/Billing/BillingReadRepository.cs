@@ -13,6 +13,10 @@ namespace Tims.Infrastructure.Billing;
 /// </summary>
 public sealed class BillingReadRepository(BillingReadDbContext db) : IBillingReadRepository
 {
+    // The TS getUsage vacancy count is `status notIn ['closed','cancelled']` — EF translates
+    // `!Contains(status)` to `status NOT IN ('closed','cancelled')`. status is a plain (non-enum) column.
+    private static readonly string[] ExcludedVacancyStatuses = ["closed", "cancelled"];
+
     private readonly BillingReadDbContext _db = db;
 
     public async Task<BillingInvoicePage> ListInvoicesAsync(
@@ -78,6 +82,64 @@ public sealed class BillingReadRepository(BillingReadDbContext db) : IBillingRea
         return projected is null ? null : MapInvoice(projected.Invoice, projected.Subscription);
     }
 
+    public async Task<SubscriptionRow?> GetSubscriptionAsync(
+        string organizationId, CancellationToken cancellationToken)
+    {
+        var orgId = Guid.Parse(organizationId);
+        await using var scope = await TenantScope.BeginAsync(_db, orgId, cancellationToken).ConfigureAwait(false);
+
+        // organizationId is unique on subscriptions → at most one row (Prisma findUnique). Full-model read.
+        var entity = await _db.Subscriptions.AsNoTracking()
+            .Where(s => s.OrganizationId == orgId)
+            .FirstOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return entity is null ? null : MapSubscription(entity);
+    }
+
+    public async Task<BillingUsageData> GetUsageAsync(string organizationId, CancellationToken cancellationToken)
+    {
+        var orgId = Guid.Parse(organizationId);
+        await using var scope = await TenantScope.BeginAsync(_db, orgId, cancellationToken).ConfigureAwait(false);
+
+        // Subscription plan/status/period (select-only, like the TS `select`). Missing sub → all null → trial.
+        var sub = await _db.Subscriptions.AsNoTracking()
+            .Where(s => s.OrganizationId == orgId)
+            .Select(s => new SubscriptionUsageProjection(s.Plan, s.Status, s.CurrentPeriodStart, s.CurrentPeriodEnd))
+            .FirstOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        // The billing-period boundary that gates the assessments count (the raw timestamp wall-clock).
+        var periodStart = sub?.CurrentPeriodStart;
+
+        var employees = await _db.UsageUsers.AsNoTracking()
+            .CountAsync(u => u.OrganizationId == orgId && u.IsActive, cancellationToken)
+            .ConfigureAwait(false);
+
+        var vacancies = await _db.UsageVacancies.AsNoTracking()
+            .CountAsync(
+                v => v.OrganizationId == orgId && v.DeletedAt == null && !ExcludedVacancyStatuses.Contains(v.Status),
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        var assignments = _db.UsageAssignments.AsNoTracking().Where(a => a.OrganizationId == orgId);
+        if (periodStart is { } boundary)
+        {
+            assignments = assignments.Where(a => a.AssignedAt >= boundary);
+        }
+
+        var assessments = await assignments.CountAsync(cancellationToken).ConfigureAwait(false);
+
+        return new BillingUsageData(
+            sub?.Plan,
+            sub?.Status,
+            ToUtcNullable(sub?.CurrentPeriodStart),
+            ToUtcNullable(sub?.CurrentPeriodEnd),
+            employees,
+            vacancies,
+            assessments);
+    }
+
     private static InvoiceRow MapInvoice(InvoiceReadEntity e, SubscriptionReadEntity? subscription) => new(
         e.Id.ToString(),
         e.InvoiceNumber,
@@ -129,4 +191,13 @@ public sealed class BillingReadRepository(BillingReadDbContext db) : IBillingRea
         value is null ? null : ToUtc(value.Value);
 
     private sealed record ProjectedInvoice(InvoiceReadEntity Invoice, SubscriptionReadEntity? Subscription);
+
+    // The getUsage subscription projection (plan/status/period only — the TS `select`). Enum columns
+    // (plan/status) read as strings via the unmapped-types data source; period columns are `timestamp`
+    // wall-clock (Kind=Unspecified). CurrentPeriodStart also gates the assessments count.
+    private sealed record SubscriptionUsageProjection(
+        string Plan,
+        string Status,
+        DateTime? CurrentPeriodStart,
+        DateTime? CurrentPeriodEnd);
 }

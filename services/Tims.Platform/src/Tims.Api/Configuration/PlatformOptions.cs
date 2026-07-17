@@ -91,4 +91,12 @@ public sealed class PlatformOptions
     /// DEFAULT false (dark) — TS remains the single active reader until cutover.
     /// </summary>
     public bool BillingReadEnabled { get; init; }
+
+    /// <summary>
+    /// Phase-5 Slice 3b (efcoreReadOnly): when true, the C# billing usage/plan/config READ surface
+    /// (<c>GET /billing/usage</c>, <c>/billing/plan</c>, <c>/billing/config</c>) is mapped and live.
+    /// DEFAULT false (dark) — TS remains the single active reader until cutover (separate flag from
+    /// <see cref="BillingReadEnabled"/> for finer per-surface canary control).
+    /// </summary>
+    public bool BillingUsageEnabled { get; init; }
 }

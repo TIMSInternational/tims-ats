@@ -35,6 +35,29 @@ public sealed class BillingReadFixture : IAsyncLifetime
     public static readonly Guid InvoiceB1 = Guid.Parse("d0000000-0000-0000-0000-0000000000b1");
     public static readonly Guid SubscriptionA = Guid.Parse("50000000-0000-0000-0000-00000000000a");
 
+    // OrgB gets a CANCELLED enterprise subscription (Slice 3b): entitledPlan → trial limits, NOT unlimited.
+    public static readonly Guid SubscriptionB = Guid.Parse("50000000-0000-0000-0000-00000000000b");
+
+    // OrgC has NO subscription but DOES have assessment assignments spanning far-apart dates — proves the
+    // getUsage all-time count branch (no period gate) with real rows, not just an empty org.
+    public static readonly Guid OrgC = Guid.Parse("33333333-3333-3333-3333-333333333333");
+    public const int OrgCAssessments = 2; // both counted all-time (no subscription → no period gate)
+
+    // getUsage expected counts (Slice 3b). OrgA (SubA active professional, period 2026-06-01..07-01):
+    //   employees = 2 active org users (billing-reader + no-grant; the +1 inactive is excluded);
+    //   vacancies = 2 (published + draft; closed/cancelled/soft-deleted excluded);
+    //   assessments = 2 assignments assignedAt >= 2026-06-01 (the 2026-05-01 one is before the period).
+    public const int OrgAEmployees = 2;
+    public const int OrgAVacancies = 2;
+    public const int OrgAAssessments = 2;
+
+    // OrgB (SubB cancelled enterprise, same period): employees = 1 active user; vacancies = 1 published;
+    // assessments = 3 in-period assignments (a DISTINCT count from OrgA's 2 — so a cross-org bleed changes
+    // the value, not just the total). Limits fall back to trial (5/3/20) because status = cancelled.
+    public const int OrgBEmployees = 1;
+    public const int OrgBVacancies = 1;
+    public const int OrgBAssessments = 3;
+
     // Staff-JWT boot-matrix identity: the granted user's sub, the no-grant user's sub.
     public const string BillingUserSub = "sub-billing-reader";
     public const string NoGrantUserSub = "sub-no-billing-grant";
@@ -73,7 +96,7 @@ public sealed class BillingReadFixture : IAsyncLifetime
             await role.ExecuteNonQueryAsync();
         }
 
-        foreach (var sql in new[] { IdentitySchemaSql, IdentitySeedSql, BillingSchemaSql, BillingSeedSql })
+        foreach (var sql in new[] { IdentitySchemaSql, IdentitySeedSql, BillingSchemaSql, BillingSeedSql, UsageSchemaSql, UsageSeedSql })
         {
             await using var command = connection.CreateCommand();
             command.CommandText = sql;
@@ -241,5 +264,77 @@ public sealed class BillingReadFixture : IAsyncLifetime
            NULL, '2026-07-06 00:00:00', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2026-03-01 00:00:00'),
           ('d0000000-0000-0000-0000-0000000000b1', 2001, '22222222-2222-2222-2222-222222222222', NULL, NULL, 999.99, NULL, NULL, 'USD', 'paid',
            NULL, '2026-06-01 00:00:00', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2026-04-01 00:00:00');
+        """;
+
+    // getUsage count sources (Slice 3b): vacancies + assessment_assignments (plain-String status), PLUS RLS
+    // on the pre-existing `users` table so the app_tenant-scoped employee count respects tenant isolation.
+    // The privileged identity/RBAC reads run on the superuser `postgres` connection (bypass RLS, unaffected);
+    // the counts run UNDER TenantScope (SET LOCAL ROLE app_tenant → NOBYPASSRLS → the policy filters by org).
+    private const string UsageSchemaSql =
+        """
+        GRANT SELECT ON users TO app_tenant;
+        ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+        ALTER TABLE users FORCE ROW LEVEL SECURITY;
+        CREATE POLICY tenant_isolation ON users
+            USING (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid);
+
+        CREATE TABLE vacancies (
+            id uuid PRIMARY KEY,
+            organization_id uuid NOT NULL,
+            status text NOT NULL DEFAULT 'draft',
+            deleted_at timestamp(3) NULL
+        );
+        CREATE TABLE assessment_assignments (
+            id uuid PRIMARY KEY,
+            organization_id uuid NOT NULL,
+            assigned_at timestamp(3) NOT NULL
+        );
+
+        GRANT SELECT ON vacancies, assessment_assignments TO app_tenant;
+
+        ALTER TABLE vacancies ENABLE ROW LEVEL SECURITY;
+        ALTER TABLE vacancies FORCE ROW LEVEL SECURITY;
+        ALTER TABLE assessment_assignments ENABLE ROW LEVEL SECURITY;
+        ALTER TABLE assessment_assignments FORCE ROW LEVEL SECURITY;
+
+        CREATE POLICY tenant_isolation ON vacancies
+            USING (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid);
+        CREATE POLICY tenant_isolation ON assessment_assignments
+            USING (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid);
+        """;
+
+    // OrgA (11111111): +1 inactive user (is_active filter); 2 counted vacancies (published+draft) plus
+    // closed/cancelled/soft-deleted (excluded); 2 in-period + 1 pre-period assignment.
+    // OrgB (22222222): a CANCELLED enterprise subscription (→ trial limits) + 1 active user, 1 published
+    // vacancy, 2 in-period assignments (proves cross-org isolation + the cancelled-sub → trial fallback live).
+    private const string UsageSeedSql =
+        """
+        INSERT INTO users (id, organization_id, supabase_user_id, email, is_platform_owner, is_active) VALUES
+          ('c0000000-0000-0000-0000-000000000003', '11111111-1111-1111-1111-111111111111', 'sub-inactive', 'inactive@tims.test', false, false),
+          ('c0000000-0000-0000-0000-0000000000b1', '22222222-2222-2222-2222-222222222222', 'sub-orgb-user', 'orgb@tims.test', false, true);
+
+        INSERT INTO subscriptions
+          (id, organization_id, stripe_customer_id, stripe_subscription_id, plan, status,
+           current_period_start, current_period_end, trial_ends_at, cancelled_at, last_stripe_event_at, created_at, updated_at) VALUES
+          ('50000000-0000-0000-0000-00000000000b', '22222222-2222-2222-2222-222222222222', NULL, NULL, 'enterprise', 'cancelled',
+           '2026-06-01 00:00:00', '2026-07-01 00:00:00', NULL, '2026-06-15 00:00:00', NULL, '2026-05-01 09:00:00', '2026-06-15 00:00:00');
+
+        INSERT INTO vacancies (id, organization_id, status, deleted_at) VALUES
+          ('f0000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'published', NULL),
+          ('f0000000-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'draft', NULL),
+          ('f0000000-0000-0000-0000-000000000003', '11111111-1111-1111-1111-111111111111', 'closed', NULL),
+          ('f0000000-0000-0000-0000-000000000004', '11111111-1111-1111-1111-111111111111', 'cancelled', NULL),
+          ('f0000000-0000-0000-0000-000000000005', '11111111-1111-1111-1111-111111111111', 'published', '2026-06-20 00:00:00'),
+          ('f0000000-0000-0000-0000-0000000000b1', '22222222-2222-2222-2222-222222222222', 'published', NULL);
+
+        INSERT INTO assessment_assignments (id, organization_id, assigned_at) VALUES
+          ('aa000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', '2026-06-15 00:00:00'),
+          ('aa000000-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', '2026-06-20 00:00:00'),
+          ('aa000000-0000-0000-0000-000000000003', '11111111-1111-1111-1111-111111111111', '2026-05-01 00:00:00'),
+          ('aa000000-0000-0000-0000-0000000000b1', '22222222-2222-2222-2222-222222222222', '2026-06-15 00:00:00'),
+          ('aa000000-0000-0000-0000-0000000000b2', '22222222-2222-2222-2222-222222222222', '2026-06-16 00:00:00'),
+          ('aa000000-0000-0000-0000-0000000000b3', '22222222-2222-2222-2222-222222222222', '2026-06-17 00:00:00'),
+          ('aa000000-0000-0000-0000-0000000000c1', '33333333-3333-3333-3333-333333333333', '2020-01-01 00:00:00'),
+          ('aa000000-0000-0000-0000-0000000000c2', '33333333-3333-3333-3333-333333333333', '2026-06-15 00:00:00');
         """;
 }

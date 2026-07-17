@@ -185,6 +185,13 @@ try
         options.UseNpgsql(sp.GetRequiredService<BillingReadDataSourceHolder>().DataSource));
     builder.Services.AddScoped<IBillingReadRepository, BillingReadRepository>();
     builder.Services.AddScoped<BillingReadUseCase>();
+    // Slice 3b usage/plan/config reads: the use case reuses IBillingReadRepository (subscription + counts on
+    // the same read context). getBillingConfig reads the deploy's Stripe config (optional; absent → honest
+    // "not configured"), bound but NOT ValidateOnStart (every field is optional).
+    builder.Services.AddScoped<BillingUsageUseCase>();
+    builder.Services
+        .AddOptions<StripeBillingOptions>()
+        .Bind(builder.Configuration.GetSection(StripeBillingOptions.SectionName));
     // The submit use case truncates its completion instant to whole milliseconds through TimeProvider so
     // persisted (timestamp(3)) == returned (v1) == JS `new Date()` ms precision; register the system clock.
     builder.Services.TryAddSingleton(TimeProvider.System);
@@ -301,6 +308,32 @@ try
 
             return Task.CompletedTask;
         });
+
+        // GET /billing/plan (getCurrentPlan) is a faithful port of `db.subscription.findUnique`, which
+        // returns the subscription OR top-level `null` when the org has none — so its 200 body is NULLABLE.
+        // Produces<SubscriptionV1> emits a bare `$ref` (non-null); rewrite it to the SAME nullable-ref form
+        // the generator uses elsewhere (oneOf: [{type:null},{$ref}], e.g. InvoiceDetailV1.subscription) so a
+        // generated client models the legitimate `200 null`.
+        options.AddOperationTransformer((operation, context, _) =>
+        {
+            if (context.Description.RelativePath == "billing/plan"
+                && operation.Responses is not null
+                && operation.Responses.TryGetValue("200", out var ok)
+                && ok.Content is not null
+                && ok.Content.TryGetValue("application/json", out var media))
+            {
+                media.Schema = new Microsoft.OpenApi.OpenApiSchema
+                {
+                    OneOf =
+                    [
+                        new Microsoft.OpenApi.OpenApiSchema { Type = Microsoft.OpenApi.JsonSchemaType.Null },
+                        new Microsoft.OpenApi.OpenApiSchemaReference("SubscriptionV1"),
+                    ],
+                };
+            }
+
+            return Task.CompletedTask;
+        });
     });
 
     var app = builder.Build();
@@ -399,6 +432,15 @@ try
     if (externalOptions.BillingReadEnabled || isOpenApiDocGeneration)
     {
         app.MapBillingReadEndpoints();
+    }
+
+    // Billing usage/plan/config READ surface (Phase-5 Slice 3b): GET /billing/usage (real counts +
+    // entitled-plan limits), /billing/plan (getCurrentPlan — raw subscription or null), /billing/config
+    // (getBillingConfig — Stripe config-presence predicate). Same Supabase JWT + billing:read gate as the
+    // invoice reads. Dark unless the flag is on (deploy-gated cutover; TS stays the sole active reader).
+    if (externalOptions.BillingUsageEnabled || isOpenApiDocGeneration)
+    {
+        app.MapBillingUsageEndpoints();
     }
 
     // Authz probe (WP2.5): the C# equivalent of the tRPC `requirePermission` gate. Resolves the
