@@ -24,4 +24,17 @@ public sealed class StripeBillingOptions
     /// (400) — fail-closed, never processes an unverified event.
     /// </summary>
     public string? WebhookSecret { get; init; }
+
+    /// <summary>
+    /// The absolute app origin used for self-serve return URLs (checkout success/cancel, portal return) — the
+    /// C# analog of <c>NEXT_PUBLIC_APP_URL</c>. Defaults to the known prod origin so a missing value never
+    /// yields a relative URL Stripe would reject.
+    /// </summary>
+    public string AppUrl { get; init; } = "https://tims-ats.vercel.app";
+
+    /// <summary>
+    /// Optional Stripe Billing Portal configuration id (<c>STRIPE_PORTAL_CONFIGURATION_ID</c>): when set the
+    /// portal uses that explicit configuration (e.g. cancel = at_period_end); otherwise the account default.
+    /// </summary>
+    public string? PortalConfigurationId { get; init; }
 }

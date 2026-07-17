@@ -1,0 +1,14 @@
+{
+  "description": "Phase-5 Slice 4b — blocksSelfServeCheckout PURE kernel golden corpus. Asserted by the REAL TS export (packages/api/src/services/billing.service.ts) in tests/billing/billing-service.test.ts AND the C# port Tims.Domain.Billing.BillingSelfServeKernel.BlocksSelfServeCheckout in Tims.UnitTests/Fixtures/BillingSelfServeKernelFixtureTests. Guards against a SECOND subscription-creating checkout (double billing): blocks a non-cancelled live Stripe subscription AND a paid local/manually-billed plan (stripeSubscriptionId null, plan != trial); allows a cancelled subscription (re-subscribe), a trial with no Stripe subscription, and a missing subscription row (null). A behavior change edits this JSON once; both stacks must agree.",
+  "cases": [
+    { "name": "blocks a live Stripe subscription (active)", "input": { "stripeSubscriptionId": "sub_1", "status": "active", "plan": "starter" }, "expected": true },
+    { "name": "blocks a live Stripe subscription (trialing)", "input": { "stripeSubscriptionId": "sub_1", "status": "trialing", "plan": "starter" }, "expected": true },
+    { "name": "blocks a live Stripe subscription (past_due)", "input": { "stripeSubscriptionId": "sub_1", "status": "past_due", "plan": "professional" }, "expected": true },
+    { "name": "blocks a paid local/manually-billed plan with no Stripe subscription (professional/active)", "input": { "stripeSubscriptionId": null, "status": "active", "plan": "professional" }, "expected": true },
+    { "name": "blocks a paid local/manually-billed plan with no Stripe subscription (starter/past_due)", "input": { "stripeSubscriptionId": null, "status": "past_due", "plan": "starter" }, "expected": true },
+    { "name": "allows checkout when cancelled with a Stripe subscription id (re-subscribe)", "input": { "stripeSubscriptionId": "sub_1", "status": "cancelled", "plan": "starter" }, "expected": false },
+    { "name": "allows checkout when cancelled with no Stripe subscription id", "input": { "stripeSubscriptionId": null, "status": "cancelled", "plan": "professional" }, "expected": false },
+    { "name": "allows checkout for a trial with no Stripe subscription id", "input": { "stripeSubscriptionId": null, "status": "trialing", "plan": "trial" }, "expected": false },
+    { "name": "allows checkout for a missing subscription row", "input": null, "expected": false }
+  ]
+}

@@ -1,30 +1,33 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import {
   billingService,
   blocksSelfServeCheckout,
 } from '../../packages/api/src/services/billing.service';
 
-// Guard that prevents a second subscription-creating checkout (double billing).
-describe('blocksSelfServeCheckout', () => {
-  it('blocks an org with a non-cancelled Stripe subscription', () => {
-    expect(blocksSelfServeCheckout({ stripeSubscriptionId: 'sub_1', status: 'active', plan: 'starter' })).toBe(true);
-    expect(blocksSelfServeCheckout({ stripeSubscriptionId: 'sub_1', status: 'trialing', plan: 'starter' })).toBe(true);
-    expect(blocksSelfServeCheckout({ stripeSubscriptionId: 'sub_1', status: 'past_due', plan: 'professional' })).toBe(true);
+// Guard that prevents a second subscription-creating checkout (double billing). The SAME golden corpus
+// asserted by the C# BillingSelfServeKernel (contracts/billing-fixtures/blocks-self-serve-checkout.json;
+// Tims.UnitTests BillingSelfServeKernelFixtureTests) is asserted here against the REAL export (#141
+// honest-fixture rule). A behavior change edits the JSON once; both stacks must agree.
+interface BlocksFixture {
+  cases: Array<{
+    name: string;
+    input: { stripeSubscriptionId: string | null; status: string; plan: string } | null;
+    expected: boolean;
+  }>;
+}
+
+const blocksData = JSON.parse(
+  readFileSync(fileURLToPath(new URL('../../contracts/billing-fixtures/blocks-self-serve-checkout.json', import.meta.url)), 'utf8'),
+) as BlocksFixture;
+
+describe('blocks-self-serve-checkout.json — blocksSelfServeCheckout (real export, shared with C#)', () => {
+  it.each(blocksData.cases.map((c) => [c.name, c] as const))('%s', (_name, c) => {
+    expect(blocksSelfServeCheckout(c.input)).toBe(c.expected);
   });
-  it('blocks a paid local/manually-billed plan even with no Stripe subscription id', () => {
-    // The TIMS case: paid plan invoiced externally, stripeSubscriptionId null.
-    expect(blocksSelfServeCheckout({ stripeSubscriptionId: null, status: 'active', plan: 'professional' })).toBe(true);
-    expect(blocksSelfServeCheckout({ stripeSubscriptionId: null, status: 'past_due', plan: 'starter' })).toBe(true);
-  });
-  it('allows checkout when the subscription is cancelled (re-subscribe)', () => {
-    expect(blocksSelfServeCheckout({ stripeSubscriptionId: 'sub_1', status: 'cancelled', plan: 'starter' })).toBe(false);
-    expect(blocksSelfServeCheckout({ stripeSubscriptionId: null, status: 'cancelled', plan: 'professional' })).toBe(false);
-  });
-  it('allows checkout for a trial with no Stripe subscription id', () => {
-    expect(blocksSelfServeCheckout({ stripeSubscriptionId: null, status: 'trialing', plan: 'trial' })).toBe(false);
-  });
-  it('allows checkout for a missing subscription row', () => {
-    expect(blocksSelfServeCheckout(null)).toBe(false);
+  // undefined collapses to the same branch as the null case (current?.stripeSubscriptionId ?? ...).
+  it('treats undefined like a missing subscription row', () => {
     expect(blocksSelfServeCheckout(undefined)).toBe(false);
   });
 });

@@ -109,4 +109,13 @@ public sealed class PlatformOptions
     /// non-webhook writers — see docs/architecture/csharp-migration/phase-5-slice-4-billing-webhook-writes.md).
     /// </summary>
     public bool BillingWebhookWriteEnabled { get; init; }
+
+    /// <summary>
+    /// Phase-5 Slice 4b (efcoreStranglerWrite + efcoreAppendOnly): when true, the C# tenant self-serve billing
+    /// WRITE surface (<c>POST /billing/checkout-session</c>, <c>/billing/portal-session</c>,
+    /// <c>/billing/cancel-subscription</c>) is mapped and live — Stripe checkout/portal/cancel + the customer-link
+    /// compare-and-set + the fail-soft audit_logs write. DEFAULT false (dark): TS remains the sole active
+    /// self-serve path until Federico flips this at canary.
+    /// </summary>
+    public bool BillingSelfServeEnabled { get; init; }
 }

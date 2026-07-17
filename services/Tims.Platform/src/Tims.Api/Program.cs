@@ -225,6 +225,36 @@ try
     builder.Services.AddScoped<IBillingWebhookLog, LoggerBillingWebhookLog>();
     builder.Services.AddScoped<BillingWebhookUseCase>();
 
+    // --- Billing tenant SELF-SERVE plane (Phase-5 Slice 4b) ---------------------------
+    // createCheckoutSession / createPortalSession / cancelSubscription — Stripe outbound + the customer-link
+    // compare-and-set (subscriptions, efcoreStranglerWrite) + a fail-soft audit_logs write (efcoreAppendOnly,
+    // the FIRST C# audit_logs writer). Runs on the TENANT path UNDER TenantScope (app_tenant + org GUC, RLS) —
+    // NOT the privileged webhook path. Its EnableUnmappedTypes data source (for the subscription enum read) is
+    // isolated behind a holder, like the other billing contexts.
+    builder.Services.AddSingleton(_ =>
+        new BillingSelfServeDataSourceHolder(BillingSelfServeDataSource.Build(databaseConnectionString ?? string.Empty)));
+    builder.Services.AddDbContext<BillingSelfServeDbContext>((sp, options) =>
+        options.UseNpgsql(sp.GetRequiredService<BillingSelfServeDataSourceHolder>().DataSource));
+    builder.Services.AddScoped<IBillingSelfServeRepository, BillingSelfServeRepository>();
+    // The first C# audit_logs writer (best-effort, fail-soft), shared by the portal/cancel actions.
+    builder.Services.AddDbContext<AuditLogDbContext>(options => options.UseNpgsql(databaseConnectionString));
+    builder.Services.AddScoped<IBillingAuditWriter, BillingAuditWriter>();
+    // The self-serve Stripe outbound gateway (customer/checkout/portal/cancel), fed the secret key from options.
+    builder.Services.AddScoped<IStripeBillingGateway>(sp =>
+        new StripeBillingGateway(sp.GetRequiredService<IOptions<StripeBillingOptions>>().Value.SecretKey));
+    // The config-presence gate + plan→price + return-origin, built from StripeBillingOptions.
+    builder.Services.AddSingleton(sp =>
+    {
+        var stripe = sp.GetRequiredService<IOptions<StripeBillingOptions>>().Value;
+        // Honor the existing NEXT_PUBLIC_APP_URL env var (the TS source), with Stripe:AppUrl as an explicit
+        // override — so a deploy that only sets NEXT_PUBLIC_APP_URL gets the right return origin (not the default).
+        var envAppUrl = Environment.GetEnvironmentVariable("NEXT_PUBLIC_APP_URL");
+        var appUrl = string.IsNullOrEmpty(envAppUrl) ? stripe.AppUrl : envAppUrl;
+        return new BillingSelfServeConfig(
+            stripe.SecretKey, stripe.PriceStarter, stripe.PriceProfessional, appUrl, stripe.PortalConfigurationId);
+    });
+    builder.Services.AddScoped<BillingSelfServeUseCase>();
+
     // --- HRIS connector plane (WP3.2): typed BambooHR client + resilience + secrets ----
     // Bind + validate HrisOptions at startup (the Zod-env-gate analog, mirroring PlatformOptions),
     // then wire the dev secret store, the provider factory, and the typed HttpClient carrying the
@@ -479,6 +509,15 @@ try
     if (externalOptions.BillingWebhookWriteEnabled || isOpenApiDocGeneration)
     {
         app.MapBillingWebhookEndpoints();
+    }
+
+    // Billing tenant SELF-SERVE WRITE surface (Phase-5 Slice 4b): POST /billing/checkout-session,
+    // /billing/portal-session, /billing/cancel-subscription. Staff-JWT + billing:update gate; tenant-scoped
+    // (Stripe outbound + customer-link CAS + fail-soft audit). Dark unless the flag is on (deploy-gated cutover;
+    // TS stays the sole active self-serve path until Federico flips it).
+    if (externalOptions.BillingSelfServeEnabled || isOpenApiDocGeneration)
+    {
+        app.MapBillingSelfServeEndpoints();
     }
 
     // Authz probe (WP2.5): the C# equivalent of the tRPC `requirePermission` gate. Resolves the
