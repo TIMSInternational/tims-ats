@@ -43,6 +43,9 @@ export const dataRequestsRouter = router({
       if (users.length === 0 && candidates.length === 0) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'No se encontraron datos para ese correo' });
       }
+      // NOTE (CB-1c): this DSAR export is already audited below as `data_subject_export`,
+      // per affected SUBJECT org (better attribution than a generic platform_export), so
+      // no logPlatformExport call is added here.
 
       const candidateIds = candidates.map((c) => c.id);
       const userIds = users.map((u) => u.id);

@@ -5,6 +5,7 @@ import { router } from '../../trpc';
 import { db } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { platformProcedure } from './_common';
+import { logPlatformExport } from '../../access/security-audit';
 import { invalidatePermissionCache } from '../../lib/cache';
 
 const userListSelect = {
@@ -342,7 +343,7 @@ export const usersRouter = router({
       isActive: z.boolean().optional(),
       roleSlug: z.string().max(50).optional(),
     }))
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
       const where: Prisma.UserWhereInput = {};
       if (input.organizationId) where.organizationId = input.organizationId;
       if (input.isActive !== undefined) where.isActive = input.isActive;
@@ -363,6 +364,8 @@ export const usersRouter = router({
           userRoles: { select: { role: { select: { slug: true } } } },
         },
       });
+
+      logPlatformExport(ctx, { resource: 'users', count: users.length, format: 'csv', targetOrgId: input.organizationId });
 
       const header = 'Nombre,Email,Organizacion,Rol,Estado,Ultimo Login,Creado';
       const rows = users.map((u) => {

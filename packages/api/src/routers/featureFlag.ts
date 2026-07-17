@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { router, protectedProcedure, permissionProcedure } from '../trpc';
 import { tenantDb as db, Prisma } from '@tims/db';
 import { cacheGet, cacheSet, cacheInvalidatePrefix } from '../lib/cache';
+import { logSecurityEvent } from '../access/security-audit';
 
 export const featureFlagRouter = router({
   // List all feature flags for the organization
@@ -46,6 +47,17 @@ export const featureFlagRouter = router({
       // Invalidate all cached flag checks for this org so the updated value is
       // reflected within the next check TTL window (5 min).
       await cacheInvalidatePrefix(`tims:flagcheck:${ctx.user.organizationId}:`);
+
+      // CB-1c: privileged-action security event (feature-flag change).
+      void logSecurityEvent({
+        organizationId: ctx.user.organizationId,
+        actorId: ctx.user.impersonatorId ?? ctx.user.id,
+        action: 'feature_flag_changed',
+        entity: 'feature_flag',
+        entityId: result.id,
+        metadata: { key: result.key, enabled: result.enabled },
+      });
+
       return result;
     }),
 

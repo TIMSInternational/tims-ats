@@ -1,9 +1,10 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
-import { router, protectedProcedure, permissionProcedure, auditedProcedure } from '../trpc';
+import { router, protectedProcedure, permissionProcedure } from '../trpc';
 import { tenantDb as db } from '@tims/db';
 import { createUserSchema, updateProfileSchema, assignRoleSchema } from '@tims/shared';
 import { invalidatePermissionCache } from '../lib/cache';
+import { logSecurityEvent } from '../access/security-audit';
 import { resolveStaffSupabaseUserId } from '../services/staff-provisioning.service';
 
 export const userRouter = router({
@@ -150,7 +151,7 @@ export const userRouter = router({
       const supabaseUserId = await resolveStaffSupabaseUserId(userData.email);
 
       // Create user + role assignment in transaction
-      return db.$transaction(async (tx) => {
+      const created = await db.$transaction(async (tx) => {
         const user = await tx.user.create({
           data: {
             ...userData,
@@ -169,6 +170,18 @@ export const userRouter = router({
 
         return user;
       });
+
+      // CB-1c: privileged-action security event (role granted at user creation).
+      void logSecurityEvent({
+        organizationId: ctx.user.organizationId,
+        actorId: ctx.user.impersonatorId ?? ctx.user.id,
+        action: 'role_assigned',
+        entity: 'user_role',
+        entityId: created.id,
+        metadata: { targetUserId: created.id, roleSlug, atUserCreation: true },
+      });
+
+      return created;
     }),
 
   // Assign role
@@ -217,6 +230,22 @@ export const userRouter = router({
 
       // Role change → drop the org's cached permission decisions.
       await invalidatePermissionCache(ctx.user.organizationId);
+
+      // CB-1c: privileged-action security event (role assignment / scope change).
+      void logSecurityEvent({
+        organizationId: ctx.user.organizationId,
+        actorId: ctx.user.impersonatorId ?? ctx.user.id,
+        action: 'role_assigned',
+        entity: 'user_role',
+        entityId: input.userId,
+        metadata: {
+          targetUserId: input.userId,
+          roleSlug: input.roleSlug,
+          companyScope: input.companyScope ?? null,
+          unitScope: input.unitScope ?? null,
+        },
+      });
+
       return result;
     }),
 

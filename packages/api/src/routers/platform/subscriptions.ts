@@ -3,6 +3,7 @@ import { router } from '../../trpc';
 import { db, OrgPlan, SubscriptionStatus } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { platformProcedure } from './_common';
+import { logPlatformExport } from '../../access/security-audit';
 import { PLAN_PRICES } from '../../lib/plan-prices';
 
 const subscriptionSelect = {
@@ -237,7 +238,7 @@ export const subscriptionsRouter = router({
       status: z.nativeEnum(SubscriptionStatus).optional(),
       plan: z.nativeEnum(OrgPlan).optional(),
     }))
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
       const where: {
         status?: SubscriptionStatus;
         plan?: OrgPlan;
@@ -261,6 +262,7 @@ export const subscriptionsRouter = router({
         return `${orgName},${sub.plan},${sub.status},$${mrr},${period},${trialEnd},${created}`;
       });
 
+      logPlatformExport(ctx, { resource: 'subscriptions', count: subs.length, format: 'csv' });
       return { csv: [header, ...rows].join('\n'), count: subs.length };
     }),
 

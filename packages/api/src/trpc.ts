@@ -7,6 +7,7 @@ import { buildAccessForUser, createAnchorLoader, type AccessContext } from './ac
 import { resolveApiKeyPrincipal, buildExternalAccessUser } from './access/external-auth';
 import { externalScopeSatisfied } from './access/external-scope';
 import { touchApiKeyLastUsed } from './repositories/external-auth.repository';
+import { observeDenial, observeExternalDenial } from './access/security-audit';
 import type { Module, Action } from '@tims/shared';
 
 const t = initTRPC.context<Context>().create({
@@ -177,8 +178,23 @@ const withAudit = t.middleware(async ({ ctx, next, path }) => {
   return result;
 });
 
-// Composed procedures — rate limit → auth → RLS
-export const publicProcedure = t.procedure.use(withRateLimit);
+// Security-event audit middleware (CB-1c) — a TRANSPARENT, outermost error
+// observer. In tRPC a downstream error does NOT reject `next()`; it resolves to a
+// MiddlewareResult with `ok:false`. So we inspect the result and, on a failed call,
+// record authZ/authN DENIALS (fail-soft, fire-and-forget via observeDenial) — then
+// RETURN THE RESULT UNCHANGED so tRPC propagates the ORIGINAL error verbatim. This
+// structurally cannot alter a 403/401 or convert a denial into a 500 (it neither
+// constructs nor swallows the error), and adds no work on the success path. Placed
+// OUTERMOST (on t.procedure, before withRateLimit) so it observes denials from every
+// downstream middleware — rate-limit, auth, tenant context, and the permission gates.
+const withSecurityAudit = t.middleware(async ({ ctx, next, path }) => {
+  const result = await next();
+  if (!result.ok) observeDenial({ error: result.error, path, ctx });
+  return result;
+});
+
+// Composed procedures — security observer → rate limit → auth → RLS
+export const publicProcedure = t.procedure.use(withSecurityAudit).use(withRateLimit);
 export const protectedProcedure = publicProcedure.use(isAuthed).use(withTenantContext);
 export const auditedProcedure = protectedProcedure.use(withAudit);
 
@@ -228,14 +244,18 @@ export const externalProcedure = publicProcedure.use(requireApiKey);
 // endpoint's requiredScope denies even though the role grant would allow it. anchors
 // is null — external is org-scoped only (scopeWhereFor early-returns {} at org scope).
 function requireExternalPermission(module: string, action: string, requiredScope?: string, alwaysEnforceScope = false) {
-  return t.middleware(async ({ ctx, next }) => {
+  return t.middleware(async ({ ctx, next, path }) => {
     const ext = ctx.externalAuth;
     if (!ext) throw new TRPCError({ code: 'UNAUTHORIZED' });
+    // CB-1c: log denials on the paid external API-key surface — the org is known here
+    // (from the key), unlike the base-context observer which only sees ctx.user.
     if (!externalScopeSatisfied(requiredScope, ext.scopes, alwaysEnforceScope)) {
+      observeExternalDenial({ organizationId: ext.organizationId, apiKeyId: ext.apiKeyId, path, reason: 'scope', requiredScope, headers: ctx.headers });
       throw new TRPCError({ code: 'FORBIDDEN', message: 'La clave de API no incluye este alcance' });
     }
     const access = await buildAccessForUser(buildExternalAccessUser(ext), module, action);
     if (!access.allowed) {
+      observeExternalDenial({ organizationId: ext.organizationId, apiKeyId: ext.apiKeyId, path, reason: 'grant', requiredScope, headers: ctx.headers });
       throw new TRPCError({ code: 'FORBIDDEN', message: `Sin permiso para ${action} en ${module}` });
     }
     const accessContext: AccessContext = { ...access, anchors: null };

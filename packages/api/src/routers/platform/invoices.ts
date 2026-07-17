@@ -3,6 +3,7 @@ import { db, InvoiceStatus } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { sendEmail } from '../../lib/ses';
 import { platformProcedure } from './_common';
+import { logPlatformExport } from '../../access/security-audit';
 import {
   invoiceListSelect,
   invoiceDetailSelect,
@@ -275,7 +276,7 @@ export const invoicesRouter = router({
 
   exportInvoicesCsv: platformProcedure
     .input(exportInvoicesCsvInput)
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
       const where = buildInvoiceWhere(input);
 
       const invoices = await db.invoice.findMany({
@@ -293,6 +294,8 @@ export const invoicesRouter = router({
           organization: { select: { name: true } },
         },
       });
+
+      logPlatformExport(ctx, { resource: 'invoices', count: invoices.length, format: 'csv', targetOrgId: input.organizationId });
 
       const header = 'Numero,Organizacion,Monto,Moneda,Estado,Descripcion,Emision,Vencimiento,Pagada';
       const rows = invoices.map((inv) => {

@@ -2,6 +2,7 @@ import { router } from '../../trpc';
 import { db } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { platformProcedure } from './_common';
+import { logPlatformExport, logSecurityEvent } from '../../access/security-audit';
 import { PLAN_PRICES } from '../../lib/plan-prices';
 import { auditLogSelect, SYSTEM_FLAG_KEYS, buildSystemHealthServices } from './system.helpers';
 import { cacheInvalidatePrefix } from '../../lib/cache';
@@ -288,7 +289,7 @@ export const systemRouter = router({
 
   exportAuditLogsCsv: platformProcedure
     .input(exportAuditLogsCsvInput)
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
       const where: Prisma.AuditLogWhereInput = {};
       if (input.organizationId) where.organizationId = input.organizationId;
       if (input.action) where.action = input.action;
@@ -309,6 +310,13 @@ export const systemRouter = router({
           organization: { select: { name: true } },
           actor: { select: { firstName: true, lastName: true, email: true } },
         },
+      });
+
+      logPlatformExport(ctx, {
+        resource: 'audit_logs',
+        count: logs.length,
+        format: input.format,
+        targetOrgId: input.organizationId,
       });
 
       const actorName = (l: (typeof logs)[number]) =>
@@ -436,12 +444,26 @@ export const systemRouter = router({
 
   deleteFeatureFlag: platformProcedure
     .input(deleteFeatureFlagInput)
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const deleted = await db.featureFlag.delete({
         where: { id: input.id },
         select: { id: true, key: true, organizationId: true },
       });
       await cacheInvalidatePrefix(`tims:flagcheck:${deleted.organizationId}:`);
+
+      // CB-1c: privileged flag change (single-org deletion — faithfully attributable).
+      // The all-org flag writes (createFeatureFlagForAllOrgs / deleteFeatureFlagByKey /
+      // seedFeatureFlags) span every org and have no single org to satisfy the FK — they
+      // await the FK-less audit_logs follow-up (CB-1b) for faithful per-org attribution.
+      void logSecurityEvent({
+        organizationId: deleted.organizationId,
+        actorId: ctx.user.impersonatorId ?? ctx.user.id,
+        action: 'feature_flag_changed',
+        entity: 'feature_flag',
+        entityId: deleted.id,
+        metadata: { key: deleted.key, deleted: true },
+      });
+
       return deleted;
     }),
 

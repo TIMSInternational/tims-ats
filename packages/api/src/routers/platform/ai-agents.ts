@@ -3,6 +3,7 @@ import { router } from '../../trpc';
 import { db, db as systemDb, Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { platformProcedure } from './_common';
+import { logPlatformExport } from '../../access/security-audit';
 import { loadAiInterviewConfig, AI_VOICE_INTERVIEW_SLUG } from '../../services/ai-interview-access.service';
 import { buildAiInterviewInvoiceLines } from '../../services/ai-interview-billing';
 
@@ -241,7 +242,7 @@ export const aiAgentsRouter = router({
       };
     }),
 
-  exportAgentsCsv: platformProcedure.query(async () => {
+  exportAgentsCsv: platformProcedure.query(async ({ ctx }) => {
     const agents = await db.aiAgent.findMany({
       orderBy: [{ category: 'asc' }, { name: 'asc' }],
       select: {
@@ -256,6 +257,7 @@ export const aiAgentsRouter = router({
       a.batchEligible ? 'Yes' : 'No', a.cacheTtlSeconds,
       `$${a.costPerCall.toFixed(3)}`, a._count.orgConfigs, a._count.usageLogs,
     ].join(','));
+    logPlatformExport(ctx, { resource: 'ai_agents', count: agents.length, format: 'csv' });
     return { csv: [header, ...rows].join('\n'), count: agents.length };
   }),
 

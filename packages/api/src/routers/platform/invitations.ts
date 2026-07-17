@@ -7,6 +7,7 @@ import { TRPCError } from '@trpc/server';
 import { sendEmail } from '../../lib/ses';
 import { randomUUID } from 'crypto';
 import { platformProcedure } from './_common';
+import { logPlatformExport } from '../../access/security-audit';
 import { provisionOrgDefaults, provisionOrgEntitlements } from '../../services/org-provisioning';
 
 const INVITATION_TYPE = z.enum(['org_admin', 'user']);
@@ -262,7 +263,7 @@ export const invitationsRouter = router({
       type: INVITATION_TYPE.optional(),
       status: INVITATION_STATUS.optional(),
     }))
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
       const where: Prisma.PlatformInvitationWhereInput = {};
       if (input.type) where.type = input.type as InvitationType;
       if (input.status) where.status = input.status as InvitationStatus;
@@ -295,6 +296,7 @@ export const invitationsRouter = router({
         fmt(inv.acceptedAt),
       ].join(','));
 
+      logPlatformExport(ctx, { resource: 'invitations', count: invitations.length, format: 'csv' });
       return { csv: [header, ...rows].join('\n'), count: invitations.length };
     }),
 

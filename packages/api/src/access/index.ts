@@ -16,4 +16,6 @@ export { suppressBelowMin5, aggregateGroups, MIN_AGGREGATE_SIZE } from './aggreg
 export type { SuppressedCount, AggregateGroup } from './aggregate';
 export { logDataAccess, auditRequiredFor } from './audit';
 export type { DataAccessEvent } from './audit';
+export { logSecurityEvent, observeDenial, observeExternalDenial, logPlatformExport } from './security-audit';
+export type { SecurityEvent, SecurityAuditCtx } from './security-audit';
 export { hasConsent, assertConsent } from './consent';
