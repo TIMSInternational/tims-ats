@@ -5,6 +5,7 @@ import { useI18n } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
 import { DataTable, EmptyState } from '../../../../components';
 import { formatDate, formatRelativeTime, getInitials, getAvatarColor } from '../../../../lib/format-utils';
+import { MFA_REQUIRED } from '@tims/shared';
 import type { UserListItem } from '../../../../lib/trpc-types';
 
 const ROLE_COLORS: Record<string, { bg: string; text: string }> = {
@@ -124,7 +125,18 @@ export function UserTable({
                             headers: { 'content-type': 'application/json' },
                             body: JSON.stringify({ userId: user.id }),
                           });
-                          if (!res.ok) throw new Error();
+                          if (!res.ok) {
+                            // CB-2a: when MFA is enforced an aal1 owner must step up
+                            // before impersonating — route them to /mfa.
+                            if (res.status === 403) {
+                              const body = await res.json().catch(() => null);
+                              if (body?.error === MFA_REQUIRED) {
+                                window.location.href = '/mfa';
+                                return;
+                              }
+                            }
+                            throw new Error();
+                          }
                           // Hard navigation so the server layout + tRPC context re-resolve as the target.
                           window.location.href = '/dashboard';
                         } catch {

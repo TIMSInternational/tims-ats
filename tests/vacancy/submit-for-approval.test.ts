@@ -71,7 +71,10 @@ vi.mock('@tims/db', () => ({
   runWithTenant: (_o: string, f: () => unknown) => f(),
 }));
 
-vi.mock('@tims/shared', () => ({
+vi.mock('@tims/shared', async (importOriginal) => ({
+  // Preserve the real module (mfa gate helpers now imported by trpc.ts, Module/Action
+  // types, etc.); only override filterStaffRoleSlugs for this test.
+  ...(await importOriginal<typeof import('@tims/shared')>()),
   filterStaffRoleSlugs: (slugs: string[]) =>
     slugs.filter((s) => ['super_admin', 'hr_admin', 'hrbp', 'recruiter', 'leader', 'committee', 'employee'].includes(s)),
 }));

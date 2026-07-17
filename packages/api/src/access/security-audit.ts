@@ -1,5 +1,6 @@
 import { TRPCError } from '@trpc/server';
 import { db, Prisma } from '@tims/db';
+import { MFA_REQUIRED } from '@tims/shared';
 
 /**
  * CB-1c — security-event audit coverage.
@@ -97,6 +98,9 @@ export function observeDenial(args: { error: unknown; path: string; ctx: Securit
     const { error, path, ctx } = args;
     if (!(error instanceof TRPCError)) return;
     if (error.code !== 'FORBIDDEN' && error.code !== 'UNAUTHORIZED') return;
+    // CB-2a: an MFA step-up denial is audited distinctly (mfa_step_up_required) by the
+    // enforcement middleware — don't ALSO log it here as a generic authz_denied.
+    if (error.message === MFA_REQUIRED) return;
     const organizationId = ctx.user?.organizationId;
     if (!organizationId) return; // resolve-or-skip (e.g. unauthenticated: no org)
     void logSecurityEvent({

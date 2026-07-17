@@ -31,6 +31,7 @@ export async function updateSession(
   // ALWAYS strip inbound forgeries before anything else.
   headers.delete('x-tims-auth-uid');
   headers.delete('x-tims-auth-email');
+  headers.delete('x-tims-auth-aal'); // CB-2a: MFA assurance level is server-derived only.
 
   let supabaseResponse = NextResponse.next({
     request: { headers },
@@ -79,6 +80,17 @@ export async function updateSession(
   if (user) {
     headers.set('x-tims-auth-uid', user.id);
     headers.set('x-tims-auth-email', user.email ?? '');
+    // CB-2a: forward the session's MFA assurance level so the tRPC MFA-enforcement
+    // middleware can gate on it without a second call. getAuthenticatorAssuranceLevel
+    // decodes the `aal` claim from the LOCAL session token (no network round-trip).
+    // Fail-open on transport: default to 'aal1' if it can't be read, so a read error
+    // never spuriously satisfies MFA (aal1 is fail-closed at the gate).
+    try {
+      const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+      headers.set('x-tims-auth-aal', aal?.currentLevel ?? 'aal1');
+    } catch {
+      headers.set('x-tims-auth-aal', 'aal1');
+    }
     // Re-snapshot the response WITH the new headers so the route handler sees them.
     supabaseResponse = NextResponse.next({ request: { headers } });
     // Re-apply any refresh cookies captured in setAll (Trap 1 — else they drop).

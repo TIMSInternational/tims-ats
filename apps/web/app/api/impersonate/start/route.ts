@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '@tims/auth/server';
 import { db } from '@tims/db';
 import { signImpersonationToken, IMPERSONATION_COOKIE } from '@tims/api';
+import { isMfaEnforced, isMfaSatisfied, MFA_REQUIRED } from '@tims/shared';
 
 // Start impersonation. Re-verifies the REAL Supabase session is a platform owner
 // server-side (never trusts the client) before issuing the signed cookie.
@@ -16,6 +17,18 @@ export async function POST(req: Request) {
   });
   if (!owner?.isPlatformOwner) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  }
+
+  // CB-2a: this is a privileged RAW REST action (not a tRPC procedure), so the tRPC
+  // MFA gate does not cover it. Enforce MFA here too — otherwise an aal1 owner could
+  // start impersonation and operate as a non-privileged target, escaping step-up. Same
+  // fail-open flag + aal2 requirement as the (admin) page gate and the tRPC gate.
+  if (isMfaEnforced(process.env.MFA_ENFORCED)) {
+    const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    if (!isMfaSatisfied(aal?.currentLevel)) {
+      // 403 + marker so the client redirects the owner to /mfa to step up.
+      return NextResponse.json({ error: MFA_REQUIRED }, { status: 403 });
+    }
   }
 
   let body: unknown;

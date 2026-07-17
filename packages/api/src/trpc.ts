@@ -7,7 +7,8 @@ import { buildAccessForUser, createAnchorLoader, type AccessContext } from './ac
 import { resolveApiKeyPrincipal, buildExternalAccessUser } from './access/external-auth';
 import { externalScopeSatisfied } from './access/external-scope';
 import { touchApiKeyLastUsed } from './repositories/external-auth.repository';
-import { observeDenial, observeExternalDenial } from './access/security-audit';
+import { observeDenial, observeExternalDenial, logSecurityEvent } from './access/security-audit';
+import { isMfaEnforced, isMfaPrivileged, isMfaGateBlocking, MFA_REQUIRED } from '@tims/shared';
 import type { Module, Action } from '@tims/shared';
 
 const t = initTRPC.context<Context>().create({
@@ -193,9 +194,48 @@ const withSecurityAudit = t.middleware(async ({ ctx, next, path }) => {
   return result;
 });
 
-// Composed procedures — security observer → rate limit → auth → RLS
+// MFA enforcement middleware (CB-2a) — closes the page-only bypass. Runs AFTER auth +
+// tenant context. When MFA_ENFORCED is on AND the principal is privileged (mirrors the
+// (admin) page gate + the trpc.ts privileged set via the SHARED isMfaPrivileged) AND
+// the session is not stepped up to aal2, it audits an `mfa_step_up_required` event and
+// throws a FORBIDDEN carrying the MFA_REQUIRED marker (the web client maps it → /mfa;
+// the CB-1c denial observer skips it). Fail-OPEN on the flag: an unset MFA_ENFORCED is
+// a no-op, so this can never lock privileged users out until Federico flips it. The
+// /mfa step-up flow uses the Supabase client directly (not tRPC), so there is no loop.
+const withMfaEnforcement = t.middleware(({ ctx, next }) => {
+  if (
+    ctx.user &&
+    isMfaGateBlocking({
+      enforced: isMfaEnforced(process.env.MFA_ENFORCED),
+      // During impersonation ctx.user is the (possibly non-privileged) TARGET, but the
+      // REAL operator is always a platform owner (only owners can impersonate — enforced
+      // at context build) and ctx.aal is still the operator's OWN session level
+      // (impersonation is a signed cookie, not a Supabase session swap). So an active
+      // impersonation is treated as privileged and gated against the operator's aal —
+      // otherwise an aal1 owner could step DOWN into a target and escape MFA.
+      isPrivileged:
+        isMfaPrivileged({ roles: ctx.user.roles, isPlatformOwner: ctx.user.isPlatformOwner }) ||
+        Boolean(ctx.user.impersonatorId),
+      currentLevel: ctx.aal,
+    })
+  ) {
+    void logSecurityEvent({
+      organizationId: ctx.user.organizationId,
+      actorId: ctx.user.impersonatorId ?? ctx.user.id,
+      action: 'mfa_step_up_required',
+      entity: 'mfa',
+      metadata: { currentLevel: ctx.aal ?? null },
+      ipAddress: ctx.headers.get('x-forwarded-for') || ctx.headers.get('x-real-ip'),
+      userAgent: ctx.headers.get('user-agent'),
+    });
+    throw new TRPCError({ code: 'FORBIDDEN', message: MFA_REQUIRED });
+  }
+  return next();
+});
+
+// Composed procedures — security observer → rate limit → auth → RLS → MFA
 export const publicProcedure = t.procedure.use(withSecurityAudit).use(withRateLimit);
-export const protectedProcedure = publicProcedure.use(isAuthed).use(withTenantContext);
+export const protectedProcedure = publicProcedure.use(isAuthed).use(withTenantContext).use(withMfaEnforcement);
 export const auditedProcedure = protectedProcedure.use(withAudit);
 
 // Candidate portal procedure — rate-limited + Supabase-session-gated. Built from

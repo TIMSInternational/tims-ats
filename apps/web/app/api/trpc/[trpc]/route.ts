@@ -47,6 +47,11 @@ const handler = (req: Request) =>
       }
     },
     createContext: async () => {
+      // CB-2a: the session's MFA assurance level, forwarded by the auth middleware as
+      // a trusted (strip-then-set) header. Injected onto every context shape below so
+      // the tRPC MFA-enforcement middleware can gate on it. null when unauthenticated.
+      const aal = req.headers.get('x-tims-auth-aal') ?? null;
+      const build = async () => {
       // ── Staff fast-path ────────────────────────────────────────────────────
       // Middleware (updateSession) validates the Supabase session via getUser()
       // on EVERY request, then forwards the proven identity via x-tims-auth-uid /
@@ -222,6 +227,9 @@ const handler = (req: Request) =>
         supabaseAuth,
         headers: new Headers(req.headers),
       };
+      };
+      const ctx = await build();
+      return { ...ctx, aal };
     },
   });
 

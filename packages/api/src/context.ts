@@ -23,6 +23,11 @@ export interface TRPCContext {
   // `external` integration surface. Optional so existing context construction in
   // route.ts (which never sets it) stays valid; null/absent for all other requests.
   externalAuth?: { apiKeyId: string; organizationId: string; scopes: string[] } | null;
+  // The session's Supabase Authenticator Assurance Level ('aal1' | 'aal2'), forwarded
+  // by the auth middleware via the trusted `x-tims-auth-aal` header (local JWT decode,
+  // no extra round-trip). Read by the CB-2a MFA-enforcement middleware. Absent/null
+  // for anonymous requests or when the middleware path did not set it.
+  aal?: string | null;
   headers: Headers;
 }
 

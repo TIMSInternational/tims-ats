@@ -1,7 +1,7 @@
 import { createSupabaseServerClient } from '@tims/auth/server';
 import { redirect } from 'next/navigation';
 import { env } from '../../lib/env';
-import { isMfaEnforced, isMfaGateBlocking } from '../../lib/mfa';
+import { isMfaEnforced, isMfaGateBlocking, isMfaPrivileged } from '../../lib/mfa';
 import { AdminShell } from './admin-shell';
 import { manifestFor } from '../../lib/nav/manifest';
 import { getEffectiveIdentity } from '../../lib/auth/effective-identity';
@@ -27,9 +27,8 @@ export default async function AdminLayout({
   // checks). Keep these in sync — a role the API treats as privileged but the gate
   // doesn't would silently escape MFA enforcement. Keyed to the REAL operator
   // (impersonation rides a separate signed cookie, not a Supabase session swap).
-  const isPrivileged =
-    realIsPlatformOwner ||
-    realRoleSlugs.some((slug) => slug === 'super_admin' || slug === 'platform_owner');
+  // Shared with the tRPC API-layer MFA gate (CB-2a) so the two can never drift.
+  const isPrivileged = isMfaPrivileged({ roles: realRoleSlugs, isPlatformOwner: realIsPlatformOwner });
   if (isMfaEnforced(env.MFA_ENFORCED) && isPrivileged) {
     const supabase = await createSupabaseServerClient();
     const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
