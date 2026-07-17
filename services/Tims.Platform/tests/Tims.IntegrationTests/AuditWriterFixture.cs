@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using Testcontainers.PostgreSql;
+using Tims.Domain.Audit;
 using Tims.Infrastructure.Audit;
 
 namespace Tims.IntegrationTests;
@@ -93,6 +94,15 @@ public sealed class AuditWriterFixture : IAsyncLifetime
                     WITH CHECK (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid);
                 """;
             await table.ExecuteNonQueryAsync();
+        }
+
+        // CB-1 compliance control: engine-level append-only immutability (insert-only trigger + REVOKE), the
+        // tamper-evident audit trail (SOC 2 CC7.2 / ISO A.8.15). Applied here so the writer tests run against
+        // the SAME hardened table shape as prod, and the dedicated immutability test can prove it bites.
+        await using (var immutable = connection.CreateCommand())
+        {
+            immutable.CommandText = AuditImmutability.BuildAppendOnlySql("data_access_logs");
+            await immutable.ExecuteNonQueryAsync();
         }
 
         // CREATE DATABASE cannot run inside a transaction block — a plain autocommit command is fine.
