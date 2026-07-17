@@ -84,4 +84,11 @@ public sealed class PlatformOptions
     /// remains the single active reader until cutover.
     /// </summary>
     public bool ExternalVendorReadEnabled { get; init; }
+
+    /// <summary>
+    /// Phase-5 Slice 3 (efcoreReadOnly): when true, the C# billing invoice READ surface
+    /// (<c>GET /billing/invoices[...]</c>) is mapped and live. The FIRST staff-JWT C# product read.
+    /// DEFAULT false (dark) — TS remains the single active reader until cutover.
+    /// </summary>
+    public bool BillingReadEnabled { get; init; }
 }

@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using Tims.Domain.Json;
 
 namespace Tims.Domain.ExternalVendor;
 

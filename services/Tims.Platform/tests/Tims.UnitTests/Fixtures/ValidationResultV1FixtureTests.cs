@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Tims.Domain.ExternalVendor;
+using Tims.Domain.Json;
 
 namespace Tims.UnitTests.Fixtures;
 

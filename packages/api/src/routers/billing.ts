@@ -68,7 +68,10 @@ export const billingRouter = router({
         where: { organizationId: ctx.user.organizationId },
         take: input.take + 1,
         ...(input.cursor ? { cursor: { id: input.cursor }, skip: 1 } : {}),
-        orderBy: { createdAt: 'desc' },
+        // `createdAt` alone is NOT unique — on equal timestamps Prisma cursor pagination can skip or
+        // duplicate rows. The `id asc` tiebreak makes the keyset a UNIQUE total order (a shared cross-stack
+        // pagination contract with the C# billing port, which uses the same [createdAt desc, id asc]).
+        orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
       });
       const hasMore = items.length > input.take;
       return {

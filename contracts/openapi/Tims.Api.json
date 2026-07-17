@@ -184,6 +184,91 @@
         }
       }
     },
+    "/billing/invoices": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "BillingListInvoices",
+        "parameters": [
+          {
+            "name": "take",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/billing/invoices/{id}": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "BillingGetInvoice",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvoiceDetailV1"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
     "/require-permission/{module}/{action}": {
       "get": {
         "tags": [
@@ -385,6 +470,165 @@
           }
         }
       },
+      "InvoiceDetailV1": {
+        "required": [
+          "subscription",
+          "id",
+          "invoiceNumber",
+          "organizationId",
+          "subscriptionId",
+          "stripeInvoiceId",
+          "amount",
+          "subtotal",
+          "taxRate",
+          "currency",
+          "status",
+          "description",
+          "invoiceDate",
+          "dueDate",
+          "poNumber",
+          "notes",
+          "memo",
+          "emailTo",
+          "emailCc",
+          "paidAt",
+          "invoiceUrl",
+          "periodStart",
+          "periodEnd",
+          "createdAt"
+        ],
+        "type": "object",
+        "properties": {
+          "subscription": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SubscriptionV1"
+              }
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "invoiceNumber": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "organizationId": {
+            "type": "string"
+          },
+          "subscriptionId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "stripeInvoiceId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "amount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "subtotal": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "taxRate": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "invoiceDate": {
+            "format": "date-time"
+          },
+          "dueDate": {
+            "format": "date-time"
+          },
+          "poNumber": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "notes": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "memo": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "emailTo": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "emailCc": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "paidAt": {
+            "format": "date-time"
+          },
+          "invoiceUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "periodStart": {
+            "format": "date-time"
+          },
+          "periodEnd": {
+            "format": "date-time"
+          },
+          "createdAt": {
+            "format": "date-time"
+          }
+        }
+      },
       "JsonNode": { },
       "JsonObject": {
         "type": "object"
@@ -404,6 +648,71 @@
           },
           "notes": {
             "type": "string"
+          }
+        }
+      },
+      "SubscriptionV1": {
+        "required": [
+          "id",
+          "organizationId",
+          "stripeCustomerId",
+          "stripeSubscriptionId",
+          "plan",
+          "status",
+          "currentPeriodStart",
+          "currentPeriodEnd",
+          "trialEndsAt",
+          "cancelledAt",
+          "lastStripeEventAt",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "organizationId": {
+            "type": "string"
+          },
+          "stripeCustomerId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "stripeSubscriptionId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "plan": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "currentPeriodStart": {
+            "format": "date-time"
+          },
+          "currentPeriodEnd": {
+            "format": "date-time"
+          },
+          "trialEndsAt": {
+            "format": "date-time"
+          },
+          "cancelledAt": {
+            "format": "date-time"
+          },
+          "lastStripeEventAt": {
+            "format": "date-time"
+          },
+          "createdAt": {
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "format": "date-time"
           }
         }
       }

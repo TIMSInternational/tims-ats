@@ -2,13 +2,13 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace Tims.Domain.ExternalVendor;
+namespace Tims.Domain.Json;
 
 /// <summary>
 /// Serializes a <see cref="DateTimeOffset"/> EXACTLY as Node's <c>Date.prototype.toISOString()</c> —
-/// always UTC, always 3-digit milliseconds, <c>Z</c> suffix (<c>yyyy-MM-ddTHH:mm:ss.fffZ</c>). SCOPED to
-/// the external v1 contract (applied via <c>[JsonConverter]</c> on the <c>ExternalAssessmentResultV1</c>
-/// date properties), so it never changes global serialization for other endpoints.
+/// always UTC, always 3-digit milliseconds, <c>Z</c> suffix (<c>yyyy-MM-ddTHH:mm:ss.fffZ</c>). SHARED
+/// across the v1 wire contracts (external-vendor + billing): applied via <c>[JsonConverter]</c> on each
+/// DTO's date properties, so it never changes global serialization for other endpoints.
 ///
 /// This closes the known "STJ ≠ Node Z" gotcha: the default STJ writer emits the offset form
 /// (<c>+00:00</c>) which is NOT byte-identical to the TS contract's <c>toISOString()</c> output, so the
@@ -36,7 +36,7 @@ public sealed class NodeIsoDateTimeOffsetConverter : JsonConverter<DateTimeOffse
 }
 
 /// <summary>
-/// Nullable variant of <see cref="NodeIsoDateTimeOffsetConverter"/> for the v1 contract's optional date
+/// Nullable variant of <see cref="NodeIsoDateTimeOffsetConverter"/> for the v1 contracts' optional date
 /// fields — a <c>null</c> serializes as JSON <c>null</c> (matching the TS <c>Date | null → null</c>).
 /// </summary>
 public sealed class NodeIsoNullableDateTimeOffsetConverter : JsonConverter<DateTimeOffset?>

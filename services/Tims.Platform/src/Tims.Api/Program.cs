@@ -13,18 +13,21 @@ using Serilog;
 using Serilog.Formatting.Compact;
 using StackExchange.Redis;
 using Tims.Api.Authentication;
+using Tims.Api.Billing;
 using Tims.Api.Configuration;
 using Tims.Api.HealthChecks;
 using Tims.Api.RateLimiting;
 using Tims.Api.ExternalVendor;
 using Tims.Application.Access;
 using Tims.Application.Audit;
+using Tims.Application.Billing;
 using Tims.Application.ExternalVendor;
 using Tims.Application.Identity;
 using Tims.Domain.Access;
 using Tims.Domain.Identity;
 using Tims.Infrastructure.Access;
 using Tims.Infrastructure.Audit;
+using Tims.Infrastructure.Billing;
 using Tims.Infrastructure.ExternalVendor;
 using Tims.Infrastructure.Hris;
 using Tims.Infrastructure.Identity;
@@ -161,6 +164,27 @@ try
     builder.Services.AddDbContext<ExternalValidationDbContext>(options => options.UseNpgsql(databaseConnectionString));
     builder.Services.AddScoped<IExternalValidationRepository, ExternalValidationRepository>();
     builder.Services.AddScoped<ExternalValidationSubmitUseCase>();
+
+    // --- Billing invoice READ plane (Phase-5 Slice 3) ---------------------------------
+    // The SECOND strangler + the FIRST staff-JWT C# product read: billing.listInvoices / getInvoice
+    // ported to C#. Read-only EF (efcoreReadOnly) over the Prisma-OWNED invoices ⋈ subscriptions, run
+    // UNDER TenantScope (app_tenant + org GUC) so RLS engages. Authenticated by the Supabase JWT scheme
+    // and gated on the billing:read grant via the SAME PermissionService kernel as the tRPC
+    // permissionProcedure. Cutover is deploy-gated (deferred) — dark unless BillingReadEnabled.
+    // A dedicated data source with EnableUnmappedTypes so the native Prisma enum columns
+    // (InvoiceStatus/OrgPlan/SubscriptionStatus) read into the mapped C# string properties. Registered
+    // lazily (built on first BillingReadDbContext construction — only a real billing request), so an
+    // unconfigured/placeholder-DB boot (dark flag) never eagerly opens it.
+    // Registered as a WRAPPER (BillingReadDataSourceHolder), NOT the open NpgsqlDataSource service type:
+    // EFCore.PG's UseNpgsql(connectionString) auto-resolves an app-registered NpgsqlDataSource, so an open
+    // registration would bleed EnableUnmappedTypes into every other (string-based) context. The wrapper
+    // keeps the data source exclusive to BillingReadDbContext.
+    builder.Services.AddSingleton(_ =>
+        new BillingReadDataSourceHolder(BillingReadDataSource.Build(databaseConnectionString ?? string.Empty)));
+    builder.Services.AddDbContext<BillingReadDbContext>((sp, options) =>
+        options.UseNpgsql(sp.GetRequiredService<BillingReadDataSourceHolder>().DataSource));
+    builder.Services.AddScoped<IBillingReadRepository, BillingReadRepository>();
+    builder.Services.AddScoped<BillingReadUseCase>();
     // The submit use case truncates its completion instant to whole milliseconds through TimeProvider so
     // persisted (timestamp(3)) == returned (v1) == JS `new Date()` ms precision; register the system clock.
     builder.Services.TryAddSingleton(TimeProvider.System);
@@ -366,6 +390,15 @@ try
     if (externalOptions.ExternalVendorWriteEnabled || isOpenApiDocGeneration)
     {
         app.MapExternalValidationEndpoints();
+    }
+
+    // Billing invoice READ surface (Phase-5 Slice 3): GET /billing/invoices (list, cursor) +
+    // /billing/invoices/{id} (getInvoice). Supabase JWT scheme + billing:read grant (PermissionService);
+    // reads run under the resolved org's TenantScope. First staff-JWT C# product surface. Dark unless the
+    // flag is on (deploy-gated cutover; TS stays the sole active reader until Federico flips it).
+    if (externalOptions.BillingReadEnabled || isOpenApiDocGeneration)
+    {
+        app.MapBillingReadEndpoints();
     }
 
     // Authz probe (WP2.5): the C# equivalent of the tRPC `requirePermission` gate. Resolves the

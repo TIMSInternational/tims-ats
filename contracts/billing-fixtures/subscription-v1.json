@@ -1,0 +1,71 @@
+{
+  "description": "Golden parity for the billing Subscription wire shape: raw Prisma Subscription row -> SubscriptionV1. Asserted IDENTICALLY by the C# SubscriptionV1Mapper.Map (Tims.UnitTests) and the TS tests/billing/invoice-v1-fixtures.test.ts (which reproduces the raw billing-router shape: Date -> toISOString(), OrgPlan/SubscriptionStatus enums as their DB strings, money N/A here). Full-model reproduction (no select), no schemaVersion (Subscription is only ever the nested child). 'input' mirrors the Prisma Subscription row; 'expected' is the wire shape (dates as canonical …fffZ ISO strings).",
+  "cases": [
+    {
+      "name": "full active subscription (all fields present)",
+      "input": {
+        "id": "50000000-0000-0000-0000-000000000001",
+        "organizationId": "11111111-1111-1111-1111-111111111111",
+        "stripeCustomerId": "cus_ABC123",
+        "stripeSubscriptionId": "sub_XYZ789",
+        "plan": "professional",
+        "status": "active",
+        "currentPeriodStart": "2026-06-01T00:00:00.000Z",
+        "currentPeriodEnd": "2026-07-01T00:00:00.000Z",
+        "trialEndsAt": "2026-05-15T00:00:00.000Z",
+        "cancelledAt": null,
+        "lastStripeEventAt": "2026-06-02T12:30:45.123Z",
+        "createdAt": "2026-05-01T09:00:00.000Z",
+        "updatedAt": "2026-06-02T12:30:45.123Z"
+      },
+      "expected": {
+        "id": "50000000-0000-0000-0000-000000000001",
+        "organizationId": "11111111-1111-1111-1111-111111111111",
+        "stripeCustomerId": "cus_ABC123",
+        "stripeSubscriptionId": "sub_XYZ789",
+        "plan": "professional",
+        "status": "active",
+        "currentPeriodStart": "2026-06-01T00:00:00.000Z",
+        "currentPeriodEnd": "2026-07-01T00:00:00.000Z",
+        "trialEndsAt": "2026-05-15T00:00:00.000Z",
+        "cancelledAt": null,
+        "lastStripeEventAt": "2026-06-02T12:30:45.123Z",
+        "createdAt": "2026-05-01T09:00:00.000Z",
+        "updatedAt": "2026-06-02T12:30:45.123Z"
+      }
+    },
+    {
+      "name": "trial subscription (nullable stripe ids + period/cancel dates all null)",
+      "input": {
+        "id": "50000000-0000-0000-0000-000000000002",
+        "organizationId": "22222222-2222-2222-2222-222222222222",
+        "stripeCustomerId": null,
+        "stripeSubscriptionId": null,
+        "plan": "trial",
+        "status": "trialing",
+        "currentPeriodStart": null,
+        "currentPeriodEnd": null,
+        "trialEndsAt": "2026-08-01T00:00:00.000Z",
+        "cancelledAt": null,
+        "lastStripeEventAt": null,
+        "createdAt": "2026-07-16T18:45:00.000Z",
+        "updatedAt": "2026-07-16T18:45:00.000Z"
+      },
+      "expected": {
+        "id": "50000000-0000-0000-0000-000000000002",
+        "organizationId": "22222222-2222-2222-2222-222222222222",
+        "stripeCustomerId": null,
+        "stripeSubscriptionId": null,
+        "plan": "trial",
+        "status": "trialing",
+        "currentPeriodStart": null,
+        "currentPeriodEnd": null,
+        "trialEndsAt": "2026-08-01T00:00:00.000Z",
+        "cancelledAt": null,
+        "lastStripeEventAt": null,
+        "createdAt": "2026-07-16T18:45:00.000Z",
+        "updatedAt": "2026-07-16T18:45:00.000Z"
+      }
+    }
+  ]
+}

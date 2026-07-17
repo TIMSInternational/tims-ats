@@ -1,5 +1,5 @@
 using System.Text.Json;
-using Tims.Domain.ExternalVendor;
+using Tims.Domain.Json;
 
 namespace Tims.UnitTests.ExternalVendor;
 
