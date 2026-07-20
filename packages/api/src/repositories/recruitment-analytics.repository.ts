@@ -62,6 +62,9 @@ export const recruitmentAnalyticsRepository = {
     return db.pipelineStage.findMany({
       where: { organizationId: orgId, vacancy: { deletedAt: null } },
       select: { id: true, name: true, order: true, slaHours: true },
+      // Deterministic order (order, then id) so the funnel merge/sort ties resolve identically here and in
+      // the C# port (Phase-5 parity) — the aggregation is otherwise order-sensitive on equal `order`.
+      orderBy: [{ order: 'asc' }, { id: 'asc' }],
     });
   },
 
@@ -80,6 +83,9 @@ export const recruitmentAnalyticsRepository = {
       by: ['source'],
       where: { organizationId: orgId, appliedAt: { gte: from } },
       _count: { _all: true },
+      // Deterministic input order so the kernel's stable "sort by applications desc" resolves equal-count
+      // source ties identically here and in the C# port (Phase-5 parity).
+      orderBy: { source: 'asc' },
     });
   },
 
@@ -112,6 +118,9 @@ export const recruitmentAnalyticsRepository = {
           select: { movedAt: true },
         },
       },
+      // Deterministic order so the lost-by-delay group's FIRST-SEEN SLA (two same-name stages with
+      // different SLA) resolves identically here and in the C# port (Phase-5 parity).
+      orderBy: { id: 'asc' },
     });
   },
 
@@ -125,6 +134,9 @@ export const recruitmentAnalyticsRepository = {
         assignedTo: true,
         assignee: { select: { firstName: true, lastName: true } },
       },
+      // Deterministic order so the recruiter grouping (first-seen name + insertion order for the
+      // vacancy-count tie sort) resolves identically here and in the C# port (Phase-5 parity).
+      orderBy: { id: 'asc' },
     });
   },
 

@@ -1,0 +1,179 @@
+{
+  "description": "Golden parity for recruitmentAnalytics.getKpis: the PURE buildKpiView(input) in @tims/shared. Asserted IDENTICALLY by the REAL TS export (tests/reporting/kpi-view-fixtures.test.ts) and the C# Tims.Domain.Reporting.KpiViewBuilder (Tims.UnitTests, camelCase). Pins: ttf/tth average only non-negative spans over offers with the needed timestamps; respondedAt-null excluded from ttf/tth but counted in hires; offerAcceptRate + avgDays use JS half-up rounding (37.5->38, 30.5->31); lostByDelay counts rejections STRICTLY over SLA (== not counted), skipping null sla / null rejectedAt. Timestamps are epoch-ms (day = 86400000).",
+  "cases": [
+    {
+      "name": "full: ttf/tth over non-negative spans, accept rate, lost-by-delay (strictly over)",
+      "input": {
+        "period": "30D",
+        "accepted": [
+          {
+            "respondedAtMs": 3456000000,
+            "vacancyCreatedAtMs": 864000000,
+            "appliedAtMs": 1296000000
+          },
+          {
+            "respondedAtMs": 4320000000,
+            "vacancyCreatedAtMs": 1728000000,
+            "appliedAtMs": null
+          }
+        ],
+        "offersSent": 5,
+        "offersAccepted": 3,
+        "totalApplications": 100,
+        "rejected": [
+          {
+            "slaHours": 48,
+            "rejectedAtMs": 432000000,
+            "appliedAtMs": 0,
+            "lastMovedAtMs": 86400000
+          },
+          {
+            "slaHours": 48,
+            "rejectedAtMs": 172800000,
+            "appliedAtMs": 0,
+            "lastMovedAtMs": null
+          },
+          {
+            "slaHours": null,
+            "rejectedAtMs": 259200000,
+            "appliedAtMs": 0,
+            "lastMovedAtMs": null
+          },
+          {
+            "slaHours": 24,
+            "rejectedAtMs": null,
+            "appliedAtMs": 0,
+            "lastMovedAtMs": null
+          }
+        ]
+      },
+      "expected": {
+        "period": "30D",
+        "timeToFillDays": 30,
+        "timeToHireDays": 25,
+        "hires": 2,
+        "offersSent": 5,
+        "offersAccepted": 3,
+        "offerAcceptRatePct": 60,
+        "totalApplications": 100,
+        "lostByDelay": 1
+      }
+    },
+    {
+      "name": "all empty -> nulls (ttf/tth/acceptRate null, hires 0, lostByDelay 0)",
+      "input": {
+        "period": "7D",
+        "accepted": [],
+        "offersSent": 0,
+        "offersAccepted": 0,
+        "totalApplications": 0,
+        "rejected": []
+      },
+      "expected": {
+        "period": "7D",
+        "timeToFillDays": null,
+        "timeToHireDays": null,
+        "hires": 0,
+        "offersSent": 0,
+        "offersAccepted": 0,
+        "offerAcceptRatePct": null,
+        "totalApplications": 0,
+        "lostByDelay": 0
+      }
+    },
+    {
+      "name": "negative spans filtered; accept rate rounds half up (3/8 -> 38)",
+      "input": {
+        "period": "90D",
+        "accepted": [
+          {
+            "respondedAtMs": 432000000,
+            "vacancyCreatedAtMs": 864000000,
+            "appliedAtMs": 691200000
+          },
+          {
+            "respondedAtMs": 3456000000,
+            "vacancyCreatedAtMs": 864000000,
+            "appliedAtMs": 1728000000
+          }
+        ],
+        "offersSent": 8,
+        "offersAccepted": 3,
+        "totalApplications": 10,
+        "rejected": []
+      },
+      "expected": {
+        "period": "90D",
+        "timeToFillDays": 30,
+        "timeToHireDays": 20,
+        "hires": 2,
+        "offersSent": 8,
+        "offersAccepted": 3,
+        "offerAcceptRatePct": 38,
+        "totalApplications": 10,
+        "lostByDelay": 0
+      }
+    },
+    {
+      "name": "respondedAt null excluded from ttf/tth but counted in hires",
+      "input": {
+        "period": "30D",
+        "accepted": [
+          {
+            "respondedAtMs": null,
+            "vacancyCreatedAtMs": 864000000,
+            "appliedAtMs": 432000000
+          }
+        ],
+        "offersSent": 0,
+        "offersAccepted": 0,
+        "totalApplications": 3,
+        "rejected": []
+      },
+      "expected": {
+        "period": "30D",
+        "timeToFillDays": null,
+        "timeToHireDays": null,
+        "hires": 1,
+        "offersSent": 0,
+        "offersAccepted": 0,
+        "offerAcceptRatePct": null,
+        "totalApplications": 3,
+        "lostByDelay": 0
+      }
+    },
+    {
+      "name": "avgDays rounds half up (30.5 -> 31)",
+      "input": {
+        "period": "1Y",
+        "accepted": [
+          {
+            "respondedAtMs": 3456000000,
+            "vacancyCreatedAtMs": 864000000,
+            "appliedAtMs": null
+          },
+          {
+            "respondedAtMs": 3542400000,
+            "vacancyCreatedAtMs": 864000000,
+            "appliedAtMs": null
+          }
+        ],
+        "offersSent": 0,
+        "offersAccepted": 0,
+        "totalApplications": 2,
+        "rejected": []
+      },
+      "expected": {
+        "period": "1Y",
+        "timeToFillDays": 31,
+        "timeToHireDays": null,
+        "hires": 2,
+        "offersSent": 0,
+        "offersAccepted": 0,
+        "offerAcceptRatePct": null,
+        "totalApplications": 2,
+        "lostByDelay": 0
+      }
+    }
+  ]
+}

@@ -18,11 +18,13 @@ using Tims.Api.Configuration;
 using Tims.Api.HealthChecks;
 using Tims.Api.RateLimiting;
 using Tims.Api.ExternalVendor;
+using Tims.Api.Reporting;
 using Tims.Application.Access;
 using Tims.Application.Audit;
 using Tims.Application.Billing;
 using Tims.Application.ExternalVendor;
 using Tims.Application.Identity;
+using Tims.Application.Reporting;
 using Tims.Domain.Access;
 using Tims.Domain.Billing;
 using Tims.Domain.Identity;
@@ -33,6 +35,7 @@ using Tims.Infrastructure.ExternalVendor;
 using Tims.Infrastructure.Hris;
 using Tims.Infrastructure.Identity;
 using Tims.Infrastructure.RateLimiting;
+using Tims.Infrastructure.Reporting;
 
 // Two-stage Serilog init: a bootstrap logger captures failures during host build
 // (including config-validation failures), then the full logger is swapped in.
@@ -190,6 +193,15 @@ try
     // the same read context). getBillingConfig reads the deploy's Stripe config (optional; absent → honest
     // "not configured"), bound but NOT ValidateOnStart (every field is optional).
     builder.Services.AddScoped<BillingUsageUseCase>();
+
+    // Phase-5 Slice 5 (efcoreReadOnly): the recruitment-analytics READ surface. Plain read-only context —
+    // the aggregated status/source columns are ordinary strings (NOT native Prisma enums), so unlike billing
+    // it needs no NpgsqlDataSource with EnableUnmappedTypes. Reads run UNDER TenantScope/RLS; dark unless
+    // ReportingReadEnabled (deploy-gated cutover).
+    builder.Services.AddDbContext<ReportingReadDbContext>(options => options.UseNpgsql(databaseConnectionString));
+    builder.Services.AddScoped<IReportingReadRepository, ReportingReadRepository>();
+    builder.Services.AddScoped<ReportingReadUseCase>();
+
     builder.Services
         .AddOptions<StripeBillingOptions>()
         .Bind(builder.Configuration.GetSection(StripeBillingOptions.SectionName));
@@ -518,6 +530,14 @@ try
     if (externalOptions.BillingSelfServeEnabled || isOpenApiDocGeneration)
     {
         app.MapBillingSelfServeEndpoints();
+    }
+
+    // Phase-5 Slice 5 (efcoreReadOnly): the recruitment-analytics reads (/reporting/*). Staff-JWT +
+    // vacancy:read + organization/company scope (the org-rollup gate); reads are org-wide pipeline/offer
+    // aggregates. Dark unless the flag is on (deploy-gated cutover; TS stays the sole active reader).
+    if (externalOptions.ReportingReadEnabled || isOpenApiDocGeneration)
+    {
+        app.MapReportingReadEndpoints();
     }
 
     // Authz probe (WP2.5): the C# equivalent of the tRPC `requirePermission` gate. Resolves the

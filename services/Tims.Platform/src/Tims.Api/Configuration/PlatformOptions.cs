@@ -118,4 +118,13 @@ public sealed class PlatformOptions
     /// self-serve path until Federico flips this at canary.
     /// </summary>
     public bool BillingSelfServeEnabled { get; init; }
+
+    /// <summary>
+    /// Phase-5 Slice 5 (efcoreReadOnly): when true, the C# recruitment-analytics READ surface
+    /// (<c>GET /reporting/kpis|funnel|source-breakdown|trend|lost-by-delay|recruiter-sla</c>) is mapped and
+    /// live. Staff-JWT + <c>vacancy:read</c> + organization/company scope (the org-rollup gate); the queries
+    /// aggregate ORG-WIDE pipeline/offer data. DEFAULT false (dark) — TS remains the single active reader
+    /// until cutover.
+    /// </summary>
+    public bool ReportingReadEnabled { get; init; }
 }

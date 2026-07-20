@@ -1,0 +1,151 @@
+{
+  "description": "Golden parity for recruitmentAnalytics.getLostByDelay: the PURE buildLostByDelayView(rejected) in @tims/shared. Asserted by the REAL TS export (tests/reporting/lost-by-delay-view-fixtures.test.ts) and C# LostByDelayViewBuilder. Pins: grouped by stage NAME (first-seen SLA kept even if a later same-name row differs), only rejections STRICTLY over SLA (== not counted), null sla / null rejectedAt skipped; slaDays + avgDaysOver round half-up; items sort by lostCount DESCENDING (stable, insertion order on ties). Timestamps epoch-ms (day = 86400000).",
+  "cases": [
+    {
+      "name": "grouped by stage, sorted by lostCount desc, day rounding",
+      "input": {
+        "rejected": [
+          {
+            "stageName": "Screen",
+            "slaHours": 48,
+            "appliedAtMs": 0,
+            "lastMovedAtMs": null,
+            "rejectedAtMs": 345600000
+          },
+          {
+            "stageName": "Screen",
+            "slaHours": 48,
+            "appliedAtMs": 0,
+            "lastMovedAtMs": 86400000,
+            "rejectedAtMs": 432000000
+          },
+          {
+            "stageName": "Offer",
+            "slaHours": 24,
+            "appliedAtMs": 0,
+            "lastMovedAtMs": null,
+            "rejectedAtMs": 172800000
+          }
+        ]
+      },
+      "expected": {
+        "total": 3,
+        "items": [
+          {
+            "stageName": "Screen",
+            "slaDays": 2,
+            "lostCount": 2,
+            "avgDaysOver": 2
+          },
+          {
+            "stageName": "Offer",
+            "slaDays": 1,
+            "lostCount": 1,
+            "avgDaysOver": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "boundary (hours == sla NOT counted); null sla / null rejectedAt skipped",
+      "input": {
+        "rejected": [
+          {
+            "stageName": "S",
+            "slaHours": 48,
+            "appliedAtMs": 0,
+            "lastMovedAtMs": null,
+            "rejectedAtMs": 172800000
+          },
+          {
+            "stageName": "S",
+            "slaHours": null,
+            "appliedAtMs": 0,
+            "lastMovedAtMs": null,
+            "rejectedAtMs": 259200000
+          },
+          {
+            "stageName": "S",
+            "slaHours": 24,
+            "appliedAtMs": 0,
+            "lastMovedAtMs": null,
+            "rejectedAtMs": null
+          },
+          {
+            "stageName": "S",
+            "slaHours": 24,
+            "appliedAtMs": 0,
+            "lastMovedAtMs": null,
+            "rejectedAtMs": 172800000
+          }
+        ]
+      },
+      "expected": {
+        "total": 1,
+        "items": [
+          {
+            "stageName": "S",
+            "slaDays": 1,
+            "lostCount": 1,
+            "avgDaysOver": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "same-name merge keeps first-seen sla; avgDaysOver rounds half up (2.5 -> 3)",
+      "input": {
+        "rejected": [
+          {
+            "stageName": "Review",
+            "slaHours": 48,
+            "appliedAtMs": 0,
+            "lastMovedAtMs": null,
+            "rejectedAtMs": 345600000
+          },
+          {
+            "stageName": "Review",
+            "slaHours": 24,
+            "appliedAtMs": 0,
+            "lastMovedAtMs": null,
+            "rejectedAtMs": 345600000
+          },
+          {
+            "stageName": "Beta",
+            "slaHours": 24,
+            "appliedAtMs": 0,
+            "lastMovedAtMs": null,
+            "rejectedAtMs": 172800000
+          }
+        ]
+      },
+      "expected": {
+        "total": 3,
+        "items": [
+          {
+            "stageName": "Review",
+            "slaDays": 2,
+            "lostCount": 2,
+            "avgDaysOver": 3
+          },
+          {
+            "stageName": "Beta",
+            "slaDays": 1,
+            "lostCount": 1,
+            "avgDaysOver": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "empty -> total 0, items []",
+      "input": {
+        "rejected": []
+      },
+      "expected": {
+        "total": 0,
+        "items": []
+      }
+    }
+  ]
+}

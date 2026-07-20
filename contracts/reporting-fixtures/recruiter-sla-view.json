@@ -1,0 +1,215 @@
+{
+  "description": "Golden parity for recruitmentAnalytics.getRecruiterSla: the PURE buildRecruiterSlaView(input) in @tims/shared. Asserted by the REAL TS export (tests/reporting/recruiter-sla-view-fixtures.test.ts) and C# RecruiterSlaViewBuilder. Pins: recruiters keyed by assignedTo (first-seen assignee name kept), candidates summed across vacancies, avgTtf over non-negative accepted spans (negative filtered, unknown-vacancy + respondedAt-null skipped), slaCompliance over active apps within SLA (null-sla excluded, hours<=sla on time), rows sorted by vacancy count DESCENDING (stable). Timestamps epoch-ms (day = 86400000).",
+  "cases": [
+    {
+      "name": "multi-recruiter: candidates, ttf (neg filtered), sla compliance, sorted by vacancies desc",
+      "input": {
+        "nowMs": 259200000,
+        "vacancies": [
+          {
+            "id": "v1",
+            "assignedTo": "u1",
+            "firstName": "Ann",
+            "lastName": "Lee"
+          },
+          {
+            "id": "v2",
+            "assignedTo": "u1",
+            "firstName": "IGNORED",
+            "lastName": "IGNORED"
+          },
+          {
+            "id": "v3",
+            "assignedTo": "u2",
+            "firstName": "Bob",
+            "lastName": "Fox"
+          }
+        ],
+        "appCounts": [
+          {
+            "vacancyId": "v1",
+            "count": 5
+          },
+          {
+            "vacancyId": "v2",
+            "count": 3
+          },
+          {
+            "vacancyId": "v3",
+            "count": 10
+          }
+        ],
+        "accepted": [
+          {
+            "vacancyId": "v1",
+            "respondedAtMs": 3456000000,
+            "vacancyCreatedAtMs": 864000000
+          },
+          {
+            "vacancyId": "v2",
+            "respondedAtMs": 4320000000,
+            "vacancyCreatedAtMs": 1728000000
+          },
+          {
+            "vacancyId": "v3",
+            "respondedAtMs": 432000000,
+            "vacancyCreatedAtMs": 864000000
+          },
+          {
+            "vacancyId": "v3",
+            "respondedAtMs": 3024000000,
+            "vacancyCreatedAtMs": 432000000
+          },
+          {
+            "vacancyId": "vX",
+            "respondedAtMs": 3456000000,
+            "vacancyCreatedAtMs": 864000000
+          },
+          {
+            "vacancyId": "v1",
+            "respondedAtMs": null,
+            "vacancyCreatedAtMs": 864000000
+          }
+        ],
+        "active": [
+          {
+            "vacancyId": "v1",
+            "slaHours": 48,
+            "appliedAtMs": 0,
+            "lastMovedAtMs": null
+          },
+          {
+            "vacancyId": "v2",
+            "slaHours": 48,
+            "appliedAtMs": 0,
+            "lastMovedAtMs": 172800000
+          },
+          {
+            "vacancyId": "v1",
+            "slaHours": null,
+            "appliedAtMs": 0,
+            "lastMovedAtMs": null
+          },
+          {
+            "vacancyId": "v3",
+            "slaHours": 24,
+            "appliedAtMs": 0,
+            "lastMovedAtMs": null
+          }
+        ]
+      },
+      "expected": [
+        {
+          "name": "Ann Lee",
+          "vacancies": 2,
+          "candidates": 8,
+          "avgTtfDays": 30,
+          "slaCompliancePct": 50
+        },
+        {
+          "name": "Bob Fox",
+          "vacancies": 1,
+          "candidates": 10,
+          "avgTtfDays": 30,
+          "slaCompliancePct": 0
+        }
+      ]
+    },
+    {
+      "name": "no ttf spans -> avgTtfDays null; no active-with-sla -> slaCompliancePct null; lastName null",
+      "input": {
+        "nowMs": 259200000,
+        "vacancies": [
+          {
+            "id": "v1",
+            "assignedTo": "u1",
+            "firstName": "Cy",
+            "lastName": null
+          }
+        ],
+        "appCounts": [],
+        "accepted": [],
+        "active": [
+          {
+            "vacancyId": "v1",
+            "slaHours": null,
+            "appliedAtMs": 0,
+            "lastMovedAtMs": null
+          }
+        ]
+      },
+      "expected": [
+        {
+          "name": "Cy",
+          "vacancies": 1,
+          "candidates": 0,
+          "avgTtfDays": null,
+          "slaCompliancePct": null
+        }
+      ]
+    },
+    {
+      "name": "stable tie: equal vacancy counts keep first-seen order",
+      "input": {
+        "nowMs": 259200000,
+        "vacancies": [
+          {
+            "id": "v1",
+            "assignedTo": "u1",
+            "firstName": "A",
+            "lastName": null
+          },
+          {
+            "id": "v2",
+            "assignedTo": "u2",
+            "firstName": "B",
+            "lastName": null
+          },
+          {
+            "id": "v3",
+            "assignedTo": "u3",
+            "firstName": "C",
+            "lastName": null
+          }
+        ],
+        "appCounts": [],
+        "accepted": [],
+        "active": []
+      },
+      "expected": [
+        {
+          "name": "A",
+          "vacancies": 1,
+          "candidates": 0,
+          "avgTtfDays": null,
+          "slaCompliancePct": null
+        },
+        {
+          "name": "B",
+          "vacancies": 1,
+          "candidates": 0,
+          "avgTtfDays": null,
+          "slaCompliancePct": null
+        },
+        {
+          "name": "C",
+          "vacancies": 1,
+          "candidates": 0,
+          "avgTtfDays": null,
+          "slaCompliancePct": null
+        }
+      ]
+    },
+    {
+      "name": "empty -> []",
+      "input": {
+        "nowMs": 259200000,
+        "vacancies": [],
+        "appCounts": [],
+        "accepted": [],
+        "active": []
+      },
+      "expected": []
+    }
+  ]
+}

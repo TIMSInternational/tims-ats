@@ -1,0 +1,90 @@
+{
+  "description": "Golden parity for recruitmentAnalytics.getTrend's response shaping: the PURE buildTrendView(nowMs, appliedAtMs) in @tims/shared. Asserted IDENTICALLY by the REAL TS export (tests/reporting/trend-view-fixtures.test.ts — the same builder the router now returns) and the C# Tims.Domain.Reporting.TrendViewBuilder (Tims.UnitTests, serialized camelCase). Pins: 6 UTC calendar-month buckets ending in nowMs's UTC month, OLDEST-FIRST; month is 0-indexed (JS getUTCMonth); UTC year/month derived from epoch-ms so DB timestamps (UTC) bucket identically; the window-start uses JS Date.UTC month normalization (m-5 underflows into the prior year). Inputs carry an informational nowIso/appliedAtIso mirror (ignored by tests); the numeric *Ms fields are the spec. A local-time bucketing port turns the boundary case RED; a C# month-arithmetic that throws on underflow (vs JS normalize) turns the year-boundary case RED.",
+  "cases": [
+    {
+      "name": "apps across months, oldest-first, out-of-window dropped",
+      "input": {
+        "nowMs": 1784116800000,
+        "nowIso": "2026-07-15T12:00:00.000Z",
+        "appliedAtMs": [1783674000000, 1782864000000, 1781913600000, 1770249600000, 1769903999999, 1765756800000],
+        "appliedAtIso": ["2026-07-10T09:00:00.000Z", "2026-07-01T00:00:00.000Z", "2026-06-20T00:00:00.000Z", "2026-02-05T00:00:00.000Z", "2026-01-31T23:59:59.999Z", "2025-12-15T00:00:00.000Z"]
+      },
+      "expected": [
+        { "year": 2026, "month": 1, "count": 1 },
+        { "year": 2026, "month": 2, "count": 0 },
+        { "year": 2026, "month": 3, "count": 0 },
+        { "year": 2026, "month": 4, "count": 0 },
+        { "year": 2026, "month": 5, "count": 1 },
+        { "year": 2026, "month": 6, "count": 2 }
+      ]
+    },
+    {
+      "name": "year boundary (now February -> window crosses into prior year)",
+      "input": {
+        "nowMs": 1770681600000,
+        "nowIso": "2026-02-10T00:00:00.000Z",
+        "appliedAtMs": [1756684800000, 1766620800000, 1770595200000, 1770681600000, 1756684799999],
+        "appliedAtIso": ["2025-09-01T00:00:00.000Z", "2025-12-25T00:00:00.000Z", "2026-02-09T00:00:00.000Z", "2026-02-10T00:00:00.000Z", "2025-08-31T23:59:59.999Z"]
+      },
+      "expected": [
+        { "year": 2025, "month": 8, "count": 1 },
+        { "year": 2025, "month": 9, "count": 0 },
+        { "year": 2025, "month": 10, "count": 0 },
+        { "year": 2025, "month": 11, "count": 1 },
+        { "year": 2026, "month": 0, "count": 0 },
+        { "year": 2026, "month": 1, "count": 2 }
+      ]
+    },
+    {
+      "name": "no applications -> six zero buckets",
+      "input": {
+        "nowMs": 1784116800000,
+        "nowIso": "2026-07-15T12:00:00.000Z",
+        "appliedAtMs": [],
+        "appliedAtIso": []
+      },
+      "expected": [
+        { "year": 2026, "month": 1, "count": 0 },
+        { "year": 2026, "month": 2, "count": 0 },
+        { "year": 2026, "month": 3, "count": 0 },
+        { "year": 2026, "month": 4, "count": 0 },
+        { "year": 2026, "month": 5, "count": 0 },
+        { "year": 2026, "month": 6, "count": 0 }
+      ]
+    },
+    {
+      "name": "UTC month boundary (first ms of month in, last ms of prior month out)",
+      "input": {
+        "nowMs": 1784116800000,
+        "nowIso": "2026-07-15T12:00:00.000Z",
+        "appliedAtMs": [1782864000000, 1782863999999],
+        "appliedAtIso": ["2026-07-01T00:00:00.000Z", "2026-06-30T23:59:59.999Z"]
+      },
+      "expected": [
+        { "year": 2026, "month": 1, "count": 0 },
+        { "year": 2026, "month": 2, "count": 0 },
+        { "year": 2026, "month": 3, "count": 0 },
+        { "year": 2026, "month": 4, "count": 0 },
+        { "year": 2026, "month": 5, "count": 1 },
+        { "year": 2026, "month": 6, "count": 1 }
+      ]
+    },
+    {
+      "name": "all in one earlier bucket",
+      "input": {
+        "nowMs": 1784116800000,
+        "nowIso": "2026-07-15T12:00:00.000Z",
+        "appliedAtMs": [1772668800000, 1773532800000, 1774958400000],
+        "appliedAtIso": ["2026-03-05T00:00:00.000Z", "2026-03-15T00:00:00.000Z", "2026-03-31T12:00:00.000Z"]
+      },
+      "expected": [
+        { "year": 2026, "month": 1, "count": 0 },
+        { "year": 2026, "month": 2, "count": 3 },
+        { "year": 2026, "month": 3, "count": 0 },
+        { "year": 2026, "month": 4, "count": 0 },
+        { "year": 2026, "month": 5, "count": 0 },
+        { "year": 2026, "month": 6, "count": 0 }
+      ]
+    }
+  ]
+}

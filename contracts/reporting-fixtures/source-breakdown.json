@@ -1,0 +1,159 @@
+{
+  "description": "Golden parity for recruitmentAnalytics.getSourceBreakdown: the PURE buildSourceBreakdown(apps, hireSources) in @tims/shared. Asserted by the REAL TS export (tests/reporting/source-breakdown-fixtures.test.ts) and C# SourceBreakdownBuilder. Pins: applications+hires per source, sorted by applications DESCENDING and STABLE (ties keep input order), top 6 only; hires counted from hireSources (one entry per converted application); sources with no hires -> 0.",
+  "cases": [
+    {
+      "name": "sorted desc, hires joined by source, top 6 sliced",
+      "input": {
+        "apps": [
+          {
+            "source": "a",
+            "applications": 5
+          },
+          {
+            "source": "b",
+            "applications": 10
+          },
+          {
+            "source": "c",
+            "applications": 3
+          },
+          {
+            "source": "d",
+            "applications": 8
+          },
+          {
+            "source": "e",
+            "applications": 1
+          },
+          {
+            "source": "f",
+            "applications": 7
+          },
+          {
+            "source": "g",
+            "applications": 2
+          },
+          {
+            "source": "h",
+            "applications": 6
+          }
+        ],
+        "hireSources": [
+          "b",
+          "b",
+          "d",
+          "x"
+        ]
+      },
+      "expected": [
+        {
+          "source": "b",
+          "applications": 10,
+          "hires": 2
+        },
+        {
+          "source": "d",
+          "applications": 8,
+          "hires": 1
+        },
+        {
+          "source": "f",
+          "applications": 7,
+          "hires": 0
+        },
+        {
+          "source": "h",
+          "applications": 6,
+          "hires": 0
+        },
+        {
+          "source": "a",
+          "applications": 5,
+          "hires": 0
+        },
+        {
+          "source": "c",
+          "applications": 3,
+          "hires": 0
+        }
+      ]
+    },
+    {
+      "name": "tie in applications keeps input order (stable desc)",
+      "input": {
+        "apps": [
+          {
+            "source": "p",
+            "applications": 5
+          },
+          {
+            "source": "q",
+            "applications": 5
+          },
+          {
+            "source": "r",
+            "applications": 5
+          }
+        ],
+        "hireSources": []
+      },
+      "expected": [
+        {
+          "source": "p",
+          "applications": 5,
+          "hires": 0
+        },
+        {
+          "source": "q",
+          "applications": 5,
+          "hires": 0
+        },
+        {
+          "source": "r",
+          "applications": 5,
+          "hires": 0
+        }
+      ]
+    },
+    {
+      "name": "fewer than 6 sources all returned",
+      "input": {
+        "apps": [
+          {
+            "source": "a",
+            "applications": 2
+          },
+          {
+            "source": "b",
+            "applications": 1
+          }
+        ],
+        "hireSources": [
+          "a"
+        ]
+      },
+      "expected": [
+        {
+          "source": "a",
+          "applications": 2,
+          "hires": 1
+        },
+        {
+          "source": "b",
+          "applications": 1,
+          "hires": 0
+        }
+      ]
+    },
+    {
+      "name": "empty apps -> empty",
+      "input": {
+        "apps": [],
+        "hireSources": [
+          "a"
+        ]
+      },
+      "expected": []
+    }
+  ]
+}

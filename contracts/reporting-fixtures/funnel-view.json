@@ -1,0 +1,111 @@
+{
+  "description": "Golden parity for recruitmentAnalytics.getFunnel's response shaping: the PURE buildFunnelView(input) in @tims/shared. Asserted IDENTICALLY by the REAL TS export (tests/reporting/funnel-view-fixtures.test.ts — the same builder the router now returns) and the C# Tims.Domain.Reporting.FunnelViewBuilder (Tims.UnitTests, serialized camelCase). Pins: stages MERGE BY NAME (same-name summed, order = min), sort by order, pctOfMax = each stage's share of the largest (max floored at 1), and conversionPct = hired/applications to one decimal or null when no applications. Both roundings use JS Math.round (half-UP toward +Infinity) — a C# banker's-rounding port turns case 'rounds half up' RED; a merge-by-id (not name) turns 'merge by name' RED; keeping paid conversion on 0 applications turns 'no applications' RED.",
+  "cases": [
+    {
+      "name": "distinct stages, ordered, with conversion",
+      "input": {
+        "stages": [
+          { "id": "s1", "name": "Applied", "order": 0 },
+          { "id": "s2", "name": "Screen", "order": 1 },
+          { "id": "s3", "name": "Offer", "order": 2 }
+        ],
+        "counts": [
+          { "stageId": "s1", "count": 10 },
+          { "stageId": "s2", "count": 5 },
+          { "stageId": "s3", "count": 2 }
+        ],
+        "totalApplications": 20,
+        "totalHired": 2
+      },
+      "expected": {
+        "stages": [
+          { "name": "Applied", "count": 10, "pctOfMax": 100 },
+          { "name": "Screen", "count": 5, "pctOfMax": 50 },
+          { "name": "Offer", "count": 2, "pctOfMax": 20 }
+        ],
+        "totalApplications": 20,
+        "totalHired": 2,
+        "conversionPct": 10
+      }
+    },
+    {
+      "name": "merge by name (same-name summed, order=min, missing count=0)",
+      "input": {
+        "stages": [
+          { "id": "s1", "name": "Applied", "order": 0 },
+          { "id": "s2", "name": "Screen", "order": 1 },
+          { "id": "s3", "name": "Applied", "order": 5 }
+        ],
+        "counts": [
+          { "stageId": "s1", "count": 3 },
+          { "stageId": "s2", "count": 4 }
+        ],
+        "totalApplications": 7,
+        "totalHired": 0
+      },
+      "expected": {
+        "stages": [
+          { "name": "Applied", "count": 3, "pctOfMax": 75 },
+          { "name": "Screen", "count": 4, "pctOfMax": 100 }
+        ],
+        "totalApplications": 7,
+        "totalHired": 0,
+        "conversionPct": 0
+      }
+    },
+    {
+      "name": "rounds half up (62.5 -> 63, not banker's 62)",
+      "input": {
+        "stages": [
+          { "id": "s1", "name": "A", "order": 0 },
+          { "id": "s2", "name": "B", "order": 1 }
+        ],
+        "counts": [
+          { "stageId": "s1", "count": 8 },
+          { "stageId": "s2", "count": 5 }
+        ],
+        "totalApplications": 10,
+        "totalHired": 0
+      },
+      "expected": {
+        "stages": [
+          { "name": "A", "count": 8, "pctOfMax": 100 },
+          { "name": "B", "count": 5, "pctOfMax": 63 }
+        ],
+        "totalApplications": 10,
+        "totalHired": 0,
+        "conversionPct": 0
+      }
+    },
+    {
+      "name": "no applications -> conversionPct null, max floored at 1",
+      "input": {
+        "stages": [{ "id": "s1", "name": "A", "order": 0 }],
+        "counts": [{ "stageId": "s1", "count": 0 }],
+        "totalApplications": 0,
+        "totalHired": 0
+      },
+      "expected": {
+        "stages": [{ "name": "A", "count": 0, "pctOfMax": 0 }],
+        "totalApplications": 0,
+        "totalHired": 0,
+        "conversionPct": null
+      }
+    },
+    {
+      "name": "conversion to one decimal (1/3 -> 33.3)",
+      "input": {
+        "stages": [{ "id": "s1", "name": "A", "order": 0 }],
+        "counts": [{ "stageId": "s1", "count": 3 }],
+        "totalApplications": 3,
+        "totalHired": 1
+      },
+      "expected": {
+        "stages": [{ "name": "A", "count": 3, "pctOfMax": 100 }],
+        "totalApplications": 3,
+        "totalHired": 1,
+        "conversionPct": 33.3
+      }
+    }
+  ]
+}
