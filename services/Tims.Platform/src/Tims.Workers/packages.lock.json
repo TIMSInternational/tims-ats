@@ -35,6 +35,15 @@
           "Quartz.Extensions.DependencyInjection": "3.18.2"
         }
       },
+      "Quartz.Serialization.SystemTextJson": {
+        "type": "Direct",
+        "requested": "[3.18.2, )",
+        "resolved": "3.18.2",
+        "contentHash": "FZAV4mUwnl4yNSa73ZuQNvBOZeyuPTUW4M8Mxa0XAFHUwgHGEYmqOVSgaztAET+a/fUGNBzj0eEPW2pZMQPYuA==",
+        "dependencies": {
+          "Quartz": "3.18.2"
+        }
+      },
       "Serilog.AspNetCore": {
         "type": "Direct",
         "requested": "[10.0.0, )",

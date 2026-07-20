@@ -24,6 +24,15 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Phase-4 Slice-2: the SHIPPED Quartz DDL is applied verbatim by QuartzClusterFixture, so what is
+         tested is exactly what Federico applies to prod (zero drift). Copied to <output>/db/quartz/. -->
+    <None Include="..\..\db\quartz\quartz-tables_postgres.sql">
+      <Link>db\quartz\quartz-tables_postgres.sql</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\Tims.Infrastructure\Tims.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Tims.Api\Tims.Api.csproj" />
     <!-- WP3-remediation: the HRIS background-sweep job (Tims.Workers) is covered here for its

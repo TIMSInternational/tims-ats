@@ -795,6 +795,14 @@
           "Quartz.Extensions.DependencyInjection": "3.18.2"
         }
       },
+      "Quartz.Serialization.SystemTextJson": {
+        "type": "Transitive",
+        "resolved": "3.18.2",
+        "contentHash": "FZAV4mUwnl4yNSa73ZuQNvBOZeyuPTUW4M8Mxa0XAFHUwgHGEYmqOVSgaztAET+a/fUGNBzj0eEPW2pZMQPYuA==",
+        "dependencies": {
+          "Quartz": "3.18.2"
+        }
+      },
       "RESPite": {
         "type": "Transitive",
         "resolved": "3.0.17",
@@ -1048,6 +1056,7 @@
           "OpenTelemetry.Extensions.Hosting": "[1.16.0, )",
           "Quartz": "[3.18.2, )",
           "Quartz.Extensions.Hosting": "[3.18.2, )",
+          "Quartz.Serialization.SystemTextJson": "[3.18.2, )",
           "Serilog.AspNetCore": "[10.0.0, )",
           "Serilog.Formatting.Compact": "[3.0.0, )",
           "Tims.Application": "[1.0.0, )",

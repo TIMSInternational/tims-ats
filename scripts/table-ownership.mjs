@@ -44,6 +44,13 @@ export function parseLedger(markdown) {
   if (ledger.efcoreStranglerWrite !== undefined && !Array.isArray(ledger.efcoreStranglerWrite)) {
     throw new Error('ledger.efcoreStranglerWrite must be an array when present');
   }
+  // quartzInfra (optional): cross-tenant SCHEDULER INFRA tables (the Quartz.NET clustered ADO store, Phase-4
+  // Slice-2). Owned by NEITHER ORM — Quartz owns the DDL via a hand-applied .sql; they are RLS-EXEMPT and must
+  // NOT be @@map'd by Prisma nor .ToTable'd by EF (the check enforces both). Recorded here so the ledger stays
+  // the complete source of truth for every table's owner.
+  if (ledger.quartzInfra !== undefined && !Array.isArray(ledger.quartzInfra)) {
+    throw new Error('ledger.quartzInfra must be an array when present');
+  }
   return ledger;
 }
 
@@ -68,7 +75,11 @@ export function parseEfCoreTables(srcDir) {
       if (entry.isDirectory()) walk(full);
       else if (entry.name.endsWith('.cs')) {
         const text = readFileSync(full, 'utf8');
-        for (const m of text.matchAll(/\.ToTable\("([^"]+)"\)/g)) tables.add(m[1]);
+        // Match the first string arg of ToTable regardless of what follows — `.ToTable("x")`,
+        // `.ToTable("x", "schema")`, `.ToTable("x", t => ...)` all name table "x". (Anchoring on the
+        // closing `)` would MISS the schema-qualified/builder overloads, letting an EF mapping of a
+        // Prisma/Quartz table slip past the ownership guard.)
+        for (const m of text.matchAll(/\.ToTable\("([^"]+)"/g)) tables.add(m[1]);
       }
     }
   };
@@ -88,10 +99,13 @@ export function parseEfCoreTables(srcDir) {
  *    strangler-write mapping must point at a real Prisma-owned table — Prisma still owns the schema
  *    until the ownership flip).
  *
- * @param {{ efcore: string[], efcoreReadOnly?: string[], efcoreAppendOnly?: string[], efcoreStranglerWrite?: string[], prismaTables: string[], efcoreTables?: string[] }} input
+ *  - quartz-infra-claimed-by-prisma / -by-efcore: a table in quartzInfra[] that an ORM claims (Prisma @@map
+ *    or EF ToTable). Scheduler infra tables are owned by neither ORM — Quartz owns the DDL via hand-applied SQL.
+ *
+ * @param {{ efcore: string[], efcoreReadOnly?: string[], efcoreAppendOnly?: string[], efcoreStranglerWrite?: string[], quartzInfra?: string[], prismaTables: string[], efcoreTables?: string[] }} input
  * @returns {string[]}
  */
-export function checkOwnership({ efcore, efcoreReadOnly = [], efcoreAppendOnly = [], efcoreStranglerWrite = [], prismaTables, efcoreTables }) {
+export function checkOwnership({ efcore, efcoreReadOnly = [], efcoreAppendOnly = [], efcoreStranglerWrite = [], quartzInfra = [], prismaTables, efcoreTables }) {
   const violations = [];
   const registeredEfTables = new Set([...efcore, ...efcoreReadOnly, ...efcoreAppendOnly, ...efcoreStranglerWrite]);
   const prismaSet = new Set(prismaTables);
@@ -116,6 +130,15 @@ export function checkOwnership({ efcore, efcoreReadOnly = [], efcoreAppendOnly =
       violations.push(`strangler-write mapping of a non-Prisma table: "${t}" is in efcoreStranglerWrite[] but is not @@map'd in the Prisma schema`);
     }
   }
+  const efcoreSet = new Set(efcoreTables ?? []);
+  for (const t of quartzInfra) {
+    if (prismaSet.has(t)) {
+      violations.push(`quartz-infra table claimed by Prisma: "${t}" is in quartzInfra[] (scheduler infra, owned by neither ORM) but is @@map'd in the Prisma schema`);
+    }
+    if (efcoreSet.has(t)) {
+      violations.push(`quartz-infra table claimed by EF: "${t}" is in quartzInfra[] (scheduler infra, owned by neither ORM) but is .ToTable'd by an EF DbContext`);
+    }
+  }
   for (const t of efcoreTables ?? []) {
     if (!registeredEfTables.has(t)) {
       violations.push(`unregistered EF table: "${t}" is mapped by an EF DbContext (ToTable) but is not listed in the ledger's efcore[], efcoreReadOnly[], efcoreAppendOnly[] or efcoreStranglerWrite[]`);
@@ -134,6 +157,7 @@ export function checkRepo(root = REPO_ROOT) {
     efcoreReadOnly: ledger.efcoreReadOnly ?? [],
     efcoreAppendOnly: ledger.efcoreAppendOnly ?? [],
     efcoreStranglerWrite: ledger.efcoreStranglerWrite ?? [],
+    quartzInfra: ledger.quartzInfra ?? [],
     prismaTables,
     efcoreTables,
   });

@@ -107,10 +107,17 @@ try
     // Scoped so Quartz's Microsoft-DI job factory resolves it (and its scoped sweep) from the per-fire scope.
     builder.Services.AddScoped<HrisSyncQuartzJob>();
 
-    // --- Quartz scheduler (in-process, single-replica; RAMJobStore) -----------------------------
+    // --- Quartz scheduler -----------------------------------------------------------------------
     // Quartz.Extensions.Hosting's job factory creates a DI scope PER job execution, so scoped deps
     // resolve per-fire. WaitForJobsToComplete lets an in-flight sweep finish on graceful shutdown.
-    builder.Services.AddQuartz(quartz => QuartzScheduleBuilder.Configure(quartz, workerOptions));
+    // ApplyPersistentStore switches to the CLUSTERED Postgres ADO store for multi-replica HA when
+    // Workers:ClusteredSchedulerEnabled is true; otherwise the default in-memory RAMJobStore (which
+    // requires the scheduler to be pinned to a single replica) is used. Configure registers the jobs.
+    builder.Services.AddQuartz(quartz =>
+    {
+        QuartzScheduleBuilder.ApplyPersistentStore(quartz, workerOptions, databaseConnectionString);
+        QuartzScheduleBuilder.Configure(quartz, workerOptions);
+    });
     builder.Services.AddQuartzHostedService(options => options.WaitForJobsToComplete = true);
 
     // --- Health / readiness ---------------------------------------------------------------------

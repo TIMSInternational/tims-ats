@@ -138,6 +138,42 @@ describe('table-ownership ledger check', () => {
     expect(stranglerWrite).toEqual([]);
   });
 
+  it('allows quartzInfra tables owned by neither ORM (Phase-4 Slice-2 scheduler infra)', () => {
+    const violations = checkOwnership({
+      efcore: ['widgets'],
+      quartzInfra: ['qrtz_triggers', 'qrtz_locks'],
+      prismaTables: ['candidate'],
+      efcoreTables: ['widgets'],
+    });
+    expect(violations).toEqual([]);
+  });
+
+  it('flags a quartzInfra table that Prisma @@maps (an ORM must not claim scheduler infra)', () => {
+    const violations = checkOwnership({
+      efcore: [],
+      quartzInfra: ['qrtz_triggers'],
+      prismaTables: ['qrtz_triggers', 'candidate'],
+      efcoreTables: [],
+    });
+    expect(violations).toHaveLength(1);
+    expect(violations[0]).toContain('quartz-infra table claimed by Prisma');
+    expect(violations[0]).toContain('qrtz_triggers');
+  });
+
+  it('flags a quartzInfra table that an EF DbContext .ToTable maps', () => {
+    // Wrongly .ToTable'ing a qrtz table trips BOTH guards: the quartz-infra claim AND the
+    // unregistered-EF-table check (it is in no EF ownership list) — both are true violations.
+    const violations = checkOwnership({
+      efcore: ['widgets'],
+      quartzInfra: ['qrtz_locks'],
+      prismaTables: ['candidate'],
+      efcoreTables: ['widgets', 'qrtz_locks'],
+    });
+    expect(violations.some((v) => v.includes('quartz-infra table claimed by EF') && v.includes('qrtz_locks'))).toBe(
+      true,
+    );
+  });
+
   it('does NOT treat an append-only table as a cross-owner collision (Prisma still owns the DDL)', () => {
     // data_access_logs is @@map'd in Prisma AND EF-mapped for appends — this must be clean,
     // proving efcoreAppendOnly is the honest middle category (not efcore, which WOULD collide).
