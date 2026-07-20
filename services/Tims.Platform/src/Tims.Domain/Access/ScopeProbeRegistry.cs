@@ -104,6 +104,17 @@ public static class ScopeProbeRegistry
                 ["businessUnitId"] = "business_unit_id",
             },
             Navs: new Dictionary<string, ProbeNav>()),
+
+        // offer ≡ application ≡ assessmentAssignment structurally: the scope predicate is `viaVacancy`
+        // (entity-policies.ts `case 'offer'`), so the probe joins offer.vacancy_id → vacancies (the
+        // vacancies table already carries the team/unit/own anchor fields). Registered for the staff
+        // pre-employment-validation write (Phase-5), whose assertScoped('offer', …) probes the parent offer.
+        ["offers"] = new ProbeTable(
+            Fields: new Dictionary<string, string>(),
+            Navs: new Dictionary<string, ProbeNav>
+            {
+                ["vacancy"] = new ProbeNav(ProbeNavKind.To, "vacancies", "vacancy_id"),
+            }),
     };
 
     /// <summary>
@@ -119,6 +130,7 @@ public static class ScopeProbeRegistry
         [ScopedEntity.Interview] = "interviews",
         [ScopedEntity.Okr] = "okrs",
         [ScopedEntity.Team] = "teams",
+        [ScopedEntity.Offer] = "offers",
     };
 
     /// <summary>

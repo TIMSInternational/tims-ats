@@ -82,6 +82,18 @@ public sealed class ScopedProbeTests(AnchorProbeFixture fixture)
     public async Task Application_out_of_scope_throws_not_found() =>
         await AssertThrows(ScopedEntity.Application, AnchorProbeFixture.A2, AnchorProbeFixture.OrgA);
 
+    // ---- Offer: via vacancy (RelationTo) — the staff pre-employment-validation write's probe root ----
+    [Fact]
+    public async Task Offer_in_scope_passes() =>
+        await AssertInScope(ScopedEntity.Offer, AnchorProbeFixture.OA1);
+
+    [Fact]
+    public async Task Offer_out_of_scope_throws_not_found()
+    {
+        var ex = await AssertThrows(ScopedEntity.Offer, AnchorProbeFixture.OA2, AnchorProbeFixture.OrgA);
+        Assert.Equal("Oferta no encontrada", ex.Message);
+    }
+
     // ---- Interview: OR[ via vacancy, evaluators.some ] ------------------------------------
     [Fact]
     public async Task Interview_in_scope_via_vacancy_and_panel_passes() =>
@@ -119,13 +131,15 @@ public sealed class ScopedProbeTests(AnchorProbeFixture fixture)
         await AssertThrows(ScopedEntity.Team, AnchorProbeFixture.T2, AnchorProbeFixture.OrgA);
 
     // ---- Unregistered entity → clear InvalidOperationException (never silently passes) -----
+    // AssessmentAssignment shares offer/application's viaVacancy predicate but has NO probe-table map
+    // registered yet (its surface isn't built in C#) — so it must still fail loud, not silently pass.
     [Fact]
     public async Task Unregistered_entity_throws_invalid_operation()
     {
         await using var anchors = Anchors(AnchorProbeFixture.OrgA, AnchorProbeFixture.U1);
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             Probe().AssertScopedAsync(
-                ScopedEntity.Offer, AnchorProbeFixture.V1, Team, anchors,
+                ScopedEntity.AssessmentAssignment, AnchorProbeFixture.V1, Team, anchors,
                 AnchorProbeFixture.OrgA, AnchorProbeFixture.U1));
     }
 }

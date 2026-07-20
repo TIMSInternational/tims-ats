@@ -694,6 +694,59 @@
         }
       }
     },
+    "/validations/{validationId}": {
+      "patch": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "StaffUpdateValidation",
+        "parameters": [
+          {
+            "name": "validationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StaffValidationUpdateBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffValidationRow"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
     "/require-permission/{module}/{action}": {
       "get": {
         "tags": [
@@ -1373,6 +1426,105 @@
               "string"
             ],
             "format": "int32"
+          }
+        }
+      },
+      "StaffValidationRow": {
+        "required": [
+          "id",
+          "organizationId",
+          "offerId",
+          "type",
+          "status",
+          "isBlocking",
+          "result",
+          "completedById",
+          "completedByApiKeyId",
+          "completedAt",
+          "notes",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "organizationId": {
+            "type": "string"
+          },
+          "offerId": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "isBlocking": {
+            "type": "boolean"
+          },
+          "result": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JsonNode"
+              }
+            ]
+          },
+          "completedById": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "completedByApiKeyId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "completedAt": {
+            "format": "date-time"
+          },
+          "notes": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "createdAt": {
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "format": "date-time"
+          }
+        }
+      },
+      "StaffValidationUpdateBody": {
+        "required": [
+          "status"
+        ],
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "result": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JsonObject"
+              }
+            ]
+          },
+          "notes": {
+            "type": "string"
           }
         }
       },

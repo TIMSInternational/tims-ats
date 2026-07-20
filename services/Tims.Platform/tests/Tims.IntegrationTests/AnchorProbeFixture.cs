@@ -62,6 +62,10 @@ public sealed class AnchorProbeFixture : IAsyncLifetime
     // Applications
     public static readonly Guid A1 = Guid.Parse("10000000-0000-0000-0000-000000000001"); // C1 → V1 (in)
     public static readonly Guid A2 = Guid.Parse("10000000-0000-0000-0000-000000000002"); // C2 → V2 (out)
+
+    // Offers (viaVacancy, like applications): OA1 → V1 (in team scope), OA2 → V2 (out of scope).
+    public static readonly Guid OA1 = Guid.Parse("10000000-0000-0000-0000-0000000000a1");
+    public static readonly Guid OA2 = Guid.Parse("10000000-0000-0000-0000-0000000000a2");
     public static readonly Guid A3 = Guid.Parse("10000000-0000-0000-0000-00000000000d"); // CDel → V1
 
     // Interviews
@@ -81,13 +85,13 @@ public sealed class AnchorProbeFixture : IAsyncLifetime
     private static readonly string[] OrgScopedTables =
     [
         "teams", "business_units", "user_business_units", "interviews", "users",
-        "vacancies", "candidates", "applications", "okrs", "self_service_rows",
+        "vacancies", "candidates", "applications", "offers", "okrs", "self_service_rows",
     ];
 
     private static readonly string[] AllTables =
     [
         "teams", "user_teams", "user_business_units", "business_units", "interview_evaluators",
-        "interviews", "users", "vacancies", "candidates", "applications", "okrs", "self_service_rows",
+        "interviews", "users", "vacancies", "candidates", "applications", "offers", "okrs", "self_service_rows",
     ];
 
     private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:16-alpine")
@@ -175,6 +179,8 @@ public sealed class AnchorProbeFixture : IAsyncLifetime
                 id uuid PRIMARY KEY, organization_id uuid NOT NULL, deleted_at timestamptz NULL);
             CREATE TABLE applications (
                 id uuid PRIMARY KEY, organization_id uuid NOT NULL, candidate_id uuid NOT NULL, vacancy_id uuid NOT NULL);
+            CREATE TABLE offers (
+                id uuid PRIMARY KEY, organization_id uuid NOT NULL, vacancy_id uuid NOT NULL);
             CREATE TABLE okrs (
                 id uuid PRIMARY KEY, organization_id uuid NOT NULL, user_id uuid NOT NULL,
                 team_id uuid NULL, created_by_id uuid NULL);
@@ -229,6 +235,10 @@ public sealed class AnchorProbeFixture : IAsyncLifetime
             ('{A1}', '{OrgA}', '{C1}', '{V1}'),
             ('{A2}', '{OrgA}', '{C2}', '{V2}'),
             ('{A3}', '{OrgA}', '{CDel}', '{V1}');
+
+        INSERT INTO offers (id, organization_id, vacancy_id) VALUES
+            ('{OA1}', '{OrgA}', '{V1}'),
+            ('{OA2}', '{OrgA}', '{V2}');
 
         INSERT INTO interviews (id, organization_id, vacancy_id) VALUES
             ('{I1}', '{OrgA}', '{V1}'),

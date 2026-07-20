@@ -19,12 +19,14 @@ using Tims.Api.HealthChecks;
 using Tims.Api.RateLimiting;
 using Tims.Api.ExternalVendor;
 using Tims.Api.Reporting;
+using Tims.Api.Validation;
 using Tims.Application.Access;
 using Tims.Application.Audit;
 using Tims.Application.Billing;
 using Tims.Application.ExternalVendor;
 using Tims.Application.Identity;
 using Tims.Application.Reporting;
+using Tims.Application.Validation;
 using Tims.Domain.Access;
 using Tims.Domain.Billing;
 using Tims.Domain.Identity;
@@ -36,6 +38,7 @@ using Tims.Infrastructure.Hris;
 using Tims.Infrastructure.Identity;
 using Tims.Infrastructure.RateLimiting;
 using Tims.Infrastructure.Reporting;
+using Tims.Infrastructure.Validation;
 
 // Two-stage Serilog init: a bootstrap logger captures failures during host build
 // (including config-validation failures), then the full logger is swapped in.
@@ -201,6 +204,13 @@ try
     builder.Services.AddDbContext<ReportingReadDbContext>(options => options.UseNpgsql(databaseConnectionString));
     builder.Services.AddScoped<IReportingReadRepository, ReportingReadRepository>();
     builder.Services.AddScoped<ReportingReadUseCase>();
+
+    // Phase-5 (efcoreStranglerWrite): the STAFF pre-employment-validation write (the 2nd strangler writer on
+    // preemployment_validations). Write-capable context UNDER TenantScope/RLS; the endpoint additionally runs
+    // the by-id offer IDOR probe (ScopedProbe, already registered above). Dark unless ValidationStaffWriteEnabled.
+    builder.Services.AddDbContext<StaffValidationDbContext>(options => options.UseNpgsql(databaseConnectionString));
+    builder.Services.AddScoped<IStaffValidationRepository, StaffValidationRepository>();
+    builder.Services.AddScoped<StaffValidationUpdateUseCase>();
 
     builder.Services
         .AddOptions<StripeBillingOptions>()
@@ -377,6 +387,39 @@ try
                 }
             }
 
+            // The staff updateValidation body: `result` AND `notes` are OPTIONAL (drop from `required`) and,
+            // when present, NON-NULL (drop the null union the C# nullable annotation emits) — matching the Zod
+            // .optional() (absent OK; present-null rejected → 400). status stays required (the [Required] member).
+            if (context.JsonTypeInfo.Type == typeof(StaffValidationUpdateBody))
+            {
+                schema.Required?.Remove("result");
+                schema.Required?.Remove("notes");
+                if (schema.Properties is not null)
+                {
+                    if (schema.Properties.TryGetValue("notes", out var staffNotes)
+                        && staffNotes is Microsoft.OpenApi.OpenApiSchema concreteStaffNotes)
+                    {
+                        concreteStaffNotes.Type = Microsoft.OpenApi.JsonSchemaType.String;
+                    }
+
+                    // result is `oneOf: [{null}, {$ref JsonObject}]` from the nullable annotation — drop the
+                    // null branch so present-result must be an object (absence is handled by `required` above).
+                    if (schema.Properties.TryGetValue("result", out var staffResult)
+                        && staffResult is Microsoft.OpenApi.OpenApiSchema concreteStaffResult
+                        && concreteStaffResult.OneOf is not null)
+                    {
+                        for (var i = concreteStaffResult.OneOf.Count - 1; i >= 0; i--)
+                        {
+                            if (concreteStaffResult.OneOf[i] is Microsoft.OpenApi.OpenApiSchema branch
+                                && branch.Type == Microsoft.OpenApi.JsonSchemaType.Null)
+                            {
+                                concreteStaffResult.OneOf.RemoveAt(i);
+                            }
+                        }
+                    }
+                }
+            }
+
             return Task.CompletedTask;
         });
 
@@ -538,6 +581,14 @@ try
     if (externalOptions.ReportingReadEnabled || isOpenApiDocGeneration)
     {
         app.MapReportingReadEndpoints();
+    }
+
+    // Phase-5 (efcoreStranglerWrite): the staff pre-employment-validation write (PATCH /validations/{id}).
+    // Staff-JWT + offer:update + the parent-offer IDOR probe. Dark unless the flag is on (deploy-gated cutover;
+    // TS stays the sole active staff writer until Federico flips it — completing this makes the table flip-ready).
+    if (externalOptions.ValidationStaffWriteEnabled || isOpenApiDocGeneration)
+    {
+        app.MapStaffValidationEndpoints();
     }
 
     // Authz probe (WP2.5): the C# equivalent of the tRPC `requirePermission` gate. Resolves the

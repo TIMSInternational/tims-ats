@@ -127,4 +127,15 @@ public sealed class PlatformOptions
     /// until cutover.
     /// </summary>
     public bool ReportingReadEnabled { get; init; }
+
+    /// <summary>
+    /// Phase-5 (efcoreStranglerWrite): when true, the C# STAFF pre-employment-validation WRITE surface
+    /// (<c>PATCH /validations/{id}</c>) is mapped and live — the SECOND strangler writer on
+    /// <c>preemployment_validations</c> (the external-vendor submit is the first). Staff-JWT + <c>offer:update</c>
+    /// + the by-id IDOR probe on the parent offer. DEFAULT false (dark): the C# writer stays inert so the TS
+    /// staff <c>updateValidation</c> remains the SINGLE active writer to this surface until Federico flips it at
+    /// canary. Completing BOTH strangler writers (external + staff) makes the table flip-ready; the ownership
+    /// flip to <c>efcore</c> stays deferred to cutover.
+    /// </summary>
+    public bool ValidationStaffWriteEnabled { get; init; }
 }
