@@ -61,13 +61,30 @@ async function getAccessToken(): Promise<string | null> {
   return data.session?.access_token ?? null;
 }
 
+// Optional GET query string, mirroring the C# endpoints' minimal query contract (e.g.
+// `?period=30D`). Values are stringified; `undefined` entries are dropped so an omitted
+// optional param sends nothing (server applies its own default — Zod/enum parity).
+type QueryParams = Record<string, string | number | undefined>;
+
+function buildQueryString(query: QueryParams | undefined): string {
+  if (!query) return '';
+  const pairs = Object.entries(query)
+    .filter((entry): entry is [string, string | number] => entry[1] !== undefined)
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`);
+  return pairs.length > 0 ? `?${pairs.join('&')}` : '';
+}
+
 /**
  * Typed GET against the C# Platform service. Path + response are typed from the
  * committed OpenAPI contract (lib/platform-api/schema.d.ts). Attaches a Bearer token
  * (Supabase session) and Accept: application/json, throws {@link PlatformApiError} on
- * non-2xx, and parses the JSON body.
+ * non-2xx, and parses the JSON body. Optional {@link QueryParams} are appended as a
+ * query string (undefined entries omitted).
  */
-export async function platformGet<P extends GetPaths>(path: P): Promise<GetJsonResponse<P>> {
+export async function platformGet<P extends GetPaths>(
+  path: P,
+  query?: QueryParams,
+): Promise<GetJsonResponse<P>> {
   if (!isPlatformApiEnabled()) {
     throw new Error('Platform API is disabled: NEXT_PUBLIC_TIMS_PLATFORM_API_URL is unset.');
   }
@@ -77,7 +94,7 @@ export async function platformGet<P extends GetPaths>(path: P): Promise<GetJsonR
   if (token) headers.Authorization = `Bearer ${token}`;
 
   const base = PLATFORM_API_URL!.replace(/\/+$/, '');
-  const response = await fetch(`${base}${path}`, {
+  const response = await fetch(`${base}${path}${buildQueryString(query)}`, {
     method: 'GET',
     headers,
     credentials: 'omit',

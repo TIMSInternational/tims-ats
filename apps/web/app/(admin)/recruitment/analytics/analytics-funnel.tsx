@@ -1,7 +1,10 @@
 'use client';
 
-import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
+import {
+  useReportingFunnel,
+  useReportingSourceBreakdown,
+} from '../../../../lib/platform-api/reporting';
 import type { AnalyticsPeriod } from './page';
 
 function CardSkeleton() {
@@ -26,7 +29,7 @@ const TEXT_COLORS = ['text-[#1F114C]', 'text-[#1F114C]', 'text-white', 'text-whi
 
 export function AnalyticsFunnel() {
   const { t } = useI18n();
-  const q = trpc.recruitmentAnalytics.getFunnel.useQuery();
+  const q = useReportingFunnel();
 
   if (q.isLoading) return <CardSkeleton />;
   if (q.isError || !q.data) return <CardError message={t.recruitAnalytics.errLoading} />;
@@ -75,7 +78,7 @@ export function AnalyticsFunnel() {
 
 export function AnalyticsSourceQuality({ period }: { period: AnalyticsPeriod }) {
   const { t } = useI18n();
-  const q = trpc.recruitmentAnalytics.getSourceBreakdown.useQuery({ period });
+  const q = useReportingSourceBreakdown(period);
 
   if (q.isLoading) return <CardSkeleton />;
   if (q.isError || !q.data) return <CardError message={t.recruitAnalytics.errLoading} />;

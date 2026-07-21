@@ -1,7 +1,10 @@
 'use client';
 
-import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
+import {
+  useReportingTrend,
+  useReportingLostByDelay,
+} from '../../../../lib/platform-api/reporting';
 import type { AnalyticsPeriod } from './page';
 
 function CardSkeleton({ flex }: { flex: string }) {
@@ -22,7 +25,7 @@ function CardError({ flex, message }: { flex: string; message: string }) {
 
 export function AnalyticsTrend() {
   const { t, locale } = useI18n();
-  const q = trpc.recruitmentAnalytics.getTrend.useQuery();
+  const q = useReportingTrend();
 
   if (q.isLoading) return <CardSkeleton flex="md:flex-[40]" />;
   if (q.isError || !q.data) return <CardError flex="md:flex-[40]" message={t.recruitAnalytics.errLoading} />;
@@ -58,7 +61,7 @@ export function AnalyticsTrend() {
 
 export function AnalyticsLostByDelay({ period }: { period: AnalyticsPeriod }) {
   const { t } = useI18n();
-  const q = trpc.recruitmentAnalytics.getLostByDelay.useQuery({ period });
+  const q = useReportingLostByDelay(period);
 
   if (q.isLoading) return <CardSkeleton flex="md:flex-[30]" />;
   if (q.isError || !q.data) return <CardError flex="md:flex-[30]" message={t.recruitAnalytics.errLoading} />;

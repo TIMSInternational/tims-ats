@@ -1,7 +1,7 @@
 'use client';
 
-import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
+import { useReportingKpis } from '../../../../lib/platform-api/reporting';
 import type { AnalyticsPeriod } from './page';
 
 function KpiSkeleton() {
@@ -21,7 +21,7 @@ interface KpiItem {
 
 export function AnalyticsKpiRow({ period }: { period: AnalyticsPeriod }) {
   const { t } = useI18n();
-  const q = trpc.recruitmentAnalytics.getKpis.useQuery({ period });
+  const q = useReportingKpis(period);
 
   if (q.isLoading) {
     return (

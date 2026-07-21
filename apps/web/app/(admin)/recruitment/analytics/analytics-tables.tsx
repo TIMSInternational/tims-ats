@@ -1,7 +1,7 @@
 'use client';
 
-import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
+import { useReportingRecruiterSla } from '../../../../lib/platform-api/reporting';
 
 function CardSkeleton() {
   return (
@@ -20,7 +20,7 @@ function slaColors(sla: number | null) {
 
 export function AnalyticsSlaTable() {
   const { t } = useI18n();
-  const q = trpc.recruitmentAnalytics.getRecruiterSla.useQuery();
+  const q = useReportingRecruiterSla();
 
   if (q.isLoading) return <CardSkeleton />;
   if (q.isError || !q.data) {

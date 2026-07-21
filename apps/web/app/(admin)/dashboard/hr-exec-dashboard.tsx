@@ -2,6 +2,7 @@
 
 import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
+import { useReportingFunnel } from '../../../lib/platform-api/reporting';
 import { KpiCard, KpiCardSkeleton } from '../../../components';
 import { suppressedValue, PLACEHOLDER } from '../../../lib/dashboard/suppress';
 import { LoadError } from './load-error';
@@ -47,7 +48,7 @@ export function HrExecDashboard() {
   const perf = trpc.performance.getDashboardKpis.useQuery();
   const enps = trpc.engagement.getEnps.useQuery();
   const culture = trpc.engagement.getDashboardKpis.useQuery();
-  const funnel = trpc.recruitmentAnalytics.getFunnel.useQuery();
+  const funnel = useReportingFunnel();
   const comp = trpc.compensation.getDashboardKpis.useQuery();
   const dei = trpc.dei.getDashboardKpis.useQuery();
 
