@@ -1,6 +1,6 @@
 'use client';
 
-import { trpc } from '../../../../lib/trpc';
+import { useTeamIntelDashboardKpis } from '../../../../lib/platform-api/team-intel';
 import { useI18n } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
 import { TeamIntelKpis } from './team-intel-kpis';
@@ -13,7 +13,7 @@ import { TeamComparison } from './team-comparison';
 
 export default function TeamIntelligencePage() {
   const { t } = useI18n();
-  const kpis = trpc.teamIntel.getDashboardKpis.useQuery();
+  const kpis = useTeamIntelDashboardKpis();
 
   return (
     <div className="flex flex-col flex-1 min-w-0 h-full">
