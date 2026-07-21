@@ -1,13 +1,4 @@
-export function computeAvgTenureYears(members: { createdAt: Date }[], nowMs: number): number {
-  if (members.length === 0) return 0;
-  const years =
-    members.reduce((s, m) => s + (nowMs - m.createdAt.getTime()) / (1000 * 60 * 60 * 24 * 365), 0) /
-    members.length;
-  return Math.round(years * 10) / 10;
-}
-
-export function computeRoleDiversity(members: { jobTitle: string | null }[]): number {
-  if (members.length === 0) return 0;
-  const unique = new Set(members.map((m) => m.jobTitle).filter(Boolean)).size;
-  return Math.round((unique / members.length) * 100) / 100;
-}
+// The two team-intel metric kernels moved to @tims/shared (Phase-5 Slice 6): the shared module is the
+// SINGLE source the router returns AND the parity target for the C# port. Re-exported here so the
+// existing import path (`./team-intel-metrics`) stays behavior-preserving.
+export { computeAvgTenureYears, computeRoleDiversity } from '@tims/shared';

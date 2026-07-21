@@ -1,0 +1,45 @@
+{
+  "description": "Golden parity for teamIntel.getDashboardKpis' diversityIndex: computeRoleDiversity(members) in @tims/shared. Asserted IDENTICALLY by the REAL TS export (tests/team-intel/tenure-diversity-fixtures.test.ts) and the C# Tims.Domain.TeamIntel.TeamIntelMetrics.ComputeRoleDiversity (Tims.UnitTests). Pins: a 2-DECIMAL ratio round((distinctNonEmpty/count)*100)/100 (DIFFERENT from buildBalanceScore.roleDiversity, an integer percent — proven by the 1/8 case: HERE 0.13, THERE 13); JS half-UP (0.125*100=12.5->13 -> 0.13; banker's would give 0.12); distinct NON-EMPTY jobTitles (null/empty dropped); empty -> 0.",
+  "cases": [
+    {
+      "name": "empty -> 0",
+      "input": { "members": [] },
+      "expected": 0
+    },
+    {
+      "name": "half-up bite, 1 distinct of 8 -> 0.13",
+      "input": {
+        "members": [
+          { "jobTitle": "Eng" },
+          { "jobTitle": null },
+          { "jobTitle": "" },
+          { "jobTitle": null },
+          { "jobTitle": null },
+          { "jobTitle": "" },
+          { "jobTitle": null },
+          { "jobTitle": null }
+        ]
+      },
+      "expected": 0.13
+    },
+    {
+      "name": "distinct non-empty drops null/empty, 1 of 4 -> 0.25",
+      "input": {
+        "members": [
+          { "jobTitle": "Eng" },
+          { "jobTitle": "Eng" },
+          { "jobTitle": "" },
+          { "jobTitle": null }
+        ]
+      },
+      "expected": 0.25
+    },
+    {
+      "name": "2 distinct of 3 -> 0.67",
+      "input": {
+        "members": [{ "jobTitle": "Eng" }, { "jobTitle": "PM" }, { "jobTitle": "Eng" }]
+      },
+      "expected": 0.67
+    }
+  ]
+}

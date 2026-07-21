@@ -1,0 +1,95 @@
+{
+  "description": "Golden parity for teamIntel.compareTeams: buildTeamComparison(teams, nowMs) in @tims/shared. Asserted IDENTICALLY by the REAL TS export (tests/team-intel/team-comparison-fixtures.test.ts, which builds `new Date(createdAtMs)`) and the C# Tims.Domain.TeamIntel.TeamComparisonBuilder (Tims.UnitTests). Pins: input order preserved (no sort); leader passed through unchanged (present or null); memberCount; distinct NON-EMPTY jobTitles; avgTenureMonths 30-DAY months round(x*10)/10 JS half-UP (1.25->1.3); openVacancies/activeOkrs passthrough; empty members -> 0s; empty teams -> { teams: [] }.",
+  "cases": [
+    {
+      "name": "two teams: leader present/null, order preserved, distinct roles, passthrough counts",
+      "input": {
+        "teams": [
+          {
+            "id": "a",
+            "name": "Alpha",
+            "leader": { "id": "L1", "firstName": "Ada", "lastName": "Lead" },
+            "members": [
+              { "jobTitle": "Eng", "createdAtMs": 1594816000000 },
+              { "jobTitle": "PM", "createdAtMs": 1594816000000 },
+              { "jobTitle": "Eng", "createdAtMs": 1594816000000 }
+            ],
+            "openVacancies": 4,
+            "activeOkrs": 2
+          },
+          {
+            "id": "b",
+            "name": "Beta",
+            "leader": null,
+            "members": [],
+            "openVacancies": 0,
+            "activeOkrs": 5
+          }
+        ],
+        "nowMs": 1600000000000
+      },
+      "expected": {
+        "teams": [
+          {
+            "teamId": "a",
+            "teamName": "Alpha",
+            "leader": { "id": "L1", "firstName": "Ada", "lastName": "Lead" },
+            "memberCount": 3,
+            "uniqueRoles": 2,
+            "avgTenureMonths": 2,
+            "openVacancies": 4,
+            "activeOkrs": 2
+          },
+          {
+            "teamId": "b",
+            "teamName": "Beta",
+            "leader": null,
+            "memberCount": 0,
+            "uniqueRoles": 0,
+            "avgTenureMonths": 0,
+            "openVacancies": 0,
+            "activeOkrs": 5
+          }
+        ]
+      }
+    },
+    {
+      "name": "single team: 30-day-month half-up (1.25->1.3), null jobTitle dropped",
+      "input": {
+        "teams": [
+          {
+            "id": "c",
+            "name": "Gamma",
+            "leader": null,
+            "members": [
+              { "jobTitle": "Eng", "createdAtMs": 1596760000000 },
+              { "jobTitle": null, "createdAtMs": 1596760000000 }
+            ],
+            "openVacancies": 1,
+            "activeOkrs": 0
+          }
+        ],
+        "nowMs": 1600000000000
+      },
+      "expected": {
+        "teams": [
+          {
+            "teamId": "c",
+            "teamName": "Gamma",
+            "leader": null,
+            "memberCount": 2,
+            "uniqueRoles": 1,
+            "avgTenureMonths": 1.3,
+            "openVacancies": 1,
+            "activeOkrs": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "empty teams array -> empty result",
+      "input": { "teams": [], "nowMs": 1600000000000 },
+      "expected": { "teams": [] }
+    }
+  ]
+}

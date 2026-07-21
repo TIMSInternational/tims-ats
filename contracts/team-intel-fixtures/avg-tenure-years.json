@@ -1,0 +1,28 @@
+{
+  "description": "Golden parity for teamIntel.getDashboardKpis' avgTenureYears: computeAvgTenureYears(members, nowMs) in @tims/shared. Asserted IDENTICALLY by the REAL TS export (tests/team-intel/tenure-diversity-fixtures.test.ts, which builds `new Date(createdAtMs)`) and the C# Tims.Domain.TeamIntel.TeamIntelMetrics.ComputeAvgTenureYears (Tims.UnitTests, ms directly). Pins: 365-DAY years (≠ the 30-day months in balance/comparison); mean over all members; round(years*10)/10 is JS half-UP (0.05->0.1, 1.25->1.3 — banker's rounding would give 0.0/1.2 and turn this red); empty -> 0. Timestamps are epoch-ms.",
+  "cases": [
+    {
+      "name": "empty -> 0",
+      "input": { "members": [], "nowMs": 1600000000000 },
+      "expected": 0
+    },
+    {
+      "name": "single member, half-up bite (0.05 -> 0.1)",
+      "input": { "members": [{ "createdAtMs": 1598423200000 }], "nowMs": 1600000000000 },
+      "expected": 0.1
+    },
+    {
+      "name": "two members averaged, half-up bite (1.25 -> 1.3)",
+      "input": {
+        "members": [{ "createdAtMs": 1568464000000 }, { "createdAtMs": 1552696000000 }],
+        "nowMs": 1600000000000
+      },
+      "expected": 1.3
+    },
+    {
+      "name": "single member exactly two 365-day years",
+      "input": { "members": [{ "createdAtMs": 1536928000000 }], "nowMs": 1600000000000 },
+      "expected": 2
+    }
+  ]
+}

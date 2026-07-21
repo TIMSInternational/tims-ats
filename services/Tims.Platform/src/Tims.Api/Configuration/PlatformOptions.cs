@@ -138,4 +138,15 @@ public sealed class PlatformOptions
     /// flip to <c>efcore</c> stays deferred to cutover.
     /// </summary>
     public bool ValidationStaffWriteEnabled { get; init; }
+
+    /// <summary>
+    /// Phase-5 Slice 6 (efcoreReadOnly): when true, the C# team-intel READ surface
+    /// (<c>GET /team-intel/teams/{id}/{profile|members|balance-score|balance-alerts|recommended-hires}</c>,
+    /// <c>/team-intel/compare</c>, <c>/team-intel/dashboard-kpis</c>) is mapped and live. Staff-JWT +
+    /// <c>team_intel:read</c>; the by-id reads run the <c>assertScoped('team')</c> IDOR probe (the FIRST live
+    /// scope-probe on a READ path), compare composes <c>scopeWhereFor('team')</c>, and dashboard-kpis applies
+    /// the organization/company org-gate (Codex F3). DEFAULT false (dark) — TS remains the single active
+    /// reader until cutover.
+    /// </summary>
+    public bool TeamIntelReadEnabled { get; init; }
 }

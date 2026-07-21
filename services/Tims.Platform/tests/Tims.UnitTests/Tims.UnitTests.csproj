@@ -68,6 +68,11 @@
       <Link>reporting-fixtures\%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <!-- Phase-5 Slice 6 team-intel kernel golden fixtures (shared with the TS vitest suite). -->
+    <Content Include="..\..\..\..\contracts\team-intel-fixtures\*.json">
+      <Link>team-intel-fixtures\%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <!-- WP3.6-map HRIS mapper golden fixtures (C#-only characterization; greenfield, no TS counterpart). -->
     <Content Include="..\..\..\..\contracts\hris-fixtures\*.json">
       <Link>hris-fixtures\%(Filename)%(Extension)</Link>

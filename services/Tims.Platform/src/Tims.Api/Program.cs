@@ -19,6 +19,7 @@ using Tims.Api.HealthChecks;
 using Tims.Api.RateLimiting;
 using Tims.Api.ExternalVendor;
 using Tims.Api.Reporting;
+using Tims.Api.TeamIntel;
 using Tims.Api.Validation;
 using Tims.Application.Access;
 using Tims.Application.Audit;
@@ -26,6 +27,7 @@ using Tims.Application.Billing;
 using Tims.Application.ExternalVendor;
 using Tims.Application.Identity;
 using Tims.Application.Reporting;
+using Tims.Application.TeamIntel;
 using Tims.Application.Validation;
 using Tims.Domain.Access;
 using Tims.Domain.Billing;
@@ -38,6 +40,7 @@ using Tims.Infrastructure.Hris;
 using Tims.Infrastructure.Identity;
 using Tims.Infrastructure.RateLimiting;
 using Tims.Infrastructure.Reporting;
+using Tims.Infrastructure.TeamIntel;
 using Tims.Infrastructure.Validation;
 
 // Two-stage Serilog init: a bootstrap logger captures failures during host build
@@ -211,6 +214,15 @@ try
     builder.Services.AddDbContext<StaffValidationDbContext>(options => options.UseNpgsql(databaseConnectionString));
     builder.Services.AddScoped<IStaffValidationRepository, StaffValidationRepository>();
     builder.Services.AddScoped<StaffValidationUpdateUseCase>();
+
+    // Phase-5 Slice 6 (efcoreReadOnly): the team-intel READ surface. Plain read-only context over the
+    // Prisma-OWNED teams/user_teams/users/business_units/vacancies/okrs (no native enums → no
+    // NpgsqlDataSource). Reads run UNDER TenantScope/RLS; the by-id reads additionally run the team IDOR probe
+    // (ScopedProbe, already registered above) and compare composes scopeWhereFor('team'). Dark unless
+    // TeamIntelReadEnabled (deploy-gated cutover).
+    builder.Services.AddDbContext<TeamIntelReadDbContext>(options => options.UseNpgsql(databaseConnectionString));
+    builder.Services.AddScoped<ITeamIntelReadRepository, TeamIntelReadRepository>();
+    builder.Services.AddScoped<TeamIntelReadUseCase>();
 
     builder.Services
         .AddOptions<StripeBillingOptions>()
@@ -589,6 +601,16 @@ try
     if (externalOptions.ValidationStaffWriteEnabled || isOpenApiDocGeneration)
     {
         app.MapStaffValidationEndpoints();
+    }
+
+    // Team-intel READ surface (Phase-5 Slice 6): GET /team-intel/teams/{id}/{profile|members|balance-score|
+    // balance-alerts|recommended-hires}, /team-intel/compare, /team-intel/dashboard-kpis. Staff-JWT +
+    // team_intel:read; the by-id reads run the assertScoped('team') IDOR probe (first live scope-probe on a
+    // READ path), compare composes scopeWhereFor('team'), dashboard-kpis applies the org-gate. Dark unless the
+    // flag is on (deploy-gated cutover; TS stays the sole active reader until Federico flips it).
+    if (externalOptions.TeamIntelReadEnabled || isOpenApiDocGeneration)
+    {
+        app.MapTeamIntelReadEndpoints();
     }
 
     // Authz probe (WP2.5): the C# equivalent of the tRPC `requirePermission` gate. Resolves the

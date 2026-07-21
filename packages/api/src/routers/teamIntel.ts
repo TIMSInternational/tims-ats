@@ -5,6 +5,7 @@ import { tenantDb as db } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { scopeWhereFor, assertScoped, requireOrgScope } from '../access';
 import { computeAvgTenureYears, computeRoleDiversity } from './team-intel-metrics';
+import { buildBalanceScore, buildTeamComparison } from '@tims/shared';
 import { cacheGet, cacheSet } from '../lib/cache';
 
 export const teamIntelRouter = router({
@@ -97,35 +98,14 @@ export const teamIntelRouter = router({
         },
       });
 
-      const memberCount = members.length;
-
-      // Tenure diversity (std deviation of tenure in months)
-      const now = new Date();
-      const tenureMonths = members.map(
-        (m) => (now.getTime() - m.user.createdAt.getTime()) / (1000 * 60 * 60 * 24 * 30),
+      // Balance-score shaping lives in the shared kernel (the SINGLE source the C# port mirrors,
+      // golden-fixtured both stacks); the router wraps it with the teamId.
+      const balance = buildBalanceScore(
+        members.map((m) => ({ jobTitle: m.user.jobTitle, createdAt: m.user.createdAt })),
+        Date.now(),
       );
-      const avgTenure =
-        tenureMonths.length > 0
-          ? tenureMonths.reduce((a, b) => a + b, 0) / tenureMonths.length
-          : 0;
 
-      // Role diversity (unique job titles / member count)
-      const uniqueRoles = new Set(members.map((m) => m.user.jobTitle).filter(Boolean)).size;
-      const roleDiversity = memberCount > 0 ? Math.round((uniqueRoles / memberCount) * 100) : 0;
-
-      // Simple balance score (0-100) based on size, tenure spread, role diversity
-      const sizeScore = memberCount >= 3 && memberCount <= 10 ? 100 : Math.max(0, 100 - Math.abs(memberCount - 7) * 10);
-      const balanceScore = Math.round((sizeScore + roleDiversity) / 2);
-
-      return {
-        teamId: input.teamId,
-        memberCount,
-        uniqueRoles,
-        roleDiversity,
-        avgTenureMonths: Math.round(avgTenure * 10) / 10,
-        sizeScore,
-        balanceScore,
-      };
+      return { teamId: input.teamId, ...balance };
     }),
 
   // AI-driven team balance alerts.
@@ -191,34 +171,19 @@ export const teamIntelRouter = router({
         },
       });
 
-      const now = new Date();
-
-      const comparison = teams.map((team) => {
-        const memberCount = team.members.length;
-        const uniqueRoles = new Set(
-          team.members.map((m) => m.user.jobTitle).filter(Boolean),
-        ).size;
-        const tenureMonths = team.members.map(
-          (m) => (now.getTime() - m.user.createdAt.getTime()) / (1000 * 60 * 60 * 24 * 30),
-        );
-        const avgTenure =
-          tenureMonths.length > 0
-            ? tenureMonths.reduce((a, b) => a + b, 0) / tenureMonths.length
-            : 0;
-
-        return {
-          teamId: team.id,
-          teamName: team.name,
+      // Comparison shaping lives in the shared kernel (the SINGLE source the C# port mirrors,
+      // golden-fixtured both stacks).
+      return buildTeamComparison(
+        teams.map((team) => ({
+          id: team.id,
+          name: team.name,
           leader: team.leader,
-          memberCount,
-          uniqueRoles,
-          avgTenureMonths: Math.round(avgTenure * 10) / 10,
+          members: team.members.map((m) => ({ jobTitle: m.user.jobTitle, createdAt: m.user.createdAt })),
           openVacancies: team._count.vacancies,
           activeOkrs: team._count.okrs,
-        };
-      });
-
-      return { teams: comparison };
+        })),
+        Date.now(),
+      );
     }),
 
   // ── Dashboard KPIs ───────────────────────────────────────────────────

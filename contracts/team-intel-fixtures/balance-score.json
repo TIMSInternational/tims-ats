@@ -1,0 +1,122 @@
+{
+  "description": "Golden parity for teamIntel.getBalanceScore: buildBalanceScore(members, nowMs) in @tims/shared (the router wraps it with teamId). Asserted IDENTICALLY by the REAL TS export (tests/team-intel/balance-score-fixtures.test.ts, which builds `new Date(createdAtMs)`) and the C# Tims.Domain.TeamIntel.BalanceScoreBuilder (Tims.UnitTests, ms directly). Pins: 30-DAY months (≠ the 365-day years in computeAvgTenureYears); avgTenureMonths round(x*10)/10 JS half-UP (6.05->6.1); roleDiversity an INTEGER percent round((uniqueRoles/count)*100) (DIFFERENT from computeRoleDiversity's 2-dec ratio); sizeScore = 100 for 3..10 members else max(0, 100-abs(count-7)*10) (12->50, 20->0); balanceScore round((sizeScore+roleDiversity)/2) JS half-UP (2.5->3, 62.5->63); distinct NON-EMPTY jobTitles; empty team -> zeros with sizeScore 30 (piecewise), balanceScore 15.",
+  "cases": [
+    {
+      "name": "empty team -> zeros, sizeScore piecewise 30, balanceScore 15",
+      "input": { "members": [], "nowMs": 1600000000000 },
+      "expected": {
+        "memberCount": 0,
+        "uniqueRoles": 0,
+        "roleDiversity": 0,
+        "avgTenureMonths": 0,
+        "sizeScore": 30,
+        "balanceScore": 15
+      }
+    },
+    {
+      "name": "healthy 5-member team, 30-day-month half-up (6.05->6.1), roleDiversity int 60",
+      "input": {
+        "members": [
+          { "jobTitle": "Eng", "createdAtMs": 1584318400000 },
+          { "jobTitle": "Eng", "createdAtMs": 1584318400000 },
+          { "jobTitle": "PM", "createdAtMs": 1584318400000 },
+          { "jobTitle": "Design", "createdAtMs": 1584318400000 },
+          { "jobTitle": "Design", "createdAtMs": 1584318400000 }
+        ],
+        "nowMs": 1600000000000
+      },
+      "expected": {
+        "memberCount": 5,
+        "uniqueRoles": 3,
+        "roleDiversity": 60,
+        "avgTenureMonths": 6.1,
+        "sizeScore": 100,
+        "balanceScore": 80
+      }
+    },
+    {
+      "name": "count 12 -> sizeScore piecewise 50",
+      "input": {
+        "members": [
+          { "jobTitle": "Eng", "createdAtMs": 1600000000000 },
+          { "jobTitle": "Eng", "createdAtMs": 1600000000000 },
+          { "jobTitle": "Eng", "createdAtMs": 1600000000000 },
+          { "jobTitle": "Eng", "createdAtMs": 1600000000000 },
+          { "jobTitle": "Eng", "createdAtMs": 1600000000000 },
+          { "jobTitle": "Eng", "createdAtMs": 1600000000000 },
+          { "jobTitle": "Eng", "createdAtMs": 1600000000000 },
+          { "jobTitle": "Eng", "createdAtMs": 1600000000000 },
+          { "jobTitle": "Eng", "createdAtMs": 1600000000000 },
+          { "jobTitle": "Eng", "createdAtMs": 1600000000000 },
+          { "jobTitle": "Eng", "createdAtMs": 1600000000000 },
+          { "jobTitle": "Eng", "createdAtMs": 1600000000000 }
+        ],
+        "nowMs": 1600000000000
+      },
+      "expected": {
+        "memberCount": 12,
+        "uniqueRoles": 1,
+        "roleDiversity": 8,
+        "avgTenureMonths": 0,
+        "sizeScore": 50,
+        "balanceScore": 29
+      }
+    },
+    {
+      "name": "count 20 -> sizeScore floored at 0, balanceScore half-up (2.5->3)",
+      "input": {
+        "members": [
+          { "jobTitle": "Eng", "createdAtMs": 1600000000000 },
+          { "jobTitle": "Eng", "createdAtMs": 1600000000000 },
+          { "jobTitle": "Eng", "createdAtMs": 1600000000000 },
+          { "jobTitle": "Eng", "createdAtMs": 1600000000000 },
+          { "jobTitle": "Eng", "createdAtMs": 1600000000000 },
+          { "jobTitle": "Eng", "createdAtMs": 1600000000000 },
+          { "jobTitle": "Eng", "createdAtMs": 1600000000000 },
+          { "jobTitle": "Eng", "createdAtMs": 1600000000000 },
+          { "jobTitle": "Eng", "createdAtMs": 1600000000000 },
+          { "jobTitle": "Eng", "createdAtMs": 1600000000000 },
+          { "jobTitle": "Eng", "createdAtMs": 1600000000000 },
+          { "jobTitle": "Eng", "createdAtMs": 1600000000000 },
+          { "jobTitle": "Eng", "createdAtMs": 1600000000000 },
+          { "jobTitle": "Eng", "createdAtMs": 1600000000000 },
+          { "jobTitle": "Eng", "createdAtMs": 1600000000000 },
+          { "jobTitle": "Eng", "createdAtMs": 1600000000000 },
+          { "jobTitle": "Eng", "createdAtMs": 1600000000000 },
+          { "jobTitle": "Eng", "createdAtMs": 1600000000000 },
+          { "jobTitle": "Eng", "createdAtMs": 1600000000000 },
+          { "jobTitle": "Eng", "createdAtMs": 1600000000000 }
+        ],
+        "nowMs": 1600000000000
+      },
+      "expected": {
+        "memberCount": 20,
+        "uniqueRoles": 1,
+        "roleDiversity": 5,
+        "avgTenureMonths": 0,
+        "sizeScore": 0,
+        "balanceScore": 3
+      }
+    },
+    {
+      "name": "null/empty jobTitles dropped, balanceScore half-up (62.5->63)",
+      "input": {
+        "members": [
+          { "jobTitle": "Eng", "createdAtMs": 1592224000000 },
+          { "jobTitle": "", "createdAtMs": 1592224000000 },
+          { "jobTitle": null, "createdAtMs": 1592224000000 },
+          { "jobTitle": "Eng", "createdAtMs": 1592224000000 }
+        ],
+        "nowMs": 1600000000000
+      },
+      "expected": {
+        "memberCount": 4,
+        "uniqueRoles": 1,
+        "roleDiversity": 25,
+        "avgTenureMonths": 3,
+        "sizeScore": 100,
+        "balanceScore": 63
+      }
+    }
+  ]
+}
