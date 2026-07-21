@@ -1,0 +1,25 @@
+# Copy to terraform.tfvars and fill in. Secret VALUES are NOT here — they go to Secrets Manager
+# out-of-band (see README). This file holds only non-secret config.
+
+aws_region = "us-west-2" # MUST co-locate with the Supabase DB (#100)
+
+# The image tag pushed to ECR in runbook §3 (e.g. the short git SHA).
+image_tag = "REPLACE_WITH_PUSHED_TAG"
+
+# Public Supabase auth config (NOT secret).
+supabase_jwt_issuer            = "https://REPLACE_REF.supabase.co/auth/v1"
+supabase_jwt_audience          = "authenticated"
+supabase_jwks_metadata_address = "https://REPLACE_REF.supabase.co/auth/v1/.well-known/jwks.json"
+
+# otlp_endpoint = "http://otel-collector:4317"   # optional
+
+# First deploy: keep ALL flags false (a deploy activates NO strangled surface). Flip one at a
+# time at cutover, AFTER setting the matching FE NEXT_PUBLIC_*_VIA_CSHARP flag.
+feature_flags = {
+  team_intel_read = false
+  reporting_read  = false
+  billing_usage   = false
+}
+
+# Set true only before the billing WRITE cutover (creates + wires Stripe secret containers).
+manage_stripe_secrets = false
