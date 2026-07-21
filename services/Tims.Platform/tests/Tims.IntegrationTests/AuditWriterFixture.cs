@@ -105,6 +105,50 @@ public sealed class AuditWriterFixture : IAsyncLifetime
             await immutable.ExecuteNonQueryAsync();
         }
 
+        // CB-1b: the SECOND audit table `audit_logs` (admin/security events). Unlike data_access_logs it
+        // carries a REAL FK organization_id -> organizations ON DELETE CASCADE (faithful to prod), so this
+        // fixture also proves the documented FK-cascade constraint: a hard org delete is blocked by the guard.
+        await using (var auditLogs = connection.CreateCommand())
+        {
+            auditLogs.CommandText =
+                """
+                CREATE TABLE organizations (id uuid PRIMARY KEY);
+                CREATE TABLE users_audit (id uuid PRIMARY KEY);
+                CREATE TABLE audit_logs (
+                    id uuid PRIMARY KEY,
+                    organization_id uuid NOT NULL REFERENCES organizations (id) ON DELETE CASCADE,
+                    -- optional user refs mirror the Prisma model (userId/actorId String? → default SET NULL),
+                    -- so a user hard-delete triggers a SET NULL UPDATE on audit_logs (which immutability blocks).
+                    user_id uuid NULL REFERENCES users_audit (id) ON DELETE SET NULL,
+                    actor_id uuid NULL REFERENCES users_audit (id) ON DELETE SET NULL,
+                    action text NOT NULL,
+                    entity text NOT NULL,
+                    created_at timestamptz NOT NULL DEFAULT now()
+                );
+
+                GRANT SELECT, INSERT ON audit_logs TO app_tenant;
+
+                ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
+                ALTER TABLE audit_logs FORCE ROW LEVEL SECURITY;
+
+                CREATE POLICY tenant_isolation ON audit_logs
+                    USING (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid)
+                    WITH CHECK (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid);
+
+                INSERT INTO organizations (id) VALUES ('11111111-1111-1111-1111-111111111111');
+                INSERT INTO users_audit (id) VALUES ('a0000000-0000-0000-0000-0000000000aa');
+                """;
+            await auditLogs.ExecuteNonQueryAsync();
+        }
+
+        await using (var immutableAuditLogs = connection.CreateCommand())
+        {
+            // Same reusable control, SECOND table — validates the shared guard reports each table's own name
+            // (TG_TABLE_NAME), the exact reusability the CB-1 review (opus M1) fixed.
+            immutableAuditLogs.CommandText = AuditImmutability.BuildAppendOnlySql("audit_logs");
+            await immutableAuditLogs.ExecuteNonQueryAsync();
+        }
+
         // CREATE DATABASE cannot run inside a transaction block — a plain autocommit command is fine.
         await using (var db2 = connection.CreateCommand())
         {

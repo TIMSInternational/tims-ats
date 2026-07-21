@@ -47,6 +47,14 @@ Each CB is a vertical slice: design → TDD → fresh reviewer + Codex + opus ga
   append-only writer to cover authN success/**failure**, authZ denials, admin/privileged actions, data exports,
   **feature-flag flips**, role/permission changes. (CC7.2 / A.8.15 / SOC 1 audit trail.) Design:
   `docs/architecture/compliance/cb-1-audit-immutability.md`.
+- **CB-1b — `audit_logs` immutability (SHIPPED).** The twin of CB-1 for the admin/security-event trail (all 20
+  `db.auditLog.create` sites) — it was fully mutable. Same reusable control + prod SQL
+  (`2026-07-17-audit-logs-immutable.sql`, Federico-run). ⚠️ FK-cascade constraint documented (org/user hard
+  delete blocked once immutable — safe today, no such path exists; FK-less refactor recommended follow-up).
+  Design: `cb-1b-audit-logs-immutability.md`.
+- **CB-1c — security-event COVERAGE.** Log the UNLOGGED events into the (now-immutable) trail, in the LIVE app:
+  authN failures (`login_failed`), authZ denials (FORBIDDEN/UNAUTHORIZED throws in `trpc.ts`), `rolePermission`
+  grant edits, feature-flag bulk ops, platform-owner cross-org reads/exports. Touches live auth/tRPC → own gate.
 - **CB-2 — Identity assurance + access governance.** Enforce MFA (close `MFA_ENFORCED`; mandatory privileged);
   session/JWT lifetime + revocation; **access-review report** (users×roles×grants×last-login×deprovision) + a
   quarterly recertification workflow; JML deprovisioning SLA. (CC6.1–6.3 / A.8.5, A.5.18.)

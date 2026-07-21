@@ -11,15 +11,16 @@ namespace Tims.UnitTests.Audit;
 /// </summary>
 public sealed class ProdSqlMatchesBuilderTests
 {
-    [Fact]
-    public void ProdImmutabilitySql_body_matches_the_builder_output()
+    [Theory]
+    [InlineData("data_access_logs", "2026-07-17-data-access-logs-immutable.sql")]
+    [InlineData("audit_logs", "2026-07-17-audit-logs-immutable.sql")]
+    public void ProdImmutabilitySql_body_matches_the_builder_output(string table, string fileName)
     {
-        var sqlPath = Path.Combine(
-            FindRepoRoot(), "packages", "db", "prisma", "manual", "2026-07-17-data-access-logs-immutable.sql");
+        var sqlPath = Path.Combine(FindRepoRoot(), "packages", "db", "prisma", "manual", fileName);
         Assert.True(File.Exists(sqlPath), $"prod SQL not found at {sqlPath}");
 
         var fileBody = StripCommentsAndBlanks(File.ReadAllText(sqlPath));
-        var builderBody = StripCommentsAndBlanks(AuditImmutability.BuildAppendOnlySql("data_access_logs"));
+        var builderBody = StripCommentsAndBlanks(AuditImmutability.BuildAppendOnlySql(table));
 
         Assert.Equal(builderBody, fileBody);
     }
