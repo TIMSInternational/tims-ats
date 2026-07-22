@@ -548,6 +548,150 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/succession/critical-roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["SuccessionListCriticalRoles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/succession/critical-roles/{criticalRoleId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["SuccessionGetCriticalRole"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/succession/flight-risk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["SuccessionGetFlightRisk"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/succession/competency-coverage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["SuccessionGetCompetencyCoverage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/succession/roles-without-successor": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["SuccessionGetRolesWithoutSuccessor"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/succession/comp-gap-alerts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["SuccessionGetCompGapAlerts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/succession/critical-roles/{criticalRoleId}/suggested-successors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["SuccessionGetSuggestedSuccessors"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/succession/critical-roles/{criticalRoleId}/simulate-exit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["SuccessionSimulateExit"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/succession/dashboard-kpis": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["SuccessionGetDashboardKpis"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/require-permission/{module}/{action}": {
         parameters: {
             query?: never;
@@ -610,6 +754,64 @@ export interface components {
             /** Format: double */
             average: number | string;
         };
+        CompGapAlert: {
+            successorId: string;
+            roleId: string;
+            roleTitle: string;
+            userId: string;
+            user: components["schemas"]["CompGapUser"];
+            /** Format: double */
+            currentSalary: number | string;
+            currency: string;
+            /** Format: double */
+            midSalary: number | string;
+            bandLevel: string;
+            /** Format: int32 */
+            gapPercent: number | string;
+        };
+        CompGapUser: {
+            id: string;
+            firstName: string;
+            lastName: string;
+            avatar: null | string;
+        };
+        CoverageRow: {
+            roleId: string;
+            title: string;
+            criticality: string;
+            /** Format: int32 */
+            totalSuccessors: number | string;
+            /** Format: int32 */
+            readyNow: number | string;
+            /** Format: int32 */
+            readySoon: number | string;
+            /** Format: int32 */
+            developing: number | string;
+            coverageStatus: string;
+        };
+        CriticalRoleCount: {
+            /** Format: int32 */
+            successors: number | string;
+        };
+        CriticalRoleDetailRow: {
+            id: string;
+            organizationId: string;
+            title: string;
+            positionId: null | string;
+            currentHolderId: null | string;
+            companyId: null | string;
+            unitId: null | string;
+            criticality: string;
+            /** Format: double */
+            flightRisk: null | number | string;
+            targetBandLevel: null | string;
+            /** Format: date-time */
+            createdAt: unknown;
+            /** Format: date-time */
+            updatedAt: unknown;
+            currentHolder: null | components["schemas"]["HolderWithEmail"];
+            successors: components["schemas"]["DetailSuccessorRow"][];
+        };
         CycleProgressRow: {
             relationship: string;
             /** Format: int32 */
@@ -650,6 +852,64 @@ export interface components {
             /** Format: double */
             diversityIndex: number | string;
         };
+        DetailSuccessorRow: {
+            id: string;
+            organizationId: string;
+            criticalRoleId: string;
+            userId: string;
+            readiness: string;
+            type: string;
+            developmentPlan: null | string;
+            addedById: null | string;
+            /** Format: date-time */
+            createdAt: unknown;
+            /** Format: date-time */
+            updatedAt: unknown;
+            user: components["schemas"]["SuccessorUser"];
+            addedByUser: null | components["schemas"]["SuccessorAddedBy"];
+        };
+        ExitHolder: {
+            id: string;
+            firstName: string;
+            lastName: string;
+        };
+        ExitRole: {
+            id: string;
+            title: string;
+            criticality: string;
+        };
+        ExitSimulationView: {
+            role: components["schemas"]["ExitRole"];
+            currentHolder: null | components["schemas"]["ExitHolder"];
+            riskLevel: string;
+            recommendation: string;
+            successors: components["schemas"]["ExitSuccessorRow"][];
+            /** Format: int32 */
+            readyNowCount: number | string;
+            /** Format: int32 */
+            pipelineCount: number | string;
+        };
+        ExitSuccessorRow: {
+            id: string;
+            organizationId: string;
+            criticalRoleId: string;
+            userId: string;
+            readiness: string;
+            type: string;
+            developmentPlan: null | string;
+            addedById: null | string;
+            /** Format: date-time */
+            createdAt: unknown;
+            /** Format: date-time */
+            updatedAt: unknown;
+            user: components["schemas"]["ExitSuccessorUserView"];
+        };
+        ExitSuccessorUserView: {
+            id: string;
+            firstName: string;
+            lastName: string;
+            jobTitle: null | string;
+        };
         ExternalAssessmentResultV1: {
             schemaVersion: string;
             assignmentId: string;
@@ -684,6 +944,31 @@ export interface components {
             /** Format: date-time */
             completedAt: unknown;
         };
+        FlightRiskHolder: {
+            id: string;
+            firstName: string;
+            lastName: string;
+            avatar: null | string;
+        };
+        FlightRiskRow: {
+            id: string;
+            organizationId: string;
+            title: string;
+            positionId: null | string;
+            currentHolderId: null | string;
+            companyId: null | string;
+            unitId: null | string;
+            criticality: string;
+            /** Format: double */
+            flightRisk: null | number | string;
+            targetBandLevel: null | string;
+            /** Format: date-time */
+            createdAt: unknown;
+            /** Format: date-time */
+            updatedAt: unknown;
+            currentHolder: null | components["schemas"]["FlightRiskHolder"];
+            _count: components["schemas"]["CriticalRoleCount"];
+        };
         FunnelStageView: {
             name: string;
             /** Format: int32 */
@@ -699,6 +984,21 @@ export interface components {
             totalHired: number | string;
             /** Format: double */
             conversionPct: null | number | string;
+        };
+        HolderBasic: {
+            id: string;
+            firstName: string;
+            lastName: string;
+            avatar: null | string;
+            jobTitle: null | string;
+        };
+        HolderWithEmail: {
+            id: string;
+            firstName: string;
+            lastName: string;
+            avatar: null | string;
+            jobTitle: null | string;
+            email: string;
         };
         InvoiceDetailV1: {
             subscription: null | components["schemas"]["SubscriptionV1"];
@@ -757,6 +1057,40 @@ export interface components {
             /** Format: int32 */
             lostByDelay: number | string;
         };
+        ListCriticalRoleRow: {
+            id: string;
+            organizationId: string;
+            title: string;
+            positionId: null | string;
+            currentHolderId: null | string;
+            companyId: null | string;
+            unitId: null | string;
+            criticality: string;
+            /** Format: double */
+            flightRisk: null | number | string;
+            targetBandLevel: null | string;
+            /** Format: date-time */
+            createdAt: unknown;
+            /** Format: date-time */
+            updatedAt: unknown;
+            currentHolder: null | components["schemas"]["HolderBasic"];
+            successors: components["schemas"]["ListSuccessorRow"][];
+        };
+        ListSuccessorRow: {
+            id: string;
+            organizationId: string;
+            criticalRoleId: string;
+            userId: string;
+            readiness: string;
+            type: string;
+            developmentPlan: null | string;
+            addedById: null | string;
+            /** Format: date-time */
+            createdAt: unknown;
+            /** Format: date-time */
+            updatedAt: unknown;
+            user: components["schemas"]["SuccessorUser"];
+        };
         LostByDelayItem: {
             stageName: string;
             /** Format: int32 */
@@ -811,6 +1145,24 @@ export interface components {
             cycleName: string;
             /** Format: date-time */
             publishedAt: unknown;
+        };
+        RoleWithoutSuccessorRow: {
+            id: string;
+            organizationId: string;
+            title: string;
+            positionId: null | string;
+            currentHolderId: null | string;
+            companyId: null | string;
+            unitId: null | string;
+            criticality: string;
+            /** Format: double */
+            flightRisk: null | number | string;
+            targetBandLevel: null | string;
+            /** Format: date-time */
+            createdAt: unknown;
+            /** Format: date-time */
+            updatedAt: unknown;
+            currentHolder: null | components["schemas"]["HolderBasic"];
         };
         SourceBreakdownItem: {
             source: string;
@@ -868,6 +1220,53 @@ export interface components {
             createdAt: unknown;
             /** Format: date-time */
             updatedAt: unknown;
+        };
+        SuccessionKpiView: {
+            /** Format: int32 */
+            totalCriticalRoles: number | string;
+            /** Format: int32 */
+            totalSuccessors: number | string;
+            /** Format: int32 */
+            rolesWithoutSuccessor: number | string;
+            /** Format: int32 */
+            coverageRate: number | string;
+            /** Format: int32 */
+            readyNowCount: number | string;
+            /** Format: int32 */
+            ready1to2YearsCount: number | string;
+            /** Format: int32 */
+            highFlightRiskRoles: number | string;
+            /** Format: double */
+            avgSuccessorsPerRole: number | string;
+        };
+        SuccessorAddedBy: {
+            id: string;
+            firstName: string;
+            lastName: string;
+        };
+        SuccessorUser: {
+            id: string;
+            firstName: string;
+            lastName: string;
+            avatar: null | string;
+            jobTitle: null | string;
+        };
+        SuggestedSuccessor: {
+            userId: string;
+            user: components["schemas"]["SuggestedUser"];
+            quadrant: string;
+            /** Format: double */
+            potentialScore: number | string;
+            /** Format: double */
+            performanceScore: number | string;
+            suggestedReadiness: string;
+        };
+        SuggestedUser: {
+            id: string;
+            firstName: string;
+            lastName: string;
+            avatar: null | string;
+            jobTitle: null | string;
         };
         TeamBusinessUnitView: {
             id: string;
@@ -2349,6 +2748,360 @@ export interface operations {
             };
             /** @description Unauthorized */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    SuccessionListCriticalRoles: {
+        parameters: {
+            query?: {
+                companyId?: string;
+                unitId?: string;
+                criticality?: string;
+                search?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListCriticalRoleRow"][];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    SuccessionGetCriticalRole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                criticalRoleId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CriticalRoleDetailRow"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    SuccessionGetFlightRisk: {
+        parameters: {
+            query?: {
+                threshold?: number | string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FlightRiskRow"][];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    SuccessionGetCompetencyCoverage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoverageRow"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    SuccessionGetRolesWithoutSuccessor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleWithoutSuccessorRow"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    SuccessionGetCompGapAlerts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompGapAlert"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    SuccessionGetSuggestedSuccessors: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                criticalRoleId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuggestedSuccessor"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    SuccessionSimulateExit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                criticalRoleId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExitSimulationView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    SuccessionGetDashboardKpis: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessionKpiView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

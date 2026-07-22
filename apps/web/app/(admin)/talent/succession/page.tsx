@@ -2,6 +2,14 @@
 
 import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
+import {
+  useSuccessionDashboardKpis,
+  useSuccessionCriticalRoles,
+  useSuccessionCompetencyCoverage,
+  useSuccessionFlightRisk,
+  useSuccessionRolesWithoutSuccessor,
+  useSuccessionCompGapAlerts,
+} from '../../../../lib/platform-api/succession';
 import { useI18n } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
 import { SuccessionKpis } from './succession-kpis';
@@ -22,14 +30,14 @@ export default function SuccessionPage() {
     candidate: PickedUser;
     readiness: 'ready_now' | 'ready_1_year';
   } | null>(null);
-  const kpis = trpc.succession.getDashboardKpis.useQuery();
-  const roles = trpc.succession.listCriticalRoles.useQuery({});
-  const coverage = trpc.succession.getCompetencyCoverage.useQuery();
-  const flightRisk = trpc.succession.getFlightRisk.useQuery({});
-  const noSuccessor = trpc.succession.getRolesWithoutSuccessor.useQuery();
+  const kpis = useSuccessionDashboardKpis();
+  const roles = useSuccessionCriticalRoles({});
+  const coverage = useSuccessionCompetencyCoverage();
+  const flightRisk = useSuccessionFlightRisk({});
+  const noSuccessor = useSuccessionRolesWithoutSuccessor();
   // Sprint 1.4 Task 4 — Compensation <-> Succession readiness check.
   const salaryBands = trpc.compensation.getSalaryBands.useQuery({});
-  const compGapAlerts = trpc.succession.getCompGapAlerts.useQuery();
+  const compGapAlerts = useSuccessionCompGapAlerts();
 
   const roleItems = Array.isArray(roles.data) ? roles.data : [];
   const bandItems = Array.isArray(salaryBands.data) ? salaryBands.data : [];

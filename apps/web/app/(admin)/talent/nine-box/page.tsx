@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import { trpc } from '../../../../lib/trpc';
+import { useSuccessionCriticalRoles } from '../../../../lib/platform-api/succession';
 import { useI18n } from '../../../../lib/i18n';
 import { KpiCard, KpiCardSkeleton, CandidateAvatar, EmptyState, ErrorState, Skeleton } from '../../../../components';
 import { toast } from '../../../../lib/toast';
@@ -146,7 +147,7 @@ export default function NineBoxPage() {
     },
   });
   const benchQ = trpc.ninebox.getBenchStrength.useQuery({ period: PERIOD });
-  const successionQ = trpc.succession.listCriticalRoles.useQuery({});
+  const successionQ = useSuccessionCriticalRoles({});
   const detailQ = trpc.ninebox.getEmployeeDetail.useQuery(
     { userId: selectedUserId!, period: PERIOD },
     { enabled: !!selectedUserId },

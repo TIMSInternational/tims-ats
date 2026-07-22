@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
@@ -38,6 +39,7 @@ export function RequestAdjustmentModal({
 }: RequestAdjustmentModalProps) {
   const { t } = useI18n();
   const utils = trpc.useUtils();
+  const queryClient = useQueryClient();
 
   const [newSalary, setNewSalary] = useState(String(Math.round(suggestedNewSalary)));
   const [reason, setReason] = useState('');
@@ -48,6 +50,8 @@ export function RequestAdjustmentModal({
       utils.succession.getCompGapAlerts.invalidate();
       utils.compensation.listPendingAdjustments.invalidate();
       utils.compensation.getDashboardKpis.invalidate();
+      // Cutover parity: refresh the C# platform-api succession reads (comp-gap). No-op under tRPC.
+      queryClient.invalidateQueries({ queryKey: ['platform-api', 'succession'] });
       toast(t.succession.requestAdjustmentSuccess, { type: 'success' });
       onClose();
     },

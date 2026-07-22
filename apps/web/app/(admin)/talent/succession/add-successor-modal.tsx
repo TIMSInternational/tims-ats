@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
@@ -41,6 +42,7 @@ export function AddSuccessorModal({
 }: AddSuccessorModalProps) {
   const { t } = useI18n();
   const utils = trpc.useUtils();
+  const queryClient = useQueryClient();
 
   const [roleId, setRoleId] = useState(initialRoleId ?? '');
   const [candidate, setCandidate] = useState<PickedUser | null>(initialCandidate ?? null);
@@ -62,6 +64,9 @@ export function AddSuccessorModal({
       // suggestion list itself (must drop the just-added candidate).
       utils.succession.getCompGapAlerts.invalidate();
       utils.succession.getSuggestedSuccessors.invalidate();
+      // Cutover parity: also refresh the C# platform-api succession reads (prefix match covers all
+      // eight) so a flag-on cache stays coherent. No-op while the reads route through tRPC.
+      queryClient.invalidateQueries({ queryKey: ['platform-api', 'succession'] });
       toast(t.succession.addSuccessorSuccess, { type: 'success' });
       onClose();
     },

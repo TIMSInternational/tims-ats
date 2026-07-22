@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { trpc } from '../../../../lib/trpc';
+import { useSuccessionSuggestedSuccessors } from '../../../../lib/platform-api/succession';
 import { Skeleton, ErrorState } from '../../../../components';
 import { EmptyState } from '../../../../components/empty-state';
 import type { PickedUser } from '../../../../components/user-picker';
@@ -48,10 +48,7 @@ const QUADRANT_STYLES: Record<string, { bg: string; text: string }> = {
 export function SuggestedSuccessors({ roles, t, onAddSuggested }: SuggestedSuccessorsProps) {
   const [roleId, setRoleId] = useState('');
 
-  const suggestions = trpc.succession.getSuggestedSuccessors.useQuery(
-    { criticalRoleId: roleId },
-    { enabled: !!roleId },
-  );
+  const suggestions = useSuccessionSuggestedSuccessors(roleId);
 
   return (
     <div className="w-full bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4">

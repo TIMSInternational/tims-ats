@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { trpc } from '../../../../lib/trpc';
+import { useSuccessionSimulateExit } from '../../../../lib/platform-api/succession';
 import { ErrorState } from '../../../../components';
 
 interface CriticalRole {
@@ -30,10 +30,7 @@ function getInitials(first: string, last: string) {
 
 export function ExitSimulator({ roles, t }: ExitSimulatorProps) {
   const [selectedId, setSelectedId] = useState(roles[0]?.id ?? '');
-  const sim = trpc.succession.simulateExit.useQuery(
-    { criticalRoleId: selectedId },
-    { enabled: !!selectedId },
-  );
+  const sim = useSuccessionSimulateExit(selectedId);
 
   const selectedRole = roles.find((r) => r.id === selectedId);
 
