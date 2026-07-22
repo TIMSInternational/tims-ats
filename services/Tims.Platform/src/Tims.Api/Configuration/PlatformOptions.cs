@@ -187,4 +187,19 @@ public sealed class PlatformOptions
     /// false (dark) — TS remains the single active reader until Federico flips it at canary (deploy-gated cutover).
     /// </summary>
     public bool CompensationReadEnabled { get; init; }
+
+    /// <summary>
+    /// Phase-5 Slice 10 (efcoreReadOnly): when true, the C# nine-box READ surface is mapped and live —
+    /// <c>GET /ninebox/grid</c>, <c>/ninebox/employee/{userId}[/axis-breakdown]</c>,
+    /// <c>/ninebox/movement-history</c>, <c>/ninebox/simulate</c>, <c>/ninebox/calibrations[/{id}]</c>,
+    /// <c>/ninebox/my-calibrations</c>, <c>/ninebox/quadrant-plan</c>, <c>/ninebox/bench-strength</c>,
+    /// <c>/ninebox/dashboard-kpis</c>. Staff-JWT + <c>ninebox:read</c>; the eleven reads span
+    /// <c>scopeWhereFor('nineBoxEvaluation')</c> (getGrid/getMovementHistory), <c>assertSubjectInScope</c>
+    /// (getEmployeeDetail/getAxisBreakdown → 403 out-of-set), <c>requireOrgScope</c> (listCalibrations/
+    /// getBenchStrength/getDashboardKpis, Codex F3), the hand-rolled calibration membership gate (getCalibration
+    /// → 404/403) + created-by-OR-member self list (myCalibrations), and the grant-only PURE reads (simulate/
+    /// getQuadrantPlan). DEFAULT false (dark) — TS remains the single active reader until Federico flips it at
+    /// canary (deploy-gated cutover).
+    /// </summary>
+    public bool NineBoxReadEnabled { get; init; }
 }

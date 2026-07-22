@@ -1,0 +1,40 @@
+{
+  "cases": [
+    {
+      "name": "only-on-change per user + first-seen user order + consecutive from/to + userName build",
+      "input": {
+        "evaluations": [
+          { "userId": "u1", "firstName": "Ann", "lastName": "One", "period": "2024Q1", "quadrant": "core_player" },
+          { "userId": "u1", "firstName": "Ann", "lastName": "One", "period": "2024Q2", "quadrant": "core_player" },
+          { "userId": "u1", "firstName": "Ann", "lastName": "One", "period": "2024Q3", "quadrant": "star" },
+          { "userId": "u2", "firstName": "Bob", "lastName": "Two", "period": "2024Q1", "quadrant": "risk" },
+          { "userId": "u2", "firstName": "Bob", "lastName": "Two", "period": "2024Q2", "quadrant": "underperformer" }
+        ]
+      },
+      "expected": [
+        {
+          "userId": "u1",
+          "userName": "Ann One",
+          "from": { "period": "2024Q2", "quadrant": "core_player" },
+          "to": { "period": "2024Q3", "quadrant": "star" }
+        },
+        {
+          "userId": "u2",
+          "userName": "Bob Two",
+          "from": { "period": "2024Q1", "quadrant": "risk" },
+          "to": { "period": "2024Q2", "quadrant": "underperformer" }
+        }
+      ]
+    },
+    {
+      "name": "single evaluation → no movement",
+      "input": {
+        "evaluations": [
+          { "userId": "u1", "firstName": "Ann", "lastName": "One", "period": "2024Q1", "quadrant": "star" }
+        ]
+      },
+      "expected": []
+    },
+    { "name": "empty → []", "input": { "evaluations": [] }, "expected": [] }
+  ]
+}

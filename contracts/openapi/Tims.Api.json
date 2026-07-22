@@ -1775,6 +1775,481 @@
         }
       }
     },
+    "/ninebox/grid": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "NineBoxGetGrid",
+        "parameters": [
+          {
+            "name": "period",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "teamId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "unitId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "companyId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GridView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/ninebox/employee/{userId}": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "NineBoxGetEmployeeDetail",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmployeeDetailView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/ninebox/employee/{userId}/axis-breakdown": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "NineBoxGetAxisBreakdown",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AxisBreakdownView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/ninebox/movement-history": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "NineBoxGetMovementHistory",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "companyId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MovementHistoryView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/ninebox/simulate": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "NineBoxSimulate",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "newPotentialScore",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+              "type": [
+                "number",
+                "string"
+              ],
+              "format": "double"
+            }
+          },
+          {
+            "name": "newPerformanceScore",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+              "type": [
+                "number",
+                "string"
+              ],
+              "format": "double"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulateView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/ninebox/calibrations": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "NineBoxListCalibrations",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CalibrationListRow"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/ninebox/calibrations/{id}": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "NineBoxGetCalibration",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalibrationDetailView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/ninebox/my-calibrations": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "NineBoxMyCalibrations",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MyCalibrationRow"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/ninebox/quadrant-plan": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "NineBoxGetQuadrantPlan",
+        "parameters": [
+          {
+            "name": "quadrant",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuadrantPlanResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/ninebox/bench-strength": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "NineBoxGetBenchStrength",
+        "parameters": [
+          {
+            "name": "period",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BenchStrengthView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/ninebox/dashboard-kpis": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "NineBoxGetDashboardKpis",
+        "parameters": [
+          {
+            "name": "period",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardKpisView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
     "/require-permission/{module}/{action}": {
       "get": {
         "tags": [
@@ -1840,6 +2315,63 @@
   },
   "components": {
     "schemas": {
+      "AxisBreakdownView": {
+        "required": [
+          "userId",
+          "period",
+          "potentialScore",
+          "performanceScore",
+          "quadrant",
+          "confidence",
+          "axisBreakdown"
+        ],
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "period": {
+            "type": "string"
+          },
+          "potentialScore": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "performanceScore": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "quadrant": {
+            "type": "string"
+          },
+          "confidence": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "axisBreakdown": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JsonNode"
+              }
+            ]
+          }
+        }
+      },
       "BalanceScoreResponse": {
         "required": [
           "teamId",
@@ -1905,6 +2437,56 @@
           }
         }
       },
+      "BenchStrengthView": {
+        "required": [
+          "period",
+          "total",
+          "distribution",
+          "highPotentialRatio",
+          "benchStrength"
+        ],
+        "type": "object",
+        "properties": {
+          "period": {
+            "type": "string"
+          },
+          "total": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "distribution": {
+            "type": "object",
+            "additionalProperties": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          "highPotentialRatio": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "benchStrength": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "BenefitUtilizationItem": {
         "required": [
           "id",
@@ -1950,6 +2532,255 @@
         "properties": {
           "configured": {
             "type": "boolean"
+          }
+        }
+      },
+      "CalibrationCreator": {
+        "required": [
+          "id",
+          "firstName",
+          "lastName"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "firstName": {
+            "type": "string"
+          },
+          "lastName": {
+            "type": "string"
+          }
+        }
+      },
+      "CalibrationDetailView": {
+        "required": [
+          "id",
+          "organizationId",
+          "period",
+          "status",
+          "scheduledAt",
+          "completedAt",
+          "createdById",
+          "createdAt",
+          "updatedAt",
+          "creator",
+          "members",
+          "votes"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "organizationId": {
+            "type": "string"
+          },
+          "period": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "scheduledAt": {
+            "format": "date-time"
+          },
+          "completedAt": {
+            "format": "date-time"
+          },
+          "createdById": {
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "format": "date-time"
+          },
+          "creator": {
+            "$ref": "#/components/schemas/CalibrationCreator"
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CalibrationMemberRow"
+            }
+          },
+          "votes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CalibrationVoteRow"
+            }
+          }
+        }
+      },
+      "CalibrationListRow": {
+        "required": [
+          "id",
+          "period",
+          "status",
+          "scheduledAt",
+          "createdAt",
+          "_count"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "period": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "scheduledAt": {
+            "format": "date-time"
+          },
+          "createdAt": {
+            "format": "date-time"
+          },
+          "_count": {
+            "$ref": "#/components/schemas/CalibrationMemberCount"
+          }
+        }
+      },
+      "CalibrationMemberCount": {
+        "required": [
+          "members"
+        ],
+        "type": "object",
+        "properties": {
+          "members": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "CalibrationMemberRow": {
+        "required": [
+          "id",
+          "sessionId",
+          "userId",
+          "status",
+          "createdAt",
+          "user"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sessionId": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time"
+          },
+          "user": {
+            "$ref": "#/components/schemas/CalibrationMemberUser"
+          }
+        }
+      },
+      "CalibrationMemberUser": {
+        "required": [
+          "id",
+          "firstName",
+          "lastName",
+          "avatar"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "firstName": {
+            "type": "string"
+          },
+          "lastName": {
+            "type": "string"
+          },
+          "avatar": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "CalibrationVoteRow": {
+        "required": [
+          "id",
+          "sessionId",
+          "evaluatedUserId",
+          "voterId",
+          "quadrant",
+          "justification",
+          "createdAt",
+          "evaluatedUser",
+          "voter"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sessionId": {
+            "type": "string"
+          },
+          "evaluatedUserId": {
+            "type": "string"
+          },
+          "voterId": {
+            "type": "string"
+          },
+          "quadrant": {
+            "type": "string"
+          },
+          "justification": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "createdAt": {
+            "format": "date-time"
+          },
+          "evaluatedUser": {
+            "$ref": "#/components/schemas/CalibrationVoteUser"
+          },
+          "voter": {
+            "$ref": "#/components/schemas/CalibrationVoteUser"
+          }
+        }
+      },
+      "CalibrationVoteUser": {
+        "required": [
+          "id",
+          "firstName",
+          "lastName"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "firstName": {
+            "type": "string"
+          },
+          "lastName": {
+            "type": "string"
           }
         }
       },
@@ -2382,6 +3213,56 @@
           }
         }
       },
+      "DashboardKpisView": {
+        "required": [
+          "period",
+          "totalEvaluations",
+          "calibrationSessions",
+          "activeCalibrations",
+          "distribution"
+        ],
+        "type": "object",
+        "properties": {
+          "period": {
+            "type": "string"
+          },
+          "totalEvaluations": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "calibrationSessions": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "activeCalibrations": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "distribution": {
+            "type": "object",
+            "additionalProperties": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          }
+        }
+      },
       "DashboardKpiView": {
         "required": [
           "totalTeams",
@@ -2517,6 +3398,182 @@
                 "$ref": "#/components/schemas/SuccessorAddedBy"
               }
             ]
+          }
+        }
+      },
+      "EmployeeDetailEvaluation": {
+        "required": [
+          "id",
+          "organizationId",
+          "userId",
+          "period",
+          "potentialScore",
+          "performanceScore",
+          "quadrant",
+          "confidence",
+          "axisBreakdown",
+          "evaluatedAt",
+          "createdAt",
+          "user"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "organizationId": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "period": {
+            "type": "string"
+          },
+          "potentialScore": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "performanceScore": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "quadrant": {
+            "type": "string"
+          },
+          "confidence": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "axisBreakdown": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JsonNode"
+              }
+            ]
+          },
+          "evaluatedAt": {
+            "format": "date-time"
+          },
+          "createdAt": {
+            "format": "date-time"
+          },
+          "user": {
+            "$ref": "#/components/schemas/EmployeeDetailUser"
+          }
+        }
+      },
+      "EmployeeDetailUser": {
+        "required": [
+          "id",
+          "firstName",
+          "lastName",
+          "avatar",
+          "jobTitle",
+          "email"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "firstName": {
+            "type": "string"
+          },
+          "lastName": {
+            "type": "string"
+          },
+          "avatar": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "jobTitle": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "email": {
+            "type": "string"
+          }
+        }
+      },
+      "EmployeeDetailView": {
+        "required": [
+          "evaluation",
+          "history"
+        ],
+        "type": "object",
+        "properties": {
+          "evaluation": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/EmployeeDetailEvaluation"
+              }
+            ]
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EmployeeHistoryRow"
+            }
+          }
+        }
+      },
+      "EmployeeHistoryRow": {
+        "required": [
+          "period",
+          "quadrant",
+          "potentialScore",
+          "performanceScore",
+          "evaluatedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "period": {
+            "type": "string"
+          },
+          "quadrant": {
+            "type": "string"
+          },
+          "potentialScore": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "performanceScore": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "evaluatedAt": {
+            "format": "date-time"
           }
         }
       },
@@ -3017,6 +4074,146 @@
               "string"
             ],
             "format": "double"
+          }
+        }
+      },
+      "GridEvaluation": {
+        "required": [
+          "id",
+          "organizationId",
+          "userId",
+          "period",
+          "potentialScore",
+          "performanceScore",
+          "quadrant",
+          "confidence",
+          "axisBreakdown",
+          "evaluatedAt",
+          "createdAt",
+          "user"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "organizationId": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "period": {
+            "type": "string"
+          },
+          "potentialScore": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "performanceScore": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "quadrant": {
+            "type": "string"
+          },
+          "confidence": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "axisBreakdown": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JsonNode"
+              }
+            ]
+          },
+          "evaluatedAt": {
+            "format": "date-time"
+          },
+          "createdAt": {
+            "format": "date-time"
+          },
+          "user": {
+            "$ref": "#/components/schemas/GridUser"
+          }
+        }
+      },
+      "GridUser": {
+        "required": [
+          "id",
+          "firstName",
+          "lastName",
+          "avatar",
+          "jobTitle"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "firstName": {
+            "type": "string"
+          },
+          "lastName": {
+            "type": "string"
+          },
+          "avatar": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "jobTitle": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "GridView": {
+        "required": [
+          "period",
+          "grid",
+          "totalEvaluations"
+        ],
+        "type": "object",
+        "properties": {
+          "period": {
+            "type": "string"
+          },
+          "grid": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/GridEvaluation"
+              }
+            }
+          },
+          "totalEvaluations": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
           }
         }
       },
@@ -3600,6 +4797,104 @@
           }
         }
       },
+      "MovementEndpoint": {
+        "required": [
+          "period",
+          "quadrant"
+        ],
+        "type": "object",
+        "properties": {
+          "period": {
+            "type": "string"
+          },
+          "quadrant": {
+            "type": "string"
+          }
+        }
+      },
+      "MovementHistoryView": {
+        "required": [
+          "movements",
+          "totalMovements"
+        ],
+        "type": "object",
+        "properties": {
+          "movements": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QuadrantMovement"
+            }
+          },
+          "totalMovements": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "MyCalibrationCount": {
+        "required": [
+          "members",
+          "votes"
+        ],
+        "type": "object",
+        "properties": {
+          "members": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "votes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "MyCalibrationRow": {
+        "required": [
+          "id",
+          "period",
+          "status",
+          "scheduledAt",
+          "completedAt",
+          "createdAt",
+          "_count"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "period": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "scheduledAt": {
+            "format": "date-time"
+          },
+          "completedAt": {
+            "format": "date-time"
+          },
+          "createdAt": {
+            "format": "date-time"
+          },
+          "_count": {
+            "$ref": "#/components/schemas/MyCalibrationCount"
+          }
+        }
+      },
       "MyReportView": {
         "required": [
           "cycleId",
@@ -3618,6 +4913,47 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ReportBucket"
+            }
+          }
+        }
+      },
+      "QuadrantMovement": {
+        "required": [
+          "userId",
+          "userName",
+          "from",
+          "to"
+        ],
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "userName": {
+            "type": "string"
+          },
+          "from": {
+            "$ref": "#/components/schemas/MovementEndpoint"
+          },
+          "to": {
+            "$ref": "#/components/schemas/MovementEndpoint"
+          }
+        }
+      },
+      "QuadrantPlanResult": {
+        "required": [
+          "title",
+          "actions"
+        ],
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "type": "string"
             }
           }
         }
@@ -3929,6 +5265,33 @@
           },
           "updatedAt": {
             "format": "date-time"
+          }
+        }
+      },
+      "SimulateView": {
+        "required": [
+          "userId",
+          "simulatedQuadrant",
+          "potentialBand",
+          "performanceBand",
+          "_stub"
+        ],
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "simulatedQuadrant": {
+            "type": "string"
+          },
+          "potentialBand": {
+            "type": "string"
+          },
+          "performanceBand": {
+            "type": "string"
+          },
+          "_stub": {
+            "type": "boolean"
           }
         }
       },

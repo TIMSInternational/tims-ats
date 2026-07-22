@@ -20,6 +20,7 @@ using Tims.Api.HealthChecks;
 using Tims.Api.RateLimiting;
 using Tims.Api.Evaluation360;
 using Tims.Api.ExternalVendor;
+using Tims.Api.NineBox;
 using Tims.Api.Reporting;
 using Tims.Api.Succession;
 using Tims.Api.TeamIntel;
@@ -31,6 +32,7 @@ using Tims.Application.Compensation;
 using Tims.Application.Evaluation360;
 using Tims.Application.ExternalVendor;
 using Tims.Application.Identity;
+using Tims.Application.NineBox;
 using Tims.Application.Reporting;
 using Tims.Application.Succession;
 using Tims.Application.TeamIntel;
@@ -45,6 +47,7 @@ using Tims.Infrastructure.Compensation;
 using Tims.Infrastructure.Evaluation360;
 using Tims.Infrastructure.ExternalVendor;
 using Tims.Infrastructure.Hris;
+using Tims.Infrastructure.NineBox;
 using Tims.Infrastructure.Identity;
 using Tims.Infrastructure.RateLimiting;
 using Tims.Infrastructure.Reporting;
@@ -271,6 +274,17 @@ try
     builder.Services.AddDbContext<CompensationReadDbContext>(options => options.UseNpgsql(databaseConnectionString));
     builder.Services.AddScoped<ICompensationReadRepository, CompensationReadRepository>();
     builder.Services.AddScoped<CompensationReadUseCase>();
+
+    // Phase-5 Slice 10 (efcoreReadOnly): the nine-box READ surface. Plain read-only context over the
+    // Prisma-OWNED nine_box_evaluations + calibration_sessions/calibration_members/calibration_votes (+ users/
+    // user_teams/teams) — quadrant + calibration status/member-status are plain Strings (NOT native enums), so
+    // no NpgsqlDataSource. Reads run UNDER TenantScope/RLS; getGrid/getMovementHistory compose
+    // scopeWhereFor('nineBoxEvaluation'), getEmployeeDetail/getAxisBreakdown do assertSubjectInScope,
+    // listCalibrations/getBenchStrength/getDashboardKpis apply the org-gate, getCalibration hand-rolls the
+    // committee-membership gate, myCalibrations the created-by-OR-member self list. Dark unless NineBoxReadEnabled.
+    builder.Services.AddDbContext<NineBoxReadDbContext>(options => options.UseNpgsql(databaseConnectionString));
+    builder.Services.AddScoped<INineBoxReadRepository, NineBoxReadRepository>();
+    builder.Services.AddScoped<NineBoxReadUseCase>();
 
     builder.Services
         .AddOptions<StripeBillingOptions>()
@@ -715,6 +729,18 @@ try
     if (externalOptions.CompensationReadEnabled || isOpenApiDocGeneration)
     {
         app.MapCompensationReadEndpoints();
+    }
+
+    // Nine-box READ surface (Phase-5 Slice 10): the eleven nine-box reads (/ninebox/*). Staff-JWT +
+    // ninebox:read. getGrid/getMovementHistory compose scopeWhereFor('nineBoxEvaluation') (out-of-scope rows
+    // drop; teamId/unitId/companyId only intersect); getEmployeeDetail/getAxisBreakdown do assertSubjectInScope
+    // (out-of-set → 403); listCalibrations/getBenchStrength/getDashboardKpis apply the org-gate (F3);
+    // getCalibration hand-rolls the committee-membership gate (org/company → any; narrow → created-by OR member,
+    // 404/403); myCalibrations the created-by-OR-member self list; simulate/getQuadrantPlan are grant-only PURE.
+    // Dark unless the flag is on (deploy-gated cutover; TS stays the sole active reader until Federico flips it).
+    if (externalOptions.NineBoxReadEnabled || isOpenApiDocGeneration)
+    {
+        app.MapNineBoxReadEndpoints();
     }
 
     // Authz probe (WP2.5): the C# equivalent of the tRPC `requirePermission` gate. Resolves the

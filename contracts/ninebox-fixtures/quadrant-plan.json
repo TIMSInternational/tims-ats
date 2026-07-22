@@ -1,0 +1,7 @@
+{
+  "cases": [
+    { "name": "star → full plan (byte-identical Spanish)", "input": { "quadrant": "star" }, "expected": { "title": "Retener y Acelerar", "actions": ["Asignar proyectos de alta visibilidad", "Incluir en plan de sucesion", "Ofrecer mentoria ejecutiva"] } },
+    { "name": "risk → full plan", "input": { "quadrant": "risk" }, "expected": { "title": "Accion Inmediata", "actions": ["Conversacion de retroalimentacion directa", "PIP con plazos estrictos", "Evaluar reubicacion o salida"] } },
+    { "name": "unknown quadrant → fallback", "input": { "quadrant": "does_not_exist" }, "expected": { "title": "Sin plan definido", "actions": [] } }
+  ]
+}

@@ -7,4 +7,5 @@ export * from './reporting';
 export * from './team-intel';
 export * from './succession';
 export * from './compensation';
+export * from './ninebox';
 export { logger, createTenantLogger } from './logger';

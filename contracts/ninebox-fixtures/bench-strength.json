@@ -1,0 +1,8 @@
+{
+  "cases": [
+    { "name": "1 high-potential of 3 → ratio 33 (33.33 → half-up floor)", "input": { "quadrants": ["star", "core_player", "risk"] }, "expected": { "total": 3, "distribution": { "star": 1, "core_player": 1, "risk": 1 }, "highPotentialRatio": 33, "benchStrength": 1 } },
+    { "name": "1 of 6 → ratio 17 (16.67 → half-up), NOT banker's 16", "input": { "quadrants": ["high_potential", "core_player", "risk", "risk", "workhouse", "underperformer"] }, "expected": { "total": 6, "distribution": { "high_potential": 1, "core_player": 1, "risk": 2, "workhouse": 1, "underperformer": 1 }, "highPotentialRatio": 17, "benchStrength": 1 } },
+    { "name": "star+high_potential+enigma all count as high-potential", "input": { "quadrants": ["star", "high_potential", "enigma", "core_player"] }, "expected": { "total": 4, "distribution": { "star": 1, "high_potential": 1, "enigma": 1, "core_player": 1 }, "highPotentialRatio": 75, "benchStrength": 3 } },
+    { "name": "empty → total 0, ratio 0 (no divide-by-zero)", "input": { "quadrants": [] }, "expected": { "total": 0, "distribution": {}, "highPotentialRatio": 0, "benchStrength": 0 } }
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "cases": [
+    { "name": "counts by quadrant", "input": { "quadrants": ["star", "core_player", "star", "risk", "core_player", "star"] }, "expected": { "star": 3, "core_player": 2, "risk": 1 } },
+    { "name": "empty → empty map", "input": { "quadrants": [] }, "expected": {} }
+  ]
+}

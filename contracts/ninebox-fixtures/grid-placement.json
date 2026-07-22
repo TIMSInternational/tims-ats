@@ -1,0 +1,30 @@
+{
+  "cases": [
+    {
+      "name": "quadrantToGrid mapping + several-quadrants-one-cell + unmapped fallback + first-seen key and within-key order",
+      "input": {
+        "items": [
+          { "id": "a", "quadrant": "star" },
+          { "id": "b", "quadrant": "core_player" },
+          { "id": "c", "quadrant": "solid_performer" },
+          { "id": "d", "quadrant": "consistent_performer" },
+          { "id": "e", "quadrant": "star" },
+          { "id": "f", "quadrant": "mystery" }
+        ]
+      },
+      "expected": {
+        "3-3": [
+          { "id": "a", "quadrant": "star" },
+          { "id": "e", "quadrant": "star" }
+        ],
+        "2-2": [{ "id": "b", "quadrant": "core_player" }],
+        "2-3": [
+          { "id": "c", "quadrant": "solid_performer" },
+          { "id": "d", "quadrant": "consistent_performer" }
+        ],
+        "mystery": [{ "id": "f", "quadrant": "mystery" }]
+      }
+    },
+    { "name": "empty → {}", "input": { "items": [] }, "expected": {} }
+  ]
+}

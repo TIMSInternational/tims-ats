@@ -83,6 +83,10 @@
       <Link>compensation-fixtures\%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <Content Include="..\..\..\..\contracts\ninebox-fixtures\*.json">
+      <Link>ninebox-fixtures\%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <!-- WP3.6-map HRIS mapper golden fixtures (C#-only characterization; greenfield, no TS counterpart). -->
     <Content Include="..\..\..\..\contracts\hris-fixtures\*.json">
       <Link>hris-fixtures\%(Filename)%(Extension)</Link>

@@ -1,0 +1,8 @@
+{
+  "cases": [
+    { "name": "67/67 → star (high boundary is >=67)", "input": { "pot": 67, "perf": 67 }, "expected": { "simulatedQuadrant": "star", "potentialBand": "high", "performanceBand": "high" } },
+    { "name": "66/66 → core_player (just below high → medium)", "input": { "pot": 66, "perf": 66 }, "expected": { "simulatedQuadrant": "core_player", "potentialBand": "medium", "performanceBand": "medium" } },
+    { "name": "34/33 → inconsistent (medium pot boundary 34; low perf below 34)", "input": { "pot": 34, "perf": 33 }, "expected": { "simulatedQuadrant": "inconsistent", "potentialBand": "medium", "performanceBand": "low" } },
+    { "name": "0/100 → workhouse (low pot, high perf)", "input": { "pot": 0, "perf": 100 }, "expected": { "simulatedQuadrant": "workhouse", "potentialBand": "low", "performanceBand": "high" } }
+  ]
+}

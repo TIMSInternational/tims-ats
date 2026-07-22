@@ -22,7 +22,14 @@ import {
   getBenchStrengthInput,
   getDashboardKpisInput,
 } from './ninebox.schemas';
-import { quadrantToGrid, simulateQuadrantMap, quadrantPlans } from './ninebox.helpers';
+import {
+  simulateBands,
+  resolveQuadrantPlan,
+  buildBenchStrength,
+  buildQuadrantDistribution,
+  gridPlacement,
+  computeMovements,
+} from '@tims/shared';
 
 export const nineboxRouter = router({
   // ── Grid ─────────────────────────────────────────────────────────────
@@ -75,14 +82,9 @@ export const nineboxRouter = router({
         orderBy: { evaluatedAt: 'desc' },
       });
 
-      const grid: Record<string, typeof evaluations> = {};
-      for (const evaluation of evaluations) {
-        const key = quadrantToGrid[evaluation.quadrant] ?? evaluation.quadrant;
-        if (!grid[key]) {
-          grid[key] = [];
-        }
-        grid[key].push(evaluation);
-      }
+      // Pure kernel (@tims/shared) — group by quadrantToGrid preserving evaluatedAt-desc order,
+      // golden-fixtured both stacks.
+      const grid = gridPlacement(evaluations, (evaluation) => evaluation.quadrant);
 
       return { period: input.period, grid, totalEvaluations: evaluations.length };
     }),
@@ -194,35 +196,17 @@ export const nineboxRouter = router({
         orderBy: [{ userId: 'asc' }, { evaluatedAt: 'asc' }],
       });
 
-      // Group by user and compute movements
-      const movements: Array<{
-        userId: string;
-        userName: string;
-        from: { period: string; quadrant: string };
-        to: { period: string; quadrant: string };
-      }> = [];
-
-      const byUser = new Map<string, typeof evaluations>();
-      for (const ev of evaluations) {
-        const list = byUser.get(ev.userId) ?? [];
-        list.push(ev);
-        byUser.set(ev.userId, list);
-      }
-
-      for (const [, userEvals] of byUser) {
-        for (let i = 1; i < userEvals.length; i++) {
-          const prev = userEvals[i - 1];
-          const curr = userEvals[i];
-          if (prev.quadrant !== curr.quadrant) {
-            movements.push({
-              userId: curr.userId,
-              userName: `${curr.user.firstName} ${curr.user.lastName}`,
-              from: { period: prev.period, quadrant: prev.quadrant },
-              to: { period: curr.period, quadrant: curr.quadrant },
-            });
-          }
-        }
-      }
+      // Pure kernel (@tims/shared) — per-user consecutive quadrant-change movements over the
+      // pre-ordered (userId asc, evaluatedAt asc) rows, golden-fixtured both stacks.
+      const movements = computeMovements(
+        evaluations.map((ev) => ({
+          userId: ev.userId,
+          firstName: ev.user.firstName,
+          lastName: ev.user.lastName,
+          period: ev.period,
+          quadrant: ev.quadrant,
+        })),
+      );
 
       return { movements, totalMovements: movements.length };
     }),
@@ -231,21 +215,10 @@ export const nineboxRouter = router({
   simulate: permissionProcedure('ninebox', 'read')
     .input(simulateInput)
     .query(async ({ input }) => {
-      // TODO: integrate with scoring engine
-      const potentialBand =
-        input.newPotentialScore >= 67 ? 'high' : input.newPotentialScore >= 34 ? 'medium' : 'low';
-      const performanceBand =
-        input.newPerformanceScore >= 67
-          ? 'high'
-          : input.newPerformanceScore >= 34
-            ? 'medium'
-            : 'low';
-
+      // TODO: integrate with scoring engine. Pure kernel (@tims/shared) — golden-fixtured both stacks.
       return {
         userId: input.userId,
-        simulatedQuadrant: simulateQuadrantMap[potentialBand][performanceBand],
-        potentialBand,
-        performanceBand,
+        ...simulateBands(input.newPotentialScore, input.newPerformanceScore),
         _stub: true,
       };
     }),
@@ -524,7 +497,7 @@ export const nineboxRouter = router({
   getQuadrantPlan: permissionProcedure('ninebox', 'read')
     .input(getQuadrantPlanInput)
     .query(async ({ input }) => {
-      return quadrantPlans[input.quadrant] ?? { title: 'Sin plan definido', actions: [] };
+      return resolveQuadrantPlan(input.quadrant);
     }),
 
   getBenchStrength: permissionProcedure('ninebox', 'read')
@@ -542,24 +515,8 @@ export const nineboxRouter = router({
         select: { quadrant: true },
       });
 
-      const distribution: Record<string, number> = {};
-      for (const ev of evaluations) {
-        distribution[ev.quadrant] = (distribution[ev.quadrant] ?? 0) + 1;
-      }
-
-      const total = evaluations.length;
-      const highPotentialCount =
-        (distribution['star'] ?? 0) +
-        (distribution['high_potential'] ?? 0) +
-        (distribution['enigma'] ?? 0);
-
-      return {
-        period: input.period,
-        total,
-        distribution,
-        highPotentialRatio: total > 0 ? Math.round((highPotentialCount / total) * 100) : 0,
-        benchStrength: highPotentialCount,
-      };
+      // Pure kernel (@tims/shared) — distribution + highPotentialRatio (half-up), golden-fixtured both stacks.
+      return { period: input.period, ...buildBenchStrength(evaluations.map((ev) => ev.quadrant)) };
     }),
 
   // ── Dashboard KPIs ───────────────────────────────────────────────────
@@ -589,17 +546,13 @@ export const nineboxRouter = router({
         select: { quadrant: true },
       });
 
-      const distribution: Record<string, number> = {};
-      for (const ev of evaluations) {
-        distribution[ev.quadrant] = (distribution[ev.quadrant] ?? 0) + 1;
-      }
-
       return {
         period: input.period,
         totalEvaluations,
         calibrationSessions,
         activeCalibrations,
-        distribution,
+        // Pure kernel (@tims/shared) — quadrant→count, golden-fixtured both stacks.
+        distribution: buildQuadrantDistribution(evaluations.map((ev) => ev.quadrant)),
       };
     }),
 });
