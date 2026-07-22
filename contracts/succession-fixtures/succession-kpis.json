@@ -1,0 +1,74 @@
+{
+  "description": "Golden parity for succession.getDashboardKpis: buildSuccessionKpis(counts) in @tims/shared. Asserted IDENTICALLY by the REAL TS export (tests/succession/succession-kpis-fixtures.test.ts) and the C# Tims.Domain.Succession.SuccessionKernels.BuildSuccessionKpis (Tims.UnitTests). Pins: coverageRate = round((total-without)/total*100) INTEGER percent JS half-UP; avgSuccessorsPerRole = round(total/roles*10)/10 ONE decimal JS half-UP; zero roles -> both 0 (no divide-by-zero); passthrough of the other five counts + field order.",
+  "cases": [
+    {
+      "name": "coverageRate 66.66->67, avgSuccessorsPerRole 1.666->1.7",
+      "input": {
+        "counts": {
+          "totalCriticalRoles": 3,
+          "totalSuccessors": 5,
+          "rolesWithoutSuccessor": 1,
+          "readyNowCount": 2,
+          "ready1to2YearsCount": 1,
+          "highFlightRiskRoles": 1
+        }
+      },
+      "expected": {
+        "totalCriticalRoles": 3,
+        "totalSuccessors": 5,
+        "rolesWithoutSuccessor": 1,
+        "coverageRate": 67,
+        "readyNowCount": 2,
+        "ready1to2YearsCount": 1,
+        "highFlightRiskRoles": 1,
+        "avgSuccessorsPerRole": 1.7
+      }
+    },
+    {
+      "name": "half-up .5 tie: coverageRate 62.5->63 (NOT banker's 62), avgSuccessorsPerRole 5->0.5",
+      "input": {
+        "counts": {
+          "totalCriticalRoles": 8,
+          "totalSuccessors": 4,
+          "rolesWithoutSuccessor": 3,
+          "readyNowCount": 1,
+          "ready1to2YearsCount": 1,
+          "highFlightRiskRoles": 2
+        }
+      },
+      "expected": {
+        "totalCriticalRoles": 8,
+        "totalSuccessors": 4,
+        "rolesWithoutSuccessor": 3,
+        "coverageRate": 63,
+        "readyNowCount": 1,
+        "ready1to2YearsCount": 1,
+        "highFlightRiskRoles": 2,
+        "avgSuccessorsPerRole": 0.5
+      }
+    },
+    {
+      "name": "zero roles -> coverageRate 0, avgSuccessorsPerRole 0",
+      "input": {
+        "counts": {
+          "totalCriticalRoles": 0,
+          "totalSuccessors": 0,
+          "rolesWithoutSuccessor": 0,
+          "readyNowCount": 0,
+          "ready1to2YearsCount": 0,
+          "highFlightRiskRoles": 0
+        }
+      },
+      "expected": {
+        "totalCriticalRoles": 0,
+        "totalSuccessors": 0,
+        "rolesWithoutSuccessor": 0,
+        "coverageRate": 0,
+        "readyNowCount": 0,
+        "ready1to2YearsCount": 0,
+        "highFlightRiskRoles": 0,
+        "avgSuccessorsPerRole": 0
+      }
+    }
+  ]
+}

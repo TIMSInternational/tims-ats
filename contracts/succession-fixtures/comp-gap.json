@@ -1,0 +1,83 @@
+{
+  "description": "Golden parity for succession.getCompGapAlerts (detection): buildCompGapAlerts(roles, bands, comps) in @tims/shared. Asserted IDENTICALLY by the REAL TS export (tests/succession/comp-gap-fixtures.test.ts) and the C# Tims.Domain.Succession.SuccessionKernels.BuildCompGapAlerts (Tims.UnitTests). Pins: alert iff currentSalary < midSalary*0.9; gapPercent = round((1 - currentSalary/midSalary)*100) INTEGER JS half-UP; skip role with null/absent band, successor with no comp OR unentitled comp (currentSalary/currency absent), and above-threshold comp; auditedCompIds = the EXPOSED comp ids only; empty -> {alerts:[],auditedCompIds:[]}.",
+  "cases": [
+    {
+      "name": "gap detected (half-up gapPercent 12.5->13); skips no-band role, null-band role, above-threshold comp",
+      "input": {
+        "roles": [
+          {
+            "id": "R1",
+            "title": "CEO",
+            "targetBandLevel": "L5",
+            "successors": [
+              { "id": "S1", "userId": "U1", "user": { "id": "U1", "firstName": "Uno", "lastName": "One", "avatar": null } },
+              { "id": "S2", "userId": "U2", "user": { "id": "U2", "firstName": "Dos", "lastName": "Two", "avatar": null } }
+            ]
+          },
+          {
+            "id": "R2",
+            "title": "CFO",
+            "targetBandLevel": "L4",
+            "successors": [
+              { "id": "S3", "userId": "U3", "user": { "id": "U3", "firstName": "Tres", "lastName": "Three", "avatar": null } }
+            ]
+          },
+          {
+            "id": "R3",
+            "title": "CTO",
+            "targetBandLevel": null,
+            "successors": [
+              { "id": "S4", "userId": "U4", "user": { "id": "U4", "firstName": "Cuatro", "lastName": "Four", "avatar": null } }
+            ]
+          }
+        ],
+        "bands": [{ "level": "L5", "midSalary": 100000 }],
+        "comps": [
+          { "id": "CMP1", "userId": "U1", "currentSalary": 87500, "currency": "USD" },
+          { "id": "CMP2", "userId": "U2", "currentSalary": 95000, "currency": "USD" },
+          { "id": "CMP3", "userId": "U3", "currentSalary": 10000, "currency": "USD" }
+        ]
+      },
+      "expected": {
+        "alerts": [
+          {
+            "successorId": "S1",
+            "roleId": "R1",
+            "roleTitle": "CEO",
+            "userId": "U1",
+            "user": { "id": "U1", "firstName": "Uno", "lastName": "One", "avatar": null },
+            "currentSalary": 87500,
+            "currency": "USD",
+            "midSalary": 100000,
+            "bandLevel": "L5",
+            "gapPercent": 13
+          }
+        ],
+        "auditedCompIds": ["CMP1"]
+      }
+    },
+    {
+      "name": "unentitled comp (currentSalary/currency absent via selectFor) -> skipped, no alert, no audit",
+      "input": {
+        "roles": [
+          {
+            "id": "R1",
+            "title": "CEO",
+            "targetBandLevel": "L5",
+            "successors": [
+              { "id": "S1", "userId": "U1", "user": { "id": "U1", "firstName": "Uno", "lastName": "One", "avatar": null } }
+            ]
+          }
+        ],
+        "bands": [{ "level": "L5", "midSalary": 100000 }],
+        "comps": [{ "id": "CMP1", "userId": "U1" }]
+      },
+      "expected": { "alerts": [], "auditedCompIds": [] }
+    },
+    {
+      "name": "empty roles -> empty result",
+      "input": { "roles": [], "bands": [], "comps": [] },
+      "expected": { "alerts": [], "auditedCompIds": [] }
+    }
+  ]
+}

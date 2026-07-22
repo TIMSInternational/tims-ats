@@ -53,6 +53,12 @@ const buildAccessForUserMock = vi.hoisted(() =>
   ),
 );
 const logDataAccessMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+// scopeWhereFor is toggled per-test so we can assert getCompGapAlerts APPLIES the
+// employeeCompensation ROW scope (not just the field-level selectFor). Defaults to {}
+// (org/company scope → no-op AND). A narrow comp scope returns a userId fragment.
+const scopeWhereForMock = vi.hoisted(() =>
+  vi.fn(async (_entity: string, _access: unknown, _userId: string) => ({}) as unknown),
+);
 
 vi.mock('../../packages/api/src/access', async () => {
   // Keep the REAL selectFor + classification so the employeeCompensation
@@ -67,10 +73,10 @@ vi.mock('../../packages/api/src/access', async () => {
     buildAccessForUser: buildAccessForUserMock,
     createAnchorLoader: vi.fn().mockReturnValue(null),
     assertScoped: vi.fn().mockResolvedValue(undefined),
-    scopeWhereFor: vi.fn().mockResolvedValue({}),
     assertSubjectInScope: vi.fn().mockResolvedValue(undefined),
     requireOrgScope: vi.fn(),
     logDataAccess: logDataAccessMock,
+    scopeWhereFor: scopeWhereForMock,
   };
 });
 
@@ -145,6 +151,8 @@ async function makeCaller() {
 beforeEach(() => {
   vi.clearAllMocks();
   setCompensationReadAllowed(true);
+  // Default: org/company comp scope → scopeWhereFor returns {} (AND no-op).
+  scopeWhereForMock.mockResolvedValue({});
 });
 
 describe('succession.getCompGapAlerts', () => {
@@ -285,6 +293,54 @@ describe('succession.getCompGapAlerts', () => {
     expect(call.select.compaRatio).toBeUndefined();
     expect(call.select.variablePay).toBeUndefined();
     expect(call.select.bandId).toBeUndefined();
+  });
+
+  // Codex hardening bite — the employeeCompensation ROW scope must be AND-composed
+  // into the comp query, so a caller with org-wide succession:read but NARROW
+  // compensation:read cannot read org-wide salary comp-gaps.
+  it('AND-composes the employeeCompensation scope fragment for a NARROW comp scope (never a spread)', async () => {
+    // A narrow comp scope resolves to a userId-narrowing fragment.
+    const narrowFragment = { userId: { in: ['user-1'] } };
+    scopeWhereForMock.mockResolvedValue(narrowFragment);
+    criticalRoleFindMany.mockResolvedValue([roleRow()]);
+    salaryBandFindMany.mockResolvedValue([bandRow({ midSalary: 100000 })]);
+    employeeCompensationFindMany.mockResolvedValue([compRow({ currentSalary: 80000 })]);
+
+    const caller = await makeCaller();
+    await caller.succession.getCompGapAlerts();
+
+    // scopeWhereFor was consulted for the employeeCompensation entity.
+    expect(scopeWhereForMock).toHaveBeenCalledWith(
+      'employeeCompensation',
+      expect.objectContaining({ scope: 'organization', roles: ['hr_admin'] }),
+      'user-caller',
+    );
+    const call = employeeCompensationFindMany.mock.calls[0]![0] as {
+      where: { organizationId: string; AND: unknown[] };
+    };
+    // The where MUST AND the userId-narrowing base with the scope fragment — not spread.
+    expect(call.where.AND).toEqual([{ userId: { in: ['user-1'] } }, narrowFragment]);
+    // The base userId key must live INSIDE the AND, never spread at the top level
+    // (a spread would collide with the scope fragment's own userId key).
+    expect((call.where as Record<string, unknown>).userId).toBeUndefined();
+  });
+
+  it('applies an empty AND fragment at ORG/COMPANY comp scope (no over-restriction, behavior-identical)', async () => {
+    // Org/company scope → scopeWhereFor returns {} → the AND is a semantic no-op.
+    scopeWhereForMock.mockResolvedValue({});
+    criticalRoleFindMany.mockResolvedValue([roleRow()]);
+    salaryBandFindMany.mockResolvedValue([bandRow({ midSalary: 100000 })]);
+    employeeCompensationFindMany.mockResolvedValue([compRow({ currentSalary: 80000 })]);
+
+    const caller = await makeCaller();
+    const result = await caller.succession.getCompGapAlerts();
+
+    const call = employeeCompensationFindMany.mock.calls[0]![0] as {
+      where: { AND: unknown[] };
+    };
+    expect(call.where.AND).toEqual([{ userId: { in: ['user-1'] } }, {}]);
+    // The alert still fires (org-scope comp read is unrestricted).
+    expect(result).toHaveLength(1);
   });
 
   it('logs a data-access audit entry once per EXPOSED alert record (not per row queried)', async () => {

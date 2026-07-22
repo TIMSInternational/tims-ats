@@ -160,4 +160,17 @@ public sealed class PlatformOptions
     /// (dark) — TS remains the single active reader until Federico flips it at canary (deploy-gated cutover).
     /// </summary>
     public bool Evaluation360ReadEnabled { get; init; }
+
+    /// <summary>
+    /// Phase-5 Slice 8 (efcoreReadOnly): when true, the C# succession READ surface is mapped and live —
+    /// <c>GET /succession/critical-roles[/{id}][/suggested-successors|/simulate-exit]</c>,
+    /// <c>/succession/flight-risk</c>, <c>/succession/competency-coverage</c>,
+    /// <c>/succession/roles-without-successor</c>, <c>/succession/comp-gap-alerts</c>,
+    /// <c>/succession/dashboard-kpis</c>. Staff-JWT + <c>succession:read</c>; the reads exercise ALL THREE scope
+    /// mechanics — <c>scopeWhereFor</c> (row filter), <c>assertScoped('criticalRole')</c> (by-id IDOR probe,
+    /// 404-not-403), and <c>requireOrgScope</c> (org-rollup, narrow → 403, Codex F3). getCompGapAlerts also
+    /// enforces a secondary <c>compensation:read</c> grant + audits every exposed comp row fail-closed. DEFAULT
+    /// false (dark) — TS remains the single active reader until Federico flips it at canary (deploy-gated cutover).
+    /// </summary>
+    public bool SuccessionReadEnabled { get; init; }
 }

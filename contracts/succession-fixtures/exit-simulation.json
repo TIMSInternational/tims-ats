@@ -1,0 +1,58 @@
+{
+  "description": "Golden parity for succession.simulateExit: buildExitSimulation(successors) in @tims/shared. Asserted IDENTICALLY by the REAL TS export (tests/succession/exit-simulation-fixtures.test.ts) and the C# Tims.Domain.Succession.SuccessionKernels.BuildExitSimulation (Tims.UnitTests). Pins: ready_now present -> low + names the FIRST ready_now (repo readiness-asc order); else ready_1_year|ready_2_years present -> medium; else high; recommendation strings ASCII verbatim; readyNowCount; pipelineCount = total successors.",
+  "cases": [
+    {
+      "name": "ready_now present -> low, names the FIRST ready_now",
+      "input": {
+        "successors": [
+          { "readiness": "ready_2_years", "user": { "firstName": "Ann", "lastName": "Alpha" } },
+          { "readiness": "ready_now", "user": { "firstName": "Bob", "lastName": "Ready" } },
+          { "readiness": "ready_now", "user": { "firstName": "Cid", "lastName": "Charlie" } }
+        ]
+      },
+      "expected": {
+        "riskLevel": "low",
+        "recommendation": "Sucesor listo: Bob Ready",
+        "readyNowCount": 2,
+        "pipelineCount": 3
+      }
+    },
+    {
+      "name": "no ready_now but ready_soon -> medium",
+      "input": {
+        "successors": [
+          { "readiness": "ready_1_year", "user": { "firstName": "Dee", "lastName": "Delta" } },
+          { "readiness": "developing", "user": { "firstName": "Eve", "lastName": "Echo" } }
+        ]
+      },
+      "expected": {
+        "riskLevel": "medium",
+        "recommendation": "Sucesor disponible en 1-2 anos. Considerar plan de aceleracion.",
+        "readyNowCount": 0,
+        "pipelineCount": 2
+      }
+    },
+    {
+      "name": "no successors -> high",
+      "input": { "successors": [] },
+      "expected": {
+        "riskLevel": "high",
+        "recommendation": "Sin sucesores identificados. Iniciar busqueda inmediata.",
+        "readyNowCount": 0,
+        "pipelineCount": 0
+      }
+    },
+    {
+      "name": "only developing -> high",
+      "input": {
+        "successors": [{ "readiness": "developing", "user": { "firstName": "Fay", "lastName": "Foxtrot" } }]
+      },
+      "expected": {
+        "riskLevel": "high",
+        "recommendation": "Sin sucesores identificados. Iniciar busqueda inmediata.",
+        "readyNowCount": 0,
+        "pipelineCount": 1
+      }
+    }
+  ]
+}

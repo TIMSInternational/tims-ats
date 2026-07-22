@@ -82,16 +82,25 @@ public sealed class AnchorProbeFixture : IAsyncLifetime
     public static readonly Guid SelfRow = Guid.Parse("40000000-0000-0000-0000-000000000001"); // subject U1
     public static readonly Guid OtherRow = Guid.Parse("40000000-0000-0000-0000-000000000002"); // subject U2
 
+    // Critical roles (Phase-5 Slice 8): the assertScoped('criticalRole') probe root anchors on
+    // current_holder_id. For team-scoped U1 (teamMembers {U1,U2,U3}): CR1 holder=U2 (in), CR2 holder=U4 (out),
+    // CRNull holder=NULL (out — Prisma `in` never matches NULL, fail-narrow), CRb org B (cross-org).
+    public static readonly Guid CR1 = Guid.Parse("50000000-0000-0000-0000-000000000001"); // holder U2 → in team scope
+    public static readonly Guid CR2 = Guid.Parse("50000000-0000-0000-0000-000000000002"); // holder U4 → out of scope
+    public static readonly Guid CRNull = Guid.Parse("50000000-0000-0000-0000-00000000000d"); // holder NULL → out (fail-narrow)
+    public static readonly Guid CRb = Guid.Parse("50000000-0000-0000-0000-0000000000b0"); // Org B (cross-org)
+
     private static readonly string[] OrgScopedTables =
     [
         "teams", "business_units", "user_business_units", "interviews", "users",
-        "vacancies", "candidates", "applications", "offers", "okrs", "self_service_rows",
+        "vacancies", "candidates", "applications", "offers", "okrs", "self_service_rows", "critical_roles",
     ];
 
     private static readonly string[] AllTables =
     [
         "teams", "user_teams", "user_business_units", "business_units", "interview_evaluators",
         "interviews", "users", "vacancies", "candidates", "applications", "offers", "okrs", "self_service_rows",
+        "critical_roles",
     ];
 
     private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:16-alpine")
@@ -186,6 +195,8 @@ public sealed class AnchorProbeFixture : IAsyncLifetime
                 team_id uuid NULL, created_by_id uuid NULL);
             CREATE TABLE self_service_rows (
                 id uuid PRIMARY KEY, organization_id uuid NOT NULL, subject_user_id uuid NOT NULL);
+            CREATE TABLE critical_roles (
+                id uuid PRIMARY KEY, organization_id uuid NOT NULL, current_holder_id uuid NULL);
 
             {grants}
             {rls}
@@ -257,5 +268,11 @@ public sealed class AnchorProbeFixture : IAsyncLifetime
         INSERT INTO self_service_rows (id, organization_id, subject_user_id) VALUES
             ('{SelfRow}', '{OrgA}', '{U1}'),
             ('{OtherRow}', '{OrgA}', '{U2}');
+
+        INSERT INTO critical_roles (id, organization_id, current_holder_id) VALUES
+            ('{CR1}', '{OrgA}', '{U2}'),
+            ('{CR2}', '{OrgA}', '{U4}'),
+            ('{CRNull}', '{OrgA}', NULL),
+            ('{CRb}', '{OrgB}', NULL);
         """;
 }

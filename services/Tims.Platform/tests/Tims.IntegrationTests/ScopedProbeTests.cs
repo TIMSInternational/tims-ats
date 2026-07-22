@@ -130,6 +130,30 @@ public sealed class ScopedProbeTests(AnchorProbeFixture fixture)
     public async Task Team_out_of_scope_throws_not_found() =>
         await AssertThrows(ScopedEntity.Team, AnchorProbeFixture.T2, AnchorProbeFixture.OrgA);
 
+    // ---- CriticalRole: currentHolderId in teamMembers (Phase-5 Slice 8 probe root) ---------
+    [Fact]
+    public async Task CriticalRole_in_scope_via_holder_passes() =>
+        // CR1's current holder (U2) is a member of the team U1 leads → in team scope.
+        await AssertInScope(ScopedEntity.CriticalRole, AnchorProbeFixture.CR1);
+
+    [Fact]
+    public async Task CriticalRole_out_of_scope_throws_not_found()
+    {
+        // CR2's holder (U4) is on team T2 (not U1's) → out of scope → NOT_FOUND.
+        var ex = await AssertThrows(ScopedEntity.CriticalRole, AnchorProbeFixture.CR2, AnchorProbeFixture.OrgA);
+        Assert.Equal("Rol critico no encontrado", ex.Message);
+    }
+
+    [Fact]
+    public async Task CriticalRole_null_holder_throws_not_found() =>
+        // An unfilled role (current_holder_id NULL) is hidden from a narrow scope (Prisma `in` never
+        // matches NULL; fail-narrow) → NOT_FOUND.
+        await AssertThrows(ScopedEntity.CriticalRole, AnchorProbeFixture.CRNull, AnchorProbeFixture.OrgA);
+
+    [Fact]
+    public async Task CriticalRole_cross_org_throws_not_found() =>
+        await AssertThrows(ScopedEntity.CriticalRole, AnchorProbeFixture.CRb, AnchorProbeFixture.OrgA);
+
     // ---- Unregistered entity → clear InvalidOperationException (never silently passes) -----
     // AssessmentAssignment shares offer/application's viaVacancy predicate but has NO probe-table map
     // registered yet (its surface isn't built in C#) — so it must still fail loud, not silently pass.

@@ -4,6 +4,13 @@ import { router, permissionProcedure } from '../trpc';
 import { tenantDb as db } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import {
+  buildCompetencyCoverage,
+  buildSuccessionKpis,
+  buildExitSimulation,
+  buildSuggestedSuccessors,
+  buildCompGapAlerts,
+} from '@tims/shared';
+import {
   scopeWhereFor,
   assertScoped,
   assertSubjectInScope,
@@ -267,27 +274,8 @@ export const successionRouter = router({
         },
       });
 
-      const coverage = roles.map((role) => {
-        const totalSuccessors = role.successors.length;
-        const readyNow = role.successors.filter((s) => s.readiness === 'ready_now').length;
-        const readySoon = role.successors.filter(
-          (s) => s.readiness === 'ready_1_year' || s.readiness === 'ready_2_years',
-        ).length;
-
-        return {
-          roleId: role.id,
-          title: role.title,
-          criticality: role.criticality,
-          totalSuccessors,
-          readyNow,
-          readySoon,
-          developing: totalSuccessors - readyNow - readySoon,
-          coverageStatus:
-            readyNow >= 1 ? 'covered' : totalSuccessors >= 1 ? 'partial' : 'uncovered',
-        };
-      });
-
-      return coverage;
+      // Pure per-role coverage rollup → @tims/shared (golden-parity with the C# port).
+      return buildCompetencyCoverage(roles);
     }),
 
   getRolesWithoutSuccessor: permissionProcedure('succession', 'read')
@@ -348,6 +336,22 @@ export const successionRouter = router({
         });
       }
 
+      // Codex hardening: succession:read may be org-wide while compensation:read is
+      // NARROW (team/unit/own). selectFor above governs WHICH columns leave the DB,
+      // but NOT which ROWS — so also apply the employeeCompensation ROW scope as a
+      // filter, else a narrow-comp caller reads org-wide salary comp-gaps. compAccess
+      // is the compensation decision (narrowed to the allowed variant here); attach
+      // the request-local anchor loader (ctx.access.anchors is per-USER and
+      // module-independent → correct for the compensation entity too). At org/company
+      // comp scope scopeWhereFor early-returns {} → the AND below is a no-op
+      // (behavior-identical to today); at narrow scope with a null loader it fail-closes
+      // FORBIDDEN (desired), else it intersects to the caller's subject set.
+      const compScopeWhere = await scopeWhereFor(
+        'employeeCompensation',
+        { ...compAccess, anchors: ctx.access.anchors },
+        ctx.user.id,
+      );
+
       // Only roles that opted into a target band can ever produce an alert.
       // §21: explicit `select` (not `include`) — Successor.developmentPlan alone
       // can run up to 20k chars and nothing here reads it.
@@ -381,8 +385,6 @@ export const successionRouter = router({
         where: { organizationId: orgId, level: { in: levels } },
         select: { level: true, midSalary: true },
       });
-      const bandByLevel = new Map(bands.map((b) => [b.level, b]));
-
       const userIds = Array.from(
         new Set(candidateRoles.flatMap((r) => r.successors.map((s) => s.userId))),
       );
@@ -395,7 +397,15 @@ export const successionRouter = router({
       // "order by most recent" query (no history table for current comp).
       const compSel = selectFor(compAccess.roles, 'employeeCompensation');
       const compensations = await db.employeeCompensation.findMany({
-        where: { organizationId: orgId, userId: { in: userIds } },
+        // AND (never spread) the userId-narrowing base with the comp scope fragment:
+        // a plain spread would COLLIDE with the base `userId: { in }` key.
+        where: {
+          organizationId: orgId,
+          AND: [
+            { userId: { in: userIds } },
+            compScopeWhere as Prisma.EmployeeCompensationWhereInput,
+          ],
+        },
         select: {
           id: true,
           userId: true,
@@ -413,52 +423,14 @@ export const successionRouter = router({
         }),
       );
 
-      const COMP_GAP_THRESHOLD = 0.9;
-      const alerts: Array<{
-        successorId: string;
-        roleId: string;
-        roleTitle: string;
-        userId: string;
-        user: { id: string; firstName: string; lastName: string; avatar: string | null };
-        currentSalary: number;
-        currency: string;
-        midSalary: number;
-        bandLevel: string;
-        gapPercent: number;
-      }> = [];
-      // Parallel list of the employeeCompensation record ids actually exposed via
-      // `alerts` above — the audit trail below logs exactly these, not every row
-      // initially queried.
-      const auditedCompIds: string[] = [];
-
-      for (const role of candidateRoles) {
-        const band = role.targetBandLevel ? bandByLevel.get(role.targetBandLevel) : undefined;
-        if (!band) continue; // no matching band for this level — nothing to compare against
-
-        for (const successor of role.successors) {
-          const comp = compByUser.get(successor.userId);
-          // No EmployeeCompensation row yet, or currentSalary/currency not
-          // visible to this caller's roles (selectFor omitted it) — skip,
-          // don't crash and never fall back to a null-ed sensitive field.
-          if (!comp || comp.currentSalary === undefined || comp.currency === undefined) continue;
-
-          if (comp.currentSalary < band.midSalary * COMP_GAP_THRESHOLD) {
-            alerts.push({
-              successorId: successor.id,
-              roleId: role.id,
-              roleTitle: role.title,
-              userId: successor.userId,
-              user: successor.user,
-              currentSalary: comp.currentSalary,
-              currency: comp.currency,
-              midSalary: band.midSalary,
-              bandLevel: band.level,
-              gapPercent: Math.round((1 - comp.currentSalary / band.midSalary) * 100),
-            });
-            auditedCompIds.push(comp.id);
-          }
-        }
-      }
+      // Pure detection loop → @tims/shared (golden-parity with the C# port). It returns the alerts AND
+      // the employeeCompensation record ids actually EXPOSED via those alerts — the audit trail below
+      // logs exactly these, not every row initially queried.
+      const { alerts, auditedCompIds } = buildCompGapAlerts(
+        candidateRoles,
+        bands,
+        Array.from(compByUser.values()),
+      );
 
       // §21 matrix: getCompGapAlerts reads employeeCompensation (restricted, FULL+AUDIT).
       // One audit-log row per EXPOSED record (the ones whose salary data the caller
@@ -537,43 +509,20 @@ export const successionRouter = router({
         orderBy: [{ evaluatedAt: 'desc' }, { createdAt: 'desc' }],
       });
 
-      const latestByUser = new Map<string, (typeof evaluations)[number]>();
-      for (const ev of evaluations) {
-        if (!latestByUser.has(ev.userId)) latestByUser.set(ev.userId, ev);
-      }
-
       // Exclude anyone already a Successor for this role (the confirmed
       // @@unique([criticalRoleId, userId]) constraint on Successor).
       const existing = await db.successor.findMany({
         where: { criticalRoleId: input.criticalRoleId, organizationId: ctx.user.organizationId },
         select: { userId: true },
       });
-      const existingUserIds = new Set(existing.map((s) => s.userId));
 
-      // Starting heuristic (documented here, not a hard rule): a "star" reads
-      // as ready to step in now; "high_potential" reads as roughly a year out.
-      // This is only a suggestion — HR reviews and can change the readiness
-      // before confirming in the Add Successor modal.
-      const READINESS_BY_QUADRANT: Record<string, 'ready_now' | 'ready_1_year'> = {
-        star: 'ready_now',
-        high_potential: 'ready_1_year',
-      };
-
-      return Array.from(latestByUser.values())
-        .filter((ev) => ev.quadrant === 'star' || ev.quadrant === 'high_potential')
-        .filter((ev) => !existingUserIds.has(ev.userId))
-        .sort((a, b) => {
-          if (b.potentialScore !== a.potentialScore) return b.potentialScore - a.potentialScore;
-          return b.performanceScore - a.performanceScore;
-        })
-        .map((ev) => ({
-          userId: ev.userId,
-          user: ev.user,
-          quadrant: ev.quadrant,
-          potentialScore: ev.potentialScore,
-          performanceScore: ev.performanceScore,
-          suggestedReadiness: READINESS_BY_QUADRANT[ev.quadrant],
-        }));
+      // Pure first-seen dedup + star/high_potential filter + ranking → @tims/shared (golden-parity with
+      // the C# port). The heuristic (star → ready_now, high_potential → ready_1_year) lives in the kernel;
+      // this is only a suggestion — HR reviews and can change readiness before confirming in the modal.
+      return buildSuggestedSuccessors(
+        evaluations,
+        existing.map((s) => s.userId),
+      );
     }),
 
   // Stub: simulate the impact of a key person exit
@@ -607,24 +556,10 @@ export const successionRouter = router({
         },
       });
 
-      const readyNow = role.successors.filter((s) => s.readiness === 'ready_now');
-      const readySoon = role.successors.filter(
-        (s) => s.readiness === 'ready_1_year' || s.readiness === 'ready_2_years',
+      // Pure exit-impact decision (risk + recommendation) → @tims/shared (golden-parity with the C# port).
+      const { riskLevel, recommendation, readyNowCount, pipelineCount } = buildExitSimulation(
+        role.successors,
       );
-
-      let riskLevel: string;
-      let recommendation: string;
-
-      if (readyNow.length >= 1) {
-        riskLevel = 'low';
-        recommendation = `Sucesor listo: ${readyNow[0].user.firstName} ${readyNow[0].user.lastName}`;
-      } else if (readySoon.length >= 1) {
-        riskLevel = 'medium';
-        recommendation = `Sucesor disponible en 1-2 anos. Considerar plan de aceleracion.`;
-      } else {
-        riskLevel = 'high';
-        recommendation = `Sin sucesores identificados. Iniciar busqueda inmediata.`;
-      }
 
       return {
         role: { id: role.id, title: role.title, criticality: role.criticality },
@@ -632,8 +567,8 @@ export const successionRouter = router({
         riskLevel,
         recommendation,
         successors: role.successors,
-        readyNowCount: readyNow.length,
-        pipelineCount: role.successors.length,
+        readyNowCount,
+        pipelineCount,
       };
     }),
 
@@ -670,19 +605,14 @@ export const successionRouter = router({
         }),
       ]);
 
-      return {
+      // Pure KPI rollup (coverageRate/avgSuccessorsPerRole) → @tims/shared (golden-parity with the C# port).
+      return buildSuccessionKpis({
         totalCriticalRoles: totalRoles,
         totalSuccessors,
         rolesWithoutSuccessor,
-        coverageRate:
-          totalRoles > 0
-            ? Math.round(((totalRoles - rolesWithoutSuccessor) / totalRoles) * 100)
-            : 0,
         readyNowCount: readyNow,
         ready1to2YearsCount: ready1to2Years,
         highFlightRiskRoles: highFlightRisk,
-        avgSuccessorsPerRole:
-          totalRoles > 0 ? Math.round((totalSuccessors / totalRoles) * 10) / 10 : 0,
-      };
+      });
     }),
 });

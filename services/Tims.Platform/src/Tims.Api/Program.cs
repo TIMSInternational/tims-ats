@@ -20,6 +20,7 @@ using Tims.Api.RateLimiting;
 using Tims.Api.Evaluation360;
 using Tims.Api.ExternalVendor;
 using Tims.Api.Reporting;
+using Tims.Api.Succession;
 using Tims.Api.TeamIntel;
 using Tims.Api.Validation;
 using Tims.Application.Access;
@@ -29,6 +30,7 @@ using Tims.Application.Evaluation360;
 using Tims.Application.ExternalVendor;
 using Tims.Application.Identity;
 using Tims.Application.Reporting;
+using Tims.Application.Succession;
 using Tims.Application.TeamIntel;
 using Tims.Application.Validation;
 using Tims.Domain.Access;
@@ -43,6 +45,7 @@ using Tims.Infrastructure.Hris;
 using Tims.Infrastructure.Identity;
 using Tims.Infrastructure.RateLimiting;
 using Tims.Infrastructure.Reporting;
+using Tims.Infrastructure.Succession;
 using Tims.Infrastructure.TeamIntel;
 using Tims.Infrastructure.Validation;
 
@@ -243,6 +246,17 @@ try
             Evaluation360ReadDataSource.MapEnums));
     builder.Services.AddScoped<IEvaluation360ReadRepository, Evaluation360ReadRepository>();
     builder.Services.AddScoped<Evaluation360ReadUseCase>();
+
+    // Phase-5 Slice 8 (efcoreReadOnly): the succession READ surface. Plain read-only context over the
+    // Prisma-OWNED critical_roles/successors (+ users/salary_bands/employee_compensations/nine_box_evaluations)
+    // — readiness/criticality/type/quadrant are plain Strings (NOT native enums), so no NpgsqlDataSource. Reads
+    // run UNDER TenantScope/RLS; the by-id reads run the assertScoped('criticalRole') IDOR probe (ScopedProbe,
+    // already registered above), listCriticalRoles/getCriticalRole/simulate/suggested compose scopeWhereFor,
+    // and the analytics reads apply the org-gate. getCompGapAlerts enforces a secondary compensation:read grant
+    // + audits exposed comp rows via IDataAccessAuditor (already registered). Dark unless SuccessionReadEnabled.
+    builder.Services.AddDbContext<SuccessionReadDbContext>(options => options.UseNpgsql(databaseConnectionString));
+    builder.Services.AddScoped<ISuccessionReadRepository, SuccessionReadRepository>();
+    builder.Services.AddScoped<SuccessionReadUseCase>();
 
     builder.Services
         .AddOptions<StripeBillingOptions>()
@@ -641,6 +655,16 @@ try
     if (externalOptions.Evaluation360ReadEnabled || isOpenApiDocGeneration)
     {
         app.MapEvaluation360ReadEndpoints();
+    }
+
+    // Succession READ surface (Phase-5 Slice 8): the nine succession reads (/succession/*). Staff-JWT +
+    // succession:read; exercises ALL THREE scope mechanics (scopeWhereFor row filter, assertScoped('criticalRole')
+    // by-id IDOR probe, requireOrgScope org-rollup). getCompGapAlerts adds a secondary compensation:read grant +
+    // fail-closed audit of exposed comp rows. Dark unless the flag is on (deploy-gated cutover; TS stays the sole
+    // active reader until Federico flips it).
+    if (externalOptions.SuccessionReadEnabled || isOpenApiDocGeneration)
+    {
+        app.MapSuccessionReadEndpoints();
     }
 
     // Authz probe (WP2.5): the C# equivalent of the tRPC `requirePermission` gate. Resolves the

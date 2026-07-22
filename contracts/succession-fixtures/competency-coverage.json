@@ -1,0 +1,102 @@
+{
+  "description": "Golden parity for succession.getCompetencyCoverage: buildCompetencyCoverage(roles) in @tims/shared. Asserted IDENTICALLY by the REAL TS export (tests/succession/competency-coverage-fixtures.test.ts) and the C# Tims.Domain.Succession.SuccessionKernels.BuildCompetencyCoverage (Tims.UnitTests). Pins: row order = input order (no re-sort); totalSuccessors; readyNow (=='ready_now'); readySoon ('ready_1_year'|'ready_2_years'); developing = total - readyNow - readySoon; coverageStatus (readyNow>=1 'covered' | total>=1 'partial' | 'uncovered'); empty roles -> [].",
+  "cases": [
+    {
+      "name": "mixed readiness + all three coverage statuses, row order preserved",
+      "input": {
+        "roles": [
+          {
+            "id": "R1",
+            "title": "CEO",
+            "criticality": "critical",
+            "successors": [
+              { "readiness": "ready_now" },
+              { "readiness": "ready_1_year" },
+              { "readiness": "developing" }
+            ]
+          },
+          {
+            "id": "R2",
+            "title": "CFO",
+            "criticality": "high",
+            "successors": [{ "readiness": "ready_1_year" }, { "readiness": "ready_2_years" }]
+          },
+          { "id": "R3", "title": "CTO", "criticality": "medium", "successors": [] },
+          { "id": "R4", "title": "COO", "criticality": "low", "successors": [{ "readiness": "developing" }] }
+        ]
+      },
+      "expected": [
+        {
+          "roleId": "R1",
+          "title": "CEO",
+          "criticality": "critical",
+          "totalSuccessors": 3,
+          "readyNow": 1,
+          "readySoon": 1,
+          "developing": 1,
+          "coverageStatus": "covered"
+        },
+        {
+          "roleId": "R2",
+          "title": "CFO",
+          "criticality": "high",
+          "totalSuccessors": 2,
+          "readyNow": 0,
+          "readySoon": 2,
+          "developing": 0,
+          "coverageStatus": "partial"
+        },
+        {
+          "roleId": "R3",
+          "title": "CTO",
+          "criticality": "medium",
+          "totalSuccessors": 0,
+          "readyNow": 0,
+          "readySoon": 0,
+          "developing": 0,
+          "coverageStatus": "uncovered"
+        },
+        {
+          "roleId": "R4",
+          "title": "COO",
+          "criticality": "low",
+          "totalSuccessors": 1,
+          "readyNow": 0,
+          "readySoon": 0,
+          "developing": 1,
+          "coverageStatus": "partial"
+        }
+      ]
+    },
+    {
+      "name": "empty roles -> empty list",
+      "input": { "roles": [] },
+      "expected": []
+    },
+    {
+      "name": "only ready_now -> covered, developing floors at 0",
+      "input": {
+        "roles": [
+          {
+            "id": "R9",
+            "title": "Solo",
+            "criticality": "critical",
+            "successors": [{ "readiness": "ready_now" }, { "readiness": "ready_now" }]
+          }
+        ]
+      },
+      "expected": [
+        {
+          "roleId": "R9",
+          "title": "Solo",
+          "criticality": "critical",
+          "totalSuccessors": 2,
+          "readyNow": 2,
+          "readySoon": 0,
+          "developing": 0,
+          "coverageStatus": "covered"
+        }
+      ]
+    }
+  ]
+}

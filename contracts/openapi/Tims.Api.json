@@ -1161,6 +1161,350 @@
         }
       }
     },
+    "/succession/critical-roles": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "SuccessionListCriticalRoles",
+        "parameters": [
+          {
+            "name": "companyId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "unitId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "criticality",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ListCriticalRoleRow"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/succession/critical-roles/{criticalRoleId}": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "SuccessionGetCriticalRole",
+        "parameters": [
+          {
+            "name": "criticalRoleId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CriticalRoleDetailRow"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/succession/flight-risk": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "SuccessionGetFlightRisk",
+        "parameters": [
+          {
+            "name": "threshold",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+              "type": [
+                "number",
+                "string"
+              ],
+              "format": "double"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/FlightRiskRow"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/succession/competency-coverage": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "SuccessionGetCompetencyCoverage",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CoverageRow"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/succession/roles-without-successor": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "SuccessionGetRolesWithoutSuccessor",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RoleWithoutSuccessorRow"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/succession/comp-gap-alerts": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "SuccessionGetCompGapAlerts",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CompGapAlert"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/succession/critical-roles/{criticalRoleId}/suggested-successors": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "SuccessionGetSuggestedSuccessors",
+        "parameters": [
+          {
+            "name": "criticalRoleId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SuggestedSuccessor"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/succession/critical-roles/{criticalRoleId}/simulate-exit": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "SuccessionSimulateExit",
+        "parameters": [
+          {
+            "name": "criticalRoleId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExitSimulationView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/succession/dashboard-kpis": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "SuccessionGetDashboardKpis",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessionKpiView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
     "/require-permission/{module}/{action}": {
       "get": {
         "tags": [
@@ -1333,6 +1677,263 @@
           }
         }
       },
+      "CompGapAlert": {
+        "required": [
+          "successorId",
+          "roleId",
+          "roleTitle",
+          "userId",
+          "user",
+          "currentSalary",
+          "currency",
+          "midSalary",
+          "bandLevel",
+          "gapPercent"
+        ],
+        "type": "object",
+        "properties": {
+          "successorId": {
+            "type": "string"
+          },
+          "roleId": {
+            "type": "string"
+          },
+          "roleTitle": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "user": {
+            "$ref": "#/components/schemas/CompGapUser"
+          },
+          "currentSalary": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "midSalary": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "bandLevel": {
+            "type": "string"
+          },
+          "gapPercent": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "CompGapUser": {
+        "required": [
+          "id",
+          "firstName",
+          "lastName",
+          "avatar"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "firstName": {
+            "type": "string"
+          },
+          "lastName": {
+            "type": "string"
+          },
+          "avatar": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "CoverageRow": {
+        "required": [
+          "roleId",
+          "title",
+          "criticality",
+          "totalSuccessors",
+          "readyNow",
+          "readySoon",
+          "developing",
+          "coverageStatus"
+        ],
+        "type": "object",
+        "properties": {
+          "roleId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "criticality": {
+            "type": "string"
+          },
+          "totalSuccessors": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "readyNow": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "readySoon": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "developing": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "coverageStatus": {
+            "type": "string"
+          }
+        }
+      },
+      "CriticalRoleCount": {
+        "required": [
+          "successors"
+        ],
+        "type": "object",
+        "properties": {
+          "successors": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "CriticalRoleDetailRow": {
+        "required": [
+          "id",
+          "organizationId",
+          "title",
+          "positionId",
+          "currentHolderId",
+          "companyId",
+          "unitId",
+          "criticality",
+          "flightRisk",
+          "targetBandLevel",
+          "createdAt",
+          "updatedAt",
+          "currentHolder",
+          "successors"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "organizationId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "positionId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "currentHolderId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "companyId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "unitId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "criticality": {
+            "type": "string"
+          },
+          "flightRisk": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "targetBandLevel": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "createdAt": {
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "format": "date-time"
+          },
+          "currentHolder": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/HolderWithEmail"
+              }
+            ]
+          },
+          "successors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DetailSuccessorRow"
+            }
+          }
+        }
+      },
       "CycleProgressRow": {
         "required": [
           "relationship",
@@ -1485,6 +2086,250 @@
           }
         }
       },
+      "DetailSuccessorRow": {
+        "required": [
+          "id",
+          "organizationId",
+          "criticalRoleId",
+          "userId",
+          "readiness",
+          "type",
+          "developmentPlan",
+          "addedById",
+          "createdAt",
+          "updatedAt",
+          "user",
+          "addedByUser"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "organizationId": {
+            "type": "string"
+          },
+          "criticalRoleId": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "readiness": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "developmentPlan": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "addedById": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "createdAt": {
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "format": "date-time"
+          },
+          "user": {
+            "$ref": "#/components/schemas/SuccessorUser"
+          },
+          "addedByUser": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SuccessorAddedBy"
+              }
+            ]
+          }
+        }
+      },
+      "ExitHolder": {
+        "required": [
+          "id",
+          "firstName",
+          "lastName"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "firstName": {
+            "type": "string"
+          },
+          "lastName": {
+            "type": "string"
+          }
+        }
+      },
+      "ExitRole": {
+        "required": [
+          "id",
+          "title",
+          "criticality"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "criticality": {
+            "type": "string"
+          }
+        }
+      },
+      "ExitSimulationView": {
+        "required": [
+          "role",
+          "currentHolder",
+          "riskLevel",
+          "recommendation",
+          "successors",
+          "readyNowCount",
+          "pipelineCount"
+        ],
+        "type": "object",
+        "properties": {
+          "role": {
+            "$ref": "#/components/schemas/ExitRole"
+          },
+          "currentHolder": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ExitHolder"
+              }
+            ]
+          },
+          "riskLevel": {
+            "type": "string"
+          },
+          "recommendation": {
+            "type": "string"
+          },
+          "successors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExitSuccessorRow"
+            }
+          },
+          "readyNowCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "pipelineCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "ExitSuccessorRow": {
+        "required": [
+          "id",
+          "organizationId",
+          "criticalRoleId",
+          "userId",
+          "readiness",
+          "type",
+          "developmentPlan",
+          "addedById",
+          "createdAt",
+          "updatedAt",
+          "user"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "organizationId": {
+            "type": "string"
+          },
+          "criticalRoleId": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "readiness": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "developmentPlan": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "addedById": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "createdAt": {
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "format": "date-time"
+          },
+          "user": {
+            "$ref": "#/components/schemas/ExitSuccessorUserView"
+          }
+        }
+      },
+      "ExitSuccessorUserView": {
+        "required": [
+          "id",
+          "firstName",
+          "lastName",
+          "jobTitle"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "firstName": {
+            "type": "string"
+          },
+          "lastName": {
+            "type": "string"
+          },
+          "jobTitle": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "ExternalAssessmentResultV1": {
         "required": [
           "schemaVersion",
@@ -1621,6 +2466,123 @@
           }
         }
       },
+      "FlightRiskHolder": {
+        "required": [
+          "id",
+          "firstName",
+          "lastName",
+          "avatar"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "firstName": {
+            "type": "string"
+          },
+          "lastName": {
+            "type": "string"
+          },
+          "avatar": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "FlightRiskRow": {
+        "required": [
+          "id",
+          "organizationId",
+          "title",
+          "positionId",
+          "currentHolderId",
+          "companyId",
+          "unitId",
+          "criticality",
+          "flightRisk",
+          "targetBandLevel",
+          "createdAt",
+          "updatedAt",
+          "currentHolder",
+          "_count"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "organizationId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "positionId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "currentHolderId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "companyId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "unitId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "criticality": {
+            "type": "string"
+          },
+          "flightRisk": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "targetBandLevel": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "createdAt": {
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "format": "date-time"
+          },
+          "currentHolder": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/FlightRiskHolder"
+              }
+            ]
+          },
+          "_count": {
+            "$ref": "#/components/schemas/CriticalRoleCount"
+          }
+        }
+      },
       "FunnelStageView": {
         "required": [
           "name",
@@ -1689,6 +2651,76 @@
               "string"
             ],
             "format": "double"
+          }
+        }
+      },
+      "HolderBasic": {
+        "required": [
+          "id",
+          "firstName",
+          "lastName",
+          "avatar",
+          "jobTitle"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "firstName": {
+            "type": "string"
+          },
+          "lastName": {
+            "type": "string"
+          },
+          "avatar": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "jobTitle": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "HolderWithEmail": {
+        "required": [
+          "id",
+          "firstName",
+          "lastName",
+          "avatar",
+          "jobTitle",
+          "email"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "firstName": {
+            "type": "string"
+          },
+          "lastName": {
+            "type": "string"
+          },
+          "avatar": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "jobTitle": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "email": {
+            "type": "string"
           }
         }
       },
@@ -1941,6 +2973,157 @@
           }
         }
       },
+      "ListCriticalRoleRow": {
+        "required": [
+          "id",
+          "organizationId",
+          "title",
+          "positionId",
+          "currentHolderId",
+          "companyId",
+          "unitId",
+          "criticality",
+          "flightRisk",
+          "targetBandLevel",
+          "createdAt",
+          "updatedAt",
+          "currentHolder",
+          "successors"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "organizationId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "positionId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "currentHolderId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "companyId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "unitId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "criticality": {
+            "type": "string"
+          },
+          "flightRisk": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "targetBandLevel": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "createdAt": {
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "format": "date-time"
+          },
+          "currentHolder": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/HolderBasic"
+              }
+            ]
+          },
+          "successors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ListSuccessorRow"
+            }
+          }
+        }
+      },
+      "ListSuccessorRow": {
+        "required": [
+          "id",
+          "organizationId",
+          "criticalRoleId",
+          "userId",
+          "readiness",
+          "type",
+          "developmentPlan",
+          "addedById",
+          "createdAt",
+          "updatedAt",
+          "user"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "organizationId": {
+            "type": "string"
+          },
+          "criticalRoleId": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "readiness": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "developmentPlan": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "addedById": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "createdAt": {
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "format": "date-time"
+          },
+          "user": {
+            "$ref": "#/components/schemas/SuccessorUser"
+          }
+        }
+      },
       "LostByDelayItem": {
         "required": [
           "stageName",
@@ -2178,6 +3361,93 @@
           }
         }
       },
+      "RoleWithoutSuccessorRow": {
+        "required": [
+          "id",
+          "organizationId",
+          "title",
+          "positionId",
+          "currentHolderId",
+          "companyId",
+          "unitId",
+          "criticality",
+          "flightRisk",
+          "targetBandLevel",
+          "createdAt",
+          "updatedAt",
+          "currentHolder"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "organizationId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "positionId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "currentHolderId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "companyId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "unitId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "criticality": {
+            "type": "string"
+          },
+          "flightRisk": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "targetBandLevel": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "createdAt": {
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "format": "date-time"
+          },
+          "currentHolder": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/HolderBasic"
+              }
+            ]
+          }
+        }
+      },
       "SourceBreakdownItem": {
         "required": [
           "source",
@@ -2386,6 +3656,211 @@
           },
           "updatedAt": {
             "format": "date-time"
+          }
+        }
+      },
+      "SuccessionKpiView": {
+        "required": [
+          "totalCriticalRoles",
+          "totalSuccessors",
+          "rolesWithoutSuccessor",
+          "coverageRate",
+          "readyNowCount",
+          "ready1to2YearsCount",
+          "highFlightRiskRoles",
+          "avgSuccessorsPerRole"
+        ],
+        "type": "object",
+        "properties": {
+          "totalCriticalRoles": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "totalSuccessors": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "rolesWithoutSuccessor": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "coverageRate": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "readyNowCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "ready1to2YearsCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "highFlightRiskRoles": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "avgSuccessorsPerRole": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          }
+        }
+      },
+      "SuccessorAddedBy": {
+        "required": [
+          "id",
+          "firstName",
+          "lastName"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "firstName": {
+            "type": "string"
+          },
+          "lastName": {
+            "type": "string"
+          }
+        }
+      },
+      "SuccessorUser": {
+        "required": [
+          "id",
+          "firstName",
+          "lastName",
+          "avatar",
+          "jobTitle"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "firstName": {
+            "type": "string"
+          },
+          "lastName": {
+            "type": "string"
+          },
+          "avatar": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "jobTitle": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "SuggestedSuccessor": {
+        "required": [
+          "userId",
+          "user",
+          "quadrant",
+          "potentialScore",
+          "performanceScore",
+          "suggestedReadiness"
+        ],
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "user": {
+            "$ref": "#/components/schemas/SuggestedUser"
+          },
+          "quadrant": {
+            "type": "string"
+          },
+          "potentialScore": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "performanceScore": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "suggestedReadiness": {
+            "type": "string"
+          }
+        }
+      },
+      "SuggestedUser": {
+        "required": [
+          "id",
+          "firstName",
+          "lastName",
+          "avatar",
+          "jobTitle"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "firstName": {
+            "type": "string"
+          },
+          "lastName": {
+            "type": "string"
+          },
+          "avatar": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "jobTitle": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },

@@ -77,6 +77,41 @@
       "roles": ["super_admin"],
       "entity": "doesNotExist",
       "expected": ["id"]
+    },
+    {
+      "name": "fieldsVisibleTo hr_admin employeeCompensation → all six comp fields",
+      "kind": "fieldsVisibleTo",
+      "roles": ["hr_admin"],
+      "entity": "employeeCompensation",
+      "expected": ["currentSalary", "currency", "effectiveDate", "compaRatio", "variablePay", "bandId"]
+    },
+    {
+      "name": "fieldsVisibleTo employee employeeCompensation → salary/currency/effectiveDate only (no finance fields)",
+      "kind": "fieldsVisibleTo",
+      "roles": ["employee"],
+      "entity": "employeeCompensation",
+      "expected": ["currentSalary", "currency", "effectiveDate"]
+    },
+    {
+      "name": "fieldsVisibleTo recruiter employeeCompensation → none (not a comp reader)",
+      "kind": "fieldsVisibleTo",
+      "roles": ["recruiter"],
+      "entity": "employeeCompensation",
+      "expected": []
+    },
+    {
+      "name": "selectFor hr_admin employeeCompensation → anchors + all six comp fields",
+      "kind": "selectFor",
+      "roles": ["hr_admin"],
+      "entity": "employeeCompensation",
+      "expected": ["id", "organizationId", "userId", "currentSalary", "currency", "effectiveDate", "compaRatio", "variablePay", "bandId"]
+    },
+    {
+      "name": "selectFor employee employeeCompensation → anchors + salary/currency/effectiveDate",
+      "kind": "selectFor",
+      "roles": ["employee"],
+      "entity": "employeeCompensation",
+      "expected": ["id", "organizationId", "userId", "currentSalary", "currency", "effectiveDate"]
     }
   ]
 }

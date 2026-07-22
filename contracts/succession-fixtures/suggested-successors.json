@@ -1,0 +1,102 @@
+{
+  "description": "Golden parity for succession.getSuggestedSuccessors: buildSuggestedSuccessors(evaluations, existingUserIds) in @tims/shared. Asserted IDENTICALLY by the REAL TS export (tests/succession/suggested-successors-fixtures.test.ts) and the C# Tims.Domain.Succession.SuccessionKernels.BuildSuggestedSuccessors (Tims.UnitTests). Pins: FIRST-seen dedup per user (input pre-ordered evaluatedAt desc, createdAt desc — stale earlier placement dropped); keep only star/high_potential; exclude existing successor users; sort potentialScore desc then performanceScore desc; suggestedReadiness star->ready_now, high_potential->ready_1_year.",
+  "cases": [
+    {
+      "name": "first-seen dedup + rank potential then performance + exclude existing + quadrant filter",
+      "input": {
+        "evaluations": [
+          {
+            "userId": "U1",
+            "quadrant": "star",
+            "potentialScore": 90,
+            "performanceScore": 80,
+            "user": { "id": "U1", "firstName": "Uno", "lastName": "One", "avatar": null, "jobTitle": "Eng" }
+          },
+          {
+            "userId": "U1",
+            "quadrant": "high_potential",
+            "potentialScore": 50,
+            "performanceScore": 50,
+            "user": { "id": "U1", "firstName": "Uno", "lastName": "One", "avatar": null, "jobTitle": "Eng" }
+          },
+          {
+            "userId": "U2",
+            "quadrant": "high_potential",
+            "potentialScore": 90,
+            "performanceScore": 70,
+            "user": { "id": "U2", "firstName": "Dos", "lastName": "Two", "avatar": null, "jobTitle": "PM" }
+          },
+          {
+            "userId": "U3",
+            "quadrant": "core_player",
+            "potentialScore": 95,
+            "performanceScore": 95,
+            "user": { "id": "U3", "firstName": "Tres", "lastName": "Three", "avatar": null, "jobTitle": "Ops" }
+          },
+          {
+            "userId": "U4",
+            "quadrant": "star",
+            "potentialScore": 90,
+            "performanceScore": 90,
+            "user": { "id": "U4", "firstName": "Cuatro", "lastName": "Four", "avatar": "a4.png", "jobTitle": "Lead" }
+          },
+          {
+            "userId": "U5",
+            "quadrant": "star",
+            "potentialScore": 60,
+            "performanceScore": 99,
+            "user": { "id": "U5", "firstName": "Cinco", "lastName": "Five", "avatar": null, "jobTitle": "QA" }
+          }
+        ],
+        "existingUserIds": ["U5"]
+      },
+      "expected": [
+        {
+          "userId": "U4",
+          "user": { "id": "U4", "firstName": "Cuatro", "lastName": "Four", "avatar": "a4.png", "jobTitle": "Lead" },
+          "quadrant": "star",
+          "potentialScore": 90,
+          "performanceScore": 90,
+          "suggestedReadiness": "ready_now"
+        },
+        {
+          "userId": "U1",
+          "user": { "id": "U1", "firstName": "Uno", "lastName": "One", "avatar": null, "jobTitle": "Eng" },
+          "quadrant": "star",
+          "potentialScore": 90,
+          "performanceScore": 80,
+          "suggestedReadiness": "ready_now"
+        },
+        {
+          "userId": "U2",
+          "user": { "id": "U2", "firstName": "Dos", "lastName": "Two", "avatar": null, "jobTitle": "PM" },
+          "quadrant": "high_potential",
+          "potentialScore": 90,
+          "performanceScore": 70,
+          "suggestedReadiness": "ready_1_year"
+        }
+      ]
+    },
+    {
+      "name": "empty evaluations -> empty",
+      "input": { "evaluations": [], "existingUserIds": [] },
+      "expected": []
+    },
+    {
+      "name": "no star/high_potential -> empty",
+      "input": {
+        "evaluations": [
+          {
+            "userId": "U9",
+            "quadrant": "core_player",
+            "potentialScore": 80,
+            "performanceScore": 80,
+            "user": { "id": "U9", "firstName": "Nine", "lastName": "N", "avatar": null, "jobTitle": null }
+          }
+        ],
+        "existingUserIds": []
+      },
+      "expected": []
+    }
+  ]
+}

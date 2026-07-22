@@ -19,6 +19,7 @@ public static class FieldClassification
     private const string Hr = "hr_admin";
     private const string Hrbp = "hrbp";
     private const string Recruiter = "recruiter";
+    private const string Leader = "leader";
     private const string Employee = "employee";
 
     // external = API-key integrations (Wave 2.5 slice 7b): the analysis-engine consumer is the
@@ -40,6 +41,20 @@ public static class FieldClassification
                 new("interpretation", [Super, Hr, Hrbp, Recruiter, Employee, External]),
                 new("modelVersion", [Super, Hr, External]),
             },
+
+            // employeeCompensation — faithful port of classification.ts (Phase-5 Slice 8, getCompGapAlerts's
+            // selectFor). Declaration order = the TS object-key order. currentSalary/currency (the only two
+            // fields getCompGapAlerts reads) are visible to super/hr/hrbp/leader/employee; the finance-only
+            // fields (compaRatio/variablePay/bandId) to super/hr/hrbp.
+            ["employeeCompensation"] = new FieldRule[]
+            {
+                new("currentSalary", [Super, Hr, Hrbp, Leader, Employee]),
+                new("currency", [Super, Hr, Hrbp, Leader, Employee]),
+                new("effectiveDate", [Super, Hr, Hrbp, Leader, Employee]),
+                new("compaRatio", [Super, Hr, Hrbp]),
+                new("variablePay", [Super, Hr, Hrbp]),
+                new("bandId", [Super, Hr, Hrbp]),
+            },
         };
 
     // Non-sensitive structural anchors ALWAYS selected (never classified). Per select-for.ts:
@@ -48,6 +63,8 @@ public static class FieldClassification
         new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal)
         {
             ["assessmentResult"] = ["id", "organizationId", "assignmentId"],
+            // select-for.ts: employeeCompensation anchors on id, organizationId, userId.
+            ["employeeCompensation"] = ["id", "organizationId", "userId"],
         };
 
     /// <summary>

@@ -115,6 +115,48 @@ public static class ScopeProbeRegistry
             {
                 ["vacancy"] = new ProbeNav(ProbeNavKind.To, "vacancies", "vacancy_id"),
             }),
+
+        // Succession (Phase-5 Slice 8). criticalRole anchors on its (nullable) current holder — the
+        // scope predicate is SubjectAsync("currentHolderId") — so the probe/translator only needs that one
+        // field column. Registered for BOTH the assertScoped('criticalRole') by-id probe (getCriticalRole/
+        // getSuggestedSuccessors/simulateExit) AND the scopeWhereFor('criticalRole') row filter
+        // (listCriticalRoles). critical_roles has no deleted_at → NOT soft-deletable.
+        ["critical_roles"] = new ProbeTable(
+            Fields: new Dictionary<string, string>
+            {
+                ["currentHolderId"] = "current_holder_id",
+            },
+            Navs: new Dictionary<string, ProbeNav>()),
+
+        // successor anchors on its subject userId (SubjectAsync("userId")) — used ONLY via
+        // scopeWhereFor('successor') as a nested row filter (never a by-id probe root), so it needs the
+        // field column for the translator but no EntityRootTable entry.
+        ["successors"] = new ProbeTable(
+            Fields: new Dictionary<string, string>
+            {
+                ["userId"] = "user_id",
+            },
+            Navs: new Dictionary<string, ProbeNav>()),
+
+        // nineBoxEvaluation anchors on its subject userId — used ONLY via scopeWhereFor('nineBoxEvaluation')
+        // as the getSuggestedSuccessors row filter (never a by-id probe root).
+        ["nine_box_evaluations"] = new ProbeTable(
+            Fields: new Dictionary<string, string>
+            {
+                ["userId"] = "user_id",
+            },
+            Navs: new Dictionary<string, ProbeNav>()),
+
+        // employeeCompensation anchors on its subject userId (SubjectAsync("userId")) — used ONLY via
+        // scopeWhereFor('employeeCompensation') as the getCompGapAlerts comp-query ROW filter (Codex hardening:
+        // succession:read can be org-wide while compensation:read is narrow), never a by-id probe root, so it
+        // needs the field column for the translator but no EntityRootTable entry.
+        ["employee_compensations"] = new ProbeTable(
+            Fields: new Dictionary<string, string>
+            {
+                ["userId"] = "user_id",
+            },
+            Navs: new Dictionary<string, ProbeNav>()),
     };
 
     /// <summary>
@@ -131,6 +173,9 @@ public static class ScopeProbeRegistry
         [ScopedEntity.Okr] = "okrs",
         [ScopedEntity.Team] = "teams",
         [ScopedEntity.Offer] = "offers",
+        // Succession (Phase-5 Slice 8): the assertScoped('criticalRole') by-id IDOR probe root. successor +
+        // nineBoxEvaluation are used only via scopeWhereFor (row filter), so they need no EntityRootTable entry.
+        [ScopedEntity.CriticalRole] = "critical_roles",
     };
 
     /// <summary>
