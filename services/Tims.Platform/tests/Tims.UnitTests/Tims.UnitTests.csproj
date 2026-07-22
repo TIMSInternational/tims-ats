@@ -78,6 +78,11 @@
       <Link>succession-fixtures\%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <!-- Phase-5 Slice 9 compensation kernel golden fixtures (shared with the TS vitest suite). -->
+    <Content Include="..\..\..\..\contracts\compensation-fixtures\*.json">
+      <Link>compensation-fixtures\%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <!-- WP3.6-map HRIS mapper golden fixtures (C#-only characterization; greenfield, no TS counterpart). -->
     <Content Include="..\..\..\..\contracts\hris-fixtures\*.json">
       <Link>hris-fixtures\%(Filename)%(Extension)</Link>

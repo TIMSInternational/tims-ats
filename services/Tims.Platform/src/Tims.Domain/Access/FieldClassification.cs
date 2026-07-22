@@ -55,6 +55,21 @@ public static class FieldClassification
                 new("variablePay", [Super, Hr, Hrbp]),
                 new("bandId", [Super, Hr, Hrbp]),
             },
+
+            // salaryAdjustment — faithful port of classification.ts (Phase-5 Slice 9, listPendingAdjustments's
+            // selectFor). Declaration order = the TS object-key order. previousSalary/newSalary/currency/reason
+            // are restricted (super/hr ONLY); type is confidential (super/hr/hrbp); status is internal
+            // (super/hr/hrbp/leader/employee). A leader/employee caller thus NEVER receives the restricted
+            // salary fields — only status.
+            ["salaryAdjustment"] = new FieldRule[]
+            {
+                new("previousSalary", [Super, Hr]),
+                new("newSalary", [Super, Hr]),
+                new("currency", [Super, Hr]),
+                new("reason", [Super, Hr]),
+                new("type", [Super, Hr, Hrbp]),
+                new("status", [Super, Hr, Hrbp, Leader, Employee]),
+            },
         };
 
     // Non-sensitive structural anchors ALWAYS selected (never classified). Per select-for.ts:
@@ -65,6 +80,8 @@ public static class FieldClassification
             ["assessmentResult"] = ["id", "organizationId", "assignmentId"],
             // select-for.ts: employeeCompensation anchors on id, organizationId, userId.
             ["employeeCompensation"] = ["id", "organizationId", "userId"],
+            // select-for.ts: salaryAdjustment anchors on id, organizationId, userId.
+            ["salaryAdjustment"] = ["id", "organizationId", "userId"],
         };
 
     /// <summary>

@@ -13,6 +13,11 @@ import { suppressBelowMin5, aggregateGroups } from '../../packages/api/src/acces
 
 const ROOT = join(__dirname, '..', '..');
 const readComp = () => readFileSync(join(ROOT, 'packages/api/src/routers/compensation.ts'), 'utf8');
+// Phase-5 Slice 9 (compensation strangler): the compa-ratio min-5 distribution + benefits utilization are
+// now the pure @tims/shared kernels the router RETURNS (honest-fixture rule) + the C# port mirrors. The
+// min-5 guards that USED to live inline in the router now live in the kernel (and are golden-fixtured BOTH
+// stacks via contracts/compensation-fixtures), so the source tripwires read the kernel + assert delegation.
+const readCompKernel = () => readFileSync(join(ROOT, 'packages/shared/src/compensation.ts'), 'utf8');
 // The per-person employeeCompensation read (selectFor + FULL+AUDIT logDataAccess)
 // lives in the shared compensation.service.ts helper (getEmployeeCompForSubject),
 // reused by BOTH compensation.getEmployeeComp and compensation.myCompensation
@@ -287,22 +292,23 @@ describe('compa-ratio present-key cardinality (fix 2, round 7)', () => {
   // bucket keys) + null total + top-level suppressed:true. No keys ⇒ N + present-key
   // set can never pin a singleton bucket, and N − Σ visible has no operands.
   it('emits an empty distribution + null total + suppressed when the population OR any bucket is sub-floor', () => {
-    const src = readComp();
+    // The router now DELEGATES to the shared kernel (honest-fixture); the guards live in the kernel.
+    expect(readComp()).toMatch(/return buildCompaRatioDistribution\(/);
+    const src = readCompKernel();
     expect(src).toMatch(/const anyBucketSuppressed = Object\.values\(buckets\)\.some\(\(count\) => suppressBelowMin5\(count\)\.suppressed\)/);
     // round 13-14: floor on the positive-salary population + the non-positive complement
-    // (NOT compensations.length) so totalEmployees − compensatedEmployees can't recover the
-    // non-positive bucket.
+    // (NOT rows.length) so totalEmployees − compensatedEmployees can't recover the non-positive bucket.
     expect(src).toMatch(/suppressBelowMin5\(positiveCount\)\.suppressed/);
     expect(src).toMatch(/suppressBelowMin5\(nonPositiveCount\)\.suppressed/);
-    expect(src).toMatch(/return \{ distribution: distributionShape, avgCompaRatio, totalEmployees: null as number \| null, suppressed: true \}/);
+    expect(src).toMatch(/return \{ distribution: distributionShape, avgCompaRatio, totalEmployees: null, suppressed: true \}/);
     // totalEmployees on the non-suppressed path reports the canonical positive-salary count.
-    expect(src).toMatch(/totalEmployees: positiveCount as number \| null/);
+    expect(src).toMatch(/totalEmployees: positiveCount, suppressed: false/);
   });
 
   // avgCompaRatio floor (round 7, finding 1): floored on the NON-NULL ratio CONTRIBUTOR
-  // count, not the all-rows comp count.
+  // count, not the all-rows comp count. Now lives in the shared kernel.
   it('floors avgCompaRatio on the non-null compaRatio contributor count (ratios.length)', () => {
-    const src = readComp();
+    const src = readCompKernel();
     expect(src).toMatch(/ratios\.length && !suppressBelowMin5\(ratios\.length\)\.suppressed/);
   });
 

@@ -6,7 +6,7 @@ import type { Prisma } from '@tims/db';
 import { scopeWhereFor, assertScoped, assertSubjectInScope, requireOrgScope, suppressBelowMin5, logDataAccess, selectFor } from '../access';
 import { getEmployeeCompForSubject } from '../services/compensation.service';
 import { convertMoney, roundMoney, sumMoney } from '../lib/currency';
-import { normalizeCurrencyCode } from '@tims/shared';
+import { normalizeCurrencyCode, buildCompaRatioDistribution, buildBenefitsUtilization } from '@tims/shared';
 
 export const compensationRouter = router({
   // ── Salary Bands ───────────────────────────────────────────────────
@@ -153,87 +153,13 @@ export const compensationRouter = router({
         },
       });
 
-      const buckets: Record<string, number> = {
-        '<0.80': 0,
-        '0.80-0.90': 0,
-        '0.90-1.00': 0,
-        '1.00-1.10': 0,
-        '1.10-1.20': 0,
-        '>1.20': 0,
-      };
-
-      // Canonical positive-salary population (slice 6 round 13-14): compaRatio is null/0 for
-      // non-salaried rows, so the bucketed population is implicitly the positive-salary set.
-      // Bucket ONLY positive-salary rows so Σ buckets = positive-salary count = the canonical
-      // comp population (getDashboardKpis.compensatedEmployees / getTotalCompBreakdown.
-      // employeeCount). The non-positive complement is folded into the suppression trigger.
-      let positiveCount = 0;
-      for (const emp of compensations) {
-        const salary = Number(emp.currentSalary) || 0;
-        if (!(salary > 0)) continue;
-        positiveCount += 1;
-        const cr = Number(emp.compaRatio) || 0;
-        if (cr < 0.8) buckets['<0.80']++;
-        else if (cr < 0.9) buckets['0.80-0.90']++;
-        else if (cr < 1.0) buckets['0.90-1.00']++;
-        else if (cr < 1.1) buckets['1.00-1.10']++;
-        else if (cr < 1.2) buckets['1.10-1.20']++;
-        else buckets['>1.20']++;
-      }
-      // Non-positive-salary complement = all rows minus positive-salary rows.
-      const nonPositiveCount = compensations.length - positiveCount;
-
-      const ratios = compensations.map((e) => Number(e.compaRatio) || 0).filter(Boolean);
-      // avgCompaRatio floor (round 7, finding 1): avgCompaRatio is the MEAN of the
-      // NON-NULL/NON-ZERO compaRatio values (`ratios`), a DISTINCT and possibly smaller
-      // sub-population than `compensations` (all comp rows). The earlier guard floored on
-      // compensations.length, so 10 rows with 1 non-null ratio passed the guard and
-      // returned that one person's ratio. Floor on the CONTRIBUTOR count (ratios.length):
-      // null avgCompaRatio whenever 1..4 ratios contributed. (Mirrors getDashboardKpis,
-      // which floors avgCompaRatio on its own compaRatio population.) 0 → null.
-      const avgCompaRatio =
-        ratios.length && !suppressBelowMin5(ratios.length).suppressed
-          ? Math.round((ratios.reduce((a: number, b: number) => a + b, 0) / ratios.length) * 100) / 100
-          : null;
-
-      // Present-key cardinality (round 7): each compa-ratio bucket count is a head-count.
-      // When the comp population is 1..4 OR ANY bucket is below the floor, emit an EMPTY
-      // distribution (no bucket keys) + null total + top-level `suppressed: true`. This
-      // EXTENDS the prior tiny-N empty branch to fire on ANY suppressed bucket (not only
-      // population<5): emitting the keys — even count-nulled — leaks via cardinality
-      // (N present + present-key set pins singletons) and via N − Σ visible. No keys ⇒
-      // nothing recoverable. 0 passes through as a non-suppressed empty distribution.
-      const distributionShape: Record<string, { suppressed: boolean; count: number | null }> = {};
-      const anyBucketSuppressed = Object.values(buckets).some((count) => suppressBelowMin5(count).suppressed);
-      // Complementary-bucket guard (slice 6 round 13-14): fold the non-positive-salary
-      // complement into the trigger so a 1..4 non-positive bucket is never recoverable as
-      // `totalEmployees − compensatedEmployees`. Floor on the positive-salary population
-      // (the canonical comp count) rather than compensations.length, and report
-      // totalEmployees as that same positive-salary population below — so the two operands
-      // share ONE definition and subtraction collapses to 0. suppressBelowMin5(0) → safe.
-      if (
-        suppressBelowMin5(positiveCount).suppressed ||
-        suppressBelowMin5(nonPositiveCount).suppressed ||
-        anyBucketSuppressed
-      ) {
-        return { distribution: distributionShape, avgCompaRatio, totalEmployees: null as number | null, suppressed: true };
-      }
-
-      // Every bucket cleared the floor → publish counts with a uniform suppressed:false.
-      const distribution = Object.fromEntries(
-        Object.entries(buckets).map(([k, count]) => [k, { suppressed: false, count }]),
+      // The six-bucket min-5 compa-ratio distribution is now the SINGLE pure kernel the C# port mirrors
+      // (buildCompaRatioDistribution in @tims/shared, golden-fixtured both stacks). The router returns it
+      // verbatim — honest-fixture rule — preserving every anonymity guard (positive-salary bucketing,
+      // contributor-count avg floor, all-or-nothing empty distribution, totalEmployees == positiveCount).
+      return buildCompaRatioDistribution(
+        compensations.map((c) => ({ currentSalary: Number(c.currentSalary) || 0, compaRatio: c.compaRatio })),
       );
-
-      return {
-        distribution,
-        avgCompaRatio,
-        // Canonical positive-salary population (== getDashboardKpis.compensatedEmployees /
-        // getTotalCompBreakdown.employeeCount), NOT compensations.length. No cross-endpoint
-        // subtraction recovers the non-positive bucket because every comp count over this
-        // model now uses the same positive-salary definition.
-        totalEmployees: positiveCount as number | null,
-        suppressed: false,
-      };
     }),
 
   // ── Pay Equity ─────────────────────────────────────────────────────
@@ -324,15 +250,12 @@ export const compensationRouter = router({
         },
       });
 
-      return benefits.map((b) => ({
-        id: b.id,
-        name: b.name,
-        category: b.type,
-        enrolled: b._count.enrollments,
-        utilization: totalUsers
-          ? Math.round((b._count.enrollments / totalUsers) * 10000) / 100
-          : 0,
-      }));
+      // Per-plan utilization is now the pure buildBenefitsUtilization kernel (@tims/shared, golden-fixtured
+      // both stacks). The router returns it verbatim — honest-fixture rule. NO min-5 (deliberate).
+      return buildBenefitsUtilization(
+        benefits.map((b) => ({ id: b.id, name: b.name, category: b.type, enrolled: b._count.enrollments })),
+        totalUsers,
+      );
     }),
 
   // ── Adjustments ────────────────────────────────────────────────────

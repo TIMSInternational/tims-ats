@@ -6,4 +6,5 @@ export * from './mfa';
 export * from './reporting';
 export * from './team-intel';
 export * from './succession';
+export * from './compensation';
 export { logger, createTenantLogger } from './logger';

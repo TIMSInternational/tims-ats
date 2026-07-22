@@ -1,0 +1,40 @@
+{
+  "description": "Golden parity for compensation.getBenefitsUtilization: buildBenefitsUtilization(plans, totalUsers) in @tims/shared. Asserted IDENTICALLY by the REAL TS export (tests/compensation/benefits-utilization-fixtures.test.ts) and the C# Tims.Domain.Compensation.CompensationKernels.BuildBenefitsUtilization (Tims.UnitTests). Pins: utilization = round((enrolled/totalUsers)*10000)/100 JS half-UP; 0 when no users; input order preserved; NO min-5 suppression (deliberate — benefits enrollment is not in the sensitive-data matrix), so a sub-5 enrolled count passes through unsuppressed.",
+  "cases": [
+    {
+      "name": "half-up utilization 12.5->0.13 (NOT banker's 0.12); order preserved",
+      "input": {
+        "plans": [
+          { "id": "B1", "name": "Health", "category": "medical", "enrolled": 1 },
+          { "id": "B2", "name": "Dental", "category": "dental", "enrolled": 2 }
+        ],
+        "totalUsers": 800
+      },
+      "expected": [
+        { "id": "B1", "name": "Health", "category": "medical", "enrolled": 1, "utilization": 0.13 },
+        { "id": "B2", "name": "Dental", "category": "dental", "enrolled": 2, "utilization": 0.25 }
+      ]
+    },
+    {
+      "name": "no active users -> utilization 0 (no divide-by-zero)",
+      "input": {
+        "plans": [{ "id": "B1", "name": "Health", "category": "medical", "enrolled": 5 }],
+        "totalUsers": 0
+      },
+      "expected": [{ "id": "B1", "name": "Health", "category": "medical", "enrolled": 5, "utilization": 0 }]
+    },
+    {
+      "name": "empty plans -> empty array",
+      "input": { "plans": [], "totalUsers": 10 },
+      "expected": []
+    },
+    {
+      "name": "NO min-5: a sub-5 enrolled count (2) is NOT suppressed (deliberate); utilization 2.0",
+      "input": {
+        "plans": [{ "id": "B1", "name": "Vision", "category": "vision", "enrolled": 2 }],
+        "totalUsers": 100
+      },
+      "expected": [{ "id": "B1", "name": "Vision", "category": "vision", "enrolled": 2, "utilization": 2 }]
+    }
+  ]
+}

@@ -1,0 +1,159 @@
+{
+  "description": "Golden parity for compensation.getCompaRatioDistribution: buildCompaRatioDistribution(rows) in @tims/shared. Asserted IDENTICALLY by the REAL TS export (tests/compensation/compa-ratio-distribution-fixtures.test.ts) and the C# Tims.Domain.Compensation.CompensationKernels.BuildCompaRatioDistribution (Tims.UnitTests). Pins (each red-if-regressed): 6 fixed buckets over POSITIVE-salary rows only; avgCompaRatio = mean of NON-null/NON-zero compaRatio values floored on the CONTRIBUTOR count (ratios.length) JS half-UP 2-dec; all-or-nothing empty-distribution (NO keys) on any sub-floor bucket OR sub-floor positive/non-positive population; totalEmployees == positiveCount (NOT rows.length); 0 population -> non-suppressed empty distribution.",
+  "cases": [
+    {
+      "name": "happy path: half-up avgCompaRatio 100.5->1.01 (NOT banker's 1.00), all in 1.00-1.10 (>=5), non-suppressed",
+      "input": {
+        "rows": [
+          { "currentSalary": 80000, "compaRatio": 1.0 },
+          { "currentSalary": 80000, "compaRatio": 1.0 },
+          { "currentSalary": 80000, "compaRatio": 1.0 },
+          { "currentSalary": 80000, "compaRatio": 1.0 },
+          { "currentSalary": 80000, "compaRatio": 1.025 }
+        ]
+      },
+      "expected": {
+        "distribution": {
+          "<0.80": { "suppressed": false, "count": 0 },
+          "0.80-0.90": { "suppressed": false, "count": 0 },
+          "0.90-1.00": { "suppressed": false, "count": 0 },
+          "1.00-1.10": { "suppressed": false, "count": 5 },
+          "1.10-1.20": { "suppressed": false, "count": 0 },
+          ">1.20": { "suppressed": false, "count": 0 }
+        },
+        "avgCompaRatio": 1.01,
+        "totalEmployees": 5,
+        "suppressed": false
+      }
+    },
+    {
+      "name": "contributor-count floor: distribution PRESENT (bucket=5) but avgCompaRatio null (only 4 ratios contributed)",
+      "input": {
+        "rows": [
+          { "currentSalary": 80000, "compaRatio": 0.7 },
+          { "currentSalary": 80000, "compaRatio": 0.7 },
+          { "currentSalary": 80000, "compaRatio": 0.7 },
+          { "currentSalary": 80000, "compaRatio": 0.7 },
+          { "currentSalary": 80000, "compaRatio": null }
+        ]
+      },
+      "expected": {
+        "distribution": {
+          "<0.80": { "suppressed": false, "count": 5 },
+          "0.80-0.90": { "suppressed": false, "count": 0 },
+          "0.90-1.00": { "suppressed": false, "count": 0 },
+          "1.00-1.10": { "suppressed": false, "count": 0 },
+          "1.10-1.20": { "suppressed": false, "count": 0 },
+          ">1.20": { "suppressed": false, "count": 0 }
+        },
+        "avgCompaRatio": null,
+        "totalEmployees": 5,
+        "suppressed": false
+      }
+    },
+    {
+      "name": "any sub-floor bucket (1.00-1.10=2) collapses to empty distribution + null total; avgCompaRatio 0.98 still computed",
+      "input": {
+        "rows": [
+          { "currentSalary": 80000, "compaRatio": 0.95 },
+          { "currentSalary": 80000, "compaRatio": 0.95 },
+          { "currentSalary": 80000, "compaRatio": 0.95 },
+          { "currentSalary": 80000, "compaRatio": 0.95 },
+          { "currentSalary": 80000, "compaRatio": 0.95 },
+          { "currentSalary": 80000, "compaRatio": 1.05 },
+          { "currentSalary": 80000, "compaRatio": 1.05 }
+        ]
+      },
+      "expected": {
+        "distribution": {},
+        "avgCompaRatio": 0.98,
+        "totalEmployees": null,
+        "suppressed": true
+      }
+    },
+    {
+      "name": "sub-floor positive population (3) -> empty distribution + null total + null avg",
+      "input": {
+        "rows": [
+          { "currentSalary": 80000, "compaRatio": 0.95 },
+          { "currentSalary": 80000, "compaRatio": 0.95 },
+          { "currentSalary": 80000, "compaRatio": 0.95 }
+        ]
+      },
+      "expected": {
+        "distribution": {},
+        "avgCompaRatio": null,
+        "totalEmployees": null,
+        "suppressed": true
+      }
+    },
+    {
+      "name": "sub-floor NON-positive population (3) collapses to empty even though every bucket clears the floor; avg 0.95 still computed",
+      "input": {
+        "rows": [
+          { "currentSalary": 80000, "compaRatio": 0.95 },
+          { "currentSalary": 80000, "compaRatio": 0.95 },
+          { "currentSalary": 80000, "compaRatio": 0.95 },
+          { "currentSalary": 80000, "compaRatio": 0.95 },
+          { "currentSalary": 80000, "compaRatio": 0.95 },
+          { "currentSalary": 0, "compaRatio": null },
+          { "currentSalary": 0, "compaRatio": null },
+          { "currentSalary": 0, "compaRatio": null }
+        ]
+      },
+      "expected": {
+        "distribution": {},
+        "avgCompaRatio": 0.95,
+        "totalEmployees": null,
+        "suppressed": true
+      }
+    },
+    {
+      "name": "0 population -> NON-suppressed empty distribution (all six zero buckets), avg null, totalEmployees 0",
+      "input": { "rows": [] },
+      "expected": {
+        "distribution": {
+          "<0.80": { "suppressed": false, "count": 0 },
+          "0.80-0.90": { "suppressed": false, "count": 0 },
+          "0.90-1.00": { "suppressed": false, "count": 0 },
+          "1.00-1.10": { "suppressed": false, "count": 0 },
+          "1.10-1.20": { "suppressed": false, "count": 0 },
+          ">1.20": { "suppressed": false, "count": 0 }
+        },
+        "avgCompaRatio": null,
+        "totalEmployees": 0,
+        "suppressed": false
+      }
+    },
+    {
+      "name": "totalEmployees == positiveCount (5), NOT rows.length (10): 5 positive (all >=5 clear) + 5 non-positive both clear the floor",
+      "input": {
+        "rows": [
+          { "currentSalary": 80000, "compaRatio": 0.95 },
+          { "currentSalary": 80000, "compaRatio": 0.95 },
+          { "currentSalary": 80000, "compaRatio": 0.95 },
+          { "currentSalary": 80000, "compaRatio": 0.95 },
+          { "currentSalary": 80000, "compaRatio": 0.95 },
+          { "currentSalary": 0, "compaRatio": null },
+          { "currentSalary": 0, "compaRatio": null },
+          { "currentSalary": 0, "compaRatio": null },
+          { "currentSalary": 0, "compaRatio": null },
+          { "currentSalary": 0, "compaRatio": null }
+        ]
+      },
+      "expected": {
+        "distribution": {
+          "<0.80": { "suppressed": false, "count": 0 },
+          "0.80-0.90": { "suppressed": false, "count": 0 },
+          "0.90-1.00": { "suppressed": false, "count": 5 },
+          "1.00-1.10": { "suppressed": false, "count": 0 },
+          "1.10-1.20": { "suppressed": false, "count": 0 },
+          ">1.20": { "suppressed": false, "count": 0 }
+        },
+        "avgCompaRatio": 0.95,
+        "totalEmployees": 5,
+        "suppressed": false
+      }
+    }
+  ]
+}

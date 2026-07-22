@@ -14,6 +14,7 @@ using Serilog.Formatting.Compact;
 using StackExchange.Redis;
 using Tims.Api.Authentication;
 using Tims.Api.Billing;
+using Tims.Api.Compensation;
 using Tims.Api.Configuration;
 using Tims.Api.HealthChecks;
 using Tims.Api.RateLimiting;
@@ -26,6 +27,7 @@ using Tims.Api.Validation;
 using Tims.Application.Access;
 using Tims.Application.Audit;
 using Tims.Application.Billing;
+using Tims.Application.Compensation;
 using Tims.Application.Evaluation360;
 using Tims.Application.ExternalVendor;
 using Tims.Application.Identity;
@@ -39,6 +41,7 @@ using Tims.Domain.Identity;
 using Tims.Infrastructure.Access;
 using Tims.Infrastructure.Audit;
 using Tims.Infrastructure.Billing;
+using Tims.Infrastructure.Compensation;
 using Tims.Infrastructure.Evaluation360;
 using Tims.Infrastructure.ExternalVendor;
 using Tims.Infrastructure.Hris;
@@ -257,6 +260,17 @@ try
     builder.Services.AddDbContext<SuccessionReadDbContext>(options => options.UseNpgsql(databaseConnectionString));
     builder.Services.AddScoped<ISuccessionReadRepository, SuccessionReadRepository>();
     builder.Services.AddScoped<SuccessionReadUseCase>();
+
+    // Phase-5 Slice 9 (efcoreReadOnly): the FX-free compensation READ surface. Plain read-only context over the
+    // Prisma-OWNED salary_bands/employee_compensations/benefit_plans/benefit_enrollments (+ users) —
+    // salary_adjustments.type/.status + benefit_plans.type are plain Strings (NOT native enums), so no
+    // NpgsqlDataSource. Reads run UNDER TenantScope/RLS; getBenefitsUtilization/getCompaRatioDistribution apply
+    // the org-gate, listPendingAdjustments composes scopeWhereFor('salaryAdjustment') + selectFor field-auth,
+    // getEmployeeComp does assertSubjectInScope + selectFor, myCompensation is own-pinned. The field-authed reads
+    // audit exposed rows via IDataAccessAuditor (already registered). Dark unless CompensationReadEnabled.
+    builder.Services.AddDbContext<CompensationReadDbContext>(options => options.UseNpgsql(databaseConnectionString));
+    builder.Services.AddScoped<ICompensationReadRepository, CompensationReadRepository>();
+    builder.Services.AddScoped<CompensationReadUseCase>();
 
     builder.Services
         .AddOptions<StripeBillingOptions>()
@@ -494,6 +508,31 @@ try
 
             return Task.CompletedTask;
         });
+
+        // GET /compensation/my-compensation (myCompensation) returns the caller's field-authed comp DTO OR
+        // top-level `null` when they have no comp row — so its 200 body is NULLABLE. Produces<JsonObject>
+        // emits a non-null object schema; rewrite to oneOf:[{null},{object}] so a generated client models the
+        // legitimate `200 null` (review/Codex F4). The DTO is a dynamic field-authed object (no named ref).
+        options.AddOperationTransformer((operation, context, _) =>
+        {
+            if (context.Description.RelativePath == "compensation/my-compensation"
+                && operation.Responses is not null
+                && operation.Responses.TryGetValue("200", out var ok)
+                && ok.Content is not null
+                && ok.Content.TryGetValue("application/json", out var media))
+            {
+                media.Schema = new Microsoft.OpenApi.OpenApiSchema
+                {
+                    OneOf =
+                    [
+                        new Microsoft.OpenApi.OpenApiSchema { Type = Microsoft.OpenApi.JsonSchemaType.Null },
+                        new Microsoft.OpenApi.OpenApiSchema { Type = Microsoft.OpenApi.JsonSchemaType.Object },
+                    ],
+                };
+            }
+
+            return Task.CompletedTask;
+        });
     });
 
     var app = builder.Build();
@@ -665,6 +704,17 @@ try
     if (externalOptions.SuccessionReadEnabled || isOpenApiDocGeneration)
     {
         app.MapSuccessionReadEndpoints();
+    }
+
+    // Compensation READ surface (Phase-5 Slice 9, FX-free subset): the seven FX-free compensation reads
+    // (/compensation/*). Staff-JWT + compensation:read. getSalaryBands/getMarketComparison are grant-only;
+    // getBenefitsUtilization/getCompaRatioDistribution apply the org-gate (F3); listPendingAdjustments composes
+    // scopeWhereFor('salaryAdjustment') + selectFor + fail-closed audit; getEmployeeComp does assertSubjectInScope
+    // + selectFor + audit; myCompensation is own-pinned. The five FX reads + two writes stay on TS. Dark unless the
+    // flag is on (deploy-gated cutover; TS stays the sole active reader until Federico flips it).
+    if (externalOptions.CompensationReadEnabled || isOpenApiDocGeneration)
+    {
+        app.MapCompensationReadEndpoints();
     }
 
     // Authz probe (WP2.5): the C# equivalent of the tRPC `requirePermission` gate. Resolves the

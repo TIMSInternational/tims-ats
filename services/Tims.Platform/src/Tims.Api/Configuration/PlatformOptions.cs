@@ -173,4 +173,18 @@ public sealed class PlatformOptions
     /// false (dark) — TS remains the single active reader until Federico flips it at canary (deploy-gated cutover).
     /// </summary>
     public bool SuccessionReadEnabled { get; init; }
+
+    /// <summary>
+    /// Phase-5 Slice 9 (efcoreReadOnly): when true, the C# FX-free compensation READ surface is mapped and live
+    /// — <c>GET /compensation/salary-bands</c>, <c>/compensation/market-comparison</c>,
+    /// <c>/compensation/benefits-utilization</c>, <c>/compensation/compa-ratio-distribution</c>,
+    /// <c>/compensation/pending-adjustments</c>, <c>/compensation/employee/{userId}</c>,
+    /// <c>/compensation/my-compensation</c>. Staff-JWT + <c>compensation:read</c>: salary-bands/market-comparison
+    /// are grant-only; benefits-utilization/compa-ratio-distribution apply the org-gate (Codex F3);
+    /// pending-adjustments composes <c>scopeWhereFor('salaryAdjustment')</c> + <c>selectFor</c> field-auth +
+    /// fail-closed audit; employee/{userId} does <c>assertSubjectInScope</c> (out-of-set → 403) + selectFor +
+    /// audit; my-compensation is own-pinned (subject = caller). The five FX reads + two writes stay on TS. DEFAULT
+    /// false (dark) — TS remains the single active reader until Federico flips it at canary (deploy-gated cutover).
+    /// </summary>
+    public bool CompensationReadEnabled { get; init; }
 }

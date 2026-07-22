@@ -112,6 +112,69 @@
       "roles": ["employee"],
       "entity": "employeeCompensation",
       "expected": ["id", "organizationId", "userId", "currentSalary", "currency", "effectiveDate"]
+    },
+    {
+      "name": "fieldsVisibleTo super_admin salaryAdjustment → all six (previous/new/currency/reason + type + status)",
+      "kind": "fieldsVisibleTo",
+      "roles": ["super_admin"],
+      "entity": "salaryAdjustment",
+      "expected": ["previousSalary", "newSalary", "currency", "reason", "type", "status"]
+    },
+    {
+      "name": "fieldsVisibleTo hr_admin salaryAdjustment → all six",
+      "kind": "fieldsVisibleTo",
+      "roles": ["hr_admin"],
+      "entity": "salaryAdjustment",
+      "expected": ["previousSalary", "newSalary", "currency", "reason", "type", "status"]
+    },
+    {
+      "name": "fieldsVisibleTo hrbp salaryAdjustment → type + status only (no restricted salary fields)",
+      "kind": "fieldsVisibleTo",
+      "roles": ["hrbp"],
+      "entity": "salaryAdjustment",
+      "expected": ["type", "status"]
+    },
+    {
+      "name": "fieldsVisibleTo leader salaryAdjustment → status ONLY (bite: NO previousSalary/newSalary/reason)",
+      "kind": "fieldsVisibleTo",
+      "roles": ["leader"],
+      "entity": "salaryAdjustment",
+      "expected": ["status"]
+    },
+    {
+      "name": "fieldsVisibleTo employee salaryAdjustment → status ONLY (bite: NO previousSalary/newSalary/reason)",
+      "kind": "fieldsVisibleTo",
+      "roles": ["employee"],
+      "entity": "salaryAdjustment",
+      "expected": ["status"]
+    },
+    {
+      "name": "fieldsVisibleTo recruiter salaryAdjustment → none (not an adjustment reader)",
+      "kind": "fieldsVisibleTo",
+      "roles": ["recruiter"],
+      "entity": "salaryAdjustment",
+      "expected": []
+    },
+    {
+      "name": "selectFor hr_admin salaryAdjustment → anchors + all six",
+      "kind": "selectFor",
+      "roles": ["hr_admin"],
+      "entity": "salaryAdjustment",
+      "expected": ["id", "organizationId", "userId", "previousSalary", "newSalary", "currency", "reason", "type", "status"]
+    },
+    {
+      "name": "selectFor leader salaryAdjustment → anchors + status ONLY (bite: never the restricted salary fields)",
+      "kind": "selectFor",
+      "roles": ["leader"],
+      "entity": "salaryAdjustment",
+      "expected": ["id", "organizationId", "userId", "status"]
+    },
+    {
+      "name": "selectFor employee salaryAdjustment → anchors + status ONLY (bite)",
+      "kind": "selectFor",
+      "roles": ["employee"],
+      "entity": "salaryAdjustment",
+      "expected": ["id", "organizationId", "userId", "status"]
     }
   ]
 }
