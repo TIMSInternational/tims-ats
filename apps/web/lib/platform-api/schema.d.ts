@@ -468,6 +468,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/evaluation360/cycles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["Evaluation360ListCycles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/evaluation360/cycles/{cycleId}/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["Evaluation360GetCycleProgress"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/evaluation360/my/rater-tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["Evaluation360MyRaterTasks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/evaluation360/my/reports/{cycleId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["Evaluation360MyReport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/evaluation360/my/report-cycles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["Evaluation360MyReportCycles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/require-permission/{module}/{action}": {
         parameters: {
             query?: never;
@@ -524,6 +604,35 @@ export interface components {
         };
         CheckoutSessionBody: {
             plan: string;
+        };
+        CompetencyAverage: {
+            competencyKey: string;
+            /** Format: double */
+            average: number | string;
+        };
+        CycleProgressRow: {
+            relationship: string;
+            /** Format: int32 */
+            total: number | string;
+            /** Format: int32 */
+            submitted: number | string;
+        };
+        CycleProgressView: {
+            cycleId: string;
+            progress: components["schemas"]["CycleProgressRow"][];
+        };
+        CycleSummaryV1: {
+            id: string;
+            name: string;
+            status: string;
+            /** Format: date-time */
+            opensAt: unknown;
+            /** Format: date-time */
+            closesAt: unknown;
+            /** Format: date-time */
+            publishedAt: unknown;
+            /** Format: date-time */
+            createdAt: unknown;
         };
         DashboardKpiView: {
             /** Format: int32 */
@@ -662,6 +771,23 @@ export interface components {
             total: number | string;
             items: components["schemas"]["LostByDelayItem"][];
         };
+        MyReportView: {
+            cycleId: string;
+            cycleName: string;
+            buckets: components["schemas"]["ReportBucket"][];
+        };
+        RaterTaskSubject: {
+            firstName: string;
+            lastName: string;
+        };
+        RaterTaskV1: {
+            assignmentId: string;
+            cycleId: string;
+            cycleName: string;
+            relationship: string;
+            subject: components["schemas"]["RaterTaskSubject"];
+            competencies: string[];
+        };
         RecruiterSlaRow: {
             name: string;
             /** Format: int32 */
@@ -672,6 +798,19 @@ export interface components {
             avgTtfDays: null | number | string;
             /** Format: int32 */
             slaCompliancePct: null | number | string;
+        };
+        ReportBucket: {
+            relationship: string;
+            /** Format: int32 */
+            raterCount: number | string;
+            competencies: components["schemas"]["CompetencyAverage"][];
+            comments: null | string[];
+        };
+        ReportCycleV1: {
+            cycleId: string;
+            cycleName: string;
+            /** Format: date-time */
+            publishedAt: unknown;
         };
         SourceBreakdownItem: {
             source: string;
@@ -2043,6 +2182,173 @@ export interface operations {
             };
             /** @description Forbidden */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    Evaluation360ListCycles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CycleSummaryV1"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    Evaluation360GetCycleProgress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cycleId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CycleProgressView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    Evaluation360MyRaterTasks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RaterTaskV1"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    Evaluation360MyReport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cycleId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyReportView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    Evaluation360MyReportCycles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportCycleV1"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

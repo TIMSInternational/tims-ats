@@ -74,16 +74,35 @@ function buildQueryString(query: QueryParams | undefined): string {
   return pairs.length > 0 ? `?${pairs.join('&')}` : '';
 }
 
+// Optional path parameters for templated paths (e.g. `/evaluation360/cycles/{cycleId}/progress`).
+// Each `{name}` token in the path template is substituted with the matching URL-encoded value
+// before the request goes out, while the response type stays keyed to the literal template path.
+// Param-less callers (team-intel / reporting / billing) pass nothing — their behavior is unchanged.
+type PathParams = Record<string, string>;
+
+function applyPathParams(path: string, params: PathParams | undefined): string {
+  if (!params) return path;
+  return path.replace(/\{([^}]+)\}/g, (_match, key: string) => {
+    const value = params[key];
+    if (value === undefined) {
+      throw new Error(`Platform API path parameter "${key}" is missing.`);
+    }
+    return encodeURIComponent(value);
+  });
+}
+
 /**
  * Typed GET against the C# Platform service. Path + response are typed from the
  * committed OpenAPI contract (lib/platform-api/schema.d.ts). Attaches a Bearer token
  * (Supabase session) and Accept: application/json, throws {@link PlatformApiError} on
  * non-2xx, and parses the JSON body. Optional {@link QueryParams} are appended as a
- * query string (undefined entries omitted).
+ * query string (undefined entries omitted). Optional {@link PathParams} substitute any
+ * `{name}` token in a templated path before the request is sent.
  */
 export async function platformGet<P extends GetPaths>(
   path: P,
   query?: QueryParams,
+  pathParams?: PathParams,
 ): Promise<GetJsonResponse<P>> {
   if (!isPlatformApiEnabled()) {
     throw new Error('Platform API is disabled: NEXT_PUBLIC_TIMS_PLATFORM_API_URL is unset.');
@@ -94,7 +113,8 @@ export async function platformGet<P extends GetPaths>(
   if (token) headers.Authorization = `Bearer ${token}`;
 
   const base = PLATFORM_API_URL!.replace(/\/+$/, '');
-  const response = await fetch(`${base}${path}${buildQueryString(query)}`, {
+  const resolvedPath = applyPathParams(path, pathParams);
+  const response = await fetch(`${base}${resolvedPath}${buildQueryString(query)}`, {
     method: 'GET',
     headers,
     credentials: 'omit',

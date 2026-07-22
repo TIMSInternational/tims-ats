@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { trpc } from '../../../../lib/trpc';
+import { useEvaluation360ListCycles } from '../../../../lib/platform-api/evaluation360';
 import { useI18n } from '../../../../lib/i18n';
 import { ErrorState } from '../../../../components';
 import { CreateCycleForm } from './create-cycle-form';
@@ -14,7 +14,7 @@ export default function Evaluation360Page() {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [managingCycleId, setManagingCycleId] = useState<string | null>(null);
 
-  const cycles = trpc.evaluation360.listCycles.useQuery();
+  const cycles = useEvaluation360ListCycles();
 
   const toggleManage = (cycleId: string) => {
     setManagingCycleId((prev) => (prev === cycleId ? null : cycleId));

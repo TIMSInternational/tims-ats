@@ -1,6 +1,6 @@
 'use client';
 
-import { trpc } from '../../../lib/trpc';
+import { useEvaluation360MyRaterTasks } from '../../../lib/platform-api/evaluation360';
 import { useI18n } from '../../../lib/i18n';
 import { Skeleton, ErrorState, EmptyState } from '../../../components';
 import { RaterTaskCard } from './rater-task-card';
@@ -9,7 +9,7 @@ import { RaterTaskCard } from './rater-task-card';
  * rater (evaluation360.myRaterTasks), one RaterTaskCard per assignment. */
 export function MyTasksSection() {
   const { t } = useI18n();
-  const tasks = trpc.evaluation360.myRaterTasks.useQuery();
+  const tasks = useEvaluation360MyRaterTasks();
 
   return (
     <section>

@@ -1,6 +1,6 @@
 'use client';
 
-import { trpc } from '../../../lib/trpc';
+import { useEvaluation360MyReport } from '../../../lib/platform-api/evaluation360';
 import { useI18n } from '../../../lib/i18n';
 import { Skeleton, ErrorState } from '../../../components';
 import { ReportBucketCard } from './report-bucket-card';
@@ -15,7 +15,7 @@ interface CycleReportCardProps {
  * report contents. */
 export function CycleReportCard({ cycleId }: CycleReportCardProps) {
   const { t } = useI18n();
-  const report = trpc.evaluation360.myReport.useQuery({ cycleId });
+  const report = useEvaluation360MyReport(cycleId);
 
   return (
     <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">

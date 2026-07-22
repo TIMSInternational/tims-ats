@@ -1,6 +1,6 @@
 'use client';
 
-import { trpc } from '../../../lib/trpc';
+import { useEvaluation360MyReportCycles } from '../../../lib/platform-api/evaluation360';
 import { useI18n } from '../../../lib/i18n';
 import { Skeleton, ErrorState, EmptyState } from '../../../components';
 import { CycleReportCard } from './cycle-report-card';
@@ -20,7 +20,7 @@ import { CycleReportCard } from './cycle-report-card';
  */
 export function MyReportSection() {
   const { t } = useI18n();
-  const cycles = trpc.evaluation360.myReportCycles.useQuery();
+  const cycles = useEvaluation360MyReportCycles();
 
   return (
     <section>

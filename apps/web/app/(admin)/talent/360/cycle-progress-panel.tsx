@@ -1,6 +1,6 @@
 'use client';
 
-import { trpc } from '../../../../lib/trpc';
+import { useEvaluation360CycleProgress } from '../../../../lib/platform-api/evaluation360';
 import { useI18n } from '../../../../lib/i18n';
 import { Skeleton, ErrorState } from '../../../../components';
 
@@ -14,7 +14,7 @@ interface CycleProgressPanelProps {
  * myReport's per-competency RATINGS, not raw assignment completion counts). */
 export function CycleProgressPanel({ cycleId }: CycleProgressPanelProps) {
   const { t } = useI18n();
-  const progress = trpc.evaluation360.getCycleProgress.useQuery({ cycleId });
+  const progress = useEvaluation360CycleProgress(cycleId);
 
   return (
     <div>

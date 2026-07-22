@@ -1,0 +1,15 @@
+# TIMS ATS gitleaks config. Extends the full default ruleset (useDefault = true) — this ADDS
+# nothing-detected exceptions only; it never disables a default rule. Keep exceptions tight.
+title = "TIMS ATS gitleaks"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Known non-secret false positives"
+# The generic-api-key ENTROPY rule flags alphanumeric domain-name tokens that contain digits
+# (e.g. the React Query key segment / OpenAPI path token 'evaluation360' in the platform-api FE
+# cutover client). These are domain identifiers, not secrets. Matched against the finding's secret.
+regexes = [
+  '''^evaluation360$''',
+]

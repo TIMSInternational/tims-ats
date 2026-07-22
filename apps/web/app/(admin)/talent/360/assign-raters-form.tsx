@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { RATER_RELATIONSHIPS, type RaterRelationshipValue } from '@tims/shared';
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
@@ -22,6 +23,7 @@ interface AssignRatersFormProps {
 export function AssignRatersForm({ cycleId }: AssignRatersFormProps) {
   const { t } = useI18n();
   const utils = trpc.useUtils();
+  const queryClient = useQueryClient();
 
   const [subject, setSubject] = useState<PickedUser | null>(null);
   const [rows, setRows] = useState<RaterRow[]>([]);
@@ -30,7 +32,13 @@ export function AssignRatersForm({ cycleId }: AssignRatersFormProps) {
   const assignRaters = trpc.evaluation360.assignRaters.useMutation({
     onSuccess: () => {
       toast(t.evaluation360.assignSuccess, { type: 'success' });
+      // Refresh getCycleProgress from BOTH read paths: the tRPC cache and — when the C# read
+      // cutover is live (NEXT_PUBLIC_EVALUATION360_READ_VIA_CSHARP) — the platform-api query key,
+      // which the tRPC invalidate does not reach. Harmless (no-op key) while dark.
       utils.evaluation360.getCycleProgress.invalidate({ cycleId });
+      queryClient.invalidateQueries({
+        queryKey: ['platform-api', 'evaluation360', 'cycle-progress', cycleId],
+      });
       setRows([]);
     },
     onError: (err) => toast(err.message, { type: 'error' }),

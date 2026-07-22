@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { EVAL360_COMPETENCIES } from '@tims/shared';
 import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
@@ -22,6 +23,7 @@ interface RaterTaskCardProps {
 export function RaterTaskCard({ task }: RaterTaskCardProps) {
   const { t } = useI18n();
   const utils = trpc.useUtils();
+  const queryClient = useQueryClient();
 
   const [ratings, setRatings] = useState<Record<CompetencyKey, number>>(
     () => Object.fromEntries(EVAL360_COMPETENCIES.map((c) => [c, DEFAULT_RATING])) as Record<CompetencyKey, number>,
@@ -31,7 +33,11 @@ export function RaterTaskCard({ task }: RaterTaskCardProps) {
   const submit = trpc.evaluation360.submitRatings.useMutation({
     onSuccess: () => {
       toast(t.my360.submitSuccess, { type: 'success' });
+      // Refresh myRaterTasks from BOTH read paths: the tRPC cache and — when the C# read cutover is
+      // live (NEXT_PUBLIC_EVALUATION360_READ_VIA_CSHARP) — the platform-api query key, which the
+      // tRPC invalidate does not reach. Harmless (no-op key) while dark.
       utils.evaluation360.myRaterTasks.invalidate();
+      queryClient.invalidateQueries({ queryKey: ['platform-api', 'evaluation360', 'my-rater-tasks'] });
     },
     onError: (err) => toast(err.message, { type: 'error' }),
   });

@@ -1,5 +1,6 @@
 'use client';
 
+import { useQueryClient } from '@tanstack/react-query';
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
@@ -26,6 +27,7 @@ interface CycleRowProps {
 export function CycleRow({ cycle, isManaging, onManage }: CycleRowProps) {
   const { t } = useI18n();
   const utils = trpc.useUtils();
+  const queryClient = useQueryClient();
 
   const statusMap = {
     draft: { cls: STATUS_CLASSES.draft, label: t.evaluation360.statusLabels.draft },
@@ -34,7 +36,13 @@ export function CycleRow({ cycle, isManaging, onManage }: CycleRowProps) {
     published: { cls: STATUS_CLASSES.published, label: t.evaluation360.statusLabels.published },
   };
 
-  const invalidate = () => utils.evaluation360.listCycles.invalidate();
+  // Refresh listCycles from BOTH read paths: the tRPC cache and — when the C# read cutover is live
+  // (NEXT_PUBLIC_EVALUATION360_READ_VIA_CSHARP) — the platform-api query key, which the tRPC
+  // invalidate does not reach. Harmless (no-op key) while dark.
+  const invalidate = () => {
+    utils.evaluation360.listCycles.invalidate();
+    queryClient.invalidateQueries({ queryKey: ['platform-api', 'evaluation360', 'cycles'] });
+  };
 
   const openCycle = trpc.evaluation360.openCycle.useMutation({
     onSuccess: () => { toast(t.evaluation360.cycleOpened, { type: 'success' }); invalidate(); },

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
@@ -12,12 +13,17 @@ interface CreateCycleFormProps {
 export function CreateCycleForm({ onClose }: CreateCycleFormProps) {
   const { t } = useI18n();
   const utils = trpc.useUtils();
+  const queryClient = useQueryClient();
   const [name, setName] = useState('');
 
   const create = trpc.evaluation360.createCycle.useMutation({
     onSuccess: () => {
       toast(t.evaluation360.cycleCreated, { type: 'success' });
+      // Refresh listCycles from BOTH read paths: the tRPC cache and — when the C# read cutover is
+      // live (NEXT_PUBLIC_EVALUATION360_READ_VIA_CSHARP) — the platform-api query key, which the
+      // tRPC invalidate does not reach. Harmless (no-op key) while dark.
       utils.evaluation360.listCycles.invalidate();
+      queryClient.invalidateQueries({ queryKey: ['platform-api', 'evaluation360', 'cycles'] });
       setName('');
       onClose();
     },
