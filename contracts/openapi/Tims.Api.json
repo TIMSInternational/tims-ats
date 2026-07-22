@@ -1003,6 +1003,164 @@
         }
       }
     },
+    "/evaluation360/cycles": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "Evaluation360ListCycles",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CycleSummaryV1"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/evaluation360/cycles/{cycleId}/progress": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "Evaluation360GetCycleProgress",
+        "parameters": [
+          {
+            "name": "cycleId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CycleProgressView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/evaluation360/my/rater-tasks": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "Evaluation360MyRaterTasks",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RaterTaskV1"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/evaluation360/my/reports/{cycleId}": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "Evaluation360MyReport",
+        "parameters": [
+          {
+            "name": "cycleId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyReportView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/evaluation360/my/report-cycles": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "Evaluation360MyReportCycles",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ReportCycleV1"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/require-permission/{module}/{action}": {
       "get": {
         "tags": [
@@ -1152,6 +1310,108 @@
         "properties": {
           "plan": {
             "type": "string"
+          }
+        }
+      },
+      "CompetencyAverage": {
+        "required": [
+          "competencyKey",
+          "average"
+        ],
+        "type": "object",
+        "properties": {
+          "competencyKey": {
+            "type": "string"
+          },
+          "average": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          }
+        }
+      },
+      "CycleProgressRow": {
+        "required": [
+          "relationship",
+          "total",
+          "submitted"
+        ],
+        "type": "object",
+        "properties": {
+          "relationship": {
+            "type": "string"
+          },
+          "total": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "submitted": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "CycleProgressView": {
+        "required": [
+          "cycleId",
+          "progress"
+        ],
+        "type": "object",
+        "properties": {
+          "cycleId": {
+            "type": "string"
+          },
+          "progress": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CycleProgressRow"
+            }
+          }
+        }
+      },
+      "CycleSummaryV1": {
+        "required": [
+          "id",
+          "name",
+          "status",
+          "opensAt",
+          "closesAt",
+          "publishedAt",
+          "createdAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "opensAt": {
+            "format": "date-time"
+          },
+          "closesAt": {
+            "format": "date-time"
+          },
+          "publishedAt": {
+            "format": "date-time"
+          },
+          "createdAt": {
+            "format": "date-time"
           }
         }
       },
@@ -1742,6 +2002,77 @@
           }
         }
       },
+      "MyReportView": {
+        "required": [
+          "cycleId",
+          "cycleName",
+          "buckets"
+        ],
+        "type": "object",
+        "properties": {
+          "cycleId": {
+            "type": "string"
+          },
+          "cycleName": {
+            "type": "string"
+          },
+          "buckets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReportBucket"
+            }
+          }
+        }
+      },
+      "RaterTaskSubject": {
+        "required": [
+          "firstName",
+          "lastName"
+        ],
+        "type": "object",
+        "properties": {
+          "firstName": {
+            "type": "string"
+          },
+          "lastName": {
+            "type": "string"
+          }
+        }
+      },
+      "RaterTaskV1": {
+        "required": [
+          "assignmentId",
+          "cycleId",
+          "cycleName",
+          "relationship",
+          "subject",
+          "competencies"
+        ],
+        "type": "object",
+        "properties": {
+          "assignmentId": {
+            "type": "string"
+          },
+          "cycleId": {
+            "type": "string"
+          },
+          "cycleName": {
+            "type": "string"
+          },
+          "relationship": {
+            "type": "string"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/RaterTaskSubject"
+          },
+          "competencies": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
       "RecruiterSlaRow": {
         "required": [
           "name",
@@ -1788,6 +2119,62 @@
               "string"
             ],
             "format": "int32"
+          }
+        }
+      },
+      "ReportBucket": {
+        "required": [
+          "relationship",
+          "raterCount",
+          "competencies",
+          "comments"
+        ],
+        "type": "object",
+        "properties": {
+          "relationship": {
+            "type": "string"
+          },
+          "raterCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "competencies": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CompetencyAverage"
+            }
+          },
+          "comments": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ReportCycleV1": {
+        "required": [
+          "cycleId",
+          "cycleName",
+          "publishedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "cycleId": {
+            "type": "string"
+          },
+          "cycleName": {
+            "type": "string"
+          },
+          "publishedAt": {
+            "format": "date-time"
           }
         }
       },

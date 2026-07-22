@@ -17,6 +17,7 @@ using Tims.Api.Billing;
 using Tims.Api.Configuration;
 using Tims.Api.HealthChecks;
 using Tims.Api.RateLimiting;
+using Tims.Api.Evaluation360;
 using Tims.Api.ExternalVendor;
 using Tims.Api.Reporting;
 using Tims.Api.TeamIntel;
@@ -24,6 +25,7 @@ using Tims.Api.Validation;
 using Tims.Application.Access;
 using Tims.Application.Audit;
 using Tims.Application.Billing;
+using Tims.Application.Evaluation360;
 using Tims.Application.ExternalVendor;
 using Tims.Application.Identity;
 using Tims.Application.Reporting;
@@ -35,6 +37,7 @@ using Tims.Domain.Identity;
 using Tims.Infrastructure.Access;
 using Tims.Infrastructure.Audit;
 using Tims.Infrastructure.Billing;
+using Tims.Infrastructure.Evaluation360;
 using Tims.Infrastructure.ExternalVendor;
 using Tims.Infrastructure.Hris;
 using Tims.Infrastructure.Identity;
@@ -223,6 +226,23 @@ try
     builder.Services.AddDbContext<TeamIntelReadDbContext>(options => options.UseNpgsql(databaseConnectionString));
     builder.Services.AddScoped<ITeamIntelReadRepository, TeamIntelReadRepository>();
     builder.Services.AddScoped<TeamIntelReadUseCase>();
+
+    // Phase-5 Slice 7 (efcoreReadOnly): the evaluation360 READ surface. Unlike the reporting/team-intel reads,
+    // the review_cycles.status / rater_assignments.relationship / rater_assignments.status columns are NATIVE
+    // Prisma enums that this surface FILTERS on (status='pending', cycle.status='open', status='published',
+    // status='submitted') — Postgres has no implicit enum=text operator — so a dedicated data source maps them
+    // to CLR enums (isolated behind a holder like the billing contexts, so the mappings never bleed into other
+    // string-based contexts). Reads run UNDER TenantScope/RLS; the self-service reads ALSO hard-filter on the
+    // resolved caller's user id. The myReport aggregation reuses the shared Eval360Aggregate min-3 kernel. Dark
+    // unless Evaluation360ReadEnabled (deploy-gated cutover; TS stays the sole active reader until Federico flips it).
+    builder.Services.AddSingleton(_ =>
+        new Evaluation360ReadDataSourceHolder(Evaluation360ReadDataSource.Build(databaseConnectionString ?? string.Empty)));
+    builder.Services.AddDbContext<Evaluation360ReadDbContext>((sp, options) =>
+        options.UseNpgsql(
+            sp.GetRequiredService<Evaluation360ReadDataSourceHolder>().DataSource,
+            Evaluation360ReadDataSource.MapEnums));
+    builder.Services.AddScoped<IEvaluation360ReadRepository, Evaluation360ReadRepository>();
+    builder.Services.AddScoped<Evaluation360ReadUseCase>();
 
     builder.Services
         .AddOptions<StripeBillingOptions>()
@@ -611,6 +631,16 @@ try
     if (externalOptions.TeamIntelReadEnabled || isOpenApiDocGeneration)
     {
         app.MapTeamIntelReadEndpoints();
+    }
+
+    // Evaluation360 READ surface (Phase-5 Slice 7): GET /evaluation360/cycles + /cycles/{id}/progress (STAFF:
+    // evaluation360:read + organization/company org-gate, Codex F3), and /evaluation360/my/rater-tasks,
+    // /my/reports/{cycleId}, /my/report-cycles (SELF-SERVICE: identity-anchored — any resolved principal, NO
+    // grant, NO scope — hard-filtered on the caller's own user id). Dark unless the flag is on (deploy-gated
+    // cutover; TS stays the sole active reader until Federico flips it).
+    if (externalOptions.Evaluation360ReadEnabled || isOpenApiDocGeneration)
+    {
+        app.MapEvaluation360ReadEndpoints();
     }
 
     // Authz probe (WP2.5): the C# equivalent of the tRPC `requirePermission` gate. Resolves the

@@ -149,4 +149,15 @@ public sealed class PlatformOptions
     /// reader until cutover.
     /// </summary>
     public bool TeamIntelReadEnabled { get; init; }
+
+    /// <summary>
+    /// Phase-5 Slice 7 (efcoreReadOnly): when true, the C# evaluation360 READ surface is mapped and live —
+    /// <c>GET /evaluation360/cycles</c> + <c>/evaluation360/cycles/{id}/progress</c> (STAFF:
+    /// <c>evaluation360:read</c> + organization/company org-gate), and <c>GET /evaluation360/my/rater-tasks</c>,
+    /// <c>/evaluation360/my/reports/{cycleId}</c>, <c>/evaluation360/my/report-cycles</c> (SELF-SERVICE: identity
+    /// only — any resolved principal, NO grant, NO scope — hard-filtered on the caller's own user id). The
+    /// <c>myReport</c> aggregation reuses the shared <c>Eval360Aggregate</c> min-3 anonymity kernel. DEFAULT false
+    /// (dark) — TS remains the single active reader until Federico flips it at canary (deploy-gated cutover).
+    /// </summary>
+    public bool Evaluation360ReadEnabled { get; init; }
 }
