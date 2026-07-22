@@ -1,6 +1,6 @@
 'use client';
 
-import { trpc } from '../../../lib/trpc';
+import { useCompensationMyCompensation } from '../../../lib/platform-api/compensation';
 import { useI18n } from '../../../lib/i18n';
 import { EmptyState, Skeleton } from '../../../components';
 import { LoadError } from './load-error';
@@ -27,7 +27,7 @@ function FieldRow({ label, value }: { label: string; value: string }) {
 export function EmployeeCompensation() {
   const { t } = useI18n();
   const e = t.employeeHome;
-  const comp = trpc.compensation.myCompensation.useQuery();
+  const comp = useCompensationMyCompensation();
   const data = comp.data;
 
   const rows: { label: string; value: string }[] = [];

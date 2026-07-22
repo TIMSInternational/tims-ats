@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
 import { toast } from '../../../lib/toast';
@@ -18,6 +19,7 @@ const MAX_COMMENT = 500;
 export function ApproveAdjustmentModal({ adjustmentId, employeeName, mode, onClose }: ApproveAdjustmentModalProps) {
   const { t } = useI18n();
   const utils = trpc.useUtils();
+  const queryClient = useQueryClient();
 
   const [comment, setComment] = useState('');
 
@@ -28,6 +30,9 @@ export function ApproveAdjustmentModal({ adjustmentId, employeeName, mode, onClo
       utils.compensation.getBandDistribution.invalidate();
       utils.compensation.getCompaRatioDistribution.invalidate();
       utils.compensation.getTotalCompBreakdown.invalidate();
+      // Cutover parity: refresh the C# platform-api compensation reads (pending-adjustments,
+      // compa-ratio-distribution) so a flag-on cache stays coherent. No-op under tRPC.
+      queryClient.invalidateQueries({ queryKey: ['platform-api', 'compensation'] });
       toast(mode === 'approve' ? t.compensation.approveSuccess : t.compensation.rejectSuccess, { type: 'success' });
       onClose();
     },

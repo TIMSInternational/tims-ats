@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { trpc } from '../../../../lib/trpc';
 import {
   useSuccessionDashboardKpis,
   useSuccessionCriticalRoles,
@@ -10,6 +9,7 @@ import {
   useSuccessionRolesWithoutSuccessor,
   useSuccessionCompGapAlerts,
 } from '../../../../lib/platform-api/succession';
+import { useCompensationSalaryBands } from '../../../../lib/platform-api/compensation';
 import { useI18n } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
 import { SuccessionKpis } from './succession-kpis';
@@ -36,7 +36,7 @@ export default function SuccessionPage() {
   const flightRisk = useSuccessionFlightRisk({});
   const noSuccessor = useSuccessionRolesWithoutSuccessor();
   // Sprint 1.4 Task 4 — Compensation <-> Succession readiness check.
-  const salaryBands = trpc.compensation.getSalaryBands.useQuery({});
+  const salaryBands = useCompensationSalaryBands({});
   const compGapAlerts = useSuccessionCompGapAlerts();
 
   const roleItems = Array.isArray(roles.data) ? roles.data : [];

@@ -1,7 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { trpc } from '../../../lib/trpc';
+import {
+  useCompensationCompaRatioDistribution,
+  useCompensationBenefitsUtilization,
+  useCompensationListPendingAdjustments,
+} from '../../../lib/platform-api/compensation';
 import { useI18n } from '../../../lib/i18n';
 import { ApproveAdjustmentModal } from './approve-adjustment-modal';
 
@@ -19,7 +23,7 @@ const CR_BUCKETS = [
 
 export function CompaRatioDistribution() {
   const { t } = useI18n();
-  const q = trpc.compensation.getCompaRatioDistribution.useQuery();
+  const q = useCompensationCompaRatioDistribution();
   const total = q.data?.totalEmployees ?? 0;
 
   return (
@@ -62,7 +66,7 @@ export function CompaRatioDistribution() {
 
 export function BenefitsUtilization() {
   const { t } = useI18n();
-  const q = trpc.compensation.getBenefitsUtilization.useQuery();
+  const q = useCompensationBenefitsUtilization();
 
   return (
     <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
@@ -98,7 +102,7 @@ const ADJ_LABEL: Record<string, 'adjMerit' | 'adjPromotion' | 'adjMarket' | 'adj
 
 export function PendingAdjustments() {
   const { t } = useI18n();
-  const q = trpc.compensation.listPendingAdjustments.useQuery();
+  const q = useCompensationListPendingAdjustments();
   const [target, setTarget] = useState<{ id: string; name: string; mode: 'approve' | 'reject' } | null>(null);
 
   return (
