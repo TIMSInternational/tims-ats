@@ -2250,6 +2250,573 @@
         }
       }
     },
+    "/engagement/surveys": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "EngagementListSurveys",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SurveyListView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/engagement/surveys/{surveyId}/results": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "EngagementGetSurveyResults",
+        "parameters": [
+          {
+            "name": "surveyId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SurveyResultsView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/engagement/my/pending-surveys": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "EngagementMyPendingSurveys",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PendingSurveyRow"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/engagement/surveys/{surveyId}/take": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "EngagementGetSurveyForResponse",
+        "parameters": [
+          {
+            "name": "surveyId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SurveyForResponseView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/engagement/enps": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "EngagementGetEnps",
+        "parameters": [
+          {
+            "name": "period",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "companyId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnpsResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/engagement/climate-heatmap": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "EngagementGetClimateHeatmap",
+        "parameters": [
+          {
+            "name": "surveyId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClimateHeatmapView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/engagement/surveys/{surveyId}/results-by-area": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "EngagementGetResultsByArea",
+        "parameters": [
+          {
+            "name": "surveyId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "groupBy",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultsByAreaView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/engagement/surveys/{surveyId}/word-cloud": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "EngagementGetWordCloud",
+        "parameters": [
+          {
+            "name": "surveyId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WordCloudView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/engagement/surveys/{surveyId}/sentiment": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "EngagementGetSentiment",
+        "parameters": [
+          {
+            "name": "surveyId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SentimentView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/engagement/alerts": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "EngagementGetLowClimateAlerts",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AlertRow"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/engagement/action-plans": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "EngagementListActionPlans",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ActionPlanRow"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/engagement/leader-commitments": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "EngagementListLeaderCommitments",
+        "parameters": [
+          {
+            "name": "leaderId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LeaderCommitmentRow"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/engagement/dashboard-kpis": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "EngagementGetDashboardKpis",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EngagementKpis"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/engagement/rotation-risk": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "EngagementGetRotationRisk",
+        "parameters": [
+          {
+            "name": "companyId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "businessUnitId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RotationRiskView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
     "/require-permission/{module}/{action}": {
       "get": {
         "tags": [
@@ -2315,6 +2882,203 @@
   },
   "components": {
     "schemas": {
+      "ActionPlanResponsible": {
+        "required": [
+          "id",
+          "firstName",
+          "lastName",
+          "avatar"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "firstName": {
+            "type": "string"
+          },
+          "lastName": {
+            "type": "string"
+          },
+          "avatar": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "ActionPlanRow": {
+        "required": [
+          "id",
+          "organizationId",
+          "title",
+          "responsibleId",
+          "area",
+          "status",
+          "dueDate",
+          "actions",
+          "notes",
+          "createdAt",
+          "updatedAt",
+          "responsible"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "organizationId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "responsibleId": {
+            "type": "string"
+          },
+          "area": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "dueDate": {
+            "format": "date-time"
+          },
+          "actions": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JsonNode"
+              }
+            ]
+          },
+          "notes": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "createdAt": {
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "format": "date-time"
+          },
+          "responsible": {
+            "$ref": "#/components/schemas/ActionPlanResponsible"
+          }
+        }
+      },
+      "AlertRow": {
+        "required": [
+          "id",
+          "organizationId",
+          "ruleId",
+          "module",
+          "severity",
+          "title",
+          "message",
+          "metadata",
+          "status",
+          "dismissedById",
+          "dismissedAt",
+          "createdAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "organizationId": {
+            "type": "string"
+          },
+          "ruleId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "module": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "metadata": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JsonNode"
+              }
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "dismissedById": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "dismissedAt": {
+            "format": "date-time"
+          },
+          "createdAt": {
+            "format": "date-time"
+          }
+        }
+      },
+      "AreaResult": {
+        "required": [
+          "groupId",
+          "average",
+          "responses",
+          "suppressed"
+        ],
+        "type": "object",
+        "properties": {
+          "groupId": {
+            "type": "string"
+          },
+          "average": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "responses": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "suppressed": {
+            "type": "boolean"
+          }
+        }
+      },
       "AxisBreakdownView": {
         "required": [
           "userId",
@@ -2792,6 +3556,35 @@
         "properties": {
           "plan": {
             "type": "string"
+          }
+        }
+      },
+      "ClimateHeatmapView": {
+        "required": [
+          "surveyId",
+          "title",
+          "suppressed",
+          "data"
+        ],
+        "type": "object",
+        "properties": {
+          "surveyId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "suppressed": {
+            "type": "boolean"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HeatCell"
+            }
           }
         }
       },
@@ -3577,6 +4370,119 @@
           }
         }
       },
+      "EngagementKpis": {
+        "required": [
+          "activeSurveys",
+          "totalResponses",
+          "totalResponsesSuppressed",
+          "actionPlansOpen",
+          "highRiskCount"
+        ],
+        "type": "object",
+        "properties": {
+          "activeSurveys": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "totalResponses": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "totalResponsesSuppressed": {
+            "type": "boolean"
+          },
+          "actionPlansOpen": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "highRiskCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "EnpsResult": {
+        "required": [
+          "enps",
+          "promoters",
+          "passives",
+          "detractors",
+          "totalResponses",
+          "suppressed",
+          "period"
+        ],
+        "type": "object",
+        "properties": {
+          "enps": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "promoters": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "passives": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "detractors": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "totalResponses": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "suppressed": {
+            "type": "boolean"
+          },
+          "period": {
+            "type": "string"
+          }
+        }
+      },
       "ExitHolder": {
         "required": [
           "id",
@@ -4217,6 +5123,27 @@
           }
         }
       },
+      "HeatCell": {
+        "required": [
+          "category",
+          "score"
+        ],
+        "type": "object",
+        "properties": {
+          "category": {
+            "type": "string"
+          },
+          "score": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          }
+        }
+      },
       "HolderBasic": {
         "required": [
           "id",
@@ -4533,6 +5460,79 @@
               "string"
             ],
             "format": "int32"
+          }
+        }
+      },
+      "LeaderCommitmentLeader": {
+        "required": [
+          "id",
+          "firstName",
+          "lastName",
+          "avatar"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "firstName": {
+            "type": "string"
+          },
+          "lastName": {
+            "type": "string"
+          },
+          "avatar": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "LeaderCommitmentRow": {
+        "required": [
+          "id",
+          "organizationId",
+          "leaderId",
+          "description",
+          "status",
+          "dueDate",
+          "completedAt",
+          "createdAt",
+          "updatedAt",
+          "leader"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "organizationId": {
+            "type": "string"
+          },
+          "leaderId": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "dueDate": {
+            "format": "date-time"
+          },
+          "completedAt": {
+            "format": "date-time"
+          },
+          "createdAt": {
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "format": "date-time"
+          },
+          "leader": {
+            "$ref": "#/components/schemas/LeaderCommitmentLeader"
           }
         }
       },
@@ -4917,6 +5917,33 @@
           }
         }
       },
+      "PendingSurveyRow": {
+        "required": [
+          "id",
+          "title",
+          "type",
+          "startsAt",
+          "endsAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "startsAt": {
+            "format": "date-time"
+          },
+          "endsAt": {
+            "format": "date-time"
+          }
+        }
+      },
       "QuadrantMovement": {
         "required": [
           "userId",
@@ -4955,6 +5982,59 @@
             "items": {
               "type": "string"
             }
+          }
+        }
+      },
+      "QuestionSummary": {
+        "required": [
+          "question",
+          "type",
+          "average",
+          "count",
+          "suppressed"
+        ],
+        "type": "object",
+        "properties": {
+          "question": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JsonNode"
+              }
+            ]
+          },
+          "type": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JsonNode"
+              }
+            ]
+          },
+          "average": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "count": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "suppressed": {
+            "type": "boolean"
           }
         }
       },
@@ -5112,6 +6192,32 @@
           }
         }
       },
+      "ResultsByAreaView": {
+        "required": [
+          "surveyId",
+          "groupBy",
+          "results",
+          "suppressed"
+        ],
+        "type": "object",
+        "properties": {
+          "surveyId": {
+            "type": "string"
+          },
+          "groupBy": {
+            "type": "string"
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AreaResult"
+            }
+          },
+          "suppressed": {
+            "type": "boolean"
+          }
+        }
+      },
       "RoleWithoutSuccessorRow": {
         "required": [
           "id",
@@ -5199,6 +6305,64 @@
           }
         }
       },
+      "RotationRiskSummary": {
+        "required": [
+          "high",
+          "medium",
+          "low",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "high": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "medium": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "low": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "total": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "RotationRiskView": {
+        "required": [
+          "summary",
+          "topRisk"
+        ],
+        "type": "object",
+        "properties": {
+          "summary": {
+            "$ref": "#/components/schemas/RotationRiskSummary"
+          },
+          "topRisk": {
+            "type": "array"
+          }
+        }
+      },
       "SalaryBandRow": {
         "required": [
           "id",
@@ -5265,6 +6429,47 @@
           },
           "updatedAt": {
             "format": "date-time"
+          }
+        }
+      },
+      "SentimentView": {
+        "required": [
+          "positive",
+          "neutral",
+          "negative",
+          "highlights"
+        ],
+        "type": "object",
+        "properties": {
+          "positive": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "neutral": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "negative": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "highlights": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
@@ -5708,6 +6913,166 @@
               "null",
               "string"
             ]
+          }
+        }
+      },
+      "SurveyForResponseView": {
+        "required": [
+          "id",
+          "title",
+          "type",
+          "questions"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "questions": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JsonNode"
+              }
+            ]
+          }
+        }
+      },
+      "SurveyListItem": {
+        "required": [
+          "id",
+          "title",
+          "type",
+          "status",
+          "startsAt",
+          "endsAt",
+          "createdAt",
+          "updatedAt",
+          "responseCount",
+          "responseCountSuppressed"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "startsAt": {
+            "format": "date-time"
+          },
+          "endsAt": {
+            "format": "date-time"
+          },
+          "createdAt": {
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "format": "date-time"
+          },
+          "responseCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "responseCountSuppressed": {
+            "type": "boolean"
+          }
+        }
+      },
+      "SurveyListView": {
+        "required": [
+          "items",
+          "total",
+          "page",
+          "limit"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SurveyListItem"
+            }
+          },
+          "total": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "page": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "limit": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "SurveyResultsView": {
+        "required": [
+          "surveyId",
+          "title",
+          "totalResponses",
+          "suppressed",
+          "questionSummaries"
+        ],
+        "type": "object",
+        "properties": {
+          "surveyId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "totalResponses": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "suppressed": {
+            "type": "boolean"
+          },
+          "questionSummaries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QuestionSummary"
+            }
           }
         }
       },
@@ -6283,6 +7648,40 @@
           },
           "handled": {
             "type": "boolean"
+          }
+        }
+      },
+      "WordCloudView": {
+        "required": [
+          "words"
+        ],
+        "type": "object",
+        "properties": {
+          "words": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WordWeight"
+            }
+          }
+        }
+      },
+      "WordWeight": {
+        "required": [
+          "text",
+          "weight"
+        ],
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "weight": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
           }
         }
       }

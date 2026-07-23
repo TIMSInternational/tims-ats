@@ -1,0 +1,196 @@
+{
+  "cases": [
+    {
+      "name": "two categories, 5 respondents, half-up avg per category",
+      "input": {
+        "questions": [
+          {
+            "text": "a1",
+            "type": "scale",
+            "category": "Ambiente"
+          },
+          {
+            "text": "b1",
+            "type": "scale",
+            "category": "Liderazgo"
+          }
+        ],
+        "responses": [
+          {
+            "answers": {
+              "a1": 3,
+              "b1": 4
+            }
+          },
+          {
+            "answers": {
+              "a1": 3,
+              "b1": 4
+            }
+          },
+          {
+            "answers": {
+              "a1": 3,
+              "b1": 4
+            }
+          },
+          {
+            "answers": {
+              "a1": 3,
+              "b1": 4
+            }
+          },
+          {
+            "answers": {
+              "a1": 3.625,
+              "b1": 4
+            }
+          }
+        ]
+      },
+      "expected": {
+        "suppressed": false,
+        "data": [
+          {
+            "category": "Ambiente",
+            "score": 3.13
+          },
+          {
+            "category": "Liderazgo",
+            "score": 4
+          }
+        ]
+      }
+    },
+    {
+      "name": "survey-level suppressed: 3 respondents → suppressed, empty data",
+      "input": {
+        "questions": [
+          {
+            "text": "a1",
+            "type": "scale",
+            "category": "Ambiente"
+          }
+        ],
+        "responses": [
+          {
+            "answers": {
+              "a1": 3
+            }
+          },
+          {
+            "answers": {
+              "a1": 3
+            }
+          },
+          {
+            "answers": {
+              "a1": 3
+            }
+          }
+        ]
+      },
+      "expected": {
+        "suppressed": true,
+        "data": []
+      }
+    },
+    {
+      "name": "per-category contributor sub-floor: cat Liderazgo answered by 3 of 8 → all categories nulled",
+      "input": {
+        "questions": [
+          {
+            "text": "a1",
+            "type": "scale",
+            "category": "Ambiente"
+          },
+          {
+            "text": "b1",
+            "type": "scale",
+            "category": "Liderazgo"
+          }
+        ],
+        "responses": [
+          {
+            "answers": {
+              "a1": 3,
+              "b1": 4
+            }
+          },
+          {
+            "answers": {
+              "a1": 3,
+              "b1": 4
+            }
+          },
+          {
+            "answers": {
+              "a1": 3,
+              "b1": 4
+            }
+          },
+          {
+            "answers": {
+              "a1": 3
+            }
+          },
+          {
+            "answers": {
+              "a1": 3
+            }
+          },
+          {
+            "answers": {
+              "a1": 3
+            }
+          },
+          {
+            "answers": {
+              "a1": 3
+            }
+          },
+          {
+            "answers": {
+              "a1": 3
+            }
+          }
+        ]
+      },
+      "expected": {
+        "suppressed": true,
+        "data": [
+          {
+            "category": "Ambiente",
+            "score": null
+          },
+          {
+            "category": "Liderazgo",
+            "score": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "zero respondents → not suppressed, empty data",
+      "input": {
+        "questions": [
+          {
+            "text": "a1",
+            "type": "scale",
+            "category": "Ambiente"
+          }
+        ],
+        "responses": []
+      },
+      "expected": {
+        "suppressed": false,
+        "data": [
+          {
+            "category": "Ambiente",
+            "score": 0
+          }
+        ]
+      }
+    }
+  ]
+}

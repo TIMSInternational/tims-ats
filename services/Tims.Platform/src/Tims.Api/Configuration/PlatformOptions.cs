@@ -202,4 +202,21 @@ public sealed class PlatformOptions
     /// canary (deploy-gated cutover).
     /// </summary>
     public bool NineBoxReadEnabled { get; init; }
+
+    /// <summary>
+    /// Phase-5 Slice 11 (efcoreReadOnly): when true, the C# engagement READ surface is mapped and live —
+    /// <c>GET /engagement/surveys[/{id}/results|/take|/results-by-area|/word-cloud|/sentiment]</c>,
+    /// <c>/engagement/my/pending-surveys</c>, <c>/engagement/enps</c>, <c>/engagement/climate-heatmap</c>,
+    /// <c>/engagement/alerts</c>, <c>/engagement/action-plans</c>, <c>/engagement/leader-commitments</c>,
+    /// <c>/engagement/dashboard-kpis</c>, <c>/engagement/rotation-risk</c>. Staff-JWT + <c>engagement:read</c>; the
+    /// 14 reads span grant-only + per-item min-5 (listSurveys), OWN identity-anchored with NO org-gate
+    /// (myPendingSurveys/getSurveyForResponse), <c>requireOrgScope</c> (the 9 org-rollup aggregates — narrow
+    /// team/unit/own → 403), and <c>scopeWhereFor('actionPlan'|'leaderCommitment')</c> row filters
+    /// (listActionPlans/listLeaderCommitments). The five aggregate suppression shapers (survey-results / eNPS /
+    /// climate / results-by-area / dashboard-KPI differencing guard) are the pure @tims/shared /
+    /// Tims.Domain.Engagement kernels (golden-parity both stacks); the wire is the raw model/kernel shape (no
+    /// schemaVersion — INTERNAL read). DEFAULT false (dark) — TS remains the single active reader until Federico
+    /// flips it at canary (deploy-gated cutover). The five writes stay on TS.
+    /// </summary>
+    public bool EngagementReadEnabled { get; init; }
 }

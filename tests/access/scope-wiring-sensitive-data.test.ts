@@ -28,6 +28,11 @@ const readCompAudited = () =>
   readComp() + readFileSync(join(ROOT, 'packages/api/src/services/compensation.service.ts'), 'utf8');
 const readDeiService = () => readFileSync(join(ROOT, 'packages/api/src/services/dei.service.ts'), 'utf8');
 const readEngagement = () => readFileSync(join(ROOT, 'packages/api/src/routers/engagement.ts'), 'utf8');
+// Phase-5 Slice-11: the engagement min-5 aggregate suppression (survey-results / eNPS / climate / results-by-area
+// / dashboard-KPI differencing guard) was extracted VERBATIM into the shared @tims/shared engagement kernels so
+// BOTH the live TS router AND the C# port consume ONE golden-fixtured definition. The router now CALLS them; the
+// floors themselves live here. Tripwires that guarded the (formerly inline) suppression now guard the kernel.
+const readEngagementKernels = () => readFileSync(join(ROOT, 'packages/shared/src/engagement.ts'), 'utf8');
 const readAssessment = () => readFileSync(join(ROOT, 'packages/api/src/routers/assessment.ts'), 'utf8');
 const readCandidateRepo = () => readFileSync(join(ROOT, 'packages/api/src/repositories/candidate.repository.ts'), 'utf8');
 
@@ -137,51 +142,51 @@ describe('engagement aggregates honor min-5', () => {
     expect(readEngagement()).toMatch(/suppressBelowMin5.*from '\.\.\/access'/);
   });
 
-  it('getSurveyResults suppresses the whole survey when totalResponses < 5', () => {
+  it('the router DELEGATES the aggregates to the golden-fixtured shared kernels (honest-fixture)', () => {
     const src = readEngagement();
-    expect(src).toMatch(/suppressBelowMin5\(totalResponses\)/);
-    expect(src).toMatch(/suppressed:\s*true,\s*\n\s*questionSummaries:\s*\[\]/);
+    // the router imports the five suppression kernels from @tims/shared and calls each aggregate through them
+    // (never a re-implemented inline mirror — #141 synthetic-fixture lesson).
+    expect(src).toMatch(/from '@tims\/shared'/);
+    for (const kernel of [
+      'summarizeSurveyResults',
+      'computeEnps',
+      'buildClimateHeatmap',
+      'buildResultsByArea',
+      'buildEngagementKpis',
+    ]) {
+      expect(src, `router must call ${kernel}`).toMatch(new RegExp(`\\b${kernel}\\(`));
+    }
   });
 
-  it('getSurveyResults suppresses small per-question answer counts', () => {
-    // both scale (nums.length) and non-scale (answers.length) routed through min-5
-    const src = readEngagement();
-    expect(src).toMatch(/suppressBelowMin5\(nums\.length\)/);
-    expect(src).toMatch(/suppressBelowMin5\(answers\.length\)/);
+  it('getSurveyResults suppresses the whole survey/questions below the floor (in the shared kernel)', () => {
+    const k = readEngagementKernels();
+    // survey-level floor on totalResponses; per-question scale (nums.length) + non-scale (answers.length) floors;
+    // both fold in a skip bucket; ANY sub-floor question ⇒ EMPTY questionSummaries (all-or-nothing).
+    expect(k).toMatch(/suppressBelowMin5\(totalResponses\)/);
+    expect(k).toMatch(/suppressBelowMin5\(nums\.length\)/);
+    expect(k).toMatch(/suppressBelowMin5\(answers\.length\)/);
+    expect(k).toMatch(/const skipped = totalResponses - nums\.length/);
+    expect(k).toMatch(/const skipped = totalResponses - answers\.length/);
+    expect(k).toMatch(/anyQuestionSuppressed/);
+    expect(k).toMatch(/suppressed:\s*true,\s*questionSummaries:\s*\[\]/);
   });
 
-  it('getResultsByArea suppresses small areas on respondent head-count', () => {
-    expect(readEngagement()).toMatch(/suppressBelowMin5\(a\.respondents\)/);
+  it('getResultsByArea folds respondent + numeric-contributor + skip head-counts into the trigger (shared kernel)', () => {
+    const k = readEngagementKernels();
+    expect(k).toMatch(/suppressBelowMin5\(a\.respondents\)/);
+    expect(k).toMatch(/numericContributors/);
+    expect(k).toMatch(/suppressBelowMin5\(a\.numericContributors\)\.suppressed/);
+    expect(k).toMatch(/suppressBelowMin5\(a\.respondents - a\.numericContributors\)\.suppressed/);
   });
 
-  it('getResultsByArea folds the numeric-contributor count + its skip bucket into the trigger (round 9)', () => {
-    const src = readEngagement();
-    // the average is over the numeric-contributor set, not respondents
-    expect(src).toMatch(/numericContributors/);
-    expect(src).toMatch(/suppressBelowMin5\(a\.numericContributors\)\.suppressed/);
-    expect(src).toMatch(/suppressBelowMin5\(a\.respondents - a\.numericContributors\)\.suppressed/);
+  it('getEnps suppresses below the response floor + folds the skip bucket (shared kernel)', () => {
+    const k = readEngagementKernels();
+    expect(k).toMatch(/suppressBelowMin5\(scores\.length\)/);
+    expect(k).toMatch(/responseSuppressed/);
   });
 
-  it('getSurveyResults folds the per-question skip bucket (totalResponses − count) into the all-or-nothing trigger (round 9)', () => {
-    const src = readEngagement();
-    // both scale and non-scale branches compute a skip bucket and OR it into the floor
-    expect(src).toMatch(/const skipped = totalResponses - nums\.length/);
-    expect(src).toMatch(/const skipped = totalResponses - answers\.length/);
-    // a suppressed question yields an EMPTY questionSummaries array (no per-question keys)
-    expect(src).toMatch(/if \(anyQuestionSuppressed\) \{/);
-    expect(src).toMatch(/questionSummaries:\s*\[\] as Array<Record<string, unknown>>/);
-  });
-
-  it('getEnps suppresses the whole result below the min-5 response floor (finding 3)', () => {
-    const src = readEngagement();
-    // routes the response head-count through the floor and returns a suppressed shape
-    expect(src).toMatch(/suppressBelowMin5\(scores\.length\)/);
-    expect(src).toMatch(/responseFloor\.suppressed/);
-  });
-
-  it('getClimateHeatmap has a survey-level floor on total respondents (finding 4)', () => {
-    const src = readEngagement();
-    expect(src).toMatch(/suppressBelowMin5\(survey\.responses\.length\)/);
+  it('getClimateHeatmap has a survey-level floor on total respondents (shared kernel)', () => {
+    expect(readEngagementKernels()).toMatch(/suppressBelowMin5\(responses\.length\)/);
   });
 
   it('keeps requireOrgScope on engagement aggregates (defense in depth)', () => {
@@ -325,28 +330,27 @@ describe('compa-ratio present-key cardinality (fix 2, round 7)', () => {
 });
 
 describe('engagement survey/area total leaks (fix 3)', () => {
-  it('getSurveyResults suppressed branch nulls totalResponses', () => {
-    const src = readEngagement();
-    expect(src).toMatch(/totalResponses:\s*null as number \| null,\s*\n\s*suppressed:\s*true/);
+  it('getSurveyResults suppressed branch nulls totalResponses (shared kernel)', () => {
+    const k = readEngagementKernels();
+    expect(k).toMatch(/totalResponses:\s*null,\s*suppressed:\s*true/);
   });
 
-  it('getResultsByArea emits an EMPTY results array + suppressed when any area is sub-floor (round 7)', () => {
-    const src = readEngagement();
-    expect(src).toMatch(/const anyAreaSuppressed =\s*\n?\s*Object\.values\(groups\)\.some\(/);
-    // round 7: when the survey total OR any area OR the skipped bucket is sub-floor,
-    // return an empty results array (no per-area keys) + top-level suppressed:true.
-    expect(src).toMatch(/if \(suppressBelowMin5\(survey\.responses\.length\)\.suppressed \|\| anyAreaSuppressed\)/);
-    expect(src).toMatch(/results: \[\] as AreaOut\[\], suppressed: true/);
+  it('getResultsByArea emits an EMPTY results array + suppressed when any area is sub-floor (shared kernel)', () => {
+    const k = readEngagementKernels();
+    expect(k).toMatch(/const anyAreaSuppressed =\s*\n?\s*Object\.values\(groups\)\.some\(/);
+    // when the survey total OR any area OR the skipped bucket is sub-floor, return an empty results array (no
+    // per-area keys) + top-level suppressed:true.
+    expect(k).toMatch(/if \(suppressBelowMin5\(rows\.length\)\.suppressed \|\| anyAreaSuppressed\)/);
+    expect(k).toMatch(/return \{ results: \[\], suppressed: true \}/);
   });
 
-  // Round 2: responses with no company/business-unit (skipped/unassigned, or deleted
-  // user) were dropped BEFORE the suppression check, so 3 unassigned + 20 assigned
-  // looked all-clear yet getSurveyResults.totalResponses (23) − visible (20) = 3
-  // recovered the skipped bucket. Count skippedCount and fold it into the trigger.
-  it('getResultsByArea counts the skipped/unassigned bucket and folds it into the suppression trigger (round 2)', () => {
-    const src = readEngagement();
-    expect(src).toMatch(/skippedCount\s*\+=\s*1/);
-    expect(src).toMatch(/suppressBelowMin5\(skippedCount\)\.suppressed/);
+  // Responses with no company/business-unit (skipped/unassigned, or deleted user) are dropped BEFORE the
+  // suppression check, so 3 unassigned + 20 assigned would look all-clear yet totalResponses (23) − visible
+  // (20) = 3 recovers the skipped bucket. skippedCount is counted and folded into the trigger (shared kernel).
+  it('getResultsByArea counts the skipped/unassigned bucket and folds it into the trigger (shared kernel)', () => {
+    const k = readEngagementKernels();
+    expect(k).toMatch(/skippedCount\s*\+=\s*1/);
+    expect(k).toMatch(/suppressBelowMin5\(skippedCount\)\.suppressed/);
   });
 });
 
@@ -361,14 +365,14 @@ describe('getDashboardKpis closes the org survey-total differencing oracle (FIX 
     expect(src).toMatch(/surveyResponse\.groupBy\(\{\s*\n?\s*by:\s*\['surveyId'\]/);
   });
 
-  it('suppresses the org total when ANY individual survey is sub-floor', () => {
-    const src = readEngagement();
-    expect(src).toMatch(/const anySurveySubFloor = perSurveyGroups\.some\(\(g\) => suppressBelowMin5\(g\._count\._all\)\.suppressed\)/);
-    expect(src).toMatch(/totalResponsesSuppressed = responsesFloor\.suppressed \|\| anySurveySubFloor/);
+  it('suppresses the org total when ANY individual survey is sub-floor (shared kernel)', () => {
+    const k = readEngagementKernels();
+    expect(k).toMatch(/const anySurveySubFloor = perSurveyCounts\.some\(\(c\) => suppressBelowMin5\(c\)\.suppressed\)/);
+    expect(k).toMatch(/suppressBelowMin5\(totalResponses\)\.suppressed \|\| anySurveySubFloor/);
   });
 
-  it('nulls totalResponses (not the raw count) when suppressed', () => {
-    expect(readEngagement()).toMatch(/totalResponses:\s*totalResponsesSuppressed \? null : totalResponses/);
+  it('nulls totalResponses (not the raw count) when suppressed (shared kernel)', () => {
+    expect(readEngagementKernels()).toMatch(/totalResponses:\s*totalResponsesSuppressed \? null : totalResponses/);
   });
 });
 

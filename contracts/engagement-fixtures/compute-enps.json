@@ -1,0 +1,278 @@
+{
+  "cases": [
+    {
+      "name": "computed-mixed (numbers): 5 promoters + 5 detractors → enps 0",
+      "input": {
+        "responseAnswers": [
+          {
+            "s": 9
+          },
+          {
+            "s": 9
+          },
+          {
+            "s": 9
+          },
+          {
+            "s": 9
+          },
+          {
+            "s": 9
+          },
+          {
+            "s": 3
+          },
+          {
+            "s": 3
+          },
+          {
+            "s": 3
+          },
+          {
+            "s": 3
+          },
+          {
+            "s": 3
+          }
+        ],
+        "period": "quarter"
+      },
+      "expected": {
+        "enps": 0,
+        "promoters": 5,
+        "passives": 0,
+        "detractors": 5,
+        "totalResponses": 10,
+        "suppressed": false,
+        "period": "quarter"
+      }
+    },
+    {
+      "name": "string coercion: parseInt(\"9\")=9 promoter (same shape as numbers)",
+      "input": {
+        "responseAnswers": [
+          {
+            "s": "9"
+          },
+          {
+            "s": "9"
+          },
+          {
+            "s": "9"
+          },
+          {
+            "s": "9"
+          },
+          {
+            "s": "9"
+          },
+          {
+            "s": 3
+          },
+          {
+            "s": 3
+          },
+          {
+            "s": 3
+          },
+          {
+            "s": 3
+          },
+          {
+            "s": 3
+          }
+        ],
+        "period": "quarter"
+      },
+      "expected": {
+        "enps": 0,
+        "promoters": 5,
+        "passives": 0,
+        "detractors": 5,
+        "totalResponses": 10,
+        "suppressed": false,
+        "period": "quarter"
+      }
+    },
+    {
+      "name": "negative enps (half-up sign): 5 promoters + 10 detractors",
+      "input": {
+        "responseAnswers": [
+          {
+            "s": 9
+          },
+          {
+            "s": 9
+          },
+          {
+            "s": 9
+          },
+          {
+            "s": 9
+          },
+          {
+            "s": 9
+          },
+          {
+            "s": 3
+          },
+          {
+            "s": 3
+          },
+          {
+            "s": 3
+          },
+          {
+            "s": 3
+          },
+          {
+            "s": 3
+          },
+          {
+            "s": 3
+          },
+          {
+            "s": 3
+          },
+          {
+            "s": 3
+          },
+          {
+            "s": 3
+          },
+          {
+            "s": 3
+          }
+        ],
+        "period": "year"
+      },
+      "expected": {
+        "enps": -33,
+        "promoters": 5,
+        "passives": 0,
+        "detractors": 10,
+        "totalResponses": 15,
+        "suppressed": false,
+        "period": "year"
+      }
+    },
+    {
+      "name": "response floor: 3 valid scores → whole result suppressed",
+      "input": {
+        "responseAnswers": [
+          {
+            "s": 9
+          },
+          {
+            "s": 9
+          },
+          {
+            "s": 9
+          }
+        ],
+        "period": "quarter"
+      },
+      "expected": {
+        "enps": null,
+        "promoters": null,
+        "passives": null,
+        "detractors": null,
+        "totalResponses": null,
+        "suppressed": true,
+        "period": "quarter"
+      }
+    },
+    {
+      "name": "skip-bucket floor: 5 valid + 3 unparseable (skip 3) → suppressed",
+      "input": {
+        "responseAnswers": [
+          {
+            "s": 9
+          },
+          {
+            "s": 9
+          },
+          {
+            "s": 9
+          },
+          {
+            "s": 9
+          },
+          {
+            "s": 9
+          },
+          {
+            "s": "x"
+          },
+          {
+            "s": "x"
+          },
+          {
+            "s": "x"
+          }
+        ],
+        "period": "quarter"
+      },
+      "expected": {
+        "enps": null,
+        "promoters": null,
+        "passives": null,
+        "detractors": null,
+        "totalResponses": null,
+        "suppressed": true,
+        "period": "quarter"
+      }
+    },
+    {
+      "name": "per-split floor: detractors=1 (sub-floor) → suppressed",
+      "input": {
+        "responseAnswers": [
+          {
+            "s": 9
+          },
+          {
+            "s": 9
+          },
+          {
+            "s": 9
+          },
+          {
+            "s": 9
+          },
+          {
+            "s": 9
+          },
+          {
+            "s": 3
+          }
+        ],
+        "period": "month"
+      },
+      "expected": {
+        "enps": null,
+        "promoters": null,
+        "passives": null,
+        "detractors": null,
+        "totalResponses": null,
+        "suppressed": true,
+        "period": "month"
+      }
+    },
+    {
+      "name": "zero responses → not suppressed; the `|| 1` sentinel makes passives=1",
+      "input": {
+        "responseAnswers": [],
+        "period": "quarter"
+      },
+      "expected": {
+        "enps": 0,
+        "promoters": 0,
+        "passives": 1,
+        "detractors": 0,
+        "totalResponses": 0,
+        "suppressed": false,
+        "period": "quarter"
+      }
+    }
+  ]
+}

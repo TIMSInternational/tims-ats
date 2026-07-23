@@ -1,0 +1,354 @@
+{
+  "cases": [
+    {
+      "name": "computed: scale avg half-up (312.5→3.13) + text count; 5 respondents",
+      "input": {
+        "questions": [
+          {
+            "text": "q1",
+            "type": "scale"
+          },
+          {
+            "text": "q2",
+            "type": "text"
+          }
+        ],
+        "responses": [
+          {
+            "answers": {
+              "q1": 3,
+              "q2": "a"
+            }
+          },
+          {
+            "answers": {
+              "q1": 3,
+              "q2": "b"
+            }
+          },
+          {
+            "answers": {
+              "q1": 3,
+              "q2": "c"
+            }
+          },
+          {
+            "answers": {
+              "q1": 3,
+              "q2": "d"
+            }
+          },
+          {
+            "answers": {
+              "q1": 3.625,
+              "q2": "e"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "totalResponses": 5,
+        "suppressed": false,
+        "questionSummaries": [
+          {
+            "question": "q1",
+            "type": "scale",
+            "average": 3.13,
+            "count": 5,
+            "suppressed": false
+          },
+          {
+            "question": "q2",
+            "type": "text",
+            "count": 5,
+            "suppressed": false
+          }
+        ]
+      }
+    },
+    {
+      "name": "survey-level suppressed: 3 respondents → totalResponses null, empty",
+      "input": {
+        "questions": [
+          {
+            "text": "q1",
+            "type": "scale"
+          }
+        ],
+        "responses": [
+          {
+            "answers": {
+              "q1": 4
+            }
+          },
+          {
+            "answers": {
+              "q1": 4
+            }
+          },
+          {
+            "answers": {
+              "q1": 4
+            }
+          }
+        ]
+      },
+      "expected": {
+        "totalResponses": null,
+        "suppressed": true,
+        "questionSummaries": []
+      }
+    },
+    {
+      "name": "question skip-bucket sub-floor: q1 answered by 5 of 9 (skip 4) → all-or-nothing empty",
+      "input": {
+        "questions": [
+          {
+            "text": "q1",
+            "type": "scale"
+          },
+          {
+            "text": "q2",
+            "type": "text"
+          }
+        ],
+        "responses": [
+          {
+            "answers": {
+              "q1": 4,
+              "q2": "x"
+            }
+          },
+          {
+            "answers": {
+              "q1": 4,
+              "q2": "x"
+            }
+          },
+          {
+            "answers": {
+              "q1": 4,
+              "q2": "x"
+            }
+          },
+          {
+            "answers": {
+              "q1": 4,
+              "q2": "x"
+            }
+          },
+          {
+            "answers": {
+              "q1": 4,
+              "q2": "x"
+            }
+          },
+          {
+            "answers": {
+              "q2": "x"
+            }
+          },
+          {
+            "answers": {
+              "q2": "x"
+            }
+          },
+          {
+            "answers": {
+              "q2": "x"
+            }
+          },
+          {
+            "answers": {
+              "q2": "x"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "totalResponses": 9,
+        "suppressed": true,
+        "questionSummaries": []
+      }
+    },
+    {
+      "name": "zero respondents → not suppressed; each question count 0 (scale average 0)",
+      "input": {
+        "questions": [
+          {
+            "text": "q1",
+            "type": "scale"
+          },
+          {
+            "text": "q2",
+            "type": "text"
+          }
+        ],
+        "responses": []
+      },
+      "expected": {
+        "totalResponses": 0,
+        "suppressed": false,
+        "questionSummaries": [
+          {
+            "question": "q1",
+            "type": "scale",
+            "average": 0,
+            "count": 0,
+            "suppressed": false
+          },
+          {
+            "question": "q2",
+            "type": "text",
+            "count": 0,
+            "suppressed": false
+          }
+        ]
+      }
+    },
+    {
+      "name": "filter(Boolean) drops numeric 0 (skip): 6 fives + 4 numeric-0 → q1 skip 4 → suppressed",
+      "input": {
+        "questions": [
+          {
+            "text": "q1",
+            "type": "scale"
+          }
+        ],
+        "responses": [
+          {
+            "answers": {
+              "q1": 5
+            }
+          },
+          {
+            "answers": {
+              "q1": 5
+            }
+          },
+          {
+            "answers": {
+              "q1": 5
+            }
+          },
+          {
+            "answers": {
+              "q1": 5
+            }
+          },
+          {
+            "answers": {
+              "q1": 5
+            }
+          },
+          {
+            "answers": {
+              "q1": 5
+            }
+          },
+          {
+            "answers": {
+              "q1": 0
+            }
+          },
+          {
+            "answers": {
+              "q1": 0
+            }
+          },
+          {
+            "answers": {
+              "q1": 0
+            }
+          },
+          {
+            "answers": {
+              "q1": 0
+            }
+          }
+        ]
+      },
+      "expected": {
+        "totalResponses": 10,
+        "suppressed": true,
+        "questionSummaries": []
+      }
+    },
+    {
+      "name": "filter(Boolean) keeps string \"0\" (Number(\"0\")=0 contributes): 10 contributors",
+      "input": {
+        "questions": [
+          {
+            "text": "q1",
+            "type": "scale"
+          }
+        ],
+        "responses": [
+          {
+            "answers": {
+              "q1": 5
+            }
+          },
+          {
+            "answers": {
+              "q1": 5
+            }
+          },
+          {
+            "answers": {
+              "q1": 5
+            }
+          },
+          {
+            "answers": {
+              "q1": 5
+            }
+          },
+          {
+            "answers": {
+              "q1": 5
+            }
+          },
+          {
+            "answers": {
+              "q1": "0"
+            }
+          },
+          {
+            "answers": {
+              "q1": "0"
+            }
+          },
+          {
+            "answers": {
+              "q1": "0"
+            }
+          },
+          {
+            "answers": {
+              "q1": "0"
+            }
+          },
+          {
+            "answers": {
+              "q1": "0"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "totalResponses": 10,
+        "suppressed": false,
+        "questionSummaries": [
+          {
+            "question": "q1",
+            "type": "scale",
+            "average": 2.5,
+            "count": 10,
+            "suppressed": false
+          }
+        ]
+      }
+    }
+  ]
+}

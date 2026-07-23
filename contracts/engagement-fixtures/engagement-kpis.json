@@ -1,0 +1,80 @@
+{
+  "cases": [
+    {
+      "name": "org total ≥5, all per-survey ≥5 → shown",
+      "input": {
+        "activeSurveys": 2,
+        "totalResponses": 12,
+        "perSurveyCounts": [
+          7,
+          5
+        ],
+        "actionPlansOpen": 3
+      },
+      "expected": {
+        "activeSurveys": 2,
+        "totalResponses": 12,
+        "totalResponsesSuppressed": false,
+        "actionPlansOpen": 3,
+        "highRiskCount": 0
+      }
+    },
+    {
+      "name": "differencing guard: a per-survey count 1..4 nulls the org total",
+      "input": {
+        "activeSurveys": 3,
+        "totalResponses": 20,
+        "perSurveyCounts": [
+          15,
+          3,
+          2
+        ],
+        "actionPlansOpen": 1
+      },
+      "expected": {
+        "activeSurveys": 3,
+        "totalResponses": null,
+        "totalResponsesSuppressed": true,
+        "actionPlansOpen": 1,
+        "highRiskCount": 0
+      }
+    },
+    {
+      "name": "org total sub-floor (4) → nulled",
+      "input": {
+        "activeSurveys": 1,
+        "totalResponses": 4,
+        "perSurveyCounts": [
+          4
+        ],
+        "actionPlansOpen": 0
+      },
+      "expected": {
+        "activeSurveys": 1,
+        "totalResponses": null,
+        "totalResponsesSuppressed": true,
+        "actionPlansOpen": 0,
+        "highRiskCount": 0
+      }
+    },
+    {
+      "name": "zero-response survey does NOT trigger (suppress(0)=false)",
+      "input": {
+        "activeSurveys": 2,
+        "totalResponses": 6,
+        "perSurveyCounts": [
+          6,
+          0
+        ],
+        "actionPlansOpen": 2
+      },
+      "expected": {
+        "activeSurveys": 2,
+        "totalResponses": 6,
+        "totalResponsesSuppressed": false,
+        "actionPlansOpen": 2,
+        "highRiskCount": 0
+      }
+    }
+  ]
+}

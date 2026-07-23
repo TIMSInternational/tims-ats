@@ -20,6 +20,7 @@ using Tims.Api.HealthChecks;
 using Tims.Api.RateLimiting;
 using Tims.Api.Evaluation360;
 using Tims.Api.ExternalVendor;
+using Tims.Api.Engagement;
 using Tims.Api.NineBox;
 using Tims.Api.Reporting;
 using Tims.Api.Succession;
@@ -32,6 +33,7 @@ using Tims.Application.Compensation;
 using Tims.Application.Evaluation360;
 using Tims.Application.ExternalVendor;
 using Tims.Application.Identity;
+using Tims.Application.Engagement;
 using Tims.Application.NineBox;
 using Tims.Application.Reporting;
 using Tims.Application.Succession;
@@ -47,6 +49,7 @@ using Tims.Infrastructure.Compensation;
 using Tims.Infrastructure.Evaluation360;
 using Tims.Infrastructure.ExternalVendor;
 using Tims.Infrastructure.Hris;
+using Tims.Infrastructure.Engagement;
 using Tims.Infrastructure.NineBox;
 using Tims.Infrastructure.Identity;
 using Tims.Infrastructure.RateLimiting;
@@ -285,6 +288,17 @@ try
     builder.Services.AddDbContext<NineBoxReadDbContext>(options => options.UseNpgsql(databaseConnectionString));
     builder.Services.AddScoped<INineBoxReadRepository, NineBoxReadRepository>();
     builder.Services.AddScoped<NineBoxReadUseCase>();
+
+    // Phase-5 Slice 11 (efcoreReadOnly): the engagement READ surface. Plain read-only context over the
+    // Prisma-OWNED surveys/survey_responses/action_plans/leader_commitments/alerts (+ users) — surveys.type/.status,
+    // action_plans.status, leader_commitments.status, alerts.* are all plain Strings (NOT native enums), so no
+    // NpgsqlDataSource. Reads run UNDER TenantScope/RLS; the 9 org-rollup aggregates apply the org-gate,
+    // listActionPlans/listLeaderCommitments compose scopeWhereFor('actionPlan'|'leaderCommitment'), and
+    // myPendingSurveys/getSurveyForResponse are OWN identity-anchored (no org-gate). The suppression shapers are
+    // the pure @tims/shared / Tims.Domain.Engagement kernels. Dark unless EngagementReadEnabled.
+    builder.Services.AddDbContext<EngagementReadDbContext>(options => options.UseNpgsql(databaseConnectionString));
+    builder.Services.AddScoped<IEngagementReadRepository, EngagementReadRepository>();
+    builder.Services.AddScoped<EngagementReadUseCase>();
 
     builder.Services
         .AddOptions<StripeBillingOptions>()
@@ -741,6 +755,16 @@ try
     if (externalOptions.NineBoxReadEnabled || isOpenApiDocGeneration)
     {
         app.MapNineBoxReadEndpoints();
+    }
+
+    // Phase-5 Slice 11 (efcoreReadOnly): the engagement READ surface (14 reads). Staff-JWT + engagement:read; the
+    // 9 org-rollup aggregates apply the org-gate (narrow → 403), listActionPlans/listLeaderCommitments compose
+    // scopeWhereFor (out-of-scope rows drop), myPendingSurveys/getSurveyForResponse are OWN identity-anchored (no
+    // org-gate), listSurveys is grant-only + per-item min-5. Dark unless the flag is on (deploy-gated cutover; TS
+    // stays the sole active reader until Federico flips it).
+    if (externalOptions.EngagementReadEnabled || isOpenApiDocGeneration)
+    {
+        app.MapEngagementReadEndpoints();
     }
 
     // Authz probe (WP2.5): the C# equivalent of the tRPC `requirePermission` gate. Resolves the

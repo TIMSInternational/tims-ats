@@ -168,6 +168,27 @@ public static class ScopeProbeRegistry
                 ["userId"] = "user_id",
             },
             Navs: new Dictionary<string, ProbeNav>()),
+
+        // Engagement (Phase-5 Slice 11). actionPlan anchors on responsibleId (ScopeWhereFor →
+        // SubjectAsync("responsibleId")) and leaderCommitment on leaderId (SubjectAsync("leaderId")) — each used
+        // ONLY via scopeWhereFor as the listActionPlans / listLeaderCommitments row filter (never a by-id probe
+        // root), so each needs the field column for the translator but no EntityRootTable entry. The ScopedEntity
+        // enum members + the ScopeWhereFor logic already existed (Slice-6); these probe-table registrations are
+        // the missing piece the SQL translator needs — the FIRST live C# scopeWhereFor use of the two entities.
+        // Neither table has deleted_at → NOT soft-deletable.
+        ["action_plans"] = new ProbeTable(
+            Fields: new Dictionary<string, string>
+            {
+                ["responsibleId"] = "responsible_id",
+            },
+            Navs: new Dictionary<string, ProbeNav>()),
+
+        ["leader_commitments"] = new ProbeTable(
+            Fields: new Dictionary<string, string>
+            {
+                ["leaderId"] = "leader_id",
+            },
+            Navs: new Dictionary<string, ProbeNav>()),
     };
 
     /// <summary>

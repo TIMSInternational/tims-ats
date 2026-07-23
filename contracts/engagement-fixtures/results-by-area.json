@@ -1,0 +1,365 @@
+{
+  "cases": [
+    {
+      "name": "two areas each ≥5 respondents+contributors, half-up avg",
+      "input": {
+        "rows": [
+          {
+            "areaKey": "A",
+            "answers": {
+              "s": 3
+            }
+          },
+          {
+            "areaKey": "A",
+            "answers": {
+              "s": 3
+            }
+          },
+          {
+            "areaKey": "A",
+            "answers": {
+              "s": 3
+            }
+          },
+          {
+            "areaKey": "A",
+            "answers": {
+              "s": 3
+            }
+          },
+          {
+            "areaKey": "A",
+            "answers": {
+              "s": 3.625
+            }
+          },
+          {
+            "areaKey": "B",
+            "answers": {
+              "s": 4
+            }
+          },
+          {
+            "areaKey": "B",
+            "answers": {
+              "s": 4
+            }
+          },
+          {
+            "areaKey": "B",
+            "answers": {
+              "s": 4
+            }
+          },
+          {
+            "areaKey": "B",
+            "answers": {
+              "s": 4
+            }
+          },
+          {
+            "areaKey": "B",
+            "answers": {
+              "s": 4
+            }
+          }
+        ]
+      },
+      "expected": {
+        "results": [
+          {
+            "groupId": "A",
+            "average": 3.13,
+            "responses": 5,
+            "suppressed": false
+          },
+          {
+            "groupId": "B",
+            "average": 4,
+            "responses": 5,
+            "suppressed": false
+          }
+        ],
+        "suppressed": false
+      }
+    },
+    {
+      "name": "one area sub-floor (4) → EMPTY results (differencing guard nulls all)",
+      "input": {
+        "rows": [
+          {
+            "areaKey": "A",
+            "answers": {
+              "s": 3
+            }
+          },
+          {
+            "areaKey": "A",
+            "answers": {
+              "s": 3
+            }
+          },
+          {
+            "areaKey": "A",
+            "answers": {
+              "s": 3
+            }
+          },
+          {
+            "areaKey": "A",
+            "answers": {
+              "s": 3
+            }
+          },
+          {
+            "areaKey": "A",
+            "answers": {
+              "s": 3
+            }
+          },
+          {
+            "areaKey": "A",
+            "answers": {
+              "s": 3
+            }
+          },
+          {
+            "areaKey": "B",
+            "answers": {
+              "s": 3
+            }
+          },
+          {
+            "areaKey": "B",
+            "answers": {
+              "s": 3
+            }
+          },
+          {
+            "areaKey": "B",
+            "answers": {
+              "s": 3
+            }
+          },
+          {
+            "areaKey": "B",
+            "answers": {
+              "s": 3
+            }
+          }
+        ]
+      },
+      "expected": {
+        "results": [],
+        "suppressed": true
+      }
+    },
+    {
+      "name": "unassigned/skipped bucket sub-floor (3 null-key) → EMPTY results",
+      "input": {
+        "rows": [
+          {
+            "areaKey": "A",
+            "answers": {
+              "s": 3
+            }
+          },
+          {
+            "areaKey": "A",
+            "answers": {
+              "s": 3
+            }
+          },
+          {
+            "areaKey": "A",
+            "answers": {
+              "s": 3
+            }
+          },
+          {
+            "areaKey": "A",
+            "answers": {
+              "s": 3
+            }
+          },
+          {
+            "areaKey": "A",
+            "answers": {
+              "s": 3
+            }
+          },
+          {
+            "areaKey": "A",
+            "answers": {
+              "s": 3
+            }
+          },
+          {
+            "areaKey": null,
+            "answers": {
+              "s": 3
+            }
+          },
+          {
+            "areaKey": null,
+            "answers": {
+              "s": 3
+            }
+          },
+          {
+            "areaKey": null,
+            "answers": {
+              "s": 3
+            }
+          }
+        ]
+      },
+      "expected": {
+        "results": [],
+        "suppressed": true
+      }
+    },
+    {
+      "name": "numeric-contributor sub-floor: area B 6 respondents but only 1 numeric answer → EMPTY",
+      "input": {
+        "rows": [
+          {
+            "areaKey": "A",
+            "answers": {
+              "s": 3
+            }
+          },
+          {
+            "areaKey": "A",
+            "answers": {
+              "s": 3
+            }
+          },
+          {
+            "areaKey": "A",
+            "answers": {
+              "s": 3
+            }
+          },
+          {
+            "areaKey": "A",
+            "answers": {
+              "s": 3
+            }
+          },
+          {
+            "areaKey": "A",
+            "answers": {
+              "s": 3
+            }
+          },
+          {
+            "areaKey": "A",
+            "answers": {
+              "s": 3
+            }
+          },
+          {
+            "areaKey": "B",
+            "answers": {
+              "s": 3
+            }
+          },
+          {
+            "areaKey": "B",
+            "answers": {
+              "note": "text"
+            }
+          },
+          {
+            "areaKey": "B",
+            "answers": {
+              "note": "text"
+            }
+          },
+          {
+            "areaKey": "B",
+            "answers": {
+              "note": "text"
+            }
+          },
+          {
+            "areaKey": "B",
+            "answers": {
+              "note": "text"
+            }
+          },
+          {
+            "areaKey": "B",
+            "answers": {
+              "note": "text"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "results": [],
+        "suppressed": true
+      }
+    },
+    {
+      "name": "zero rows → not suppressed, empty results",
+      "input": {
+        "rows": []
+      },
+      "expected": {
+        "results": [],
+        "suppressed": false
+      }
+    },
+    {
+      "name": "hex/exotic answer coerced like JS Number (0x10 -> 16 counted); area stays unsuppressed (Codex M1 bite)",
+      "input": {
+        "rows": [
+          {
+            "areaKey": "H",
+            "answers": {
+              "v": "5"
+            }
+          },
+          {
+            "areaKey": "H",
+            "answers": {
+              "v": "5"
+            }
+          },
+          {
+            "areaKey": "H",
+            "answers": {
+              "v": "5"
+            }
+          },
+          {
+            "areaKey": "H",
+            "answers": {
+              "v": "5"
+            }
+          },
+          {
+            "areaKey": "H",
+            "answers": {
+              "v": "0x10"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "results": [
+          {
+            "groupId": "H",
+            "average": 7.2,
+            "responses": 5,
+            "suppressed": false
+          }
+        ],
+        "suppressed": false
+      }
+    }
+  ]
+}
