@@ -1,8 +1,18 @@
 'use client';
 
 import { useState, useMemo } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { trpc } from '../../../../lib/trpc';
 import { useSuccessionCriticalRoles } from '../../../../lib/platform-api/succession';
+import {
+  useNineBoxGrid,
+  useNineBoxDashboardKpis,
+  useNineBoxListCalibrations,
+  useNineBoxBenchStrength,
+  useNineBoxEmployeeDetail,
+  isNineboxForbiddenError,
+  invalidateNineboxPlatformReads,
+} from '../../../../lib/platform-api/ninebox';
 import { useI18n } from '../../../../lib/i18n';
 import { KpiCard, KpiCardSkeleton, CandidateAvatar, EmptyState, ErrorState, Skeleton } from '../../../../components';
 import { toast } from '../../../../lib/toast';
@@ -121,37 +131,36 @@ function CalibrationSessionsList({
 
 export default function NineBoxPage() {
   const { t } = useI18n();
+  const queryClient = useQueryClient();
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [calibrationSessionId, setCalibrationSessionId] = useState<string | null>(null);
 
-  const gridQ = trpc.ninebox.getGrid.useQuery({ period: PERIOD });
-  const kpisQ = trpc.ninebox.getDashboardKpis.useQuery({ period: PERIOD });
+  const gridQ = useNineBoxGrid(PERIOD);
+  const kpisQ = useNineBoxDashboardKpis(PERIOD);
 
   // listCalibrations is org-governance (slice-7a): narrow-scope users (committee
   // leaders) can still reach this page via 'ninebox' read but get a FORBIDDEN
-  // here. Treat that as "no calibration sessions visible" — don't retry the
-  // 403 and let the list fall back to an empty state, never a crash.
-  const sessionsQ = trpc.ninebox.listCalibrations.useQuery(undefined, {
-    retry: (failureCount, err) =>
-      err.data?.code === 'FORBIDDEN' ? false : failureCount < 3,
-  });
-  const sessionsForbidden = sessionsQ.error?.data?.code === 'FORBIDDEN';
+  // here. Treat that as "no calibration sessions visible" — the wrapper leaves
+  // the 403 as a (retry-disabled) error on both the tRPC and C# paths, and
+  // isNineboxForbiddenError normalizes it so the list falls back to an empty
+  // state, never a crash.
+  const sessionsQ = useNineBoxListCalibrations();
+  const sessionsForbidden = isNineboxForbiddenError(sessionsQ.error);
 
   const startCalibration = trpc.ninebox.createCalibration.useMutation({
     onSuccess: (session) => {
       setCalibrationSessionId(session.id);
       sessionsQ.refetch();
+      // Cutover parity: refresh the C# platform-api nine-box reads. No-op under tRPC.
+      invalidateNineboxPlatformReads(queryClient);
     },
     onError: (err) => {
       toast(err.message, { type: 'error' });
     },
   });
-  const benchQ = trpc.ninebox.getBenchStrength.useQuery({ period: PERIOD });
+  const benchQ = useNineBoxBenchStrength(PERIOD);
   const successionQ = useSuccessionCriticalRoles({});
-  const detailQ = trpc.ninebox.getEmployeeDetail.useQuery(
-    { userId: selectedUserId!, period: PERIOD },
-    { enabled: !!selectedUserId },
-  );
+  const detailQ = useNineBoxEmployeeDetail(selectedUserId, PERIOD);
 
   const grid = gridQ.data?.grid ?? {};
   const total = gridQ.data?.totalEvaluations ?? 0;

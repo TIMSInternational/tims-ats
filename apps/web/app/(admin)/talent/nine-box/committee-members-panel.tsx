@@ -1,10 +1,15 @@
 'use client';
 
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
 import { UserPicker, CandidateAvatar, Skeleton } from '../../../../components';
+import {
+  useNineBoxCalibration,
+  invalidateNineboxPlatformReads,
+} from '../../../../lib/platform-api/ninebox';
 
 interface CommitteeMembersPanelProps {
   sessionId: string;
@@ -19,11 +24,16 @@ interface CommitteeMembersPanelProps {
 export function CommitteeMembersPanel({ sessionId }: CommitteeMembersPanelProps) {
   const { t } = useI18n();
   const utils = trpc.useUtils();
+  const queryClient = useQueryClient();
   const [adding, setAdding] = useState(false);
 
-  const calibration = trpc.ninebox.getCalibration.useQuery({ id: sessionId });
+  const calibration = useNineBoxCalibration(sessionId);
 
-  const invalidate = () => utils.ninebox.getCalibration.invalidate({ id: sessionId });
+  const invalidate = () => {
+    utils.ninebox.getCalibration.invalidate({ id: sessionId });
+    // Cutover parity: refresh the C# platform-api nine-box reads. No-op under tRPC.
+    invalidateNineboxPlatformReads(queryClient);
+  };
 
   const add = trpc.ninebox.addCalibrationMember.useMutation({
     onSuccess: () => {

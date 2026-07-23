@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { trpc } from '../../../lib/trpc';
+import { useNineBoxMyCalibrations } from '../../../lib/platform-api/ninebox';
 import { useI18n } from '../../../lib/i18n';
 import { KpiCard, KpiCardSkeleton, EmptyState, Skeleton, StatusBadge } from '../../../components';
 import { LoadError } from './load-error';
@@ -47,7 +48,7 @@ export function CommitteeTasksDashboard() {
 
   // "Mis Calibraciones" — the member's OWN calibration sessions (created or a
   // committee member of). Member-scoped on the backend; never org-wide.
-  const calibrations = trpc.ninebox.myCalibrations.useQuery();
+  const calibrations = useNineBoxMyCalibrations();
 
   const scorecardsCount = scorecards.data?.length ?? 0;
 

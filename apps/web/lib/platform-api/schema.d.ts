@@ -804,6 +804,182 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ninebox/grid": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["NineBoxGetGrid"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ninebox/employee/{userId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["NineBoxGetEmployeeDetail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ninebox/employee/{userId}/axis-breakdown": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["NineBoxGetAxisBreakdown"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ninebox/movement-history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["NineBoxGetMovementHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ninebox/simulate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["NineBoxSimulate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ninebox/calibrations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["NineBoxListCalibrations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ninebox/calibrations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["NineBoxGetCalibration"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ninebox/my-calibrations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["NineBoxMyCalibrations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ninebox/quadrant-plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["NineBoxGetQuadrantPlan"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ninebox/bench-strength": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["NineBoxGetBenchStrength"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ninebox/dashboard-kpis": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["NineBoxGetDashboardKpis"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/require-permission/{module}/{action}": {
         parameters: {
             query?: never;
@@ -840,6 +1016,18 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AxisBreakdownView: {
+            userId: string;
+            period: string;
+            /** Format: double */
+            potentialScore: number | string;
+            /** Format: double */
+            performanceScore: number | string;
+            quadrant: string;
+            /** Format: double */
+            confidence: number | string;
+            axisBreakdown: null | components["schemas"]["JsonNode"];
+        };
         BalanceScoreResponse: {
             teamId: string;
             /** Format: int32 */
@@ -855,6 +1043,18 @@ export interface components {
             /** Format: int32 */
             balanceScore: number | string;
         };
+        BenchStrengthView: {
+            period: string;
+            /** Format: int32 */
+            total: number | string;
+            distribution: {
+                [key: string]: number | string;
+            };
+            /** Format: int32 */
+            highPotentialRatio: number | string;
+            /** Format: int32 */
+            benchStrength: number | string;
+        };
         BenefitUtilizationItem: {
             id: string;
             name: string;
@@ -866,6 +1066,75 @@ export interface components {
         };
         BillingConfigV1: {
             configured: boolean;
+        };
+        CalibrationCreator: {
+            id: string;
+            firstName: string;
+            lastName: string;
+        };
+        CalibrationDetailView: {
+            id: string;
+            organizationId: string;
+            period: string;
+            status: string;
+            /** Format: date-time */
+            scheduledAt: unknown;
+            /** Format: date-time */
+            completedAt: unknown;
+            createdById: string;
+            /** Format: date-time */
+            createdAt: unknown;
+            /** Format: date-time */
+            updatedAt: unknown;
+            creator: components["schemas"]["CalibrationCreator"];
+            members: components["schemas"]["CalibrationMemberRow"][];
+            votes: components["schemas"]["CalibrationVoteRow"][];
+        };
+        CalibrationListRow: {
+            id: string;
+            period: string;
+            status: string;
+            /** Format: date-time */
+            scheduledAt: unknown;
+            /** Format: date-time */
+            createdAt: unknown;
+            _count: components["schemas"]["CalibrationMemberCount"];
+        };
+        CalibrationMemberCount: {
+            /** Format: int32 */
+            members: number | string;
+        };
+        CalibrationMemberRow: {
+            id: string;
+            sessionId: string;
+            userId: string;
+            status: string;
+            /** Format: date-time */
+            createdAt: unknown;
+            user: components["schemas"]["CalibrationMemberUser"];
+        };
+        CalibrationMemberUser: {
+            id: string;
+            firstName: string;
+            lastName: string;
+            avatar: null | string;
+        };
+        CalibrationVoteRow: {
+            id: string;
+            sessionId: string;
+            evaluatedUserId: string;
+            voterId: string;
+            quadrant: string;
+            justification: null | string;
+            /** Format: date-time */
+            createdAt: unknown;
+            evaluatedUser: components["schemas"]["CalibrationVoteUser"];
+            voter: components["schemas"]["CalibrationVoteUser"];
+        };
+        CalibrationVoteUser: {
+            id: string;
+            firstName: string;
+            lastName: string;
         };
         CheckoutSessionBody: {
             plan: string;
@@ -972,6 +1241,18 @@ export interface components {
             /** Format: date-time */
             createdAt: unknown;
         };
+        DashboardKpisView: {
+            period: string;
+            /** Format: int32 */
+            totalEvaluations: number | string;
+            /** Format: int32 */
+            calibrationSessions: number | string;
+            /** Format: int32 */
+            activeCalibrations: number | string;
+            distribution: {
+                [key: string]: number | string;
+            };
+        };
         DashboardKpiView: {
             /** Format: int32 */
             totalTeams: number | string;
@@ -1003,6 +1284,47 @@ export interface components {
             updatedAt: unknown;
             user: components["schemas"]["SuccessorUser"];
             addedByUser: null | components["schemas"]["SuccessorAddedBy"];
+        };
+        EmployeeDetailEvaluation: {
+            id: string;
+            organizationId: string;
+            userId: string;
+            period: string;
+            /** Format: double */
+            potentialScore: number | string;
+            /** Format: double */
+            performanceScore: number | string;
+            quadrant: string;
+            /** Format: double */
+            confidence: number | string;
+            axisBreakdown: null | components["schemas"]["JsonNode"];
+            /** Format: date-time */
+            evaluatedAt: unknown;
+            /** Format: date-time */
+            createdAt: unknown;
+            user: components["schemas"]["EmployeeDetailUser"];
+        };
+        EmployeeDetailUser: {
+            id: string;
+            firstName: string;
+            lastName: string;
+            avatar: null | string;
+            jobTitle: null | string;
+            email: string;
+        };
+        EmployeeDetailView: {
+            evaluation: null | components["schemas"]["EmployeeDetailEvaluation"];
+            history: components["schemas"]["EmployeeHistoryRow"][];
+        };
+        EmployeeHistoryRow: {
+            period: string;
+            quadrant: string;
+            /** Format: double */
+            potentialScore: number | string;
+            /** Format: double */
+            performanceScore: number | string;
+            /** Format: date-time */
+            evaluatedAt: unknown;
         };
         ExitHolder: {
             id: string;
@@ -1120,6 +1442,40 @@ export interface components {
             totalHired: number | string;
             /** Format: double */
             conversionPct: null | number | string;
+        };
+        GridEvaluation: {
+            id: string;
+            organizationId: string;
+            userId: string;
+            period: string;
+            /** Format: double */
+            potentialScore: number | string;
+            /** Format: double */
+            performanceScore: number | string;
+            quadrant: string;
+            /** Format: double */
+            confidence: number | string;
+            axisBreakdown: null | components["schemas"]["JsonNode"];
+            /** Format: date-time */
+            evaluatedAt: unknown;
+            /** Format: date-time */
+            createdAt: unknown;
+            user: components["schemas"]["GridUser"];
+        };
+        GridUser: {
+            id: string;
+            firstName: string;
+            lastName: string;
+            avatar: null | string;
+            jobTitle: null | string;
+        };
+        GridView: {
+            period: string;
+            grid: {
+                [key: string]: components["schemas"]["GridEvaluation"][];
+            };
+            /** Format: int32 */
+            totalEvaluations: number | string;
         };
         HolderBasic: {
             id: string;
@@ -1252,10 +1608,47 @@ export interface components {
             internalMax: number | string;
             currency: string;
         };
+        MovementEndpoint: {
+            period: string;
+            quadrant: string;
+        };
+        MovementHistoryView: {
+            movements: components["schemas"]["QuadrantMovement"][];
+            /** Format: int32 */
+            totalMovements: number | string;
+        };
+        MyCalibrationCount: {
+            /** Format: int32 */
+            members: number | string;
+            /** Format: int32 */
+            votes: number | string;
+        };
+        MyCalibrationRow: {
+            id: string;
+            period: string;
+            status: string;
+            /** Format: date-time */
+            scheduledAt: unknown;
+            /** Format: date-time */
+            completedAt: unknown;
+            /** Format: date-time */
+            createdAt: unknown;
+            _count: components["schemas"]["MyCalibrationCount"];
+        };
         MyReportView: {
             cycleId: string;
             cycleName: string;
             buckets: components["schemas"]["ReportBucket"][];
+        };
+        QuadrantMovement: {
+            userId: string;
+            userName: string;
+            from: components["schemas"]["MovementEndpoint"];
+            to: components["schemas"]["MovementEndpoint"];
+        };
+        QuadrantPlanResult: {
+            title: string;
+            actions: string[];
         };
         RaterTaskSubject: {
             firstName: string;
@@ -1328,6 +1721,13 @@ export interface components {
             createdAt: unknown;
             /** Format: date-time */
             updatedAt: unknown;
+        };
+        SimulateView: {
+            userId: string;
+            simulatedQuadrant: string;
+            potentialBand: string;
+            performanceBand: string;
+            _stub: boolean;
         };
         SourceBreakdownItem: {
             source: string;
@@ -3541,6 +3941,478 @@ export interface operations {
                 content: {
                     "application/json": null | Record<string, never>;
                 };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    NineBoxGetGrid: {
+        parameters: {
+            query?: {
+                period?: string;
+                teamId?: string;
+                unitId?: string;
+                companyId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GridView"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    NineBoxGetEmployeeDetail: {
+        parameters: {
+            query?: {
+                period?: string;
+            };
+            header?: never;
+            path: {
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmployeeDetailView"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    NineBoxGetAxisBreakdown: {
+        parameters: {
+            query?: {
+                period?: string;
+            };
+            header?: never;
+            path: {
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AxisBreakdownView"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    NineBoxGetMovementHistory: {
+        parameters: {
+            query?: {
+                userId?: string;
+                companyId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MovementHistoryView"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    NineBoxSimulate: {
+        parameters: {
+            query?: {
+                userId?: string;
+                newPotentialScore?: number | string;
+                newPerformanceScore?: number | string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SimulateView"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    NineBoxListCalibrations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalibrationListRow"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    NineBoxGetCalibration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalibrationDetailView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    NineBoxMyCalibrations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyCalibrationRow"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    NineBoxGetQuadrantPlan: {
+        parameters: {
+            query?: {
+                quadrant?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuadrantPlanResult"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    NineBoxGetBenchStrength: {
+        parameters: {
+            query?: {
+                period?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BenchStrengthView"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    NineBoxGetDashboardKpis: {
+        parameters: {
+            query?: {
+                period?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardKpisView"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Unauthorized */
             401: {
