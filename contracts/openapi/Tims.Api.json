@@ -2662,6 +2662,43 @@
             "description": "Forbidden"
           }
         }
+      },
+      "post": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "NineBoxCreateCalibration",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCalibrationBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalibrationSessionWithMembers"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
       }
     },
     "/ninebox/calibrations/{id}": {
@@ -2843,6 +2880,204 @@
           },
           "403": {
             "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/ninebox/calibrations/{sessionId}/votes": {
+      "post": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "NineBoxSubmitCalibrationVote",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitCalibrationVoteBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalibrationVoteResultRow"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/ninebox/calibrations/{sessionId}/members": {
+      "post": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "NineBoxAddCalibrationMember",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddCalibrationMemberBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalibrationMemberIdResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict"
+          }
+        }
+      }
+    },
+    "/ninebox/calibrations/{sessionId}/members/{userId}": {
+      "delete": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "NineBoxRemoveCalibrationMember",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalibrationRemoveResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/ninebox/calibrations/{sessionId}/finalize": {
+      "post": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "NineBoxFinalizeCalibration",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalibrationSessionRow"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
           }
         }
       }
@@ -4072,6 +4307,17 @@
           }
         }
       },
+      "AddCalibrationMemberBody": {
+        "required": [
+          "userId"
+        ],
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          }
+        }
+      },
       "AddCriticalRoleBody": {
         "required": [
           "title",
@@ -4787,6 +5033,44 @@
           }
         }
       },
+      "CalibrationMemberIdResult": {
+        "required": [
+          "id"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        }
+      },
+      "CalibrationMemberResultRow": {
+        "required": [
+          "id",
+          "sessionId",
+          "userId",
+          "status",
+          "createdAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sessionId": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time"
+          }
+        }
+      },
       "CalibrationMemberRow": {
         "required": [
           "id",
@@ -4841,6 +5125,148 @@
               "null",
               "string"
             ]
+          }
+        }
+      },
+      "CalibrationRemoveResult": {
+        "required": [
+          "success"
+        ],
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          }
+        }
+      },
+      "CalibrationSessionRow": {
+        "required": [
+          "id",
+          "organizationId",
+          "period",
+          "status",
+          "scheduledAt",
+          "completedAt",
+          "createdById",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "organizationId": {
+            "type": "string"
+          },
+          "period": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "scheduledAt": {
+            "format": "date-time"
+          },
+          "completedAt": {
+            "format": "date-time"
+          },
+          "createdById": {
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "format": "date-time"
+          }
+        }
+      },
+      "CalibrationSessionWithMembers": {
+        "required": [
+          "id",
+          "organizationId",
+          "period",
+          "status",
+          "scheduledAt",
+          "completedAt",
+          "createdById",
+          "createdAt",
+          "updatedAt",
+          "members"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "organizationId": {
+            "type": "string"
+          },
+          "period": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "scheduledAt": {
+            "format": "date-time"
+          },
+          "completedAt": {
+            "format": "date-time"
+          },
+          "createdById": {
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "format": "date-time"
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CalibrationMemberResultRow"
+            }
+          }
+        }
+      },
+      "CalibrationVoteResultRow": {
+        "required": [
+          "id",
+          "sessionId",
+          "evaluatedUserId",
+          "voterId",
+          "quadrant",
+          "justification",
+          "createdAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sessionId": {
+            "type": "string"
+          },
+          "evaluatedUserId": {
+            "type": "string"
+          },
+          "voterId": {
+            "type": "string"
+          },
+          "quadrant": {
+            "type": "string"
+          },
+          "justification": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "createdAt": {
+            "format": "date-time"
           }
         }
       },
@@ -5428,6 +5854,32 @@
               "null",
               "string"
             ]
+          }
+        }
+      },
+      "CreateCalibrationBody": {
+        "required": [
+          "period"
+        ],
+        "type": "object",
+        "properties": {
+          "period": {
+            "type": "string"
+          },
+          "scheduledAt": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "memberIds": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
@@ -9051,6 +9503,27 @@
           },
           "notes": {
             "type": "string"
+          }
+        }
+      },
+      "SubmitCalibrationVoteBody": {
+        "required": [
+          "evaluatedUserId",
+          "quadrant"
+        ],
+        "type": "object",
+        "properties": {
+          "evaluatedUserId": {
+            "type": "string"
+          },
+          "quadrant": {
+            "type": "string"
+          },
+          "justification": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },

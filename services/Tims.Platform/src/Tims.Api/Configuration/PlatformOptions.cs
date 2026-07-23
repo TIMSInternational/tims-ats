@@ -304,4 +304,30 @@ public sealed class PlatformOptions
     /// flips it at canary (deploy-gated cutover).
     /// </summary>
     public bool SuccessionWriteEnabled { get; init; }
+
+    /// <summary>
+    /// Phase-5 Slice 15 (efcoreStranglerWrite): when true, the C# nine-box calibration WRITE surface is mapped and
+    /// live — the 5 writes <c>POST /ninebox/calibrations</c> (createCalibration), <c>POST
+    /// /ninebox/calibrations/{sessionId}/votes</c> (submitCalibrationVote), <c>POST
+    /// /ninebox/calibrations/{sessionId}/members</c> (addCalibrationMember), <c>DELETE
+    /// /ninebox/calibrations/{sessionId}/members/{userId}</c> (removeCalibrationMember), <c>POST
+    /// /ninebox/calibrations/{sessionId}/finalize</c> (finalizeCalibration). The WRITE port completing the nine-box
+    /// domain after Slice-10 (the 11 reads) — the calibration surface is now FLIP-READY (nothing outside the ninebox
+    /// router touches calibration_sessions/members/votes). Staff-JWT + <c>ninebox:create</c> (createCalibration) /
+    /// <c>ninebox:update</c> (the other four); the 5 writes carry DIFFERENT scope mechanics:
+    /// createCalibration/addCalibrationMember/removeCalibrationMember/finalizeCalibration require org/company scope
+    /// (<c>requireOrgScope</c> — org governance; a narrow committee grant → 403), while submitCalibrationVote is
+    /// MEMBERSHIP+IDENTITY anchored (NO requireOrgScope — the session must exist → 404, the VOTER (caller, never
+    /// input) must be a calibration_member → 403, the evaluatedUser must be in-org → 404; voter_id = caller so a
+    /// non-member can't forge/overwrite another member's vote). createCalibration also validates every memberId in-org
+    /// BEFORE the nested insert (cross-tenant hardening → 400, fixed in BOTH stacks). addCalibrationMember maps the
+    /// <c>@@unique([session_id, user_id])</c> violation → 409; removeCalibrationMember/finalizeCalibration map count-0
+    /// → 404 (a documented improvement over the TS P2025→500). TENANCY: calibration_members/votes have NO
+    /// organization_id — the RLS session-subquery WITH CHECK (session-org) is the tenant guard; the vote upsert is a
+    /// raw ON-CONFLICT INSERT (EF has no native upsert). status/quadrant are plain Strings (NOT native enums), so no
+    /// NpgsqlDataSource. COEXISTENCE write on calibration_sessions + calibration_members + calibration_votes (still
+    /// read by NineBoxReadDbContext). DEFAULT false (dark) — TS remains the single active writer until Federico flips
+    /// it at canary (deploy-gated cutover).
+    /// </summary>
+    public bool NineBoxWriteEnabled { get; init; }
 }

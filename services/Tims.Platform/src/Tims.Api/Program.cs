@@ -338,6 +338,20 @@ try
     builder.Services.AddScoped<INineBoxReadRepository, NineBoxReadRepository>();
     builder.Services.AddScoped<NineBoxReadUseCase>();
 
+    // Phase-5 Slice 15 (efcoreStranglerWrite): the nine-box calibration WRITE surface (the 5 calibration writes).
+    // Write-capable EF over the Prisma-OWNED calibration_sessions + calibration_members (+ read-only users for the
+    // in-org checks) — status/quadrant are plain Strings (NOT native enums), so no NpgsqlDataSource. The
+    // calibration_votes upsert is a raw ON-CONFLICT INSERT on the context's connection (EF has no native upsert).
+    // Writes run UNDER TenantScope/RLS; the member/vote WITH CHECK (session-org, subquery policy) is the tenant guard
+    // (those tables have no organization_id). createCalibration/addCalibrationMember/removeCalibrationMember/
+    // finalizeCalibration gate on ninebox:create|update + requireOrgScope; submitCalibrationVote is MEMBERSHIP+IDENTITY
+    // anchored (ninebox:update, NO requireOrgScope — voter = caller). The WRITE port completing the nine-box domain
+    // (FLIP-READY). Dark unless NineBoxWriteEnabled (deploy-gated cutover; TS stays the sole active writer). A
+    // COEXISTENCE write — the three tables are still read by NineBoxReadDbContext (a distinct read-only context).
+    builder.Services.AddDbContext<NineBoxWriteDbContext>(options => options.UseNpgsql(databaseConnectionString));
+    builder.Services.AddScoped<INineBoxWriteRepository, NineBoxWriteRepository>();
+    builder.Services.AddScoped<NineBoxWriteUseCase>();
+
     // Phase-5 Slice 11 (efcoreReadOnly): the engagement READ surface. Plain read-only context over the
     // Prisma-OWNED surveys/survey_responses/action_plans/leader_commitments/alerts (+ users) — surveys.type/.status,
     // action_plans.status, leader_commitments.status, alerts.* are all plain Strings (NOT native enums), so no
@@ -867,6 +881,20 @@ try
     if (externalOptions.NineBoxReadEnabled || isOpenApiDocGeneration)
     {
         app.MapNineBoxReadEndpoints();
+    }
+
+    // Nine-box calibration WRITE surface (Phase-5 Slice 15): the 5 calibration writes — POST /ninebox/calibrations
+    // (createCalibration, requireOrgScope), POST /ninebox/calibrations/{sessionId}/votes (submitCalibrationVote,
+    // MEMBERSHIP+IDENTITY — session→404, non-member voter→403, evaluatedUser→404; voter = caller), POST
+    // /ninebox/calibrations/{sessionId}/members (addCalibrationMember, requireOrgScope; dup→409), DELETE
+    // /ninebox/calibrations/{sessionId}/members/{userId} (removeCalibrationMember, requireOrgScope; count-0→404),
+    // POST /ninebox/calibrations/{sessionId}/finalize (finalizeCalibration, requireOrgScope; count-0→404). Staff-JWT +
+    // ninebox:create/update; createCalibration validates every memberId in-org (cross-tenant hardening→400). The WRITE
+    // port completing the nine-box domain (FLIP-READY). Dark unless the flag is on (deploy-gated cutover; TS stays the
+    // sole active writer until Federico flips it).
+    if (externalOptions.NineBoxWriteEnabled || isOpenApiDocGeneration)
+    {
+        app.MapNineBoxWriteEndpoints();
     }
 
     // Phase-5 Slice 11 (efcoreReadOnly): the engagement READ surface (14 reads). Staff-JWT + engagement:read; the

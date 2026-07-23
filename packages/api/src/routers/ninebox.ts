@@ -233,6 +233,28 @@ export const nineboxRouter = router({
       // scopes are FORBIDDEN here (no-op at org/company scope — deploy-neutral).
       requireOrgScope(ctx.access);
 
+      // Cross-tenant hardening (Phase-5 Slice-15 / succession H1 lesson): the
+      // nested calibration_members.create below inserts input.memberIds VERBATIM.
+      // RLS only guards the SESSION linkage (calibration_members has no
+      // organization_id), NOT the member user_id — so an org-scoped creator could
+      // otherwise seed a cross-tenant member (org-A session, org-B user). Validate
+      // every memberId is a user in the caller's org BEFORE the nested insert; a
+      // cross-org/nonexistent id → BAD_REQUEST, nothing written (atomic). Applied
+      // in BOTH stacks (this router + the C# NineBoxWriteRepository) to keep parity.
+      if (input.memberIds && input.memberIds.length > 0) {
+        const uniqueMemberIds = [...new Set(input.memberIds)];
+        const found = await db.user.findMany({
+          where: { id: { in: uniqueMemberIds }, organizationId: ctx.user.organizationId },
+          select: { id: true },
+        });
+        if (found.length !== uniqueMemberIds.length) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Uno o mas miembros no pertenecen a esta organizacion',
+          });
+        }
+      }
+
       return db.calibrationSession.create({
         data: {
           organizationId: ctx.user.organizationId,

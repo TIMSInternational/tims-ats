@@ -24,12 +24,24 @@ public static class NineBoxStaffGate
     private const string NineBoxModule = "ninebox";
     private const string ReadAction = "read";
 
+    /// <summary>Read gate (original signature) — forwards <c>action = "read"</c> so the read call sites are unchanged.</summary>
+    public static Task<NineBoxGateResult> AuthorizeAsync(
+        ClaimsPrincipal user,
+        HttpContext httpContext,
+        PrincipalResolver principalResolver,
+        PermissionService permissionService,
+        PlatformOptions options,
+        CancellationToken cancellationToken) =>
+        AuthorizeAsync(user, httpContext, principalResolver, permissionService, options, ReadAction, cancellationToken);
+
+    /// <summary>Action-parameterized gate: enforces <c>ninebox:&lt;action&gt;</c> (create/update for the writes).</summary>
     public static async Task<NineBoxGateResult> AuthorizeAsync(
         ClaimsPrincipal user,
         HttpContext httpContext,
         PrincipalResolver principalResolver,
         PermissionService permissionService,
         PlatformOptions options,
+        string action,
         CancellationToken cancellationToken)
     {
         var context = await ResolvePrincipalAsync(user, httpContext, principalResolver, options, cancellationToken);
@@ -41,7 +53,7 @@ public static class NineBoxStaffGate
         AccessDecision decision;
         try
         {
-            decision = await permissionService.CheckAsync(context, NineBoxModule, ReadAction, cancellationToken);
+            decision = await permissionService.CheckAsync(context, NineBoxModule, action, cancellationToken);
         }
         catch (TenantOrgRequiredException)
         {
