@@ -219,4 +219,20 @@ public sealed class PlatformOptions
     /// flips it at canary (deploy-gated cutover). The five writes stay on TS.
     /// </summary>
     public bool EngagementReadEnabled { get; init; }
+
+    /// <summary>
+    /// Phase-5 Slice 11b (efcoreReadOnly): when true, the C# DEI READ surface is mapped and live —
+    /// <c>GET /dei/dashboard-kpis</c>, <c>/dei/gender-representation</c>, <c>/dei/age-distribution</c>,
+    /// <c>/dei/nationality-diversity</c>, <c>/dei/ethnicity-distribution</c>, <c>/dei/disability-distribution</c>,
+    /// <c>/dei/leadership-diversity</c>, <c>/dei/hiring-funnel</c>, <c>/dei/promotion-equity</c>,
+    /// <c>/dei/inclusion-index</c>. Staff-JWT + <c>dei:read</c> (GRANT-ONLY — the reads are org-wide demographic
+    /// rollups whose disclosure control is min-5 k-anonymity, NOT an org-scope gate). The demographic group-bys read
+    /// the THREE native Prisma enums on <c>employee_demographics</c> (Gender/Ethnicity/DisabilityStatus) into CLR
+    /// enums via a dedicated enum-mapped data source, isolated behind a holder so it never bleeds into the
+    /// string-based contexts. The suppression/ratio shapers (buildDistribution / leadershipDiversity /
+    /// deiDashboardKpis / inclusionIndex + pct/median/ageBand) are the pure @tims/shared / Tims.Domain.Dei kernels
+    /// (golden-parity both stacks). DEFAULT false (dark) — TS remains the single active reader until Federico flips
+    /// it at canary (deploy-gated cutover). getPayEquity (FX) → Slice 11c; the generateReport mutation stays on TS.
+    /// </summary>
+    public bool DeiReadEnabled { get; init; }
 }

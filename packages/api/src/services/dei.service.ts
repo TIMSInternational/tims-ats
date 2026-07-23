@@ -1,52 +1,34 @@
 import { deiRepository } from '../repositories/dei.repository';
 import { suppressBelowMin5 } from '../access';
 import { convertMoney } from '../lib/currency';
-import { normalizeCurrencyCode } from '@tims/shared';
+import {
+  normalizeCurrencyCode,
+  AGE_BANDS,
+  ageBand,
+  median,
+  buildDistribution,
+  leadershipDiversity,
+  deiDashboardKpis,
+} from '@tims/shared';
 
 // ---------------------------------------------------------------------------
 // DEI service — turns demographic aggregates into the metrics the dashboard
 // shows. All inputs are already grouped counts (no individual rows); this layer
 // only computes percentages, age bands, parity ratios, and pay gaps.
 //
-// k-anonymity (Wave 2.5 slice 6, matrix §21): DEI Demographics are AGGREGATE
-// access — a demographic group of 1..4 people re-identifies individuals, so
-// EVERY per-group distribution routes its head-count through suppressBelowMin5.
+// The suppression + shaping logic lives in the PURE @tims/shared/dei.ts kernels
+// (buildDistribution / leadershipDiversity / deiDashboardKpis / ageBand / pct /
+// median), golden-fixtured against contracts/dei-fixtures/*.json and shared
+// byte-for-byte with the C# port (Tims.Domain.Dei.DeiKernels, Phase-5 Slice 11b).
+// This service only threads the repository aggregates into those kernels and
+// maps the generic {key,count} distribution shape to each endpoint's field name.
 //
-// PRESENT-KEY CARDINALITY (round 7): the round-5 design nulled per-group
-// counts/percentages but STILL EMITTED THE GROUP KEYS with a uniform suppressed
-// flag. That leaks: with N=5 published and 5 present band/nationality keys, each
-// group pins to 1 (singleton). The set of present keys + an exposed total is a
-// covert head-count channel. So round 7 SUPERSEDES the uniform-flag-keep-keys
-// approach: when ANY group/bucket/band/area (incl. the implicit unbanded/skipped
-// bucket) is below the min-5 floor, return an EMPTY distribution (NO per-group
-// keys at all) plus a single top-level `suppressed: true` marker. No present
-// keys ⇒ cardinality reveals nothing. min-5 IS the access mechanism here — it
-// sits on top of the `dei:read` permission gate, not as a replacement.
+// k-anonymity (Wave 2.5 slice 6, matrix §21): a demographic group of 1..4 people
+// re-identifies individuals, so the kernels route every per-group head-count
+// through the min-5 floor and, when ANY group/bucket is sub-floor, emit an EMPTY
+// distribution (no per-group keys) + a single top-level `suppressed: true`. min-5
+// IS the disclosure mechanism here — it sits on top of the `dei:read` grant.
 // ---------------------------------------------------------------------------
-
-const AGE_BANDS = ['<25', '25-34', '35-44', '45-54', '55+'] as const;
-
-function pct(count: number, total: number): number {
-  return total > 0 ? Math.round((count / total) * 1000) / 10 : 0;
-}
-
-function median(values: number[]): number {
-  if (!values.length) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 ? sorted[mid]! : Math.round((sorted[mid - 1]! + sorted[mid]!) / 2);
-}
-
-function ageBand(dob: Date, now: Date): (typeof AGE_BANDS)[number] {
-  let age = now.getFullYear() - dob.getFullYear();
-  const m = now.getMonth() - dob.getMonth();
-  if (m < 0 || (m === 0 && now.getDate() < dob.getDate())) age--;
-  if (age < 25) return '<25';
-  if (age < 35) return '25-34';
-  if (age < 45) return '35-44';
-  if (age < 55) return '45-54';
-  return '55+';
-}
 
 export const deiService = {
   async getDashboardKpis(orgId: string) {
@@ -61,106 +43,28 @@ export const deiService = {
       deiRepository.leadershipGenders(orgId),
     ]);
 
-    const byGender = Object.fromEntries(genders.map((g) => [g.gender, g._count._all]));
-    const female = byGender.female ?? 0;
-    const male = byGender.male ?? 0;
-    const genderKnown = genders.reduce((sum, g) => sum + (g.gender === 'undisclosed' ? 0 : g._count._all), 0);
-    const genderParityIndex = Math.max(female, male) > 0 ? Math.round((Math.min(female, male) / Math.max(female, male)) * 100) / 100 : 0;
-
-    // Per-leader-gender head-counts (mirror getLeadershipDiversity's grouping).
-    const leaderCounts = new Map<string, number>();
-    for (const l of leaders) leaderCounts.set(l.gender, (leaderCounts.get(l.gender) ?? 0) + 1);
-    const leaderFemale = leaderCounts.get('female') ?? 0;
-
-    // Cross-endpoint differencing guard (slice 6, reviewer finding): the distribution
-    // endpoints (getGenderRepresentation, getLeadershipDiversity) suppress small
-    // gender/leader groups, but these KPIs publish ratios derived from the SAME counts.
-    // With female=3 (suppressed in the distribution) but male=20 visible and womenPct=13.0,
-    // an attacker recovers female = round(13.0% * (3+20)) = 3. Same for leadership
-    // (female=2 of 10, leadershipWomenPct=20 + visible male=8 → female=2). So when ANY
-    // gender group is below the min-5 floor we null genderParityIndex AND womenPct; when
-    // ANY leader-gender group is below the floor we null leadershipWomenPct. The floor
-    // decision matches the distribution endpoints exactly (per-group suppressBelowMin5).
-    // Denominator-oracle guard (slice 6 round 2): demographicsCoverage is
-    // pct(withDemographics, totalEmployees). With totalEmployees published (org
-    // headcount) an attacker reconstructs withDemographics = round(coverage% ×
-    // totalEmployees) = the EXACT gender-distribution denominator N_g (gender groups
-    // are counted over the demographics population). Combined with the round-1 leak
-    // (visible male=20) that recovered female; the round-2 fix nulls all per-gender
-    // counts in getGenderRepresentation, but a recovered N_g is still a per-gender
-    // denominator that we must not hand out. So null demographicsCoverage whenever any
-    // gender group is sub-floor. totalEmployees (bare org headcount) and
-    // totalNationalities (distinct-value count) reveal no gender split once every
-    // per-gender count is nulled in the distribution endpoint, so they stay.
-    const anyGenderSuppressed = genders.some((g) => suppressBelowMin5(g._count._all).suppressed);
-    const anyLeaderGenderSuppressed = [...leaderCounts.values()].some((c) => suppressBelowMin5(c).suppressed);
-
-    // totalNationalities cardinality oracle (round 6, MEDIUM 6): getNationalityDiversity
-    // EMPTIES its distribution (and nulls totalNationalities) when the nationality
-    // population is 1..4 OR any nationality group is sub-floor. Publishing
-    // nationalities.length here regardless re-exposes the distinct-group cardinality that
-    // the distribution endpoint deliberately hid (and, at tiny N, the NUMBER of groups
-    // pins values). Mirror getNationalityDiversity's trigger exactly: null
-    // totalNationalities whenever its distribution would be suppressed/empty.
-    // Null-bucket implicit group (round 8): getNationalityDiversity now folds the
-    // null-nationality count into its suppression trigger, so mirror it here exactly —
-    // otherwise totalNationalities would publish a distinct-group count that the
-    // distribution endpoint has empties at the same time.
-    const nationalityPopulation = nationalities.reduce((sum, n) => sum + n._count._all, 0);
-    const anyNationalitySuppressed = nationalities.some((n) => suppressBelowMin5(n._count._all).suppressed);
-    const nationalitySuppressed =
-      suppressBelowMin5(nationalityPopulation).suppressed ||
-      suppressBelowMin5(nullNationalityCount).suppressed ||
-      anyNationalitySuppressed;
-
-    // Belt-and-suspenders (round 7, finding 3): demographicsCoverage × totalEmployees
-    // reconstructs the demographics-population denominator N_g shared by ALL dynamic
-    // demographic distributions (gender/nationality/ethnicity). Round 2 nulled it only
-    // when a GENDER group was suppressed, but a sub-floor NATIONALITY or ETHNICITY
-    // distribution empties at tiny N and leaves the same recoverable denominator. So
-    // null demographicsCoverage whenever ANY dynamic demographic distribution is
-    // suppressed. (ethnicity distribution empties when its population is <5 OR any
-    // ethnicity group is sub-floor — mirror getEthnicityDistribution's trigger.)
-    const ethnicityPopulation = ethnicities.reduce((sum, e) => sum + e._count._all, 0);
-    const ethnicitySuppressed =
-      suppressBelowMin5(ethnicityPopulation).suppressed ||
-      ethnicities.some((e) => suppressBelowMin5(e._count._all).suppressed);
-    // Null-DOB bucket (round 8): getAgeDistribution suppresses its whole distribution when
-    // the missing-DOB bucket is 1..4, but demographicsCoverage × totalEmployees reconstructs
-    // withDemographics — the denominator (withDemographics − Σ visible bands) the age
-    // distribution differences against. So null demographicsCoverage when the null-DOB
-    // bucket trips too. (nationalitySuppressed already folds in the null-nationality bucket.)
-    const nullDobSuppressed = suppressBelowMin5(nullDobCount).suppressed;
-    const anyDemographicSuppressed =
-      anyGenderSuppressed || nationalitySuppressed || ethnicitySuppressed || nullDobSuppressed;
-
-    return {
+    return deiDashboardKpis({
       totalEmployees,
-      demographicsCoverage: anyDemographicSuppressed ? null : pct(withDemographics, totalEmployees),
-      genderParityIndex: anyGenderSuppressed ? null : genderParityIndex,
-      womenPct: anyGenderSuppressed ? null : pct(female, genderKnown),
-      leadershipWomenPct: anyLeaderGenderSuppressed ? null : pct(leaderFemale, leaders.length),
-      totalNationalities: nationalitySuppressed ? null : (nationalities.length as number | null),
-    };
+      withDemographics,
+      genders: genders.map((g) => ({ key: g.gender, count: g._count._all })),
+      nationalities: nationalities.map((n) => ({ key: n.nationality as string, count: n._count._all })),
+      nullNationalityCount,
+      nullDobCount,
+      ethnicities: ethnicities.map((e) => ({ key: e.ethnicity, count: e._count._all })),
+      leaderGenders: leaders.map((l) => l.gender),
+    });
   },
 
   async getGenderRepresentation(orgId: string) {
     const counts = await deiRepository.genderCounts(orgId);
     const total = counts.reduce((sum, c) => sum + c._count._all, 0);
-    // Present-key cardinality (round 7): when the demographics population is 1..4 OR
-    // ANY gender group is below the min-5 floor, emit an EMPTY distribution (no
-    // per-group keys) + a top-level `suppressed: true` marker. Emitting the keys —
-    // even with counts/percentages nulled — leaks via cardinality: N present + the
-    // set of group keys pins singleton groups, and a known population total recovers
-    // a suppressed group (N − Σ visible). With no keys at all, nothing is recoverable.
-    // 0 population passes through as a non-suppressed empty distribution (no person).
-    const suppressed =
-      suppressBelowMin5(total).suppressed || counts.some((c) => suppressBelowMin5(c._count._all).suppressed);
-    type GenderOut = { gender: string; count: number | null; percentage: number | null; suppressed: boolean };
-    if (suppressed) return { groups: [] as GenderOut[], suppressed: true };
+    const dist = buildDistribution(
+      counts.map((c) => ({ key: c.gender, count: c._count._all })),
+      total,
+    );
     return {
-      groups: counts.map((c): GenderOut => ({ gender: c.gender, count: c._count._all, percentage: pct(c._count._all, total), suppressed: false })),
-      suppressed: false,
+      groups: dist.groups.map((g) => ({ gender: g.key, count: g.count, percentage: g.percentage, suppressed: g.suppressed })),
+      suppressed: dist.suppressed,
     };
   },
 
@@ -175,28 +79,16 @@ export const deiService = {
       if (r.dateOfBirth) buckets[ageBand(r.dateOfBirth, now)]++;
     }
     const total = rows.length;
-    // Present-key cardinality (round 7): when the population is 1..4 OR ANY band is
-    // below the floor, emit an EMPTY distribution (no band keys) + top-level
-    // `suppressed: true`. Even the FIXED band set leaks at tiny N (a single nonzero
-    // band pins the people), and a visible band count + a known total N recovers a
-    // suppressed band. No band keys ⇒ nothing recoverable. 0 population passes through
-    // as a non-suppressed empty distribution (reveals no person).
-    //
-    // Null-bucket implicit group (round 8): birthDates() excludes rows with no DOB, so
-    // the people WITHOUT a recorded DOB never participate in suppression — yet
-    // getDashboardKpis.demographicsCoverage × totalEmployees reconstructs withDemographics
-    // and (withDemographics − Σ visible bands) recovers the missing-DOB bucket. Fold the
-    // null-DOB count in as an implicit group: if it is 1..4, suppress the whole
-    // distribution (empty + suppressed), same as any sub-floor band. 0 passes through.
-    const suppressed =
-      suppressBelowMin5(total).suppressed ||
-      suppressBelowMin5(nullDobCount).suppressed ||
-      AGE_BANDS.some((range) => suppressBelowMin5(buckets[range]!).suppressed);
-    type AgeOut = { range: string; count: number | null; percentage: number | null; suppressed: boolean };
-    if (suppressed) return { groups: [] as AgeOut[], suppressed: true };
+    // Fixed AGE_BANDS order (incl. 0-count bands); the null-DOB count is an implicit group folded into the
+    // suppression trigger (birthDates() excludes null-DOB rows, so they would otherwise never participate).
+    const dist = buildDistribution(
+      AGE_BANDS.map((range) => ({ key: range, count: buckets[range]! })),
+      total,
+      [nullDobCount],
+    );
     return {
-      groups: AGE_BANDS.map((range): AgeOut => ({ range, count: buckets[range]!, percentage: pct(buckets[range]!, total), suppressed: false })),
-      suppressed: false,
+      groups: dist.groups.map((g) => ({ range: g.key, count: g.count, percentage: g.percentage, suppressed: g.suppressed })),
+      suppressed: dist.suppressed,
     };
   },
 
@@ -206,66 +98,42 @@ export const deiService = {
       deiRepository.nullNationalityCount(orgId),
     ]);
     const total = counts.reduce((sum, c) => sum + c._count._all, 0);
-    // Present-key cardinality (round 7): when the population is 1..4 OR ANY nationality
-    // group is below the floor, emit an EMPTY distribution (no nationality keys) + null
-    // totalNationalities + top-level `suppressed: true`. The NUMBER of distinct keys
-    // pins values at tiny N, and a present-key set + a known total recovers a suppressed
-    // group; emitting NO keys closes both. This SUPERSEDES the round-5/6 "keep keys,
-    // null counts, alphabetical-sort, mask total" approach — with no keys there is no
-    // sort-order channel and no cardinality left to leak. 0 passes through unsuppressed.
-    //
-    // Null-bucket implicit group (round 8): nationalityCounts() filters out null
-    // nationality, so people WITHOUT a recorded nationality never participate in
-    // suppression — yet getDashboardKpis.demographicsCoverage × totalEmployees recovers
-    // withDemographics and (withDemographics − Σ visible) recovers the missing bucket.
-    // Fold the null-nationality count in as an implicit group: if it is 1..4, suppress
-    // the whole distribution (empty + null total + suppressed). 0 passes through.
-    type NatOut = { nationality: string; count: number | null; percentage: number | null; suppressed: boolean };
-    const suppressed =
-      suppressBelowMin5(total).suppressed ||
-      suppressBelowMin5(nullNationalityCount).suppressed ||
-      counts.some((c) => suppressBelowMin5(c._count._all).suppressed);
-    if (suppressed) {
-      return { totalNationalities: null as number | null, distribution: [] as NatOut[], suppressed: true };
+    // Descending-by-count ranking (non-sensitive once every count is >=5 and visible); the null-nationality
+    // count is an implicit group folded into the suppression trigger.
+    const sorted = counts
+      .map((c) => ({ key: c.nationality as string, count: c._count._all }))
+      .sort((a, b) => b.count - a.count);
+    const dist = buildDistribution(sorted, total, [nullNationalityCount]);
+    if (dist.suppressed) {
+      return { totalNationalities: null as number | null, distribution: [] as Array<{ nationality: string; count: number | null; percentage: number | null; suppressed: boolean }>, suppressed: true };
     }
-    // Not suppressed: every group clears the floor → publish counts/percentages,
-    // descending-by-count (a non-sensitive ranking once all counts are >=5 and visible).
-    const distribution: NatOut[] = counts
-      .map((c) => ({ nationality: c.nationality as string, count: c._count._all as number | null, percentage: pct(c._count._all, total) as number | null, suppressed: false, _sort: c._count._all }))
-      .sort((a, b) => b._sort - a._sort)
-      .map(({ _sort, ...rest }) => rest);
+    const distribution = dist.groups.map((g) => ({ nationality: g.key, count: g.count, percentage: g.percentage, suppressed: g.suppressed }));
     return { totalNationalities: distribution.length as number | null, distribution, suppressed: false };
   },
 
   async getEthnicityDistribution(orgId: string) {
     const counts = await deiRepository.ethnicityCounts(orgId);
     const total = counts.reduce((sum, c) => sum + c._count._all, 0);
-    // Present-key cardinality (round 7): empty distribution + top-level suppressed when
-    // the population is 1..4 OR any ethnicity group is below the floor. No keys ⇒ no
-    // cardinality, no sort-order channel, no N − Σ differencing. 0 passes through.
-    type EthOut = { ethnicity: string; count: number | null; percentage: number | null; suppressed: boolean };
-    const suppressed =
-      suppressBelowMin5(total).suppressed || counts.some((c) => suppressBelowMin5(c._count._all).suppressed);
-    if (suppressed) return { groups: [] as EthOut[], suppressed: true };
-    const groups: EthOut[] = counts
-      .map((c) => ({ ethnicity: c.ethnicity, count: c._count._all as number | null, percentage: pct(c._count._all, total) as number | null, suppressed: false, _sort: c._count._all }))
-      .sort((a, b) => b._sort - a._sort)
-      .map(({ _sort, ...rest }) => rest);
-    return { groups, suppressed: false };
+    const sorted = counts
+      .map((c) => ({ key: c.ethnicity, count: c._count._all }))
+      .sort((a, b) => b.count - a.count);
+    const dist = buildDistribution(sorted, total);
+    return {
+      groups: dist.groups.map((g) => ({ ethnicity: g.key, count: g.count, percentage: g.percentage, suppressed: g.suppressed })),
+      suppressed: dist.suppressed,
+    };
   },
 
   async getDisabilityDistribution(orgId: string) {
     const counts = await deiRepository.disabilityCounts(orgId);
     const total = counts.reduce((sum, c) => sum + c._count._all, 0);
-    // Present-key cardinality (round 7): empty distribution + top-level suppressed when
-    // the population is 1..4 OR any status group is below the floor. No keys survive.
-    type DisOut = { status: string; count: number | null; percentage: number | null; suppressed: boolean };
-    const suppressed =
-      suppressBelowMin5(total).suppressed || counts.some((c) => suppressBelowMin5(c._count._all).suppressed);
-    if (suppressed) return { groups: [] as DisOut[], suppressed: true };
+    const dist = buildDistribution(
+      counts.map((c) => ({ key: c.disabilityStatus, count: c._count._all })),
+      total,
+    );
     return {
-      groups: counts.map((c): DisOut => ({ status: c.disabilityStatus, count: c._count._all as number | null, percentage: pct(c._count._all, total) as number | null, suppressed: false })),
-      suppressed: false,
+      groups: dist.groups.map((g) => ({ status: g.key, count: g.count, percentage: g.percentage, suppressed: g.suppressed })),
+      suppressed: dist.suppressed,
     };
   },
 
@@ -376,25 +244,6 @@ export const deiService = {
 
   async getLeadershipDiversity(orgId: string) {
     const leaders = await deiRepository.leadershipGenders(orgId);
-    const total = leaders.length;
-    const counts = new Map<string, number>();
-    for (const l of leaders) counts.set(l.gender, (counts.get(l.gender) ?? 0) + 1);
-
-    // Present-key cardinality (round 7): when the leader pool is 1..4 OR ANY leader-
-    // gender group is below the floor, emit an EMPTY byGender (no gender keys) + null
-    // totalLeaders + top-level `suppressed: true`. The gender-key set pins values at
-    // tiny N, and totalLeaders − Σ visible recovers a suppressed group — no keys closes
-    // both. 0 leaders passes through as a non-suppressed empty pool (reveals no person).
-    type LeaderOut = { gender: string; count: number | null; percentage: number | null; suppressed: boolean };
-    const suppressed =
-      suppressBelowMin5(total).suppressed || [...counts.values()].some((count) => suppressBelowMin5(count).suppressed);
-    if (suppressed) {
-      return { totalLeaders: null as number | null, byGender: [] as LeaderOut[], suppressed: true };
-    }
-    return {
-      totalLeaders: total as number | null,
-      byGender: [...counts.entries()].map(([gender, count]): LeaderOut => ({ gender, count: count as number | null, percentage: pct(count, total) as number | null, suppressed: false })),
-      suppressed: false,
-    };
+    return leadershipDiversity(leaders.map((l) => l.gender));
   },
 };

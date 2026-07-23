@@ -21,6 +21,7 @@ using Tims.Api.RateLimiting;
 using Tims.Api.Evaluation360;
 using Tims.Api.ExternalVendor;
 using Tims.Api.Engagement;
+using Tims.Api.Dei;
 using Tims.Api.NineBox;
 using Tims.Api.Reporting;
 using Tims.Api.Succession;
@@ -34,6 +35,7 @@ using Tims.Application.Evaluation360;
 using Tims.Application.ExternalVendor;
 using Tims.Application.Identity;
 using Tims.Application.Engagement;
+using Tims.Application.Dei;
 using Tims.Application.NineBox;
 using Tims.Application.Reporting;
 using Tims.Application.Succession;
@@ -50,6 +52,7 @@ using Tims.Infrastructure.Evaluation360;
 using Tims.Infrastructure.ExternalVendor;
 using Tims.Infrastructure.Hris;
 using Tims.Infrastructure.Engagement;
+using Tims.Infrastructure.Dei;
 using Tims.Infrastructure.NineBox;
 using Tims.Infrastructure.Identity;
 using Tims.Infrastructure.RateLimiting;
@@ -299,6 +302,23 @@ try
     builder.Services.AddDbContext<EngagementReadDbContext>(options => options.UseNpgsql(databaseConnectionString));
     builder.Services.AddScoped<IEngagementReadRepository, EngagementReadRepository>();
     builder.Services.AddScoped<EngagementReadUseCase>();
+
+    // Phase-5 Slice 11b (efcoreReadOnly): the DEI READ surface (people-dashboards GROUP 2). Unlike the engagement
+    // read, employee_demographics carries THREE NATIVE Prisma enums the demographic reads GROUP BY (Gender /
+    // Ethnicity / DisabilityStatus) — Postgres has no implicit enum=text operator — so a dedicated data source maps
+    // them to CLR enums (isolated behind a holder like the billing/eval360 contexts, so the mappings never bleed
+    // into other string-based contexts). Reads run UNDER TenantScope/RLS; the gate is GRANT-ONLY (dei:read; no
+    // org-gate — k-anonymity is the disclosure control). The suppression/ratio shapers are the pure @tims/shared /
+    // Tims.Domain.Dei kernels. Dark unless DeiReadEnabled (deploy-gated cutover; TS stays the sole active reader
+    // until Federico flips it). getPayEquity (FX) → Slice 11c.
+    builder.Services.AddSingleton(_ =>
+        new DeiReadDataSourceHolder(DeiReadDataSource.Build(databaseConnectionString ?? string.Empty)));
+    builder.Services.AddDbContext<DeiReadDbContext>((sp, options) =>
+        options.UseNpgsql(
+            sp.GetRequiredService<DeiReadDataSourceHolder>().DataSource,
+            DeiReadDataSource.MapEnums));
+    builder.Services.AddScoped<IDeiReadRepository, DeiReadRepository>();
+    builder.Services.AddScoped<DeiReadUseCase>();
 
     builder.Services
         .AddOptions<StripeBillingOptions>()
@@ -765,6 +785,15 @@ try
     if (externalOptions.EngagementReadEnabled || isOpenApiDocGeneration)
     {
         app.MapEngagementReadEndpoints();
+    }
+
+    // Phase-5 Slice 11b (efcoreReadOnly): the DEI READ surface (10 reads). Staff-JWT + dei:read (GRANT-ONLY — no
+    // org-gate; k-anonymity is the disclosure control). The demographic group-bys materialize the three native
+    // Prisma enums via the enum-mapped data source. Dark unless the flag is on (deploy-gated cutover; TS stays the
+    // sole active reader until Federico flips it). getPayEquity (FX) → Slice 11c.
+    if (externalOptions.DeiReadEnabled || isOpenApiDocGeneration)
+    {
+        app.MapDeiReadEndpoints();
     }
 
     // Authz probe (WP2.5): the C# equivalent of the tRPC `requirePermission` gate. Resolves the

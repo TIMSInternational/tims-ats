@@ -92,6 +92,11 @@
       <Link>engagement-fixtures\%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <!-- Phase-5 Slice 11b DEI kernel golden fixtures (shared with the TS vitest suite). -->
+    <Content Include="..\..\..\..\contracts\dei-fixtures\*.json">
+      <Link>dei-fixtures\%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <!-- WP3.6-map HRIS mapper golden fixtures (C#-only characterization; greenfield, no TS counterpart). -->
     <Content Include="..\..\..\..\contracts\hris-fixtures\*.json">
       <Link>hris-fixtures\%(Filename)%(Extension)</Link>

@@ -1,0 +1,11 @@
+{
+  "cases": [
+    { "name": "under 25", "input": { "dob": "2005-06-15", "now": "2026-06-15" }, "expected": "<25" },
+    { "name": "25-34", "input": { "dob": "2000-06-15", "now": "2026-06-15" }, "expected": "25-34" },
+    { "name": "35-44", "input": { "dob": "1985-06-15", "now": "2026-06-15" }, "expected": "35-44" },
+    { "name": "45-54", "input": { "dob": "1975-06-15", "now": "2026-06-15" }, "expected": "45-54" },
+    { "name": "55+", "input": { "dob": "1960-06-15", "now": "2026-06-15" }, "expected": "55+" },
+    { "name": "birthday not yet reached → decrement (24, boundary)", "input": { "dob": "2001-06-16", "now": "2026-06-15" }, "expected": "<25" },
+    { "name": "birthday today → no decrement (25, boundary)", "input": { "dob": "2001-06-15", "now": "2026-06-15" }, "expected": "25-34" }
+  ]
+}

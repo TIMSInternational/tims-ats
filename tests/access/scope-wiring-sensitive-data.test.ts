@@ -27,6 +27,10 @@ const readCompKernel = () => readFileSync(join(ROOT, 'packages/shared/src/compen
 const readCompAudited = () =>
   readComp() + readFileSync(join(ROOT, 'packages/api/src/services/compensation.service.ts'), 'utf8');
 const readDeiService = () => readFileSync(join(ROOT, 'packages/api/src/services/dei.service.ts'), 'utf8');
+// Slice-11b: the demographic-distribution / dashboard-KPI / leadership / inclusion min-5 suppression was extracted
+// VERBATIM into the shared @tims/shared dei kernel (golden-fixtured both stacks); the service now DELEGATES to it.
+// getPayEquity stays inline in the service (FX → Slice 11c). Tripwires guard the floors in their new home.
+const readDeiKernel = () => readFileSync(join(ROOT, 'packages/shared/src/dei.ts'), 'utf8');
 const readEngagement = () => readFileSync(join(ROOT, 'packages/api/src/routers/engagement.ts'), 'utf8');
 // Phase-5 Slice-11: the engagement min-5 aggregate suppression (survey-results / eNPS / climate / results-by-area
 // / dashboard-KPI differencing guard) was extracted VERBATIM into the shared @tims/shared engagement kernels so
@@ -96,43 +100,49 @@ describe('aggregateGroups k-anonymity contract (demographic/engagement groups)',
 
 // ── Source tripwires: DEI service honors min-5 (Task 7 Part A) ───────────────
 describe('DEI demographic distributions honor min-5', () => {
-  it('dei.service imports suppressBelowMin5 from the access barrel', () => {
-    expect(readDeiService()).toMatch(/import\s*\{\s*suppressBelowMin5\s*\}\s*from '\.\.\/access'/);
+  it('dei.service imports suppressBelowMin5 (payEquity, still inline) + DELEGATES the demographic aggregates to the shared kernels (honest-fixture)', () => {
+    const src = readDeiService();
+    // suppressBelowMin5 stays imported for getPayEquity (inline until Slice 11c).
+    expect(src).toMatch(/import\s*\{\s*suppressBelowMin5\s*\}\s*from '\.\.\/access'/);
+    // Delegation tripwire (#141 honest-fixture): the kernelized reads import + CALL the shared shapers,
+    // never a re-implemented inline mirror.
+    expect(src).toMatch(/from '@tims\/shared'/);
+    for (const kernel of ['buildDistribution', 'leadershipDiversity', 'deiDashboardKpis']) {
+      expect(src, `dei.service must call ${kernel}`).toMatch(new RegExp(`\\b${kernel}\\(`));
+    }
   });
 
-  it('every per-group distribution routes a count through suppressBelowMin5 (>=7 calls)', () => {
-    // gender, age, nationality, ethnicity, disability, payEquity, leadership (+ kpi leader pool)
-    const calls = readDeiService().match(/suppressBelowMin5\(/g) ?? [];
-    expect(calls.length).toBeGreaterThanOrEqual(7);
+  it('every per-group distribution routes a count through suppressBelowMin5 — in the KERNEL (>=7 calls) + payEquity in the service', () => {
+    // gender/age/nationality/ethnicity/disability/leadership/dashboard/inclusion floors live in the kernel now.
+    const kernelCalls = readDeiKernel().match(/suppressBelowMin5\(/g) ?? [];
+    expect(kernelCalls.length).toBeGreaterThanOrEqual(7);
+    // payEquity retains its floors in the service (population, skipped, per-gender) until Slice 11c.
+    const serviceCalls = readDeiService().match(/suppressBelowMin5\(/g) ?? [];
+    expect(serviceCalls.length).toBeGreaterThanOrEqual(3);
   });
 
   it('every per-group distribution emits an empty shape + top-level suppressed (round 7 present-key cardinality)', () => {
-    const src = readDeiService();
-    // round 7 SUPERSEDES the round-5 uniform-flag-keep-keys design: when ANY group is
-    // sub-floor (or the population is 1..4) the distribution is EMPTY (no group keys) +
-    // a single top-level `suppressed: true`. So the source no longer nulls per-group
-    // counts/percentages with a uniform flag; it returns `{ groups: [], suppressed: true }`
-    // (or `{ ..., distribution: [], suppressed: true }` / `byGender: []` / `results: []`).
-    expect(src).toMatch(/return \{ groups: \[\][^}]*suppressed: true \}/);
-    // payEquity + leadership + nationality empty-suppressed shapes.
-    expect(src).toMatch(/results: \[\] as PayOut\[\], gapPct: null as number \| null, suppressed: true/);
-    expect(src).toMatch(/byGender: \[\] as LeaderOut\[\], suppressed: true/);
-    expect(src).toMatch(/distribution: \[\] as NatOut\[\], suppressed: true/);
-    // The retired round-5 forms are gone (no uniform-flag keep-keys, no anySuppressed mask).
-    expect(src).not.toMatch(/const anySuppressed = /);
-    expect(src).not.toMatch(/count:\s*null as number \| null,\s*percentage:\s*null as number \| null,\s*suppressed:\s*true/);
+    const kernel = readDeiKernel();
+    // round 7: when ANY group/bucket is sub-floor (or population 1..4) the distribution is EMPTY (no group keys)
+    // + a single top-level `suppressed: true`. buildDistribution + leadershipDiversity own these shapes now.
+    expect(kernel).toMatch(/return \{ groups: \[\], suppressed: true \}/);
+    expect(kernel).toMatch(/return \{ totalLeaders: null, byGender: \[\], suppressed: true \}/);
+    // payEquity's empty-suppressed shape stays inline in the service (Slice 11c).
+    expect(readDeiService()).toMatch(/results: \[\] as PayOut\[\], gapPct: null as number \| null, suppressed: true/);
+    // The retired round-5 uniform-flag-keep-keys design is gone from the kernel.
+    expect(kernel).not.toMatch(/const anySuppressed = /);
+    expect(kernel).not.toMatch(/count:\s*null as number \| null,\s*percentage:\s*null as number \| null,\s*suppressed:\s*true/);
   });
 
   // ── round 7: present-key cardinality — empty distribution when any group sub-floor ──
-  it('every per-group distribution computes a single `suppressed` and returns empty when set', () => {
-    const src = readDeiService();
-    // Each of the 7 distributions (gender, age, nationality, ethnicity, disability,
-    // payEquity, leadership) computes one `const suppressed =` over total-OR-any-group
-    // and returns an empty shape when set.
-    const flags = src.match(/const suppressed =/g) ?? [];
-    expect(flags.length).toBeGreaterThanOrEqual(6);
-    // total/population guard folded into the same `suppressed` expression.
-    expect(src).toMatch(/suppressBelowMin5\((?:total|populationTotal)\)\.suppressed \|\|/);
+  it('every per-group distribution computes a single `suppressed` and returns empty when set (kernel)', () => {
+    const kernel = readDeiKernel();
+    // buildDistribution + leadershipDiversity each compute one `const suppressed =` folding total OR any group.
+    const flags = kernel.match(/const suppressed =/g) ?? [];
+    expect(flags.length).toBeGreaterThanOrEqual(2);
+    // total guard folded into the same `suppressed` expression + the per-group floor.
+    expect(kernel).toMatch(/suppressBelowMin5\(total\)\.suppressed \|\|/);
+    expect(kernel).toMatch(/groups\.some\(\(g\) => suppressBelowMin5\(g\.count\)\.suppressed\)/);
   });
 });
 
@@ -262,32 +272,30 @@ describe('candidate.repository omits restricted assessment-result fields', () =>
 //  (4) restricted per-person compensation reads bypassed the fail-closed audit.
 
 describe('DEI getDashboardKpis closes cross-endpoint differencing (fix 1)', () => {
-  it('computes anyGenderSuppressed / anyLeaderGenderSuppressed over the per-group counts', () => {
-    const src = readDeiService();
-    expect(src).toMatch(/const anyGenderSuppressed = genders\.some\(\(g\) => suppressBelowMin5\(g\._count\._all\)\.suppressed\)/);
-    expect(src).toMatch(/const anyLeaderGenderSuppressed = \[\.\.\.leaderCounts\.values\(\)\]\.some\(\(c\) => suppressBelowMin5\(c\)\.suppressed\)/);
+  // The dashboard-KPI differencing suppression moved into the shared deiDashboardKpis kernel (Slice-11b).
+  it('computes anyGenderSuppressed / anyLeaderGenderSuppressed over the per-group counts (kernel)', () => {
+    const kernel = readDeiKernel();
+    expect(kernel).toMatch(/const anyGenderSuppressed = input\.genders\.some\(\(g\) => suppressBelowMin5\(g\.count\)\.suppressed\)/);
+    expect(kernel).toMatch(/const anyLeaderGenderSuppressed = \[\.\.\.leaderCounts\.values\(\)\]\.some\(\(c\) => suppressBelowMin5\(c\)\.suppressed\)/);
   });
 
-  it('nulls genderParityIndex + womenPct when any gender group is suppressed', () => {
-    const src = readDeiService();
-    expect(src).toMatch(/genderParityIndex:\s*anyGenderSuppressed \? null : genderParityIndex/);
-    expect(src).toMatch(/womenPct:\s*anyGenderSuppressed \? null : pct\(female, genderKnown\)/);
+  it('nulls genderParityIndex + womenPct when any gender group is suppressed (kernel)', () => {
+    const kernel = readDeiKernel();
+    expect(kernel).toMatch(/genderParityIndex:\s*anyGenderSuppressed \? null : genderParityIndex/);
+    expect(kernel).toMatch(/womenPct:\s*anyGenderSuppressed \? null : pct\(female, genderKnown\)/);
   });
 
-  it('nulls leadershipWomenPct when any leader-gender group is suppressed', () => {
-    expect(readDeiService()).toMatch(/leadershipWomenPct:\s*anyLeaderGenderSuppressed \? null : pct\(leaderFemale, leaders\.length\)/);
+  it('nulls leadershipWomenPct when any leader-gender group is suppressed (kernel)', () => {
+    expect(readDeiKernel()).toMatch(/leadershipWomenPct:\s*anyLeaderGenderSuppressed \? null : pct\(leaderFemale, input\.leaderGenders\.length\)/);
   });
 
   // Round 2 + round 7: demographicsCoverage × totalEmployees reconstructs the shared
   // demographics-population denominator → null it when ANY dynamic demographic
-  // distribution (gender OR nationality OR ethnicity) is suppressed.
-  it('nulls demographicsCoverage when any demographic distribution is suppressed (round 7 belt-and-suspenders + round 8 null-DOB)', () => {
-    const src = readDeiService();
-    // round 8 folds the missing-DOB bucket (nullDobSuppressed) into the trigger too —
-    // getAgeDistribution suppresses on it, and coverage × headcount reconstructs the
-    // shared withDemographics denominator the age distribution differences against.
-    expect(src).toMatch(/anyGenderSuppressed \|\| nationalitySuppressed \|\| ethnicitySuppressed \|\| nullDobSuppressed/);
-    expect(src).toMatch(/demographicsCoverage:\s*anyDemographicSuppressed \? null : pct\(withDemographics, totalEmployees\)/);
+  // distribution (gender OR nationality OR ethnicity OR null-DOB) is suppressed.
+  it('nulls demographicsCoverage when any demographic distribution is suppressed (round 7 belt-and-suspenders + round 8 null-DOB) (kernel)', () => {
+    const kernel = readDeiKernel();
+    expect(kernel).toMatch(/anyGenderSuppressed \|\| nationalitySuppressed \|\| ethnicitySuppressed \|\| nullDobSuppressed/);
+    expect(kernel).toMatch(/demographicsCoverage:\s*anyDemographicSuppressed \? null : pct\(input\.withDemographics, input\.totalEmployees\)/);
   });
 });
 

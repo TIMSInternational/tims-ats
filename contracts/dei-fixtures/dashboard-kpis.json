@@ -1,0 +1,109 @@
+{
+  "cases": [
+    {
+      "name": "all clear → every metric present",
+      "input": {
+        "totalEmployees": 100,
+        "withDemographics": 80,
+        "genders": [{ "key": "female", "count": 40 }, { "key": "male", "count": 35 }, { "key": "undisclosed", "count": 5 }],
+        "nationalities": [{ "key": "CO", "count": 50 }, { "key": "US", "count": 30 }],
+        "nullNationalityCount": 0,
+        "nullDobCount": 0,
+        "ethnicities": [{ "key": "mestizo", "count": 60 }, { "key": "blanco", "count": 20 }],
+        "leaderGenders": ["female", "female", "female", "female", "female", "male", "male", "male", "male", "male"]
+      },
+      "expected": {
+        "totalEmployees": 100,
+        "demographicsCoverage": 80,
+        "genderParityIndex": 0.88,
+        "womenPct": 53.3,
+        "leadershipWomenPct": 50,
+        "totalNationalities": 2
+      }
+    },
+    {
+      "name": "sub-floor gender nulls parity/women/coverage; keeps total + nationalities + leadership",
+      "input": {
+        "totalEmployees": 100,
+        "withDemographics": 80,
+        "genders": [{ "key": "female", "count": 3 }, { "key": "male", "count": 72 }, { "key": "undisclosed", "count": 5 }],
+        "nationalities": [{ "key": "CO", "count": 80 }],
+        "nullNationalityCount": 0,
+        "nullDobCount": 0,
+        "ethnicities": [{ "key": "mestizo", "count": 80 }],
+        "leaderGenders": ["female", "female", "female", "female", "female", "male", "male", "male", "male", "male"]
+      },
+      "expected": {
+        "totalEmployees": 100,
+        "demographicsCoverage": null,
+        "genderParityIndex": null,
+        "womenPct": null,
+        "leadershipWomenPct": 50,
+        "totalNationalities": 1
+      }
+    },
+    {
+      "name": "sub-floor null-nationality bucket nulls coverage + totalNationalities only",
+      "input": {
+        "totalEmployees": 100,
+        "withDemographics": 80,
+        "genders": [{ "key": "female", "count": 40 }, { "key": "male", "count": 40 }],
+        "nationalities": [{ "key": "CO", "count": 77 }],
+        "nullNationalityCount": 3,
+        "nullDobCount": 0,
+        "ethnicities": [{ "key": "mestizo", "count": 80 }],
+        "leaderGenders": ["female", "female", "female", "female", "female", "male", "male", "male", "male", "male"]
+      },
+      "expected": {
+        "totalEmployees": 100,
+        "demographicsCoverage": null,
+        "genderParityIndex": 1,
+        "womenPct": 50,
+        "leadershipWomenPct": 50,
+        "totalNationalities": null
+      }
+    },
+    {
+      "name": "sub-floor null-DOB bucket nulls coverage only",
+      "input": {
+        "totalEmployees": 100,
+        "withDemographics": 80,
+        "genders": [{ "key": "female", "count": 40 }, { "key": "male", "count": 40 }],
+        "nationalities": [{ "key": "CO", "count": 80 }],
+        "nullNationalityCount": 0,
+        "nullDobCount": 3,
+        "ethnicities": [{ "key": "mestizo", "count": 80 }],
+        "leaderGenders": ["female", "female", "female", "female", "female", "male", "male", "male", "male", "male"]
+      },
+      "expected": {
+        "totalEmployees": 100,
+        "demographicsCoverage": null,
+        "genderParityIndex": 1,
+        "womenPct": 50,
+        "leadershipWomenPct": 50,
+        "totalNationalities": 1
+      }
+    },
+    {
+      "name": "sub-floor leader gender nulls only leadershipWomenPct",
+      "input": {
+        "totalEmployees": 100,
+        "withDemographics": 80,
+        "genders": [{ "key": "female", "count": 40 }, { "key": "male", "count": 40 }],
+        "nationalities": [{ "key": "CO", "count": 80 }],
+        "nullNationalityCount": 0,
+        "nullDobCount": 0,
+        "ethnicities": [{ "key": "mestizo", "count": 80 }],
+        "leaderGenders": ["female", "female", "male", "male", "male", "male", "male", "male", "male", "male"]
+      },
+      "expected": {
+        "totalEmployees": 100,
+        "demographicsCoverage": 80,
+        "genderParityIndex": 1,
+        "womenPct": 50,
+        "leadershipWomenPct": null,
+        "totalNationalities": 1
+      }
+    }
+  ]
+}

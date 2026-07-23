@@ -1,8 +1,8 @@
-using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Tims.Domain.Access;
+using Tims.Domain.Json;
 using Tims.Domain.Reporting;
 
 namespace Tims.Domain.Engagement;
@@ -89,7 +89,7 @@ public static class EngagementKernels
         var scores = new List<double>();
         foreach (var answers in responseAnswers)
         {
-            var first = FirstValue(answers);
+            var first = JsValue.FirstValue(answers);
             double n;
             if (first is not null && first.GetValueKind() == JsonValueKind.Number)
             {
@@ -97,7 +97,7 @@ public static class EngagementKernels
             }
             else if (first is not null && first.GetValueKind() == JsonValueKind.String)
             {
-                n = JsParseInt(first.GetValue<string>());
+                n = JsValue.ParseInt(first.GetValue<string>());
             }
             else
             {
@@ -153,17 +153,17 @@ public static class EngagementKernels
         {
             var text = q["text"];
             var type = q["type"];
-            var key = StringKey(text);
+            var key = JsValue.StringKey(text);
 
             // answers = responses.map(r => r.answers?.[q.text]).filter(Boolean)
             var truthy = responseAnswers
                 .Select(a => (JsonNode?)a[key])
-                .Where(JsTruthy)
+                .Where(JsValue.Truthy)
                 .ToList();
 
             if (IsScale(type))
             {
-                var nums = truthy.Select(JsNumber).Where(n => !double.IsNaN(n)).ToList();
+                var nums = truthy.Select(JsValue.Number).Where(n => !double.IsNaN(n)).ToList();
                 var skipped = totalResponses - nums.Count;
                 if (Suppress(nums.Count) || Suppress(skipped))
                 {
@@ -211,12 +211,12 @@ public static class EngagementKernels
         foreach (var q in questions)
         {
             var cat = q["category"];
-            if (!JsTruthy(cat))
+            if (!JsValue.Truthy(cat))
             {
                 continue;
             }
 
-            var catStr = StringKey(cat);
+            var catStr = JsValue.StringKey(cat);
             if (seen.Add(catStr))
             {
                 categories.Add(catStr);
@@ -235,7 +235,7 @@ public static class EngagementKernels
             foreach (var a in responseAnswers)
             {
                 var rowScores = catQuestions
-                    .Select(q => JsNumberOfKey(a, StringKey(q["text"])))
+                    .Select(q => JsValue.NumberOfKey(a, JsValue.StringKey(q["text"])))
                     .Where(n => !double.IsNaN(n))
                     .ToList();
                 if (rowScores.Count > 0)
@@ -288,7 +288,7 @@ public static class EngagementKernels
             // vals = Object.values(answers ?? {}).map(Number).filter(!isNaN)
             var vals = r.Answers is null
                 ? new List<double>()
-                : r.Answers.Select(kv => JsNumber(kv.Value)).Where(n => !double.IsNaN(n)).ToList();
+                : r.Answers.Select(kv => JsValue.Number(kv.Value)).Where(n => !double.IsNaN(n)).ToList();
 
             g.Respondents += 1;
             if (vals.Count > 0)
@@ -344,169 +344,6 @@ public static class EngagementKernels
 
     private static JsonNode? Clone(JsonNode? node) => node?.DeepClone();
 
-    // Object.values(answers)[0] — the first property value (undefined ⇒ null when the object is empty).
-    private static JsonNode? FirstValue(JsonObject answers)
-    {
-        foreach (var kv in answers)
-        {
-            return kv.Value;
-        }
-
-        return null;
-    }
-
-    // The string key a JS `answers[q.text]` lookup uses. Questions carry string text/category; a non-string
-    // value is coerced via its JSON text (JS String() coercion), matching `q.text as string` at runtime.
-    private static string StringKey(JsonNode? node) => node?.GetValueKind() == JsonValueKind.String
-        ? node.GetValue<string>()
-        : node?.ToJsonString() ?? "undefined";
-
     private static bool IsScale(JsonNode? type) =>
         type?.GetValueKind() == JsonValueKind.String && type.GetValue<string>() == ScaleType;
-
-    // JS Boolean(x): null/undefined/false → false; "" → false; 0 → false; else true.
-    private static bool JsTruthy(JsonNode? node)
-    {
-        if (node is null)
-        {
-            return false;
-        }
-
-        return node.GetValueKind() switch
-        {
-            JsonValueKind.Null => false,
-            JsonValueKind.False => false,
-            JsonValueKind.True => true,
-            JsonValueKind.String => node.GetValue<string>().Length > 0,
-            JsonValueKind.Number => node.GetValue<double>() != 0,
-            _ => true, // object / array
-        };
-    }
-
-    // JS Number(x) for a PRESENT value (a C#-null node = present JSON null → Number(null) = 0).
-    private static double JsNumber(JsonNode? node)
-    {
-        if (node is null)
-        {
-            return 0; // Number(null) = 0
-        }
-
-        return node.GetValueKind() switch
-        {
-            JsonValueKind.Null => 0,
-            JsonValueKind.True => 1,
-            JsonValueKind.False => 0,
-            JsonValueKind.Number => node.GetValue<double>(),
-            JsonValueKind.String => JsStringToNumber(node.GetValue<string>()),
-            _ => double.NaN, // object / array → NaN
-        };
-    }
-
-    // JS Number(answers?.[key]): an ABSENT key is undefined → NaN; a present (incl. JSON-null) value → Number(v).
-    private static double JsNumberOfKey(JsonObject answers, string key) =>
-        answers.TryGetPropertyValue(key, out var node) ? JsNumber(node) : double.NaN;
-
-    // JS Number(string) — FAITHFUL port (Codex Slice-11 M1): survey answers are decimal in practice, but a
-    // numerically-aggregated field can carry any string, and JS Number() coerces the exotic grammars too — a
-    // pasted "0x10" is 16 (a COUNTED k-anon contributor), not NaN. Reproduce the whole grammar so the
-    // contributor counts / averages / suppression thresholds are byte-identical to the TS `.map(Number)` path:
-    // trim; "" → 0; ±Infinity; 0x/0o/0b integer literals (NO sign permitted); else a decimal/scientific
-    // StrDecimalLiteral → value, else NaN.
-    private static double JsStringToNumber(string s)
-    {
-        var t = s.Trim();
-        if (t.Length == 0)
-        {
-            return 0;
-        }
-
-        if (t is "Infinity" or "+Infinity")
-        {
-            return double.PositiveInfinity;
-        }
-
-        if (t == "-Infinity")
-        {
-            return double.NegativeInfinity;
-        }
-
-        // Radix-prefixed integer literals: JS Number() parses 0x/0o/0b WITHOUT a sign; empty digit run → NaN.
-        if (t.Length > 2 && t[0] == '0')
-        {
-            var radix = char.ToLowerInvariant(t[1]) switch { 'x' => 16, 'o' => 8, 'b' => 2, _ => 0 };
-            if (radix != 0)
-            {
-                return TryParseRadix(t.AsSpan(2), radix, out var rv) ? rv : double.NaN;
-            }
-        }
-
-        return double.TryParse(t, NumberStyles.Float, CultureInfo.InvariantCulture, out var d) ? d : double.NaN;
-    }
-
-    // JS radix-integer parse for 0x/0o/0b (accumulated as double to match JS Number's IEEE-754 result on
-    // large magnitudes). Any digit outside the radix (or an empty run) → NaN, matching Number().
-    private static bool TryParseRadix(ReadOnlySpan<char> digits, int radix, out double value)
-    {
-        value = 0;
-        if (digits.Length == 0)
-        {
-            return false;
-        }
-
-        double acc = 0;
-        foreach (var c in digits)
-        {
-            var dv = c switch
-            {
-                >= '0' and <= '9' => c - '0',
-                >= 'a' and <= 'f' => c - 'a' + 10,
-                >= 'A' and <= 'F' => c - 'A' + 10,
-                _ => -1,
-            };
-            if (dv < 0 || dv >= radix)
-            {
-                return false;
-            }
-
-            acc = (acc * radix) + dv;
-        }
-
-        value = acc;
-        return true;
-    }
-
-    // JS parseInt(s, 10): skip leading whitespace, optional sign, read the leading decimal-digit run; no digits → NaN.
-    private static double JsParseInt(string s)
-    {
-        var i = 0;
-        var n = s.Length;
-        while (i < n && char.IsWhiteSpace(s[i]))
-        {
-            i++;
-        }
-
-        var sign = 1;
-        if (i < n && (s[i] == '+' || s[i] == '-'))
-        {
-            if (s[i] == '-')
-            {
-                sign = -1;
-            }
-
-            i++;
-        }
-
-        var start = i;
-        while (i < n && s[i] >= '0' && s[i] <= '9')
-        {
-            i++;
-        }
-
-        if (i == start)
-        {
-            return double.NaN;
-        }
-
-        return sign * double.Parse(s[start..i], CultureInfo.InvariantCulture);
-    }
 }

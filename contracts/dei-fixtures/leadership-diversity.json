@@ -1,0 +1,31 @@
+{
+  "cases": [
+    {
+      "name": "clear pool → per-gender counts + percentages",
+      "input": { "leaderGenders": ["female", "female", "female", "female", "female", "male", "male", "male", "male", "male"] },
+      "expected": {
+        "totalLeaders": 10,
+        "byGender": [
+          { "gender": "female", "count": 5, "percentage": 50, "suppressed": false },
+          { "gender": "male", "count": 5, "percentage": 50, "suppressed": false }
+        ],
+        "suppressed": false
+      }
+    },
+    {
+      "name": "a sub-floor leader-gender empties byGender + nulls totalLeaders",
+      "input": { "leaderGenders": ["female", "female", "male", "male", "male", "male", "male", "male"] },
+      "expected": { "totalLeaders": null, "byGender": [], "suppressed": true }
+    },
+    {
+      "name": "sub-floor pool empties everything",
+      "input": { "leaderGenders": ["female", "male", "male"] },
+      "expected": { "totalLeaders": null, "byGender": [], "suppressed": true }
+    },
+    {
+      "name": "empty pool passes (no leader)",
+      "input": { "leaderGenders": [] },
+      "expected": { "totalLeaders": 0, "byGender": [], "suppressed": false }
+    }
+  ]
+}

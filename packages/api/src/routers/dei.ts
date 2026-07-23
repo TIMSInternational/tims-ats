@@ -4,6 +4,7 @@ import { tenantDb as db } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { deiService } from '../services/dei.service';
 import { suppressBelowMin5 } from '../access';
+import { inclusionIndex } from '@tims/shared';
 
 // ---------------------------------------------------------------------------
 // DEI router — thin controller. Demographic metrics are backed by the
@@ -95,71 +96,26 @@ export const deiRouter = router({
   getInclusionIndex: permissionProcedure('dei', 'read')
     .input(z.object({ surveyId: z.string().uuid().optional() }).optional())
     .query(async ({ ctx, input }) => {
+      // §21 minimal select: only questions + each response's answers (never userId or other response columns).
       const survey = await db.survey.findFirst({
         where: {
           organizationId: ctx.user.organizationId,
           type: 'climate',
           ...(input?.surveyId ? { id: input.surveyId } : {}),
         },
-        include: { responses: true },
+        select: { questions: true, responses: { select: { answers: true } } },
         orderBy: { createdAt: 'desc' },
       });
 
       if (!survey) return { index: null, totalResponses: null as number | null, suppressed: false };
 
-      // Survey-level min-5 floor (slice 6 round 5): mirror getClimateHeatmap /
-      // getSurveyResults. A climate survey with 1..4 respondents derives every
-      // inclusion average from <5 people and leaks the raw respondent count — suppress
-      // the whole result (index + totalResponses null, suppressed: true). 0 respondents
-      // passes through unsuppressed (it reveals no individual). This guard fires BEFORE
-      // the no-inclusion-question branch so a small survey is masked regardless of which
-      // questions exist.
-      const surveyLevel = suppressBelowMin5(survey.responses.length);
-      if (surveyLevel.suppressed) {
-        return { index: null as number | null, totalResponses: null as number | null, suppressed: true };
-      }
-
-      const inclusionQuestions = (survey.questions as Array<Record<string, unknown>>).filter(
-        (q) => q.category === 'inclusion',
+      // The whole multi-tier suppression (survey-level floor → no-inclusion-question branch → contributor+skip
+      // floor → half-up avg) is the pure @tims/shared inclusionIndex kernel, golden-fixtured + shared byte-for-byte
+      // with the C# port (Tims.Domain.Dei.DeiKernels.InclusionIndex, Phase-5 Slice 11b).
+      return inclusionIndex(
+        survey.questions as Array<Record<string, unknown>>,
+        survey.responses as Array<{ answers: Record<string, unknown> | null }>,
       );
-      if (!inclusionQuestions.length) {
-        // No inclusion question: there is no index, only the (>=5) respondent count.
-        return { index: null as number | null, totalResponses: survey.responses.length as number | null, suppressed: false };
-      }
-
-      // Distinct-respondent floor (slice 6 round 5): even with >=5 respondents to the
-      // survey, the inclusion average may be computed over a SUB-FLOOR set of people who
-      // actually answered an inclusion question — that average IS individual-level data.
-      // Count distinct contributing respondents and suppress the index if 1..4.
-      let contributingRespondents = 0;
-      const scores = survey.responses.flatMap((r) => {
-        const rowScores = inclusionQuestions
-          .map((q) => Number((r.answers as Record<string, unknown> | null)?.[q.text as string]))
-          .filter((n) => !isNaN(n));
-        if (rowScores.length) contributingRespondents += 1;
-        return rowScores;
-      });
-
-      // Contributor + skip floor (round 9): the index average is over the CONTRIBUTOR set,
-      // and the complementary SKIP bucket (survey respondents − inclusion contributors) is
-      // its own small group. Suppress when EITHER is 1..4 — consistent with the all-or-
-      // nothing contributor/skip policy applied to getSurveyResults / getResultsByArea.
-      const inclusionSkipped = survey.responses.length - contributingRespondents;
-      if (
-        suppressBelowMin5(contributingRespondents).suppressed ||
-        suppressBelowMin5(inclusionSkipped).suppressed
-      ) {
-        return { index: null as number | null, totalResponses: survey.responses.length as number | null, suppressed: true };
-      }
-
-      const avg = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
-
-      return {
-        index: (Math.round(avg * 100) / 100) as number | null,
-        totalResponses: survey.responses.length as number | null,
-        suppressed: false,
-        questionsEvaluated: inclusionQuestions.length,
-      };
     }),
 
   // ── Report (stub) ──────────────────────────────────────────────────

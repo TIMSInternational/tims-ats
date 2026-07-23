@@ -1,0 +1,10 @@
+{
+  "cases": [
+    { "name": "empty → 0", "input": { "values": [] }, "expected": 0 },
+    { "name": "single", "input": { "values": [5] }, "expected": 5 },
+    { "name": "odd length → middle", "input": { "values": [1, 2, 3] }, "expected": 2 },
+    { "name": "odd unsorted → sorted middle", "input": { "values": [3, 1, 2, 5, 4] }, "expected": 3 },
+    { "name": "even → half-up mean of two middles", "input": { "values": [10, 20, 30, 40] }, "expected": 25 },
+    { "name": "even, half-up rounds .5 UP", "input": { "values": [1, 4] }, "expected": 3 }
+  ]
+}

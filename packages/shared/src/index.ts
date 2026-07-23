@@ -9,4 +9,5 @@ export * from './succession';
 export * from './compensation';
 export * from './ninebox';
 export * from './engagement';
+export * from './dei';
 export { logger, createTenantLogger } from './logger';

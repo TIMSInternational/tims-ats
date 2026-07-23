@@ -1,0 +1,75 @@
+{
+  "cases": [
+    {
+      "name": "survey-level sub-floor (3 responses) → whole result nulled",
+      "input": {
+        "questions": [{ "text": "q1", "category": "inclusion", "type": "scale" }],
+        "responses": [{ "answers": { "q1": 4 } }, { "answers": { "q1": 5 } }, { "answers": { "q1": 3 } }]
+      },
+      "expected": { "index": null, "totalResponses": null, "suppressed": true }
+    },
+    {
+      "name": "no inclusion question → no index, just the (>=5) respondent count",
+      "input": {
+        "questions": [{ "text": "q1", "category": "ambiente" }],
+        "responses": [{ "answers": { "q1": 4 } }, { "answers": { "q1": 4 } }, { "answers": { "q1": 4 } }, { "answers": { "q1": 4 } }, { "answers": { "q1": 4 } }, { "answers": { "q1": 4 } }]
+      },
+      "expected": { "index": null, "totalResponses": 6, "suppressed": false }
+    },
+    {
+      "name": "clear index over 2 inclusion questions, all answered 4 → 4",
+      "input": {
+        "questions": [{ "text": "q1", "category": "inclusion" }, { "text": "q2", "category": "inclusion" }],
+        "responses": [
+          { "answers": { "q1": 4, "q2": 4 } },
+          { "answers": { "q1": 4, "q2": 4 } },
+          { "answers": { "q1": 4, "q2": 4 } },
+          { "answers": { "q1": 4, "q2": 4 } },
+          { "answers": { "q1": 4, "q2": 4 } },
+          { "answers": { "q1": 4, "q2": 4 } }
+        ]
+      },
+      "expected": { "index": 4, "totalResponses": 6, "suppressed": false, "questionsEvaluated": 2 }
+    },
+    {
+      "name": "contributor set sub-floor (only 3 of 6 answer inclusion) → suppressed",
+      "input": {
+        "questions": [{ "text": "q1", "category": "inclusion" }],
+        "responses": [
+          { "answers": { "q1": 4 } },
+          { "answers": { "q1": 4 } },
+          { "answers": { "q1": 4 } },
+          { "answers": { "other": 1 } },
+          { "answers": { "other": 1 } },
+          { "answers": { "other": 1 } }
+        ]
+      },
+      "expected": { "index": null, "totalResponses": 6, "suppressed": true }
+    },
+    {
+      "name": "skip bucket sub-floor (5 contributors, 3 skip of 8) → suppressed",
+      "input": {
+        "questions": [{ "text": "q1", "category": "inclusion" }],
+        "responses": [
+          { "answers": { "q1": 4 } },
+          { "answers": { "q1": 4 } },
+          { "answers": { "q1": 4 } },
+          { "answers": { "q1": 4 } },
+          { "answers": { "q1": 4 } },
+          { "answers": { "other": 1 } },
+          { "answers": { "other": 1 } },
+          { "answers": { "other": 1 } }
+        ]
+      },
+      "expected": { "index": null, "totalResponses": 8, "suppressed": true }
+    },
+    {
+      "name": "zero responses passes (reveals no one)",
+      "input": {
+        "questions": [{ "text": "q1", "category": "inclusion" }],
+        "responses": []
+      },
+      "expected": { "index": 0, "totalResponses": 0, "suppressed": false, "questionsEvaluated": 1 }
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "cases": [
+    { "name": "zero total → 0", "input": { "count": 0, "total": 0 }, "expected": 0 },
+    { "name": "clean 30%", "input": { "count": 3, "total": 10 }, "expected": 30 },
+    { "name": "one-third → 33.3 (half-up 1 decimal)", "input": { "count": 1, "total": 3 }, "expected": 33.3 },
+    { "name": "two-thirds → 66.7", "input": { "count": 2, "total": 3 }, "expected": 66.7 },
+    { "name": "full 100", "input": { "count": 5, "total": 5 }, "expected": 100 }
+  ]
+}

@@ -1,0 +1,59 @@
+{
+  "cases": [
+    {
+      "name": "all groups clear → counts + half-up percentages",
+      "input": { "groups": [{ "key": "female", "count": 10 }, { "key": "male", "count": 8 }], "total": 18, "extraBuckets": [] },
+      "expected": {
+        "groups": [
+          { "key": "female", "count": 10, "percentage": 55.6, "suppressed": false },
+          { "key": "male", "count": 8, "percentage": 44.4, "suppressed": false }
+        ],
+        "suppressed": false
+      }
+    },
+    {
+      "name": "a sub-floor group empties the WHOLE distribution (no present keys)",
+      "input": { "groups": [{ "key": "female", "count": 3 }, { "key": "male", "count": 20 }], "total": 23, "extraBuckets": [] },
+      "expected": { "groups": [], "suppressed": true }
+    },
+    {
+      "name": "sub-floor total empties everything",
+      "input": { "groups": [{ "key": "female", "count": 2 }, { "key": "male", "count": 2 }], "total": 4, "extraBuckets": [] },
+      "expected": { "groups": [], "suppressed": true }
+    },
+    {
+      "name": "zero total → empty, NOT suppressed (reveals no one)",
+      "input": { "groups": [], "total": 0, "extraBuckets": [] },
+      "expected": { "groups": [], "suppressed": false }
+    },
+    {
+      "name": "sub-floor extra (null) bucket empties everything (implicit-group differencing)",
+      "input": { "groups": [{ "key": "CO", "count": 10 }, { "key": "US", "count": 6 }], "total": 16, "extraBuckets": [3] },
+      "expected": { "groups": [], "suppressed": true }
+    },
+    {
+      "name": "fixed age bands: 0-count bands pass through when the rest clear",
+      "input": {
+        "groups": [
+          { "key": "<25", "count": 0 },
+          { "key": "25-34", "count": 6 },
+          { "key": "35-44", "count": 7 },
+          { "key": "45-54", "count": 0 },
+          { "key": "55+", "count": 5 }
+        ],
+        "total": 18,
+        "extraBuckets": [0]
+      },
+      "expected": {
+        "groups": [
+          { "key": "<25", "count": 0, "percentage": 0, "suppressed": false },
+          { "key": "25-34", "count": 6, "percentage": 33.3, "suppressed": false },
+          { "key": "35-44", "count": 7, "percentage": 38.9, "suppressed": false },
+          { "key": "45-54", "count": 0, "percentage": 0, "suppressed": false },
+          { "key": "55+", "count": 5, "percentage": 27.8, "suppressed": false }
+        ],
+        "suppressed": false
+      }
+    }
+  ]
+}
