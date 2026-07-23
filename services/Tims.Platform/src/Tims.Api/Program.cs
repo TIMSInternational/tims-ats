@@ -363,6 +363,22 @@ try
     builder.Services.AddScoped<IEngagementReadRepository, EngagementReadRepository>();
     builder.Services.AddScoped<EngagementReadUseCase>();
 
+    // Phase-5 Slice 16 (efcoreStranglerWrite): the engagement WRITE surface (5 writes). Write-capable EF over the
+    // Prisma-OWNED surveys + survey_responses + action_plans (+ read-only users for the H1 in-org check) — type/status
+    // are plain Strings (NOT native enums), so no NpgsqlDataSource; jsonb columns bind as string with HasColumnType.
+    // Writes run UNDER TenantScope/RLS. createSurvey/activateSurvey are grant-only; submitSurveyResponse is
+    // IDENTITY-anchored (userId = caller, NO requireOrgScope) + maps @@unique([surveyId,userId]) → 409 and
+    // not-found-or-inactive → clean 404 (documented improvement over the TS 500); createActionPlan does
+    // assertSubjectInScope(responsibleId) + the H1 in-org backstop; updateActionPlan runs assertScoped('actionPlan')
+    // (by-id IDOR probe, actionPlan registered as a probe root THIS slice) THEN assertSubjectInScope + H1 on a
+    // reassignment. ScopedProbe / IAnchorLoaderFactory / SubjectInScope are already registered above. The WRITE port
+    // completing the engagement domain. Dark unless EngagementWriteEnabled (deploy-gated cutover; TS stays the sole
+    // active writer). A COEXISTENCE write — surveys/survey_responses/action_plans are still read by
+    // EngagementReadDbContext AND by the LIVE TS monitoring.ts / dei.ts / alert-evaluation cron.
+    builder.Services.AddDbContext<EngagementWriteDbContext>(options => options.UseNpgsql(databaseConnectionString));
+    builder.Services.AddScoped<IEngagementWriteRepository, EngagementWriteRepository>();
+    builder.Services.AddScoped<EngagementWriteUseCase>();
+
     // Phase-5 Slice 11b (efcoreReadOnly): the DEI READ surface (people-dashboards GROUP 2). Unlike the engagement
     // read, employee_demographics carries THREE NATIVE Prisma enums the demographic reads GROUP BY (Gender /
     // Ethnicity / DisabilityStatus) — Postgres has no implicit enum=text operator — so a dedicated data source maps
@@ -905,6 +921,19 @@ try
     if (externalOptions.EngagementReadEnabled || isOpenApiDocGeneration)
     {
         app.MapEngagementReadEndpoints();
+    }
+
+    // Phase-5 Slice 16 (efcoreStranglerWrite): the engagement WRITE surface (5 writes) — POST /engagement/surveys
+    // (createSurvey, grant-only), POST /engagement/surveys/{id}/activate (activateSurvey, grant-only; missing → 404),
+    // POST /engagement/surveys/{id}/responses (submitSurveyResponse, IDENTITY-anchored userId = caller, NO org-gate;
+    // survey inactive → 404, dedup → 409), POST /engagement/action-plans (createActionPlan, assertSubjectInScope +
+    // H1 → 403), PATCH /engagement/action-plans/{id} (updateActionPlan, assertScoped('actionPlan') → 404 THEN
+    // assertSubjectInScope + H1 on reassignment → 403). Staff-JWT + engagement:create/update. The WRITE port
+    // completing the engagement domain. Dark unless the flag is on (deploy-gated cutover; TS stays the sole active
+    // writer until Federico flips it).
+    if (externalOptions.EngagementWriteEnabled || isOpenApiDocGeneration)
+    {
+        app.MapEngagementWriteEndpoints();
     }
 
     // Phase-5 Slice 11b (efcoreReadOnly): the DEI READ surface (10 reads). Staff-JWT + dei:read (GRANT-ONLY — no

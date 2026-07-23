@@ -221,6 +221,14 @@ public static class ScopeProbeRegistry
         // SubjectAsync("userId") logic pre-existed from Slice-9 (scopeWhereFor row filter); this registration is
         // the missing piece that lets the by-id probe resolve. NOT soft-deletable (no deleted_at column).
         [ScopedEntity.SalaryAdjustment] = "salary_adjustments",
+        // Engagement (Phase-5 Slice 16, WRITE): the assertScoped('actionPlan') by-id IDOR probe root
+        // (updateActionPlan — engagement.ts:547). Slice-11 used actionPlan ONLY via scopeWhereFor('actionPlan')
+        // (the listActionPlans row filter), so it had a probe-table field map (action_plans → responsibleId, above)
+        // + the ScopeWhereFor SubjectAsync("responsibleId") logic but NO EntityRootTable entry — the by-id probe
+        // root is added THIS slice (exactly like Slice-12 wired the missing salaryAdjustment root). action_plans has
+        // no deleted_at → NOT soft-deletable. The "Plan de accion no encontrado" message already exists
+        // (ScopedNotFoundException).
+        [ScopedEntity.ActionPlan] = "action_plans",
     };
 
     /// <summary>

@@ -24,12 +24,24 @@ public static class EngagementStaffGate
     private const string EngagementModule = "engagement";
     private const string ReadAction = "read";
 
+    /// <summary>Read gate (original signature) — forwards <c>action = "read"</c> so the read call sites are unchanged.</summary>
+    public static Task<EngagementGateResult> AuthorizeAsync(
+        ClaimsPrincipal user,
+        HttpContext httpContext,
+        PrincipalResolver principalResolver,
+        PermissionService permissionService,
+        PlatformOptions options,
+        CancellationToken cancellationToken) =>
+        AuthorizeAsync(user, httpContext, principalResolver, permissionService, options, ReadAction, cancellationToken);
+
+    /// <summary>Action-parameterized gate: enforces <c>engagement:&lt;action&gt;</c> (create/update for the writes).</summary>
     public static async Task<EngagementGateResult> AuthorizeAsync(
         ClaimsPrincipal user,
         HttpContext httpContext,
         PrincipalResolver principalResolver,
         PermissionService permissionService,
         PlatformOptions options,
+        string action,
         CancellationToken cancellationToken)
     {
         var context = await ResolvePrincipalAsync(user, httpContext, principalResolver, options, cancellationToken);
@@ -41,7 +53,7 @@ public static class EngagementStaffGate
         AccessDecision decision;
         try
         {
-            decision = await permissionService.CheckAsync(context, EngagementModule, ReadAction, cancellationToken);
+            decision = await permissionService.CheckAsync(context, EngagementModule, action, cancellationToken);
         }
         catch (TenantOrgRequiredException)
         {

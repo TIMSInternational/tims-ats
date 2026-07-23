@@ -518,6 +518,18 @@ export const engagementRouter = router({
       // Write-rule: the responsible person must be within the caller's subject set.
       await assertSubjectInScope(ctx.access, ctx.user.id, input.responsibleId, 'No puedes asignar este plan a ese usuario');
 
+      // H1 (both-stacks hardening — succession #171 / 11c precedent): assertSubjectInScope no-ops for
+      // organization/company scope (write-rules.ts:20), and the pre-seed engagement:create grants are org-wide, so the
+      // common caller path skips the subject check entirely. responsibleId is a bare FK to `users` — the FK only
+      // checks the user EXISTS in ANY org, and the action_plans RLS WITH CHECK guards only organization_id — so an
+      // org-scoped admin could otherwise persist a CROSS-ORG responsibleId. Prove the target is in the caller's org
+      // (an RLS-scoped tenantDb read) and FORBID otherwise. Mirrors the C# EngagementWriteRepository backstop.
+      const inOrg = await db.user.findFirst({
+        where: { id: input.responsibleId, organizationId: ctx.user.organizationId },
+        select: { id: true },
+      });
+      if (!inOrg) throw new TRPCError({ code: 'FORBIDDEN', message: 'No puedes asignar este plan a ese usuario' });
+
       return db.actionPlan.create({
         data: {
           title: input.title,
@@ -549,14 +561,51 @@ export const engagementRouter = router({
       // subject set — otherwise an in-scope plan can be pushed out of scope.
       if (input.responsibleId) {
         await assertSubjectInScope(ctx.access, ctx.user.id, input.responsibleId, 'No puedes asignar este plan a ese usuario');
+        // H1 (both-stacks): a reassignment must target a user in the caller's org. assertSubjectInScope no-ops for
+        // org/company scope, so back it with an in-org existence check (RLS-scoped) — a cross-org responsibleId is a
+        // cross-tenant integrity/enumeration hole. Mirrors createActionPlan + the C# EngagementWriteRepository backstop.
+        const inOrg = await db.user.findFirst({
+          where: { id: input.responsibleId, organizationId: ctx.user.organizationId },
+          select: { id: true },
+        });
+        if (!inOrg) throw new TRPCError({ code: 'FORBIDDEN', message: 'No puedes asignar este plan a ese usuario' });
       }
 
       const { id, dueDate, ...data } = input;
-      return db.actionPlan.update({
-        where: { id, organizationId: ctx.user.organizationId },
-        data: {
-          ...data,
-          ...(dueDate !== undefined ? { dueDate: dueDate ? new Date(dueDate) : null } : {}),
+      const updateData = {
+        ...data,
+        ...(dueDate !== undefined ? { dueDate: dueDate ? new Date(dueDate) : null } : {}),
+      };
+      // Codex HIGH (both stacks): assertScoped above and the UPDATE are separate statements — a concurrent
+      // reassignment could move the plan out of the caller's narrow scope BETWEEN them, and a bare
+      // update-by-{id,org} would still apply. Re-apply the caller's scope predicate ATOMICALLY in the WHERE:
+      // updateMany (unlike update) admits a non-unique where, so count 0 ⇒ the plan left scope (or vanished) ⇒ 404.
+      // Mirrors the C# EngagementWriteRepository FOR UPDATE scope re-check.
+      const scopeWhere = (await scopeWhereFor('actionPlan', ctx.access, ctx.user.id)) as Prisma.ActionPlanWhereInput;
+      const { count } = await db.actionPlan.updateMany({
+        where: { AND: [{ id }, { organizationId: ctx.user.organizationId }, scopeWhere] },
+        data: updateData,
+      });
+      if (count === 0) throw new TRPCError({ code: 'NOT_FOUND', message: 'Plan de accion no encontrado' });
+      // Codex recheck: `tenantDb` wraps each call in its own txn, so this read-back is a SEPARATE txn from the
+      // guarded updateMany — a concurrent reassignment between them could otherwise echo an out-of-scope row in the
+      // response. Re-apply `scopeWhere` here too: if the plan left the caller's scope post-write, this returns null
+      // (leak-free) rather than a row the caller may no longer see. (The C# path is race-free — it mutates + returns
+      // the FOR UPDATE-locked row in one txn.)
+      return db.actionPlan.findFirst({
+        where: { AND: [{ id }, { organizationId: ctx.user.organizationId }, scopeWhere] },
+        select: {
+          id: true,
+          organizationId: true,
+          title: true,
+          responsibleId: true,
+          area: true,
+          status: true,
+          dueDate: true,
+          actions: true,
+          notes: true,
+          createdAt: true,
+          updatedAt: true,
         },
       });
     }),

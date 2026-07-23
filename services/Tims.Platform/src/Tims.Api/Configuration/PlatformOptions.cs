@@ -330,4 +330,29 @@ public sealed class PlatformOptions
     /// it at canary (deploy-gated cutover).
     /// </summary>
     public bool NineBoxWriteEnabled { get; init; }
+
+    /// <summary>
+    /// Phase-5 Slice 16 (efcoreStranglerWrite): when true, the C# engagement WRITE surface is mapped and live — the
+    /// 5 writes <c>POST /engagement/surveys</c> (createSurvey), <c>POST /engagement/surveys/{id}/activate</c>
+    /// (activateSurvey), <c>POST /engagement/surveys/{id}/responses</c> (submitSurveyResponse), <c>POST
+    /// /engagement/action-plans</c> (createActionPlan), <c>PATCH /engagement/action-plans/{id}</c>
+    /// (updateActionPlan). The WRITE port completing the engagement domain after Slice-11 (the 14 reads). Staff-JWT +
+    /// <c>engagement:create</c> (createSurvey/activateSurvey/submitSurveyResponse/createActionPlan) /
+    /// <c>engagement:update</c> (updateActionPlan); the 5 writes carry DIFFERENT scope mechanics on the same grants:
+    /// createSurvey/activateSurvey are grant-only (org via ctx); submitSurveyResponse is IDENTITY-anchored (userId =
+    /// caller ALWAYS, never an input — an org-admin cannot forge another user's response; NO requireOrgScope);
+    /// createActionPlan runs <c>assertSubjectInScope(responsibleId)</c> (out-of-set → 403); updateActionPlan runs
+    /// <c>assertScoped('actionPlan')</c> (by-id IDOR probe → 404) THEN <c>assertSubjectInScope(responsibleId)</c> on a
+    /// reassignment (→ 403). createActionPlan AND updateActionPlan(reassign) ALSO reject a cross-org
+    /// <c>responsibleId</c> → 403 (the H1 both-stacks hardening — assertSubjectInScope no-ops for org/company scope, so
+    /// an in-org existence check under TenantScope is the backstop; fixed in engagement.ts too). submitSurveyResponse
+    /// maps the <c>@@unique([surveyId, userId])</c> violation → 409 "Ya respondiste esta encuesta"; the survey
+    /// not-found-or-inactive path returns a clean 404 (a documented port improvement over the TS plain-Error 500).
+    /// targetGroups is stored as opaque jsonb (NO in-org validation — faithful port; a documented LOW). type/status
+    /// are plain-string enum sets enforced at the endpoint (→ 400 after auth). COEXISTENCE write on surveys +
+    /// survey_responses + action_plans (still read by EngagementReadDbContext AND by the LIVE TS monitoring.ts /
+    /// dei.ts / alert-evaluation cron; leader_commitments + alerts stay read-only). DEFAULT false (dark) — TS remains
+    /// the single active writer until Federico flips it at canary (deploy-gated cutover).
+    /// </summary>
+    public bool EngagementWriteEnabled { get; init; }
 }

@@ -3142,6 +3142,43 @@
             "description": "Forbidden"
           }
         }
+      },
+      "post": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "EngagementCreateSurvey",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSurveyBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SurveyRow"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
       }
     },
     "/engagement/surveys/{surveyId}/results": {
@@ -3528,6 +3565,43 @@
             "description": "Forbidden"
           }
         }
+      },
+      "post": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "EngagementCreateActionPlan",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateActionPlanBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionPlanWriteRow"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
       }
     },
     "/engagement/leader-commitments": {
@@ -3645,6 +3719,155 @@
           },
           "403": {
             "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/engagement/surveys/{surveyId}/activate": {
+      "post": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "EngagementActivateSurvey",
+        "parameters": [
+          {
+            "name": "surveyId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivateSurveyResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/engagement/surveys/{surveyId}/responses": {
+      "post": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "EngagementSubmitSurveyResponse",
+        "parameters": [
+          {
+            "name": "surveyId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitSurveyResponseBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubmitSurveyResponseRow"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict"
+          }
+        }
+      }
+    },
+    "/engagement/action-plans/{actionPlanId}": {
+      "patch": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "EngagementUpdateActionPlan",
+        "parameters": [
+          {
+            "name": "actionPlanId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateActionPlanBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionPlanWriteRow"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
           }
         }
       }
@@ -4304,6 +4527,85 @@
           },
           "responsible": {
             "$ref": "#/components/schemas/ActionPlanResponsible"
+          }
+        }
+      },
+      "ActionPlanWriteRow": {
+        "required": [
+          "id",
+          "organizationId",
+          "title",
+          "responsibleId",
+          "area",
+          "status",
+          "dueDate",
+          "actions",
+          "notes",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "organizationId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "responsibleId": {
+            "type": "string"
+          },
+          "area": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "dueDate": {
+            "format": "date-time"
+          },
+          "actions": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JsonNode"
+              }
+            ]
+          },
+          "notes": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "createdAt": {
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "format": "date-time"
+          }
+        }
+      },
+      "ActivateSurveyResult": {
+        "required": [
+          "id",
+          "status"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
           }
         }
       },
@@ -5808,6 +6110,39 @@
           }
         }
       },
+      "CreateActionPlanBody": {
+        "required": [
+          "title",
+          "responsibleId"
+        ],
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "responsibleId": {
+            "type": "string"
+          },
+          "area": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "notes": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "dueDate": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "CreateAdjustmentBody": {
         "required": [
           "userId",
@@ -5914,6 +6249,38 @@
           },
           "createdAt": {
             "format": "date-time"
+          }
+        }
+      },
+      "CreateSurveyBody": {
+        "required": [
+          "title",
+          "type",
+          "questions"
+        ],
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "questions": {
+            "type": "array"
+          },
+          "targetGroups": { },
+          "startsAt": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "endsAt": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -9556,6 +9923,32 @@
           }
         }
       },
+      "SubmitSurveyResponseBody": {
+        "required": [
+          "answers"
+        ],
+        "type": "object",
+        "properties": {
+          "answers": {
+            "type": "object"
+          }
+        }
+      },
+      "SubmitSurveyResponseRow": {
+        "required": [
+          "id",
+          "submittedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "submittedAt": {
+            "format": "date-time"
+          }
+        }
+      },
       "SubmitValidationBody": {
         "required": [
           "status",
@@ -10140,6 +10533,77 @@
           }
         }
       },
+      "SurveyRow": {
+        "required": [
+          "id",
+          "organizationId",
+          "title",
+          "type",
+          "status",
+          "questions",
+          "targetGroups",
+          "startsAt",
+          "endsAt",
+          "responseCount",
+          "createdById",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "organizationId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "questions": {
+            "$ref": "#/components/schemas/JsonNode"
+          },
+          "targetGroups": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JsonNode"
+              }
+            ]
+          },
+          "startsAt": {
+            "format": "date-time"
+          },
+          "endsAt": {
+            "format": "date-time"
+          },
+          "responseCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "createdById": {
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "format": "date-time"
+          }
+        }
+      },
       "TeamBusinessUnitView": {
         "required": [
           "id",
@@ -10628,6 +11092,41 @@
               "string"
             ],
             "format": "int32"
+          }
+        }
+      },
+      "UpdateActionPlanBody": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "notes": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "status": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "responsibleId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "dueDate": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
