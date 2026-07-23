@@ -477,7 +477,7 @@ export interface paths {
         };
         get: operations["Evaluation360ListCycles"];
         put?: never;
-        post?: never;
+        post: operations["Evaluation360CreateCycle"];
         delete?: never;
         options?: never;
         head?: never;
@@ -548,6 +548,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/evaluation360/cycles/{id}/open": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["Evaluation360OpenCycle"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/evaluation360/cycles/{id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["Evaluation360CloseCycle"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/evaluation360/cycles/{id}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["Evaluation360PublishCycle"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/evaluation360/cycles/{id}/raters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["Evaluation360AssignRaters"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/evaluation360/assignments/{id}/ratings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["Evaluation360SubmitRatings"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/succession/critical-roles": {
         parameters: {
             query?: never;
@@ -557,7 +637,7 @@ export interface paths {
         };
         get: operations["SuccessionListCriticalRoles"];
         put?: never;
-        post?: never;
+        post: operations["SuccessionAddCriticalRole"];
         delete?: never;
         options?: never;
         head?: never;
@@ -692,6 +772,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/succession/critical-roles/{criticalRoleId}/successors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["SuccessionAddSuccessor"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/succession/successors/{successorId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["SuccessionRemoveSuccessor"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/succession/successors/{successorId}/readiness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["SuccessionUpdateSuccessorReadiness"];
+        trace?: never;
+    };
+    "/succession/critical-roles/{criticalRoleId}/band": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["SuccessionUpdateCriticalRoleBand"];
+        trace?: never;
+    };
     "/compensation/salary-bands": {
         parameters: {
             query?: never;
@@ -804,6 +948,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/compensation/adjustments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CompensationCreateAdjustment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/compensation/adjustments/{id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CompensationApproveAdjustment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ninebox/grid": {
         parameters: {
             query?: never;
@@ -893,7 +1069,7 @@ export interface paths {
         };
         get: operations["NineBoxListCalibrations"];
         put?: never;
-        post?: never;
+        post: operations["NineBoxCreateCalibration"];
         delete?: never;
         options?: never;
         head?: never;
@@ -980,6 +1156,598 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ninebox/calibrations/{sessionId}/votes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["NineBoxSubmitCalibrationVote"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ninebox/calibrations/{sessionId}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["NineBoxAddCalibrationMember"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ninebox/calibrations/{sessionId}/members/{userId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["NineBoxRemoveCalibrationMember"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ninebox/calibrations/{sessionId}/finalize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["NineBoxFinalizeCalibration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engagement/surveys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EngagementListSurveys"];
+        put?: never;
+        post: operations["EngagementCreateSurvey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engagement/surveys/{surveyId}/results": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EngagementGetSurveyResults"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engagement/my/pending-surveys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EngagementMyPendingSurveys"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engagement/surveys/{surveyId}/take": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EngagementGetSurveyForResponse"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engagement/enps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EngagementGetEnps"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engagement/climate-heatmap": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EngagementGetClimateHeatmap"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engagement/surveys/{surveyId}/results-by-area": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EngagementGetResultsByArea"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engagement/surveys/{surveyId}/word-cloud": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EngagementGetWordCloud"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engagement/surveys/{surveyId}/sentiment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EngagementGetSentiment"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engagement/alerts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EngagementGetLowClimateAlerts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engagement/action-plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EngagementListActionPlans"];
+        put?: never;
+        post: operations["EngagementCreateActionPlan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engagement/leader-commitments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EngagementListLeaderCommitments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engagement/dashboard-kpis": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EngagementGetDashboardKpis"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engagement/rotation-risk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EngagementGetRotationRisk"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engagement/surveys/{surveyId}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["EngagementActivateSurvey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engagement/surveys/{surveyId}/responses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["EngagementSubmitSurveyResponse"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engagement/action-plans/{actionPlanId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["EngagementUpdateActionPlan"];
+        trace?: never;
+    };
+    "/dei/dashboard-kpis": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["DeiGetDashboardKpis"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/dei/gender-representation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["DeiGetGenderRepresentation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/dei/age-distribution": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["DeiGetAgeDistribution"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/dei/nationality-diversity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["DeiGetNationalityDiversity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/dei/ethnicity-distribution": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["DeiGetEthnicityDistribution"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/dei/disability-distribution": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["DeiGetDisabilityDistribution"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/dei/leadership-diversity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["DeiGetLeadershipDiversity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/dei/hiring-funnel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["DeiGetHiringFunnel"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/dei/promotion-equity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["DeiGetPromotionEquity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/dei/inclusion-index": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["DeiGetInclusionIndex"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/dei/pay-equity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["DeiGetPayEquity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/compensation/band-distribution": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CompensationGetBandDistribution"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/compensation/pay-equity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CompensationGetPayEquity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/compensation/total-comp-breakdown": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CompensationGetTotalCompBreakdown"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/compensation/dashboard-kpis": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CompensationGetDashboardKpis"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/compensation/simulate-adjustment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CompensationSimulateAdjustment"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/require-permission/{module}/{action}": {
         parameters: {
             query?: never;
@@ -1016,6 +1784,119 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        ActionPlanResponsible: {
+            id: string;
+            firstName: string;
+            lastName: string;
+            avatar: null | string;
+        };
+        ActionPlanRow: {
+            id: string;
+            organizationId: string;
+            title: string;
+            responsibleId: string;
+            area: null | string;
+            status: string;
+            /** Format: date-time */
+            dueDate: unknown;
+            actions: null | components["schemas"]["JsonNode"];
+            notes: null | string;
+            /** Format: date-time */
+            createdAt: unknown;
+            /** Format: date-time */
+            updatedAt: unknown;
+            responsible: components["schemas"]["ActionPlanResponsible"];
+        };
+        ActionPlanWriteRow: {
+            id: string;
+            organizationId: string;
+            title: string;
+            responsibleId: string;
+            area: null | string;
+            status: string;
+            /** Format: date-time */
+            dueDate: unknown;
+            actions: null | components["schemas"]["JsonNode"];
+            notes: null | string;
+            /** Format: date-time */
+            createdAt: unknown;
+            /** Format: date-time */
+            updatedAt: unknown;
+        };
+        ActivateSurveyResult: {
+            id: string;
+            status: string;
+        };
+        AddCalibrationMemberBody: {
+            userId: string;
+        };
+        AddCriticalRoleBody: {
+            title: string;
+            criticality: string;
+            positionId?: null | string;
+            currentHolderId?: null | string;
+            companyId?: null | string;
+            unitId?: null | string;
+            /** Format: double */
+            flightRisk?: null | number | string;
+        };
+        AddSuccessorBody: {
+            userId: string;
+            readiness: string;
+            type: string;
+            developmentPlan?: null | string;
+        };
+        AdjustmentWriteResponse: {
+            id: string;
+            status: string;
+        };
+        AgeDistributionView: {
+            groups: components["schemas"]["AgeGroup"][];
+            suppressed: boolean;
+        };
+        AgeGroup: {
+            range: string;
+            /** Format: int32 */
+            count: null | number | string;
+            /** Format: double */
+            percentage: null | number | string;
+            suppressed: boolean;
+        };
+        AlertRow: {
+            id: string;
+            organizationId: string;
+            ruleId: null | string;
+            module: string;
+            severity: string;
+            title: string;
+            message: string;
+            metadata: null | components["schemas"]["JsonNode"];
+            status: string;
+            dismissedById: null | string;
+            /** Format: date-time */
+            dismissedAt: unknown;
+            /** Format: date-time */
+            createdAt: unknown;
+        };
+        ApproveAdjustmentBody: {
+            approved: boolean;
+            comment?: null | string;
+        };
+        AreaResult: {
+            groupId: string;
+            /** Format: double */
+            average: null | number | string;
+            /** Format: int32 */
+            responses: null | number | string;
+            suppressed: boolean;
+        };
+        AssignRatersBody: {
+            assignments: components["schemas"]["RaterAssignmentBody"][];
+        };
+        AssignRatersResponse: {
+            /** Format: int32 */
+            created: number | string;
+        };
         AxisBreakdownView: {
             userId: string;
             period: string;
@@ -1042,6 +1923,24 @@ export interface components {
             sizeScore: number | string;
             /** Format: int32 */
             balanceScore: number | string;
+        };
+        BandDistributionBand: {
+            level: string;
+            title: string;
+            /** Format: double */
+            min: number | string;
+            /** Format: double */
+            mid: number | string;
+            /** Format: double */
+            max: number | string;
+            currency: string;
+            dots: components["schemas"]["BandDot"][];
+            suppressed: boolean;
+        };
+        BandDot: {
+            /** Format: double */
+            pos: number | string;
+            outlier: boolean;
         };
         BenchStrengthView: {
             period: string;
@@ -1104,6 +2003,17 @@ export interface components {
             /** Format: int32 */
             members: number | string;
         };
+        CalibrationMemberIdResult: {
+            id: string;
+        };
+        CalibrationMemberResultRow: {
+            id: string;
+            sessionId: string;
+            userId: string;
+            status: string;
+            /** Format: date-time */
+            createdAt: unknown;
+        };
         CalibrationMemberRow: {
             id: string;
             sessionId: string;
@@ -1118,6 +2028,50 @@ export interface components {
             firstName: string;
             lastName: string;
             avatar: null | string;
+        };
+        CalibrationRemoveResult: {
+            success: boolean;
+        };
+        CalibrationSessionRow: {
+            id: string;
+            organizationId: string;
+            period: string;
+            status: string;
+            /** Format: date-time */
+            scheduledAt: unknown;
+            /** Format: date-time */
+            completedAt: unknown;
+            createdById: string;
+            /** Format: date-time */
+            createdAt: unknown;
+            /** Format: date-time */
+            updatedAt: unknown;
+        };
+        CalibrationSessionWithMembers: {
+            id: string;
+            organizationId: string;
+            period: string;
+            status: string;
+            /** Format: date-time */
+            scheduledAt: unknown;
+            /** Format: date-time */
+            completedAt: unknown;
+            createdById: string;
+            /** Format: date-time */
+            createdAt: unknown;
+            /** Format: date-time */
+            updatedAt: unknown;
+            members: components["schemas"]["CalibrationMemberResultRow"][];
+        };
+        CalibrationVoteResultRow: {
+            id: string;
+            sessionId: string;
+            evaluatedUserId: string;
+            voterId: string;
+            quadrant: string;
+            justification: null | string;
+            /** Format: date-time */
+            createdAt: unknown;
         };
         CalibrationVoteRow: {
             id: string;
@@ -1139,6 +2093,12 @@ export interface components {
         CheckoutSessionBody: {
             plan: string;
         };
+        ClimateHeatmapView: {
+            surveyId: null | string;
+            title: string;
+            suppressed: boolean;
+            data: components["schemas"]["HeatCell"][];
+        };
         CompaRatioBucketCount: {
             suppressed: boolean;
             /** Format: int32 */
@@ -1153,6 +2113,37 @@ export interface components {
             /** Format: int32 */
             totalEmployees: null | number | string;
             suppressed: boolean;
+        };
+        CompBreakdownBreakdown: {
+            baseSalary: components["schemas"]["CompBreakdownLine"];
+            variablePay: components["schemas"]["CompBreakdownLine"];
+        };
+        CompBreakdownLine: {
+            /** Format: double */
+            total: null | number | string;
+            /** Format: double */
+            percentage: null | number | string;
+        };
+        CompDashboardKpisView: {
+            /** Format: double */
+            totalMonthlyPayroll: null | number | string;
+            /** Format: int32 */
+            avgSalary: null | number | string;
+            currency: string;
+            converted: boolean;
+            ratesAsOf: null | string;
+            /** Format: int32 */
+            compensatedEmployees: null | number | string;
+            compensatedSuppressed: boolean;
+            /** Format: int32 */
+            activeEmployees: number | string;
+            /** Format: int32 */
+            pendingAdjustments: null | number | string;
+            pendingAdjustmentsSuppressed: boolean;
+            /** Format: double */
+            benefitsUtilizationPct: number | string;
+            /** Format: double */
+            avgCompaRatio: null | number | string;
         };
         CompetencyAverage: {
             competencyKey: string;
@@ -1180,6 +2171,21 @@ export interface components {
             lastName: string;
             avatar: null | string;
         };
+        CompPayEquityGroup: {
+            group: string;
+            /** Format: int32 */
+            count: null | number | string;
+            suppressed: boolean;
+            /** Format: int32 */
+            averageSalary: null | number | string;
+            /** Format: double */
+            medianSalary: null | number | string;
+        };
+        CompPayEquityView: {
+            groupBy: string;
+            results: components["schemas"]["CompPayEquityGroup"][];
+            currency: string;
+        };
         CoverageRow: {
             roleId: string;
             title: string;
@@ -1193,6 +2199,51 @@ export interface components {
             /** Format: int32 */
             developing: number | string;
             coverageStatus: string;
+        };
+        CreateActionPlanBody: {
+            title: string;
+            responsibleId: string;
+            area?: null | string;
+            notes?: null | string;
+            dueDate?: null | string;
+        };
+        CreateAdjustmentBody: {
+            userId: string;
+            type: string;
+            /** Format: double */
+            previousSalary: number | string;
+            /** Format: double */
+            newSalary: number | string;
+            effectiveDate: string;
+            currency?: null | string;
+            reason?: null | string;
+        };
+        CreateCalibrationBody: {
+            period: string;
+            scheduledAt?: null | string;
+            memberIds?: null | string[];
+        };
+        CreateCycleBody: {
+            name: string;
+        };
+        CreateCycleResult: {
+            id: string;
+            name: string;
+            status: string;
+            /** Format: date-time */
+            createdAt: unknown;
+        };
+        CreateSurveyBody: {
+            title: string;
+            type: string;
+            questions: unknown[];
+            targetGroups?: unknown;
+            startsAt?: null | string;
+            endsAt?: null | string;
+        };
+        CriticalRoleBandResult: {
+            id: string;
+            targetBandLevel: null | string;
         };
         CriticalRoleCount: {
             /** Format: int32 */
@@ -1217,6 +2268,23 @@ export interface components {
             currentHolder: null | components["schemas"]["HolderWithEmail"];
             successors: components["schemas"]["DetailSuccessorRow"][];
         };
+        CriticalRoleRow: {
+            id: string;
+            organizationId: string;
+            title: string;
+            positionId: null | string;
+            currentHolderId: null | string;
+            companyId: null | string;
+            unitId: null | string;
+            criticality: string;
+            /** Format: double */
+            flightRisk: null | number | string;
+            targetBandLevel: null | string;
+            /** Format: date-time */
+            createdAt: unknown;
+            /** Format: date-time */
+            updatedAt: unknown;
+        };
         CycleProgressRow: {
             relationship: string;
             /** Format: int32 */
@@ -1240,6 +2308,24 @@ export interface components {
             publishedAt: unknown;
             /** Format: date-time */
             createdAt: unknown;
+        };
+        CycleTransitionResponse: {
+            cycleId: string;
+            status: string;
+        };
+        DashboardKpis: {
+            /** Format: int32 */
+            totalEmployees: number | string;
+            /** Format: double */
+            demographicsCoverage: null | number | string;
+            /** Format: double */
+            genderParityIndex: null | number | string;
+            /** Format: double */
+            womenPct: null | number | string;
+            /** Format: double */
+            leadershipWomenPct: null | number | string;
+            /** Format: int32 */
+            totalNationalities: null | number | string;
         };
         DashboardKpisView: {
             period: string;
@@ -1285,6 +2371,18 @@ export interface components {
             user: components["schemas"]["SuccessorUser"];
             addedByUser: null | components["schemas"]["SuccessorAddedBy"];
         };
+        DisabilityDistributionView: {
+            groups: components["schemas"]["DisabilityGroup"][];
+            suppressed: boolean;
+        };
+        DisabilityGroup: {
+            status: string;
+            /** Format: int32 */
+            count: null | number | string;
+            /** Format: double */
+            percentage: null | number | string;
+            suppressed: boolean;
+        };
         EmployeeDetailEvaluation: {
             id: string;
             organizationId: string;
@@ -1325,6 +2423,43 @@ export interface components {
             performanceScore: number | string;
             /** Format: date-time */
             evaluatedAt: unknown;
+        };
+        EngagementKpis: {
+            /** Format: int32 */
+            activeSurveys: number | string;
+            /** Format: int32 */
+            totalResponses: null | number | string;
+            totalResponsesSuppressed: boolean;
+            /** Format: int32 */
+            actionPlansOpen: number | string;
+            /** Format: int32 */
+            highRiskCount: number | string;
+        };
+        EnpsResult: {
+            /** Format: int32 */
+            enps: null | number | string;
+            /** Format: int32 */
+            promoters: null | number | string;
+            /** Format: int32 */
+            passives: null | number | string;
+            /** Format: int32 */
+            detractors: null | number | string;
+            /** Format: int32 */
+            totalResponses: null | number | string;
+            suppressed: boolean;
+            period: string;
+        };
+        EthnicityDistributionView: {
+            groups: components["schemas"]["EthnicityGroup"][];
+            suppressed: boolean;
+        };
+        EthnicityGroup: {
+            ethnicity: string;
+            /** Format: int32 */
+            count: null | number | string;
+            /** Format: double */
+            percentage: null | number | string;
+            suppressed: boolean;
         };
         ExitHolder: {
             id: string;
@@ -1443,6 +2578,18 @@ export interface components {
             /** Format: double */
             conversionPct: null | number | string;
         };
+        GenderGroup: {
+            gender: string;
+            /** Format: int32 */
+            count: null | number | string;
+            /** Format: double */
+            percentage: null | number | string;
+            suppressed: boolean;
+        };
+        GenderRepresentationView: {
+            groups: components["schemas"]["GenderGroup"][];
+            suppressed: boolean;
+        };
         GridEvaluation: {
             id: string;
             organizationId: string;
@@ -1477,6 +2624,15 @@ export interface components {
             /** Format: int32 */
             totalEvaluations: number | string;
         };
+        HeatCell: {
+            category: string;
+            /** Format: double */
+            score: null | number | string;
+        };
+        HiringFunnelView: {
+            /** Format: int32 */
+            total: number | string;
+        };
         HolderBasic: {
             id: string;
             firstName: string;
@@ -1491,6 +2647,15 @@ export interface components {
             avatar: null | string;
             jobTitle: null | string;
             email: string;
+        };
+        InclusionIndexResult: {
+            /** Format: double */
+            index: null | number | string;
+            /** Format: int32 */
+            totalResponses: null | number | string;
+            suppressed: boolean;
+            /** Format: int32 */
+            questionsEvaluated: null | number | string;
         };
         InvoiceDetailV1: {
             subscription: null | components["schemas"]["SubscriptionV1"];
@@ -1548,6 +2713,42 @@ export interface components {
             totalApplications: number | string;
             /** Format: int32 */
             lostByDelay: number | string;
+        };
+        LeaderCommitmentLeader: {
+            id: string;
+            firstName: string;
+            lastName: string;
+            avatar: null | string;
+        };
+        LeaderCommitmentRow: {
+            id: string;
+            organizationId: string;
+            leaderId: string;
+            description: string;
+            status: string;
+            /** Format: date-time */
+            dueDate: unknown;
+            /** Format: date-time */
+            completedAt: unknown;
+            /** Format: date-time */
+            createdAt: unknown;
+            /** Format: date-time */
+            updatedAt: unknown;
+            leader: components["schemas"]["LeaderCommitmentLeader"];
+        };
+        LeaderGroup: {
+            gender: string;
+            /** Format: int32 */
+            count: null | number | string;
+            /** Format: double */
+            percentage: null | number | string;
+            suppressed: boolean;
+        };
+        LeadershipDiversityResult: {
+            /** Format: int32 */
+            totalLeaders: null | number | string;
+            byGender: components["schemas"]["LeaderGroup"][];
+            suppressed: boolean;
         };
         ListCriticalRoleRow: {
             id: string;
@@ -1640,6 +2841,53 @@ export interface components {
             cycleName: string;
             buckets: components["schemas"]["ReportBucket"][];
         };
+        NationalityDiversityView: {
+            /** Format: int32 */
+            totalNationalities: null | number | string;
+            distribution: components["schemas"]["NationalityGroup"][];
+            suppressed: boolean;
+        };
+        NationalityGroup: {
+            nationality: string;
+            /** Format: int32 */
+            count: null | number | string;
+            /** Format: double */
+            percentage: null | number | string;
+            suppressed: boolean;
+        };
+        PayEquityGroup: {
+            group: string;
+            /** Format: int32 */
+            count: null | number | string;
+            /** Format: int32 */
+            averageSalary: null | number | string;
+            /** Format: double */
+            medianSalary: null | number | string;
+            suppressed: boolean;
+        };
+        PayEquityView: {
+            results: components["schemas"]["PayEquityGroup"][];
+            /** Format: double */
+            gapPct: null | number | string;
+            suppressed: boolean;
+            currency: string;
+        };
+        PendingSurveyRow: {
+            id: string;
+            title: string;
+            type: string;
+            /** Format: date-time */
+            startsAt: unknown;
+            /** Format: date-time */
+            endsAt: unknown;
+        };
+        PromotionEquityView: {
+            /** Format: int32 */
+            year: number | string;
+            /** Format: int32 */
+            totalPromotions: null | number | string;
+            suppressed: boolean;
+        };
         QuadrantMovement: {
             userId: string;
             userName: string;
@@ -1649,6 +2897,20 @@ export interface components {
         QuadrantPlanResult: {
             title: string;
             actions: string[];
+        };
+        QuestionSummary: {
+            question: null | components["schemas"]["JsonNode"];
+            type: null | components["schemas"]["JsonNode"];
+            /** Format: double */
+            average: null | number | string;
+            /** Format: int32 */
+            count: null | number | string;
+            suppressed: boolean;
+        };
+        RaterAssignmentBody: {
+            subjectUserId: string;
+            raterUserId: string;
+            relationship: string;
         };
         RaterTaskSubject: {
             firstName: string;
@@ -1661,6 +2923,12 @@ export interface components {
             relationship: string;
             subject: components["schemas"]["RaterTaskSubject"];
             competencies: string[];
+        };
+        RatingBody: {
+            competencyKey: string;
+            /** Format: int32 */
+            rating: number | string;
+            comment?: null | string;
         };
         RecruiterSlaRow: {
             name: string;
@@ -1686,6 +2954,12 @@ export interface components {
             /** Format: date-time */
             publishedAt: unknown;
         };
+        ResultsByAreaView: {
+            surveyId: string;
+            groupBy: string;
+            results: components["schemas"]["AreaResult"][];
+            suppressed: boolean;
+        };
         RoleWithoutSuccessorRow: {
             id: string;
             organizationId: string;
@@ -1704,6 +2978,20 @@ export interface components {
             updatedAt: unknown;
             currentHolder: null | components["schemas"]["HolderBasic"];
         };
+        RotationRiskSummary: {
+            /** Format: int32 */
+            high: number | string;
+            /** Format: int32 */
+            medium: number | string;
+            /** Format: int32 */
+            low: number | string;
+            /** Format: int32 */
+            total: number | string;
+        };
+        RotationRiskView: {
+            summary: components["schemas"]["RotationRiskSummary"];
+            topRisk: unknown[];
+        };
         SalaryBandRow: {
             id: string;
             organizationId: string;
@@ -1721,6 +3009,38 @@ export interface components {
             createdAt: unknown;
             /** Format: date-time */
             updatedAt: unknown;
+        };
+        SentimentView: {
+            /** Format: int32 */
+            positive: number | string;
+            /** Format: int32 */
+            neutral: number | string;
+            /** Format: int32 */
+            negative: number | string;
+            highlights: string[];
+        };
+        SimulateAdjustmentWithCompaView: {
+            /** Format: double */
+            currentCompaRatio: null | number | string;
+            /** Format: double */
+            newCompaRatio: null | number | string;
+            /** Format: double */
+            bandMin: null | number | string;
+            /** Format: double */
+            bandMax: null | number | string;
+            bandCurrency: string;
+            withinBand: null | boolean;
+            /** Format: double */
+            currentSalary: number | string;
+            currency: string;
+            /** Format: double */
+            proposedSalary: number | string;
+            proposedCurrency: string;
+            /** Format: double */
+            proposedSalaryForComparison: number | string;
+            comparisonCurrency: string;
+            /** Format: double */
+            percentageChange: number | string;
         };
         SimulateView: {
             userId: string;
@@ -1758,6 +3078,26 @@ export interface components {
             status: string;
             result?: null | components["schemas"]["JsonObject"];
             notes?: string;
+        };
+        SubmitCalibrationVoteBody: {
+            evaluatedUserId: string;
+            quadrant: string;
+            justification?: null | string;
+        };
+        SubmitRatingsBody: {
+            ratings: components["schemas"]["RatingBody"][];
+        };
+        SubmitRatingsResponse: {
+            assignmentId: string;
+            status: string;
+        };
+        SubmitSurveyResponseBody: {
+            answers: Record<string, never>;
+        };
+        SubmitSurveyResponseRow: {
+            id: string;
+            /** Format: date-time */
+            submittedAt: unknown;
         };
         SubmitValidationBody: {
             status: string;
@@ -1809,12 +3149,47 @@ export interface components {
             firstName: string;
             lastName: string;
         };
+        SuccessorRow: {
+            id: string;
+            organizationId: string;
+            criticalRoleId: string;
+            userId: string;
+            readiness: string;
+            type: string;
+            developmentPlan: null | string;
+            addedById: null | string;
+            /** Format: date-time */
+            createdAt: unknown;
+            /** Format: date-time */
+            updatedAt: unknown;
+            user: components["schemas"]["SuccessorUserRow"];
+        };
+        SuccessorScalarRow: {
+            id: string;
+            organizationId: string;
+            criticalRoleId: string;
+            userId: string;
+            readiness: string;
+            type: string;
+            developmentPlan: null | string;
+            addedById: null | string;
+            /** Format: date-time */
+            createdAt: unknown;
+            /** Format: date-time */
+            updatedAt: unknown;
+        };
         SuccessorUser: {
             id: string;
             firstName: string;
             lastName: string;
             avatar: null | string;
             jobTitle: null | string;
+        };
+        SuccessorUserRow: {
+            id: string;
+            firstName: string;
+            lastName: string;
+            avatar: null | string;
         };
         SuggestedSuccessor: {
             userId: string;
@@ -1832,6 +3207,66 @@ export interface components {
             lastName: string;
             avatar: null | string;
             jobTitle: null | string;
+        };
+        SurveyForResponseView: {
+            id: string;
+            title: string;
+            type: string;
+            questions: null | components["schemas"]["JsonNode"];
+        };
+        SurveyListItem: {
+            id: string;
+            title: string;
+            type: string;
+            status: string;
+            /** Format: date-time */
+            startsAt: unknown;
+            /** Format: date-time */
+            endsAt: unknown;
+            /** Format: date-time */
+            createdAt: unknown;
+            /** Format: date-time */
+            updatedAt: unknown;
+            /** Format: int32 */
+            responseCount: null | number | string;
+            responseCountSuppressed: boolean;
+        };
+        SurveyListView: {
+            items: components["schemas"]["SurveyListItem"][];
+            /** Format: int32 */
+            total: number | string;
+            /** Format: int32 */
+            page: number | string;
+            /** Format: int32 */
+            limit: number | string;
+        };
+        SurveyResultsView: {
+            surveyId: string;
+            title: string;
+            /** Format: int32 */
+            totalResponses: null | number | string;
+            suppressed: boolean;
+            questionSummaries: components["schemas"]["QuestionSummary"][];
+        };
+        SurveyRow: {
+            id: string;
+            organizationId: string;
+            title: string;
+            type: string;
+            status: string;
+            questions: components["schemas"]["JsonNode"];
+            targetGroups: null | components["schemas"]["JsonNode"];
+            /** Format: date-time */
+            startsAt: unknown;
+            /** Format: date-time */
+            endsAt: unknown;
+            /** Format: int32 */
+            responseCount: number | string;
+            createdById: string;
+            /** Format: date-time */
+            createdAt: unknown;
+            /** Format: date-time */
+            updatedAt: unknown;
         };
         TeamBusinessUnitView: {
             id: string;
@@ -1927,6 +3362,17 @@ export interface components {
             members: components["schemas"]["TeamProfileMember"][];
             _count: components["schemas"]["TeamCountView"];
         };
+        TotalCompBreakdownView: {
+            /** Format: double */
+            totalComp: null | number | string;
+            currency: string;
+            converted: boolean;
+            ratesAsOf: null | string;
+            breakdown: components["schemas"]["CompBreakdownBreakdown"];
+            /** Format: int32 */
+            employeeCount: null | number | string;
+            suppressed: boolean;
+        };
         TrendBucket: {
             /** Format: int32 */
             year: number | string;
@@ -1934,6 +3380,20 @@ export interface components {
             month: number | string;
             /** Format: int32 */
             count: number | string;
+        };
+        UpdateActionPlanBody: {
+            title?: null | string;
+            notes?: null | string;
+            status?: null | string;
+            responsibleId?: null | string;
+            dueDate?: null | string;
+        };
+        UpdateCriticalRoleBandBody: {
+            targetBandLevel: null | string;
+        };
+        UpdateSuccessorReadinessBody: {
+            readiness: string;
+            developmentPlan?: null | string;
         };
         UsageApiCalls: {
             /** Format: int32 */
@@ -1968,6 +3428,14 @@ export interface components {
             received: boolean;
             type: string;
             handled: boolean;
+        };
+        WordCloudView: {
+            words: components["schemas"]["WordWeight"][];
+        };
+        WordWeight: {
+            text: string;
+            /** Format: double */
+            weight: number | string;
         };
     };
     responses: never;
@@ -3187,6 +4655,51 @@ export interface operations {
             };
         };
     };
+    Evaluation360CreateCycle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCycleBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateCycleResult"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     Evaluation360GetCycleProgress: {
         parameters: {
             query?: never;
@@ -3320,6 +4833,243 @@ export interface operations {
             };
         };
     };
+    Evaluation360OpenCycle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CycleTransitionResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    Evaluation360CloseCycle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CycleTransitionResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    Evaluation360PublishCycle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CycleTransitionResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    Evaluation360AssignRaters: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssignRatersBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssignRatersResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    Evaluation360SubmitRatings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubmitRatingsBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubmitRatingsResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     SuccessionListCriticalRoles: {
         parameters: {
             query?: {
@@ -3341,6 +5091,51 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ListCriticalRoleRow"][];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    SuccessionAddCriticalRole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddCriticalRoleBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CriticalRoleRow"];
                 };
             };
             /** @description Bad Request */
@@ -3674,6 +5469,218 @@ export interface operations {
             };
         };
     };
+    SuccessionAddSuccessor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                criticalRoleId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddSuccessorBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessorRow"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    SuccessionRemoveSuccessor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                successorId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessorScalarRow"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    SuccessionUpdateSuccessorReadiness: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                successorId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSuccessorReadinessBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessorScalarRow"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    SuccessionUpdateCriticalRoleBand: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                criticalRoleId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateCriticalRoleBandBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CriticalRoleBandResult"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     CompensationGetSalaryBands: {
         parameters: {
             query?: {
@@ -3958,6 +5965,112 @@ export interface operations {
             };
         };
     };
+    CompensationCreateAdjustment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAdjustmentBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdjustmentWriteResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CompensationApproveAdjustment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApproveAdjustmentBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdjustmentWriteResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     NineBoxGetGrid: {
         parameters: {
             query?: {
@@ -4224,6 +6337,51 @@ export interface operations {
             };
         };
     };
+    NineBoxCreateCalibration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCalibrationBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalibrationSessionWithMembers"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     NineBoxGetCalibration: {
         parameters: {
             query?: never;
@@ -4423,6 +6581,1628 @@ export interface operations {
             };
             /** @description Forbidden */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    NineBoxSubmitCalibrationVote: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubmitCalibrationVoteBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalibrationVoteResultRow"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    NineBoxAddCalibrationMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddCalibrationMemberBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalibrationMemberIdResult"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    NineBoxRemoveCalibrationMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalibrationRemoveResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    NineBoxFinalizeCalibration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalibrationSessionRow"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    EngagementListSurveys: {
+        parameters: {
+            query?: {
+                status?: string;
+                page?: number | string;
+                limit?: number | string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SurveyListView"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    EngagementCreateSurvey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateSurveyBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SurveyRow"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    EngagementGetSurveyResults: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                surveyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SurveyResultsView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    EngagementMyPendingSurveys: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PendingSurveyRow"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    EngagementGetSurveyForResponse: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                surveyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SurveyForResponseView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    EngagementGetEnps: {
+        parameters: {
+            query?: {
+                period?: string;
+                companyId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnpsResult"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    EngagementGetClimateHeatmap: {
+        parameters: {
+            query?: {
+                surveyId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClimateHeatmapView"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    EngagementGetResultsByArea: {
+        parameters: {
+            query?: {
+                groupBy?: string;
+            };
+            header?: never;
+            path: {
+                surveyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResultsByAreaView"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    EngagementGetWordCloud: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                surveyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordCloudView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    EngagementGetSentiment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                surveyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SentimentView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    EngagementGetLowClimateAlerts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertRow"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    EngagementListActionPlans: {
+        parameters: {
+            query?: {
+                status?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionPlanRow"][];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    EngagementCreateActionPlan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateActionPlanBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionPlanWriteRow"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    EngagementListLeaderCommitments: {
+        parameters: {
+            query?: {
+                leaderId?: string;
+                status?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaderCommitmentRow"][];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    EngagementGetDashboardKpis: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EngagementKpis"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    EngagementGetRotationRisk: {
+        parameters: {
+            query?: {
+                companyId?: string;
+                businessUnitId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RotationRiskView"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    EngagementActivateSurvey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                surveyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivateSurveyResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    EngagementSubmitSurveyResponse: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                surveyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubmitSurveyResponseBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubmitSurveyResponseRow"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    EngagementUpdateActionPlan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                actionPlanId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateActionPlanBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionPlanWriteRow"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DeiGetDashboardKpis: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardKpis"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DeiGetGenderRepresentation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GenderRepresentationView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DeiGetAgeDistribution: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgeDistributionView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DeiGetNationalityDiversity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NationalityDiversityView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DeiGetEthnicityDistribution: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EthnicityDistributionView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DeiGetDisabilityDistribution: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DisabilityDistributionView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DeiGetLeadershipDiversity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeadershipDiversityResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DeiGetHiringFunnel: {
+        parameters: {
+            query?: {
+                dateFrom?: string;
+                dateTo?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HiringFunnelView"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DeiGetPromotionEquity: {
+        parameters: {
+            query?: {
+                year?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromotionEquityView"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DeiGetInclusionIndex: {
+        parameters: {
+            query?: {
+                surveyId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InclusionIndexResult"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DeiGetPayEquity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayEquityView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CompensationGetBandDistribution: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BandDistributionBand"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CompensationGetPayEquity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompPayEquityView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CompensationGetTotalCompBreakdown: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TotalCompBreakdownView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CompensationGetDashboardKpis: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompDashboardKpisView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CompensationSimulateAdjustment: {
+        parameters: {
+            query?: {
+                userId?: string;
+                proposedSalary?: number | string;
+                currency?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SimulateAdjustmentWithCompaView"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
