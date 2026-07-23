@@ -261,6 +261,23 @@ try
     builder.Services.AddScoped<IEvaluation360ReadRepository, Evaluation360ReadRepository>();
     builder.Services.AddScoped<Evaluation360ReadUseCase>();
 
+    // Phase-5 Slice 13 (efcoreStranglerWrite): the evaluation360 WRITE surface. Write-capable EF over the
+    // Prisma-OWNED review_cycles/rater_assignments/rater_responses (+ read-only users for the assignRaters
+    // membership check), run UNDER TenantScope/RLS. The status/relationship native enums are FILTERED/SET, so the
+    // write context reuses the Slice-7 enum-mapped data source behind a DEDICATED holder (isolated, no bleed). The 5
+    // STAFF writes gate on evaluation360:create/update + the org-gate; submitRatings is IDENTITY-anchored (the Slice-7
+    // self-service gate — any resolved principal, hard-filtered on rater_user_id = caller). Dark unless
+    // Evaluation360WriteEnabled (deploy-gated cutover; TS stays the sole active writer). A COEXISTENCE write — the
+    // three tables are still read by Evaluation360ReadDbContext (a distinct read-only context).
+    builder.Services.AddSingleton(_ =>
+        new Evaluation360WriteDataSourceHolder(Evaluation360ReadDataSource.Build(databaseConnectionString ?? string.Empty)));
+    builder.Services.AddDbContext<Evaluation360WriteDbContext>((sp, options) =>
+        options.UseNpgsql(
+            sp.GetRequiredService<Evaluation360WriteDataSourceHolder>().DataSource,
+            Evaluation360ReadDataSource.MapEnums));
+    builder.Services.AddScoped<IEvaluation360WriteRepository, Evaluation360WriteRepository>();
+    builder.Services.AddScoped<Evaluation360WriteUseCase>();
+
     // Phase-5 Slice 8 (efcoreReadOnly): the succession READ surface. Plain read-only context over the
     // Prisma-OWNED critical_roles/successors (+ users/salary_bands/employee_compensations/nine_box_evaluations)
     // — readiness/criticality/type/quadrant are plain Strings (NOT native enums), so no NpgsqlDataSource. Reads
@@ -766,6 +783,18 @@ try
     if (externalOptions.Evaluation360ReadEnabled || isOpenApiDocGeneration)
     {
         app.MapEvaluation360ReadEndpoints();
+    }
+
+    // Evaluation360 WRITE surface (Phase-5 Slice 13): POST /evaluation360/cycles (createCycle) +
+    // /cycles/{id}/open|close|publish (the three guarded transitions, count-0 ⇒ 409) + /cycles/{id}/raters
+    // (assignRaters — in-tx status re-check + org-membership validation + skipDuplicates ON CONFLICT insert), all
+    // STAFF (evaluation360:create/update + org-gate), plus /assignments/{id}/ratings (submitRatings — SELF-SERVICE,
+    // IDENTITY-anchored on rater_user_id = caller so an org-admin cannot forge another rater's feedback → 404; atomic
+    // claim-idempotency + the 6 rater_responses insert). The WRITE port completing the evaluation360 domain. Dark
+    // unless the flag is on (deploy-gated cutover; TS stays the sole active writer until Federico flips it).
+    if (externalOptions.Evaluation360WriteEnabled || isOpenApiDocGeneration)
+    {
+        app.MapEvaluation360WriteEndpoints();
     }
 
     // Succession READ surface (Phase-5 Slice 8): the nine succession reads (/succession/*). Staff-JWT +

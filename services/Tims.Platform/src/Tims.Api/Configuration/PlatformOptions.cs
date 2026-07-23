@@ -263,4 +263,24 @@ public sealed class PlatformOptions
     /// false (dark) — TS remains the single active writer until Federico flips it at canary (deploy-gated cutover).
     /// </summary>
     public bool CompensationWriteEnabled { get; init; }
+
+    /// <summary>
+    /// Phase-5 Slice 13 (efcoreStranglerWrite): when true, the C# evaluation360 WRITE surface is mapped and live — the
+    /// 5 STAFF writes <c>POST /evaluation360/cycles</c> (createCycle), <c>/cycles/{id}/open|close|publish</c>
+    /// (open/close/publishCycle), <c>/cycles/{id}/raters</c> (assignRaters), plus the SELF-SERVICE
+    /// <c>POST /evaluation360/assignments/{id}/ratings</c> (submitRatings). The WRITE port completing the
+    /// evaluation360 domain after Slice-7 (the 5 reads). The STAFF writes use Staff-JWT + <c>evaluation360:create</c>
+    /// (createCycle/assignRaters) / <c>evaluation360:update</c> (the three transitions) + the organization/company
+    /// org-gate (<c>requireOrgScope</c>, Codex F3); the transitions are guarded conditional ExecuteUpdate (count-0 ⇒
+    /// CONFLICT, draft→open→closed→published only) and assignRaters does an in-tx status re-check + org-membership
+    /// validation + a skipDuplicates ON CONFLICT insert. submitRatings is IDENTITY-anchored (the Slice-7
+    /// Evaluation360SelfServiceGate — any resolved principal, NO grant, NO scope; every query/write HARD-FILTERS on
+    /// rater_user_id = caller so an org-scoped admin can never submit forged feedback for another rater → NOT_FOUND),
+    /// with an atomic claim-idempotency transition + the 6 rater_responses insert. The three native Prisma enum
+    /// columns are filtered/set via the Slice-7 enum-mapped data source (isolated behind Evaluation360WriteDataSourceHolder).
+    /// COEXISTENCE write on review_cycles + rater_assignments + rater_responses (still read by Evaluation360ReadDbContext);
+    /// the domain is now FLIP-READY (eval360-owned). DEFAULT false (dark) — TS remains the single active writer until
+    /// Federico flips it at canary (deploy-gated cutover).
+    /// </summary>
+    public bool Evaluation360WriteEnabled { get; init; }
 }

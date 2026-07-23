@@ -22,18 +22,36 @@ namespace Tims.Api.Evaluation360;
 /// SEPARATE from <see cref="Evaluation360SelfServiceGate"/>: the self-service reads authorize on IDENTITY, not a
 /// grant, and MUST NOT run this org-gate (an org-scoped admin degrades match-all and could read another user's
 /// data). Do not cross the two.
+///
+/// Slice-13 (evaluation360 WRITE) adds an action-parameterized overload so the 5 STAFF writes enforce
+/// <c>evaluation360:create</c> (createCycle/assignRaters) / <c>evaluation360:update</c> (open/close/publishCycle)
+/// through the SAME kernel + the SAME org-gate (TS <c>requireOrgScope</c> is the first line of every staff resolver).
+/// The original read overload forwards <c>action = "read"</c> so every read call site is byte-unchanged.
 /// </summary>
 public static class Evaluation360StaffGate
 {
     private const string Evaluation360Module = "evaluation360";
     private const string ReadAction = "read";
 
+    /// <summary>Read gate (original signature) — forwards <c>action = "read"</c> so read call sites are unchanged.</summary>
+    public static Task<StaffGateResult> AuthorizeAsync(
+        ClaimsPrincipal user,
+        HttpContext httpContext,
+        PrincipalResolver principalResolver,
+        PermissionService permissionService,
+        PlatformOptions options,
+        CancellationToken cancellationToken) =>
+        AuthorizeAsync(user, httpContext, principalResolver, permissionService, options, ReadAction, cancellationToken);
+
+    /// <summary>Action-parameterized gate: enforces <c>evaluation360:&lt;action&gt;</c> (create/update for the writes)
+    /// + the organization/company org-gate. CA1068-safe (<c>CancellationToken</c> stays last).</summary>
     public static async Task<StaffGateResult> AuthorizeAsync(
         ClaimsPrincipal user,
         HttpContext httpContext,
         PrincipalResolver principalResolver,
         PermissionService permissionService,
         PlatformOptions options,
+        string action,
         CancellationToken cancellationToken)
     {
         var context = await ResolvePrincipalAsync(user, httpContext, principalResolver, options, cancellationToken);
@@ -45,14 +63,14 @@ public static class Evaluation360StaffGate
         AccessDecision decision;
         try
         {
-            decision = await permissionService.CheckAsync(context, Evaluation360Module, ReadAction, cancellationToken);
+            decision = await permissionService.CheckAsync(context, Evaluation360Module, action, cancellationToken);
         }
         catch (TenantOrgRequiredException)
         {
             return StaffGateResult.Fail(Results.BadRequest(new { error = "organization_required" }));
         }
 
-        // permissionProcedure('evaluation360','read') — grant check. An allowed decision always carries a scope,
+        // permissionProcedure('evaluation360', action) — grant check. An allowed decision always carries a scope,
         // so a null Scope is a contract violation → fail closed (never default to Organization).
         if (!decision.Allowed || decision.Scope is not { } resolvedScope)
         {

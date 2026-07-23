@@ -1030,6 +1030,43 @@
             "description": "Forbidden"
           }
         }
+      },
+      "post": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "Evaluation360CreateCycle",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCycleBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateCycleResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
       }
     },
     "/evaluation360/cycles/{cycleId}/progress": {
@@ -1157,6 +1194,232 @@
           },
           "401": {
             "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/evaluation360/cycles/{id}/open": {
+      "post": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "Evaluation360OpenCycle",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CycleTransitionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "409": {
+            "description": "Conflict"
+          }
+        }
+      }
+    },
+    "/evaluation360/cycles/{id}/close": {
+      "post": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "Evaluation360CloseCycle",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CycleTransitionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "409": {
+            "description": "Conflict"
+          }
+        }
+      }
+    },
+    "/evaluation360/cycles/{id}/publish": {
+      "post": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "Evaluation360PublishCycle",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CycleTransitionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "409": {
+            "description": "Conflict"
+          }
+        }
+      }
+    },
+    "/evaluation360/cycles/{id}/raters": {
+      "post": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "Evaluation360AssignRaters",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignRatersBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssignRatersResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "409": {
+            "description": "Conflict"
+          }
+        }
+      }
+    },
+    "/evaluation360/assignments/{id}/ratings": {
+      "post": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "Evaluation360SubmitRatings",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitRatingsBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubmitRatingsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict"
           }
         }
       }
@@ -3758,6 +4021,36 @@
           }
         }
       },
+      "AssignRatersBody": {
+        "required": [
+          "assignments"
+        ],
+        "type": "object",
+        "properties": {
+          "assignments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RaterAssignmentBody"
+            }
+          }
+        }
+      },
+      "AssignRatersResponse": {
+        "required": [
+          "created"
+        ],
+        "type": "object",
+        "properties": {
+          "created": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "AxisBreakdownView": {
         "required": [
           "userId",
@@ -4826,6 +5119,40 @@
           }
         }
       },
+      "CreateCycleBody": {
+        "required": [
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "CreateCycleResult": {
+        "required": [
+          "id",
+          "name",
+          "status",
+          "createdAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time"
+          }
+        }
+      },
       "CriticalRoleCount": {
         "required": [
           "successors"
@@ -5015,6 +5342,21 @@
           },
           "createdAt": {
             "format": "date-time"
+          }
+        }
+      },
+      "CycleTransitionResponse": {
+        "required": [
+          "cycleId",
+          "status"
+        ],
+        "type": "object",
+        "properties": {
+          "cycleId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
           }
         }
       },
@@ -7565,6 +7907,25 @@
           }
         }
       },
+      "RaterAssignmentBody": {
+        "required": [
+          "subjectUserId",
+          "raterUserId",
+          "relationship"
+        ],
+        "type": "object",
+        "properties": {
+          "subjectUserId": {
+            "type": "string"
+          },
+          "raterUserId": {
+            "type": "string"
+          },
+          "relationship": {
+            "type": "string"
+          }
+        }
+      },
       "RaterTaskSubject": {
         "required": [
           "firstName",
@@ -7611,6 +7972,32 @@
             "items": {
               "type": "string"
             }
+          }
+        }
+      },
+      "RatingBody": {
+        "required": [
+          "competencyKey",
+          "rating"
+        ],
+        "type": "object",
+        "properties": {
+          "competencyKey": {
+            "type": "string"
+          },
+          "rating": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "comment": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -8257,6 +8644,35 @@
             ]
           },
           "notes": {
+            "type": "string"
+          }
+        }
+      },
+      "SubmitRatingsBody": {
+        "required": [
+          "ratings"
+        ],
+        "type": "object",
+        "properties": {
+          "ratings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RatingBody"
+            }
+          }
+        }
+      },
+      "SubmitRatingsResponse": {
+        "required": [
+          "assignmentId",
+          "status"
+        ],
+        "type": "object",
+        "properties": {
+          "assignmentId": {
+            "type": "string"
+          },
+          "status": {
             "type": "string"
           }
         }
