@@ -128,9 +128,10 @@ public static class ScopeProbeRegistry
             },
             Navs: new Dictionary<string, ProbeNav>()),
 
-        // successor anchors on its subject userId (SubjectAsync("userId")) — used ONLY via
-        // scopeWhereFor('successor') as a nested row filter (never a by-id probe root), so it needs the
-        // field column for the translator but no EntityRootTable entry.
+        // successor anchors on its subject userId (SubjectAsync("userId")). Slice-8 used it via
+        // scopeWhereFor('successor') as a nested row filter; Slice-14 (WRITE) ALSO registers it as the
+        // assertScoped('successor') by-id IDOR probe root (removeSuccessor/updateSuccessorReadiness) — see
+        // EntityRootTable above. successors has no deleted_at → NOT soft-deletable.
         ["successors"] = new ProbeTable(
             Fields: new Dictionary<string, string>
             {
@@ -206,9 +207,15 @@ public static class ScopeProbeRegistry
         [ScopedEntity.Okr] = "okrs",
         [ScopedEntity.Team] = "teams",
         [ScopedEntity.Offer] = "offers",
-        // Succession (Phase-5 Slice 8): the assertScoped('criticalRole') by-id IDOR probe root. successor +
-        // nineBoxEvaluation are used only via scopeWhereFor (row filter), so they need no EntityRootTable entry.
+        // Succession (Phase-5 Slice 8): the assertScoped('criticalRole') by-id IDOR probe root. nineBoxEvaluation
+        // is used only via scopeWhereFor (row filter), so it needs no EntityRootTable entry.
         [ScopedEntity.CriticalRole] = "critical_roles",
+        // Succession (Phase-5 Slice 14, WRITE): the assertScoped('successor') by-id IDOR probe root
+        // (removeSuccessor / updateSuccessorReadiness — succession.ts:186,202). Slice-8 used successor ONLY via
+        // scopeWhereFor('successor') (the nested row filter), so it had a probe-table field map (successors →
+        // userId, above) but NO EntityRootTable entry — the by-id probe root is added THIS slice (exactly like
+        // Slice-12 wired the missing salaryAdjustment root). successors has no deleted_at → NOT soft-deletable.
+        [ScopedEntity.Successor] = "successors",
         // Compensation (Phase-5 Slice 12): the assertScoped('salaryAdjustment') by-id IDOR probe root
         // (approveAdjustment). The probe table + field map (salary_adjustments → userId) + the ScopeWhereFor
         // SubjectAsync("userId") logic pre-existed from Slice-9 (scopeWhereFor row filter); this registration is

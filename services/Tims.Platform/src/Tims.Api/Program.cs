@@ -289,6 +289,20 @@ try
     builder.Services.AddScoped<ISuccessionReadRepository, SuccessionReadRepository>();
     builder.Services.AddScoped<SuccessionReadUseCase>();
 
+    // Phase-5 Slice 14 (efcoreStranglerWrite): the succession WRITE surface (the 5 succession writes). Write-capable
+    // EF over the Prisma-OWNED critical_roles + successors (+ read-only users for the addSuccessor nested user
+    // projection) — criticality/readiness/type are plain Strings (NOT native enums), so no NpgsqlDataSource. Every
+    // write runs UNDER TenantScope/RLS with an explicit org value. addCriticalRole requires org/company scope
+    // (requireOrgScope); addSuccessor runs assertScoped('criticalRole') (parent IDOR probe) THEN
+    // assertSubjectInScope on the TARGET userId (ScopedProbe/IAnchorLoaderFactory/SubjectInScope, already registered
+    // above) + maps the @@unique([criticalRoleId, userId]) violation → 409; remove/updateReadiness/updateBand run the
+    // by-id assertScoped probe (successor registered as a probe root THIS slice). The WRITE port completing the
+    // succession domain (FLIP-READY). Dark unless SuccessionWriteEnabled (deploy-gated cutover; TS stays the sole
+    // active writer). A COEXISTENCE write — critical_roles/successors are still read by SuccessionReadDbContext.
+    builder.Services.AddDbContext<SuccessionWriteDbContext>(options => options.UseNpgsql(databaseConnectionString));
+    builder.Services.AddScoped<ISuccessionWriteRepository, SuccessionWriteRepository>();
+    builder.Services.AddScoped<SuccessionWriteUseCase>();
+
     // Phase-5 Slice 9 (efcoreReadOnly): the FX-free compensation READ surface. Plain read-only context over the
     // Prisma-OWNED salary_bands/employee_compensations/benefit_plans/benefit_enrollments (+ users) —
     // salary_adjustments.type/.status + benefit_plans.type are plain Strings (NOT native enums), so no
@@ -805,6 +819,20 @@ try
     if (externalOptions.SuccessionReadEnabled || isOpenApiDocGeneration)
     {
         app.MapSuccessionReadEndpoints();
+    }
+
+    // Succession WRITE surface (Phase-5 Slice 14): the 5 succession writes — POST /succession/critical-roles
+    // (addCriticalRole, requireOrgScope), POST /succession/critical-roles/{id}/successors (addSuccessor,
+    // assertScoped('criticalRole') → 404 THEN assertSubjectInScope(userId) → 403; dedup @@unique → 409),
+    // DELETE /succession/successors/{id} (removeSuccessor, assertScoped('successor') → 404), PATCH
+    // /succession/successors/{id}/readiness (updateSuccessorReadiness, assertScoped('successor') → 404), PATCH
+    // /succession/critical-roles/{id}/band (updateCriticalRoleBand, assertScoped('criticalRole') → 404). Staff-JWT +
+    // succession:create/update/delete; addSuccessor stamps addedById = caller. The WRITE port completing the
+    // succession domain (FLIP-READY). Dark unless the flag is on (deploy-gated cutover; TS stays the sole active
+    // writer until Federico flips it).
+    if (externalOptions.SuccessionWriteEnabled || isOpenApiDocGeneration)
+    {
+        app.MapSuccessionWriteEndpoints();
     }
 
     // Compensation READ surface (Phase-5 Slice 9, FX-free subset): the seven FX-free compensation reads

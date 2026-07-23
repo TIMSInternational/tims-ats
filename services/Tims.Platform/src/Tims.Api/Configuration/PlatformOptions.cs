@@ -283,4 +283,25 @@ public sealed class PlatformOptions
     /// Federico flips it at canary (deploy-gated cutover).
     /// </summary>
     public bool Evaluation360WriteEnabled { get; init; }
+
+    /// <summary>
+    /// Phase-5 Slice 14 (efcoreStranglerWrite): when true, the C# succession WRITE surface is mapped and live — the
+    /// 5 writes <c>POST /succession/critical-roles</c> (addCriticalRole), <c>POST
+    /// /succession/critical-roles/{id}/successors</c> (addSuccessor), <c>DELETE /succession/successors/{id}</c>
+    /// (removeSuccessor), <c>PATCH /succession/successors/{id}/readiness</c> (updateSuccessorReadiness),
+    /// <c>PATCH /succession/critical-roles/{id}/band</c> (updateCriticalRoleBand). The WRITE port completing the
+    /// succession domain after Slice-8 (the 9 reads) — the domain is now FLIP-READY (the cleanest flip candidate:
+    /// nothing outside the succession router touches critical_roles/successors). Staff-JWT + <c>succession:create</c>
+    /// (addCriticalRole/addSuccessor) / <c>:delete</c> (removeSuccessor) / <c>:update</c> (updateSuccessorReadiness/
+    /// updateCriticalRoleBand); the 5 writes carry DIFFERENT scope mechanics on the same grants: addCriticalRole
+    /// requires org/company scope (<c>requireOrgScope</c> — narrow → 403), addSuccessor runs
+    /// <c>assertScoped('criticalRole')</c> (parent IDOR probe → 404) THEN <c>assertSubjectInScope(userId)</c>
+    /// (write-rule subject check → 403), and remove/updateReadiness/updateBand run the by-id <c>assertScoped</c>
+    /// probe (→ 404). addSuccessor stamps addedById = caller and maps the <c>@@unique([criticalRoleId, userId])</c>
+    /// violation → 409 CONFLICT (documented improvement over the TS 500). criticality/readiness/type are plain-string
+    /// enum sets enforced at the endpoint (→ 400 after auth). COEXISTENCE write on critical_roles + successors (still
+    /// read by SuccessionReadDbContext). DEFAULT false (dark) — TS remains the single active writer until Federico
+    /// flips it at canary (deploy-gated cutover).
+    /// </summary>
+    public bool SuccessionWriteEnabled { get; init; }
 }

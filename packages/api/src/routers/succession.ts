@@ -130,10 +130,36 @@ export const successionRouter = router({
       // Defining an org-critical role is org governance, not a leader/hrbp
       // grant (matrix gives them read only) → org/company scope only.
       requireOrgScope(ctx.access);
+      const orgId = ctx.user.organizationId;
+      // Codex H2 hardening (both-stacks parity with the C# strangler port): the create persists arbitrary
+      // currentHolderId/companyId/unitId — FK checks bypass RLS, so an org-scoped creator could otherwise anchor
+      // a role to another tenant's employee or foreign org structure. Validate each PROVIDED optional reference
+      // against the caller's org before the INSERT; a cross-org / nonexistent id → BAD_REQUEST (never persisted).
+      if (input.currentHolderId) {
+        const holder = await db.user.findFirst({
+          where: { id: input.currentHolderId, organizationId: orgId },
+          select: { id: true },
+        });
+        if (!holder) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Referencia invalida' });
+      }
+      if (input.companyId) {
+        const company = await db.company.findFirst({
+          where: { id: input.companyId, organizationId: orgId },
+          select: { id: true },
+        });
+        if (!company) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Referencia invalida' });
+      }
+      if (input.unitId) {
+        const unit = await db.businessUnit.findFirst({
+          where: { id: input.unitId, organizationId: orgId },
+          select: { id: true },
+        });
+        if (!unit) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Referencia invalida' });
+      }
       return db.criticalRole.create({
         data: {
           ...input,
-          organizationId: ctx.user.organizationId,
+          organizationId: orgId,
         },
       });
     }),
@@ -166,6 +192,17 @@ export const successionRouter = router({
         input.userId,
         'No puedes agregar este sucesor',
       );
+      // Codex H1 hardening (both-stacks parity with the C# strangler port): assertSubjectInScope no-ops for
+      // organization/company scope (it enforces SCOPE, not org membership), so an org-scoped caller could
+      // otherwise persist a cross-tenant userId (the successors.userId FK check bypasses RLS). Verify the target
+      // user is a member of the caller's org before the INSERT; a cross-org user → FORBIDDEN (never persisted).
+      const targetUser = await db.user.findFirst({
+        where: { id: input.userId, organizationId: ctx.user.organizationId },
+        select: { id: true },
+      });
+      if (!targetUser) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'No puedes agregar este sucesor' });
+      }
       return db.successor.create({
         data: {
           ...input,

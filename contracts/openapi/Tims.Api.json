@@ -1484,6 +1484,43 @@
             "description": "Forbidden"
           }
         }
+      },
+      "post": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "SuccessionAddCriticalRole",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddCriticalRoleBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CriticalRoleRow"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
       }
     },
     "/succession/critical-roles/{criticalRoleId}": {
@@ -1764,6 +1801,208 @@
           },
           "403": {
             "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/succession/critical-roles/{criticalRoleId}/successors": {
+      "post": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "SuccessionAddSuccessor",
+        "parameters": [
+          {
+            "name": "criticalRoleId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddSuccessorBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessorRow"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict"
+          }
+        }
+      }
+    },
+    "/succession/successors/{successorId}": {
+      "delete": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "SuccessionRemoveSuccessor",
+        "parameters": [
+          {
+            "name": "successorId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessorScalarRow"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/succession/successors/{successorId}/readiness": {
+      "patch": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "SuccessionUpdateSuccessorReadiness",
+        "parameters": [
+          {
+            "name": "successorId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSuccessorReadinessBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessorScalarRow"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/succession/critical-roles/{criticalRoleId}/band": {
+      "patch": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "SuccessionUpdateCriticalRoleBand",
+        "parameters": [
+          {
+            "name": "criticalRoleId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCriticalRoleBandBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CriticalRoleBandResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
           }
         }
       }
@@ -3833,6 +4072,79 @@
           }
         }
       },
+      "AddCriticalRoleBody": {
+        "required": [
+          "title",
+          "criticality"
+        ],
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "criticality": {
+            "type": "string"
+          },
+          "positionId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "currentHolderId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "companyId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "unitId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "flightRisk": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          }
+        }
+      },
+      "AddSuccessorBody": {
+        "required": [
+          "userId",
+          "readiness",
+          "type"
+        ],
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "readiness": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "developmentPlan": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "AdjustmentWriteResponse": {
         "required": [
           "id",
@@ -5153,6 +5465,24 @@
           }
         }
       },
+      "CriticalRoleBandResult": {
+        "required": [
+          "id",
+          "targetBandLevel"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "targetBandLevel": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "CriticalRoleCount": {
         "required": [
           "successors"
@@ -5260,6 +5590,82 @@
             "items": {
               "$ref": "#/components/schemas/DetailSuccessorRow"
             }
+          }
+        }
+      },
+      "CriticalRoleRow": {
+        "required": [
+          "id",
+          "organizationId",
+          "title",
+          "positionId",
+          "currentHolderId",
+          "companyId",
+          "unitId",
+          "criticality",
+          "flightRisk",
+          "targetBandLevel",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "organizationId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "positionId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "currentHolderId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "companyId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "unitId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "criticality": {
+            "type": "string"
+          },
+          "flightRisk": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "targetBandLevel": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "createdAt": {
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "format": "date-time"
           }
         }
       },
@@ -8858,6 +9264,116 @@
           }
         }
       },
+      "SuccessorRow": {
+        "required": [
+          "id",
+          "organizationId",
+          "criticalRoleId",
+          "userId",
+          "readiness",
+          "type",
+          "developmentPlan",
+          "addedById",
+          "createdAt",
+          "updatedAt",
+          "user"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "organizationId": {
+            "type": "string"
+          },
+          "criticalRoleId": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "readiness": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "developmentPlan": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "addedById": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "createdAt": {
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "format": "date-time"
+          },
+          "user": {
+            "$ref": "#/components/schemas/SuccessorUserRow"
+          }
+        }
+      },
+      "SuccessorScalarRow": {
+        "required": [
+          "id",
+          "organizationId",
+          "criticalRoleId",
+          "userId",
+          "readiness",
+          "type",
+          "developmentPlan",
+          "addedById",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "organizationId": {
+            "type": "string"
+          },
+          "criticalRoleId": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "readiness": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "developmentPlan": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "addedById": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "createdAt": {
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "format": "date-time"
+          }
+        }
+      },
       "SuccessorUser": {
         "required": [
           "id",
@@ -8884,6 +9400,32 @@
             ]
           },
           "jobTitle": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "SuccessorUserRow": {
+        "required": [
+          "id",
+          "firstName",
+          "lastName",
+          "avatar"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "firstName": {
+            "type": "string"
+          },
+          "lastName": {
+            "type": "string"
+          },
+          "avatar": {
             "type": [
               "null",
               "string"
@@ -9613,6 +10155,37 @@
               "string"
             ],
             "format": "int32"
+          }
+        }
+      },
+      "UpdateCriticalRoleBandBody": {
+        "required": [
+          "targetBandLevel"
+        ],
+        "type": "object",
+        "properties": {
+          "targetBandLevel": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "UpdateSuccessorReadinessBody": {
+        "required": [
+          "readiness"
+        ],
+        "type": "object",
+        "properties": {
+          "readiness": {
+            "type": "string"
+          },
+          "developmentPlan": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
