@@ -159,9 +159,10 @@ public static class ScopeProbeRegistry
             Navs: new Dictionary<string, ProbeNav>()),
 
         // Compensation (Phase-5 Slice 9). salaryAdjustment anchors on its subject userId
-        // (SubjectAsync("userId")) — used ONLY via scopeWhereFor('salaryAdjustment') as the
-        // listPendingAdjustments row filter (never a by-id probe root), so it needs the field column for the
-        // translator but no EntityRootTable entry. salary_adjustments has no deleted_at → NOT soft-deletable.
+        // (SubjectAsync("userId")) — Slice-9 used it ONLY via scopeWhereFor('salaryAdjustment') as the
+        // listPendingAdjustments row filter. Phase-5 Slice-12 (compensation WRITE) ALSO registers it as the
+        // assertScoped('salaryAdjustment') by-id IDOR probe root (approveAdjustment) — see EntityRootTable
+        // below. salary_adjustments has no deleted_at → NOT soft-deletable.
         ["salary_adjustments"] = new ProbeTable(
             Fields: new Dictionary<string, string>
             {
@@ -208,6 +209,11 @@ public static class ScopeProbeRegistry
         // Succession (Phase-5 Slice 8): the assertScoped('criticalRole') by-id IDOR probe root. successor +
         // nineBoxEvaluation are used only via scopeWhereFor (row filter), so they need no EntityRootTable entry.
         [ScopedEntity.CriticalRole] = "critical_roles",
+        // Compensation (Phase-5 Slice 12): the assertScoped('salaryAdjustment') by-id IDOR probe root
+        // (approveAdjustment). The probe table + field map (salary_adjustments → userId) + the ScopeWhereFor
+        // SubjectAsync("userId") logic pre-existed from Slice-9 (scopeWhereFor row filter); this registration is
+        // the missing piece that lets the by-id probe resolve. NOT soft-deletable (no deleted_at column).
+        [ScopedEntity.SalaryAdjustment] = "salary_adjustments",
     };
 
     /// <summary>

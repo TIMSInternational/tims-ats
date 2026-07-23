@@ -249,4 +249,18 @@ public sealed class PlatformOptions
     /// populates fx_rates at canary).
     /// </summary>
     public bool FxReadsEnabled { get; init; }
+
+    /// <summary>
+    /// Phase-5 Slice 12 (efcoreStranglerWrite): when true, the C# compensation WRITE surface is mapped and live —
+    /// <c>POST /compensation/adjustments</c> (createAdjustment) + <c>POST /compensation/adjustments/{id}/approve</c>
+    /// (approveAdjustment). The FIRST WRITE port of the compensation domain. Staff-JWT + <c>compensation:create</c> /
+    /// <c>compensation:approve</c>: createAdjustment does <c>assertSubjectInScope</c> on the TARGET userId (out-of-set
+    /// → 403) + the currency fallback + a pending INSERT (id+status only, §21); approveAdjustment does
+    /// <c>assertScoped('salaryAdjustment', id)</c> (by-id IDOR probe → 404) + a fail-closed audit BEFORE the mutation
+    /// + the atomic conditional transaction (pending-only transition → count-0 CONFLICT, then the
+    /// employee_compensations propagation — commit/roll-back together). COEXISTENCE write on
+    /// <c>salary_adjustments</c> + <c>employee_compensations</c> (still read by CompensationReadDbContext). DEFAULT
+    /// false (dark) — TS remains the single active writer until Federico flips it at canary (deploy-gated cutover).
+    /// </summary>
+    public bool CompensationWriteEnabled { get; init; }
 }

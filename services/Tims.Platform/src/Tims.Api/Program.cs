@@ -283,6 +283,19 @@ try
     builder.Services.AddScoped<ICompensationReadRepository, CompensationReadRepository>();
     builder.Services.AddScoped<CompensationReadUseCase>();
 
+    // Phase-5 Slice 12 (efcoreStranglerWrite): the compensation WRITE surface (POST /compensation/adjustments +
+    // /compensation/adjustments/{id}/approve). Write-capable EF over the Prisma-OWNED salary_adjustments +
+    // employee_compensations (no native enums → no NpgsqlDataSource), run UNDER TenantScope/RLS. createAdjustment
+    // does assertSubjectInScope on the TARGET userId + the currency fallback + a pending INSERT; approveAdjustment
+    // runs the assertScoped('salaryAdjustment') by-id IDOR probe (ScopedProbe, already registered above) + a
+    // fail-closed audit (IDataAccessAuditor, already registered) BEFORE the atomic conditional transaction. The
+    // FIRST compensation WRITE port. Dark unless CompensationWriteEnabled (deploy-gated cutover; TS stays the sole
+    // active writer). A COEXISTENCE write — salary_adjustments/employee_compensations are still read by
+    // CompensationReadDbContext (a distinct read-only context).
+    builder.Services.AddDbContext<CompensationWriteDbContext>(options => options.UseNpgsql(databaseConnectionString));
+    builder.Services.AddScoped<ICompensationWriteRepository, CompensationWriteRepository>();
+    builder.Services.AddScoped<CompensationWriteUseCase>();
+
     // Phase-5 Slice 10 (efcoreReadOnly): the nine-box READ surface. Plain read-only context over the
     // Prisma-OWNED nine_box_evaluations + calibration_sessions/calibration_members/calibration_votes (+ users/
     // user_teams/teams) — quadrant + calibration status/member-status are plain Strings (NOT native enums), so
@@ -774,6 +787,17 @@ try
     if (externalOptions.CompensationReadEnabled || isOpenApiDocGeneration)
     {
         app.MapCompensationReadEndpoints();
+    }
+
+    // Compensation WRITE surface (Phase-5 Slice 12): POST /compensation/adjustments (createAdjustment) +
+    // /compensation/adjustments/{id}/approve (approveAdjustment). Staff-JWT + compensation:create / :approve;
+    // createAdjustment assertSubjectInScope's the target userId, approveAdjustment runs the
+    // assertScoped('salaryAdjustment') by-id probe + a fail-closed audit BEFORE the atomic conditional
+    // transaction (pending-only transition → count-0 CONFLICT, then the comp propagation). The FIRST compensation
+    // WRITE port. Dark unless the flag is on (deploy-gated cutover; TS stays the sole active writer).
+    if (externalOptions.CompensationWriteEnabled || isOpenApiDocGeneration)
+    {
+        app.MapCompensationWriteEndpoints();
     }
 
     // Nine-box READ surface (Phase-5 Slice 10): the eleven nine-box reads (/ninebox/*). Staff-JWT +

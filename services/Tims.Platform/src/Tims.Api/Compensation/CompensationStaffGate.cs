@@ -24,12 +24,24 @@ public static class CompensationStaffGate
     private const string CompensationModule = "compensation";
     private const string ReadAction = "read";
 
+    /// <summary>Read gate (original signature) — forwards <c>action = "read"</c> so read call sites are unchanged.</summary>
+    public static Task<CompensationGateResult> AuthorizeAsync(
+        ClaimsPrincipal user,
+        HttpContext httpContext,
+        PrincipalResolver principalResolver,
+        PermissionService permissionService,
+        PlatformOptions options,
+        CancellationToken cancellationToken) =>
+        AuthorizeAsync(user, httpContext, principalResolver, permissionService, options, ReadAction, cancellationToken);
+
+    /// <summary>Action-parameterized gate: enforces <c>compensation:&lt;action&gt;</c> (create/approve for the writes).</summary>
     public static async Task<CompensationGateResult> AuthorizeAsync(
         ClaimsPrincipal user,
         HttpContext httpContext,
         PrincipalResolver principalResolver,
         PermissionService permissionService,
         PlatformOptions options,
+        string action,
         CancellationToken cancellationToken)
     {
         var context = await ResolvePrincipalAsync(user, httpContext, principalResolver, options, cancellationToken);
@@ -41,7 +53,7 @@ public static class CompensationStaffGate
         AccessDecision decision;
         try
         {
-            decision = await permissionService.CheckAsync(context, CompensationModule, ReadAction, cancellationToken);
+            decision = await permissionService.CheckAsync(context, CompensationModule, action, cancellationToken);
         }
         catch (TenantOrgRequiredException)
         {
