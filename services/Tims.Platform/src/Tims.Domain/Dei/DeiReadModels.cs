@@ -49,3 +49,19 @@ public sealed record HiringFunnelView(int Total);
 
 /// <summary>getPromotionEquity wire: the year + the min-5 FLOORED promotion count (null when 1..4).</summary>
 public sealed record PromotionEquityView(int Year, int? TotalPromotions, bool Suppressed);
+
+// ── getPayEquity (Slice 11c, FX) ─────────────────────────────────────────────────
+
+/// <summary>One gender cohort's ALREADY-CONVERTED positive salaries (display currency), in first-seen order —
+/// the FX conversion happens in the use case (FxMoneyConverter), the pure kernel only shapes + k-anon-floors.</summary>
+public sealed record PayEquityGenderInput(string Gender, IReadOnlyList<double> ConvertedSalaries);
+
+/// <summary>One pay-equity result group (raw kernel shape; camelCase on the wire). count/salaries are null when
+/// the whole result is suppressed (min-5); the kernel emits an EMPTY <c>Results</c> in that case.</summary>
+public sealed record PayEquityGroup(
+    string Group, int? Count, int? AverageSalary, double? MedianSalary, bool Suppressed);
+
+/// <summary>getPayEquity wire: per-gender avg/median + the female-vs-male gap% + the display currency. On any
+/// sub-floor cohort/complement (or FX-unavailable) → EMPTY results + null gap + suppressed:true (NO group keys).</summary>
+public sealed record PayEquityView(
+    IReadOnlyList<PayEquityGroup> Results, double? GapPct, bool Suppressed, string Currency);

@@ -1,0 +1,236 @@
+{
+  "description": "Golden parity for buildPayEquity(byGender, demographicGenderCounts, skippedSalaried, currency) in @tims/shared (Slice 11c, honest-fixture extraction of the dei.service.getPayEquity SHAPING tail; the impure FX conversion + byGender/skipped/demographic build stay in the service). Asserted IDENTICALLY by the REAL TS export (tests/dei/pay-equity-fixtures.test.ts) and the C# DeiKernels.BuildPayEquity unit test (Tims.UnitTests). byGender salaries are ALREADY converted to the display currency. Pins: all-or-nothing min-5 (total population / skipped-salaried bucket / per-gender non-positive complement / any cohort 1..4 → EMPTY results + null gap + suppressed, NO group keys); averageSalary = JS round(mean); medianSalary = shared median (odd → middle, even → half-up mean of the two middles); gapPct = round((fMed−mMed)/mMed*1000)/10, null unless both female+male cohorts exist with a positive male median.",
+  "cases": [
+    {
+      "name": "both cohorts >=5 publishes avg/median + female-vs-male gap%",
+      "input": {
+        "byGender": [
+          {
+            "gender": "female",
+            "convertedSalaries": [
+              90000,
+              95000,
+              100000,
+              105000,
+              110000
+            ]
+          },
+          {
+            "gender": "male",
+            "convertedSalaries": [
+              100000,
+              110000,
+              120000,
+              130000,
+              140000
+            ]
+          }
+        ],
+        "demographicGenderCounts": {
+          "female": 5,
+          "male": 5
+        },
+        "skippedSalaried": 0,
+        "currency": "USD"
+      },
+      "expected": {
+        "results": [
+          {
+            "group": "female",
+            "count": 5,
+            "averageSalary": 100000,
+            "medianSalary": 100000,
+            "suppressed": false
+          },
+          {
+            "group": "male",
+            "count": 5,
+            "averageSalary": 120000,
+            "medianSalary": 120000,
+            "suppressed": false
+          }
+        ],
+        "gapPct": -16.7,
+        "suppressed": false,
+        "currency": "USD"
+      }
+    },
+    {
+      "name": "total gendered+salaried population 1..4 suppresses",
+      "input": {
+        "byGender": [
+          {
+            "gender": "female",
+            "convertedSalaries": [
+              100000,
+              110000,
+              120000
+            ]
+          }
+        ],
+        "demographicGenderCounts": {
+          "female": 3
+        },
+        "skippedSalaried": 0,
+        "currency": "USD"
+      },
+      "expected": {
+        "results": [],
+        "gapPct": null,
+        "suppressed": true,
+        "currency": "USD"
+      }
+    },
+    {
+      "name": "skipped-salaried implicit bucket 1..4 suppresses",
+      "input": {
+        "byGender": [
+          {
+            "gender": "female",
+            "convertedSalaries": [
+              90000,
+              95000,
+              100000,
+              105000,
+              110000
+            ]
+          },
+          {
+            "gender": "male",
+            "convertedSalaries": [
+              100000,
+              110000,
+              120000,
+              130000,
+              140000
+            ]
+          }
+        ],
+        "demographicGenderCounts": {
+          "female": 5,
+          "male": 5
+        },
+        "skippedSalaried": 3,
+        "currency": "USD"
+      },
+      "expected": {
+        "results": [],
+        "gapPct": null,
+        "suppressed": true,
+        "currency": "USD"
+      }
+    },
+    {
+      "name": "per-gender non-positive-salary complement 1..4 suppresses (demographic 8 − salaried 5)",
+      "input": {
+        "byGender": [
+          {
+            "gender": "female",
+            "convertedSalaries": [
+              90000,
+              95000,
+              100000,
+              105000,
+              110000
+            ]
+          },
+          {
+            "gender": "male",
+            "convertedSalaries": [
+              100000,
+              110000,
+              120000,
+              130000,
+              140000
+            ]
+          }
+        ],
+        "demographicGenderCounts": {
+          "female": 8,
+          "male": 5
+        },
+        "skippedSalaried": 0,
+        "currency": "USD"
+      },
+      "expected": {
+        "results": [],
+        "gapPct": null,
+        "suppressed": true,
+        "currency": "USD"
+      }
+    },
+    {
+      "name": "single cohort >=5, no male → gapPct null",
+      "input": {
+        "byGender": [
+          {
+            "gender": "female",
+            "convertedSalaries": [
+              90000,
+              95000,
+              100000,
+              105000,
+              110000
+            ]
+          }
+        ],
+        "demographicGenderCounts": {
+          "female": 5
+        },
+        "skippedSalaried": 0,
+        "currency": "COP"
+      },
+      "expected": {
+        "results": [
+          {
+            "group": "female",
+            "count": 5,
+            "averageSalary": 100000,
+            "medianSalary": 100000,
+            "suppressed": false
+          }
+        ],
+        "gapPct": null,
+        "suppressed": false,
+        "currency": "COP"
+      }
+    },
+    {
+      "name": "even-count cohort median = half-up mean of the two middles",
+      "input": {
+        "byGender": [
+          {
+            "gender": "female",
+            "convertedSalaries": [
+              10,
+              20,
+              30,
+              40,
+              50,
+              60
+            ]
+          }
+        ],
+        "demographicGenderCounts": {
+          "female": 6
+        },
+        "skippedSalaried": 0,
+        "currency": "USD"
+      },
+      "expected": {
+        "results": [
+          {
+            "group": "female",
+            "count": 6,
+            "averageSalary": 35,
+            "medianSalary": 35,
+            "suppressed": false
+          }
+        ],
+        "gapPct": null,
+        "suppressed": false,
+        "currency": "USD"
+      }
+    }
+  ]
+}

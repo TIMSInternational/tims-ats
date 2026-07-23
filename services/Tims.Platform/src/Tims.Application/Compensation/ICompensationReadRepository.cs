@@ -53,4 +53,25 @@ public interface ICompensationReadRepository
         Guid subjectUserId,
         IReadOnlyList<string> compensationFields,
         CancellationToken cancellationToken);
+
+    // ── Slice 11c: the five FX reads' row data ──────────────────────────────────
+
+    /// <summary>getPayEquity/getTotalCompBreakdown: every comp row's currentSalary/variablePay/currency + the org
+    /// display currency (companies.currency, earliest createdAt).</summary>
+    Task<CompAggregateData> GetCompAggregateDataAsync(string organizationId, CancellationToken cancellationToken);
+
+    /// <summary>getDashboardKpis: the compensated rows (currentSalary &gt; 0) + compensated/compaRatio counts +
+    /// pending-adjustment count + compaRatio avg + active headcount + benefit enrollment counts + display currency.</summary>
+    Task<CompDashboardData> GetDashboardDataAsync(string organizationId, CancellationToken cancellationToken);
+
+    /// <summary>getBandDistribution: the banded comp rows (bandId not null) with band bounds + the unbanded count.</summary>
+    Task<BandDistributionData> GetBandDistributionDataAsync(string organizationId, CancellationToken cancellationToken);
+
+    /// <summary>simulateAdjustment: the subject's field-authed comp row (only the selectFor-entitled columns), or
+    /// null when the subject has no comp row.</summary>
+    Task<SimulateCompRow?> GetSimulateRowAsync(
+        string organizationId, Guid subjectUserId, IReadOnlyList<string> compensationFields, CancellationToken cancellationToken);
+
+    /// <summary>simulateAdjustment: a salary band's bounds (loaded only when the caller sees compaRatio + has a band).</summary>
+    Task<SimulateBand?> GetSimulateBandAsync(string organizationId, Guid bandId, CancellationToken cancellationToken);
 }

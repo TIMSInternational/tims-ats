@@ -1,0 +1,188 @@
+{
+  "description": "Golden parity for buildTotalCompBreakdown(input) in @tims/shared (Slice 11c, honest-fixture extraction of the getTotalCompBreakdown router body). Given contributor counts + the two ALREADY-SUMMED totals (from the impure sumMoney wrapper, carrying ratesAsOf), emit the base/variable split. All-or-nothing min-5 over {rowCount, baseContributors, variableContributors, nonPositive complement}; absent totals (null — suppressed cohort OR C# FX-unavailable fail-soft) also collapse to the suppressed shape. percentages round2, 0 when total is 0; employeeCount = baseContributors. Asserted by the REAL TS export AND C# CompensationKernels.BuildTotalCompBreakdown.",
+  "cases": [
+    {
+      "name": "published split + percentages + ratesAsOf",
+      "input": {
+        "rowCount": 10,
+        "baseContributors": 10,
+        "variableContributors": 6,
+        "totals": {
+          "baseAmount": 1000000,
+          "variableAmount": 200000,
+          "converted": true,
+          "ratesAsOf": "2026-07-21"
+        },
+        "displayCurrency": "USD"
+      },
+      "expected": {
+        "totalComp": 1200000,
+        "currency": "USD",
+        "converted": true,
+        "ratesAsOf": "2026-07-21",
+        "breakdown": {
+          "baseSalary": {
+            "total": 1000000,
+            "percentage": 83.33
+          },
+          "variablePay": {
+            "total": 200000,
+            "percentage": 16.67
+          }
+        },
+        "employeeCount": 10,
+        "suppressed": false
+      }
+    },
+    {
+      "name": "sub-floor base contributors suppresses (totals skipped → null)",
+      "input": {
+        "rowCount": 10,
+        "baseContributors": 3,
+        "variableContributors": 3,
+        "totals": null,
+        "displayCurrency": "USD"
+      },
+      "expected": {
+        "totalComp": null,
+        "currency": "USD",
+        "converted": false,
+        "ratesAsOf": null,
+        "breakdown": {
+          "baseSalary": {
+            "total": null,
+            "percentage": null
+          },
+          "variablePay": {
+            "total": null,
+            "percentage": null
+          }
+        },
+        "employeeCount": null,
+        "suppressed": true
+      }
+    },
+    {
+      "name": "fail-soft: null totals while counts clear the floor → suppressed shape",
+      "input": {
+        "rowCount": 10,
+        "baseContributors": 10,
+        "variableContributors": 6,
+        "totals": null,
+        "displayCurrency": "USD"
+      },
+      "expected": {
+        "totalComp": null,
+        "currency": "USD",
+        "converted": false,
+        "ratesAsOf": null,
+        "breakdown": {
+          "baseSalary": {
+            "total": null,
+            "percentage": null
+          },
+          "variablePay": {
+            "total": null,
+            "percentage": null
+          }
+        },
+        "employeeCount": null,
+        "suppressed": true
+      }
+    },
+    {
+      "name": "non-positive complement 1..4 suppresses (totals skipped)",
+      "input": {
+        "rowCount": 8,
+        "baseContributors": 5,
+        "variableContributors": 5,
+        "totals": null,
+        "displayCurrency": "USD"
+      },
+      "expected": {
+        "totalComp": null,
+        "currency": "USD",
+        "converted": false,
+        "ratesAsOf": null,
+        "breakdown": {
+          "baseSalary": {
+            "total": null,
+            "percentage": null
+          },
+          "variablePay": {
+            "total": null,
+            "percentage": null
+          }
+        },
+        "employeeCount": null,
+        "suppressed": true
+      }
+    },
+    {
+      "name": "zero total → percentages 0 (not null)",
+      "input": {
+        "rowCount": 5,
+        "baseContributors": 5,
+        "variableContributors": 5,
+        "totals": {
+          "baseAmount": 0,
+          "variableAmount": 0,
+          "converted": false,
+          "ratesAsOf": null
+        },
+        "displayCurrency": "USD"
+      },
+      "expected": {
+        "totalComp": 0,
+        "currency": "USD",
+        "converted": false,
+        "ratesAsOf": null,
+        "breakdown": {
+          "baseSalary": {
+            "total": 0,
+            "percentage": 0
+          },
+          "variablePay": {
+            "total": 0,
+            "percentage": 0
+          }
+        },
+        "employeeCount": 5,
+        "suppressed": false
+      }
+    },
+    {
+      "name": "single-currency: converted false, ratesAsOf null",
+      "input": {
+        "rowCount": 6,
+        "baseContributors": 6,
+        "variableContributors": 0,
+        "totals": {
+          "baseAmount": 600000,
+          "variableAmount": 0,
+          "converted": false,
+          "ratesAsOf": null
+        },
+        "displayCurrency": "USD"
+      },
+      "expected": {
+        "totalComp": 600000,
+        "currency": "USD",
+        "converted": false,
+        "ratesAsOf": null,
+        "breakdown": {
+          "baseSalary": {
+            "total": 600000,
+            "percentage": 100
+          },
+          "variablePay": {
+            "total": 0,
+            "percentage": 0
+          }
+        },
+        "employeeCount": 6,
+        "suppressed": false
+      }
+    }
+  ]
+}

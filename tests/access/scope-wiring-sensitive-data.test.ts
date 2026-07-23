@@ -325,15 +325,22 @@ describe('compa-ratio present-key cardinality (fix 2, round 7)', () => {
     expect(src).toMatch(/ratios\.length && !suppressBelowMin5\(ratios\.length\)\.suppressed/);
   });
 
-  // getBandDistribution: round 7 emits an EMPTY bands array (no band keys) when the
-  // total banded+unbanded population is 1..4 OR any band/unbanded bucket is sub-floor.
-  it('getBandDistribution emits an empty bands array when the population OR any band is sub-floor (round 7)', () => {
-    const src = readComp();
-    expect(src).toMatch(/allBands\.some\(\(band\) => suppressBelowMin5\(band\.dots\.length\)\.suppressed\)/);
-    expect(src).toMatch(/if \(suppressBelowMin5\(bandedPopulation\)\.suppressed \|\| anyBandSuppressed\) return \[\]/);
-    // round 13-14: dots are plotted only for positive-salary rows and the non-positive
-    // banded complement is folded into the all-or-nothing trigger.
-    expect(src).toMatch(/suppressBelowMin5\(nonPositiveBanded\)\.suppressed/);
+  // getBandDistribution: round 7 emits an EMPTY bands array (no band keys) when the total banded+unbanded
+  // population is 1..4 OR any band/unbanded bucket is sub-floor. Slice 11c (honest-fixture): the all-or-nothing
+  // trigger now lives in the shared buildBandDistribution kernel (golden-fixtured both stacks), and the router
+  // DELEGATES to it — so the tripwire reads the kernel + asserts delegation.
+  it('getBandDistribution emits an empty bands array when the population OR any band is sub-floor (round 7 → shared kernel)', () => {
+    const k = readCompKernel();
+    expect(k).toMatch(/allBands\.some\(\(band\) => suppressBelowMin5\(band\.dots\.length\)\.suppressed\)/);
+    expect(k).toMatch(/if \(suppressBelowMin5\(bandedPopulation\)\.suppressed \|\| anyBandSuppressed\) return \[\]/);
+    // round 13-14: dots are plotted only for positive-salary rows and the non-positive banded complement is
+    // folded into the all-or-nothing trigger.
+    expect(k).toMatch(/suppressBelowMin5\(nonPositiveBanded\)\.suppressed/);
+    // FIX 1 (Codex#1): the POSITIVE-unbanded sub-bucket is ALSO folded into the trigger, closing the
+    // `dashboard.compensatedEmployees − Σdots = positiveUnbanded` differencing oracle.
+    expect(k).toMatch(/suppressBelowMin5\(positiveUnbanded\)\.suppressed/);
+    // …and the router delegates to the kernel (honest-fixture rule).
+    expect(readComp()).toMatch(/buildBandDistribution\(/);
   });
 });
 

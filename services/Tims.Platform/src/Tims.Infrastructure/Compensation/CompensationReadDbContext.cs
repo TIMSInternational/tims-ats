@@ -33,6 +33,8 @@ public sealed class CompensationReadDbContext(DbContextOptions<CompensationReadD
 
     public DbSet<CompensationUserReadEntity> Users => Set<CompensationUserReadEntity>();
 
+    public DbSet<CompanyCompReadEntity> Companies => Set<CompanyCompReadEntity>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<SalaryBandCompReadEntity>(entity =>
@@ -61,6 +63,19 @@ public sealed class CompensationReadDbContext(DbContextOptions<CompensationReadD
             entity.Property(c => c.UserId).HasColumnName("user_id");
             entity.Property(c => c.CurrentSalary).HasColumnName("current_salary");
             entity.Property(c => c.CompaRatio).HasColumnName("compa_ratio");
+            entity.Property(c => c.Currency).HasColumnName("currency");
+            entity.Property(c => c.VariablePay).HasColumnName("variable_pay");
+            entity.Property(c => c.BandId).HasColumnName("band_id");
+        });
+
+        modelBuilder.Entity<CompanyCompReadEntity>(entity =>
+        {
+            entity.ToTable("companies");
+            entity.HasKey(c => c.Id);
+            entity.Property(c => c.Id).HasColumnName("id");
+            entity.Property(c => c.OrganizationId).HasColumnName("organization_id");
+            entity.Property(c => c.Currency).HasColumnName("currency");
+            entity.Property(c => c.CreatedAt).HasColumnName("created_at").HasColumnType("timestamp");
         });
 
         modelBuilder.Entity<BenefitPlanCompReadEntity>(entity =>

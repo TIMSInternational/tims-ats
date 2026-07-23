@@ -3120,6 +3120,202 @@
         }
       }
     },
+    "/dei/pay-equity": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "DeiGetPayEquity",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayEquityView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/compensation/band-distribution": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "CompensationGetBandDistribution",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BandDistributionBand"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/compensation/pay-equity": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "CompensationGetPayEquity",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompPayEquityView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/compensation/total-comp-breakdown": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "CompensationGetTotalCompBreakdown",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TotalCompBreakdownView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/compensation/dashboard-kpis": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "CompensationGetDashboardKpis",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompDashboardKpisView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/compensation/simulate-adjustment": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "CompensationSimulateAdjustment",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "proposedSalary",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+              "type": [
+                "number",
+                "string"
+              ],
+              "format": "double"
+            }
+          },
+          {
+            "name": "currency",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulateAdjustmentWithCompaView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "503": {
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
     "/require-permission/{module}/{action}": {
       "get": {
         "tags": [
@@ -3554,6 +3750,83 @@
               "string"
             ],
             "format": "int32"
+          }
+        }
+      },
+      "BandDistributionBand": {
+        "required": [
+          "level",
+          "title",
+          "min",
+          "mid",
+          "max",
+          "currency",
+          "dots",
+          "suppressed"
+        ],
+        "type": "object",
+        "properties": {
+          "level": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "min": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "mid": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "max": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "dots": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BandDot"
+            }
+          },
+          "suppressed": {
+            "type": "boolean"
+          }
+        }
+      },
+      "BandDot": {
+        "required": [
+          "pos",
+          "outlier"
+        ],
+        "type": "object",
+        "properties": {
+          "pos": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "outlier": {
+            "type": "boolean"
           }
         }
       },
@@ -4003,6 +4276,146 @@
           }
         }
       },
+      "CompBreakdownBreakdown": {
+        "required": [
+          "baseSalary",
+          "variablePay"
+        ],
+        "type": "object",
+        "properties": {
+          "baseSalary": {
+            "$ref": "#/components/schemas/CompBreakdownLine"
+          },
+          "variablePay": {
+            "$ref": "#/components/schemas/CompBreakdownLine"
+          }
+        }
+      },
+      "CompBreakdownLine": {
+        "required": [
+          "total",
+          "percentage"
+        ],
+        "type": "object",
+        "properties": {
+          "total": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "percentage": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          }
+        }
+      },
+      "CompDashboardKpisView": {
+        "required": [
+          "totalMonthlyPayroll",
+          "avgSalary",
+          "currency",
+          "converted",
+          "ratesAsOf",
+          "compensatedEmployees",
+          "compensatedSuppressed",
+          "activeEmployees",
+          "pendingAdjustments",
+          "pendingAdjustmentsSuppressed",
+          "benefitsUtilizationPct",
+          "avgCompaRatio"
+        ],
+        "type": "object",
+        "properties": {
+          "totalMonthlyPayroll": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "avgSalary": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "converted": {
+            "type": "boolean"
+          },
+          "ratesAsOf": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "compensatedEmployees": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "compensatedSuppressed": {
+            "type": "boolean"
+          },
+          "activeEmployees": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "pendingAdjustments": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "pendingAdjustmentsSuppressed": {
+            "type": "boolean"
+          },
+          "benefitsUtilizationPct": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "avgCompaRatio": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          }
+        }
+      },
       "CompetencyAverage": {
         "required": [
           "competencyKey",
@@ -4108,6 +4521,73 @@
               "null",
               "string"
             ]
+          }
+        }
+      },
+      "CompPayEquityGroup": {
+        "required": [
+          "group",
+          "count",
+          "suppressed",
+          "averageSalary",
+          "medianSalary"
+        ],
+        "type": "object",
+        "properties": {
+          "group": {
+            "type": "string"
+          },
+          "count": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "suppressed": {
+            "type": "boolean"
+          },
+          "averageSalary": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "medianSalary": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          }
+        }
+      },
+      "CompPayEquityView": {
+        "required": [
+          "groupBy",
+          "results",
+          "currency"
+        ],
+        "type": "object",
+        "properties": {
+          "groupBy": {
+            "type": "string"
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CompPayEquityGroup"
+            }
+          },
+          "currency": {
+            "type": "string"
           }
         }
       },
@@ -6681,6 +7161,83 @@
           }
         }
       },
+      "PayEquityGroup": {
+        "required": [
+          "group",
+          "count",
+          "averageSalary",
+          "medianSalary",
+          "suppressed"
+        ],
+        "type": "object",
+        "properties": {
+          "group": {
+            "type": "string"
+          },
+          "count": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "averageSalary": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "medianSalary": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "suppressed": {
+            "type": "boolean"
+          }
+        }
+      },
+      "PayEquityView": {
+        "required": [
+          "results",
+          "gapPct",
+          "suppressed",
+          "currency"
+        ],
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PayEquityGroup"
+            }
+          },
+          "gapPct": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "suppressed": {
+            "type": "boolean"
+          },
+          "currency": {
+            "type": "string"
+          }
+        }
+      },
       "PendingSurveyRow": {
         "required": [
           "id",
@@ -7264,6 +7821,112 @@
             "items": {
               "type": "string"
             }
+          }
+        }
+      },
+      "SimulateAdjustmentWithCompaView": {
+        "required": [
+          "currentCompaRatio",
+          "newCompaRatio",
+          "bandMin",
+          "bandMax",
+          "bandCurrency",
+          "withinBand",
+          "currentSalary",
+          "currency",
+          "proposedSalary",
+          "proposedCurrency",
+          "proposedSalaryForComparison",
+          "comparisonCurrency",
+          "percentageChange"
+        ],
+        "type": "object",
+        "properties": {
+          "currentCompaRatio": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "newCompaRatio": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "bandMin": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "bandMax": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "bandCurrency": {
+            "type": "string"
+          },
+          "withinBand": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "currentSalary": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "proposedSalary": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "proposedCurrency": {
+            "type": "string"
+          },
+          "proposedSalaryForComparison": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "comparisonCurrency": {
+            "type": "string"
+          },
+          "percentageChange": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
           }
         }
       },
@@ -8274,6 +8937,56 @@
           },
           "_count": {
             "$ref": "#/components/schemas/TeamCountView"
+          }
+        }
+      },
+      "TotalCompBreakdownView": {
+        "required": [
+          "totalComp",
+          "currency",
+          "converted",
+          "ratesAsOf",
+          "breakdown",
+          "employeeCount",
+          "suppressed"
+        ],
+        "type": "object",
+        "properties": {
+          "totalComp": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "converted": {
+            "type": "boolean"
+          },
+          "ratesAsOf": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "breakdown": {
+            "$ref": "#/components/schemas/CompBreakdownBreakdown"
+          },
+          "employeeCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "suppressed": {
+            "type": "boolean"
           }
         }
       },

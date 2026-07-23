@@ -135,6 +135,83 @@ export function leadershipDiversity(leaderGenders: string[]): LeadershipDiversit
   };
 }
 
+// ── buildPayEquity (read #12, Slice 11c) ────────────────────────────────────────
+//
+// The PURE pay-equity SHAPING kernel — a faithful extraction of the tail of dei.service.getPayEquity (the FX
+// conversion + the raw byGender/skipped/demographic build stay in the impure service; the C# port mirrors this
+// as DeiKernels.BuildPayEquity). Given each gender cohort's ALREADY-CONVERTED positive salaries (first-seen
+// order), the FULL demographic gender counts, and the skipped-salaried (missing/undisclosed-gender) count, it
+// applies the min-5 anti-differencing guard and, when clear, emits per-gender count/avg/median + the
+// female-vs-male median gap%. Golden-fixtured BOTH stacks (contracts/dei-fixtures/pay-equity.json).
+
+export interface PayEquityGenderInput {
+  gender: string;
+  convertedSalaries: number[];
+}
+export interface PayEquityGroupOut {
+  group: string;
+  count: number | null;
+  averageSalary: number | null;
+  medianSalary: number | null;
+  suppressed: boolean;
+}
+export interface PayEquityView {
+  results: PayEquityGroupOut[];
+  gapPct: number | null;
+  suppressed: boolean;
+  currency: string;
+}
+
+/**
+ * The pay-equity shaper. Suppression (all-or-nothing, present-key cardinality) fires when the TOTAL
+ * gendered+salaried population is 1..4, OR the skipped-salaried implicit bucket is 1..4, OR ANY gender's
+ * non-positive-salary complement (demographicCount − salaried) is 1..4, OR ANY cohort is 1..4 — then EMPTY
+ * results + null gap + suppressed (no group keys survive). averageSalary = JS half-up round of the mean;
+ * medianSalary = the shared median (odd → the middle value, even → half-up mean of the two middles).
+ * gapPct = round((fMed−mMed)/mMed*1000)/10, null unless BOTH female + male cohorts exist with a positive male median.
+ */
+export function buildPayEquity(
+  byGender: PayEquityGenderInput[],
+  demographicGenderCounts: Record<string, number>,
+  skippedSalaried: number,
+  currency: string,
+): PayEquityView {
+  const populationTotal = byGender.reduce((sum, g) => sum + g.convertedSalaries.length, 0);
+
+  // Per-gender non-positive-salary complement: demographicCount − salariedCount. A 1..4 complement is a
+  // recoverable bucket (getGenderRepresentation publishes the demographic count), so fold it into the trigger.
+  const anyComplementSubFloor = byGender.some((g) => {
+    const demographic = demographicGenderCounts[g.gender] ?? g.convertedSalaries.length;
+    return suppressBelowMin5(demographic - g.convertedSalaries.length).suppressed;
+  });
+
+  const suppressed =
+    suppressBelowMin5(populationTotal).suppressed ||
+    suppressBelowMin5(skippedSalaried).suppressed ||
+    anyComplementSubFloor ||
+    byGender.some((g) => suppressBelowMin5(g.convertedSalaries.length).suppressed);
+  if (suppressed) {
+    return { results: [], gapPct: null, suppressed: true, currency };
+  }
+
+  let femaleMedian: number | null = null;
+  let maleMedian: number | null = null;
+  const results = byGender.map((g): PayEquityGroupOut => {
+    const salaries = g.convertedSalaries;
+    const averageSalary = Math.round(salaries.reduce((a, b) => a + b, 0) / salaries.length);
+    const medianSalary = median(salaries);
+    if (g.gender === 'female') femaleMedian = medianSalary;
+    else if (g.gender === 'male') maleMedian = medianSalary;
+    return { group: g.gender, count: salaries.length, averageSalary, medianSalary, suppressed: false };
+  });
+
+  const gapPct =
+    femaleMedian !== null && maleMedian !== null && maleMedian > 0
+      ? Math.round(((femaleMedian - maleMedian) / maleMedian) * 1000) / 10
+      : null;
+  return { results, gapPct, suppressed: false, currency };
+}
+
 // ── deiDashboardKpis (read #1) ──────────────────────────────────────────────────
 
 export interface DashboardKpisInput {

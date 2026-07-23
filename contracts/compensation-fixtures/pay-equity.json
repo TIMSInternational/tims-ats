@@ -1,0 +1,128 @@
+{
+  "description": "Golden parity for buildCompPayEquity(convertedSalaries, displayCurrency) in @tims/shared (Slice 11c, honest-fixture extraction of the compensation getPayEquity router body). Single org-wide \"all\" group over ALREADY-CONVERTED positive salaries. avg = mean (JS round), median = sorted[floor(n/2)] (the floor-INDEX element, NOT the two-middle mean); count/avg/median nulled when the group is 1..4 (min-5). Asserted by the REAL TS export AND C# CompensationKernels.BuildCompPayEquity.",
+  "cases": [
+    {
+      "name": ">=5 publishes count/avg/median",
+      "input": {
+        "convertedSalaries": [
+          90000,
+          95000,
+          100000,
+          105000,
+          110000
+        ],
+        "displayCurrency": "USD"
+      },
+      "expected": {
+        "groupBy": "all",
+        "results": [
+          {
+            "group": "all",
+            "count": 5,
+            "suppressed": false,
+            "averageSalary": 100000,
+            "medianSalary": 100000
+          }
+        ],
+        "currency": "USD"
+      }
+    },
+    {
+      "name": "1..4 suppresses count+avg+median",
+      "input": {
+        "convertedSalaries": [
+          100000,
+          110000,
+          120000
+        ],
+        "displayCurrency": "USD"
+      },
+      "expected": {
+        "groupBy": "all",
+        "results": [
+          {
+            "group": "all",
+            "count": null,
+            "suppressed": true,
+            "averageSalary": null,
+            "medianSalary": null
+          }
+        ],
+        "currency": "USD"
+      }
+    },
+    {
+      "name": "0 population publishes count 0 (reveals no one)",
+      "input": {
+        "convertedSalaries": [],
+        "displayCurrency": "COP"
+      },
+      "expected": {
+        "groupBy": "all",
+        "results": [
+          {
+            "group": "all",
+            "count": 0,
+            "suppressed": false,
+            "averageSalary": 0,
+            "medianSalary": 0
+          }
+        ],
+        "currency": "COP"
+      }
+    },
+    {
+      "name": "even count median = the floor-index element (NOT two-middle mean)",
+      "input": {
+        "convertedSalaries": [
+          10,
+          20,
+          30,
+          40,
+          50,
+          60
+        ],
+        "displayCurrency": "USD"
+      },
+      "expected": {
+        "groupBy": "all",
+        "results": [
+          {
+            "group": "all",
+            "count": 6,
+            "suppressed": false,
+            "averageSalary": 35,
+            "medianSalary": 40
+          }
+        ],
+        "currency": "USD"
+      }
+    },
+    {
+      "name": "avg rounds half-up",
+      "input": {
+        "convertedSalaries": [
+          100,
+          101,
+          101,
+          101,
+          101
+        ],
+        "displayCurrency": "USD"
+      },
+      "expected": {
+        "groupBy": "all",
+        "results": [
+          {
+            "group": "all",
+            "count": 5,
+            "suppressed": false,
+            "averageSalary": 101,
+            "medianSalary": 101
+          }
+        ],
+        "currency": "USD"
+      }
+    }
+  ]
+}

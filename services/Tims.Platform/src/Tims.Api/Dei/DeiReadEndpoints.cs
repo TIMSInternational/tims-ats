@@ -329,4 +329,33 @@ public static class DeiReadEndpoints
         parsed = null;
         return false;
     }
+
+    /// <summary>
+    /// Maps <c>GET /dei/pay-equity</c> (Slice 11c, FX) — SEPARATE from the 11b reads because it is gated by
+    /// <see cref="PlatformOptions.FxReadsEnabled"/>, not <see cref="PlatformOptions.DeiReadEnabled"/> (its FX
+    /// dependency canaries on its own flag). Same GRANT-ONLY <see cref="DeiStaffGate"/> as the other dei reads.
+    /// FAIL-SOFT cold-start (a missing pin) → suppressed:true empty results, never a 500.
+    /// </summary>
+    public static void MapDeiPayEquityEndpoint(this WebApplication app)
+    {
+        app.MapGet("/dei/pay-equity", async (
+                ClaimsPrincipal user,
+                HttpContext httpContext,
+                PrincipalResolver principalResolver,
+                PermissionService permissionService,
+                IOptions<PlatformOptions> platformOptions,
+                DeiReadUseCase useCase,
+                CancellationToken cancellationToken) =>
+            {
+                var gate = await DeiStaffGate.AuthorizeAsync(
+                    user, httpContext, principalResolver, permissionService, platformOptions.Value, cancellationToken);
+                return gate.Failure
+                    ?? Results.Ok(await useCase.GetPayEquityAsync(gate.Context!.OrganizationId, cancellationToken));
+            })
+            .RequireAuthorization()
+            .Produces<PayEquityView>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status403Forbidden)
+            .WithName("DeiGetPayEquity");
+    }
 }

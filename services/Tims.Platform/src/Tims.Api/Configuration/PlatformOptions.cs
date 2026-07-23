@@ -235,4 +235,18 @@ public sealed class PlatformOptions
     /// it at canary (deploy-gated cutover). getPayEquity (FX) → Slice 11c; the generateReport mutation stays on TS.
     /// </summary>
     public bool DeiReadEnabled { get; init; }
+
+    /// <summary>
+    /// Phase-5 Slice 11c: when true, the C# FX-derived READ surface is mapped and live — the FIVE deferred
+    /// compensation FX reads (<c>GET /compensation/band-distribution</c>, <c>/compensation/pay-equity</c>,
+    /// <c>/compensation/simulate-adjustment</c>, <c>/compensation/total-comp-breakdown</c>,
+    /// <c>/compensation/dashboard-kpis</c>) PLUS <c>GET /dei/pay-equity</c>. Each resolves its conversion rate
+    /// from the DB-pinned <c>fx_rates</c> via <see cref="Tims.Application.Fx.IFxRateProvider"/> (latest
+    /// effective-dated pin, cross-rate via USD) and shapes money through the pure convertMoney/sumMoney kernels;
+    /// a cold-start missing pin FAILS SOFT (the FX-derived field is omitted/suppressed, never a 500). The
+    /// k-anon min-5 + scope/field-auth mechanics mirror Slice-9/11b. Dark-by-default (TS's live currency.ts +
+    /// frankfurter path stays the sole active reader until Federico flips it AFTER the first FxRefreshJob run
+    /// populates fx_rates at canary).
+    /// </summary>
+    public bool FxReadsEnabled { get; init; }
 }

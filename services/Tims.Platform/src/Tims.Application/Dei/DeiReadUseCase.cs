@@ -1,4 +1,6 @@
+using Tims.Application.Fx;
 using Tims.Domain.Access;
+using Tims.Domain.Compensation;
 using Tims.Domain.Dei;
 
 namespace Tims.Application.Dei;
@@ -13,9 +15,74 @@ namespace Tims.Application.Dei;
 /// getPromotionEquity floors the raw count via <see cref="KAnonymity"/>; getHiringFunnel is a bare count (no
 /// suppression). No clock here — getAgeDistribution/getPromotionEquity take the request clock from the endpoint.
 /// </summary>
-public sealed class DeiReadUseCase(IDeiReadRepository repository)
+public sealed class DeiReadUseCase(IDeiReadRepository repository, FxMoneyConverter fxConverter)
 {
+    private const string DisplayCurrencyFallback = CurrencyCodes.DefaultCurrency; // 'USD'
+    private const string UndisclosedGender = "undisclosed";
+
     private readonly IDeiReadRepository _repository = repository;
+    private readonly FxMoneyConverter _fxConverter = fxConverter;
+
+    // #12 getPayEquity (Slice 11c): per-gender avg/median + female-vs-male gap%, salaries converted to the org
+    // display currency via the DB-pinned FX (FxMoneyConverter), min-5 k-anon shaped by the pure kernel. A faithful
+    // port of dei.service.getPayEquity: rows with missing/'undisclosed' gender are the skipped-salaried implicit
+    // bucket; a zero salary is dropped; the FULL demographic gender counts feed the non-positive-salary complement
+    // guard. FAIL-SOFT: a cold-start missing pin (any cross-rate unavailable) → the whole result SUPPRESSES
+    // (empty results + null gap + suppressed:true), never a 500.
+    public async Task<PayEquityView> GetPayEquityAsync(string organizationId, CancellationToken cancellationToken)
+    {
+        var data = await _repository.GetPayEquityDataAsync(organizationId, cancellationToken).ConfigureAwait(false);
+        var displayCurrency = CurrencyCodes.NormalizeCurrencyCode(data.DisplayCurrency, DisplayCurrencyFallback);
+
+        // Build the gender cohorts in FIRST-SEEN order (matching the TS Map iteration → results order).
+        var order = new List<string>();
+        var byGender = new Dictionary<string, List<double>>(StringComparer.Ordinal);
+        var skippedSalaried = 0;
+        foreach (var row in data.Rows)
+        {
+            var gender = row.Gender;
+            var salary = row.Salary;
+            if (string.IsNullOrEmpty(gender) || string.Equals(gender, UndisclosedGender, StringComparison.Ordinal))
+            {
+                if (salary != 0)
+                {
+                    skippedSalaried++;
+                }
+
+                continue;
+            }
+
+            if (salary == 0)
+            {
+                continue;
+            }
+
+            // Convert this salary to the display currency via the DB-pinned rate. FAIL-SOFT: a missing pin →
+            // suppress the whole read (empty results + suppressed), never a 500.
+            var converted = await _fxConverter
+                .ConvertAmountAsync(salary, row.Currency, displayCurrency, cancellationToken).ConfigureAwait(false);
+            if (converted is not { } amount)
+            {
+                return new PayEquityView(Array.Empty<PayEquityGroup>(), null, true, displayCurrency);
+            }
+
+            if (!byGender.TryGetValue(gender, out var salaries))
+            {
+                salaries = new List<double>();
+                byGender[gender] = salaries;
+                order.Add(gender);
+            }
+
+            salaries.Add(amount);
+        }
+
+        var cohorts = order
+            .Select(g => new PayEquityGenderInput(g, byGender[g]))
+            .ToList();
+        var demographicCounts = data.GenderCounts.ToDictionary(g => g.Key, g => g.Count, StringComparer.Ordinal);
+
+        return DeiKernels.BuildPayEquity(cohorts, demographicCounts, skippedSalaried, displayCurrency);
+    }
 
     // #1 getDashboardKpis.
     public async Task<DashboardKpis> GetDashboardKpisAsync(string organizationId, CancellationToken cancellationToken)

@@ -29,6 +29,10 @@ import { join } from 'path';
 
 const ROOT = join(__dirname, '..', '..');
 const read = () => readFileSync(join(ROOT, 'packages/api/src/routers/compensation.ts'), 'utf8');
+// Slice 11c (honest-fixture): the five FX-derived reads' min-5 shaping now lives in the shared kernels
+// (@tims/shared compensation.ts, golden-fixtured both stacks) and the router DELEGATES to them. Tripwires that
+// guarded the (formerly inline) suppression now read the kernel + assert the router calls the shaper.
+const readKernel = () => readFileSync(join(ROOT, 'packages/shared/src/compensation.ts'), 'utf8');
 
 describe('compensation module scope wiring', () => {
   it('composes salaryAdjustment fragment (listPendingAdjustments is row-level)', () => {
@@ -70,12 +74,16 @@ describe('compensation module scope wiring', () => {
     expect(read()).toMatch(/suppressBelowMin5.*from '\.\.\/access'/);
   });
 
-  it('getBandDistribution routes bands through suppressBelowMin5 (EMPTY bands when any band suppressed, round 7)', () => {
-    const src = read();
-    // dots.length count is suppressed; round 7 (present-key cardinality) returns an EMPTY
-    // bands array — no per-band keys at all — when ANY band or the unbanded bucket is sub-floor.
-    expect(src).toMatch(/suppressBelowMin5\(band\.dots\.length\)/);
-    expect(src).toMatch(/anyBandSuppressed\) return \[\]/);
+  it('getBandDistribution routes bands through suppressBelowMin5 (EMPTY bands when any band suppressed, round 7 → shared kernel)', () => {
+    const k = readKernel();
+    // dots.length count is suppressed; round 7 (present-key cardinality) returns an EMPTY bands array — no
+    // per-band keys at all — when ANY band or the unbanded bucket is sub-floor. Lives in buildBandDistribution.
+    expect(k).toMatch(/suppressBelowMin5\(band\.dots\.length\)/);
+    expect(k).toMatch(/anyBandSuppressed\) return \[\]/);
+    // FIX 1: the positive-unbanded sub-bucket is folded into the trigger (differencing oracle).
+    expect(k).toMatch(/suppressBelowMin5\(positiveUnbanded\)\.suppressed/);
+    // The router delegates to the kernel.
+    expect(read()).toMatch(/buildBandDistribution\(/);
   });
 
   // ── Slice 6 round 3: implicit-bucket oracle (unbanded employees) ─────────
@@ -96,27 +104,36 @@ describe('compensation module scope wiring', () => {
   //     → no visible dot-counts → oracle closed.
   it('getBandDistribution counts bandId:null rows into the suppression trigger (implicit-bucket oracle, round 3)', () => {
     const src = read();
-    // The fix must query unassigned rows separately …
+    // The router must query unassigned rows separately (bandId:null) …
     expect(src).toMatch(/bandId:\s*null/);
-    // … and feed the resulting count into the trigger expression.
-    expect(src).toMatch(/suppressBelowMin5\(unassignedCount\)\.suppressed/);
+    // … and the shared kernel feeds the resulting count into the trigger expression.
+    const k = readKernel();
+    expect(k).toMatch(/suppressBelowMin5\(unassignedCount\)\.suppressed/);
     // The trigger must OR the unbanded result with the per-band results.
-    expect(src).toMatch(/anyBandSuppressed\s*=\s*[\s\S]{0,200}suppressBelowMin5\(unassignedCount\)/);
+    expect(k).toMatch(/anyBandSuppressed\s*=\s*[\s\S]{0,300}suppressBelowMin5\(unassignedCount\)/);
   });
 
-  it('getCompaRatioDistribution routes every bucket count through suppressBelowMin5', () => {
-    expect(read()).toMatch(/suppressBelowMin5\(count\)/);
+  it('getCompaRatioDistribution routes every bucket count through suppressBelowMin5 (shared kernel)', () => {
+    // buildCompaRatioDistribution folds each bucket count through the floor; the router delegates.
+    expect(readKernel()).toMatch(/suppressBelowMin5\(count\)/);
+    expect(read()).toMatch(/buildCompaRatioDistribution\(/);
   });
 
-  it('getPayEquity routes each group count through suppressBelowMin5', () => {
+  it('getPayEquity routes the group count through suppressBelowMin5 (shared kernel)', () => {
+    const k = readKernel();
+    // buildCompPayEquity floors the org-wide 'all' group count; a suppressed group nulls the salary stats.
+    expect(k).toMatch(/suppressBelowMin5\(convertedSalaries\.length\)/);
+    expect(k).toMatch(/averageSalary:\s*null,\s*medianSalary:\s*null/);
+    expect(read()).toMatch(/buildCompPayEquity\(/);
+  });
+
+  it('the aggregate reads delegate their min-5 shaping to the shared kernels', () => {
     const src = read();
-    expect(src).toMatch(/suppressBelowMin5\(count\)/);
-    // suppressed group nulls the sensitive salary stats
-    expect(src).toMatch(/averageSalary:\s*null,\s*medianSalary:\s*null/);
-  });
-
-  it('at least three aggregate endpoints invoke suppressBelowMin5', () => {
-    const calls = read().match(/suppressBelowMin5\(/g) ?? [];
-    expect(calls.length).toBeGreaterThanOrEqual(3);
+    for (const shaper of ['buildBandDistribution', 'buildCompPayEquity', 'buildTotalCompBreakdown', 'buildCompDashboardKpis']) {
+      expect(src, `router must call ${shaper}`).toMatch(new RegExp(`\\b${shaper}\\(`));
+    }
+    // The suppression floors themselves live in the kernel now (≥6 calls across the five shapers).
+    const calls = readKernel().match(/suppressBelowMin5\(/g) ?? [];
+    expect(calls.length).toBeGreaterThanOrEqual(6);
   });
 });

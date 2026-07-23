@@ -1,4 +1,5 @@
 using Quartz;
+using Tims.Workers.Fx;
 using Tims.Workers.Hris;
 
 namespace Tims.Workers.Scheduling;
@@ -15,6 +16,12 @@ public static class QuartzScheduleBuilder
 
     /// <summary>The CronTrigger key for the HRIS sweep.</summary>
     public static readonly TriggerKey HrisSyncTriggerKey = new($"{HrisSyncQuartzJob.JobName}-trigger", "hris");
+
+    /// <summary>The durable JobKey for the daily FX-rate refresh (group "fx").</summary>
+    public static readonly JobKey FxRefreshJobKey = new(FxRefreshQuartzJob.JobName, "fx");
+
+    /// <summary>The CronTrigger key for the FX-rate refresh.</summary>
+    public static readonly TriggerKey FxRefreshTriggerKey = new($"{FxRefreshQuartzJob.JobName}-trigger", "fx");
 
     /// <summary>
     /// The scheduler NAME shared by every clustered replica. Quartz binds nodes into one cluster by identical
@@ -91,28 +98,43 @@ public static class QuartzScheduleBuilder
         });
     }
 
-    /// <summary>Wires the HRIS sweep job (stored durably) and, when enabled, its cron trigger.</summary>
+    /// <summary>Wires the HRIS sweep job + the daily FX-rate refresh job (both stored durably) and, when each is
+    /// independently enabled, its cron trigger. The HRIS and FX enablement gates are INDEPENDENT (Codex#4/FIX 5):
+    /// a disabled HRIS sweep must NOT skip FX registration — the previous early-return on !HrisSyncEnabled meant a
+    /// documented prod config (HrisSyncEnabled=false) silently left fx_rates unscheduled forever, so every FX read
+    /// suppressed permanently. Each job is StoreDurably so its JobKey exists (present + triggerable + inspectable)
+    /// even when its own toggle is off.</summary>
     public static void Configure(IServiceCollectionQuartzConfigurator quartz, WorkerOptions options)
     {
         ArgumentNullException.ThrowIfNull(quartz);
         ArgumentNullException.ThrowIfNull(options);
 
-        // StoreDurably ⇒ the JobKey exists even with no trigger (HrisSyncEnabled = false), so the job is
-        // present + triggerable and the schedule is inspectable regardless of the enablement toggle.
+        // ── HRIS sweep ── durable job always; cron trigger only when HrisSyncEnabled.
         quartz.AddJob<HrisSyncQuartzJob>(job => job.WithIdentity(HrisSyncJobKey).StoreDurably());
-
-        if (!options.HrisSyncEnabled)
+        if (options.HrisSyncEnabled)
         {
-            return;
+            quartz.AddTrigger(trigger => trigger
+                .ForJob(HrisSyncJobKey)
+                .WithIdentity(HrisSyncTriggerKey)
+                .WithCronSchedule(
+                    options.HrisSyncCron,
+                    // A missed window (host down / long run) is picked up on the NEXT tick — never a
+                    // thundering catch-up of every window we slept through.
+                    cron => cron.WithMisfireHandlingInstructionDoNothing()));
         }
 
-        quartz.AddTrigger(trigger => trigger
-            .ForJob(HrisSyncJobKey)
-            .WithIdentity(HrisSyncTriggerKey)
-            .WithCronSchedule(
-                options.HrisSyncCron,
-                // A missed window (host down / long run) is picked up on the NEXT tick — never a
-                // thundering catch-up of every window we slept through.
-                cron => cron.WithMisfireHandlingInstructionDoNothing()));
+        // ── Daily FX-rate refresh (Slice 11c) ── durable job always; cron trigger only when FxRefreshEnabled.
+        // INDEPENDENT of the HRIS gate above (FIX 5). Same DoNothing misfire policy (a missed 05:00 fire is picked
+        // up next day — never a catch-up storm; the upsert is idempotent per ECB date anyway).
+        quartz.AddJob<FxRefreshQuartzJob>(job => job.WithIdentity(FxRefreshJobKey).StoreDurably());
+        if (options.FxRefreshEnabled)
+        {
+            quartz.AddTrigger(trigger => trigger
+                .ForJob(FxRefreshJobKey)
+                .WithIdentity(FxRefreshTriggerKey)
+                .WithCronSchedule(
+                    options.FxRefreshCron,
+                    cron => cron.WithMisfireHandlingInstructionDoNothing()));
+        }
     }
 }

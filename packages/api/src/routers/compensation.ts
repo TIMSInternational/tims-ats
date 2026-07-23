@@ -5,8 +5,18 @@ import { tenantDb as db } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { scopeWhereFor, assertScoped, assertSubjectInScope, requireOrgScope, suppressBelowMin5, logDataAccess, selectFor } from '../access';
 import { getEmployeeCompForSubject } from '../services/compensation.service';
-import { convertMoney, roundMoney, sumMoney } from '../lib/currency';
-import { normalizeCurrencyCode, buildCompaRatioDistribution, buildBenefitsUtilization } from '@tims/shared';
+import { convertMoney, sumMoney } from '../lib/currency';
+import {
+  normalizeCurrencyCode,
+  buildCompaRatioDistribution,
+  buildBenefitsUtilization,
+  buildBandDistribution,
+  buildCompPayEquity,
+  buildTotalCompBreakdown,
+  buildCompDashboardKpis,
+  buildSimulateAdjustment,
+  type BandDistributionRowInput,
+} from '@tims/shared';
 
 export const compensationRouter = router({
   // ── Salary Bands ───────────────────────────────────────────────────
@@ -44,7 +54,7 @@ export const compensationRouter = router({
   // never be recovered by differencing Σ dots against the canonical positive-salary count.
   getBandDistribution: permissionProcedure('compensation', 'read').query(async ({ ctx }) => {
     requireOrgScope(ctx.access);
-    const [comps, unassignedCount] = await Promise.all([
+    const [comps, unassignedCount, positiveUnbanded] = await Promise.all([
       db.employeeCompensation.findMany({
         where: { organizationId: ctx.user.organizationId, bandId: { not: null } },
         select: { currentSalary: true, currency: true, band: { select: { id: true, level: true, title: true, minSalary: true, midSalary: true, maxSalary: true, currency: true } } },
@@ -52,81 +62,45 @@ export const compensationRouter = router({
       db.employeeCompensation.count({
         where: { organizationId: ctx.user.organizationId, bandId: null },
       }),
+      // FIX 1 (Codex#1, k-anon differencing oracle): the POSITIVE-salary unbanded sub-bucket.
+      // dashboard.compensatedEmployees = positiveBanded + positiveUnbanded and Σ dots = positiveBanded, so
+      // `compensatedEmployees − Σ dots = positiveUnbanded` leaks a 1..4 positive-unbanded group unless that
+      // sub-bucket is itself folded into the all-or-nothing trigger. Count it here; the kernel folds it.
+      db.employeeCompensation.count({
+        where: { organizationId: ctx.user.organizationId, bandId: null, currentSalary: { gt: 0 } },
+      }),
     ]);
 
-    // Complementary-bucket guard (slice 6 round 13-14): a band's `dots` are per-employee
-    // salary positions, so Σ(visible band dots) is a returned count over the banded comp
-    // rows. The CANONICAL comp population (getDashboardKpis.compensatedEmployees,
-    // getTotalCompBreakdown.employeeCount) is positive-salary rows (currentSalary > 0). A
-    // banded row with currentSalary <= 0 is NOT a positive-salary row, yet plotting it as a
-    // dot would make Σ dots count it — so `Σ dots − compensatedEmployees` (or N − Σ dots
-    // against an all-rows count) recovers the non-positive bucket. Two-pronged fix mirroring
-    // getTotalCompBreakdown: (1) only plot dots for positive-salary rows so Σ dots aligns to
-    // the canonical positive-salary population; (2) fold the non-positive-salary complement
-    // into the all-or-nothing suppression trigger below. A non-positive-salary row also has
-    // no meaningful band POSITION (salary <= min → pos clamps to 0), so excluding it from the
-    // plot is correct on the merits, not just for the oracle.
-    const byBand = new Map<string, { level: string; title: string; min: number; mid: number; max: number; currency: string; dots: { pos: number; outlier: boolean }[] }>();
+    // Impure pass: only positive-salary banded rows are plotted (so Σ dots = the canonical positive-salary
+    // banded population getDashboardKpis.compensatedEmployees / getTotalCompBreakdown.employeeCount align to).
+    // Convert each salary into its band currency (nested fallback: band → row currency → USD), then hand the
+    // ALREADY-CONVERTED rows + the three complement counts to the pure buildBandDistribution kernel (golden both
+    // stacks) — which owns the grouping, dot clamp/outlier, mid-desc sort, and the all-or-nothing min-5 trigger
+    // (any sub-floor band / unbanded bucket / non-positive-banded complement / positive-unbanded sub-bucket ⇒
+    // EMPTY bands, no per-band keys, closing the present-key cardinality + N−Σ oracles). Display currency =
+    // normalizeCurrencyCode(band.currency) (USD fallback); the nested-fallback currency is used ONLY to convert.
+    const rows: BandDistributionRowInput[] = [];
     let positiveBanded = 0;
     for (const c of comps) {
       if (!c.band) continue;
       const salary = Number(c.currentSalary);
-      // Non-positive-salary banded rows are NOT plotted as dots (so Σ dots = positive-salary
-      // banded population, the canonical definition). Their count is folded into the trigger.
       if (!(salary > 0)) continue;
       positiveBanded += 1;
-      const min = Number(c.band.minSalary);
-      const max = Number(c.band.maxSalary);
-      if (!byBand.has(c.band.id)) {
-        byBand.set(c.band.id, { level: c.band.level ?? '', title: c.band.title ?? '', min, mid: Number(c.band.midSalary), max, currency: normalizeCurrencyCode(c.band.currency), dots: [] });
-      }
-      const span = max - min;
       const bandCurrency = normalizeCurrencyCode(c.band.currency, normalizeCurrencyCode(c.currency));
       const salaryInBandCurrency = (await convertMoney(salary, c.currency, bandCurrency)).amount;
-      const rawPos = span > 0 ? ((salaryInBandCurrency - min) / span) * 100 : 50;
-      byBand.get(c.band.id)!.dots.push({ pos: Math.min(100, Math.max(0, rawPos)), outlier: rawPos < 0 || rawPos > 100 });
+      rows.push({
+        bandId: c.band.id,
+        level: c.band.level ?? '',
+        title: c.band.title ?? '',
+        min: Number(c.band.minSalary),
+        mid: Number(c.band.midSalary),
+        max: Number(c.band.maxSalary),
+        currency: normalizeCurrencyCode(c.band.currency),
+        salaryInBandCurrency,
+      });
     }
-    // Non-positive-salary banded complement = banded rows that were dropped from the dot plot.
     const nonPositiveBanded = comps.length - positiveBanded;
-
-    // min-5 (slice 6): a band's `dots` are per-employee salary positions — exposing
-    // 1..4 of them re-identifies individuals. A band's dots.length is its member count.
-    //
-    // All-or-nothing differencing guard (slice 6 round 2): dots.length on a visible
-    // band IS that band's headcount, and the employeeCompensation population N is
-    // exposed by getTotalCompBreakdown.employeeCount / getDashboardKpis.compensatedEmployees,
-    // so `N − Σ(visible band dots.length) = hidden band size`. When ANY band is
-    // sub-floor, drop `dots` (set []) on EVERY band so no per-band headcount survives.
-    // The per-band `suppressed` flag marks which band tripped the floor for the UI.
-    //
-    // Implicit-bucket (unbanded) trigger (slice 6 round 3): unassignedCount participates
-    // in the suppression trigger alongside the explicit bands — if the unbanded bucket
-    // itself is 1..4, anyBandSuppressed fires and clears dots on ALL bands, closing the
-    // `N − Σdots` oracle for the unbanded group. The bucket is NOT emitted as a band.
-    const allBands = [...byBand.values()].sort((a, b) => b.mid - a.mid);
-
-    // Present-key cardinality (round 7): each band's `dots` are per-employee positions
-    // and dots.length is the band headcount; the band KEY itself (carrying min/mid/max)
-    // is a present-group marker. When the TOTAL banded+unbanded population is 1..4 OR
-    // ANY band OR the implicit unbanded bucket is below the floor, emit an EMPTY bands
-    // array (no per-band keys) — extending the prior tiny-N-only empty branch to ANY
-    // suppressed band. Emitting band keys with empty dots still leaks via cardinality
-    // (N present + band-key set pins singletons) and via N − Σ dots. No keys ⇒ nothing
-    // recoverable. 0 population passes through as [] (reveals no individual).
-    const bandedPopulation = allBands.reduce((sum, band) => sum + band.dots.length, 0) + unassignedCount;
-    type BandOut = { level: string; title: string; min: number; mid: number; max: number; currency: string; dots: { pos: number; outlier: boolean }[]; suppressed: boolean };
-    // Non-positive-salary complement (round 13-14): fold the banded rows dropped from the dot
-    // plot into the all-or-nothing trigger so a 1..4 non-positive-salary bucket is never
-    // recoverable as `Σ dots − compensatedEmployees` (Σ dots = positive-salary banded count,
-    // compensatedEmployees = positive-salary total). suppressBelowMin5(0) → not suppressed.
-    const anyBandSuppressed =
-      allBands.some((band) => suppressBelowMin5(band.dots.length).suppressed) ||
-      suppressBelowMin5(unassignedCount).suppressed ||
-      suppressBelowMin5(nonPositiveBanded).suppressed;
-    if (suppressBelowMin5(bandedPopulation).suppressed || anyBandSuppressed) return [] as BandOut[];
-
-    // Every band + the unbanded bucket cleared the floor → publish dots, no suppression.
-    return allBands.map((band): BandOut => ({ ...band, suppressed: false }));
+    return buildBandDistribution(rows, unassignedCount, nonPositiveBanded, positiveUnbanded);
   }),
 
   // ── Compa-Ratio Distribution ───────────────────────────────────────
@@ -197,29 +171,13 @@ export const compensationRouter = router({
           .filter((c) => c.amount > 0)
           .map((c) => convertMoney(c.amount, c.currency, displayCurrency).then((m) => m.amount)),
       );
-      const avg = salaries.length ? salaries.reduce((a, b) => a + b, 0) / salaries.length : 0;
-      const sorted = [...salaries].sort((a, b) => a - b);
-      const median = sorted[Math.floor(sorted.length / 2)] ?? 0;
 
-      // min-5 (slice 6): each group's count is a head-count and its average/median
-      // ARE individual salary data when the group is 1..4 people. Route the count
-      // through suppressBelowMin5; when suppressed, null the count + both salary
-      // stats so no per-person salary leaks. (Currently a single org-wide 'all'
-      // group; per-attribute groups become small once gender/ethnicity lands, so
-      // the suppression must be in place before then.) Defense-in-depth on top of
-      // requireOrgScope; scope-aware per-group narrowing is the follow-on.
-      const buildGroup = (group: string, count: number, averageSalary: number, medianSalary: number) => {
-        const s = suppressBelowMin5(count);
-        return s.suppressed
-          ? { group, count: null, suppressed: true, averageSalary: null, medianSalary: null }
-          : { group, count: s.count, suppressed: false, averageSalary, medianSalary };
-      };
-
-      return {
-        groupBy: 'all',
-        results: [buildGroup('all', salaries.length, Math.round(avg), median)],
-        currency: displayCurrency,
-      };
+      // min-5 shaping is now the pure buildCompPayEquity kernel (@tims/shared, golden-fixtured both stacks): a
+      // single org-wide 'all' group, avg = mean (JS round), median = sorted[floor(n/2)]; when the group is 1..4
+      // people the count AND both salary stats are nulled so no per-person salary leaks (average/median ARE
+      // individual salary data at that size). Defense-in-depth on top of requireOrgScope. The router does the
+      // impure FX conversion above and returns the kernel verbatim — honest-fixture rule.
+      return buildCompPayEquity(salaries, displayCurrency);
     }),
 
   // ── Benefits Utilization ───────────────────────────────────────────
@@ -493,9 +451,6 @@ export const compensationRouter = router({
       const proposedCurrency = normalizeCurrencyCode(input.currency, currentCurrency);
       const convertedProposed = await convertMoney(input.proposedSalary, proposedCurrency, currentCurrency);
       const proposedSalaryForComparison = convertedProposed.amount;
-      const percentageChange = currentSalary
-        ? Math.round(((proposedSalaryForComparison - currentSalary) / currentSalary) * 10000) / 100
-        : 0;
 
       // §21 field-auth (slice 6 round 5 + round 6): compaRatio + bandId are HR-analytics
       // fields (super/hr/hrbp only) and are ONLY selected from the DB for entitled roles
@@ -510,37 +465,31 @@ export const compensationRouter = router({
           ? await db.salaryBand.findUnique({ where: { id: bandId } })
           : null;
 
-      const midpoint = band ? Number(band.midSalary) : 0;
       const bandCurrency = band ? normalizeCurrencyCode(band.currency, currentCurrency) : currentCurrency;
       const proposedSalaryForBand = band
         ? (await convertMoney(input.proposedSalary, proposedCurrency, bandCurrency)).amount
         : proposedSalaryForComparison;
-      const newCompaRatio = midpoint ? Math.round((proposedSalaryForBand / midpoint) * 100) / 100 : null;
 
-      // currentSalary-class fields (salary + projected salary + %change) reach every
-      // entitled scoped reader. Compa-ratio/band internals are spread in ONLY when the
-      // caller's roles grant compaRatio — absent (not nulled) otherwise.
-      return {
+      // The impure FX conversions (above) are done; the pure buildSimulateAdjustment kernel (@tims/shared, golden
+      // both stacks) shapes the projection. The six compa/band fields are spread in ONLY when the caller is
+      // entitled to compaRatio (`compa != null`) — absent, not nulled, otherwise. When entitled but band-less,
+      // all six keys are present (bandCurrency falls back to the current currency, never null — FIX 3 parity).
+      return buildSimulateAdjustment({
         currentSalary,
-        currency: currentCurrency,
+        currentCurrency,
         proposedSalary: input.proposedSalary,
         proposedCurrency,
         proposedSalaryForComparison,
-        comparisonCurrency: currentCurrency,
-        percentageChange,
-        ...(canSeeCompaRatio
+        compa: canSeeCompaRatio
           ? {
-              currentCompaRatio: Number(compRec.compaRatio) || null,
-              newCompaRatio,
-              bandMin: band ? Number(band.minSalary) : null,
-              bandMax: band ? Number(band.maxSalary) : null,
-              bandCurrency,
-              withinBand: band
-                ? proposedSalaryForBand >= Number(band.minSalary) && proposedSalaryForBand <= Number(band.maxSalary)
+              currentCompaRatio: Number(compRec.compaRatio) || 0,
+              band: band
+                ? { min: Number(band.minSalary), mid: Number(band.midSalary), max: Number(band.maxSalary), bandCurrency }
                 : null,
+              proposedSalaryForBand,
             }
-          : {}),
-      };
+          : null,
+      });
     }),
 
   // ── Market Comparison ──────────────────────────────────────────────
@@ -646,6 +595,11 @@ export const compensationRouter = router({
       //   • total comp-row population (compensations.length)
       //   • positive-salary contributor set (baseContributors)
       //   • variable-pay contributor set (variableContributors)
+      // Suppression is decided over the COUNTS (before any FX) so a sub-floor population never triggers a live
+      // rate fetch — preserving the early skip-FX path. When suppressed, totals stay null (no FX). The pure
+      // buildTotalCompBreakdown kernel (@tims/shared, golden both stacks) re-derives the same trigger over the
+      // counts and owns the base/variable split + percentages + roundMoney(total). employeeCount = baseContributors
+      // (aligned to getDashboardKpis.compensatedEmployees so the denominators cannot be differenced).
       const nonPositiveContributors = compensations.length - baseContributors;
       const suppressed =
         suppressBelowMin5(compensations.length).suppressed ||
@@ -653,55 +607,38 @@ export const compensationRouter = router({
         suppressBelowMin5(variableContributors).suppressed ||
         suppressBelowMin5(nonPositiveContributors).suppressed;
 
-      if (suppressed) {
-        return {
-          totalComp: null as number | null,
-          currency: displayCurrency,
-          converted: false,
-          ratesAsOf: null as string | null,
-          breakdown: {
-            baseSalary: { total: null as number | null, percentage: null as number | null },
-            variablePay: { total: null as number | null, percentage: null as number | null },
-          },
-          employeeCount: null as number | null,
-          suppressed: true,
-        };
-      }
+      const totals = suppressed
+        ? null
+        : await (async () => {
+            const [baseTotal, variableTotal] = await Promise.all([
+              sumMoney(
+                compensations
+                  .map((emp) => ({ amount: Number(emp.currentSalary) || 0, currency: emp.currency }))
+                  .filter((emp) => emp.amount > 0),
+                displayCurrency,
+              ),
+              sumMoney(
+                compensations
+                  .map((emp) => ({ amount: Number(emp.variablePay) || 0, currency: emp.currency }))
+                  .filter((emp) => emp.amount > 0),
+                displayCurrency,
+              ),
+            ]);
+            return {
+              baseAmount: baseTotal.amount,
+              variableAmount: variableTotal.amount,
+              converted: baseTotal.converted || variableTotal.converted,
+              ratesAsOf: [baseTotal.ratesAsOf, variableTotal.ratesAsOf].filter(Boolean).sort()[0] ?? null,
+            };
+          })();
 
-      const [baseTotal, variableTotal] = await Promise.all([
-        sumMoney(
-          compensations
-            .map((emp) => ({ amount: Number(emp.currentSalary) || 0, currency: emp.currency }))
-            .filter((emp) => emp.amount > 0),
-          displayCurrency,
-        ),
-        sumMoney(
-          compensations
-            .map((emp) => ({ amount: Number(emp.variablePay) || 0, currency: emp.currency }))
-            .filter((emp) => emp.amount > 0),
-          displayCurrency,
-        ),
-      ]);
-
-      const normalizedTotalComp = roundMoney(baseTotal.amount + variableTotal.amount);
-      const converted = baseTotal.converted || variableTotal.converted;
-      const ratesAsOf = [baseTotal.ratesAsOf, variableTotal.ratesAsOf].filter(Boolean).sort()[0] ?? null;
-
-      return {
-        totalComp: normalizedTotalComp as number | null,
-        currency: displayCurrency,
-        converted,
-        ratesAsOf,
-        breakdown: {
-          baseSalary: { total: baseTotal.amount as number | null, percentage: (normalizedTotalComp ? Math.round((baseTotal.amount / normalizedTotalComp) * 10000) / 100 : 0) as number | null },
-          variablePay: { total: variableTotal.amount as number | null, percentage: (normalizedTotalComp ? Math.round((variableTotal.amount / normalizedTotalComp) * 10000) / 100 : 0) as number | null },
-        },
-        // Aligned to getDashboardKpis.compensatedEmployees: report the positive-salary
-        // population (baseContributors), NOT the all-rows count. The two operands now
-        // share the same definition → no complementary-bucket subtraction is possible.
-        employeeCount: baseContributors as number | null,
-        suppressed: false,
-      };
+      return buildTotalCompBreakdown({
+        rowCount: compensations.length,
+        baseContributors,
+        variableContributors,
+        totals,
+        displayCurrency,
+      });
     }),
 
   // ── Employee Compensation Detail ───────────────────────────────────
@@ -795,49 +732,27 @@ export const compensationRouter = router({
     ]);
     const displayCurrency = normalizeCurrencyCode(company?.currency, 'USD');
 
-    // Average benefit utilization = mean over plans of (enrollments / active employees).
-    const benefitsUtilizationPct =
-      benefitPlans.length && activeEmployees
-        ? Math.round(
-            (benefitPlans.reduce((sum, p) => sum + p._count.enrollments / activeEmployees, 0) / benefitPlans.length) * 1000,
-          ) / 10
-        : 0;
-
-    // Suppress the compensated-population aggregates when that population is 1..4.
+    // Suppress the compensated-population aggregates when that population is 1..4 → skip the payroll FX sum
+    // entirely (no live rate fetch for a suppressed cohort); otherwise sum it. The pure buildCompDashboardKpis
+    // kernel (@tims/shared, golden both stacks) owns benefitsUtilizationPct, the min-5 floors (compensated,
+    // compaRatio incl. the 0-mean → null nit, pendingAdjustments), avgSalary, and the null-payroll fail-soft.
     const compensatedSuppressed = suppressBelowMin5(compensatedCount).suppressed;
-    // Suppress avgCompaRatio when fewer than 5 non-null compaRatio rows contributed.
-    const compaRatioSuppressed = suppressBelowMin5(compaRatioCount).suppressed;
-    // Raw-scalar floor (round 7, finding 7): pendingAdjustments is a raw COUNT over
-    // SalaryAdjustment, a §21-restricted sensitive population. A 1..4 count (e.g. 3
-    // pending) is a sub-floor disclosure over that population — route it through
-    // suppressBelowMin5: null + suppressed flag for 1..4. 0 passes through (no one).
-    const pendingFloor = suppressBelowMin5(pendingAdjustments);
-    const payrollTotal = compensatedSuppressed
-      ? { amount: null as number | null, converted: false, ratesAsOf: null as string | null }
+    const payroll = compensatedSuppressed
+      ? null
       : await sumMoney(
           compensatedRows.map((row) => ({ amount: Number(row.currentSalary) || 0, currency: row.currency })),
           displayCurrency,
         );
-    const avgSalary = compensatedSuppressed || payrollTotal.amount === null
-      ? null
-      : Math.round(payrollTotal.amount / compensatedCount);
 
-    return {
-      totalMonthlyPayroll: compensatedSuppressed ? null : payrollTotal.amount,
-      avgSalary,
-      currency: displayCurrency,
-      converted: !compensatedSuppressed && payrollTotal.converted,
-      ratesAsOf: compensatedSuppressed ? null : payrollTotal.ratesAsOf,
-      compensatedEmployees: compensatedSuppressed ? null : compensatedCount,
-      compensatedSuppressed,
+    return buildCompDashboardKpis({
+      compensatedCount,
+      compaRatioCount,
+      pendingAdjustments,
       activeEmployees,
-      pendingAdjustments: pendingFloor.count,
-      pendingAdjustmentsSuppressed: pendingFloor.suppressed,
-      benefitsUtilizationPct,
-      avgCompaRatio:
-        compaRatioSuppressed || !compaRatioAgg._avg.compaRatio
-          ? null
-          : Math.round(Number(compaRatioAgg._avg.compaRatio) * 100) / 100,
-    };
+      benefitEnrollmentCounts: benefitPlans.map((p) => p._count.enrollments),
+      compaRatioAvg: compaRatioAgg._avg.compaRatio == null ? null : Number(compaRatioAgg._avg.compaRatio),
+      payroll: payroll ? { amount: payroll.amount, converted: payroll.converted, ratesAsOf: payroll.ratesAsOf } : null,
+      displayCurrency,
+    });
   }),
 });

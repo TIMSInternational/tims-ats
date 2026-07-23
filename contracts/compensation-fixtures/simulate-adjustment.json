@@ -1,0 +1,175 @@
+{
+  "description": "Golden parity for buildSimulateAdjustment(input) in @tims/shared (Slice 11c, honest-fixture extraction of the simulateAdjustment router body). The seven projection fields are always present; the six compa/band fields are spread in ONLY when the caller is entitled (compa != null) — absent, NOT nulled, otherwise. When entitled but band-less, all six keys are present with bandCurrency = currentCurrency (never null — FIX 3). currentCompaRatio is cr||null (0 → null); percentageChange round2. Asserted by the REAL TS export AND C# CompensationKernels.BuildSimulateAdjustment (base+derived records; endpoint boxes to object so STJ serializes the runtime type).",
+  "cases": [
+    {
+      "name": "not entitled → the six compa/band keys are ABSENT",
+      "input": {
+        "currentSalary": 100000,
+        "currentCurrency": "USD",
+        "proposedSalary": 110000,
+        "proposedCurrency": "USD",
+        "proposedSalaryForComparison": 110000,
+        "compa": null
+      },
+      "expected": {
+        "currentSalary": 100000,
+        "currency": "USD",
+        "proposedSalary": 110000,
+        "proposedCurrency": "USD",
+        "proposedSalaryForComparison": 110000,
+        "comparisonCurrency": "USD",
+        "percentageChange": 10
+      }
+    },
+    {
+      "name": "entitled + band → all fields, withinBand true",
+      "input": {
+        "currentSalary": 100000,
+        "currentCurrency": "USD",
+        "proposedSalary": 110000,
+        "proposedCurrency": "USD",
+        "proposedSalaryForComparison": 110000,
+        "compa": {
+          "currentCompaRatio": 0.95,
+          "band": {
+            "min": 80000,
+            "mid": 100000,
+            "max": 120000,
+            "bandCurrency": "USD"
+          },
+          "proposedSalaryForBand": 110000
+        }
+      },
+      "expected": {
+        "currentSalary": 100000,
+        "currency": "USD",
+        "proposedSalary": 110000,
+        "proposedCurrency": "USD",
+        "proposedSalaryForComparison": 110000,
+        "comparisonCurrency": "USD",
+        "percentageChange": 10,
+        "currentCompaRatio": 0.95,
+        "newCompaRatio": 1.1,
+        "bandMin": 80000,
+        "bandMax": 120000,
+        "bandCurrency": "USD",
+        "withinBand": true
+      }
+    },
+    {
+      "name": "FIX3: entitled + NO band → six keys PRESENT, bandCurrency == currentCurrency (COP), rest null",
+      "input": {
+        "currentSalary": 100000,
+        "currentCurrency": "COP",
+        "proposedSalary": 110000,
+        "proposedCurrency": "COP",
+        "proposedSalaryForComparison": 110000,
+        "compa": {
+          "currentCompaRatio": 1.02,
+          "band": null,
+          "proposedSalaryForBand": 110000
+        }
+      },
+      "expected": {
+        "currentSalary": 100000,
+        "currency": "COP",
+        "proposedSalary": 110000,
+        "proposedCurrency": "COP",
+        "proposedSalaryForComparison": 110000,
+        "comparisonCurrency": "COP",
+        "percentageChange": 10,
+        "currentCompaRatio": 1.02,
+        "newCompaRatio": null,
+        "bandMin": null,
+        "bandMax": null,
+        "bandCurrency": "COP",
+        "withinBand": null
+      }
+    },
+    {
+      "name": "currentCompaRatio 0 → null",
+      "input": {
+        "currentSalary": 100000,
+        "currentCurrency": "USD",
+        "proposedSalary": 110000,
+        "proposedCurrency": "USD",
+        "proposedSalaryForComparison": 110000,
+        "compa": {
+          "currentCompaRatio": 0,
+          "band": null,
+          "proposedSalaryForBand": 110000
+        }
+      },
+      "expected": {
+        "currentSalary": 100000,
+        "currency": "USD",
+        "proposedSalary": 110000,
+        "proposedCurrency": "USD",
+        "proposedSalaryForComparison": 110000,
+        "comparisonCurrency": "USD",
+        "percentageChange": 10,
+        "currentCompaRatio": null,
+        "newCompaRatio": null,
+        "bandMin": null,
+        "bandMax": null,
+        "bandCurrency": "USD",
+        "withinBand": null
+      }
+    },
+    {
+      "name": "below band → withinBand false",
+      "input": {
+        "currentSalary": 100000,
+        "currentCurrency": "USD",
+        "proposedSalary": 70000,
+        "proposedCurrency": "USD",
+        "proposedSalaryForComparison": 70000,
+        "compa": {
+          "currentCompaRatio": 0.9,
+          "band": {
+            "min": 80000,
+            "mid": 100000,
+            "max": 120000,
+            "bandCurrency": "USD"
+          },
+          "proposedSalaryForBand": 70000
+        }
+      },
+      "expected": {
+        "currentSalary": 100000,
+        "currency": "USD",
+        "proposedSalary": 70000,
+        "proposedCurrency": "USD",
+        "proposedSalaryForComparison": 70000,
+        "comparisonCurrency": "USD",
+        "percentageChange": -30,
+        "currentCompaRatio": 0.9,
+        "newCompaRatio": 0.7,
+        "bandMin": 80000,
+        "bandMax": 120000,
+        "bandCurrency": "USD",
+        "withinBand": false
+      }
+    },
+    {
+      "name": "no current salary → percentageChange 0",
+      "input": {
+        "currentSalary": 0,
+        "currentCurrency": "USD",
+        "proposedSalary": 50000,
+        "proposedCurrency": "USD",
+        "proposedSalaryForComparison": 50000,
+        "compa": null
+      },
+      "expected": {
+        "currentSalary": 0,
+        "currency": "USD",
+        "proposedSalary": 50000,
+        "proposedCurrency": "USD",
+        "proposedSalaryForComparison": 50000,
+        "comparisonCurrency": "USD",
+        "percentageChange": 0
+      }
+    }
+  ]
+}

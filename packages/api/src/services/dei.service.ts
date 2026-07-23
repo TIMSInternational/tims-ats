@@ -5,10 +5,10 @@ import {
   normalizeCurrencyCode,
   AGE_BANDS,
   ageBand,
-  median,
   buildDistribution,
   leadershipDiversity,
   deiDashboardKpis,
+  buildPayEquity,
 } from '@tims/shared';
 
 // ---------------------------------------------------------------------------
@@ -214,32 +214,20 @@ export const deiService = {
       return { results: [] as PayOut[], gapPct: null as number | null, suppressed: true, currency: displayCurrency };
     }
 
-    const results = await Promise.all(
-      [...byGender.entries()].map(async ([group, salaries]) => {
-        const convertedSalaries = await Promise.all(
+    // Convert each cohort's salaries (impure FX), then delegate the avg/median/gap SHAPING to the pure
+    // buildPayEquity kernel (@tims/shared, golden-fixtured both stacks; the C# port mirrors it as
+    // DeiKernels.BuildPayEquity). Suppression is already handled above (kept inline so a suppressed cohort never
+    // triggers a live FX fetch); the kernel re-derives the same trigger over the converted cohorts (no-op here).
+    const cohorts = await Promise.all(
+      [...byGender.entries()].map(async ([gender, salaries]) => ({
+        gender,
+        convertedSalaries: await Promise.all(
           salaries.map((s) => convertMoney(s.amount, s.currency, displayCurrency).then((m) => m.amount)),
-        );
-        const medianSalary = median(convertedSalaries);
-        return {
-          group,
-          count: salaries.length,
-          averageSalary: Math.round(convertedSalaries.reduce((a, b) => a + b, 0) / convertedSalaries.length),
-          medianSalary,
-          suppressed: false,
-          _median: medianSalary as number | null,
-        };
-      }),
+        ),
+      })),
     );
 
-    // Headline gap: female vs male median (negative = women paid less). Every group
-    // cleared the floor (else we returned suppressed above), so both medians exist.
-    const f = results.find((r) => r.group === 'female');
-    const m = results.find((r) => r.group === 'male');
-    const gapPct = f && m && f._median !== null && m._median !== null && m._median > 0
-      ? Math.round(((f._median - m._median) / m._median) * 1000) / 10
-      : null;
-
-    return { results: results.map(({ _median, ...rest }): PayOut => rest), gapPct, suppressed: false, currency: displayCurrency };
+    return buildPayEquity(cohorts, Object.fromEntries(demographicGenderCount), skippedSalaried, displayCurrency);
   },
 
   async getLeadershipDiversity(orgId: string) {

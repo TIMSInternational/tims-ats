@@ -1,0 +1,54 @@
+{
+  "description": "Golden parity for the PURE sum kernel sumMoneyWithRates(rows, to) in @tims/shared (Slice 11c). The live packages/api/src/lib/currency.ts sumMoney delegates to it; the C# Tims.Domain.Compensation.CompensationKernels.SumMoney mirrors it. Asserted IDENTICALLY by the REAL TS export (tests/currency/convert-money-fixtures.test.ts) and the C# unit test (Tims.UnitTests). FIXED rates only. Pins: total = Sum of roundMoney(amount*rate) per row THEN roundMoney(total) (round-then-sum-then-round, matching the live sumMoney); converted = ANY row whose from != to (identity rows never flip it); empty rows -> {amount:0, converted:false}.",
+  "cases": [
+    {
+      "name": "mixed USD + COP summed in USD: 100 + (400000*0.00025=100) = 200, converted true",
+      "input": {
+        "rows": [
+          { "amount": 100, "from": "USD", "rate": 1 },
+          { "amount": 400000, "from": "COP", "rate": 0.00025 }
+        ],
+        "to": "USD"
+      },
+      "expected": { "amount": 200, "converted": true }
+    },
+    {
+      "name": "all identity same currency: 50 + 25 = 75, converted false",
+      "input": {
+        "rows": [
+          { "amount": 50, "from": "USD", "rate": 1 },
+          { "amount": 25, "from": "USD", "rate": 1 }
+        ],
+        "to": "USD"
+      },
+      "expected": { "amount": 75, "converted": false }
+    },
+    {
+      "name": "empty rows -> zero total, converted false",
+      "input": { "rows": [], "to": "USD" },
+      "expected": { "amount": 0, "converted": false }
+    },
+    {
+      "name": "round-THEN-sum: two 1.005 rows -> roundMoney(1.005)=1.01 each -> 2.02 (NOT sum-then-round 2.01)",
+      "input": {
+        "rows": [
+          { "amount": 1.005, "from": "USD", "rate": 1 },
+          { "amount": 1.005, "from": "USD", "rate": 1 }
+        ],
+        "to": "USD"
+      },
+      "expected": { "amount": 2.02, "converted": false }
+    },
+    {
+      "name": "single converted row flips converted even with an identity row present",
+      "input": {
+        "rows": [
+          { "amount": 1000, "from": "USD", "rate": 1 },
+          { "amount": 5250000, "from": "CRC", "rate": 0.00189 }
+        ],
+        "to": "USD"
+      },
+      "expected": { "amount": 10922.5, "converted": true }
+    }
+  ]
+}

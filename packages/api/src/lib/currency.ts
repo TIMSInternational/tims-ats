@@ -1,7 +1,10 @@
 import {
+  convertMoneyWithRate,
   DEFAULT_CURRENCY,
   normalizeCurrencyCode,
   PLATFORM_BILLING_CURRENCY,
+  roundMoney as roundMoneyShared,
+  sumMoneyWithRates,
 } from '@tims/shared';
 
 const FRANKFURTER_BASE_URL = 'https://api.frankfurter.dev';
@@ -36,9 +39,9 @@ function cacheKey(base: string, quote: string): string {
   return `${base}:${quote}`;
 }
 
-export function roundMoney(amount: number): number {
-  return Math.round((amount + Number.EPSILON) * 100) / 100;
-}
+// roundMoney lives in @tims/shared now (the SINGLE source the C# port mirrors, golden-fixtured both stacks);
+// re-exported here so existing importers are unchanged. Definition is byte-identical to the prior local one.
+export const roundMoney = roundMoneyShared;
 
 export async function getFxRate(baseInput: string, quoteInput: string, now = new Date()): Promise<FxRate> {
   const base = normalizeCurrencyCode(baseInput);
@@ -97,19 +100,13 @@ export async function convertMoney(
   fromInput: string | null | undefined,
   toInput: string | null | undefined,
 ): Promise<ConvertedMoney> {
-  const originalAmount = Number(amountInput) || 0;
   const originalCurrency = normalizeCurrencyCode(fromInput, DEFAULT_CURRENCY);
   const currency = normalizeCurrencyCode(toInput, PLATFORM_BILLING_CURRENCY);
   const fx = await getFxRate(originalCurrency, currency);
-  return {
-    originalAmount,
-    originalCurrency,
-    amount: roundMoney(originalAmount * fx.rate),
-    currency,
-    rate: fx.rate,
-    provider: fx.provider,
-    asOf: fx.asOf,
-  };
+  // The deterministic money shaping is the shared PURE kernel (Slice 11c, golden-fixtured both stacks); this
+  // wrapper only resolves the live FX rate + threads the pin provenance (provider/asOf), which are never fixtured.
+  const money = convertMoneyWithRate(Number(amountInput) || 0, originalCurrency, currency, fx.rate);
+  return { ...money, provider: fx.provider, asOf: fx.asOf };
 }
 
 export async function sumMoney(
@@ -117,19 +114,20 @@ export async function sumMoney(
   displayCurrency: string | null | undefined,
 ): Promise<{ amount: number; currency: string; converted: boolean; ratesAsOf: string | null }> {
   const currency = normalizeCurrencyCode(displayCurrency, PLATFORM_BILLING_CURRENCY);
-  let total = 0;
-  let converted = false;
+  // Resolve each row's live FX rate, then fold the arithmetic through the shared PURE kernel (Slice 11c). The
+  // rate DATES stay here (pin/provider-derived, never fixtured); the total + `converted` are the pure kernel's.
+  const resolved: Array<{ amount: number; from: string; rate: number }> = [];
   const rateDates: string[] = [];
-
   for (const row of rows) {
-    const convertedMoney = await convertMoney(row.amount, row.currency, currency);
-    total += convertedMoney.amount;
-    converted ||= convertedMoney.originalCurrency !== currency;
-    if (convertedMoney.provider !== 'identity') {
-      rateDates.push(convertedMoney.asOf);
+    const from = normalizeCurrencyCode(row.currency, DEFAULT_CURRENCY);
+    const fx = await getFxRate(from, currency);
+    resolved.push({ amount: Number(row.amount) || 0, from, rate: fx.rate });
+    if (fx.provider !== 'identity') {
+      rateDates.push(fx.asOf);
     }
   }
 
+  const summed = sumMoneyWithRates(resolved, currency);
   const ratesAsOf = rateDates.sort()[0] ?? null;
-  return { amount: roundMoney(total), currency, converted, ratesAsOf };
+  return { amount: summed.amount, currency, converted: summed.converted, ratesAsOf };
 }

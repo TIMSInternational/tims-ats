@@ -1,0 +1,649 @@
+{
+  "description": "Golden parity for buildBandDistribution(rows, unassignedCount, nonPositiveBanded, positiveUnbanded) in @tims/shared (Slice 11c, honest-fixture extraction of the getBandDistribution router body). Asserted IDENTICALLY by the REAL TS export (tests/compensation/band-distribution-fixtures.test.ts) and the C# CompensationKernels.BuildBandDistribution unit test. Rows are ALREADY converted into their band currency (the impure convertMoney happens in the router). Pins: dots plotted only for positive-salary banded rows; pos = clamp[0,100]((salary-min)/span*100), outlier when raw fell outside; bands sorted by mid DESC; all-or-nothing min-5 trigger folds any sub-floor band / unbanded bucket / non-positive-banded complement / (FIX 1) positive-unbanded sub-bucket → EMPTY bands []. 0 population → [].",
+  "cases": [
+    {
+      "name": "two bands published, sorted mid-desc, dots clamped",
+      "input": {
+        "rows": [
+          {
+            "bandId": "B",
+            "level": "B",
+            "title": "Band B",
+            "min": 40000,
+            "mid": 60000,
+            "max": 80000,
+            "currency": "USD",
+            "salaryInBandCurrency": 40000
+          },
+          {
+            "bandId": "B",
+            "level": "B",
+            "title": "Band B",
+            "min": 40000,
+            "mid": 60000,
+            "max": 80000,
+            "currency": "USD",
+            "salaryInBandCurrency": 50000
+          },
+          {
+            "bandId": "B",
+            "level": "B",
+            "title": "Band B",
+            "min": 40000,
+            "mid": 60000,
+            "max": 80000,
+            "currency": "USD",
+            "salaryInBandCurrency": 60000
+          },
+          {
+            "bandId": "B",
+            "level": "B",
+            "title": "Band B",
+            "min": 40000,
+            "mid": 60000,
+            "max": 80000,
+            "currency": "USD",
+            "salaryInBandCurrency": 70000
+          },
+          {
+            "bandId": "B",
+            "level": "B",
+            "title": "Band B",
+            "min": 40000,
+            "mid": 60000,
+            "max": 80000,
+            "currency": "USD",
+            "salaryInBandCurrency": 80000
+          },
+          {
+            "bandId": "A",
+            "level": "A",
+            "title": "Band A",
+            "min": 80000,
+            "mid": 100000,
+            "max": 120000,
+            "currency": "USD",
+            "salaryInBandCurrency": 80000
+          },
+          {
+            "bandId": "A",
+            "level": "A",
+            "title": "Band A",
+            "min": 80000,
+            "mid": 100000,
+            "max": 120000,
+            "currency": "USD",
+            "salaryInBandCurrency": 90000
+          },
+          {
+            "bandId": "A",
+            "level": "A",
+            "title": "Band A",
+            "min": 80000,
+            "mid": 100000,
+            "max": 120000,
+            "currency": "USD",
+            "salaryInBandCurrency": 100000
+          },
+          {
+            "bandId": "A",
+            "level": "A",
+            "title": "Band A",
+            "min": 80000,
+            "mid": 100000,
+            "max": 120000,
+            "currency": "USD",
+            "salaryInBandCurrency": 110000
+          },
+          {
+            "bandId": "A",
+            "level": "A",
+            "title": "Band A",
+            "min": 80000,
+            "mid": 100000,
+            "max": 120000,
+            "currency": "USD",
+            "salaryInBandCurrency": 120000
+          }
+        ],
+        "unassignedCount": 0,
+        "nonPositiveBanded": 0,
+        "positiveUnbanded": 0
+      },
+      "expected": [
+        {
+          "level": "A",
+          "title": "Band A",
+          "min": 80000,
+          "mid": 100000,
+          "max": 120000,
+          "currency": "USD",
+          "dots": [
+            {
+              "pos": 0,
+              "outlier": false
+            },
+            {
+              "pos": 25,
+              "outlier": false
+            },
+            {
+              "pos": 50,
+              "outlier": false
+            },
+            {
+              "pos": 75,
+              "outlier": false
+            },
+            {
+              "pos": 100,
+              "outlier": false
+            }
+          ],
+          "suppressed": false
+        },
+        {
+          "level": "B",
+          "title": "Band B",
+          "min": 40000,
+          "mid": 60000,
+          "max": 80000,
+          "currency": "USD",
+          "dots": [
+            {
+              "pos": 0,
+              "outlier": false
+            },
+            {
+              "pos": 25,
+              "outlier": false
+            },
+            {
+              "pos": 50,
+              "outlier": false
+            },
+            {
+              "pos": 75,
+              "outlier": false
+            },
+            {
+              "pos": 100,
+              "outlier": false
+            }
+          ],
+          "suppressed": false
+        }
+      ]
+    },
+    {
+      "name": "FIX1: positive-unbanded 1..4 suppresses even when unassigned>=5",
+      "input": {
+        "rows": [
+          {
+            "bandId": "A",
+            "level": "A",
+            "title": "Band A",
+            "min": 80000,
+            "mid": 100000,
+            "max": 120000,
+            "currency": "USD",
+            "salaryInBandCurrency": 80000
+          },
+          {
+            "bandId": "A",
+            "level": "A",
+            "title": "Band A",
+            "min": 80000,
+            "mid": 100000,
+            "max": 120000,
+            "currency": "USD",
+            "salaryInBandCurrency": 90000
+          },
+          {
+            "bandId": "A",
+            "level": "A",
+            "title": "Band A",
+            "min": 80000,
+            "mid": 100000,
+            "max": 120000,
+            "currency": "USD",
+            "salaryInBandCurrency": 100000
+          },
+          {
+            "bandId": "A",
+            "level": "A",
+            "title": "Band A",
+            "min": 80000,
+            "mid": 100000,
+            "max": 120000,
+            "currency": "USD",
+            "salaryInBandCurrency": 110000
+          },
+          {
+            "bandId": "A",
+            "level": "A",
+            "title": "Band A",
+            "min": 80000,
+            "mid": 100000,
+            "max": 120000,
+            "currency": "USD",
+            "salaryInBandCurrency": 120000
+          }
+        ],
+        "unassignedCount": 5,
+        "nonPositiveBanded": 0,
+        "positiveUnbanded": 3
+      },
+      "expected": []
+    },
+    {
+      "name": "FIX1: positive-unbanded>=5 publishes (paired with the bite above)",
+      "input": {
+        "rows": [
+          {
+            "bandId": "A",
+            "level": "A",
+            "title": "Band A",
+            "min": 80000,
+            "mid": 100000,
+            "max": 120000,
+            "currency": "USD",
+            "salaryInBandCurrency": 80000
+          },
+          {
+            "bandId": "A",
+            "level": "A",
+            "title": "Band A",
+            "min": 80000,
+            "mid": 100000,
+            "max": 120000,
+            "currency": "USD",
+            "salaryInBandCurrency": 90000
+          },
+          {
+            "bandId": "A",
+            "level": "A",
+            "title": "Band A",
+            "min": 80000,
+            "mid": 100000,
+            "max": 120000,
+            "currency": "USD",
+            "salaryInBandCurrency": 100000
+          },
+          {
+            "bandId": "A",
+            "level": "A",
+            "title": "Band A",
+            "min": 80000,
+            "mid": 100000,
+            "max": 120000,
+            "currency": "USD",
+            "salaryInBandCurrency": 110000
+          },
+          {
+            "bandId": "A",
+            "level": "A",
+            "title": "Band A",
+            "min": 80000,
+            "mid": 100000,
+            "max": 120000,
+            "currency": "USD",
+            "salaryInBandCurrency": 120000
+          }
+        ],
+        "unassignedCount": 5,
+        "nonPositiveBanded": 0,
+        "positiveUnbanded": 5
+      },
+      "expected": [
+        {
+          "level": "A",
+          "title": "Band A",
+          "min": 80000,
+          "mid": 100000,
+          "max": 120000,
+          "currency": "USD",
+          "dots": [
+            {
+              "pos": 0,
+              "outlier": false
+            },
+            {
+              "pos": 25,
+              "outlier": false
+            },
+            {
+              "pos": 50,
+              "outlier": false
+            },
+            {
+              "pos": 75,
+              "outlier": false
+            },
+            {
+              "pos": 100,
+              "outlier": false
+            }
+          ],
+          "suppressed": false
+        }
+      ]
+    },
+    {
+      "name": "any sub-floor band suppresses all (all-or-nothing)",
+      "input": {
+        "rows": [
+          {
+            "bandId": "A",
+            "level": "A",
+            "title": "Band A",
+            "min": 80000,
+            "mid": 100000,
+            "max": 120000,
+            "currency": "USD",
+            "salaryInBandCurrency": 80000
+          },
+          {
+            "bandId": "A",
+            "level": "A",
+            "title": "Band A",
+            "min": 80000,
+            "mid": 100000,
+            "max": 120000,
+            "currency": "USD",
+            "salaryInBandCurrency": 90000
+          },
+          {
+            "bandId": "A",
+            "level": "A",
+            "title": "Band A",
+            "min": 80000,
+            "mid": 100000,
+            "max": 120000,
+            "currency": "USD",
+            "salaryInBandCurrency": 100000
+          },
+          {
+            "bandId": "A",
+            "level": "A",
+            "title": "Band A",
+            "min": 80000,
+            "mid": 100000,
+            "max": 120000,
+            "currency": "USD",
+            "salaryInBandCurrency": 110000
+          },
+          {
+            "bandId": "A",
+            "level": "A",
+            "title": "Band A",
+            "min": 80000,
+            "mid": 100000,
+            "max": 120000,
+            "currency": "USD",
+            "salaryInBandCurrency": 120000
+          },
+          {
+            "bandId": "C",
+            "level": "C",
+            "title": "Band C",
+            "min": 30000,
+            "mid": 50000,
+            "max": 70000,
+            "currency": "USD",
+            "salaryInBandCurrency": 50000
+          },
+          {
+            "bandId": "C",
+            "level": "C",
+            "title": "Band C",
+            "min": 30000,
+            "mid": 50000,
+            "max": 70000,
+            "currency": "USD",
+            "salaryInBandCurrency": 51000
+          },
+          {
+            "bandId": "C",
+            "level": "C",
+            "title": "Band C",
+            "min": 30000,
+            "mid": 50000,
+            "max": 70000,
+            "currency": "USD",
+            "salaryInBandCurrency": 52000
+          }
+        ],
+        "unassignedCount": 0,
+        "nonPositiveBanded": 0,
+        "positiveUnbanded": 0
+      },
+      "expected": []
+    },
+    {
+      "name": "unbanded bucket 1..4 suppresses all",
+      "input": {
+        "rows": [
+          {
+            "bandId": "A",
+            "level": "A",
+            "title": "Band A",
+            "min": 80000,
+            "mid": 100000,
+            "max": 120000,
+            "currency": "USD",
+            "salaryInBandCurrency": 80000
+          },
+          {
+            "bandId": "A",
+            "level": "A",
+            "title": "Band A",
+            "min": 80000,
+            "mid": 100000,
+            "max": 120000,
+            "currency": "USD",
+            "salaryInBandCurrency": 90000
+          },
+          {
+            "bandId": "A",
+            "level": "A",
+            "title": "Band A",
+            "min": 80000,
+            "mid": 100000,
+            "max": 120000,
+            "currency": "USD",
+            "salaryInBandCurrency": 100000
+          },
+          {
+            "bandId": "A",
+            "level": "A",
+            "title": "Band A",
+            "min": 80000,
+            "mid": 100000,
+            "max": 120000,
+            "currency": "USD",
+            "salaryInBandCurrency": 110000
+          },
+          {
+            "bandId": "A",
+            "level": "A",
+            "title": "Band A",
+            "min": 80000,
+            "mid": 100000,
+            "max": 120000,
+            "currency": "USD",
+            "salaryInBandCurrency": 120000
+          }
+        ],
+        "unassignedCount": 3,
+        "nonPositiveBanded": 0,
+        "positiveUnbanded": 3
+      },
+      "expected": []
+    },
+    {
+      "name": "non-positive-banded complement 1..4 suppresses all",
+      "input": {
+        "rows": [
+          {
+            "bandId": "A",
+            "level": "A",
+            "title": "Band A",
+            "min": 80000,
+            "mid": 100000,
+            "max": 120000,
+            "currency": "USD",
+            "salaryInBandCurrency": 80000
+          },
+          {
+            "bandId": "A",
+            "level": "A",
+            "title": "Band A",
+            "min": 80000,
+            "mid": 100000,
+            "max": 120000,
+            "currency": "USD",
+            "salaryInBandCurrency": 90000
+          },
+          {
+            "bandId": "A",
+            "level": "A",
+            "title": "Band A",
+            "min": 80000,
+            "mid": 100000,
+            "max": 120000,
+            "currency": "USD",
+            "salaryInBandCurrency": 100000
+          },
+          {
+            "bandId": "A",
+            "level": "A",
+            "title": "Band A",
+            "min": 80000,
+            "mid": 100000,
+            "max": 120000,
+            "currency": "USD",
+            "salaryInBandCurrency": 110000
+          },
+          {
+            "bandId": "A",
+            "level": "A",
+            "title": "Band A",
+            "min": 80000,
+            "mid": 100000,
+            "max": 120000,
+            "currency": "USD",
+            "salaryInBandCurrency": 120000
+          }
+        ],
+        "unassignedCount": 0,
+        "nonPositiveBanded": 3,
+        "positiveUnbanded": 0
+      },
+      "expected": []
+    },
+    {
+      "name": "0 population passes through as []",
+      "input": {
+        "rows": [],
+        "unassignedCount": 0,
+        "nonPositiveBanded": 0,
+        "positiveUnbanded": 0
+      },
+      "expected": []
+    },
+    {
+      "name": "outlier above max clamps to 100 + flags outlier",
+      "input": {
+        "rows": [
+          {
+            "bandId": "A",
+            "level": "A",
+            "title": "Band A",
+            "min": 80000,
+            "mid": 100000,
+            "max": 120000,
+            "currency": "USD",
+            "salaryInBandCurrency": 130000
+          },
+          {
+            "bandId": "A",
+            "level": "A",
+            "title": "Band A",
+            "min": 80000,
+            "mid": 100000,
+            "max": 120000,
+            "currency": "USD",
+            "salaryInBandCurrency": 125000
+          },
+          {
+            "bandId": "A",
+            "level": "A",
+            "title": "Band A",
+            "min": 80000,
+            "mid": 100000,
+            "max": 120000,
+            "currency": "USD",
+            "salaryInBandCurrency": 121000
+          },
+          {
+            "bandId": "A",
+            "level": "A",
+            "title": "Band A",
+            "min": 80000,
+            "mid": 100000,
+            "max": 120000,
+            "currency": "USD",
+            "salaryInBandCurrency": 118000
+          },
+          {
+            "bandId": "A",
+            "level": "A",
+            "title": "Band A",
+            "min": 80000,
+            "mid": 100000,
+            "max": 120000,
+            "currency": "USD",
+            "salaryInBandCurrency": 100000
+          }
+        ],
+        "unassignedCount": 0,
+        "nonPositiveBanded": 0,
+        "positiveUnbanded": 0
+      },
+      "expected": [
+        {
+          "level": "A",
+          "title": "Band A",
+          "min": 80000,
+          "mid": 100000,
+          "max": 120000,
+          "currency": "USD",
+          "dots": [
+            {
+              "pos": 100,
+              "outlier": true
+            },
+            {
+              "pos": 100,
+              "outlier": true
+            },
+            {
+              "pos": 100,
+              "outlier": true
+            },
+            {
+              "pos": 95,
+              "outlier": false
+            },
+            {
+              "pos": 50,
+              "outlier": false
+            }
+          ],
+          "suppressed": false
+        }
+      ]
+    }
+  ]
+}

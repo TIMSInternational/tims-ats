@@ -46,4 +46,9 @@ public interface IDeiReadRepository
     /// answers (answers-only). Null when the org has no climate survey.</summary>
     Task<ClimateInclusionData?> GetClimateInclusionDataAsync(
         string organizationId, Guid? surveyId, CancellationToken cancellationToken);
+
+    /// <summary>getPayEquity (Slice 11c): the salaried⋈gender rows (employee_compensations ⋈ user ⋈
+    /// employee_demographics), the FULL demographic gender counts, and the org display currency — ONE
+    /// TenantScope. Gender comes back as the raw enum ::text (avoids the enum-mapped data source).</summary>
+    Task<DeiPayEquityData> GetPayEquityDataAsync(string organizationId, CancellationToken cancellationToken);
 }

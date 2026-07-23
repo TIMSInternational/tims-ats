@@ -403,6 +403,182 @@ public sealed class CompensationReadRepository(CompensationReadDbContext db) : I
         return result;
     }
 
+    // ── Slice 11c: the five FX reads' row data ──────────────────────────────────
+
+    public async Task<CompAggregateData> GetCompAggregateDataAsync(
+        string organizationId, CancellationToken cancellationToken)
+    {
+        var orgId = Guid.Parse(organizationId);
+        await using var scope = await TenantScope.BeginAsync(_db, orgId, cancellationToken).ConfigureAwait(false);
+
+        var rows = await _db.EmployeeCompensations.AsNoTracking()
+            .Where(c => c.OrganizationId == orgId)
+            .Select(c => new CompAmountRow(c.CurrentSalary, c.VariablePay, c.Currency))
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+        var displayCurrency = await FirstCompanyCurrencyAsync(orgId, cancellationToken).ConfigureAwait(false);
+
+        await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return new CompAggregateData(rows, displayCurrency);
+    }
+
+    public async Task<CompDashboardData> GetDashboardDataAsync(
+        string organizationId, CancellationToken cancellationToken)
+    {
+        var orgId = Guid.Parse(organizationId);
+        await using var scope = await TenantScope.BeginAsync(_db, orgId, cancellationToken).ConfigureAwait(false);
+
+        var compensatedRows = await _db.EmployeeCompensations.AsNoTracking()
+            .Where(c => c.OrganizationId == orgId && c.CurrentSalary > 0)
+            .Select(c => new CompAmountRow(c.CurrentSalary, c.VariablePay, c.Currency))
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+        var compaRatioRows = await _db.EmployeeCompensations.AsNoTracking()
+            .Where(c => c.OrganizationId == orgId && c.CompaRatio != null)
+            .Select(c => c.CompaRatio!.Value)
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+        var activeEmployees = await _db.Users.AsNoTracking()
+            .CountAsync(u => u.OrganizationId == orgId && u.IsActive, cancellationToken).ConfigureAwait(false);
+        var benefitCounts = (await _db.BenefitEnrollments.AsNoTracking()
+                .Where(e => e.OrganizationId == orgId)
+                .GroupBy(e => e.BenefitPlanId)
+                .Select(g => g.Count())
+                .ToListAsync(cancellationToken).ConfigureAwait(false));
+        var displayCurrency = await FirstCompanyCurrencyAsync(orgId, cancellationToken).ConfigureAwait(false);
+
+        // salary_adjustments is not modeled as an entity here (field-authed raw SQL) — count pending via raw SQL
+        // on THIS scope's connection so the org GUC / RLS still applies.
+        var (connection, transaction) = RawHandles();
+        int pending;
+        await using (var command = new NpgsqlCommand(
+            "SELECT COUNT(*)::int FROM salary_adjustments WHERE organization_id = @org AND status = 'pending'",
+            connection,
+            transaction))
+        {
+            command.Parameters.AddWithValue("org", orgId);
+            pending = (int)(await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false))!;
+        }
+
+        await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+
+        var compaRatioAvg = compaRatioRows.Count > 0 ? compaRatioRows.Average() : (double?)null;
+        return new CompDashboardData(
+            compensatedRows,
+            compensatedRows.Count,
+            pending,
+            compaRatioAvg,
+            compaRatioRows.Count,
+            activeEmployees,
+            benefitCounts,
+            displayCurrency);
+    }
+
+    public async Task<BandDistributionData> GetBandDistributionDataAsync(
+        string organizationId, CancellationToken cancellationToken)
+    {
+        var orgId = Guid.Parse(organizationId);
+        await using var scope = await TenantScope.BeginAsync(_db, orgId, cancellationToken).ConfigureAwait(false);
+
+        var rows = await (from c in _db.EmployeeCompensations.AsNoTracking()
+                          join b in _db.SalaryBands.AsNoTracking() on c.BandId equals b.Id
+                          where c.OrganizationId == orgId && c.BandId != null
+                          select new BandDistributionRow(
+                              c.CurrentSalary, c.Currency, b.Id, b.Level, b.Title,
+                              b.MinSalary, b.MidSalary, b.MaxSalary, b.Currency))
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+        var unassigned = await _db.EmployeeCompensations.AsNoTracking()
+            .CountAsync(c => c.OrganizationId == orgId && c.BandId == null, cancellationToken).ConfigureAwait(false);
+        // FIX 1: the POSITIVE-salary unbanded sub-bucket — the missing operand the differencing oracle exploits
+        // (dashboard.compensatedEmployees = positiveBanded + positiveUnbanded; Σdots = positiveBanded).
+        var positiveUnbanded = await _db.EmployeeCompensations.AsNoTracking()
+            .CountAsync(c => c.OrganizationId == orgId && c.BandId == null && c.CurrentSalary > 0, cancellationToken)
+            .ConfigureAwait(false);
+
+        await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return new BandDistributionData(rows, unassigned, positiveUnbanded);
+    }
+
+    public async Task<SimulateCompRow?> GetSimulateRowAsync(
+        string organizationId, Guid subjectUserId, IReadOnlyList<string> compensationFields, CancellationToken cancellationToken)
+    {
+        var orgId = Guid.Parse(organizationId);
+        await using var tenant = await TenantScope.BeginAsync(_db, orgId, cancellationToken).ConfigureAwait(false);
+        var (connection, transaction) = RawHandles();
+
+        var fields = new HashSet<string>(compensationFields, StringComparer.Ordinal);
+        var canSalary = fields.Contains("currentSalary");
+        var canCurrency = fields.Contains("currency");
+        var canCompaRatio = fields.Contains("compaRatio");
+        var canBand = fields.Contains("bandId");
+
+        // §21: only the selectFor-entitled columns LEAVE the DB (never select-then-null). id is always selected.
+        var columns = new List<string> { "id" };
+        if (canSalary)
+        {
+            columns.Add("current_salary");
+        }
+
+        if (canCurrency)
+        {
+            columns.Add("currency");
+        }
+
+        if (canCompaRatio)
+        {
+            columns.Add("compa_ratio");
+        }
+
+        if (canBand)
+        {
+            columns.Add("band_id");
+        }
+
+        var sql = $"SELECT {string.Join(", ", columns)} FROM employee_compensations "
+            + "WHERE organization_id = @org AND user_id = @subject LIMIT 1";
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("org", orgId);
+        command.Parameters.AddWithValue("subject", subjectUserId);
+
+        SimulateCompRow? result = null;
+        await using (var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
+        {
+            if (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                var recordId = reader.GetGuid(reader.GetOrdinal("id")).ToString();
+                double? salary = canSalary && !reader.IsDBNull(reader.GetOrdinal("current_salary"))
+                    ? reader.GetDouble(reader.GetOrdinal("current_salary")) : null;
+                var currency = canCurrency && !reader.IsDBNull(reader.GetOrdinal("currency"))
+                    ? reader.GetString(reader.GetOrdinal("currency")) : null;
+                double? compaRatio = canCompaRatio && !reader.IsDBNull(reader.GetOrdinal("compa_ratio"))
+                    ? reader.GetDouble(reader.GetOrdinal("compa_ratio")) : null;
+                Guid? bandId = canBand && !reader.IsDBNull(reader.GetOrdinal("band_id"))
+                    ? reader.GetGuid(reader.GetOrdinal("band_id")) : null;
+                result = new SimulateCompRow(recordId, salary, currency, compaRatio, bandId, canCompaRatio);
+            }
+        }
+
+        await tenant.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return result;
+    }
+
+    public async Task<SimulateBand?> GetSimulateBandAsync(
+        string organizationId, Guid bandId, CancellationToken cancellationToken)
+    {
+        var orgId = Guid.Parse(organizationId);
+        await using var scope = await TenantScope.BeginAsync(_db, orgId, cancellationToken).ConfigureAwait(false);
+        var band = await _db.SalaryBands.AsNoTracking()
+            .Where(b => b.Id == bandId && b.OrganizationId == orgId)
+            .Select(b => new SimulateBand(b.MinSalary, b.MidSalary, b.MaxSalary, b.Currency))
+            .FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
+        await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return band;
+    }
+
+    private async Task<string?> FirstCompanyCurrencyAsync(Guid orgId, CancellationToken cancellationToken) =>
+        await _db.Companies.AsNoTracking()
+            .Where(c => c.OrganizationId == orgId)
+            .OrderBy(c => c.CreatedAt)
+            .Select(c => c.Currency)
+            .FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
+
     // ── helpers ───────────────────────────────────────────────────────────────
 
     private (NpgsqlConnection Connection, NpgsqlTransaction Transaction) RawHandles()

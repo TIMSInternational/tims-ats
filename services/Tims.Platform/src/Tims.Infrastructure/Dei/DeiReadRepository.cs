@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Tims.Application.Dei;
 
 namespace Tims.Infrastructure.Dei;
@@ -199,6 +200,70 @@ public sealed class DeiReadRepository(DeiReadDbContext db) : IDeiReadRepository
         await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
 
         return new ClimateInclusionData(ParseQuestions(survey.Questions), answers.Select(ParseObject).ToList());
+    }
+
+    // #12 getPayEquity (Slice 11c) ────────────────────────────────────────────────
+    public async Task<DeiPayEquityData> GetPayEquityDataAsync(
+        string organizationId, CancellationToken cancellationToken)
+    {
+        var orgId = Guid.Parse(organizationId);
+        await using var scope = await TenantScope.BeginAsync(_db, orgId, cancellationToken).ConfigureAwait(false);
+        var connection = (Npgsql.NpgsqlConnection)_db.Database.GetDbConnection();
+        var transaction = (Npgsql.NpgsqlTransaction)_db.Database.CurrentTransaction!.GetDbTransaction();
+
+        // salaryWithGender: employee_compensations ⋈ user ⋈ employee_demographics.gender. gender is a native
+        // enum → ::text so this needs NO enum-mapped data source (avoids the DeiReadDataSource here). The LEFT
+        // join keeps comp rows whose user has no demographics (gender null → the skipped-salaried bucket).
+        var rows = new List<DeiSalaryGenderRow>();
+        await using (var command = new Npgsql.NpgsqlCommand(
+            "SELECT ec.current_salary, ec.currency, ed.gender::text AS gender "
+            + "FROM employee_compensations ec "
+            + "LEFT JOIN employee_demographics ed ON ed.user_id = ec.user_id "
+            + "WHERE ec.organization_id = @org",
+            connection,
+            transaction))
+        {
+            command.Parameters.AddWithValue("org", orgId);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                rows.Add(new DeiSalaryGenderRow(
+                    reader.GetDouble(0),
+                    reader.IsDBNull(1) ? null : reader.GetString(1),
+                    reader.IsDBNull(2) ? null : reader.GetString(2)));
+            }
+        }
+
+        // FULL demographic gender counts (the getGenderRepresentation population) — ::text, no enum mapping.
+        var genderCounts = new List<DeiGroupCount>();
+        await using (var command = new Npgsql.NpgsqlCommand(
+            "SELECT gender::text AS gender, COUNT(*)::int AS c FROM employee_demographics "
+            + "WHERE organization_id = @org GROUP BY gender",
+            connection,
+            transaction))
+        {
+            command.Parameters.AddWithValue("org", orgId);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                genderCounts.Add(new DeiGroupCount(reader.GetString(0), reader.GetInt32(1)));
+            }
+        }
+
+        // Display currency = companies.currency, earliest created_at (matches the TS displayCurrency query).
+        string? displayCurrency;
+        await using (var command = new Npgsql.NpgsqlCommand(
+            "SELECT currency FROM companies WHERE organization_id = @org ORDER BY created_at ASC LIMIT 1",
+            connection,
+            transaction))
+        {
+            command.Parameters.AddWithValue("org", orgId);
+            var value = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+            displayCurrency = value as string;
+        }
+
+        await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return new DeiPayEquityData(rows, genderCounts, displayCurrency);
     }
 
     // ── scope-free group-by helpers (called inside an already-open TenantScope) ────

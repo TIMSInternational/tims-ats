@@ -29,6 +29,19 @@ public sealed class WorkerOptions : IValidatableObject
     /// </summary>
     public bool HrisSyncEnabled { get; init; } = true;
 
+    /// <summary>
+    /// Quartz cron expression for the daily FX-rate refresh (Slice 11c). Default = 05:00 UTC daily (after the
+    /// ECB ~16:00 CET publish). Validated live by the scheduler builder (fail-fast on a malformed expression).
+    /// </summary>
+    [Required]
+    public string FxRefreshCron { get; init; } = "0 0 5 * * ?";
+
+    /// <summary>
+    /// Whether the FX-refresh trigger is registered. When false the job is still stored durably (its JobKey
+    /// exists + is triggerable) but no cron trigger fires it — the deploy-time off switch.
+    /// </summary>
+    public bool FxRefreshEnabled { get; init; } = true;
+
     /// <summary>Max attempts (initial try + retries) the resilient runner makes for one job fire.</summary>
     [Range(1, 10)]
     public int JobMaxAttempts { get; init; } = 3;

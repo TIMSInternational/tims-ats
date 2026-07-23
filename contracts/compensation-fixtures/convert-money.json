@@ -1,0 +1,40 @@
+{
+  "description": "Golden parity for the PURE convert kernel convertMoneyWithRate(amount, from, to, rate) in @tims/shared (Slice 11c). The live packages/api/src/lib/currency.ts convertMoney delegates to it (behavior-preserving); the C# Tims.Domain.Compensation.CompensationKernels.ConvertMoney mirrors it. Asserted IDENTICALLY by the REAL TS export (tests/currency/convert-money-fixtures.test.ts) and the C# unit test (Tims.UnitTests). FIXED rates only — the live frankfurter fetch is NEVER fixtured (NEVER golden-parity a live rate). Pins: originalAmount = Number(amount)||0; amount = roundMoney(originalAmount*rate) with the Number.EPSILON half-up bias (1.005 -> 1.01, NOT banker's 1.00); from/to pass through verbatim (the CALLER normalizes).",
+  "cases": [
+    {
+      "name": "identity rate=1 same currency: 123.45 COP -> 123.45 COP",
+      "input": { "amount": 123.45, "from": "COP", "to": "COP", "rate": 1 },
+      "expected": { "originalAmount": 123.45, "originalCurrency": "COP", "amount": 123.45, "currency": "COP", "rate": 1 }
+    },
+    {
+      "name": "cross rate: 400000 COP * 0.00025 -> 100 USD",
+      "input": { "amount": 400000, "from": "COP", "to": "USD", "rate": 0.00025 },
+      "expected": { "originalAmount": 400000, "originalCurrency": "COP", "amount": 100, "currency": "USD", "rate": 0.00025 }
+    },
+    {
+      "name": "EPSILON half-up bias: 1.005 USD @ rate 1 -> 1.01 (NOT banker's 1.00)",
+      "input": { "amount": 1.005, "from": "USD", "to": "USD", "rate": 1 },
+      "expected": { "originalAmount": 1.005, "originalCurrency": "USD", "amount": 1.01, "currency": "USD", "rate": 1 }
+    },
+    {
+      "name": "zero amount coerces to 0 (Number(amount)||0), still shaped",
+      "input": { "amount": 0, "from": "EUR", "to": "USD", "rate": 1.1 },
+      "expected": { "originalAmount": 0, "originalCurrency": "EUR", "amount": 0, "currency": "USD", "rate": 1.1 }
+    },
+    {
+      "name": "sub-cent rate truncation: 100 USD * 0.923 -> 92.3 EUR",
+      "input": { "amount": 100, "from": "USD", "to": "EUR", "rate": 0.923 },
+      "expected": { "originalAmount": 100, "originalCurrency": "USD", "amount": 92.3, "currency": "EUR", "rate": 0.923 }
+    },
+    {
+      "name": "three-decimal input rounds to 2: 333.333 USD @ rate 1 -> 333.33",
+      "input": { "amount": 333.333, "from": "USD", "to": "USD", "rate": 1 },
+      "expected": { "originalAmount": 333.333, "originalCurrency": "USD", "amount": 333.33, "currency": "USD", "rate": 1 }
+    },
+    {
+      "name": "large CRC -> USD conversion: 5250000 CRC * 0.00189 -> 9922.5",
+      "input": { "amount": 5250000, "from": "CRC", "to": "USD", "rate": 0.00189 },
+      "expected": { "originalAmount": 5250000, "originalCurrency": "CRC", "amount": 9922.5, "currency": "USD", "rate": 0.00189 }
+    }
+  ]
+}

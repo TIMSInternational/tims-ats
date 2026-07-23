@@ -1,0 +1,189 @@
+{
+  "description": "Golden parity for buildCompDashboardKpis(input) in @tims/shared (Slice 11c, honest-fixture extraction of the getDashboardKpis router body). Compensated aggregates suppressed when the compensated population is 1..4 OR (fail-soft) payroll is null; avgCompaRatio suppressed when <5 compaRatio rows OR (FIX 7) the mean is exactly 0; pendingAdjustments min-5 floored; benefitsUtilizationPct = mean over plans of enrolled/activeEmployees. Asserted by the REAL TS export AND C# CompensationKernels.BuildCompDashboardKpis.",
+  "cases": [
+    {
+      "name": "published happy path",
+      "input": {
+        "compensatedCount": 10,
+        "compaRatioCount": 8,
+        "pendingAdjustments": 7,
+        "activeEmployees": 20,
+        "benefitEnrollmentCounts": [
+          10,
+          5
+        ],
+        "compaRatioAvg": 1.05,
+        "payroll": {
+          "amount": 1000000,
+          "converted": true,
+          "ratesAsOf": "2026-07-21"
+        },
+        "displayCurrency": "USD"
+      },
+      "expected": {
+        "totalMonthlyPayroll": 1000000,
+        "avgSalary": 100000,
+        "currency": "USD",
+        "converted": true,
+        "ratesAsOf": "2026-07-21",
+        "compensatedEmployees": 10,
+        "compensatedSuppressed": false,
+        "activeEmployees": 20,
+        "pendingAdjustments": 7,
+        "pendingAdjustmentsSuppressed": false,
+        "benefitsUtilizationPct": 37.5,
+        "avgCompaRatio": 1.05
+      }
+    },
+    {
+      "name": "compensated 1..4 suppresses payroll/avg/count",
+      "input": {
+        "compensatedCount": 3,
+        "compaRatioCount": 8,
+        "pendingAdjustments": 7,
+        "activeEmployees": 20,
+        "benefitEnrollmentCounts": [
+          10,
+          5
+        ],
+        "compaRatioAvg": 1.05,
+        "payroll": null,
+        "displayCurrency": "USD"
+      },
+      "expected": {
+        "totalMonthlyPayroll": null,
+        "avgSalary": null,
+        "currency": "USD",
+        "converted": false,
+        "ratesAsOf": null,
+        "compensatedEmployees": null,
+        "compensatedSuppressed": true,
+        "activeEmployees": 20,
+        "pendingAdjustments": 7,
+        "pendingAdjustmentsSuppressed": false,
+        "benefitsUtilizationPct": 37.5,
+        "avgCompaRatio": 1.05
+      }
+    },
+    {
+      "name": "FIX7: compaRatioAvg exactly 0 → avgCompaRatio null",
+      "input": {
+        "compensatedCount": 10,
+        "compaRatioCount": 8,
+        "pendingAdjustments": 0,
+        "activeEmployees": 20,
+        "benefitEnrollmentCounts": [],
+        "compaRatioAvg": 0,
+        "payroll": {
+          "amount": 1000000,
+          "converted": false,
+          "ratesAsOf": null
+        },
+        "displayCurrency": "USD"
+      },
+      "expected": {
+        "totalMonthlyPayroll": 1000000,
+        "avgSalary": 100000,
+        "currency": "USD",
+        "converted": false,
+        "ratesAsOf": null,
+        "compensatedEmployees": 10,
+        "compensatedSuppressed": false,
+        "activeEmployees": 20,
+        "pendingAdjustments": 0,
+        "pendingAdjustmentsSuppressed": false,
+        "benefitsUtilizationPct": 0,
+        "avgCompaRatio": null
+      }
+    },
+    {
+      "name": "fail-soft: null payroll while compensatedCount>=5 → effectiveCompensatedSuppressed",
+      "input": {
+        "compensatedCount": 10,
+        "compaRatioCount": 8,
+        "pendingAdjustments": 0,
+        "activeEmployees": 20,
+        "benefitEnrollmentCounts": [],
+        "compaRatioAvg": 1.1,
+        "payroll": null,
+        "displayCurrency": "USD"
+      },
+      "expected": {
+        "totalMonthlyPayroll": null,
+        "avgSalary": null,
+        "currency": "USD",
+        "converted": false,
+        "ratesAsOf": null,
+        "compensatedEmployees": null,
+        "compensatedSuppressed": true,
+        "activeEmployees": 20,
+        "pendingAdjustments": 0,
+        "pendingAdjustmentsSuppressed": false,
+        "benefitsUtilizationPct": 0,
+        "avgCompaRatio": 1.1
+      }
+    },
+    {
+      "name": "pendingAdjustments 1..4 floored",
+      "input": {
+        "compensatedCount": 10,
+        "compaRatioCount": 8,
+        "pendingAdjustments": 3,
+        "activeEmployees": 20,
+        "benefitEnrollmentCounts": [],
+        "compaRatioAvg": 1.1,
+        "payroll": {
+          "amount": 1000000,
+          "converted": false,
+          "ratesAsOf": null
+        },
+        "displayCurrency": "USD"
+      },
+      "expected": {
+        "totalMonthlyPayroll": 1000000,
+        "avgSalary": 100000,
+        "currency": "USD",
+        "converted": false,
+        "ratesAsOf": null,
+        "compensatedEmployees": 10,
+        "compensatedSuppressed": false,
+        "activeEmployees": 20,
+        "pendingAdjustments": null,
+        "pendingAdjustmentsSuppressed": true,
+        "benefitsUtilizationPct": 0,
+        "avgCompaRatio": 1.1
+      }
+    },
+    {
+      "name": "compaRatio <5 rows → avgCompaRatio null",
+      "input": {
+        "compensatedCount": 10,
+        "compaRatioCount": 3,
+        "pendingAdjustments": 0,
+        "activeEmployees": 20,
+        "benefitEnrollmentCounts": [],
+        "compaRatioAvg": 1.1,
+        "payroll": {
+          "amount": 1000000,
+          "converted": false,
+          "ratesAsOf": null
+        },
+        "displayCurrency": "USD"
+      },
+      "expected": {
+        "totalMonthlyPayroll": 1000000,
+        "avgSalary": 100000,
+        "currency": "USD",
+        "converted": false,
+        "ratesAsOf": null,
+        "compensatedEmployees": 10,
+        "compensatedSuppressed": false,
+        "activeEmployees": 20,
+        "pendingAdjustments": 0,
+        "pendingAdjustmentsSuppressed": false,
+        "benefitsUtilizationPct": 0,
+        "avgCompaRatio": null
+      }
+    }
+  ]
+}

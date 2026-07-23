@@ -7,9 +7,12 @@ using Quartz;
 using Serilog;
 using Serilog.Formatting.Compact;
 using Tims.Application.Audit;
+using Tims.Application.Fx;
 using Tims.Infrastructure.Audit;
+using Tims.Infrastructure.Fx;
 using Tims.Infrastructure.Hris;
 using Tims.Workers;
+using Tims.Workers.Fx;
 using Tims.Workers.HealthChecks;
 using Tims.Workers.Hris;
 using Tims.Workers.Jobs;
@@ -53,6 +56,11 @@ try
         .Bind(builder.Configuration.GetSection(HrisOptions.SectionName))
         .ValidateDataAnnotations()
         .ValidateOnStart();
+    builder.Services
+        .AddOptions<FxOptions>()
+        .Bind(builder.Configuration.GetSection(FxOptions.SectionName))
+        .ValidateDataAnnotations()
+        .ValidateOnStart();
 
     // Read the bootstrap values raw (before Build()): OTel resource/exporter and the Quartz schedule
     // must be wired at registration time. ValidateOnStart above still guards the runtime-critical values.
@@ -92,6 +100,18 @@ try
     builder.Services.AddScoped<IDataAccessAuditor, DataAccessAuditWriter>();
     builder.Services.AddHrisConnectors();
     builder.Services.AddHrisSyncWorker();
+
+    // --- FX gateway plane (Slice 11c): the daily refresh job pins frankfurter (ECB) rates into fx_rates ----
+    // The global RLS-exempt FxRateDbContext writes on the PRIVILEGED/owner connection (no TenantScope). The
+    // typed frankfurter client + Polly resilience is AddFxRateGateway; the write repo + use case are scoped so
+    // Quartz's per-fire DI scope resolves them fresh. AddDbContext is lazy — a placeholder conn never blocks boot.
+    builder.Services.AddDbContext<FxRateDbContext>(options => options.UseNpgsql(databaseConnectionString));
+    builder.Services.AddFxRateGateway();
+    builder.Services.AddScoped<IFxRateWriteRepository, FxRateWriteRepository>();
+    builder.Services.AddScoped<RefreshFxRatesUseCase>();
+    builder.Services.AddScoped<FxRefreshJob>();
+    // Scoped so Quartz's Microsoft-DI job factory resolves it (and its scoped sweep) from the per-fire scope.
+    builder.Services.AddScoped<FxRefreshQuartzJob>();
 
     // --- Resilient-job framework ----------------------------------------------------------------
     builder.Services.AddSingleton<IJobFailureAlerter, LogOnlyJobFailureAlerter>();

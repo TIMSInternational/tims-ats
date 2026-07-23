@@ -36,6 +36,7 @@ using Tims.Application.ExternalVendor;
 using Tims.Application.Identity;
 using Tims.Application.Engagement;
 using Tims.Application.Dei;
+using Tims.Application.Fx;
 using Tims.Application.NineBox;
 using Tims.Application.Reporting;
 using Tims.Application.Succession;
@@ -53,6 +54,7 @@ using Tims.Infrastructure.ExternalVendor;
 using Tims.Infrastructure.Hris;
 using Tims.Infrastructure.Engagement;
 using Tims.Infrastructure.Dei;
+using Tims.Infrastructure.Fx;
 using Tims.Infrastructure.NineBox;
 using Tims.Infrastructure.Identity;
 using Tims.Infrastructure.RateLimiting;
@@ -319,6 +321,15 @@ try
             DeiReadDataSource.MapEnums));
     builder.Services.AddScoped<IDeiReadRepository, DeiReadRepository>();
     builder.Services.AddScoped<DeiReadUseCase>();
+
+    // Phase-5 Slice 11c: the FX read plane. The global RLS-exempt FxRateDbContext reads the DB-pinned rates the
+    // Workers FxRefreshJob writes; FxRateProvider resolves the latest effective-dated pin (cross-rate via USD,
+    // FAIL-SOFT cold-start → null); FxMoneyConverter bridges the reads to the pure convertMoney/sumMoney kernels.
+    // Feeds dei.getPayEquity + the five compensation FX reads. Dark unless FxReadsEnabled (deploy-gated cutover).
+    builder.Services.AddDbContext<FxRateDbContext>(options => options.UseNpgsql(databaseConnectionString));
+    builder.Services.AddScoped<IFxRateProvider, FxRateProvider>();
+    builder.Services.AddScoped<FxMoneyConverter>();
+    builder.Services.AddScoped<CompensationFxReadUseCase>();
 
     builder.Services
         .AddOptions<StripeBillingOptions>()
@@ -794,6 +805,14 @@ try
     if (externalOptions.DeiReadEnabled || isOpenApiDocGeneration)
     {
         app.MapDeiReadEndpoints();
+    }
+
+    // Phase-5 Slice 11c: the FX-derived reads (dei.getPayEquity + the five compensation FX reads), gated on
+    // their OWN flag (they canary AFTER the FxRefreshJob first populates fx_rates). Dark unless FxReadsEnabled.
+    if (externalOptions.FxReadsEnabled || isOpenApiDocGeneration)
+    {
+        app.MapDeiPayEquityEndpoint();
+        app.MapCompensationFxReadEndpoints();
     }
 
     // Authz probe (WP2.5): the C# equivalent of the tRPC `requirePermission` gate. Resolves the

@@ -30,7 +30,9 @@ public sealed class SalaryBandCompReadEntity
     public DateTime UpdatedAt { get; set; }
 }
 
-/// <summary>employee_compensations — currentSalary + compaRatio for the compa-ratio distribution (read #4).</summary>
+/// <summary>employee_compensations — currentSalary + compaRatio for the compa-ratio distribution (read #4);
+/// Slice 11c adds currency/variablePay/bandId for the FX aggregate reads (band-distribution / pay-equity /
+/// total-comp / dashboard-KPI).</summary>
 public sealed class EmployeeCompensationCompReadEntity
 {
     public Guid Id { get; set; }
@@ -38,6 +40,18 @@ public sealed class EmployeeCompensationCompReadEntity
     public Guid UserId { get; set; }
     public double CurrentSalary { get; set; }
     public double? CompaRatio { get; set; }
+    public string Currency { get; set; } = string.Empty;
+    public double? VariablePay { get; set; }
+    public Guid? BandId { get; set; }
+}
+
+/// <summary>companies — the org display currency (earliest createdAt) for the FX aggregate reads (Slice 11c).</summary>
+public sealed class CompanyCompReadEntity
+{
+    public Guid Id { get; set; }
+    public Guid OrganizationId { get; set; }
+    public string? Currency { get; set; }
+    public DateTime CreatedAt { get; set; }
 }
 
 /// <summary>benefit_plans — id/name/type for the benefits utilization rollup (read #3).</summary>

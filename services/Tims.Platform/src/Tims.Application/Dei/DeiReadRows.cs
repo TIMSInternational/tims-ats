@@ -34,3 +34,15 @@ public sealed record DeiDashboardData(
 public sealed record ClimateInclusionData(
     IReadOnlyList<JsonObject> Questions,
     IReadOnlyList<JsonObject> ResponseAnswers);
+
+/// <summary>getPayEquity (Slice 11c) input: one comp row's salary + currency + the joined demographic gender
+/// (null when the user has no demographics row / no gender). Gender is the native-enum label (raw ::text).</summary>
+public sealed record DeiSalaryGenderRow(double Salary, string? Currency, string? Gender);
+
+/// <summary>getPayEquity input bundle (ONE TenantScope): the salaried⋈gender rows, the FULL demographic gender
+/// counts (the getGenderRepresentation population — for the non-positive-salary complement guard), and the org's
+/// display currency (companies.currency, earliest). FX conversion happens in the use case (FxMoneyConverter).</summary>
+public sealed record DeiPayEquityData(
+    IReadOnlyList<DeiSalaryGenderRow> Rows,
+    IReadOnlyList<DeiGroupCount> GenderCounts,
+    string? DisplayCurrency);

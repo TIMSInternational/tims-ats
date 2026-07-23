@@ -101,6 +101,71 @@ public static class DeiKernels
             : ReportingMath.JsRound((sorted[mid - 1] + sorted[mid]) / 2d);
     }
 
+    /// <summary>
+    /// The getPayEquity shaping kernel (Slice 11c) — a faithful port of the pure tail of the TS
+    /// <c>dei.service.getPayEquity</c> (the FX conversion happens BEFORE this, in the use case). Given each
+    /// gender cohort's ALREADY-CONVERTED positive salaries (first-seen order), the FULL demographic gender counts,
+    /// and the skipped-salaried (missing/undisclosed-gender) count, it applies the min-5 anti-differencing guard
+    /// and, when clear, emits per-gender count/avg/median + the female-vs-male median gap%.
+    ///
+    /// Suppression (all-or-nothing, present-key cardinality) fires when the TOTAL gendered+salaried population is
+    /// 1..4, OR the skipped-salaried implicit bucket is 1..4, OR ANY gender's non-positive-salary complement
+    /// (demographicCount − salaried) is 1..4, OR ANY cohort is 1..4 — then EMPTY results + null gap + suppressed
+    /// (no group keys survive). averageSalary = JS half-up round of the mean; medianSalary = the shared median
+    /// (odd → the middle value, even → half-up mean of the two middles). gapPct = round((fMed−mMed)/mMed*1000)/10,
+    /// null unless BOTH female + male cohorts exist with a positive male median.
+    /// </summary>
+    public static PayEquityView BuildPayEquity(
+        IReadOnlyList<PayEquityGenderInput> byGender,
+        IReadOnlyDictionary<string, int> demographicGenderCounts,
+        int skippedSalaried,
+        string currency)
+    {
+        var populationTotal = byGender.Sum(g => g.ConvertedSalaries.Count);
+
+        // Per-gender non-positive-salary complement: demographicCount − salariedCount. A 1..4 complement is a
+        // recoverable bucket (getGenderRepresentation publishes the demographic count), so fold it into the trigger.
+        var anyComplementSubFloor = byGender.Any(g =>
+        {
+            var demographic = demographicGenderCounts.TryGetValue(g.Gender, out var d) ? d : g.ConvertedSalaries.Count;
+            return Suppress(demographic - g.ConvertedSalaries.Count);
+        });
+
+        var suppressed = Suppress(populationTotal)
+            || Suppress(skippedSalaried)
+            || anyComplementSubFloor
+            || byGender.Any(g => Suppress(g.ConvertedSalaries.Count));
+        if (suppressed)
+        {
+            return new PayEquityView(Array.Empty<PayEquityGroup>(), null, true, currency);
+        }
+
+        var results = new List<PayEquityGroup>(byGender.Count);
+        double? femaleMedian = null;
+        double? maleMedian = null;
+        foreach (var g in byGender)
+        {
+            var salaries = g.ConvertedSalaries;
+            var average = (int)ReportingMath.JsRound(salaries.Sum() / salaries.Count);
+            var median = Median(salaries);
+            results.Add(new PayEquityGroup(g.Gender, salaries.Count, average, median, false));
+            if (string.Equals(g.Gender, "female", StringComparison.Ordinal))
+            {
+                femaleMedian = median;
+            }
+            else if (string.Equals(g.Gender, "male", StringComparison.Ordinal))
+            {
+                maleMedian = median;
+            }
+        }
+
+        double? gapPct = femaleMedian is { } f && maleMedian is { } m && m > 0
+            ? ReportingMath.JsRound((f - m) / m * 1000) / 10d
+            : null;
+
+        return new PayEquityView(results, gapPct, false, currency);
+    }
+
     /// <summary>Server-side age-band bucketing (the raw DOB never leaves the server). Age = full years at
     /// <paramref name="now"/> — the JS getFullYear/getMonth/getDate month/day decrement.</summary>
     public static string AgeBand(DateTime dob, DateTime now)
