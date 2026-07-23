@@ -1,7 +1,15 @@
 # TIMS ATS — C# Backend First Prod Deploy (Gate G3) + Cutover Runbook
 
 **Target:** AWS App Runner (us-west-2, co-located with the Supabase DB — hard latency constraint from #100).
-**Prepared:** 2026-07-21. **Status:** ready for Federico execution.
+**Prepared:** 2026-07-21. **Updated:** 2026-07-23 (current to `main` `6db1dbb`, post-#173 — the ENTIRE strangler
+read + pure-code write surface is merged and dark; the pure-code port runway is exhausted). **Status:** ready for
+Federico execution.
+
+> **What changed since 2026-07-21.** The runbook was written at Gate G3 with 9 dark surfaces. Since then 13 more
+> slices merged (all the people/comp/eval360/succession/nine-box/engagement READS + the compensation/eval360/
+> succession/nine-box/engagement WRITES + the FX gateway) — **22 surface flags now**, one new EF migration
+> (`fx_rates`), and several **flip-ready** write domains. §2 (flag surface), §1 (migrations), and §6 (cutover
+> order) below are updated to the full current set. Everything is still dark; nothing has been deployed.
 
 > **Who runs what.** Everything in this runbook that touches PROD (AWS, secrets, prod DDL, DNS, feature-flag
 > flips, deleting TS) is **Federico-run** — the standing migration rule (`I never touch prod`). Claude prepared
@@ -35,15 +43,31 @@
   clustered `qrtz_` store DDL is applied to prod but inert. Deploy it in a later step (§8), not now.
 - **Egress:** App Runner default public egress → Supabase pooler (internet-facing). No VPC connector needed.
 - **Secrets:** AWS Secrets Manager, bound to the service; the instance role grants read.
-- **No new EF migration** is required for this deploy — every strangler surface is `efcoreReadOnly`/
-  `efcoreStranglerWrite` over EXISTING Prisma tables. The only EF-owned migration (`20260716000000_hris_domain`)
-  is for the deferred Workers/HRIS path (§8). `qrtz_` already applied.
+- **EF migrations for prod.** Every strangler surface EXCEPT FX is `efcoreReadOnly`/`efcoreStranglerWrite` over
+  EXISTING Prisma tables (no DDL). Two EF-owned migrations exist:
+  - **`20260723032952_fx_rates` — apply BEFORE the FX-reads cutover** (surface #10 in §6). It creates the
+    efcore-owned `fx_rates` table — a **global, RLS-EXEMPT catalog** (like `ai_agents`/`permissions`), `GRANT SELECT
+    TO app_tenant`, written only by the privileged daily `FxRefreshJob`. The API can run without it as long as
+    `FxReadsEnabled=false`; applying it + running the first frankfurter refresh is a prerequisite ONLY for flipping
+    FX reads. (The refresh job runs on the Quartz scheduler — see §8; until Workers deploy, seed `fx_rates` via a
+    one-off refresh or manual insert before flipping FX.)
+  - **`20260716000000_hris_domain`** — for the deferred Workers/HRIS path (§8), inert until then. `qrtz_` already applied.
+  - Apply with `dotnet ef migrations script <from> <to>` → review the SQL → `psql` direct (5432), like the compliance SQL.
 
 ---
 
 ## 2. Prod config — the `Platform:` env surface
-App Runner env vars use `Platform__<Name>` (double-underscore = section nesting). All 9 flags default `false`;
-set them explicitly `false` for the first deploy for auditability.
+App Runner env vars use `Platform__<Name>` (double-underscore = section nesting). **All 21 surface flags default
+`false`;** set them explicitly `false` for the first deploy for auditability. The full set (each = one strangled
+surface, flipped per §6):
+- **Reads (12):** `ExternalVendorReadEnabled`, `BillingReadEnabled`, `BillingUsageEnabled`, `ReportingReadEnabled`,
+  `TeamIntelReadEnabled`, `Evaluation360ReadEnabled`, `SuccessionReadEnabled`, `CompensationReadEnabled`,
+  `NineBoxReadEnabled`, `EngagementReadEnabled`, `DeiReadEnabled`, `FxReadsEnabled` (needs the `fx_rates` migration
+  + a seed first).
+- **Writes (9):** `ValidationStaffWriteEnabled`, `ExternalVendorWriteEnabled`, `CompensationWriteEnabled`,
+  `Evaluation360WriteEnabled`, `SuccessionWriteEnabled`, `NineBoxWriteEnabled`, `EngagementWriteEnabled`,
+  `BillingWebhookWriteEnabled`, `BillingSelfServeEnabled`.
+(The exact CLR property names are in `services/Tims.Platform/src/Tims.Api/Configuration/PlatformOptions.cs`.)
 
 | Env var | Source | Required | Notes |
 |---|---|---|---|
@@ -54,7 +78,7 @@ set them explicitly `false` for the first deploy for auditability.
 | `Platform__SupabaseJwksMetadataAddress` | Supabase project | ✅ | JWKS URL — **must be asymmetric (RS256/JWKS), NOT legacy HS256** (deploy-verify below). |
 | `Platform__ImpersonationSecret` | = the TS HMAC impersonation secret | ✅ (for impersonation) | **must byte-match** the TS value (shared signed cookie) or owner impersonation breaks. |
 | `Platform__OtlpEndpoint` | observability backend | optional | OTel traces/metrics export. |
-| `Platform__<Surface>Enabled` ×9 | — | set `false` | ExternalVendorRead/Write, BillingRead/Usage/WebhookWrite/SelfServe, ReportingRead, ValidationStaffWrite, TeamIntelRead. |
+| `Platform__<Surface>Enabled` ×21 | — | set `false` | The full read+write set listed above (§2). All default false; set explicit for auditability. |
 | `Stripe__SecretKey`, `Stripe__WebhookSecret` | Stripe | only before billing-write cutover | leave unset while billing writes are dark. |
 | `ASPNETCORE_URLS` | — | preset in Dockerfile (`http://+:8080`) | do not override. |
 
@@ -115,15 +139,39 @@ generated OpenAPI client → **(b)** Federico sets the flag `true` → **(c)** c
 prod-verify → **(e)** delete the TS router/service/repo (+ flip the table to `efcore` where a write surface is
 now fully C#). **The flag alone does not move the FE.**
 
-**Order (lowest-risk read → writes last):**
+**Order (lowest-risk read → writes last). "Flip-ready" = the domain is FULLY C# once its write flips, so after
+prod-verify you drop the TS router/service/repo and flip its tables to `efcore` (a true ownership transfer).
+"Coexistence" = the tables are still read/written by TS or other C#-unported surfaces, so both writers stay
+(dark-coordinated) and the table stays `efcoreStranglerWrite` — no ownership flip yet.**
+
+**Phase A — reads (each: FE-rewire PR → flag true → canary → verify; no ownership change, tables stay Prisma-owned):**
 1. `TeamIntelReadEnabled` — newest, isolated, pure read. **Best first canary.**
 2. `ReportingReadEnabled`.
-3. `BillingReadEnabled` → then `BillingUsageEnabled`.
-4. `ExternalVendorReadEnabled` — API-key surface; coordinate the external vendor.
-5. `ExternalVendorWriteEnabled` + `ValidationStaffWriteEnabled` — completes `preemployment_validations`; then
-   flip that table's ownership to `efcore` and delete both TS write paths together.
-6. `BillingWebhookWriteEnabled` (set `Stripe__*` + re-point the Stripe webhook to C# first) → then
-   `BillingSelfServeEnabled`. `subscriptions`/`invoices` ownership flip stays blocked (non-billing TS writers).
+3. `BillingReadEnabled` → `BillingUsageEnabled`.
+4. `Evaluation360ReadEnabled` → `SuccessionReadEnabled` → `CompensationReadEnabled` → `NineBoxReadEnabled` →
+   `EngagementReadEnabled` → `DeiReadEnabled` (the people/comp dashboards — staff-JWT reads; k-anon suppression
+   lives in the shared kernels, already golden-parity).
+5. `FxReadsEnabled` — **prereq: apply `fx_rates` (§1) + seed the first frankfurter refresh** (register frankfurter.dev
+   in the SOC2 subprocessor list). Backs the FX-dependent comp + dei pay-equity reads.
+6. `ExternalVendorReadEnabled` — API-key surface; coordinate the external vendor.
+
+**Phase B — writes (after each domain's reads are verified; writes last):**
+7. `ExternalVendorWriteEnabled` + `ValidationStaffWriteEnabled` — **FLIP-READY together:** completes
+   `preemployment_validations` → flip that table to `efcore` + delete both TS write paths.
+8. `Evaluation360WriteEnabled` — **FLIP-READY:** eval360 reads (#4) + writes = fully C# → drop the TS eval360 router,
+   flip review_cycles/rater_assignments/rater_responses to `efcore`.
+9. `SuccessionWriteEnabled` — **FLIP-READY:** drop TS succession router, flip critical_roles/successors.
+10. `NineBoxWriteEnabled` — **FLIP-READY:** drop TS ninebox router, flip calibration_sessions/members/votes.
+11. `CompensationWriteEnabled` — **COEXISTENCE** (salary_adjustments/employee_compensations still read by other
+    surfaces); keep both writers, table stays `efcoreStranglerWrite`.
+12. `EngagementWriteEnabled` — **COEXISTENCE** (surveys/survey_responses/action_plans read by monitoring.ts + dei +
+    the alert cron); keep both writers.
+13. `BillingWebhookWriteEnabled` (set `Stripe__*` + re-point the Stripe webhook to C# first) → `BillingSelfServeEnabled`
+    — **COEXISTENCE:** `subscriptions`/`invoices` ownership flip stays blocked (non-billing TS writers in the
+    provisioning txns).
+
+**The H1/both-stacks hardenings ship LIVE with the TS side already** (succession/nine-box/engagement reject cross-org
+FK refs) — they only ever reject previously-broken writes, so they are safe irrespective of cutover timing.
 
 ## 7. Rollback
 - **Per surface:** flag `false` + FE reverts to tRPC (keep TS until prod-verified — never delete TS before verify). Instant.
@@ -148,6 +196,21 @@ over `app_tenant`. Set `Workers:HrisSyncEnabled=false` until real connector rows
 7. [ ] Per surface (§6): tell Claude to ship the FE-rewiring PR → flip the flag → canary → verify → delete TS.
 
 ## 10. Claude's scope (in parallel, no prod access)
-- Generate the OpenAPI client for the FE from `contracts/openapi/Tims.Api.json`.
-- Prepare the per-surface FE-rewiring PRs, starting with **team-intel read** (surface #1).
-- Resolve any code follow-ups the §5 deploy-verifies surface.
+- Generate the OpenAPI client for the FE from `contracts/openapi/Tims.Api.json` (the contract is emitted at build,
+  committed, and accurate even though the routes are dark — so the client can be generated BEFORE the deploy).
+- Prepare the per-surface FE-rewiring PRs in the §6 order, starting with **team-intel read** (surface #1). Each PR
+  points one surface at the C# endpoint via the generated client, dark by default (same wrapper pattern as the
+  staged nine-box read cutover, #165) — so a flip is a flag change, not a code change, on deploy day.
+- After each write domain is prod-verified: the **ownership-flip PRs** (drop the TS router/service/repo, flip the
+  table to `efcore` in the ledger) for the flip-ready domains (validation, eval360, succession, nine-box).
+- Resolve any code follow-ups the §5 deploy-verifies surface (JWKS shape, rate-limit buckets, Redis perm-cache).
+
+## 11. Phase 7 — final consolidation (the last code, AFTER all surfaces are cut over + verified)
+Once every §6 surface is live on C# and prod-verified, retire the TS backend:
+- Delete the remaining tRPC routers/services/repos and `packages/api` + `packages/db` (Prisma) — everything the
+  FE no longer calls; the FE runs entirely on the generated OpenAPI client.
+- Remove the tRPC/superjson client wiring from `apps/web`; the coexistence tables (billing/comp/engagement) flip to
+  `efcore` only when their LAST TS writer is gone.
+- This is real, substantial FE + cleanup coding — **deferred by design** until the backend is deployed and every
+  surface proven, because you cannot safely delete the old stack before the new one carries all traffic. It is the
+  ~15% of the migration that remains after this runbook is executed.
