@@ -678,7 +678,33 @@ try
         });
     });
 
+    // CORS for the browser SPA (apps/web) calling this API directly. Explicit,
+    // config-driven origins (Platform:AllowedCorsOrigins, comma-separated) — never a
+    // wildcard. Empty ⇒ no browser origin is allowed (fail-safe; server-to-server callers
+    // such as the parity harness send no Origin header and are unaffected). No
+    // AllowCredentials: the browser client authenticates with a Bearer token +
+    // credentials:'omit' (no cookies), so credentialed CORS is neither needed nor granted.
+    const string BrowserCorsPolicyName = "BrowserCors";
+    var corsOrigins = (platformSection[nameof(PlatformOptions.AllowedCorsOrigins)] ?? string.Empty)
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    builder.Services.AddCors(options =>
+    {
+        options.AddPolicy(BrowserCorsPolicyName, policy =>
+        {
+            if (corsOrigins.Length > 0)
+            {
+                policy.WithOrigins(corsOrigins)
+                    .WithMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
+                    .WithHeaders("Authorization", "Content-Type", "Accept");
+            }
+        });
+    });
+
     var app = builder.Build();
+
+    // CORS runs FIRST — an unauthenticated preflight (OPTIONS) is answered by this
+    // middleware before it can reach authentication or the fail-closed rate limiter.
+    app.UseCors(BrowserCorsPolicyName);
 
     app.UseAuthentication();
 

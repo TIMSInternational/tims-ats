@@ -57,6 +57,14 @@ public sealed class PlatformOptions
     /// </summary>
     public string? SupabaseJwksMetadataAddress { get; init; }
 
+    /// <summary>
+    /// Comma-separated list of browser origins allowed to call this API cross-origin
+    /// (e.g. "https://tims-ats.vercel.app"). Explicit origins only — never a wildcard.
+    /// Empty/unset ⇒ no browser origin is allowed (fail-safe). Server-to-server callers
+    /// send no Origin header and are unaffected.
+    /// </summary>
+    public string? AllowedCorsOrigins { get; init; }
+
     // --- Platform-owner impersonation (WP2.4) -----------------------------------------
 
     /// <summary>
