@@ -24,29 +24,20 @@ import { stripTrpcJson, buildTrpcQueryUrl } from './trpc';
 //     `getUser()` against `sb-<project-ref>-auth-token` (chunked as
 //     `.0`, `.1`, ... by `@supabase/ssr` once >4KB) — never `req.headers.get('authorization')`.
 //
-// The Supabase session cookie's value is a JSON-serialized (optionally
-// base64url-with-`base64-`-prefix-encoded) **session envelope**
-// (`access_token`, `refresh_token`, `expires_at`, `expires_in`, `token_type`,
-// `user`), NOT a bare access token. The harness's `getToken()`
-// (`scripts/parity/supabase.ts`, Task 4) only returns `session.access_token`
-// as a plain string — it discards `refresh_token`/`user`/`expires_at` — so
-// there isn't enough information at this call site to construct a valid
-// `sb-<ref>-auth-token` cookie value. Producing one would require changing
-// `getToken`'s return shape (and threading `projectRef` into every caller),
-// which is out of scope for this task's given `(base, procedure, input,
-// token, fetchFn?)` signature.
+// The Supabase session cookie's value is a JSON-serialized `base64-`-prefixed
+// base64url **session envelope** (`access_token`, `refresh_token`, `expires_at`,
+// `expires_in`, `token_type`, `user`), chunked into `.0`/`.1` past ~3180 bytes
+// by `@supabase/ssr` — NOT a bare access token. So `callTs` sends a `Cookie:`
+// header, NOT `Authorization: Bearer`. The cookie is built by `getSessionCookie`
+// (`scripts/parity/supabase.ts`), which signs the seeded user in through the
+// app's own `@supabase/ssr` `createServerClient` encoder (capturing `setAll`),
+// making the emitted `sb-<ref>-auth-token` cookie byte-identical to what the
+// Next.js app writes and reads.
 //
-// Per the task brief's documented escape hatch: `callTs` below sends
-// `Authorization: Bearer <token>` (mirroring `callCsharp`) rather than a
-// cookie. THIS HEADER IS NOT READ BY THE CURRENT TS AUTH STACK, so `callTs`
-// will resolve to an unauthenticated context (`ctx.user === null`) against
-// the real Next.js app as it exists today. This is flagged for **live
-// verification at Task 11**: either (a) extend `getToken`/`HarnessConfig` to
-// carry the full session + `projectRef` and switch `callTs` to send a
-// `Cookie: sb-${projectRef}-auth-token=<encoded session>` header, or (b) add
-// a bearer-token auth path to the TS tRPC context (out of scope here — a
-// product change, not a harness change). Do not treat TS-side parity
-// results as authenticated until one of those is resolved.
+// LIVE-VERIFIED (2026-07-24) against the prod TS app (tims-ats.vercel.app),
+// `teamIntel.getDashboardKpis`: super_admin cookie → 200, hrbp cookie → 403
+// ("No tienes permiso…"), no cookie → 401 (UNAUTHORIZED). So a valid cookie
+// authenticates and RBAC is enforced — TS-side parity results are trustworthy.
 type Fetch = typeof fetch;
 
 export async function callCsharp(
@@ -74,13 +65,13 @@ export async function callTs(
   base: string,
   procedure: string,
   input: unknown,
-  token: string,
+  cookie: string,
   fetchFn: Fetch = fetch
 ): Promise<unknown> {
   const url = buildTrpcQueryUrl(base, procedure, input);
-  // See the module-level note above: Bearer is a documented placeholder,
-  // NOT proven to authenticate against the real TS app — live-verify at Task 11.
-  const res = await fetchFn(url, { headers: { Authorization: `Bearer ${token}` } });
+  // Cookie auth (sb-<ref>-auth-token) — the TS Next.js app is cookie-only; see
+  // the module-level note above. `cookie` comes from `getSessionCookie`.
+  const res = await fetchFn(url, { headers: { Cookie: cookie } });
   const body: unknown = await res.json();
   return stripTrpcJson(body);
 }

@@ -28,17 +28,20 @@ describe('callCsharp', () => {
 });
 
 describe('callTs', () => {
-  it('GETs the built tRPC query URL with Bearer auth and unwraps via stripTrpcJson', async () => {
+  it('GETs the built tRPC query URL with a Cookie header and unwraps via stripTrpcJson', async () => {
     const body = [{ result: { data: { json: { kpis: { headcount: 5 } } } } }];
+    const cookie = 'sb-ref-auth-token=base64-abc123';
     const fetchFn = vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify(body), { status: 200 }));
-    const res = await callTs('https://t', 'teamIntel.getDashboardKpis', { teamId: null }, 'TOK', fetchFn);
+    const res = await callTs('https://t', 'teamIntel.getDashboardKpis', { teamId: null }, cookie, fetchFn);
 
     expect(fetchFn).toHaveBeenCalledTimes(1);
     const [calledUrl, calledInit] = fetchFn.mock.calls[0];
     const calledUrlStr = calledUrl as string;
     expect(calledUrlStr).toContain('/api/trpc/teamIntel.getDashboardKpis?batch=1');
     expect(decodeURIComponent(calledUrlStr)).toContain('"json":{"teamId":null}');
-    expect(calledInit?.headers).toMatchObject({ Authorization: 'Bearer TOK' });
+    expect(calledInit?.headers).toMatchObject({ Cookie: cookie });
+    // never a Bearer header — the TS app is cookie-only
+    expect((calledInit?.headers as Record<string, string>).Authorization).toBeUndefined();
 
     expect(res).toEqual({ kpis: { headcount: 5 } });
   });
@@ -46,7 +49,7 @@ describe('callTs', () => {
   it('throws TrpcError when the tRPC response is an error envelope', async () => {
     const body = [{ error: { json: { message: 'FORBIDDEN', code: -32003 } } }];
     const fetchFn = vi.fn(async () => new Response(JSON.stringify(body), { status: 200 }));
-    await expect(callTs('https://t', 'teamIntel.getDashboardKpis', {}, 'TOK', fetchFn)).rejects.toThrow(
+    await expect(callTs('https://t', 'teamIntel.getDashboardKpis', {}, 'sb-ref-auth-token=x', fetchFn)).rejects.toThrow(
       TrpcError
     );
   });

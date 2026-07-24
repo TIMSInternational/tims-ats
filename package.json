@@ -16,6 +16,7 @@
     "prepare": "husky"
   },
   "devDependencies": {
+    "@supabase/ssr": "0.7.0",
     "@supabase/supabase-js": "2.106.1",
     "@types/pg": "8.20.0",
     "@typescript-eslint/eslint-plugin": "^8.60.0",

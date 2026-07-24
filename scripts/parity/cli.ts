@@ -13,21 +13,18 @@
  * Supabase + HTTP calls and is NOT unit-tested (no creds/network in CI); it
  * requires `scripts/parity/.env` populated (see `.env.example`) to run at all.
  *
- * KNOWN GAP — `parity`/`verify` are not yet authenticated against the real TS
- * app: `callTs` (scripts/parity/callers.ts) sends `Authorization: Bearer <token>`,
- * but the Next.js tRPC route is COOKIE-only (`sb-<project-ref>-auth-token`) — see
- * the module-level comment in `callers.ts` for the full investigation. Until
- * `getToken`/`HarnessConfig` are extended to carry a full session (+ projectRef)
- * and `callTs` is switched to send a `Cookie:` header built from it, live
- * `parity`/`verify` runs will see `ctx.user === null` on the TS side and every
- * comparison will read as a parity mismatch rather than a real signal. `rls` and
- * `rbac` are unaffected — they only ever call the C# REST side (`callCsharp`),
- * which is confirmed Bearer-authenticated.
+ * TS AUTH — `parity`/`verify` authenticate against the real TS app via COOKIE:
+ * the Next.js tRPC route is cookie-only (`sb-<ref>-auth-token`), so `mintTokens`
+ * builds the org-A probe identity's session cookie with `getSessionCookie`
+ * (scripts/parity/supabase.ts) and `callTs` sends it as a `Cookie:` header.
+ * LIVE-VERIFIED against prod (super_admin→200, hrbp→403, no-cookie→401 on
+ * teamIntel.getDashboardKpis). `rls`/`rbac` only ever call the C# REST side
+ * (`callCsharp`, Bearer) and are unaffected.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 import { fileURLToPath } from 'node:url';
 import { loadConfig, type HarnessConfig } from './config';
-import { getToken, type TokenCache } from './supabase';
+import { getToken, getSessionCookie, type TokenCache, type CookieCache } from './supabase';
 import { planSeed, seed, teardown } from './seed';
 import { callCsharp, callTs } from './callers';
 import { SURFACES, type Surface } from './surfaces';
@@ -76,7 +73,7 @@ async function mintTokens(
   cfg: HarnessConfig,
   surface: Surface,
   cache: TokenCache,
-): Promise<{ orgAToken: string; orgBToken: string; tokensByRole: Record<string, string> }> {
+): Promise<{ orgAToken: string; orgBToken: string; orgACookie: string; tokensByRole: Record<string, string> }> {
   if (surface.roles.length === 0) throw new Error(`surface "${surface.key}" has no roles configured`);
   const { role: primaryRole, usedFallback } = resolveProbeRole(surface);
   if (usedFallback) {
@@ -86,35 +83,47 @@ async function mintTokens(
   }
   const plan = planSeed(surface.roles);
 
+  // The C# side authenticates via Bearer access-token; the TS side via the
+  // sb-<ref>-auth-token session cookie. The parity probe (org-A primaryRole)
+  // needs BOTH for the same identity — the Bearer for `callCsharp`, the cookie
+  // for `callTs`. Only that one identity is exercised against TS, so only its
+  // cookie is minted (cookies are heavier than tokens: a full sign-in each).
+  const cookieCache: CookieCache = new Map();
   const tokensByRole: Record<string, string> = {};
   let orgAToken = '';
   let orgBToken = '';
+  let orgACookie = '';
   for (const u of plan.users) {
     const token = await getToken(cfg, u.email, u.password, cache);
     if (u.orgKey === 'a') {
       tokensByRole[u.role] = token;
-      if (u.role === primaryRole) orgAToken = token;
+      if (u.role === primaryRole) {
+        orgAToken = token;
+        orgACookie = await getSessionCookie(cfg, u.email, u.password, cookieCache);
+      }
     } else if (u.role === primaryRole) {
       orgBToken = token;
     }
   }
   if (!orgAToken) throw new Error(`mintTokens: failed to mint org-A token for role "${primaryRole}"`);
   if (!orgBToken) throw new Error(`mintTokens: failed to mint org-B token for role "${primaryRole}"`);
-  return { orgAToken, orgBToken, tokensByRole };
+  if (!orgACookie) throw new Error(`mintTokens: failed to mint org-A session cookie for role "${primaryRole}"`);
+  return { orgAToken, orgBToken, orgACookie, tokensByRole };
 }
 
 /** Runs the requested check(s) over every endpoint of `surface`, returning the
  *  combined result list `renderReport` consumes. `verify` runs all three. */
 async function runChecks(command: CheckCommand, cfg: HarnessConfig, surface: Surface): Promise<CheckResult[]> {
   const cache: TokenCache = new Map();
-  const { orgAToken, orgBToken, tokensByRole } = await mintTokens(cfg, surface, cache);
+  const { orgAToken, orgBToken, orgACookie, tokensByRole } = await mintTokens(cfg, surface, cache);
   const results: CheckResult[] = [];
 
   if (command === 'parity' || command === 'verify') {
-    // Bind base+token into the (path,input)/(proc,input) closure shapes
-    // `runParityEndpoint` expects — see the KNOWN GAP note above re: `callTs`.
+    // Bind base + the org-A probe identity's credentials into the (path,input)/
+    // (proc,input) closure shapes `runParityEndpoint` expects: C# via Bearer
+    // token, TS via the session cookie (both the SAME identity).
     const csharpCaller = (path: string, _input: unknown) => callCsharp(cfg.csharpBase, path, orgAToken);
-    const tsCaller = (proc: string, input: unknown) => callTs(cfg.tsBase, proc, input, orgAToken); // TODO(live): Bearer not read by TS auth stack — see top-of-file note.
+    const tsCaller = (proc: string, input: unknown) => callTs(cfg.tsBase, proc, input, orgACookie);
     for (const ep of surface.endpoints) results.push(await runParityEndpoint(ep, csharpCaller, tsCaller));
   }
 
