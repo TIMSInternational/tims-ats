@@ -99,6 +99,270 @@ export interface Surface {
  * orgs by design, so RLS is N/A (parity + RBAC still run).
  */
 export const SURFACES: Record<string, Surface> = {
+  // ── compensation ────────────────────────────────────────────────────────────────────────────
+  // 6 of the 7 compensation reads (the FX-FREE subset; the /employee/{userId} by-id read is a
+  // Tier-2 follow-up needing the harness Mode-A id extension). `compensation.getSalaryBands/
+  // getMarketComparison/getBenefitsUtilization/getCompaRatioDistribution/listPendingAdjustments/
+  // myCompensation` → /compensation/{salary-bands,market-comparison,benefits-utilization,
+  // compa-ratio-distribution,pending-adjustments,my-compensation}. All permissionProcedure(
+  // 'compensation','read'). One flag Platform:CompensationReadEnabled + FE NEXT_PUBLIC_COMPENSATION_READ_VIA_CSHARP.
+  // RBAC (seed grants hr_admin compensation:read@org, hrbp @unit): grant-only reads (salary-bands/
+  // market-comparison/pending-adjustments) → hrbp 200 (pending-adjustments returns scoped-empty rows,
+  // not 403); requireOrgScope reads (benefits-utilization/compa-ratio-distribution) → hrbp 403;
+  // my-compensation → hrbp 403 (SubjectInScope unit: caller's own id ∉ empty unit-member set).
+  // compa-ratio-distribution needs ≥5 org-A comp rows in ONE compa bucket (min-5) or it self-
+  // suppresses to an all-zero object identical to empty org B → false-fail; the seed provides 5.
+  compensation: {
+    key: 'compensation',
+    flag: 'Platform__CompensationReadEnabled',
+    roles: ['super_admin', 'hr_admin', 'hrbp'],
+    probeRole: 'super_admin',
+    endpoints: [
+      {
+        name: 'salary-bands',
+        csharpPath: '/compensation/salary-bands',
+        tsProcedure: 'compensation.getSalaryBands',
+        input: {},
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 200 },
+        normalize: { dropNullish: true, sortArraysBy: 'level' },
+      },
+      {
+        name: 'market-comparison',
+        csharpPath: '/compensation/market-comparison',
+        tsProcedure: 'compensation.getMarketComparison',
+        input: {},
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 200 },
+        normalize: { dropNullish: true, sortArraysBy: 'level' },
+      },
+      {
+        name: 'benefits-utilization',
+        csharpPath: '/compensation/benefits-utilization',
+        tsProcedure: 'compensation.getBenefitsUtilization',
+        input: {},
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
+        normalize: { dropNullish: true, sortArraysBy: 'name' },
+      },
+      {
+        name: 'compa-ratio-distribution',
+        csharpPath: '/compensation/compa-ratio-distribution',
+        tsProcedure: 'compensation.getCompaRatioDistribution',
+        input: {},
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
+        normalize: { dropNullish: true },
+      },
+      {
+        name: 'pending-adjustments',
+        csharpPath: '/compensation/pending-adjustments',
+        tsProcedure: 'compensation.listPendingAdjustments',
+        input: {},
+        // grant-only gate; hrbp unit-scope → scoped-empty rows, HTTP 200 (NOT 403).
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 200 },
+        normalize: { dropNullish: true, sortArraysBy: 'id' },
+      },
+      {
+        name: 'my-compensation',
+        csharpPath: '/compensation/my-compensation',
+        tsProcedure: 'compensation.myCompensation',
+        input: {},
+        // identity-anchored (own row); hrbp own id ∉ empty unit-member set → 403.
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
+        normalize: { dropNullish: true },
+      },
+    ],
+  },
+  // ── evaluation360 ───────────────────────────────────────────────────────────────────────────
+  // 3 of the 5 eval360 reads (the 2 by-id cycle-progress/my-report are a Tier-2 follow-up needing
+  // the harness Mode-A id extension). listCycles (STAFF org-gate, evaluation360:read) + myRaterTasks
+  // + myReportCycles (SELF-SERVICE identity-anchored, no grant). One flag Platform:Evaluation360ReadEnabled.
+  // RBAC: hr_admin seeded evaluation360:read@org (→ 200 on listCycles); hrbp NOT granted (matrix omits
+  // eval360 — admin reads are org-only) → 403 on listCycles, but 200 on the self-service reads (they
+  // apply no RBAC, return the caller's own data — empty for hrbp). super_admin bypasses.
+  evaluation360: {
+    key: 'evaluation360',
+    flag: 'Platform__Evaluation360ReadEnabled',
+    roles: ['super_admin', 'hr_admin', 'hrbp'],
+    probeRole: 'super_admin',
+    endpoints: [
+      {
+        name: 'cycles',
+        csharpPath: '/evaluation360/cycles',
+        tsProcedure: 'evaluation360.listCycles',
+        input: {},
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
+        // orders by created_at desc; the 2 seeded cycles share ~equal created_at → sort by id both sides.
+        normalize: { dropNullish: true, sortArraysBy: 'id' },
+      },
+      {
+        name: 'my-rater-tasks',
+        csharpPath: '/evaluation360/my/rater-tasks',
+        tsProcedure: 'evaluation360.myRaterTasks',
+        input: {},
+        // self-service: any resolved principal → 200 (its own tasks; empty for hr_admin/hrbp).
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 200 },
+        normalize: { dropNullish: true, sortArraysBy: 'id' },
+      },
+      {
+        name: 'my-report-cycles',
+        csharpPath: '/evaluation360/my/report-cycles',
+        tsProcedure: 'evaluation360.myReportCycles',
+        input: {},
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 200 },
+        normalize: { dropNullish: true, sortArraysBy: 'id' },
+      },
+    ],
+  },
+  // ── nine-box ────────────────────────────────────────────────────────────────────────────────
+  // 8 of the 11 nine-box reads (the 3 by-id employee/{userId}, axis-breakdown, calibrations/{id} are a
+  // Tier-2 follow-up needing the harness Mode-A id extension). 6 org-scoped Mode-B (grid, movement-history,
+  // calibrations, my-calibrations, bench-strength, dashboard-kpis) + 2 globalScope pure kernels (simulate,
+  // quadrant-plan — org-independent by design → RLS N/A, parity + RBAC still run). One flag
+  // Platform:NineBoxReadEnabled. RBAC (hr_admin ninebox:read@org, hrbp @unit): requireOrgScope reads
+  // (calibrations, bench-strength, dashboard-kpis) → hrbp 403; grant-only reads (my-calibrations, simulate,
+  // quadrant-plan) → hrbp 200; grid + movement-history use scopeWhereFor (hrbp → 200-empty, fragile) so
+  // hrbp is OMITTED from their expectedByRole (the runner iterates only present keys). super_admin bypasses.
+  ninebox: {
+    key: 'ninebox',
+    flag: 'Platform__NineBoxReadEnabled',
+    roles: ['super_admin', 'hr_admin', 'hrbp'],
+    probeRole: 'super_admin',
+    endpoints: [
+      {
+        name: 'grid',
+        csharpPath: '/ninebox/grid?period=2026-Q1',
+        tsProcedure: 'ninebox.getGrid',
+        input: { period: '2026-Q1' },
+        expectedByRole: { super_admin: 200, hr_admin: 200 },
+        normalize: { dropNullish: true },
+      },
+      {
+        name: 'movement-history',
+        csharpPath: '/ninebox/movement-history',
+        tsProcedure: 'ninebox.getMovementHistory',
+        input: {},
+        expectedByRole: { super_admin: 200, hr_admin: 200 },
+        normalize: { dropNullish: true, sortArraysBy: 'userId' },
+      },
+      {
+        name: 'calibrations',
+        csharpPath: '/ninebox/calibrations',
+        tsProcedure: 'ninebox.listCalibrations',
+        input: {},
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
+        normalize: { dropNullish: true, sortArraysBy: 'id' },
+      },
+      {
+        name: 'my-calibrations',
+        csharpPath: '/ninebox/my-calibrations',
+        tsProcedure: 'ninebox.myCalibrations',
+        input: {},
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 200 },
+        normalize: { dropNullish: true, sortArraysBy: 'id' },
+      },
+      {
+        name: 'bench-strength',
+        csharpPath: '/ninebox/bench-strength?period=2026-Q1',
+        tsProcedure: 'ninebox.getBenchStrength',
+        input: { period: '2026-Q1' },
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
+        normalize: { dropNullish: true },
+      },
+      {
+        name: 'dashboard-kpis',
+        csharpPath: '/ninebox/dashboard-kpis?period=2026-Q1',
+        tsProcedure: 'ninebox.getDashboardKpis',
+        input: { period: '2026-Q1' },
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
+        normalize: { dropNullish: true },
+      },
+      {
+        name: 'simulate',
+        csharpPath: '/ninebox/simulate?userId=e0000b0c-0000-4000-8000-000000000001&newPotentialScore=80&newPerformanceScore=40',
+        tsProcedure: 'ninebox.simulate',
+        input: { userId: 'e0000b0c-0000-4000-8000-000000000001', newPotentialScore: 80, newPerformanceScore: 40 },
+        // pure kernel, userId is echoed (no DB lookup) → org-independent → RLS N/A.
+        globalScope: true,
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 200 },
+        normalize: { dropNullish: true },
+      },
+      {
+        name: 'quadrant-plan',
+        csharpPath: '/ninebox/quadrant-plan?quadrant=star',
+        tsProcedure: 'ninebox.getQuadrantPlan',
+        input: { quadrant: 'star' },
+        // pure catalog lookup → org-independent → RLS N/A.
+        globalScope: true,
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 200 },
+        normalize: { dropNullish: true },
+      },
+    ],
+  },
+  // ── succession ──────────────────────────────────────────────────────────────────────────────
+  // 6 of the 9 succession reads (the 3 by-id critical-roles/{id}, suggested-successors, simulate-exit
+  // are a Tier-2 follow-up needing the harness Mode-A id extension). All org-scoped Mode B. One flag
+  // Platform:SuccessionReadEnabled. RBAC (hr_admin succession:read@org [+ compensation:read@org from the
+  // compensation seed, for the comp-gap secondary check], hrbp @unit): critical-roles uses scopeWhereFor
+  // (hrbp → 200-empty, faithful — hrbp holds unit-scoped succession read); the org-rollup reads (flight-risk,
+  // competency-coverage, roles-without-successor, comp-gap-alerts, dashboard-kpis) → requireOrgScope →
+  // hrbp 403. super_admin bypasses.
+  // (The critical_roles.target_band_level + nine_box_evaluations.updated_at columns that these reads / the
+  // nine-box reads select were missing from prod and have been migrated in — the harness surfaced that drift.)
+  succession: {
+    key: 'succession',
+    flag: 'Platform__SuccessionReadEnabled',
+    roles: ['super_admin', 'hr_admin', 'hrbp'],
+    probeRole: 'super_admin',
+    endpoints: [
+      {
+        name: 'critical-roles',
+        csharpPath: '/succession/critical-roles',
+        tsProcedure: 'succession.listCriticalRoles',
+        input: {},
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 200 },
+        normalize: { dropNullish: true, sortArraysBy: 'id' },
+      },
+      {
+        name: 'flight-risk',
+        csharpPath: '/succession/flight-risk',
+        tsProcedure: 'succession.getFlightRisk',
+        input: {},
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
+        normalize: { dropNullish: true, sortArraysBy: 'id' },
+      },
+      {
+        name: 'competency-coverage',
+        csharpPath: '/succession/competency-coverage',
+        tsProcedure: 'succession.getCompetencyCoverage',
+        input: {},
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
+        // TS has no orderBy here; C# orders by roleId → canonicalize both by roleId before diffing.
+        normalize: { dropNullish: true, sortArraysBy: 'roleId' },
+      },
+      {
+        name: 'roles-without-successor',
+        csharpPath: '/succession/roles-without-successor',
+        tsProcedure: 'succession.getRolesWithoutSuccessor',
+        input: {},
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
+        normalize: { dropNullish: true, sortArraysBy: 'id' },
+      },
+      {
+        name: 'comp-gap-alerts',
+        csharpPath: '/succession/comp-gap-alerts',
+        tsProcedure: 'succession.getCompGapAlerts',
+        input: {},
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
+        normalize: { dropNullish: true, sortArraysBy: 'userId' },
+      },
+      {
+        name: 'dashboard-kpis',
+        csharpPath: '/succession/dashboard-kpis',
+        tsProcedure: 'succession.getDashboardKpis',
+        input: {},
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
+        normalize: { dropNullish: true },
+      },
+    ],
+  },
   // ── reporting ───────────────────────────────────────────────────────────────────────────────
   // The six `recruitmentAnalytics.*` reads (packages/api/src/routers/recruitment-analytics.ts):
   // getKpis / getFunnel / getSourceBreakdown / getTrend / getLostByDelay / getRecruiterSla → C#

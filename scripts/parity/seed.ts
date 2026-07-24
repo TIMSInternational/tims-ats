@@ -568,6 +568,295 @@ export async function seedReportingData(
   await upsertReportingOffer(db, orgAId, cand1, vac, appActive, recruiter);
 }
 
+// ── compensation fixtures ────────────────────────────────────────────────────
+// RBAC: compensation:read hr_admin@org (real-grant 200) + hrbp@unit (403 on requireOrgScope
+// reads, scoped-empty 200 on grant-only reads). super_admin bypasses.
+async function seedCompensationGrants(db: Client, roleIds: Map<string, string>): Promise<void> {
+  const permId = await upsertPermission(db, 'compensation', 'read');
+  for (const key of ORG_KEYS) {
+    const hrAdmin = roleIds.get(`${key}:hr_admin`);
+    if (hrAdmin) await upsertRolePermission(db, hrAdmin, permId, 'organization');
+    const hrbp = roleIds.get(`${key}:hrbp`);
+    if (hrbp) await upsertRolePermission(db, hrbp, permId, 'unit');
+  }
+}
+
+// Two bare org-A public.users rows (NO Supabase auth — they never log in; comp rows only need the
+// users FK) with FIXED supabase_user_id so re-seed is idempotent. They pad the compa-ratio fixture to 5.
+const COMP_USER_SUPA: Record<string, string> = {
+  comp1: '00000000-0000-4000-8000-0000000c0001',
+  comp2: '00000000-0000-4000-8000-0000000c0002',
+};
+async function upsertBareUser(
+  db: Client, orgId: string, supaId: string, email: string, first: string, last: string
+): Promise<string> {
+  const { rows } = await db.query<IdRow>(
+    `INSERT INTO users (id, supabase_user_id, organization_id, email, first_name, last_name, updated_at)
+     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, now())
+     ON CONFLICT (supabase_user_id) DO UPDATE SET
+       organization_id = EXCLUDED.organization_id, email = EXCLUDED.email, updated_at = now()
+     RETURNING id`,
+    [supaId, orgId, email, first, last]
+  );
+  return rows[0].id;
+}
+async function upsertEmployeeComp(
+  db: Client, orgId: string, userId: string, salary: number, compaRatio: number
+): Promise<void> {
+  await db.query(
+    `INSERT INTO employee_compensations
+       (id, organization_id, user_id, current_salary, compa_ratio, effective_date, updated_at)
+     VALUES (gen_random_uuid(), $1, $2, $3, $4, now(), now())
+     ON CONFLICT (organization_id, user_id) DO UPDATE SET
+       current_salary = EXCLUDED.current_salary, compa_ratio = EXCLUDED.compa_ratio,
+       effective_date = now(), updated_at = now()`,
+    [orgId, userId, salary, compaRatio]
+  );
+}
+
+// Seeds org A ONLY (org B empty → strong Mode B). 1 salary band (PARITY-L1, mid 100000 — also the
+// succession comp-gap target band), 5 employee_compensations in ONE compa bucket (1.05) so compa-ratio-
+// distribution clears min-5 (else it self-suppresses to an all-zero object == empty org B → false-fail),
+// 1 benefit plan + enrollment, 1 pending salary adjustment. No native enums (type/status/currency plain
+// text → no casts). a:super_admin gets a comp row so /my-compensation is 200-non-empty for the probe.
+export async function seedCompensationData(
+  db: Client, orgAId: string, userIds: Map<string, string>
+): Promise<void> {
+  const superId = userIds.get('a:super_admin');
+  const hrId = userIds.get('a:hr_admin');
+  const hrbpId = userIds.get('a:hrbp');
+  if (!superId || !hrId || !hrbpId) return;
+
+  await db.query(
+    `INSERT INTO salary_bands (id, organization_id, level, title, min_salary, mid_salary, max_salary, updated_at)
+     VALUES (gen_random_uuid(), $1, 'PARITY-L1', 'Parity Band L1', 80000, 100000, 120000, now())
+     ON CONFLICT (organization_id, level) DO UPDATE SET
+       min_salary = EXCLUDED.min_salary, mid_salary = EXCLUDED.mid_salary, max_salary = EXCLUDED.max_salary, updated_at = now()`,
+    [orgAId]
+  );
+  const comp1 = await upsertBareUser(db, orgAId, COMP_USER_SUPA.comp1, 'parity+a-comp1@tims.test', 'Comp', 'One');
+  const comp2 = await upsertBareUser(db, orgAId, COMP_USER_SUPA.comp2, 'parity+a-comp2@tims.test', 'Comp', 'Two');
+  for (const uid of [superId, hrId, hrbpId, comp1, comp2]) await upsertEmployeeComp(db, orgAId, uid, 60000, 1.05);
+
+  const found = await db.query<IdRow>('SELECT id FROM benefit_plans WHERE organization_id = $1 AND name = $2 LIMIT 1', [orgAId, 'Parity Health A']);
+  const planId = found.rows.length
+    ? found.rows[0].id
+    : (await db.query<IdRow>(
+        `INSERT INTO benefit_plans (id, organization_id, name, type, updated_at)
+         VALUES (gen_random_uuid(), $1, 'Parity Health A', 'health', now()) RETURNING id`,
+        [orgAId]
+      )).rows[0].id;
+  await db.query(
+    `INSERT INTO benefit_enrollments (id, organization_id, user_id, benefit_plan_id)
+     VALUES (gen_random_uuid(), $1, $2, $3) ON CONFLICT (user_id, benefit_plan_id) DO NOTHING`,
+    [orgAId, superId, planId]
+  );
+
+  const adj = await db.query<IdRow>(
+    `SELECT id FROM salary_adjustments WHERE organization_id = $1 AND user_id = $2 AND status = 'pending' LIMIT 1`,
+    [orgAId, hrId]
+  );
+  if (!adj.rows.length) {
+    await db.query(
+      `INSERT INTO salary_adjustments
+         (id, organization_id, user_id, type, previous_salary, new_salary, requested_by_id, updated_at)
+       VALUES (gen_random_uuid(), $1, $2, 'merit', 60000, 66000, $3, now())`,
+      [orgAId, hrId, superId]
+    );
+  }
+}
+
+// ── evaluation360 fixtures ───────────────────────────────────────────────────
+// RBAC: evaluation360:read hr_admin@org (real-grant 200). hrbp is deliberately NOT granted
+// (matrix omits it — admin cycle reads are org-only), so hrbp 403s on the staff read + 200s
+// on the self-service reads (no grant needed). Native enums → ::"Enum" casts.
+async function seedEvaluation360Grants(db: Client, roleIds: Map<string, string>): Promise<void> {
+  const permId = await upsertPermission(db, 'evaluation360', 'read');
+  for (const key of ORG_KEYS) {
+    const hrAdmin = roleIds.get(`${key}:hr_admin`);
+    if (hrAdmin) await upsertRolePermission(db, hrAdmin, permId, 'organization');
+  }
+}
+
+// Fixed cycle UUIDs (idempotent ON CONFLICT id; also Tier-2-ready for the by-id cycle-progress/
+// my-report probes which must bake a concrete cycle id into the path).
+const EVAL_CYCLE: Record<string, string> = {
+  openA: 'e0000360-0000-4000-8000-00000000000f',
+  pubA: 'e0000360-0000-4000-8000-00000000000a',
+};
+async function upsertReviewCycle(
+  db: Client, id: string, orgId: string, name: string, status: string, createdBy: string, published: boolean
+): Promise<void> {
+  await db.query(
+    `INSERT INTO review_cycles (id, organization_id, name, status, created_by_id, opens_at, published_at, updated_at)
+     VALUES ($1, $2, $3, $4::"ReviewCycleStatus", $5, now() - make_interval(days => 30),
+             ${published ? 'now() - make_interval(days => 5)' : 'NULL'}, now())
+     ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, status = EXCLUDED.status, published_at = EXCLUDED.published_at, updated_at = now()`,
+    [id, orgId, name, status, createdBy]
+  );
+}
+async function upsertRaterAssignment(
+  db: Client, orgId: string, cycleId: string, subjectId: string, raterId: string, relationship: string, status: string
+): Promise<string> {
+  const { rows } = await db.query<IdRow>(
+    `INSERT INTO rater_assignments
+       (id, organization_id, cycle_id, subject_user_id, rater_user_id, relationship, status, updated_at)
+     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5::"RaterRelationship", $6::"RaterAssignmentStatus", now())
+     ON CONFLICT (cycle_id, subject_user_id, rater_user_id) DO UPDATE SET
+       relationship = EXCLUDED.relationship, status = EXCLUDED.status, updated_at = now()
+     RETURNING id`,
+    [orgId, cycleId, subjectId, raterId, relationship, status]
+  );
+  return rows[0].id;
+}
+
+// Org A ONLY (org B empty → strong Mode B). An open cycle + a published cycle; super_admin (the probe)
+// is a RATER of hr_admin in the open cycle (→ my-rater-tasks non-empty) AND a self-SUBJECT of the
+// published cycle with a response (→ my-report-cycles non-empty + the Tier-2 my-report content).
+export async function seedEvaluation360Data(
+  db: Client, orgAId: string, userIds: Map<string, string>
+): Promise<void> {
+  const superId = userIds.get('a:super_admin');
+  const hrId = userIds.get('a:hr_admin');
+  if (!superId || !hrId) return;
+  await upsertReviewCycle(db, EVAL_CYCLE.openA, orgAId, 'Parity Open Cycle A', 'open', superId, false);
+  await upsertReviewCycle(db, EVAL_CYCLE.pubA, orgAId, 'Parity Published Cycle A', 'published', superId, true);
+  await upsertRaterAssignment(db, orgAId, EVAL_CYCLE.openA, hrId, superId, 'peer', 'pending');
+  const selfAssign = await upsertRaterAssignment(db, orgAId, EVAL_CYCLE.pubA, superId, superId, 'self', 'submitted');
+  await db.query(
+    `INSERT INTO rater_responses (id, organization_id, assignment_id, competency_key, rating, comment, updated_at)
+     VALUES (gen_random_uuid(), $1, $2, 'communication', 4, 'self note', now())
+     ON CONFLICT (assignment_id, competency_key) DO UPDATE SET rating = EXCLUDED.rating, comment = EXCLUDED.comment, updated_at = now()`,
+    [orgAId, selfAssign]
+  );
+}
+
+// ── nine-box fixtures ────────────────────────────────────────────────────────
+// RBAC: ninebox:read hr_admin@org + hrbp@unit. No native enums (quadrant/status plain text).
+async function seedNineBoxGrants(db: Client, roleIds: Map<string, string>): Promise<void> {
+  const permId = await upsertPermission(db, 'ninebox', 'read');
+  for (const key of ORG_KEYS) {
+    const hrAdmin = roleIds.get(`${key}:hr_admin`);
+    if (hrAdmin) await upsertRolePermission(db, hrAdmin, permId, 'organization');
+    const hrbp = roleIds.get(`${key}:hrbp`);
+    if (hrbp) await upsertRolePermission(db, hrbp, permId, 'unit');
+  }
+}
+async function upsertNineBoxEval(
+  db: Client, orgId: string, userId: string, period: string, pot: number, perf: number, quadrant: string, evalDaysAgo: number
+): Promise<void> {
+  // axis_breakdown is jsonb NOT NULL; nine_box_evaluations has NO updated_at column. Distinct
+  // evaluated_at (K days ago) keeps grid/movement ordering deterministic across stacks.
+  await db.query(
+    `INSERT INTO nine_box_evaluations
+       (id, organization_id, user_id, period, potential_score, performance_score, quadrant, confidence, axis_breakdown, evaluated_at)
+     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, 0.8, '{"leadership":70,"execution":65}'::jsonb, now() - make_interval(days => $7))
+     ON CONFLICT (organization_id, user_id, period) DO UPDATE SET
+       potential_score = EXCLUDED.potential_score, performance_score = EXCLUDED.performance_score,
+       quadrant = EXCLUDED.quadrant, evaluated_at = EXCLUDED.evaluated_at`,
+    [orgId, userId, period, pot, perf, quadrant, evalDaysAgo]
+  );
+}
+async function findOrCreateCalibrationSession(
+  db: Client, orgId: string, createdBy: string, period: string, status: string
+): Promise<string> {
+  const found = await db.query<IdRow>(
+    'SELECT id FROM calibration_sessions WHERE organization_id = $1 AND created_by_id = $2 AND period = $3 LIMIT 1',
+    [orgId, createdBy, period]
+  );
+  if (found.rows.length) return found.rows[0].id;
+  const { rows } = await db.query<IdRow>(
+    `INSERT INTO calibration_sessions (id, organization_id, period, status, created_by_id, updated_at)
+     VALUES (gen_random_uuid(), $1, $3, $4, $2, now()) RETURNING id`,
+    [orgId, createdBy, period, status]
+  );
+  return rows[0].id;
+}
+
+// Org A ONLY (org B empty → strong Mode B). 3 evaluated employees @ 2026-Q1 (star/core_player/
+// high_potential) + super_admin's prior 2025-Q4 eval (drives movement-history), + 1 draft calibration
+// session (super_admin = creator → my-calibrations) with 1 member + 1 vote (kept ≤1 each so the Tier-2
+// by-id members/votes arrays have no ordering ambiguity).
+export async function seedNineBoxData(
+  db: Client, orgAId: string, userIds: Map<string, string>
+): Promise<void> {
+  const superId = userIds.get('a:super_admin');
+  const hrId = userIds.get('a:hr_admin');
+  const hrbpId = userIds.get('a:hrbp');
+  if (!superId || !hrId || !hrbpId) return;
+  await upsertNineBoxEval(db, orgAId, superId, '2026-Q1', 80, 80, 'star', 1);
+  await upsertNineBoxEval(db, orgAId, hrId, '2026-Q1', 50, 50, 'core_player', 2);
+  await upsertNineBoxEval(db, orgAId, hrbpId, '2026-Q1', 80, 50, 'high_potential', 3);
+  await upsertNineBoxEval(db, orgAId, superId, '2025-Q4', 50, 50, 'core_player', 90);
+  const session = await findOrCreateCalibrationSession(db, orgAId, superId, '2026-Q1', 'draft');
+  await db.query(
+    `INSERT INTO calibration_members (id, session_id, user_id, status) VALUES (gen_random_uuid(), $1, $2, 'invited')
+     ON CONFLICT (session_id, user_id) DO NOTHING`,
+    [session, hrId]
+  );
+  await db.query(
+    `INSERT INTO calibration_votes (id, session_id, evaluated_user_id, voter_id, quadrant)
+     VALUES (gen_random_uuid(), $1, $2, $3, 'core_player')
+     ON CONFLICT (session_id, evaluated_user_id, voter_id) DO NOTHING`,
+    [session, hrbpId, hrId]
+  );
+}
+
+// ── succession fixtures ──────────────────────────────────────────────────────
+// RBAC: succession:read hr_admin@org + hrbp@unit. hr_admin's compensation:read@org grant (for the
+// comp-gap-alerts secondary check) is already seeded by seedCompensationGrants. No native enums.
+async function seedSuccessionGrants(db: Client, roleIds: Map<string, string>): Promise<void> {
+  const permId = await upsertPermission(db, 'succession', 'read');
+  for (const key of ORG_KEYS) {
+    const hrAdmin = roleIds.get(`${key}:hr_admin`);
+    if (hrAdmin) await upsertRolePermission(db, hrAdmin, permId, 'organization');
+    const hrbp = roleIds.get(`${key}:hrbp`);
+    if (hrbp) await upsertRolePermission(db, hrbp, permId, 'unit');
+  }
+}
+async function findOrCreateCriticalRole(
+  db: Client, orgId: string, title: string, criticality: string,
+  flightRisk: number | null, targetBand: string | null, holderId: string | null
+): Promise<string> {
+  const found = await db.query<IdRow>('SELECT id FROM critical_roles WHERE organization_id = $1 AND title = $2 LIMIT 1', [orgId, title]);
+  if (found.rows.length) {
+    const id = found.rows[0].id;
+    await db.query(
+      `UPDATE critical_roles SET criticality = $2, flight_risk = $3, target_band_level = $4, current_holder_id = $5, updated_at = now() WHERE id = $1`,
+      [id, criticality, flightRisk, targetBand, holderId]
+    );
+    return id;
+  }
+  const { rows } = await db.query<IdRow>(
+    `INSERT INTO critical_roles
+       (id, organization_id, title, criticality, flight_risk, target_band_level, current_holder_id, updated_at)
+     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, now()) RETURNING id`,
+    [orgId, title, criticality, flightRisk, targetBand, holderId]
+  );
+  return rows[0].id;
+}
+
+// Org A ONLY (org B empty → strong Mode B). CR1 (critical, flight_risk 0.9, target band PARITY-L1, holder
+// super_admin) WITH a ready-now successor (hr_admin — whose 60000 comp row from the compensation seed is
+// < PARITY-L1 mid 100000 * 0.9 = 90000 → comp-gap-alert fires) + CR2 (high, no successor →
+// roles-without-successor). MUST run after seedCompensationData (reuses its band + comp rows).
+export async function seedSuccessionData(
+  db: Client, orgAId: string, userIds: Map<string, string>
+): Promise<void> {
+  const superId = userIds.get('a:super_admin');
+  const hrId = userIds.get('a:hr_admin');
+  if (!superId || !hrId) return;
+  const cr1 = await findOrCreateCriticalRole(db, orgAId, 'Parity Critical Role A1', 'critical', 0.9, 'PARITY-L1', superId);
+  await findOrCreateCriticalRole(db, orgAId, 'Parity Critical Role A2', 'high', null, null, null);
+  await db.query(
+    `INSERT INTO successors
+       (id, organization_id, critical_role_id, user_id, readiness, type, added_by_id, updated_at)
+     VALUES (gen_random_uuid(), $1, $2, $3, 'ready_now', 'internal', $4, now())
+     ON CONFLICT (critical_role_id, user_id) DO UPDATE SET readiness = EXCLUDED.readiness, type = EXCLUDED.type, updated_at = now()`,
+    [orgAId, cr1, hrId, superId]
+  );
+}
+
 /** Idempotent: creates the 2 test orgs + a Role + a user per configured role, if missing. */
 export async function seed(cfg: HarnessConfig, roles: string[]): Promise<SeedResult> {
   const admin = makeAdminClient(cfg);
@@ -608,6 +897,23 @@ export async function seed(cfg: HarnessConfig, roles: string[]): Promise<SeedRes
     // + a recruitment dataset in org A only. Grants only when those roles were seeded.
     if (roles.includes('hr_admin') || roles.includes('hrbp')) await seedReportingGrants(db, roleIds);
     await seedReportingData(db, orgIds.a, userIds);
+
+    // compensation fixtures (grants + org-A dataset). MUST run before succession's seed reads
+    // (succession comp-gap reuses a comp row here). Grants only when those roles were seeded.
+    if (roles.includes('hr_admin') || roles.includes('hrbp')) await seedCompensationGrants(db, roleIds);
+    await seedCompensationData(db, orgIds.a, userIds);
+
+    // evaluation360 fixtures (hr_admin grant + org-A cycles/assignments/response).
+    if (roles.includes('hr_admin')) await seedEvaluation360Grants(db, roleIds);
+    await seedEvaluation360Data(db, orgIds.a, userIds);
+
+    // nine-box fixtures (grants + org-A evaluations/calibration).
+    if (roles.includes('hr_admin') || roles.includes('hrbp')) await seedNineBoxGrants(db, roleIds);
+    await seedNineBoxData(db, orgIds.a, userIds);
+
+    // succession fixtures (grants + org-A critical roles/successor). AFTER compensation (comp-gap reuse).
+    if (roles.includes('hr_admin') || roles.includes('hrbp')) await seedSuccessionGrants(db, roleIds);
+    await seedSuccessionData(db, orgIds.a, userIds);
 
     return { orgs: orgIds, users: plan.users };
   } finally {
@@ -680,6 +986,29 @@ export async function teardown(cfg: HarnessConfig): Promise<void> {
         `DELETE FROM candidates WHERE organization_id = ANY($1) AND email LIKE 'parity+%-cand%@tims.test'`,
         [orgIds]
       );
+      // compensation fixture (org A). All FK→users → must precede the users delete (step 3).
+      await db.query('DELETE FROM salary_adjustments WHERE organization_id = ANY($1)', [orgIds]);
+      await db.query('DELETE FROM benefit_enrollments WHERE organization_id = ANY($1)', [orgIds]);
+      await db.query('DELETE FROM benefit_plans WHERE organization_id = ANY($1)', [orgIds]);
+      await db.query('DELETE FROM employee_compensations WHERE organization_id = ANY($1)', [orgIds]);
+      await db.query('DELETE FROM salary_bands WHERE organization_id = ANY($1)', [orgIds]);
+      // evaluation360 fixture (org A). rater_assignments FK→users → precede the users delete.
+      await db.query('DELETE FROM rater_responses WHERE organization_id = ANY($1)', [orgIds]);
+      await db.query('DELETE FROM rater_assignments WHERE organization_id = ANY($1)', [orgIds]);
+      await db.query('DELETE FROM review_cycles WHERE organization_id = ANY($1)', [orgIds]);
+      // nine-box fixture (org A). calibration_members/votes are session-linked (no org_id) → delete
+      // by session id first; evaluations/sessions/members/votes all FK→users → precede the users delete.
+      const nbSess = await db.query<IdRow>('SELECT id FROM calibration_sessions WHERE organization_id = ANY($1)', [orgIds]);
+      const nbSessIds = nbSess.rows.map((r) => r.id);
+      if (nbSessIds.length) {
+        await db.query('DELETE FROM calibration_votes WHERE session_id = ANY($1)', [nbSessIds]);
+        await db.query('DELETE FROM calibration_members WHERE session_id = ANY($1)', [nbSessIds]);
+      }
+      await db.query('DELETE FROM calibration_sessions WHERE organization_id = ANY($1)', [orgIds]);
+      await db.query('DELETE FROM nine_box_evaluations WHERE organization_id = ANY($1)', [orgIds]);
+      // succession fixture (org A). successors/critical_roles FK→users → precede the users delete.
+      await db.query('DELETE FROM successors WHERE organization_id = ANY($1)', [orgIds]);
+      await db.query('DELETE FROM critical_roles WHERE organization_id = ANY($1)', [orgIds]);
     }
     // role_permissions grant rows (permissions themselves are a global catalog — never deleted).
     if (roleIds.length) await db.query('DELETE FROM role_permissions WHERE role_id = ANY($1)', [roleIds]);

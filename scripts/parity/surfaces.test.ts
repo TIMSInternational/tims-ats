@@ -80,4 +80,33 @@ describe('SURFACES', () => {
     expect(kpis90.input).toEqual({ period: '90D' });
     expect(kpis90.tsProcedure).toBe('recruitmentAnalytics.getKpis');
   });
+
+  it('the four Tier-1 read surfaces are registered with their flags + endpoint sets', () => {
+    expect(SURFACES['compensation'].flag).toBe('Platform__CompensationReadEnabled');
+    expect(SURFACES['compensation'].endpoints.map((e) => e.name).sort()).toEqual(
+      ['benefits-utilization', 'compa-ratio-distribution', 'market-comparison', 'my-compensation', 'pending-adjustments', 'salary-bands'],
+    );
+    expect(SURFACES['evaluation360'].flag).toBe('Platform__Evaluation360ReadEnabled');
+    expect(SURFACES['evaluation360'].endpoints.map((e) => e.name).sort()).toEqual(
+      ['cycles', 'my-rater-tasks', 'my-report-cycles'],
+    );
+    expect(SURFACES['ninebox'].flag).toBe('Platform__NineBoxReadEnabled');
+    expect(SURFACES['ninebox'].endpoints).toHaveLength(8);
+    expect(SURFACES['succession'].flag).toBe('Platform__SuccessionReadEnabled');
+    expect(SURFACES['succession'].endpoints.map((e) => e.name)).toContain('comp-gap-alerts');
+    expect(SURFACES['succession'].endpoints).toHaveLength(6);
+    for (const key of ['compensation', 'evaluation360', 'ninebox', 'succession']) {
+      expect(SURFACES[key].probeRole).toBe('super_admin');
+    }
+  });
+
+  it('nine-box marks only the two pure kernels as globalScope', () => {
+    const nb = SURFACES['ninebox'];
+    expect(nb.endpoints.find((e) => e.name === 'simulate')?.globalScope).toBe(true);
+    expect(nb.endpoints.find((e) => e.name === 'quadrant-plan')?.globalScope).toBe(true);
+    expect(nb.endpoints.find((e) => e.name === 'grid')?.globalScope).toBeUndefined();
+    // grid + movement-history omit hrbp (scopeWhereFor fragile); the org-rollup reads deny hrbp.
+    expect(nb.endpoints.find((e) => e.name === 'grid')?.expectedByRole['hrbp']).toBeUndefined();
+    expect(nb.endpoints.find((e) => e.name === 'dashboard-kpis')?.expectedByRole['hrbp']).toBe(403);
+  });
 });
