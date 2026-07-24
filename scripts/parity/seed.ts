@@ -228,18 +228,152 @@ async function upsertUserRoleGrant(db: Client, userId: string, roleId: string): 
   );
 }
 
-/**
- * Extension point for deeper team-intel KPI fixtures (OKRs, engagement surveys,
- * compensation bands, etc.) that later surface-specific parity checks may need.
- * Intentionally a no-op for the identity/RBAC-foundation seed shipped here.
- */
-// TODO(surface-data): populate team-intel KPI fixtures once a specific surface
-// needs them. Keep idempotent (swallow 23505) and FK-safe like the helpers above.
-export async function seedTeamIntelData(
-  _admin: SupabaseClient,
-  _orgIds: Record<'a' | 'b', string>
+// ── RBAC grant fixtures ──────────────────────────────────────────────────────
+// The C# PermissionService resolves a non-privileged role's access by joining
+// role_permissions → roles (by org + slug) → permissions (by module+action)
+// (Tims.Infrastructure/Identity/PermissionGrantRepository.FindGrantsAsync). A
+// freshly-seeded org has NO role_permissions, so hr_admin (which product-intends
+// team_intel:read at org scope, per packages/db/prisma/seed-access-matrix.ts)
+// would 403 without this grant. super_admin needs no grant (privileged bypass);
+// hrbp is intentionally ungranted (its 403 is the RBAC deny proof).
+
+/** Upsert the global (module, action) permission-catalog row. Returns its id. */
+async function upsertPermission(db: Client, module: string, action: string): Promise<string> {
+  const { rows } = await db.query<IdRow>(
+    `INSERT INTO permissions (id, module, action, description)
+     VALUES (gen_random_uuid(), $1, $2, $3)
+     ON CONFLICT (module, action) DO UPDATE SET description = permissions.description
+     RETURNING id`,
+    [module, action, `${module}.${action}`]
+  );
+  return rows[0].id;
+}
+
+/** Grant a role a permission at `scope` (idempotent). `scope` uses the ladder in
+ *  seed-access-matrix.ts ('own'|'team'|'unit'|'company'|'organization'). */
+async function upsertRolePermission(
+  db: Client,
+  roleId: string,
+  permissionId: string,
+  scope: string
 ): Promise<void> {
-  // no-op — see TODO above.
+  await db.query(
+    `INSERT INTO role_permissions (id, role_id, permission_id, scope)
+     VALUES (gen_random_uuid(), $1, $2, $3)
+     ON CONFLICT (role_id, permission_id) DO UPDATE SET scope = EXCLUDED.scope`,
+    [roleId, permissionId, scope]
+  );
+}
+
+/** Grants hr_admin the team_intel:read permission at org scope in each seeded org,
+ *  so the RBAC check's hr_admin=200 expectation holds (real prod seeds the full
+ *  matrix during org provisioning; the harness seeds just this one surface grant). */
+async function seedTeamIntelGrants(db: Client, roleIds: Map<string, string>): Promise<void> {
+  const permId = await upsertPermission(db, 'team_intel', 'read');
+  for (const key of ORG_KEYS) {
+    const hrAdminRoleId = roleIds.get(`${key}:hr_admin`);
+    if (hrAdminRoleId) await upsertRolePermission(db, hrAdminRoleId, permId, 'organization');
+  }
+}
+
+// ── team-intel KPI fixtures (DIFFERENTIATED per org) ─────────────────────────
+// getDashboardKpis (packages/api/src/routers/teamIntel.ts) counts teams /
+// user_teams / team-leaders scoped to the caller's org. With BOTH orgs empty the
+// two KPI payloads are identical all-zeros, which the RLS Mode B check can't
+// distinguish from a leak (it fails closed on "identical non-empty"). Seeding
+// DIFFERENT team data per org (A: 2 teams, 1 led, 1 member; B: 1 team, unled)
+// makes the payloads differ → a real cross-tenant comparison runs and proves
+// isolation (if org-B saw org-A's teams, its counts would match). teams require a
+// business_unit → company chain, so those are seeded too. All find-or-create by
+// (org, name): companies/business_units/teams have no natural unique key, so a
+// plain re-insert would duplicate and inflate the counts on every re-run.
+
+async function findOrCreateByName(
+  db: Client,
+  table: 'companies' | 'business_units' | 'teams',
+  organizationId: string,
+  name: string,
+  insert: () => Promise<string>
+): Promise<string> {
+  const found = await db.query<IdRow>(
+    `SELECT id FROM ${table} WHERE organization_id = $1 AND name = $2 LIMIT 1`,
+    [organizationId, name]
+  );
+  if (found.rows.length) return found.rows[0].id;
+  return insert();
+}
+
+async function findOrCreateCompany(db: Client, orgId: string, name: string): Promise<string> {
+  return findOrCreateByName(db, 'companies', orgId, name, async () => {
+    const { rows } = await db.query<IdRow>(
+      `INSERT INTO companies (id, organization_id, name, country, updated_at)
+       VALUES (gen_random_uuid(), $1, $2, $3, now()) RETURNING id`,
+      [orgId, name, 'CR']
+    );
+    return rows[0].id;
+  });
+}
+
+async function findOrCreateBusinessUnit(db: Client, orgId: string, companyId: string, name: string): Promise<string> {
+  return findOrCreateByName(db, 'business_units', orgId, name, async () => {
+    const { rows } = await db.query<IdRow>(
+      `INSERT INTO business_units (id, organization_id, company_id, name, updated_at)
+       VALUES (gen_random_uuid(), $1, $2, $3, now()) RETURNING id`,
+      [orgId, companyId, name]
+    );
+    return rows[0].id;
+  });
+}
+
+async function findOrCreateTeam(
+  db: Client,
+  orgId: string,
+  businessUnitId: string,
+  name: string,
+  leaderId: string | null
+): Promise<string> {
+  return findOrCreateByName(db, 'teams', orgId, name, async () => {
+    const { rows } = await db.query<IdRow>(
+      `INSERT INTO teams (id, organization_id, business_unit_id, name, leader_id, updated_at)
+       VALUES (gen_random_uuid(), $1, $2, $3, $4, now()) RETURNING id`,
+      [orgId, businessUnitId, name, leaderId]
+    );
+    return rows[0].id;
+  });
+}
+
+/** Insert-or-ignore a team membership. */
+async function upsertUserTeam(db: Client, userId: string, teamId: string): Promise<void> {
+  await db.query(
+    `INSERT INTO user_teams (id, user_id, team_id) VALUES (gen_random_uuid(), $1, $2)
+     ON CONFLICT (user_id, team_id) DO NOTHING`,
+    [userId, teamId]
+  );
+}
+
+/** Seeds DIFFERENTIATED team-intel data so org-A's and org-B's dashboard KPIs
+ *  diverge (see the block comment above). `userIds` maps `${orgKey}:${role}` →
+ *  public.users.id (for the team leader + a member). Idempotent. */
+export async function seedTeamIntelData(
+  db: Client,
+  orgIds: Record<'a' | 'b', string>,
+  userIds: Map<string, string>
+): Promise<void> {
+  for (const key of ORG_KEYS) {
+    const companyId = await findOrCreateCompany(db, orgIds[key], `Parity Co (${key})`);
+    const buId = await findOrCreateBusinessUnit(db, orgIds[key], companyId, `Parity BU (${key})`);
+    if (key === 'a') {
+      // org A: 2 teams, team A1 led by a:super_admin with a:hr_admin as a member.
+      const leaderId = userIds.get('a:super_admin') ?? null;
+      const teamA1 = await findOrCreateTeam(db, orgIds.a, buId, 'Parity Team A1', leaderId);
+      await findOrCreateTeam(db, orgIds.a, buId, 'Parity Team A2', null);
+      const memberId = userIds.get('a:hr_admin');
+      if (memberId) await upsertUserTeam(db, memberId, teamA1);
+    } else {
+      // org B: 1 team, no leader, no members → strictly fewer than org A on every team KPI.
+      await findOrCreateTeam(db, orgIds.b, buId, 'Parity Team B1', null);
+    }
+  }
 }
 
 /** Idempotent: creates the 2 test orgs + a Role + a user per configured role, if missing. */
@@ -257,13 +391,22 @@ export async function seed(cfg: HarnessConfig, roles: string[]): Promise<SeedRes
     for (const key of ORG_KEYS)
       for (const role of roles) roleIds.set(`${key}:${role}`, await upsertRole(db, orgIds[key], role));
 
+    const userIds = new Map<string, string>();
     for (const u of plan.users) {
       const authUserId = await upsertAuthUser(admin, u.email, u.password);
       const userId = await upsertPublicUser(db, authUserId, orgIds[u.orgKey], u.email, u.role);
+      userIds.set(`${u.orgKey}:${u.role}`, userId);
       const roleId = roleIds.get(`${u.orgKey}:${u.role}`);
       if (!roleId) throw new Error(`seed: no planned role id for ${u.orgKey}:${u.role}`);
       await upsertUserRoleGrant(db, userId, roleId);
     }
+
+    // RBAC + RLS fixtures: hr_admin's team_intel:read grant (so hr_admin=200) and
+    // DIFFERENTIATED per-org team data (so the RLS Mode B check has distinguishable
+    // payloads to prove cross-tenant isolation). Both idempotent; only run when the
+    // relevant roles were seeded.
+    if (roles.includes('hr_admin')) await seedTeamIntelGrants(db, roleIds);
+    await seedTeamIntelData(db, orgIds, userIds);
 
     return { orgs: orgIds, users: plan.users };
   } finally {
@@ -303,6 +446,20 @@ export async function teardown(cfg: HarnessConfig): Promise<void> {
       const rolesRes = await db.query<IdRow>('SELECT id FROM roles WHERE organization_id = ANY($1)', [orgIds]);
       roleIds = rolesRes.rows.map((r) => r.id);
     }
+
+    // 0. team-intel + grant fixtures — cleaned FIRST. teams.leader_id → users, so the
+    //    team chain MUST go before the users delete (step 4) or that delete could hit a
+    //    leader FK. role_permissions → roles (Cascade), swept here explicitly for clarity.
+    if (orgIds.length) {
+      const teamRows = await db.query<IdRow>('SELECT id FROM teams WHERE organization_id = ANY($1)', [orgIds]);
+      const teamIds = teamRows.rows.map((r) => r.id);
+      if (teamIds.length) await db.query('DELETE FROM user_teams WHERE team_id = ANY($1)', [teamIds]);
+      await db.query('DELETE FROM teams WHERE organization_id = ANY($1)', [orgIds]);
+      await db.query('DELETE FROM business_units WHERE organization_id = ANY($1)', [orgIds]);
+      await db.query('DELETE FROM companies WHERE organization_id = ANY($1)', [orgIds]);
+    }
+    // role_permissions grant rows (permissions themselves are a global catalog — never deleted).
+    if (roleIds.length) await db.query('DELETE FROM role_permissions WHERE role_id = ANY($1)', [roleIds]);
 
     // 1. user_roles — child of both users and roles.
     if (userIds.length) await db.query('DELETE FROM user_roles WHERE user_id = ANY($1)', [userIds]);
