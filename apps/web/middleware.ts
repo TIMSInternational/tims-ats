@@ -19,6 +19,20 @@ const PUBLIC_PATHS = [
 
 const IS_PROD = process.env.NODE_ENV === 'production';
 
+// C# Platform API origin (App Runner) the browser fetches directly once a read
+// surface is cut over (see lib/platform-api). Added to CSP connect-src so the
+// browser is permitted to connect; empty (dark) when the URL is unset, so the
+// CSP gains nothing until the backend is actually configured.
+const PLATFORM_API_ORIGIN = (() => {
+  const url = process.env.NEXT_PUBLIC_TIMS_PLATFORM_API_URL;
+  if (!url) return '';
+  try {
+    return new URL(url).origin;
+  } catch {
+    return '';
+  }
+})();
+
 // Per-request, nonce-based Content-Security-Policy. In production the nonce
 // replaces 'unsafe-inline' on script-src (Next.js stamps the same nonce onto
 // its bootstrap scripts via the request CSP header), shrinking the XSS surface.
@@ -36,7 +50,7 @@ function buildCsp(nonce: string): string {
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com",
     "img-src 'self' data: blob: https://*.supabase.co https://*.googleusercontent.com https://*.cloudfront.net",
-    "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://accounts.google.com https://login.microsoftonline.com https://*.daily.co wss://*.daily.co https://*.wss.daily.co https://*.elevenlabs.io wss://*.elevenlabs.io https://*.livekit.cloud wss://*.livekit.cloud https://challenges.cloudflare.com https://*.sentry.io",
+    `connect-src 'self' https://*.supabase.co wss://*.supabase.co https://accounts.google.com https://login.microsoftonline.com https://*.daily.co wss://*.daily.co https://*.wss.daily.co https://*.elevenlabs.io wss://*.elevenlabs.io https://*.livekit.cloud wss://*.livekit.cloud https://challenges.cloudflare.com https://*.sentry.io${PLATFORM_API_ORIGIN ? ` ${PLATFORM_API_ORIGIN}` : ''}`,
     "frame-src 'self' https://accounts.google.com https://login.microsoftonline.com https://*.daily.co https://challenges.cloudflare.com",
     "media-src 'self' blob: https://*.daily.co https://*.elevenlabs.io",
     // ElevenLabs Conversational AI loads its audio-processing AudioWorklet from a
