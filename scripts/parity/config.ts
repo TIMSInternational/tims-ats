@@ -11,6 +11,12 @@ export class ConfigError extends Error {
 export interface HarnessConfig {
   supabaseUrl: string; projectRef: string; serviceRoleKey: string;
   anonKey: string; csharpBase: string; tsBase: string;
+  /** Direct-Postgres connection string (role has BYPASSRLS). OPTIONAL: the Data
+   *  API (PostgREST) is locked down for `service_role` on this prod project
+   *  (42501 permission-denied), so `seed`/`teardown` write DB rows via `pg`
+   *  instead — see scripts/parity/seed.ts. Not required for `parity`/`rls`/
+   *  `rbac`, which never touch the DB directly. */
+  databaseUrl?: string;
 }
 
 const REQUIRED = {
@@ -27,7 +33,8 @@ export function parseConfig(env: Record<string, string | undefined>): HarnessCon
     if (!v) missing.push(varName); else out[key] = v;
   }
   if (missing.length) throw new ConfigError(`Missing env vars: ${missing.join(', ')}`);
-  return out as HarnessConfig;
+  const databaseUrl = env.DATABASE_URL;
+  return (databaseUrl ? { ...out, databaseUrl } : out) as HarnessConfig;
 }
 
 /** Parses .env-style text (KEY=VALUE lines) into a plain object, stripping full-line

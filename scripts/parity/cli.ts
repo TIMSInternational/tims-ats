@@ -211,12 +211,33 @@ export async function dispatch(argv: string[]): Promise<number> {
   }
 }
 
+/**
+ * Renders a thrown command error legibly. A bare `${err}` on a Supabase/pg
+ * error (PostgrestError, AuthError, pg's DatabaseError) stringifies as
+ * `[object Object]` since none of them override `toString`/have a message
+ * that survives template coercion in all cases — so this pulls `.message`
+ * plus the diagnostic fields those errors carry, when present. The field set
+ * spans both dialects: node-postgres `DatabaseError` exposes `code`, `detail`
+ * (singular — e.g. "Key (…)=(…) already exists"), and `constraint`; Supabase's
+ * `PostgrestError`/`AuthError` expose `code`, `details` (plural), and `hint`.
+ */
+function formatCommandError(err: unknown): string {
+  if (!(err instanceof Error)) return String(err);
+  const parts = [err.message];
+  const withFields = err as unknown as Record<string, unknown>;
+  for (const field of ['code', 'detail', 'details', 'constraint', 'hint'] as const) {
+    const value = withFields[field];
+    if (value !== undefined && value !== null && value !== '') parts.push(`${field}=${String(value)}`);
+  }
+  return parts.join(' | ');
+}
+
 async function main(): Promise<void> {
   try {
     const exitCode = await dispatch(process.argv.slice(2));
     process.exit(exitCode);
   } catch (err) {
-    console.error(`parity: ${err instanceof Error ? err.message : String(err)}`);
+    console.error(`parity: ${formatCommandError(err)}`);
     process.exit(1);
   }
 }
