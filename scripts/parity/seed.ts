@@ -406,6 +406,168 @@ async function seedBillingSubscription(db: Client, orgAId: string): Promise<void
   );
 }
 
+// ── reporting (recruitmentAnalytics) fixtures ────────────────────────────────
+// RBAC: `vacancy:read` is org-scoped. hr_admin gets it @organization (a real-grant
+// 200 that clears requireOrgScope, like team-intel); hrbp gets it @unit so its 403
+// exercises the REAL requireOrgScope path (has the grant, wrong scope) rather than a
+// bare no-grant deny. super_admin needs no grant (permission-bypass role).
+async function seedReportingGrants(db: Client, roleIds: Map<string, string>): Promise<void> {
+  const permId = await upsertPermission(db, 'vacancy', 'read');
+  for (const key of ORG_KEYS) {
+    const hrAdminRoleId = roleIds.get(`${key}:hr_admin`);
+    if (hrAdminRoleId) await upsertRolePermission(db, hrAdminRoleId, permId, 'organization');
+    const hrbpRoleId = roleIds.get(`${key}:hrbp`);
+    if (hrbpRoleId) await upsertRolePermission(db, hrbpRoleId, permId, 'unit');
+  }
+}
+
+// Recruitment dataset for org A ONLY (org B stays empty) so all six recruitmentAnalytics
+// reads return non-empty/differentiated payloads → a real RLS Mode B cross-tenant comparison
+// (the fixed-shape reads kpis/funnel/trend/lost-by-delay differ A-non-zero vs B-all-zero; the
+// array reads source-breakdown/recruiter-sla are A-non-empty vs B-empty). NONE of these tables
+// use native Postgres enums (status/source/contract_type are plain text) → NO ::Enum casts.
+// id + updated_at are supplied (client-side @default(uuid())/@updatedAt); created_at/applied_at
+// have real now() DB defaults. pipeline_stages.order is the reserved word `order` → double-quoted.
+// NO stage_movements are seeded: the null-movement path makes hoursInStage fall back to appliedAt.
+// All timestamps are now()-K days with K far from the 30D window edge + trend month boundaries, and
+// every span (TTF/TTH) is between two SEEDED timestamps, so C#/TS (each computing its own `now`)
+// bucket identically and every rounded-day/count output matches. Idempotent + re-anchored on re-seed:
+// candidates/applications upsert on their composite uniques; vacancy/stages/offer find-or-create then
+// UPDATE their time-relative fields, so a re-run always re-centres the dates on the latest now().
+async function upsertReportingCandidate(
+  db: Client, orgId: string, email: string, first: string, last: string, source: string, poolType: string
+): Promise<string> {
+  const { rows } = await db.query<IdRow>(
+    `INSERT INTO candidates (id, organization_id, first_name, last_name, email, source, pool_type, updated_at)
+     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, now())
+     ON CONFLICT (organization_id, email) DO UPDATE SET
+       source = EXCLUDED.source, pool_type = EXCLUDED.pool_type, updated_at = now()
+     RETURNING id`,
+    [orgId, first, last, email, source, poolType]
+  );
+  return rows[0].id;
+}
+
+async function upsertReportingVacancy(
+  db: Client, orgId: string, title: string, createdBy: string, assignedTo: string
+): Promise<string> {
+  const found = await db.query<IdRow>(
+    'SELECT id FROM vacancies WHERE organization_id = $1 AND title = $2 LIMIT 1',
+    [orgId, title]
+  );
+  if (found.rows.length) {
+    const id = found.rows[0].id;
+    await db.query(
+      `UPDATE vacancies SET assigned_to = $2, status = 'open', deleted_at = NULL,
+         created_at = now() - make_interval(days => 20), updated_at = now() WHERE id = $1`,
+      [id, assignedTo]
+    );
+    return id;
+  }
+  const { rows } = await db.query<IdRow>(
+    `INSERT INTO vacancies (id, organization_id, title, created_by, assigned_to, status, created_at, updated_at)
+     VALUES (gen_random_uuid(), $1, $2, $3, $4, 'open', now() - make_interval(days => 20), now())
+     RETURNING id`,
+    [orgId, title, createdBy, assignedTo]
+  );
+  return rows[0].id;
+}
+
+async function upsertReportingStage(
+  db: Client, orgId: string, vacancyId: string, name: string, order: number, slaHours: number
+): Promise<string> {
+  const found = await db.query<IdRow>(
+    'SELECT id FROM pipeline_stages WHERE vacancy_id = $1 AND name = $2 LIMIT 1',
+    [vacancyId, name]
+  );
+  if (found.rows.length) {
+    const id = found.rows[0].id;
+    await db.query('UPDATE pipeline_stages SET "order" = $2, sla_hours = $3, updated_at = now() WHERE id = $1', [id, order, slaHours]);
+    return id;
+  }
+  const { rows } = await db.query<IdRow>(
+    `INSERT INTO pipeline_stages (id, organization_id, vacancy_id, name, "order", sla_hours, updated_at)
+     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, now())
+     RETURNING id`,
+    [orgId, vacancyId, name, order, slaHours]
+  );
+  return rows[0].id;
+}
+
+async function upsertReportingApplication(
+  db: Client, orgId: string, candidateId: string, vacancyId: string, stageId: string,
+  source: string, status: string, appliedDaysAgo: number, rejectedDaysAgo: number | null
+): Promise<string> {
+  const rejectedExpr = rejectedDaysAgo == null ? 'NULL' : 'now() - make_interval(days => $8)';
+  const params: unknown[] = [orgId, candidateId, vacancyId, stageId, source, status, appliedDaysAgo];
+  if (rejectedDaysAgo != null) params.push(rejectedDaysAgo);
+  const { rows } = await db.query<IdRow>(
+    `INSERT INTO applications
+       (id, organization_id, candidate_id, vacancy_id, current_stage_id, source, status, applied_at, rejected_at, updated_at)
+     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, now() - make_interval(days => $7), ${rejectedExpr}, now())
+     ON CONFLICT (candidate_id, vacancy_id) DO UPDATE SET
+       current_stage_id = EXCLUDED.current_stage_id, source = EXCLUDED.source, status = EXCLUDED.status,
+       applied_at = EXCLUDED.applied_at, rejected_at = EXCLUDED.rejected_at, updated_at = now()
+     RETURNING id`,
+    params
+  );
+  return rows[0].id;
+}
+
+async function upsertReportingOffer(
+  db: Client, orgId: string, candidateId: string, vacancyId: string, applicationId: string, createdById: string
+): Promise<void> {
+  const found = await db.query<IdRow>(
+    'SELECT id FROM offers WHERE organization_id = $1 AND application_id = $2 LIMIT 1',
+    [orgId, applicationId]
+  );
+  if (found.rows.length) {
+    await db.query(
+      `UPDATE offers SET status = 'accepted', sent_at = now() - make_interval(days => 5),
+         responded_at = now() - make_interval(days => 2), updated_at = now() WHERE id = $1`,
+      [found.rows[0].id]
+    );
+    return;
+  }
+  await db.query(
+    `INSERT INTO offers
+       (id, organization_id, candidate_id, vacancy_id, application_id, status, salary, currency,
+        start_date, contract_type, created_by_id, sent_at, responded_at, updated_at)
+     VALUES (gen_random_uuid(), $1, $2, $3, $4, 'accepted', 50000, 'USD',
+             now() + make_interval(days => 14), 'full_time', $5,
+             now() - make_interval(days => 5), now() - make_interval(days => 2), now())`,
+    [orgId, candidateId, vacancyId, applicationId, createdById]
+  );
+}
+
+export async function seedReportingData(
+  db: Client, orgAId: string, userIds: Map<string, string>
+): Promise<void> {
+  const recruiter = userIds.get('a:hr_admin');
+  // Recruiter (vacancy.assignedTo → recruiter-sla) + creators need seeded users; skip if the
+  // relevant roles weren't seeded (roles-subset callers). super_admin is the vacancy creator.
+  if (!recruiter) return;
+  const createdBy = userIds.get('a:super_admin') ?? recruiter;
+
+  const cand1 = await upsertReportingCandidate(db, orgAId, 'parity+a-cand1@tims.test', 'Cand', 'One', 'linkedin', 'active');
+  const cand2 = await upsertReportingCandidate(db, orgAId, 'parity+a-cand2@tims.test', 'Cand', 'Two', 'referral', 'active');
+  // cand3 (also linkedin) makes the source counts DISTINCT — linkedin=2, referral=1 — so
+  // source-breakdown's "sort by applications desc" is deterministic on both stacks regardless
+  // of groupBy input order (no equal-count tie relying on the OrderBy(source) tiebreak).
+  const cand3 = await upsertReportingCandidate(db, orgAId, 'parity+a-cand3@tims.test', 'Cand', 'Three', 'linkedin', 'active');
+  const vac = await upsertReportingVacancy(db, orgAId, 'Parity Vacancy A1', createdBy, recruiter);
+  const s1 = await upsertReportingStage(db, orgAId, vac, 'Applied', 0, 720); // 30d SLA: keeps the aged active apps on-time
+  const s2 = await upsertReportingStage(db, orgAId, vac, 'Interview', 1, 48); // 48h SLA: the rejected app breaches it
+  // active app (applied 15d ago, stage S1) → trend/kpi/funnel/source/hire-source + recruiter compliance-on-time.
+  const appActive = await upsertReportingApplication(db, orgAId, cand1, vac, s1, 'linkedin', 'active', 15, null);
+  // 2nd active linkedin app (applied 12d ago, stage S1) → distinct source count (linkedin=2 > referral=1).
+  await upsertReportingApplication(db, orgAId, cand3, vac, s1, 'linkedin', 'active', 12, null);
+  // rejected app (applied 10d ago, rejected 1d ago, stage S2 sla 48h → 9d-in-stage overdue) → lost-by-delay + kpi.lostByDelay.
+  await upsertReportingApplication(db, orgAId, cand2, vac, s2, 'referral', 'rejected', 10, 1);
+  // accepted offer on the first active app (sent 5d ago, responded 2d ago) → kpi hires/TTF/TTH/accept-rate + source hires.
+  await upsertReportingOffer(db, orgAId, cand1, vac, appActive, recruiter);
+}
+
 /** Idempotent: creates the 2 test orgs + a Role + a user per configured role, if missing. */
 export async function seed(cfg: HarnessConfig, roles: string[]): Promise<SeedResult> {
   const admin = makeAdminClient(cfg);
@@ -441,6 +603,11 @@ export async function seed(cfg: HarnessConfig, roles: string[]): Promise<SeedRes
     // billing-usage RLS/parity fixture: a subscription in org A only (see
     // seedBillingSubscription). Org-independent, so it runs unconditionally.
     await seedBillingSubscription(db, orgIds.a);
+
+    // reporting RLS/RBAC/parity fixtures: vacancy:read grants (hr_admin@org / hrbp@unit)
+    // + a recruitment dataset in org A only. Grants only when those roles were seeded.
+    if (roles.includes('hr_admin') || roles.includes('hrbp')) await seedReportingGrants(db, roleIds);
+    await seedReportingData(db, orgIds.a, userIds);
 
     return { orgs: orgIds, users: plan.users };
   } finally {
@@ -495,6 +662,24 @@ export async function teardown(cfg: HarnessConfig): Promise<void> {
       // swept explicitly here for clarity + so a teardown without a following reseed
       // leaves no orphan subscription row.
       await db.query('DELETE FROM subscriptions WHERE organization_id = ANY($1)', [orgIds]);
+      // reporting fixture (org A only). MUST precede the users delete below (vacancy.created_by/
+      // assigned_to + offer.created_by_id → users). FK order: offers → applications → pipeline_stages
+      // → vacancies (candidate is Restrict, deleted last). Vacancy cascade would cover stages/apps/
+      // offers on the org delete, but sweep explicitly so a teardown-without-reseed leaves nothing.
+      const repVac = await db.query<IdRow>('SELECT id FROM vacancies WHERE organization_id = ANY($1)', [orgIds]);
+      const repVacIds = repVac.rows.map((r) => r.id);
+      if (repVacIds.length) {
+        await db.query('DELETE FROM offers WHERE vacancy_id = ANY($1)', [repVacIds]);
+        await db.query('DELETE FROM applications WHERE vacancy_id = ANY($1)', [repVacIds]);
+        await db.query('DELETE FROM pipeline_stages WHERE vacancy_id = ANY($1)', [repVacIds]);
+        await db.query('DELETE FROM vacancies WHERE id = ANY($1)', [repVacIds]);
+      }
+      // Scope to the reporting fixture candidates by their deterministic emails, so this can
+      // never collide with a future surface that seeds candidates carrying dependent rows.
+      await db.query(
+        `DELETE FROM candidates WHERE organization_id = ANY($1) AND email LIKE 'parity+%-cand%@tims.test'`,
+        [orgIds]
+      );
     }
     // role_permissions grant rows (permissions themselves are a global catalog — never deleted).
     if (roleIds.length) await db.query('DELETE FROM role_permissions WHERE role_id = ANY($1)', [roleIds]);

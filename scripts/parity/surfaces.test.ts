@@ -39,4 +39,45 @@ describe('SURFACES', () => {
     expect(usage?.globalScope).toBeUndefined();
     expect(plan?.globalScope).toBeUndefined();
   });
+
+  it('reporting has the six recruitment-analytics reads under one flag + org-scope RBAC (super_admin/hr_admin 200, hrbp 403)', () => {
+    const s = SURFACES['reporting'];
+    expect(s.flag).toBe('Platform__ReportingReadEnabled');
+    expect(s.probeRole).toBe('super_admin');
+    expect(s.endpoints.map((e) => e.name).sort()).toEqual(
+      ['funnel', 'kpis', 'kpis-90d', 'lost-by-delay', 'recruiter-sla', 'source-breakdown', 'trend'],
+    );
+    for (const e of s.endpoints) {
+      // vacancy:read is org-scoped: super_admin (bypass) + hr_admin (org grant) allow,
+      // hrbp (unit grant) fails requireOrgScope.
+      expect(e.expectedByRole['super_admin']).toBe(200);
+      expect(e.expectedByRole['hr_admin']).toBe(200);
+      expect(e.expectedByRole['hrbp']).toBe(403);
+      // none of the reporting reads is a non-tenant global — they're all org-scoped Mode B.
+      expect(e.globalScope).toBeUndefined();
+    }
+  });
+
+  it('reporting bakes ?period=30D into csharpPath AND tsProcedure input for the three period endpoints', () => {
+    const s = SURFACES['reporting'];
+    const periodEndpoints = ['kpis', 'source-breakdown', 'lost-by-delay'];
+    for (const name of periodEndpoints) {
+      const e = s.endpoints.find((x) => x.name === name)!;
+      // callCsharp uses csharpPath verbatim (no query-building) → period must live in the path.
+      expect(e.csharpPath).toContain('?period=30D');
+      // ...and match the tRPC input so both stacks resolve the SAME window (no default drift).
+      expect(e.input).toEqual({ period: '30D' });
+    }
+    // the no-input endpoints carry no query + empty input.
+    for (const name of ['funnel', 'trend', 'recruiter-sla']) {
+      const e = s.endpoints.find((x) => x.name === name)!;
+      expect(e.csharpPath).not.toContain('?');
+      expect(e.input).toEqual({});
+    }
+    // the second kpis probe pins a NON-default window so a "period ignored" C# regression is caught.
+    const kpis90 = s.endpoints.find((x) => x.name === 'kpis-90d')!;
+    expect(kpis90.csharpPath).toContain('?period=90D');
+    expect(kpis90.input).toEqual({ period: '90D' });
+    expect(kpis90.tsProcedure).toBe('recruitmentAnalytics.getKpis');
+  });
 });
