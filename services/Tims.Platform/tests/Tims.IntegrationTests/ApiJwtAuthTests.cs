@@ -30,6 +30,10 @@ public sealed class ApiJwtAuthTests
     // an unknown key is rejected (signature/JWKS validation actually runs).
     private static readonly RsaSecurityKey UntrustedKey = new(RSA.Create(2048)) { KeyId = "attacker-key" };
 
+    // Supabase signs end-user JWTs with ES256 (EC P-256) by default — this exercises that path.
+    private static readonly ECDsa SigningEc = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+    private static readonly ECDsaSecurityKey EcPrivateKey = new(SigningEc) { KeyId = "test-ec-key-1" };
+
     private static WebApplicationFactory<Program> Factory() =>
         new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
@@ -84,6 +88,44 @@ public sealed class ApiJwtAuthTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadAsStringAsync();
         Assert.Contains(Sub, body);
+    }
+
+    [Fact]
+    public async Task Es256_token_authenticates_supabase_asymmetric_default()
+    {
+        // Supabase signs end-user JWTs with ES256 (EC), not RS256 — so ValidAlgorithms MUST include
+        // ES256 or every real token 401s. Bite: reverting Program.cs to [RS256]-only makes this RED.
+        // The EC public key is published as the trusted signing key (mirrors the Supabase ES256 JWKS).
+        var ecPublic = new ECDsaSecurityKey(ECDsa.Create(SigningEc.ExportParameters(false)))
+        {
+            KeyId = EcPrivateKey.KeyId,
+        };
+        await using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        {
+            builder.UseSetting("Platform:DatabaseConnectionString", "Host=localhost;Port=5432;Database=x;Username=x");
+            builder.UseSetting("Platform:SupabaseJwtIssuer", Issuer);
+            builder.UseSetting("Platform:SupabaseJwtAudience", Audience);
+            builder.ConfigureTestServices(services =>
+                services.PostConfigure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
+                {
+                    options.RequireHttpsMetadata = false;
+                    options.TokenValidationParameters.IssuerSigningKeys = [ecPublic];
+                }));
+        });
+        using var client = factory.CreateClient();
+
+        var es256 = new JsonWebTokenHandler().CreateToken(new SecurityTokenDescriptor
+        {
+            Issuer = Issuer,
+            Audience = Audience,
+            Subject = new ClaimsIdentity([new Claim("sub", Sub)]),
+            Expires = DateTime.UtcNow.AddMinutes(10),
+            SigningCredentials = new SigningCredentials(EcPrivateKey, SecurityAlgorithms.EcdsaSha256),
+        });
+
+        var response = await client.SendAsync(Authorized("/whoami", es256));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains(Sub, await response.Content.ReadAsStringAsync());
     }
 
     [Fact]
@@ -145,8 +187,8 @@ public sealed class ApiJwtAuthTests
         await using var factory = Factory();
         using var client = factory.CreateClient();
 
-        // A token forged with a symmetric HS256 signature must never be accepted — the scheme
-        // pins ValidAlgorithms = [RS256]. (Even absent the pin there is no HMAC key configured.)
+        // A token forged with a symmetric HS256 signature must never be accepted — the scheme pins
+        // ValidAlgorithms to ASYMMETRIC only [ES256, RS256]. (Even absent the pin there is no HMAC key configured.)
         var hmacKey = new SymmetricSecurityKey(RandomNumberGenerator.GetBytes(64));
         var descriptor = new SecurityTokenDescriptor
         {

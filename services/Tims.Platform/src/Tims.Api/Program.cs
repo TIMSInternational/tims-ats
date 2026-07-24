@@ -499,9 +499,10 @@ try
                 ValidAudience = jwtAudience,
                 ValidateLifetime = true,
                 ValidateIssuerSigningKey = true,
-                // Pin the asymmetric algorithm Supabase signs with — closes alg-confusion
-                // (a token forged with alg=HS256/none can never be accepted).
-                ValidAlgorithms = [SecurityAlgorithms.RsaSha256],
+                // Pin to the ASYMMETRIC algorithms Supabase may sign with (ES256 is the current
+                // Supabase default, RS256 covers a key-type rotation) — closes alg-confusion: a token
+                // forged with alg=HS256/none can never be accepted because no symmetric alg is listed.
+                ValidAlgorithms = [SecurityAlgorithms.EcdsaSha256, SecurityAlgorithms.RsaSha256],
                 ClockSkew = TimeSpan.FromSeconds(30),
                 NameClaimType = "sub",
             };
