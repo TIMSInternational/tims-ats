@@ -1,5 +1,22 @@
 import { describe, it, expect, vi } from 'vitest';
-import { getTokenWith, getSessionCookieWith, type SignIn, type BuildCookie } from './supabase';
+import { getTokenWith, getSessionCookieWith, formatCookieHeader, type SignIn, type BuildCookie } from './supabase';
+
+describe('formatCookieHeader', () => {
+  it('renders a single (unchunked) session cookie', () => {
+    expect(formatCookieHeader([{ name: 'sb-ref-auth-token', value: 'base64-abc' }])).toBe(
+      'sb-ref-auth-token=base64-abc',
+    );
+  });
+
+  it('joins chunked cookies (.0/.1) with "; "', () => {
+    expect(
+      formatCookieHeader([
+        { name: 'sb-ref-auth-token.0', value: 'base64-aaa' },
+        { name: 'sb-ref-auth-token.1', value: 'bbb' },
+      ]),
+    ).toBe('sb-ref-auth-token.0=base64-aaa; sb-ref-auth-token.1=bbb');
+  });
+});
 
 describe('getTokenWith', () => {
   it('calls signIn once per email then serves cache', async () => {

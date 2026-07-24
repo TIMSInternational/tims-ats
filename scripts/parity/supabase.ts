@@ -11,6 +11,15 @@ export type CookieCache = Map<string, string>;
  *  `getSessionCookieWith` (cache behavior) is unit-testable without a network. */
 export type BuildCookie = (email: string, password: string) => Promise<string>;
 
+/** Renders captured `{name,value}` cookies into a single `Cookie:` request-header
+ *  string. Chunked sessions (`sb-<ref>-auth-token.0`/`.1`, past ~3180 bytes) join
+ *  with `'; '` — a valid multi-cookie header that `@supabase/ssr` reassembles on
+ *  read. base64url values need no URL-encoding (all valid cookie octets). Pure +
+ *  unit-tested (the chunk-join is the most bug-prone bit of the capture). */
+export function formatCookieHeader(cookies: { name: string; value: string }[]): string {
+  return cookies.map((c) => `${c.name}=${c.value}`).join('; ');
+}
+
 export function makeAdminClient(cfg: HarnessConfig): SupabaseClient {
   return createClient(cfg.supabaseUrl, cfg.serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },
@@ -82,20 +91,24 @@ export async function getSessionCookie(
 ): Promise<string> {
   return getSessionCookieWith(
     async (e, p) => {
-      let captured: { name: string; value: string }[] = [];
+      // Accumulate by name across every setAll (upsert, later-wins) rather than
+      // keeping only the last batch — robust if @supabase/ssr ever splits a
+      // clear-then-set into two calls. A fresh sign-in (getAll → []) fires one
+      // setAll with just the sb-<ref>-auth-token chunk(s).
+      const captured = new Map<string, string>();
       const client = createServerClient(cfg.supabaseUrl, cfg.anonKey, {
         cookies: {
           getAll: () => [],
           setAll: (cookies) => {
-            captured = cookies.map(({ name, value }) => ({ name, value }));
+            for (const { name, value } of cookies) captured.set(name, value);
           },
         },
       });
       const { data, error } = await client.auth.signInWithPassword({ email: e, password: p });
       if (error || !data.session) throw new Error(`getSessionCookie: signIn failed for ${e}: ${error?.message ?? 'no session returned'}`);
-      if (captured.length === 0)
+      if (captured.size === 0)
         throw new Error(`getSessionCookie: signIn for ${e} produced no auth cookies (setAll was not invoked)`);
-      return captured.map((c) => `${c.name}=${c.value}`).join('; ');
+      return formatCookieHeader([...captured].map(([name, value]) => ({ name, value })));
     },
     email,
     password,
