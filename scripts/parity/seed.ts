@@ -376,6 +376,36 @@ export async function seedTeamIntelData(
   }
 }
 
+// billing-usage RLS/parity fixture. Inserts ONE subscriptions row in org A ONLY
+// (org B intentionally has none). getCurrentPlan (packages/api/src/routers/billing.ts)
+// findUnique-by-org returns that row for A and top-level `null` for B; getUsage's
+// buildUsageView derives paid-plan limits + a populated period for A vs trial-fallback
+// limits + null period for B. So both org-scoped billing reads yield DIFFERENT non-empty
+// payloads across orgs. getCurrentPlan (row-for-A vs top-level `null`-for-B) is the airtight
+// leak detector — any subscriptions-table cross-tenant leak makes B echo A's row (Mode B FAIL);
+// getUsage corroborates but its limits differ unconditionally by plan. No grant is seeded: the
+// billing surface probes/allows only super_admin (a permission-bypass role in both stacks),
+// and hr_admin/hrbp correctly 403 with no billing grant. Native enums are cast explicitly
+// (::"OrgPlan"/::"SubscriptionStatus"); id/updated_at supplied (Prisma @default(uuid())/
+// @updatedAt are client-side — no DB default), created_at IS a real @default(now()) so it
+// is omitted. Idempotent: ON CONFLICT (organization_id) refreshes the row in place.
+async function seedBillingSubscription(db: Client, orgAId: string): Promise<void> {
+  await db.query(
+    `INSERT INTO subscriptions
+       (id, organization_id, plan, status, current_period_start, current_period_end, updated_at)
+     VALUES
+       (gen_random_uuid(), $1, 'professional'::"OrgPlan", 'active'::"SubscriptionStatus",
+        now(), now() + interval '30 days', now())
+     ON CONFLICT (organization_id) DO UPDATE SET
+       plan = EXCLUDED.plan,
+       status = EXCLUDED.status,
+       current_period_start = EXCLUDED.current_period_start,
+       current_period_end = EXCLUDED.current_period_end,
+       updated_at = now()`,
+    [orgAId]
+  );
+}
+
 /** Idempotent: creates the 2 test orgs + a Role + a user per configured role, if missing. */
 export async function seed(cfg: HarnessConfig, roles: string[]): Promise<SeedResult> {
   const admin = makeAdminClient(cfg);
@@ -407,6 +437,10 @@ export async function seed(cfg: HarnessConfig, roles: string[]): Promise<SeedRes
     // relevant roles were seeded.
     if (roles.includes('hr_admin')) await seedTeamIntelGrants(db, roleIds);
     await seedTeamIntelData(db, orgIds, userIds);
+
+    // billing-usage RLS/parity fixture: a subscription in org A only (see
+    // seedBillingSubscription). Org-independent, so it runs unconditionally.
+    await seedBillingSubscription(db, orgIds.a);
 
     return { orgs: orgIds, users: plan.users };
   } finally {
@@ -457,6 +491,10 @@ export async function teardown(cfg: HarnessConfig): Promise<void> {
       await db.query('DELETE FROM teams WHERE organization_id = ANY($1)', [orgIds]);
       await db.query('DELETE FROM business_units WHERE organization_id = ANY($1)', [orgIds]);
       await db.query('DELETE FROM companies WHERE organization_id = ANY($1)', [orgIds]);
+      // billing-usage fixture (org A only). Cascades on the org delete below too, but
+      // swept explicitly here for clarity + so a teardown without a following reseed
+      // leaves no orphan subscription row.
+      await db.query('DELETE FROM subscriptions WHERE organization_id = ANY($1)', [orgIds]);
     }
     // role_permissions grant rows (permissions themselves are a global catalog — never deleted).
     if (roleIds.length) await db.query('DELETE FROM role_permissions WHERE role_id = ANY($1)', [roleIds]);

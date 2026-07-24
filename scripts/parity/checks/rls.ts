@@ -5,11 +5,12 @@ export interface CheckResult {
   endpoint: string;
   ok: boolean;
   detail?: string;
-  /** True only for Mode B's both-orgs-200-and-empty case: `ok:true` here is a
-   *  STRUCTURAL pass only (no cross-tenant data existed to compare), not the
-   *  strong isolation proof a real leak-check needs. Never set alongside
-   *  `ok:false`. `report.ts` renders this distinctly (`[WEAK]`) so report-green
-   *  doesn't silently imply a real comparison happened. */
+  /** Set when an `ok:true` RLS verdict is NOT a strong cross-tenant proof, in
+   *  one of two cases: (1) Mode B's both-orgs-200-and-empty case (no cross-tenant
+   *  data existed to compare); or (2) a `globalScope` endpoint, where the payload
+   *  is deliberately org-independent so there is no tenant isolation to prove.
+   *  Never set alongside `ok:false`. `report.ts` renders this distinctly (`[WEAK]`)
+   *  so report-green doesn't silently imply a real comparison happened. */
   inconclusive?: boolean;
 }
 
@@ -132,6 +133,21 @@ export async function runRlsEndpoint(
   ctx: RlsContext,
   callCsharp: CallCsharp,
 ): Promise<CheckResult> {
+  // globalScope — a non-tenant endpoint (e.g. /billing/config): its payload is
+  // org-independent by design, so identical cross-org responses are CORRECT, not
+  // a leak. There is no tenant isolation to prove here, so report a documented
+  // N/A (inconclusive → [WEAK]) rather than running Mode B, whose identical-
+  // non-empty heuristic would otherwise false-FAIL a legitimately global read.
+  if (ep.globalScope) {
+    return {
+      check: 'rls',
+      endpoint: ep.name,
+      ok: true,
+      inconclusive: true,
+      detail: 'N/A: globalScope (non-tenant) endpoint — no cross-tenant isolation to prove',
+    };
+  }
+
   if (ep.idScopeKey) {
     // Mode A — by-id IDOR probe
     if (!ctx.orgBResourceId) {

@@ -178,4 +178,42 @@ describe('runRlsEndpoint', () => {
       expect(fake).not.toHaveBeenCalled();
     });
   });
+
+  describe('globalScope — non-tenant endpoint (e.g. /billing/config)', () => {
+    const globalEp: EndpointDef = {
+      name: 'config',
+      csharpPath: '/billing/config',
+      tsProcedure: 'billing.getBillingConfig',
+      input: {},
+      globalScope: true,
+      expectedByRole: { super_admin: 200, hr_admin: 403, hrbp: 403 },
+    };
+
+    it('short-circuits to inconclusive N/A WITHOUT probing (identical cross-org payloads are correct, not a leak)', async () => {
+      const fake = vi.fn();
+      const result = await runRlsEndpoint(
+        globalEp,
+        { base: 'http://csharp.local', orgAToken: 'org-a-token', orgBToken: 'org-b-token' },
+        fake,
+      );
+      expect(result.ok).toBe(true);
+      expect(result.inconclusive).toBe(true);
+      expect(result.detail).toContain('globalScope');
+      // The whole point: a global endpoint returning the SAME body to both orgs must
+      // never reach Mode B's identical-non-empty "leak" branch — so no call is made.
+      expect(fake).not.toHaveBeenCalled();
+    });
+
+    it('globalScope takes precedence over idScopeKey (Mode A also skipped)', async () => {
+      const fake = vi.fn();
+      const result = await runRlsEndpoint(
+        { ...globalEp, idScopeKey: 'irrelevant' },
+        { base: 'http://csharp.local', orgAToken: 'org-a-token', orgBResourceId: 'org-b-id' },
+        fake,
+      );
+      expect(result.ok).toBe(true);
+      expect(result.inconclusive).toBe(true);
+      expect(fake).not.toHaveBeenCalled();
+    });
+  });
 });
