@@ -487,7 +487,16 @@ try
         {
             if (!string.IsNullOrWhiteSpace(jwksMetadataAddress))
             {
-                options.MetadataAddress = jwksMetadataAddress;
+                // MetadataAddress needs the OIDC DISCOVERY document, not a raw JWKS URL — a
+                // JWKS URL loads zero signing keys (silent 401s). Normalize a mistaken
+                // …/jwks.json to its …/openid-configuration sibling. See SupabaseJwtMetadata.
+                options.MetadataAddress = SupabaseJwtMetadata.NormalizeDiscoveryAddress(jwksMetadataAddress);
+            }
+            else if (!string.IsNullOrWhiteSpace(jwtIssuer))
+            {
+                // No explicit metadata address → derive discovery from the issuer
+                // (.NET appends /.well-known/openid-configuration).
+                options.Authority = jwtIssuer;
             }
             options.RequireHttpsMetadata = !builder.Environment.IsDevelopment();
             options.MapInboundClaims = false; // keep raw claim names (e.g. "sub")

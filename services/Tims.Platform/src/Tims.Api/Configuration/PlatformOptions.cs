@@ -48,7 +48,13 @@ public sealed class PlatformOptions
     /// <summary>Expected audience. Supabase signs end-user tokens with aud "authenticated".</summary>
     public string SupabaseJwtAudience { get; init; } = "authenticated";
 
-    /// <summary>JWKS metadata address (the .well-known/jwks.json URL) for asymmetric verification.</summary>
+    /// <summary>
+    /// OIDC discovery address for asymmetric verification — the
+    /// <c>.well-known/openid-configuration</c> URL (NOT the raw <c>.well-known/jwks.json</c>;
+    /// a JWKS URL loads zero signing keys → all tokens 401). A mistaken jwks.json value is
+    /// normalized to its openid-configuration sibling (SupabaseJwtMetadata). When unset, the
+    /// issuer's discovery document is used (Program.cs Authority fallback).
+    /// </summary>
     public string? SupabaseJwksMetadataAddress { get; init; }
 
     // --- Platform-owner impersonation (WP2.4) -----------------------------------------
