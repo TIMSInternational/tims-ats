@@ -81,23 +81,52 @@ describe('SURFACES', () => {
     expect(kpis90.tsProcedure).toBe('recruitmentAnalytics.getKpis');
   });
 
-  it('the four Tier-1 read surfaces are registered with their flags + endpoint sets', () => {
+  it('the four read surfaces are registered with their flags + full endpoint sets (Tier-1 + Tier-2 by-id)', () => {
     expect(SURFACES['compensation'].flag).toBe('Platform__CompensationReadEnabled');
     expect(SURFACES['compensation'].endpoints.map((e) => e.name).sort()).toEqual(
-      ['benefits-utilization', 'compa-ratio-distribution', 'market-comparison', 'my-compensation', 'pending-adjustments', 'salary-bands'],
+      ['benefits-utilization', 'compa-ratio-distribution', 'employee', 'market-comparison', 'my-compensation', 'pending-adjustments', 'salary-bands'],
     );
     expect(SURFACES['evaluation360'].flag).toBe('Platform__Evaluation360ReadEnabled');
     expect(SURFACES['evaluation360'].endpoints.map((e) => e.name).sort()).toEqual(
-      ['cycles', 'my-rater-tasks', 'my-report-cycles'],
+      ['cycle-progress', 'cycles', 'my-rater-tasks', 'my-report', 'my-report-cycles'],
     );
     expect(SURFACES['ninebox'].flag).toBe('Platform__NineBoxReadEnabled');
-    expect(SURFACES['ninebox'].endpoints).toHaveLength(8);
+    expect(SURFACES['ninebox'].endpoints).toHaveLength(11);
     expect(SURFACES['succession'].flag).toBe('Platform__SuccessionReadEnabled');
     expect(SURFACES['succession'].endpoints.map((e) => e.name)).toContain('comp-gap-alerts');
-    expect(SURFACES['succession'].endpoints).toHaveLength(6);
+    expect(SURFACES['succession'].endpoints).toHaveLength(9);
     for (const key of ['compensation', 'evaluation360', 'ninebox', 'succession']) {
       expect(SURFACES[key].probeRole).toBe('super_admin');
     }
+  });
+
+  it('every Tier-2 by-id endpoint sets idScopeKey and carries the {id} sentinel in path + input', () => {
+    // The 9 by-id Mode-A IDOR endpoints and the resource key each threads.
+    const expected: Record<string, string> = {
+      'compensation/employee': 'employee',
+      'evaluation360/cycle-progress': 'eval-cycle-staff',
+      'evaluation360/my-report': 'eval-cycle-self',
+      'ninebox/employee': 'employee',
+      'ninebox/axis-breakdown': 'employee',
+      'ninebox/calibration': 'calibration',
+      'succession/critical-role': 'critical-role',
+      'succession/suggested-successors': 'critical-role',
+      'succession/simulate-exit': 'critical-role',
+    };
+    let byIdCount = 0;
+    for (const [surfaceKey, surface] of Object.entries(SURFACES)) {
+      for (const ep of surface.endpoints) {
+        if (!ep.idScopeKey) continue;
+        byIdCount++;
+        const k = `${surfaceKey}/${ep.name}`;
+        expect(expected[k], `unexpected by-id endpoint ${k}`).toBe(ep.idScopeKey);
+        // the sentinel MUST appear in the path so the harness can substitute a concrete id.
+        expect(ep.csharpPath, k).toContain('{id}');
+        // ...and in exactly one input value, so the tRPC side resolves the same id.
+        expect(JSON.stringify(ep.input), k).toContain('{id}');
+      }
+    }
+    expect(byIdCount).toBe(9);
   });
 
   it('nine-box marks only the two pure kernels as globalScope', () => {

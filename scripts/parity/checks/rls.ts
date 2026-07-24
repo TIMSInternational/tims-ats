@@ -46,6 +46,25 @@ function isEmpty(body: unknown): boolean {
 }
 
 /**
+ * RECURSIVELY empty — the emptiness test for the Mode-A isolation verdict (and its
+ * positive control). Some by-id routes model a cross-tenant / not-found read as an
+ * HTTP 200 with a null-SHAPED body (e.g. ninebox `/employee/{id}` returns
+ * `{evaluation: null, history: []}` — structurally non-empty, semantically NO data)
+ * rather than a 404 (which compensation/succession use). The shallow `isEmpty` above
+ * would misread that shape as a payload and flag a false "leak". `isDeepEmpty` treats
+ * a value as empty when null/undefined/'', an array with no (deep-)non-empty elements,
+ * or an object whose every own value is deep-empty. `0`/`false` are NOT empty (a real
+ * scalar payload). A genuine leak (`{evaluation: {...org-B data...}}`) stays non-empty
+ * and is still caught.
+ */
+function isDeepEmpty(body: unknown): boolean {
+  if (body === null || body === undefined || body === '') return true;
+  if (Array.isArray(body)) return body.every(isDeepEmpty);
+  if (typeof body === 'object') return Object.values(body as Record<string, unknown>).every(isDeepEmpty);
+  return false;
+}
+
+/**
  * Pure verdict function: determines if cross-tenant isolation held.
  *
  * Isolation HOLDS (ok:true) when:
@@ -56,7 +75,10 @@ function isEmpty(body: unknown): boolean {
  * - Status is 200 with a non-empty body (data leaked to cross-tenant access)
  * - Any other status (e.g., 500) — FAIL CLOSED: cannot confirm isolation held
  */
-export function assertIsolated(response: IsolationResponse): Omit<CheckResult, 'endpoint'> {
+export function assertIsolated(
+  response: IsolationResponse,
+  opts: { emptyOk?: boolean } = {},
+): Omit<CheckResult, 'endpoint'> {
   const { status, body } = response;
 
   // Isolation holds: 403 or 404 always mean access denied
@@ -64,17 +86,28 @@ export function assertIsolated(response: IsolationResponse): Omit<CheckResult, '
     return { check: 'rls', ok: true };
   }
 
-  // Isolation holds: 200 status with empty body means no data leaked
-  if (status === 200 && isEmpty(body)) {
-    return { check: 'rls', ok: true };
-  }
-
-  // Isolation fails: 200 with non-empty body means cross-tenant access succeeded
-  if (status === 200 && !isEmpty(body)) {
+  // Isolation fails: 200 with a non-empty body means cross-tenant access succeeded
+  if (status === 200 && !isDeepEmpty(body)) {
     return {
       check: 'rls',
       ok: false,
       detail: `cross-tenant isolation breach: org-A token reached org-B resource (status ${status}, body present)`,
+    };
+  }
+
+  // 200 with a (recursively) empty body. For MOST by-id endpoints the correct
+  // cross-tenant response is a 404, so a 200-empty is itself an anomaly (the route
+  // did NOT deny access — it processed a cross-org id and returned an empty
+  // projection = a possible missing-404 / existence oracle) → FAIL. Only when the
+  // endpoint is documented to model not-found as a 200 null-SHAPE (opts.emptyOk,
+  // e.g. ninebox `/employee/{id}`) is a 200-empty a genuine isolation-held result.
+  if (status === 200 && isDeepEmpty(body)) {
+    if (opts.emptyOk) return { check: 'rls', ok: true };
+    return {
+      check: 'rls',
+      ok: false,
+      detail:
+        'cross-tenant probe returned HTTP 200 with an empty body where a 404 denial was expected — the endpoint processed a cross-org id instead of denying it (possible missing-404 / existence oracle). Set crossTenantEmptyOk on the endpoint only if a 200 null-shape is its documented not-found response.',
     };
   }
 
@@ -109,9 +142,25 @@ function buildProbePath(csharpPath: string, orgBResourceId: string): string {
  * Two modes, chosen by `ep.idScopeKey`:
  *
  * Mode A — by-id IDOR probe (`ep.idScopeKey` set): org-A's token attempts to
- * reach org-B's resource id on `ep.csharpPath`. Isolation verdict is delegated
- * to `assertIsolated()` — this is the strong isolation proof (org-A must get
- * 403/404/empty, never org-B's data).
+ * reach org-B's resource id on `ep.csharpPath`. Two calls:
+ *   (1) isolation — org-A token → org-B id; verdict via `assertIsolated()`
+ *       (org-A must get 403/404/empty, never org-B's data). A confirmed leak
+ *       (200 + body) is FAIL immediately, no second call.
+ *   (2) positive control — org-B token → the SAME org-B id: must be reachable
+ *       (200 + non-empty). A denial in step (1) only proves isolation if the
+ *       org-B id is actually LIVE; a non-existent id 404s for everyone and
+ *       proves nothing. So when isolation holds but the positive control can't
+ *       confirm the id is live (org-B itself doesn't get 200+data, or there's
+ *       no `orgBToken`), this is a FAIL (fail-closed) — a strong IDOR proof that
+ *       couldn't run is not a pass, so `verify`'s exit code / "passed" summary
+ *       can never imply a cross-tenant test ran when it didn't. (Contrast the
+ *       globalScope N/A and Mode-B both-empty cases below, which ARE acceptable
+ *       `inconclusive` greens by design.)
+ *
+ * Isolation-denial mode per endpoint: MOST by-id reads deny cross-tenant with a
+ * 404, so a 200-empty is itself an anomaly and FAILS; `ep.crossTenantEmptyOk`
+ * opts the rare 200-null-shape endpoint (ninebox `/employee/{id}`) into treating
+ * that shape as isolated (see `assertIsolated`).
  *
  * Mode B — org-scoped endpoint (`ep.idScopeKey` NOT set, e.g. dashboard-kpis):
  * the endpoint takes no resource id — it's implicitly scoped to the resolved
@@ -160,15 +209,39 @@ export async function runRlsEndpoint(
     }
 
     const probePath = buildProbePath(ep.csharpPath, ctx.orgBResourceId);
-    const response = await callCsharp(ctx.base, probePath, ctx.orgAToken);
-    const verdict = assertIsolated(response);
 
-    return {
-      check: 'rls',
-      endpoint: ep.name,
-      ok: verdict.ok,
-      detail: verdict.detail,
-    };
+    // (1) Isolation: org-A token → org-B id. A confirmed leak fails immediately.
+    const isolation = await callCsharp(ctx.base, probePath, ctx.orgAToken);
+    const verdict = assertIsolated(isolation, { emptyOk: ep.crossTenantEmptyOk });
+    if (!verdict.ok) {
+      return { check: 'rls', endpoint: ep.name, ok: false, detail: verdict.detail };
+    }
+
+    // (2) Positive control: prove the org-B id is actually LIVE for its own org, else
+    // the isolation "pass" above could be a trivial not-found on a dead id — no real
+    // IDOR test ran. A by-id endpoint's contract is a STRONG proof, so if the control
+    // can't confirm the resource is live, that is a FAIL (fail-closed) — NOT a silent
+    // green — so `verify`'s exit code + summary can't imply a strong test that never ran.
+    if (!ctx.orgBToken) {
+      return {
+        check: 'rls',
+        endpoint: ep.name,
+        ok: false,
+        detail: 'rls: Mode-A by-id probe requires orgBToken for the positive control (cannot produce a strong IDOR proof without it)',
+      };
+    }
+    const control = await callCsharp(ctx.base, probePath, ctx.orgBToken);
+    if (control.status !== 200 || isDeepEmpty(control.body)) {
+      return {
+        check: 'rls',
+        endpoint: ep.name,
+        ok: false,
+        detail: `rls: positive control FAILED — org-B could not itself reach the org-B resource (org-B token got status ${control.status}${isDeepEmpty(control.body) ? ' empty-body' : ''}), so a dead id would make org-A's denial trivial and no strong IDOR test ran. Check the org-B seed mirror (seedOrgBTier2Mirrors).`,
+      };
+    }
+
+    // Strong: org-B reaches its own live resource (200 + data), and org-A is denied it.
+    return { check: 'rls', endpoint: ep.name, ok: true };
   }
 
   // Mode B — org-scoped endpoint (no resource id to probe)

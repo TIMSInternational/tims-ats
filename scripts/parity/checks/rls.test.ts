@@ -13,9 +13,15 @@ describe('assertIsolated', () => {
     expect(r.ok).toBe(true);
   });
 
-  it('ok when body is empty', () => {
+  it('by DEFAULT a 200 empty body FAILS (a 404 denial was expected, not a processed-then-empty 200)', () => {
     const r = assertIsolated({ status: 200, body: null });
-    expect(r.ok).toBe(true);
+    expect(r.ok).toBe(false);
+    expect(r.detail).toContain('404 denial was expected');
+  });
+
+  it('with emptyOk, a 200 empty body is isolation-held (endpoint models not-found as a 200 null-shape)', () => {
+    expect(assertIsolated({ status: 200, body: null }, { emptyOk: true }).ok).toBe(true);
+    expect(assertIsolated({ status: 200, body: { evaluation: null, history: [] } }, { emptyOk: true }).ok).toBe(true);
   });
 
   it('RED when cross-tenant fetch returns 200 with data', () => {
@@ -33,6 +39,29 @@ describe('assertIsolated', () => {
     const r = assertIsolated({ status: 200, body: { data: [{ id: 'item' }] } });
     expect(r.ok).toBe(false);
     expect(r.detail).toContain('cross-tenant');
+  });
+
+  // A 200 not-found SHAPE (structurally non-empty, semantically no data) reads as isolated ONLY under
+  // emptyOk — real routes model cross-tenant absence this way (ninebox `/employee/{id}` → this exact shape),
+  // and a shallow keys-length check would false-flag it as a leak.
+  it('with emptyOk, a deep-empty nested shape is isolated; a populated entity still leaks', () => {
+    expect(assertIsolated({ status: 200, body: { a: null, b: [], c: {}, d: '' } }, { emptyOk: true }).ok).toBe(true);
+    // a genuine leak (populated entity) FAILS even under emptyOk.
+    const leak = assertIsolated({ status: 200, body: { evaluation: { id: 'orgB', potentialScore: 55 }, history: [] } }, { emptyOk: true });
+    expect(leak.ok).toBe(false);
+    expect(leak.detail).toContain('cross-tenant');
+  });
+
+  it('RED (leak) when a 200 body has a populated nested entity even alongside empties (default)', () => {
+    const r = assertIsolated({ status: 200, body: { evaluation: { id: 'orgB', potentialScore: 55 }, history: [] } });
+    expect(r.ok).toBe(false);
+    expect(r.detail).toContain('cross-tenant');
+  });
+
+  it('does NOT treat 0/false as empty (a real scalar payload still fails closed)', () => {
+    // {count:0} is non-deep-empty → treated as a populated (leak) body, FAILs under default and emptyOk alike.
+    expect(assertIsolated({ status: 200, body: { count: 0 } }).ok).toBe(false);
+    expect(assertIsolated({ status: 200, body: { count: 0 } }, { emptyOk: true }).ok).toBe(false);
   });
 });
 
@@ -55,33 +84,95 @@ describe('runRlsEndpoint', () => {
   };
 
   describe('Mode A — by-id IDOR probe (idScopeKey set)', () => {
-    it('ok:true when org-A token gets 404 for org-B resource id', async () => {
+    // Distinguishes the two probe calls by token: org-A (isolation) vs org-B (positive control).
+    const byToken = (aResp: { status: number; body: unknown }, bResp: { status: number; body: unknown }) =>
+      vi.fn(async (_base: string, _path: string, token: string) => (token === 'org-a-token' ? aResp : bResp));
+
+    it('STRONG ok:true when org-A is denied (404) AND org-B can itself reach the live resource (200+data)', async () => {
+      const fake = byToken({ status: 404, body: null }, { status: 200, body: { id: 'org-b-team-id', name: 'B' } });
+      const result = await runRlsEndpoint(
+        idScopedEp,
+        { base: 'http://csharp.local', orgAToken: 'org-a-token', orgBToken: 'org-b-token', orgBResourceId: 'org-b-team-id' },
+        fake,
+      );
+      expect(result.ok).toBe(true);
+      expect(result.inconclusive).toBeFalsy();
+      expect(result.endpoint).toBe('team-profile');
+      // isolation call (org-A) + positive control (org-B), same probe path.
+      expect(fake).toHaveBeenCalledWith('http://csharp.local', '/team-intel/teams/org-b-team-id/profile', 'org-a-token');
+      expect(fake).toHaveBeenCalledWith('http://csharp.local', '/team-intel/teams/org-b-team-id/profile', 'org-b-token');
+    });
+
+    it('ok:false with cross-tenant detail when org-A token gets 200+data for org-B resource id (leak)', async () => {
+      const fake = byToken({ status: 200, body: { id: 'org-b-team-id', name: 'Org B Team' } }, { status: 200, body: { id: 'x' } });
+      const result = await runRlsEndpoint(
+        idScopedEp,
+        { base: 'http://csharp.local', orgAToken: 'org-a-token', orgBToken: 'org-b-token', orgBResourceId: 'org-b-team-id' },
+        fake,
+      );
+      expect(result.ok).toBe(false);
+      expect(result.detail).toContain('cross-tenant');
+      // A confirmed leak is FAIL regardless of the positive control — no need to probe org-B.
+      expect(fake).toHaveBeenCalledWith('http://csharp.local', '/team-intel/teams/org-b-team-id/profile', 'org-a-token');
+      expect(fake).not.toHaveBeenCalledWith('http://csharp.local', '/team-intel/teams/org-b-team-id/profile', 'org-b-token');
+    });
+
+    it('FAIL (not a silent pass) when isolation holds but org-B cannot itself reach the id (not live → trivial 404)', async () => {
+      const fake = byToken({ status: 404, body: null }, { status: 404, body: null });
+      const result = await runRlsEndpoint(
+        idScopedEp,
+        { base: 'http://csharp.local', orgAToken: 'org-a-token', orgBToken: 'org-b-token', orgBResourceId: 'org-b-team-id' },
+        fake,
+      );
+      expect(result.ok).toBe(false);
+      expect(result.inconclusive).toBeFalsy();
+      expect(result.detail).toContain('positive control');
+    });
+
+    it('FAIL when isolation holds but org-B reaches the id EMPTY (cannot confirm live → strong test never ran)', async () => {
+      const fake = byToken({ status: 404, body: null }, { status: 200, body: {} });
+      const result = await runRlsEndpoint(
+        idScopedEp,
+        { base: 'http://csharp.local', orgAToken: 'org-a-token', orgBToken: 'org-b-token', orgBResourceId: 'org-b-team-id' },
+        fake,
+      );
+      expect(result.ok).toBe(false);
+    });
+
+    it('FAIL when there is no orgBToken to run the positive control (a strong IDOR proof that cannot run is not a pass)', async () => {
       const fake = vi.fn().mockResolvedValue({ status: 404, body: null });
       const result = await runRlsEndpoint(
         idScopedEp,
         { base: 'http://csharp.local', orgAToken: 'org-a-token', orgBResourceId: 'org-b-team-id' },
         fake,
       );
-      expect(result.ok).toBe(true);
-      expect(result.check).toBe('rls');
-      expect(result.endpoint).toBe('team-profile');
-      expect(fake).toHaveBeenCalledWith(
-        'http://csharp.local',
-        '/team-intel/teams/org-b-team-id/profile',
-        'org-a-token',
-      );
+      expect(result.ok).toBe(false);
+      expect(result.detail).toContain('orgBToken');
     });
 
-    it('ok:false with cross-tenant detail when org-A token gets 200+data for org-B resource id', async () => {
-      const fake = vi.fn().mockResolvedValue({ status: 200, body: { id: 'org-b-team-id', name: 'Org B Team' } });
+    it('by DEFAULT a 200 EMPTY isolation response FAILS (a 404 denial was expected, not a processed-empty 200)', async () => {
+      // org-A gets a 200 null-shape, org-B (positive control) gets live data. Without crossTenantEmptyOk
+      // the 200-empty is an anomaly → FAIL (a possible missing-404 / existence oracle).
+      const fake = byToken({ status: 200, body: { evaluation: null, history: [] } }, { status: 200, body: { id: 'x', v: 1 } });
       const result = await runRlsEndpoint(
         idScopedEp,
-        { base: 'http://csharp.local', orgAToken: 'org-a-token', orgBResourceId: 'org-b-team-id' },
+        { base: 'http://csharp.local', orgAToken: 'org-a-token', orgBToken: 'org-b-token', orgBResourceId: 'org-b-team-id' },
         fake,
       );
       expect(result.ok).toBe(false);
-      expect(result.detail).toContain('cross-tenant');
-      expect(result.check).toBe('rls');
+      expect(result.detail).toContain('404 denial was expected');
+    });
+
+    it('with crossTenantEmptyOk a 200 null-shape isolation response is isolated (ninebox /employee/{id} case)', async () => {
+      const emptyOkEp: EndpointDef = { ...idScopedEp, crossTenantEmptyOk: true };
+      const fake = byToken({ status: 200, body: { evaluation: null, history: [] } }, { status: 200, body: { evaluation: { id: 'b', s: 55 } } });
+      const result = await runRlsEndpoint(
+        emptyOkEp,
+        { base: 'http://csharp.local', orgAToken: 'org-a-token', orgBToken: 'org-b-token', orgBResourceId: 'org-b-team-id' },
+        fake,
+      );
+      expect(result.ok).toBe(true);
+      expect(result.inconclusive).toBeFalsy();
     });
 
     it('ok:false fail-closed when orgBResourceId is missing', async () => {

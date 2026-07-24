@@ -679,10 +679,15 @@ async function seedEvaluation360Grants(db: Client, roleIds: Map<string, string>)
 }
 
 // Fixed cycle UUIDs (idempotent ON CONFLICT id; also Tier-2-ready for the by-id cycle-progress/
-// my-report probes which must bake a concrete cycle id into the path).
+// my-report probes which must bake a concrete cycle id into the path). The `*B` cycles live in ORG B
+// and back the Tier-2 Mode-A IDOR positive control (org-B super_admin reads its own cycle → 200):
+// openB = staff cycle-progress (a non-self rater_assignment → non-empty counts), pubB = self my-report
+// (org-B super is a published self-subject with a response). See seedOrgBTier2Mirrors.
 const EVAL_CYCLE: Record<string, string> = {
   openA: 'e0000360-0000-4000-8000-00000000000f',
   pubA: 'e0000360-0000-4000-8000-00000000000a',
+  openB: 'e0000360-0000-4000-8000-00000000001f',
+  pubB: 'e0000360-0000-4000-8000-00000000001a',
 };
 async function upsertReviewCycle(
   db: Client, id: string, orgId: string, name: string, status: string, createdBy: string, published: boolean
@@ -857,6 +862,138 @@ export async function seedSuccessionData(
   );
 }
 
+// ── Tier-2 by-id ORG-B mirrors ───────────────────────────────────────────────
+// The Tier-1 seed puts every fixture in org A ONLY (org B empty → strong Mode B).
+// The Tier-2 by-id Mode-A IDOR probes additionally need the org-B resource to be
+// LIVE (org-B super_admin must reach it → 200), so the harness's positive control
+// can tell a real isolation pass from a trivial 404 on a dead id. This seeds the
+// minimal org-B mirror for each by-id resource: an employee comp row + nine-box
+// eval for b:hr_admin, an org-B calibration session (+member/vote), the openB/pubB
+// review cycles (+assignments/response), and an org-B critical role. All idempotent
+// and swept by teardown (which deletes every one of these tables by org id, both orgs).
+export async function seedOrgBTier2Mirrors(
+  db: Client, orgBId: string, userIds: Map<string, string>
+): Promise<void> {
+  const bSuper = userIds.get('b:super_admin');
+  const bHr = userIds.get('b:hr_admin');
+  const bHrbp = userIds.get('b:hrbp');
+  if (!bSuper || !bHr) return;
+
+  // compensation employee/{userId} + ninebox employee/{userId}(+axis-breakdown): b:hr_admin is the target.
+  // The nine-box eval is high_potential (not core_player) so it also ranks as a suggested successor for
+  // the succession suggested-successors positive control (that read only surfaces star/high-potential).
+  await upsertEmployeeComp(db, orgBId, bHr, 60000, 1.05);
+  await upsertNineBoxEval(db, orgBId, bHr, '2026-Q1', 80, 50, 'high_potential', 2);
+
+  // ninebox calibrations/{id}: an org-B session (super = creator → readable by org-B super). Member/vote
+  // mirror org A (member b:hr_admin; vote evaluated b:hrbp by b:hr_admin) when those roles exist.
+  const sessionB = await findOrCreateCalibrationSession(db, orgBId, bSuper, '2026-Q1', 'draft');
+  await db.query(
+    `INSERT INTO calibration_members (id, session_id, user_id, status) VALUES (gen_random_uuid(), $1, $2, 'invited')
+     ON CONFLICT (session_id, user_id) DO NOTHING`,
+    [sessionB, bHr]
+  );
+  if (bHrbp) {
+    await db.query(
+      `INSERT INTO calibration_votes (id, session_id, evaluated_user_id, voter_id, quadrant)
+       VALUES (gen_random_uuid(), $1, $2, $3, 'core_player')
+       ON CONFLICT (session_id, evaluated_user_id, voter_id) DO NOTHING`,
+      [sessionB, bHrbp, bHr]
+    );
+  }
+
+  // evaluation360 cycles/{id}/progress (openB): a non-self assignment (subject b:hr_admin, rater b:super)
+  // so the org-B super's staff progress read is non-empty. my/reports/{cycleId} (pubB): b:super is a
+  // published self-subject with a response, so its own my-report returns data.
+  await upsertReviewCycle(db, EVAL_CYCLE.openB, orgBId, 'Parity Open Cycle B', 'open', bSuper, false);
+  await upsertRaterAssignment(db, orgBId, EVAL_CYCLE.openB, bHr, bSuper, 'peer', 'pending');
+  await upsertReviewCycle(db, EVAL_CYCLE.pubB, orgBId, 'Parity Published Cycle B', 'published', bSuper, true);
+  const selfAssignB = await upsertRaterAssignment(db, orgBId, EVAL_CYCLE.pubB, bSuper, bSuper, 'self', 'submitted');
+  await db.query(
+    `INSERT INTO rater_responses (id, organization_id, assignment_id, competency_key, rating, comment, updated_at)
+     VALUES (gen_random_uuid(), $1, $2, 'communication', 4, 'self note', now())
+     ON CONFLICT (assignment_id, competency_key) DO UPDATE SET rating = EXCLUDED.rating, comment = EXCLUDED.comment, updated_at = now()`,
+    [orgBId, selfAssignB]
+  );
+
+  // succession critical-roles/{id}(+suggested-successors, +simulate-exit): an org-B critical role held by
+  // b:super. suggested-successors is non-empty via the b:hr_admin nine-box eval seeded above.
+  await findOrCreateCriticalRole(db, orgBId, 'Parity Critical Role B1', 'critical', 0.5, 'PARITY-L1', bSuper);
+}
+
+// ── Tier-2 by-id resource resolution ─────────────────────────────────────────
+// `verify`/`rls`/`parity`/`rbac` run in a SEPARATE process from `seed`, so the by-id
+// resource ids must be re-derivable at check time, not carried from a prior seed.
+// Cycle ids are fixed constants (EVAL_CYCLE); the employee user ids resolve by their
+// deterministic seeded email; the calibration session + critical role resolve by the
+// same natural keys the seed find-or-creates them under (avoids a fixed-id migration
+// of any pre-existing random-id rows). Read-only — no writes.
+export interface ResourcePair {
+  /** org-A id — substituted into the by-id path + tRPC input for parity/RBAC. */
+  a: string;
+  /** org-B id — the cross-tenant target for the RLS Mode-A IDOR probe. */
+  b: string;
+}
+export interface SeedResources {
+  employee: ResourcePair;
+  'eval-cycle-staff': ResourcePair;
+  'eval-cycle-self': ResourcePair;
+  calibration: ResourcePair;
+  'critical-role': ResourcePair;
+}
+
+async function orgIdBySlug(db: Client, slug: string): Promise<string> {
+  const { rows } = await db.query<IdRow>('SELECT id FROM organizations WHERE slug = $1 LIMIT 1', [slug]);
+  if (!rows.length) throw new Error(`resolveResources: org "${slug}" not found — run \`cli.ts seed\` first`);
+  return rows[0].id;
+}
+async function userIdByEmail(db: Client, email: string): Promise<string> {
+  const { rows } = await db.query<IdRow>('SELECT id FROM users WHERE email = $1 LIMIT 1', [email]);
+  if (!rows.length) throw new Error(`resolveResources: no seeded user "${email}" — run \`cli.ts seed\` first`);
+  return rows[0].id;
+}
+async function calibrationIdByOrg(db: Client, orgId: string): Promise<string> {
+  const { rows } = await db.query<IdRow>(
+    `SELECT id FROM calibration_sessions WHERE organization_id = $1 AND period = '2026-Q1' LIMIT 1`,
+    [orgId]
+  );
+  if (!rows.length) throw new Error(`resolveResources: no seeded calibration session in org ${orgId} — run \`cli.ts seed\` first`);
+  return rows[0].id;
+}
+async function criticalRoleIdByOrgTitle(db: Client, orgId: string, title: string): Promise<string> {
+  const { rows } = await db.query<IdRow>(
+    'SELECT id FROM critical_roles WHERE organization_id = $1 AND title = $2 LIMIT 1',
+    [orgId, title]
+  );
+  if (!rows.length) throw new Error(`resolveResources: no seeded critical role "${title}" in org ${orgId} — run \`cli.ts seed\` first`);
+  return rows[0].id;
+}
+
+/** Resolves the Tier-2 by-id resource id pairs from the live seeded DB (read-only). */
+export async function resolveResources(cfg: HarnessConfig): Promise<SeedResources> {
+  const db = makeDbClient(cfg);
+  await db.connect();
+  try {
+    const orgA = await orgIdBySlug(db, ORG_SLUGS.a);
+    const orgB = await orgIdBySlug(db, ORG_SLUGS.b);
+    return {
+      employee: {
+        a: await userIdByEmail(db, 'parity+a-hr_admin@tims.test'),
+        b: await userIdByEmail(db, 'parity+b-hr_admin@tims.test'),
+      },
+      'eval-cycle-staff': { a: EVAL_CYCLE.openA, b: EVAL_CYCLE.openB },
+      'eval-cycle-self': { a: EVAL_CYCLE.pubA, b: EVAL_CYCLE.pubB },
+      calibration: { a: await calibrationIdByOrg(db, orgA), b: await calibrationIdByOrg(db, orgB) },
+      'critical-role': {
+        a: await criticalRoleIdByOrgTitle(db, orgA, 'Parity Critical Role A1'),
+        b: await criticalRoleIdByOrgTitle(db, orgB, 'Parity Critical Role B1'),
+      },
+    };
+  } finally {
+    await db.end();
+  }
+}
+
 /** Idempotent: creates the 2 test orgs + a Role + a user per configured role, if missing. */
 export async function seed(cfg: HarnessConfig, roles: string[]): Promise<SeedResult> {
   const admin = makeAdminClient(cfg);
@@ -914,6 +1051,11 @@ export async function seed(cfg: HarnessConfig, roles: string[]): Promise<SeedRes
     // succession fixtures (grants + org-A critical roles/successor). AFTER compensation (comp-gap reuse).
     if (roles.includes('hr_admin') || roles.includes('hrbp')) await seedSuccessionGrants(db, roleIds);
     await seedSuccessionData(db, orgIds.a, userIds);
+
+    // Tier-2 by-id ORG-B mirrors: make each by-id resource LIVE in org B so the RLS Mode-A IDOR
+    // positive control (org-B super_admin reaches its own resource → 200) can distinguish a real
+    // isolation pass from a trivial 404. Additive to the org-A-only Tier-1 fixtures above.
+    await seedOrgBTier2Mirrors(db, orgIds.b, userIds);
 
     return { orgs: orgIds, users: plan.users };
   } finally {

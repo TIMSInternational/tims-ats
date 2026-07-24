@@ -1,11 +1,27 @@
 import type { NormalizeOpts } from './normalize';
+import { ID_SENTINEL } from './ids';
 
 export interface EndpointDef {
   name: string;
   csharpPath: string;
   tsProcedure: string;
   input: unknown;
+  /** Set on a by-id (Tier-2) endpoint — its value is the SeedResources key (seed.ts)
+   *  naming which resource id pair to thread: the org-A id is substituted into the
+   *  `{id}` sentinel in `csharpPath` + `input` for parity/RBAC (see ids.ts
+   *  `substituteEndpointId`), and the org-B id becomes the RLS Mode-A IDOR probe
+   *  target (`rls.ts`). Absent ⇒ a static-path (Tier-1) endpoint. When set,
+   *  `csharpPath` and any id-carrying `input` value MUST use the `{id}` sentinel. */
   idScopeKey?: string;
+  /** Mode-A only. By default a by-id endpoint's CORRECT cross-tenant response is a
+   *  denial STATUS (403/404) — so a 200 with an empty body is itself an anomaly (the
+   *  route processed a cross-org id instead of 404ing = a possible missing-404 /
+   *  existence-oracle), and the RLS check FAILS it. Set this `true` for the rare
+   *  endpoint whose correct not-found/cross-tenant response is a 200 null-SHAPE rather
+   *  than a 404 (e.g. ninebox `/employee/{id}` → `{evaluation:null, history:[]}`), so
+   *  that shape reads as isolation-held. A genuine data leak (a populated body) still
+   *  FAILS regardless. Probe each endpoint's real cross-org status before setting this. */
+  crossTenantEmptyOk?: boolean;
   expectedByRole: Record<string, 200 | 403>;
   normalize?: NormalizeOpts;
   /** Set when this endpoint is NOT tenant-scoped — it returns the same
@@ -168,6 +184,18 @@ export const SURFACES: Record<string, Surface> = {
         expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
         normalize: { dropNullish: true },
       },
+      // Tier-2 by-id: getEmployeeComp = permissionProcedure('compensation','read') + assertSubjectInScope.
+      // Org-A target = a:hr_admin (has a comp row). super_admin bypass → 200; hr_admin reads its own id →
+      // 200; hrbp @unit → the target ∉ its subject set → 403. Mode-A IDOR: org-A token → org-B b:hr_admin id.
+      {
+        name: 'employee',
+        csharpPath: '/compensation/employee/{id}',
+        tsProcedure: 'compensation.getEmployeeComp',
+        input: { userId: ID_SENTINEL },
+        idScopeKey: 'employee',
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
+        normalize: { dropNullish: true },
+      },
     ],
   },
   // ── evaluation360 ───────────────────────────────────────────────────────────────────────────
@@ -208,6 +236,31 @@ export const SURFACES: Record<string, Surface> = {
         input: {},
         expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 200 },
         normalize: { dropNullish: true, sortArraysBy: 'id' },
+      },
+      // Tier-2 by-id: getCycleProgress = STAFF (permissionProcedure('evaluation360','read') + requireOrgScope).
+      // Org-A target = openA (super is a rater there → progress counts non-empty for super, who is excluded only
+      // as a SUBJECT). super/hr_admin (org grant) → 200; hrbp ungranted for eval360 → 403. Mode-A: → org-B openB.
+      {
+        name: 'cycle-progress',
+        csharpPath: '/evaluation360/cycles/{id}/progress',
+        tsProcedure: 'evaluation360.getCycleProgress',
+        input: { cycleId: ID_SENTINEL },
+        idScopeKey: 'eval-cycle-staff',
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
+        normalize: { dropNullish: true },
+      },
+      // Tier-2 by-id: myReport = SELF-SERVICE (protectedProcedure, subject hard-pinned to ctx.user.id, no RBAC).
+      // Org-A target = pubA (super is the published self-subject). super → 200; hr_admin/hrbp are NOT subjects of
+      // pubA → 404 (indistinguishable from "not published"), which `200|403` can't express and isn't an RBAC
+      // signal — so only super_admin is asserted. Mode-A: org-A super → org-B pubB → 404 (cross-org, not subject).
+      {
+        name: 'my-report',
+        csharpPath: '/evaluation360/my/reports/{id}',
+        tsProcedure: 'evaluation360.myReport',
+        input: { cycleId: ID_SENTINEL },
+        idScopeKey: 'eval-cycle-self',
+        expectedByRole: { super_admin: 200 },
+        normalize: { dropNullish: true },
       },
     ],
   },
@@ -294,6 +347,44 @@ export const SURFACES: Record<string, Surface> = {
         expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 200 },
         normalize: { dropNullish: true },
       },
+      // Tier-2 by-id: getEmployeeDetail/getAxisBreakdown = permissionProcedure('ninebox','read') +
+      // assertSubjectInScope; both take ?period=2026-Q1. Org-A target = a:hr_admin (has a 2026-Q1 eval).
+      // super/hr_admin (own id) → 200; hrbp @unit → target ∉ subject set → 403. Mode-A: → org-B b:hr_admin.
+      {
+        name: 'employee',
+        csharpPath: '/ninebox/employee/{id}?period=2026-Q1',
+        tsProcedure: 'ninebox.getEmployeeDetail',
+        input: { userId: ID_SENTINEL, period: '2026-Q1' },
+        idScopeKey: 'employee',
+        // UNIQUE among the 9 by-id reads: getEmployeeDetail models a cross-tenant/absent id as a 200
+        // null-SHAPE (`{evaluation:null, history:[]}`), not a 404 (verified live on both stacks) — so a
+        // 200-empty here is isolation-held, not a missing-404 anomaly. All other by-id reads 404.
+        crossTenantEmptyOk: true,
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
+        normalize: { dropNullish: true, sortArraysBy: 'period' },
+      },
+      {
+        name: 'axis-breakdown',
+        csharpPath: '/ninebox/employee/{id}/axis-breakdown?period=2026-Q1',
+        tsProcedure: 'ninebox.getAxisBreakdown',
+        input: { userId: ID_SENTINEL, period: '2026-Q1' },
+        idScopeKey: 'employee',
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
+        normalize: { dropNullish: true },
+      },
+      // Tier-2 by-id: getCalibration = permissionProcedure('ninebox','read') + hand-rolled committee-membership
+      // gate (org/company scope → any in-org session; narrow → creator-or-member else 403). Org-A target = the
+      // org-A calibration session (created by super). super/hr_admin (org) → 200; hrbp not creator/member → 403.
+      {
+        name: 'calibration',
+        csharpPath: '/ninebox/calibrations/{id}',
+        tsProcedure: 'ninebox.getCalibration',
+        input: { id: ID_SENTINEL },
+        idScopeKey: 'calibration',
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
+        // nested members[]/votes[] arrays (≤1 each seeded); canonicalize any array by id before diffing.
+        normalize: { dropNullish: true, sortArraysBy: 'id' },
+      },
     ],
   },
   // ── succession ──────────────────────────────────────────────────────────────────────────────
@@ -360,6 +451,41 @@ export const SURFACES: Record<string, Surface> = {
         input: {},
         expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
         normalize: { dropNullish: true },
+      },
+      // Tier-2 by-id: getCriticalRole/getSuggestedSuccessors/simulateExit = permissionProcedure('succession',
+      // 'read') + assertScoped('criticalRole', id) — an IDOR-safe probe that returns 404 (NOT 403) for
+      // out-of-scope. Org-A target = cr1 ('Parity Critical Role A1', holder super). super/hr_admin (org) → 200;
+      // hrbp out-of-scope → 404 → OMITTED (404 isn't representable in 200|403 and isn't an RBAC-permission
+      // signal). Mode-A IDOR: org-A token → org-B critical role → 404 (assertScoped ScopedNotFound). NOTE the
+      // TS param name differs (`id` for getCriticalRole; `criticalRoleId` for the other two).
+      {
+        name: 'critical-role',
+        csharpPath: '/succession/critical-roles/{id}',
+        tsProcedure: 'succession.getCriticalRole',
+        input: { id: ID_SENTINEL },
+        idScopeKey: 'critical-role',
+        expectedByRole: { super_admin: 200, hr_admin: 200 },
+        // nested successors[] (≤1 seeded) → canonicalize any array by id before diffing.
+        normalize: { dropNullish: true, sortArraysBy: 'id' },
+      },
+      {
+        name: 'suggested-successors',
+        csharpPath: '/succession/critical-roles/{id}/suggested-successors',
+        tsProcedure: 'succession.getSuggestedSuccessors',
+        input: { criticalRoleId: ID_SENTINEL },
+        idScopeKey: 'critical-role',
+        expectedByRole: { super_admin: 200, hr_admin: 200 },
+        // ranked candidate list (from nine-box evals) — deterministic kernel; sort by userId to be safe.
+        normalize: { dropNullish: true, sortArraysBy: 'userId' },
+      },
+      {
+        name: 'simulate-exit',
+        csharpPath: '/succession/critical-roles/{id}/simulate-exit',
+        tsProcedure: 'succession.simulateExit',
+        input: { criticalRoleId: ID_SENTINEL },
+        idScopeKey: 'critical-role',
+        expectedByRole: { super_admin: 200, hr_admin: 200 },
+        normalize: { dropNullish: true, sortArraysBy: 'id' },
       },
     ],
   },

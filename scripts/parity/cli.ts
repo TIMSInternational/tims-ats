@@ -25,9 +25,10 @@
 import { fileURLToPath } from 'node:url';
 import { loadConfig, type HarnessConfig } from './config';
 import { getToken, getSessionCookie, type TokenCache, type CookieCache } from './supabase';
-import { planSeed, seed, teardown } from './seed';
+import { planSeed, seed, teardown, resolveResources, type SeedResources } from './seed';
 import { callCsharp, callTs } from './callers';
-import { SURFACES, type Surface } from './surfaces';
+import { SURFACES, type Surface, type EndpointDef } from './surfaces';
+import { substituteEndpointId } from './ids';
 import { runParityEndpoint } from './checks/parity';
 import { runRlsEndpoint, type RlsContext } from './checks/rls';
 import { runRbacEndpoint, type RbacContext } from './checks/rbac';
@@ -118,23 +119,39 @@ async function runChecks(command: CheckCommand, cfg: HarnessConfig, surface: Sur
   const { orgAToken, orgBToken, orgACookie, tokensByRole } = await mintTokens(cfg, surface, cache);
   const results: CheckResult[] = [];
 
+  // Tier-2 by-id endpoints thread a concrete resource id into the path/input. Resolve the id pairs
+  // ONCE (read-only DB lookup), and only when this surface actually has a by-id endpoint — static
+  // (Tier-1) surfaces stay DB-free. `orgAEndpoint` binds the ORG-A id (parity/RBAC use it); the RLS
+  // Mode-A probe uses the ORG-B id (`rls.ts` substitutes it into the same `{id}` sentinel).
+  const needsResources = surface.endpoints.some((ep) => ep.idScopeKey);
+  const resources: SeedResources | undefined = needsResources ? await resolveResources(cfg) : undefined;
+  const pairFor = (ep: EndpointDef) => {
+    const pair = resources?.[ep.idScopeKey as keyof SeedResources];
+    if (!pair) throw new Error(`runChecks: no resolved resource for idScopeKey "${ep.idScopeKey}" on endpoint "${ep.name}"`);
+    return pair;
+  };
+  const orgAEndpoint = (ep: EndpointDef): EndpointDef => (ep.idScopeKey ? substituteEndpointId(ep, pairFor(ep).a) : ep);
+
   if (command === 'parity' || command === 'verify') {
     // Bind base + the org-A probe identity's credentials into the (path,input)/
     // (proc,input) closure shapes `runParityEndpoint` expects: C# via Bearer
     // token, TS via the session cookie (both the SAME identity).
     const csharpCaller = (path: string, _input: unknown) => callCsharp(cfg.csharpBase, path, orgAToken);
     const tsCaller = (proc: string, input: unknown) => callTs(cfg.tsBase, proc, input, orgACookie);
-    for (const ep of surface.endpoints) results.push(await runParityEndpoint(ep, csharpCaller, tsCaller));
+    for (const ep of surface.endpoints) results.push(await runParityEndpoint(orgAEndpoint(ep), csharpCaller, tsCaller));
   }
 
   if (command === 'rls' || command === 'verify') {
-    const ctx: RlsContext = { base: cfg.csharpBase, orgAToken, orgBToken };
-    for (const ep of surface.endpoints) results.push(await runRlsEndpoint(ep, ctx, callCsharp));
+    for (const ep of surface.endpoints) {
+      const orgBResourceId = ep.idScopeKey ? pairFor(ep).b : undefined;
+      const ctx: RlsContext = { base: cfg.csharpBase, orgAToken, orgBToken, orgBResourceId };
+      results.push(await runRlsEndpoint(ep, ctx, callCsharp));
+    }
   }
 
   if (command === 'rbac' || command === 'verify') {
     const ctx: RbacContext = { base: cfg.csharpBase, tokensByRole };
-    for (const ep of surface.endpoints) results.push(...(await runRbacEndpoint(ep, ctx, callCsharp)));
+    for (const ep of surface.endpoints) results.push(...(await runRbacEndpoint(orgAEndpoint(ep), ctx, callCsharp)));
   }
 
   return results;
