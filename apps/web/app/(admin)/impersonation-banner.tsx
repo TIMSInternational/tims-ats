@@ -3,23 +3,20 @@
 import { useState } from 'react';
 import { trpc } from '../../lib/trpc';
 import { useI18n } from '../../lib/i18n';
-import { ErrorState } from '../../components';
 
 export function ImpersonationBanner() {
   const { t } = useI18n();
-  const { data, isError, refetch } = trpc.auth.getImpersonationStatus.useQuery(undefined, {
+  const { data } = trpc.auth.getImpersonationStatus.useQuery(undefined, {
     staleTime: 60_000,
   });
   const [exiting, setExiting] = useState(false);
 
-  if (isError) {
-    return (
-      <div className="bg-white border-b border-[#EDEDED]">
-        <ErrorState onRetry={() => refetch()} />
-      </div>
-    );
-  }
-
+  // This banner is non-critical, decorative UI: it only appears when an owner is
+  // actively impersonating a user. A failed background status poll (e.g. a transient
+  // 429) must NOT render a full-page ErrorState above the shell header — that breaks
+  // the entire layout. Fail SILENTLY (render nothing), consistent with the app's
+  // "fail open for UI" philosophy; the query auto-retries and the server remains the
+  // real enforcement boundary. `data` is undefined on error, so this returns null.
   if (!data?.isImpersonating) return null;
 
   const handleExit = async () => {
