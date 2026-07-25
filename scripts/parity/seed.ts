@@ -681,10 +681,21 @@ export async function seedCompensationData(
 // (matrix omits it — admin cycle reads are org-only), so hrbp 403s on the staff read + 200s
 // on the self-service reads (no grant needed). Native enums → ::"Enum" casts.
 async function seedEvaluation360Grants(db: Client, roleIds: Map<string, string>): Promise<void> {
-  const permId = await upsertPermission(db, 'evaluation360', 'read');
+  const readPerm = await upsertPermission(db, 'evaluation360', 'read');
+  // create/update grants make hr_admin a genuine NON-bypass allow role for the write surface
+  // (createCycle needs :create; the transitions need :update) — mirrors seedCompensationGrants,
+  // so the write-verify allow-role live-test exercises real grant-resolution (M3/M5). hrbp stays
+  // ungranted → the write-RBAC deny path (403) exercises a real no-grant denial. Read RBAC is
+  // unaffected (no read is gated by create/update).
+  const createPerm = await upsertPermission(db, 'evaluation360', 'create');
+  const updatePerm = await upsertPermission(db, 'evaluation360', 'update');
   for (const key of ORG_KEYS) {
     const hrAdmin = roleIds.get(`${key}:hr_admin`);
-    if (hrAdmin) await upsertRolePermission(db, hrAdmin, permId, 'organization');
+    if (hrAdmin) {
+      await upsertRolePermission(db, hrAdmin, readPerm, 'organization');
+      await upsertRolePermission(db, hrAdmin, createPerm, 'organization');
+      await upsertRolePermission(db, hrAdmin, updatePerm, 'organization');
+    }
   }
 }
 
@@ -972,11 +983,11 @@ export interface WriteResources {
   resourceB: string;
 }
 
-/** Seeds the write-verify-only preconditions that must NOT live in the shared read seed
- *  (they would degrade a read RLS check — see the note in `seed()`). For compensation:
- *  the org-B pending adjustment (the approve-IDOR target). Idempotent; call from the
- *  write-verify flow after a normal `seed`. */
-export async function ensureWritePreconditions(cfg: HarnessConfig): Promise<void> {
+/** Seeds the compensation write-verify-only preconditions that must NOT live in the shared
+ *  read seed (they would degrade a read RLS check — see the note in `seed()`): the org-B
+ *  pending adjustment (the approve-IDOR target). Idempotent; the surface's `ensurePreconditions`
+ *  hook (write-surfaces.ts), called from the write-verify flow after a normal `seed`. */
+export async function ensureCompensationWritePreconditions(cfg: HarnessConfig): Promise<void> {
   const db = makeDbClient(cfg);
   await db.connect();
   try {
@@ -992,9 +1003,9 @@ export async function ensureWritePreconditions(cfg: HarnessConfig): Promise<void
 }
 
 /** Read-only resolution of the compensation write tracer's ids from the seeded DB.
- *  Requires a fresh teardown+seed + `ensureWritePreconditions` (an approve mutates
- *  resourceA out of 'pending'). */
-export async function resolveWriteResources(cfg: HarnessConfig): Promise<WriteResources> {
+ *  Requires a fresh teardown+seed + `ensureCompensationWritePreconditions` (an approve
+ *  mutates resourceA out of 'pending'). */
+export async function resolveCompensationWriteResources(cfg: HarnessConfig): Promise<WriteResources> {
   const db = makeDbClient(cfg);
   await db.connect();
   try {
@@ -1018,6 +1029,150 @@ export async function resolveWriteResources(cfg: HarnessConfig): Promise<WriteRe
       subjectB: hrB,
       resourceA: await pendingAdjustmentId(orgA, hrA),
       resourceB: await pendingAdjustmentId(orgB, hrB),
+    };
+  } finally {
+    await db.end();
+  }
+}
+
+// ── evaluation360 write-verification preconditions ───────────────────────────
+// The eval360 write surface (6 writes) needs FROM-state cycles the transitions can consume.
+// Unlike the compensation tracer (which reused a read fixture), these are DISTINCT fixed-UUID
+// cycles seeded ONLY in the write-verify path — one org-A + one org-B per state-transition
+// endpoint (open needs draft, close needs open, publish needs closed, assign needs draft) plus
+// an open cycle + a pending self-rater assignment per org for submitRatings. Kept out of the
+// shared read seed so they can't affect the read RLS/parity checks (H1 lesson). All swept by
+// teardown (which deletes review_cycles/rater_assignments/rater_responses by org, both orgs).
+
+/** The write-verify-only cycle fixtures (fixed UUIDs, distinct from the read EVAL_CYCLE set).
+ *  Defined here (not write-surfaces.ts) to keep the seed→registry import one-directional. */
+export const WRITE_EVAL_CYCLES = {
+  draftA: 'e0000361-0000-4000-8000-000000000001',
+  draftB: 'e0000361-0000-4000-8000-000000000002',
+  openA: 'e0000361-0000-4000-8000-000000000003',
+  openB: 'e0000361-0000-4000-8000-000000000004',
+  closedA: 'e0000361-0000-4000-8000-000000000005',
+  closedB: 'e0000361-0000-4000-8000-000000000006',
+  assignA: 'e0000361-0000-4000-8000-000000000007',
+  assignB: 'e0000361-0000-4000-8000-000000000008',
+  submitA: 'e0000361-0000-4000-8000-000000000009',
+  submitB: 'e0000361-0000-4000-8000-00000000000a',
+} as const;
+
+/** The createCycle marker name — createCycle rows self-locate by (created_by, this name). */
+export const WRITE_CYCLE_MARKER = 'Parity Write Cycle';
+
+const WRITE_CYCLE_IDS = Object.values(WRITE_EVAL_CYCLES);
+
+/** Minimal review_cycles upsert for the write preconditions: sets only status + org + name
+ *  (opens_at/closes_at/published_at stay NULL — the transition guards check status only), and
+ *  RESETS status on conflict so a re-run without teardown restores the from-state. */
+async function upsertWriteReviewCycle(
+  db: Client, id: string, orgId: string, name: string, status: string, createdBy: string
+): Promise<void> {
+  await db.query(
+    `INSERT INTO review_cycles (id, organization_id, name, status, created_by_id, updated_at)
+     VALUES ($1, $2, $3, $4::"ReviewCycleStatus", $5, now())
+     ON CONFLICT (id) DO UPDATE SET
+       organization_id = EXCLUDED.organization_id, name = EXCLUDED.name,
+       status = EXCLUDED.status, updated_at = now()`,
+    [id, orgId, name, status, createdBy]
+  );
+}
+
+/** Seeds the eval360 write-verify preconditions (fresh each run — deletes prior write-cycle
+ *  assignments/responses + createCycle marker rows first, so re-runs are idempotent even
+ *  without a teardown). */
+export async function seedEvaluation360WritePreconditions(
+  db: Client, orgAId: string, orgBId: string, userIds: Map<string, string>
+): Promise<void> {
+  const superA = userIds.get('a:super_admin');
+  const hrA = userIds.get('a:hr_admin');
+  const bSuper = userIds.get('b:super_admin');
+  const bHr = userIds.get('b:hr_admin');
+  if (!superA || !hrA || !bSuper || !bHr) return;
+
+  // 1. Cleanup: drop any prior write-cycle assignments/responses (FK-safe: responses first) and
+  //    the createCycle marker rows, so the light-parity mutations start from a known clean state.
+  await db.query(
+    `DELETE FROM rater_responses WHERE assignment_id IN (SELECT id FROM rater_assignments WHERE cycle_id = ANY($1))`,
+    [WRITE_CYCLE_IDS]
+  );
+  await db.query('DELETE FROM rater_assignments WHERE cycle_id = ANY($1)', [WRITE_CYCLE_IDS]);
+  await db.query(
+    `DELETE FROM review_cycles WHERE organization_id = ANY($1) AND name = $2`,
+    [[orgAId, orgBId], WRITE_CYCLE_MARKER]
+  );
+
+  // 2. State-transition from-state cycles (org A = parity/rbac-deny target; org B = IDOR target).
+  await upsertWriteReviewCycle(db, WRITE_EVAL_CYCLES.draftA, orgAId, 'Parity Write Draft A', 'draft', superA);
+  await upsertWriteReviewCycle(db, WRITE_EVAL_CYCLES.draftB, orgBId, 'Parity Write Draft B', 'draft', bSuper);
+  await upsertWriteReviewCycle(db, WRITE_EVAL_CYCLES.openA, orgAId, 'Parity Write Open A', 'open', superA);
+  await upsertWriteReviewCycle(db, WRITE_EVAL_CYCLES.openB, orgBId, 'Parity Write Open B', 'open', bSuper);
+  await upsertWriteReviewCycle(db, WRITE_EVAL_CYCLES.closedA, orgAId, 'Parity Write Closed A', 'closed', superA);
+  await upsertWriteReviewCycle(db, WRITE_EVAL_CYCLES.closedB, orgBId, 'Parity Write Closed B', 'closed', bSuper);
+  await upsertWriteReviewCycle(db, WRITE_EVAL_CYCLES.assignA, orgAId, 'Parity Write Assign A', 'draft', superA);
+  await upsertWriteReviewCycle(db, WRITE_EVAL_CYCLES.assignB, orgBId, 'Parity Write Assign B', 'draft', bSuper);
+
+  // 3. submitRatings: an OPEN cycle + a PENDING self-rater assignment per org (rater = the org's
+  //    super_admin, the write-verify probe). Cross-org IDOR: org-A super submitting for submitB's
+  //    assignment (rater = b:super) → ownership pre-fetch fails → 404.
+  await upsertWriteReviewCycle(db, WRITE_EVAL_CYCLES.submitA, orgAId, 'Parity Write Submit A', 'open', superA);
+  await upsertWriteReviewCycle(db, WRITE_EVAL_CYCLES.submitB, orgBId, 'Parity Write Submit B', 'open', bSuper);
+  await upsertRaterAssignment(db, orgAId, WRITE_EVAL_CYCLES.submitA, hrA, superA, 'peer', 'pending');
+  await upsertRaterAssignment(db, orgBId, WRITE_EVAL_CYCLES.submitB, bHr, bSuper, 'peer', 'pending');
+}
+
+/** Resolved-id shape for the eval360 write surface (Omit<Evaluation360WriteResolved,'base'>). */
+export interface Evaluation360WriteResources {
+  userIdByRole: Record<string, string>;
+  subjectA: string;
+  submitAssignA: string;
+  submitAssignB: string;
+}
+
+/** The surface's ensurePreconditions hook. */
+export async function ensureEvaluation360WritePreconditions(cfg: HarnessConfig): Promise<void> {
+  const db = makeDbClient(cfg);
+  await db.connect();
+  try {
+    const orgA = await orgIdBySlug(db, ORG_SLUGS.a);
+    const orgB = await orgIdBySlug(db, ORG_SLUGS.b);
+    const userIds = new Map<string, string>([
+      ['a:super_admin', await userIdByEmail(db, 'parity+a-super_admin@tims.test')],
+      ['a:hr_admin', await userIdByEmail(db, 'parity+a-hr_admin@tims.test')],
+      ['b:super_admin', await userIdByEmail(db, 'parity+b-super_admin@tims.test')],
+      ['b:hr_admin', await userIdByEmail(db, 'parity+b-hr_admin@tims.test')],
+    ]);
+    await seedEvaluation360WritePreconditions(db, orgA, orgB, userIds);
+  } finally {
+    await db.end();
+  }
+}
+
+/** The surface's resolveResources hook. The submit assignment ids (gen_random_uuid) resolve by
+ *  natural key (cycle + rater); the fixed cycle ids are constants the registry references directly. */
+export async function resolveEvaluation360WriteResources(cfg: HarnessConfig): Promise<Evaluation360WriteResources> {
+  const db = makeDbClient(cfg);
+  await db.connect();
+  try {
+    const superA = await userIdByEmail(db, 'parity+a-super_admin@tims.test');
+    const hrA = await userIdByEmail(db, 'parity+a-hr_admin@tims.test');
+    const hrbpA = await userIdByEmail(db, 'parity+a-hrbp@tims.test');
+    const bSuper = await userIdByEmail(db, 'parity+b-super_admin@tims.test');
+    const assignmentIdByCycleRater = async (cycleId: string, raterId: string): Promise<string> => {
+      const { rows } = await db.query<IdRow>(
+        `SELECT id FROM rater_assignments WHERE cycle_id = $1 AND rater_user_id = $2 AND status = 'pending' LIMIT 1`,
+        [cycleId, raterId]
+      );
+      if (!rows.length) throw new Error(`resolveEvaluation360WriteResources: no pending assignment for rater ${raterId} in cycle ${cycleId} — run \`seed --teardown\` then \`seed\` (a submit consumes it)`);
+      return rows[0].id;
+    };
+    return {
+      userIdByRole: { super_admin: superA, hr_admin: hrA, hrbp: hrbpA },
+      subjectA: hrA,
+      submitAssignA: await assignmentIdByCycleRater(WRITE_EVAL_CYCLES.submitA, superA),
+      submitAssignB: await assignmentIdByCycleRater(WRITE_EVAL_CYCLES.submitB, bSuper),
     };
   } finally {
     await db.end();

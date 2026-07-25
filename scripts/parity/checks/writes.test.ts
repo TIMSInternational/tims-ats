@@ -12,12 +12,12 @@ const res: WriteResolved = {
 };
 
 // Minimal endpoint whose goldens are trivially controllable for the runner tests.
-const baseEp: WriteEndpointDef = {
+const baseEp: WriteEndpointDef<WriteResolved> = {
   name: 'ep',
   method: 'POST',
   buildParity: (r) => ({ path: `/x/${r.resourceA}`, body: { u: r.subjectA } }),
   buildIdor: (r) => ({ path: `/x/${r.resourceB}`, body: { u: r.subjectB } }),
-  expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
+  expectedByRole: { super_admin: 'allow', hr_admin: 'allow', hrbp: 'deny' },
   expectResponse: (b) => ((b as any)?.status === 'ok' ? null : 'bad status'),
   readbackMutated: () => ({ sql: 'SELECT 1', params: [], expect: (rows) => (rows.length === 1 ? null : 'not mutated') }),
   readbackNoMutation: () => ({ sql: 'SELECT n', params: [], expect: (rows) => ((rows[0] as any)?.n === 0 ? null : 'MUTATED') }),
@@ -132,7 +132,7 @@ describe('runWriteRbac', () => {
   });
 
   describe('allowRolesLiveTestable (e.g. create) — the non-probe allow grant is exercised', () => {
-    const allowEp: WriteEndpointDef = {
+    const allowEp: WriteEndpointDef<WriteResolved> = {
       ...baseEp,
       allowRolesLiveTestable: true,
       readbackAllow: (_r, role) => ({ sql: 'SELECT id', params: [role], expect: (rows) => ((rows[0] as any)?.made ? null : `role ${role} did not write`) }),
@@ -162,5 +162,67 @@ describe('runWriteRbac', () => {
       expect(results[0].ok).toBe(false);
       expect(results[0].detail).toContain('did not write');
     });
+  });
+});
+
+// ── multi-surface generalizations (optional IDOR, per-endpoint denied statuses) ──
+describe('runWriteIdor — optional buildIdor / custom denied statuses', () => {
+  const unchanged: Readback = async () => [{ n: 0 }];
+
+  it('reports N/A (ok) without calling the SUT when buildIdor is omitted (no cross-org target)', async () => {
+    const noIdor: WriteEndpointDef<WriteResolved> = { ...baseEp, buildIdor: undefined };
+    const call: CallWrite = vi.fn();
+    const r = await runWriteIdor(noIdor, res, 't', call, unchanged);
+    expect(r.ok).toBe(true);
+    expect(r.detail).toContain('n/a');
+    expect(call).not.toHaveBeenCalled();
+  });
+
+  it('accepts a 409 denial when idorDeniedStatuses=[409] (guarded transition)', async () => {
+    const transition: WriteEndpointDef<WriteResolved> = { ...baseEp, idorDeniedStatuses: [409] };
+    const call: CallWrite = vi.fn(async () => ({ status: 409, body: null }));
+    const r = await runWriteIdor(transition, res, 't', call, unchanged);
+    expect(r.ok).toBe(true);
+  });
+
+  it('FAILS closed on 403 when only 409 is a declared denial (unexpected status)', async () => {
+    const transition: WriteEndpointDef<WriteResolved> = { ...baseEp, idorDeniedStatuses: [409] };
+    const call: CallWrite = vi.fn(async () => ({ status: 403, body: null }));
+    const r = await runWriteIdor(transition, res, 't', call, unchanged);
+    expect(r.ok).toBe(false);
+    expect(r.detail).toContain('cannot confirm isolation');
+    expect(r.detail).toContain('409');
+  });
+
+  it('still FAILS on a 200 leak even for a transition endpoint', async () => {
+    const transition: WriteEndpointDef<WriteResolved> = { ...baseEp, idorDeniedStatuses: [409] };
+    const call: CallWrite = vi.fn(async () => ({ status: 200, body: { status: 'ok' } }));
+    const r = await runWriteIdor(transition, res, 't', call, unchanged);
+    expect(r.ok).toBe(false);
+    expect(r.detail).toContain('WRITE LEAK');
+  });
+});
+
+describe('runWriteRbac — custom rbacDenyStatus (identity-anchored 404)', () => {
+  const unchanged: Readback = async () => [{ n: 0 }];
+  // identity-anchored: a non-owner role is refused with 404 (indistinguishable from a missing row).
+  const identityEp: WriteEndpointDef<WriteResolved> = {
+    ...baseEp,
+    expectedByRole: { super_admin: 'allow', hr_admin: 'deny', hrbp: 'deny' },
+    rbacDenyStatus: 404,
+  };
+
+  it('PASS when a deny role returns the custom 404 (not 403) + no mutation', async () => {
+    const call: CallWrite = vi.fn(async () => ({ status: 404, body: null }));
+    const results = await runWriteRbac(identityEp, res, { super_admin: 's', hr_admin: 'h', hrbp: 'hb' }, 'super_admin', call, unchanged);
+    expect(results.map((r) => r.role).sort()).toEqual(['hr_admin', 'hrbp']);
+    expect(results.every((r) => r.ok)).toBe(true);
+  });
+
+  it('FAIL when a deny role returns 403 while 404 is expected', async () => {
+    const call: CallWrite = vi.fn(async () => ({ status: 403, body: null }));
+    const results = await runWriteRbac(identityEp, res, { hr_admin: 'h' }, 'super_admin', call, unchanged);
+    expect(results[0].ok).toBe(false);
+    expect(results[0].detail).toContain('expected 404');
   });
 });

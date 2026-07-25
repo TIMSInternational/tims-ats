@@ -1,11 +1,18 @@
-import type { WriteEndpointDef, WriteResolved, Row } from '../write-surfaces';
+import type { WriteEndpointDef, WriteResolvedBase, Row } from '../write-surfaces';
 
 /**
  * Write-verification check runners: light parity (the single mutating happy-path),
  * write-IDOR (org-A → org-B, denied + no mutation), write-RBAC-deny (deny role →
- * 403 + no mutation). Every assertion runs against the DB via an injected `readback`
+ * denied + no mutation). Every assertion runs against the DB via an injected `readback`
  * so a denied write is proven to have made NO mutation, not merely returned a 4xx.
  * The runners are generic; the per-endpoint goldens live in the WriteEndpointDef.
+ *
+ * Denial semantics are per-endpoint (multi-surface generalization):
+ *   - IDOR denied statuses: `ep.idorDeniedStatuses` (default [403, 404]); a 200 is always
+ *     a write leak, an out-of-set status fails closed. Guarded transitions add 409.
+ *   - RBAC deny status: `ep.rbacDenyStatus` (default 403 — no grant); identity-anchored 404.
+ *   - `ep.buildIdor` OMITTED ⇒ the endpoint has no cross-org target (org fixed by caller
+ *     context, e.g. createCycle) ⇒ IDOR reports N/A rather than running.
  */
 
 export interface WriteCheckResult {
@@ -28,14 +35,17 @@ export type CallWrite = (
   body: unknown,
 ) => Promise<{ status: number; body: unknown }>;
 
+const DEFAULT_IDOR_DENIED = [403, 404];
+const DEFAULT_RBAC_DENY = 403;
+
 /**
  * Light parity — the probe (allow) role runs the write ONCE and we assert 200 + the
  * response shape + a DB read-back of the created/mutated row against the golden. This
  * is the single mutation per endpoint and doubles as the probe-role "allow" proof.
  */
-export async function runWriteParity(
-  ep: WriteEndpointDef,
-  res: WriteResolved,
+export async function runWriteParity<R extends WriteResolvedBase>(
+  ep: WriteEndpointDef<R>,
+  res: R,
   probeToken: string,
   callWrite: CallWrite,
   readback: Readback,
@@ -56,24 +66,29 @@ export async function runWriteParity(
 
 /**
  * Write-IDOR — the org-A probe token attempts the write against an org-B resource/
- * subject. Must be DENIED (403 create / 404 approve; any 4xx is denied, a 200 is a
- * write leak → FAIL) AND a read-back must prove org-B was NOT mutated (a 4xx that
- * still wrote the row is the worst-case bug). Fails closed on any other status.
+ * subject. Must be DENIED (one of `ep.idorDeniedStatuses`; a 200 is a write leak → FAIL)
+ * AND a read-back must prove org-B was NOT mutated (a 4xx that still wrote the row is the
+ * worst-case bug). Fails closed on any other status. When `ep.buildIdor` is omitted, the
+ * endpoint has no cross-org target and the check is reported N/A (ok, with a reason).
  */
-export async function runWriteIdor(
-  ep: WriteEndpointDef,
-  res: WriteResolved,
+export async function runWriteIdor<R extends WriteResolvedBase>(
+  ep: WriteEndpointDef<R>,
+  res: R,
   orgAProbeToken: string,
   callWrite: CallWrite,
   readback: Readback,
 ): Promise<WriteCheckResult> {
+  if (!ep.buildIdor) {
+    return { check: 'write-idor', endpoint: ep.name, ok: true, detail: 'n/a: no cross-org target (org fixed by caller context)' };
+  }
+  const denied = ep.idorDeniedStatuses ?? DEFAULT_IDOR_DENIED;
   const { path, body } = ep.buildIdor(res);
   const resp = await callWrite(res.base, ep.method, path, orgAProbeToken, body);
   if (resp.status === 200) {
     return { check: 'write-idor', endpoint: ep.name, ok: false, detail: `WRITE LEAK: org-A token reached an org-B write (status 200) — cross-tenant mutation` };
   }
-  if (resp.status !== 403 && resp.status !== 404) {
-    return { check: 'write-idor', endpoint: ep.name, ok: false, detail: `cannot confirm isolation: unexpected status ${resp.status} (expected 403/404)` };
+  if (!denied.includes(resp.status)) {
+    return { check: 'write-idor', endpoint: ep.name, ok: false, detail: `cannot confirm isolation: unexpected status ${resp.status} (expected ${denied.join('/')})` };
   }
   const { sql, params, expect } = ep.readbackNoMutation(res, 'b');
   const nm = expect(await readback(sql, params));
@@ -82,17 +97,17 @@ export async function runWriteIdor(
 }
 
 /**
- * Write-RBAC — for each DENY role (expected 403): assert 403 + no mutation. For each
- * non-probe ALLOW role (expected 200) when `ep.allowRolesLiveTestable` (an unconditional
- * create): assert 200 + a read-back proving the row was written under THAT role's grant —
- * this exercises the real grant-resolution path for a non-bypass role (the probe is a
- * permission-bypass role, so light-parity alone never proves grant resolution). The
- * probe's own allow is covered by light-parity; allow roles on a state-transition endpoint
- * are skipped (they'd need their own precondition — a rollout item).
+ * Write-RBAC — for each DENY role: assert the deny status (`ep.rbacDenyStatus`, default
+ * 403) + no mutation. For each non-probe ALLOW role when `ep.allowRolesLiveTestable` (an
+ * unconditional create): assert 200 + a read-back proving the row was written under THAT
+ * role's grant — this exercises the real grant-resolution path for a non-bypass role (the
+ * probe is a permission-bypass role, so light-parity alone never proves grant resolution).
+ * The probe's own allow is covered by light-parity; allow roles on a state-transition
+ * endpoint are skipped (they'd need their own precondition — a rollout item).
  */
-export async function runWriteRbac(
-  ep: WriteEndpointDef,
-  res: WriteResolved,
+export async function runWriteRbac<R extends WriteResolvedBase>(
+  ep: WriteEndpointDef<R>,
+  res: R,
   tokensByRole: Record<string, string>,
   probeRole: string,
   callWrite: CallWrite,
@@ -101,22 +116,23 @@ export async function runWriteRbac(
   const results: WriteCheckResult[] = [];
   const fail = (role: string, detail: string): WriteCheckResult => ({ check: 'write-rbac', endpoint: ep.name, role, ok: false, detail });
   const pass = (role: string): WriteCheckResult => ({ check: 'write-rbac', endpoint: ep.name, role, ok: true });
+  const denyStatus = ep.rbacDenyStatus ?? DEFAULT_RBAC_DENY;
 
   for (const [role, expected] of Object.entries(ep.expectedByRole)) {
     const token = tokensByRole[role];
 
-    if (expected === 403) {
+    if (expected === 'deny') {
       if (!token) { results.push(fail(role, `no token for role '${role}'`)); continue; }
       const { path, body } = ep.buildParity(res);
       const resp = await callWrite(res.base, ep.method, path, token, body);
-      if (resp.status !== 403) { results.push(fail(role, `expected 403, got ${resp.status}`)); continue; }
+      if (resp.status !== denyStatus) { results.push(fail(role, `expected ${denyStatus}, got ${resp.status}`)); continue; }
       const rb = ep.readbackNoMutation(res, 'a', role);
       const nm = rb.expect(await readback(rb.sql, rb.params));
-      results.push(nm ? fail(role, `denied (403) BUT ${nm}`) : pass(role));
+      results.push(nm ? fail(role, `denied (${denyStatus}) BUT ${nm}`) : pass(role));
       continue;
     }
 
-    // ALLOW (200): the probe is covered by light-parity; other allow roles run live only when
+    // ALLOW: the probe is covered by light-parity; other allow roles run live only when
     // the endpoint is safe to (unconditional create). Otherwise skip (no live allow coverage).
     if (role === probeRole || !ep.allowRolesLiveTestable || !ep.readbackAllow) continue;
     if (!token) { results.push(fail(role, `no token for role '${role}'`)); continue; }

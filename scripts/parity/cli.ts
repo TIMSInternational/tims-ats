@@ -25,10 +25,10 @@
 import { fileURLToPath } from 'node:url';
 import { loadConfig, type HarnessConfig } from './config';
 import { getToken, getSessionCookie, type TokenCache, type CookieCache } from './supabase';
-import { planSeed, seed, teardown, resolveResources, resolveWriteResources, ensureWritePreconditions, openReadback, type SeedResources } from './seed';
+import { planSeed, seed, teardown, resolveResources, openReadback, type SeedResources } from './seed';
 import { callCsharp, callCsharpWrite, callTs } from './callers';
 import { SURFACES, type Surface, type EndpointDef } from './surfaces';
-import { WRITE_SURFACES, type WriteResolved } from './write-surfaces';
+import { WRITE_SURFACES, type WriteResolvedBase } from './write-surfaces';
 import { substituteEndpointId } from './ids';
 import { runParityEndpoint } from './checks/parity';
 import { runRlsEndpoint, type RlsContext } from './checks/rls';
@@ -240,12 +240,12 @@ async function cmdVerifyWrite(surfaceKey: string | undefined): Promise<number> {
   const probeToken = tokensByRole[surface.probeRole];
   if (!probeToken) throw new Error(`verify-write: no probe token for role "${surface.probeRole}"`);
 
-  // Seed the write-verify-only preconditions (the org-B IDOR target — kept out of the shared
-  // read seed so it can't degrade the read pending-adjustments RLS). Idempotent.
-  await ensureWritePreconditions(cfg);
+  // Seed the surface's write-verify-only preconditions (kept out of the shared read seed so they
+  // can't degrade the read RLS checks — see seed(). Each surface owns its hook). Idempotent.
+  await surface.ensurePreconditions(cfg);
 
-  const ids = await resolveWriteResources(cfg);
-  const res: WriteResolved = { base: cfg.csharpBase, ...ids };
+  const ids = await surface.resolveResources(cfg);
+  const res: WriteResolvedBase = { base: cfg.csharpBase, ...ids };
 
   // Preflight: confirm the write routes are actually MOUNTED (flag ON). A no-token probe
   // hits auth on a mounted route (401) but 404s when the route is absent (flag OFF). Without
