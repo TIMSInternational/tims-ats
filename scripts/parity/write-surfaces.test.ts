@@ -3,9 +3,12 @@ import {
   WRITE_SURFACES,
   WRITE_EVAL_CYCLES,
   WRITE_CYCLE_MARKER,
+  WRITE_SUCCESSION_ROLES,
+  WRITE_SUCCESSION_CR_MARKER,
   EVAL360_COMPETENCIES,
   type WriteResolved,
   type Evaluation360WriteResolved,
+  type SuccessionWriteResolved,
 } from './write-surfaces';
 
 const res: WriteResolved = {
@@ -187,5 +190,91 @@ describe('WRITE_SURFACES evaluation360', () => {
     // no-mutation: still pending, zero forged responses.
     expect(e.readbackNoMutation(er, 'b').expect([{ status: 'pending', n: 0 }])).toBeNull();
     expect(e.readbackNoMutation(er, 'b').expect([{ status: 'pending', n: 1 }])).toContain('forged');
+  });
+});
+
+describe('WRITE_SURFACES succession', () => {
+  const s = WRITE_SURFACES['succession'];
+  const sr: SuccessionWriteResolved = {
+    base: 'http://c',
+    userIdByRole: { super_admin: 'S', hr_admin: 'H', hrbp: 'B' },
+    subjectA: 'H',
+    subjectB: 'bH',
+    successorRemoveA: 'remA',
+    successorRemoveB: 'remB',
+    successorReadinessA: 'rdyA',
+    successorReadinessB: 'rdyB',
+  };
+  const ep = (name: string) => s.endpoints.find((e) => e.name === name)!;
+
+  it('registers the 5 succession writes under the single write flag', () => {
+    expect(s.flag).toBe('Platform__SuccessionWriteEnabled');
+    expect(s.endpoints.map((e) => e.name)).toEqual([
+      'add-critical-role', 'add-successor', 'remove-successor', 'update-successor-readiness', 'update-critical-role-band',
+    ]);
+    // NO succession write is allow-live (no caller-stamped column) — every endpoint is probe + deny only.
+    expect(s.endpoints.every((e) => !e.allowRolesLiveTestable)).toBe(true);
+  });
+
+  it('add-critical-role: cross-org holder IDOR denied via 400, keyed on holder', () => {
+    const e = ep('add-critical-role');
+    expect(e.buildParity(sr).body).toMatchObject({ title: WRITE_SUCCESSION_CR_MARKER, currentHolderId: 'H' });
+    expect(e.buildIdor!(sr).body).toMatchObject({ currentHolderId: 'bH' });
+    expect(e.idorDeniedStatuses).toEqual([400]);
+    // mutated: locate by response id + org-A holder.
+    expect(e.readbackMutated(sr, { id: 'new-cr' }).params).toEqual(['new-cr', WRITE_SUCCESSION_CR_MARKER, 'H']);
+    // IDOR no-mutation keys on the org-B holder; deny keys on the org-A holder — disjoint.
+    expect(e.readbackNoMutation(sr, 'b').params).toEqual([WRITE_SUCCESSION_CR_MARKER, 'bH']);
+    expect(e.readbackNoMutation(sr, 'a', 'hrbp').params).toEqual([WRITE_SUCCESSION_CR_MARKER, 'H']);
+    expect(e.readbackNoMutation(sr, 'b').expect([{ n: 0 }])).toBeNull();
+    expect(e.readbackNoMutation(sr, 'b').expect([{ n: 1 }])).toContain('forbidden');
+  });
+
+  it('add-successor: cross-org subject IDOR denied via 403 (H1), deny keys on added_by', () => {
+    const e = ep('add-successor');
+    expect(e.buildParity(sr).path).toBe(`/succession/critical-roles/${WRITE_SUCCESSION_ROLES.addA}/successors`);
+    expect(e.buildParity(sr).body).toMatchObject({ userId: 'H', readiness: 'ready_now', type: 'internal' });
+    expect(e.buildIdor!(sr).body).toMatchObject({ userId: 'bH' });
+    expect(e.idorDeniedStatuses).toEqual([403]);
+    expect(e.readbackNoMutation(sr, 'b').params).toEqual([WRITE_SUCCESSION_ROLES.addA, 'bH']);
+    expect(e.readbackNoMutation(sr, 'a', 'hrbp').params).toEqual([WRITE_SUCCESSION_ROLES.addA, 'B']);
+    expect(e.readbackMutated(sr, { id: 'new-succ' }).expect([{ id: 'new-succ' }])).toBeNull();
+    expect(e.readbackMutated(sr, { id: 'new-succ' }).expect([{ id: 'other' }])).toContain('!=');
+  });
+
+  it('remove-successor: DELETE by-id, IDOR 404, no-mutation asserts the row still exists', () => {
+    const e = ep('remove-successor');
+    expect(e.method).toBe('DELETE');
+    expect(e.buildParity(sr)).toEqual({ path: '/succession/successors/remA', body: null });
+    expect(e.buildIdor!(sr).path).toBe('/succession/successors/remB');
+    expect(e.idorDeniedStatuses).toEqual([404]);
+    expect(e.readbackMutated(sr, { id: 'remA' }).expect([{ n: 0 }])).toBeNull(); // deleted
+    expect(e.readbackMutated(sr, { id: 'remA' }).expect([{ n: 1 }])).toContain('did not delete');
+    expect(e.readbackNoMutation(sr, 'b').expect([{ n: 1 }])).toBeNull(); // org-B row survives
+    expect(e.readbackNoMutation(sr, 'b').expect([{ n: 0 }])).toContain('deleted the row');
+  });
+
+  it('update-successor-readiness: PATCH by-id, IDOR 404, no-mutation asserts from-state developing', () => {
+    const e = ep('update-successor-readiness');
+    expect(e.method).toBe('PATCH');
+    expect(e.buildParity(sr)).toEqual({ path: '/succession/successors/rdyA/readiness', body: { readiness: 'ready_now' } });
+    expect(e.buildIdor!(sr).path).toBe('/succession/successors/rdyB/readiness');
+    expect(e.readbackMutated(sr, {}).expect([{ readiness: 'ready_now' }])).toBeNull();
+    expect(e.readbackMutated(sr, {}).expect([{ readiness: 'developing' }])).toContain('did not apply');
+    expect(e.readbackNoMutation(sr, 'b').expect([{ readiness: 'developing' }])).toBeNull();
+    expect(e.readbackNoMutation(sr, 'b').expect([{ readiness: 'ready_now' }])).toContain('mutated readiness');
+  });
+
+  it('update-critical-role-band: PATCH by-id, IDOR 404, no-mutation checks org-A NULL / org-B ORGB-BAND', () => {
+    const e = ep('update-critical-role-band');
+    expect(e.buildParity(sr).path).toBe(`/succession/critical-roles/${WRITE_SUCCESSION_ROLES.bandA}/band`);
+    expect(e.buildIdor!(sr).path).toBe(`/succession/critical-roles/${WRITE_SUCCESSION_ROLES.bandB}/band`);
+    expect(e.expectResponse({ id: 'x', targetBandLevel: 'PARITY-BAND' })).toBeNull();
+    expect(e.expectResponse({ id: 'x', targetBandLevel: 'OTHER' })).toContain('PARITY-BAND');
+    expect(e.readbackMutated(sr, {}).expect([{ target_band_level: 'PARITY-BAND' }])).toBeNull();
+    // IDOR target org-B must stay at its seeded 'ORGB-BAND'; deny target org-A stays NULL.
+    expect(e.readbackNoMutation(sr, 'b').expect([{ target_band_level: 'ORGB-BAND' }])).toBeNull();
+    expect(e.readbackNoMutation(sr, 'b').expect([{ target_band_level: 'PARITY-BAND' }])).toContain('mutated');
+    expect(e.readbackNoMutation(sr, 'a').expect([{ target_band_level: null }])).toBeNull();
   });
 });

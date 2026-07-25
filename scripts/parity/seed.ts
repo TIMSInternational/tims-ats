@@ -832,12 +832,25 @@ export async function seedNineBoxData(
 // RBAC: succession:read hr_admin@org + hrbp@unit. hr_admin's compensation:read@org grant (for the
 // comp-gap-alerts secondary check) is already seeded by seedCompensationGrants. No native enums.
 async function seedSuccessionGrants(db: Client, roleIds: Map<string, string>): Promise<void> {
-  const permId = await upsertPermission(db, 'succession', 'read');
+  const readPerm = await upsertPermission(db, 'succession', 'read');
+  // create/update/delete grants make hr_admin a genuine org-scoped write role (mirrors the prod
+  // access model + seedCompensationGrants). The succession write-verify does NOT allow-live-test
+  // hr_admin (no caller-stamped column usable with the shared-body harness — see write-surfaces.ts),
+  // so these are correctness/future-proofing; hrbp stays read-only@unit → its write attempts 403 at
+  // the gate. Read RBAC is unaffected (no read is gated by create/update/delete).
+  const createPerm = await upsertPermission(db, 'succession', 'create');
+  const updatePerm = await upsertPermission(db, 'succession', 'update');
+  const deletePerm = await upsertPermission(db, 'succession', 'delete');
   for (const key of ORG_KEYS) {
     const hrAdmin = roleIds.get(`${key}:hr_admin`);
-    if (hrAdmin) await upsertRolePermission(db, hrAdmin, permId, 'organization');
+    if (hrAdmin) {
+      await upsertRolePermission(db, hrAdmin, readPerm, 'organization');
+      await upsertRolePermission(db, hrAdmin, createPerm, 'organization');
+      await upsertRolePermission(db, hrAdmin, updatePerm, 'organization');
+      await upsertRolePermission(db, hrAdmin, deletePerm, 'organization');
+    }
     const hrbp = roleIds.get(`${key}:hrbp`);
-    if (hrbp) await upsertRolePermission(db, hrbp, permId, 'unit');
+    if (hrbp) await upsertRolePermission(db, hrbp, readPerm, 'unit');
   }
 }
 async function findOrCreateCriticalRole(
@@ -1173,6 +1186,163 @@ export async function resolveEvaluation360WriteResources(cfg: HarnessConfig): Pr
       subjectA: hrA,
       submitAssignA: await assignmentIdByCycleRater(WRITE_EVAL_CYCLES.submitA, superA),
       submitAssignB: await assignmentIdByCycleRater(WRITE_EVAL_CYCLES.submitB, bSuper),
+    };
+  } finally {
+    await db.end();
+  }
+}
+
+// ── succession write-verification preconditions ──────────────────────────────
+// The succession write surface (5 writes) needs by-id parent roles + successors the delete/update
+// endpoints can target. DISTINCT fixed-UUID critical roles per endpoint (prefix e0000363…, disjoint
+// from the read succession fixtures) + fixed successors (resolved by natural key), one per org
+// (org-A = parity/rbac-deny target, org-B = IDOR target). addCriticalRole (a create) has no fixed
+// precondition — its parity creates a marker-titled role (cleaned each run). Kept out of the shared
+// read seed. All swept by teardown (which deletes successors/critical_roles by org, both orgs).
+
+/** Write-verify-only critical-role fixtures (fixed UUIDs, disjoint from the read succession set). */
+export const WRITE_SUCCESSION_ROLES = {
+  addA: 'e0000363-0000-4000-8000-000000000001', // addSuccessor parent (org A)
+  removeA: 'e0000363-0000-4000-8000-000000000002', // removeSuccessor parent (org A)
+  removeB: 'e0000363-0000-4000-8000-000000000003', // removeSuccessor parent (org B — IDOR)
+  readinessA: 'e0000363-0000-4000-8000-000000000004', // updateReadiness parent (org A)
+  readinessB: 'e0000363-0000-4000-8000-000000000005', // updateReadiness parent (org B — IDOR)
+  bandA: 'e0000363-0000-4000-8000-000000000006', // updateBand target (org A)
+  bandB: 'e0000363-0000-4000-8000-000000000007', // updateBand target (org B — IDOR)
+} as const;
+
+/** The addCriticalRole marker title — the create's parity/deny rows self-locate by it. */
+export const WRITE_SUCCESSION_CR_MARKER = 'Parity Write CR';
+
+const WRITE_SUCCESSION_ROLE_IDS = Object.values(WRITE_SUCCESSION_ROLES);
+
+/** Minimal critical_roles upsert (fixed id): sets org + title + criticality + target_band_level +
+ *  holder, RESETTING target_band_level on conflict (so a re-run without teardown restores the band
+ *  from-state for updateCriticalRoleBand). */
+async function upsertWriteCriticalRole(
+  db: Client, id: string, orgId: string, title: string, criticality: string,
+  targetBand: string | null, holderId: string | null
+): Promise<void> {
+  await db.query(
+    `INSERT INTO critical_roles (id, organization_id, title, criticality, target_band_level, current_holder_id, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, now())
+     ON CONFLICT (id) DO UPDATE SET
+       organization_id = EXCLUDED.organization_id, title = EXCLUDED.title, criticality = EXCLUDED.criticality,
+       target_band_level = EXCLUDED.target_band_level, current_holder_id = EXCLUDED.current_holder_id, updated_at = now()`,
+    [id, orgId, title, criticality, targetBand, holderId]
+  );
+}
+
+/** Successor upsert, RESETTING readiness on conflict (updateReadiness from-state) — natural key
+ *  (critical_role_id, user_id). Returns nothing; ids resolve by that natural key at check time. */
+async function upsertWriteSuccessor(
+  db: Client, orgId: string, criticalRoleId: string, userId: string, readiness: string, addedBy: string
+): Promise<void> {
+  await db.query(
+    `INSERT INTO successors (id, organization_id, critical_role_id, user_id, readiness, type, added_by_id, updated_at)
+     VALUES (gen_random_uuid(), $1, $2, $3, $4, 'internal', $5, now())
+     ON CONFLICT (critical_role_id, user_id) DO UPDATE SET readiness = EXCLUDED.readiness, updated_at = now()`,
+    [orgId, criticalRoleId, userId, readiness, addedBy]
+  );
+}
+
+/** Seeds the succession write-verify preconditions (fresh each run: deletes prior write successors +
+ *  the addCriticalRole marker rows, then re-seeds the fixed parent roles + successors). */
+export async function seedSuccessionWritePreconditions(
+  db: Client, orgAId: string, orgBId: string, userIds: Map<string, string>
+): Promise<void> {
+  const superA = userIds.get('a:super_admin');
+  const hrA = userIds.get('a:hr_admin');
+  const bSuper = userIds.get('b:super_admin');
+  const bHr = userIds.get('b:hr_admin');
+  if (!superA || !hrA || !bSuper || !bHr) return;
+
+  // 1. Cleanup: successors of the write roles (FK→critical_roles) first, then the addCriticalRole
+  //    marker rows (both orgs) — so removeSuccessor's target is restored and createCritical starts clean.
+  await db.query('DELETE FROM successors WHERE critical_role_id = ANY($1)', [WRITE_SUCCESSION_ROLE_IDS]);
+  await db.query(
+    'DELETE FROM successors WHERE organization_id = ANY($1) AND critical_role_id IN (SELECT id FROM critical_roles WHERE title = $2)',
+    [[orgAId, orgBId], WRITE_SUCCESSION_CR_MARKER]
+  );
+  await db.query(
+    'DELETE FROM critical_roles WHERE organization_id = ANY($1) AND title = $2',
+    [[orgAId, orgBId], WRITE_SUCCESSION_CR_MARKER]
+  );
+
+  // 2. Fixed parent critical roles (org A = parity/deny target, org B = IDOR target). bandA seeds a
+  //    NULL band as the updateBand from-state; bandB seeds a distinct value so an IDOR leak is visible.
+  await upsertWriteCriticalRole(db, WRITE_SUCCESSION_ROLES.addA, orgAId, 'Parity Write Succ AddA', 'high', null, superA);
+  await upsertWriteCriticalRole(db, WRITE_SUCCESSION_ROLES.removeA, orgAId, 'Parity Write Succ RemoveA', 'high', null, superA);
+  await upsertWriteCriticalRole(db, WRITE_SUCCESSION_ROLES.removeB, orgBId, 'Parity Write Succ RemoveB', 'high', null, bSuper);
+  await upsertWriteCriticalRole(db, WRITE_SUCCESSION_ROLES.readinessA, orgAId, 'Parity Write Succ ReadinessA', 'high', null, superA);
+  await upsertWriteCriticalRole(db, WRITE_SUCCESSION_ROLES.readinessB, orgBId, 'Parity Write Succ ReadinessB', 'high', null, bSuper);
+  await upsertWriteCriticalRole(db, WRITE_SUCCESSION_ROLES.bandA, orgAId, 'Parity Write Succ BandA', 'high', null, superA);
+  await upsertWriteCriticalRole(db, WRITE_SUCCESSION_ROLES.bandB, orgBId, 'Parity Write Succ BandB', 'high', 'ORGB-BAND', bSuper);
+
+  // 3. Fixed successors (resolved by natural key at check time). removeA/B = delete targets;
+  //    readinessA/B seed the 'developing' from-state (parity transitions to 'ready_now').
+  await upsertWriteSuccessor(db, orgAId, WRITE_SUCCESSION_ROLES.removeA, hrA, 'ready_now', superA);
+  await upsertWriteSuccessor(db, orgBId, WRITE_SUCCESSION_ROLES.removeB, bHr, 'ready_now', bSuper);
+  await upsertWriteSuccessor(db, orgAId, WRITE_SUCCESSION_ROLES.readinessA, hrA, 'developing', superA);
+  await upsertWriteSuccessor(db, orgBId, WRITE_SUCCESSION_ROLES.readinessB, bHr, 'developing', bSuper);
+}
+
+/** Resolved-id shape for the succession write surface (Omit<SuccessionWriteResolved,'base'>). */
+export interface SuccessionWriteResources {
+  userIdByRole: Record<string, string>;
+  subjectA: string;
+  subjectB: string;
+  successorRemoveA: string;
+  successorRemoveB: string;
+  successorReadinessA: string;
+  successorReadinessB: string;
+}
+
+/** The surface's ensurePreconditions hook. */
+export async function ensureSuccessionWritePreconditions(cfg: HarnessConfig): Promise<void> {
+  const db = makeDbClient(cfg);
+  await db.connect();
+  try {
+    const orgA = await orgIdBySlug(db, ORG_SLUGS.a);
+    const orgB = await orgIdBySlug(db, ORG_SLUGS.b);
+    const userIds = new Map<string, string>([
+      ['a:super_admin', await userIdByEmail(db, 'parity+a-super_admin@tims.test')],
+      ['a:hr_admin', await userIdByEmail(db, 'parity+a-hr_admin@tims.test')],
+      ['b:super_admin', await userIdByEmail(db, 'parity+b-super_admin@tims.test')],
+      ['b:hr_admin', await userIdByEmail(db, 'parity+b-hr_admin@tims.test')],
+    ]);
+    await seedSuccessionWritePreconditions(db, orgA, orgB, userIds);
+  } finally {
+    await db.end();
+  }
+}
+
+/** The surface's resolveResources hook. Successor ids (gen_random_uuid) resolve by natural key
+ *  (critical_role + user); the fixed parent-role ids are constants the registry references directly. */
+export async function resolveSuccessionWriteResources(cfg: HarnessConfig): Promise<SuccessionWriteResources> {
+  const db = makeDbClient(cfg);
+  await db.connect();
+  try {
+    const superA = await userIdByEmail(db, 'parity+a-super_admin@tims.test');
+    const hrA = await userIdByEmail(db, 'parity+a-hr_admin@tims.test');
+    const hrbpA = await userIdByEmail(db, 'parity+a-hrbp@tims.test');
+    const bHr = await userIdByEmail(db, 'parity+b-hr_admin@tims.test');
+    const successorId = async (criticalRoleId: string, userId: string): Promise<string> => {
+      const { rows } = await db.query<IdRow>(
+        `SELECT id FROM successors WHERE critical_role_id = $1 AND user_id = $2 LIMIT 1`,
+        [criticalRoleId, userId]
+      );
+      if (!rows.length) throw new Error(`resolveSuccessionWriteResources: no successor for user ${userId} in role ${criticalRoleId} — run \`seed --teardown\` then \`seed\` (a remove consumes it)`);
+      return rows[0].id;
+    };
+    return {
+      userIdByRole: { super_admin: superA, hr_admin: hrA, hrbp: hrbpA },
+      subjectA: hrA,
+      subjectB: bHr,
+      successorRemoveA: await successorId(WRITE_SUCCESSION_ROLES.removeA, hrA),
+      successorRemoveB: await successorId(WRITE_SUCCESSION_ROLES.removeB, bHr),
+      successorReadinessA: await successorId(WRITE_SUCCESSION_ROLES.readinessA, hrA),
+      successorReadinessB: await successorId(WRITE_SUCCESSION_ROLES.readinessB, bHr),
     };
   } finally {
     await db.end();

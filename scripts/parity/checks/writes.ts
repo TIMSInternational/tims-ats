@@ -29,7 +29,7 @@ export type Readback = (sql: string, params: unknown[]) => Promise<Row[]>;
 /** C# write caller shape, matching `callCsharpWrite` in scripts/parity/callers.ts. */
 export type CallWrite = (
   base: string,
-  method: 'POST' | 'PATCH',
+  method: 'POST' | 'PATCH' | 'DELETE',
   path: string,
   token: string,
   body: unknown,

@@ -247,15 +247,18 @@ async function cmdVerifyWrite(surfaceKey: string | undefined): Promise<number> {
   const ids = await surface.resolveResources(cfg);
   const res: WriteResolvedBase = { base: cfg.csharpBase, ...ids };
 
-  // Preflight: confirm the write routes are actually MOUNTED (flag ON). A no-token probe
-  // hits auth on a mounted route (401) but 404s when the route is absent (flag OFF). Without
-  // this, a dark backend would 404 every cross-org probe and FALSE-PASS the IDOR checks
-  // (a 404 route-absent is indistinguishable from a 404 access-denied). Fail loudly instead.
+  // Preflight: confirm the write routes are actually MOUNTED (flag ON). A no-token probe of a
+  // mounted RequireAuthorization route is rejected by auth with 401; an UNMOUNTED route yields 404
+  // (route absent) OR — when a live READ endpoint shares the path (e.g. GET /succession/critical-roles
+  // is live while the POST is dark) — 405 (method-not-allowed). So the ONLY status that proves the
+  // write route is mounted is 401; anything else means the write flag is likely OFF. Without this a
+  // dark backend would 404 the by-id cross-org probes and FALSE-PASS those IDOR checks (a route-absent
+  // 404 is indistinguishable from an access-denied 404). Bail loudly unless we see the mounted-401.
   const pf = surface.endpoints[0];
   const pfProbe = await callCsharpWrite(res.base, pf.method, pf.buildParity(res).path, '', pf.method === 'POST' ? {} : null);
-  if (pfProbe.status === 404) {
+  if (pfProbe.status !== 401) {
     console.error(
-      `verify-write: the "${surface.key}" write routes appear UNMOUNTED — a no-auth probe of ${pf.buildParity(res).path} returned 404. Flip ${surface.flag}=true at canary, then re-run. (Running against a dark backend would false-pass the IDOR checks.)`,
+      `verify-write: the "${surface.key}" write routes do not appear MOUNTED — a no-auth probe of ${pf.method} ${pf.buildParity(res).path} returned ${pfProbe.status}, expected 401 (a mounted auth-protected route rejects a no-token request with 401; 404/405/other ⇒ the write flag is likely OFF). Flip ${surface.flag}=true at canary, then re-run. (Running against a dark backend would false-pass the by-id IDOR checks.)`,
     );
     return 1;
   }

@@ -23,13 +23,17 @@ import {
   resolveCompensationWriteResources,
   ensureEvaluation360WritePreconditions,
   resolveEvaluation360WriteResources,
+  ensureSuccessionWritePreconditions,
+  resolveSuccessionWriteResources,
   WRITE_EVAL_CYCLES,
   WRITE_CYCLE_MARKER,
+  WRITE_SUCCESSION_ROLES,
+  WRITE_SUCCESSION_CR_MARKER,
 } from './seed';
 
-// Re-export the write-verify cycle fixtures (defined in seed.ts to keep the seed→registry
-// import one-directional) so consumers/tests can reference them from the registry too.
-export { WRITE_EVAL_CYCLES, WRITE_CYCLE_MARKER };
+// Re-export the write-verify fixtures (defined in seed.ts to keep the seed→registry import
+// one-directional) so consumers/tests can reference them from the registry too.
+export { WRITE_EVAL_CYCLES, WRITE_CYCLE_MARKER, WRITE_SUCCESSION_ROLES, WRITE_SUCCESSION_CR_MARKER };
 
 /** A deterministic Z-anchored effective date for create bodies (the C# validator
  *  requires a strict Zulu ISO-8601 timestamp; a fixed value keeps runs reproducible). */
@@ -53,7 +57,7 @@ export interface WriteReadback {
 
 export interface WriteEndpointDef<R extends WriteResolvedBase = WriteResolvedBase> {
   name: string;
-  method: 'POST' | 'PATCH';
+  method: 'POST' | 'PATCH' | 'DELETE';
   /** org-A happy-path (probe light-parity + rbac-deny both use this path/body). */
   buildParity: (r: R) => { path: string; body: unknown };
   /** cross-org IDOR probe (org-A token → an org-B resource/subject). OMITTED when the
@@ -529,7 +533,226 @@ const evaluation360Surface: WriteSurface<Evaluation360WriteResolved> = {
   ],
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// succession — Platform__SuccessionWriteEnabled (5 writes)
+// ─────────────────────────────────────────────────────────────────────────────
+/** Concrete ids for the succession write surface (seed.ts resolveSuccessionWriteResources).
+ *  The fixed parent-role ids live in WRITE_SUCCESSION_ROLES (referenced directly); the successor
+ *  ids (gen_random_uuid) are resolved by natural key. */
+export interface SuccessionWriteResolved extends WriteResolvedBase {
+  /** org-A user id per role (super_admin/hr_admin/hrbp). */
+  userIdByRole: Record<string, string>;
+  /** org-A subject user (addCriticalRole holder + addSuccessor subject). */
+  subjectA: string;
+  /** org-B subject user (cross-org holder / successor — the createAdjustment-class H1 target). */
+  subjectB: string;
+  successorRemoveA: string;
+  successorRemoveB: string;
+  successorReadinessA: string;
+  successorReadinessB: string;
+}
+
+const idPresent = (b: unknown): string | null => {
+  const o = asObj(b);
+  if (!o) return 'response is not an object';
+  if (typeof o.id !== 'string' || o.id.length === 0) return `missing id in response`;
+  return null;
+};
+
+// 5 writes under ONE flag Platform__SuccessionWriteEnabled. addCriticalRole (requireOrgScope create;
+// cross-org holder → 400) + addSuccessor (assertScoped(criticalRole) 404 THEN assertSubjectInScope +
+// H1 SubjectNotInOrg → 403 for a cross-org userId) + removeSuccessor (delete, assertScoped 404) +
+// updateSuccessorReadiness (patch, assertScoped 404) + updateCriticalRoleBand (patch, assertScoped 404).
+// hrbp is read-only → every write 403 at the gate. NO allow-live: critical_roles has no caller-stamped
+// column and the shared-body harness can't mint a distinct 2nd create (successors' unique key clashes),
+// so the non-bypass allow role isn't independently live-proven here (probe covers the happy path + the
+// H1/reference guards; hrbp-deny proves the gate). A documented coverage nuance, not a false-green.
+const successionSurface: WriteSurface<SuccessionWriteResolved> = {
+  key: 'succession',
+  flag: 'Platform__SuccessionWriteEnabled',
+  probeRole: 'super_admin',
+  roles: ['super_admin', 'hr_admin', 'hrbp'],
+  ensurePreconditions: ensureSuccessionWritePreconditions,
+  resolveResources: resolveSuccessionWriteResources,
+  endpoints: [
+    // ── addCriticalRole — requireOrgScope create; cross-org holder → 400 (H2 reference guard). ──
+    {
+      name: 'add-critical-role',
+      method: 'POST',
+      buildParity: (r) => ({ path: '/succession/critical-roles', body: { title: WRITE_SUCCESSION_CR_MARKER, criticality: 'high', currentHolderId: r.subjectA } }),
+      // cross-org: an org-B currentHolderId → not in the caller's org → 400 invalid_reference (no INSERT).
+      // NB: 400 is also the malformed-body status, so it is NOT isolation-specific on its own — the IDOR
+      // body here is well-formed (valid uuid holder), so it genuinely reaches the reference guard, and the
+      // no-mutation read-back (no row with that org-B holder) is the LOAD-BEARING proof, not the status.
+      buildIdor: (r) => ({ path: '/succession/critical-roles', body: { title: WRITE_SUCCESSION_CR_MARKER, criticality: 'high', currentHolderId: r.subjectB } }),
+      idorDeniedStatuses: [400],
+      expectedByRole: { super_admin: 'allow', hr_admin: 'allow', hrbp: 'deny' }, // hrbp: no succession:create → 403
+      rbacDenyStatus: 403,
+      expectResponse: idPresent,
+      readbackMutated: (r, b) => {
+        const respId = asObj(b)?.id;
+        return {
+          sql: `SELECT id FROM critical_roles WHERE id = $1 AND title = $2 AND current_holder_id = $3`,
+          params: [respId, WRITE_SUCCESSION_CR_MARKER, r.subjectA],
+          expect: (rows) => (rows.length === 1 ? null : `no created marker critical role matching the response id + org-A holder`),
+        };
+      },
+      // IDOR: no role created with the org-B holder. deny (hrbp, runs before parity): no marker role
+      // with the org-A holder yet. Both key on current_holder_id so they don't see each other's rows.
+      readbackNoMutation: (r, target) => {
+        const holder = target === 'b' ? r.subjectB : r.subjectA;
+        return {
+          sql: `SELECT count(*)::int AS n FROM critical_roles WHERE title = $1 AND current_holder_id = $2`,
+          params: [WRITE_SUCCESSION_CR_MARKER, holder],
+          expect: (rows) => (Number(rows[0]?.n) === 0 ? null : `a forbidden addCriticalRole still inserted ${rows[0]?.n} row(s)`),
+        };
+      },
+    },
+
+    // ── addSuccessor — assertScoped(criticalRole) 404 THEN cross-org userId → 403 (H1 SubjectNotInOrg). ──
+    {
+      name: 'add-successor',
+      method: 'POST',
+      buildParity: (r) => ({ path: `/succession/critical-roles/${WRITE_SUCCESSION_ROLES.addA}/successors`, body: { userId: r.subjectA, readiness: 'ready_now', type: 'internal' } }),
+      // cross-org: a valid org-A parent role + an org-B userId → assertSubjectInScope no-ops for org
+      // scope → the H1 org-membership guard rejects → 403 (the createAdjustment-class hole, both-stacks-fixed).
+      buildIdor: (r) => ({ path: `/succession/critical-roles/${WRITE_SUCCESSION_ROLES.addA}/successors`, body: { userId: r.subjectB, readiness: 'ready_now', type: 'internal' } }),
+      idorDeniedStatuses: [403],
+      expectedByRole: { super_admin: 'allow', hr_admin: 'allow', hrbp: 'deny' },
+      rbacDenyStatus: 403,
+      expectResponse: idPresent,
+      readbackMutated: (r, b) => {
+        const respId = asObj(b)?.id;
+        return {
+          sql: `SELECT id FROM successors WHERE critical_role_id = $1 AND user_id = $2`,
+          params: [WRITE_SUCCESSION_ROLES.addA, r.subjectA],
+          expect: (rows) => {
+            if (rows.length !== 1) return `addSuccessor did not create the successor (found ${rows.length})`;
+            if (rows[0].id !== respId) return `response id != created successor id`;
+            return null;
+          },
+        };
+      },
+      // IDOR: no successor for the org-B userId. deny: no successor added_by the denier (hrbp).
+      readbackNoMutation: (r, target, denierRole) =>
+        target === 'b'
+          ? {
+              sql: `SELECT count(*)::int AS n FROM successors WHERE critical_role_id = $1 AND user_id = $2`,
+              params: [WRITE_SUCCESSION_ROLES.addA, r.subjectB],
+              expect: (rows) => (Number(rows[0]?.n) === 0 ? null : `a forbidden addSuccessor inserted a cross-org successor`),
+            }
+          : {
+              sql: `SELECT count(*)::int AS n FROM successors WHERE critical_role_id = $1 AND added_by_id = $2`,
+              params: [WRITE_SUCCESSION_ROLES.addA, r.userIdByRole[denierRole ?? '']],
+              expect: (rows) => (Number(rows[0]?.n) === 0 ? null : `a forbidden addSuccessor inserted ${rows[0]?.n} row(s)`),
+            },
+    },
+
+    // ── removeSuccessor — DELETE by-id; assertScoped(successor) 404. ─────────────────────────────
+    {
+      name: 'remove-successor',
+      method: 'DELETE',
+      buildParity: (r) => ({ path: `/succession/successors/${enc(r.successorRemoveA)}`, body: null }),
+      buildIdor: (r) => ({ path: `/succession/successors/${enc(r.successorRemoveB)}`, body: null }),
+      idorDeniedStatuses: [404],
+      expectedByRole: { super_admin: 'allow', hr_admin: 'allow', hrbp: 'deny' }, // hrbp: no succession:delete
+      rbacDenyStatus: 403,
+      expectResponse: idPresent,
+      readbackMutated: (r) => ({
+        sql: `SELECT count(*)::int AS n FROM successors WHERE id = $1`,
+        params: [r.successorRemoveA],
+        expect: (rows) => (Number(rows[0]?.n) === 0 ? null : `removeSuccessor did not delete the row`),
+      }),
+      // A denied delete must leave the target intact (org-B for IDOR, org-A for rbac-deny).
+      readbackNoMutation: (r, target) => {
+        const id = target === 'b' ? r.successorRemoveB : r.successorRemoveA;
+        return {
+          sql: `SELECT count(*)::int AS n FROM successors WHERE id = $1`,
+          params: [id],
+          expect: (rows) => (Number(rows[0]?.n) === 1 ? null : `a forbidden removeSuccessor deleted the row`),
+        };
+      },
+    },
+
+    // ── updateSuccessorReadiness — PATCH by-id; assertScoped(successor) 404. ─────────────────────
+    {
+      name: 'update-successor-readiness',
+      method: 'PATCH',
+      buildParity: (r) => ({ path: `/succession/successors/${enc(r.successorReadinessA)}/readiness`, body: { readiness: 'ready_now' } }),
+      buildIdor: (r) => ({ path: `/succession/successors/${enc(r.successorReadinessB)}/readiness`, body: { readiness: 'ready_now' } }),
+      idorDeniedStatuses: [404],
+      expectedByRole: { super_admin: 'allow', hr_admin: 'allow', hrbp: 'deny' }, // hrbp: no succession:update
+      rbacDenyStatus: 403,
+      expectResponse: idPresent,
+      readbackMutated: (r) => ({
+        sql: `SELECT readiness FROM successors WHERE id = $1`,
+        params: [r.successorReadinessA],
+        expect: (rows) => {
+          if (rows.length !== 1) return `successor ${r.successorReadinessA} missing`;
+          if (rows[0].readiness !== 'ready_now') return `readiness ${rows[0].readiness} != ready_now (update did not apply)`;
+          return null;
+        },
+      }),
+      // A denied update leaves the from-state 'developing'.
+      readbackNoMutation: (r, target) => {
+        const id = target === 'b' ? r.successorReadinessB : r.successorReadinessA;
+        return {
+          sql: `SELECT readiness FROM successors WHERE id = $1`,
+          params: [id],
+          expect: (rows) => {
+            if (rows.length !== 1) return `precondition successor ${id} missing`;
+            if (rows[0].readiness !== 'developing') return `a forbidden update mutated readiness → ${rows[0].readiness}`;
+            return null;
+          },
+        };
+      },
+    },
+
+    // ── updateCriticalRoleBand — PATCH by-id; assertScoped(criticalRole) 404. ────────────────────
+    {
+      name: 'update-critical-role-band',
+      method: 'PATCH',
+      buildParity: () => ({ path: `/succession/critical-roles/${WRITE_SUCCESSION_ROLES.bandA}/band`, body: { targetBandLevel: 'PARITY-BAND' } }),
+      buildIdor: () => ({ path: `/succession/critical-roles/${WRITE_SUCCESSION_ROLES.bandB}/band`, body: { targetBandLevel: 'PARITY-BAND' } }),
+      idorDeniedStatuses: [404],
+      expectedByRole: { super_admin: 'allow', hr_admin: 'allow', hrbp: 'deny' },
+      rbacDenyStatus: 403,
+      expectResponse: (b) => {
+        const idErr = idPresent(b);
+        if (idErr) return idErr;
+        const o = asObj(b)!;
+        if (o.targetBandLevel !== 'PARITY-BAND') return `expected targetBandLevel 'PARITY-BAND', got ${JSON.stringify(o.targetBandLevel)}`;
+        return null;
+      },
+      readbackMutated: () => ({
+        sql: `SELECT target_band_level FROM critical_roles WHERE id = $1`,
+        params: [WRITE_SUCCESSION_ROLES.bandA],
+        expect: (rows) => {
+          if (rows.length !== 1) return `critical role ${WRITE_SUCCESSION_ROLES.bandA} missing`;
+          if (rows[0].target_band_level !== 'PARITY-BAND') return `target_band_level ${rows[0].target_band_level} != PARITY-BAND`;
+          return null;
+        },
+      }),
+      // A denied band update leaves the from-state: org-A = NULL, org-B = the seeded 'ORGB-BAND'.
+      readbackNoMutation: (_r, target) => {
+        const id = target === 'b' ? WRITE_SUCCESSION_ROLES.bandB : WRITE_SUCCESSION_ROLES.bandA;
+        const expected = target === 'b' ? 'ORGB-BAND' : null;
+        return {
+          sql: `SELECT target_band_level FROM critical_roles WHERE id = $1`,
+          params: [id],
+          expect: (rows) => {
+            if (rows.length !== 1) return `precondition critical role ${id} missing`;
+            if ((rows[0].target_band_level ?? null) !== expected) return `a forbidden band update mutated target_band_level → ${JSON.stringify(rows[0].target_band_level)} (expected ${JSON.stringify(expected)})`;
+            return null;
+          },
+        };
+      },
+    },
+  ],
+};
+
 export const WRITE_SURFACES: Record<string, AnyWriteSurface> = {
   compensation: defineWriteSurface(compensationSurface),
   evaluation360: defineWriteSurface(evaluation360Surface),
+  succession: defineWriteSurface(successionSurface),
 };

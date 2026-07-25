@@ -70,7 +70,7 @@ export async function callCsharp(
  */
 export async function callCsharpWrite(
   base: string,
-  method: 'POST' | 'PATCH',
+  method: 'POST' | 'PATCH' | 'DELETE',
   path: string,
   token: string,
   body: unknown,
