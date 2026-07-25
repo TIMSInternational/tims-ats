@@ -1,6 +1,7 @@
 import type { CheckResult as ParityCheckResult } from './checks/parity';
 import type { CheckResult as RlsCheckResult } from './checks/rls';
 import type { CheckResult as RbacCheckResult } from './checks/rbac';
+import type { WriteCheckResult } from './checks/writes';
 
 /**
  * Union of every check runner's result shape (Tasks 8/9/10). `report.ts` is the only
@@ -12,10 +13,10 @@ import type { CheckResult as RbacCheckResult } from './checks/rbac';
  * pass only (Mode B both-orgs-empty), not a real cross-tenant comparison.
  * `renderLine` below renders that case as `[WEAK]` instead of `[PASS]`.
  */
-export type CheckResult = ParityCheckResult | RlsCheckResult | RbacCheckResult;
+export type CheckResult = ParityCheckResult | RlsCheckResult | RbacCheckResult | WriteCheckResult;
 
-function hasRole(r: CheckResult): r is RbacCheckResult {
-  return r.check === 'rbac';
+function hasRole(r: CheckResult): r is RbacCheckResult | (WriteCheckResult & { role: string }) {
+  return (r.check === 'rbac' || r.check === 'write-rbac') && 'role' in r && r.role !== undefined;
 }
 
 /** True for an RLS result that passed only because there was no cross-tenant

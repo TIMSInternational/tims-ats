@@ -33,7 +33,19 @@ public sealed class CompensationWriteUseCaseTests
             .CreateAdjustmentAsync(Org, Caller, Create("gbp"), Now, CancellationToken.None);
 
         Assert.Equal("GBP", repo.InsertedCurrency); // normalized (upper) input wins over the subject fallback
-        Assert.Equal("pending", result.Status);
+        Assert.Equal("pending", result!.Status);
+    }
+
+    // ── H1: a cross-org subject (not a member of the caller's org) ⇒ null (→ 403), NO insert ──
+    [Fact]
+    public async Task Create_for_a_cross_org_subject_returns_null_and_does_not_insert()
+    {
+        var repo = new FakeRepo { SubjectInOrg = false };
+        var result = await new CompensationWriteUseCase(repo, new FakeAuditor())
+            .CreateAdjustmentAsync(Org, Caller, Create("USD"), Now, CancellationToken.None);
+
+        Assert.Null(result);
+        Assert.Null(repo.InsertedCurrency); // InsertAdjustmentAsync never ran
     }
 
     [Fact]
@@ -73,7 +85,7 @@ public sealed class CompensationWriteUseCaseTests
         var result = await new CompensationWriteUseCase(repo, new FakeAuditor())
             .CreateAdjustmentAsync(Org, Caller, Create("USD"), Now, CancellationToken.None);
 
-        Assert.Equal("new-id", result.Id);
+        Assert.Equal("new-id", result!.Id);
         Assert.Equal("pending", result.Status);
     }
 
@@ -156,11 +168,15 @@ public sealed class CompensationWriteUseCaseTests
         public string InsertedId { get; init; } = "id";
         public PendingAdjustmentRow? Pending { get; init; }
         public ApproveOutcome ApproveResult { get; init; } = ApproveOutcome.Applied;
+        public bool SubjectInOrg { get; init; } = true;
 
         public string? InsertedCurrency { get; private set; }
         public bool ApproveCalled { get; private set; }
         public bool ApplyCompensation { get; private set; }
         public string? NewStatus { get; private set; }
+
+        public Task<bool> SubjectExistsInOrgAsync(string organizationId, Guid subjectUserId, CancellationToken cancellationToken) =>
+            Task.FromResult(SubjectInOrg);
 
         public Task<string?> GetSubjectCompensationCurrencyAsync(string organizationId, Guid subjectUserId, CancellationToken cancellationToken) =>
             Task.FromResult(SubjectCurrency);

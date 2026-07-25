@@ -61,6 +61,35 @@ export async function callCsharp(
   }
 }
 
+/**
+ * C# WRITE caller (POST/PATCH). Mirrors `callCsharp` but sends a JSON body and an
+ * explicit method — used by the write-verification checks. `Bearer` auth like the
+ * read caller; `Content-Type: application/json`. Same JSON-or-raw-text body fallback
+ * so a non-JSON error page still yields a usable `status`. A `null`/`undefined` body
+ * sends no request body (for state-transition writes whose payload is only the path id).
+ */
+export async function callCsharpWrite(
+  base: string,
+  method: 'POST' | 'PATCH',
+  path: string,
+  token: string,
+  body: unknown,
+  fetchFn: Fetch = fetch
+): Promise<{ status: number; body: unknown }> {
+  const res = await fetchFn(`${base}${path}`, {
+    method,
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: body === undefined || body === null ? undefined : JSON.stringify(body),
+  });
+  const text = await res.text();
+  if (!text) return { status: res.status, body: null };
+  try {
+    return { status: res.status, body: JSON.parse(text) };
+  } catch {
+    return { status: res.status, body: text };
+  }
+}
+
 export async function callTs(
   base: string,
   procedure: string,

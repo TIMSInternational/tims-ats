@@ -571,13 +571,23 @@ export async function seedReportingData(
 // ── compensation fixtures ────────────────────────────────────────────────────
 // RBAC: compensation:read hr_admin@org (real-grant 200) + hrbp@unit (403 on requireOrgScope
 // reads, scoped-empty 200 on grant-only reads). super_admin bypasses.
+// WRITE RBAC: hr_admin ALSO gets compensation:create + approve @org so the write allow-grant
+// path (a NON-bypass role — super_admin bypasses permissions) is exercised = a real-grant 200.
+// hrbp gets NEITHER create nor approve → it is the write deny role (403). (These extra grants
+// are role_permissions rows, not data, so they don't affect any read RLS check.)
 async function seedCompensationGrants(db: Client, roleIds: Map<string, string>): Promise<void> {
-  const permId = await upsertPermission(db, 'compensation', 'read');
+  const readPerm = await upsertPermission(db, 'compensation', 'read');
+  const createPerm = await upsertPermission(db, 'compensation', 'create');
+  const approvePerm = await upsertPermission(db, 'compensation', 'approve');
   for (const key of ORG_KEYS) {
     const hrAdmin = roleIds.get(`${key}:hr_admin`);
-    if (hrAdmin) await upsertRolePermission(db, hrAdmin, permId, 'organization');
+    if (hrAdmin) {
+      await upsertRolePermission(db, hrAdmin, readPerm, 'organization');
+      await upsertRolePermission(db, hrAdmin, createPerm, 'organization');
+      await upsertRolePermission(db, hrAdmin, approvePerm, 'organization');
+    }
     const hrbp = roleIds.get(`${key}:hrbp`);
-    if (hrbp) await upsertRolePermission(db, hrbp, permId, 'unit');
+    if (hrbp) await upsertRolePermission(db, hrbp, readPerm, 'unit');
   }
 }
 
@@ -921,6 +931,99 @@ export async function seedOrgBTier2Mirrors(
   await findOrCreateCriticalRole(db, orgBId, 'Parity Critical Role B1', 'critical', 0.5, 'PARITY-L1', bSuper);
 }
 
+// ── Write-verification preconditions ─────────────────────────────────────────
+// The compensation write tracer's approve endpoint needs a PENDING salary_adjustments
+// row it can flip: org A already has one (seedCompensationData → a:hr_admin), reused as
+// the approve fixture. This adds the ORG-B counterpart (the approve-IDOR target: an
+// org-A token approving it must be denied AND leave it pending). requested_by = b:super
+// (org B's own actor), distinct from org A's super, so the create-IDOR no-mutation check
+// (which keys on requested_by = the cross-org attacker) is not confused by it.
+// Idempotent: skips if an org-B pending row for b:hr_admin already exists.
+export async function seedCompensationWritePreconditions(
+  db: Client, orgBId: string, userIds: Map<string, string>
+): Promise<void> {
+  const bSuper = userIds.get('b:super_admin');
+  const bHr = userIds.get('b:hr_admin');
+  if (!bSuper || !bHr) return;
+  const found = await db.query<IdRow>(
+    `SELECT id FROM salary_adjustments WHERE organization_id = $1 AND user_id = $2 AND status = 'pending' LIMIT 1`,
+    [orgBId, bHr]
+  );
+  if (found.rows.length) return;
+  await db.query(
+    `INSERT INTO salary_adjustments
+       (id, organization_id, user_id, type, previous_salary, new_salary, currency, status, requested_by_id, effective_date, updated_at)
+     VALUES (gen_random_uuid(), $1, $2, 'merit', 60000, 66000, 'USD', 'pending', $3, now(), now())`,
+    [orgBId, bHr, bSuper]
+  );
+}
+
+// ── Write-verification resource resolution ───────────────────────────────────
+export interface WriteResources {
+  /** org-A user id per probe/deny role (super_admin/hr_admin/hrbp). */
+  userIdByRole: Record<string, string>;
+  /** org-A subject employee (a:hr_admin) — create target + approve-fixture owner. */
+  subjectA: string;
+  /** org-B subject employee (b:hr_admin) — cross-org target. */
+  subjectB: string;
+  /** org-A pending salary_adjustments id (approve target). */
+  resourceA: string;
+  /** org-B pending salary_adjustments id (approve IDOR target). */
+  resourceB: string;
+}
+
+/** Seeds the write-verify-only preconditions that must NOT live in the shared read seed
+ *  (they would degrade a read RLS check — see the note in `seed()`). For compensation:
+ *  the org-B pending adjustment (the approve-IDOR target). Idempotent; call from the
+ *  write-verify flow after a normal `seed`. */
+export async function ensureWritePreconditions(cfg: HarnessConfig): Promise<void> {
+  const db = makeDbClient(cfg);
+  await db.connect();
+  try {
+    const orgB = await orgIdBySlug(db, ORG_SLUGS.b);
+    const userIds = new Map<string, string>([
+      ['b:super_admin', await userIdByEmail(db, 'parity+b-super_admin@tims.test')],
+      ['b:hr_admin', await userIdByEmail(db, 'parity+b-hr_admin@tims.test')],
+    ]);
+    await seedCompensationWritePreconditions(db, orgB, userIds);
+  } finally {
+    await db.end();
+  }
+}
+
+/** Read-only resolution of the compensation write tracer's ids from the seeded DB.
+ *  Requires a fresh teardown+seed + `ensureWritePreconditions` (an approve mutates
+ *  resourceA out of 'pending'). */
+export async function resolveWriteResources(cfg: HarnessConfig): Promise<WriteResources> {
+  const db = makeDbClient(cfg);
+  await db.connect();
+  try {
+    const orgA = await orgIdBySlug(db, ORG_SLUGS.a);
+    const orgB = await orgIdBySlug(db, ORG_SLUGS.b);
+    const superA = await userIdByEmail(db, 'parity+a-super_admin@tims.test');
+    const hrA = await userIdByEmail(db, 'parity+a-hr_admin@tims.test');
+    const hrbpA = await userIdByEmail(db, 'parity+a-hrbp@tims.test');
+    const hrB = await userIdByEmail(db, 'parity+b-hr_admin@tims.test');
+    const pendingAdjustmentId = async (orgId: string, userId: string): Promise<string> => {
+      const { rows } = await db.query<IdRow>(
+        `SELECT id FROM salary_adjustments WHERE organization_id = $1 AND user_id = $2 AND status = 'pending' LIMIT 1`,
+        [orgId, userId]
+      );
+      if (!rows.length) throw new Error(`resolveWriteResources: no pending adjustment for user ${userId} in org ${orgId} — run \`cli.ts seed --teardown\` then \`seed\` (an approve consumes it)`);
+      return rows[0].id;
+    };
+    return {
+      userIdByRole: { super_admin: superA, hr_admin: hrA, hrbp: hrbpA },
+      subjectA: hrA,
+      subjectB: hrB,
+      resourceA: await pendingAdjustmentId(orgA, hrA),
+      resourceB: await pendingAdjustmentId(orgB, hrB),
+    };
+  } finally {
+    await db.end();
+  }
+}
+
 // ── Tier-2 by-id resource resolution ─────────────────────────────────────────
 // `verify`/`rls`/`parity`/`rbac` run in a SEPARATE process from `seed`, so the by-id
 // resource ids must be re-derivable at check time, not carried from a prior seed.
@@ -994,6 +1097,19 @@ export async function resolveResources(cfg: HarnessConfig): Promise<SeedResource
   }
 }
 
+/** Opens a read-only DB handle (the BYPASSRLS `postgres` client) for the write checks'
+ *  read-backs. Returns a parameterized-query fn + a closer; the caller MUST call close(). */
+export async function openReadback(
+  cfg: HarnessConfig
+): Promise<{ readback: (sql: string, params: unknown[]) => Promise<Record<string, unknown>[]>; close: () => Promise<void> }> {
+  const db = makeDbClient(cfg);
+  await db.connect();
+  return {
+    readback: async (sql, params) => (await db.query(sql, params)).rows as Record<string, unknown>[],
+    close: () => db.end().then(() => undefined),
+  };
+}
+
 /** Idempotent: creates the 2 test orgs + a Role + a user per configured role, if missing. */
 export async function seed(cfg: HarnessConfig, roles: string[]): Promise<SeedResult> {
   const admin = makeAdminClient(cfg);
@@ -1057,6 +1173,11 @@ export async function seed(cfg: HarnessConfig, roles: string[]): Promise<SeedRes
     // isolation pass from a trivial 404. Additive to the org-A-only Tier-1 fixtures above.
     await seedOrgBTier2Mirrors(db, orgIds.b, userIds);
 
+    // NOTE: the write-verification org-B pending adjustment is deliberately NOT seeded here.
+    // The read `pending-adjustments` RLS is a Mode-B check whose leak sensitivity depends on
+    // org B being EMPTY for salary_adjustments (an additive read-leak → org B echoes org A →
+    // identical-non-empty → FAIL). Seeding an org-B row would mask that. The write-IDOR target
+    // is instead seeded by `ensureWritePreconditions` in the write-verify path only.
     return { orgs: orgIds, users: plan.users };
   } finally {
     await db.end();

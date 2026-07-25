@@ -295,6 +295,20 @@ export const compensationRouter = router({
         'No puedes crear ajustes para este usuario',
       );
 
+      // Both-stacks H1 hardening (parity with the C# port; surfaced by the write-verification
+      // harness): assertSubjectInScope no-ops for organization/company scope (it enforces SCOPE,
+      // not org membership), so an org-scoped caller could otherwise persist a cross-tenant userId
+      // — the salary_adjustments.userId FK check bypasses RLS, producing an org-A row that references
+      // an org-B employee. Verify the target user is a member of the caller's org before the INSERT;
+      // a cross-org user → FORBIDDEN (never persisted).
+      const targetUser = await db.user.findFirst({
+        where: { id: input.userId, organizationId: ctx.user.organizationId },
+        select: { id: true },
+      });
+      if (!targetUser) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'No puedes crear ajustes para este usuario' });
+      }
+
       const currentComp = await db.employeeCompensation.findFirst({
         where: { userId: input.userId, organizationId: ctx.user.organizationId },
         select: { currency: true },

@@ -46,7 +46,8 @@ public sealed class CompensationWriteTests(CompensationWriteFixture fixture)
             Org, CompensationWriteFixture.OrgHrId, Create(CompensationWriteFixture.WcId, currency: null),
             Now, CancellationToken.None);
 
-        Assert.Equal("pending", result.Status);
+        Assert.NotNull(result);
+        Assert.Equal("pending", result!.Status);
         Assert.True(Guid.TryParse(result.Id, out var id));
 
         await using var connection = await fixture.OpenSuperuserConnectionAsync();
@@ -70,7 +71,7 @@ public sealed class CompensationWriteTests(CompensationWriteFixture fixture)
             Org, CompensationWriteFixture.OrgHrId, Create(CompensationWriteFixture.OrgHrId, currency: null),
             Now, CancellationToken.None);
 
-        Assert.Equal("USD", await CurrencyOf(Guid.Parse(result.Id))); // OrgHr has no comp row → USD
+        Assert.Equal("USD", await CurrencyOf(Guid.Parse(result!.Id))); // OrgHr has no comp row → USD
     }
 
     [Fact]
@@ -80,7 +81,7 @@ public sealed class CompensationWriteTests(CompensationWriteFixture fixture)
             Org, CompensationWriteFixture.OrgHrId, Create(CompensationWriteFixture.WcId, "gbp"),
             Now, CancellationToken.None);
 
-        Assert.Equal("GBP", await CurrencyOf(Guid.Parse(result.Id))); // input wins, normalized upper
+        Assert.Equal("GBP", await CurrencyOf(Guid.Parse(result!.Id))); // input wins, normalized upper
     }
 
     [Fact]
@@ -88,6 +89,36 @@ public sealed class CompensationWriteTests(CompensationWriteFixture fixture)
     {
         Assert.Equal("EUR", await Repo().GetSubjectCompensationCurrencyAsync(Org, CompensationWriteFixture.WcId, CancellationToken.None));
         Assert.Null(await Repo().GetSubjectCompensationCurrencyAsync(Org, CompensationWriteFixture.OrgHrId, CancellationToken.None));
+    }
+
+    // ── createAdjustment H1: a cross-org subject must be REJECTED with no INSERT ──
+    // assertSubjectInScope no-ops for organization/company scope (enforces SCOPE, not org membership), so an
+    // org-scoped caller could otherwise persist a cross-tenant salary_adjustments.userId (an org-A row
+    // referencing an org-B employee — the FK EXISTS-check bypasses RLS). Surfaced by the write-verification
+    // harness (both stacks). RED before the SubjectExistsInOrgAsync backstop.
+    [Fact]
+    public async Task Create_for_a_cross_org_subject_is_rejected_with_no_insert()
+    {
+        var result = await UseCase().CreateAdjustmentAsync(
+            Org, CompensationWriteFixture.OrgHrId, Create(CompensationWriteFixture.OrgBHrId, currency: null),
+            Now, CancellationToken.None);
+
+        Assert.Null(result); // → 403 at the endpoint
+
+        await using var connection = await fixture.OpenSuperuserConnectionAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText =
+            "SELECT count(*) FROM salary_adjustments WHERE user_id = @u AND requested_by_id = @c";
+        command.Parameters.AddWithValue("u", CompensationWriteFixture.OrgBHrId);
+        command.Parameters.AddWithValue("c", CompensationWriteFixture.OrgHrId);
+        Assert.Equal(0L, (long)(await command.ExecuteScalarAsync())!);
+    }
+
+    [Fact]
+    public async Task SubjectExistsInOrg_true_for_in_org_and_false_for_cross_org()
+    {
+        Assert.True(await Repo().SubjectExistsInOrgAsync(Org, CompensationWriteFixture.WcId, CancellationToken.None));
+        Assert.False(await Repo().SubjectExistsInOrgAsync(Org, CompensationWriteFixture.OrgBHrId, CancellationToken.None));
     }
 
     // ── approve applied: status→approved, comp propagated, exactly one audit row (INV-4 success) ──

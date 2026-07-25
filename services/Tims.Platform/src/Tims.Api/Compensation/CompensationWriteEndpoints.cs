@@ -90,6 +90,13 @@ public static class CompensationWriteEndpoints
 
                 var result = await useCase.CreateAdjustmentAsync(
                     gate.Context!.OrganizationId, callerId, command, timeProvider.GetUtcNow(), cancellationToken);
+                // H1: null ⇒ the target userId is NOT a member of the caller's org (a cross-tenant reference the
+                // org/company-scope subject-scope no-op would otherwise allow) → 403, no INSERT.
+                if (result is null)
+                {
+                    return Results.Json(
+                        new { message = SubjectForbiddenMessage }, statusCode: StatusCodes.Status403Forbidden);
+                }
                 return Results.Ok(new AdjustmentWriteResponse(result.Id, result.Status));
             })
             .RequireAuthorization()

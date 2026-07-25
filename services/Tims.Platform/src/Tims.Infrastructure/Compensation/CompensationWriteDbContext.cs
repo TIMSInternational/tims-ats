@@ -20,6 +20,9 @@ public sealed class CompensationWriteDbContext(DbContextOptions<CompensationWrit
 
     public DbSet<EmployeeCompensationWriteEntity> EmployeeCompensations => Set<EmployeeCompensationWriteEntity>();
 
+    /// users — read-only membership lookup for the createAdjustment H1 org-membership backstop.
+    public DbSet<CompensationUserWriteEntity> Users => Set<CompensationUserWriteEntity>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<SalaryAdjustmentWriteEntity>(entity =>
@@ -52,6 +55,14 @@ public sealed class CompensationWriteDbContext(DbContextOptions<CompensationWrit
             entity.Property(c => c.CurrentSalary).HasColumnName("current_salary");
             entity.Property(c => c.Currency).HasColumnName("currency");
             entity.Property(c => c.UpdatedAt).HasColumnName("updated_at").HasColumnType("timestamp");
+        });
+
+        modelBuilder.Entity<CompensationUserWriteEntity>(entity =>
+        {
+            entity.ToTable("users");
+            entity.HasKey(u => u.Id);
+            entity.Property(u => u.Id).HasColumnName("id");
+            entity.Property(u => u.OrganizationId).HasColumnName("organization_id");
         });
     }
 }

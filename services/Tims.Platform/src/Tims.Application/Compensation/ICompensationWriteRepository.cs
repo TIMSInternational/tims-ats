@@ -19,6 +19,15 @@ public interface ICompensationWriteRepository
         string organizationId, Guid subjectUserId, CancellationToken cancellationToken);
 
     /// <summary>
+    /// createAdjustment H1 backstop: true iff the target user is a member of the caller's org (RLS-filtered under
+    /// TenantScope + explicit org filter). assertSubjectInScope no-ops for organization/company scope (it enforces
+    /// SCOPE, not org membership), so a cross-org userId would otherwise be INSERTed as a bare FK past RLS — an
+    /// org-A salary_adjustments row referencing an org-B employee. false ⇒ 403 at the caller, no INSERT.
+    /// </summary>
+    Task<bool> SubjectExistsInOrgAsync(
+        string organizationId, Guid subjectUserId, CancellationToken cancellationToken);
+
+    /// <summary>
     /// createAdjustment step 2: INSERT the pending salary_adjustments row (requestedById = caller, status =
     /// 'pending'); returns the client-generated id. <paramref name="currency"/> is the already-normalized code.
     /// </summary>

@@ -1,6 +1,37 @@
 import { describe, it, expect, vi } from 'vitest';
-import { callCsharp, callTs } from './callers';
+import { callCsharp, callCsharpWrite, callTs } from './callers';
 import { TrpcError } from './trpc';
+
+describe('callCsharpWrite', () => {
+  it('POSTs base+path with Bearer + JSON body and returns {status, body}', async () => {
+    const fetchFn = vi.fn(async () => new Response(JSON.stringify({ id: 'a1', status: 'pending' }), { status: 200 }));
+    const res = await callCsharpWrite('https://c', 'POST', '/compensation/adjustments', 'TOK', { userId: 'u1' }, fetchFn);
+    expect(fetchFn).toHaveBeenCalledWith(
+      'https://c/compensation/adjustments',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ Authorization: 'Bearer TOK', 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ userId: 'u1' }),
+      })
+    );
+    expect(res).toEqual({ status: 200, body: { id: 'a1', status: 'pending' } });
+  });
+
+  it('PATCHes and sends no body when body is null (path-id-only transition)', async () => {
+    const fetchFn = vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) => new Response('', { status: 200 }));
+    const res = await callCsharpWrite('https://c', 'PATCH', '/x/1/band', 'TOK', null, fetchFn);
+    const init = fetchFn.mock.calls[0][1] as RequestInit;
+    expect(init.method).toBe('PATCH');
+    expect(init.body).toBeUndefined();
+    expect(res).toEqual({ status: 200, body: null });
+  });
+
+  it('returns {status, body: rawText} for a non-JSON body instead of throwing', async () => {
+    const fetchFn = vi.fn(async () => new Response('Forbidden', { status: 403 }));
+    const res = await callCsharpWrite('https://c', 'POST', '/x', 'TOK', {}, fetchFn);
+    expect(res).toEqual({ status: 403, body: 'Forbidden' });
+  });
+});
 
 describe('callCsharp', () => {
   it('GETs base+path with Bearer and returns {status, body}', async () => {

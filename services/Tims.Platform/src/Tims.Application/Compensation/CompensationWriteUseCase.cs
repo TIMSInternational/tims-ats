@@ -26,11 +26,25 @@ public sealed class CompensationWriteUseCase(ICompensationWriteRepository reposi
     private readonly ICompensationWriteRepository _repository = repository;
     private readonly IDataAccessAuditor _auditor = auditor;
 
-    /// <summary>createAdjustment: currency fallback + INSERT. Returns ONLY {id, status:'pending'} (§21).</summary>
-    public async Task<CreateAdjustmentResult> CreateAdjustmentAsync(
+    /// <summary>
+    /// createAdjustment: currency fallback + INSERT. Returns ONLY {id, status:'pending'} (§21), or <c>null</c>
+    /// when the target user is NOT a member of the caller's org — the H1 backstop the endpoint maps to 403
+    /// (assertSubjectInScope no-ops for organization/company scope, so a cross-tenant userId must be rejected here).
+    /// </summary>
+    public async Task<CreateAdjustmentResult?> CreateAdjustmentAsync(
         string organizationId, Guid callerId, CreateAdjustmentCommand command, DateTimeOffset now,
         CancellationToken cancellationToken)
     {
+        // H1: the target userId must belong to the caller's org (assertSubjectInScope enforces SCOPE, not org
+        // membership, for org/company-scoped callers). A cross-org subject ⇒ null ⇒ 403, no INSERT.
+        var subjectInOrg = await _repository
+            .SubjectExistsInOrgAsync(organizationId, command.UserId, cancellationToken)
+            .ConfigureAwait(false);
+        if (!subjectInOrg)
+        {
+            return null;
+        }
+
         // currency = normalizeCurrencyCode(input.currency, currentComp?.currency ?? 'USD').
         var subjectCurrency = await _repository
             .GetSubjectCompensationCurrencyAsync(organizationId, command.UserId, cancellationToken)

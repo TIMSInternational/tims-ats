@@ -25,19 +25,21 @@
 import { fileURLToPath } from 'node:url';
 import { loadConfig, type HarnessConfig } from './config';
 import { getToken, getSessionCookie, type TokenCache, type CookieCache } from './supabase';
-import { planSeed, seed, teardown, resolveResources, type SeedResources } from './seed';
-import { callCsharp, callTs } from './callers';
+import { planSeed, seed, teardown, resolveResources, resolveWriteResources, ensureWritePreconditions, openReadback, type SeedResources } from './seed';
+import { callCsharp, callCsharpWrite, callTs } from './callers';
 import { SURFACES, type Surface, type EndpointDef } from './surfaces';
+import { WRITE_SURFACES, type WriteResolved } from './write-surfaces';
 import { substituteEndpointId } from './ids';
 import { runParityEndpoint } from './checks/parity';
 import { runRlsEndpoint, type RlsContext } from './checks/rls';
 import { runRbacEndpoint, type RbacContext } from './checks/rbac';
+import { runWriteParity, runWriteIdor, runWriteRbac } from './checks/writes';
 import { renderReport, type CheckResult } from './report';
 
 type CheckCommand = 'parity' | 'rls' | 'rbac' | 'verify';
 
 const USAGE =
-  'Usage: tsx scripts/parity/cli.ts <seed [--teardown] | auth | parity <surface> | rls <surface> | rbac <surface> | verify <surface>>';
+  'Usage: tsx scripts/parity/cli.ts <seed [--teardown] | auth | parity <surface> | rls <surface> | rbac <surface> | verify <surface> | verify-write <surface>>';
 
 /** Union of every registered surface's roles — used by `seed`/`auth`, which act
  *  across all surfaces rather than one (no <surface> argument for those two). */
@@ -211,6 +213,70 @@ async function cmdCheck(command: CheckCommand, surfaceKey: string | undefined): 
 }
 
 /**
+ * Live write-verification for a WRITE surface (checks/writes.ts). Per endpoint runs
+ * the two NON-mutating checks first (write-IDOR, write-RBAC-deny) then the single
+ * mutating light-parity, so the precondition is intact when the non-mutating checks
+ * read it back. Requires a FRESH `seed --teardown` + `seed` (an approve consumes the
+ * pending fixture) and the surface's write flag ON (dark routes 404 → parity/rbac RED).
+ */
+async function cmdVerifyWrite(surfaceKey: string | undefined): Promise<number> {
+  if (!surfaceKey) {
+    console.error(`Error: "verify-write" requires a <surface> argument. Known write surfaces: ${Object.keys(WRITE_SURFACES).join(', ')}`);
+    return 1;
+  }
+  const surface = WRITE_SURFACES[surfaceKey];
+  if (!surface) {
+    console.error(`Error: unknown write surface "${surfaceKey}". Known write surfaces: ${Object.keys(WRITE_SURFACES).join(', ')}`);
+    return 1;
+  }
+  const cfg = loadConfig();
+  const cache: TokenCache = new Map();
+  // org-A token per surface role (the probe/allow + deny roles); writes only ever
+  // exercise the org-A tenant (cross-org is the IDOR probe, using the org-A probe token).
+  const tokensByRole: Record<string, string> = {};
+  for (const u of planSeed(surface.roles).users) {
+    if (u.orgKey === 'a') tokensByRole[u.role] = await getToken(cfg, u.email, u.password, cache);
+  }
+  const probeToken = tokensByRole[surface.probeRole];
+  if (!probeToken) throw new Error(`verify-write: no probe token for role "${surface.probeRole}"`);
+
+  // Seed the write-verify-only preconditions (the org-B IDOR target — kept out of the shared
+  // read seed so it can't degrade the read pending-adjustments RLS). Idempotent.
+  await ensureWritePreconditions(cfg);
+
+  const ids = await resolveWriteResources(cfg);
+  const res: WriteResolved = { base: cfg.csharpBase, ...ids };
+
+  // Preflight: confirm the write routes are actually MOUNTED (flag ON). A no-token probe
+  // hits auth on a mounted route (401) but 404s when the route is absent (flag OFF). Without
+  // this, a dark backend would 404 every cross-org probe and FALSE-PASS the IDOR checks
+  // (a 404 route-absent is indistinguishable from a 404 access-denied). Fail loudly instead.
+  const pf = surface.endpoints[0];
+  const pfProbe = await callCsharpWrite(res.base, pf.method, pf.buildParity(res).path, '', pf.method === 'POST' ? {} : null);
+  if (pfProbe.status === 404) {
+    console.error(
+      `verify-write: the "${surface.key}" write routes appear UNMOUNTED — a no-auth probe of ${pf.buildParity(res).path} returned 404. Flip ${surface.flag}=true at canary, then re-run. (Running against a dark backend would false-pass the IDOR checks.)`,
+    );
+    return 1;
+  }
+
+  const { readback, close } = await openReadback(cfg);
+  const results: CheckResult[] = [];
+  try {
+    for (const ep of surface.endpoints) {
+      results.push(await runWriteIdor(ep, res, probeToken, callCsharpWrite, readback));
+      results.push(...(await runWriteRbac(ep, res, tokensByRole, surface.probeRole, callCsharpWrite, readback)));
+      results.push(await runWriteParity(ep, res, probeToken, callCsharpWrite, readback));
+    }
+  } finally {
+    await close();
+  }
+  const { text, allGreen } = renderReport(results);
+  console.log(text);
+  return allGreen ? 0 : 1;
+}
+
+/**
  * Pure-ish dispatcher: returns the process exit code rather than calling
  * `process.exit` itself, so the unknown-command/unknown-surface/missing-surface
  * branches (which never touch config/network) are unit-testable in isolation.
@@ -231,6 +297,8 @@ export async function dispatch(argv: string[]): Promise<number> {
     case 'rbac':
     case 'verify':
       return cmdCheck(command, arg);
+    case 'verify-write':
+      return cmdVerifyWrite(arg);
     default:
       console.error(`Error: unknown command "${command}". ${USAGE}`);
       return 1;

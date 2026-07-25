@@ -36,6 +36,23 @@ public sealed class CompensationWriteRepository(CompensationWriteDbContext db) :
         return currency;
     }
 
+    public async Task<bool> SubjectExistsInOrgAsync(
+        string organizationId, Guid subjectUserId, CancellationToken cancellationToken)
+    {
+        var orgId = Guid.Parse(organizationId);
+        await using var scope = await TenantScope.BeginAsync(_db, orgId, cancellationToken).ConfigureAwait(false);
+
+        // The H1 org-membership backstop — RLS-filtered to the caller's org under the active TenantScope,
+        // with an explicit org filter (defense-in-depth). A cross-org userId ⇒ false ⇒ 403 (never INSERTed).
+        var exists = await _db.Users
+            .AsNoTracking()
+            .AnyAsync(u => u.Id == subjectUserId && u.OrganizationId == orgId, cancellationToken)
+            .ConfigureAwait(false);
+
+        await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return exists;
+    }
+
     public async Task<string> InsertAdjustmentAsync(
         string organizationId,
         Guid callerId,

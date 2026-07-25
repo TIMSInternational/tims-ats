@@ -37,3 +37,14 @@ public sealed class EmployeeCompensationWriteEntity
     public string Currency { get; set; } = string.Empty;
     public DateTime UpdatedAt { get; set; }
 }
+
+/// <summary>
+/// users — the minimal projection (id + organization_id) for the createAdjustment H1 org-membership backstop:
+/// assertSubjectInScope no-ops for organization/company scope, so the target userId must be verified to belong
+/// to the caller's org before the INSERT (else a cross-tenant salary_adjustments.userId FK slips past RLS).
+/// </summary>
+public sealed class CompensationUserWriteEntity
+{
+    public Guid Id { get; set; }
+    public Guid? OrganizationId { get; set; }
+}
