@@ -1,4 +1,4 @@
-import type { WriteEndpointDef, WriteResolvedBase, Row } from '../write-surfaces';
+import type { WriteEndpointDef, WriteExtraProbe, WriteResolvedBase, Row } from '../write-surfaces';
 
 /**
  * Write-verification check runners: light parity (the single mutating happy-path),
@@ -126,6 +126,14 @@ export async function runWriteRbac<R extends WriteResolvedBase>(
       const { path, body } = ep.buildParity(res);
       const resp = await callWrite(res.base, ep.method, path, token, body);
       if (resp.status !== denyStatus) { results.push(fail(role, `expected ${denyStatus}, got ${resp.status}`)); continue; }
+      // Optional: assert the deny RESPONSE BODY carries the expected reason, so a role that is meant
+      // to be denied for a SPECIFIC reason (e.g. NotMember, having passed the grant gate) is proven to
+      // fail there — not incidentally at the gate. Distinguishes a membership-403 from a gate-403.
+      const wantBody = ep.denyBodyIncludes?.[role];
+      if (wantBody && !JSON.stringify(resp.body ?? '').includes(wantBody)) {
+        results.push(fail(role, `denied (${denyStatus}) but the body did not include ${JSON.stringify(wantBody)} — wrong deny reason (e.g. gate vs membership)`));
+        continue;
+      }
       const rb = ep.readbackNoMutation(res, 'a', role);
       const nm = rb.expect(await readback(rb.sql, rb.params));
       results.push(nm ? fail(role, `denied (${denyStatus}) BUT ${nm}`) : pass(role));
@@ -146,4 +154,35 @@ export async function runWriteRbac<R extends WriteResolvedBase>(
     results.push(am ? fail(role, `allow role ${am}`) : pass(role));
   }
   return results;
+}
+
+/**
+ * Write extra-probe — an ADDITIONAL non-mutating cross-org denial check beyond the primary IDOR,
+ * for endpoints with more than one cross-tenant vector (e.g. nine-box, where the by-id IDOR targets
+ * a cross-org SESSION but the no-org_id member/vote tables also need the org-A-session + org-B-USER
+ * vector tested). The probe uses the org-A probe token, must be denied (one of `probe.deniedStatuses`;
+ * a 200 is a leak), and a read-back proves nothing was written. Reported as a `write-idor` line labeled
+ * `<endpoint>:<probe.label>`.
+ */
+export async function runWriteExtraProbe<R extends WriteResolvedBase>(
+  ep: WriteEndpointDef<R>,
+  probe: WriteExtraProbe<R>,
+  res: R,
+  orgAProbeToken: string,
+  callWrite: CallWrite,
+  readback: Readback,
+): Promise<WriteCheckResult> {
+  const endpoint = `${ep.name}:${probe.label}`;
+  const { path, body } = probe.build(res);
+  const resp = await callWrite(res.base, ep.method, path, orgAProbeToken, body);
+  if (resp.status === 200) {
+    return { check: 'write-idor', endpoint, ok: false, detail: `WRITE LEAK: a cross-org probe reached a 200 write` };
+  }
+  if (!probe.deniedStatuses.includes(resp.status)) {
+    return { check: 'write-idor', endpoint, ok: false, detail: `cannot confirm isolation: unexpected status ${resp.status} (expected ${probe.deniedStatuses.join('/')})` };
+  }
+  const { sql, params, expect } = probe.readbackNoMutation(res);
+  const nm = expect(await readback(sql, params));
+  if (nm) return { check: 'write-idor', endpoint, ok: false, detail: `denied (${resp.status}) BUT ${nm}` };
+  return { check: 'write-idor', endpoint, ok: true };
 }

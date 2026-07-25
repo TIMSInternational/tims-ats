@@ -8,11 +8,14 @@ import {
   WRITE_ENGAGEMENT,
   WRITE_ENGAGEMENT_SURVEY_MARKER,
   WRITE_ENGAGEMENT_PLAN_MARKER,
+  WRITE_NINEBOX,
+  WRITE_NINEBOX_CAL_MARKER,
   EVAL360_COMPETENCIES,
   type WriteResolved,
   type Evaluation360WriteResolved,
   type SuccessionWriteResolved,
   type EngagementWriteResolved,
+  type NineBoxWriteResolved,
 } from './write-surfaces';
 
 const res: WriteResolved = {
@@ -356,5 +359,101 @@ describe('WRITE_SURFACES engagement', () => {
     expect(e.readbackMutated(gr, {}).expect([{ status: 'in_progress' }])).toBeNull();
     expect(e.readbackNoMutation(gr, 'b').expect([{ status: 'pending' }])).toBeNull();
     expect(e.readbackNoMutation(gr, 'b').expect([{ status: 'in_progress' }])).toContain('mutated');
+  });
+});
+
+describe('WRITE_SURFACES ninebox', () => {
+  const s = WRITE_SURFACES['ninebox'];
+  const nr: NineBoxWriteResolved = {
+    base: 'http://c',
+    userIdByRole: { super_admin: 'S', hr_admin: 'H', hrbp: 'B' },
+    subjectB: 'bH',
+  };
+  const ep = (name: string) => s.endpoints.find((e) => e.name === name)!;
+
+  it('registers the 5 ninebox writes under the single write flag', () => {
+    expect(s.flag).toBe('Platform__NineBoxWriteEnabled');
+    expect(s.endpoints.map((e) => e.name)).toEqual([
+      'create-calibration', 'submit-calibration-vote', 'add-calibration-member',
+      'remove-calibration-member', 'finalize-calibration',
+    ]);
+  });
+
+  it('create-calibration: cross-org memberId IDOR 400, allow-live via created_by', () => {
+    const e = ep('create-calibration');
+    expect(e.buildParity(nr).body).toEqual({ period: WRITE_NINEBOX_CAL_MARKER });
+    expect(e.buildIdor!(nr).body).toMatchObject({ memberIds: ['bH'] });
+    expect(e.idorDeniedStatuses).toEqual([400]);
+    expect(e.allowRolesLiveTestable).toBe(true);
+    expect(e.readbackMutated(nr, { id: 'x' }).params).toEqual(['S', WRITE_NINEBOX_CAL_MARKER]);
+    expect(e.readbackAllow!(nr, 'hr_admin', { id: 'x' }).params).toEqual(['H', WRITE_NINEBOX_CAL_MARKER]);
+    // IDOR keys on the probe (created nothing cross-org); deny keys on the denier — disjoint.
+    expect(e.readbackNoMutation(nr, 'b').params).toEqual(['S', WRITE_NINEBOX_CAL_MARKER]);
+    expect(e.readbackNoMutation(nr, 'a', 'hrbp').params).toEqual(['B', WRITE_NINEBOX_CAL_MARKER]);
+    expect(e.readbackNoMutation(nr, 'b').expect([{ n: 0 }])).toBeNull();
+  });
+
+  it('submit-calibration-vote: membership anchor — hr_admin+hrbp both deny 403, cross-org 404', () => {
+    const e = ep('submit-calibration-vote');
+    expect(e.buildParity(nr).path).toBe(`/ninebox/calibrations/${WRITE_NINEBOX.voteA}/votes`);
+    expect(e.buildParity(nr).body).toEqual({ evaluatedUserId: 'B', quadrant: 'core_player' });
+    expect(e.buildIdor!(nr).path).toBe(`/ninebox/calibrations/${WRITE_NINEBOX.voteB}/votes`);
+    expect(e.idorDeniedStatuses).toEqual([404]);
+    expect(e.expectedByRole).toEqual({ super_admin: 'allow', hr_admin: 'deny', hrbp: 'deny' });
+    expect(e.rbacDenyStatus).toBe(403);
+    expect(e.readbackMutated(nr, {}).params).toEqual([WRITE_NINEBOX.voteA, 'B', 'S']);
+    expect(e.readbackMutated(nr, {}).expect([{ quadrant: 'core_player' }])).toBeNull();
+    // IDOR keys on org-B session + probe; deny keys on voteA + denier (a non-member can't forge).
+    expect(e.readbackNoMutation(nr, 'b').params).toEqual([WRITE_NINEBOX.voteB, 'S']);
+    expect(e.readbackNoMutation(nr, 'a', 'hr_admin').params).toEqual([WRITE_NINEBOX.voteA, 'H']);
+    // MED-1: hr_admin's deny must carry the NotMember message (membership-403, not gate-403).
+    expect(e.denyBodyIncludes).toEqual({ hr_admin: 'miembro del comite' });
+    // MED-2: the org-A-session + org-B-evaluated-user quirk probe.
+    const probe = e.extraProbes!.find((p) => p.label === 'cross-org-evaluated')!;
+    expect(probe.build(nr).body).toEqual({ evaluatedUserId: 'bH', quadrant: 'core_player' });
+    expect(probe.deniedStatuses).toEqual([404]);
+    expect(probe.readbackNoMutation(nr).params).toEqual([WRITE_NINEBOX.voteA, 'bH']);
+    expect(probe.readbackNoMutation(nr).expect([{ n: 0 }])).toBeNull();
+    expect(probe.readbackNoMutation(nr).expect([{ n: 1 }])).toContain('cross-org-evaluated');
+  });
+
+  it('add-calibration-member: cross-org session IDOR 404, adds a distinct user from the denier', () => {
+    const e = ep('add-calibration-member');
+    expect(e.buildParity(nr)).toEqual({ path: `/ninebox/calibrations/${WRITE_NINEBOX.memberA}/members`, body: { userId: 'H' } });
+    expect(e.buildIdor!(nr).path).toBe(`/ninebox/calibrations/${WRITE_NINEBOX.memberB}/members`);
+    expect(e.idorDeniedStatuses).toEqual([404]);
+    expect(e.allowRolesLiveTestable).toBeFalsy();
+    expect(e.readbackMutated(nr, {}).expect([{ n: 1 }])).toBeNull();
+    expect(e.readbackNoMutation(nr, 'b').expect([{ n: 0 }])).toBeNull();
+    expect(e.readbackNoMutation(nr, 'b').expect([{ n: 1 }])).toContain('forbidden');
+    // MED-2: the org-A-session + org-B-user quirk probe.
+    const probe = e.extraProbes!.find((p) => p.label === 'cross-org-user')!;
+    expect(probe.build(nr)).toEqual({ path: `/ninebox/calibrations/${WRITE_NINEBOX.memberA}/members`, body: { userId: 'bH' } });
+    expect(probe.deniedStatuses).toEqual([404]);
+    expect(probe.readbackNoMutation(nr).params).toEqual([WRITE_NINEBOX.memberA, 'bH']);
+    expect(probe.readbackNoMutation(nr).expect([{ n: 0 }])).toBeNull();
+    expect(probe.readbackNoMutation(nr).expect([{ n: 1 }])).toContain('cross-org user');
+  });
+
+  it('remove-calibration-member: DELETE by-id, success response, no-mutation asserts member survives', () => {
+    const e = ep('remove-calibration-member');
+    expect(e.method).toBe('DELETE');
+    expect(e.buildParity(nr)).toEqual({ path: `/ninebox/calibrations/${WRITE_NINEBOX.removeA}/members/H`, body: null });
+    expect(e.buildIdor!(nr).path).toBe(`/ninebox/calibrations/${WRITE_NINEBOX.removeB}/members/bH`);
+    expect(e.expectResponse({ success: true })).toBeNull();
+    expect(e.expectResponse({ success: false })).toContain('success');
+    expect(e.readbackMutated(nr, {}).expect([{ n: 0 }])).toBeNull(); // deleted
+    expect(e.readbackNoMutation(nr, 'b').expect([{ n: 1 }])).toBeNull(); // org-B member survives
+    expect(e.readbackNoMutation(nr, 'b').expect([{ n: 0 }])).toContain('deleted');
+  });
+
+  it('finalize-calibration: unconditional, cross-org 404, no-mutation stays draft', () => {
+    const e = ep('finalize-calibration');
+    expect(e.buildParity(nr).path).toBe(`/ninebox/calibrations/${WRITE_NINEBOX.finalizeA}/finalize`);
+    expect(e.buildIdor!(nr).path).toBe(`/ninebox/calibrations/${WRITE_NINEBOX.finalizeB}/finalize`);
+    expect(e.readbackMutated(nr, {}).expect([{ status: 'finalized' }])).toBeNull();
+    expect(e.readbackMutated(nr, {}).expect([{ status: 'draft' }])).toContain('did not apply');
+    expect(e.readbackNoMutation(nr, 'b').expect([{ status: 'draft' }])).toBeNull();
+    expect(e.readbackNoMutation(nr, 'b').expect([{ status: 'finalized' }])).toContain('mutated');
   });
 });

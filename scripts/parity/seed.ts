@@ -761,9 +761,19 @@ export async function seedEvaluation360Data(
 // RBAC: ninebox:read hr_admin@org + hrbp@unit. No native enums (quadrant/status plain text).
 async function seedNineBoxGrants(db: Client, roleIds: Map<string, string>): Promise<void> {
   const permId = await upsertPermission(db, 'ninebox', 'read');
+  // create/update grants make hr_admin a genuine org-scoped write role (createCalibration allow-lives
+  // via created_by_id). hrbp stays read-only@unit → its write attempts 403 at the gate. Read RBAC
+  // unaffected. submitCalibrationVote's membership anchor is proven by an hr_admin who HAS :update but
+  // is NOT a committee member (→ 403), so :update grant-resolution is not gap-covered by allow-live.
+  const createPerm = await upsertPermission(db, 'ninebox', 'create');
+  const updatePerm = await upsertPermission(db, 'ninebox', 'update');
   for (const key of ORG_KEYS) {
     const hrAdmin = roleIds.get(`${key}:hr_admin`);
-    if (hrAdmin) await upsertRolePermission(db, hrAdmin, permId, 'organization');
+    if (hrAdmin) {
+      await upsertRolePermission(db, hrAdmin, permId, 'organization');
+      await upsertRolePermission(db, hrAdmin, createPerm, 'organization');
+      await upsertRolePermission(db, hrAdmin, updatePerm, 'organization');
+    }
     const hrbp = roleIds.get(`${key}:hrbp`);
     if (hrbp) await upsertRolePermission(db, hrbp, permId, 'unit');
   }
@@ -1487,6 +1497,137 @@ export async function resolveEngagementWriteResources(cfg: HarnessConfig): Promi
         hrbp: await userIdByEmail(db, 'parity+a-hrbp@tims.test'),
       },
       subjectA: await userIdByEmail(db, 'parity+a-hr_admin@tims.test'),
+      subjectB: await userIdByEmail(db, 'parity+b-hr_admin@tims.test'),
+    };
+  } finally {
+    await db.end();
+  }
+}
+
+// ── nine-box write-verification preconditions ────────────────────────────────
+// 5 calibration writes. TENANCY QUIRK: calibration_members/votes have NO organization_id — RLS is a
+// session-subquery policy, so cross-org isolation on member/vote inserts rides on the session's org.
+// createCalibration (create + requireOrgScope; cross-org memberId → 400; created_by → allow-live) +
+// submitCalibrationVote (MEMBERSHIP+IDENTITY: voter=caller must be a member → 403 NotMember even WITH
+// the grant; cross-org session → 404) + addCalibrationMember (requireOrgScope; cross-org session → 404)
+// + removeCalibrationMember (DELETE by-id; cross-org session → 404) + finalizeCalibration (unconditional
+// {id,org} update; cross-org → 404). DISTINCT fixed-UUID sessions per endpoint (prefix e0000365…), one
+// per org. Members/votes cascade on session delete; teardown sweeps all calibration tables (both orgs).
+
+/** Write-verify-only calibration sessions (fixed UUIDs). Period 'Parity Write NB' — DISTINCT from the
+ *  createCalibration marker period so the marker cleanup never touches these fixtures. */
+export const WRITE_NINEBOX = {
+  voteA: 'e0000365-0000-4000-8000-000000000001', // submitCalibrationVote (org A; super is a member)
+  voteB: 'e0000365-0000-4000-8000-000000000002', // submitCalibrationVote IDOR (org B)
+  memberA: 'e0000365-0000-4000-8000-000000000003', // addCalibrationMember (org A)
+  memberB: 'e0000365-0000-4000-8000-000000000004', // addCalibrationMember IDOR (org B)
+  removeA: 'e0000365-0000-4000-8000-000000000005', // removeCalibrationMember (org A; hr_admin is a member)
+  removeB: 'e0000365-0000-4000-8000-000000000006', // removeCalibrationMember IDOR (org B; b:hr is a member)
+  finalizeA: 'e0000365-0000-4000-8000-000000000007', // finalizeCalibration (org A, draft)
+  finalizeB: 'e0000365-0000-4000-8000-000000000008', // finalizeCalibration IDOR (org B, draft)
+} as const;
+
+/** createCalibration marker period (its parity/deny/allow rows self-locate by created_by + this period). */
+export const WRITE_NINEBOX_CAL_MARKER = 'Parity Write Cal';
+
+const WRITE_NINEBOX_SESSION_IDS = Object.values(WRITE_NINEBOX);
+const WRITE_NINEBOX_FIXTURE_PERIOD = 'Parity Write NB';
+
+async function upsertWriteCalSession(
+  db: Client, id: string, orgId: string, status: string, createdBy: string
+): Promise<void> {
+  await db.query(
+    `INSERT INTO calibration_sessions (id, organization_id, period, status, created_by_id, updated_at)
+     VALUES ($1, $2, $3, $4, $5, now())
+     ON CONFLICT (id) DO UPDATE SET
+       organization_id = EXCLUDED.organization_id, status = EXCLUDED.status, updated_at = now()`,
+    [id, orgId, WRITE_NINEBOX_FIXTURE_PERIOD, status, createdBy]
+  );
+}
+
+async function addCalMember(db: Client, sessionId: string, userId: string): Promise<void> {
+  await db.query(
+    `INSERT INTO calibration_members (id, session_id, user_id, status) VALUES (gen_random_uuid(), $1, $2, 'invited')
+     ON CONFLICT (session_id, user_id) DO NOTHING`,
+    [sessionId, userId]
+  );
+}
+
+/** Seeds the nine-box write-verify preconditions (fresh each run: deletes prior votes/members of the
+ *  fixed sessions + the createCalibration marker sessions, then re-seeds the sessions + memberships). */
+export async function seedNineBoxWritePreconditions(
+  db: Client, orgAId: string, orgBId: string, userIds: Map<string, string>
+): Promise<void> {
+  const superA = userIds.get('a:super_admin');
+  const hrA = userIds.get('a:hr_admin');
+  const bSuper = userIds.get('b:super_admin');
+  const bHr = userIds.get('b:hr_admin');
+  if (!superA || !hrA || !bSuper || !bHr) return;
+
+  // 1. Cleanup: votes + members of the fixed sessions (reset add/remove/vote state), then the
+  //    createCalibration marker sessions (cascade drops their members/votes).
+  await db.query('DELETE FROM calibration_votes WHERE session_id = ANY($1)', [WRITE_NINEBOX_SESSION_IDS]);
+  await db.query('DELETE FROM calibration_members WHERE session_id = ANY($1)', [WRITE_NINEBOX_SESSION_IDS]);
+  await db.query(
+    'DELETE FROM calibration_sessions WHERE organization_id = ANY($1) AND period = $2',
+    [[orgAId, orgBId], WRITE_NINEBOX_CAL_MARKER]
+  );
+
+  // 2. Fixed sessions (org A created_by super, org B created_by b:super), all 'draft'.
+  await upsertWriteCalSession(db, WRITE_NINEBOX.voteA, orgAId, 'draft', superA);
+  await upsertWriteCalSession(db, WRITE_NINEBOX.voteB, orgBId, 'draft', bSuper);
+  await upsertWriteCalSession(db, WRITE_NINEBOX.memberA, orgAId, 'draft', superA);
+  await upsertWriteCalSession(db, WRITE_NINEBOX.memberB, orgBId, 'draft', bSuper);
+  await upsertWriteCalSession(db, WRITE_NINEBOX.removeA, orgAId, 'draft', superA);
+  await upsertWriteCalSession(db, WRITE_NINEBOX.removeB, orgBId, 'draft', bSuper);
+  await upsertWriteCalSession(db, WRITE_NINEBOX.finalizeA, orgAId, 'draft', superA);
+  await upsertWriteCalSession(db, WRITE_NINEBOX.finalizeB, orgBId, 'draft', bSuper);
+
+  // 3. Memberships: vote sessions need the VOTER (each org's super) as a committee member; remove
+  //    sessions need the member to delete (org A = hr_admin, org B = b:hr). memberA/B stay empty
+  //    (addCalibrationMember adds hr_admin fresh each run).
+  await addCalMember(db, WRITE_NINEBOX.voteA, superA);
+  await addCalMember(db, WRITE_NINEBOX.voteB, bSuper);
+  await addCalMember(db, WRITE_NINEBOX.removeA, hrA);
+  await addCalMember(db, WRITE_NINEBOX.removeB, bHr);
+}
+
+/** Resolved-id shape for the nine-box write surface. Sessions are fixed constants; users are dynamic. */
+export interface NineBoxWriteResources {
+  userIdByRole: Record<string, string>;
+  subjectB: string;
+}
+
+/** The surface's ensurePreconditions hook. */
+export async function ensureNineBoxWritePreconditions(cfg: HarnessConfig): Promise<void> {
+  const db = makeDbClient(cfg);
+  await db.connect();
+  try {
+    const orgA = await orgIdBySlug(db, ORG_SLUGS.a);
+    const orgB = await orgIdBySlug(db, ORG_SLUGS.b);
+    const userIds = new Map<string, string>([
+      ['a:super_admin', await userIdByEmail(db, 'parity+a-super_admin@tims.test')],
+      ['a:hr_admin', await userIdByEmail(db, 'parity+a-hr_admin@tims.test')],
+      ['b:super_admin', await userIdByEmail(db, 'parity+b-super_admin@tims.test')],
+      ['b:hr_admin', await userIdByEmail(db, 'parity+b-hr_admin@tims.test')],
+    ]);
+    await seedNineBoxWritePreconditions(db, orgA, orgB, userIds);
+  } finally {
+    await db.end();
+  }
+}
+
+/** The surface's resolveResources hook. */
+export async function resolveNineBoxWriteResources(cfg: HarnessConfig): Promise<NineBoxWriteResources> {
+  const db = makeDbClient(cfg);
+  await db.connect();
+  try {
+    return {
+      userIdByRole: {
+        super_admin: await userIdByEmail(db, 'parity+a-super_admin@tims.test'),
+        hr_admin: await userIdByEmail(db, 'parity+a-hr_admin@tims.test'),
+        hrbp: await userIdByEmail(db, 'parity+a-hrbp@tims.test'),
+      },
       subjectB: await userIdByEmail(db, 'parity+b-hr_admin@tims.test'),
     };
   } finally {

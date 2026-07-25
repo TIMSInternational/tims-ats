@@ -33,7 +33,7 @@ import { substituteEndpointId } from './ids';
 import { runParityEndpoint } from './checks/parity';
 import { runRlsEndpoint, type RlsContext } from './checks/rls';
 import { runRbacEndpoint, type RbacContext } from './checks/rbac';
-import { runWriteParity, runWriteIdor, runWriteRbac } from './checks/writes';
+import { runWriteParity, runWriteIdor, runWriteRbac, runWriteExtraProbe } from './checks/writes';
 import { renderReport, type CheckResult } from './report';
 
 type CheckCommand = 'parity' | 'rls' | 'rbac' | 'verify';
@@ -268,6 +268,9 @@ async function cmdVerifyWrite(surfaceKey: string | undefined): Promise<number> {
   try {
     for (const ep of surface.endpoints) {
       results.push(await runWriteIdor(ep, res, probeToken, callCsharpWrite, readback));
+      for (const probe of ep.extraProbes ?? []) {
+        results.push(await runWriteExtraProbe(ep, probe, res, probeToken, callCsharpWrite, readback));
+      }
       results.push(...(await runWriteRbac(ep, res, tokensByRole, surface.probeRole, callCsharpWrite, readback)));
       results.push(await runWriteParity(ep, res, probeToken, callCsharpWrite, readback));
     }

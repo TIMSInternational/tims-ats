@@ -235,16 +235,19 @@ public sealed class NineBoxWriteFixture : IAsyncLifetime
             id uuid PRIMARY KEY, organization_id uuid NOT NULL, period text NOT NULL, status text NOT NULL,
             scheduled_at timestamp(3) NULL, completed_at timestamp(3) NULL, created_by_id uuid NOT NULL,
             created_at timestamp(3) NOT NULL, updated_at timestamp(3) NOT NULL);
-        -- The real Prisma @@unique([sessionId, userId]) — the dedup 409 bite trips this (23505).
         CREATE TABLE calibration_members (
             id uuid PRIMARY KEY, session_id uuid NOT NULL, user_id uuid NOT NULL, status text NOT NULL,
-            created_at timestamp(3) NOT NULL,
-            CONSTRAINT calibration_members_session_id_user_id_key UNIQUE (session_id, user_id));
-        -- The real Prisma @@unique([sessionId, evaluatedUserId, voterId]) — the vote upsert ON CONFLICT targets this.
+            created_at timestamp(3) NOT NULL);
         CREATE TABLE calibration_votes (
             id uuid PRIMARY KEY, session_id uuid NOT NULL, evaluated_user_id uuid NOT NULL, voter_id uuid NOT NULL,
-            quadrant text NOT NULL, justification text NULL, created_at timestamp(3) NOT NULL,
-            CONSTRAINT calibration_votes_session_id_evaluated_user_id_voter_id_key UNIQUE (session_id, evaluated_user_id, voter_id));
+            quadrant text NOT NULL, justification text NULL, created_at timestamp(3) NOT NULL);
+        -- Prisma @@unique emits a UNIQUE INDEX (NOT a table constraint), exactly as `prisma db push` does on prod.
+        -- This is prod-faithful and load-bearing: the vote upsert must use ON CONFLICT (columns) — a unique INDEX
+        -- is NOT usable by `ON CONFLICT ON CONSTRAINT <name>` (that requires a real constraint → 500 on the live DB,
+        -- the bug the parity write-verify harness caught). The addCalibrationMember dedup 409 still trips: a unique-
+        -- index violation reports the index name in the error's ConstraintName (23505), which IsMemberUniqueViolation matches.
+        CREATE UNIQUE INDEX calibration_members_session_id_user_id_key ON calibration_members (session_id, user_id);
+        CREATE UNIQUE INDEX calibration_votes_session_id_evaluated_user_id_voter_id_key ON calibration_votes (session_id, evaluated_user_id, voter_id);
         """;
 
     // users + calibration_sessions are org-scoped; calibration_members/votes join their parent session (which is

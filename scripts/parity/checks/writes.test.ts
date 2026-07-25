@@ -226,3 +226,59 @@ describe('runWriteRbac — custom rbacDenyStatus (identity-anchored 404)', () =>
     expect(results[0].detail).toContain('expected 404');
   });
 });
+
+import { runWriteExtraProbe } from './writes';
+
+describe('runWriteExtraProbe', () => {
+  const probe = {
+    label: 'cross-org-user',
+    build: (r: WriteResolved) => ({ path: `/x/${r.resourceA}/members`, body: { userId: r.subjectB } }),
+    deniedStatuses: [404],
+    readbackNoMutation: () => ({ sql: 'SELECT n', params: [], expect: (rows: any[]) => ((rows[0]?.n === 0) ? null : 'LEAKED') }),
+  };
+  const unchanged: Readback = async () => [{ n: 0 }];
+
+  it('PASS when the cross-org probe is 404 and nothing was written', async () => {
+    const call: CallWrite = vi.fn(async () => ({ status: 404, body: null }));
+    const r = await runWriteExtraProbe(baseEp, probe, res, 'probe', call, unchanged);
+    expect(r).toEqual({ check: 'write-idor', endpoint: 'ep:cross-org-user', ok: true });
+    expect(call).toHaveBeenCalledWith('http://csharp.local', 'POST', '/x/res-a/members', 'probe', { userId: 'subj-b' });
+  });
+
+  it('FAIL (leak) when the cross-org probe returns 200', async () => {
+    const call: CallWrite = vi.fn(async () => ({ status: 200, body: {} }));
+    const r = await runWriteExtraProbe(baseEp, probe, res, 'probe', call, unchanged);
+    expect(r.ok).toBe(false);
+    expect(r.detail).toContain('WRITE LEAK');
+  });
+
+  it('FAIL when denied (404) but a read-back shows a row WAS written', async () => {
+    const call: CallWrite = vi.fn(async () => ({ status: 404, body: null }));
+    const leaked: Readback = async () => [{ n: 1 }];
+    const r = await runWriteExtraProbe(baseEp, probe, res, 'probe', call, leaked);
+    expect(r.ok).toBe(false);
+    expect(r.detail).toContain('LEAKED');
+  });
+});
+
+describe('runWriteRbac denyBodyIncludes', () => {
+  const unchanged: Readback = async () => [{ n: 0 }];
+  const anchorEp: WriteEndpointDef<WriteResolved> = {
+    ...baseEp,
+    expectedByRole: { super_admin: 'allow', hr_admin: 'deny' },
+    denyBodyIncludes: { hr_admin: 'miembro del comite' },
+  };
+
+  it('PASS when the deny body carries the expected reason', async () => {
+    const call: CallWrite = vi.fn(async () => ({ status: 403, body: { message: 'Solo un miembro del comite puede votar' } }));
+    const results = await runWriteRbac(anchorEp, res, { hr_admin: 'h' }, 'super_admin', call, unchanged);
+    expect(results[0].ok).toBe(true);
+  });
+
+  it('FAIL when denied 403 but the body is a bare gate deny (wrong reason)', async () => {
+    const call: CallWrite = vi.fn(async () => ({ status: 403, body: null }));
+    const results = await runWriteRbac(anchorEp, res, { hr_admin: 'h' }, 'super_admin', call, unchanged);
+    expect(results[0].ok).toBe(false);
+    expect(results[0].detail).toContain('wrong deny reason');
+  });
+});

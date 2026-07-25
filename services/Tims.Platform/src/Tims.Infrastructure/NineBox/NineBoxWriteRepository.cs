@@ -20,13 +20,11 @@ namespace Tims.Infrastructure.NineBox;
 /// </summary>
 public sealed class NineBoxWriteRepository(NineBoxWriteDbContext db) : INineBoxWriteRepository
 {
-    // The real Prisma @@unique([sessionId, userId]) constraint name (calibration_members) — the addCalibrationMember
-    // dedup 409 must trip ONLY this (a PK collision / future index must propagate, succession M2 lesson).
+    // The Prisma @@unique([sessionId, userId]) name (calibration_members). Prisma emits @@unique as a UNIQUE INDEX
+    // (not a table constraint), and a unique-index violation at RUNTIME reports the index name in the error's
+    // ConstraintName — so catching by this name for the addCalibrationMember dedup 409 is correct (a PK collision /
+    // future index must propagate, succession M2 lesson).
     private const string MemberUniqueConstraint = "calibration_members_session_id_user_id_key";
-
-    // The real Prisma @@unique([sessionId, evaluatedUserId, voterId]) constraint name (calibration_votes) — the
-    // vote upsert's ON CONFLICT target.
-    private const string VoteUniqueConstraint = "calibration_votes_session_id_evaluated_user_id_voter_id_key";
 
     private readonly NineBoxWriteDbContext _db = db;
 
@@ -167,7 +165,7 @@ public sealed class NineBoxWriteRepository(NineBoxWriteDbContext db) : INineBoxW
     }
 
     // The atomic guarded vote upsert — a raw parameterized INSERT … SELECT … WHERE EXISTS(member) AND EXISTS(evaluated)
-    // … ON CONFLICT ON CONSTRAINT … DO UPDATE (EF has no native upsert; mirror the eval360 raw ON-CONFLICT). Runs on
+    // … ON CONFLICT (columns) DO UPDATE (EF has no native upsert; mirror the eval360 raw ON-CONFLICT). Runs on
     // THIS context's connection inside the TenantScope transaction, so the WITH CHECK (session-org) passes.
     // Codex M1: the WHERE EXISTS clauses re-verify committee-membership AND evaluatedUser-in-org ATOMICALLY at write
     // time (not just in the pre-checks) — a concurrent removal/move → the SELECT yields 0 rows → nothing is
@@ -191,7 +189,7 @@ public sealed class NineBoxWriteRepository(NineBoxWriteDbContext db) : INineBoxW
              SELECT @id, @session, @evaluated, @voter, @quadrant, @justification, @created
              WHERE EXISTS (SELECT 1 FROM calibration_members WHERE session_id = @session AND user_id = @voter)
                AND EXISTS (SELECT 1 FROM users WHERE id = @evaluated AND organization_id = @org)
-             ON CONFLICT ON CONSTRAINT {VoteUniqueConstraint}
+             ON CONFLICT (session_id, evaluated_user_id, voter_id)
              DO UPDATE SET quadrant = EXCLUDED.quadrant,
                            justification = COALESCE(EXCLUDED.justification, calibration_votes.justification)
              RETURNING id, session_id, evaluated_user_id, voter_id, quadrant, justification, created_at

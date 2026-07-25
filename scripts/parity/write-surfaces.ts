@@ -27,6 +27,8 @@ import {
   resolveSuccessionWriteResources,
   ensureEngagementWritePreconditions,
   resolveEngagementWriteResources,
+  ensureNineBoxWritePreconditions,
+  resolveNineBoxWriteResources,
   WRITE_EVAL_CYCLES,
   WRITE_CYCLE_MARKER,
   WRITE_SUCCESSION_ROLES,
@@ -34,6 +36,8 @@ import {
   WRITE_ENGAGEMENT,
   WRITE_ENGAGEMENT_SURVEY_MARKER,
   WRITE_ENGAGEMENT_PLAN_MARKER,
+  WRITE_NINEBOX,
+  WRITE_NINEBOX_CAL_MARKER,
 } from './seed';
 
 // Re-export the write-verify fixtures (defined in seed.ts to keep the seed→registry import
@@ -41,6 +45,7 @@ import {
 export {
   WRITE_EVAL_CYCLES, WRITE_CYCLE_MARKER, WRITE_SUCCESSION_ROLES, WRITE_SUCCESSION_CR_MARKER,
   WRITE_ENGAGEMENT, WRITE_ENGAGEMENT_SURVEY_MARKER, WRITE_ENGAGEMENT_PLAN_MARKER,
+  WRITE_NINEBOX, WRITE_NINEBOX_CAL_MARKER,
 };
 
 /** A deterministic Z-anchored effective date for create bodies (the C# validator
@@ -63,6 +68,17 @@ export interface WriteReadback {
   expect: (rows: Row[]) => string | null;
 }
 
+/** An ADDITIONAL non-mutating cross-org denial probe beyond the primary IDOR, for endpoints with more
+ *  than one cross-tenant vector (e.g. nine-box's org-A-session + org-B-USER vector, which the no-org_id
+ *  member/vote RLS WITH CHECK does not block — only app-code does). Run with the org-A probe token. */
+export interface WriteExtraProbe<R extends WriteResolvedBase = WriteResolvedBase> {
+  /** short label, appended to the endpoint name in the report (e.g. 'cross-org-user'). */
+  label: string;
+  build: (r: R) => { path: string; body: unknown };
+  deniedStatuses: number[];
+  readbackNoMutation: (r: R) => WriteReadback;
+}
+
 export interface WriteEndpointDef<R extends WriteResolvedBase = WriteResolvedBase> {
   name: string;
   method: 'POST' | 'PATCH' | 'DELETE';
@@ -83,6 +99,12 @@ export interface WriteEndpointDef<R extends WriteResolvedBase = WriteResolvedBas
   /** The status a correctly-denied RBAC role returns (default 403 — no grant). Identity-
    *  anchored endpoints use 404 (a non-owner is indistinguishable from a missing row). */
   rbacDenyStatus?: number;
+  /** Optional per-role expected substring in the DENY response body — proves the role was denied for
+   *  the INTENDED reason (e.g. NotMember, having passed the grant gate) rather than incidentally at the
+   *  gate. Distinguishes a membership-403 from a gate-403. */
+  denyBodyIncludes?: Record<string, string>;
+  /** Additional non-mutating cross-org denial probes beyond the primary IDOR (run with the probe token). */
+  extraProbes?: WriteExtraProbe<R>[];
   /** light-parity: validate the success (200) response body shape. */
   expectResponse: (respBody: unknown) => string | null;
   /** light-parity: read back the created/mutated row(s) and assert the golden. */
@@ -980,9 +1002,251 @@ const engagementSurface: WriteSurface<EngagementWriteResolved> = {
   ],
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// nine-box — Platform__NineBoxWriteEnabled (5 calibration writes)
+// ─────────────────────────────────────────────────────────────────────────────
+/** Concrete ids for the nine-box write surface (seed.ts resolveNineBoxWriteResources). Sessions are
+ *  fixed constants (WRITE_NINEBOX); only the user ids are dynamic. */
+export interface NineBoxWriteResolved extends WriteResolvedBase {
+  /** org-A user id per role (super_admin/hr_admin/hrbp). */
+  userIdByRole: Record<string, string>;
+  /** org-B user (createCalibration cross-org memberId — the H1 target; removeMember IDOR target). */
+  subjectB: string;
+}
+
+// 5 calibration writes under ONE flag Platform__NineBoxWriteEnabled. createCalibration (create +
+// requireOrgScope; cross-org memberId → 400; created_by → allow-live) + submitCalibrationVote
+// (MEMBERSHIP+IDENTITY: voter=caller must be a committee member — an hr_admin WITH ninebox:update but
+// NOT a member → 403 NotMember, the load-bearing anchor; cross-org session → 404) + addCalibrationMember
+// (requireOrgScope; cross-org session → 404) + removeCalibrationMember (DELETE by-id; cross-org → 404) +
+// finalizeCalibration (unconditional {id,org}; cross-org → 404). hrbp read-only → every write 403 at the gate.
+const nineboxSurface: WriteSurface<NineBoxWriteResolved> = {
+  key: 'ninebox',
+  flag: 'Platform__NineBoxWriteEnabled',
+  probeRole: 'super_admin',
+  roles: ['super_admin', 'hr_admin', 'hrbp'],
+  ensurePreconditions: ensureNineBoxWritePreconditions,
+  resolveResources: resolveNineBoxWriteResources,
+  endpoints: [
+    // ── createCalibration — create + requireOrgScope; cross-org memberId → 400. ─────────────────
+    {
+      name: 'create-calibration',
+      method: 'POST',
+      buildParity: () => ({ path: '/ninebox/calibrations', body: { period: WRITE_NINEBOX_CAL_MARKER } }),
+      // cross-org: a memberId that is an org-B user → MemberNotInOrg → 400, nothing written (H1 hardening).
+      buildIdor: (r) => ({ path: '/ninebox/calibrations', body: { period: WRITE_NINEBOX_CAL_MARKER, memberIds: [r.subjectB] } }),
+      idorDeniedStatuses: [400],
+      expectedByRole: { super_admin: 'allow', hr_admin: 'allow', hrbp: 'deny' }, // hrbp: no ninebox:create → 403
+      rbacDenyStatus: 403,
+      allowRolesLiveTestable: true, // created_by_id attributes each allow role's own session
+      expectResponse: idPresent,
+      readbackMutated: (r, b) => {
+        const respId = asObj(b)?.id;
+        return {
+          sql: `SELECT id FROM calibration_sessions WHERE created_by_id = $1 AND period = $2 ORDER BY created_at DESC LIMIT 1`,
+          params: [r.userIdByRole.super_admin, WRITE_NINEBOX_CAL_MARKER],
+          expect: (rows) => {
+            if (rows.length !== 1) return `no freshly-created marker session by the probe`;
+            if (rows[0].id !== respId) return `response id ${JSON.stringify(respId)} != created session id ${rows[0].id}`;
+            return null;
+          },
+        };
+      },
+      readbackAllow: (r, role, b) => {
+        const respId = asObj(b)?.id;
+        return {
+          sql: `SELECT id FROM calibration_sessions WHERE created_by_id = $1 AND period = $2 ORDER BY created_at DESC LIMIT 1`,
+          params: [r.userIdByRole[role], WRITE_NINEBOX_CAL_MARKER],
+          expect: (rows) => {
+            if (rows.length !== 1) return `allow role '${role}': no session created under its grant`;
+            if (rows[0].id !== respId) return `allow role '${role}': response id != created session id`;
+            return null;
+          },
+        };
+      },
+      // IDOR (target 'b'): the probe's cross-org-member attempt created NO session. deny (target 'a'):
+      // the denier created none. Both key on created_by, and the IDOR/deny run BEFORE the single parity create.
+      readbackNoMutation: (r, target, denierRole) => {
+        const creator = target === 'b' ? r.userIdByRole.super_admin : r.userIdByRole[denierRole ?? ''];
+        return {
+          sql: `SELECT count(*)::int AS n FROM calibration_sessions WHERE created_by_id = $1 AND period = $2`,
+          params: [creator, WRITE_NINEBOX_CAL_MARKER],
+          expect: (rows) => (Number(rows[0]?.n) === 0 ? null : `a forbidden createCalibration still inserted ${rows[0]?.n} session(s)`),
+        };
+      },
+    },
+
+    // ── submitCalibrationVote — MEMBERSHIP+IDENTITY; non-member (even w/ grant) → 403; cross-org → 404. ──
+    {
+      name: 'submit-calibration-vote',
+      method: 'POST',
+      buildParity: (r) => ({ path: `/ninebox/calibrations/${WRITE_NINEBOX.voteA}/votes`, body: { evaluatedUserId: r.userIdByRole.hrbp, quadrant: 'core_player' } }),
+      // cross-org: an org-B session id → session lookup RLS-hidden → SessionNotFound → 404.
+      buildIdor: (r) => ({ path: `/ninebox/calibrations/${WRITE_NINEBOX.voteB}/votes`, body: { evaluatedUserId: r.userIdByRole.hrbp, quadrant: 'core_player' } }),
+      idorDeniedStatuses: [404],
+      // hr_admin HAS ninebox:update but is NOT a member of voteA → 403 NotMember (the membership anchor);
+      // hrbp has no update grant → 403 at the gate. Both deny at 403.
+      expectedByRole: { super_admin: 'allow', hr_admin: 'deny', hrbp: 'deny' },
+      rbacDenyStatus: 403,
+      // Prove hr_admin's 403 is specifically NotMember (it passed the grant gate → the membership check
+      // is what denied it) — self-substantiating the anchor + implicitly proving hr_admin's :update resolved.
+      denyBodyIncludes: { hr_admin: 'miembro del comite' },
+      // The no-org_id tenancy-quirk vector: an org-A session + an org-B EVALUATED user. RLS WITH CHECK
+      // validates only the session org, so the in-org evaluated check is app-code — probe it (super IS a
+      // member of voteA, so control reaches the evaluated-in-org check → EvaluatedNotFound 404).
+      extraProbes: [
+        {
+          label: 'cross-org-evaluated',
+          build: (r) => ({ path: `/ninebox/calibrations/${WRITE_NINEBOX.voteA}/votes`, body: { evaluatedUserId: r.subjectB, quadrant: 'core_player' } }),
+          deniedStatuses: [404],
+          readbackNoMutation: (r) => ({
+            sql: `SELECT count(*)::int AS n FROM calibration_votes WHERE session_id = $1 AND evaluated_user_id = $2`,
+            params: [WRITE_NINEBOX.voteA, r.subjectB],
+            expect: (rows) => (Number(rows[0]?.n) === 0 ? null : `a cross-org-evaluated vote was written into an org-A session`),
+          }),
+        },
+      ],
+      expectResponse: idPresent,
+      readbackMutated: (r) => ({
+        sql: `SELECT quadrant FROM calibration_votes WHERE session_id = $1 AND evaluated_user_id = $2 AND voter_id = $3`,
+        params: [WRITE_NINEBOX.voteA, r.userIdByRole.hrbp, r.userIdByRole.super_admin],
+        expect: (rows) => {
+          if (rows.length !== 1) return `submitCalibrationVote did not create the vote (found ${rows.length})`;
+          if (rows[0].quadrant !== 'core_player') return `vote quadrant ${rows[0].quadrant} != core_player`;
+          return null;
+        },
+      }),
+      // IDOR: no vote by the probe in the org-B session. deny: no vote by the denier in voteA (a non-member
+      // can't forge a vote — the load-bearing invariant).
+      readbackNoMutation: (r, target, denierRole) => {
+        const sessionId = target === 'b' ? WRITE_NINEBOX.voteB : WRITE_NINEBOX.voteA;
+        const voter = target === 'b' ? r.userIdByRole.super_admin : r.userIdByRole[denierRole ?? ''];
+        return {
+          sql: `SELECT count(*)::int AS n FROM calibration_votes WHERE session_id = $1 AND voter_id = $2`,
+          params: [sessionId, voter],
+          expect: (rows) => (Number(rows[0]?.n) === 0 ? null : `a forbidden vote was cast (${rows[0]?.n})`),
+        };
+      },
+    },
+
+    // ── addCalibrationMember — requireOrgScope; cross-org session → 404. ─────────────────────────
+    {
+      name: 'add-calibration-member',
+      method: 'POST',
+      // add hr_admin (an org-A user not already a member of memberA) — a distinct user from the hrbp denier.
+      buildParity: (r) => ({ path: `/ninebox/calibrations/${WRITE_NINEBOX.memberA}/members`, body: { userId: r.userIdByRole.hr_admin } }),
+      buildIdor: (r) => ({ path: `/ninebox/calibrations/${WRITE_NINEBOX.memberB}/members`, body: { userId: r.userIdByRole.hr_admin } }),
+      idorDeniedStatuses: [404], // cross-org session → SessionNotFound
+      expectedByRole: { super_admin: 'allow', hr_admin: 'allow', hrbp: 'deny' }, // hrbp: no ninebox:update → 403
+      rbacDenyStatus: 403,
+      // The no-org_id tenancy-quirk vector: an org-A session + an org-B USER. RLS WITH CHECK validates only
+      // the session org, so the in-org user check is app-code — probe it (org-A memberA + org-B subjectB →
+      // UserNotFound 404, no member written).
+      extraProbes: [
+        {
+          label: 'cross-org-user',
+          build: (r) => ({ path: `/ninebox/calibrations/${WRITE_NINEBOX.memberA}/members`, body: { userId: r.subjectB } }),
+          deniedStatuses: [404],
+          readbackNoMutation: (r) => ({
+            sql: `SELECT count(*)::int AS n FROM calibration_members WHERE session_id = $1 AND user_id = $2`,
+            params: [WRITE_NINEBOX.memberA, r.subjectB],
+            expect: (rows) => (Number(rows[0]?.n) === 0 ? null : `a cross-org user was added to an org-A session`),
+          }),
+        },
+      ],
+      // Not allow-live: calibration_members has no caller-stamped column, and a 2nd add of the same userId
+      // (shared body) would 409 (dup). hr_admin's ninebox:create is proven by createCalibration.
+      expectResponse: idPresent,
+      readbackMutated: (r) => ({
+        sql: `SELECT count(*)::int AS n FROM calibration_members WHERE session_id = $1 AND user_id = $2`,
+        params: [WRITE_NINEBOX.memberA, r.userIdByRole.hr_admin],
+        expect: (rows) => (Number(rows[0]?.n) === 1 ? null : `addCalibrationMember did not add the member (found ${rows[0]?.n})`),
+      }),
+      // IDOR: no member added to the org-B session. deny: no member added to memberA by the denied attempt.
+      readbackNoMutation: (r, target) => {
+        const sessionId = target === 'b' ? WRITE_NINEBOX.memberB : WRITE_NINEBOX.memberA;
+        return {
+          sql: `SELECT count(*)::int AS n FROM calibration_members WHERE session_id = $1 AND user_id = $2`,
+          params: [sessionId, r.userIdByRole.hr_admin],
+          expect: (rows) => (Number(rows[0]?.n) === 0 ? null : `a forbidden addCalibrationMember inserted a member`),
+        };
+      },
+    },
+
+    // ── removeCalibrationMember — DELETE by-id; cross-org session → 404. ─────────────────────────
+    {
+      name: 'remove-calibration-member',
+      method: 'DELETE',
+      buildParity: (r) => ({ path: `/ninebox/calibrations/${WRITE_NINEBOX.removeA}/members/${enc(r.userIdByRole.hr_admin)}`, body: null }),
+      buildIdor: (r) => ({ path: `/ninebox/calibrations/${WRITE_NINEBOX.removeB}/members/${enc(r.subjectB)}`, body: null }),
+      idorDeniedStatuses: [404],
+      expectedByRole: { super_admin: 'allow', hr_admin: 'allow', hrbp: 'deny' }, // hrbp: no ninebox:update → 403
+      rbacDenyStatus: 403,
+      // removeCalibrationMember returns { success: true } (no id), so assert success rather than idPresent.
+      expectResponse: (b) => {
+        const o = asObj(b);
+        if (!o) return 'response is not an object';
+        if (o.success !== true) return `expected { success: true }, got ${JSON.stringify(o.success)}`;
+        return null;
+      },
+      readbackMutated: (r) => ({
+        sql: `SELECT count(*)::int AS n FROM calibration_members WHERE session_id = $1 AND user_id = $2`,
+        params: [WRITE_NINEBOX.removeA, r.userIdByRole.hr_admin],
+        expect: (rows) => (Number(rows[0]?.n) === 0 ? null : `removeCalibrationMember did not delete the member`),
+      }),
+      // A denied remove leaves the member in place (org-B for IDOR, org-A for rbac-deny).
+      readbackNoMutation: (r, target) => {
+        const [sessionId, userId] = target === 'b'
+          ? [WRITE_NINEBOX.removeB, r.subjectB]
+          : [WRITE_NINEBOX.removeA, r.userIdByRole.hr_admin];
+        return {
+          sql: `SELECT count(*)::int AS n FROM calibration_members WHERE session_id = $1 AND user_id = $2`,
+          params: [sessionId, userId],
+          expect: (rows) => (Number(rows[0]?.n) === 1 ? null : `a forbidden removeCalibrationMember deleted the member`),
+        };
+      },
+    },
+
+    // ── finalizeCalibration — unconditional {id,org} update; cross-org → 404. ────────────────────
+    {
+      name: 'finalize-calibration',
+      method: 'POST',
+      buildParity: () => ({ path: `/ninebox/calibrations/${WRITE_NINEBOX.finalizeA}/finalize`, body: null }),
+      buildIdor: () => ({ path: `/ninebox/calibrations/${WRITE_NINEBOX.finalizeB}/finalize`, body: null }),
+      idorDeniedStatuses: [404],
+      expectedByRole: { super_admin: 'allow', hr_admin: 'allow', hrbp: 'deny' }, // hrbp: no ninebox:update → 403
+      rbacDenyStatus: 403,
+      expectResponse: idPresent,
+      readbackMutated: () => ({
+        sql: `SELECT status FROM calibration_sessions WHERE id = $1`,
+        params: [WRITE_NINEBOX.finalizeA],
+        expect: (rows) => {
+          if (rows.length !== 1) return `session ${WRITE_NINEBOX.finalizeA} missing`;
+          if (rows[0].status !== 'finalized') return `status ${rows[0].status} != finalized (finalize did not apply)`;
+          return null;
+        },
+      }),
+      // A denied finalize leaves the 'draft' from-state.
+      readbackNoMutation: (_r, target) => {
+        const id = target === 'b' ? WRITE_NINEBOX.finalizeB : WRITE_NINEBOX.finalizeA;
+        return {
+          sql: `SELECT status FROM calibration_sessions WHERE id = $1`,
+          params: [id],
+          expect: (rows) => {
+            if (rows.length !== 1) return `precondition session ${id} missing`;
+            if (rows[0].status !== 'draft') return `a forbidden finalize mutated the session → status ${rows[0].status}`;
+            return null;
+          },
+        };
+      },
+    },
+  ],
+};
+
 export const WRITE_SURFACES: Record<string, AnyWriteSurface> = {
   compensation: defineWriteSurface(compensationSurface),
   evaluation360: defineWriteSurface(evaluation360Surface),
   succession: defineWriteSurface(successionSurface),
   engagement: defineWriteSurface(engagementSurface),
+  ninebox: defineWriteSurface(nineboxSurface),
 };
