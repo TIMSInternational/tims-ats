@@ -1349,6 +1349,151 @@ export async function resolveSuccessionWriteResources(cfg: HarnessConfig): Promi
   }
 }
 
+// ── engagement write-verification preconditions ──────────────────────────────
+// Engagement reads were NOT cut over, so there is no shared engagement seed — the write surface
+// brings its own grants + fixtures. 5 writes: createSurvey (grant-only create; created_by attributed
+// → allow-live) + activateSurvey (by-id draft→active; cross-org → 404) + submitSurveyResponse
+// (identity: userId=caller, create-grant; cross-org survey → 404; user_id attributed → allow-live) +
+// createActionPlan (assertSubjectInScope + H1 cross-org responsibleId → 403) + updateActionPlan
+// (assertScoped by-id → 404). Fixtures (fixed UUIDs, prefix e0000364…) live in the write-verify path
+// only; teardown sweeps surveys/survey_responses/action_plans by org (both orgs).
+
+/** Grants hr_admin engagement:create + :update @org (a genuine non-bypass write role — createSurvey
+ *  + submitSurveyResponse allow-live-test it). hrbp stays ungranted → every write 403 at the gate. */
+async function seedEngagementGrants(db: Client, roleIds: Map<string, string>): Promise<void> {
+  const createPerm = await upsertPermission(db, 'engagement', 'create');
+  const updatePerm = await upsertPermission(db, 'engagement', 'update');
+  for (const key of ORG_KEYS) {
+    const hrAdmin = roleIds.get(`${key}:hr_admin`);
+    if (hrAdmin) {
+      await upsertRolePermission(db, hrAdmin, createPerm, 'organization');
+      await upsertRolePermission(db, hrAdmin, updatePerm, 'organization');
+    }
+  }
+}
+
+/** Write-verify-only survey + action-plan fixtures (fixed UUIDs). */
+export const WRITE_ENGAGEMENT = {
+  activateSurveyA: 'e0000364-0000-4000-8000-000000000001', // activateSurvey from-state (draft, org A)
+  activateSurveyB: 'e0000364-0000-4000-8000-000000000002', // activateSurvey IDOR target (draft, org B)
+  submitSurveyA: 'e0000364-0000-4000-8000-000000000003', // submitSurveyResponse survey (active, org A)
+  submitSurveyB: 'e0000364-0000-4000-8000-000000000004', // submitSurveyResponse IDOR survey (active, org B)
+  actionPlanA: 'e0000364-0000-4000-8000-000000000005', // updateActionPlan target (pending, org A)
+  actionPlanB: 'e0000364-0000-4000-8000-000000000006', // updateActionPlan IDOR target (pending, org B)
+} as const;
+
+/** createSurvey / createActionPlan marker titles (the create parity/deny rows self-locate by them). */
+export const WRITE_ENGAGEMENT_SURVEY_MARKER = 'Parity Write Survey';
+export const WRITE_ENGAGEMENT_PLAN_MARKER = 'Parity Write Plan';
+
+const WRITE_ENGAGEMENT_SURVEY_IDS = [
+  WRITE_ENGAGEMENT.activateSurveyA, WRITE_ENGAGEMENT.activateSurveyB,
+  WRITE_ENGAGEMENT.submitSurveyA, WRITE_ENGAGEMENT.submitSurveyB,
+];
+
+async function upsertWriteSurvey(
+  db: Client, id: string, orgId: string, title: string, status: string, createdBy: string
+): Promise<void> {
+  await db.query(
+    `INSERT INTO surveys (id, organization_id, title, type, status, questions, created_by_id, updated_at)
+     VALUES ($1, $2, $3, 'pulse', $4, '[{"text":"Parity Q","type":"scale","required":true}]'::jsonb, $5, now())
+     ON CONFLICT (id) DO UPDATE SET
+       organization_id = EXCLUDED.organization_id, title = EXCLUDED.title, status = EXCLUDED.status, updated_at = now()`,
+    [id, orgId, title, status, createdBy]
+  );
+}
+
+async function upsertWriteActionPlan(
+  db: Client, id: string, orgId: string, title: string, status: string, responsibleId: string
+): Promise<void> {
+  await db.query(
+    `INSERT INTO action_plans (id, organization_id, title, responsible_id, status, updated_at)
+     VALUES ($1, $2, $3, $4, $5, now())
+     ON CONFLICT (id) DO UPDATE SET
+       organization_id = EXCLUDED.organization_id, title = EXCLUDED.title,
+       responsible_id = EXCLUDED.responsible_id, status = EXCLUDED.status, updated_at = now()`,
+    [id, orgId, title, responsibleId, status]
+  );
+}
+
+/** Seeds the engagement write-verify preconditions (fresh each run: deletes prior write survey
+ *  responses + marker surveys/plans, then re-seeds the fixed from-states). */
+export async function seedEngagementWritePreconditions(
+  db: Client, orgAId: string, orgBId: string, userIds: Map<string, string>
+): Promise<void> {
+  const superA = userIds.get('a:super_admin');
+  const hrA = userIds.get('a:hr_admin');
+  const bSuper = userIds.get('b:super_admin');
+  const bHr = userIds.get('b:hr_admin');
+  if (!superA || !hrA || !bSuper || !bHr) return;
+
+  // 1. Cleanup (FK-safe): responses of the fixed submit surveys + of any marker survey, then the
+  //    createSurvey/createActionPlan marker rows — so submit/create parity+allow start clean.
+  await db.query('DELETE FROM survey_responses WHERE survey_id = ANY($1)', [WRITE_ENGAGEMENT_SURVEY_IDS]);
+  await db.query(
+    `DELETE FROM survey_responses WHERE organization_id = ANY($1) AND survey_id IN (SELECT id FROM surveys WHERE title = $2)`,
+    [[orgAId, orgBId], WRITE_ENGAGEMENT_SURVEY_MARKER]
+  );
+  await db.query('DELETE FROM surveys WHERE organization_id = ANY($1) AND title = $2', [[orgAId, orgBId], WRITE_ENGAGEMENT_SURVEY_MARKER]);
+  await db.query('DELETE FROM action_plans WHERE organization_id = ANY($1) AND title = $2', [[orgAId, orgBId], WRITE_ENGAGEMENT_PLAN_MARKER]);
+
+  // 2. Fixed surveys: activate = 'draft' from-state; submit = 'active' (submitSurveyResponse requires active).
+  await upsertWriteSurvey(db, WRITE_ENGAGEMENT.activateSurveyA, orgAId, 'Parity Write Activate A', 'draft', superA);
+  await upsertWriteSurvey(db, WRITE_ENGAGEMENT.activateSurveyB, orgBId, 'Parity Write Activate B', 'draft', bSuper);
+  await upsertWriteSurvey(db, WRITE_ENGAGEMENT.submitSurveyA, orgAId, 'Parity Write Submit A', 'active', superA);
+  await upsertWriteSurvey(db, WRITE_ENGAGEMENT.submitSurveyB, orgBId, 'Parity Write Submit B', 'active', bSuper);
+
+  // 3. Fixed action plans: updateActionPlan from-state 'pending' (parity → 'in_progress').
+  await upsertWriteActionPlan(db, WRITE_ENGAGEMENT.actionPlanA, orgAId, 'Parity Write Plan Fixture A', 'pending', hrA);
+  await upsertWriteActionPlan(db, WRITE_ENGAGEMENT.actionPlanB, orgBId, 'Parity Write Plan Fixture B', 'pending', bHr);
+}
+
+/** Resolved-id shape for the engagement write surface. All survey/plan ids are fixed constants; only
+ *  the user ids are dynamic. */
+export interface EngagementWriteResources {
+  userIdByRole: Record<string, string>;
+  subjectA: string;
+  subjectB: string;
+}
+
+/** The surface's ensurePreconditions hook. */
+export async function ensureEngagementWritePreconditions(cfg: HarnessConfig): Promise<void> {
+  const db = makeDbClient(cfg);
+  await db.connect();
+  try {
+    const orgA = await orgIdBySlug(db, ORG_SLUGS.a);
+    const orgB = await orgIdBySlug(db, ORG_SLUGS.b);
+    const userIds = new Map<string, string>([
+      ['a:super_admin', await userIdByEmail(db, 'parity+a-super_admin@tims.test')],
+      ['a:hr_admin', await userIdByEmail(db, 'parity+a-hr_admin@tims.test')],
+      ['b:super_admin', await userIdByEmail(db, 'parity+b-super_admin@tims.test')],
+      ['b:hr_admin', await userIdByEmail(db, 'parity+b-hr_admin@tims.test')],
+    ]);
+    await seedEngagementWritePreconditions(db, orgA, orgB, userIds);
+  } finally {
+    await db.end();
+  }
+}
+
+/** The surface's resolveResources hook. */
+export async function resolveEngagementWriteResources(cfg: HarnessConfig): Promise<EngagementWriteResources> {
+  const db = makeDbClient(cfg);
+  await db.connect();
+  try {
+    return {
+      userIdByRole: {
+        super_admin: await userIdByEmail(db, 'parity+a-super_admin@tims.test'),
+        hr_admin: await userIdByEmail(db, 'parity+a-hr_admin@tims.test'),
+        hrbp: await userIdByEmail(db, 'parity+a-hrbp@tims.test'),
+      },
+      subjectA: await userIdByEmail(db, 'parity+a-hr_admin@tims.test'),
+      subjectB: await userIdByEmail(db, 'parity+b-hr_admin@tims.test'),
+    };
+  } finally {
+    await db.end();
+  }
+}
+
 // ── Tier-2 by-id resource resolution ─────────────────────────────────────────
 // `verify`/`rls`/`parity`/`rbac` run in a SEPARATE process from `seed`, so the by-id
 // resource ids must be re-derivable at check time, not carried from a prior seed.
@@ -1493,6 +1638,10 @@ export async function seed(cfg: HarnessConfig, roles: string[]): Promise<SeedRes
     if (roles.includes('hr_admin') || roles.includes('hrbp')) await seedSuccessionGrants(db, roleIds);
     await seedSuccessionData(db, orgIds.a, userIds);
 
+    // engagement WRITE grants (hr_admin create+update@org). Reads not cut over → no shared data seed;
+    // the engagement write fixtures are seeded in ensureEngagementWritePreconditions (write path only).
+    if (roles.includes('hr_admin')) await seedEngagementGrants(db, roleIds);
+
     // Tier-2 by-id ORG-B mirrors: make each by-id resource LIVE in org B so the RLS Mode-A IDOR
     // positive control (org-B super_admin reaches its own resource → 200) can distinguish a real
     // isolation pass from a trivial 404. Additive to the org-A-only Tier-1 fixtures above.
@@ -1597,6 +1746,11 @@ export async function teardown(cfg: HarnessConfig): Promise<void> {
       // succession fixture (org A). successors/critical_roles FK→users → precede the users delete.
       await db.query('DELETE FROM successors WHERE organization_id = ANY($1)', [orgIds]);
       await db.query('DELETE FROM critical_roles WHERE organization_id = ANY($1)', [orgIds]);
+      // engagement write fixtures (both orgs). survey_responses FK→surveys+users, surveys/action_plans
+      // FK→users → all precede the users delete. Swept even though seeded only in the write-verify path.
+      await db.query('DELETE FROM survey_responses WHERE organization_id = ANY($1)', [orgIds]);
+      await db.query('DELETE FROM surveys WHERE organization_id = ANY($1)', [orgIds]);
+      await db.query('DELETE FROM action_plans WHERE organization_id = ANY($1)', [orgIds]);
     }
     // role_permissions grant rows (permissions themselves are a global catalog — never deleted).
     if (roleIds.length) await db.query('DELETE FROM role_permissions WHERE role_id = ANY($1)', [roleIds]);

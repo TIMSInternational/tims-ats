@@ -5,10 +5,14 @@ import {
   WRITE_CYCLE_MARKER,
   WRITE_SUCCESSION_ROLES,
   WRITE_SUCCESSION_CR_MARKER,
+  WRITE_ENGAGEMENT,
+  WRITE_ENGAGEMENT_SURVEY_MARKER,
+  WRITE_ENGAGEMENT_PLAN_MARKER,
   EVAL360_COMPETENCIES,
   type WriteResolved,
   type Evaluation360WriteResolved,
   type SuccessionWriteResolved,
+  type EngagementWriteResolved,
 } from './write-surfaces';
 
 const res: WriteResolved = {
@@ -276,5 +280,81 @@ describe('WRITE_SURFACES succession', () => {
     expect(e.readbackNoMutation(sr, 'b').expect([{ target_band_level: 'ORGB-BAND' }])).toBeNull();
     expect(e.readbackNoMutation(sr, 'b').expect([{ target_band_level: 'PARITY-BAND' }])).toContain('mutated');
     expect(e.readbackNoMutation(sr, 'a').expect([{ target_band_level: null }])).toBeNull();
+  });
+});
+
+describe('WRITE_SURFACES engagement', () => {
+  const s = WRITE_SURFACES['engagement'];
+  const gr: EngagementWriteResolved = {
+    base: 'http://c',
+    userIdByRole: { super_admin: 'S', hr_admin: 'H', hrbp: 'B' },
+    subjectA: 'H',
+    subjectB: 'bH',
+  };
+  const ep = (name: string) => s.endpoints.find((e) => e.name === name)!;
+
+  it('registers the 5 engagement writes under the single write flag', () => {
+    expect(s.flag).toBe('Platform__EngagementWriteEnabled');
+    expect(s.endpoints.map((e) => e.name)).toEqual([
+      'create-survey', 'activate-survey', 'submit-survey-response', 'create-action-plan', 'update-action-plan',
+    ]);
+  });
+
+  it('create-survey: NO IDOR target, allow-live via created_by attribution', () => {
+    const e = ep('create-survey');
+    expect(e.buildIdor).toBeUndefined();
+    expect(e.buildParity(gr).body).toMatchObject({ title: WRITE_ENGAGEMENT_SURVEY_MARKER, type: 'pulse' });
+    expect(e.allowRolesLiveTestable).toBe(true);
+    // mutated keys on the probe's created_by; allow keys on hr_admin's; deny on hrbp's — disjoint.
+    expect(e.readbackMutated(gr, { id: 'x' }).params).toEqual(['S', WRITE_ENGAGEMENT_SURVEY_MARKER]);
+    expect(e.readbackAllow!(gr, 'hr_admin', { id: 'x' }).params).toEqual(['H', WRITE_ENGAGEMENT_SURVEY_MARKER]);
+    expect(e.readbackNoMutation(gr, 'a', 'hrbp').params).toEqual(['B', WRITE_ENGAGEMENT_SURVEY_MARKER]);
+    expect(e.readbackNoMutation(gr, 'a', 'hrbp').expect([{ n: 0 }])).toBeNull();
+  });
+
+  it('activate-survey: by-id draft→active, cross-org IDOR 404, no-mutation stays draft', () => {
+    const e = ep('activate-survey');
+    expect(e.buildParity(gr).path).toBe(`/engagement/surveys/${WRITE_ENGAGEMENT.activateSurveyA}/activate`);
+    expect(e.buildIdor!(gr).path).toBe(`/engagement/surveys/${WRITE_ENGAGEMENT.activateSurveyB}/activate`);
+    expect(e.idorDeniedStatuses).toEqual([404]);
+    expect(e.readbackMutated(gr, {}).expect([{ status: 'active' }])).toBeNull();
+    expect(e.readbackMutated(gr, {}).expect([{ status: 'draft' }])).toContain('did not apply');
+    expect(e.readbackNoMutation(gr, 'b').expect([{ status: 'draft' }])).toBeNull();
+    expect(e.readbackNoMutation(gr, 'b').expect([{ status: 'active' }])).toContain('mutated');
+  });
+
+  it('submit-survey-response: identity, allow-live via user_id, cross-org 404', () => {
+    const e = ep('submit-survey-response');
+    expect(e.buildParity(gr).path).toBe(`/engagement/surveys/${WRITE_ENGAGEMENT.submitSurveyA}/responses`);
+    expect(e.buildParity(gr).body).toEqual({ answers: { q1: 'yes' } });
+    expect(e.idorDeniedStatuses).toEqual([404]);
+    expect(e.allowRolesLiveTestable).toBe(true);
+    expect(e.readbackMutated(gr, { id: 'r1' }).params).toEqual([WRITE_ENGAGEMENT.submitSurveyA, 'S']);
+    expect(e.readbackAllow!(gr, 'hr_admin', {}).params).toEqual([WRITE_ENGAGEMENT.submitSurveyA, 'H']);
+    // IDOR keys on org-B survey + probe; deny keys on org-A survey + denier.
+    expect(e.readbackNoMutation(gr, 'b').params).toEqual([WRITE_ENGAGEMENT.submitSurveyB, 'S']);
+    expect(e.readbackNoMutation(gr, 'a', 'hrbp').params).toEqual([WRITE_ENGAGEMENT.submitSurveyA, 'B']);
+  });
+
+  it('create-action-plan: cross-org responsibleId IDOR 403 (H1), NOT allow-live', () => {
+    const e = ep('create-action-plan');
+    expect(e.buildParity(gr).body).toMatchObject({ title: WRITE_ENGAGEMENT_PLAN_MARKER, responsibleId: 'H' });
+    expect(e.buildIdor!(gr).body).toMatchObject({ responsibleId: 'bH' });
+    expect(e.idorDeniedStatuses).toEqual([403]);
+    expect(e.allowRolesLiveTestable).toBeFalsy();
+    expect(e.readbackNoMutation(gr, 'b').params).toEqual([WRITE_ENGAGEMENT_PLAN_MARKER, 'bH']);
+    expect(e.readbackNoMutation(gr, 'a', 'hrbp').params).toEqual([WRITE_ENGAGEMENT_PLAN_MARKER, 'H']);
+    expect(e.readbackNoMutation(gr, 'b').expect([{ n: 0 }])).toBeNull();
+    expect(e.readbackNoMutation(gr, 'b').expect([{ n: 1 }])).toContain('forbidden');
+  });
+
+  it('update-action-plan: by-id PATCH, cross-org IDOR 404, no-mutation stays pending', () => {
+    const e = ep('update-action-plan');
+    expect(e.buildParity(gr)).toEqual({ path: `/engagement/action-plans/${WRITE_ENGAGEMENT.actionPlanA}`, body: { status: 'in_progress' } });
+    expect(e.buildIdor!(gr).path).toBe(`/engagement/action-plans/${WRITE_ENGAGEMENT.actionPlanB}`);
+    expect(e.idorDeniedStatuses).toEqual([404]);
+    expect(e.readbackMutated(gr, {}).expect([{ status: 'in_progress' }])).toBeNull();
+    expect(e.readbackNoMutation(gr, 'b').expect([{ status: 'pending' }])).toBeNull();
+    expect(e.readbackNoMutation(gr, 'b').expect([{ status: 'in_progress' }])).toContain('mutated');
   });
 });

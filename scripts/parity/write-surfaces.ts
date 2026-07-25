@@ -25,15 +25,23 @@ import {
   resolveEvaluation360WriteResources,
   ensureSuccessionWritePreconditions,
   resolveSuccessionWriteResources,
+  ensureEngagementWritePreconditions,
+  resolveEngagementWriteResources,
   WRITE_EVAL_CYCLES,
   WRITE_CYCLE_MARKER,
   WRITE_SUCCESSION_ROLES,
   WRITE_SUCCESSION_CR_MARKER,
+  WRITE_ENGAGEMENT,
+  WRITE_ENGAGEMENT_SURVEY_MARKER,
+  WRITE_ENGAGEMENT_PLAN_MARKER,
 } from './seed';
 
 // Re-export the write-verify fixtures (defined in seed.ts to keep the seed→registry import
 // one-directional) so consumers/tests can reference them from the registry too.
-export { WRITE_EVAL_CYCLES, WRITE_CYCLE_MARKER, WRITE_SUCCESSION_ROLES, WRITE_SUCCESSION_CR_MARKER };
+export {
+  WRITE_EVAL_CYCLES, WRITE_CYCLE_MARKER, WRITE_SUCCESSION_ROLES, WRITE_SUCCESSION_CR_MARKER,
+  WRITE_ENGAGEMENT, WRITE_ENGAGEMENT_SURVEY_MARKER, WRITE_ENGAGEMENT_PLAN_MARKER,
+};
 
 /** A deterministic Z-anchored effective date for create bodies (the C# validator
  *  requires a strict Zulu ISO-8601 timestamp; a fixed value keeps runs reproducible). */
@@ -751,8 +759,230 @@ const successionSurface: WriteSurface<SuccessionWriteResolved> = {
   ],
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// engagement — Platform__EngagementWriteEnabled (5 writes)
+// ─────────────────────────────────────────────────────────────────────────────
+/** Concrete ids for the engagement write surface (seed.ts resolveEngagementWriteResources). All
+ *  survey/action-plan ids are fixed constants (WRITE_ENGAGEMENT); only the user ids are dynamic. */
+export interface EngagementWriteResolved extends WriteResolvedBase {
+  /** org-A user id per role (super_admin/hr_admin/hrbp). */
+  userIdByRole: Record<string, string>;
+  /** org-A subject (createActionPlan responsibleId). */
+  subjectA: string;
+  /** org-B subject (createActionPlan cross-org responsibleId — the H1 target). */
+  subjectB: string;
+}
+
+const surveyBody = () => ({ title: WRITE_ENGAGEMENT_SURVEY_MARKER, type: 'pulse', questions: [{ text: 'Parity Q', type: 'scale' }] });
+
+// 5 writes under ONE flag Platform__EngagementWriteEnabled (COEXISTENCE, not a flip — TS monitoring/dei/
+// alert-cron still read these tables). createSurvey (grant-only; created_by attributed → allow-live) +
+// activateSurvey (by-id draft→active; cross-org → 404) + submitSurveyResponse (identity userId=caller +
+// create grant; cross-org survey → 404; user_id attributed → allow-live) + createActionPlan (assertSubject
+// InScope + H1 cross-org responsibleId → 403) + updateActionPlan (assertScoped by-id → 404). hrbp is
+// ungranted → every write 403 at the gate.
+const engagementSurface: WriteSurface<EngagementWriteResolved> = {
+  key: 'engagement',
+  flag: 'Platform__EngagementWriteEnabled',
+  probeRole: 'super_admin',
+  roles: ['super_admin', 'hr_admin', 'hrbp'],
+  ensurePreconditions: ensureEngagementWritePreconditions,
+  resolveResources: resolveEngagementWriteResources,
+  endpoints: [
+    // ── createSurvey — grant-only create; NO IDOR (org from ctx); created_by → allow-live. ──────
+    {
+      name: 'create-survey',
+      method: 'POST',
+      buildParity: () => ({ path: '/engagement/surveys', body: surveyBody() }),
+      // no buildIdor: the org is fixed by the caller's context; targetGroups are stored opaque (not a
+      // cross-org write target — a documented LOW in the C# port), so there is no IDOR surface.
+      expectedByRole: { super_admin: 'allow', hr_admin: 'allow', hrbp: 'deny' }, // hrbp: no engagement:create → 403
+      rbacDenyStatus: 403,
+      allowRolesLiveTestable: true, // created_by_id attributes each allow role's own survey
+      expectResponse: idPresent,
+      readbackMutated: (r, b) => {
+        const respId = asObj(b)?.id;
+        return {
+          sql: `SELECT id, status FROM surveys WHERE created_by_id = $1 AND title = $2 AND status = 'draft' ORDER BY created_at DESC LIMIT 1`,
+          params: [r.userIdByRole.super_admin, WRITE_ENGAGEMENT_SURVEY_MARKER],
+          expect: (rows) => {
+            if (rows.length !== 1) return `no freshly-created draft survey by the probe`;
+            if (rows[0].id !== respId) return `response id ${JSON.stringify(respId)} != created survey id ${rows[0].id}`;
+            return null;
+          },
+        };
+      },
+      readbackAllow: (r, role, b) => {
+        const respId = asObj(b)?.id;
+        return {
+          sql: `SELECT id FROM surveys WHERE created_by_id = $1 AND title = $2 AND status = 'draft' ORDER BY created_at DESC LIMIT 1`,
+          params: [r.userIdByRole[role], WRITE_ENGAGEMENT_SURVEY_MARKER],
+          expect: (rows) => {
+            if (rows.length !== 1) return `allow role '${role}': no survey created under its grant`;
+            if (rows[0].id !== respId) return `allow role '${role}': response id != created survey id`;
+            return null;
+          },
+        };
+      },
+      readbackNoMutation: (r, _target, denierRole) => ({
+        sql: `SELECT count(*)::int AS n FROM surveys WHERE created_by_id = $1 AND title = $2`,
+        params: [r.userIdByRole[denierRole ?? ''], WRITE_ENGAGEMENT_SURVEY_MARKER],
+        expect: (rows) => (Number(rows[0]?.n) === 0 ? null : `a forbidden createSurvey still inserted ${rows[0]?.n} survey(s)`),
+      }),
+    },
+
+    // ── activateSurvey — by-id draft→active; cross-org survey → 404. ─────────────────────────────
+    {
+      name: 'activate-survey',
+      method: 'POST',
+      buildParity: () => ({ path: `/engagement/surveys/${WRITE_ENGAGEMENT.activateSurveyA}/activate`, body: null }),
+      buildIdor: () => ({ path: `/engagement/surveys/${WRITE_ENGAGEMENT.activateSurveyB}/activate`, body: null }),
+      idorDeniedStatuses: [404], // findFirst {id, org=A} on an org-B survey → null → 404
+      expectedByRole: { super_admin: 'allow', hr_admin: 'allow', hrbp: 'deny' },
+      rbacDenyStatus: 403,
+      expectResponse: idPresent,
+      readbackMutated: () => ({
+        sql: `SELECT status FROM surveys WHERE id = $1`,
+        params: [WRITE_ENGAGEMENT.activateSurveyA],
+        expect: (rows) => {
+          if (rows.length !== 1) return `survey ${WRITE_ENGAGEMENT.activateSurveyA} missing`;
+          if (rows[0].status !== 'active') return `survey status ${rows[0].status} != active (activate did not apply)`;
+          return null;
+        },
+      }),
+      // A denied activate leaves the survey in its 'draft' from-state.
+      readbackNoMutation: (_r, target) => {
+        const id = target === 'b' ? WRITE_ENGAGEMENT.activateSurveyB : WRITE_ENGAGEMENT.activateSurveyA;
+        return {
+          sql: `SELECT status FROM surveys WHERE id = $1`,
+          params: [id],
+          expect: (rows) => {
+            if (rows.length !== 1) return `precondition survey ${id} missing`;
+            if (rows[0].status !== 'draft') return `a forbidden activate mutated the survey → status ${rows[0].status}`;
+            return null;
+          },
+        };
+      },
+    },
+
+    // ── submitSurveyResponse — identity (userId=caller) + create grant; cross-org survey → 404. ──
+    {
+      name: 'submit-survey-response',
+      method: 'POST',
+      buildParity: () => ({ path: `/engagement/surveys/${WRITE_ENGAGEMENT.submitSurveyA}/responses`, body: { answers: { q1: 'yes' } } }),
+      // cross-org: an org-B survey id → findFirst {id, org=A, active} → null → SurveyNotActive 404.
+      buildIdor: () => ({ path: `/engagement/surveys/${WRITE_ENGAGEMENT.submitSurveyB}/responses`, body: { answers: { q1: 'yes' } } }),
+      idorDeniedStatuses: [404],
+      expectedByRole: { super_admin: 'allow', hr_admin: 'allow', hrbp: 'deny' }, // hrbp: no engagement:create → 403
+      rbacDenyStatus: 403,
+      allowRolesLiveTestable: true, // user_id (=caller) attributes each allow role's own response
+      expectResponse: idPresent,
+      readbackMutated: (r, b) => {
+        const respId = asObj(b)?.id;
+        return {
+          sql: `SELECT id FROM survey_responses WHERE survey_id = $1 AND user_id = $2`,
+          params: [WRITE_ENGAGEMENT.submitSurveyA, r.userIdByRole.super_admin],
+          expect: (rows) => {
+            if (rows.length !== 1) return `submitSurveyResponse did not create the response (found ${rows.length})`;
+            if (rows[0].id !== respId) return `response id != created row id`;
+            return null;
+          },
+        };
+      },
+      readbackAllow: (r, role) => ({
+        sql: `SELECT id FROM survey_responses WHERE survey_id = $1 AND user_id = $2`,
+        params: [WRITE_ENGAGEMENT.submitSurveyA, r.userIdByRole[role]],
+        expect: (rows) => (rows.length === 1 ? null : `allow role '${role}': no response created under its grant`),
+      }),
+      // IDOR: no response for the org-B survey by the probe. deny: no response for the org-A survey by the denier.
+      readbackNoMutation: (r, target, denierRole) => {
+        const surveyId = target === 'b' ? WRITE_ENGAGEMENT.submitSurveyB : WRITE_ENGAGEMENT.submitSurveyA;
+        const userId = target === 'b' ? r.userIdByRole.super_admin : r.userIdByRole[denierRole ?? ''];
+        return {
+          sql: `SELECT count(*)::int AS n FROM survey_responses WHERE survey_id = $1 AND user_id = $2`,
+          params: [surveyId, userId],
+          expect: (rows) => (Number(rows[0]?.n) === 0 ? null : `a forbidden submit inserted ${rows[0]?.n} response(s)`),
+        };
+      },
+    },
+
+    // ── createActionPlan — assertSubjectInScope + H1 cross-org responsibleId → 403. ──────────────
+    {
+      name: 'create-action-plan',
+      method: 'POST',
+      buildParity: (r) => ({ path: '/engagement/action-plans', body: { title: WRITE_ENGAGEMENT_PLAN_MARKER, responsibleId: r.subjectA } }),
+      // cross-org: an org-B responsibleId → assertSubjectInScope no-ops for org scope → H1 in-org backstop → 403.
+      buildIdor: (r) => ({ path: '/engagement/action-plans', body: { title: WRITE_ENGAGEMENT_PLAN_MARKER, responsibleId: r.subjectB } }),
+      idorDeniedStatuses: [403],
+      expectedByRole: { super_admin: 'allow', hr_admin: 'allow', hrbp: 'deny' },
+      rbacDenyStatus: 403,
+      // Not allow-live: action_plans has no caller-stamped column, so a 2nd concurrent create by hr_admin
+      // (same responsibleId) would pollute the deny no-mutation. hr_admin's create grant is already proven
+      // live by createSurvey + submitSurveyResponse (both allow-live).
+      expectResponse: idPresent,
+      readbackMutated: (r, b) => {
+        const respId = asObj(b)?.id;
+        return {
+          sql: `SELECT id FROM action_plans WHERE title = $1 AND responsible_id = $2`,
+          params: [WRITE_ENGAGEMENT_PLAN_MARKER, r.subjectA],
+          expect: (rows) => {
+            if (rows.length !== 1) return `createActionPlan did not create the plan (found ${rows.length})`;
+            if (rows[0].id !== respId) return `response id != created plan id`;
+            return null;
+          },
+        };
+      },
+      // IDOR keys on the org-B responsibleId; deny keys on the org-A responsibleId (deny runs before the
+      // single parity create, and there is no allow-live create to pollute it).
+      readbackNoMutation: (r, target) => {
+        const responsible = target === 'b' ? r.subjectB : r.subjectA;
+        return {
+          sql: `SELECT count(*)::int AS n FROM action_plans WHERE title = $1 AND responsible_id = $2`,
+          params: [WRITE_ENGAGEMENT_PLAN_MARKER, responsible],
+          expect: (rows) => (Number(rows[0]?.n) === 0 ? null : `a forbidden createActionPlan still inserted ${rows[0]?.n} plan(s)`),
+        };
+      },
+    },
+
+    // ── updateActionPlan — assertScoped by-id → 404. ────────────────────────────────────────────
+    {
+      name: 'update-action-plan',
+      method: 'PATCH',
+      buildParity: () => ({ path: `/engagement/action-plans/${WRITE_ENGAGEMENT.actionPlanA}`, body: { status: 'in_progress' } }),
+      buildIdor: () => ({ path: `/engagement/action-plans/${WRITE_ENGAGEMENT.actionPlanB}`, body: { status: 'in_progress' } }),
+      idorDeniedStatuses: [404],
+      expectedByRole: { super_admin: 'allow', hr_admin: 'allow', hrbp: 'deny' }, // hrbp: no engagement:update → 403
+      rbacDenyStatus: 403,
+      expectResponse: idPresent,
+      readbackMutated: () => ({
+        sql: `SELECT status FROM action_plans WHERE id = $1`,
+        params: [WRITE_ENGAGEMENT.actionPlanA],
+        expect: (rows) => {
+          if (rows.length !== 1) return `action plan ${WRITE_ENGAGEMENT.actionPlanA} missing`;
+          if (rows[0].status !== 'in_progress') return `status ${rows[0].status} != in_progress (update did not apply)`;
+          return null;
+        },
+      }),
+      // A denied update leaves the 'pending' from-state.
+      readbackNoMutation: (_r, target) => {
+        const id = target === 'b' ? WRITE_ENGAGEMENT.actionPlanB : WRITE_ENGAGEMENT.actionPlanA;
+        return {
+          sql: `SELECT status FROM action_plans WHERE id = $1`,
+          params: [id],
+          expect: (rows) => {
+            if (rows.length !== 1) return `precondition action plan ${id} missing`;
+            if (rows[0].status !== 'pending') return `a forbidden update mutated the plan → status ${rows[0].status}`;
+            return null;
+          },
+        };
+      },
+    },
+  ],
+};
+
 export const WRITE_SURFACES: Record<string, AnyWriteSurface> = {
   compensation: defineWriteSurface(compensationSurface),
   evaluation360: defineWriteSurface(evaluation360Surface),
   succession: defineWriteSurface(successionSurface),
+  engagement: defineWriteSurface(engagementSurface),
 };
