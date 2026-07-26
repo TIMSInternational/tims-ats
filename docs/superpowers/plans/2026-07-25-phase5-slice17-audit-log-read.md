@@ -873,6 +873,7 @@ Run: `grep -n "namespace\|public readonly struct StaffGateResult" services/Tims.
 ```csharp
 // services/Tims.Platform/src/Tims.Api/Audit/PlatformOwnerGate.cs
 using System.Security.Claims;
+using Tims.Api.Authentication; // ResolvedPrincipal / HttpContextKey
 using Tims.Api.Configuration;
 using Tims.Api.Reporting; // StaffGateResult — reused, not duplicated
 using Tims.Application.Identity;
