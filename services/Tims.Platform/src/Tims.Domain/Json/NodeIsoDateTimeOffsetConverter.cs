@@ -87,3 +87,31 @@ public sealed class NodeIsoDateTimeConverter : JsonConverter<DateTime>
     public override void Write(Utf8JsonWriter writer, DateTime value, JsonSerializerOptions options) =>
         writer.WriteStringValue(ToNodeIso(value));
 }
+
+/// <summary>
+/// Nullable variant of <see cref="NodeIsoDateTimeConverter"/> — for `timestamp without time zone`
+/// columns that are also nullable (e.g. `users.last_login_at`, `user_roles.expires_at`). A `null`
+/// serializes as JSON `null` (matching the TS `Date | null → null`).
+/// </summary>
+public sealed class NodeIsoNullableDateTimeConverter : JsonConverter<DateTime?>
+{
+    public override DateTime? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+        reader.TokenType == JsonTokenType.Null
+            ? null
+            : DateTime.Parse(
+                reader.GetString() ?? throw new JsonException("expected an ISO-8601 date string"),
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.RoundtripKind);
+
+    public override void Write(Utf8JsonWriter writer, DateTime? value, JsonSerializerOptions options)
+    {
+        if (value is { } instant)
+        {
+            writer.WriteStringValue(NodeIsoDateTimeConverter.ToNodeIso(instant));
+        }
+        else
+        {
+            writer.WriteNullValue();
+        }
+    }
+}
