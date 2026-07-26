@@ -6,7 +6,7 @@ namespace Tims.Infrastructure.AccessReview;
 /// ONE privileged EF context covering both the access-review REPORT reads (users/roles/user_roles/
 /// role_permissions/permissions/organizations — Prisma-owned, `efcoreReadOnly` since Phase 2) and the
 /// `access_reviews` read+write (Prisma-owned until this slice ships; moves to `efcoreStranglerWrite`
-/// in the table-ownership ledger, Task 9). NEVER wrapped in <see cref="Tims.Infrastructure.TenantScope"/>
+/// in the table-ownership ledger, Task 8). NEVER wrapped in <see cref="Tims.Infrastructure.TenantScope"/>
 /// — a platform owner isn't a tenant member, so there's no `SET LOCAL ROLE app_tenant` + org GUC to
 /// wrap either path in (see the Slice-18 design doc's "Why this is a new pattern" section for why one
 /// context, not a read/write split, is correct here — unlike other Phase-5 domains, there is no
