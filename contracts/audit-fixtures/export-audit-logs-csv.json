@@ -1,0 +1,13 @@
+{
+  "header": "\"Fecha\",\"Organizacion\",\"Actor\",\"Accion\",\"Entidad\",\"ID Entidad\",\"IP\"",
+  "sample": {
+    "createdAt": "2026-07-20T10:00:00.000Z",
+    "organizationName": "=cmd|' /c calc'!A0",
+    "actorName": "Rick Recruiter",
+    "action": "login_failed",
+    "entity": "auth",
+    "entityId": "-",
+    "ip": "203.0.113.5"
+  },
+  "expectedCsvRow": "\"2026-07-20T10:00:00.000Z\",\"'=cmd|' /c calc'!A0\",\"Rick Recruiter\",\"login_failed\",\"auth\",\"'-\",\"203.0.113.5\""
+}

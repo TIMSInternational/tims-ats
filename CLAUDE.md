@@ -1,6 +1,6 @@
 # TIMS ATS — Engineering Standards & Architecture
 
-> **Last updated**: 2026-06-06 | **Owner**: NexaDev LLC | **Platform**: TIMS ATS (Applicant Tracking System)
+> **Owner**: NexaDev LLC | **Platform**: TIMS ATS (Applicant Tracking System)
 > **Scale target**: Thousands of concurrent users from day one. Enterprise-grade.
 
 Multi-tenant enterprise HR/ATS SaaS platform for TIMS International. Monorepo with Turborepo + pnpm.
@@ -103,6 +103,7 @@ Repositories:    *.repository.ts  (candidate.repository.ts)
 > These rules are NON-NEGOTIABLE for every line of code in this project.
 
 ### Banned Patterns (auto-reject in review)
+
 ```
 NEVER generate:
   - $executeRawUnsafe or $queryRawUnsafe (SQL injection)
@@ -118,12 +119,15 @@ NEVER generate:
 ```
 
 ### Dependency Safety
+
 - **Verify every new package exists and is legitimate before `pnpm add`.** AI hallucinates package names 19.7% of the time ("slopsquatting"). Check npmjs.com manually.
 - **Lock all dependency versions.** Use exact versions, not ranges. `pnpm-lock.yaml` committed always.
 - **Run `npm audit` before every deploy.** Block deploys with high/critical vulnerabilities.
 
 ### Code Review Checklist for AI-Generated Code
+
 Every PR must be checked for:
+
 1. **Auth bypass** — Does every endpoint have the correct middleware? (`protectedProcedure`, `platformProcedure`, `permissionProcedure`)
 2. **Tenant isolation** — Does every query filter by `organizationId`?
 3. **Data exposure** — Are Prisma queries using `select`? Is sensitive data (passwords, SSN, salary) excluded from responses?
@@ -136,6 +140,7 @@ Every PR must be checked for:
 ## Commit & PR Standards
 
 ### Commit Messages
+
 ```
 feat(invoices): add Mercury-style invoice creation wizard
 fix(security): parameterize RLS query to prevent SQL injection
@@ -144,12 +149,14 @@ chore(db): add missing indexes to FK fields
 ```
 
 ### Branch Naming
+
 ```
 feat/invoice-wizard       fix/rls-sql-injection
 refactor/service-layer    chore/connection-pooling
 ```
 
 ### PR Requirements
+
 - `tsc --noEmit` passes on both `@tims/api` and `@tims/web`
 - Schema changes include index review + migration
 - Security changes require explicit review note
@@ -158,17 +165,8 @@ refactor/service-layer    chore/connection-pooling
 
 ## Deployment
 
-- **Phase 1 (launch):** Vercel (auto-scaling, zero-ops) + Supabase Team ($599/mo, ~200 pooled connections).
-- **Phase 2 (scale):** AWS ECS Fargate for AI gateway + API if Vercel limits hit.
-- **Region:** Supabase DB runs in **`us-west-2`** (prod pooler `aws-1-us-west-2.pooler.supabase.com`). Vercel functions are pinned to **`pdx1`** (us-west-2) via `vercel.json` `regions` + the tRPC route's `preferredRegion`, co-locating compute with the DB to kill cross-region query latency. *(Aspirational, not yet done: migrating the DB to `sa-east-1`/São Paulo would cut latency for Bogotá end-users ~40ms vs ~120ms — an owner infra decision, would then re-pin Vercel to `gru1`.)*
-- **CDN:** Vercel Edge for static assets. API routes: no-cache.
+See `docs/DEPLOYMENT.md` for hosting phases, region/CDN config, and CI/CD security gates. Codex cross-model verification runs at every build's review gate per `.claude/rules/verification.md`.
 
-### CI/CD Security Gates
-```
-Pre-commit:   Gitleaks (block secrets) · ESLint @typescript-eslint/no-explicit-any
-Pull Request: tsc --noEmit (zero errors) · Semgrep (block high/critical) · npm audit
-Pre-deploy:   Supabase RLS audit (all tables have policies) · env var validation
-Post-deploy:  Sentry error monitoring (no stack traces in responses) · runtime secret scanning
-```
+---
 
-- **Codex cross-model verification** runs at every build's review gate (alongside the per-slice + opus reviews) — see `.claude/rules/verification.md`.
+_Last updated: 2026-07-25_

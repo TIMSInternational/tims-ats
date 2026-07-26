@@ -61,3 +61,29 @@ public sealed class NodeIsoNullableDateTimeOffsetConverter : JsonConverter<DateT
         }
     }
 }
+
+/// <summary>
+/// Plain-<see cref="DateTime"/> variant of <see cref="NodeIsoDateTimeOffsetConverter"/>, for columns
+/// mapped as Postgres <c>timestamp without time zone</c> (e.g. <c>audit_logs.created_at</c> — Npgsql
+/// reads these back with <see cref="DateTimeKind.Unspecified"/>, never <c>Utc</c>). Deliberately does
+/// NOT call <c>ToUniversalTime()</c>: for an Unspecified-Kind value that would apply the machine's
+/// LOCAL offset — wrong, since the stored value already IS the UTC instant (Prisma/Postgres store
+/// these columns as UTC wall-clock by convention). It just prints the value's own components in the
+/// Node <c>toISOString()</c> shape (UTC, 3-digit ms, trailing <c>Z</c>), matching
+/// <see cref="NodeIsoDateTimeOffsetConverter"/> byte-for-byte regardless of the source Kind.
+/// </summary>
+public sealed class NodeIsoDateTimeConverter : JsonConverter<DateTime>
+{
+    /// <summary>Formats the value as Node's toISOString(): 3-digit ms, trailing Z, NO Kind conversion.</summary>
+    public static string ToNodeIso(DateTime value) =>
+        value.ToString(NodeIsoDateTimeOffsetConverter.NodeIsoFormat, CultureInfo.InvariantCulture);
+
+    public override DateTime Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+        DateTime.Parse(
+            reader.GetString() ?? throw new JsonException("expected an ISO-8601 date string"),
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.RoundtripKind);
+
+    public override void Write(Utf8JsonWriter writer, DateTime value, JsonSerializerOptions options) =>
+        writer.WriteStringValue(ToNodeIso(value));
+}

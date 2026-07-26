@@ -329,7 +329,8 @@ export const SURFACES: Record<string, Surface> = {
       },
       {
         name: 'simulate',
-        csharpPath: '/ninebox/simulate?userId=e0000b0c-0000-4000-8000-000000000001&newPotentialScore=80&newPerformanceScore=40',
+        csharpPath:
+          '/ninebox/simulate?userId=e0000b0c-0000-4000-8000-000000000001&newPotentialScore=80&newPerformanceScore=40',
         tsProcedure: 'ninebox.simulate',
         input: { userId: 'e0000b0c-0000-4000-8000-000000000001', newPotentialScore: 80, newPerformanceScore: 40 },
         // pure kernel, userId is echoed (no DB lookup) → org-independent → RLS N/A.
@@ -649,6 +650,35 @@ export const SURFACES: Record<string, Surface> = {
         // explicitly (e.g. a nullable KPI field with no data yet) — drop nullish on both
         // sides before diffing so that difference doesn't register as a false-positive parity break.
         normalize: { dropNullish: true },
+      },
+    ],
+  },
+  // ── audit-log ────────────────────────────────────────────────────────────────────────────
+  // Doesn't fit the other surfaces' org-scoped-RBAC shape: this surface's gate is PRINCIPAL
+  // TYPE (platform owner vs everyone else — `users.is_platform_owner`, see PlatformOwnerGate.cs
+  // + TS `platformProcedure`), independent of any org. Rather than add a new harness concept for
+  // one surface, it reuses `roles`/`expectedByRole` with two sentinel role keys seed.ts already
+  // has a home for: `platform_owner` (a real, org-less platform-owner identity — seeded once,
+  // see the planSeed comment in seed.ts) and `org_admin` (an ordinary seeded role) as the denied
+  // probe.
+  'audit-log': {
+    key: 'audit-log',
+    flag: 'Platform__AuditLogReadEnabled',
+    roles: ['platform_owner', 'org_admin'],
+    probeRole: 'org_admin', // org-scoped role — RLS/cross-tenant probing is N/A here; see globalScope below.
+    endpoints: [
+      {
+        name: 'logs',
+        csharpPath: '/audit/logs',
+        tsProcedure: 'platform.getCrossOrgAuditLogs',
+        input: {},
+        expectedByRole: { platform_owner: 200, org_admin: 403 },
+        // This surface is intentionally cross-org (a platform owner sees every org's rows) — the
+        // Mode-B "identical payload across orgs ⇒ leak" heuristic does not apply the way it does for
+        // a genuinely global/config read (e.g. billing/config); it isn't tenant-scoped at all, so the
+        // RLS check for this endpoint is a documented N/A, not a leak signal. Parity + RBAC (the
+        // platform-owner-vs-denied gate) still run unchanged and are the meaningful checks here.
+        globalScope: true,
       },
     ],
   },

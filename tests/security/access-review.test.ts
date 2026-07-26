@@ -72,26 +72,42 @@ describe('assessUserAccess — risk flags (each bites)', () => {
   it('deprovisionGap: inactive/deleted but still holds roles', () => {
     expect(assessUserAccess({ ...base, isActive: false }).flags.deprovisionGap).toBe(true);
     expect(assessUserAccess({ ...base, deletedAt: NOW }).flags.deprovisionGap).toBe(true);
-    expect(assessUserAccess({ ...base, isActive: false, roles: [], isPlatformOwner: false }).flags.deprovisionGap).toBe(false);
+    expect(assessUserAccess({ ...base, isActive: false, roles: [], isPlatformOwner: false }).flags.deprovisionGap).toBe(
+      false,
+    );
     expect(assessUserAccess(base).flags.deprovisionGap).toBe(false);
   });
 
   it('expiredGrant: active user holding a role whose expiry has passed (LIVE lingering access)', () => {
-    expect(assessUserAccess({ ...base, roles: [role('recruiter', { expiresAt: daysAgo(1) })] }).flags.expiredGrant).toBe(true);
+    expect(
+      assessUserAccess({ ...base, roles: [role('recruiter', { expiresAt: daysAgo(1) })] }).flags.expiredGrant,
+    ).toBe(true);
     // a future/absent expiry is fine
-    expect(assessUserAccess({ ...base, roles: [role('recruiter', { expiresAt: daysAgo(-30) })] }).flags.expiredGrant).toBe(false);
+    expect(
+      assessUserAccess({ ...base, roles: [role('recruiter', { expiresAt: daysAgo(-30) })] }).flags.expiredGrant,
+    ).toBe(false);
     expect(assessUserAccess(base).flags.expiredGrant).toBe(false);
     // an inactive user's expired role is a deprovisionGap, not counted as expiredGrant (active-only)
-    expect(assessUserAccess({ ...base, isActive: false, roles: [role('recruiter', { expiresAt: daysAgo(1) })] }).flags.expiredGrant).toBe(false);
+    expect(
+      assessUserAccess({ ...base, isActive: false, roles: [role('recruiter', { expiresAt: daysAgo(1) })] }).flags
+        .expiredGrant,
+    ).toBe(false);
   });
 
   it('crossOrgRole: holds a role belonging to a different org (grant corruption)', () => {
-    expect(assessUserAccess({ ...base, roles: [role('recruiter', { organizationId: 'org-2' })] }).flags.crossOrgRole).toBe(true);
+    expect(
+      assessUserAccess({ ...base, roles: [role('recruiter', { organizationId: 'org-2' })] }).flags.crossOrgRole,
+    ).toBe(true);
     expect(assessUserAccess(base).flags.crossOrgRole).toBe(false);
   });
 
   it('inactive/deleted accounts never raise the ACTIVE-only flags (stale/neverLoggedIn/expiredGrant)', () => {
-    const f = assessUserAccess({ ...base, isActive: false, lastLoginAt: null, roles: [role('recruiter', { expiresAt: daysAgo(1) })] }).flags;
+    const f = assessUserAccess({
+      ...base,
+      isActive: false,
+      lastLoginAt: null,
+      roles: [role('recruiter', { expiresAt: daysAgo(1) })],
+    }).flags;
     expect(f.neverLoggedIn).toBe(false);
     expect(f.stale).toBe(false);
     expect(f.expiredGrant).toBe(false);
@@ -128,11 +144,16 @@ describe('wiring — access-review surface', () => {
 
   it('export hardens CSV against formula/row injection (RFC-4180 quoting + leading =/+/-/@)', () => {
     expect(router()).toMatch(/csvCell/);
-    expect(router()).toMatch(/\^\[=\+/);
+    // the escaping regex itself lives in the shared @tims/shared csv helper, reused by
+    // every CSV export (access-review + the platform audit-log export).
+    const sharedCsv = read('packages/shared/src/csv.ts');
+    expect(sharedCsv).toMatch(/\^\[=\+/);
   });
 
   it('attest refuses a truncated org rather than persist under-counted evidence', () => {
-    expect(read('packages/api/src/services/access-review.service.ts')).toMatch(/report\.truncated[\s\S]*PRECONDITION_FAILED|PRECONDITION_FAILED/);
+    expect(read('packages/api/src/services/access-review.service.ts')).toMatch(
+      /report\.truncated[\s\S]*PRECONDITION_FAILED|PRECONDITION_FAILED/,
+    );
   });
 
   it('attest records an access_recertified security event (router) + writes the snapshot (repo)', () => {
