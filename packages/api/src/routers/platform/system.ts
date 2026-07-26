@@ -6,6 +6,7 @@ import { logPlatformExport, logSecurityEvent } from '../../access/security-audit
 import { PLAN_PRICES } from '../../lib/plan-prices';
 import { auditLogSelect, SYSTEM_FLAG_KEYS, buildSystemHealthServices } from './system.helpers';
 import { cacheInvalidatePrefix } from '../../lib/cache';
+import { csvRow } from '@tims/shared';
 import {
   sendBulkNotificationInput,
   getRecentPlatformEventsInput,
@@ -30,17 +31,20 @@ export const systemRouter = router({
       await db.$queryRaw`SELECT 1`;
       dbLatency = Date.now() - start;
       dbHealthy = true;
-    } catch { /* DB down */ }
+    } catch {
+      /* DB down */
+    }
 
-    const [userCount, orgCount, loginsToday, activeUsers, auditLogsToday, vacancyCount, failedLogins] = await Promise.all([
-      db.user.count(),
-      db.organization.count(),
-      db.user.count({ where: { lastLoginAt: { gte: todayStart } } }),
-      db.user.count({ where: { isActive: true } }),
-      db.auditLog.count({ where: { createdAt: { gte: todayStart } } }),
-      db.vacancy.count(),
-      db.auditLog.count({ where: { createdAt: { gte: todayStart }, action: 'login_failed' } }),
-    ]);
+    const [userCount, orgCount, loginsToday, activeUsers, auditLogsToday, vacancyCount, failedLogins] =
+      await Promise.all([
+        db.user.count(),
+        db.organization.count(),
+        db.user.count({ where: { lastLoginAt: { gte: todayStart } } }),
+        db.user.count({ where: { isActive: true } }),
+        db.auditLog.count({ where: { createdAt: { gte: todayStart } } }),
+        db.vacancy.count(),
+        db.auditLog.count({ where: { createdAt: { gte: todayStart }, action: 'login_failed' } }),
+      ]);
 
     const recentErrors = await db.auditLog.findMany({
       where: { action: { in: ['error', 'login_failed', 'rate_limit', 'system_error', 'bounce'] } },
@@ -62,12 +66,12 @@ export const systemRouter = router({
       todayStart,
     });
 
-    const hasIssues = services.some(s => s.status !== 'operational');
+    const hasIssues = services.some((s) => s.status !== 'operational');
 
     return {
       services,
       overall: hasIssues ? 'degraded' : 'operational',
-      recentErrors: recentErrors.map(e => {
+      recentErrors: recentErrors.map((e) => {
         const meta = e.metadata as Record<string, unknown> | null;
         return {
           id: e.id,
@@ -81,27 +85,26 @@ export const systemRouter = router({
     };
   }),
 
-  sendBulkNotification: platformProcedure
-    .input(sendBulkNotificationInput)
-    .mutation(async ({ ctx, input }) => {
-      const where: { organizationId?: string; isActive: boolean } = { isActive: true };
-      if (input.organizationId) where.organizationId = input.organizationId;
+  sendBulkNotification: platformProcedure.input(sendBulkNotificationInput).mutation(async ({ ctx, input }) => {
+    const where: { organizationId?: string; isActive: boolean } = { isActive: true };
+    if (input.organizationId) where.organizationId = input.organizationId;
 
-      const users = await db.user.findMany({ where, select: { id: true } });
-      if (users.length === 0) return { sent: 0 };
+    const users = await db.user.findMany({ where, select: { id: true } });
+    if (users.length === 0) return { sent: 0 };
 
-      await db.notification.createMany({
-        data: users.map(u => ({
-          userId: u.id,
-          organizationId: input.organizationId || undefined,
-          type: input.type,
-          title: input.title,
-          message: input.message,
-          module: 'platform',
-        })),
-      });
+    await db.notification.createMany({
+      data: users.map((u) => ({
+        userId: u.id,
+        organizationId: input.organizationId || undefined,
+        type: input.type,
+        title: input.title,
+        message: input.message,
+        module: 'platform',
+      })),
+    });
 
-      await db.auditLog.create({
+    await db.auditLog
+      .create({
         data: {
           organizationId: input.organizationId || ctx.user.organizationId,
           actorId: ctx.user.id,
@@ -109,26 +112,25 @@ export const systemRouter = router({
           entity: 'notification',
           metadata: { title: input.title, type: input.type, userCount: users.length },
         },
-      }).catch(() => {});
+      })
+      .catch(() => {});
 
-      return { sent: users.length };
-    }),
+    return { sent: users.length };
+  }),
 
-  getRecentPlatformEvents: platformProcedure
-    .input(getRecentPlatformEventsInput)
-    .query(async ({ input }) => {
-      return db.auditLog.findMany({
-        orderBy: { createdAt: 'desc' },
-        take: input.limit,
-        select: {
-          id: true,
-          action: true,
-          entity: true,
-          createdAt: true,
-          actor: { select: { id: true, firstName: true, lastName: true, email: true } },
-        },
-      });
-    }),
+  getRecentPlatformEvents: platformProcedure.input(getRecentPlatformEventsInput).query(async ({ input }) => {
+    return db.auditLog.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: input.limit,
+      select: {
+        id: true,
+        action: true,
+        entity: true,
+        createdAt: true,
+        actor: { select: { id: true, firstName: true, lastName: true, email: true } },
+      },
+    });
+  }),
 
   getAnalytics: platformProcedure.query(async () => {
     const now = new Date();
@@ -138,9 +140,14 @@ export const systemRouter = router({
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
     const [
-      orgCount, userCount, activeUsers, subs,
-      newOrgsThisMonth, newOrgsPrevMonth,
-      newUsersThisMonth, newUsersPrevMonth,
+      orgCount,
+      userCount,
+      activeUsers,
+      subs,
+      newOrgsThisMonth,
+      newOrgsPrevMonth,
+      newUsersThisMonth,
+      newUsersPrevMonth,
       cancelledThisMonth,
       countries,
       featureFlags,
@@ -168,7 +175,7 @@ export const systemRouter = router({
     const planCounts: Record<string, number> = {};
     for (const s of subs) planCounts[s.plan] = (planCounts[s.plan] || 0) + 1;
 
-    const activeSubs = subs.filter(s => s.status === 'active');
+    const activeSubs = subs.filter((s) => s.status === 'active');
     const totalMrr = activeSubs.reduce((sum, s) => sum + (PLAN_PRICES[s.plan] || 0), 0);
 
     // Churn: cancelled this month / active at start of month
@@ -193,14 +200,16 @@ export const systemRouter = router({
 
     // Module adoption: % of orgs with each flag enabled
     const totalOrgsForFlags = orgCount || 1;
-    const moduleAdoption = featureFlags.map(f => ({
-      key: f.key,
-      count: f._count,
-      pct: Math.round((f._count / totalOrgsForFlags) * 100),
-    })).sort((a, b) => b.pct - a.pct);
+    const moduleAdoption = featureFlags
+      .map((f) => ({
+        key: f.key,
+        count: f._count,
+        pct: Math.round((f._count / totalOrgsForFlags) * 100),
+      }))
+      .sort((a, b) => b.pct - a.pct);
 
     // Geographic distribution
-    const geo = countries.map(c => ({
+    const geo = countries.map((c) => ({
       country: c.country,
       count: c._count,
     }));
@@ -213,12 +222,13 @@ export const systemRouter = router({
       _sum: { costUsd: true },
     });
     const agentModels = await db.aiAgent.findMany({
-      where: { id: { in: aiByModel.map(a => a.agentId) } },
+      where: { id: { in: aiByModel.map((a) => a.agentId) } },
       select: { id: true, model: true, name: true },
     });
-    const modelMap = new Map(agentModels.map(a => [a.id, a]));
+    const modelMap = new Map(agentModels.map((a) => [a.id, a]));
 
-    let haikuCalls = 0, sonnetCalls = 0;
+    let haikuCalls = 0,
+      sonnetCalls = 0;
     const topAgents: { name: string; calls: number; cost: number }[] = [];
     for (const entry of aiByModel) {
       const agent = modelMap.get(entry.agentId);
@@ -254,117 +264,118 @@ export const systemRouter = router({
     };
   }),
 
-  getCrossOrgAuditLogs: platformProcedure
-    .input(getCrossOrgAuditLogsInput)
-    .query(async ({ input }) => {
-      const { cursor, limit, userId, organizationId, action, entity, dateFrom, dateTo } = input;
+  getCrossOrgAuditLogs: platformProcedure.input(getCrossOrgAuditLogsInput).query(async ({ input }) => {
+    const { cursor, limit, userId, organizationId, action, entity, dateFrom, dateTo } = input;
 
-      const where: Prisma.AuditLogWhereInput = {};
-      if (userId) where.actorId = userId;
-      if (organizationId) where.organizationId = organizationId;
-      if (action) where.action = action;
-      if (entity) where.entity = entity;
-      if (dateFrom || dateTo) {
-        const createdAt: Prisma.DateTimeFilter = {};
-        if (dateFrom) createdAt.gte = dateFrom;
-        if (dateTo) createdAt.lte = dateTo;
-        where.createdAt = createdAt;
-      }
+    const where: Prisma.AuditLogWhereInput = {};
+    if (userId) where.actorId = userId;
+    if (organizationId) where.organizationId = organizationId;
+    if (action) where.action = action;
+    if (entity) where.entity = entity;
+    if (dateFrom || dateTo) {
+      const createdAt: Prisma.DateTimeFilter = {};
+      if (dateFrom) createdAt.gte = dateFrom;
+      if (dateTo) createdAt.lte = dateTo;
+      where.createdAt = createdAt;
+    }
 
-      const logs = await db.auditLog.findMany({
-        where,
-        take: limit + 1,
-        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-        orderBy: { createdAt: 'desc' },
-        select: auditLogSelect,
-      });
+    const logs = await db.auditLog.findMany({
+      where,
+      take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      orderBy: { createdAt: 'desc' },
+      select: auditLogSelect,
+    });
 
-      let nextCursor: string | undefined;
-      if (logs.length > limit) { const n = logs.pop(); nextCursor = n?.id; }
+    let nextCursor: string | undefined;
+    if (logs.length > limit) {
+      const n = logs.pop();
+      nextCursor = n?.id;
+    }
 
-      const total = await db.auditLog.count({ where });
+    const total = await db.auditLog.count({ where });
 
-      return { logs, nextCursor, total };
-    }),
+    return { logs, nextCursor, total };
+  }),
 
-  exportAuditLogsCsv: platformProcedure
-    .input(exportAuditLogsCsvInput)
-    .query(async ({ ctx, input }) => {
-      const where: Prisma.AuditLogWhereInput = {};
-      if (input.organizationId) where.organizationId = input.organizationId;
-      if (input.action) where.action = input.action;
-      if (input.entity) where.entity = input.entity;
-      if (input.dateFrom || input.dateTo) {
-        const createdAt: Prisma.DateTimeFilter = {};
-        if (input.dateFrom) createdAt.gte = input.dateFrom;
-        if (input.dateTo) createdAt.lte = input.dateTo;
-        where.createdAt = createdAt;
-      }
+  exportAuditLogsCsv: platformProcedure.input(exportAuditLogsCsvInput).query(async ({ ctx, input }) => {
+    const where: Prisma.AuditLogWhereInput = {};
+    if (input.organizationId) where.organizationId = input.organizationId;
+    if (input.action) where.action = input.action;
+    if (input.entity) where.entity = input.entity;
+    if (input.dateFrom || input.dateTo) {
+      const createdAt: Prisma.DateTimeFilter = {};
+      if (input.dateFrom) createdAt.gte = input.dateFrom;
+      if (input.dateTo) createdAt.lte = input.dateTo;
+      where.createdAt = createdAt;
+    }
 
-      const logs = await db.auditLog.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        take: 1000,
-        select: {
-          action: true, entity: true, entityId: true, ipAddress: true, createdAt: true,
-          organization: { select: { name: true } },
-          actor: { select: { firstName: true, lastName: true, email: true } },
-        },
-      });
+    const logs = await db.auditLog.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: 1000,
+      select: {
+        action: true,
+        entity: true,
+        entityId: true,
+        ipAddress: true,
+        createdAt: true,
+        organization: { select: { name: true } },
+        actor: { select: { firstName: true, lastName: true, email: true } },
+      },
+    });
 
-      logPlatformExport(ctx, {
-        resource: 'audit_logs',
-        count: logs.length,
-        format: input.format,
-        targetOrgId: input.organizationId,
-      });
+    logPlatformExport(ctx, {
+      resource: 'audit_logs',
+      count: logs.length,
+      format: input.format,
+      targetOrgId: input.organizationId,
+    });
 
-      const actorName = (l: (typeof logs)[number]) =>
-        l.actor ? `${l.actor.firstName} ${l.actor.lastName}`.trim() || l.actor.email : 'Sistema';
+    const actorName = (l: (typeof logs)[number]) =>
+      l.actor ? `${l.actor.firstName} ${l.actor.lastName}`.trim() || l.actor.email : 'Sistema';
 
-      if (input.format === 'json') {
-        const json = JSON.stringify(
-          logs.map((l) => ({
-            date: l.createdAt.toISOString(),
-            organization: l.organization?.name ?? null,
-            actor: actorName(l),
-            action: l.action,
-            entity: l.entity || null,
-            entityId: l.entityId || null,
-            ip: l.ipAddress || null,
-          })),
-          null,
-          2,
-        );
-        return { format: 'json' as const, data: json, count: logs.length };
-      }
-
-      const header = 'Fecha,Organizacion,Actor,Accion,Entidad,ID Entidad,IP';
-      const rows = logs.map((l) =>
-        [
-          l.createdAt.toISOString(),
-          (l.organization?.name ?? '-').replace(/,/g, ' '),
-          actorName(l).replace(/,/g, ' '),
-          l.action,
-          l.entity || '-',
-          l.entityId || '-',
-          l.ipAddress || '-',
-        ].join(','),
+    if (input.format === 'json') {
+      const json = JSON.stringify(
+        logs.map((l) => ({
+          date: l.createdAt.toISOString(),
+          organization: l.organization?.name ?? null,
+          actor: actorName(l),
+          action: l.action,
+          entity: l.entity || null,
+          entityId: l.entityId || null,
+          ip: l.ipAddress || null,
+        })),
+        null,
+        2,
       );
+      return { format: 'json' as const, data: json, count: logs.length };
+    }
 
-      return { format: 'csv' as const, data: [header, ...rows].join('\n'), count: logs.length };
-    }),
+    const header = csvRow(['Fecha', 'Organizacion', 'Actor', 'Accion', 'Entidad', 'ID Entidad', 'IP']);
+    const rows = logs.map((l) =>
+      csvRow([
+        l.createdAt.toISOString(),
+        l.organization?.name ?? '-',
+        actorName(l),
+        l.action,
+        l.entity || '-',
+        l.entityId || '-',
+        l.ipAddress || '-',
+      ]),
+    );
 
-  getOrgAuditLogs: platformProcedure
-    .input(getOrgAuditLogsInput)
-    .query(async ({ input }) => {
-      return db.auditLog.findMany({
-        where: { organizationId: input.organizationId },
-        take: input.limit,
-        orderBy: { createdAt: 'desc' },
-        select: auditLogSelect,
-      });
-    }),
+    return { format: 'csv' as const, data: [header, ...rows].join('\n'), count: logs.length };
+  }),
+
+  getOrgAuditLogs: platformProcedure.input(getOrgAuditLogsInput).query(async ({ input }) => {
+    return db.auditLog.findMany({
+      where: { organizationId: input.organizationId },
+      take: input.limit,
+      orderBy: { createdAt: 'desc' },
+      select: auditLogSelect,
+    });
+  }),
 
   listAllFeatureFlags: platformProcedure.query(async () => {
     const flags = await db.featureFlag.findMany({
@@ -397,17 +408,16 @@ export const systemRouter = router({
     return Object.values(grouped);
   }),
 
-  updateFeatureFlag: platformProcedure
-    .input(updateFeatureFlagInput)
-    .mutation(async ({ ctx, input }) => {
-      const result = await db.featureFlag.upsert({
-        where: { organizationId_key: { organizationId: input.organizationId, key: input.key } },
-        create: { organizationId: input.organizationId, key: input.key, enabled: input.enabled },
-        update: { enabled: input.enabled },
-        select: { id: true, key: true, enabled: true },
-      });
+  updateFeatureFlag: platformProcedure.input(updateFeatureFlagInput).mutation(async ({ ctx, input }) => {
+    const result = await db.featureFlag.upsert({
+      where: { organizationId_key: { organizationId: input.organizationId, key: input.key } },
+      create: { organizationId: input.organizationId, key: input.key, enabled: input.enabled },
+      update: { enabled: input.enabled },
+      select: { id: true, key: true, enabled: true },
+    });
 
-      await db.auditLog.create({
+    await db.auditLog
+      .create({
         data: {
           action: `feature_flag_${input.enabled ? 'enabled' : 'disabled'}`,
           entity: 'feature_flag',
@@ -416,65 +426,62 @@ export const systemRouter = router({
           actorId: ctx.user.id,
           metadata: { key: input.key, enabled: input.enabled },
         },
-      }).catch(() => {});
+      })
+      .catch(() => {});
 
-      await cacheInvalidatePrefix(`tims:flagcheck:${input.organizationId}:`);
-      return result;
-    }),
+    await cacheInvalidatePrefix(`tims:flagcheck:${input.organizationId}:`);
+    return result;
+  }),
 
-  createFeatureFlagForAllOrgs: platformProcedure
-    .input(createFeatureFlagForAllOrgsInput)
-    .mutation(async ({ input }) => {
-      const orgs = await db.organization.findMany({ select: { id: true } });
-      let created = 0;
-      for (const org of orgs) {
-        try {
-          await db.featureFlag.upsert({
-            where: { organizationId_key: { organizationId: org.id, key: input.key } },
-            create: { organizationId: org.id, key: input.key, enabled: input.enabled },
-            update: {},
-          });
-          created++;
-        } catch { /* skip duplicates */ }
+  createFeatureFlagForAllOrgs: platformProcedure.input(createFeatureFlagForAllOrgsInput).mutation(async ({ input }) => {
+    const orgs = await db.organization.findMany({ select: { id: true } });
+    let created = 0;
+    for (const org of orgs) {
+      try {
+        await db.featureFlag.upsert({
+          where: { organizationId_key: { organizationId: org.id, key: input.key } },
+          create: { organizationId: org.id, key: input.key, enabled: input.enabled },
+          update: {},
+        });
+        created++;
+      } catch {
+        /* skip duplicates */
       }
-      // Affects all orgs — clear the entire flag-check namespace.
-      await cacheInvalidatePrefix('tims:flagcheck:');
-      return { key: input.key, created, total: orgs.length };
-    }),
+    }
+    // Affects all orgs — clear the entire flag-check namespace.
+    await cacheInvalidatePrefix('tims:flagcheck:');
+    return { key: input.key, created, total: orgs.length };
+  }),
 
-  deleteFeatureFlag: platformProcedure
-    .input(deleteFeatureFlagInput)
-    .mutation(async ({ ctx, input }) => {
-      const deleted = await db.featureFlag.delete({
-        where: { id: input.id },
-        select: { id: true, key: true, organizationId: true },
-      });
-      await cacheInvalidatePrefix(`tims:flagcheck:${deleted.organizationId}:`);
+  deleteFeatureFlag: platformProcedure.input(deleteFeatureFlagInput).mutation(async ({ ctx, input }) => {
+    const deleted = await db.featureFlag.delete({
+      where: { id: input.id },
+      select: { id: true, key: true, organizationId: true },
+    });
+    await cacheInvalidatePrefix(`tims:flagcheck:${deleted.organizationId}:`);
 
-      // CB-1c: privileged flag change (single-org deletion — faithfully attributable).
-      // The all-org flag writes (createFeatureFlagForAllOrgs / deleteFeatureFlagByKey /
-      // seedFeatureFlags) span every org and have no single org to satisfy the FK — they
-      // await the FK-less audit_logs follow-up (CB-1b) for faithful per-org attribution.
-      void logSecurityEvent({
-        organizationId: deleted.organizationId,
-        actorId: ctx.user.impersonatorId ?? ctx.user.id,
-        action: 'feature_flag_changed',
-        entity: 'feature_flag',
-        entityId: deleted.id,
-        metadata: { key: deleted.key, deleted: true },
-      });
+    // CB-1c: privileged flag change (single-org deletion — faithfully attributable).
+    // The all-org flag writes (createFeatureFlagForAllOrgs / deleteFeatureFlagByKey /
+    // seedFeatureFlags) span every org and have no single org to satisfy the FK — they
+    // await the FK-less audit_logs follow-up (CB-1b) for faithful per-org attribution.
+    void logSecurityEvent({
+      organizationId: deleted.organizationId,
+      actorId: ctx.user.impersonatorId ?? ctx.user.id,
+      action: 'feature_flag_changed',
+      entity: 'feature_flag',
+      entityId: deleted.id,
+      metadata: { key: deleted.key, deleted: true },
+    });
 
-      return deleted;
-    }),
+    return deleted;
+  }),
 
-  deleteFeatureFlagByKey: platformProcedure
-    .input(deleteFeatureFlagByKeyInput)
-    .mutation(async ({ input }) => {
-      const deleted = await db.featureFlag.deleteMany({ where: { key: input.key } });
-      // Affects all orgs — clear the entire flag-check namespace.
-      await cacheInvalidatePrefix('tims:flagcheck:');
-      return { key: input.key, deleted: deleted.count };
-    }),
+  deleteFeatureFlagByKey: platformProcedure.input(deleteFeatureFlagByKeyInput).mutation(async ({ input }) => {
+    const deleted = await db.featureFlag.deleteMany({ where: { key: input.key } });
+    // Affects all orgs — clear the entire flag-check namespace.
+    await cacheInvalidatePrefix('tims:flagcheck:');
+    return { key: input.key, deleted: deleted.count };
+  }),
 
   seedFeatureFlags: platformProcedure.mutation(async () => {
     const existing = await db.featureFlag.count();
@@ -482,12 +489,12 @@ export const systemRouter = router({
 
     const orgs = await db.organization.findMany({ select: { id: true } });
 
-    const data = orgs.flatMap(org =>
-      SYSTEM_FLAG_KEYS.map(key => ({
+    const data = orgs.flatMap((org) =>
+      SYSTEM_FLAG_KEYS.map((key) => ({
         organizationId: org.id,
         key,
         enabled: key === 'ai_enabled',
-      }))
+      })),
     );
 
     await db.featureFlag.createMany({ data, skipDuplicates: true });
