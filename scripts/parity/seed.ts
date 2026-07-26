@@ -78,12 +78,22 @@ const PASSWORD = 'Parity!Test-2026';
 const ORG_SLUGS: Record<'a' | 'b', string> = { a: '__parity_a', b: '__parity_b' };
 const ORG_KEYS: readonly ('a' | 'b')[] = ['a', 'b'];
 
-/** Pure + deterministic: no I/O, no randomness. Unit-tested directly. */
+/** Pure + deterministic: no I/O, no randomness. Unit-tested directly.
+ *
+ * Every role is seeded once PER ORG (the harness's normal org-scoped-RBAC shape) — EXCEPT
+ * `platform_owner`: a platform owner is org-less in reality (gated by `users.is_platform_owner`,
+ * not by any per-org role/RLS), so seeding one per org would fabricate a nonexistent second
+ * identity. It's seeded exactly ONCE, under orgKey 'a', purely because the harness's
+ * per-(org,role) token-cache keying needs *some* orgKey to hang the cached token off of —
+ * `organizationId` is otherwise irrelevant to this identity (see the `audit-log` surface in
+ * surfaces.ts, the only surface that uses this role). */
 export function planSeed(roles: string[]): SeedPlan {
   const users: SeededUser[] = [];
   for (const orgKey of ORG_KEYS)
-    for (const role of roles)
+    for (const role of roles) {
+      if (role === 'platform_owner' && orgKey === 'b') continue;
       users.push({ email: `parity+${orgKey}-${role}@tims.test`, password: PASSWORD, orgKey, role });
+    }
   return { orgs: ORG_KEYS.map((k) => ORG_SLUGS[k]), users };
 }
 
@@ -119,7 +129,7 @@ function makeDbClient(cfg: HarnessConfig): Client {
       'seed: DATABASE_URL is required to write DB rows via direct Postgres (the Data API is locked ' +
         'down for service_role on this project — see the seed()/teardown() comment in seed.ts). ' +
         'Set DATABASE_URL in scripts/parity/.env (Supabase dashboard > Project Settings > Database > ' +
-        'Connection string > URI, "postgres" role).'
+        'Connection string > URI, "postgres" role).',
     );
   }
   // Pin Supabase's own root CA (SUPABASE_ROOT_CA above) rather than disabling verification —
@@ -138,7 +148,7 @@ async function upsertOrg(db: Client, slug: string): Promise<string> {
     `INSERT INTO organizations (id, name, slug, updated_at) VALUES (gen_random_uuid(), $1, $2, now())
      ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name, updated_at = now()
      RETURNING id`,
-    [`TIMS Parity Harness (${slug})`, slug]
+    [`TIMS Parity Harness (${slug})`, slug],
   );
   return rows[0].id;
 }
@@ -150,7 +160,7 @@ async function upsertRole(db: Client, organizationId: string, roleSlug: string):
      VALUES (gen_random_uuid(), $1, $2, $2, true, now())
      ON CONFLICT (organization_id, slug) DO UPDATE SET name = EXCLUDED.name, updated_at = now()
      RETURNING id`,
-    [organizationId, roleSlug]
+    [organizationId, roleSlug],
   );
   return rows[0].id;
 }
@@ -202,7 +212,7 @@ async function upsertPublicUser(
   authUserId: string,
   organizationId: string,
   email: string,
-  role: string
+  role: string,
 ): Promise<string> {
   const { rows } = await db.query<IdRow>(
     `INSERT INTO users (id, supabase_user_id, organization_id, email, first_name, last_name, updated_at)
@@ -214,7 +224,7 @@ async function upsertPublicUser(
        last_name = EXCLUDED.last_name,
        updated_at = now()
      RETURNING id`,
-    [authUserId, organizationId, email, 'Parity', role]
+    [authUserId, organizationId, email, 'Parity', role],
   );
   return rows[0].id;
 }
@@ -224,7 +234,7 @@ async function upsertUserRoleGrant(db: Client, userId: string, roleId: string): 
   await db.query(
     `INSERT INTO user_roles (id, user_id, role_id) VALUES (gen_random_uuid(), $1, $2)
      ON CONFLICT (user_id, role_id) DO NOTHING`,
-    [userId, roleId]
+    [userId, roleId],
   );
 }
 
@@ -244,24 +254,19 @@ async function upsertPermission(db: Client, module: string, action: string): Pro
      VALUES (gen_random_uuid(), $1, $2, $3)
      ON CONFLICT (module, action) DO UPDATE SET description = permissions.description
      RETURNING id`,
-    [module, action, `${module}.${action}`]
+    [module, action, `${module}.${action}`],
   );
   return rows[0].id;
 }
 
 /** Grant a role a permission at `scope` (idempotent). `scope` uses the ladder in
  *  seed-access-matrix.ts ('own'|'team'|'unit'|'company'|'organization'). */
-async function upsertRolePermission(
-  db: Client,
-  roleId: string,
-  permissionId: string,
-  scope: string
-): Promise<void> {
+async function upsertRolePermission(db: Client, roleId: string, permissionId: string, scope: string): Promise<void> {
   await db.query(
     `INSERT INTO role_permissions (id, role_id, permission_id, scope)
      VALUES (gen_random_uuid(), $1, $2, $3)
      ON CONFLICT (role_id, permission_id) DO UPDATE SET scope = EXCLUDED.scope`,
-    [roleId, permissionId, scope]
+    [roleId, permissionId, scope],
   );
 }
 
@@ -293,12 +298,12 @@ async function findOrCreateByName(
   table: 'companies' | 'business_units' | 'teams',
   organizationId: string,
   name: string,
-  insert: () => Promise<string>
+  insert: () => Promise<string>,
 ): Promise<string> {
-  const found = await db.query<IdRow>(
-    `SELECT id FROM ${table} WHERE organization_id = $1 AND name = $2 LIMIT 1`,
-    [organizationId, name]
-  );
+  const found = await db.query<IdRow>(`SELECT id FROM ${table} WHERE organization_id = $1 AND name = $2 LIMIT 1`, [
+    organizationId,
+    name,
+  ]);
   if (found.rows.length) return found.rows[0].id;
   return insert();
 }
@@ -308,7 +313,7 @@ async function findOrCreateCompany(db: Client, orgId: string, name: string): Pro
     const { rows } = await db.query<IdRow>(
       `INSERT INTO companies (id, organization_id, name, country, updated_at)
        VALUES (gen_random_uuid(), $1, $2, $3, now()) RETURNING id`,
-      [orgId, name, 'CR']
+      [orgId, name, 'CR'],
     );
     return rows[0].id;
   });
@@ -319,7 +324,7 @@ async function findOrCreateBusinessUnit(db: Client, orgId: string, companyId: st
     const { rows } = await db.query<IdRow>(
       `INSERT INTO business_units (id, organization_id, company_id, name, updated_at)
        VALUES (gen_random_uuid(), $1, $2, $3, now()) RETURNING id`,
-      [orgId, companyId, name]
+      [orgId, companyId, name],
     );
     return rows[0].id;
   });
@@ -330,13 +335,13 @@ async function findOrCreateTeam(
   orgId: string,
   businessUnitId: string,
   name: string,
-  leaderId: string | null
+  leaderId: string | null,
 ): Promise<string> {
   return findOrCreateByName(db, 'teams', orgId, name, async () => {
     const { rows } = await db.query<IdRow>(
       `INSERT INTO teams (id, organization_id, business_unit_id, name, leader_id, updated_at)
        VALUES (gen_random_uuid(), $1, $2, $3, $4, now()) RETURNING id`,
-      [orgId, businessUnitId, name, leaderId]
+      [orgId, businessUnitId, name, leaderId],
     );
     return rows[0].id;
   });
@@ -347,7 +352,7 @@ async function upsertUserTeam(db: Client, userId: string, teamId: string): Promi
   await db.query(
     `INSERT INTO user_teams (id, user_id, team_id) VALUES (gen_random_uuid(), $1, $2)
      ON CONFLICT (user_id, team_id) DO NOTHING`,
-    [userId, teamId]
+    [userId, teamId],
   );
 }
 
@@ -357,7 +362,7 @@ async function upsertUserTeam(db: Client, userId: string, teamId: string): Promi
 export async function seedTeamIntelData(
   db: Client,
   orgIds: Record<'a' | 'b', string>,
-  userIds: Map<string, string>
+  userIds: Map<string, string>,
 ): Promise<void> {
   for (const key of ORG_KEYS) {
     const companyId = await findOrCreateCompany(db, orgIds[key], `Parity Co (${key})`);
@@ -402,7 +407,7 @@ async function seedBillingSubscription(db: Client, orgAId: string): Promise<void
        current_period_start = EXCLUDED.current_period_start,
        current_period_end = EXCLUDED.current_period_end,
        updated_at = now()`,
-    [orgAId]
+    [orgAId],
   );
 }
 
@@ -435,7 +440,13 @@ async function seedReportingGrants(db: Client, roleIds: Map<string, string>): Pr
 // candidates/applications upsert on their composite uniques; vacancy/stages/offer find-or-create then
 // UPDATE their time-relative fields, so a re-run always re-centres the dates on the latest now().
 async function upsertReportingCandidate(
-  db: Client, orgId: string, email: string, first: string, last: string, source: string, poolType: string
+  db: Client,
+  orgId: string,
+  email: string,
+  first: string,
+  last: string,
+  source: string,
+  poolType: string,
 ): Promise<string> {
   const { rows } = await db.query<IdRow>(
     `INSERT INTO candidates (id, organization_id, first_name, last_name, email, source, pool_type, updated_at)
@@ -443,24 +454,28 @@ async function upsertReportingCandidate(
      ON CONFLICT (organization_id, email) DO UPDATE SET
        source = EXCLUDED.source, pool_type = EXCLUDED.pool_type, updated_at = now()
      RETURNING id`,
-    [orgId, first, last, email, source, poolType]
+    [orgId, first, last, email, source, poolType],
   );
   return rows[0].id;
 }
 
 async function upsertReportingVacancy(
-  db: Client, orgId: string, title: string, createdBy: string, assignedTo: string
+  db: Client,
+  orgId: string,
+  title: string,
+  createdBy: string,
+  assignedTo: string,
 ): Promise<string> {
-  const found = await db.query<IdRow>(
-    'SELECT id FROM vacancies WHERE organization_id = $1 AND title = $2 LIMIT 1',
-    [orgId, title]
-  );
+  const found = await db.query<IdRow>('SELECT id FROM vacancies WHERE organization_id = $1 AND title = $2 LIMIT 1', [
+    orgId,
+    title,
+  ]);
   if (found.rows.length) {
     const id = found.rows[0].id;
     await db.query(
       `UPDATE vacancies SET assigned_to = $2, status = 'open', deleted_at = NULL,
          created_at = now() - make_interval(days => 20), updated_at = now() WHERE id = $1`,
-      [id, assignedTo]
+      [id, assignedTo],
     );
     return id;
   }
@@ -468,35 +483,51 @@ async function upsertReportingVacancy(
     `INSERT INTO vacancies (id, organization_id, title, created_by, assigned_to, status, created_at, updated_at)
      VALUES (gen_random_uuid(), $1, $2, $3, $4, 'open', now() - make_interval(days => 20), now())
      RETURNING id`,
-    [orgId, title, createdBy, assignedTo]
+    [orgId, title, createdBy, assignedTo],
   );
   return rows[0].id;
 }
 
 async function upsertReportingStage(
-  db: Client, orgId: string, vacancyId: string, name: string, order: number, slaHours: number
+  db: Client,
+  orgId: string,
+  vacancyId: string,
+  name: string,
+  order: number,
+  slaHours: number,
 ): Promise<string> {
-  const found = await db.query<IdRow>(
-    'SELECT id FROM pipeline_stages WHERE vacancy_id = $1 AND name = $2 LIMIT 1',
-    [vacancyId, name]
-  );
+  const found = await db.query<IdRow>('SELECT id FROM pipeline_stages WHERE vacancy_id = $1 AND name = $2 LIMIT 1', [
+    vacancyId,
+    name,
+  ]);
   if (found.rows.length) {
     const id = found.rows[0].id;
-    await db.query('UPDATE pipeline_stages SET "order" = $2, sla_hours = $3, updated_at = now() WHERE id = $1', [id, order, slaHours]);
+    await db.query('UPDATE pipeline_stages SET "order" = $2, sla_hours = $3, updated_at = now() WHERE id = $1', [
+      id,
+      order,
+      slaHours,
+    ]);
     return id;
   }
   const { rows } = await db.query<IdRow>(
     `INSERT INTO pipeline_stages (id, organization_id, vacancy_id, name, "order", sla_hours, updated_at)
      VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, now())
      RETURNING id`,
-    [orgId, vacancyId, name, order, slaHours]
+    [orgId, vacancyId, name, order, slaHours],
   );
   return rows[0].id;
 }
 
 async function upsertReportingApplication(
-  db: Client, orgId: string, candidateId: string, vacancyId: string, stageId: string,
-  source: string, status: string, appliedDaysAgo: number, rejectedDaysAgo: number | null
+  db: Client,
+  orgId: string,
+  candidateId: string,
+  vacancyId: string,
+  stageId: string,
+  source: string,
+  status: string,
+  appliedDaysAgo: number,
+  rejectedDaysAgo: number | null,
 ): Promise<string> {
   const rejectedExpr = rejectedDaysAgo == null ? 'NULL' : 'now() - make_interval(days => $8)';
   const params: unknown[] = [orgId, candidateId, vacancyId, stageId, source, status, appliedDaysAgo];
@@ -509,23 +540,28 @@ async function upsertReportingApplication(
        current_stage_id = EXCLUDED.current_stage_id, source = EXCLUDED.source, status = EXCLUDED.status,
        applied_at = EXCLUDED.applied_at, rejected_at = EXCLUDED.rejected_at, updated_at = now()
      RETURNING id`,
-    params
+    params,
   );
   return rows[0].id;
 }
 
 async function upsertReportingOffer(
-  db: Client, orgId: string, candidateId: string, vacancyId: string, applicationId: string, createdById: string
+  db: Client,
+  orgId: string,
+  candidateId: string,
+  vacancyId: string,
+  applicationId: string,
+  createdById: string,
 ): Promise<void> {
   const found = await db.query<IdRow>(
     'SELECT id FROM offers WHERE organization_id = $1 AND application_id = $2 LIMIT 1',
-    [orgId, applicationId]
+    [orgId, applicationId],
   );
   if (found.rows.length) {
     await db.query(
       `UPDATE offers SET status = 'accepted', sent_at = now() - make_interval(days => 5),
          responded_at = now() - make_interval(days => 2), updated_at = now() WHERE id = $1`,
-      [found.rows[0].id]
+      [found.rows[0].id],
     );
     return;
   }
@@ -536,25 +572,47 @@ async function upsertReportingOffer(
      VALUES (gen_random_uuid(), $1, $2, $3, $4, 'accepted', 50000, 'USD',
              now() + make_interval(days => 14), 'full_time', $5,
              now() - make_interval(days => 5), now() - make_interval(days => 2), now())`,
-    [orgId, candidateId, vacancyId, applicationId, createdById]
+    [orgId, candidateId, vacancyId, applicationId, createdById],
   );
 }
 
-export async function seedReportingData(
-  db: Client, orgAId: string, userIds: Map<string, string>
-): Promise<void> {
+export async function seedReportingData(db: Client, orgAId: string, userIds: Map<string, string>): Promise<void> {
   const recruiter = userIds.get('a:hr_admin');
   // Recruiter (vacancy.assignedTo → recruiter-sla) + creators need seeded users; skip if the
   // relevant roles weren't seeded (roles-subset callers). super_admin is the vacancy creator.
   if (!recruiter) return;
   const createdBy = userIds.get('a:super_admin') ?? recruiter;
 
-  const cand1 = await upsertReportingCandidate(db, orgAId, 'parity+a-cand1@tims.test', 'Cand', 'One', 'linkedin', 'active');
-  const cand2 = await upsertReportingCandidate(db, orgAId, 'parity+a-cand2@tims.test', 'Cand', 'Two', 'referral', 'active');
+  const cand1 = await upsertReportingCandidate(
+    db,
+    orgAId,
+    'parity+a-cand1@tims.test',
+    'Cand',
+    'One',
+    'linkedin',
+    'active',
+  );
+  const cand2 = await upsertReportingCandidate(
+    db,
+    orgAId,
+    'parity+a-cand2@tims.test',
+    'Cand',
+    'Two',
+    'referral',
+    'active',
+  );
   // cand3 (also linkedin) makes the source counts DISTINCT — linkedin=2, referral=1 — so
   // source-breakdown's "sort by applications desc" is deterministic on both stacks regardless
   // of groupBy input order (no equal-count tie relying on the OrderBy(source) tiebreak).
-  const cand3 = await upsertReportingCandidate(db, orgAId, 'parity+a-cand3@tims.test', 'Cand', 'Three', 'linkedin', 'active');
+  const cand3 = await upsertReportingCandidate(
+    db,
+    orgAId,
+    'parity+a-cand3@tims.test',
+    'Cand',
+    'Three',
+    'linkedin',
+    'active',
+  );
   const vac = await upsertReportingVacancy(db, orgAId, 'Parity Vacancy A1', createdBy, recruiter);
   const s1 = await upsertReportingStage(db, orgAId, vac, 'Applied', 0, 720); // 30d SLA: keeps the aged active apps on-time
   const s2 = await upsertReportingStage(db, orgAId, vac, 'Interview', 1, 48); // 48h SLA: the rejected app breaches it
@@ -598,7 +656,12 @@ const COMP_USER_SUPA: Record<string, string> = {
   comp2: '00000000-0000-4000-8000-0000000c0002',
 };
 async function upsertBareUser(
-  db: Client, orgId: string, supaId: string, email: string, first: string, last: string
+  db: Client,
+  orgId: string,
+  supaId: string,
+  email: string,
+  first: string,
+  last: string,
 ): Promise<string> {
   const { rows } = await db.query<IdRow>(
     `INSERT INTO users (id, supabase_user_id, organization_id, email, first_name, last_name, updated_at)
@@ -606,12 +669,16 @@ async function upsertBareUser(
      ON CONFLICT (supabase_user_id) DO UPDATE SET
        organization_id = EXCLUDED.organization_id, email = EXCLUDED.email, updated_at = now()
      RETURNING id`,
-    [supaId, orgId, email, first, last]
+    [supaId, orgId, email, first, last],
   );
   return rows[0].id;
 }
 async function upsertEmployeeComp(
-  db: Client, orgId: string, userId: string, salary: number, compaRatio: number
+  db: Client,
+  orgId: string,
+  userId: string,
+  salary: number,
+  compaRatio: number,
 ): Promise<void> {
   await db.query(
     `INSERT INTO employee_compensations
@@ -620,7 +687,7 @@ async function upsertEmployeeComp(
      ON CONFLICT (organization_id, user_id) DO UPDATE SET
        current_salary = EXCLUDED.current_salary, compa_ratio = EXCLUDED.compa_ratio,
        effective_date = now(), updated_at = now()`,
-    [orgId, userId, salary, compaRatio]
+    [orgId, userId, salary, compaRatio],
   );
 }
 
@@ -629,9 +696,7 @@ async function upsertEmployeeComp(
 // distribution clears min-5 (else it self-suppresses to an all-zero object == empty org B → false-fail),
 // 1 benefit plan + enrollment, 1 pending salary adjustment. No native enums (type/status/currency plain
 // text → no casts). a:super_admin gets a comp row so /my-compensation is 200-non-empty for the probe.
-export async function seedCompensationData(
-  db: Client, orgAId: string, userIds: Map<string, string>
-): Promise<void> {
+export async function seedCompensationData(db: Client, orgAId: string, userIds: Map<string, string>): Promise<void> {
   const superId = userIds.get('a:super_admin');
   const hrId = userIds.get('a:hr_admin');
   const hrbpId = userIds.get('a:hrbp');
@@ -642,36 +707,41 @@ export async function seedCompensationData(
      VALUES (gen_random_uuid(), $1, 'PARITY-L1', 'Parity Band L1', 80000, 100000, 120000, now())
      ON CONFLICT (organization_id, level) DO UPDATE SET
        min_salary = EXCLUDED.min_salary, mid_salary = EXCLUDED.mid_salary, max_salary = EXCLUDED.max_salary, updated_at = now()`,
-    [orgAId]
+    [orgAId],
   );
   const comp1 = await upsertBareUser(db, orgAId, COMP_USER_SUPA.comp1, 'parity+a-comp1@tims.test', 'Comp', 'One');
   const comp2 = await upsertBareUser(db, orgAId, COMP_USER_SUPA.comp2, 'parity+a-comp2@tims.test', 'Comp', 'Two');
   for (const uid of [superId, hrId, hrbpId, comp1, comp2]) await upsertEmployeeComp(db, orgAId, uid, 60000, 1.05);
 
-  const found = await db.query<IdRow>('SELECT id FROM benefit_plans WHERE organization_id = $1 AND name = $2 LIMIT 1', [orgAId, 'Parity Health A']);
+  const found = await db.query<IdRow>('SELECT id FROM benefit_plans WHERE organization_id = $1 AND name = $2 LIMIT 1', [
+    orgAId,
+    'Parity Health A',
+  ]);
   const planId = found.rows.length
     ? found.rows[0].id
-    : (await db.query<IdRow>(
-        `INSERT INTO benefit_plans (id, organization_id, name, type, updated_at)
+    : (
+        await db.query<IdRow>(
+          `INSERT INTO benefit_plans (id, organization_id, name, type, updated_at)
          VALUES (gen_random_uuid(), $1, 'Parity Health A', 'health', now()) RETURNING id`,
-        [orgAId]
-      )).rows[0].id;
+          [orgAId],
+        )
+      ).rows[0].id;
   await db.query(
     `INSERT INTO benefit_enrollments (id, organization_id, user_id, benefit_plan_id)
      VALUES (gen_random_uuid(), $1, $2, $3) ON CONFLICT (user_id, benefit_plan_id) DO NOTHING`,
-    [orgAId, superId, planId]
+    [orgAId, superId, planId],
   );
 
   const adj = await db.query<IdRow>(
     `SELECT id FROM salary_adjustments WHERE organization_id = $1 AND user_id = $2 AND status = 'pending' LIMIT 1`,
-    [orgAId, hrId]
+    [orgAId, hrId],
   );
   if (!adj.rows.length) {
     await db.query(
       `INSERT INTO salary_adjustments
          (id, organization_id, user_id, type, previous_salary, new_salary, requested_by_id, updated_at)
        VALUES (gen_random_uuid(), $1, $2, 'merit', 60000, 66000, $3, now())`,
-      [orgAId, hrId, superId]
+      [orgAId, hrId, superId],
     );
   }
 }
@@ -711,18 +781,30 @@ const EVAL_CYCLE: Record<string, string> = {
   pubB: 'e0000360-0000-4000-8000-00000000001a',
 };
 async function upsertReviewCycle(
-  db: Client, id: string, orgId: string, name: string, status: string, createdBy: string, published: boolean
+  db: Client,
+  id: string,
+  orgId: string,
+  name: string,
+  status: string,
+  createdBy: string,
+  published: boolean,
 ): Promise<void> {
   await db.query(
     `INSERT INTO review_cycles (id, organization_id, name, status, created_by_id, opens_at, published_at, updated_at)
      VALUES ($1, $2, $3, $4::"ReviewCycleStatus", $5, now() - make_interval(days => 30),
              ${published ? 'now() - make_interval(days => 5)' : 'NULL'}, now())
      ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, status = EXCLUDED.status, published_at = EXCLUDED.published_at, updated_at = now()`,
-    [id, orgId, name, status, createdBy]
+    [id, orgId, name, status, createdBy],
   );
 }
 async function upsertRaterAssignment(
-  db: Client, orgId: string, cycleId: string, subjectId: string, raterId: string, relationship: string, status: string
+  db: Client,
+  orgId: string,
+  cycleId: string,
+  subjectId: string,
+  raterId: string,
+  relationship: string,
+  status: string,
 ): Promise<string> {
   const { rows } = await db.query<IdRow>(
     `INSERT INTO rater_assignments
@@ -731,7 +813,7 @@ async function upsertRaterAssignment(
      ON CONFLICT (cycle_id, subject_user_id, rater_user_id) DO UPDATE SET
        relationship = EXCLUDED.relationship, status = EXCLUDED.status, updated_at = now()
      RETURNING id`,
-    [orgId, cycleId, subjectId, raterId, relationship, status]
+    [orgId, cycleId, subjectId, raterId, relationship, status],
   );
   return rows[0].id;
 }
@@ -739,9 +821,7 @@ async function upsertRaterAssignment(
 // Org A ONLY (org B empty → strong Mode B). An open cycle + a published cycle; super_admin (the probe)
 // is a RATER of hr_admin in the open cycle (→ my-rater-tasks non-empty) AND a self-SUBJECT of the
 // published cycle with a response (→ my-report-cycles non-empty + the Tier-2 my-report content).
-export async function seedEvaluation360Data(
-  db: Client, orgAId: string, userIds: Map<string, string>
-): Promise<void> {
+export async function seedEvaluation360Data(db: Client, orgAId: string, userIds: Map<string, string>): Promise<void> {
   const superId = userIds.get('a:super_admin');
   const hrId = userIds.get('a:hr_admin');
   if (!superId || !hrId) return;
@@ -753,7 +833,7 @@ export async function seedEvaluation360Data(
     `INSERT INTO rater_responses (id, organization_id, assignment_id, competency_key, rating, comment, updated_at)
      VALUES (gen_random_uuid(), $1, $2, 'communication', 4, 'self note', now())
      ON CONFLICT (assignment_id, competency_key) DO UPDATE SET rating = EXCLUDED.rating, comment = EXCLUDED.comment, updated_at = now()`,
-    [orgAId, selfAssign]
+    [orgAId, selfAssign],
   );
 }
 
@@ -779,7 +859,14 @@ async function seedNineBoxGrants(db: Client, roleIds: Map<string, string>): Prom
   }
 }
 async function upsertNineBoxEval(
-  db: Client, orgId: string, userId: string, period: string, pot: number, perf: number, quadrant: string, evalDaysAgo: number
+  db: Client,
+  orgId: string,
+  userId: string,
+  period: string,
+  pot: number,
+  perf: number,
+  quadrant: string,
+  evalDaysAgo: number,
 ): Promise<void> {
   // axis_breakdown is jsonb NOT NULL; nine_box_evaluations has NO updated_at column. Distinct
   // evaluated_at (K days ago) keeps grid/movement ordering deterministic across stacks.
@@ -790,21 +877,25 @@ async function upsertNineBoxEval(
      ON CONFLICT (organization_id, user_id, period) DO UPDATE SET
        potential_score = EXCLUDED.potential_score, performance_score = EXCLUDED.performance_score,
        quadrant = EXCLUDED.quadrant, evaluated_at = EXCLUDED.evaluated_at`,
-    [orgId, userId, period, pot, perf, quadrant, evalDaysAgo]
+    [orgId, userId, period, pot, perf, quadrant, evalDaysAgo],
   );
 }
 async function findOrCreateCalibrationSession(
-  db: Client, orgId: string, createdBy: string, period: string, status: string
+  db: Client,
+  orgId: string,
+  createdBy: string,
+  period: string,
+  status: string,
 ): Promise<string> {
   const found = await db.query<IdRow>(
     'SELECT id FROM calibration_sessions WHERE organization_id = $1 AND created_by_id = $2 AND period = $3 LIMIT 1',
-    [orgId, createdBy, period]
+    [orgId, createdBy, period],
   );
   if (found.rows.length) return found.rows[0].id;
   const { rows } = await db.query<IdRow>(
     `INSERT INTO calibration_sessions (id, organization_id, period, status, created_by_id, updated_at)
      VALUES (gen_random_uuid(), $1, $3, $4, $2, now()) RETURNING id`,
-    [orgId, createdBy, period, status]
+    [orgId, createdBy, period, status],
   );
   return rows[0].id;
 }
@@ -813,9 +904,7 @@ async function findOrCreateCalibrationSession(
 // high_potential) + super_admin's prior 2025-Q4 eval (drives movement-history), + 1 draft calibration
 // session (super_admin = creator → my-calibrations) with 1 member + 1 vote (kept ≤1 each so the Tier-2
 // by-id members/votes arrays have no ordering ambiguity).
-export async function seedNineBoxData(
-  db: Client, orgAId: string, userIds: Map<string, string>
-): Promise<void> {
+export async function seedNineBoxData(db: Client, orgAId: string, userIds: Map<string, string>): Promise<void> {
   const superId = userIds.get('a:super_admin');
   const hrId = userIds.get('a:hr_admin');
   const hrbpId = userIds.get('a:hrbp');
@@ -828,13 +917,13 @@ export async function seedNineBoxData(
   await db.query(
     `INSERT INTO calibration_members (id, session_id, user_id, status) VALUES (gen_random_uuid(), $1, $2, 'invited')
      ON CONFLICT (session_id, user_id) DO NOTHING`,
-    [session, hrId]
+    [session, hrId],
   );
   await db.query(
     `INSERT INTO calibration_votes (id, session_id, evaluated_user_id, voter_id, quadrant)
      VALUES (gen_random_uuid(), $1, $2, $3, 'core_player')
      ON CONFLICT (session_id, evaluated_user_id, voter_id) DO NOTHING`,
-    [session, hrbpId, hrId]
+    [session, hrbpId, hrId],
   );
 }
 
@@ -864,15 +953,23 @@ async function seedSuccessionGrants(db: Client, roleIds: Map<string, string>): P
   }
 }
 async function findOrCreateCriticalRole(
-  db: Client, orgId: string, title: string, criticality: string,
-  flightRisk: number | null, targetBand: string | null, holderId: string | null
+  db: Client,
+  orgId: string,
+  title: string,
+  criticality: string,
+  flightRisk: number | null,
+  targetBand: string | null,
+  holderId: string | null,
 ): Promise<string> {
-  const found = await db.query<IdRow>('SELECT id FROM critical_roles WHERE organization_id = $1 AND title = $2 LIMIT 1', [orgId, title]);
+  const found = await db.query<IdRow>(
+    'SELECT id FROM critical_roles WHERE organization_id = $1 AND title = $2 LIMIT 1',
+    [orgId, title],
+  );
   if (found.rows.length) {
     const id = found.rows[0].id;
     await db.query(
       `UPDATE critical_roles SET criticality = $2, flight_risk = $3, target_band_level = $4, current_holder_id = $5, updated_at = now() WHERE id = $1`,
-      [id, criticality, flightRisk, targetBand, holderId]
+      [id, criticality, flightRisk, targetBand, holderId],
     );
     return id;
   }
@@ -880,7 +977,7 @@ async function findOrCreateCriticalRole(
     `INSERT INTO critical_roles
        (id, organization_id, title, criticality, flight_risk, target_band_level, current_holder_id, updated_at)
      VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, now()) RETURNING id`,
-    [orgId, title, criticality, flightRisk, targetBand, holderId]
+    [orgId, title, criticality, flightRisk, targetBand, holderId],
   );
   return rows[0].id;
 }
@@ -889,20 +986,26 @@ async function findOrCreateCriticalRole(
 // super_admin) WITH a ready-now successor (hr_admin — whose 60000 comp row from the compensation seed is
 // < PARITY-L1 mid 100000 * 0.9 = 90000 → comp-gap-alert fires) + CR2 (high, no successor →
 // roles-without-successor). MUST run after seedCompensationData (reuses its band + comp rows).
-export async function seedSuccessionData(
-  db: Client, orgAId: string, userIds: Map<string, string>
-): Promise<void> {
+export async function seedSuccessionData(db: Client, orgAId: string, userIds: Map<string, string>): Promise<void> {
   const superId = userIds.get('a:super_admin');
   const hrId = userIds.get('a:hr_admin');
   if (!superId || !hrId) return;
-  const cr1 = await findOrCreateCriticalRole(db, orgAId, 'Parity Critical Role A1', 'critical', 0.9, 'PARITY-L1', superId);
+  const cr1 = await findOrCreateCriticalRole(
+    db,
+    orgAId,
+    'Parity Critical Role A1',
+    'critical',
+    0.9,
+    'PARITY-L1',
+    superId,
+  );
   await findOrCreateCriticalRole(db, orgAId, 'Parity Critical Role A2', 'high', null, null, null);
   await db.query(
     `INSERT INTO successors
        (id, organization_id, critical_role_id, user_id, readiness, type, added_by_id, updated_at)
      VALUES (gen_random_uuid(), $1, $2, $3, 'ready_now', 'internal', $4, now())
      ON CONFLICT (critical_role_id, user_id) DO UPDATE SET readiness = EXCLUDED.readiness, type = EXCLUDED.type, updated_at = now()`,
-    [orgAId, cr1, hrId, superId]
+    [orgAId, cr1, hrId, superId],
   );
 }
 
@@ -915,9 +1018,7 @@ export async function seedSuccessionData(
 // eval for b:hr_admin, an org-B calibration session (+member/vote), the openB/pubB
 // review cycles (+assignments/response), and an org-B critical role. All idempotent
 // and swept by teardown (which deletes every one of these tables by org id, both orgs).
-export async function seedOrgBTier2Mirrors(
-  db: Client, orgBId: string, userIds: Map<string, string>
-): Promise<void> {
+export async function seedOrgBTier2Mirrors(db: Client, orgBId: string, userIds: Map<string, string>): Promise<void> {
   const bSuper = userIds.get('b:super_admin');
   const bHr = userIds.get('b:hr_admin');
   const bHrbp = userIds.get('b:hrbp');
@@ -935,14 +1036,14 @@ export async function seedOrgBTier2Mirrors(
   await db.query(
     `INSERT INTO calibration_members (id, session_id, user_id, status) VALUES (gen_random_uuid(), $1, $2, 'invited')
      ON CONFLICT (session_id, user_id) DO NOTHING`,
-    [sessionB, bHr]
+    [sessionB, bHr],
   );
   if (bHrbp) {
     await db.query(
       `INSERT INTO calibration_votes (id, session_id, evaluated_user_id, voter_id, quadrant)
        VALUES (gen_random_uuid(), $1, $2, $3, 'core_player')
        ON CONFLICT (session_id, evaluated_user_id, voter_id) DO NOTHING`,
-      [sessionB, bHrbp, bHr]
+      [sessionB, bHrbp, bHr],
     );
   }
 
@@ -957,7 +1058,7 @@ export async function seedOrgBTier2Mirrors(
     `INSERT INTO rater_responses (id, organization_id, assignment_id, competency_key, rating, comment, updated_at)
      VALUES (gen_random_uuid(), $1, $2, 'communication', 4, 'self note', now())
      ON CONFLICT (assignment_id, competency_key) DO UPDATE SET rating = EXCLUDED.rating, comment = EXCLUDED.comment, updated_at = now()`,
-    [orgBId, selfAssignB]
+    [orgBId, selfAssignB],
   );
 
   // succession critical-roles/{id}(+suggested-successors, +simulate-exit): an org-B critical role held by
@@ -974,21 +1075,23 @@ export async function seedOrgBTier2Mirrors(
 // (which keys on requested_by = the cross-org attacker) is not confused by it.
 // Idempotent: skips if an org-B pending row for b:hr_admin already exists.
 export async function seedCompensationWritePreconditions(
-  db: Client, orgBId: string, userIds: Map<string, string>
+  db: Client,
+  orgBId: string,
+  userIds: Map<string, string>,
 ): Promise<void> {
   const bSuper = userIds.get('b:super_admin');
   const bHr = userIds.get('b:hr_admin');
   if (!bSuper || !bHr) return;
   const found = await db.query<IdRow>(
     `SELECT id FROM salary_adjustments WHERE organization_id = $1 AND user_id = $2 AND status = 'pending' LIMIT 1`,
-    [orgBId, bHr]
+    [orgBId, bHr],
   );
   if (found.rows.length) return;
   await db.query(
     `INSERT INTO salary_adjustments
        (id, organization_id, user_id, type, previous_salary, new_salary, currency, status, requested_by_id, effective_date, updated_at)
      VALUES (gen_random_uuid(), $1, $2, 'merit', 60000, 66000, 'USD', 'pending', $3, now(), now())`,
-    [orgBId, bHr, bSuper]
+    [orgBId, bHr, bSuper],
   );
 }
 
@@ -1041,9 +1144,12 @@ export async function resolveCompensationWriteResources(cfg: HarnessConfig): Pro
     const pendingAdjustmentId = async (orgId: string, userId: string): Promise<string> => {
       const { rows } = await db.query<IdRow>(
         `SELECT id FROM salary_adjustments WHERE organization_id = $1 AND user_id = $2 AND status = 'pending' LIMIT 1`,
-        [orgId, userId]
+        [orgId, userId],
       );
-      if (!rows.length) throw new Error(`resolveWriteResources: no pending adjustment for user ${userId} in org ${orgId} — run \`cli.ts seed --teardown\` then \`seed\` (an approve consumes it)`);
+      if (!rows.length)
+        throw new Error(
+          `resolveWriteResources: no pending adjustment for user ${userId} in org ${orgId} — run \`cli.ts seed --teardown\` then \`seed\` (an approve consumes it)`,
+        );
       return rows[0].id;
     };
     return {
@@ -1091,7 +1197,12 @@ const WRITE_CYCLE_IDS = Object.values(WRITE_EVAL_CYCLES);
  *  (opens_at/closes_at/published_at stay NULL — the transition guards check status only), and
  *  RESETS status on conflict so a re-run without teardown restores the from-state. */
 async function upsertWriteReviewCycle(
-  db: Client, id: string, orgId: string, name: string, status: string, createdBy: string
+  db: Client,
+  id: string,
+  orgId: string,
+  name: string,
+  status: string,
+  createdBy: string,
 ): Promise<void> {
   await db.query(
     `INSERT INTO review_cycles (id, organization_id, name, status, created_by_id, updated_at)
@@ -1099,7 +1210,7 @@ async function upsertWriteReviewCycle(
      ON CONFLICT (id) DO UPDATE SET
        organization_id = EXCLUDED.organization_id, name = EXCLUDED.name,
        status = EXCLUDED.status, updated_at = now()`,
-    [id, orgId, name, status, createdBy]
+    [id, orgId, name, status, createdBy],
   );
 }
 
@@ -1107,7 +1218,10 @@ async function upsertWriteReviewCycle(
  *  assignments/responses + createCycle marker rows first, so re-runs are idempotent even
  *  without a teardown). */
 export async function seedEvaluation360WritePreconditions(
-  db: Client, orgAId: string, orgBId: string, userIds: Map<string, string>
+  db: Client,
+  orgAId: string,
+  orgBId: string,
+  userIds: Map<string, string>,
 ): Promise<void> {
   const superA = userIds.get('a:super_admin');
   const hrA = userIds.get('a:hr_admin');
@@ -1119,13 +1233,13 @@ export async function seedEvaluation360WritePreconditions(
   //    the createCycle marker rows, so the light-parity mutations start from a known clean state.
   await db.query(
     `DELETE FROM rater_responses WHERE assignment_id IN (SELECT id FROM rater_assignments WHERE cycle_id = ANY($1))`,
-    [WRITE_CYCLE_IDS]
+    [WRITE_CYCLE_IDS],
   );
   await db.query('DELETE FROM rater_assignments WHERE cycle_id = ANY($1)', [WRITE_CYCLE_IDS]);
-  await db.query(
-    `DELETE FROM review_cycles WHERE organization_id = ANY($1) AND name = $2`,
-    [[orgAId, orgBId], WRITE_CYCLE_MARKER]
-  );
+  await db.query(`DELETE FROM review_cycles WHERE organization_id = ANY($1) AND name = $2`, [
+    [orgAId, orgBId],
+    WRITE_CYCLE_MARKER,
+  ]);
 
   // 2. State-transition from-state cycles (org A = parity/rbac-deny target; org B = IDOR target).
   await upsertWriteReviewCycle(db, WRITE_EVAL_CYCLES.draftA, orgAId, 'Parity Write Draft A', 'draft', superA);
@@ -1186,9 +1300,12 @@ export async function resolveEvaluation360WriteResources(cfg: HarnessConfig): Pr
     const assignmentIdByCycleRater = async (cycleId: string, raterId: string): Promise<string> => {
       const { rows } = await db.query<IdRow>(
         `SELECT id FROM rater_assignments WHERE cycle_id = $1 AND rater_user_id = $2 AND status = 'pending' LIMIT 1`,
-        [cycleId, raterId]
+        [cycleId, raterId],
       );
-      if (!rows.length) throw new Error(`resolveEvaluation360WriteResources: no pending assignment for rater ${raterId} in cycle ${cycleId} — run \`seed --teardown\` then \`seed\` (a submit consumes it)`);
+      if (!rows.length)
+        throw new Error(
+          `resolveEvaluation360WriteResources: no pending assignment for rater ${raterId} in cycle ${cycleId} — run \`seed --teardown\` then \`seed\` (a submit consumes it)`,
+        );
       return rows[0].id;
     };
     return {
@@ -1230,8 +1347,13 @@ const WRITE_SUCCESSION_ROLE_IDS = Object.values(WRITE_SUCCESSION_ROLES);
  *  holder, RESETTING target_band_level on conflict (so a re-run without teardown restores the band
  *  from-state for updateCriticalRoleBand). */
 async function upsertWriteCriticalRole(
-  db: Client, id: string, orgId: string, title: string, criticality: string,
-  targetBand: string | null, holderId: string | null
+  db: Client,
+  id: string,
+  orgId: string,
+  title: string,
+  criticality: string,
+  targetBand: string | null,
+  holderId: string | null,
 ): Promise<void> {
   await db.query(
     `INSERT INTO critical_roles (id, organization_id, title, criticality, target_band_level, current_holder_id, updated_at)
@@ -1239,27 +1361,35 @@ async function upsertWriteCriticalRole(
      ON CONFLICT (id) DO UPDATE SET
        organization_id = EXCLUDED.organization_id, title = EXCLUDED.title, criticality = EXCLUDED.criticality,
        target_band_level = EXCLUDED.target_band_level, current_holder_id = EXCLUDED.current_holder_id, updated_at = now()`,
-    [id, orgId, title, criticality, targetBand, holderId]
+    [id, orgId, title, criticality, targetBand, holderId],
   );
 }
 
 /** Successor upsert, RESETTING readiness on conflict (updateReadiness from-state) — natural key
  *  (critical_role_id, user_id). Returns nothing; ids resolve by that natural key at check time. */
 async function upsertWriteSuccessor(
-  db: Client, orgId: string, criticalRoleId: string, userId: string, readiness: string, addedBy: string
+  db: Client,
+  orgId: string,
+  criticalRoleId: string,
+  userId: string,
+  readiness: string,
+  addedBy: string,
 ): Promise<void> {
   await db.query(
     `INSERT INTO successors (id, organization_id, critical_role_id, user_id, readiness, type, added_by_id, updated_at)
      VALUES (gen_random_uuid(), $1, $2, $3, $4, 'internal', $5, now())
      ON CONFLICT (critical_role_id, user_id) DO UPDATE SET readiness = EXCLUDED.readiness, updated_at = now()`,
-    [orgId, criticalRoleId, userId, readiness, addedBy]
+    [orgId, criticalRoleId, userId, readiness, addedBy],
   );
 }
 
 /** Seeds the succession write-verify preconditions (fresh each run: deletes prior write successors +
  *  the addCriticalRole marker rows, then re-seeds the fixed parent roles + successors). */
 export async function seedSuccessionWritePreconditions(
-  db: Client, orgAId: string, orgBId: string, userIds: Map<string, string>
+  db: Client,
+  orgAId: string,
+  orgBId: string,
+  userIds: Map<string, string>,
 ): Promise<void> {
   const superA = userIds.get('a:super_admin');
   const hrA = userIds.get('a:hr_admin');
@@ -1272,22 +1402,78 @@ export async function seedSuccessionWritePreconditions(
   await db.query('DELETE FROM successors WHERE critical_role_id = ANY($1)', [WRITE_SUCCESSION_ROLE_IDS]);
   await db.query(
     'DELETE FROM successors WHERE organization_id = ANY($1) AND critical_role_id IN (SELECT id FROM critical_roles WHERE title = $2)',
-    [[orgAId, orgBId], WRITE_SUCCESSION_CR_MARKER]
+    [[orgAId, orgBId], WRITE_SUCCESSION_CR_MARKER],
   );
-  await db.query(
-    'DELETE FROM critical_roles WHERE organization_id = ANY($1) AND title = $2',
-    [[orgAId, orgBId], WRITE_SUCCESSION_CR_MARKER]
-  );
+  await db.query('DELETE FROM critical_roles WHERE organization_id = ANY($1) AND title = $2', [
+    [orgAId, orgBId],
+    WRITE_SUCCESSION_CR_MARKER,
+  ]);
 
   // 2. Fixed parent critical roles (org A = parity/deny target, org B = IDOR target). bandA seeds a
   //    NULL band as the updateBand from-state; bandB seeds a distinct value so an IDOR leak is visible.
-  await upsertWriteCriticalRole(db, WRITE_SUCCESSION_ROLES.addA, orgAId, 'Parity Write Succ AddA', 'high', null, superA);
-  await upsertWriteCriticalRole(db, WRITE_SUCCESSION_ROLES.removeA, orgAId, 'Parity Write Succ RemoveA', 'high', null, superA);
-  await upsertWriteCriticalRole(db, WRITE_SUCCESSION_ROLES.removeB, orgBId, 'Parity Write Succ RemoveB', 'high', null, bSuper);
-  await upsertWriteCriticalRole(db, WRITE_SUCCESSION_ROLES.readinessA, orgAId, 'Parity Write Succ ReadinessA', 'high', null, superA);
-  await upsertWriteCriticalRole(db, WRITE_SUCCESSION_ROLES.readinessB, orgBId, 'Parity Write Succ ReadinessB', 'high', null, bSuper);
-  await upsertWriteCriticalRole(db, WRITE_SUCCESSION_ROLES.bandA, orgAId, 'Parity Write Succ BandA', 'high', null, superA);
-  await upsertWriteCriticalRole(db, WRITE_SUCCESSION_ROLES.bandB, orgBId, 'Parity Write Succ BandB', 'high', 'ORGB-BAND', bSuper);
+  await upsertWriteCriticalRole(
+    db,
+    WRITE_SUCCESSION_ROLES.addA,
+    orgAId,
+    'Parity Write Succ AddA',
+    'high',
+    null,
+    superA,
+  );
+  await upsertWriteCriticalRole(
+    db,
+    WRITE_SUCCESSION_ROLES.removeA,
+    orgAId,
+    'Parity Write Succ RemoveA',
+    'high',
+    null,
+    superA,
+  );
+  await upsertWriteCriticalRole(
+    db,
+    WRITE_SUCCESSION_ROLES.removeB,
+    orgBId,
+    'Parity Write Succ RemoveB',
+    'high',
+    null,
+    bSuper,
+  );
+  await upsertWriteCriticalRole(
+    db,
+    WRITE_SUCCESSION_ROLES.readinessA,
+    orgAId,
+    'Parity Write Succ ReadinessA',
+    'high',
+    null,
+    superA,
+  );
+  await upsertWriteCriticalRole(
+    db,
+    WRITE_SUCCESSION_ROLES.readinessB,
+    orgBId,
+    'Parity Write Succ ReadinessB',
+    'high',
+    null,
+    bSuper,
+  );
+  await upsertWriteCriticalRole(
+    db,
+    WRITE_SUCCESSION_ROLES.bandA,
+    orgAId,
+    'Parity Write Succ BandA',
+    'high',
+    null,
+    superA,
+  );
+  await upsertWriteCriticalRole(
+    db,
+    WRITE_SUCCESSION_ROLES.bandB,
+    orgBId,
+    'Parity Write Succ BandB',
+    'high',
+    'ORGB-BAND',
+    bSuper,
+  );
 
   // 3. Fixed successors (resolved by natural key at check time). removeA/B = delete targets;
   //    readinessA/B seed the 'developing' from-state (parity transitions to 'ready_now').
@@ -1340,9 +1526,12 @@ export async function resolveSuccessionWriteResources(cfg: HarnessConfig): Promi
     const successorId = async (criticalRoleId: string, userId: string): Promise<string> => {
       const { rows } = await db.query<IdRow>(
         `SELECT id FROM successors WHERE critical_role_id = $1 AND user_id = $2 LIMIT 1`,
-        [criticalRoleId, userId]
+        [criticalRoleId, userId],
       );
-      if (!rows.length) throw new Error(`resolveSuccessionWriteResources: no successor for user ${userId} in role ${criticalRoleId} — run \`seed --teardown\` then \`seed\` (a remove consumes it)`);
+      if (!rows.length)
+        throw new Error(
+          `resolveSuccessionWriteResources: no successor for user ${userId} in role ${criticalRoleId} — run \`seed --teardown\` then \`seed\` (a remove consumes it)`,
+        );
       return rows[0].id;
     };
     return {
@@ -1397,24 +1586,36 @@ export const WRITE_ENGAGEMENT_SURVEY_MARKER = 'Parity Write Survey';
 export const WRITE_ENGAGEMENT_PLAN_MARKER = 'Parity Write Plan';
 
 const WRITE_ENGAGEMENT_SURVEY_IDS = [
-  WRITE_ENGAGEMENT.activateSurveyA, WRITE_ENGAGEMENT.activateSurveyB,
-  WRITE_ENGAGEMENT.submitSurveyA, WRITE_ENGAGEMENT.submitSurveyB,
+  WRITE_ENGAGEMENT.activateSurveyA,
+  WRITE_ENGAGEMENT.activateSurveyB,
+  WRITE_ENGAGEMENT.submitSurveyA,
+  WRITE_ENGAGEMENT.submitSurveyB,
 ];
 
 async function upsertWriteSurvey(
-  db: Client, id: string, orgId: string, title: string, status: string, createdBy: string
+  db: Client,
+  id: string,
+  orgId: string,
+  title: string,
+  status: string,
+  createdBy: string,
 ): Promise<void> {
   await db.query(
     `INSERT INTO surveys (id, organization_id, title, type, status, questions, created_by_id, updated_at)
      VALUES ($1, $2, $3, 'pulse', $4, '[{"text":"Parity Q","type":"scale","required":true}]'::jsonb, $5, now())
      ON CONFLICT (id) DO UPDATE SET
        organization_id = EXCLUDED.organization_id, title = EXCLUDED.title, status = EXCLUDED.status, updated_at = now()`,
-    [id, orgId, title, status, createdBy]
+    [id, orgId, title, status, createdBy],
   );
 }
 
 async function upsertWriteActionPlan(
-  db: Client, id: string, orgId: string, title: string, status: string, responsibleId: string
+  db: Client,
+  id: string,
+  orgId: string,
+  title: string,
+  status: string,
+  responsibleId: string,
 ): Promise<void> {
   await db.query(
     `INSERT INTO action_plans (id, organization_id, title, responsible_id, status, updated_at)
@@ -1422,14 +1623,17 @@ async function upsertWriteActionPlan(
      ON CONFLICT (id) DO UPDATE SET
        organization_id = EXCLUDED.organization_id, title = EXCLUDED.title,
        responsible_id = EXCLUDED.responsible_id, status = EXCLUDED.status, updated_at = now()`,
-    [id, orgId, title, responsibleId, status]
+    [id, orgId, title, responsibleId, status],
   );
 }
 
 /** Seeds the engagement write-verify preconditions (fresh each run: deletes prior write survey
  *  responses + marker surveys/plans, then re-seeds the fixed from-states). */
 export async function seedEngagementWritePreconditions(
-  db: Client, orgAId: string, orgBId: string, userIds: Map<string, string>
+  db: Client,
+  orgAId: string,
+  orgBId: string,
+  userIds: Map<string, string>,
 ): Promise<void> {
   const superA = userIds.get('a:super_admin');
   const hrA = userIds.get('a:hr_admin');
@@ -1442,10 +1646,16 @@ export async function seedEngagementWritePreconditions(
   await db.query('DELETE FROM survey_responses WHERE survey_id = ANY($1)', [WRITE_ENGAGEMENT_SURVEY_IDS]);
   await db.query(
     `DELETE FROM survey_responses WHERE organization_id = ANY($1) AND survey_id IN (SELECT id FROM surveys WHERE title = $2)`,
-    [[orgAId, orgBId], WRITE_ENGAGEMENT_SURVEY_MARKER]
+    [[orgAId, orgBId], WRITE_ENGAGEMENT_SURVEY_MARKER],
   );
-  await db.query('DELETE FROM surveys WHERE organization_id = ANY($1) AND title = $2', [[orgAId, orgBId], WRITE_ENGAGEMENT_SURVEY_MARKER]);
-  await db.query('DELETE FROM action_plans WHERE organization_id = ANY($1) AND title = $2', [[orgAId, orgBId], WRITE_ENGAGEMENT_PLAN_MARKER]);
+  await db.query('DELETE FROM surveys WHERE organization_id = ANY($1) AND title = $2', [
+    [orgAId, orgBId],
+    WRITE_ENGAGEMENT_SURVEY_MARKER,
+  ]);
+  await db.query('DELETE FROM action_plans WHERE organization_id = ANY($1) AND title = $2', [
+    [orgAId, orgBId],
+    WRITE_ENGAGEMENT_PLAN_MARKER,
+  ]);
 
   // 2. Fixed surveys: activate = 'draft' from-state; submit = 'active' (submitSurveyResponse requires active).
   await upsertWriteSurvey(db, WRITE_ENGAGEMENT.activateSurveyA, orgAId, 'Parity Write Activate A', 'draft', superA);
@@ -1534,14 +1744,18 @@ const WRITE_NINEBOX_SESSION_IDS = Object.values(WRITE_NINEBOX);
 const WRITE_NINEBOX_FIXTURE_PERIOD = 'Parity Write NB';
 
 async function upsertWriteCalSession(
-  db: Client, id: string, orgId: string, status: string, createdBy: string
+  db: Client,
+  id: string,
+  orgId: string,
+  status: string,
+  createdBy: string,
 ): Promise<void> {
   await db.query(
     `INSERT INTO calibration_sessions (id, organization_id, period, status, created_by_id, updated_at)
      VALUES ($1, $2, $3, $4, $5, now())
      ON CONFLICT (id) DO UPDATE SET
        organization_id = EXCLUDED.organization_id, status = EXCLUDED.status, updated_at = now()`,
-    [id, orgId, WRITE_NINEBOX_FIXTURE_PERIOD, status, createdBy]
+    [id, orgId, WRITE_NINEBOX_FIXTURE_PERIOD, status, createdBy],
   );
 }
 
@@ -1549,14 +1763,17 @@ async function addCalMember(db: Client, sessionId: string, userId: string): Prom
   await db.query(
     `INSERT INTO calibration_members (id, session_id, user_id, status) VALUES (gen_random_uuid(), $1, $2, 'invited')
      ON CONFLICT (session_id, user_id) DO NOTHING`,
-    [sessionId, userId]
+    [sessionId, userId],
   );
 }
 
 /** Seeds the nine-box write-verify preconditions (fresh each run: deletes prior votes/members of the
  *  fixed sessions + the createCalibration marker sessions, then re-seeds the sessions + memberships). */
 export async function seedNineBoxWritePreconditions(
-  db: Client, orgAId: string, orgBId: string, userIds: Map<string, string>
+  db: Client,
+  orgAId: string,
+  orgBId: string,
+  userIds: Map<string, string>,
 ): Promise<void> {
   const superA = userIds.get('a:super_admin');
   const hrA = userIds.get('a:hr_admin');
@@ -1568,10 +1785,10 @@ export async function seedNineBoxWritePreconditions(
   //    createCalibration marker sessions (cascade drops their members/votes).
   await db.query('DELETE FROM calibration_votes WHERE session_id = ANY($1)', [WRITE_NINEBOX_SESSION_IDS]);
   await db.query('DELETE FROM calibration_members WHERE session_id = ANY($1)', [WRITE_NINEBOX_SESSION_IDS]);
-  await db.query(
-    'DELETE FROM calibration_sessions WHERE organization_id = ANY($1) AND period = $2',
-    [[orgAId, orgBId], WRITE_NINEBOX_CAL_MARKER]
-  );
+  await db.query('DELETE FROM calibration_sessions WHERE organization_id = ANY($1) AND period = $2', [
+    [orgAId, orgBId],
+    WRITE_NINEBOX_CAL_MARKER,
+  ]);
 
   // 2. Fixed sessions (org A created_by super, org B created_by b:super), all 'draft'.
   await upsertWriteCalSession(db, WRITE_NINEBOX.voteA, orgAId, 'draft', superA);
@@ -1669,17 +1886,19 @@ async function userIdByEmail(db: Client, email: string): Promise<string> {
 async function calibrationIdByOrg(db: Client, orgId: string): Promise<string> {
   const { rows } = await db.query<IdRow>(
     `SELECT id FROM calibration_sessions WHERE organization_id = $1 AND period = '2026-Q1' LIMIT 1`,
-    [orgId]
+    [orgId],
   );
-  if (!rows.length) throw new Error(`resolveResources: no seeded calibration session in org ${orgId} — run \`cli.ts seed\` first`);
+  if (!rows.length)
+    throw new Error(`resolveResources: no seeded calibration session in org ${orgId} — run \`cli.ts seed\` first`);
   return rows[0].id;
 }
 async function criticalRoleIdByOrgTitle(db: Client, orgId: string, title: string): Promise<string> {
   const { rows } = await db.query<IdRow>(
     'SELECT id FROM critical_roles WHERE organization_id = $1 AND title = $2 LIMIT 1',
-    [orgId, title]
+    [orgId, title],
   );
-  if (!rows.length) throw new Error(`resolveResources: no seeded critical role "${title}" in org ${orgId} — run \`cli.ts seed\` first`);
+  if (!rows.length)
+    throw new Error(`resolveResources: no seeded critical role "${title}" in org ${orgId} — run \`cli.ts seed\` first`);
   return rows[0].id;
 }
 
@@ -1711,8 +1930,11 @@ export async function resolveResources(cfg: HarnessConfig): Promise<SeedResource
 /** Opens a read-only DB handle (the BYPASSRLS `postgres` client) for the write checks'
  *  read-backs. Returns a parameterized-query fn + a closer; the caller MUST call close(). */
 export async function openReadback(
-  cfg: HarnessConfig
-): Promise<{ readback: (sql: string, params: unknown[]) => Promise<Record<string, unknown>[]>; close: () => Promise<void> }> {
+  cfg: HarnessConfig,
+): Promise<{
+  readback: (sql: string, params: unknown[]) => Promise<Record<string, unknown>[]>;
+  close: () => Promise<void>;
+}> {
   const db = makeDbClient(cfg);
   await db.connect();
   return {
@@ -1862,7 +2084,7 @@ export async function teardown(cfg: HarnessConfig): Promise<void> {
       // never collide with a future surface that seeds candidates carrying dependent rows.
       await db.query(
         `DELETE FROM candidates WHERE organization_id = ANY($1) AND email LIKE 'parity+%-cand%@tims.test'`,
-        [orgIds]
+        [orgIds],
       );
       // compensation fixture (org A). All FK→users → must precede the users delete (step 3).
       await db.query('DELETE FROM salary_adjustments WHERE organization_id = ANY($1)', [orgIds]);
@@ -1876,7 +2098,9 @@ export async function teardown(cfg: HarnessConfig): Promise<void> {
       await db.query('DELETE FROM review_cycles WHERE organization_id = ANY($1)', [orgIds]);
       // nine-box fixture (org A). calibration_members/votes are session-linked (no org_id) → delete
       // by session id first; evaluations/sessions/members/votes all FK→users → precede the users delete.
-      const nbSess = await db.query<IdRow>('SELECT id FROM calibration_sessions WHERE organization_id = ANY($1)', [orgIds]);
+      const nbSess = await db.query<IdRow>('SELECT id FROM calibration_sessions WHERE organization_id = ANY($1)', [
+        orgIds,
+      ]);
       const nbSessIds = nbSess.rows.map((r) => r.id);
       if (nbSessIds.length) {
         await db.query('DELETE FROM calibration_votes WHERE session_id = ANY($1)', [nbSessIds]);
@@ -1912,7 +2136,7 @@ export async function teardown(cfg: HarnessConfig): Promise<void> {
       parityAuthUsers.map(async ({ id, email }) => {
         const { error } = await admin.auth.admin.deleteUser(id);
         if (error && error.code !== 'user_not_found') throw new Error(`${email}: ${error.message}`);
-      })
+      }),
     );
 
     // 5. organizations — parent, deleted last. Independent of auth.users; runs even if some auth
@@ -1923,9 +2147,7 @@ export async function teardown(cfg: HarnessConfig): Promise<void> {
     // caller learns of it — no orphan is left un-swept (a re-run still finds it via the sweep).
     const failures = deletions.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
     if (failures.length) {
-      const summary = failures
-        .map((f) => (f.reason instanceof Error ? f.reason.message : String(f.reason)))
-        .join('; ');
+      const summary = failures.map((f) => (f.reason instanceof Error ? f.reason.message : String(f.reason))).join('; ');
       throw new Error(`teardown: failed to delete ${failures.length} auth user(s): ${summary}`);
     }
   } finally {
