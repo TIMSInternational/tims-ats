@@ -1,0 +1,23 @@
+{
+  "logs": [
+    {
+      "id": "d0000000-0000-0000-0000-000000000001",
+      "action": "login_failed",
+      "entity": "auth",
+      "entityId": null,
+      "userId": "c0000000-0000-0000-0000-000000000001",
+      "metadata": null,
+      "createdAt": "2026-07-20T10:00:00.000Z",
+      "ipAddress": "203.0.113.5",
+      "actor": {
+        "id": "c0000000-0000-0000-0000-000000000001",
+        "firstName": "John",
+        "lastName": "Doe",
+        "email": "john@example.com",
+        "avatar": null
+      }
+    }
+  ],
+  "nextCursor": null,
+  "total": 1
+}
