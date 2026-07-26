@@ -280,7 +280,7 @@ git commit -m "feat(csharp): Phase-5 Slice-17 — CsvCell kernel + AuditLogView 
 **Files:**
 
 - Create: `services/Tims.Platform/src/Tims.Infrastructure/Audit/AuditReadDbContext.cs`
-- Test: covered by Task 8's Testcontainers fixture (a DbContext has no meaningful unit test in isolation; the codebase's existing DbContexts — `ReportingReadDbContext` etc. — are likewise only integration-tested).
+- Test: covered by Task 4's Testcontainers fixture and Task 8's cross-org test (a DbContext has no meaningful unit test in isolation; the codebase's existing DbContexts — `ReportingReadDbContext` etc. — are likewise only integration-tested).
 
 **Interfaces:**
 
@@ -346,22 +346,156 @@ git commit -m "feat(csharp): Phase-5 Slice-17 — AuditReadDbContext (privileged
 
 ---
 
-### Task 4: `AuditReadRepository` — cursor list + count + bounded export query
+### Task 4: `AuditReadRepository` — Testcontainers fixture + cursor list + count + bounded export query
 
 **Files:**
 
+- Create: `services/Tims.Platform/tests/Tims.IntegrationTests/Audit/AuditReadFixture.cs`
 - Create: `services/Tims.Platform/src/Tims.Application/Audit/IAuditReadRepository.cs`
 - Create: `services/Tims.Platform/src/Tims.Infrastructure/Audit/AuditReadRepository.cs`
-- Test: `services/Tims.Platform/tests/Tims.IntegrationTests/Audit/AuditReadRepositoryTests.cs` (uses the Task 8 fixture — written here, fixture built in Task 8; see note below)
+- Test: `services/Tims.Platform/tests/Tims.IntegrationTests/Audit/AuditReadRepositoryTests.cs`
 
 **Interfaces:**
 
 - Consumes: `AuditReadDbContext` (Task 3), `AuditLogView` (Task 2).
-- Produces: `IAuditReadRepository.ListAsync(AuditLogFilter filter, int take, Guid? cursor, CancellationToken): Task<(IReadOnlyList<AuditLogView> Logs, Guid? NextCursor, int Total)>` and `IAuditReadRepository.ExportAsync(AuditLogFilter filter, CancellationToken): Task<IReadOnlyList<AuditLogView>>` (bounded `Take(1000)`, matching the TS `take: 1000`). `AuditLogFilter` record: `(Guid? UserId, Guid? OrganizationId, string? Action, string? Entity, DateTime? DateFrom, DateTime? DateTo)`.
+- Produces: `IAuditReadRepository.ListAsync(AuditLogFilter filter, int take, Guid? cursor, CancellationToken): Task<(IReadOnlyList<AuditLogView> Logs, Guid? NextCursor, int Total)>` and `IAuditReadRepository.ExportAsync(AuditLogFilter filter, CancellationToken): Task<IReadOnlyList<AuditLogView>>` (bounded `Take(1000)`, matching the TS `take: 1000`). `AuditLogFilter` record: `(Guid? UserId, Guid? OrganizationId, string? Action, string? Entity, DateTime? DateFrom, DateTime? DateTo)`. Also produces `AuditReadFixture` — the Testcontainers fixture Task 8 reuses (do not recreate it there).
 
-Because a repository over a real Postgres table is meaningfully tested only against real Postgres (matching every prior slice — `ReportingReadRepository` has no mocked-DbContext unit test either), this task's test is written now but depends on the Testcontainers fixture built in Task 8. **Implementer note:** do Task 8's fixture file first if working task-by-task out of order is more convenient; the fixture has no dependency on this task's production code, only the reverse.
+Because a repository over a real Postgres table is meaningfully tested only against real Postgres (matching every prior slice — `ReportingReadRepository` has no mocked-DbContext unit test either), this task builds its own Testcontainers fixture first (this is the first task that needs one), then the repository against it.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the Testcontainers fixture**
+
+```csharp
+// services/Tims.Platform/tests/Tims.IntegrationTests/Audit/AuditReadFixture.cs
+using Microsoft.EntityFrameworkCore;
+using Npgsql;
+using Testcontainers.PostgreSql;
+using Tims.Infrastructure.Audit;
+
+namespace Tims.IntegrationTests.Audit;
+
+/// <summary>
+/// Phase-5 Slice 17 Testcontainers fixture: one real Postgres carrying the Prisma-OWNED
+/// <c>audit_logs</c> table (RLS-protected, exactly like every other read fixture) + the identity
+/// plane, seeded with rows in TWO orgs so a cross-org read either DOES or DOES NOT bleed —
+/// provably. `is_platform_owner` on the seeded `users` row backs the 4-principal-type auth matrix
+/// (only one seeded user has it `true`). Reused by Task 8's cross-org + auth-matrix tests — do not
+/// duplicate this fixture there.
+/// </summary>
+public sealed class AuditReadFixture : IAsyncLifetime
+{
+    private const string LoginRole = "postgres";
+    private const string Password = "postgres";
+    private const string Database = "tims_audit_read";
+
+    public static readonly Guid OrgA = Guid.Parse("11111111-1111-1111-1111-111111111111");
+    public static readonly Guid OrgB = Guid.Parse("22222222-2222-2222-2222-222222222222");
+
+    public const string PlatformOwnerSub = "sub-audit-platform-owner";
+    public const string OrgUserSub = "sub-audit-org-user";
+
+    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:16-alpine")
+        .WithUsername(LoginRole)
+        .WithPassword(Password)
+        .WithDatabase(Database)
+        .Build();
+
+    public string ConnectionString { get; private set; } = string.Empty;
+
+    public async Task InitializeAsync()
+    {
+        await _container.StartAsync();
+        ConnectionString = _container.GetConnectionString();
+
+        await using var connection = new NpgsqlConnection(ConnectionString);
+        await connection.OpenAsync();
+
+        await using (var role = connection.CreateCommand())
+        {
+            role.CommandText = "CREATE ROLE app_tenant NOLOGIN NOBYPASSRLS; GRANT app_tenant TO postgres;";
+            await role.ExecuteNonQueryAsync();
+        }
+
+        foreach (var sql in new[] { IdentitySchemaSql, IdentitySeedSql, AuditSchemaSql, AuditSeedSql })
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = sql;
+            await command.ExecuteNonQueryAsync();
+        }
+    }
+
+    public async Task DisposeAsync() => await _container.DisposeAsync();
+
+    public AuditReadDbContext NewReadContext() =>
+        new(new DbContextOptionsBuilder<AuditReadDbContext>().UseNpgsql(ConnectionString).Options);
+
+    private const string IdentitySchemaSql =
+        """
+        CREATE TABLE organizations (id uuid PRIMARY KEY, is_active boolean NOT NULL DEFAULT true);
+        CREATE TABLE users (
+            id uuid PRIMARY KEY,
+            organization_id uuid NULL REFERENCES organizations (id),
+            supabase_user_id text NOT NULL UNIQUE,
+            email text NOT NULL,
+            is_platform_owner boolean NOT NULL DEFAULT false,
+            is_active boolean NOT NULL DEFAULT true
+        );
+        """;
+
+    private const string IdentitySeedSql =
+        """
+        INSERT INTO organizations (id, is_active) VALUES
+          ('11111111-1111-1111-1111-111111111111', true),
+          ('22222222-2222-2222-2222-222222222222', true);
+
+        -- one real platform owner (org-less) + one ordinary org-scoped staff user (no grants needed —
+        -- PlatformOwnerGate checks PrincipalType only, never a permission grant).
+        INSERT INTO users (id, organization_id, supabase_user_id, email, is_platform_owner, is_active) VALUES
+          ('c0000000-0000-0000-0000-000000000001', NULL, 'sub-audit-platform-owner', 'owner@tims.test', true, true),
+          ('c0000000-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'sub-audit-org-user', 'orguser@tims.test', false, true);
+        """;
+
+    private const string AuditSchemaSql =
+        """
+        CREATE TABLE audit_logs (
+            id uuid PRIMARY KEY,
+            organization_id uuid NOT NULL,
+            user_id uuid NULL,
+            actor_id uuid NULL,
+            action text NOT NULL,
+            entity text NOT NULL,
+            entity_id text NULL,
+            changes jsonb NULL,
+            metadata jsonb NULL,
+            ip_address text NULL,
+            user_agent text NULL,
+            created_at timestamp NOT NULL DEFAULT now()
+        );
+        GRANT SELECT ON audit_logs TO app_tenant;
+        ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
+        ALTER TABLE audit_logs FORCE ROW LEVEL SECURITY;
+        CREATE POLICY tenant_isolation ON audit_logs
+            USING (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid);
+        """;
+
+    // 2 rows in OrgA, 1 in OrgB — a cross-org bleed (or its absence) changes the counts, not just
+    // a total (mirrors the reporting fixture's "distinct per-org data" discipline).
+    private const string AuditSeedSql =
+        """
+        INSERT INTO audit_logs (id, organization_id, actor_id, action, entity, created_at) VALUES
+          ('d0000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'c0000000-0000-0000-0000-000000000002', 'login_failed', 'auth', '2026-07-20T10:00:00Z'),
+          ('d0000000-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'c0000000-0000-0000-0000-000000000002', 'access', 'candidate', '2026-07-21T10:00:00Z'),
+          ('d0000000-0000-0000-0000-000000000003', '22222222-2222-2222-2222-222222222222', NULL, 'login_failed', 'auth', '2026-07-19T10:00:00Z');
+        """;
+}
+
+// Declared alongside the fixture (not in a per-test file) so every test class in this task AND
+// Task 8 (AuditReadCrossOrgTests, AuditReadEndpointAuthTests) can reference [Collection("AuditRead")]
+// without redeclaring this — xUnit requires exactly one [CollectionDefinition] per collection name.
+[CollectionDefinition("AuditRead")]
+public sealed class AuditReadCollection : ICollectionFixture<AuditReadFixture>;
+```
+
+- [ ] **Step 2: Write the failing repository test**
 
 ```csharp
 // services/Tims.Platform/tests/Tims.IntegrationTests/Audit/AuditReadRepositoryTests.cs
@@ -424,12 +558,12 @@ public sealed class AuditReadRepositoryTests(AuditReadFixture fixture)
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **Step 3: Run test to verify it fails**
 
 Run: `cd services/Tims.Platform && dotnet test --filter AuditReadRepositoryTests`
-Expected: FAIL (`AuditReadRepository`/`IAuditReadRepository`/`AuditLogFilter` don't exist; `AuditReadFixture` doesn't exist until Task 8).
+Expected: FAIL (`AuditReadRepository`/`IAuditReadRepository`/`AuditLogFilter` don't exist yet — `AuditReadFixture` from Step 1 compiles fine on its own).
 
-- [ ] **Step 3: Write minimal implementation**
+- [ ] **Step 4: Write minimal implementation**
 
 ```csharp
 // services/Tims.Platform/src/Tims.Application/Audit/IAuditReadRepository.cs
@@ -535,16 +669,16 @@ public sealed class AuditReadRepository(AuditReadDbContext db) : IAuditReadRepos
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes** (after Task 8's fixture exists)
+- [ ] **Step 5: Run test to verify it passes**
 
 Run: `cd services/Tims.Platform && dotnet test --filter AuditReadRepositoryTests`
 Expected: PASS (4 tests).
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add services/Tims.Platform/src/Tims.Application/Audit/IAuditReadRepository.cs services/Tims.Platform/src/Tims.Infrastructure/Audit/AuditReadRepository.cs services/Tims.Platform/tests/Tims.IntegrationTests/Audit/AuditReadRepositoryTests.cs
-git commit -m "feat(csharp): Phase-5 Slice-17 — AuditReadRepository (cursor list + bounded export)"
+git add services/Tims.Platform/tests/Tims.IntegrationTests/Audit/AuditReadFixture.cs services/Tims.Platform/src/Tims.Application/Audit/IAuditReadRepository.cs services/Tims.Platform/src/Tims.Infrastructure/Audit/AuditReadRepository.cs services/Tims.Platform/tests/Tims.IntegrationTests/Audit/AuditReadRepositoryTests.cs
+git commit -m "feat(csharp): Phase-5 Slice-17 — AuditReadFixture + AuditReadRepository (cursor list + bounded export)"
 ```
 
 ---
@@ -860,146 +994,21 @@ git commit -m "docs(csharp): table-ownership note — Phase-5 Slice-17 audit_log
 
 ---
 
-### Task 8: Testcontainers fixture + cross-org + auth-matrix integration tests
+### Task 8: Cross-org + auth-matrix integration tests
 
 **Files:**
 
-- Create: `services/Tims.Platform/tests/Tims.IntegrationTests/Audit/AuditReadFixture.cs`
 - Create: `services/Tims.Platform/tests/Tims.IntegrationTests/Audit/AuditReadCrossOrgTests.cs`
 - Create: `services/Tims.Platform/tests/Tims.IntegrationTests/Audit/AuditReadEndpointAuthTests.cs`
 
 **Interfaces:**
 
-- Consumes: `AuditReadDbContext` (Task 3), `AuditReadRepository` (Task 4), the full `WebApplication<Program>` (Task 6).
-- Produces: the fixture `AuditReadRepositoryTests` (Task 4) depends on, plus the two regression suites this slice's design doc calls for (cross-org visibility proof + the 4-principal-type auth matrix).
+- Consumes: `AuditReadFixture` (Task 4 — reused, NOT recreated here), `AuditReadDbContext` (Task 3), the full `WebApplication<Program>` (Task 6).
+- Produces: the two regression suites this slice's design doc calls for (cross-org visibility proof + the 4-principal-type auth matrix).
 
-- [ ] **Step 1: Write the Testcontainers fixture**
+`AuditReadFixture` already exists (built in Task 4), including the `[CollectionDefinition("AuditRead")]` declaration — do not redeclare its schema/seed SQL or the collection definition here; both test classes below reference it via the same `[Collection("AuditRead")]` pattern `AuditReadRepositoryTests` (Task 4) already established.
 
-```csharp
-// services/Tims.Platform/tests/Tims.IntegrationTests/Audit/AuditReadFixture.cs
-using Microsoft.EntityFrameworkCore;
-using Npgsql;
-using Testcontainers.PostgreSql;
-using Tims.Infrastructure.Audit;
-
-namespace Tims.IntegrationTests.Audit;
-
-/// <summary>
-/// Phase-5 Slice 17 Testcontainers fixture: one real Postgres carrying the Prisma-OWNED
-/// <c>audit_logs</c> table (RLS-protected, exactly like every other read fixture) + the identity
-/// plane, seeded with rows in TWO orgs so a cross-org read either DOES or DOES NOT bleed —
-/// provably. `is_platform_owner` on the seeded `users` row backs the 4-principal-type auth matrix
-/// (only one seeded user has it `true`).
-/// </summary>
-public sealed class AuditReadFixture : IAsyncLifetime
-{
-    private const string LoginRole = "postgres";
-    private const string Password = "postgres";
-    private const string Database = "tims_audit_read";
-
-    public static readonly Guid OrgA = Guid.Parse("11111111-1111-1111-1111-111111111111");
-    public static readonly Guid OrgB = Guid.Parse("22222222-2222-2222-2222-222222222222");
-
-    public const string PlatformOwnerSub = "sub-audit-platform-owner";
-    public const string OrgUserSub = "sub-audit-org-user";
-
-    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:16-alpine")
-        .WithUsername(LoginRole)
-        .WithPassword(Password)
-        .WithDatabase(Database)
-        .Build();
-
-    public string ConnectionString { get; private set; } = string.Empty;
-
-    public async Task InitializeAsync()
-    {
-        await _container.StartAsync();
-        ConnectionString = _container.GetConnectionString();
-
-        await using var connection = new NpgsqlConnection(ConnectionString);
-        await connection.OpenAsync();
-
-        await using (var role = connection.CreateCommand())
-        {
-            role.CommandText = "CREATE ROLE app_tenant NOLOGIN NOBYPASSRLS; GRANT app_tenant TO postgres;";
-            await role.ExecuteNonQueryAsync();
-        }
-
-        foreach (var sql in new[] { IdentitySchemaSql, IdentitySeedSql, AuditSchemaSql, AuditSeedSql })
-        {
-            await using var command = connection.CreateCommand();
-            command.CommandText = sql;
-            await command.ExecuteNonQueryAsync();
-        }
-    }
-
-    public async Task DisposeAsync() => await _container.DisposeAsync();
-
-    public AuditReadDbContext NewReadContext() =>
-        new(new DbContextOptionsBuilder<AuditReadDbContext>().UseNpgsql(ConnectionString).Options);
-
-    private const string IdentitySchemaSql =
-        """
-        CREATE TABLE organizations (id uuid PRIMARY KEY, is_active boolean NOT NULL DEFAULT true);
-        CREATE TABLE users (
-            id uuid PRIMARY KEY,
-            organization_id uuid NULL REFERENCES organizations (id),
-            supabase_user_id text NOT NULL UNIQUE,
-            email text NOT NULL,
-            is_platform_owner boolean NOT NULL DEFAULT false,
-            is_active boolean NOT NULL DEFAULT true
-        );
-        """;
-
-    private const string IdentitySeedSql =
-        """
-        INSERT INTO organizations (id, is_active) VALUES
-          ('11111111-1111-1111-1111-111111111111', true),
-          ('22222222-2222-2222-2222-222222222222', true);
-
-        -- one real platform owner (org-less) + one ordinary org-scoped staff user (no grants needed —
-        -- PlatformOwnerGate checks PrincipalType only, never a permission grant).
-        INSERT INTO users (id, organization_id, supabase_user_id, email, is_platform_owner, is_active) VALUES
-          ('c0000000-0000-0000-0000-000000000001', NULL, 'sub-audit-platform-owner', 'owner@tims.test', true, true),
-          ('c0000000-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'sub-audit-org-user', 'orguser@tims.test', false, true);
-        """;
-
-    private const string AuditSchemaSql =
-        """
-        CREATE TABLE audit_logs (
-            id uuid PRIMARY KEY,
-            organization_id uuid NOT NULL,
-            user_id uuid NULL,
-            actor_id uuid NULL,
-            action text NOT NULL,
-            entity text NOT NULL,
-            entity_id text NULL,
-            changes jsonb NULL,
-            metadata jsonb NULL,
-            ip_address text NULL,
-            user_agent text NULL,
-            created_at timestamp NOT NULL DEFAULT now()
-        );
-        GRANT SELECT ON audit_logs TO app_tenant;
-        ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
-        ALTER TABLE audit_logs FORCE ROW LEVEL SECURITY;
-        CREATE POLICY tenant_isolation ON audit_logs
-            USING (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid);
-        """;
-
-    // 2 rows in OrgA, 1 in OrgB — a cross-org bleed (or its absence) changes the counts, not just
-    // a total (mirrors the reporting fixture's "distinct per-org data" discipline).
-    private const string AuditSeedSql =
-        """
-        INSERT INTO audit_logs (id, organization_id, actor_id, action, entity, created_at) VALUES
-          ('d0000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'c0000000-0000-0000-0000-000000000002', 'login_failed', 'auth', '2026-07-20T10:00:00Z'),
-          ('d0000000-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'c0000000-0000-0000-0000-000000000002', 'access', 'candidate', '2026-07-21T10:00:00Z'),
-          ('d0000000-0000-0000-0000-000000000003', '22222222-2222-2222-2222-222222222222', NULL, 'login_failed', 'auth', '2026-07-19T10:00:00Z');
-        """;
-}
-```
-
-- [ ] **Step 2: Write the cross-org visibility test (proves the intentional no-TenantScope behavior)**
+- [ ] **Step 1: Write the cross-org visibility test (proves the intentional no-TenantScope behavior)**
 
 ```csharp
 // services/Tims.Platform/tests/Tims.IntegrationTests/Audit/AuditReadCrossOrgTests.cs
@@ -1026,12 +1035,9 @@ public sealed class AuditReadCrossOrgTests(AuditReadFixture fixture)
         Assert.Contains(AuditReadFixture.OrgB, orgIds);
     }
 }
-
-[CollectionDefinition("AuditRead")]
-public sealed class AuditReadCollection : ICollectionFixture<AuditReadFixture>;
 ```
 
-- [ ] **Step 3: Write the platform-owner-gate HTTP auth-matrix test**
+- [ ] **Step 2: Write the platform-owner-gate HTTP auth-matrix test**
 
 ```csharp
 // services/Tims.Platform/tests/Tims.IntegrationTests/Audit/AuditReadEndpointAuthTests.cs
@@ -1179,16 +1185,16 @@ public sealed class AuditReadEndpointAuthTests(AuditReadFixture fixture)
 }
 ```
 
-- [ ] **Step 4: Run all three suites (and Task 4's repository test, unblocked now)**
+- [ ] **Step 3: Run both new suites (plus Task 4's repository test, all sharing the same fixture)**
 
 Run: `cd services/Tims.Platform && dotnet test --filter "FullyQualifiedName~Audit"`
 Expected: PASS (AuditReadRepositoryTests: 4, AuditReadCrossOrgTests: 1, AuditReadEndpointAuthTests: 7 — PlatformOwner_Is200, OrdinaryOrgUser_Is403, RejectedCredential_Is401 ×2 cases, Route_Is404_WhenFlagDefaultsOff, PlatformOwner_Export_Is200_WithHardenedCsv, OrdinaryOrgUser_Export_Is403).
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
-git add services/Tims.Platform/tests/Tims.IntegrationTests/Audit
-git commit -m "test(csharp): Phase-5 Slice-17 — Testcontainers fixture + cross-org + auth-matrix tests"
+git add services/Tims.Platform/tests/Tims.IntegrationTests/Audit/AuditReadCrossOrgTests.cs services/Tims.Platform/tests/Tims.IntegrationTests/Audit/AuditReadEndpointAuthTests.cs
+git commit -m "test(csharp): Phase-5 Slice-17 — cross-org visibility + platform-owner auth-matrix tests"
 ```
 
 ---
