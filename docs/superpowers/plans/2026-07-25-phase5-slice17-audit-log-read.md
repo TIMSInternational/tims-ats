@@ -160,7 +160,10 @@ git commit -m "test(parity): golden fixtures for the cross-org audit-log read + 
 
 **Interfaces:**
 
-- Produces: `Tims.Domain.Csv.CsvCell.Escape(string? value): string` and `CsvCell.Row(IEnumerable<string?> values): string` — golden-fixtured 1:1 against `packages/shared/src/csv.ts`'s `csvCell`/`csvRow`. `Tims.Domain.Audit.AuditLogView` record (Id, OrganizationId, UserId, ActorId, Action, Entity, EntityId, IpAddress, UserAgent, CreatedAt) — the read-side shape returned by the repository, independent of the EF entity.
+- Produces: `Tims.Domain.Csv.CsvCell.Escape(string? value): string` and `CsvCell.Row(IEnumerable<string?> values): string` — golden-fixtured 1:1 against `packages/shared/src/csv.ts`'s `csvCell`/`csvRow`. Three read-side records, independent of any EF entity, mirroring the TS `auditLogSelect` (list) and the export's separate select EXACTLY (confirmed against `packages/api/src/routers/platform/system.helpers.ts` + `system.ts:267-326` in Task 1's fixture review — the list response has NO flat `organizationId`/`userAgent`, HAS `metadata` + a nested `actor`; the export has NO raw ids at all, only `organization.name` + `actor.{firstName,lastName,email}`):
+  - `AuditLogActorView(Guid Id, string? FirstName, string? LastName, string Email, string? Avatar)` — the nested `actor` join for the list.
+  - `AuditLogListItem(Guid Id, string Action, string Entity, string? EntityId, Guid? UserId, string? Metadata, DateTime CreatedAt, string? IpAddress, AuditLogActorView? Actor)`.
+  - `AuditLogExportRow(string Action, string Entity, string? EntityId, string? IpAddress, DateTime CreatedAt, string? OrganizationName, string? ActorFirstName, string? ActorLastName, string? ActorEmail)`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -243,22 +246,39 @@ public static partial class CsvCell
 namespace Tims.Domain.Audit;
 
 /// <summary>
-/// Read-side shape of one audit_logs row (Phase-5 Slice 17) — independent of the EF entity so the
-/// repository/endpoint layers don't depend on Tims.Infrastructure. Field set matches TS's
-/// auditLogSelect (system.helpers.ts): no join beyond the raw row (the C# port drops the TS
-/// organization/actor name JOIN — see Task 4 for the parity note).
+/// Read-side shapes for the two audit-log endpoints (Phase-5 Slice 17) — independent of any EF
+/// entity so the repository/endpoint layers don't depend on Tims.Infrastructure. Field sets match
+/// the TS query selects EXACTLY (verified against real Prisma selects, not hand-mirrored — see
+/// Task 1's fixtures, which pin these same shapes on the TS side):
+///   - List (`getCrossOrgAuditLogs`, `auditLogSelect` in system.helpers.ts): id, action, entity,
+///     entityId, userId, metadata, createdAt, ipAddress, actor (nested, nullable). NO flat
+///     organizationId or userAgent — the real select never returns them.
+///   - Export (`exportAuditLogsCsv`, system.ts:314-326): action, entity, entityId, ipAddress,
+///     createdAt, organization.name, actor.{firstName,lastName,email}. NO raw ids at all.
 /// </summary>
-public sealed record AuditLogView(
+public sealed record AuditLogActorView(Guid Id, string? FirstName, string? LastName, string Email, string? Avatar);
+
+public sealed record AuditLogListItem(
     Guid Id,
-    Guid OrganizationId,
+    string Action,
+    string Entity,
+    string? EntityId,
     Guid? UserId,
-    Guid? ActorId,
+    string? Metadata,
+    DateTime CreatedAt,
+    string? IpAddress,
+    AuditLogActorView? Actor);
+
+public sealed record AuditLogExportRow(
     string Action,
     string Entity,
     string? EntityId,
     string? IpAddress,
-    string? UserAgent,
-    DateTime CreatedAt);
+    DateTime CreatedAt,
+    string? OrganizationName,
+    string? ActorFirstName,
+    string? ActorLastName,
+    string? ActorEmail);
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
@@ -270,7 +290,7 @@ Expected: PASS (6 tests).
 
 ```bash
 git add services/Tims.Platform/src/Tims.Domain/Csv services/Tims.Platform/src/Tims.Domain/Audit/AuditLogView.cs services/Tims.Platform/tests/Tims.UnitTests/Csv
-git commit -m "feat(csharp): Phase-5 Slice-17 — CsvCell kernel + AuditLogView read model"
+git commit -m "feat(csharp): Phase-5 Slice-17 — CsvCell kernel + audit-log read views"
 ```
 
 ---
@@ -285,7 +305,7 @@ git commit -m "feat(csharp): Phase-5 Slice-17 — CsvCell kernel + AuditLogView 
 **Interfaces:**
 
 - Consumes: the existing `Tims.Infrastructure.Audit.AuditLogEntity` (from `AuditLogDbContext.cs` — reused, NOT redefined, to avoid a second mapping of the same table drifting out of sync).
-- Produces: `AuditReadDbContext.AuditLogs: DbSet<AuditLogEntity>`, `AsNoTracking` query source. Consumed by `AuditReadRepository` (Task 4).
+- Produces: `AuditReadDbContext.AuditLogs: DbSet<AuditLogEntity>` + two NEW minimal local entities this context defines (not shared with any writer, matching how `ReportingReadDbContext` scopes its own `UserReadEntity` etc.): `AuditActorReadEntity` (maps `users`: id/first_name/last_name/email/avatar — backs the list endpoint's nested `actor`) and `AuditOrganizationReadEntity` (maps `organizations`: id/name — backs the export endpoint's `organization.name`). `AsNoTracking` query source for all three. Consumed by `AuditReadRepository` (Task 4), which LEFT JOINs `AuditLogs` to these by `ActorId`/`OrganizationId` (no navigation properties needed — see Task 4).
 
 - [ ] **Step 1: Write the implementation** (no separate failing-test step — this is pure EF configuration, proven end-to-end by Task 8's integration test, matching how `ReportingReadDbContext` itself has no dedicated unit test)
 
@@ -316,8 +336,15 @@ public sealed class AuditReadDbContext(DbContextOptions<AuditReadDbContext> opti
 {
     public DbSet<AuditLogEntity> AuditLogs => Set<AuditLogEntity>();
 
+    public DbSet<AuditActorReadEntity> Actors => Set<AuditActorReadEntity>();
+
+    public DbSet<AuditOrganizationReadEntity> Organizations => Set<AuditOrganizationReadEntity>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        // Full property mapping (not just the columns the two endpoints return) so this context
+        // never half-maps AuditLogEntity — matching AuditLogDbContext's own OnModelCreating exactly,
+        // since both contexts map the SAME entity class and must never drift on column names/types.
         modelBuilder.Entity<AuditLogEntity>(entity =>
         {
             entity.ToTable("audit_logs");
@@ -329,11 +356,54 @@ public sealed class AuditReadDbContext(DbContextOptions<AuditReadDbContext> opti
             entity.Property(a => a.Action).HasColumnName("action");
             entity.Property(a => a.Entity).HasColumnName("entity");
             entity.Property(a => a.EntityId).HasColumnName("entity_id");
+            entity.Property(a => a.Changes).HasColumnName("changes").HasColumnType("jsonb");
+            entity.Property(a => a.Metadata).HasColumnName("metadata").HasColumnType("jsonb");
             entity.Property(a => a.IpAddress).HasColumnName("ip_address");
             entity.Property(a => a.UserAgent).HasColumnName("user_agent");
             entity.Property(a => a.CreatedAt).HasColumnName("created_at").HasColumnType("timestamp");
         });
+
+        // Local, minimal read-only mappings of users/organizations — scoped to THIS context only
+        // (no navigation properties on AuditLogEntity; AuditReadRepository LEFT JOINs by id in Task 4,
+        // matching the ReportingReadDbContext precedent of context-local read entities).
+        modelBuilder.Entity<AuditActorReadEntity>(entity =>
+        {
+            entity.ToTable("users");
+            entity.HasKey(u => u.Id);
+            entity.Property(u => u.Id).HasColumnName("id");
+            entity.Property(u => u.FirstName).HasColumnName("first_name");
+            entity.Property(u => u.LastName).HasColumnName("last_name");
+            entity.Property(u => u.Email).HasColumnName("email");
+            entity.Property(u => u.Avatar).HasColumnName("avatar");
+        });
+
+        modelBuilder.Entity<AuditOrganizationReadEntity>(entity =>
+        {
+            entity.ToTable("organizations");
+            entity.HasKey(o => o.Id);
+            entity.Property(o => o.Id).HasColumnName("id");
+            entity.Property(o => o.Name).HasColumnName("name");
+        });
     }
+}
+
+/// <summary>Minimal read-only mapping of `users`, scoped to this context — backs the list
+/// endpoint's nested `actor` join and the export endpoint's actor name fields.</summary>
+public sealed class AuditActorReadEntity
+{
+    public Guid Id { get; set; }
+    public string? FirstName { get; set; }
+    public string? LastName { get; set; }
+    public string Email { get; set; } = string.Empty;
+    public string? Avatar { get; set; }
+}
+
+/// <summary>Minimal read-only mapping of `organizations`, scoped to this context — backs the
+/// export endpoint's `organization.name` field only.</summary>
+public sealed class AuditOrganizationReadEntity
+{
+    public Guid Id { get; set; }
+    public string Name { get; set; } = string.Empty;
 }
 ```
 
@@ -357,8 +427,8 @@ git commit -m "feat(csharp): Phase-5 Slice-17 — AuditReadDbContext (privileged
 
 **Interfaces:**
 
-- Consumes: `AuditReadDbContext` (Task 3), `AuditLogView` (Task 2).
-- Produces: `IAuditReadRepository.ListAsync(AuditLogFilter filter, int take, Guid? cursor, CancellationToken): Task<(IReadOnlyList<AuditLogView> Logs, Guid? NextCursor, int Total)>` and `IAuditReadRepository.ExportAsync(AuditLogFilter filter, CancellationToken): Task<IReadOnlyList<AuditLogView>>` (bounded `Take(1000)`, matching the TS `take: 1000`). `AuditLogFilter` record: `(Guid? UserId, Guid? OrganizationId, string? Action, string? Entity, DateTime? DateFrom, DateTime? DateTo)`. Also produces `AuditReadFixture` — the Testcontainers fixture Task 8 reuses (do not recreate it there).
+- Consumes: `AuditReadDbContext` (Task 3), `AuditLogListItem`/`AuditLogActorView`/`AuditLogExportRow` (Task 2).
+- Produces: `IAuditReadRepository.ListAsync(AuditLogFilter filter, int take, Guid? cursor, CancellationToken): Task<(IReadOnlyList<AuditLogListItem> Logs, Guid? NextCursor, int Total)>` and `IAuditReadRepository.ExportAsync(AuditLogFilter filter, CancellationToken): Task<IReadOnlyList<AuditLogExportRow>>` (bounded `Take(1000)`, matching the TS `take: 1000`). `AuditLogFilter` record: `(Guid? UserId, Guid? OrganizationId, string? Action, string? Entity, DateTime? DateFrom, DateTime? DateTo)` — `OrganizationId` is a WHERE-clause-only filter (never returned in the response, matching the real TS select). Also produces `AuditReadFixture` — the Testcontainers fixture Task 8 reuses (do not recreate it there).
 
 Because a repository over a real Postgres table is meaningfully tested only against real Postgres (matching every prior slice — `ReportingReadRepository` has no mocked-DbContext unit test either), this task builds its own Testcontainers fixture first (this is the first task that needs one), then the repository against it.
 
@@ -392,6 +462,13 @@ public sealed class AuditReadFixture : IAsyncLifetime
 
     public const string PlatformOwnerSub = "sub-audit-platform-owner";
     public const string OrgUserSub = "sub-audit-org-user";
+
+    // Named so tests can assert by id instead of by a since-removed flat OrganizationId field on
+    // AuditLogListItem (the real TS select never returns organizationId — see Task 1/2).
+    public static readonly Guid LogOrgA1 = Guid.Parse("d0000000-0000-0000-0000-000000000001");
+    public static readonly Guid LogOrgA2 = Guid.Parse("d0000000-0000-0000-0000-000000000002");
+    public static readonly Guid LogOrgB1 = Guid.Parse("d0000000-0000-0000-0000-000000000003");
+    public static readonly Guid OrgUserId = Guid.Parse("c0000000-0000-0000-0000-000000000002");
 
     private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:16-alpine")
         .WithUsername(LoginRole)
@@ -430,12 +507,15 @@ public sealed class AuditReadFixture : IAsyncLifetime
 
     private const string IdentitySchemaSql =
         """
-        CREATE TABLE organizations (id uuid PRIMARY KEY, is_active boolean NOT NULL DEFAULT true);
+        CREATE TABLE organizations (id uuid PRIMARY KEY, name text NOT NULL, is_active boolean NOT NULL DEFAULT true);
         CREATE TABLE users (
             id uuid PRIMARY KEY,
             organization_id uuid NULL REFERENCES organizations (id),
             supabase_user_id text NOT NULL UNIQUE,
             email text NOT NULL,
+            first_name text NULL,
+            last_name text NULL,
+            avatar text NULL,
             is_platform_owner boolean NOT NULL DEFAULT false,
             is_active boolean NOT NULL DEFAULT true
         );
@@ -443,15 +523,16 @@ public sealed class AuditReadFixture : IAsyncLifetime
 
     private const string IdentitySeedSql =
         """
-        INSERT INTO organizations (id, is_active) VALUES
-          ('11111111-1111-1111-1111-111111111111', true),
-          ('22222222-2222-2222-2222-222222222222', true);
+        INSERT INTO organizations (id, name, is_active) VALUES
+          ('11111111-1111-1111-1111-111111111111', 'Acme Corp', true),
+          ('22222222-2222-2222-2222-222222222222', 'Globex Inc', true);
 
         -- one real platform owner (org-less) + one ordinary org-scoped staff user (no grants needed —
-        -- PlatformOwnerGate checks PrincipalType only, never a permission grant).
-        INSERT INTO users (id, organization_id, supabase_user_id, email, is_platform_owner, is_active) VALUES
-          ('c0000000-0000-0000-0000-000000000001', NULL, 'sub-audit-platform-owner', 'owner@tims.test', true, true),
-          ('c0000000-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'sub-audit-org-user', 'orguser@tims.test', false, true);
+        -- PlatformOwnerGate checks PrincipalType only, never a permission grant). The org-user is also
+        -- the actor on the OrgA audit rows below, so first_name/last_name back the nested `actor` join.
+        INSERT INTO users (id, organization_id, supabase_user_id, email, first_name, last_name, avatar, is_platform_owner, is_active) VALUES
+          ('c0000000-0000-0000-0000-000000000001', NULL, 'sub-audit-platform-owner', 'owner@tims.test', 'Olivia', 'Owner', NULL, true, true),
+          ('c0000000-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'sub-audit-org-user', 'orguser@tims.test', 'Rick', 'Recruiter', NULL, false, true);
         """;
 
     private const string AuditSchemaSql =
@@ -518,8 +599,11 @@ public sealed class AuditReadRepositoryTests(AuditReadFixture fixture)
         var (logs, _, total) = await repo.ListAsync(new AuditLogFilter(null, null, null, null, null, null), take: 25, cursor: null, CancellationToken.None);
 
         Assert.Equal(3, total); // 2 OrgA rows + 1 OrgB row (seeded in AuditReadFixture)
-        Assert.Contains(logs, l => l.OrganizationId == AuditReadFixture.OrgA);
-        Assert.Contains(logs, l => l.OrganizationId == AuditReadFixture.OrgB);
+        // AuditLogListItem carries no OrganizationId (the real TS select never returns one) —
+        // assert by the known per-org log ids instead.
+        var ids = logs.Select(l => l.Id).ToHashSet();
+        Assert.Contains(AuditReadFixture.LogOrgA1, ids);
+        Assert.Contains(AuditReadFixture.LogOrgB1, ids);
     }
 
     [Fact]
@@ -531,7 +615,8 @@ public sealed class AuditReadRepositoryTests(AuditReadFixture fixture)
             new AuditLogFilter(null, AuditReadFixture.OrgA, null, null, null, null), take: 25, cursor: null, CancellationToken.None);
 
         Assert.Equal(2, total);
-        Assert.All(logs, l => Assert.Equal(AuditReadFixture.OrgA, l.OrganizationId));
+        var ids = logs.Select(l => l.Id).ToHashSet();
+        Assert.Equal(new HashSet<Guid> { AuditReadFixture.LogOrgA1, AuditReadFixture.LogOrgA2 }, ids);
     }
 
     [Fact]
@@ -547,6 +632,22 @@ public sealed class AuditReadRepositoryTests(AuditReadFixture fixture)
     }
 
     [Fact]
+    public async Task ListAsync_ActorJoin_PopulatesNestedActor_NullWhenActorIdIsNull()
+    {
+        var repo = new AuditReadRepository(_fixture.NewReadContext());
+
+        var (logs, _, _) = await repo.ListAsync(new AuditLogFilter(null, null, null, null, null, null), take: 25, cursor: null, CancellationToken.None);
+
+        var orgARow = logs.Single(l => l.Id == AuditReadFixture.LogOrgA1);
+        Assert.NotNull(orgARow.Actor);
+        Assert.Equal("Rick", orgARow.Actor!.FirstName);
+        Assert.Equal("Recruiter", orgARow.Actor.LastName);
+
+        var orgBRow = logs.Single(l => l.Id == AuditReadFixture.LogOrgB1);
+        Assert.Null(orgBRow.Actor); // actor_id is NULL on this seeded row
+    }
+
+    [Fact]
     public async Task ExportAsync_BoundsAt1000_MatchingTsTakeLimit()
     {
         var repo = new AuditReadRepository(_fixture.NewReadContext());
@@ -554,6 +655,19 @@ public sealed class AuditReadRepositoryTests(AuditReadFixture fixture)
         var rows = await repo.ExportAsync(new AuditLogFilter(null, null, null, null, null, null), CancellationToken.None);
 
         Assert.True(rows.Count <= 1000);
+    }
+
+    [Fact]
+    public async Task ExportAsync_JoinsOrganizationNameAndActorName()
+    {
+        var repo = new AuditReadRepository(_fixture.NewReadContext());
+
+        var rows = await repo.ExportAsync(new AuditLogFilter(null, AuditReadFixture.OrgA, null, null, null, null), CancellationToken.None);
+
+        var row = rows.Single(r => r.EntityId == null && r.Action == "login_failed");
+        Assert.Equal("Acme Corp", row.OrganizationName);
+        Assert.Equal("Rick", row.ActorFirstName);
+        Assert.Equal("Recruiter", row.ActorLastName);
     }
 }
 ```
@@ -581,10 +695,10 @@ public sealed record AuditLogFilter(
 
 public interface IAuditReadRepository
 {
-    Task<(IReadOnlyList<AuditLogView> Logs, Guid? NextCursor, int Total)> ListAsync(
+    Task<(IReadOnlyList<AuditLogListItem> Logs, Guid? NextCursor, int Total)> ListAsync(
         AuditLogFilter filter, int take, Guid? cursor, CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<AuditLogView>> ExportAsync(AuditLogFilter filter, CancellationToken cancellationToken);
+    Task<IReadOnlyList<AuditLogExportRow>> ExportAsync(AuditLogFilter filter, CancellationToken cancellationToken);
 }
 ```
 
@@ -598,13 +712,15 @@ namespace Tims.Infrastructure.Audit;
 
 /// <summary>
 /// Read-only port of TS <c>getCrossOrgAuditLogs</c>/<c>exportAuditLogsCsv</c>
-/// (routers/platform/system.ts:257-354). Deliberately runs WITHOUT
+/// (routers/platform/system.ts:267-326). Deliberately runs WITHOUT
 /// <see cref="Tims.Infrastructure.TenantScope"/> — see <see cref="AuditReadDbContext"/>'s doc comment.
 /// Every query is <c>AsNoTracking()</c>; <c>SaveChanges</c> is never called.
 ///
-/// Parity note: the TS list read joins <c>actor</c> (id/firstName/lastName/avatar) for display; this
-/// port returns the raw row only (actor display name resolution belongs to the identity-plane reads
-/// already ported in Phase 2 — composing them is a caller/BFF concern, not this repository's).
+/// Both methods LEFT JOIN by id (no EF navigation properties on <see cref="AuditLogEntity"/> —
+/// see <see cref="AuditReadDbContext"/>) rather than a nav-property <c>Include</c>, matching the TS
+/// query's own LEFT JOIN semantics exactly: <c>actorId</c>/<c>organizationId</c> can be null or
+/// point at a row that itself doesn't exist, and the response must degrade to a null actor / "Sistema"
+/// (endpoint concern, Task 6) rather than throw or silently drop the audit row.
 /// </summary>
 public sealed class AuditReadRepository(AuditReadDbContext db) : IAuditReadRepository
 {
@@ -612,7 +728,7 @@ public sealed class AuditReadRepository(AuditReadDbContext db) : IAuditReadRepos
 
     private readonly AuditReadDbContext _db = db;
 
-    public async Task<(IReadOnlyList<AuditLogView> Logs, Guid? NextCursor, int Total)> ListAsync(
+    public async Task<(IReadOnlyList<AuditLogListItem> Logs, Guid? NextCursor, int Total)> ListAsync(
         AuditLogFilter filter, int take, Guid? cursor, CancellationToken cancellationToken)
     {
         var query = ApplyFilter(_db.AuditLogs.AsNoTracking(), filter).OrderByDescending(a => a.CreatedAt);
@@ -640,17 +756,48 @@ public sealed class AuditReadRepository(AuditReadDbContext db) : IAuditReadRepos
         var total = await ApplyFilter(_db.AuditLogs.AsNoTracking(), filter)
             .CountAsync(cancellationToken).ConfigureAwait(false);
 
-        return (page.Select(ToView).ToList(), nextCursor, total);
+        // A single batched actor lookup (not N+1): fetch every distinct non-null ActorId this page
+        // references, then join client-side. The page is bounded (<= take+1, <= 100 per Task 6's
+        // MaxTake), so this is one extra round-trip, never one per row.
+        var actorIds = page.Where(a => a.ActorId is not null).Select(a => a.ActorId!.Value).Distinct().ToList();
+        var actors = await _db.Actors.AsNoTracking()
+            .Where(u => actorIds.Contains(u.Id))
+            .ToDictionaryAsync(u => u.Id, cancellationToken).ConfigureAwait(false);
+
+        var items = page.Select(a => new AuditLogListItem(
+            a.Id, a.Action, a.Entity, a.EntityId, a.UserId, a.Metadata, a.CreatedAt, a.IpAddress,
+            a.ActorId is { } actorId && actors.TryGetValue(actorId, out var actor)
+                ? new AuditLogActorView(actor.Id, actor.FirstName, actor.LastName, actor.Email, actor.Avatar)
+                : null)).ToList();
+
+        return (items, nextCursor, total);
     }
 
-    public async Task<IReadOnlyList<AuditLogView>> ExportAsync(AuditLogFilter filter, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<AuditLogExportRow>> ExportAsync(AuditLogFilter filter, CancellationToken cancellationToken)
     {
         var rows = await ApplyFilter(_db.AuditLogs.AsNoTracking(), filter)
             .OrderByDescending(a => a.CreatedAt)
             .Take(ExportCap)
             .ToListAsync(cancellationToken).ConfigureAwait(false);
 
-        return rows.Select(ToView).ToList();
+        var orgIds = rows.Select(a => a.OrganizationId).Distinct().ToList();
+        var orgs = await _db.Organizations.AsNoTracking()
+            .Where(o => orgIds.Contains(o.Id))
+            .ToDictionaryAsync(o => o.Id, cancellationToken).ConfigureAwait(false);
+
+        var actorIds = rows.Where(a => a.ActorId is not null).Select(a => a.ActorId!.Value).Distinct().ToList();
+        var actors = await _db.Actors.AsNoTracking()
+            .Where(u => actorIds.Contains(u.Id))
+            .ToDictionaryAsync(u => u.Id, cancellationToken).ConfigureAwait(false);
+
+        return rows.Select(a =>
+        {
+            orgs.TryGetValue(a.OrganizationId, out var org);
+            AuditActorReadEntity? actor = a.ActorId is { } actorId && actors.TryGetValue(actorId, out var found) ? found : null;
+            return new AuditLogExportRow(
+                a.Action, a.Entity, a.EntityId, a.IpAddress, a.CreatedAt,
+                org?.Name, actor?.FirstName, actor?.LastName, actor?.Email);
+        }).ToList();
     }
 
     private static IQueryable<AuditLogEntity> ApplyFilter(IQueryable<AuditLogEntity> query, AuditLogFilter filter)
@@ -663,16 +810,13 @@ public sealed class AuditReadRepository(AuditReadDbContext db) : IAuditReadRepos
         if (filter.DateTo is { } to) query = query.Where(a => a.CreatedAt <= to);
         return query;
     }
-
-    private static AuditLogView ToView(AuditLogEntity e) => new(
-        e.Id, e.OrganizationId, e.UserId, e.ActorId, e.Action, e.Entity, e.EntityId, e.IpAddress, e.UserAgent, e.CreatedAt);
 }
 ```
 
 - [ ] **Step 5: Run test to verify it passes**
 
 Run: `cd services/Tims.Platform && dotnet test --filter AuditReadRepositoryTests`
-Expected: PASS (4 tests).
+Expected: PASS (6 tests).
 
 - [ ] **Step 6: Commit**
 
@@ -898,13 +1042,27 @@ public static class AuditReadEndpoints
             .WithName("AuditExportCrossOrgLogsCsv");
     }
 
-    private static string BuildCsv(IReadOnlyList<AuditLogView> rows)
+    // Matches TS exactly (system.ts's `actorName` helper): firstName+lastName trimmed, falling
+    // back to email if that's blank, falling back to "Sistema" only when there's no actor at all
+    // (ActorFirstName/LastName/Email are all null exactly when the row had no actor join).
+    private static string ActorName(AuditLogExportRow r)
+    {
+        if (r.ActorEmail is null)
+        {
+            return "Sistema";
+        }
+
+        var name = $"{r.ActorFirstName} {r.ActorLastName}".Trim();
+        return name.Length > 0 ? name : r.ActorEmail;
+    }
+
+    private static string BuildCsv(IReadOnlyList<AuditLogExportRow> rows)
     {
         var header = CsvCell.Row(["Fecha", "Organizacion", "Actor", "Accion", "Entidad", "ID Entidad", "IP"]);
         var lines = rows.Select(r => CsvCell.Row([
             r.CreatedAt.ToString("O"),
-            r.OrganizationId.ToString(),
-            r.ActorId?.ToString() ?? "Sistema",
+            r.OrganizationName ?? "-",
+            ActorName(r),
             r.Action,
             r.Entity,
             r.EntityId ?? "-",
@@ -913,11 +1071,11 @@ public static class AuditReadEndpoints
         return string.Join('\n', new[] { header }.Concat(lines));
     }
 
-    private static object BuildJson(IReadOnlyList<AuditLogView> rows) => rows.Select(r => new
+    private static object BuildJson(IReadOnlyList<AuditLogExportRow> rows) => rows.Select(r => new
     {
         date = r.CreatedAt.ToString("O"),
-        organization = r.OrganizationId,
-        actor = r.ActorId?.ToString() ?? "Sistema",
+        organization = r.OrganizationName,
+        actor = ActorName(r),
         action = r.Action,
         entity = r.Entity,
         entityId = r.EntityId,
