@@ -206,25 +206,30 @@ async function upsertAuthUser(admin: SupabaseClient, email: string, password: st
   return findAuthUserByEmail(admin, email);
 }
 
-/** Insert-or-find the public.users row linked via supabase_user_id. Returns its DB id. */
+/** Insert-or-find the public.users row linked via supabase_user_id. Returns its DB id.
+ *  `isPlatformOwner` sets the ONE boolean column (`users.is_platform_owner`) that
+ *  `PrincipalResolver`/`PermissionService` actually gate platform-owner access on — RBAC
+ *  role rows (see `upsertUserRoleGrant`) are irrelevant to this check. */
 async function upsertPublicUser(
   db: Client,
   authUserId: string,
   organizationId: string,
   email: string,
   role: string,
+  isPlatformOwner: boolean,
 ): Promise<string> {
   const { rows } = await db.query<IdRow>(
-    `INSERT INTO users (id, supabase_user_id, organization_id, email, first_name, last_name, updated_at)
-     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, now())
+    `INSERT INTO users (id, supabase_user_id, organization_id, email, first_name, last_name, is_platform_owner, updated_at)
+     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, now())
      ON CONFLICT (supabase_user_id) DO UPDATE SET
        organization_id = EXCLUDED.organization_id,
        email = EXCLUDED.email,
        first_name = EXCLUDED.first_name,
        last_name = EXCLUDED.last_name,
+       is_platform_owner = EXCLUDED.is_platform_owner,
        updated_at = now()
      RETURNING id`,
-    [authUserId, organizationId, email, 'Parity', role],
+    [authUserId, organizationId, email, 'Parity', role, isPlatformOwner],
   );
   return rows[0].id;
 }
@@ -1929,9 +1934,7 @@ export async function resolveResources(cfg: HarnessConfig): Promise<SeedResource
 
 /** Opens a read-only DB handle (the BYPASSRLS `postgres` client) for the write checks'
  *  read-backs. Returns a parameterized-query fn + a closer; the caller MUST call close(). */
-export async function openReadback(
-  cfg: HarnessConfig,
-): Promise<{
+export async function openReadback(cfg: HarnessConfig): Promise<{
   readback: (sql: string, params: unknown[]) => Promise<Record<string, unknown>[]>;
   close: () => Promise<void>;
 }> {
@@ -1960,12 +1963,18 @@ export async function seed(cfg: HarnessConfig, roles: string[]): Promise<SeedRes
 
     const userIds = new Map<string, string>();
     for (const u of plan.users) {
+      const isPlatformOwner = u.role === 'platform_owner';
       const authUserId = await upsertAuthUser(admin, u.email, u.password);
-      const userId = await upsertPublicUser(db, authUserId, orgIds[u.orgKey], u.email, u.role);
+      const userId = await upsertPublicUser(db, authUserId, orgIds[u.orgKey], u.email, u.role, isPlatformOwner);
       userIds.set(`${u.orgKey}:${u.role}`, userId);
-      const roleId = roleIds.get(`${u.orgKey}:${u.role}`);
-      if (!roleId) throw new Error(`seed: no planned role id for ${u.orgKey}:${u.role}`);
-      await upsertUserRoleGrant(db, userId, roleId);
+      // platform_owner is gated by users.is_platform_owner (above), not by any RBAC role —
+      // its `roles` row only exists to hang the per-(org,role) token cache off of (see
+      // planSeed's comment), so it gets no user_roles grant.
+      if (!isPlatformOwner) {
+        const roleId = roleIds.get(`${u.orgKey}:${u.role}`);
+        if (!roleId) throw new Error(`seed: no planned role id for ${u.orgKey}:${u.role}`);
+        await upsertUserRoleGrant(db, userId, roleId);
+      }
     }
 
     // RBAC + RLS fixtures: hr_admin's team_intel:read grant (so hr_admin=200) and

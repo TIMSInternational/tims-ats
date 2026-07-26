@@ -139,6 +139,27 @@ public sealed class AuditReadEndpointAuthTests(AuditReadFixture fixture)
     }
 
     [Fact]
+    public async Task PlatformOwner_Export_Json_Is200_WithStringData()
+    {
+        await using var factory = EnabledFactory();
+        using var client = factory.CreateClient();
+
+        var response = await Get(client, $"{ExportPath}?format=json", Mint(AuditReadFixture.PlatformOwnerSub));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        // Matches TS `exportAuditLogsCsv`'s json branch: `data` is a JSON.stringify'd STRING, not a
+        // nested array — GetString() throws InvalidOperationException if `data` came back as an array.
+        var body = await response.Content.ReadAsStringAsync();
+        using var json = JsonDocument.Parse(body);
+        Assert.Equal("json", json.RootElement.GetProperty("format").GetString());
+        var data = json.RootElement.GetProperty("data").GetString();
+        Assert.NotNull(data);
+        using var rows = JsonDocument.Parse(data);
+        Assert.Equal(JsonValueKind.Array, rows.RootElement.ValueKind);
+        Assert.Contains("login_failed", data);
+    }
+
+    [Fact]
     public async Task OrdinaryOrgUser_Export_Is403()
     {
         await using var factory = EnabledFactory();

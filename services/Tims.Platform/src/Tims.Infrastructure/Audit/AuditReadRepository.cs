@@ -25,7 +25,11 @@ public sealed class AuditReadRepository(AuditReadDbContext db) : IAuditReadRepos
     public async Task<(IReadOnlyList<AuditLogListItem> Logs, Guid? NextCursor, int Total)> ListAsync(
         AuditLogFilter filter, int take, Guid? cursor, CancellationToken cancellationToken)
     {
-        var query = ApplyFilter(_db.AuditLogs.AsNoTracking(), filter).OrderByDescending(a => a.CreatedAt);
+        // ThenByDescending(Id) is a defensive tie-break for rows sharing the same CreatedAt (e.g. a
+        // single-statement bulk insert) — it must match the cursor WHERE clause's own Id tie-break
+        // below, or a tied page boundary could re-serve/skip a row.
+        var query = ApplyFilter(_db.AuditLogs.AsNoTracking(), filter)
+            .OrderByDescending(a => a.CreatedAt).ThenByDescending(a => a.Id);
 
         if (cursor is { } cursorId)
         {
@@ -45,7 +49,7 @@ public sealed class AuditReadRepository(AuditReadDbContext db) : IAuditReadRepos
 
             query = query.Where(a => a.CreatedAt < cursorRow.CreatedAt
                 || (a.CreatedAt == cursorRow.CreatedAt && a.Id.CompareTo(cursorRow.Id) < 0))
-                .OrderByDescending(a => a.CreatedAt);
+                .OrderByDescending(a => a.CreatedAt).ThenByDescending(a => a.Id);
         }
 
         var page = await query.Take(take + 1).ToListAsync(cancellationToken).ConfigureAwait(false);

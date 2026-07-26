@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text.Json;
 using Microsoft.Extensions.Options;
 using Tims.Api.Configuration;
 using Tims.Application.Audit;
@@ -21,6 +22,10 @@ public static class AuditReadEndpoints
     private const int DefaultTake = 20;
     private const int MaxTake = 50;
     private const int MaxFilterLength = 100;
+
+    // Matches TS `JSON.stringify(rows, null, 2)` in exportAuditLogsCsv (system.ts) — `data` is
+    // always a string on the wire, both for csv and json format.
+    private static readonly JsonSerializerOptions JsonExportOptions = new() { WriteIndented = true };
 
     public static void MapAuditReadEndpoints(this WebApplication app)
     {
@@ -78,7 +83,8 @@ public static class AuditReadEndpoints
 
                 if (format == "json")
                 {
-                    return Results.Ok(new { format = "json", data = BuildJson(rows), count = rows.Count });
+                    var json = JsonSerializer.Serialize(BuildJson(rows), JsonExportOptions);
+                    return Results.Ok(new { format = "json", data = json, count = rows.Count });
                 }
 
                 return Results.Ok(new { format = "csv", data = BuildCsv(rows), count = rows.Count });
@@ -95,6 +101,10 @@ public static class AuditReadEndpoints
     // and exportAuditLogsCsvInput (system.schemas.ts) — an unbounded query-string param is
     // exactly what CLAUDE.md's "bound all strings" rule forbids.
     private static bool IsTooLong(string? value) => value is not null && value.Length > MaxFilterLength;
+
+    // Matches TS `l.entity || null` / `l.entityId || null` / `l.ipAddress || null` (falsy check —
+    // an empty string, not just null, falls back) rather than C#'s null-only `??`.
+    private static string? EmptyToNull(string? value) => string.IsNullOrEmpty(value) ? null : value;
 
     // Matches TS exactly (system.ts's `actorName` helper): firstName+lastName trimmed, falling
     // back to email if that's blank, falling back to "Sistema" only when there's no actor at all
@@ -118,9 +128,9 @@ public static class AuditReadEndpoints
             r.OrganizationName, // non-nullable — AuditLog.organization is a required FK relation
             ActorName(r),
             r.Action,
-            r.Entity,
-            r.EntityId ?? "-",
-            r.IpAddress ?? "-",
+            EmptyToNull(r.Entity) ?? "-",
+            EmptyToNull(r.EntityId) ?? "-",
+            EmptyToNull(r.IpAddress) ?? "-",
         ]));
         return string.Join('\n', new[] { header }.Concat(lines));
     }
@@ -131,8 +141,8 @@ public static class AuditReadEndpoints
         organization = r.OrganizationName,
         actor = ActorName(r),
         action = r.Action,
-        entity = r.Entity,
-        entityId = r.EntityId,
-        ip = r.IpAddress,
+        entity = EmptyToNull(r.Entity),
+        entityId = EmptyToNull(r.EntityId),
+        ip = EmptyToNull(r.IpAddress),
     });
 }
