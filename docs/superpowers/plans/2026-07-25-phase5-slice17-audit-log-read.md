@@ -671,6 +671,19 @@ public sealed class AuditReadRepositoryTests(AuditReadFixture fixture)
         Assert.Equal("Rick", row.ActorFirstName);
         Assert.Equal("Recruiter", row.ActorLastName);
     }
+
+    [Fact]
+    public async Task ListAsync_UnknownCursor_ReturnsEmptyPage_NotPageOne()
+    {
+        var repo = new AuditReadRepository(_fixture.NewReadContext());
+
+        var (logs, nextCursor, total) = await repo.ListAsync(
+            new AuditLogFilter(null, null, null, null, null, null), take: 25, cursor: Guid.NewGuid(), CancellationToken.None);
+
+        Assert.Empty(logs); // NOT page 1 — matches Prisma's real "cursor not found -> empty" behavior
+        Assert.Null(nextCursor);
+        Assert.Equal(3, total); // total still reflects the true count, independent of the stale cursor
+    }
 }
 ```
 
@@ -739,12 +752,19 @@ public sealed class AuditReadRepository(AuditReadDbContext db) : IAuditReadRepos
         {
             var cursorRow = await _db.AuditLogs.AsNoTracking()
                 .FirstOrDefaultAsync(a => a.Id == cursorId, cancellationToken).ConfigureAwait(false);
-            if (cursorRow is not null)
+            if (cursorRow is null)
             {
-                query = query.Where(a => a.CreatedAt < cursorRow.CreatedAt
-                    || (a.CreatedAt == cursorRow.CreatedAt && a.Id.CompareTo(cursorRow.Id) < 0))
-                    .OrderByDescending(a => a.CreatedAt);
+                // A cursor that resolves to no row is Prisma's real behavior too (findMany with a
+                // non-existent `cursor.id` returns an empty array, not the unfiltered first page) —
+                // total still reflects the true count, independent of the stale cursor.
+                var emptyTotal = await ApplyFilter(_db.AuditLogs.AsNoTracking(), filter)
+                    .CountAsync(cancellationToken).ConfigureAwait(false);
+                return ([], null, emptyTotal);
             }
+
+            query = query.Where(a => a.CreatedAt < cursorRow.CreatedAt
+                || (a.CreatedAt == cursorRow.CreatedAt && a.Id.CompareTo(cursorRow.Id) < 0))
+                .OrderByDescending(a => a.CreatedAt);
         }
 
         var page = await query.Take(take + 1).ToListAsync(cancellationToken).ConfigureAwait(false);
@@ -822,7 +842,7 @@ public sealed class AuditReadRepository(AuditReadDbContext db) : IAuditReadRepos
 - [ ] **Step 5: Run test to verify it passes**
 
 Run: `cd services/Tims.Platform && dotnet test --filter AuditReadRepositoryTests`
-Expected: PASS (6 tests).
+Expected: PASS (7 tests — includes `ListAsync_UnknownCursor_ReturnsEmptyPage_NotPageOne`, added after review round 1 caught a stale-cursor parity gap against real Prisma behavior).
 
 - [ ] **Step 6: Commit**
 
