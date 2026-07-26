@@ -1,0 +1,20 @@
+{
+  "header": "\"Usuario\",\"Email\",\"Organizacion\",\"Estado\",\"Rol\",\"Alcance\",\"AsignadoPor\",\"Privilegiado\",\"Inactivo\",\"SinAcceso\",\"BrechaBaja\",\"Expirado\",\"RolCruzado\"",
+  "sample": {
+    "name": "=cmd|' /c calc'!A0",
+    "email": "orguser@tims.test",
+    "orgName": "Acme Corp",
+    "status": "active",
+    "roleSlug": "recruiter",
+    "companyScope": "22222222-0000-0000-0000-000000000001",
+    "unitScope": null,
+    "assignedBy": "c0000000-0000-0000-0000-000000000001",
+    "privileged": "N",
+    "stale": "N",
+    "neverLoggedIn": "N",
+    "deprovisionGap": "N",
+    "expiredGrant": "N",
+    "crossOrgRole": "N"
+  },
+  "expectedCsvRow": "\"'=cmd|' /c calc'!A0\",\"orguser@tims.test\",\"Acme Corp\",\"active\",\"recruiter\",\"22222222-0000-0000-0000-000000000001\",\"c0000000-0000-0000-0000-000000000001\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\""
+}

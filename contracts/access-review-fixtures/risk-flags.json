@@ -1,0 +1,121 @@
+{
+  "now": "2026-07-17T00:00:00.000Z",
+  "org": "11111111-1111-1111-1111-111111111111",
+  "otherOrg": "22222222-2222-2222-2222-222222222222",
+  "scenarios": {
+    "healthyActiveRecruiter": {
+      "isActive": true,
+      "deletedAt": null,
+      "lastLoginAtDaysAgo": 1,
+      "roles": [{ "slug": "recruiter", "organizationId": "SAME", "expiresAtDaysAgo": null }],
+      "isPlatformOwner": false,
+      "expectedStatus": "active",
+      "expectedFlags": {
+        "neverLoggedIn": false,
+        "stale": false,
+        "privileged": false,
+        "deprovisionGap": false,
+        "expiredGrant": false,
+        "crossOrgRole": false
+      }
+    },
+    "neverLoggedIn": {
+      "isActive": true,
+      "deletedAt": null,
+      "lastLoginAtDaysAgo": null,
+      "roles": [{ "slug": "recruiter", "organizationId": "SAME", "expiresAtDaysAgo": null }],
+      "isPlatformOwner": false,
+      "expectedFlags": { "neverLoggedIn": true }
+    },
+    "staleAtBoundaryOver": {
+      "isActive": true,
+      "deletedAt": null,
+      "lastLoginAtDaysAgo": 91,
+      "roles": [],
+      "isPlatformOwner": false,
+      "expectedFlags": { "stale": true }
+    },
+    "staleAtBoundaryUnder": {
+      "isActive": true,
+      "deletedAt": null,
+      "lastLoginAtDaysAgo": 89,
+      "roles": [],
+      "isPlatformOwner": false,
+      "expectedFlags": { "stale": false }
+    },
+    "privilegedBySuperAdminRole": {
+      "isActive": true,
+      "deletedAt": null,
+      "lastLoginAtDaysAgo": 1,
+      "roles": [{ "slug": "super_admin", "organizationId": "SAME", "expiresAtDaysAgo": null }],
+      "isPlatformOwner": false,
+      "expectedFlags": { "privileged": true }
+    },
+    "privilegedByPlatformOwner": {
+      "isActive": true,
+      "deletedAt": null,
+      "lastLoginAtDaysAgo": 1,
+      "roles": [],
+      "isPlatformOwner": true,
+      "expectedFlags": { "privileged": true }
+    },
+    "deprovisionGapInactiveWithRole": {
+      "isActive": false,
+      "deletedAt": null,
+      "lastLoginAtDaysAgo": 1,
+      "roles": [{ "slug": "recruiter", "organizationId": "SAME", "expiresAtDaysAgo": null }],
+      "isPlatformOwner": false,
+      "expectedStatus": "inactive",
+      "expectedFlags": { "deprovisionGap": true, "neverLoggedIn": false, "stale": false, "expiredGrant": false }
+    },
+    "deprovisionGapDeletedWithRole": {
+      "isActive": true,
+      "deletedAtIsNow": true,
+      "lastLoginAtDaysAgo": 1,
+      "roles": [{ "slug": "recruiter", "organizationId": "SAME", "expiresAtDaysAgo": null }],
+      "isPlatformOwner": false,
+      "expectedStatus": "deleted",
+      "expectedFlags": { "deprovisionGap": true }
+    },
+    "noDeprovisionGapWhenNoRoleAndInactive": {
+      "isActive": false,
+      "deletedAt": null,
+      "lastLoginAtDaysAgo": 1,
+      "roles": [],
+      "isPlatformOwner": false,
+      "expectedFlags": { "deprovisionGap": false }
+    },
+    "expiredGrantActive": {
+      "isActive": true,
+      "deletedAt": null,
+      "lastLoginAtDaysAgo": 1,
+      "roles": [{ "slug": "recruiter", "organizationId": "SAME", "expiresAtDaysAgo": 1 }],
+      "isPlatformOwner": false,
+      "expectedFlags": { "expiredGrant": true }
+    },
+    "expiredGrantFutureExpiryIsFine": {
+      "isActive": true,
+      "deletedAt": null,
+      "lastLoginAtDaysAgo": 1,
+      "roles": [{ "slug": "recruiter", "organizationId": "SAME", "expiresAtDaysAgo": -30 }],
+      "isPlatformOwner": false,
+      "expectedFlags": { "expiredGrant": false }
+    },
+    "expiredGrantNotCountedWhenInactive": {
+      "isActive": false,
+      "deletedAt": null,
+      "lastLoginAtDaysAgo": null,
+      "roles": [{ "slug": "recruiter", "organizationId": "SAME", "expiresAtDaysAgo": 1 }],
+      "isPlatformOwner": false,
+      "expectedFlags": { "expiredGrant": false, "deprovisionGap": true }
+    },
+    "crossOrgRole": {
+      "isActive": true,
+      "deletedAt": null,
+      "lastLoginAtDaysAgo": 1,
+      "roles": [{ "slug": "recruiter", "organizationId": "OTHER", "expiresAtDaysAgo": null }],
+      "isPlatformOwner": false,
+      "expectedFlags": { "crossOrgRole": true }
+    }
+  }
+}
