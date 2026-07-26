@@ -376,4 +376,25 @@ public sealed class PlatformOptions
     /// the single active writer until Federico flips it at canary (deploy-gated cutover).
     /// </summary>
     public bool EngagementWriteEnabled { get; init; }
+
+    /// <summary>
+    /// Phase-5 Slice 18 (efcoreReadOnly on users/roles/user_roles/role_permissions/permissions/
+    /// organizations — Phase 2; access_reviews stays Prisma-owned until this flips): when true, the
+    /// C# access-review READ surface is mapped and live — <c>GET /access-review</c> (the report),
+    /// <c>/access-review/export</c> (CSV), <c>/access-review/attestations</c> (history).
+    /// Platform-owner-only (PlatformOwnerGate, reused verbatim from Slice 17 — NO permission grant,
+    /// NO tenant scope), org-scoped by a required <c>organizationId</c> query parameter (NOT RLS — see
+    /// docs/architecture/csharp-migration/phase-5-slice-18-access-review.md). DEFAULT false (dark) —
+    /// TS remains the single active reader until Federico flips it at canary.
+    /// </summary>
+    public bool AccessReviewReadEnabled { get; init; }
+
+    /// <summary>
+    /// Phase-5 Slice 18 (moves `access_reviews` to efcoreStranglerWrite in the table-ownership
+    /// ledger, Task 9): when true, the C# access-review WRITE surface is mapped and live —
+    /// <c>POST /access-review/attest</c>. The FIRST C# write to `access_reviews`; refuses (412) a
+    /// truncated org rather than persist under-counted compliance evidence, matching TS exactly.
+    /// DEFAULT false (dark) — TS remains the single active writer until Federico flips it at canary.
+    /// </summary>
+    public bool AccessReviewWriteEnabled { get; init; }
 }
