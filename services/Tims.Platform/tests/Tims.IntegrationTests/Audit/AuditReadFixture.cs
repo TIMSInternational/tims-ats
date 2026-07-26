@@ -81,6 +81,21 @@ public sealed class AuditReadFixture : IAsyncLifetime
             is_platform_owner boolean NOT NULL DEFAULT false,
             is_active boolean NOT NULL DEFAULT true
         );
+        -- Empty on purpose: PlatformOwnerGate checks PrincipalType only, never a role grant, but
+        -- IdentityRepository.FindBySupabaseUserIdAsync unconditionally `.Include(u => u.UserRoles)
+        -- .ThenInclude(ur => ur.Role)`s every staff lookup (both principals below go through it) —
+        -- without these tables the query 500s on "relation does not exist" (mirrors ReportingReadFixture's
+        -- identical roles/user_roles pair, kept schema-only here since no test needs a seeded grant row).
+        CREATE TABLE roles (
+            id uuid PRIMARY KEY,
+            organization_id uuid NOT NULL,
+            slug text NOT NULL
+        );
+        CREATE TABLE user_roles (
+            id uuid PRIMARY KEY,
+            user_id uuid NOT NULL REFERENCES users (id),
+            role_id uuid NOT NULL REFERENCES roles (id)
+        );
         """;
 
     private const string IdentitySeedSql =
