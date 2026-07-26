@@ -161,9 +161,9 @@ git commit -m "test(parity): golden fixtures for the cross-org audit-log read + 
 **Interfaces:**
 
 - Produces: `Tims.Domain.Csv.CsvCell.Escape(string? value): string` and `CsvCell.Row(IEnumerable<string?> values): string` — golden-fixtured 1:1 against `packages/shared/src/csv.ts`'s `csvCell`/`csvRow`. Three read-side records, independent of any EF entity, mirroring the TS `auditLogSelect` (list) and the export's separate select EXACTLY (confirmed against `packages/api/src/routers/platform/system.helpers.ts` + `system.ts:267-326` in Task 1's fixture review — the list response has NO flat `organizationId`/`userAgent`, HAS `metadata` + a nested `actor`; the export has NO raw ids at all, only `organization.name` + `actor.{firstName,lastName,email}`):
-  - `AuditLogActorView(Guid Id, string? FirstName, string? LastName, string Email, string? Avatar)` — the nested `actor` join for the list.
+  - `AuditLogActorView(Guid Id, string FirstName, string LastName, string Email, string? Avatar)` — the nested `actor` join for the list. `FirstName`/`LastName` are non-nullable (real schema: `user.prisma:6-7`, `String` NOT NULL) — only `Avatar` is genuinely optional.
   - `AuditLogListItem(Guid Id, string Action, string Entity, string? EntityId, Guid? UserId, string? Metadata, DateTime CreatedAt, string? IpAddress, AuditLogActorView? Actor)`.
-  - `AuditLogExportRow(string Action, string Entity, string? EntityId, string? IpAddress, DateTime CreatedAt, string? OrganizationName, string? ActorFirstName, string? ActorLastName, string? ActorEmail)`.
+  - `AuditLogExportRow(string Action, string Entity, string? EntityId, string? IpAddress, DateTime CreatedAt, string OrganizationName, string? ActorFirstName, string? ActorLastName, string? ActorEmail)`. `OrganizationName` is non-nullable — `AuditLog.organization` is a REQUIRED relation (`system.prisma:31`) to a `NOT NULL` `name` column (`organization.prisma:32`), so every row's org name always exists. The `Actor*` fields stay nullable — they flatten an OPTIONAL `actor` relation, not a nullable scalar.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -256,7 +256,7 @@ namespace Tims.Domain.Audit;
 ///   - Export (`exportAuditLogsCsv`, system.ts:314-326): action, entity, entityId, ipAddress,
 ///     createdAt, organization.name, actor.{firstName,lastName,email}. NO raw ids at all.
 /// </summary>
-public sealed record AuditLogActorView(Guid Id, string? FirstName, string? LastName, string Email, string? Avatar);
+public sealed record AuditLogActorView(Guid Id, string FirstName, string LastName, string Email, string? Avatar);
 
 public sealed record AuditLogListItem(
     Guid Id,
@@ -275,7 +275,7 @@ public sealed record AuditLogExportRow(
     string? EntityId,
     string? IpAddress,
     DateTime CreatedAt,
-    string? OrganizationName,
+    string OrganizationName,
     string? ActorFirstName,
     string? ActorLastName,
     string? ActorEmail);
@@ -388,12 +388,14 @@ public sealed class AuditReadDbContext(DbContextOptions<AuditReadDbContext> opti
 }
 
 /// <summary>Minimal read-only mapping of `users`, scoped to this context — backs the list
-/// endpoint's nested `actor` join and the export endpoint's actor name fields.</summary>
+/// endpoint's nested `actor` join and the export endpoint's actor name fields. FirstName/LastName
+/// are non-nullable per the real schema (user.prisma:6-7, `String` NOT NULL) — only Avatar is
+/// genuinely optional.</summary>
 public sealed class AuditActorReadEntity
 {
     public Guid Id { get; set; }
-    public string? FirstName { get; set; }
-    public string? LastName { get; set; }
+    public string FirstName { get; set; } = string.Empty;
+    public string LastName { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
     public string? Avatar { get; set; }
 }
@@ -792,11 +794,15 @@ public sealed class AuditReadRepository(AuditReadDbContext db) : IAuditReadRepos
 
         return rows.Select(a =>
         {
-            orgs.TryGetValue(a.OrganizationId, out var org);
+            // organization_id is NOT NULL with a REQUIRED FK to organizations(id) (system.prisma:31) —
+            // the lookup is trusted to always hit; a miss would mean a genuine data-integrity
+            // violation, so this throws (KeyNotFoundException) rather than silently coalescing to a
+            // placeholder that would mask the bug.
+            var org = orgs[a.OrganizationId];
             AuditActorReadEntity? actor = a.ActorId is { } actorId && actors.TryGetValue(actorId, out var found) ? found : null;
             return new AuditLogExportRow(
                 a.Action, a.Entity, a.EntityId, a.IpAddress, a.CreatedAt,
-                org?.Name, actor?.FirstName, actor?.LastName, actor?.Email);
+                org.Name, actor?.FirstName, actor?.LastName, actor?.Email);
         }).ToList();
     }
 
@@ -1061,7 +1067,7 @@ public static class AuditReadEndpoints
         var header = CsvCell.Row(["Fecha", "Organizacion", "Actor", "Accion", "Entidad", "ID Entidad", "IP"]);
         var lines = rows.Select(r => CsvCell.Row([
             r.CreatedAt.ToString("O"),
-            r.OrganizationName ?? "-",
+            r.OrganizationName, // non-nullable — AuditLog.organization is a required FK relation
             ActorName(r),
             r.Action,
             r.Entity,
