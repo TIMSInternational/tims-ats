@@ -251,6 +251,13 @@ public sealed class PlatformOptions
     public bool DeiReadEnabled { get; init; }
 
     /// <summary>
+    /// Dark-by-default gate for the Phase-5 Slice-17 cross-org audit-log READ surface
+    /// (platform.getCrossOrgAuditLogs/exportAuditLogsCsv). Mapped only when true, or during
+    /// OpenAPI-doc generation. TS stays the sole active reader until Federico flips this at canary.
+    /// </summary>
+    public bool AuditLogReadEnabled { get; init; }
+
+    /// <summary>
     /// Phase-5 Slice 11c: when true, the C# FX-derived READ surface is mapped and live — the FIVE deferred
     /// compensation FX reads (<c>GET /compensation/band-distribution</c>, <c>/compensation/pay-equity</c>,
     /// <c>/compensation/simulate-adjustment</c>, <c>/compensation/total-comp-breakdown</c>,

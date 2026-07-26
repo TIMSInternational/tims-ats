@@ -12,6 +12,7 @@ using OpenTelemetry.Trace;
 using Serilog;
 using Serilog.Formatting.Compact;
 using StackExchange.Redis;
+using Tims.Api.Audit;
 using Tims.Api.Authentication;
 using Tims.Api.Billing;
 using Tims.Api.Compensation;
@@ -404,6 +405,13 @@ try
     builder.Services.AddScoped<IFxRateProvider, FxRateProvider>();
     builder.Services.AddScoped<FxMoneyConverter>();
     builder.Services.AddScoped<CompensationFxReadUseCase>();
+
+    // Phase-5 Slice 17 (efcoreReadOnly): the cross-org audit-log READ surface. Plain read-only context
+    // over the Prisma-OWNED audit_logs (+ context-local users/organizations read entities for the
+    // actor/organization joins) — NEVER wrapped in TenantScope (platform-owner-only; RLS does not
+    // restrict this reader, see AuditReadDbContext). Dark unless AuditLogReadEnabled.
+    builder.Services.AddDbContext<AuditReadDbContext>(options => options.UseNpgsql(databaseConnectionString));
+    builder.Services.AddScoped<IAuditReadRepository, AuditReadRepository>();
 
     builder.Services
         .AddOptions<StripeBillingOptions>()
@@ -987,6 +995,16 @@ try
     {
         app.MapDeiPayEquityEndpoint();
         app.MapCompensationFxReadEndpoints();
+    }
+
+    // Cross-org audit-log READ surface (Phase-5 Slice 17): GET /audit/logs (getCrossOrgAuditLogs,
+    // cursor-paginated) + /audit/logs/export (exportAuditLogsCsv, csv|json). Platform-owner-only
+    // (PlatformOwnerGate — NO permission grant, NO tenant scope; the reader runs OUTSIDE TenantScope/RLS
+    // by design). Dark unless the flag is on (deploy-gated cutover; TS stays the sole active reader
+    // until Federico flips it).
+    if (externalOptions.AuditLogReadEnabled || isOpenApiDocGeneration)
+    {
+        app.MapAuditReadEndpoints();
     }
 
     // Authz probe (WP2.5): the C# equivalent of the tRPC `requirePermission` gate. Resolves the
