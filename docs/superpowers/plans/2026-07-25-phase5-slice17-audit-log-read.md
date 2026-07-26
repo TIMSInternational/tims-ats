@@ -1007,10 +1007,25 @@ namespace Tims.Api.Audit;
 /// <see cref="Tims.Infrastructure.Audit.AuditReadDbContext"/>). Dark-by-default behind
 /// <see cref="PlatformOptions.AuditLogReadEnabled"/>.
 /// </summary>
+///
+/// Post-review amendments (see the committed code for the byte-exact version — this block is
+/// illustrative, not re-synced line-for-line after these fixes):
+///   - DefaultTake/MaxTake corrected to 20/50 (was 25/100) to match the real TS Zod schema
+///     (`system.schemas.ts`: `limit: z.number().int().min(1).max(50).default(20)`).
+///   - `action`/`entity` now bounded to 100 chars (`IsTooLong` helper → 400 on violation),
+///     matching TS's `.max(100)` and CLAUDE.md's "bound all strings" rule.
+///   - `CreatedAt` serializes via a new `NodeIsoDateTimeConverter` (Tims.Domain/Json, sibling to
+///     the existing `NodeIsoDateTimeOffsetConverter`) so plain-`DateTime` values (Npgsql's
+///     Unspecified-Kind read of a `timestamp` column) emit Node's exact `toISOString()` shape
+///     (`...fff'Z'`) instead of `DateTime.ToString("O")`'s non-matching format — required for the
+///     Task 1 golden fixtures to byte-match. `AuditLogListItem.CreatedAt` (Task 2) gained the
+///     matching `[property: JsonConverter(typeof(NodeIsoDateTimeConverter))]` attribute; its field
+///     set/nullability are otherwise unchanged from Task 2's approved shape.
 public static class AuditReadEndpoints
 {
-    private const int DefaultTake = 25;
-    private const int MaxTake = 100;
+    private const int DefaultTake = 20;
+    private const int MaxTake = 50;
+    private const int MaxFilterLength = 100;
 
     public static void MapAuditReadEndpoints(this WebApplication app)
     {
