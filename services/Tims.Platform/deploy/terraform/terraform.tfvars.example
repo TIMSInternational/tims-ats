@@ -13,12 +13,48 @@ supabase_jwks_metadata_address = "https://REPLACE_REF.supabase.co/auth/v1/.well-
 
 # otlp_endpoint = "http://otel-collector:4317"   # optional
 
-# First deploy: keep ALL flags false (a deploy activates NO strangled surface). Flip one at a
-# time at cutover, AFTER setting the matching FE NEXT_PUBLIC_*_VIA_CSHARP flag.
+# First deploy: keep ALL flags false (a deploy activates NO strangled surface) — EXCEPT
+# team_intel_read, see the ⚠️ below. Flip one at a time at cutover, AFTER setting the matching
+# FE NEXT_PUBLIC_*_VIA_CSHARP flag.
+#
+# ⚠️⚠️⚠️ team_intel_read = true IS NOT A TYPO — DO NOT "FIX" IT BACK TO false ⚠️⚠️⚠️
+# `Platform__TeamIntelReadEnabled` is CONFIRMED LIVE in real production as of 2026-07-27, flipped
+# manually OUT-OF-BAND (not through this Terraform module — see the NOTICE at the top of main.tf
+# and docs/architecture/csharp-migration/PROD-DEPLOY-RUNBOOK-gate-g3.md). This module has likely
+# never been applied against the real App Runner service. If you copy this file to
+# terraform.tfvars and run `terraform apply` for the first time WITHOUT first reconciling state
+# (see main.tf's top-of-file NOTICE — you may need `terraform import` for the existing
+# out-of-band service/secrets/IAM roles before this apply), you risk either a duplicate-resource
+# error or SILENTLY REVERTING a live flag that real users already depend on. Leaving this at
+# `true` here is the safety net; do not "clean it up" to match the other flags.
 feature_flags = {
-  team_intel_read = false
-  reporting_read  = false
-  billing_usage   = false
+  # --- Already-wired surfaces (Gate G3 original 9) ---
+  external_vendor_read   = false
+  external_vendor_write  = false
+  billing_read           = false
+  billing_usage          = false
+  billing_webhook_write  = false
+  billing_self_serve     = false
+  reporting_read         = false
+  validation_staff_write = false
+  team_intel_read        = true # CONFIRMED LIVE IN PROD (2026-07-27, out-of-band) — see ⚠️ above. DO NOT set to false.
+
+  # --- 15 slices merged since the runbook was written at 9 dark surfaces ---
+  evaluation360_read  = false
+  succession_read     = false
+  compensation_read   = false
+  nine_box_read       = false
+  engagement_read     = false
+  dei_read            = false
+  audit_log_read      = false
+  fx_reads            = false
+  compensation_write  = false
+  evaluation360_write = false
+  succession_write    = false
+  nine_box_write      = false
+  engagement_write    = false
+  access_review_read  = false
+  access_review_write = false
 }
 
 # Set true only before the billing WRITE cutover (creates + wires Stripe secret containers).

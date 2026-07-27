@@ -81,19 +81,41 @@ variable "otlp_endpoint" {
 
 # --- Per-surface dark flags (default false — a deploy activates NO strangled surface) -------------
 # Flip individually at cutover AFTER the FE flag is set (see the FE NEXT_PUBLIC_*_VIA_CSHARP flags).
-
+#
+# DRIFT WARNING (2026-07-27): `team_intel_read` is the ONE exception to "default false is safe." It
+# is CONFIRMED LIVE in real prod today via an out-of-band manual flip (NOT through this module — see
+# the top-of-file NOTICE in main.tf and docs/architecture/csharp-migration/PROD-DEPLOY-RUNBOOK-gate-g3.md).
+# The variable's own default below is intentionally LEFT `false` (safe-by-default IaC: a bare
+# `terraform apply -var-file=<something that forgot this key>` should never silently enable a surface
+# nobody asked for). The actual safety net is `terraform.tfvars.example`, which hardcodes
+# `team_intel_read = true` with its own loud warning — READ IT before ever running `apply` for real.
 variable "feature_flags" {
-  description = "Platform:<Surface>Enabled flags. Keep all false on first deploy; flip per-surface at canary."
+  description = "Platform:<Surface>Enabled flags. Keep all false on first deploy; flip per-surface at canary. EXCEPTION: team_intel_read — see DRIFT WARNING comment above; it is already live out-of-band."
   type = object({
-    external_vendor_read  = optional(bool, false)
-    external_vendor_write = optional(bool, false)
-    billing_read          = optional(bool, false)
-    billing_usage         = optional(bool, false)
-    billing_webhook_write = optional(bool, false)
-    billing_self_serve    = optional(bool, false)
-    reporting_read        = optional(bool, false)
+    external_vendor_read   = optional(bool, false)
+    external_vendor_write  = optional(bool, false)
+    billing_read           = optional(bool, false)
+    billing_usage          = optional(bool, false)
+    billing_webhook_write  = optional(bool, false)
+    billing_self_serve     = optional(bool, false)
+    reporting_read         = optional(bool, false)
     validation_staff_write = optional(bool, false)
-    team_intel_read       = optional(bool, false)
+    team_intel_read        = optional(bool, false) # DRIFT: live in prod out-of-band; tfvars.example overrides to true — do not remove that override.
+    evaluation360_read     = optional(bool, false)
+    succession_read        = optional(bool, false)
+    compensation_read      = optional(bool, false)
+    nine_box_read          = optional(bool, false)
+    engagement_read        = optional(bool, false)
+    dei_read               = optional(bool, false)
+    audit_log_read         = optional(bool, false)
+    fx_reads               = optional(bool, false)
+    compensation_write     = optional(bool, false)
+    evaluation360_write    = optional(bool, false)
+    succession_write       = optional(bool, false)
+    nine_box_write         = optional(bool, false)
+    engagement_write       = optional(bool, false)
+    access_review_read     = optional(bool, false)
+    access_review_write    = optional(bool, false)
   })
   default = {}
 }

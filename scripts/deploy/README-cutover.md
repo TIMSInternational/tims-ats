@@ -1,0 +1,182 @@
+# `cutover.sh` — per-domain flip-and-verify automation
+
+One generic script for the C# strangler-fig production cutover of the **standard** domains (the
+ones using the normal staff-JWT/browser-cookie auth pattern). It wraps the recipe in
+[`docs/architecture/csharp-migration/PROD-DEPLOY-RUNBOOK-gate-g3.md`](../../docs/architecture/csharp-migration/PROD-DEPLOY-RUNBOOK-gate-g3.md)
+§6 so cutting a surface over is a couple of copy-pasteable commands instead of ten bespoke
+runbooks.
+
+**Out of scope, on purpose:** `external-vendor`, `billing-webhook`, and `billing-self-serve` use a
+different auth mechanism (API keys / Stripe webhooks, not staff-JWT) and are handled by a separate
+workstream — they are deliberately absent from this script's surface table.
+
+**Who runs what.** Same rule as the runbook: `--verify-only` is genuinely safe for anyone to run
+(it only reads, via the parity harness). `--flip-backend`/`--rollback` with `--yes` touches real
+AWS infrastructure — that is **Federico-run only** (`I never touch prod`, applies to whoever is at
+the keyboard, human or agent). Without `--yes` both modes only print the commands; nothing is
+executed.
+
+## The three modes
+
+| Mode             | Mutates anything? | What it does                                                                                                 |
+| ---------------- | ----------------- | ------------------------------------------------------------------------------------------------------------ |
+| `--verify-only`  | No (default)      | Runs `scripts/parity/cli.ts verify[-write] <key>` for real and reports pass/fail.                            |
+| `--flip-backend` | Only with `--yes` | Prints (or runs) the `aws apprunner update-service` recipe that flips `Platform:<Surface>Enabled` to `true`. |
+| `--rollback`     | Only with `--yes` | Same recipe, flips the flag back to `false`, plus prints the FE Vercel-revert steps.                         |
+
+Run `./scripts/deploy/cutover.sh --list` for the full surface table (flag name, parity CLI key, FE
+flag, and CONFIRMED LIVE / FLIP-READY / COEXISTENCE status per
+[the runbook's §6 classification](../../docs/architecture/csharp-migration/PROD-DEPLOY-RUNBOOK-gate-g3.md#6-per-surface-cutover-one-flag-at-a-time-ts-stays-until-prod-verified)).
+
+## Worked example: cutting over `reporting`
+
+```bash
+# 1) Verify — safe, non-mutating, needs scripts/parity/.env populated (see scripts/parity/README.md)
+#    and a live, reachable C# service.
+./scripts/deploy/cutover.sh reporting --verify-only
+
+# 2) Once that's green, flip the backend flag AND re-verify in the same breath — the script
+#    refuses to flip unless a verify pass is bundled into the same invocation (see "sequencing
+#    safety" below). --yes is what actually executes the AWS CLI call; without it you get a
+#    dry-run printout of the exact command.
+./scripts/deploy/cutover.sh reporting --verify-only --flip-backend --yes
+
+# 3) Canary/monitor per the runbook, then flip the FE flag too (NEXT_PUBLIC_REPORTING_READ_VIA_CSHARP=true
+#    in Vercel Production + redeploy) — this script does not touch Vercel; that step stays manual
+#    per the runbook (§6: "The flag alone does not move the FE.").
+
+# If anything looks wrong at any point, roll back immediately — no re-verify needed:
+./scripts/deploy/cutover.sh reporting --rollback --yes
+```
+
+## Sequencing safety (the guardrail)
+
+`--flip-backend` refuses to run unless ONE of these is true:
+
+- The **same invocation** also passed `--verify-only` and it passed:
+  `./cutover.sh <surface> --verify-only --flip-backend --yes`
+- You pass the explicit escape hatch, because you already verified separately (a previous
+  invocation, a different terminal, whatever):
+  `./cutover.sh <surface> --flip-backend --skip-verify-confirm-i-know-what-im-doing --yes`
+
+`--rollback` has **no such gate** — it is deliberately the fastest, simplest path in the whole
+script. If prod looks wrong, you should never have to argue with a safety check to turn a flag back
+off.
+
+## Why `aws apprunner update-service`, not Terraform, by default
+
+The Terraform module (`services/Tims.Platform/deploy/terraform/variables.tf`, `feature_flags`
+object) only models **9 of the ~24** `Platform:<Surface>Enabled` flags: `external_vendor_read`,
+`external_vendor_write`, `billing_read`, `billing_usage`, `billing_webhook_write`,
+`billing_self_serve`, `reporting_read`, `validation_staff_write`, `team_intel_read`. It has **no
+field at all** for evaluation360, succession, compensation, nine-box, engagement, dei, audit-log,
+or access-review (read OR write) — 8 of this script's 12 read surfaces and all 6 of its write
+surfaces. Extending the module (new `optional(bool, false)` fields in `variables.tf` + wiring them
+into `main.tf`'s `local.base_env`) is real, deliberate infra work outside this script's scope.
+
+Rather than have the script silently behave differently per surface — Terraform for 4, raw AWS CLI
+for the other 14 — `--flip-backend`/`--rollback` always print the direct `aws apprunner
+update-service` recipe, which works uniformly for every surface today. For the 4 surfaces the
+Terraform module DOES model (`team-intel`, `reporting`, `billing-read`, `billing-usage`) the script
+additionally prints the Terraform-based alternative for awareness.
+
+**Known tradeoff:** flipping via the AWS CLI directly drifts Terraform state — a later `terraform
+apply` using the checked-in `terraform.tfvars` would try to revert the flag back to its old value.
+Mirror any CLI-driven flip into `terraform.tfvars` afterwards, or extend the module first if you
+want Terraform to stay authoritative for a given surface.
+
+**Why describe → merge → update, never a partial update:** AWS App Runner's `UpdateService`
+**replaces** the entire `RuntimeEnvironmentVariables` map — it does not merge. Flipping exactly one
+flag without dropping every other env var (DB connection string, JWT config, all the OTHER flags)
+requires reading the current config first, patching just the one key with `jq`, and pushing the
+full merged map back. That's exactly the three-step recipe the script prints/runs; there is no
+safe single-command "just set this one var" form.
+
+## Full flag-name mapping (surface → `Platform:<Name>Enabled`)
+
+Cross-checked directly against `services/Tims.Platform/src/Tims.Api/Configuration/PlatformOptions.cs`
+(the authoritative source — every flag there carries a doc-comment citing its Phase-5 slice
+number) and independently corroborated by the `flag:` field in `scripts/parity/surfaces.ts` /
+`scripts/parity/write-surfaces.ts`.
+
+| Surface (this script) | Kind  | Backend flag                | Parity CLI invocation        | FE flag (`apps/web`)                         | Status         |
+| --------------------- | ----- | --------------------------- | ---------------------------- | -------------------------------------------- | -------------- |
+| `team-intel`          | read  | `TeamIntelReadEnabled`      | `verify team-intel`          | `NEXT_PUBLIC_TEAMINTEL_READ_VIA_CSHARP`      | CONFIRMED LIVE |
+| `reporting`           | read  | `ReportingReadEnabled`      | `verify reporting`           | `NEXT_PUBLIC_REPORTING_READ_VIA_CSHARP`      | FLIP-READY     |
+| `billing-read`        | read  | `BillingReadEnabled`        | `verify billing-invoices`    | _(none found — see caveat below)_            | FLIP-READY     |
+| `billing-usage`       | read  | `BillingUsageEnabled`       | `verify billing-usage`       | `NEXT_PUBLIC_BILLING_USAGE_VIA_CSHARP`       | FLIP-READY     |
+| `evaluation360`       | read  | `Evaluation360ReadEnabled`  | `verify evaluation360`       | `NEXT_PUBLIC_EVALUATION360_READ_VIA_CSHARP`  | FLIP-READY     |
+| `succession`          | read  | `SuccessionReadEnabled`     | `verify succession`          | `NEXT_PUBLIC_SUCCESSION_READ_VIA_CSHARP`     | FLIP-READY     |
+| `compensation`        | read  | `CompensationReadEnabled`   | `verify compensation`        | `NEXT_PUBLIC_COMPENSATION_READ_VIA_CSHARP`   | FLIP-READY     |
+| `nine-box`            | read  | `NineBoxReadEnabled`        | `verify ninebox`             | `NEXT_PUBLIC_NINEBOX_READ_VIA_CSHARP`        | FLIP-READY     |
+| `engagement`          | read  | `EngagementReadEnabled`     | `verify engagement`          | `NEXT_PUBLIC_ENGAGEMENT_READ_VIA_CSHARP`     | FLIP-READY     |
+| `dei`                 | read  | `DeiReadEnabled`            | `verify dei`                 | `NEXT_PUBLIC_DEI_READ_VIA_CSHARP`            | FLIP-READY     |
+| `audit-log`           | read  | `AuditLogReadEnabled`       | `verify audit-log`           | `NEXT_PUBLIC_AUDIT_LOG_READ_VIA_CSHARP`      | FLIP-READY     |
+| `access-review`       | read  | `AccessReviewReadEnabled`   | `verify access-review`       | `NEXT_PUBLIC_ACCESS_REVIEW_READ_VIA_CSHARP`  | FLIP-READY     |
+| `evaluation360-write` | write | `Evaluation360WriteEnabled` | `verify-write evaluation360` | `NEXT_PUBLIC_EVALUATION360_WRITE_VIA_CSHARP` | FLIP-READY     |
+| `succession-write`    | write | `SuccessionWriteEnabled`    | `verify-write succession`    | `NEXT_PUBLIC_SUCCESSION_WRITE_VIA_CSHARP`    | FLIP-READY     |
+| `nine-box-write`      | write | `NineBoxWriteEnabled`       | `verify-write ninebox`       | `NEXT_PUBLIC_NINEBOX_WRITE_VIA_CSHARP`       | FLIP-READY     |
+| `compensation-write`  | write | `CompensationWriteEnabled`  | `verify-write compensation`  | `NEXT_PUBLIC_COMPENSATION_WRITE_VIA_CSHARP`  | COEXISTENCE    |
+| `engagement-write`    | write | `EngagementWriteEnabled`    | `verify-write engagement`    | `NEXT_PUBLIC_ENGAGEMENT_WRITE_VIA_CSHARP`    | COEXISTENCE    |
+| `access-review-write` | write | `AccessReviewWriteEnabled`  | `verify-write access-review` | `NEXT_PUBLIC_ACCESS_REVIEW_WRITE_VIA_CSHARP` | FLIP-READY     |
+
+Run `./scripts/deploy/cutover.sh --list` for the per-surface long-form notes (why each is
+classified the way it is, and every naming quirk below).
+
+### Naming quirks / ambiguities worth knowing about
+
+- **`billing-read` vs `billing-usage` vs `billing-invoices`.** The runbook's prose calls these two
+  separate flags under one loose "billing" domain name. `PlatformOptions.cs` and the parity harness
+  agree they are genuinely two independent flags (`BillingReadEnabled` / `BillingUsageEnabled`),
+  each with its own cutover step. This script keeps them as two separate surfaces
+  (`billing-read`, `billing-usage`) rather than folding them together, matching the parity
+  harness's own "one flag per surface" convention (see `scripts/parity/surfaces.ts:939-941`). The
+  parity CLI's registered key for the invoice-read surface is `billing-invoices`, not
+  `billing-read` — this script accepts the friendlier `billing-read` name and maps it internally so
+  the CLI-facing vocabulary matches the runbook's prose.
+- **`billing-read` has no FE flag today.** Every other surface here has a matching
+  `NEXT_PUBLIC_*_VIA_CSHARP` flag wired somewhere under `apps/web/lib/platform-api/`. Billing
+  invoice reads do not — `apps/web/lib/platform-api/billing.ts` only wires
+  `BILLING_USAGE_VIA_CSHARP` and `BILLING_SELF_SERVE_WRITE_VIA_CSHARP`. That means the
+  FE-rewiring PR for `BillingReadEnabled` does not appear to have shipped yet, despite the
+  runbook's intro claiming the FE side is "ALREADY DONE for all 12 domains." The backend flip
+  works regardless (a flipped-but-uncalled C# route is harmless), but there is no FE-visible
+  cutover to do for this surface until that PR exists — confirm with Federico before assuming
+  otherwise.
+- **`nine-box` vs `ninebox`.** The parity harness (and the C# route paths, e.g. `/ninebox/grid`)
+  spell this with no hyphen. The runbook prose and this script's public surface name use the
+  hyphenated `nine-box` for readability; the script maps it to the harness's `ninebox` key
+  internally.
+- **`team-intel` vs `teamintel`.** Inverted from the nine-box case: the FE flag is
+  `NEXT_PUBLIC_TEAMINTEL_READ_VIA_CSHARP` (no hyphen inside "teamintel") while everything else
+  (`surface.key`, the runbook, this script) uses the hyphenated `team-intel`. Copy-paste the flag
+  name from `--list` rather than deriving it from the surface name — it is the one flag in the
+  whole set whose casing doesn't follow the `<SURFACE>_..._VIA_CSHARP` pattern literally.
+- **`audit-log` and `access-review` (both read and write) post-date the runbook doc.** The runbook
+  (`PROD-DEPLOY-RUNBOOK-gate-g3.md`) was last updated 2026-07-23; Slices 17 (audit-log) and 18
+  (access-review) merged after that (memory: PRs up to #215, 2026-07-27), so neither appears in the
+  doc's own §6 Phase A/B lists. This script classifies both as FLIP-READY based on
+  `PlatformOptions.cs` + team memory (merged to `main`, dark, code-ready) — but that classification
+  is this script's own inference, not a citation of the runbook's Phase A/B lists like every other
+  row is. Treat these two as "probably fine, but nobody has written the official classification
+  down yet" until the runbook doc gets its own update.
+- **Write-surface names use an explicit `-write` suffix** (`access-review-write`,
+  `evaluation360-write`, etc.) to keep them addressable independently from their read counterpart
+  — a domain's read and write flags cut over at different points in the runbook's Phase A / Phase B
+  ordering and have completely independent `verify` vs `verify-write` parity commands, so treating
+  "reporting" and "reporting-write" (hypothetically) as the same script argument would be wrong.
+  Only evaluation360/succession/nine-box/compensation/engagement/access-review actually have a
+  write flag today — `team-intel`, `reporting`, `billing-read`, `billing-usage`, `dei`, and
+  `audit-log` are read-only surfaces in this migration wave (no corresponding write flag exists in
+  `PlatformOptions.cs`), so `dei-write` etc. are deliberately NOT registered surface names.
+
+## Requirements per mode
+
+- `--verify-only`: `scripts/parity/.env` populated (Supabase creds — see `scripts/parity/.env.example`
+  and `scripts/parity/README.md`), plus a live, reachable C# service and TS app. None of that
+  exists in a dev sandbox; this is the mode Federico runs against real prod/staging.
+- `--flip-backend --yes` / `--rollback --yes`: `aws` and `jq` on `PATH`, valid AWS credentials for
+  the target account, and either `--service-arn <arn>` or `$TIMS_APPRUNNER_SERVICE_ARN` set. Without
+  `--yes` neither of these is needed — the script only prints the commands.
+
+Run `./scripts/deploy/cutover.sh --help` for the full flag reference.

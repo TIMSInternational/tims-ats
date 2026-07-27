@@ -2,16 +2,36 @@
 # TIMS C# Platform (Tims.Api) — AWS App Runner deploy (Gate G3).
 # Pairs with docs/architecture/csharp-migration/PROD-DEPLOY-RUNBOOK-gate-g3.md.
 # The image must be built + pushed to ECR FIRST (runbook §3); this module references it by tag.
+#
+# ⚠️  PROD DRIFT NOTICE (2026-07-27) — READ BEFORE THE FIRST REAL `terraform apply` ⚠️
+# This module has (per the runbook) likely NEVER been applied against real AWS infrastructure.
+# However `Platform__TeamIntelReadEnabled` is CONFIRMED LIVE in real production TODAY, flipped
+# manually OUT-OF-BAND (not via this module — see CORS/CSP fix commits #183/#184, 2026-07-24, and
+# the runbook's 2026-07-27 update). That almost certainly means an `aws_apprunner_service` named
+# `var.service_name` ("tims-platform-api") ALREADY EXISTS in the account, unmanaged by Terraform.
+#
+# Before ever running `terraform apply` for real, a human MUST:
+#   1. Check whether the App Runner service (and its ECR repo / secrets / IAM roles) already exist
+#      out-of-band. `terraform plan` against a fresh/empty state will otherwise try to CREATE
+#      resources that already exist → either a duplicate-name API error, or worse, a successful
+#      create that fights the real one.
+#   2. If they exist, `terraform import` each real resource into this module's state BEFORE the
+#      first `apply`, so Terraform reconciles with reality instead of trying to recreate/replace it.
+#   3. Confirm `terraform.tfvars` sets `team_intel_read = true` (see terraform.tfvars.example) —
+#      the code-level default in variables.tf is `false` by design (safe-by-default IaC), so an
+#      operator who forgets this WILL silently revert the live flag to false on apply, breaking a
+#      feature real users already depend on.
+# This is exactly the class of Terraform-vs-reality drift that causes production incidents.
 ############################################################################################
 
 locals {
   tags = merge({
-    Project    = "tims-ats"
-    Service    = "tims-platform-api"
-    Component  = "csharp-backend"
+    Project     = "tims-ats"
+    Service     = "tims-platform-api"
+    Component   = "csharp-backend"
     Environment = "production"
-    ManagedBy  = "terraform"
-    Compliance = "SOC2-ISO27001"
+    ManagedBy   = "terraform"
+    Compliance  = "SOC2-ISO27001"
   }, var.tags)
 
   # Secret CONTAINERS created here; VALUES populated out-of-band (never in TF state).
@@ -34,20 +54,35 @@ locals {
 
   # Non-secret runtime config: flags (all default false) + public JWT config + service identity.
   base_env = {
-    ASPNETCORE_ENVIRONMENT                  = "Production"
-    Platform__ServiceName                   = var.service_name
-    Platform__SupabaseJwtIssuer             = var.supabase_jwt_issuer
-    Platform__SupabaseJwtAudience           = var.supabase_jwt_audience
-    Platform__SupabaseJwksMetadataAddress   = var.supabase_jwks_metadata_address
-    Platform__ExternalVendorReadEnabled     = tostring(var.feature_flags.external_vendor_read)
-    Platform__ExternalVendorWriteEnabled    = tostring(var.feature_flags.external_vendor_write)
-    Platform__BillingReadEnabled            = tostring(var.feature_flags.billing_read)
-    Platform__BillingUsageEnabled           = tostring(var.feature_flags.billing_usage)
-    Platform__BillingWebhookWriteEnabled    = tostring(var.feature_flags.billing_webhook_write)
-    Platform__BillingSelfServeEnabled       = tostring(var.feature_flags.billing_self_serve)
-    Platform__ReportingReadEnabled          = tostring(var.feature_flags.reporting_read)
-    Platform__ValidationStaffWriteEnabled   = tostring(var.feature_flags.validation_staff_write)
-    Platform__TeamIntelReadEnabled          = tostring(var.feature_flags.team_intel_read)
+    ASPNETCORE_ENVIRONMENT                = "Production"
+    Platform__ServiceName                 = var.service_name
+    Platform__SupabaseJwtIssuer           = var.supabase_jwt_issuer
+    Platform__SupabaseJwtAudience         = var.supabase_jwt_audience
+    Platform__SupabaseJwksMetadataAddress = var.supabase_jwks_metadata_address
+    Platform__ExternalVendorReadEnabled   = tostring(var.feature_flags.external_vendor_read)
+    Platform__ExternalVendorWriteEnabled  = tostring(var.feature_flags.external_vendor_write)
+    Platform__BillingReadEnabled          = tostring(var.feature_flags.billing_read)
+    Platform__BillingUsageEnabled         = tostring(var.feature_flags.billing_usage)
+    Platform__BillingWebhookWriteEnabled  = tostring(var.feature_flags.billing_webhook_write)
+    Platform__BillingSelfServeEnabled     = tostring(var.feature_flags.billing_self_serve)
+    Platform__ReportingReadEnabled        = tostring(var.feature_flags.reporting_read)
+    Platform__ValidationStaffWriteEnabled = tostring(var.feature_flags.validation_staff_write)
+    Platform__TeamIntelReadEnabled        = tostring(var.feature_flags.team_intel_read)
+    Platform__Evaluation360ReadEnabled    = tostring(var.feature_flags.evaluation360_read)
+    Platform__SuccessionReadEnabled       = tostring(var.feature_flags.succession_read)
+    Platform__CompensationReadEnabled     = tostring(var.feature_flags.compensation_read)
+    Platform__NineBoxReadEnabled          = tostring(var.feature_flags.nine_box_read)
+    Platform__EngagementReadEnabled       = tostring(var.feature_flags.engagement_read)
+    Platform__DeiReadEnabled              = tostring(var.feature_flags.dei_read)
+    Platform__AuditLogReadEnabled         = tostring(var.feature_flags.audit_log_read)
+    Platform__FxReadsEnabled              = tostring(var.feature_flags.fx_reads)
+    Platform__CompensationWriteEnabled    = tostring(var.feature_flags.compensation_write)
+    Platform__Evaluation360WriteEnabled   = tostring(var.feature_flags.evaluation360_write)
+    Platform__SuccessionWriteEnabled      = tostring(var.feature_flags.succession_write)
+    Platform__NineBoxWriteEnabled         = tostring(var.feature_flags.nine_box_write)
+    Platform__EngagementWriteEnabled      = tostring(var.feature_flags.engagement_write)
+    Platform__AccessReviewReadEnabled     = tostring(var.feature_flags.access_review_read)
+    Platform__AccessReviewWriteEnabled    = tostring(var.feature_flags.access_review_write)
   }
   env = merge(local.base_env, var.otlp_endpoint == "" ? {} : { Platform__OtlpEndpoint = var.otlp_endpoint })
 }
