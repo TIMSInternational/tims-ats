@@ -63,5 +63,7 @@ export const externalRouter = router({
   // existing key. Pending-only, atomic, audited.
   submitValidationResult: externalPermissionProcedure('validation', 'update', 'validation:write', true)
     .input(ExternalValidationSubmitInput)
-    .mutation(({ ctx, input }) => externalValidationService.submitResult(auditMeta(ctx), input)),
+    .mutation(({ ctx, input }) =>
+      externalValidationService.submitResult(auditMeta(ctx), input, ctx.headers.get('authorization') ?? ''),
+    ),
 });
