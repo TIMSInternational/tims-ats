@@ -103,6 +103,7 @@
     "invoices": "Facturas",
     "invitations": "Invitaciones",
     "audit": "Auditoria",
+    "accessReview": "Revision de Acceso",
     "supportPage": "Soporte"
   },
   "breadcrumbs": {
@@ -152,6 +153,10 @@
     "/platform/audit": {
       "parent": "Soporte",
       "label": "Auditoria"
+    },
+    "/platform/access-review": {
+      "parent": "Soporte",
+      "label": "Revision de Acceso"
     },
     "/platform/support": {
       "parent": "Soporte",
@@ -934,6 +939,48 @@
     "showing": "Mostrando",
     "of": "de",
     "system": "Sistema"
+  },
+  "accessReview": {
+    "title": "Revision de Acceso",
+    "selectOrgPlaceholder": "Selecciona una organizacion",
+    "selectOrgPrompt": "Selecciona una organizacion para ver su revision de acceso",
+    "kpiUsers": "Usuarios",
+    "kpiPrivileged": "Privilegiados",
+    "kpiStale": "Inactivos (90+ dias)",
+    "kpiDeprovisionGap": "Brecha de Baja",
+    "kpiExpiredGrant": "Permisos Expirados",
+    "exportCsv": "Exportar CSV",
+    "attestAction": "Certificar Revision",
+    "attestModalTitle": "Certificar Revision de Acceso",
+    "attestModalDesc": "Esto registra una certificacion trimestral con la instantanea actual de acceso.",
+    "notesLabel": "Notas (opcional)",
+    "notesPlaceholder": "Observaciones sobre esta certificacion...",
+    "attestSuccess": "Revision certificada exitosamente",
+    "attestError": "Error al certificar la revision",
+    "attestTruncatedError": "La organizacion excede el limite; no se puede certificar automaticamente",
+    "colUser": "Usuario",
+    "colStatus": "Estado",
+    "colRoles": "Roles",
+    "colFlags": "Alertas",
+    "statusActive": "Activo",
+    "statusInactive": "Inactivo",
+    "statusDeleted": "Eliminado",
+    "flagPrivileged": "Privilegiado",
+    "flagStale": "Inactivo 90d+",
+    "flagNeverLoggedIn": "Nunca inicio sesion",
+    "flagDeprovisionGap": "Brecha de baja",
+    "flagExpiredGrant": "Permiso expirado",
+    "flagCrossOrg": "Rol cruzado",
+    "noRows": "No se encontraron usuarios",
+    "historyTitle": "Historial de Certificaciones",
+    "historyEmpty": "Aun no hay certificaciones para esta organizacion",
+    "historyColDate": "Fecha",
+    "historyColReviewer": "Revisor",
+    "historyColUsers": "Usuarios",
+    "historyColPrivileged": "Privilegiados",
+    "historyColNotes": "Notas",
+    "truncatedWarning": "Esta organizacion excede el limite de filas; mostrando los primeros resultados",
+    "loadError": "Error al cargar la revision de acceso"
   },
   "notifications": {
     "title": "Notificaciones",
