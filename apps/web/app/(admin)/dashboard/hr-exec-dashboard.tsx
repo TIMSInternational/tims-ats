@@ -3,6 +3,7 @@
 import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
 import { useReportingFunnel } from '../../../lib/platform-api/reporting';
+import { useDeiDashboardKpis } from '../../../lib/platform-api/dei';
 import { KpiCard, KpiCardSkeleton } from '../../../components';
 import { suppressedValue, PLACEHOLDER } from '../../../lib/dashboard/suppress';
 import { LoadError } from './load-error';
@@ -12,29 +13,13 @@ import { CulturePulse } from './culture-pulse';
 
 // CARD_DOT_COLORS / CARD_BG_COLORS / Dot mirror org-command-center.tsx verbatim —
 // kept local (not extracted) to match that precedent; do NOT refactor it here.
-const CARD_DOT_COLORS = [
-  'bg-blue-400',
-  'bg-green-400',
-  'bg-purple-400',
-  'bg-teal-400',
-  'bg-indigo-400',
-  'bg-red-400',
-];
+const CARD_DOT_COLORS = ['bg-blue-400', 'bg-green-400', 'bg-purple-400', 'bg-teal-400', 'bg-indigo-400', 'bg-red-400'];
 
-const CARD_BG_COLORS = [
-  'bg-blue-50',
-  'bg-green-50',
-  'bg-purple-50',
-  'bg-teal-50',
-  'bg-indigo-50',
-  'bg-red-50',
-];
+const CARD_BG_COLORS = ['bg-blue-50', 'bg-green-50', 'bg-purple-50', 'bg-teal-50', 'bg-indigo-50', 'bg-red-50'];
 
 function Dot({ index }: { index: number }) {
   return (
-    <span
-      className={`w-2.5 h-2.5 rounded-full inline-block ${CARD_DOT_COLORS[index % CARD_DOT_COLORS.length]}`}
-    />
+    <span className={`w-2.5 h-2.5 rounded-full inline-block ${CARD_DOT_COLORS[index % CARD_DOT_COLORS.length]}`} />
   );
 }
 
@@ -50,16 +35,10 @@ export function HrExecDashboard() {
   const culture = trpc.engagement.getDashboardKpis.useQuery();
   const funnel = useReportingFunnel();
   const comp = trpc.compensation.getDashboardKpis.useQuery();
-  const dei = trpc.dei.getDashboardKpis.useQuery();
+  const dei = useDeiDashboardKpis();
 
-  const kpisLoading =
-    exec.isLoading ||
-    perf.isLoading ||
-    enps.isLoading ||
-    comp.isLoading ||
-    dei.isLoading;
-  const kpisError =
-    exec.isError || perf.isError || enps.isError || comp.isError || dei.isError;
+  const kpisLoading = exec.isLoading || perf.isLoading || enps.isLoading || comp.isLoading || dei.isLoading;
+  const kpisError = exec.isError || perf.isError || enps.isError || comp.isError || dei.isError;
 
   return (
     <div className="h-full flex flex-col overflow-hidden p-6">
@@ -103,11 +82,7 @@ export function HrExecDashboard() {
               {/* eNPS — k-anon-sensitive: suppressed flag from getEnps. */}
               <KpiCard
                 label={hr.enps}
-                value={suppressedValue(
-                  enps.data?.enps,
-                  enps.data?.suppressed ?? false,
-                  t.common.notDisclosed,
-                )}
+                value={suppressedValue(enps.data?.enps, enps.data?.suppressed ?? false, t.common.notDisclosed)}
                 icon={<Dot index={3} />}
                 iconBg={CARD_BG_COLORS[3]}
               />
@@ -131,16 +106,8 @@ export function HrExecDashboard() {
                   sub-floor demographic value can never reach the DOM. */}
               <KpiCard
                 label={hr.diversity}
-                value={suppressedValue(
-                  dei.data?.leadershipWomenPct,
-                  false,
-                  t.common.notDisclosed,
-                )}
-                subtitle={
-                  dei.data?.leadershipWomenPct == null
-                    ? PLACEHOLDER
-                    : `${dei.data.leadershipWomenPct}%`
-                }
+                value={suppressedValue(dei.data?.leadershipWomenPct, false, t.common.notDisclosed)}
+                subtitle={dei.data?.leadershipWomenPct == null ? PLACEHOLDER : `${dei.data.leadershipWomenPct}%`}
                 icon={<Dot index={5} />}
                 iconBg={CARD_BG_COLORS[5]}
               />
@@ -182,17 +149,10 @@ export function HrExecDashboard() {
               Array.from({ length: 2 }).map((_, i) => <KpiCardSkeleton key={i} />)
             ) : (
               <>
-                <CompTile
-                  label={hr.benefitsUtilization}
-                  value={`${comp.data?.benefitsUtilizationPct ?? 0}%`}
-                />
+                <CompTile label={hr.benefitsUtilization} value={`${comp.data?.benefitsUtilizationPct ?? 0}%`} />
                 <CompTile
                   label={hr.avgCompaRatio}
-                  value={
-                    comp.data?.avgCompaRatio == null
-                      ? PLACEHOLDER
-                      : String(comp.data.avgCompaRatio)
-                  }
+                  value={comp.data?.avgCompaRatio == null ? PLACEHOLDER : String(comp.data.avgCompaRatio)}
                 />
               </>
             )}
