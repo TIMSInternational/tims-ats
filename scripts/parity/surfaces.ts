@@ -682,4 +682,39 @@ export const SURFACES: Record<string, Surface> = {
       },
     ],
   },
+  'access-review': {
+    key: 'access-review',
+    flag: 'Platform__AccessReviewReadEnabled',
+    roles: ['platform_owner', 'org_admin'],
+    probeRole: 'org_admin', // org-scoped role — RLS/cross-tenant probing is N/A here; see globalScope below.
+    endpoints: [
+      {
+        name: 'report',
+        csharpPath: '/access-review?organizationId=00000000-0000-0000-0000-000000000000',
+        tsProcedure: 'platform.getAccessReview',
+        input: { organizationId: '00000000-0000-0000-0000-000000000000' },
+        expectedByRole: { platform_owner: 200, org_admin: 403 },
+        // Platform-owner-gated (not org-RBAC), like audit-log — see that entry's own comment. The
+        // fixed org id is arbitrary and need not exist: neither the 200 (platform_owner) nor the 403
+        // (org_admin, blocked by PlatformOwnerGate before any org lookup) depends on org existence.
+        globalScope: true,
+      },
+      {
+        name: 'export',
+        csharpPath: '/access-review/export?organizationId=00000000-0000-0000-0000-000000000000',
+        tsProcedure: 'platform.exportAccessReviewCsv',
+        input: { organizationId: '00000000-0000-0000-0000-000000000000' },
+        expectedByRole: { platform_owner: 200, org_admin: 403 },
+        globalScope: true,
+      },
+      {
+        name: 'attestations',
+        csharpPath: '/access-review/attestations?organizationId=00000000-0000-0000-0000-000000000000',
+        tsProcedure: 'platform.listAccessReviewAttestations',
+        input: { organizationId: '00000000-0000-0000-0000-000000000000' },
+        expectedByRole: { platform_owner: 200, org_admin: 403 },
+        globalScope: true,
+      },
+    ],
+  },
 };

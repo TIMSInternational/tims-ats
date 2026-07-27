@@ -123,7 +123,15 @@ public sealed class AuditWriterFixture : IAsyncLifetime
                     actor_id uuid NULL REFERENCES users_audit (id) ON DELETE SET NULL,
                     action text NOT NULL,
                     entity text NOT NULL,
-                    created_at timestamptz NOT NULL DEFAULT now()
+                    -- entity_id/changes/metadata/ip_address/user_agent complete the Prisma AuditLog mirror so
+                    -- writers over the full AuditLogDbContext mapping (e.g. SecurityEventWriter) can round-trip
+                    -- against this same table, not just the FK-cascade-focused subset the original columns covered.
+                    entity_id text NULL,
+                    changes jsonb NULL,
+                    metadata jsonb NULL,
+                    ip_address text NULL,
+                    user_agent text NULL,
+                    created_at timestamp NOT NULL DEFAULT now()
                 );
 
                 GRANT SELECT, INSERT ON audit_logs TO app_tenant;
@@ -163,6 +171,14 @@ public sealed class AuditWriterFixture : IAsyncLifetime
         new DbContextOptionsBuilder<DataAccessAuditDbContext>().UseNpgsql(connectionString).Options;
 
     public DataAccessAuditDbContext NewContext(string connectionString) => new(BuildOptions(connectionString));
+
+    public static DbContextOptions<AuditLogDbContext> BuildAuditLogOptions(string connectionString) =>
+        new DbContextOptionsBuilder<AuditLogDbContext>().UseNpgsql(connectionString).Options;
+
+    /// <summary>A fresh <see cref="AuditLogDbContext"/> over the given connection string — used by writers of
+    /// the SECOND audit table (<c>audit_logs</c>), e.g. <c>SecurityEventWriter</c>. Pass
+    /// <see cref="MissingTableConnectionString"/> to get a deterministic write failure (no audit_logs table).</summary>
+    public AuditLogDbContext NewAuditLogContext(string connectionString) => new(BuildAuditLogOptions(connectionString));
 
     /// <summary>Reads a single audit row back as the superuser (bypasses RLS) for assertions.</summary>
     public async Task<AuditRow?> ReadRowAsync(Guid recordId)

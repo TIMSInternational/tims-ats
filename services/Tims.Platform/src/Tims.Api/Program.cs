@@ -12,6 +12,7 @@ using OpenTelemetry.Trace;
 using Serilog;
 using Serilog.Formatting.Compact;
 using StackExchange.Redis;
+using Tims.Api.AccessReview;
 using Tims.Api.Audit;
 using Tims.Api.Authentication;
 using Tims.Api.Billing;
@@ -29,6 +30,7 @@ using Tims.Api.Succession;
 using Tims.Api.TeamIntel;
 using Tims.Api.Validation;
 using Tims.Application.Access;
+using Tims.Application.AccessReview;
 using Tims.Application.Audit;
 using Tims.Application.Billing;
 using Tims.Application.Compensation;
@@ -47,6 +49,7 @@ using Tims.Domain.Access;
 using Tims.Domain.Billing;
 using Tims.Domain.Identity;
 using Tims.Infrastructure.Access;
+using Tims.Infrastructure.AccessReview;
 using Tims.Infrastructure.Audit;
 using Tims.Infrastructure.Billing;
 using Tims.Infrastructure.Compensation;
@@ -412,6 +415,15 @@ try
     // restrict this reader, see AuditReadDbContext). Dark unless AuditLogReadEnabled.
     builder.Services.AddDbContext<AuditReadDbContext>(options => options.UseNpgsql(databaseConnectionString));
     builder.Services.AddScoped<IAuditReadRepository, AuditReadRepository>();
+
+    // Phase-5 Slice 18 (efcoreReadOnly on users/roles/user_roles/role_permissions/permissions/
+    // organizations; access_reviews stays Prisma-owned until Task 9): the access-review report +
+    // attestation orchestration. SecurityEventWriter reuses the AuditLogDbContext registered below
+    // (Billing Self-Serve block) — not re-registered here.
+    builder.Services.AddDbContext<AccessReviewDbContext>(options => options.UseNpgsql(databaseConnectionString));
+    builder.Services.AddScoped<IAccessReviewRepository, AccessReviewRepository>();
+    builder.Services.AddScoped<ISecurityEventWriter, SecurityEventWriter>();
+    builder.Services.AddScoped<AccessReviewService>();
 
     builder.Services
         .AddOptions<StripeBillingOptions>()
@@ -1005,6 +1017,23 @@ try
     if (externalOptions.AuditLogReadEnabled || isOpenApiDocGeneration)
     {
         app.MapAuditReadEndpoints();
+    }
+
+    // Access-review READ surface (Phase-5 Slice 18): GET /access-review (getAccessReview),
+    // /access-review/export (exportAccessReviewCsv), /access-review/attestations
+    // (listAccessReviewAttestations). Platform-owner-only, org-scoped (required organizationId, NOT
+    // RLS). Dark unless the flag is on.
+    if (externalOptions.AccessReviewReadEnabled || isOpenApiDocGeneration)
+    {
+        app.MapAccessReviewReadEndpoints();
+    }
+
+    // Access-review WRITE surface (Phase-5 Slice 18): POST /access-review/attest. The FIRST C# write
+    // to access_reviews. Dark unless the flag is on (separate from the read flag for independent
+    // canary control).
+    if (externalOptions.AccessReviewWriteEnabled || isOpenApiDocGeneration)
+    {
+        app.MapAccessReviewWriteEndpoints();
     }
 
     // Authz probe (WP2.5): the C# equivalent of the tRPC `requirePermission` gate. Resolves the

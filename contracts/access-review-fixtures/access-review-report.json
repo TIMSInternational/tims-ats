@@ -1,0 +1,44 @@
+{
+  "rows": [
+    {
+      "userId": "c0000000-0000-0000-0000-000000000002",
+      "name": "Rick Recruiter",
+      "email": "orguser@tims.test",
+      "organizationId": "11111111-1111-1111-1111-111111111111",
+      "orgName": "Acme Corp",
+      "status": "active",
+      "isPlatformOwner": false,
+      "lastLoginAt": "2026-07-25T10:00:00.000Z",
+      "roles": [
+        {
+          "slug": "recruiter",
+          "name": "Recruiter",
+          "roleActive": true,
+          "assignedAt": "2026-01-01T00:00:00.000Z",
+          "assignedBy": "c0000000-0000-0000-0000-000000000001",
+          "companyScope": null,
+          "unitScope": null,
+          "expiresAt": null,
+          "grants": ["candidate:read:own", "candidate:update:own"]
+        }
+      ],
+      "flags": {
+        "neverLoggedIn": false,
+        "stale": false,
+        "privileged": false,
+        "deprovisionGap": false,
+        "expiredGrant": false,
+        "crossOrgRole": false
+      }
+    }
+  ],
+  "summary": {
+    "userCount": 1,
+    "privilegedCount": 0,
+    "staleCount": 0,
+    "deprovisionGapCount": 0,
+    "expiredGapCount": 0
+  },
+  "crossOrgRoleCount": 0,
+  "truncated": false
+}
