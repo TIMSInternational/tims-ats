@@ -103,6 +103,7 @@
     "invoices": "Invoices",
     "invitations": "Invitations",
     "audit": "Audit",
+    "accessReview": "Access Review",
     "supportPage": "Support"
   },
   "breadcrumbs": {
@@ -152,6 +153,10 @@
     "/platform/audit": {
       "parent": "Support",
       "label": "Audit"
+    },
+    "/platform/access-review": {
+      "parent": "Support",
+      "label": "Access Review"
     },
     "/platform/support": {
       "parent": "Support",
@@ -934,6 +939,48 @@
     "showing": "Showing",
     "of": "of",
     "system": "System"
+  },
+  "accessReview": {
+    "title": "Access Review",
+    "selectOrgPlaceholder": "Select an organization",
+    "selectOrgPrompt": "Select an organization to view its access review",
+    "kpiUsers": "Users",
+    "kpiPrivileged": "Privileged",
+    "kpiStale": "Stale (90+ days)",
+    "kpiDeprovisionGap": "Deprovision Gap",
+    "kpiExpiredGrant": "Expired Grants",
+    "exportCsv": "Export CSV",
+    "attestAction": "Attest Review",
+    "attestModalTitle": "Attest Access Review",
+    "attestModalDesc": "This records a quarterly recertification with the current access snapshot.",
+    "notesLabel": "Notes (optional)",
+    "notesPlaceholder": "Observations about this attestation...",
+    "attestSuccess": "Review attested successfully",
+    "attestError": "Failed to attest the review",
+    "attestTruncatedError": "This organization exceeds the cap; cannot auto-certify",
+    "colUser": "User",
+    "colStatus": "Status",
+    "colRoles": "Roles",
+    "colFlags": "Flags",
+    "statusActive": "Active",
+    "statusInactive": "Inactive",
+    "statusDeleted": "Deleted",
+    "flagPrivileged": "Privileged",
+    "flagStale": "Stale 90d+",
+    "flagNeverLoggedIn": "Never logged in",
+    "flagDeprovisionGap": "Deprovision gap",
+    "flagExpiredGrant": "Expired grant",
+    "flagCrossOrg": "Cross-org role",
+    "noRows": "No users found",
+    "historyTitle": "Attestation History",
+    "historyEmpty": "No attestations yet for this organization",
+    "historyColDate": "Date",
+    "historyColReviewer": "Reviewer",
+    "historyColUsers": "Users",
+    "historyColPrivileged": "Privileged",
+    "historyColNotes": "Notes",
+    "truncatedWarning": "This organization exceeds the row cap; showing the first results",
+    "loadError": "Failed to load the access review"
   },
   "notifications": {
     "title": "Notifications",
