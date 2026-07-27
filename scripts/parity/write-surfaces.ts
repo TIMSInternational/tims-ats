@@ -29,6 +29,8 @@ import {
   resolveEngagementWriteResources,
   ensureNineBoxWritePreconditions,
   resolveNineBoxWriteResources,
+  ensureAccessReviewWritePreconditions,
+  resolveAccessReviewWriteResources,
   WRITE_EVAL_CYCLES,
   WRITE_CYCLE_MARKER,
   WRITE_SUCCESSION_ROLES,
@@ -43,9 +45,15 @@ import {
 // Re-export the write-verify fixtures (defined in seed.ts to keep the seed→registry import
 // one-directional) so consumers/tests can reference them from the registry too.
 export {
-  WRITE_EVAL_CYCLES, WRITE_CYCLE_MARKER, WRITE_SUCCESSION_ROLES, WRITE_SUCCESSION_CR_MARKER,
-  WRITE_ENGAGEMENT, WRITE_ENGAGEMENT_SURVEY_MARKER, WRITE_ENGAGEMENT_PLAN_MARKER,
-  WRITE_NINEBOX, WRITE_NINEBOX_CAL_MARKER,
+  WRITE_EVAL_CYCLES,
+  WRITE_CYCLE_MARKER,
+  WRITE_SUCCESSION_ROLES,
+  WRITE_SUCCESSION_CR_MARKER,
+  WRITE_ENGAGEMENT,
+  WRITE_ENGAGEMENT_SURVEY_MARKER,
+  WRITE_ENGAGEMENT_PLAN_MARKER,
+  WRITE_NINEBOX,
+  WRITE_NINEBOX_CAL_MARKER,
 };
 
 /** A deterministic Z-anchored effective date for create bodies (the C# validator
@@ -226,7 +234,8 @@ const compensationSurface: WriteSurface<CompensationWriteResolved> = {
           expect: (rows) => {
             if (rows.length !== 1) return `no freshly-created (reason='parity') pending row for subjectA by the probe`;
             const row = rows[0];
-            if (row.id !== respId) return `response id ${JSON.stringify(respId)} != the created row id ${row.id} (stale/wrong id echoed?)`;
+            if (row.id !== respId)
+              return `response id ${JSON.stringify(respId)} != the created row id ${row.id} (stale/wrong id echoed?)`;
             if (Number(row.new_salary) !== 66000) return `created row new_salary ${row.new_salary} != 66000`;
             if (row.approved_by_id !== null) return `approved_by_id should be null on create`;
             return null;
@@ -257,7 +266,8 @@ const compensationSurface: WriteSurface<CompensationWriteResolved> = {
         return {
           sql: `SELECT count(*)::int AS n FROM salary_adjustments WHERE user_id = $1 AND requested_by_id = $2`,
           params: [userId, requester],
-          expect: (rows) => (Number(rows[0]?.n) === 0 ? null : `a forbidden create still inserted ${rows[0]?.n} row(s)`),
+          expect: (rows) =>
+            Number(rows[0]?.n) === 0 ? null : `a forbidden create still inserted ${rows[0]?.n} row(s)`,
         };
       },
     },
@@ -289,7 +299,8 @@ const compensationSurface: WriteSurface<CompensationWriteResolved> = {
           const row = rows[0];
           if (row.status !== 'approved') return `row status ${row.status} != approved`;
           if (row.approved_by_id !== r.userIdByRole.super_admin) return `approved_by_id != probe (super_admin)`;
-          if (Number(row.current_salary) !== 66000) return `employee_compensations.current_salary ${row.current_salary} != 66000 (tx side effect missing)`;
+          if (Number(row.current_salary) !== 66000)
+            return `employee_compensations.current_salary ${row.current_salary} != 66000 (tx side effect missing)`;
           return null;
         },
       }),
@@ -309,9 +320,11 @@ const compensationSurface: WriteSurface<CompensationWriteResolved> = {
           params: [id],
           expect: (rows) => {
             if (rows.length !== 1) return `precondition adjustment ${id} missing`;
-            if (rows[0].status !== 'pending') return `a forbidden approve mutated the adjustment → status ${rows[0].status}`;
+            if (rows[0].status !== 'pending')
+              return `a forbidden approve mutated the adjustment → status ${rows[0].status}`;
             if (rows[0].approved_by_id !== null) return `a forbidden approve set approved_by_id`;
-            if (Number(rows[0].current_salary) !== 60000) return `a forbidden approve LEAKED into employee_compensations.current_salary = ${rows[0].current_salary} (expected unchanged 60000)`;
+            if (Number(rows[0].current_salary) !== 60000)
+              return `a forbidden approve LEAKED into employee_compensations.current_salary = ${rows[0].current_salary} (expected unchanged 60000)`;
             return null;
           },
         };
@@ -326,11 +339,15 @@ const compensationSurface: WriteSurface<CompensationWriteResolved> = {
 /** The 6 FRESH-360 competencies (packages/shared EVAL360_COMPETENCIES). submitRatings requires
  *  EXACTLY these six, each once (Zod .length(6) + distinct refine). */
 export const EVAL360_COMPETENCIES = [
-  'leadership', 'communication', 'collaboration', 'execution', 'adaptability', 'integrity',
+  'leadership',
+  'communication',
+  'collaboration',
+  'execution',
+  'adaptability',
+  'integrity',
 ] as const;
 
-const sixRatings = () =>
-  EVAL360_COMPETENCIES.map((competencyKey) => ({ competencyKey, rating: 3, comment: 'parity' }));
+const sixRatings = () => EVAL360_COMPETENCIES.map((competencyKey) => ({ competencyKey, rating: 3, comment: 'parity' }));
 
 /** Concrete ids resolved for the evaluation360 write surface (seed.ts resolveEvaluation360WriteResources). */
 export interface Evaluation360WriteResolved extends WriteResolvedBase {
@@ -374,7 +391,8 @@ const transitionEndpoint = (
     params: [cycleA],
     expect: (rows) => {
       if (rows.length !== 1) return `cycle ${cycleA} missing`;
-      if (rows[0].status !== toStatus) return `cycle status ${rows[0].status} != ${toStatus} (transition did not apply)`;
+      if (rows[0].status !== toStatus)
+        return `cycle status ${rows[0].status} != ${toStatus} (transition did not apply)`;
       return null;
     },
   }),
@@ -386,7 +404,8 @@ const transitionEndpoint = (
       params: [id],
       expect: (rows) => {
         if (rows.length !== 1) return `precondition cycle ${id} missing`;
-        if (rows[0].status !== fromStatus) return `a forbidden ${verb} mutated the cycle → status ${rows[0].status} (expected ${fromStatus})`;
+        if (rows[0].status !== fromStatus)
+          return `a forbidden ${verb} mutated the cycle → status ${rows[0].status} (expected ${fromStatus})`;
         return null;
       },
     };
@@ -415,7 +434,8 @@ const evaluation360Surface: WriteSurface<Evaluation360WriteResolved> = {
         if (!o) return 'response is not an object';
         if (o.status !== 'draft') return `expected status 'draft', got ${JSON.stringify(o.status)}`;
         if (typeof o.id !== 'string' || !UUID_RE.test(o.id)) return `expected a uuid id, got ${JSON.stringify(o.id)}`;
-        if (o.name !== WRITE_CYCLE_MARKER) return `expected name ${JSON.stringify(WRITE_CYCLE_MARKER)}, got ${JSON.stringify(o.name)}`;
+        if (o.name !== WRITE_CYCLE_MARKER)
+          return `expected name ${JSON.stringify(WRITE_CYCLE_MARKER)}, got ${JSON.stringify(o.name)}`;
         return null;
       },
       // Self-locate the freshly-created draft cycle by (created_by = probe, marker name) and assert
@@ -429,7 +449,8 @@ const evaluation360Surface: WriteSurface<Evaluation360WriteResolved> = {
           params: [r.userIdByRole.super_admin, WRITE_CYCLE_MARKER],
           expect: (rows) => {
             if (rows.length !== 1) return `no freshly-created draft cycle by the probe`;
-            if (rows[0].id !== respId) return `response id ${JSON.stringify(respId)} != created cycle id ${rows[0].id} (stale/wrong id echoed?)`;
+            if (rows[0].id !== respId)
+              return `response id ${JSON.stringify(respId)} != created cycle id ${rows[0].id} (stale/wrong id echoed?)`;
             return null;
           },
         };
@@ -452,14 +473,22 @@ const evaluation360Surface: WriteSurface<Evaluation360WriteResolved> = {
       readbackNoMutation: (r, _target, denierRole) => ({
         sql: `SELECT count(*)::int AS n FROM review_cycles WHERE created_by_id = $1 AND name = $2`,
         params: [r.userIdByRole[denierRole ?? ''], WRITE_CYCLE_MARKER],
-        expect: (rows) => (Number(rows[0]?.n) === 0 ? null : `a forbidden createCycle still inserted ${rows[0]?.n} cycle(s)`),
+        expect: (rows) =>
+          Number(rows[0]?.n) === 0 ? null : `a forbidden createCycle still inserted ${rows[0]?.n} cycle(s)`,
       }),
     },
 
     // ── open / close / publish — guarded state transitions (cross-org → 409). ───────────
     transitionEndpoint('open-cycle', 'open', WRITE_EVAL_CYCLES.draftA, WRITE_EVAL_CYCLES.draftB, 'draft', 'open'),
     transitionEndpoint('close-cycle', 'close', WRITE_EVAL_CYCLES.openA, WRITE_EVAL_CYCLES.openB, 'open', 'closed'),
-    transitionEndpoint('publish-cycle', 'publish', WRITE_EVAL_CYCLES.closedA, WRITE_EVAL_CYCLES.closedB, 'closed', 'published'),
+    transitionEndpoint(
+      'publish-cycle',
+      'publish',
+      WRITE_EVAL_CYCLES.closedA,
+      WRITE_EVAL_CYCLES.closedB,
+      'closed',
+      'published',
+    ),
 
     // ── assignRaters — create-grant; cross-org cycle → cycleNotOpen 409. ────────────────
     {
@@ -494,7 +523,8 @@ const evaluation360Surface: WriteSurface<Evaluation360WriteResolved> = {
         sql: `SELECT count(*)::int AS n FROM rater_assignments
               WHERE cycle_id = $1 AND subject_user_id = $2 AND rater_user_id = $3`,
         params: [WRITE_EVAL_CYCLES.assignA, r.subjectA, r.userIdByRole.hrbp],
-        expect: (rows) => (Number(rows[0]?.n) === 1 ? null : `assignRaters did not create the assignment (found ${rows[0]?.n})`),
+        expect: (rows) =>
+          Number(rows[0]?.n) === 1 ? null : `assignRaters did not create the assignment (found ${rows[0]?.n})`,
       }),
       // Denied assign (IDOR org-B cycle, or rbac-deny before the probe inserted): no assignment
       // exists for that (cycle, subject, rater).
@@ -504,7 +534,8 @@ const evaluation360Surface: WriteSurface<Evaluation360WriteResolved> = {
           sql: `SELECT count(*)::int AS n FROM rater_assignments
                 WHERE cycle_id = $1 AND subject_user_id = $2 AND rater_user_id = $3`,
           params: [cycleId, r.subjectA, r.userIdByRole.hrbp],
-          expect: (rows) => (Number(rows[0]?.n) === 0 ? null : `a forbidden assignRaters still inserted ${rows[0]?.n} assignment(s)`),
+          expect: (rows) =>
+            Number(rows[0]?.n) === 0 ? null : `a forbidden assignRaters still inserted ${rows[0]?.n} assignment(s)`,
         };
       },
     },
@@ -513,10 +544,16 @@ const evaluation360Surface: WriteSurface<Evaluation360WriteResolved> = {
     {
       name: 'submit-ratings',
       method: 'POST',
-      buildParity: (r) => ({ path: `/evaluation360/assignments/${enc(r.submitAssignA)}/ratings`, body: { ratings: sixRatings() } }),
+      buildParity: (r) => ({
+        path: `/evaluation360/assignments/${enc(r.submitAssignA)}/ratings`,
+        body: { ratings: sixRatings() },
+      }),
       // cross-org: org-A super → an org-B assignment id → the ownership pre-fetch {id, org=A,
       // rater=super_a} finds nothing → 404 (id/org/rater mismatch is indistinguishable from outside).
-      buildIdor: (r) => ({ path: `/evaluation360/assignments/${enc(r.submitAssignB)}/ratings`, body: { ratings: sixRatings() } }),
+      buildIdor: (r) => ({
+        path: `/evaluation360/assignments/${enc(r.submitAssignB)}/ratings`,
+        body: { ratings: sixRatings() },
+      }),
       idorDeniedStatuses: [404],
       // The load-bearing invariant: authorization is raterUserId === caller, NOT a grant. hr_admin
       // and hrbp are NOT the rater of submitAssignA → 404, no forged feedback. rbacDenyStatus = 404.
@@ -553,7 +590,8 @@ const evaluation360Surface: WriteSurface<Evaluation360WriteResolved> = {
           params: [id],
           expect: (rows) => {
             if (rows.length !== 1) return `precondition assignment ${id} missing`;
-            if (rows[0].status !== 'pending') return `a forbidden submit mutated the assignment → status ${rows[0].status}`;
+            if (rows[0].status !== 'pending')
+              return `a forbidden submit mutated the assignment → status ${rows[0].status}`;
             if (Number(rows[0].n) !== 0) return `a forbidden submit wrote ${rows[0].n} forged response(s)`;
             return null;
           },
@@ -609,12 +647,18 @@ const successionSurface: WriteSurface<SuccessionWriteResolved> = {
     {
       name: 'add-critical-role',
       method: 'POST',
-      buildParity: (r) => ({ path: '/succession/critical-roles', body: { title: WRITE_SUCCESSION_CR_MARKER, criticality: 'high', currentHolderId: r.subjectA } }),
+      buildParity: (r) => ({
+        path: '/succession/critical-roles',
+        body: { title: WRITE_SUCCESSION_CR_MARKER, criticality: 'high', currentHolderId: r.subjectA },
+      }),
       // cross-org: an org-B currentHolderId → not in the caller's org → 400 invalid_reference (no INSERT).
       // NB: 400 is also the malformed-body status, so it is NOT isolation-specific on its own — the IDOR
       // body here is well-formed (valid uuid holder), so it genuinely reaches the reference guard, and the
       // no-mutation read-back (no row with that org-B holder) is the LOAD-BEARING proof, not the status.
-      buildIdor: (r) => ({ path: '/succession/critical-roles', body: { title: WRITE_SUCCESSION_CR_MARKER, criticality: 'high', currentHolderId: r.subjectB } }),
+      buildIdor: (r) => ({
+        path: '/succession/critical-roles',
+        body: { title: WRITE_SUCCESSION_CR_MARKER, criticality: 'high', currentHolderId: r.subjectB },
+      }),
       idorDeniedStatuses: [400],
       expectedByRole: { super_admin: 'allow', hr_admin: 'allow', hrbp: 'deny' }, // hrbp: no succession:create → 403
       rbacDenyStatus: 403,
@@ -624,7 +668,8 @@ const successionSurface: WriteSurface<SuccessionWriteResolved> = {
         return {
           sql: `SELECT id FROM critical_roles WHERE id = $1 AND title = $2 AND current_holder_id = $3`,
           params: [respId, WRITE_SUCCESSION_CR_MARKER, r.subjectA],
-          expect: (rows) => (rows.length === 1 ? null : `no created marker critical role matching the response id + org-A holder`),
+          expect: (rows) =>
+            rows.length === 1 ? null : `no created marker critical role matching the response id + org-A holder`,
         };
       },
       // IDOR: no role created with the org-B holder. deny (hrbp, runs before parity): no marker role
@@ -634,7 +679,8 @@ const successionSurface: WriteSurface<SuccessionWriteResolved> = {
         return {
           sql: `SELECT count(*)::int AS n FROM critical_roles WHERE title = $1 AND current_holder_id = $2`,
           params: [WRITE_SUCCESSION_CR_MARKER, holder],
-          expect: (rows) => (Number(rows[0]?.n) === 0 ? null : `a forbidden addCriticalRole still inserted ${rows[0]?.n} row(s)`),
+          expect: (rows) =>
+            Number(rows[0]?.n) === 0 ? null : `a forbidden addCriticalRole still inserted ${rows[0]?.n} row(s)`,
         };
       },
     },
@@ -643,10 +689,16 @@ const successionSurface: WriteSurface<SuccessionWriteResolved> = {
     {
       name: 'add-successor',
       method: 'POST',
-      buildParity: (r) => ({ path: `/succession/critical-roles/${WRITE_SUCCESSION_ROLES.addA}/successors`, body: { userId: r.subjectA, readiness: 'ready_now', type: 'internal' } }),
+      buildParity: (r) => ({
+        path: `/succession/critical-roles/${WRITE_SUCCESSION_ROLES.addA}/successors`,
+        body: { userId: r.subjectA, readiness: 'ready_now', type: 'internal' },
+      }),
       // cross-org: a valid org-A parent role + an org-B userId → assertSubjectInScope no-ops for org
       // scope → the H1 org-membership guard rejects → 403 (the createAdjustment-class hole, both-stacks-fixed).
-      buildIdor: (r) => ({ path: `/succession/critical-roles/${WRITE_SUCCESSION_ROLES.addA}/successors`, body: { userId: r.subjectB, readiness: 'ready_now', type: 'internal' } }),
+      buildIdor: (r) => ({
+        path: `/succession/critical-roles/${WRITE_SUCCESSION_ROLES.addA}/successors`,
+        body: { userId: r.subjectB, readiness: 'ready_now', type: 'internal' },
+      }),
       idorDeniedStatuses: [403],
       expectedByRole: { super_admin: 'allow', hr_admin: 'allow', hrbp: 'deny' },
       rbacDenyStatus: 403,
@@ -669,12 +721,14 @@ const successionSurface: WriteSurface<SuccessionWriteResolved> = {
           ? {
               sql: `SELECT count(*)::int AS n FROM successors WHERE critical_role_id = $1 AND user_id = $2`,
               params: [WRITE_SUCCESSION_ROLES.addA, r.subjectB],
-              expect: (rows) => (Number(rows[0]?.n) === 0 ? null : `a forbidden addSuccessor inserted a cross-org successor`),
+              expect: (rows) =>
+                Number(rows[0]?.n) === 0 ? null : `a forbidden addSuccessor inserted a cross-org successor`,
             }
           : {
               sql: `SELECT count(*)::int AS n FROM successors WHERE critical_role_id = $1 AND added_by_id = $2`,
               params: [WRITE_SUCCESSION_ROLES.addA, r.userIdByRole[denierRole ?? '']],
-              expect: (rows) => (Number(rows[0]?.n) === 0 ? null : `a forbidden addSuccessor inserted ${rows[0]?.n} row(s)`),
+              expect: (rows) =>
+                Number(rows[0]?.n) === 0 ? null : `a forbidden addSuccessor inserted ${rows[0]?.n} row(s)`,
             },
     },
 
@@ -708,8 +762,14 @@ const successionSurface: WriteSurface<SuccessionWriteResolved> = {
     {
       name: 'update-successor-readiness',
       method: 'PATCH',
-      buildParity: (r) => ({ path: `/succession/successors/${enc(r.successorReadinessA)}/readiness`, body: { readiness: 'ready_now' } }),
-      buildIdor: (r) => ({ path: `/succession/successors/${enc(r.successorReadinessB)}/readiness`, body: { readiness: 'ready_now' } }),
+      buildParity: (r) => ({
+        path: `/succession/successors/${enc(r.successorReadinessA)}/readiness`,
+        body: { readiness: 'ready_now' },
+      }),
+      buildIdor: (r) => ({
+        path: `/succession/successors/${enc(r.successorReadinessB)}/readiness`,
+        body: { readiness: 'ready_now' },
+      }),
       idorDeniedStatuses: [404],
       expectedByRole: { super_admin: 'allow', hr_admin: 'allow', hrbp: 'deny' }, // hrbp: no succession:update
       rbacDenyStatus: 403,
@@ -719,7 +779,8 @@ const successionSurface: WriteSurface<SuccessionWriteResolved> = {
         params: [r.successorReadinessA],
         expect: (rows) => {
           if (rows.length !== 1) return `successor ${r.successorReadinessA} missing`;
-          if (rows[0].readiness !== 'ready_now') return `readiness ${rows[0].readiness} != ready_now (update did not apply)`;
+          if (rows[0].readiness !== 'ready_now')
+            return `readiness ${rows[0].readiness} != ready_now (update did not apply)`;
           return null;
         },
       }),
@@ -731,7 +792,8 @@ const successionSurface: WriteSurface<SuccessionWriteResolved> = {
           params: [id],
           expect: (rows) => {
             if (rows.length !== 1) return `precondition successor ${id} missing`;
-            if (rows[0].readiness !== 'developing') return `a forbidden update mutated readiness → ${rows[0].readiness}`;
+            if (rows[0].readiness !== 'developing')
+              return `a forbidden update mutated readiness → ${rows[0].readiness}`;
             return null;
           },
         };
@@ -742,8 +804,14 @@ const successionSurface: WriteSurface<SuccessionWriteResolved> = {
     {
       name: 'update-critical-role-band',
       method: 'PATCH',
-      buildParity: () => ({ path: `/succession/critical-roles/${WRITE_SUCCESSION_ROLES.bandA}/band`, body: { targetBandLevel: 'PARITY-BAND' } }),
-      buildIdor: () => ({ path: `/succession/critical-roles/${WRITE_SUCCESSION_ROLES.bandB}/band`, body: { targetBandLevel: 'PARITY-BAND' } }),
+      buildParity: () => ({
+        path: `/succession/critical-roles/${WRITE_SUCCESSION_ROLES.bandA}/band`,
+        body: { targetBandLevel: 'PARITY-BAND' },
+      }),
+      buildIdor: () => ({
+        path: `/succession/critical-roles/${WRITE_SUCCESSION_ROLES.bandB}/band`,
+        body: { targetBandLevel: 'PARITY-BAND' },
+      }),
       idorDeniedStatuses: [404],
       expectedByRole: { super_admin: 'allow', hr_admin: 'allow', hrbp: 'deny' },
       rbacDenyStatus: 403,
@@ -751,7 +819,8 @@ const successionSurface: WriteSurface<SuccessionWriteResolved> = {
         const idErr = idPresent(b);
         if (idErr) return idErr;
         const o = asObj(b)!;
-        if (o.targetBandLevel !== 'PARITY-BAND') return `expected targetBandLevel 'PARITY-BAND', got ${JSON.stringify(o.targetBandLevel)}`;
+        if (o.targetBandLevel !== 'PARITY-BAND')
+          return `expected targetBandLevel 'PARITY-BAND', got ${JSON.stringify(o.targetBandLevel)}`;
         return null;
       },
       readbackMutated: () => ({
@@ -759,7 +828,8 @@ const successionSurface: WriteSurface<SuccessionWriteResolved> = {
         params: [WRITE_SUCCESSION_ROLES.bandA],
         expect: (rows) => {
           if (rows.length !== 1) return `critical role ${WRITE_SUCCESSION_ROLES.bandA} missing`;
-          if (rows[0].target_band_level !== 'PARITY-BAND') return `target_band_level ${rows[0].target_band_level} != PARITY-BAND`;
+          if (rows[0].target_band_level !== 'PARITY-BAND')
+            return `target_band_level ${rows[0].target_band_level} != PARITY-BAND`;
           return null;
         },
       }),
@@ -772,7 +842,8 @@ const successionSurface: WriteSurface<SuccessionWriteResolved> = {
           params: [id],
           expect: (rows) => {
             if (rows.length !== 1) return `precondition critical role ${id} missing`;
-            if ((rows[0].target_band_level ?? null) !== expected) return `a forbidden band update mutated target_band_level → ${JSON.stringify(rows[0].target_band_level)} (expected ${JSON.stringify(expected)})`;
+            if ((rows[0].target_band_level ?? null) !== expected)
+              return `a forbidden band update mutated target_band_level → ${JSON.stringify(rows[0].target_band_level)} (expected ${JSON.stringify(expected)})`;
             return null;
           },
         };
@@ -795,7 +866,11 @@ export interface EngagementWriteResolved extends WriteResolvedBase {
   subjectB: string;
 }
 
-const surveyBody = () => ({ title: WRITE_ENGAGEMENT_SURVEY_MARKER, type: 'pulse', questions: [{ text: 'Parity Q', type: 'scale' }] });
+const surveyBody = () => ({
+  title: WRITE_ENGAGEMENT_SURVEY_MARKER,
+  type: 'pulse',
+  questions: [{ text: 'Parity Q', type: 'scale' }],
+});
 
 // 5 writes under ONE flag Platform__EngagementWriteEnabled (COEXISTENCE, not a flip — TS monitoring/dei/
 // alert-cron still read these tables). createSurvey (grant-only; created_by attributed → allow-live) +
@@ -829,7 +904,8 @@ const engagementSurface: WriteSurface<EngagementWriteResolved> = {
           params: [r.userIdByRole.super_admin, WRITE_ENGAGEMENT_SURVEY_MARKER],
           expect: (rows) => {
             if (rows.length !== 1) return `no freshly-created draft survey by the probe`;
-            if (rows[0].id !== respId) return `response id ${JSON.stringify(respId)} != created survey id ${rows[0].id}`;
+            if (rows[0].id !== respId)
+              return `response id ${JSON.stringify(respId)} != created survey id ${rows[0].id}`;
             return null;
           },
         };
@@ -849,7 +925,8 @@ const engagementSurface: WriteSurface<EngagementWriteResolved> = {
       readbackNoMutation: (r, _target, denierRole) => ({
         sql: `SELECT count(*)::int AS n FROM surveys WHERE created_by_id = $1 AND title = $2`,
         params: [r.userIdByRole[denierRole ?? ''], WRITE_ENGAGEMENT_SURVEY_MARKER],
-        expect: (rows) => (Number(rows[0]?.n) === 0 ? null : `a forbidden createSurvey still inserted ${rows[0]?.n} survey(s)`),
+        expect: (rows) =>
+          Number(rows[0]?.n) === 0 ? null : `a forbidden createSurvey still inserted ${rows[0]?.n} survey(s)`,
       }),
     },
 
@@ -891,9 +968,15 @@ const engagementSurface: WriteSurface<EngagementWriteResolved> = {
     {
       name: 'submit-survey-response',
       method: 'POST',
-      buildParity: () => ({ path: `/engagement/surveys/${WRITE_ENGAGEMENT.submitSurveyA}/responses`, body: { answers: { q1: 'yes' } } }),
+      buildParity: () => ({
+        path: `/engagement/surveys/${WRITE_ENGAGEMENT.submitSurveyA}/responses`,
+        body: { answers: { q1: 'yes' } },
+      }),
       // cross-org: an org-B survey id → findFirst {id, org=A, active} → null → SurveyNotActive 404.
-      buildIdor: () => ({ path: `/engagement/surveys/${WRITE_ENGAGEMENT.submitSurveyB}/responses`, body: { answers: { q1: 'yes' } } }),
+      buildIdor: () => ({
+        path: `/engagement/surveys/${WRITE_ENGAGEMENT.submitSurveyB}/responses`,
+        body: { answers: { q1: 'yes' } },
+      }),
       idorDeniedStatuses: [404],
       expectedByRole: { super_admin: 'allow', hr_admin: 'allow', hrbp: 'deny' }, // hrbp: no engagement:create → 403
       rbacDenyStatus: 403,
@@ -932,9 +1015,15 @@ const engagementSurface: WriteSurface<EngagementWriteResolved> = {
     {
       name: 'create-action-plan',
       method: 'POST',
-      buildParity: (r) => ({ path: '/engagement/action-plans', body: { title: WRITE_ENGAGEMENT_PLAN_MARKER, responsibleId: r.subjectA } }),
+      buildParity: (r) => ({
+        path: '/engagement/action-plans',
+        body: { title: WRITE_ENGAGEMENT_PLAN_MARKER, responsibleId: r.subjectA },
+      }),
       // cross-org: an org-B responsibleId → assertSubjectInScope no-ops for org scope → H1 in-org backstop → 403.
-      buildIdor: (r) => ({ path: '/engagement/action-plans', body: { title: WRITE_ENGAGEMENT_PLAN_MARKER, responsibleId: r.subjectB } }),
+      buildIdor: (r) => ({
+        path: '/engagement/action-plans',
+        body: { title: WRITE_ENGAGEMENT_PLAN_MARKER, responsibleId: r.subjectB },
+      }),
       idorDeniedStatuses: [403],
       expectedByRole: { super_admin: 'allow', hr_admin: 'allow', hrbp: 'deny' },
       rbacDenyStatus: 403,
@@ -961,7 +1050,8 @@ const engagementSurface: WriteSurface<EngagementWriteResolved> = {
         return {
           sql: `SELECT count(*)::int AS n FROM action_plans WHERE title = $1 AND responsible_id = $2`,
           params: [WRITE_ENGAGEMENT_PLAN_MARKER, responsible],
-          expect: (rows) => (Number(rows[0]?.n) === 0 ? null : `a forbidden createActionPlan still inserted ${rows[0]?.n} plan(s)`),
+          expect: (rows) =>
+            Number(rows[0]?.n) === 0 ? null : `a forbidden createActionPlan still inserted ${rows[0]?.n} plan(s)`,
         };
       },
     },
@@ -970,8 +1060,14 @@ const engagementSurface: WriteSurface<EngagementWriteResolved> = {
     {
       name: 'update-action-plan',
       method: 'PATCH',
-      buildParity: () => ({ path: `/engagement/action-plans/${WRITE_ENGAGEMENT.actionPlanA}`, body: { status: 'in_progress' } }),
-      buildIdor: () => ({ path: `/engagement/action-plans/${WRITE_ENGAGEMENT.actionPlanB}`, body: { status: 'in_progress' } }),
+      buildParity: () => ({
+        path: `/engagement/action-plans/${WRITE_ENGAGEMENT.actionPlanA}`,
+        body: { status: 'in_progress' },
+      }),
+      buildIdor: () => ({
+        path: `/engagement/action-plans/${WRITE_ENGAGEMENT.actionPlanB}`,
+        body: { status: 'in_progress' },
+      }),
       idorDeniedStatuses: [404],
       expectedByRole: { super_admin: 'allow', hr_admin: 'allow', hrbp: 'deny' }, // hrbp: no engagement:update → 403
       rbacDenyStatus: 403,
@@ -1034,7 +1130,10 @@ const nineboxSurface: WriteSurface<NineBoxWriteResolved> = {
       method: 'POST',
       buildParity: () => ({ path: '/ninebox/calibrations', body: { period: WRITE_NINEBOX_CAL_MARKER } }),
       // cross-org: a memberId that is an org-B user → MemberNotInOrg → 400, nothing written (H1 hardening).
-      buildIdor: (r) => ({ path: '/ninebox/calibrations', body: { period: WRITE_NINEBOX_CAL_MARKER, memberIds: [r.subjectB] } }),
+      buildIdor: (r) => ({
+        path: '/ninebox/calibrations',
+        body: { period: WRITE_NINEBOX_CAL_MARKER, memberIds: [r.subjectB] },
+      }),
       idorDeniedStatuses: [400],
       expectedByRole: { super_admin: 'allow', hr_admin: 'allow', hrbp: 'deny' }, // hrbp: no ninebox:create → 403
       rbacDenyStatus: 403,
@@ -1047,7 +1146,8 @@ const nineboxSurface: WriteSurface<NineBoxWriteResolved> = {
           params: [r.userIdByRole.super_admin, WRITE_NINEBOX_CAL_MARKER],
           expect: (rows) => {
             if (rows.length !== 1) return `no freshly-created marker session by the probe`;
-            if (rows[0].id !== respId) return `response id ${JSON.stringify(respId)} != created session id ${rows[0].id}`;
+            if (rows[0].id !== respId)
+              return `response id ${JSON.stringify(respId)} != created session id ${rows[0].id}`;
             return null;
           },
         };
@@ -1071,7 +1171,8 @@ const nineboxSurface: WriteSurface<NineBoxWriteResolved> = {
         return {
           sql: `SELECT count(*)::int AS n FROM calibration_sessions WHERE created_by_id = $1 AND period = $2`,
           params: [creator, WRITE_NINEBOX_CAL_MARKER],
-          expect: (rows) => (Number(rows[0]?.n) === 0 ? null : `a forbidden createCalibration still inserted ${rows[0]?.n} session(s)`),
+          expect: (rows) =>
+            Number(rows[0]?.n) === 0 ? null : `a forbidden createCalibration still inserted ${rows[0]?.n} session(s)`,
         };
       },
     },
@@ -1080,9 +1181,15 @@ const nineboxSurface: WriteSurface<NineBoxWriteResolved> = {
     {
       name: 'submit-calibration-vote',
       method: 'POST',
-      buildParity: (r) => ({ path: `/ninebox/calibrations/${WRITE_NINEBOX.voteA}/votes`, body: { evaluatedUserId: r.userIdByRole.hrbp, quadrant: 'core_player' } }),
+      buildParity: (r) => ({
+        path: `/ninebox/calibrations/${WRITE_NINEBOX.voteA}/votes`,
+        body: { evaluatedUserId: r.userIdByRole.hrbp, quadrant: 'core_player' },
+      }),
       // cross-org: an org-B session id → session lookup RLS-hidden → SessionNotFound → 404.
-      buildIdor: (r) => ({ path: `/ninebox/calibrations/${WRITE_NINEBOX.voteB}/votes`, body: { evaluatedUserId: r.userIdByRole.hrbp, quadrant: 'core_player' } }),
+      buildIdor: (r) => ({
+        path: `/ninebox/calibrations/${WRITE_NINEBOX.voteB}/votes`,
+        body: { evaluatedUserId: r.userIdByRole.hrbp, quadrant: 'core_player' },
+      }),
       idorDeniedStatuses: [404],
       // hr_admin HAS ninebox:update but is NOT a member of voteA → 403 NotMember (the membership anchor);
       // hrbp has no update grant → 403 at the gate. Both deny at 403.
@@ -1097,12 +1204,16 @@ const nineboxSurface: WriteSurface<NineBoxWriteResolved> = {
       extraProbes: [
         {
           label: 'cross-org-evaluated',
-          build: (r) => ({ path: `/ninebox/calibrations/${WRITE_NINEBOX.voteA}/votes`, body: { evaluatedUserId: r.subjectB, quadrant: 'core_player' } }),
+          build: (r) => ({
+            path: `/ninebox/calibrations/${WRITE_NINEBOX.voteA}/votes`,
+            body: { evaluatedUserId: r.subjectB, quadrant: 'core_player' },
+          }),
           deniedStatuses: [404],
           readbackNoMutation: (r) => ({
             sql: `SELECT count(*)::int AS n FROM calibration_votes WHERE session_id = $1 AND evaluated_user_id = $2`,
             params: [WRITE_NINEBOX.voteA, r.subjectB],
-            expect: (rows) => (Number(rows[0]?.n) === 0 ? null : `a cross-org-evaluated vote was written into an org-A session`),
+            expect: (rows) =>
+              Number(rows[0]?.n) === 0 ? null : `a cross-org-evaluated vote was written into an org-A session`,
           }),
         },
       ],
@@ -1134,8 +1245,14 @@ const nineboxSurface: WriteSurface<NineBoxWriteResolved> = {
       name: 'add-calibration-member',
       method: 'POST',
       // add hr_admin (an org-A user not already a member of memberA) — a distinct user from the hrbp denier.
-      buildParity: (r) => ({ path: `/ninebox/calibrations/${WRITE_NINEBOX.memberA}/members`, body: { userId: r.userIdByRole.hr_admin } }),
-      buildIdor: (r) => ({ path: `/ninebox/calibrations/${WRITE_NINEBOX.memberB}/members`, body: { userId: r.userIdByRole.hr_admin } }),
+      buildParity: (r) => ({
+        path: `/ninebox/calibrations/${WRITE_NINEBOX.memberA}/members`,
+        body: { userId: r.userIdByRole.hr_admin },
+      }),
+      buildIdor: (r) => ({
+        path: `/ninebox/calibrations/${WRITE_NINEBOX.memberB}/members`,
+        body: { userId: r.userIdByRole.hr_admin },
+      }),
       idorDeniedStatuses: [404], // cross-org session → SessionNotFound
       expectedByRole: { super_admin: 'allow', hr_admin: 'allow', hrbp: 'deny' }, // hrbp: no ninebox:update → 403
       rbacDenyStatus: 403,
@@ -1145,7 +1262,10 @@ const nineboxSurface: WriteSurface<NineBoxWriteResolved> = {
       extraProbes: [
         {
           label: 'cross-org-user',
-          build: (r) => ({ path: `/ninebox/calibrations/${WRITE_NINEBOX.memberA}/members`, body: { userId: r.subjectB } }),
+          build: (r) => ({
+            path: `/ninebox/calibrations/${WRITE_NINEBOX.memberA}/members`,
+            body: { userId: r.subjectB },
+          }),
           deniedStatuses: [404],
           readbackNoMutation: (r) => ({
             sql: `SELECT count(*)::int AS n FROM calibration_members WHERE session_id = $1 AND user_id = $2`,
@@ -1160,7 +1280,8 @@ const nineboxSurface: WriteSurface<NineBoxWriteResolved> = {
       readbackMutated: (r) => ({
         sql: `SELECT count(*)::int AS n FROM calibration_members WHERE session_id = $1 AND user_id = $2`,
         params: [WRITE_NINEBOX.memberA, r.userIdByRole.hr_admin],
-        expect: (rows) => (Number(rows[0]?.n) === 1 ? null : `addCalibrationMember did not add the member (found ${rows[0]?.n})`),
+        expect: (rows) =>
+          Number(rows[0]?.n) === 1 ? null : `addCalibrationMember did not add the member (found ${rows[0]?.n})`,
       }),
       // IDOR: no member added to the org-B session. deny: no member added to memberA by the denied attempt.
       readbackNoMutation: (r, target) => {
@@ -1177,8 +1298,14 @@ const nineboxSurface: WriteSurface<NineBoxWriteResolved> = {
     {
       name: 'remove-calibration-member',
       method: 'DELETE',
-      buildParity: (r) => ({ path: `/ninebox/calibrations/${WRITE_NINEBOX.removeA}/members/${enc(r.userIdByRole.hr_admin)}`, body: null }),
-      buildIdor: (r) => ({ path: `/ninebox/calibrations/${WRITE_NINEBOX.removeB}/members/${enc(r.subjectB)}`, body: null }),
+      buildParity: (r) => ({
+        path: `/ninebox/calibrations/${WRITE_NINEBOX.removeA}/members/${enc(r.userIdByRole.hr_admin)}`,
+        body: null,
+      }),
+      buildIdor: (r) => ({
+        path: `/ninebox/calibrations/${WRITE_NINEBOX.removeB}/members/${enc(r.subjectB)}`,
+        body: null,
+      }),
       idorDeniedStatuses: [404],
       expectedByRole: { super_admin: 'allow', hr_admin: 'allow', hrbp: 'deny' }, // hrbp: no ninebox:update → 403
       rbacDenyStatus: 403,
@@ -1196,13 +1323,13 @@ const nineboxSurface: WriteSurface<NineBoxWriteResolved> = {
       }),
       // A denied remove leaves the member in place (org-B for IDOR, org-A for rbac-deny).
       readbackNoMutation: (r, target) => {
-        const [sessionId, userId] = target === 'b'
-          ? [WRITE_NINEBOX.removeB, r.subjectB]
-          : [WRITE_NINEBOX.removeA, r.userIdByRole.hr_admin];
+        const [sessionId, userId] =
+          target === 'b' ? [WRITE_NINEBOX.removeB, r.subjectB] : [WRITE_NINEBOX.removeA, r.userIdByRole.hr_admin];
         return {
           sql: `SELECT count(*)::int AS n FROM calibration_members WHERE session_id = $1 AND user_id = $2`,
           params: [sessionId, userId],
-          expect: (rows) => (Number(rows[0]?.n) === 1 ? null : `a forbidden removeCalibrationMember deleted the member`),
+          expect: (rows) =>
+            Number(rows[0]?.n) === 1 ? null : `a forbidden removeCalibrationMember deleted the member`,
         };
       },
     },
@@ -1234,11 +1361,92 @@ const nineboxSurface: WriteSurface<NineBoxWriteResolved> = {
           params: [id],
           expect: (rows) => {
             if (rows.length !== 1) return `precondition session ${id} missing`;
-            if (rows[0].status !== 'draft') return `a forbidden finalize mutated the session → status ${rows[0].status}`;
+            if (rows[0].status !== 'draft')
+              return `a forbidden finalize mutated the session → status ${rows[0].status}`;
             return null;
           },
         };
       },
+    },
+  ],
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// access-review — Platform__AccessReviewWriteEnabled (1 write: attest)
+// ─────────────────────────────────────────────────────────────────────────────
+/** Concrete ids for the access-review write surface (seed.ts resolveAccessReviewWriteResources). */
+export interface AccessReviewWriteResolved extends WriteResolvedBase {
+  /** org-A id — the attest target (must be a real org; see the AccessReviewWriteResources doc). */
+  orgA: string;
+  /** org-A `org_admin` user id — the denied role, for the no-mutation read-back. */
+  orgAdminUserId: string;
+}
+
+const ACCESS_REVIEW_NOTES_MARKER = 'parity';
+
+// Coverage-audit addition (2026-07-27): 1 write under Platform__AccessReviewWriteEnabled.
+// `attest` = PlatformOwnerGate (the SAME gate as the access-review READ surface in surfaces.ts —
+// see that entry's comment) + an unconditional insert into `access_reviews`. UNLIKE every other
+// write surface here, this one has NO cross-org IDOR concept: a platform owner is INTENTIONALLY
+// cross-org (they attest ANY org's access review by design — the same reason the read surface's
+// RLS check is `globalScope` rather than a leak signal), so `buildIdor` is correctly omitted —
+// the same documented precedent as createCycle/createSurvey/createCalibration (an endpoint whose
+// org is fixed by context, not the caller's tenant). org_admin (an ordinary org-scoped role, no
+// platform-owner bit) is denied at the gate BEFORE any org lookup or body parsing, so its 403 is
+// gate-level, not a grant/scope nuance.
+const accessReviewSurface: WriteSurface<AccessReviewWriteResolved> = {
+  key: 'access-review',
+  flag: 'Platform__AccessReviewWriteEnabled',
+  probeRole: 'platform_owner',
+  roles: ['platform_owner', 'org_admin'],
+  ensurePreconditions: ensureAccessReviewWritePreconditions,
+  resolveResources: resolveAccessReviewWriteResources,
+  endpoints: [
+    {
+      name: 'attest',
+      method: 'POST',
+      buildParity: (r) => ({
+        path: '/access-review/attest',
+        body: { organizationId: r.orgA, notes: ACCESS_REVIEW_NOTES_MARKER },
+      }),
+      // no buildIdor: see the surface-level comment above — platform-owner attestation has no
+      // cross-tenant boundary to probe.
+      expectedByRole: { platform_owner: 'allow', org_admin: 'deny' },
+      rbacDenyStatus: 403,
+      expectResponse: (b) => {
+        const o = asObj(b);
+        if (!o) return 'response is not an object';
+        if (typeof o.id !== 'string' || !UUID_RE.test(o.id)) return `expected a uuid id, got ${JSON.stringify(o.id)}`;
+        if (typeof o.userCount !== 'number') return `expected numeric userCount, got ${JSON.stringify(o.userCount)}`;
+        return null;
+      },
+      // Self-LOCATE the freshly-created row by our marker notes + org A, then assert the response
+      // id matches it — a C# bug echoing a stale/other id is caught, not passed on a prior row.
+      readbackMutated: (r, b) => {
+        const respId = asObj(b)?.id;
+        return {
+          sql: `SELECT id, organization_id, reviewer_id, notes
+                FROM access_reviews
+                WHERE organization_id = $1 AND notes = $2
+                ORDER BY created_at DESC LIMIT 1`,
+          params: [r.orgA, ACCESS_REVIEW_NOTES_MARKER],
+          expect: (rows) => {
+            if (rows.length !== 1)
+              return `no freshly-created (notes='${ACCESS_REVIEW_NOTES_MARKER}') access_reviews row for org A`;
+            const row = rows[0];
+            if (row.id !== respId)
+              return `response id ${JSON.stringify(respId)} != the created row id ${row.id} (stale/wrong id echoed?)`;
+            return null;
+          },
+        };
+      },
+      // rbac-deny (org_admin): no access_reviews row must exist attributed to the denied user.
+      readbackNoMutation: (r) => ({
+        sql: `SELECT count(*)::int AS n FROM access_reviews WHERE organization_id = $1 AND reviewer_id = $2`,
+        params: [r.orgA, r.orgAdminUserId],
+        expect: (rows) =>
+          Number(rows[0]?.n) === 0 ? null : `a forbidden attest by org_admin still inserted ${rows[0]?.n} row(s)`,
+      }),
     },
   ],
 };
@@ -1249,4 +1457,5 @@ export const WRITE_SURFACES: Record<string, AnyWriteSurface> = {
   succession: defineWriteSurface(successionSurface),
   engagement: defineWriteSurface(engagementSurface),
   ninebox: defineWriteSurface(nineboxSurface),
+  'access-review': defineWriteSurface(accessReviewSurface),
 };

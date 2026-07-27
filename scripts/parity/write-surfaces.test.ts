@@ -16,6 +16,7 @@ import {
   type SuccessionWriteResolved,
   type EngagementWriteResolved,
   type NineBoxWriteResolved,
+  type AccessReviewWriteResolved,
 } from './write-surfaces';
 
 const res: WriteResolved = {
@@ -38,7 +39,10 @@ describe('WRITE_SURFACES compensation', () => {
 
   it('create: parity targets the org-A subject, IDOR targets the org-B subject (same POST path)', () => {
     const ep = s.endpoints.find((e) => e.name === 'create-adjustment')!;
-    expect(ep.buildParity(res)).toEqual({ path: '/compensation/adjustments', body: expect.objectContaining({ userId: 'subjA', type: 'merit', newSalary: 66000 }) });
+    expect(ep.buildParity(res)).toEqual({
+      path: '/compensation/adjustments',
+      body: expect.objectContaining({ userId: 'subjA', type: 'merit', newSalary: 66000 }),
+    });
     expect(ep.buildIdor!(res).body).toMatchObject({ userId: 'subjB' });
     expect(ep.expectedByRole).toEqual({ super_admin: 'allow', hr_admin: 'allow', hrbp: 'deny' });
   });
@@ -72,7 +76,9 @@ describe('WRITE_SURFACES compensation', () => {
     const ep = s.endpoints.find((e) => e.name === 'create-adjustment')!;
     const rb = ep.readbackMutated(res, { id: 'new-1', status: 'pending' });
     expect(rb.params).toEqual(['subjA', 'S']); // by (subjectA, probe requester) — NOT the response id
-    expect(rb.expect([{ id: 'new-1', status: 'pending', new_salary: 66000, requested_by_id: 'S', approved_by_id: null }])).toBeNull();
+    expect(
+      rb.expect([{ id: 'new-1', status: 'pending', new_salary: 66000, requested_by_id: 'S', approved_by_id: null }]),
+    ).toBeNull();
     // a stale/other id echoed by the SUT → the located (real) row id != response id → FAIL.
     expect(rb.expect([{ id: 'seed-fixture', new_salary: 66000, approved_by_id: null }])).toContain('stale/wrong id');
     expect(rb.expect([])).toContain('no freshly-created');
@@ -93,7 +99,9 @@ describe('WRITE_SURFACES compensation', () => {
     expect(rb.params).toEqual(['resA']);
     expect(rb.expect([{ status: 'approved', approved_by_id: 'S', current_salary: 66000 }])).toBeNull();
     expect(rb.expect([{ status: 'approved', approved_by_id: 'S', current_salary: 60000 }])).toContain('side effect');
-    expect(rb.expect([{ status: 'approved', approved_by_id: 'other', current_salary: 66000 }])).toContain('approved_by_id');
+    expect(rb.expect([{ status: 'approved', approved_by_id: 'other', current_salary: 66000 }])).toContain(
+      'approved_by_id',
+    );
   });
 
   it('create no-mutation keys on (subject, requester) so it detects only the forbidden insert', () => {
@@ -122,7 +130,12 @@ describe('WRITE_SURFACES evaluation360', () => {
     expect(s.flag).toBe('Platform__Evaluation360WriteEnabled');
     expect(s.probeRole).toBe('super_admin');
     expect(s.endpoints.map((e) => e.name)).toEqual([
-      'create-cycle', 'open-cycle', 'close-cycle', 'publish-cycle', 'assign-raters', 'submit-ratings',
+      'create-cycle',
+      'open-cycle',
+      'close-cycle',
+      'publish-cycle',
+      'assign-raters',
+      'submit-ratings',
     ]);
   });
 
@@ -132,10 +145,16 @@ describe('WRITE_SURFACES evaluation360', () => {
     expect(e.buildParity(er)).toEqual({ path: '/evaluation360/cycles', body: { name: WRITE_CYCLE_MARKER } });
     expect(e.expectedByRole).toEqual({ super_admin: 'allow', hr_admin: 'allow', hrbp: 'deny' });
     expect(e.allowRolesLiveTestable).toBe(true);
-    expect(e.expectResponse({ id: '11111111-1111-4111-8111-111111111111', name: WRITE_CYCLE_MARKER, status: 'draft' })).toBeNull();
-    expect(e.expectResponse({ id: '11111111-1111-4111-8111-111111111111', name: WRITE_CYCLE_MARKER, status: 'open' })).toContain('draft');
+    expect(
+      e.expectResponse({ id: '11111111-1111-4111-8111-111111111111', name: WRITE_CYCLE_MARKER, status: 'draft' }),
+    ).toBeNull();
+    expect(
+      e.expectResponse({ id: '11111111-1111-4111-8111-111111111111', name: WRITE_CYCLE_MARKER, status: 'open' }),
+    ).toContain('draft');
     expect(e.expectResponse({ id: 'x', name: WRITE_CYCLE_MARKER, status: 'draft' })).toContain('uuid');
-    expect(e.expectResponse({ id: '11111111-1111-4111-8111-111111111111', name: 'other', status: 'draft' })).toContain('name');
+    expect(e.expectResponse({ id: '11111111-1111-4111-8111-111111111111', name: 'other', status: 'draft' })).toContain(
+      'name',
+    );
     // rbac-deny no-mutation keys on (denier, marker) — the hrbp create must have inserted nothing.
     const nm = e.readbackNoMutation(er, 'a', 'hrbp');
     expect(nm.params).toEqual(['B', WRITE_CYCLE_MARKER]);
@@ -164,7 +183,11 @@ describe('WRITE_SURFACES evaluation360', () => {
     expect(ep('close-cycle').buildParity(er).path).toBe(`/evaluation360/cycles/${WRITE_EVAL_CYCLES.openA}/close`);
     expect(ep('publish-cycle').buildParity(er).path).toBe(`/evaluation360/cycles/${WRITE_EVAL_CYCLES.closedA}/publish`);
     expect(ep('close-cycle').idorDeniedStatuses).toEqual([409]);
-    expect(ep('publish-cycle').readbackNoMutation(er, 'b').expect([{ status: 'closed' }])).toBeNull();
+    expect(
+      ep('publish-cycle')
+        .readbackNoMutation(er, 'b')
+        .expect([{ status: 'closed' }]),
+    ).toBeNull();
   });
 
   it('assign-raters: valid in-org body, cross-org cycle IDOR denied via 409', () => {
@@ -217,7 +240,11 @@ describe('WRITE_SURFACES succession', () => {
   it('registers the 5 succession writes under the single write flag', () => {
     expect(s.flag).toBe('Platform__SuccessionWriteEnabled');
     expect(s.endpoints.map((e) => e.name)).toEqual([
-      'add-critical-role', 'add-successor', 'remove-successor', 'update-successor-readiness', 'update-critical-role-band',
+      'add-critical-role',
+      'add-successor',
+      'remove-successor',
+      'update-successor-readiness',
+      'update-critical-role-band',
     ]);
     // NO succession write is allow-live (no caller-stamped column) — every endpoint is probe + deny only.
     expect(s.endpoints.every((e) => !e.allowRolesLiveTestable)).toBe(true);
@@ -264,7 +291,10 @@ describe('WRITE_SURFACES succession', () => {
   it('update-successor-readiness: PATCH by-id, IDOR 404, no-mutation asserts from-state developing', () => {
     const e = ep('update-successor-readiness');
     expect(e.method).toBe('PATCH');
-    expect(e.buildParity(sr)).toEqual({ path: '/succession/successors/rdyA/readiness', body: { readiness: 'ready_now' } });
+    expect(e.buildParity(sr)).toEqual({
+      path: '/succession/successors/rdyA/readiness',
+      body: { readiness: 'ready_now' },
+    });
     expect(e.buildIdor!(sr).path).toBe('/succession/successors/rdyB/readiness');
     expect(e.readbackMutated(sr, {}).expect([{ readiness: 'ready_now' }])).toBeNull();
     expect(e.readbackMutated(sr, {}).expect([{ readiness: 'developing' }])).toContain('did not apply');
@@ -299,7 +329,11 @@ describe('WRITE_SURFACES engagement', () => {
   it('registers the 5 engagement writes under the single write flag', () => {
     expect(s.flag).toBe('Platform__EngagementWriteEnabled');
     expect(s.endpoints.map((e) => e.name)).toEqual([
-      'create-survey', 'activate-survey', 'submit-survey-response', 'create-action-plan', 'update-action-plan',
+      'create-survey',
+      'activate-survey',
+      'submit-survey-response',
+      'create-action-plan',
+      'update-action-plan',
     ]);
   });
 
@@ -353,7 +387,10 @@ describe('WRITE_SURFACES engagement', () => {
 
   it('update-action-plan: by-id PATCH, cross-org IDOR 404, no-mutation stays pending', () => {
     const e = ep('update-action-plan');
-    expect(e.buildParity(gr)).toEqual({ path: `/engagement/action-plans/${WRITE_ENGAGEMENT.actionPlanA}`, body: { status: 'in_progress' } });
+    expect(e.buildParity(gr)).toEqual({
+      path: `/engagement/action-plans/${WRITE_ENGAGEMENT.actionPlanA}`,
+      body: { status: 'in_progress' },
+    });
     expect(e.buildIdor!(gr).path).toBe(`/engagement/action-plans/${WRITE_ENGAGEMENT.actionPlanB}`);
     expect(e.idorDeniedStatuses).toEqual([404]);
     expect(e.readbackMutated(gr, {}).expect([{ status: 'in_progress' }])).toBeNull();
@@ -374,8 +411,11 @@ describe('WRITE_SURFACES ninebox', () => {
   it('registers the 5 ninebox writes under the single write flag', () => {
     expect(s.flag).toBe('Platform__NineBoxWriteEnabled');
     expect(s.endpoints.map((e) => e.name)).toEqual([
-      'create-calibration', 'submit-calibration-vote', 'add-calibration-member',
-      'remove-calibration-member', 'finalize-calibration',
+      'create-calibration',
+      'submit-calibration-vote',
+      'add-calibration-member',
+      'remove-calibration-member',
+      'finalize-calibration',
     ]);
   });
 
@@ -419,7 +459,10 @@ describe('WRITE_SURFACES ninebox', () => {
 
   it('add-calibration-member: cross-org session IDOR 404, adds a distinct user from the denier', () => {
     const e = ep('add-calibration-member');
-    expect(e.buildParity(nr)).toEqual({ path: `/ninebox/calibrations/${WRITE_NINEBOX.memberA}/members`, body: { userId: 'H' } });
+    expect(e.buildParity(nr)).toEqual({
+      path: `/ninebox/calibrations/${WRITE_NINEBOX.memberA}/members`,
+      body: { userId: 'H' },
+    });
     expect(e.buildIdor!(nr).path).toBe(`/ninebox/calibrations/${WRITE_NINEBOX.memberB}/members`);
     expect(e.idorDeniedStatuses).toEqual([404]);
     expect(e.allowRolesLiveTestable).toBeFalsy();
@@ -428,7 +471,10 @@ describe('WRITE_SURFACES ninebox', () => {
     expect(e.readbackNoMutation(nr, 'b').expect([{ n: 1 }])).toContain('forbidden');
     // MED-2: the org-A-session + org-B-user quirk probe.
     const probe = e.extraProbes!.find((p) => p.label === 'cross-org-user')!;
-    expect(probe.build(nr)).toEqual({ path: `/ninebox/calibrations/${WRITE_NINEBOX.memberA}/members`, body: { userId: 'bH' } });
+    expect(probe.build(nr)).toEqual({
+      path: `/ninebox/calibrations/${WRITE_NINEBOX.memberA}/members`,
+      body: { userId: 'bH' },
+    });
     expect(probe.deniedStatuses).toEqual([404]);
     expect(probe.readbackNoMutation(nr).params).toEqual([WRITE_NINEBOX.memberA, 'bH']);
     expect(probe.readbackNoMutation(nr).expect([{ n: 0 }])).toBeNull();
@@ -455,5 +501,50 @@ describe('WRITE_SURFACES ninebox', () => {
     expect(e.readbackMutated(nr, {}).expect([{ status: 'draft' }])).toContain('did not apply');
     expect(e.readbackNoMutation(nr, 'b').expect([{ status: 'draft' }])).toBeNull();
     expect(e.readbackNoMutation(nr, 'b').expect([{ status: 'finalized' }])).toContain('mutated');
+  });
+});
+
+describe('WRITE_SURFACES access-review', () => {
+  const s = WRITE_SURFACES['access-review'];
+  const ar: AccessReviewWriteResolved = { base: 'http://c', orgA: 'orgA', orgAdminUserId: 'orgAdmin' };
+
+  it('registers the 1 access-review write (attest) under its own flag, platform-owner-gated', () => {
+    expect(s.flag).toBe('Platform__AccessReviewWriteEnabled');
+    expect(s.probeRole).toBe('platform_owner');
+    expect(s.roles).toEqual(['platform_owner', 'org_admin']);
+    expect(s.endpoints.map((e) => e.name)).toEqual(['attest']);
+  });
+
+  it('attest: no buildIdor (no cross-org target — platform owner attests any org by design)', () => {
+    const e = s.endpoints[0];
+    expect(e.method).toBe('POST');
+    expect(e.buildParity(ar)).toEqual({
+      path: '/access-review/attest',
+      body: { organizationId: 'orgA', notes: 'parity' },
+    });
+    expect(e.buildIdor).toBeUndefined();
+    expect(e.expectedByRole).toEqual({ platform_owner: 'allow', org_admin: 'deny' });
+    expect(e.rbacDenyStatus).toBe(403);
+  });
+
+  it('attest: response/read-back shape + self-locates the created row by (org, marker notes)', () => {
+    const e = s.endpoints[0];
+    expect(e.expectResponse({ id: '11111111-1111-1111-1111-111111111111', userCount: 3 })).toBeNull();
+    expect(e.expectResponse({ id: 'not-a-uuid', userCount: 3 })).toContain('uuid');
+    expect(e.expectResponse({ id: '11111111-1111-1111-1111-111111111111' })).toContain('userCount');
+
+    const rb = e.readbackMutated(ar, { id: 'row-1' });
+    expect(rb.params).toEqual(['orgA', 'parity']);
+    expect(rb.expect([{ id: 'row-1' }])).toBeNull();
+    expect(rb.expect([{ id: 'some-other-id' }])).toContain('stale/wrong id');
+    expect(rb.expect([])).toContain('no freshly-created');
+  });
+
+  it('attest: rbac-deny no-mutation keys on (org A, org_admin) — proves the forbidden attempt inserted nothing', () => {
+    const e = s.endpoints[0];
+    const nm = e.readbackNoMutation(ar, 'a', 'org_admin');
+    expect(nm.params).toEqual(['orgA', 'orgAdmin']);
+    expect(nm.expect([{ n: 0 }])).toBeNull();
+    expect(nm.expect([{ n: 1 }])).toContain('forbidden attest');
   });
 });

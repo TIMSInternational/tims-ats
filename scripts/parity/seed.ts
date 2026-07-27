@@ -1857,6 +1857,45 @@ export async function resolveNineBoxWriteResources(cfg: HarnessConfig): Promise<
   }
 }
 
+// ── access-review write-verification resources ───────────────────────────────
+// Coverage-audit addition (2026-07-27): the `attest` write (Phase-5 Slice 18) had NO write-verify
+// wiring at all — WRITE_SURFACES (write-surfaces.ts) never had an `access-review` entry, even
+// though the read side (surfaces.ts) has covered this domain since PR #214. Unlike every other
+// write surface, `attest` needs NO precondition fixture: `AccessReviewService.AttestAsync`
+// recomputes the report straight from the live seeded users/roles and inserts a brand-NEW
+// `access_reviews` row each run — there is no FROM-state to prepare. It DOES need a REAL org id:
+// the C# use case returns `OrgNotFound` for a non-existent `organizationId` (unlike the read
+// endpoints' fixed all-zero sentinel, whose non-existence is fine because BOTH the 200 and 403
+// paths there are decided before any org lookup — see the access-review comment in surfaces.ts).
+// Org A (already created by the shared seed) is a safe, always-present attest target.
+export interface AccessReviewWriteResources {
+  /** The org-A id — the attest target (must be a real org for the 200/allow path to succeed). */
+  orgA: string;
+  /** org-A `org_admin` user id — the denied role, for the rbac-deny no-mutation read-back
+   *  (proves the forbidden attempt inserted no `access_reviews` row attributed to it). */
+  orgAdminUserId: string;
+}
+
+/** No DB precondition to seed — `attest` is a plain insert with no FROM-state to prepare
+ *  (contrast every other write surface's `ensure*WritePreconditions`). */
+export async function ensureAccessReviewWritePreconditions(_cfg: HarnessConfig): Promise<void> {
+  // Intentionally a no-op — see the block comment above.
+}
+
+/** Read-only resolution of the access-review write surface's ids from the seeded DB. */
+export async function resolveAccessReviewWriteResources(cfg: HarnessConfig): Promise<AccessReviewWriteResources> {
+  const db = makeDbClient(cfg);
+  await db.connect();
+  try {
+    return {
+      orgA: await orgIdBySlug(db, ORG_SLUGS.a),
+      orgAdminUserId: await userIdByEmail(db, 'parity+a-org_admin@tims.test'),
+    };
+  } finally {
+    await db.end();
+  }
+}
+
 // ── Tier-2 by-id resource resolution ─────────────────────────────────────────
 // `verify`/`rls`/`parity`/`rbac` run in a SEPARATE process from `seed`, so the by-id
 // resource ids must be re-derivable at check time, not carried from a prior seed.

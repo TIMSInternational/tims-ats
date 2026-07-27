@@ -717,4 +717,252 @@ export const SURFACES: Record<string, Surface> = {
       },
     ],
   },
+  // ── engagement ──────────────────────────────────────────────────────────────────────────────
+  // Coverage-audit addition (2026-07-27): the C# `EngagementReadEndpoints` (Phase-5 Slice 11, 14
+  // read routes) has been mapped/dark since PR history predating this audit, and the `engagement`
+  // write surface has existed in WRITE_SURFACES (write-surfaces.ts) the whole time — but this READ
+  // surface was never registered, so `verify engagement` / `parity engagement` / `rls engagement`
+  // errored "unknown surface". This entry closes that gap.
+  //
+  // 9 of the 14 reads (the Tier-1 static-path subset — confirmed against
+  // EngagementReadEndpoints.cs's live route table). The remaining 5 (getSurveyResults,
+  // getSurveyForResponse, getResultsByArea, getWordCloud, getSentiment) are by-id
+  // (`/engagement/surveys/{surveyId}/...`) Tier-2 follow-ups needing a `survey` idScopeKey +
+  // seeded survey rows in `SeedResources`/`seed.ts` — the same "needs the harness Mode-A id
+  // extension" deferral already used above for compensation/evaluation360/ninebox/succession's
+  // by-id reads, not a silent omission. One flag `Platform__EngagementReadEnabled`.
+  //
+  // Gating (per `EngagementReadEndpoints.cs`'s own docstring, grounded in
+  // seed-access-matrix.ts:44-48,58-76,104,122): hr_admin holds `engagement` r/c/u/d@organization;
+  // hrbp holds `engagement` read@unit (NOT org/company) — passes any GRANT-ONLY check but fails
+  // `requireOrgScope`.
+  //   - listSurveys / myPendingSurveys: grant-only / self-service (NO org-gate) → hrbp 200.
+  //   - getEnps / getClimateHeatmap / getLowClimateAlerts / getDashboardKpis / getRotationRisk:
+  //     staff gate THEN `requireOrgScope` (`AuthorizeOrgRollupAsync`) → hrbp 403 (unit ≠ org/company).
+  //   - listActionPlans / listLeaderCommitments: `scopeWhereFor` row-filter (hrbp → 200-empty,
+  //     fragile) → hrbp OMITTED from `expectedByRole`, same convention as nine-box's
+  //     grid/movement-history above.
+  // super_admin bypasses everywhere (code-guaranteed in both stacks, per the team-intel/succession
+  // precedent above).
+  engagement: {
+    key: 'engagement',
+    flag: 'Platform__EngagementReadEnabled',
+    roles: ['super_admin', 'hr_admin', 'hrbp'],
+    probeRole: 'super_admin',
+    endpoints: [
+      {
+        name: 'surveys',
+        csharpPath: '/engagement/surveys',
+        tsProcedure: 'engagement.listSurveys',
+        input: {},
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 200 },
+        normalize: { dropNullish: true, sortArraysBy: 'id' },
+      },
+      {
+        name: 'my-pending-surveys',
+        csharpPath: '/engagement/my/pending-surveys',
+        tsProcedure: 'engagement.myPendingSurveys',
+        input: {},
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 200 },
+        normalize: { dropNullish: true, sortArraysBy: 'id' },
+      },
+      {
+        name: 'enps',
+        csharpPath: '/engagement/enps',
+        tsProcedure: 'engagement.getEnps',
+        input: {},
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
+        normalize: { dropNullish: true },
+      },
+      {
+        name: 'climate-heatmap',
+        csharpPath: '/engagement/climate-heatmap',
+        tsProcedure: 'engagement.getClimateHeatmap',
+        input: {},
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
+        normalize: { dropNullish: true },
+      },
+      {
+        name: 'alerts',
+        csharpPath: '/engagement/alerts',
+        tsProcedure: 'engagement.getLowClimateAlerts',
+        input: {},
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
+        normalize: { dropNullish: true, sortArraysBy: 'id' },
+      },
+      {
+        name: 'action-plans',
+        csharpPath: '/engagement/action-plans',
+        tsProcedure: 'engagement.listActionPlans',
+        input: {},
+        // scopeWhereFor row-filter — hrbp omitted (see the surface-level comment above).
+        expectedByRole: { super_admin: 200, hr_admin: 200 },
+        normalize: { dropNullish: true, sortArraysBy: 'id' },
+      },
+      {
+        name: 'leader-commitments',
+        csharpPath: '/engagement/leader-commitments',
+        tsProcedure: 'engagement.listLeaderCommitments',
+        input: {},
+        // scopeWhereFor row-filter — hrbp omitted (see the surface-level comment above).
+        expectedByRole: { super_admin: 200, hr_admin: 200 },
+        normalize: { dropNullish: true, sortArraysBy: 'id' },
+      },
+      {
+        name: 'dashboard-kpis',
+        csharpPath: '/engagement/dashboard-kpis',
+        tsProcedure: 'engagement.getDashboardKpis',
+        input: {},
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
+        normalize: { dropNullish: true },
+      },
+      {
+        name: 'rotation-risk',
+        csharpPath: '/engagement/rotation-risk',
+        tsProcedure: 'engagement.getRotationRisk',
+        input: {},
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
+        normalize: { dropNullish: true },
+      },
+    ],
+  },
+  // ── dei ─────────────────────────────────────────────────────────────────────────────────────
+  // Coverage-audit addition (2026-07-27): `DeiReadEndpoints` (Phase-5 Slice 11b, 10 read routes +
+  // Slice 11c's separately-flagged pay-equity) was mapped/dark with no verify surface at all —
+  // this is the first registry entry for the `dei` domain.
+  //
+  // ALL 10 reads share the SAME grant-only `DeiStaffGate` (`permissionProcedure('dei','read')`,
+  // NO org-gate — the reads are org-wide demographic rollups whose disclosure control is
+  // k-anonymity in the pure kernel, not RBAC scope) — so every endpoint gets the identical
+  // `expectedByRole`, grounded directly in seed-access-matrix.ts:
+  //   - super_admin → 200: code-guaranteed bypass in both stacks (see the team-intel precedent
+  //     above), also holds `dei` r/c/u/d@organization (seed-access-matrix.ts:34).
+  //   - hr_admin → 200: `dei` read+export@organization (seed-access-matrix.ts:53) — a real grant.
+  //   - hrbp → 403: `dei` is ABSENT from hrbp's module list entirely (seed-access-matrix.ts:58-76
+  //     lists vacancy…compensation, never dei) — denied at the grant gate, not an org-scope 403.
+  //
+  // `getPayEquity` (`/dei/pay-equity`) is DELIBERATELY EXCLUDED: it is gated by the separate
+  // `Platform__FxReadsEnabled` flag (not `Platform__DeiReadEnabled`), the same FX-tied-endpoint
+  // exclusion already applied to compensation's live-FX reads elsewhere in this registry (see the
+  // "FX-reads cutover" precedent) — a documented deferral, not an oversight. One flag
+  // `Platform__DeiReadEnabled` covers the other 10.
+  dei: {
+    key: 'dei',
+    flag: 'Platform__DeiReadEnabled',
+    roles: ['super_admin', 'hr_admin', 'hrbp'],
+    probeRole: 'super_admin',
+    endpoints: [
+      {
+        name: 'dashboard-kpis',
+        csharpPath: '/dei/dashboard-kpis',
+        tsProcedure: 'dei.getDashboardKpis',
+        input: {},
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
+        normalize: { dropNullish: true },
+      },
+      {
+        name: 'gender-representation',
+        csharpPath: '/dei/gender-representation',
+        tsProcedure: 'dei.getGenderRepresentation',
+        input: {},
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
+        normalize: { dropNullish: true },
+      },
+      {
+        name: 'age-distribution',
+        csharpPath: '/dei/age-distribution',
+        tsProcedure: 'dei.getAgeDistribution',
+        input: {},
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
+        normalize: { dropNullish: true },
+      },
+      {
+        name: 'nationality-diversity',
+        csharpPath: '/dei/nationality-diversity',
+        tsProcedure: 'dei.getNationalityDiversity',
+        input: {},
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
+        normalize: { dropNullish: true },
+      },
+      {
+        name: 'ethnicity-distribution',
+        csharpPath: '/dei/ethnicity-distribution',
+        tsProcedure: 'dei.getEthnicityDistribution',
+        input: {},
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
+        normalize: { dropNullish: true },
+      },
+      {
+        name: 'disability-distribution',
+        csharpPath: '/dei/disability-distribution',
+        tsProcedure: 'dei.getDisabilityDistribution',
+        input: {},
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
+        normalize: { dropNullish: true },
+      },
+      {
+        name: 'leadership-diversity',
+        csharpPath: '/dei/leadership-diversity',
+        tsProcedure: 'dei.getLeadershipDiversity',
+        input: {},
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
+        normalize: { dropNullish: true },
+      },
+      {
+        name: 'hiring-funnel',
+        csharpPath: '/dei/hiring-funnel',
+        tsProcedure: 'dei.getHiringFunnel',
+        input: {},
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
+        normalize: { dropNullish: true },
+      },
+      {
+        name: 'promotion-equity',
+        csharpPath: '/dei/promotion-equity',
+        tsProcedure: 'dei.getPromotionEquity',
+        input: {},
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
+        normalize: { dropNullish: true },
+      },
+      {
+        name: 'inclusion-index',
+        csharpPath: '/dei/inclusion-index',
+        tsProcedure: 'dei.getInclusionIndex',
+        input: {},
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
+        normalize: { dropNullish: true },
+      },
+    ],
+  },
+  // ── billing-invoices ────────────────────────────────────────────────────────────────────────
+  // Coverage-audit addition (2026-07-27): `BillingReadEndpoints` (Phase-5 Slice 3) ships
+  // `listInvoices`/`getInvoice` behind `Platform__BillingReadEnabled` — a SEPARATE flag from
+  // `billing-usage`'s `Platform__BillingUsageEnabled` above, so it needs its OWN surface entry
+  // (one flag per surface is this registry's convention) rather than folding into `billing-usage`.
+  //
+  // Only `listInvoices` (Tier-1, static path) is included here. `getInvoice` (by-id,
+  // `/billing/invoices/{id}`) is a Tier-2 follow-up: it needs an `invoice` idScopeKey + a seeded
+  // Invoice row pair in `SeedResources`/`seed.ts`, which does not exist yet — same documented
+  // deferral pattern as the by-id endpoints noted elsewhere in this registry.
+  //
+  // Gating: `permissionProcedure('billing','read')` — the SAME `BillingStaffGate` as
+  // `billing-usage`, and `billing` is SUPER-ADMIN-ONLY in seed-access-matrix.ts (absent from both
+  // hr_admin's and hrbp's module lists) — so this reuses `billing-usage`'s exact 1-allow/2-deny
+  // verdicts, no new grant needs seeding.
+  'billing-invoices': {
+    key: 'billing-invoices',
+    flag: 'Platform__BillingReadEnabled',
+    roles: ['super_admin', 'hr_admin', 'hrbp'],
+    probeRole: 'super_admin',
+    endpoints: [
+      {
+        name: 'invoices',
+        csharpPath: '/billing/invoices?take=20',
+        tsProcedure: 'billing.listInvoices',
+        input: { take: 20 },
+        expectedByRole: { super_admin: 200, hr_admin: 403, hrbp: 403 },
+        normalize: { dropNullish: true, sortArraysBy: 'id' },
+      },
+    ],
+  },
 };

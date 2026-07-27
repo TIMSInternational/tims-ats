@@ -44,9 +44,15 @@ describe('SURFACES', () => {
     const s = SURFACES['reporting'];
     expect(s.flag).toBe('Platform__ReportingReadEnabled');
     expect(s.probeRole).toBe('super_admin');
-    expect(s.endpoints.map((e) => e.name).sort()).toEqual(
-      ['funnel', 'kpis', 'kpis-90d', 'lost-by-delay', 'recruiter-sla', 'source-breakdown', 'trend'],
-    );
+    expect(s.endpoints.map((e) => e.name).sort()).toEqual([
+      'funnel',
+      'kpis',
+      'kpis-90d',
+      'lost-by-delay',
+      'recruiter-sla',
+      'source-breakdown',
+      'trend',
+    ]);
     for (const e of s.endpoints) {
       // vacancy:read is org-scoped: super_admin (bypass) + hr_admin (org grant) allow,
       // hrbp (unit grant) fails requireOrgScope.
@@ -83,13 +89,23 @@ describe('SURFACES', () => {
 
   it('the four read surfaces are registered with their flags + full endpoint sets (Tier-1 + Tier-2 by-id)', () => {
     expect(SURFACES['compensation'].flag).toBe('Platform__CompensationReadEnabled');
-    expect(SURFACES['compensation'].endpoints.map((e) => e.name).sort()).toEqual(
-      ['benefits-utilization', 'compa-ratio-distribution', 'employee', 'market-comparison', 'my-compensation', 'pending-adjustments', 'salary-bands'],
-    );
+    expect(SURFACES['compensation'].endpoints.map((e) => e.name).sort()).toEqual([
+      'benefits-utilization',
+      'compa-ratio-distribution',
+      'employee',
+      'market-comparison',
+      'my-compensation',
+      'pending-adjustments',
+      'salary-bands',
+    ]);
     expect(SURFACES['evaluation360'].flag).toBe('Platform__Evaluation360ReadEnabled');
-    expect(SURFACES['evaluation360'].endpoints.map((e) => e.name).sort()).toEqual(
-      ['cycle-progress', 'cycles', 'my-rater-tasks', 'my-report', 'my-report-cycles'],
-    );
+    expect(SURFACES['evaluation360'].endpoints.map((e) => e.name).sort()).toEqual([
+      'cycle-progress',
+      'cycles',
+      'my-rater-tasks',
+      'my-report',
+      'my-report-cycles',
+    ]);
     expect(SURFACES['ninebox'].flag).toBe('Platform__NineBoxReadEnabled');
     expect(SURFACES['ninebox'].endpoints).toHaveLength(11);
     expect(SURFACES['succession'].flag).toBe('Platform__SuccessionReadEnabled');
@@ -137,5 +153,78 @@ describe('SURFACES', () => {
     // grid + movement-history omit hrbp (scopeWhereFor fragile); the org-rollup reads deny hrbp.
     expect(nb.endpoints.find((e) => e.name === 'grid')?.expectedByRole['hrbp']).toBeUndefined();
     expect(nb.endpoints.find((e) => e.name === 'dashboard-kpis')?.expectedByRole['hrbp']).toBe(403);
+  });
+
+  // ── Coverage-audit additions (2026-07-27) ────────────────────────────────────────────────────
+  it('engagement is registered with its flag + the 9 Tier-1 reads (5 by-id reads deferred)', () => {
+    const s = SURFACES['engagement'];
+    expect(s.flag).toBe('Platform__EngagementReadEnabled');
+    expect(s.probeRole).toBe('super_admin');
+    expect(s.endpoints.map((e) => e.name).sort()).toEqual([
+      'action-plans',
+      'alerts',
+      'climate-heatmap',
+      'dashboard-kpis',
+      'enps',
+      'leader-commitments',
+      'my-pending-surveys',
+      'rotation-risk',
+      'surveys',
+    ]);
+    // none of the Tier-1 engagement reads is by-id yet (see the surface-level deferral comment).
+    for (const e of s.endpoints) expect(e.idScopeKey).toBeUndefined();
+  });
+
+  it('engagement: grant-only/self-service reads pass hrbp; org-rollup reads deny hrbp; scopeWhereFor reads omit hrbp', () => {
+    const s = SURFACES['engagement'];
+    for (const name of ['surveys', 'my-pending-surveys']) {
+      expect(s.endpoints.find((e) => e.name === name)?.expectedByRole['hrbp'], name).toBe(200);
+    }
+    for (const name of ['enps', 'climate-heatmap', 'alerts', 'dashboard-kpis', 'rotation-risk']) {
+      expect(s.endpoints.find((e) => e.name === name)?.expectedByRole['hrbp'], name).toBe(403);
+    }
+    for (const name of ['action-plans', 'leader-commitments']) {
+      expect(s.endpoints.find((e) => e.name === name)?.expectedByRole['hrbp'], name).toBeUndefined();
+    }
+    // super_admin/hr_admin allow everywhere.
+    for (const e of s.endpoints) {
+      expect(e.expectedByRole['super_admin'], e.name).toBe(200);
+      expect(e.expectedByRole['hr_admin'], e.name).toBe(200);
+    }
+  });
+
+  it('dei is registered with its flag + the 10 reads, ALL grant-only (hrbp denied everywhere — no dei grant at all)', () => {
+    const s = SURFACES['dei'];
+    expect(s.flag).toBe('Platform__DeiReadEnabled');
+    expect(s.probeRole).toBe('super_admin');
+    expect(s.endpoints.map((e) => e.name).sort()).toEqual([
+      'age-distribution',
+      'dashboard-kpis',
+      'disability-distribution',
+      'ethnicity-distribution',
+      'gender-representation',
+      'hiring-funnel',
+      'inclusion-index',
+      'leadership-diversity',
+      'nationality-diversity',
+      'promotion-equity',
+    ]);
+    // pay-equity is deliberately excluded (separate Platform__FxReadsEnabled flag).
+    expect(s.endpoints.find((e) => e.name === 'pay-equity')).toBeUndefined();
+    for (const e of s.endpoints) {
+      expect(e.expectedByRole, e.name).toEqual({ super_admin: 200, hr_admin: 200, hrbp: 403 });
+    }
+  });
+
+  it('billing-invoices reuses billing-usage RBAC verdicts under its own (BillingReadEnabled) flag', () => {
+    const s = SURFACES['billing-invoices'];
+    expect(s.flag).toBe('Platform__BillingReadEnabled');
+    expect(s.probeRole).toBe('super_admin');
+    expect(s.endpoints.map((e) => e.name)).toEqual(['invoices']);
+    const e = s.endpoints[0];
+    expect(e.expectedByRole).toEqual({ super_admin: 200, hr_admin: 403, hrbp: 403 });
+    expect(e.tsProcedure).toBe('billing.listInvoices');
+    // getInvoice (by-id) is a documented Tier-2 follow-up, not registered here.
+    expect(s.endpoints.find((x) => x.idScopeKey)).toBeUndefined();
   });
 });
