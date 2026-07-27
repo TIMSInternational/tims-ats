@@ -1,15 +1,30 @@
 'use client';
 
-import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
+import {
+  useDeiAgeDistribution,
+  useDeiNationalityDiversity,
+  useDeiHiringFunnel,
+} from '../../../../lib/platform-api/dei';
 
 const AGE_COLORS: Record<string, string> = {
-  '<25': '#B8AED4', '25-34': '#7B6BAA', '35-44': '#5C4B99', '45-54': '#3D2D7A', '55+': '#1F114C',
+  '<25': '#B8AED4',
+  '25-34': '#7B6BAA',
+  '35-44': '#5C4B99',
+  '45-54': '#3D2D7A',
+  '55+': '#1F114C',
 };
 
 const COUNTRY_NAMES: Record<string, string> = {
-  CO: 'Colombia', VE: 'Venezuela', US: 'USA', EC: 'Ecuador', PE: 'Perú',
-  MX: 'México', CL: 'Chile', AR: 'Argentina', BR: 'Brasil',
+  CO: 'Colombia',
+  VE: 'Venezuela',
+  US: 'USA',
+  EC: 'Ecuador',
+  PE: 'Perú',
+  MX: 'México',
+  CL: 'Chile',
+  AR: 'Argentina',
+  BR: 'Brasil',
 };
 
 const NAT_COLORS = ['#1F114C', '#5C4B99', '#7B6BAA', '#B8AED4', '#D4CFE5', '#E8E5F0'];
@@ -25,7 +40,7 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
 
 export function AgeDistribution() {
   const { t } = useI18n();
-  const q = trpc.dei.getAgeDistribution.useQuery();
+  const q = useDeiAgeDistribution();
   // round 7: distribution is now { groups, suppressed }; empty groups when suppressed.
   const groups = q.data?.groups ?? [];
   const total = groups.reduce((sum, a) => sum + (a.count ?? 0), 0);
@@ -46,11 +61,19 @@ export function AgeDistribution() {
                 <span className="text-[11px] text-[#585858] w-12 shrink-0">{a.range}</span>
                 <div className="flex-1 bg-[#F6F6F6] rounded-full h-5 overflow-hidden">
                   {/* min-5 suppressed bands (1..4 people) render no bar and a masked label. */}
-                  <div className="h-5 rounded-full flex items-center px-2" style={{ width: `${Math.max(a.percentage ?? 0, (a.count ?? 0) > 0 ? 6 : 0)}%`, backgroundColor: AGE_COLORS[a.range] ?? '#5C4B99' }}>
+                  <div
+                    className="h-5 rounded-full flex items-center px-2"
+                    style={{
+                      width: `${Math.max(a.percentage ?? 0, (a.count ?? 0) > 0 ? 6 : 0)}%`,
+                      backgroundColor: AGE_COLORS[a.range] ?? '#5C4B99',
+                    }}
+                  >
                     {(a.percentage ?? 0) >= 10 && <span className="text-[9px] text-white font-medium">{a.count}</span>}
                   </div>
                 </div>
-                <span className="text-[10px] text-[#8B8B8B] w-8">{a.percentage === null ? t.dei.na : `${a.percentage}%`}</span>
+                <span className="text-[10px] text-[#8B8B8B] w-8">
+                  {a.percentage === null ? t.dei.na : `${a.percentage}%`}
+                </span>
               </div>
             ))}
           </div>
@@ -65,7 +88,7 @@ export function AgeDistribution() {
 
 export function NationalityDiversity() {
   const { t } = useI18n();
-  const q = trpc.dei.getNationalityDiversity.useQuery();
+  const q = useDeiNationalityDiversity();
 
   return (
     <Card title={t.dei.nationalityDiversity}>
@@ -86,9 +109,14 @@ export function NationalityDiversity() {
               <div className="flex items-center gap-2">
                 <div className="w-24 bg-[#F6F6F6] rounded-full h-3 overflow-hidden">
                   {/* min-5 suppressed nationalities (1..4 people) render no bar and a masked label. */}
-                  <div className="h-3 rounded-full" style={{ width: `${n.percentage ?? 0}%`, backgroundColor: NAT_COLORS[i % NAT_COLORS.length] }} />
+                  <div
+                    className="h-3 rounded-full"
+                    style={{ width: `${n.percentage ?? 0}%`, backgroundColor: NAT_COLORS[i % NAT_COLORS.length] }}
+                  />
                 </div>
-                <span className="text-[11px] font-medium text-[#1F114C] w-8 text-right">{n.percentage === null ? t.dei.na : `${n.percentage}%`}</span>
+                <span className="text-[11px] font-medium text-[#1F114C] w-8 text-right">
+                  {n.percentage === null ? t.dei.na : `${n.percentage}%`}
+                </span>
               </div>
             </div>
           ))}
@@ -100,7 +128,7 @@ export function NationalityDiversity() {
 
 export function HiringFunnel() {
   const { t } = useI18n();
-  const q = trpc.dei.getHiringFunnel.useQuery();
+  const q = useDeiHiringFunnel();
 
   return (
     <Card title={t.dei.candidatePipeline}>

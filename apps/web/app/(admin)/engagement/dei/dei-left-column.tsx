@@ -1,18 +1,25 @@
 'use client';
 
-import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
+import { useDeiGenderRepresentation, useDeiPayEquity } from '../../../../lib/platform-api/dei';
 
 const GENDER_BAR: Record<string, string> = {
-  male: 'bg-blue-500', female: 'bg-pink-400', non_binary: 'bg-purple-400', undisclosed: 'bg-gray-300',
+  male: 'bg-blue-500',
+  female: 'bg-pink-400',
+  non_binary: 'bg-purple-400',
+  undisclosed: 'bg-gray-300',
 };
 
 function genderLabel(t: ReturnType<typeof useI18n>['t'], g: string): string {
-  return g === 'male' ? t.dei.genderMale
-    : g === 'female' ? t.dei.genderFemale
-    : g === 'non_binary' ? t.dei.genderNonBinary
-    : g === 'undisclosed' ? t.dei.genderUndisclosed
-    : g;
+  return g === 'male'
+    ? t.dei.genderMale
+    : g === 'female'
+      ? t.dei.genderFemale
+      : g === 'non_binary'
+        ? t.dei.genderNonBinary
+        : g === 'undisclosed'
+          ? t.dei.genderUndisclosed
+          : g;
 }
 
 const fmtCOP = (n: number) => `$${Math.round(n / 1000).toLocaleString('es-CO')}K`;
@@ -28,7 +35,7 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
 
 export function GenderByDepartment() {
   const { t } = useI18n();
-  const q = trpc.dei.getGenderRepresentation.useQuery();
+  const q = useDeiGenderRepresentation();
   // round 7: distribution is now { groups, suppressed }. When suppressed (any group
   // 1..4) groups is empty + suppressed:true → render the no-demographics empty state.
   const groups = q.data?.groups ?? [];
@@ -45,7 +52,11 @@ export function GenderByDepartment() {
         <>
           <div className="flex h-6 rounded-full overflow-hidden mb-3">
             {groups.map((g) => (
-              <div key={g.gender} className={`${GENDER_BAR[g.gender] ?? 'bg-gray-300'} flex items-center justify-center`} style={{ width: `${g.percentage ?? 0}%` }}>
+              <div
+                key={g.gender}
+                className={`${GENDER_BAR[g.gender] ?? 'bg-gray-300'} flex items-center justify-center`}
+                style={{ width: `${g.percentage ?? 0}%` }}
+              >
                 {(g.percentage ?? 0) >= 8 && <span className="text-[9px] text-white font-medium">{g.percentage}%</span>}
               </div>
             ))}
@@ -74,7 +85,7 @@ export function GenderByDepartment() {
 
 export function PayEquityTable() {
   const { t } = useI18n();
-  const q = trpc.dei.getPayEquity.useQuery();
+  const q = useDeiPayEquity();
   const gap = q.data?.gapPct;
 
   return (
@@ -104,7 +115,9 @@ export function PayEquityTable() {
                       is sub-floor OR when any sibling group is (all-or-nothing
                       differencing guard). Key off the nulled value directly. */}
                   <td className="text-right py-2">{row.count === null ? t.dei.na : row.count}</td>
-                  <td className="text-right py-2">{row.averageSalary === null ? t.dei.na : fmtCOP(row.averageSalary)}</td>
+                  <td className="text-right py-2">
+                    {row.averageSalary === null ? t.dei.na : fmtCOP(row.averageSalary)}
+                  </td>
                   <td className="text-right py-2">{row.medianSalary === null ? t.dei.na : fmtCOP(row.medianSalary)}</td>
                 </tr>
               ))}
@@ -113,8 +126,11 @@ export function PayEquityTable() {
           {gap !== null && gap !== undefined && (
             <div className="mt-3 pt-2 border-t border-[#F0F0F0] flex items-center justify-between">
               <span className="text-[10px] text-[#8B8B8B]">{t.dei.medianGap}</span>
-              <span className={`text-[12px] font-semibold ${Math.abs(gap) < 3 ? 'text-green-600' : Math.abs(gap) <= 5 ? 'text-amber-500' : 'text-[#DD0C15]'}`}>
-                {gap > 0 ? '+' : ''}{gap}%
+              <span
+                className={`text-[12px] font-semibold ${Math.abs(gap) < 3 ? 'text-green-600' : Math.abs(gap) <= 5 ? 'text-amber-500' : 'text-[#DD0C15]'}`}
+              >
+                {gap > 0 ? '+' : ''}
+                {gap}%
               </span>
             </div>
           )}

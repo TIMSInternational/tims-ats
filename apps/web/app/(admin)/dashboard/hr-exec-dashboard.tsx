@@ -4,6 +4,7 @@ import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
 import { useReportingFunnel } from '../../../lib/platform-api/reporting';
 import { useEngagementEnps, useEngagementDashboardKpis } from '../../../lib/platform-api/engagement';
+import { useDeiDashboardKpis } from '../../../lib/platform-api/dei';
 import { KpiCard, KpiCardSkeleton } from '../../../components';
 import { suppressedValue, PLACEHOLDER } from '../../../lib/dashboard/suppress';
 import { LoadError } from './load-error';
@@ -35,7 +36,7 @@ export function HrExecDashboard() {
   const culture = useEngagementDashboardKpis();
   const funnel = useReportingFunnel();
   const comp = trpc.compensation.getDashboardKpis.useQuery();
-  const dei = trpc.dei.getDashboardKpis.useQuery();
+  const dei = useDeiDashboardKpis();
 
   const kpisLoading = exec.isLoading || perf.isLoading || enps.isLoading || comp.isLoading || dei.isLoading;
   const kpisError = exec.isError || perf.isError || enps.isError || comp.isError || dei.isError;
