@@ -7,6 +7,11 @@ import { toast } from '../../../../lib/toast';
 import { StatusBadge } from '../../../../components';
 import type { Eval360Cycle } from '../../../../lib/trpc-types';
 import { formatDate } from '../../../../lib/format-utils';
+import {
+  useEvaluation360OpenCycle,
+  useEvaluation360CloseCycle,
+  useEvaluation360PublishCycle,
+} from '../../../../lib/platform-api/evaluation360';
 
 const STATUS_CLASSES: Record<Eval360Cycle['status'], string> = {
   draft: 'bg-gray-100 text-gray-600',
@@ -44,16 +49,25 @@ export function CycleRow({ cycle, isManaging, onManage }: CycleRowProps) {
     queryClient.invalidateQueries({ queryKey: ['platform-api', 'evaluation360', 'cycles'] });
   };
 
-  const openCycle = trpc.evaluation360.openCycle.useMutation({
-    onSuccess: () => { toast(t.evaluation360.cycleOpened, { type: 'success' }); invalidate(); },
+  const openCycle = useEvaluation360OpenCycle({
+    onSuccess: () => {
+      toast(t.evaluation360.cycleOpened, { type: 'success' });
+      invalidate();
+    },
     onError: (err) => toast(err.message, { type: 'error' }),
   });
-  const closeCycle = trpc.evaluation360.closeCycle.useMutation({
-    onSuccess: () => { toast(t.evaluation360.cycleClosed, { type: 'success' }); invalidate(); },
+  const closeCycle = useEvaluation360CloseCycle({
+    onSuccess: () => {
+      toast(t.evaluation360.cycleClosed, { type: 'success' });
+      invalidate();
+    },
     onError: (err) => toast(err.message, { type: 'error' }),
   });
-  const publishCycle = trpc.evaluation360.publishCycle.useMutation({
-    onSuccess: () => { toast(t.evaluation360.cyclePublished, { type: 'success' }); invalidate(); },
+  const publishCycle = useEvaluation360PublishCycle({
+    onSuccess: () => {
+      toast(t.evaluation360.cyclePublished, { type: 'success' });
+      invalidate();
+    },
     onError: (err) => toast(err.message, { type: 'error' }),
   });
 
@@ -62,7 +76,9 @@ export function CycleRow({ cycle, isManaging, onManage }: CycleRowProps) {
   return (
     <tr className="border-b border-[#F6F6F6]">
       <td className="px-4 py-2.5 text-[12px] text-[#333] font-medium">{cycle.name}</td>
-      <td className="px-4 py-2.5"><StatusBadge status={cycle.status} map={statusMap} /></td>
+      <td className="px-4 py-2.5">
+        <StatusBadge status={cycle.status} map={statusMap} />
+      </td>
       <td className="px-4 py-2.5 text-[12px] text-[#585858]">{formatDate(cycle.createdAt)}</td>
       <td className="px-4 py-2.5 text-[12px] text-[#585858]">{formatDate(cycle.publishedAt)}</td>
       <td className="px-4 py-2.5 text-right">

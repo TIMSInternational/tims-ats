@@ -18,12 +18,12 @@
 // ONE FE flag mirroring that backend flag. The two self-service /my/* endpoints need only a valid
 // principal — the client already attaches the Supabase Bearer JWT, so no special handling here.
 
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import type { inferRouterOutputs } from '@trpc/server';
 import type { AppRouter } from '@tims/api';
 import { EVAL360_COMPETENCIES } from '@tims/shared';
 import { trpc } from '../trpc';
-import { isPlatformApiEnabled, platformGet } from './client';
+import { isPlatformApiEnabled, platformGet, platformPost } from './client';
 
 type RouterOutput = inferRouterOutputs<AppRouter>;
 type ListCyclesOutput = RouterOutput['evaluation360']['listCycles'];
@@ -99,20 +99,13 @@ export function useEvaluation360ListCycles() {
 export function useEvaluation360CycleProgress(cycleId: string) {
   const viaCSharp = isPlatformApiEnabled() && EVALUATION360_VIA_CSHARP;
 
-  const trpcQuery = trpc.evaluation360.getCycleProgress.useQuery(
-    { cycleId },
-    { enabled: !viaCSharp },
-  );
+  const trpcQuery = trpc.evaluation360.getCycleProgress.useQuery({ cycleId }, { enabled: !viaCSharp });
 
   const csharpQuery = useQuery<CycleProgressOutput>({
     queryKey: ['platform-api', 'evaluation360', 'cycle-progress', cycleId],
     enabled: viaCSharp,
     queryFn: async () => {
-      const raw = await platformGet(
-        '/evaluation360/cycles/{cycleId}/progress',
-        undefined,
-        { cycleId },
-      );
+      const raw = await platformGet('/evaluation360/cycles/{cycleId}/progress', undefined, { cycleId });
       return {
         cycleId: raw.cycleId,
         progress: raw.progress.map((row) => ({
@@ -227,4 +220,116 @@ export function useEvaluation360MyReportCycles() {
   });
 
   return viaCSharp ? csharpQuery : trpcQuery;
+}
+
+// ---------------------------------------------------------------------------
+// Writes (Phase-5 Slice 13) — a SEPARATE flag from the reads above, mirroring backend
+// `Platform:Evaluation360WriteEnabled` (independent of Evaluation360ReadEnabled). Each hook
+// mirrors trpc's useMutation shape ({ onSuccess?, onError? }) so existing call sites swap in
+// with a one-line change; consumers already invalidate the `['platform-api','evaluation360',...]`
+// query keys themselves post-success (see create-cycle-form.tsx) — this file only supplies the
+// mutation itself. Error messages are byte-identical between stacks (verified against
+// Evaluation360WriteEndpoints.cs's message constants), so a shared `err.message` toast works on
+// either path unchanged.
+// ---------------------------------------------------------------------------
+
+const EVALUATION360_WRITE_VIA_CSHARP = process.env.NEXT_PUBLIC_EVALUATION360_WRITE_VIA_CSHARP === 'true';
+
+interface MutationOptions {
+  onSuccess?: () => void;
+  onError?: (err: { message: string }) => void;
+  onSettled?: () => void;
+}
+
+function useCSharpMutation<TInput>(
+  mutationFn: (input: TInput) => Promise<unknown>,
+  options: MutationOptions | undefined,
+) {
+  return useMutation({
+    mutationFn,
+    onSuccess: options?.onSuccess,
+    onError: (err: unknown) => options?.onError?.(err instanceof Error ? err : { message: 'Unknown error' }),
+    onSettled: options?.onSettled,
+  });
+}
+
+/** STAFF: create a cycle (1 call site: create-cycle-form.tsx). */
+export function useEvaluation360CreateCycle(options?: MutationOptions) {
+  const viaCSharp = isPlatformApiEnabled() && EVALUATION360_WRITE_VIA_CSHARP;
+  const trpcMutation = trpc.evaluation360.createCycle.useMutation(options);
+  const csharpMutation = useCSharpMutation(
+    (input: { name: string }) => platformPost('/evaluation360/cycles', { name: input.name }),
+    options,
+  );
+  return viaCSharp ? csharpMutation : trpcMutation;
+}
+
+/** STAFF: open a cycle (1 call site: cycle-row.tsx). */
+export function useEvaluation360OpenCycle(options?: MutationOptions) {
+  const viaCSharp = isPlatformApiEnabled() && EVALUATION360_WRITE_VIA_CSHARP;
+  const trpcMutation = trpc.evaluation360.openCycle.useMutation(options);
+  const csharpMutation = useCSharpMutation(
+    (input: { cycleId: string }) => platformPost('/evaluation360/cycles/{id}/open', undefined, { id: input.cycleId }),
+    options,
+  );
+  return viaCSharp ? csharpMutation : trpcMutation;
+}
+
+/** STAFF: close a cycle (1 call site: cycle-row.tsx). */
+export function useEvaluation360CloseCycle(options?: MutationOptions) {
+  const viaCSharp = isPlatformApiEnabled() && EVALUATION360_WRITE_VIA_CSHARP;
+  const trpcMutation = trpc.evaluation360.closeCycle.useMutation(options);
+  const csharpMutation = useCSharpMutation(
+    (input: { cycleId: string }) => platformPost('/evaluation360/cycles/{id}/close', undefined, { id: input.cycleId }),
+    options,
+  );
+  return viaCSharp ? csharpMutation : trpcMutation;
+}
+
+/** STAFF: publish a cycle (1 call site: cycle-row.tsx). */
+export function useEvaluation360PublishCycle(options?: MutationOptions) {
+  const viaCSharp = isPlatformApiEnabled() && EVALUATION360_WRITE_VIA_CSHARP;
+  const trpcMutation = trpc.evaluation360.publishCycle.useMutation(options);
+  const csharpMutation = useCSharpMutation(
+    (input: { cycleId: string }) =>
+      platformPost('/evaluation360/cycles/{id}/publish', undefined, { id: input.cycleId }),
+    options,
+  );
+  return viaCSharp ? csharpMutation : trpcMutation;
+}
+
+interface RaterAssignmentInputShape {
+  subjectUserId: string;
+  raterUserId: string;
+  relationship: string;
+}
+
+/** STAFF: assign raters to a cycle (1 call site: assign-raters-form.tsx). */
+export function useEvaluation360AssignRaters(options?: MutationOptions) {
+  const viaCSharp = isPlatformApiEnabled() && EVALUATION360_WRITE_VIA_CSHARP;
+  const trpcMutation = trpc.evaluation360.assignRaters.useMutation(options);
+  const csharpMutation = useCSharpMutation(
+    (input: { cycleId: string; assignments: RaterAssignmentInputShape[] }) =>
+      platformPost('/evaluation360/cycles/{id}/raters', { assignments: input.assignments }, { id: input.cycleId }),
+    options,
+  );
+  return viaCSharp ? csharpMutation : trpcMutation;
+}
+
+interface RatingInputShape {
+  competencyKey: string;
+  rating: number;
+  comment?: string;
+}
+
+/** SELF-SERVICE: submit ratings for a rater assignment (1 call site: rater-task-card.tsx). */
+export function useEvaluation360SubmitRatings(options?: MutationOptions) {
+  const viaCSharp = isPlatformApiEnabled() && EVALUATION360_WRITE_VIA_CSHARP;
+  const trpcMutation = trpc.evaluation360.submitRatings.useMutation(options);
+  const csharpMutation = useCSharpMutation(
+    (input: { assignmentId: string; ratings: RatingInputShape[] }) =>
+      platformPost('/evaluation360/assignments/{id}/ratings', { ratings: input.ratings }, { id: input.assignmentId }),
+    options,
+  );
+  return viaCSharp ? csharpMutation : trpcMutation;
 }

@@ -8,6 +8,7 @@ import { useI18n } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
 import { UserPicker } from '../../../../components';
 import type { PickedUser } from '../../../../components/user-picker';
+import { useEvaluation360AssignRaters } from '../../../../lib/platform-api/evaluation360';
 
 interface RaterRow {
   user: PickedUser;
@@ -29,7 +30,7 @@ export function AssignRatersForm({ cycleId }: AssignRatersFormProps) {
   const [rows, setRows] = useState<RaterRow[]>([]);
   const [pickingRater, setPickingRater] = useState(false);
 
-  const assignRaters = trpc.evaluation360.assignRaters.useMutation({
+  const assignRaters = useEvaluation360AssignRaters({
     onSuccess: () => {
       toast(t.evaluation360.assignSuccess, { type: 'success' });
       // Refresh getCycleProgress from BOTH read paths: the tRPC cache and — when the C# read
