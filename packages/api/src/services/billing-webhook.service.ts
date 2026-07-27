@@ -6,6 +6,7 @@ import {
   billingWebhookRepository as repo,
   type SubscriptionSyncFields,
 } from '../repositories/billing-webhook.repository';
+import { isPlatformApiEnabled, platformPostRaw } from '../lib/platform-api-client';
 
 // ── Verification error ──────────────────────────────────────────────────────
 // Thrown for any signature/secret/header failure. The route maps it to 400 (an
@@ -95,11 +96,7 @@ function customerIdOf(customer: string | { id: string } | null): string | null {
 // retries the webhook, re-attempting the cancel (a swallowed failure would leave the
 // duplicate billable).
 function isAlreadyGoneError(err: unknown): boolean {
-  return (
-    typeof err === 'object' &&
-    err !== null &&
-    (err as { code?: string }).code === 'resource_missing'
-  );
+  return typeof err === 'object' && err !== null && (err as { code?: string }).code === 'resource_missing';
 }
 
 // Resolve the owning org AUTHORITATIVELY by Stripe ownership, never by attacker- or
@@ -116,7 +113,10 @@ async function resolveOrgId(
     const bySub = await repo.findOrgIdBySubscription(subscriptionId);
     if (bySub) {
       if (metaOrgId && metaOrgId !== bySub) {
-        logger.warn({ subscriptionId, metaOrgId, owner: bySub }, 'stripe webhook: metadata orgId mismatch (subscription)');
+        logger.warn(
+          { subscriptionId, metaOrgId, owner: bySub },
+          'stripe webhook: metadata orgId mismatch (subscription)',
+        );
       }
       return bySub;
     }
@@ -136,7 +136,7 @@ async function resolveOrgId(
 async function handleCheckoutCompleted(session: Stripe.Checkout.Session, eventAt: Date): Promise<boolean> {
   const customerId = customerIdOf(session.customer);
   const subscriptionId =
-    typeof session.subscription === 'string' ? session.subscription : session.subscription?.id ?? null;
+    typeof session.subscription === 'string' ? session.subscription : (session.subscription?.id ?? null);
   const metaOrgId = session.metadata?.orgId ?? session.client_reference_id ?? undefined;
 
   const orgId = await resolveOrgId(customerId, subscriptionId, metaOrgId);
@@ -193,12 +193,41 @@ export interface WebhookResult {
   handled: boolean;
 }
 
+// Dark per-surface cutover flag (Phase-5 Slice 4) — SERVER-ONLY, same rationale as
+// EXTERNAL_VENDOR_WRITE_VIA_CSHARP: Stripe calls this route directly (no browser is ever
+// involved), so the decision is made entirely server-side. Mirrors the C# side's own
+// `Platform:BillingWebhookWriteEnabled` flag. DEFAULT false (dark).
+const BILLING_WEBHOOK_WRITE_VIA_CSHARP = process.env.BILLING_WEBHOOK_WRITE_VIA_CSHARP === 'true';
+
+// Proxies the webhook to the C# `POST /billing/webhooks/stripe` endpoint, forwarding the RAW body
+// and Stripe-Signature header VERBATIM — the HMAC is verified over the exact bytes Stripe sent, so
+// re-serializing a parsed body (as platformPostWithAuth does) would break verification. Maps the
+// C# endpoint's status contract back onto this function's (route.ts's) existing error contract:
+// 400 → WebhookVerificationError (never processed, matching the TS-path throw); anything else
+// non-200 → a generic Error (the route's catch-all already produces the correct 500 JSON response
+// regardless of message content); 200 → the parsed WebhookResult (camelCase-identical to the C#
+// `WebhookResult(bool Received, string Type, bool Handled)` record).
+async function handleStripeWebhookViaCSharp(rawBody: string, signature: string | null): Promise<WebhookResult> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (signature) headers['Stripe-Signature'] = signature;
+
+  const { status, text } = await platformPostRaw('/billing/webhooks/stripe', headers, rawBody);
+  if (status === 400) {
+    throw new WebhookVerificationError('Invalid signature');
+  }
+  if (status !== 200) {
+    throw new Error(`billing webhook via C# platform service failed: ${status}`);
+  }
+  return JSON.parse(text) as WebhookResult;
+}
+
 // Verify + dispatch a Stripe webhook. Verification failures throw
 // WebhookVerificationError (→ 400); handler failures propagate (→ 500).
-export async function handleStripeWebhook(
-  rawBody: string,
-  signature: string | null,
-): Promise<WebhookResult> {
+export async function handleStripeWebhook(rawBody: string, signature: string | null): Promise<WebhookResult> {
+  if (isPlatformApiEnabled() && BILLING_WEBHOOK_WRITE_VIA_CSHARP) {
+    return handleStripeWebhookViaCSharp(rawBody, signature);
+  }
+
   let event: Stripe.Event;
   try {
     event = constructWebhookEvent(rawBody, signature);

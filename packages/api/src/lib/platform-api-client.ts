@@ -89,3 +89,31 @@ export async function platformPostWithAuth(
   const body = response.status === 204 ? null : await response.json().catch(() => null);
   return { status: response.status, body };
 }
+
+/** A raw platform-API response carrying unparsed response text (see {@link platformPostRaw}). */
+export interface PlatformApiRawResponse {
+  status: number;
+  text: string;
+}
+
+/**
+ * POSTs a RAW string body to the C# Platform service with explicit `headers`, WITHOUT JSON-encoding
+ * it — unlike {@link platformPostWithAuth}, which always serializes `jsonBody`. Needed for payloads
+ * whose signature is verified over the EXACT bytes received (Stripe webhooks): re-serializing a
+ * parsed-then-re-stringified body would not byte-match what Stripe originally signed. Returns the
+ * raw status + response text unparsed; the caller decides how to interpret/parse it.
+ */
+export async function platformPostRaw(
+  path: string,
+  headers: Record<string, string>,
+  rawBody: string,
+): Promise<PlatformApiRawResponse> {
+  if (!isPlatformApiEnabled()) {
+    throw new Error('Platform API is disabled: NEXT_PUBLIC_TIMS_PLATFORM_API_URL is unset.');
+  }
+
+  const base = PLATFORM_API_URL!.replace(/\/+$/, '');
+  const response = await fetch(`${base}${path}`, { method: 'POST', headers, body: rawBody });
+  const text = await response.text();
+  return { status: response.status, text };
+}
