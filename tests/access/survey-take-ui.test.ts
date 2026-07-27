@@ -34,8 +34,12 @@ describe('survey-take-modal — query + mutation wiring', () => {
     expect(src()).toContain('useEngagementSurveyForResponse');
   });
 
-  it('submits via submitSurveyResponse.useMutation', () => {
-    expect(src()).toContain('engagement.submitSurveyResponse.useMutation');
+  it('submits via the useEngagementSubmitSurveyResponse cutover wrapper', () => {
+    // Cut over to the dark platform-api wrapper (apps/web/lib/platform-api/engagement.ts,
+    // Phase-5 Slice-16 write wrapper) — it still calls trpc.engagement.submitSurveyResponse.useMutation
+    // internally on the default (non-C#) path, so this assertion follows the refactor rather
+    // than the raw call (same pattern as this file's getSurveyForResponse wrapper assertion above).
+    expect(src()).toContain('useEngagementSubmitSurveyResponse');
   });
 
   it('invalidates myPendingSurveys on success', () => {

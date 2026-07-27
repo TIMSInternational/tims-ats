@@ -4,7 +4,10 @@ import { useMemo, useState } from 'react';
 import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
 import { toast } from '../../../lib/toast';
-import { useEngagementSurveyForResponse } from '../../../lib/platform-api/engagement';
+import {
+  useEngagementSurveyForResponse,
+  useEngagementSubmitSurveyResponse,
+} from '../../../lib/platform-api/engagement';
 import { Modal, Skeleton } from '../../../components';
 import { LoadError } from './load-error';
 import { parseSurveyQuestions, type SurveyAnswer, type SurveyQuestion } from './survey-question';
@@ -35,15 +38,16 @@ export function SurveyTakeModal({ surveyId, onClose }: SurveyTakeModalProps) {
 
   const setAnswer = (text: string, value: SurveyAnswer) => setAnswers((prev) => ({ ...prev, [text]: value }));
 
-  const submit = trpc.engagement.submitSurveyResponse.useMutation({
+  const submit = useEngagementSubmitSurveyResponse({
     onSuccess: () => {
       utils.engagement.myPendingSurveys.invalidate();
       toast(e.surveySubmitSuccess, { type: 'success' });
       onClose();
     },
+    // Byte-identical message on both stacks (DuplicateResponseMessage / 'Ya respondiste esta
+    // encuesta') — matched by text since the C# path's PlatformApiError carries no error code.
     onError: (err) => {
-      const code = (err as { data?: { code?: string } })?.data?.code;
-      toast(code === 'CONFLICT' ? e.surveyAlreadyAnswered : err.message, { type: 'error' });
+      toast(err.message === 'Ya respondiste esta encuesta' ? e.surveyAlreadyAnswered : err.message, { type: 'error' });
     },
   });
 

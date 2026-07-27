@@ -5,6 +5,7 @@ import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
 import { Modal } from '../../../../components';
+import { useEngagementCreateSurvey, useEngagementActivateSurvey } from '../../../../lib/platform-api/engagement';
 import {
   addQuestion,
   removeQuestion,
@@ -29,7 +30,10 @@ const SURVEY_TYPES: { value: SurveyType; labelKey: 'typePulse' | 'typeEnps' | 't
   { value: 'custom', labelKey: 'typeCustom' },
 ];
 
-const QUESTION_TYPES: { value: QuestionType; labelKey: 'qtypeScale' | 'qtypeText' | 'qtypeMultipleChoice' | 'qtypeYesNo' }[] = [
+const QUESTION_TYPES: {
+  value: QuestionType;
+  labelKey: 'qtypeScale' | 'qtypeText' | 'qtypeMultipleChoice' | 'qtypeYesNo';
+}[] = [
   { value: 'scale', labelKey: 'qtypeScale' },
   { value: 'text', labelKey: 'qtypeText' },
   { value: 'multiple_choice', labelKey: 'qtypeMultipleChoice' },
@@ -44,7 +48,7 @@ export function LaunchSurveyModal({ onClose }: LaunchSurveyModalProps) {
   const [type, setType] = useState<SurveyType>('climate');
   const [questions, setQuestions] = useState<QuestionRow[]>([{ ...DEFAULT_QUESTION }]);
 
-  const activate = trpc.engagement.activateSurvey.useMutation({
+  const activate = useEngagementActivateSurvey({
     onSuccess: () => {
       utils.engagement.listSurveys.invalidate();
       utils.engagement.getDashboardKpis.invalidate();
@@ -54,7 +58,7 @@ export function LaunchSurveyModal({ onClose }: LaunchSurveyModalProps) {
     onError: (err) => toast(err.message, { type: 'error' }),
   });
 
-  const create = trpc.engagement.createSurvey.useMutation({
+  const create = useEngagementCreateSurvey({
     onSuccess: (survey) => activate.mutate({ id: survey.id }),
     onError: (err) => toast(err.message, { type: 'error' }),
   });
@@ -82,9 +86,7 @@ export function LaunchSurveyModal({ onClose }: LaunchSurveyModalProps) {
       <div className="space-y-4">
         {/* Title */}
         <div>
-          <label className="block text-[12px] font-medium text-[#333] mb-1.5">
-            {t.climate.surveyTitleLabel}
-          </label>
+          <label className="block text-[12px] font-medium text-[#333] mb-1.5">{t.climate.surveyTitleLabel}</label>
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value.slice(0, 200))}
@@ -96,9 +98,7 @@ export function LaunchSurveyModal({ onClose }: LaunchSurveyModalProps) {
 
         {/* Type */}
         <div>
-          <label className="block text-[12px] font-medium text-[#333] mb-1.5">
-            {t.climate.surveyTypeLabel}
-          </label>
+          <label className="block text-[12px] font-medium text-[#333] mb-1.5">{t.climate.surveyTypeLabel}</label>
           <select
             value={type}
             onChange={(e) => setType(e.target.value as SurveyType)}
@@ -115,9 +115,7 @@ export function LaunchSurveyModal({ onClose }: LaunchSurveyModalProps) {
 
         {/* Questions */}
         <div>
-          <label className="block text-[12px] font-medium text-[#333] mb-1.5">
-            {t.climate.questionsLabel}
-          </label>
+          <label className="block text-[12px] font-medium text-[#333] mb-1.5">{t.climate.questionsLabel}</label>
           <div className="space-y-2">
             {questions.map((q, i) => (
               <div key={i} className="flex gap-2 items-start">
@@ -135,7 +133,9 @@ export function LaunchSurveyModal({ onClose }: LaunchSurveyModalProps) {
                   </label>
                   <select
                     value={q.type}
-                    onChange={(e) => setQuestions(updateQuestion(questions, i, { type: e.target.value as QuestionType }))}
+                    onChange={(e) =>
+                      setQuestions(updateQuestion(questions, i, { type: e.target.value as QuestionType }))
+                    }
                     disabled={isPending}
                     className="w-36 border border-[#EDEDED] rounded-lg px-3 py-2.5 text-[13px] text-[#333] bg-white focus:outline-none focus:border-[#1F114C]/40 disabled:opacity-50"
                   >
