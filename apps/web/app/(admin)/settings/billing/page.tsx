@@ -9,6 +9,8 @@ import {
   useBillingConfig,
   useBillingCurrentPlan,
   useBillingUsage,
+  useBillingCreatePortalSession,
+  useBillingCancelSubscription,
 } from '../../../../lib/platform-api/billing';
 import { toast } from '../../../../lib/toast';
 import { ErrorState } from '../../../../components';
@@ -42,7 +44,17 @@ function statusLabel(t: T, status: string | null | undefined): string {
   }
 }
 
-function UsageRow({ label, used, limit, noLimit }: { label: string; used: number; limit: number | null; noLimit: string }) {
+function UsageRow({
+  label,
+  used,
+  limit,
+  noLimit,
+}: {
+  label: string;
+  used: number;
+  limit: number | null;
+  noLimit: string;
+}) {
   const pct = limit && limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : null;
   const over = limit != null && used > limit;
   return (
@@ -74,13 +86,13 @@ export default function BillingPage() {
   const utils = trpc.useUtils();
   const queryClient = useQueryClient();
 
-  const portal = trpc.billing.createPortalSession.useMutation({
+  const portal = useBillingCreatePortalSession({
     onSuccess: ({ url }) => {
       window.location.href = url;
     },
     onError: () => toast(t.billing.manageError, { type: 'error' }),
   });
-  const cancel = trpc.billing.cancelSubscription.useMutation({
+  const cancel = useBillingCancelSubscription({
     onSuccess: () => {
       toast(t.billing.cancelScheduled, { type: 'success' });
       // Refresh the plan panel from BOTH read paths: the tRPC cache and — when the C# read
@@ -109,9 +121,7 @@ export default function BillingPage() {
 
   const configured = config.data?.configured ?? false;
   const currentPlan = plan.data?.plan ?? null;
-  const renewsOn = plan.data?.currentPeriodEnd
-    ? new Date(plan.data.currentPeriodEnd).toLocaleDateString()
-    : null;
+  const renewsOn = plan.data?.currentPeriodEnd ? new Date(plan.data.currentPeriodEnd).toLocaleDateString() : null;
   const hasCustomer = Boolean(plan.data?.stripeCustomerId);
   const hasActiveSub = Boolean(plan.data?.stripeSubscriptionId) && plan.data?.status !== 'cancelled';
 
@@ -124,7 +134,9 @@ export default function BillingPage() {
       {/* Top bar */}
       <div className="flex flex-wrap items-center gap-2 px-4 md:px-6 min-h-16 py-2 bg-white border-b border-[#EDEDED] shrink-0">
         <span className="text-[13px] text-[#8B8B8B]">{t.billing.breadcrumbParent}</span>
-        <svg className="w-3 h-3 text-[#ccc]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" /></svg>
+        <svg className="w-3 h-3 text-[#ccc]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+          <path d="m9 18 6-6-6-6" />
+        </svg>
         <span className="text-sm font-medium text-[#1F114C]">{t.billing.title}</span>
       </div>
 
@@ -132,7 +144,8 @@ export default function BillingPage() {
         {config.isError ? (
           <ErrorState onRetry={() => config.refetch()} />
         ) : (
-          !config.isLoading && !configured && (
+          !config.isLoading &&
+          !configured && (
             <div className="bg-[#FFF7E6] border border-[#FFE2A8] rounded-xl p-4">
               <div className="text-sm font-semibold text-[#7A5B00]">{t.billing.notConfiguredTitle}</div>
               <p className="text-[12px] text-[#7A5B00]/80 mt-1">{t.billing.notConfiguredDesc}</p>
@@ -153,7 +166,9 @@ export default function BillingPage() {
                   <span className="text-[12px] text-[#8B8B8B]">· {statusLabel(t, plan.data?.status)}</span>
                 </div>
                 {renewsOn && (
-                  <p className="text-[12px] text-[#8B8B8B] mt-2">{t.billing.renewsOn} {renewsOn}</p>
+                  <p className="text-[12px] text-[#8B8B8B] mt-2">
+                    {t.billing.renewsOn} {renewsOn}
+                  </p>
                 )}
                 {configured && hasCustomer && (
                   <div className="mt-4 flex flex-wrap gap-2">
@@ -188,9 +203,24 @@ export default function BillingPage() {
             ) : (
               usage.data && (
                 <div>
-                  <UsageRow label={t.billing.usageEmployees} used={usage.data.employees.used} limit={usage.data.employees.limit} noLimit={t.billing.noLimit} />
-                  <UsageRow label={t.billing.usageVacancies} used={usage.data.vacancies.used} limit={usage.data.vacancies.limit} noLimit={t.billing.noLimit} />
-                  <UsageRow label={t.billing.usageAssessments} used={usage.data.assessments.used} limit={usage.data.assessments.limit} noLimit={t.billing.noLimit} />
+                  <UsageRow
+                    label={t.billing.usageEmployees}
+                    used={usage.data.employees.used}
+                    limit={usage.data.employees.limit}
+                    noLimit={t.billing.noLimit}
+                  />
+                  <UsageRow
+                    label={t.billing.usageVacancies}
+                    used={usage.data.vacancies.used}
+                    limit={usage.data.vacancies.limit}
+                    noLimit={t.billing.noLimit}
+                  />
+                  <UsageRow
+                    label={t.billing.usageAssessments}
+                    used={usage.data.assessments.used}
+                    limit={usage.data.assessments.limit}
+                    noLimit={t.billing.noLimit}
+                  />
                 </div>
               )
             )}

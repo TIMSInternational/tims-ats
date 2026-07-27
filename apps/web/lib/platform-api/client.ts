@@ -267,6 +267,19 @@ export async function platformPost<P extends PostPaths>(
   return mutate('POST', path, body, pathParams) as Promise<PostJsonResponse<P>>;
 }
 
+/**
+ * Untyped POST escape hatch for the rare endpoint whose C# minimal-API mapping never called
+ * `.Produces<T>()` on its 200 response (e.g. billing self-serve's checkout/portal/cancel, which
+ * return `Results.Ok(new { url })` / `{ cancelAtPeriodEnd }` as anonymous objects) — the OpenAPI
+ * doc then has no typed response body, so `PostPaths`/`platformPost` can't accept the path. Same
+ * auth/base-URL/error handling as {@link platformPost} (via the shared `mutate` helper); callers
+ * hand-type the parsed body themselves (mirroring {@link platformGetRaw}'s GET-side gap). Prefer
+ * {@link platformPost} whenever the path IS typed.
+ */
+export async function platformPostRaw(path: string, body: unknown, pathParams?: PathParams): Promise<unknown> {
+  return mutate('POST', path, body, pathParams);
+}
+
 /** Typed PATCH against the C# Platform service. Mirrors {@link platformGet}'s contract-typing. */
 export async function platformPatch<P extends PatchPaths>(
   path: P,
