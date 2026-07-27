@@ -15,10 +15,8 @@
 // shape — including the superjson Date semantics on the SalaryBand/adjustment date fields and
 // the number-as-string wire artifacts.
 //
-// SCOPE — FX-FREE subset only. Slice-9 ported exactly the reads that need no currency
-// conversion. The FX-dependent reads (getBandDistribution / getTotalCompBreakdown /
-// getPayEquity / getDashboardKpis) AND the two not consumed by the FE (getMarketComparison /
-// getEmployeeComp) get NO wrapper here — they stay on tRPC until Slice-9b lands the FX kernels.
+// SCOPE — FX-FREE subset (Slice-9): exactly the reads that need no currency conversion. The two
+// not consumed by the FE (getMarketComparison / getEmployeeComp) get NO wrapper here.
 //
 // FIELD-AUTH NUANCE (myCompensation + listPendingAdjustments): the C# OpenAPI types these 200
 // bodies as free-form `object` (JsonObject / oneOf[null,object]) — the field-authed shape is
@@ -30,6 +28,19 @@
 //
 // All five live behind the C# `Platform:CompensationReadEnabled` backend flag (see the FX-free
 // GETs mapped in the compensation read endpoints), so they share ONE FE flag mirroring it.
+//
+// FX-DEPENDENT SUBSET (Slice 11c, added later — see useCompensationBandDistribution /
+// useCompensationTotalCompBreakdown / useCompensationDashboardKpis below): THREE of the five
+// deferred FX reads have live FE consumers (getBandDistribution, getTotalCompBreakdown,
+// getDashboardKpis); getPayEquity (compensation's own — distinct from the DEI domain's
+// `dei.getPayEquity`, already wrapped in platform-api/dei.ts) and simulateAdjustment have NO
+// call site and get no wrapper. These three are gated by a DIFFERENT backend flag,
+// `Platform:FxReadsEnabled` (shared cross-domain with `dei.getPayEquity`'s backend gate — see
+// platform-api/dei.ts's header) — so they get their OWN FE flag,
+// `NEXT_PUBLIC_COMPENSATION_FX_READ_VIA_CSHARP`, independent of `NEXT_PUBLIC_COMPENSATION_
+// READ_VIA_CSHARP` above. Federico can cut over the FX-free and FX-dependent compensation reads
+// on separate schedules (the FX ones need `fx_rates` populated by the first `FxRefreshJob` run
+// first).
 
 import { useQuery } from '@tanstack/react-query';
 import type { inferRouterOutputs } from '@trpc/server';
@@ -43,16 +54,22 @@ type BenefitsUtilizationOutput = RouterOutput['compensation']['getBenefitsUtiliz
 type CompaRatioDistributionOutput = RouterOutput['compensation']['getCompaRatioDistribution'];
 type PendingAdjustmentsOutput = RouterOutput['compensation']['listPendingAdjustments'];
 type MyCompensationOutput = RouterOutput['compensation']['myCompensation'];
+type BandDistributionOutput = RouterOutput['compensation']['getBandDistribution'];
+type TotalCompBreakdownOutput = RouterOutput['compensation']['getTotalCompBreakdown'];
+type CompDashboardKpisOutput = RouterOutput['compensation']['getDashboardKpis'];
 
 // Second gate: even when the client is enabled, compensation only routes to C# when its own flag
 // is exactly 'true'. NEXT_PUBLIC_* so it is inlined for the browser.
 const COMPENSATION_VIA_CSHARP = process.env.NEXT_PUBLIC_COMPENSATION_READ_VIA_CSHARP === 'true';
 
+// Third gate, FX-dependent subset only: independent of COMPENSATION_VIA_CSHARP above (see the
+// file header) — gates getBandDistribution / getTotalCompBreakdown / getDashboardKpis.
+const COMPENSATION_FX_VIA_CSHARP = process.env.NEXT_PUBLIC_COMPENSATION_FX_READ_VIA_CSHARP === 'true';
+
 // The C# minimal-API OpenAPI contract types every int32/double as `number | string` (a
 // number-as-string read artifact); coerce back to the `number` the tRPC output declares.
 const num = (v: number | string): number => Number(v);
-const numOrNull = (v: number | string | null | undefined): number | null =>
-  v == null ? null : Number(v);
+const numOrNull = (v: number | string | null | undefined): number | null => (v == null ? null : Number(v));
 
 // DateTime fields serialize as canonical Node-ISO strings (…fffZ) via the shared Node-ISO
 // converter. The tRPC output types them as Prisma `Date` (superjson rebuilds real Date objects),
@@ -135,9 +152,7 @@ export function useCompensationBenefitsUtilization() {
  *            null preserved; avgCompaRatio/totalEmployees int|null coerced; suppressed boolean).
  *  - false → trpc.compensation.getCompaRatioDistribution.useQuery(filters) (the DEFAULT).
  */
-export function useCompensationCompaRatioDistribution(
-  filters?: { companyId?: string; businessUnitId?: string },
-) {
+export function useCompensationCompaRatioDistribution(filters?: { companyId?: string; businessUnitId?: string }) {
   const viaCSharp = isPlatformApiEnabled() && COMPENSATION_VIA_CSHARP;
 
   const trpcQuery = trpc.compensation.getCompaRatioDistribution.useQuery(filters ?? {}, {
@@ -301,6 +316,126 @@ export function useCompensationMyCompensation() {
         // The dynamic field-authed DTO (optional restricted keys) is guaranteed server-side +
         // by backend integration tests; cast the mapped object to the exact tRPC output type.
       } as MyCompensationOutput;
+    },
+  });
+
+  return viaCSharp ? csharpQuery : trpcQuery;
+}
+
+/**
+ * STAFF org-rollup, FX-dependent: employees plotted within their salary band (1 call site:
+ * comp-left-column.tsx SalaryBands). Gate: `isPlatformApiEnabled() &&
+ * NEXT_PUBLIC_COMPENSATION_FX_READ_VIA_CSHARP === 'true'` (a SEPARATE flag from the FX-free
+ * reads above — see the file header).
+ *  - true  → GET /compensation/band-distribution (per-band min/mid/max + per-dot pos coerced;
+ *            EMPTY dots on every band when suppressed).
+ *  - false → trpc.compensation.getBandDistribution.useQuery() (the DEFAULT).
+ */
+export function useCompensationBandDistribution() {
+  const viaCSharp = isPlatformApiEnabled() && COMPENSATION_FX_VIA_CSHARP;
+
+  const trpcQuery = trpc.compensation.getBandDistribution.useQuery(undefined, {
+    enabled: !viaCSharp,
+  });
+
+  const csharpQuery = useQuery<BandDistributionOutput>({
+    queryKey: ['platform-api', 'compensation', 'band-distribution'],
+    enabled: viaCSharp,
+    queryFn: async () => {
+      const raw = await platformGet('/compensation/band-distribution');
+      return raw.map((b) => ({
+        level: b.level,
+        title: b.title,
+        min: num(b.min),
+        mid: num(b.mid),
+        max: num(b.max),
+        currency: b.currency,
+        dots: b.dots.map((d) => ({ pos: num(d.pos), outlier: d.outlier })),
+        suppressed: b.suppressed,
+      }));
+    },
+  });
+
+  return viaCSharp ? csharpQuery : trpcQuery;
+}
+
+/**
+ * STAFF org-rollup, FX-dependent: the base/variable comp total, org-wide (1 call site:
+ * comp-bottom-row.tsx TotalCompBreakdown). Gate as above (the FX flag). No `companyId` filter is
+ * ever passed by the call site, so this hook is zero-arg.
+ *  - true  → GET /compensation/total-comp-breakdown (totalComp/employeeCount coerced-or-null;
+ *            breakdown.{baseSalary,variablePay}.{total,percentage} coerced-or-null).
+ *  - false → trpc.compensation.getTotalCompBreakdown.useQuery() (the DEFAULT).
+ */
+export function useCompensationTotalCompBreakdown() {
+  const viaCSharp = isPlatformApiEnabled() && COMPENSATION_FX_VIA_CSHARP;
+
+  const trpcQuery = trpc.compensation.getTotalCompBreakdown.useQuery(undefined, {
+    enabled: !viaCSharp,
+  });
+
+  const csharpQuery = useQuery<TotalCompBreakdownOutput>({
+    queryKey: ['platform-api', 'compensation', 'total-comp-breakdown'],
+    enabled: viaCSharp,
+    queryFn: async () => {
+      const raw = await platformGet('/compensation/total-comp-breakdown');
+      return {
+        totalComp: numOrNull(raw.totalComp),
+        currency: raw.currency,
+        converted: raw.converted,
+        ratesAsOf: raw.ratesAsOf,
+        breakdown: {
+          baseSalary: {
+            total: numOrNull(raw.breakdown.baseSalary.total),
+            percentage: numOrNull(raw.breakdown.baseSalary.percentage),
+          },
+          variablePay: {
+            total: numOrNull(raw.breakdown.variablePay.total),
+            percentage: numOrNull(raw.breakdown.variablePay.percentage),
+          },
+        },
+        employeeCount: numOrNull(raw.employeeCount),
+        suppressed: raw.suppressed,
+      };
+    },
+  });
+
+  return viaCSharp ? csharpQuery : trpcQuery;
+}
+
+/**
+ * STAFF org-rollup, FX-dependent: the compensation dashboard KPIs (2 call sites:
+ * compensation/page.tsx, hr-exec-dashboard.tsx). Gate as above (the FX flag).
+ *  - true  → GET /compensation/dashboard-kpis (all numeric fields coerced-or-null per the
+ *            min-5/fail-soft guards; activeEmployees/benefitsUtilizationPct never null).
+ *  - false → trpc.compensation.getDashboardKpis.useQuery() (the DEFAULT).
+ */
+export function useCompensationDashboardKpis() {
+  const viaCSharp = isPlatformApiEnabled() && COMPENSATION_FX_VIA_CSHARP;
+
+  const trpcQuery = trpc.compensation.getDashboardKpis.useQuery(undefined, {
+    enabled: !viaCSharp,
+  });
+
+  const csharpQuery = useQuery<CompDashboardKpisOutput>({
+    queryKey: ['platform-api', 'compensation', 'dashboard-kpis'],
+    enabled: viaCSharp,
+    queryFn: async () => {
+      const raw = await platformGet('/compensation/dashboard-kpis');
+      return {
+        totalMonthlyPayroll: numOrNull(raw.totalMonthlyPayroll),
+        avgSalary: numOrNull(raw.avgSalary),
+        currency: raw.currency,
+        converted: raw.converted,
+        ratesAsOf: raw.ratesAsOf,
+        compensatedEmployees: numOrNull(raw.compensatedEmployees),
+        compensatedSuppressed: raw.compensatedSuppressed,
+        activeEmployees: num(raw.activeEmployees),
+        pendingAdjustments: numOrNull(raw.pendingAdjustments),
+        pendingAdjustmentsSuppressed: raw.pendingAdjustmentsSuppressed,
+        benefitsUtilizationPct: num(raw.benefitsUtilizationPct),
+        avgCompaRatio: numOrNull(raw.avgCompaRatio),
+      };
     },
   });
 

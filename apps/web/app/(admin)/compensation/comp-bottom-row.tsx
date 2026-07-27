@@ -1,8 +1,8 @@
 'use client';
 
-import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
 import { formatCurrency } from '../../../lib/format-utils';
+import { useCompensationTotalCompBreakdown } from '../../../lib/platform-api/compensation';
 
 export function MarketCompetitiveness() {
   const { t } = useI18n();
@@ -20,13 +20,12 @@ export function MarketCompetitiveness() {
 
 export function TotalCompBreakdown() {
   const { t } = useI18n();
-  const q = trpc.compensation.getTotalCompBreakdown.useQuery();
+  const q = useCompensationTotalCompBreakdown();
 
   // min-5 suppression (round 6): the backend nulls totalComp/breakdown totals + percentages
   // + employeeCount when the comp population is 1..4. Render a mask ('N/D') rather than crash.
   const data = q.data;
-  const isSuppressed =
-    !!data && (data.suppressed === true || data.totalComp === null);
+  const isSuppressed = !!data && (data.suppressed === true || data.totalComp === null);
   const basePct = data?.breakdown.baseSalary.percentage ?? 0;
   const varPct = data?.breakdown.variablePay.percentage ?? 0;
 
@@ -41,7 +40,13 @@ export function TotalCompBreakdown() {
         <p className="text-[22px] font-bold text-[#8B8B8B] mb-3">{t.dei.na}</p>
       ) : (
         <>
-          <p className="text-[22px] font-bold text-[#333] mb-3">{formatCurrency(data.totalComp ?? 0, data.currency ?? 'USD')}<span className="text-[11px] text-[#8B8B8B] font-normal"> · {data.employeeCount ?? 0} {t.compensation.employeesShort}</span></p>
+          <p className="text-[22px] font-bold text-[#333] mb-3">
+            {formatCurrency(data.totalComp ?? 0, data.currency ?? 'USD')}
+            <span className="text-[11px] text-[#8B8B8B] font-normal">
+              {' '}
+              · {data.employeeCount ?? 0} {t.compensation.employeesShort}
+            </span>
+          </p>
           <div className="flex h-5 rounded-full overflow-hidden mb-3">
             <div className="bg-[#1F114C] h-full" style={{ width: `${basePct}%` }} />
             <div className="bg-[#DD0C15] h-full" style={{ width: `${varPct}%` }} />
