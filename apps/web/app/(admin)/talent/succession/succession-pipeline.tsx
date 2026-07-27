@@ -6,6 +6,7 @@ import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { ErrorState, Skeleton } from '../../../../components';
 import { RequestAdjustmentModal } from './request-adjustment-modal';
+import { useSuccessionUpdateCriticalRoleBand } from '../../../../lib/platform-api/succession';
 
 interface Successor {
   id: string;
@@ -20,7 +21,13 @@ interface CriticalRole {
   criticality: string;
   flightRisk?: number | null;
   targetBandLevel?: string | null;
-  currentHolder?: { id: string; firstName: string; lastName: string; avatar?: string | null; jobTitle?: string | null } | null;
+  currentHolder?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    avatar?: string | null;
+    jobTitle?: string | null;
+  } | null;
   successors: Successor[];
 }
 
@@ -77,13 +84,44 @@ const RISK_STYLES: Record<string, { bg: string; text: string; dot: string }> = {
   low: { bg: 'bg-green-50', text: 'text-green-600', dot: 'bg-green-500' },
 };
 
-const READINESS_STYLES: Record<string, { border: string; bg: string; label: string; text: string; avatarBg: string }> = {
-  ready_now: { border: 'border-green-300', bg: 'bg-green-50/50', label: 'Ready Now', text: 'text-green-700', avatarBg: 'bg-green-600' },
-  ready_1_year: { border: 'border-amber-300', bg: 'bg-amber-50/50', label: '1-2 Anos', text: 'text-amber-700', avatarBg: 'bg-amber-600' },
-  ready_2_years: { border: 'border-amber-300', bg: 'bg-amber-50/50', label: '1-2 Anos', text: 'text-amber-700', avatarBg: 'bg-amber-600' },
-  developing: { border: 'border-blue-300', bg: 'bg-blue-50/50', label: 'Externo', text: 'text-blue-700', avatarBg: 'bg-blue-600' },
-  external: { border: 'border-blue-300', bg: 'bg-blue-50/50', label: 'Externo', text: 'text-blue-700', avatarBg: 'bg-blue-600' },
-};
+const READINESS_STYLES: Record<string, { border: string; bg: string; label: string; text: string; avatarBg: string }> =
+  {
+    ready_now: {
+      border: 'border-green-300',
+      bg: 'bg-green-50/50',
+      label: 'Ready Now',
+      text: 'text-green-700',
+      avatarBg: 'bg-green-600',
+    },
+    ready_1_year: {
+      border: 'border-amber-300',
+      bg: 'bg-amber-50/50',
+      label: '1-2 Anos',
+      text: 'text-amber-700',
+      avatarBg: 'bg-amber-600',
+    },
+    ready_2_years: {
+      border: 'border-amber-300',
+      bg: 'bg-amber-50/50',
+      label: '1-2 Anos',
+      text: 'text-amber-700',
+      avatarBg: 'bg-amber-600',
+    },
+    developing: {
+      border: 'border-blue-300',
+      bg: 'bg-blue-50/50',
+      label: 'Externo',
+      text: 'text-blue-700',
+      avatarBg: 'bg-blue-600',
+    },
+    external: {
+      border: 'border-blue-300',
+      bg: 'bg-blue-50/50',
+      label: 'Externo',
+      text: 'text-blue-700',
+      avatarBg: 'bg-blue-600',
+    },
+  };
 
 const AVATAR_COLORS = ['bg-[#1F114C]', 'bg-violet-600', 'bg-teal-600', 'bg-blue-600', 'bg-pink-600'];
 
@@ -97,7 +135,7 @@ export function SuccessionPipeline({ roles, loading, isError, bands, compGapAler
     suggestedNewSalary: number;
   } | null>(null);
 
-  const updateBand = trpc.succession.updateCriticalRoleBand.useMutation({
+  const updateBand = useSuccessionUpdateCriticalRoleBand({
     onSuccess: () => {
       utils.succession.listCriticalRoles.invalidate();
       utils.succession.getCompGapAlerts.invalidate();
@@ -164,7 +202,9 @@ export function SuccessionPipeline({ roles, loading, isError, bands, compGapAler
           >
             <div className="flex items-center gap-3 mb-2">
               <div className="flex items-center gap-2 flex-1">
-                <div className={`w-8 h-8 rounded-full ${avatarColor} flex items-center justify-center text-white text-[10px] font-bold shrink-0`}>
+                <div
+                  className={`w-8 h-8 rounded-full ${avatarColor} flex items-center justify-center text-white text-[10px] font-bold shrink-0`}
+                >
                   {role.currentHolder ? getInitials(role.currentHolder.firstName, role.currentHolder.lastName) : '??'}
                 </div>
                 <div>
@@ -182,7 +222,9 @@ export function SuccessionPipeline({ roles, loading, isError, bands, compGapAler
                   {t.noSuccessor}
                 </span>
               ) : (
-                <span className={`text-[9px] ${riskStyle.bg} ${riskStyle.text} px-2 py-0.5 rounded-full font-medium flex items-center gap-1`}>
+                <span
+                  className={`text-[9px] ${riskStyle.bg} ${riskStyle.text} px-2 py-0.5 rounded-full font-medium flex items-center gap-1`}
+                >
                   <span className={`w-1.5 h-1.5 rounded-full ${riskStyle.dot}`} />
                   {getRiskLabel(riskLevel)}
                 </span>
@@ -214,7 +256,9 @@ export function SuccessionPipeline({ roles, loading, isError, bands, compGapAler
               </select>
             </div>
 
-            <div className={`ml-6 pl-4 border-l-2 border-dashed ${noSuccessor ? 'border-red-200' : 'border-[#EDEDED]'}`}>
+            <div
+              className={`ml-6 pl-4 border-l-2 border-dashed ${noSuccessor ? 'border-red-200' : 'border-[#EDEDED]'}`}
+            >
               {noSuccessor ? (
                 <div className="border border-red-200 bg-red-50 rounded-lg p-2 text-center">
                   <p className="text-[10px] text-[#DD0C15] font-medium">{t.noSuccessorsIdentified}</p>
@@ -231,11 +275,15 @@ export function SuccessionPipeline({ roles, loading, isError, bands, compGapAler
                       <div key={s.id} className={`flex-1 border ${style.border} ${style.bg} rounded-lg p-2`}>
                         <p className={`text-[9px] ${style.text} font-semibold mb-1`}>{style.label}</p>
                         <div className="flex items-center gap-1.5">
-                          <div className={`w-6 h-6 rounded-full ${style.avatarBg} flex items-center justify-center text-white text-[8px] font-bold`}>
+                          <div
+                            className={`w-6 h-6 rounded-full ${style.avatarBg} flex items-center justify-center text-white text-[8px] font-bold`}
+                          >
                             {getInitials(s.user.firstName, s.user.lastName)}
                           </div>
                           <div>
-                            <p className="text-[10px] font-medium text-[#333]">{s.user.firstName} {s.user.lastName}</p>
+                            <p className="text-[10px] font-medium text-[#333]">
+                              {s.user.firstName} {s.user.lastName}
+                            </p>
                             <p className="text-[9px] text-[#8B8B8B]">{s.user.jobTitle ?? ''}</p>
                           </div>
                         </div>

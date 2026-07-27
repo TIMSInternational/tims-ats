@@ -7,6 +7,7 @@ import { useI18n } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
 import { Modal, UserPicker } from '../../../../components';
 import type { PickedUser } from '../../../../components/user-picker';
+import { useSuccessionAddSuccessor } from '../../../../lib/platform-api/succession';
 
 interface AddSuccessorModalProps {
   roles: { id: string; title: string }[];
@@ -46,13 +47,11 @@ export function AddSuccessorModal({
 
   const [roleId, setRoleId] = useState(initialRoleId ?? '');
   const [candidate, setCandidate] = useState<PickedUser | null>(initialCandidate ?? null);
-  const [readiness, setReadiness] = useState<(typeof READINESS_KEYS)[number]['value']>(
-    initialReadiness ?? 'ready_now',
-  );
+  const [readiness, setReadiness] = useState<(typeof READINESS_KEYS)[number]['value']>(initialReadiness ?? 'ready_now');
   const [type, setType] = useState<(typeof TYPE_KEYS)[number]['value']>('internal');
   const [developmentPlan, setDevelopmentPlan] = useState('');
 
-  const submit = trpc.succession.addSuccessor.useMutation({
+  const submit = useSuccessionAddSuccessor({
     onSuccess: () => {
       utils.succession.listCriticalRoles.invalidate();
       utils.succession.getDashboardKpis.invalidate();
@@ -91,9 +90,7 @@ export function AddSuccessorModal({
       <div className="space-y-4">
         {/* Critical Role */}
         <div>
-          <label className="block text-[12px] font-medium text-[#333] mb-1.5">
-            {t.succession.roleLabel}
-          </label>
+          <label className="block text-[12px] font-medium text-[#333] mb-1.5">{t.succession.roleLabel}</label>
           <select
             value={roleId}
             onChange={(e) => setRoleId(e.target.value)}
@@ -113,9 +110,7 @@ export function AddSuccessorModal({
 
         {/* Candidate */}
         <div>
-          <label className="block text-[12px] font-medium text-[#333] mb-1.5">
-            {t.succession.candidateLabel}
-          </label>
+          <label className="block text-[12px] font-medium text-[#333] mb-1.5">{t.succession.candidateLabel}</label>
           {candidate ? (
             <div className="flex items-center justify-between border border-[#EDEDED] rounded-lg px-3 py-2.5">
               <span className="text-[12px] text-[#333] font-medium">
@@ -143,9 +138,7 @@ export function AddSuccessorModal({
 
         {/* Readiness */}
         <div>
-          <label className="block text-[12px] font-medium text-[#333] mb-1.5">
-            {t.succession.readinessLabel}
-          </label>
+          <label className="block text-[12px] font-medium text-[#333] mb-1.5">{t.succession.readinessLabel}</label>
           <select
             value={readiness}
             onChange={(e) => setReadiness(e.target.value as (typeof READINESS_KEYS)[number]['value'])}
@@ -162,9 +155,7 @@ export function AddSuccessorModal({
 
         {/* Type */}
         <div>
-          <label className="block text-[12px] font-medium text-[#333] mb-1.5">
-            {t.succession.successorTypeLabel}
-          </label>
+          <label className="block text-[12px] font-medium text-[#333] mb-1.5">{t.succession.successorTypeLabel}</label>
           <select
             value={type}
             onChange={(e) => setType(e.target.value as (typeof TYPE_KEYS)[number]['value'])}
@@ -192,9 +183,7 @@ export function AddSuccessorModal({
             disabled={submit.isPending}
             className="w-full border border-[#EDEDED] rounded-lg px-3 py-2.5 text-[13px] text-[#333] placeholder:text-[#B8B8B8] resize-none focus:outline-none focus:border-[#1F114C]/40 disabled:opacity-50"
           />
-          <p className="text-[10px] text-[#8B8B8B] text-right mt-1">
-            {developmentPlan.length}/1000
-          </p>
+          <p className="text-[10px] text-[#8B8B8B] text-right mt-1">{developmentPlan.length}/1000</p>
         </div>
 
         <div className="flex justify-end gap-2 pt-1">
