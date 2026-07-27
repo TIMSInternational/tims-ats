@@ -8,6 +8,8 @@ import { toast } from '../../../../lib/toast';
 import { UserPicker, CandidateAvatar, Skeleton } from '../../../../components';
 import {
   useNineBoxCalibration,
+  useNineBoxAddCalibrationMember,
+  useNineBoxRemoveCalibrationMember,
   invalidateNineboxPlatformReads,
 } from '../../../../lib/platform-api/ninebox';
 
@@ -35,7 +37,7 @@ export function CommitteeMembersPanel({ sessionId }: CommitteeMembersPanelProps)
     invalidateNineboxPlatformReads(queryClient);
   };
 
-  const add = trpc.ninebox.addCalibrationMember.useMutation({
+  const add = useNineBoxAddCalibrationMember({
     onSuccess: () => {
       toast(t.committee.added, { type: 'success' });
       setAdding(false);
@@ -46,7 +48,7 @@ export function CommitteeMembersPanel({ sessionId }: CommitteeMembersPanelProps)
     },
   });
 
-  const remove = trpc.ninebox.removeCalibrationMember.useMutation({
+  const remove = useNineBoxRemoveCalibrationMember({
     onSuccess: () => {
       toast(t.committee.removed, { type: 'success' });
       invalidate();
@@ -74,7 +76,9 @@ export function CommitteeMembersPanel({ sessionId }: CommitteeMembersPanelProps)
             onClick={() => setAdding(true)}
             className="flex items-center gap-1 text-[11px] text-[#1F114C] font-medium hover:underline"
           >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 4.5v15m7.5-7.5h-15" /></svg>
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <path d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
             {t.committee.addMember}
           </button>
         )}
@@ -92,7 +96,12 @@ export function CommitteeMembersPanel({ sessionId }: CommitteeMembersPanelProps)
             <ul className="space-y-1.5 mb-3">
               {memberRows.map((m) => (
                 <li key={m.id} className="flex items-center gap-2.5 px-3 py-2 rounded-lg border border-[#EDEDED]">
-                  <CandidateAvatar firstName={m.user.firstName} lastName={m.user.lastName} avatar={m.user.avatar} size="sm" />
+                  <CandidateAvatar
+                    firstName={m.user.firstName}
+                    lastName={m.user.lastName}
+                    avatar={m.user.avatar}
+                    size="sm"
+                  />
                   <span className="text-[12px] text-[#333] font-medium flex-1">
                     {m.user.firstName} {m.user.lastName}
                   </span>
