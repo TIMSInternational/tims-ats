@@ -19,11 +19,11 @@
 // mapped by MapSuccessionReadEndpoints, gated on SuccessionReadEnabled; getCriticalRole is the one
 // not consumed by the FE, so it gets no wrapper here), so they share ONE FE flag mirroring it.
 
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import type { inferRouterOutputs } from '@trpc/server';
 import type { AppRouter } from '@tims/api';
 import { trpc } from '../trpc';
-import { isPlatformApiEnabled, platformGet } from './client';
+import { isPlatformApiEnabled, platformGet, platformPatch, platformPost } from './client';
 
 type RouterOutput = inferRouterOutputs<AppRouter>;
 type DashboardKpisOutput = RouterOutput['succession']['getDashboardKpis'];
@@ -34,6 +34,8 @@ type RolesWithoutSuccessorOutput = RouterOutput['succession']['getRolesWithoutSu
 type CompGapAlertsOutput = RouterOutput['succession']['getCompGapAlerts'];
 type SuggestedSuccessorsOutput = RouterOutput['succession']['getSuggestedSuccessors'];
 type SimulateExitOutput = RouterOutput['succession']['simulateExit'];
+type AddSuccessorOutput = RouterOutput['succession']['addSuccessor'];
+type UpdateCriticalRoleBandOutput = RouterOutput['succession']['updateCriticalRoleBand'];
 
 // Nested-shape aliases so the number-as-string / DB-enum-string wire artifacts are narrowed back to
 // the EXACT unions each tRPC output declares (no `any`; cast a widened wire value to the contract
@@ -52,8 +54,7 @@ const SUCCESSION_VIA_CSHARP = process.env.NEXT_PUBLIC_SUCCESSION_READ_VIA_CSHARP
 // The C# minimal-API OpenAPI contract types every int32/double as `number | string` (a
 // number-as-string read artifact); coerce back to the `number` the tRPC output declares.
 const num = (v: number | string): number => Number(v);
-const numOrNull = (v: number | string | null | undefined): number | null =>
-  v == null ? null : Number(v);
+const numOrNull = (v: number | string | null | undefined): number | null => (v == null ? null : Number(v));
 
 // DateTime fields serialize as canonical Node-ISO strings (…fffZ) via the shared Node-ISO converter.
 // The tRPC output types them as Prisma `Date` (superjson rebuilds real Date objects), so the C# path
@@ -133,9 +134,12 @@ export function useSuccessionDashboardKpis() {
  *            flightRisk number|null; createdAt/updatedAt Dates; nested successors' dates rebuilt).
  *  - false → trpc.succession.listCriticalRoles.useQuery(filters) (the DEFAULT).
  */
-export function useSuccessionCriticalRoles(
-  filters?: { companyId?: string; unitId?: string; criticality?: string; search?: string },
-) {
+export function useSuccessionCriticalRoles(filters?: {
+  companyId?: string;
+  unitId?: string;
+  criticality?: string;
+  search?: string;
+}) {
   const viaCSharp = isPlatformApiEnabled() && SUCCESSION_VIA_CSHARP;
 
   const trpcQuery = trpc.succession.listCriticalRoles.useQuery(filters ?? {}, {
@@ -365,11 +369,9 @@ export function useSuccessionSuggestedSuccessors(criticalRoleId: string) {
     queryKey: ['platform-api', 'succession', 'suggested-successors', criticalRoleId],
     enabled: viaCSharp && enabledId,
     queryFn: async () => {
-      const raw = await platformGet(
-        '/succession/critical-roles/{criticalRoleId}/suggested-successors',
-        undefined,
-        { criticalRoleId },
-      );
+      const raw = await platformGet('/succession/critical-roles/{criticalRoleId}/suggested-successors', undefined, {
+        criticalRoleId,
+      });
       return raw.map((s) => ({
         userId: s.userId,
         user: {
@@ -401,20 +403,15 @@ export function useSuccessionSimulateExit(criticalRoleId: string) {
   const enabledId = !!criticalRoleId;
   const viaCSharp = isPlatformApiEnabled() && SUCCESSION_VIA_CSHARP;
 
-  const trpcQuery = trpc.succession.simulateExit.useQuery(
-    { criticalRoleId },
-    { enabled: !viaCSharp && enabledId },
-  );
+  const trpcQuery = trpc.succession.simulateExit.useQuery({ criticalRoleId }, { enabled: !viaCSharp && enabledId });
 
   const csharpQuery = useQuery<SimulateExitOutput>({
     queryKey: ['platform-api', 'succession', 'simulate-exit', criticalRoleId],
     enabled: viaCSharp && enabledId,
     queryFn: async () => {
-      const raw = await platformGet(
-        '/succession/critical-roles/{criticalRoleId}/simulate-exit',
-        undefined,
-        { criticalRoleId },
-      );
+      const raw = await platformGet('/succession/critical-roles/{criticalRoleId}/simulate-exit', undefined, {
+        criticalRoleId,
+      });
       return {
         role: {
           id: raw.role.id,
@@ -455,4 +452,107 @@ export function useSuccessionSimulateExit(criticalRoleId: string) {
   });
 
   return viaCSharp ? csharpQuery : trpcQuery;
+}
+
+// ---------------------------------------------------------------------------
+// Writes (Phase-5 Slice 14) — a SEPARATE flag from the reads above, mirroring backend
+// `Platform:SuccessionWriteEnabled` (independent of SuccessionReadEnabled). Of the 5 C# mutations
+// (addCriticalRole/addSuccessor/removeSuccessor/updateSuccessorReadiness/updateCriticalRoleBand),
+// only addSuccessor (add-successor-modal.tsx) and updateCriticalRoleBand (succession-pipeline.tsx)
+// have live FE consumers — a full-repo grep confirms addCriticalRole/removeSuccessor/
+// updateSuccessorReadiness have zero call sites anywhere (same situation as access-review and
+// offer.updateValidation), so they are intentionally NOT wrapped here. Each hook mirrors trpc's
+// useMutation shape ({ onSuccess?, onError? }) so existing call sites swap in with a one-line
+// change; both consumers already invalidate the `['platform-api','succession',...]` query keys
+// themselves post-success — this file only supplies the mutation itself. Error messages are
+// byte-identical between stacks for the NOT_FOUND/FORBIDDEN paths (verified against
+// SuccessionWriteEndpoints.cs's message constants and packages/api/src/access's shared message
+// tables); the addSuccessor 409 duplicate-successor conflict is the one documented exception — TS
+// surfaces a raw Prisma unique-constraint error where C# returns a friendly 409 message (a
+// pre-existing, intentional C#-side improvement, not something this wrapper changes).
+// ---------------------------------------------------------------------------
+
+const SUCCESSION_WRITE_VIA_CSHARP = process.env.NEXT_PUBLIC_SUCCESSION_WRITE_VIA_CSHARP === 'true';
+
+interface MutationOptions {
+  onSuccess?: () => void;
+  onError?: (err: { message: string }) => void;
+  onSettled?: () => void;
+}
+
+function useCSharpMutation<TInput>(
+  mutationFn: (input: TInput) => Promise<unknown>,
+  options: MutationOptions | undefined,
+) {
+  return useMutation({
+    mutationFn,
+    onSuccess: options?.onSuccess,
+    onError: (err: unknown) => options?.onError?.(err instanceof Error ? err : { message: 'Unknown error' }),
+    onSettled: options?.onSettled,
+  });
+}
+
+interface AddSuccessorInputShape {
+  criticalRoleId: string;
+  userId: string;
+  readiness: string;
+  type: string;
+  developmentPlan?: string;
+}
+
+/** STAFF: add a successor to a critical role (1 call site: add-successor-modal.tsx). */
+export function useSuccessionAddSuccessor(options?: MutationOptions) {
+  const viaCSharp = isPlatformApiEnabled() && SUCCESSION_WRITE_VIA_CSHARP;
+  const trpcMutation = trpc.succession.addSuccessor.useMutation(options);
+  const csharpMutation = useCSharpMutation(async (input: AddSuccessorInputShape) => {
+    const raw = await platformPost(
+      '/succession/critical-roles/{criticalRoleId}/successors',
+      {
+        userId: input.userId,
+        readiness: input.readiness,
+        type: input.type,
+        developmentPlan: input.developmentPlan,
+      },
+      { criticalRoleId: input.criticalRoleId },
+    );
+    return {
+      id: raw.id,
+      organizationId: raw.organizationId,
+      criticalRoleId: raw.criticalRoleId,
+      userId: raw.userId,
+      readiness: raw.readiness as AddSuccessorOutput['readiness'],
+      type: raw.type as AddSuccessorOutput['type'],
+      developmentPlan: raw.developmentPlan ?? null,
+      addedById: raw.addedById ?? null,
+      createdAt: toDate(raw.createdAt),
+      updatedAt: toDate(raw.updatedAt),
+      user: {
+        id: raw.user.id,
+        firstName: raw.user.firstName,
+        lastName: raw.user.lastName,
+        avatar: raw.user.avatar ?? null,
+      },
+    } satisfies AddSuccessorOutput;
+  }, options);
+  return viaCSharp ? csharpMutation : trpcMutation;
+}
+
+interface UpdateCriticalRoleBandInputShape {
+  criticalRoleId: string;
+  targetBandLevel: string | null;
+}
+
+/** STAFF: set a critical role's target salary band level (1 call site: succession-pipeline.tsx). */
+export function useSuccessionUpdateCriticalRoleBand(options?: MutationOptions) {
+  const viaCSharp = isPlatformApiEnabled() && SUCCESSION_WRITE_VIA_CSHARP;
+  const trpcMutation = trpc.succession.updateCriticalRoleBand.useMutation(options);
+  const csharpMutation = useCSharpMutation(async (input: UpdateCriticalRoleBandInputShape) => {
+    const raw = await platformPatch(
+      '/succession/critical-roles/{criticalRoleId}/band',
+      { targetBandLevel: input.targetBandLevel },
+      { criticalRoleId: input.criticalRoleId },
+    );
+    return { id: raw.id, targetBandLevel: raw.targetBandLevel } satisfies UpdateCriticalRoleBandOutput;
+  }, options);
+  return viaCSharp ? csharpMutation : trpcMutation;
 }
