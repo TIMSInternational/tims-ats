@@ -11,12 +11,16 @@ describe('S2 engagement wiring', () => {
   const en = JSON.parse(read('apps/web/lib/i18n/en.json'));
 
   it('calls createSurvey mutation (not a comingSoon stub)', () => {
-    expect(modal).toMatch(/trpc\.engagement\.createSurvey\.useMutation/);
+    // Cut over to the dark platform-api wrapper (apps/web/lib/platform-api/engagement.ts,
+    // Phase-5 Slice-16 write wrapper) — it still calls trpc.engagement.createSurvey.useMutation
+    // internally on the default (non-C#) path, so this assertion follows the refactor rather
+    // than the raw call (same pattern as tests/access/survey-take-ui.test.ts's engagement fix).
+    expect(modal).toMatch(/useEngagementCreateSurvey/);
     expect(modal).not.toMatch(/comingSoon/);
   });
 
   it('chains activateSurvey after createSurvey onSuccess', () => {
-    expect(modal).toMatch(/trpc\.engagement\.activateSurvey\.useMutation/);
+    expect(modal).toMatch(/useEngagementActivateSurvey/);
     expect(modal).toMatch(/activate\.mutate/);
   });
 

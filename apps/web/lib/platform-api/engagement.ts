@@ -35,11 +35,11 @@
 //     Matching the ninebox precedent's "wrap only what's actually consumed" principle, these hooks
 //     take NO arguments — do not add unused filter params.
 
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import type { inferRouterOutputs } from '@trpc/server';
 import type { AppRouter } from '@tims/api';
 import { trpc } from '../trpc';
-import { isPlatformApiEnabled, platformGet } from './client';
+import { isPlatformApiEnabled, platformGet, platformPost } from './client';
 
 type RouterOutput = inferRouterOutputs<AppRouter>;
 type MyPendingSurveysOutput = RouterOutput['engagement']['myPendingSurveys'];
@@ -50,6 +50,9 @@ type LowClimateAlertsOutput = RouterOutput['engagement']['getLowClimateAlerts'];
 type ListActionPlansOutput = RouterOutput['engagement']['listActionPlans'];
 type ListLeaderCommitmentsOutput = RouterOutput['engagement']['listLeaderCommitments'];
 type DashboardKpisOutput = RouterOutput['engagement']['getDashboardKpis'];
+type CreateSurveyOutput = RouterOutput['engagement']['createSurvey'];
+type ActivateSurveyOutput = RouterOutput['engagement']['activateSurvey'];
+type SubmitSurveyResponseOutput = RouterOutput['engagement']['submitSurveyResponse'];
 
 // Second gate: even when the client is enabled, engagement only routes to C# when its own flag is
 // exactly 'true'. NEXT_PUBLIC_* so it is inlined for the browser.
@@ -336,4 +339,138 @@ export function useEngagementDashboardKpis() {
   });
 
   return viaCSharp ? csharpQuery : trpcQuery;
+}
+
+// ---------------------------------------------------------------------------
+// Writes (Phase-5 Slice 16) — a SEPARATE flag from the reads above, mirroring backend
+// `Platform:EngagementWriteEnabled` (independent of EngagementReadEnabled). Of the 5 C# mutations
+// (createSurvey/activateSurvey/submitSurveyResponse/createActionPlan/updateActionPlan), only
+// createSurvey + activateSurvey (climate/launch-survey-modal.tsx) and submitSurveyResponse
+// (dashboard/survey-take-modal.tsx) have live FE consumers — a full-repo grep confirms
+// createActionPlan/updateActionPlan have zero call sites anywhere (same situation as succession's
+// addCriticalRole/removeSuccessor/updateSuccessorReadiness), so they are intentionally NOT wrapped
+// here. Each hook mirrors trpc's useMutation shape ({ onSuccess?, onError? }); MutationOptions is
+// generic over TData (like ninebox's, unlike compensation's void-only) because launch-survey-modal.tsx
+// chains `create.onSuccess: (survey) => activate.mutate({ id: survey.id })` off the created survey's id.
+//
+// KNOWN GAP (submitSurveyResponse's CONFLICT toast): survey-take-modal.tsx distinguishes the
+// duplicate-response case via the tRPC-specific `err.data?.code === 'CONFLICT'` shape, which the C#
+// path's PlatformApiError cannot produce (it carries only `status`, not a parsed error body). Both
+// stacks throw the exact same message text ('Ya respondiste esta encuesta' / DuplicateResponseMessage),
+// so the consumer is updated to match on `err.message` instead — behavior-identical on the tRPC path,
+// and correct once cutover is live PROVIDED platformPost's error path is later extended to surface the
+// response body's `message` field (it currently only uses `response.statusText`) — a pre-existing
+// client.ts limitation, not something this wrapper changes.
+// ---------------------------------------------------------------------------
+
+const ENGAGEMENT_WRITE_VIA_CSHARP = process.env.NEXT_PUBLIC_ENGAGEMENT_WRITE_VIA_CSHARP === 'true';
+
+interface MutationOptions<TData = void> {
+  onSuccess?: (data: TData) => void;
+  onError?: (err: { message: string }) => void;
+  onSettled?: () => void;
+}
+
+function useCSharpMutation<TInput, TData>(
+  mutationFn: (input: TInput) => Promise<TData>,
+  options: MutationOptions<TData> | undefined,
+) {
+  return useMutation({
+    mutationFn,
+    onSuccess: options?.onSuccess,
+    onError: (err: unknown) => options?.onError?.(err instanceof Error ? err : { message: 'Unknown error' }),
+    onSettled: options?.onSettled,
+  });
+}
+
+interface CreateSurveyQuestionShape {
+  text: string;
+  type: string;
+  options?: string[];
+  required?: boolean;
+  category?: string;
+}
+
+interface CreateSurveyInputShape {
+  title: string;
+  type: string;
+  questions: CreateSurveyQuestionShape[];
+  targetGroups?: { companyIds?: string[]; businessUnitIds?: string[]; teamIds?: string[] };
+  startsAt?: string;
+  endsAt?: string;
+}
+
+/**
+ * STAFF: create a survey (1 call site: climate/launch-survey-modal.tsx, which reads `survey.id`
+ * from the resolved data to immediately chain into activateSurvey).
+ */
+export function useEngagementCreateSurvey(options?: MutationOptions<CreateSurveyOutput>) {
+  const viaCSharp = isPlatformApiEnabled() && ENGAGEMENT_WRITE_VIA_CSHARP;
+  const trpcMutation = trpc.engagement.createSurvey.useMutation(options);
+  const csharpMutation = useCSharpMutation(async (input: CreateSurveyInputShape) => {
+    const raw = await platformPost('/engagement/surveys', {
+      title: input.title,
+      type: input.type,
+      questions: input.questions,
+      targetGroups: input.targetGroups,
+      startsAt: input.startsAt,
+      endsAt: input.endsAt,
+    });
+    return {
+      id: raw.id,
+      organizationId: raw.organizationId,
+      title: raw.title,
+      type: raw.type,
+      status: raw.status,
+      questions: raw.questions as CreateSurveyOutput['questions'],
+      targetGroups: raw.targetGroups as CreateSurveyOutput['targetGroups'],
+      startsAt: toDateOrNull(raw.startsAt),
+      endsAt: toDateOrNull(raw.endsAt),
+      responseCount: num(raw.responseCount),
+      createdById: raw.createdById,
+      createdAt: toDate(raw.createdAt),
+      updatedAt: toDate(raw.updatedAt),
+    } satisfies CreateSurveyOutput;
+  }, options);
+  return viaCSharp ? csharpMutation : trpcMutation;
+}
+
+interface ActivateSurveyInputShape {
+  id: string;
+}
+
+/** STAFF: activate a draft survey (1 call site: climate/launch-survey-modal.tsx). */
+export function useEngagementActivateSurvey(options?: MutationOptions<ActivateSurveyOutput>) {
+  const viaCSharp = isPlatformApiEnabled() && ENGAGEMENT_WRITE_VIA_CSHARP;
+  const trpcMutation = trpc.engagement.activateSurvey.useMutation(options);
+  const csharpMutation = useCSharpMutation(async (input: ActivateSurveyInputShape) => {
+    const raw = await platformPost('/engagement/surveys/{surveyId}/activate', undefined, {
+      surveyId: input.id,
+    });
+    return { id: raw.id, status: raw.status } satisfies ActivateSurveyOutput;
+  }, options);
+  return viaCSharp ? csharpMutation : trpcMutation;
+}
+
+interface SubmitSurveyResponseInputShape {
+  surveyId: string;
+  answers: Record<string, string | number>;
+}
+
+/** SELF-SERVICE: submit answers to a survey (1 call site: dashboard/survey-take-modal.tsx). */
+export function useEngagementSubmitSurveyResponse(options?: MutationOptions<SubmitSurveyResponseOutput>) {
+  const viaCSharp = isPlatformApiEnabled() && ENGAGEMENT_WRITE_VIA_CSHARP;
+  const trpcMutation = trpc.engagement.submitSurveyResponse.useMutation(options);
+  const csharpMutation = useCSharpMutation(async (input: SubmitSurveyResponseInputShape) => {
+    const raw = await platformPost(
+      '/engagement/surveys/{surveyId}/responses',
+      // The generated contract types `answers` as `Record<string, never>` (an openapi-typescript
+      // fallback artifact for the C# `IReadOnlyDictionary<string, object>` body) — cast through
+      // `unknown`, matching the ninebox/dei precedent for widened wire-type casts.
+      { answers: input.answers as unknown as Record<string, never> },
+      { surveyId: input.surveyId },
+    );
+    return { id: raw.id, submittedAt: toDate(raw.submittedAt) } satisfies SubmitSurveyResponseOutput;
+  }, options);
+  return viaCSharp ? csharpMutation : trpcMutation;
 }
