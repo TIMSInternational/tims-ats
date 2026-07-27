@@ -39,11 +39,11 @@
 // denError` normalizes BOTH error shapes (tRPC `error.data.code === 'FORBIDDEN'` and PlatformApi
 // Error status 403) so the call site's forbidden-as-empty rendering is identical on either path.
 
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { inferRouterOutputs } from '@trpc/server';
 import type { AppRouter } from '@tims/api';
 import { trpc } from '../trpc';
-import { isPlatformApiEnabled, platformGet, PlatformApiError } from './client';
+import { isPlatformApiEnabled, platformDelete, platformGet, platformPost, PlatformApiError } from './client';
 
 type RouterOutput = inferRouterOutputs<AppRouter>;
 type GridOutput = RouterOutput['ninebox']['getGrid'];
@@ -53,6 +53,9 @@ type DashboardKpisOutput = RouterOutput['ninebox']['getDashboardKpis'];
 type ListCalibrationsOutput = RouterOutput['ninebox']['listCalibrations'];
 type CalibrationOutput = RouterOutput['ninebox']['getCalibration'];
 type MyCalibrationsOutput = RouterOutput['ninebox']['myCalibrations'];
+type CreateCalibrationOutput = RouterOutput['ninebox']['createCalibration'];
+type AddCalibrationMemberOutput = RouterOutput['ninebox']['addCalibrationMember'];
+type RemoveCalibrationMemberOutput = RouterOutput['ninebox']['removeCalibrationMember'];
 
 // Nested-shape aliases so each mapper is narrowed to the EXACT sub-object the tRPC output declares
 // (no `any`; the jsonb `axisBreakdown` widened wire value is cast to the contract's JsonValue).
@@ -154,9 +157,7 @@ export function useNineBoxGrid(period: string) {
       const raw = await platformGet('/ninebox/grid', { period });
       return {
         period: raw.period,
-        grid: Object.fromEntries(
-          Object.entries(raw.grid).map(([key, cell]) => [key, cell.map(mapGridEvaluation)]),
-        ),
+        grid: Object.fromEntries(Object.entries(raw.grid).map(([key, cell]) => [key, cell.map(mapGridEvaluation)])),
         totalEvaluations: num(raw.totalEvaluations),
       };
     },
@@ -305,8 +306,7 @@ export function useNineBoxListCalibrations() {
   const csharpQuery = useQuery<ListCalibrationsOutput>({
     queryKey: ['platform-api', 'ninebox', 'calibrations'],
     enabled: viaCSharp,
-    retry: (failureCount, err) =>
-      err instanceof PlatformApiError && err.status === 403 ? false : failureCount < 3,
+    retry: (failureCount, err) => (err instanceof PlatformApiError && err.status === 403 ? false : failureCount < 3),
     queryFn: async () => {
       const raw = await platformGet('/ninebox/calibrations');
       return raw.map((s) => ({
@@ -438,4 +438,121 @@ export function useNineBoxMyCalibrations() {
  */
 export function invalidateNineboxPlatformReads(queryClient: ReturnType<typeof useQueryClient>): void {
   queryClient.invalidateQueries({ queryKey: ['platform-api', 'ninebox'] });
+}
+
+// ---------------------------------------------------------------------------
+// Writes (Phase-5 Slice 15) — a SEPARATE flag from the reads above, mirroring backend
+// `Platform:NineBoxWriteEnabled` (independent of NineBoxReadEnabled). Of the 5 C# mutations
+// (createCalibration/submitCalibrationVote/addCalibrationMember/removeCalibrationMember/
+// finalizeCalibration), only createCalibration (talent/nine-box/page.tsx) and
+// addCalibrationMember/removeCalibrationMember (committee-members-panel.tsx) have live FE
+// consumers — a full-repo grep confirms submitCalibrationVote/finalizeCalibration have zero call
+// sites anywhere (same situation as succession's addCriticalRole/removeSuccessor/
+// updateSuccessorReadiness), so they are intentionally NOT wrapped here. Each hook mirrors trpc's
+// useMutation shape ({ onSuccess?, onError? }) so existing call sites swap in with a one-line
+// change; both consumers already invalidate via `invalidateNineboxPlatformReads` post-success —
+// this file only supplies the mutation itself. Error messages are byte-identical between stacks
+// (verified against NineBoxWriteEndpoints.cs's message constants and the TS router's inline
+// messages), including the addCalibrationMember 409 duplicate-member conflict (unlike succession's
+// addSuccessor, both stacks here already throw a friendly 409/CONFLICT with the same message).
+// ---------------------------------------------------------------------------
+
+const NINEBOX_WRITE_VIA_CSHARP = process.env.NEXT_PUBLIC_NINEBOX_WRITE_VIA_CSHARP === 'true';
+
+interface MutationOptions<TData = void> {
+  onSuccess?: (data: TData) => void;
+  onError?: (err: { message: string }) => void;
+  onSettled?: () => void;
+}
+
+function useCSharpMutation<TInput, TData>(
+  mutationFn: (input: TInput) => Promise<TData>,
+  options: MutationOptions<TData> | undefined,
+) {
+  return useMutation({
+    mutationFn,
+    onSuccess: options?.onSuccess,
+    onError: (err: unknown) => options?.onError?.(err instanceof Error ? err : { message: 'Unknown error' }),
+    onSettled: options?.onSettled,
+  });
+}
+
+interface CreateCalibrationInputShape {
+  period: string;
+  scheduledAt?: string;
+  memberIds?: string[];
+}
+
+/**
+ * STAFF: start a new calibration session (1 call site: talent/nine-box/page.tsx, which reads
+ * `session.id` from the resolved data to auto-open the new session's committee panel).
+ */
+export function useNineBoxCreateCalibration(options?: MutationOptions<CreateCalibrationOutput>) {
+  const viaCSharp = isPlatformApiEnabled() && NINEBOX_WRITE_VIA_CSHARP;
+  const trpcMutation = trpc.ninebox.createCalibration.useMutation(options);
+  const csharpMutation = useCSharpMutation(async (input: CreateCalibrationInputShape) => {
+    const raw = await platformPost('/ninebox/calibrations', {
+      period: input.period,
+      scheduledAt: input.scheduledAt,
+      memberIds: input.memberIds,
+    });
+    return {
+      id: raw.id,
+      organizationId: raw.organizationId,
+      period: raw.period,
+      status: raw.status,
+      scheduledAt: toDateOrNull(raw.scheduledAt),
+      completedAt: toDateOrNull(raw.completedAt),
+      createdById: raw.createdById,
+      createdAt: toDate(raw.createdAt),
+      updatedAt: toDate(raw.updatedAt),
+      members: raw.members.map((m) => ({
+        id: m.id,
+        sessionId: m.sessionId,
+        userId: m.userId,
+        status: m.status,
+        createdAt: toDate(m.createdAt),
+      })),
+    } satisfies CreateCalibrationOutput;
+  }, options);
+  return viaCSharp ? csharpMutation : trpcMutation;
+}
+
+interface AddCalibrationMemberInputShape {
+  sessionId: string;
+  userId: string;
+}
+
+/** STAFF: add a committee member to a calibration session (1 call site: committee-members-panel.tsx). */
+export function useNineBoxAddCalibrationMember(options?: MutationOptions<AddCalibrationMemberOutput>) {
+  const viaCSharp = isPlatformApiEnabled() && NINEBOX_WRITE_VIA_CSHARP;
+  const trpcMutation = trpc.ninebox.addCalibrationMember.useMutation(options);
+  const csharpMutation = useCSharpMutation(async (input: AddCalibrationMemberInputShape) => {
+    const raw = await platformPost(
+      '/ninebox/calibrations/{sessionId}/members',
+      { userId: input.userId },
+      { sessionId: input.sessionId },
+    );
+    return { id: raw.id } satisfies AddCalibrationMemberOutput;
+  }, options);
+  return viaCSharp ? csharpMutation : trpcMutation;
+}
+
+interface RemoveCalibrationMemberInputShape {
+  sessionId: string;
+  userId: string;
+}
+
+/** STAFF: remove a committee member from a calibration session (1 call site: committee-members-panel.tsx). */
+export function useNineBoxRemoveCalibrationMember(options?: MutationOptions<RemoveCalibrationMemberOutput>) {
+  const viaCSharp = isPlatformApiEnabled() && NINEBOX_WRITE_VIA_CSHARP;
+  const trpcMutation = trpc.ninebox.removeCalibrationMember.useMutation(options);
+  const csharpMutation = useCSharpMutation(async (input: RemoveCalibrationMemberInputShape) => {
+    const raw = await platformDelete('/ninebox/calibrations/{sessionId}/members/{userId}', {
+      sessionId: input.sessionId,
+      userId: input.userId,
+    });
+    return raw satisfies RemoveCalibrationMemberOutput;
+  }, options);
+  return viaCSharp ? csharpMutation : trpcMutation;
 }
