@@ -23,7 +23,16 @@
 #   - Real execution requires BOTH: the DIRECT_PROD_URL env var set, AND the
 #     explicit --yes flag.
 #   - This script never accepts a connection string as a CLI argument (it would
-#     leak into shell history / process listings) — env var only.
+#     leak into shell history / process listings) — env var only. Critically,
+#     it ALSO never passes DIRECT_PROD_URL as a positional argument to `psql`
+#     itself: `psql "$DIRECT_PROD_URL"` would put the full connection string —
+#     including the embedded password — into that subprocess's argv, which is
+#     visible to any other user on the host via `ps aux`/`ps -ef` regardless of
+#     how the value originally reached this script. Instead, DIRECT_PROD_URL is
+#     parsed (in-process, via a Python parser fed the URL over its inherited
+#     environment, never as its own argv either) into discrete PG* environment
+#     variables (PGHOST/PGPORT/PGUSER/PGPASSWORD/PGDATABASE/...) that libpq reads
+#     natively, and `psql` is invoked with NO connection-string argument at all.
 
 set -euo pipefail
 
@@ -82,6 +91,78 @@ EOF
   esac
 }
 
+# Parses $DIRECT_PROD_URL into discrete PG* environment variables (PGHOST, PGPORT,
+# PGUSER, PGPASSWORD, PGDATABASE, and any query-string params such as sslmode) and
+# `export`s them into THIS shell, then unsets DIRECT_PROD_URL itself. After this
+# runs, `psql` (with no positional connection-string argument) will pick up the
+# connection entirely from the environment — libpq's documented behavior when no
+# conninfo argument is given. This is what keeps the connection string (and its
+# embedded password) out of `psql`'s argv, and therefore out of `ps aux`/`ps -ef`.
+#
+# The URL is handed to python3 via the inherited environment (os.environ), never
+# as a python3 CLI argument, so it does not appear in python3's argv either.
+PG_ENV_VAR_NAMES=()
+load_pg_env_from_direct_prod_url() {
+  local parsed
+  if ! parsed="$(python3 - <<'PYEOF'
+import os
+import shlex
+import sys
+from urllib.parse import parse_qsl, unquote, urlsplit
+
+url = os.environ.get("DIRECT_PROD_URL", "")
+if not url:
+    print("DIRECT_PROD_URL is empty", file=sys.stderr)
+    raise SystemExit(1)
+
+parts = urlsplit(url)
+if parts.scheme not in ("postgres", "postgresql"):
+    print(f"unsupported scheme {parts.scheme!r} (expected postgres:// or postgresql://)", file=sys.stderr)
+    raise SystemExit(1)
+
+env = {}
+if parts.hostname:
+    env["PGHOST"] = parts.hostname
+if parts.port:
+    env["PGPORT"] = str(parts.port)
+if parts.username:
+    env["PGUSER"] = unquote(parts.username)
+if parts.password:
+    env["PGPASSWORD"] = unquote(parts.password)
+db = parts.path.lstrip("/")
+if db:
+    env["PGDATABASE"] = unquote(db)
+for key, value in parse_qsl(parts.query, keep_blank_values=True):
+    env[f"PG{key.upper()}"] = value
+
+for k, v in env.items():
+    print(f"export {k}={shlex.quote(v)}")
+PYEOF
+  )"; then
+    echo "ERROR: failed to parse DIRECT_PROD_URL (expected a postgres:// or postgresql:// URL)." >&2
+    exit 1
+  fi
+  # Track exported var names so we can unset them again once psql is done.
+  # (No negative array indices here — macOS ships /bin/bash 3.2, which lacks them;
+  # see the FILES/verify_instructions_for comment above for the same constraint.)
+  local line rest name
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    rest="${line#export }"
+    name="${rest%%=*}"
+    PG_ENV_VAR_NAMES+=("$name")
+  done <<< "$parsed"
+  eval "$parsed"
+  unset DIRECT_PROD_URL
+}
+
+unset_pg_env() {
+  local name
+  for name in "${PG_ENV_VAR_NAMES[@]}"; do
+    unset "$name"
+  done
+}
+
 usage() {
   cat <<'EOF'
 Usage: DIRECT_PROD_URL=<url> scripts/deploy/apply-compliance-sql.sh [options]
@@ -134,10 +215,13 @@ for f in "${FILES[@]}"; do
 done
 
 if [ "$DRY_RUN" -eq 1 ]; then
-  echo "Commands that would run (connection string redacted below; never printed for real):"
+  echo "Commands that would run (connection string redacted below; never printed for real;"
+  echo "and never passed as a psql argument for real either — see below):"
   echo
+  echo "  # DIRECT_PROD_URL is parsed into PGHOST/PGPORT/PGUSER/PGPASSWORD/PGDATABASE/... env"
+  echo "  # vars first (never printed), so it never appears on psql's command line / in ps aux:"
   for f in "${FILES[@]}"; do
-    echo "  psql -v ON_ERROR_STOP=1 --single-transaction \"\$DIRECT_PROD_URL\" -f $MANUAL_DIR/$f"
+    echo "  psql -v ON_ERROR_STOP=1 --single-transaction -f $MANUAL_DIR/$f"
     echo "  # verify:"
     verify_instructions_for "$f" | sed 's/^/  #   /'
     echo
@@ -164,10 +248,22 @@ if ! command -v psql >/dev/null 2>&1; then
   exit 1
 fi
 
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "ERROR: python3 not found on PATH (needed to parse DIRECT_PROD_URL without ever" >&2
+  echo "       putting it on a subprocess's command line)." >&2
+  exit 1
+fi
+
+load_pg_env_from_direct_prod_url
+trap unset_pg_env EXIT
+
 for f in "${FILES[@]}"; do
   echo
   echo "-- Applying $f (own transaction) --"
-  psql -v ON_ERROR_STOP=1 --single-transaction "$DIRECT_PROD_URL" -f "$MANUAL_DIR/$f"
+  # No connection-string argument here on purpose — psql reads PGHOST/PGPORT/PGUSER/
+  # PGPASSWORD/PGDATABASE/... from the environment set by load_pg_env_from_direct_prod_url
+  # above, so the secret never appears in this (or any) process's argv / `ps aux`.
+  psql -v ON_ERROR_STOP=1 --single-transaction -f "$MANUAL_DIR/$f"
   echo "Applied $f."
   echo "Verification for $f:"
   verify_instructions_for "$f" | sed 's/^/  /'

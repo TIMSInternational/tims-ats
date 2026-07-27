@@ -246,23 +246,72 @@ run_verify() {
 # NOT merge. So flipping exactly one flag requires describe-service first, merge with jq, then
 # update-service with the full merged map — never a partial/single-var update. That describe ->
 # merge -> update sequence is exactly what this function prints/runs.
+#
+# SILENT-FAILURE GUARDS (do not remove): a single describe-service call (not two — two separate
+# calls raced against each other, and a config change landing between them would have been
+# merged onto stale data) feeds every downstream step. `aws ... --query` returns exit 0 with
+# literal `null` on stdout when the JMESPath doesn't resolve (wrong shape, service not sourced
+# from ImageRepository, API contract drift) — jq happily accepts `null` as an empty object and
+# proceeds, so an unguarded merge would silently build a RuntimeEnvironmentVariables map
+# containing ONLY the one flag being flipped. `update-service` then REPLACES the real map with
+# that, deleting every other flag/secret env var on the live service. Each step below is
+# guarded (`if ! VAR=$(...)`) so a describe-service failure, a null/missing path, or a merge
+# that would shrink the env-var count aborts loudly BEFORE update-service is ever called.
 # ---------------------------------------------------------------------------------------------
 flip_command_block() {
-  local surface="$1" target_value="$2" flag service_arn row
+  local surface="$1" target_value="$2" flag service_arn safe_service_arn row
   row="$(surface_row "$surface")"
   flag="$(field "$row" 2)"
   service_arn="${SERVICE_ARN:-<APPRUNNER_SERVICE_ARN>}"
+  # SECURITY: service_arn comes from --service-arn / $TIMS_APPRUNNER_SERVICE_ARN, both
+  # user-controlled. This whole block is later `eval`'d verbatim in do_flip_backend/
+  # do_rollback when --yes is passed, so naively interpolating it into the heredoc below
+  # (the old `SERVICE_ARN="${service_arn}"`) let a value like
+  # `x"; rm -rf ~; echo "` break out of the quotes and execute arbitrary shell commands —
+  # confirmed by reproduction (a crafted --service-arn wrote a marker file via `touch`
+  # when run through this function). `printf %q` shell-escapes the value into a single
+  # safely-quoted token that reconstructs to the exact original string on eval, with no
+  # possibility of breaking out into command context.
+  safe_service_arn="$(printf '%q' "$service_arn")"
 
   cat <<EOF
 # --- App Runner flag flip: Platform:${flag} -> ${target_value} -------------------------------
-SERVICE_ARN="${service_arn}"
-CURRENT=\$(aws apprunner describe-service --service-arn "\$SERVICE_ARN" \\
-  --query 'Service.SourceConfiguration.ImageRepository.ImageConfiguration.RuntimeEnvironmentVariables' \\
-  --output json)
-NEW_ENV=\$(echo "\$CURRENT" | jq --arg v "${target_value}" '.["Platform__${flag}"] = \$v')
-NEW_SRC=\$(aws apprunner describe-service --service-arn "\$SERVICE_ARN" \\
-  --query 'Service.SourceConfiguration' --output json \\
-  | jq --argjson env "\$NEW_ENV" '.ImageRepository.ImageConfiguration.RuntimeEnvironmentVariables = \$env')
+SERVICE_ARN=${safe_service_arn}
+if ! SRC_CONFIG=\$(aws apprunner describe-service --service-arn "\$SERVICE_ARN" \\
+  --query 'Service.SourceConfiguration' --output json); then
+  echo "ERROR: aws apprunner describe-service failed for \$SERVICE_ARN. Refusing to proceed." >&2
+  exit 1
+fi
+if [ -z "\$SRC_CONFIG" ] || [ "\$SRC_CONFIG" = "null" ]; then
+  echo "ERROR: aws apprunner describe-service returned empty/null SourceConfiguration for \$SERVICE_ARN. Refusing to proceed (would build a broken update-service payload)." >&2
+  exit 1
+fi
+if ! CURRENT_ENV=\$(echo "\$SRC_CONFIG" | jq -e '.ImageRepository.ImageConfiguration.RuntimeEnvironmentVariables'); then
+  echo "ERROR: .ImageRepository.ImageConfiguration.RuntimeEnvironmentVariables is null/missing in the describe-service response (unexpected service shape — is this actually an ImageRepository-sourced service?). Refusing to proceed." >&2
+  exit 1
+fi
+if ! CURRENT_COUNT=\$(echo "\$CURRENT_ENV" | jq 'keys | length'); then
+  echo "ERROR: could not enumerate keys of the current RuntimeEnvironmentVariables map (unexpected type — not a JSON object?). Refusing to proceed." >&2
+  exit 1
+fi
+if ! NEW_ENV=\$(echo "\$CURRENT_ENV" | jq --arg v "${target_value}" '.["Platform__${flag}"] = \$v'); then
+  echo "ERROR: jq failed to merge Platform__${flag}=${target_value} into the current env-var map. Refusing to proceed." >&2
+  exit 1
+fi
+NEW_COUNT=\$(echo "\$NEW_ENV" | jq 'keys | length')
+if [ "\$NEW_COUNT" -lt "\$CURRENT_COUNT" ]; then
+  echo "ERROR: merged env-var map has FEWER keys (\$NEW_COUNT) than the current one (\$CURRENT_COUNT) — refusing to call update-service (this would silently drop existing env vars/flags on the real service)." >&2
+  exit 1
+fi
+FLIPPED_VALUE=\$(echo "\$NEW_ENV" | jq -r '.["Platform__${flag}"]')
+if [ "\$FLIPPED_VALUE" != "${target_value}" ]; then
+  echo "ERROR: sanity check failed — Platform__${flag} reads \\"\$FLIPPED_VALUE\\" in the merged map, expected \\"${target_value}\\". Refusing to proceed." >&2
+  exit 1
+fi
+if ! NEW_SRC=\$(echo "\$SRC_CONFIG" | jq --argjson env "\$NEW_ENV" '.ImageRepository.ImageConfiguration.RuntimeEnvironmentVariables = \$env'); then
+  echo "ERROR: jq failed to build the final SourceConfiguration payload. Refusing to proceed." >&2
+  exit 1
+fi
 aws apprunner update-service --service-arn "\$SERVICE_ARN" --source-configuration "\$NEW_SRC"
 EOF
 
@@ -373,6 +422,9 @@ while [ $# -gt 0 ]; do
     --service-arn)
       shift
       [ $# -gt 0 ] || { echo "ERROR: --service-arn requires a value." >&2; exit 1; }
+      case "$1" in
+        --*) echo "ERROR: --service-arn requires a value, got option-looking argument \"$1\" (did you forget the ARN?)." >&2; exit 1 ;;
+      esac
       SERVICE_ARN="$1"
       ;;
     --service-arn=*)

@@ -200,6 +200,13 @@ async function checkGetOneReal(
     if (csharp.status !== 200) {
       return { name, pass: false, detail: `C# returned ${csharp.status}: ${JSON.stringify(csharp.body)}` };
     }
+    // Explicit status check (matches checkList's pattern) rather than relying solely on
+    // stripTrpcJson's structural throw below: a non-200 TS response whose body happens to
+    // still parse as JSON should fail loudly with its actual status, not get bundled into
+    // the generic "TS did not return the row" message from a downstream shape mismatch.
+    if (tsRaw.status !== 200) {
+      return { name, pass: false, detail: `TS returned ${tsRaw.status}: ${JSON.stringify(tsRaw.body)}` };
+    }
     let tsJson: unknown;
     try {
       tsJson = stripTrpcJson(tsRaw.body);

@@ -79,10 +79,42 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --yes) YES=1; DRY_RUN=0; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
-    --region) REGION="$2"; shift 2 ;;
-    --account-id) ACCOUNT_ID="$2"; shift 2 ;;
-    --repo-name) REPO_NAME="$2"; shift 2 ;;
-    --tag) TAG="$2"; shift 2 ;;
+    --region)
+      shift
+      [ $# -gt 0 ] || { echo "ERROR: --region requires a value." >&2; exit 1; }
+      case "$1" in
+        --*) echo "ERROR: --region requires a value, got option-looking argument \"$1\"." >&2; exit 1 ;;
+      esac
+      REGION="$1"
+      shift
+      ;;
+    --account-id)
+      shift
+      [ $# -gt 0 ] || { echo "ERROR: --account-id requires a value." >&2; exit 1; }
+      case "$1" in
+        --*) echo "ERROR: --account-id requires a value, got option-looking argument \"$1\"." >&2; exit 1 ;;
+      esac
+      ACCOUNT_ID="$1"
+      shift
+      ;;
+    --repo-name)
+      shift
+      [ $# -gt 0 ] || { echo "ERROR: --repo-name requires a value." >&2; exit 1; }
+      case "$1" in
+        --*) echo "ERROR: --repo-name requires a value, got option-looking argument \"$1\"." >&2; exit 1 ;;
+      esac
+      REPO_NAME="$1"
+      shift
+      ;;
+    --tag)
+      shift
+      [ $# -gt 0 ] || { echo "ERROR: --tag requires a value." >&2; exit 1; }
+      case "$1" in
+        --*) echo "ERROR: --tag requires a value, got option-looking argument \"$1\"." >&2; exit 1 ;;
+      esac
+      TAG="$1"
+      shift
+      ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; usage; exit 1 ;;
   esac
