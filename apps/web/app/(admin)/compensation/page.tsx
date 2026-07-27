@@ -1,8 +1,8 @@
 'use client';
 
-import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
 import { toast } from '../../../lib/toast';
+import { useCompensationDashboardKpis } from '../../../lib/platform-api/compensation';
 import { CompKpis } from './comp-kpis';
 import { SalaryBands, PayEquityCard } from './comp-left-column';
 import { CompaRatioDistribution, BenefitsUtilization, PendingAdjustments } from './comp-right-column';
@@ -10,7 +10,7 @@ import { MarketCompetitiveness, TotalCompBreakdown } from './comp-bottom-row';
 
 export default function CompensationPage() {
   const { t } = useI18n();
-  const kpis = trpc.compensation.getDashboardKpis.useQuery();
+  const kpis = useCompensationDashboardKpis();
 
   return (
     <div className="flex flex-col flex-1 min-w-0 h-full">
@@ -18,12 +18,30 @@ export default function CompensationPage() {
       <div className="flex flex-wrap items-center justify-between gap-y-2 px-4 md:px-7 min-h-14 py-2 bg-white border-b border-[#EDEDED] shrink-0">
         <div className="flex items-center gap-2 text-[13px]">
           <span className="text-[#8B8B8B]">{t.compensation.breadcrumbParent}</span>
-          <svg className="w-3.5 h-3.5 text-[#8B8B8B]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" /></svg>
+          <svg
+            className="w-3.5 h-3.5 text-[#8B8B8B]"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            viewBox="0 0 24 24"
+          >
+            <path d="M9 5l7 7-7 7" />
+          </svg>
           <span className="text-[#333] font-semibold">{t.sidebar.compensation}</span>
         </div>
         <div className="flex items-center gap-3">
-          <button onClick={() => toast(`${t.common.export}: ${t.common.comingSoon}`, { type: 'info' })} className="text-[12px] border border-[#EDEDED] rounded-lg px-4 py-1.5 text-[#585858] hover:bg-gray-50 font-medium">{t.common.export}</button>
-          <button onClick={() => toast(`${t.compensation.simulate}: ${t.common.comingSoon}`, { type: 'info' })} className="text-[12px] bg-[#DD0C15] text-white rounded-lg px-4 py-1.5 font-medium hover:bg-red-700">{t.compensation.simulate}</button>
+          <button
+            onClick={() => toast(`${t.common.export}: ${t.common.comingSoon}`, { type: 'info' })}
+            className="text-[12px] border border-[#EDEDED] rounded-lg px-4 py-1.5 text-[#585858] hover:bg-gray-50 font-medium"
+          >
+            {t.common.export}
+          </button>
+          <button
+            onClick={() => toast(`${t.compensation.simulate}: ${t.common.comingSoon}`, { type: 'info' })}
+            className="text-[12px] bg-[#DD0C15] text-white rounded-lg px-4 py-1.5 font-medium hover:bg-red-700"
+          >
+            {t.compensation.simulate}
+          </button>
         </div>
       </div>
 

@@ -1,9 +1,9 @@
 'use client';
 
-import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
 import { formatCurrency } from '../../../lib/format-utils';
 import { useDeiPayEquity } from '../../../lib/platform-api/dei';
+import { useCompensationBandDistribution } from '../../../lib/platform-api/compensation';
 
 const fmtCompactCurrency = (n: number, currency: string) => formatCurrency(Math.round(n / 1000) * 1000, currency);
 
@@ -21,7 +21,7 @@ function genderLabel(t: ReturnType<typeof useI18n>['t'], g: string): string {
 
 export function SalaryBands() {
   const { t } = useI18n();
-  const q = trpc.compensation.getBandDistribution.useQuery();
+  const q = useCompensationBandDistribution();
 
   return (
     <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
