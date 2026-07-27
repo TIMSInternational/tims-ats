@@ -81,6 +81,9 @@ jobs:
       - name: Build Tims.Api image
         working-directory: services/Tims.Platform
         run: docker build -f src/Tims.Api/Dockerfile -t tims-platform-api:ci .
+      - name: Build Tims.Workers image
+        working-directory: services/Tims.Platform
+        run: docker build -f src/Tims.Workers/Dockerfile -t tims-platform-workers:ci .
 
   table-ownership:
     name: Table-ownership ledger check
