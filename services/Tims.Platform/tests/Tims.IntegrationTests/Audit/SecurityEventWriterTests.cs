@@ -49,6 +49,32 @@ public sealed class SecurityEventWriterTests(AuditWriterFixture fixture)
     }
 
     [Fact]
+    public async Task WriteAsync_PersistsIpAddressAndUserAgent_WhenGiven()
+    {
+        // Regression coverage for the export-event finding: `platform_export`'s SecurityEvent carries
+        // ipAddress/userAgent (matches TS `logPlatformExport`) and SecurityEventWriter must wire them
+        // through to the already-existing audit_logs.ip_address/user_agent columns.
+        await using var db = _fixture.NewAuditLogContext(_fixture.ConnectionString);
+        var writer = new SecurityEventWriter(db);
+        var orgId = AuditWriterFixture.OrgA;
+        var actorId = AuditWriterFixture.RealOwner;
+
+        await writer.WriteAsync(
+            new SecurityEvent(orgId, actorId, "platform_export", "export:access_review", null,
+                new JsonObject { ["resource"] = "access_review" },
+                IpAddress: "203.0.113.7", UserAgent: "AccessReviewTests/1.0"),
+            CancellationToken.None);
+
+        await using var readback = _fixture.NewAuditLogContext(_fixture.ConnectionString);
+        var row = readback.AuditLogs
+            .Where(a => a.OrganizationId == orgId && a.Action == "platform_export")
+            .OrderByDescending(a => a.CreatedAt)
+            .First();
+        Assert.Equal("203.0.113.7", row.IpAddress);
+        Assert.Equal("AccessReviewTests/1.0", row.UserAgent);
+    }
+
+    [Fact]
     public async Task WriteAsync_NeverThrows_WhenTheUnderlyingWriteFails()
     {
         // MissingTableConnectionString points at a real, separate DB with NO audit_logs table, so the

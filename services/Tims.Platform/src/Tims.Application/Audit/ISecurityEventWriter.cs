@@ -21,4 +21,9 @@ public sealed record SecurityEvent(
     string Action,
     string Entity,
     string? EntityId,
-    JsonObject? Metadata);
+    JsonObject? Metadata,
+    // Populated ONLY for the EXPORT event (matches TS `logPlatformExport`, which reads
+    // ipAddress/userAgent off the request); the plain `logSecurityEvent` calls for
+    // access_review_viewed/access_recertified correctly leave both null.
+    string? IpAddress = null,
+    string? UserAgent = null);

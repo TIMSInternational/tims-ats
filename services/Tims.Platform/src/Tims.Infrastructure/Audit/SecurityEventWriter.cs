@@ -27,6 +27,8 @@ public sealed class SecurityEventWriter(AuditLogDbContext db, ILogger<SecurityEv
                 Entity = securityEvent.Entity,
                 EntityId = securityEvent.EntityId,
                 Metadata = securityEvent.Metadata?.ToJsonString(),
+                IpAddress = securityEvent.IpAddress,
+                UserAgent = securityEvent.UserAgent,
             });
 
             await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);

@@ -35,10 +35,20 @@ public sealed class AccessReviewFixture : IAsyncLifetime
     public static readonly Guid StaleUserId = Guid.Parse("a0000000-0000-0000-0000-000000000003");
     public static readonly Guid DeprovisionGapUserId = Guid.Parse("a0000000-0000-0000-0000-000000000004");
     public static readonly Guid ExpiredGrantUserId = Guid.Parse("a0000000-0000-0000-0000-000000000005");
+    // Privileged-role holder (super_admin) — proves `privilegedCount`/`IsMfaPrivileged` end-to-end.
+    public static readonly Guid PrivilegedUserId = Guid.Parse("a0000000-0000-0000-0000-000000000006");
+    // OrgA user corrupted with an OrgB role grant — proves `crossOrgRole`/`crossOrgRoleCount` (the
+    // `roles.organization_id` -> `RoleAssignment.OrganizationId` wiring) end-to-end.
+    public static readonly Guid CrossOrgGrantUserId = Guid.Parse("a0000000-0000-0000-0000-000000000007");
+    // Mirrors contracts/access-review-fixtures/export-access-review-csv.json's "sample" values exactly
+    // (formula-injection name, companyScope guid, assignedBy) so a test can byte-compare the REAL CSV
+    // output for this row against the golden fixture's `expectedCsvRow`.
+    public static readonly Guid CsvFixtureUserId = Guid.Parse("a0000000-0000-0000-0000-000000000008");
     public static readonly Guid OrgBUserId = Guid.Parse("b0000000-0000-0000-0000-000000000001");
 
     public static readonly Guid RecruiterRoleOrgA = Guid.Parse("e0000000-0000-0000-0000-000000000001");
     public static readonly Guid RecruiterRoleOrgB = Guid.Parse("e0000000-0000-0000-0000-000000000002");
+    public static readonly Guid SuperAdminRoleOrgA = Guid.Parse("e0000000-0000-0000-0000-000000000003");
     public static readonly Guid CandidateReadPermissionId = Guid.Parse("f0000000-0000-0000-0000-000000000001");
 
     private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:16-alpine")
@@ -153,11 +163,15 @@ public sealed class AccessReviewFixture : IAsyncLifetime
           ('a0000000-0000-0000-0000-000000000003', '11111111-1111-1111-1111-111111111111', 'sub-stale', 'stale@tims.test', 'Stan', 'Stale', true, NULL, now() - interval '91 days', false, '2026-01-04T00:00:00Z'),
           ('a0000000-0000-0000-0000-000000000004', '11111111-1111-1111-1111-111111111111', 'sub-deprovision', 'deprovision@tims.test', 'Dana', 'Deprovisioned', false, NULL, now() - interval '1 day', false, '2026-01-05T00:00:00Z'),
           ('a0000000-0000-0000-0000-000000000005', '11111111-1111-1111-1111-111111111111', 'sub-expired', 'expired@tims.test', 'Ed', 'ExpiredGrant', true, NULL, now() - interval '1 day', false, '2026-01-06T00:00:00Z'),
+          ('a0000000-0000-0000-0000-000000000006', '11111111-1111-1111-1111-111111111111', 'sub-privileged', 'privileged@tims.test', 'Priya', 'Privileged', true, NULL, now() - interval '1 day', false, '2026-01-07T00:00:00Z'),
+          ('a0000000-0000-0000-0000-000000000007', '11111111-1111-1111-1111-111111111111', 'sub-crossorg', 'crossorg@tims.test', 'Cory', 'CrossOrg', true, NULL, now() - interval '1 day', false, '2026-01-08T00:00:00Z'),
+          ('a0000000-0000-0000-0000-000000000008', '11111111-1111-1111-1111-111111111111', 'sub-csv-fixture', 'orguser@tims.test', '=cmd|'' /c calc''!A0', '', true, NULL, now() - interval '1 day', false, '2026-01-09T00:00:00Z'),
           ('b0000000-0000-0000-0000-000000000001', '22222222-2222-2222-2222-222222222222', 'sub-orgb', 'orgb@tims.test', 'Bea', 'OrgB', true, NULL, now() - interval '1 day', false, '2026-01-01T00:00:00Z');
 
         INSERT INTO roles (id, organization_id, slug, name, is_active) VALUES
           ('e0000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'recruiter', 'Recruiter', true),
-          ('e0000000-0000-0000-0000-000000000002', '22222222-2222-2222-2222-222222222222', 'recruiter', 'Recruiter', true);
+          ('e0000000-0000-0000-0000-000000000002', '22222222-2222-2222-2222-222222222222', 'recruiter', 'Recruiter', true),
+          ('e0000000-0000-0000-0000-000000000003', '11111111-1111-1111-1111-111111111111', 'super_admin', 'Super Admin', true);
 
         INSERT INTO permissions (id, module, action) VALUES
           ('f0000000-0000-0000-0000-000000000001', 'candidate', 'read');
@@ -180,6 +194,19 @@ public sealed class AccessReviewFixture : IAsyncLifetime
         -- OrgB user, its own org's role — proves org-scoping in Task 8.
         INSERT INTO user_roles (id, user_id, role_id, assigned_at, assigned_by, expires_at) VALUES
           ('22220000-0000-0000-0000-000000000004', 'b0000000-0000-0000-0000-000000000001', 'e0000000-0000-0000-0000-000000000002', '2026-01-01T00:00:00Z', NULL, NULL);
+
+        -- privileged: active super_admin holder — raises the privileged flag (IsMfaPrivileged).
+        INSERT INTO user_roles (id, user_id, role_id, assigned_at, assigned_by, expires_at) VALUES
+          ('22220000-0000-0000-0000-000000000005', 'a0000000-0000-0000-0000-000000000006', 'e0000000-0000-0000-0000-000000000003', '2026-01-07T00:00:00Z', 'c0000000-0000-0000-0000-000000000001', NULL);
+
+        -- crossOrgRole: an OrgA user corrupted with an OrgB-owned role grant.
+        INSERT INTO user_roles (id, user_id, role_id, assigned_at, assigned_by, expires_at) VALUES
+          ('22220000-0000-0000-0000-000000000006', 'a0000000-0000-0000-0000-000000000007', 'e0000000-0000-0000-0000-000000000002', '2026-01-08T00:00:00Z', 'c0000000-0000-0000-0000-000000000001', NULL);
+
+        -- csvFixture: mirrors export-access-review-csv.json's "sample" fields exactly (recruiter,
+        -- company_scope set, no other flags raised) so the CSV row test can byte-compare it verbatim.
+        INSERT INTO user_roles (id, user_id, role_id, assigned_at, assigned_by, company_scope, expires_at) VALUES
+          ('22220000-0000-0000-0000-000000000007', 'a0000000-0000-0000-0000-000000000008', 'e0000000-0000-0000-0000-000000000001', '2026-01-09T00:00:00Z', 'c0000000-0000-0000-0000-000000000001', '22222222-0000-0000-0000-000000000001', NULL);
         """;
 }
 

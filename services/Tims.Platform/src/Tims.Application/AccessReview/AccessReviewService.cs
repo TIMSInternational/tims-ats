@@ -70,7 +70,7 @@ public sealed class AccessReviewService(IAccessReviewRepository repository)
             u.IsPlatformOwner, now));
 
         return new AccessReviewRow(
-            u.Id, $"{u.FirstName} {u.LastName}".Trim(), u.Email, organizationId, u.OrgName, status,
+            u.Id, $"{u.FirstName} {u.LastName}".Trim(), u.Email, organizationId, u.OrgName, status.ToWire(),
             u.IsPlatformOwner, u.LastLoginAt,
             u.Roles.Select(r => new RoleGrantView(
                 r.Slug, r.Name, r.RoleActive, r.AssignedAt, r.AssignedBy, r.CompanyScope, r.UnitScope,

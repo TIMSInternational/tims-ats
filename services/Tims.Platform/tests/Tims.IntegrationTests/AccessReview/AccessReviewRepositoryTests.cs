@@ -19,8 +19,9 @@ public sealed class AccessReviewRepositoryTests(AccessReviewFixture fixture)
         var ids = users.Select(u => u.Id).ToHashSet();
         // OrgA seed rows in AccessReviewFixture.SeedSql's `INSERT INTO users` with
         // organization_id = '11111111-1111-1111-1111-111111111111': Rick (org user), healthy, never,
-        // stale, deprovision, expired = 6 (the platform owner's organization_id is NULL, not OrgA).
-        Assert.Equal(6, users.Count);
+        // stale, deprovision, expired, privileged, crossorg, csv-fixture = 9 (the platform owner's
+        // organization_id is NULL, not OrgA).
+        Assert.Equal(9, users.Count);
         Assert.DoesNotContain(AccessReviewFixture.OrgBUserId, ids);
     }
 

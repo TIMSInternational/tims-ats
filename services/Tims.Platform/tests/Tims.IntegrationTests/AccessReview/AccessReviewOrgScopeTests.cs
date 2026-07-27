@@ -39,6 +39,23 @@ public sealed class AccessReviewOrgScopeTests(AccessReviewFixture fixture)
     }
 
     [Fact]
+    public async Task BuildReportAsync_OrgAReport_ExercisesPrivilegedAndCrossOrgRolePaths()
+    {
+        // Regression coverage for the fixture gap: without a privileged-role holder and a
+        // cross-org-corrupted grant, privilegedCount/crossOrgRoleCount are structurally always 0 and a
+        // positional-argument slip in the `roles.organization_id` -> RoleAssignment.OrganizationId ->
+        // crossOrgRole wiring (repository -> service) would go undetected.
+        var service = new AccessReviewService(new AccessReviewRepository(_fixture.NewContext()));
+
+        var report = await service.BuildReportAsync(AccessReviewFixture.OrgA, DateTime.UtcNow, CancellationToken.None);
+
+        Assert.True(report.Summary.PrivilegedCount > 0);
+        Assert.True(report.CrossOrgRoleCount > 0);
+        Assert.Contains(report.Rows, r => r.UserId == AccessReviewFixture.PrivilegedUserId && r.Flags.Privileged);
+        Assert.Contains(report.Rows, r => r.UserId == AccessReviewFixture.CrossOrgGrantUserId && r.Flags.CrossOrgRole);
+    }
+
+    [Fact]
     public async Task AttestAsync_OrgAAttestation_DoesNotAppearInOrgBsHistory()
     {
         var service = new AccessReviewService(new AccessReviewRepository(_fixture.NewContext()));

@@ -33,6 +33,16 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Phase-5 Slice 18 access-review golden fixtures — asserted byte-exact against REAL endpoint
+         output (report shape/status wire-format, CSV row) by AccessReviewEndpointAuthTests, closing the
+         gap where nothing on the C# side ever compared real output to these fixtures. -->
+    <Content Include="..\..\..\..\contracts\access-review-fixtures\*.json">
+      <Link>access-review-fixtures\%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\Tims.Infrastructure\Tims.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Tims.Api\Tims.Api.csproj" />
     <!-- WP3-remediation: the HRIS background-sweep job (Tims.Workers) is covered here for its

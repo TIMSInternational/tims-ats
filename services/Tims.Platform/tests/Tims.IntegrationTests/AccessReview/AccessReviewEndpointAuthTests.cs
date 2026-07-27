@@ -181,4 +181,79 @@ public sealed class AccessReviewEndpointAuthTests(AccessReviewFixture fixture)
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
+
+    /// <summary>
+    /// Regression test for the whole-branch-review Critical finding: pre-fix, `AccessReviewRow.Status`
+    /// was a bare `AccessStatus` enum with no converter, so `Results.Ok(report)` serialized `status` as
+    /// the raw integer 0 (ValueKind.Number) instead of the TS contract's lowercase string "active" —
+    /// `GetString()` below would THROW against the pre-fix code, not merely assert false. Also proves
+    /// nothing else drifted from `contracts/access-review-fixtures/access-review-report.json`'s shape
+    /// (the gap the review flagged: nothing on the C# side ever compared real output to these fixtures).
+    /// </summary>
+    [Fact]
+    public async Task PlatformOwner_Report_MatchesGoldenFixtureShape_AndStatusIsLowercaseString()
+    {
+        await using var factory = EnabledFactory();
+        using var client = factory.CreateClient();
+
+        var response = await Get(client, $"{ReportPath}?organizationId={AccessReviewFixture.OrgA}", Mint(AccessReviewFixture.PlatformOwnerSub));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var actual = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var fixtureJson = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "access-review-fixtures", "access-review-report.json"));
+        using var golden = JsonDocument.Parse(fixtureJson);
+
+        AssertSameKeys(golden.RootElement, actual.RootElement);
+        AssertSameKeys(golden.RootElement.GetProperty("summary"), actual.RootElement.GetProperty("summary"));
+
+        var goldenRow = golden.RootElement.GetProperty("rows")[0];
+        var actualRow = actual.RootElement.GetProperty("rows")
+            .EnumerateArray()
+            .First(r => r.GetProperty("userId").GetString() == AccessReviewFixture.HealthyUserId.ToString());
+        AssertSameKeys(goldenRow, actualRow);
+        AssertSameKeys(goldenRow.GetProperty("flags"), actualRow.GetProperty("flags"));
+        AssertSameKeys(goldenRow.GetProperty("roles")[0], actualRow.GetProperty("roles")[0]);
+
+        Assert.Equal(JsonValueKind.String, actualRow.GetProperty("status").ValueKind);
+        Assert.Equal("active", actualRow.GetProperty("status").GetString());
+    }
+
+    /// <summary>
+    /// Regression test for the Important finding that nothing on the C# side byte-compares CSV export
+    /// output against the golden fixture. <see cref="AccessReviewFixture.CsvFixtureUserId"/> mirrors
+    /// `export-access-review-csv.json`'s "sample" fields exactly (formula-injection name, companyScope,
+    /// assignedBy, all flags "N") so the REAL <c>AccessReviewEndpoints.BuildCsv</c> output for that row
+    /// can be asserted byte-for-byte against `expectedCsvRow` — stricter than the header-substring check
+    /// in <c>AuditReadEndpointAuthTests</c>.
+    /// </summary>
+    [Fact]
+    public async Task PlatformOwner_Export_CsvFixtureRow_MatchesGoldenFixtureByteExact()
+    {
+        await using var factory = EnabledFactory();
+        using var client = factory.CreateClient();
+
+        var response = await Get(client, $"{ExportPath}?organizationId={AccessReviewFixture.OrgA}", Mint(AccessReviewFixture.PlatformOwnerSub));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var csv = json.RootElement.GetProperty("data").GetString();
+        Assert.NotNull(csv);
+
+        var fixtureJson = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "access-review-fixtures", "export-access-review-csv.json"));
+        using var golden = JsonDocument.Parse(fixtureJson);
+        var expectedRow = golden.RootElement.GetProperty("expectedCsvRow").GetString();
+        Assert.NotNull(expectedRow);
+
+        // The formula-injection prefix is unique to CsvFixtureUserId's seeded name — no other row
+        // collides with it.
+        var actualRow = csv!.Split('\n').Single(line => line.Contains("cmd|"));
+        Assert.Equal(expectedRow, actualRow);
+    }
+
+    private static void AssertSameKeys(JsonElement expected, JsonElement actual)
+    {
+        var expectedKeys = expected.EnumerateObject().Select(p => p.Name).OrderBy(k => k, StringComparer.Ordinal).ToArray();
+        var actualKeys = actual.EnumerateObject().Select(p => p.Name).OrderBy(k => k, StringComparer.Ordinal).ToArray();
+        Assert.Equal(expectedKeys, actualKeys);
+    }
 }

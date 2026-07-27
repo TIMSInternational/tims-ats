@@ -26,7 +26,7 @@ public sealed record AccessReviewRow(
     string Email,
     Guid OrganizationId,
     string? OrgName,
-    AccessStatus Status,
+    string Status,
     bool IsPlatformOwner,
     [property: JsonConverter(typeof(NodeIsoNullableDateTimeConverter))] DateTime? LastLoginAt,
     IReadOnlyList<RoleGrantView> Roles,

@@ -74,16 +74,22 @@ public static class AccessReviewEndpoints
 
                 var report = await service.BuildReportAsync(organizationId, DateTime.UtcNow, cancellationToken);
 
+                var metadata = new JsonObject
+                {
+                    ["resource"] = "access_review",
+                    ["count"] = report.Rows.Count,
+                    ["format"] = "csv",
+                    ["targetOrgId"] = organizationId.ToString(),
+                };
+                // Matches TS's `...(info.truncated ? { truncated: true } : {})` — only present when true.
+                if (report.Truncated)
+                {
+                    metadata["truncated"] = true;
+                }
+
                 await securityEventWriter.WriteAsync(
                     new SecurityEvent(organizationId, Guid.Parse(gate.Context!.UserId), "platform_export", "export:access_review", null,
-                        new JsonObject
-                        {
-                            ["resource"] = "access_review",
-                            ["count"] = report.Rows.Count,
-                            ["format"] = "csv",
-                            ["targetOrgId"] = organizationId.ToString(),
-                            ["truncated"] = report.Truncated,
-                        }),
+                        metadata, IpAddress: ClientIp(httpContext), UserAgent: UserAgentOf(httpContext)),
                     cancellationToken);
 
                 return Results.Ok(new { format = "csv", data = BuildCsv(report), count = report.Rows.Count, truncated = report.Truncated });
@@ -192,7 +198,7 @@ public static class AccessReviewEndpoints
                     row.Name,
                     row.Email,
                     row.OrgName,
-                    row.Status.ToString().ToLowerInvariant(),
+                    row.Status,
                     role?.Slug ?? "-",
                     ScopeOf(role),
                     role?.AssignedBy?.ToString() ?? "-",
@@ -207,6 +213,26 @@ public static class AccessReviewEndpoints
         }
 
         return string.Join('\n', new[] { header }.Concat(lines));
+    }
+
+    // Audit IP: x-forwarded-for || x-real-ip (matches TS `ipOf`'s header order — CompensationReadEndpoints
+    // carries the same precedent).
+    private static string? ClientIp(HttpContext httpContext)
+    {
+        var forwarded = httpContext.Request.Headers["x-forwarded-for"].ToString();
+        if (!string.IsNullOrEmpty(forwarded))
+        {
+            return forwarded;
+        }
+
+        var realIp = httpContext.Request.Headers["x-real-ip"].ToString();
+        return string.IsNullOrEmpty(realIp) ? null : realIp;
+    }
+
+    private static string? UserAgentOf(HttpContext httpContext)
+    {
+        var userAgent = httpContext.Request.Headers.UserAgent.ToString();
+        return string.IsNullOrEmpty(userAgent) ? null : userAgent;
     }
 
     // Matches TS: [companyScope, unitScope].filter(Boolean).join('|') || '-'.

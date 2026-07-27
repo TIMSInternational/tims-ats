@@ -33,6 +33,21 @@ public sealed record UserAccessInput(
     bool IsPlatformOwner,
     DateTime Now);
 
+public static class AccessStatuses
+{
+    /// <summary>The wire form (lowercase), matching `access-review.service.ts`'s TS union values
+    /// exactly — mirrors <see cref="Tims.Domain.Access.AccessScopes.ToWire"/>'s established idiom
+    /// for enum → wire-string serialization (a bare <c>[JsonConverter(JsonStringEnumConverter&lt;T&gt;)]</c>
+    /// can't apply a naming policy and would emit "Active" with a capital A).</summary>
+    public static string ToWire(this AccessStatus status) => status switch
+    {
+        AccessStatus.Active => "active",
+        AccessStatus.Inactive => "inactive",
+        AccessStatus.Deleted => "deleted",
+        _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Unknown AccessStatus"),
+    };
+}
+
 public static class AccessRiskKernel
 {
     public const int StaleLoginDays = 90;
