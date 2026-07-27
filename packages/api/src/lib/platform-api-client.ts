@@ -58,3 +58,34 @@ export async function platformGetWithAuth(
   const body = response.status === 204 ? null : await response.json().catch(() => null);
   return { status: response.status, body };
 }
+
+/**
+ * POSTs to the C# Platform service, forwarding `authorizationHeader` verbatim (same contract as
+ * {@link platformGetWithAuth}) and sending `jsonBody` as the request body. Returns the raw
+ * status + parsed JSON body (or `null` for a 204/empty body) — deliberately does NOT throw on
+ * non-2xx, for the same reason as the GET variant: each call site maps specific statuses (404,
+ * 409, ...) to its own tRPC error semantics.
+ */
+export async function platformPostWithAuth(
+  path: string,
+  authorizationHeader: string,
+  jsonBody: unknown,
+): Promise<PlatformApiResponse> {
+  if (!isPlatformApiEnabled()) {
+    throw new Error('Platform API is disabled: NEXT_PUBLIC_TIMS_PLATFORM_API_URL is unset.');
+  }
+
+  const base = PLATFORM_API_URL!.replace(/\/+$/, '');
+  const response = await fetch(`${base}${path}`, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      Authorization: authorizationHeader,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(jsonBody),
+  });
+
+  const body = response.status === 204 ? null : await response.json().catch(() => null);
+  return { status: response.status, body };
+}
