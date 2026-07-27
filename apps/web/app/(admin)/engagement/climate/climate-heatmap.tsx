@@ -1,11 +1,11 @@
 'use client';
 
-import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
+import { useEngagementClimateHeatmap } from '../../../../lib/platform-api/engagement';
 
 export function ClimateHeatmap() {
   const { t } = useI18n();
-  const q = trpc.engagement.getClimateHeatmap.useQuery({});
+  const q = useEngagementClimateHeatmap();
   // round 7: category scores are min-5 suppressed (null) uniformly when any category
   // has a sub-floor distinct-respondent set, or the whole survey is < 5 respondents
   // (data empty). Drop null-score cells so a suppressed heatmap shows the empty state.
@@ -35,7 +35,10 @@ export function ClimateHeatmap() {
             <div key={d.category} className="flex items-center gap-3">
               <span className="text-[11px] text-[#585858] w-[120px] shrink-0 truncate capitalize">{d.category}</span>
               <div className="flex-1 bg-[#EDEDED] rounded-full h-5 overflow-hidden">
-                <div className="h-full rounded-full flex items-center justify-end pr-2 text-[10px] text-white font-semibold" style={{ width: `${Math.max((d.score / max) * 100, 8)}%`, backgroundColor: color(d.score) }}>
+                <div
+                  className="h-full rounded-full flex items-center justify-end pr-2 text-[10px] text-white font-semibold"
+                  style={{ width: `${Math.max((d.score / max) * 100, 8)}%`, backgroundColor: color(d.score) }}
+                >
                   {d.score}
                 </div>
               </div>

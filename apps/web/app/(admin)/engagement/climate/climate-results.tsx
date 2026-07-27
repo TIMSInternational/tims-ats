@@ -1,11 +1,11 @@
 'use client';
 
-import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
+import { useEngagementEnps } from '../../../../lib/platform-api/engagement';
 
 export function ClimateResults() {
   const { t } = useI18n();
-  const q = trpc.engagement.getEnps.useQuery({});
+  const q = useEngagementEnps();
 
   // eNPS is suppressed (min-5 k-anonymity) when the backend nulls its head-counts.
   const suppressed = q.data?.suppressed === true || (q.data != null && q.data.promoters == null);
@@ -44,7 +44,9 @@ export function ClimateResults() {
                   <span className={`w-2.5 h-2.5 rounded-sm ${s.cls}`} />
                   <span className="text-[11px] text-[#333]">{s.label}</span>
                 </div>
-                <span className="text-[11px] text-[#8B8B8B]">{s.value} · {Math.round((s.value / total) * 100)}%</span>
+                <span className="text-[11px] text-[#8B8B8B]">
+                  {s.value} · {Math.round((s.value / total) * 100)}%
+                </span>
               </div>
             ))}
           </div>

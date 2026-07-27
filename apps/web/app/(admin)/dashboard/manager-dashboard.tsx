@@ -2,6 +2,7 @@
 
 import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
+import { useEngagementListActionPlans, useEngagementListLeaderCommitments } from '../../../lib/platform-api/engagement';
 import { KpiCard, KpiCardSkeleton } from '../../../components';
 import { LoadError } from './load-error';
 import { OffersToApprovePanel, ScorecardsToSubmitPanel } from './manager-todos';
@@ -11,27 +12,13 @@ import { OffersToApprovePanel, ScorecardsToSubmitPanel } from './manager-todos';
 // the full (scope-narrowed) set, so we count the returned items directly.
 const LIST_LIMIT = 100;
 
-const CARD_DOT_COLORS = [
-  'bg-blue-400',
-  'bg-green-400',
-  'bg-purple-400',
-  'bg-teal-400',
-  'bg-indigo-400',
-];
+const CARD_DOT_COLORS = ['bg-blue-400', 'bg-green-400', 'bg-purple-400', 'bg-teal-400', 'bg-indigo-400'];
 
-const CARD_BG_COLORS = [
-  'bg-blue-50',
-  'bg-green-50',
-  'bg-purple-50',
-  'bg-teal-50',
-  'bg-indigo-50',
-];
+const CARD_BG_COLORS = ['bg-blue-50', 'bg-green-50', 'bg-purple-50', 'bg-teal-50', 'bg-indigo-50'];
 
 function Dot({ index }: { index: number }) {
   return (
-    <span
-      className={`w-2.5 h-2.5 rounded-full inline-block ${CARD_DOT_COLORS[index % CARD_DOT_COLORS.length]}`}
-    />
+    <span className={`w-2.5 h-2.5 rounded-full inline-block ${CARD_DOT_COLORS[index % CARD_DOT_COLORS.length]}`} />
   );
 }
 
@@ -45,14 +32,12 @@ export function ManagerDashboard() {
   const offers = trpc.offer.getPending.useQuery();
   const scorecards = trpc.interview.getPendingScorecards.useQuery();
   const okrs = trpc.performance.listOkrs.useQuery({ limit: LIST_LIMIT, status: 'active' });
-  const actionPlans = trpc.engagement.listActionPlans.useQuery();
-  const commitments = trpc.engagement.listLeaderCommitments.useQuery();
+  const actionPlans = useEngagementListActionPlans();
+  const commitments = useEngagementListLeaderCommitments();
 
   // Hiring KPI strip depends on these four queries.
-  const hiringLoading =
-    vac.isLoading || cand.isLoading || offers.isLoading || scorecards.isLoading;
-  const hiringError =
-    vac.isError || cand.isError || offers.isError || scorecards.isError;
+  const hiringLoading = vac.isLoading || cand.isLoading || offers.isLoading || scorecards.isLoading;
+  const hiringError = vac.isError || cand.isError || offers.isError || scorecards.isError;
 
   // Team KPI strip depends on these three queries.
   const teamLoading = okrs.isLoading || actionPlans.isLoading || commitments.isLoading;
@@ -62,10 +47,8 @@ export function ManagerDashboard() {
   const scorecardsCount = scorecards.data?.length ?? 0;
   // listOkrs already filters status: 'active' server-side.
   const activeOkrsCount = okrs.data?.okrs.length ?? 0;
-  const openActionPlansCount =
-    actionPlans.data?.filter((p) => p.status !== 'completed').length ?? 0;
-  const openCommitmentsCount =
-    commitments.data?.filter((c) => c.status !== 'fulfilled').length ?? 0;
+  const openActionPlansCount = actionPlans.data?.filter((p) => p.status !== 'completed').length ?? 0;
+  const openCommitmentsCount = commitments.data?.filter((c) => c.status !== 'fulfilled').length ?? 0;
 
   return (
     <div className="h-full flex flex-col overflow-hidden p-6">
@@ -119,11 +102,7 @@ export function ManagerDashboard() {
 
         {/* My Hiring to-do panels */}
         <div className="flex flex-col md:flex-row gap-4 mb-8">
-          <OffersToApprovePanel
-            data={offers.data}
-            isLoading={offers.isLoading}
-            isError={offers.isError}
-          />
+          <OffersToApprovePanel data={offers.data} isLoading={offers.isLoading} isError={offers.isError} />
           <ScorecardsToSubmitPanel
             data={scorecards.data}
             isLoading={scorecards.isLoading}

@@ -3,6 +3,7 @@
 import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
 import { useReportingFunnel } from '../../../lib/platform-api/reporting';
+import { useEngagementEnps, useEngagementDashboardKpis } from '../../../lib/platform-api/engagement';
 import { KpiCard, KpiCardSkeleton } from '../../../components';
 import { suppressedValue } from '../../../lib/dashboard/suppress';
 import { LoadError } from './load-error';
@@ -10,29 +11,13 @@ import { OrgFunnel } from './org-funnel';
 import { PerformancePanel } from './performance-panel';
 import { CulturePulse } from './culture-pulse';
 
-const CARD_DOT_COLORS = [
-  'bg-blue-400',
-  'bg-green-400',
-  'bg-purple-400',
-  'bg-teal-400',
-  'bg-indigo-400',
-  'bg-red-400',
-];
+const CARD_DOT_COLORS = ['bg-blue-400', 'bg-green-400', 'bg-purple-400', 'bg-teal-400', 'bg-indigo-400', 'bg-red-400'];
 
-const CARD_BG_COLORS = [
-  'bg-blue-50',
-  'bg-green-50',
-  'bg-purple-50',
-  'bg-teal-50',
-  'bg-indigo-50',
-  'bg-red-50',
-];
+const CARD_BG_COLORS = ['bg-blue-50', 'bg-green-50', 'bg-purple-50', 'bg-teal-50', 'bg-indigo-50', 'bg-red-50'];
 
 function Dot({ index }: { index: number }) {
   return (
-    <span
-      className={`w-2.5 h-2.5 rounded-full inline-block ${CARD_DOT_COLORS[index % CARD_DOT_COLORS.length]}`}
-    />
+    <span className={`w-2.5 h-2.5 rounded-full inline-block ${CARD_DOT_COLORS[index % CARD_DOT_COLORS.length]}`} />
   );
 }
 
@@ -43,8 +28,8 @@ export function OrgCommandCenter() {
   const exec = trpc.monitoring.getExecutiveKpis.useQuery();
   const perf = trpc.performance.getDashboardKpis.useQuery();
   const funnel = useReportingFunnel();
-  const enps = trpc.engagement.getEnps.useQuery();
-  const culture = trpc.engagement.getDashboardKpis.useQuery();
+  const enps = useEngagementEnps();
+  const culture = useEngagementDashboardKpis();
 
   const kpisLoading = exec.isLoading || perf.isLoading || enps.isLoading;
   const kpisError = exec.isError || perf.isError || enps.isError;
@@ -90,11 +75,7 @@ export function OrgCommandCenter() {
               />
               <KpiCard
                 label={occ.enps}
-                value={suppressedValue(
-                  enps.data?.enps,
-                  enps.data?.suppressed ?? false,
-                  t.common.notDisclosed,
-                )}
+                value={suppressedValue(enps.data?.enps, enps.data?.suppressed ?? false, t.common.notDisclosed)}
                 icon={<Dot index={3} />}
                 iconBg={CARD_BG_COLORS[3]}
               />

@@ -1,16 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
+import { useEngagementMyPendingSurveys } from '../../../lib/platform-api/engagement';
 import { EmptyState, Skeleton } from '../../../components';
 import { LoadError } from './load-error';
 import { formatDate } from '../../../lib/format-utils';
 import { SurveyTakeModal } from './survey-take-modal';
 
-const EMPTY_ICON = (
-  <span className="w-8 h-8 rounded-full bg-[#F0F0F0] inline-block" aria-hidden />
-);
+const EMPTY_ICON = <span className="w-8 h-8 rounded-full bg-[#F0F0F0] inline-block" aria-hidden />;
 
 function SkeletonRows() {
   return (
@@ -32,7 +30,7 @@ function SkeletonRows() {
 export function EmployeeSurveys() {
   const { t } = useI18n();
   const e = t.employeeHome;
-  const surveys = trpc.engagement.myPendingSurveys.useQuery();
+  const surveys = useEngagementMyPendingSurveys();
   const list = surveys.data ?? [];
 
   const [takingId, setTakingId] = useState<string | null>(null);
@@ -49,18 +47,11 @@ export function EmployeeSurveys() {
       ) : (
         <div className="space-y-1">
           {list.map((survey) => (
-            <div
-              key={survey.id}
-              className="flex items-center justify-between gap-3 rounded-lg px-3 py-2.5 -mx-3"
-            >
-              <span className="text-sm text-[#333] font-medium truncate">
-                {survey.title}
-              </span>
+            <div key={survey.id} className="flex items-center justify-between gap-3 rounded-lg px-3 py-2.5 -mx-3">
+              <span className="text-sm text-[#333] font-medium truncate">{survey.title}</span>
               <div className="flex items-center gap-3 shrink-0">
                 <span className="text-[13px] text-[#8B8B8B]">
-                  {survey.endsAt
-                    ? `${e.surveyCloses} ${formatDate(survey.endsAt)}`
-                    : e.surveyNoClose}
+                  {survey.endsAt ? `${e.surveyCloses} ${formatDate(survey.endsAt)}` : e.surveyNoClose}
                 </span>
                 <button
                   type="button"
@@ -75,9 +66,7 @@ export function EmployeeSurveys() {
         </div>
       )}
 
-      {takingId ? (
-        <SurveyTakeModal surveyId={takingId} onClose={() => setTakingId(null)} />
-      ) : null}
+      {takingId ? <SurveyTakeModal surveyId={takingId} onClose={() => setTakingId(null)} /> : null}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 'use client';
 
-import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
+import { useEngagementLowClimateAlerts } from '../../../../lib/platform-api/engagement';
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -42,7 +42,7 @@ function severityClasses(sev: string): { wrap: string; badge: string } {
 
 export function LowClimateAlerts() {
   const { t } = useI18n();
-  const q = trpc.engagement.getLowClimateAlerts.useQuery({});
+  const q = useEngagementLowClimateAlerts();
 
   return (
     <Card title={t.climate.lowAlerts}>
@@ -62,7 +62,9 @@ export function LowClimateAlerts() {
                   <p className="text-[12px] font-medium text-[#333] truncate">{a.title}</p>
                   <p className="text-[10px] text-[#8B8B8B] truncate">{a.message}</p>
                 </div>
-                <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full shrink-0 ${c.badge}`}>{a.severity}</span>
+                <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full shrink-0 ${c.badge}`}>
+                  {a.severity}
+                </span>
               </div>
             );
           })}
