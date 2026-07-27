@@ -7,6 +7,7 @@ import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
 import { toast } from '../../../lib/toast';
 import type { Eval360RaterTask } from '../../../lib/trpc-types';
+import { useEvaluation360SubmitRatings } from '../../../lib/platform-api/evaluation360';
 
 type CompetencyKey = (typeof EVAL360_COMPETENCIES)[number];
 
@@ -30,7 +31,7 @@ export function RaterTaskCard({ task }: RaterTaskCardProps) {
   );
   const [comment, setComment] = useState('');
 
-  const submit = trpc.evaluation360.submitRatings.useMutation({
+  const submit = useEvaluation360SubmitRatings({
     onSuccess: () => {
       toast(t.my360.submitSuccess, { type: 'success' });
       // Refresh myRaterTasks from BOTH read paths: the tRPC cache and — when the C# read cutover is
