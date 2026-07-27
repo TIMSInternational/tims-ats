@@ -27,8 +27,11 @@ describe('survey-take-modal — query + mutation wiring', () => {
     expect(src()).toMatch(/^'use client';/);
   });
 
-  it('fetches the renderable survey via getSurveyForResponse.useQuery', () => {
-    expect(src()).toContain('engagement.getSurveyForResponse.useQuery');
+  it('fetches the renderable survey via the useEngagementSurveyForResponse cutover wrapper', () => {
+    // Cut over to the dark platform-api wrapper (apps/web/lib/platform-api/engagement.ts,
+    // PR #197) — it still calls trpc.engagement.getSurveyForResponse.useQuery internally on the
+    // default (non-C#) path, so this assertion follows the refactor rather than the raw call.
+    expect(src()).toContain('useEngagementSurveyForResponse');
   });
 
   it('submits via submitSurveyResponse.useMutation', () => {

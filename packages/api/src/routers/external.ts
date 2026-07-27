@@ -24,22 +24,36 @@ function auditMeta(ctx: {
 }
 
 export const externalRouter = router({
-  // Bulk sync of completed assessment profiles (cursor-paginated, full v1 payload).
+  // Bulk sync of completed assessment profiles (cursor-paginated, full v1 payload). The raw
+  // Authorization header is forwarded verbatim so a dark C#-cutover proxy can re-authenticate the
+  // SAME vendor key against the C# service (see external-assessment.service.ts) — never used to
+  // derive anything else here.
   getAssessmentResults: ASSESSMENT_READ.input(
-    z.object({
-      take: z.number().int().min(1).max(25).default(25),
-      cursor: z.string().uuid().optional(),
-    }).optional(),
+    z
+      .object({
+        take: z.number().int().min(1).max(25).default(25),
+        cursor: z.string().uuid().optional(),
+      })
+      .optional(),
   ).query(({ ctx, input }) =>
-    externalAssessmentService.list(ctx.access, auditMeta(ctx), input?.take ?? 25, input?.cursor),
+    externalAssessmentService.list(
+      ctx.access,
+      auditMeta(ctx),
+      input?.take ?? 25,
+      input?.cursor,
+      ctx.headers.get('authorization') ?? '',
+    ),
   ),
 
   // Single assessment profile by assignment id (full v1 payload). NOT_FOUND if the
   // assignment is not in the key's org (IDOR-safe via RLS + scope).
-  getAssessmentResult: ASSESSMENT_READ.input(
-    z.object({ assignmentId: z.string().uuid() }),
-  ).query(({ ctx, input }) =>
-    externalAssessmentService.getOne(ctx.access, auditMeta(ctx), input.assignmentId),
+  getAssessmentResult: ASSESSMENT_READ.input(z.object({ assignmentId: z.string().uuid() })).query(({ ctx, input }) =>
+    externalAssessmentService.getOne(
+      ctx.access,
+      auditMeta(ctx),
+      input.assignmentId,
+      ctx.headers.get('authorization') ?? '',
+    ),
   ),
 
   // Inbound vendor write (Sprint 1.6): submit a preemployment-validation result.
