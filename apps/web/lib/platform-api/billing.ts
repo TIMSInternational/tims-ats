@@ -9,16 +9,19 @@
 // output type (inferRouterOutputs), so each mapper below is compile-time-locked to the live
 // contract's shape — including the superjson Date semantics on the getCurrentPlan subscription.
 
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import type { inferRouterOutputs } from '@trpc/server';
 import type { AppRouter } from '@tims/api';
 import { trpc } from '../trpc';
-import { isPlatformApiEnabled, platformGet } from './client';
+import { isPlatformApiEnabled, platformGet, platformPostRaw } from './client';
 
 type RouterOutput = inferRouterOutputs<AppRouter>;
 type BillingConfigOutput = RouterOutput['billing']['getBillingConfig'];
 type CurrentPlanOutput = RouterOutput['billing']['getCurrentPlan'];
 type UsageOutput = RouterOutput['billing']['getUsage'];
+type CreateCheckoutSessionOutput = RouterOutput['billing']['createCheckoutSession'];
+type CreatePortalSessionOutput = RouterOutput['billing']['createPortalSession'];
+type CancelSubscriptionOutput = RouterOutput['billing']['cancelSubscription'];
 
 // All three live behind the C# `Platform:BillingUsageEnabled` backend flag (verified in
 // services/Tims.Platform/src/Tims.Api/Billing/BillingUsageEndpoints.cs — getUsage /getCurrentPlan
@@ -27,8 +30,7 @@ type UsageOutput = RouterOutput['billing']['getUsage'];
 const BILLING_USAGE_VIA_CSHARP = process.env.NEXT_PUBLIC_BILLING_USAGE_VIA_CSHARP === 'true';
 
 const num = (v: number | string): number => Number(v);
-const numOrNull = (v: number | string | null | undefined): number | null =>
-  v == null ? null : Number(v);
+const numOrNull = (v: number | string | null | undefined): number | null => (v == null ? null : Number(v));
 
 // The C# service serializes every DateTime as a canonical Node-ISO string (…fffZ) via
 // NodeIsoDateTimeOffsetConverter; superjson on the tRPC path deserializes the same instants to
@@ -133,4 +135,75 @@ export function useBillingUsage() {
   });
 
   return viaCSharp ? csharpQuery : trpcQuery;
+}
+
+// ---------------------------------------------------------------------------
+// Writes (Phase-5 Slice 4b) — a SEPARATE flag from the reads above, mirroring backend
+// `Platform:BillingSelfServeEnabled` (independent of BillingUsageEnabled). All 3 C# self-serve
+// mutations (createCheckoutSession/createPortalSession/cancelSubscription) have live FE consumers
+// (billing-plans.tsx, settings/billing/page.tsx) — a 100% wrap rate, like compensation's. Each hook
+// mirrors trpc's useMutation shape ({ onSuccess?, onError? }); MutationOptions is generic over TData
+// (like ninebox's/engagement's) because both consumers redirect via `window.location.href = url`
+// from the resolved data. Uses {@link platformPostRaw} (NOT the typed platformPost) because all
+// three C# endpoints return an anonymous object (`Results.Ok(new { url })` / `{ cancelAtPeriodEnd }`)
+// with no `.Produces<T>()` annotation — the generated OpenAPI contract has no typed 200 body for
+// these paths, so `PostPaths`/`platformPost` can't accept them (verified in schema.d.ts: `content?:
+// never` at 200 for all three operations).
+// ---------------------------------------------------------------------------
+
+const BILLING_SELF_SERVE_WRITE_VIA_CSHARP = process.env.NEXT_PUBLIC_BILLING_SELF_SERVE_WRITE_VIA_CSHARP === 'true';
+
+interface MutationOptions<TData = void> {
+  onSuccess?: (data: TData) => void;
+  onError?: (err: { message: string }) => void;
+  onSettled?: () => void;
+}
+
+function useCSharpMutation<TInput, TData>(
+  mutationFn: (input: TInput) => Promise<TData>,
+  options: MutationOptions<TData> | undefined,
+) {
+  return useMutation({
+    mutationFn,
+    onSuccess: options?.onSuccess,
+    onError: (err: unknown) => options?.onError?.(err instanceof Error ? err : { message: 'Unknown error' }),
+    onSettled: options?.onSettled,
+  });
+}
+
+interface CreateCheckoutSessionInputShape {
+  plan: string;
+}
+
+/** STAFF: create a Stripe Checkout session for a self-serve plan (1 call site: billing-plans.tsx). */
+export function useBillingCreateCheckoutSession(options?: MutationOptions<CreateCheckoutSessionOutput>) {
+  const viaCSharp = isPlatformApiEnabled() && BILLING_SELF_SERVE_WRITE_VIA_CSHARP;
+  const trpcMutation = trpc.billing.createCheckoutSession.useMutation(options);
+  const csharpMutation = useCSharpMutation(async (input: CreateCheckoutSessionInputShape) => {
+    const raw = (await platformPostRaw('/billing/checkout-session', { plan: input.plan })) as { url: string };
+    return { url: raw.url } satisfies CreateCheckoutSessionOutput;
+  }, options);
+  return viaCSharp ? csharpMutation : trpcMutation;
+}
+
+/** STAFF: create a Stripe Billing Portal session (1 call site: settings/billing/page.tsx). */
+export function useBillingCreatePortalSession(options?: MutationOptions<CreatePortalSessionOutput>) {
+  const viaCSharp = isPlatformApiEnabled() && BILLING_SELF_SERVE_WRITE_VIA_CSHARP;
+  const trpcMutation = trpc.billing.createPortalSession.useMutation(options);
+  const csharpMutation = useCSharpMutation(async () => {
+    const raw = (await platformPostRaw('/billing/portal-session', undefined)) as { url: string };
+    return { url: raw.url } satisfies CreatePortalSessionOutput;
+  }, options);
+  return viaCSharp ? csharpMutation : trpcMutation;
+}
+
+/** STAFF: cancel the subscription at period end (1 call site: settings/billing/page.tsx). */
+export function useBillingCancelSubscription(options?: MutationOptions<CancelSubscriptionOutput>) {
+  const viaCSharp = isPlatformApiEnabled() && BILLING_SELF_SERVE_WRITE_VIA_CSHARP;
+  const trpcMutation = trpc.billing.cancelSubscription.useMutation(options);
+  const csharpMutation = useCSharpMutation(async () => {
+    await platformPostRaw('/billing/cancel-subscription', undefined);
+    return { cancelAtPeriodEnd: true } satisfies CancelSubscriptionOutput;
+  }, options);
+  return viaCSharp ? csharpMutation : trpcMutation;
 }

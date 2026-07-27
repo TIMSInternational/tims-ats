@@ -1,24 +1,18 @@
 'use client';
 
-import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
+import { useBillingCreateCheckoutSession } from '../../../../lib/platform-api/billing';
 
 type CheckoutPlan = 'starter' | 'professional';
 
 // Self-serve plan cards. Upgrade → createCheckoutSession → redirect to Stripe's
 // hosted checkout. Buttons are disabled when billing is not configured (the UI
 // gate; the endpoint also fails closed server-side).
-export function BillingPlans({
-  currentPlan,
-  configured,
-}: {
-  currentPlan: string | null;
-  configured: boolean;
-}) {
+export function BillingPlans({ currentPlan, configured }: { currentPlan: string | null; configured: boolean }) {
   const { t } = useI18n();
 
-  const checkout = trpc.billing.createCheckoutSession.useMutation({
+  const checkout = useBillingCreateCheckoutSession({
     onSuccess: ({ url }) => {
       window.location.href = url;
     },
