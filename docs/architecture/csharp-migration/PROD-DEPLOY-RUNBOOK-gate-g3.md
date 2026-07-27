@@ -9,33 +9,39 @@ Federico execution.
 > slices merged (all the people/comp/eval360/succession/nine-box/engagement READS + the compensation/eval360/
 > succession/nine-box/engagement WRITES + the FX gateway) — **22 surface flags now**, one new EF migration
 > (`fx_rates`), and several **flip-ready** write domains. §2 (flag surface), §1 (migrations), and §6 (cutover
-> order) below are updated to the full current set. Everything is still dark; nothing has been deployed.
+> order) below are updated to the full current set. **UPDATE 2026-07-27:** this is no longer universally true —
+> `TeamIntelReadEnabled` has been flipped and confirmed live in prod (Federico). Every OTHER surface below is
+> still dark; nothing else has been deployed.
 
 > **Who runs what.** Everything in this runbook that touches PROD (AWS, secrets, prod DDL, DNS, feature-flag
 > flips, deleting TS) is **Federico-run** — the standing migration rule (`I never touch prod`). Claude prepared
-> this doc + the deploy artifacts, and does the per-surface FE-rewiring PRs (§6). Nothing here has been executed.
+> this doc + the deploy artifacts, and does the per-surface FE-rewiring PRs (§6). Nothing here has been executed,
+> EXCEPT the team-intel read flip noted above, which Federico ran manually outside this runbook's documented
+> sequence (see the CORS/CSP fix commits, #183/#184, 2026-07-24).
 
-> **The big picture.** The C# backend has **never been deployed** — all strangler surfaces are dark code on
-> `main`, and `services/Tims.Platform` is not part of the Vercel build. "Moving to production" = standing up the
-> first C# service (this runbook), then cutting surfaces over one flag at a time. The live TS app is unaffected
-> throughout and is the rollback target for every surface.
+> **The big picture.** The C# backend has been deployed for at least one surface — `TeamIntelReadEnabled` is
+> confirmed live — but every other strangler surface is still dark code on `main`. "Moving to production" = the
+> remaining 12 read/write pieces still need standing up per this runbook, then cutting over one flag at a time.
+> The live TS app is unaffected throughout and is the rollback target for every surface.
 
 ---
 
 ## 0. Blocking pre-reqs (clear BEFORE the C# deploy)
+
 - [ ] **0.1 — 🔴 Rotate the leaked prod DB password** (leaked to a chat transcript during the 2026-07-20 qrtz
-  apply) **+ update Vercel `DATABASE_URL`/`DIRECT_URL` in the SAME maintenance window** — resetting the password
-  alone breaks the live TS app until Vercel env is updated. Do this first; the new password feeds §2.
+      apply) **+ update Vercel `DATABASE_URL`/`DIRECT_URL` in the SAME maintenance window** — resetting the password
+      alone breaks the live TS app until Vercel env is updated. Do this first; the new password feeds §2.
 - [ ] **0.2 — (recommended, independent of C#) apply the pending compliance prod SQL** (`psql -v ON_ERROR_STOP=1
-  --single-transaction "<DIRECT_PROD_URL>" -f <file>`): merge **PR #144** then apply CB-1
-  (`packages/db/prisma/manual/2026-07-17-data-access-logs-immutable.sql`), CB-1b
-  (`2026-07-17-audit-logs-immutable.sql`), CB-2b (`2026-07-17-add-access-reviews.sql`). Verify UPDATE/DELETE/
-  TRUNCATE raise "…is append-only". These are part of "everything to prod" but do NOT block the C# service.
+--single-transaction "<DIRECT_PROD_URL>" -f <file>`): merge **PR #144** then apply CB-1
+      (`packages/db/prisma/manual/2026-07-17-data-access-logs-immutable.sql`), CB-1b
+      (`2026-07-17-audit-logs-immutable.sql`), CB-2b (`2026-07-17-add-access-reviews.sql`). Verify UPDATE/DELETE/
+      TRUNCATE raise "…is append-only". These are part of "everything to prod" but do NOT block the C# service.
 - [ ] **0.3 — decide `MFA_ENFORCED` timing** (flip in Vercel after privileged users enroll a factor — TS-side, dark today).
 
 ---
 
 ## 1. Target architecture
+
 - **ONE App Runner service first: `tims-platform-api`** (from an ECR image), us-west-2, port **8080**,
   liveness `/health`, readiness `/ready`, auto-scaling min 1. This serves ALL the strangler READ/WRITE surfaces
   (they need no new tables).
@@ -47,7 +53,7 @@ Federico execution.
   EXISTING Prisma tables (no DDL). Two EF-owned migrations exist:
   - **`20260723032952_fx_rates` — apply BEFORE the FX-reads cutover** (surface #10 in §6). It creates the
     efcore-owned `fx_rates` table — a **global, RLS-EXEMPT catalog** (like `ai_agents`/`permissions`), `GRANT SELECT
-    TO app_tenant`, written only by the privileged daily `FxRefreshJob`. The API can run without it as long as
+TO app_tenant`, written only by the privileged daily `FxRefreshJob`. The API can run without it as long as
     `FxReadsEnabled=false`; applying it + running the first frankfurter refresh is a prerequisite ONLY for flipping
     FX reads. (The refresh job runs on the Quartz scheduler — see §8; until Workers deploy, seed `fx_rates` via a
     one-off refresh or manual insert before flipping FX.)
@@ -57,49 +63,54 @@ Federico execution.
 ---
 
 ## 2. Prod config — the `Platform:` env surface
+
 App Runner env vars use `Platform__<Name>` (double-underscore = section nesting). **All 21 surface flags default
 `false`;** set them explicitly `false` for the first deploy for auditability. The full set (each = one strangled
 surface, flipped per §6):
+
 - **Reads (12):** `ExternalVendorReadEnabled`, `BillingReadEnabled`, `BillingUsageEnabled`, `ReportingReadEnabled`,
   `TeamIntelReadEnabled`, `Evaluation360ReadEnabled`, `SuccessionReadEnabled`, `CompensationReadEnabled`,
-  `NineBoxReadEnabled`, `EngagementReadEnabled`, `DeiReadEnabled`, `FxReadsEnabled` (needs the `fx_rates` migration
-  + a seed first).
+  `NineBoxReadEnabled`, `EngagementReadEnabled`, `DeiReadEnabled`, `FxReadsEnabled` (needs the `fx_rates`
+  migration and a seed first).
 - **Writes (9):** `ValidationStaffWriteEnabled`, `ExternalVendorWriteEnabled`, `CompensationWriteEnabled`,
   `Evaluation360WriteEnabled`, `SuccessionWriteEnabled`, `NineBoxWriteEnabled`, `EngagementWriteEnabled`,
   `BillingWebhookWriteEnabled`, `BillingSelfServeEnabled`.
-(The exact CLR property names are in `services/Tims.Platform/src/Tims.Api/Configuration/PlatformOptions.cs`.)
+  (The exact CLR property names are in `services/Tims.Platform/src/Tims.Api/Configuration/PlatformOptions.cs`.)
 
-| Env var | Source | Required | Notes |
-|---|---|---|---|
-| `Platform__DatabaseConnectionString` | Supabase (post-0.1 rotation) | ✅ | **See the DB-ROLE requirement below — the #1 first-deploy risk.** |
-| `Platform__RedisConnectionString` | Upstash | ⚠️ recommended | perm-cache + rate-limit; fail-soft if absent (degrades, doesn't crash). |
-| `Platform__SupabaseJwtIssuer` | Supabase project | ✅ | e.g. `https://<ref>.supabase.co/auth/v1`. |
-| `Platform__SupabaseJwtAudience` | — | default `authenticated` | leave default unless customized. |
-| `Platform__SupabaseJwksMetadataAddress` | Supabase project | ✅ | JWKS URL — **must be asymmetric (RS256/JWKS), NOT legacy HS256** (deploy-verify below). |
-| `Platform__ImpersonationSecret` | = the TS HMAC impersonation secret | ✅ (for impersonation) | **must byte-match** the TS value (shared signed cookie) or owner impersonation breaks. |
-| `Platform__OtlpEndpoint` | observability backend | optional | OTel traces/metrics export. |
-| `Platform__<Surface>Enabled` ×21 | — | set `false` | The full read+write set listed above (§2). All default false; set explicit for auditability. |
-| `Stripe__SecretKey`, `Stripe__WebhookSecret` | Stripe | only before billing-write cutover | leave unset while billing writes are dark. |
-| `ASPNETCORE_URLS` | — | preset in Dockerfile (`http://+:8080`) | do not override. |
+| Env var                                      | Source                             | Required                               | Notes                                                                                        |
+| -------------------------------------------- | ---------------------------------- | -------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `Platform__DatabaseConnectionString`         | Supabase (post-0.1 rotation)       | ✅                                     | **See the DB-ROLE requirement below — the #1 first-deploy risk.**                            |
+| `Platform__RedisConnectionString`            | Upstash                            | ⚠️ recommended                         | perm-cache + rate-limit; fail-soft if absent (degrades, doesn't crash).                      |
+| `Platform__SupabaseJwtIssuer`                | Supabase project                   | ✅                                     | e.g. `https://<ref>.supabase.co/auth/v1`.                                                    |
+| `Platform__SupabaseJwtAudience`              | —                                  | default `authenticated`                | leave default unless customized.                                                             |
+| `Platform__SupabaseJwksMetadataAddress`      | Supabase project                   | ✅                                     | JWKS URL — **must be asymmetric (RS256/JWKS), NOT legacy HS256** (deploy-verify below).      |
+| `Platform__ImpersonationSecret`              | = the TS HMAC impersonation secret | ✅ (for impersonation)                 | **must byte-match** the TS value (shared signed cookie) or owner impersonation breaks.       |
+| `Platform__OtlpEndpoint`                     | observability backend              | optional                               | OTel traces/metrics export.                                                                  |
+| `Platform__<Surface>Enabled` ×21             | —                                  | set `false`                            | The full read+write set listed above (§2). All default false; set explicit for auditability. |
+| `Stripe__SecretKey`, `Stripe__WebhookSecret` | Stripe                             | only before billing-write cutover      | leave unset while billing writes are dark.                                                   |
+| `ASPNETCORE_URLS`                            | —                                  | preset in Dockerfile (`http://+:8080`) | do not override.                                                                             |
 
 ### 🔴 DB-ROLE requirement (the #1 first-deploy risk — verify before §5 sign-off)
+
 **Every** `DbContext` uses this single connection string (`Program.cs:110-274`), but they split into two paths:
+
 - **Tenant path** (reporting/team-intel/billing-read/external reads, staff writes): each query is wrapped in
   `TenantScope` → `SET LOCAL ROLE app_tenant` + org GUC per transaction → RLS-scoped. Safety comes from the
   `SET LOCAL ROLE`, NOT the base role.
 - **Privileged pre-tenant path** (NO TenantScope): `IdentityDbContext` (resolves the staff principal from
   users/user_roles/roles on EVERY authenticated request), the billing webhook write, and audit writes.
-So the connection's **base login role must simultaneously**: (1) be a **member of `app_tenant`** so the tenant
-path can `SET LOCAL ROLE app_tenant`; and (2) **read the identity tables (and do the privileged writes) past
-RLS** on the pre-tenant path — i.e. effectively **BYPASSRLS** for the non-TenantScope contexts. Memory precedent:
-"privileged connector read needs the BYPASSRLS pooler role." **Action:** confirm which Supabase role satisfies
-BOTH, or provision one; point `Platform__DatabaseConnectionString` at it (Supavisor tx-pooling 6543 for the
-tenant path). ⚠️ Because the base role is BYPASSRLS, the tenant path's isolation depends ENTIRELY on every tenant
-query going through `TenantScope` — that invariant is enforced in code + tests, but note the coupling.
+  So the connection's **base login role must simultaneously**: (1) be a **member of `app_tenant`** so the tenant
+  path can `SET LOCAL ROLE app_tenant`; and (2) **read the identity tables (and do the privileged writes) past
+  RLS** on the pre-tenant path — i.e. effectively **BYPASSRLS** for the non-TenantScope contexts. Memory precedent:
+  "privileged connector read needs the BYPASSRLS pooler role." **Action:** confirm which Supabase role satisfies
+  BOTH, or provision one; point `Platform__DatabaseConnectionString` at it (Supavisor tx-pooling 6543 for the
+  tenant path). ⚠️ Because the base role is BYPASSRLS, the tenant path's isolation depends ENTIRELY on every tenant
+  query going through `TenantScope` — that invariant is enforced in code + tests, but note the coupling.
 
 ---
 
 ## 3. Build + push the image to ECR (Federico, AWS creds)
+
 ```bash
 cd services/Tims.Platform
 ACCT=<your-account-id>; REGION=us-west-2; REPO=tims-platform-api; TAG=$(git rev-parse --short HEAD)
@@ -110,9 +121,11 @@ docker build --platform linux/amd64 -f src/Tims.Api/Dockerfile -t $REPO:$TAG .
 docker tag $REPO:$TAG $ACCT.dkr.ecr.$REGION.amazonaws.com/$REPO:$TAG
 docker push $ACCT.dkr.ecr.$REGION.amazonaws.com/$REPO:$TAG
 ```
+
 (Dockerfile build context = `services/Tims.Platform`; multi-stage; non-root; EXPOSE 8080. Confirmed accurate.)
 
 ## 4. Create the App Runner service (Federico)
+
 - **Source:** the ECR image above (manual deploys recommended for a first prod service; enable auto later).
 - **Port** 8080. **Health check:** HTTP path `/health` (liveness, no DB — won't flap on a DB blip).
 - **Instance:** start 1 vCPU / 2 GB; auto-scaling min 1 / max small.
@@ -120,19 +133,21 @@ docker push $ACCT.dkr.ecr.$REGION.amazonaws.com/$REPO:$TAG
 - **Instance role:** Secrets Manager read now; add SES/BambooHR later for Workers.
 
 ## 5. Post-deploy smoke — STILL DARK, no traffic routed (sign-off gate)
+
 - [ ] `GET /health` → **200** (liveness).
 - [ ] `GET /ready` → **200** (DB + Redis reachable) — proves the connection string + Redis.
 - [ ] `GET /openapi/v1.json` → **200**.
 - [ ] Mint a real Supabase **staff JWT** → `GET /whoami` → **200** with the resolved principal — proves JWKS
-  (asymmetric-JWT deploy-verify) **and** the privileged identity read (DB-ROLE requirement §2). If this 401s,
-  the base role can't read identity tables → fix the role before any cutover.
+      (asymmetric-JWT deploy-verify) **and** the privileged identity read (DB-ROLE requirement §2). If this 401s,
+      the base role can't read identity tables → fix the role before any cutover.
 - [ ] `GET /team-intel/dashboard-kpis` (any strangler route) → **404** (flags off) — confirms dark.
 - [ ] Logs (Serilog JSON): no PII, TraceId present.
-**Do not proceed to §6 until /ready and /whoami are green.**
+      **Do not proceed to §6 until /ready and /whoami are green.**
 
 ---
 
 ## 6. Per-surface cutover (one flag at a time; TS stays until prod-verified)
+
 **Reality check:** flipping a flag makes the C# route LIVE, but the React FE still calls tRPC (superjson). So a
 cutover per surface = **(a)** Claude ships a FE-rewiring PR pointing that surface at the C# endpoint via the
 generated OpenAPI client → **(b)** Federico sets the flag `true` → **(c)** canary (run both, compare) → **(d)**
@@ -145,7 +160,9 @@ prod-verify you drop the TS router/service/repo and flip its tables to `efcore` 
 (dark-coordinated) and the table stays `efcoreStranglerWrite` — no ownership flip yet.**
 
 **Phase A — reads (each: FE-rewire PR → flag true → canary → verify; no ownership change, tables stay Prisma-owned):**
-1. `TeamIntelReadEnabled` — newest, isolated, pure read. **Best first canary.**
+
+1. `TeamIntelReadEnabled` — newest, isolated, pure read. **Best first canary — CONFIRMED FLIPPED AND LIVE**
+   (2026-07-27, Federico).
 2. `ReportingReadEnabled`.
 3. `BillingReadEnabled` → `BillingUsageEnabled`.
 4. `Evaluation360ReadEnabled` → `SuccessionReadEnabled` → `CompensationReadEnabled` → `NineBoxReadEnabled` →
@@ -156,6 +173,7 @@ prod-verify you drop the TS router/service/repo and flip its tables to `efcore` 
 6. `ExternalVendorReadEnabled` — API-key surface; coordinate the external vendor.
 
 **Phase B — writes (after each domain's reads are verified; writes last):**
+
 7. `ExternalVendorWriteEnabled` + `ValidationStaffWriteEnabled` — **FLIP-READY together:** completes
    `preemployment_validations` → flip that table to `efcore` + delete both TS write paths.
 8. `Evaluation360WriteEnabled` — **FLIP-READY:** eval360 reads (#4) + writes = fully C# → drop the TS eval360 router,
@@ -164,8 +182,12 @@ prod-verify you drop the TS router/service/repo and flip its tables to `efcore` 
 10. `NineBoxWriteEnabled` — **FLIP-READY:** drop TS ninebox router, flip calibration_sessions/members/votes.
 11. `CompensationWriteEnabled` — **COEXISTENCE** (salary_adjustments/employee_compensations still read by other
     surfaces); keep both writers, table stays `efcoreStranglerWrite`.
-12. `EngagementWriteEnabled` — **COEXISTENCE** (surveys/survey_responses/action_plans read by monitoring.ts + dei +
-    the alert cron); keep both writers.
+12. `EngagementWriteEnabled` — the flag flip ITSELF is safe to canary now: monitoring.ts/dei.ts/the alert cron
+    are plain Prisma reads with no caching or cross-request consistency assumption, and the C# writer produces
+    byte-identical rows (verified 2026-07-27), so a reader can't tell which stack wrote a row. Still
+    **COEXISTENCE** for the TERMINAL state only — those three files still call `db.survey`/`db.actionPlan`
+    (Prisma models), so deleting the TS engagement router / moving surveys/survey_responses/action_plans to
+    `efcore` stays blocked until they're ported too.
 13. `BillingWebhookWriteEnabled` (set `Stripe__*` + re-point the Stripe webhook to C# first) → `BillingSelfServeEnabled`
     — **COEXISTENCE:** `subscriptions`/`invoices` ownership flip stays blocked (non-billing TS writers in the
     provisioning txns).
@@ -174,10 +196,12 @@ prod-verify you drop the TS router/service/repo and flip its tables to `efcore` 
 FK refs) — they only ever reject previously-broken writes, so they are safe irrespective of cutover timing.
 
 ## 7. Rollback
+
 - **Per surface:** flag `false` + FE reverts to tRPC (keep TS until prod-verified — never delete TS before verify). Instant.
 - **Service:** App Runner → redeploy previous image / pause. The TS app is fully independent, unaffected.
 
 ## 8. Workers / HRIS + scheduler HA (deferred — separate later step)
+
 Deploy `tims-platform-workers` only when HRIS goes live (BambooHR creds + Sprint-1.8 fields/cadence/conflict).
 Then: apply the `20260716000000_hris_domain` EF migration to prod (`dotnet ef migrations script` → review →
 psql direct 5432); set the Quartz connection vs Supavisor tx-pooling (session pooler/direct if lock contention);
@@ -187,6 +211,7 @@ over `app_tenant`. Set `Workers:HrisSyncEnabled=false` until real connector rows
 ---
 
 ## 9. Federico action checklist (ordered)
+
 1. [ ] Rotate DB password + update Vercel env (0.1).
 2. [ ] (optional) merge #144 + apply CB-1/CB-1b/CB-2b prod SQL (0.2).
 3. [ ] Resolve + provision the DB-ROLE (§2) — the base login role (member of app_tenant + BYPASSRLS for the pre-tenant path).
@@ -196,6 +221,7 @@ over `app_tenant`. Set `Workers:HrisSyncEnabled=false` until real connector rows
 7. [ ] Per surface (§6): tell Claude to ship the FE-rewiring PR → flip the flag → canary → verify → delete TS.
 
 ## 10. Claude's scope (in parallel, no prod access)
+
 - Generate the OpenAPI client for the FE from `contracts/openapi/Tims.Api.json` (the contract is emitted at build,
   committed, and accurate even though the routes are dark — so the client can be generated BEFORE the deploy).
 - Prepare the per-surface FE-rewiring PRs in the §6 order, starting with **team-intel read** (surface #1). Each PR
@@ -206,7 +232,9 @@ over `app_tenant`. Set `Workers:HrisSyncEnabled=false` until real connector rows
 - Resolve any code follow-ups the §5 deploy-verifies surface (JWKS shape, rate-limit buckets, Redis perm-cache).
 
 ## 11. Phase 7 — final consolidation (the last code, AFTER all surfaces are cut over + verified)
+
 Once every §6 surface is live on C# and prod-verified, retire the TS backend:
+
 - Delete the remaining tRPC routers/services/repos and `packages/api` + `packages/db` (Prisma) — everything the
   FE no longer calls; the FE runs entirely on the generated OpenAPI client.
 - Remove the tRPC/superjson client wiring from `apps/web`; the coexistence tables (billing/comp/engagement) flip to

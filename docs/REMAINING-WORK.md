@@ -63,7 +63,13 @@ wrapped in `if (options.<X>Enabled || isOpenApiDocGeneration) { ... }`, defaulti
   - Billing — invoice read (#141) + usage/plan/config read (#142) + Stripe-webhook write (#145) + tenant
     self-serve billing (#146).
   - Reporting / recruitment-analytics — read (#150).
-  - Team-intel — read (#153).
+  - Team-intel — read (#153). **CONFIRMED FLIPPED AND LIVE in prod** (2026-07-27, verbal confirmation from
+    Federico) — `NEXT_PUBLIC_TEAMINTEL_READ_VIA_CSHARP=true` in Vercel prod and `Platform:TeamIntelReadEnabled=true`
+    on App Runner. This is the ONE exception to "TS remains the sole active reader" above and to the "NOT DONE
+    for ANY domain" note below — `dashboard-kpis` and the rest of the team-intel reads are served by C# today.
+    The flip attempt is visible in the repo as commit `49c74d3` (CORS, #183) and commit `cf83fba` (CSP fix,
+    #184) on 2026-07-24; neither the flag value nor the App Runner env config is committed to git, so this
+    status can only be confirmed by asking, not by reading the repo — now confirmed.
   - Evaluation360 — read (#158) + write (#170).
   - Succession — read (#160) + write (#171).
   - Compensation — FX-free read (#162) + FX-gateway/FX-dependent reads (#168) + write (#169).
@@ -97,15 +103,19 @@ wrapped in `if (options.<X>Enabled || isOpenApiDocGeneration) { ... }`, defaulti
     verified the Docker image builds and runs locally against the runbook's exact steps, and drafted the
     compliance-SQL/MFA-timing/DB-role decisions — but **explicitly executed none of it against real
     infrastructure** (Federico-only: DB password rotation, the 3 SQL files, `aws ecr`/App Runner itself).
-    _(Uncertain / not independently verified from the repo alone: whether an EARLIER deployment attempt —
-    commits `cf83fba`/`1606118`/`49c74d3`, 2026-07-24 — is currently receiving ANY live or canary traffic on
-    any route. Treat as unconfirmed until Federico states otherwise.)_
-- **NOT DONE for ANY domain — do not overstate this as shipped.** The actual production ownership flip
-  (recipe step 6 — move the domain's tables to `efcore` in the ledger, C# becomes sole writer) and the
-  TS-code deletion (step 7) have **not happened for any domain as of this truth-up.** Flipping a domain's
-  flag in prod is explicitly **Federico-only, at canary**
-  (`docs/superpowers/plans/2026-07-24-cutover-verification-harness.md`) — a manual owner decision, not yet
-  made for any surface. "Built + parity-verified + dark" means exactly that, not "migrated" or "live."
+    _(RESOLVED 2026-07-27: the EARLIER deployment attempt — commits `cf83fba`/`1606118`/`49c74d3`, 2026-07-24 —
+    was the team-intel read flip; Federico confirmed it completed and is still live in prod. This does NOT
+    mean the broader App Runner deployment is otherwise fully verified/stable — only that this one specific
+    surface is confirmed receiving live traffic.)_
+- **DONE for exactly ONE domain (team-intel read, see above); NOT DONE for the other 12 pieces — do not
+  overstate the rest as shipped.** The production ownership flip (recipe step 6) and TS-code deletion (step 7)
+  have not happened for any OTHER domain as of this truth-up — team-intel's read is C#-live, but its TS
+  `teamIntel`/`team-intel-metrics` router has NOT been deleted (step 7 is still pending even for the one
+  flipped surface), and `okrs`/etc. correctly stay `efcoreReadOnly` (not `efcore`) in the ownership ledger
+  since a READ flip never transfers DDL ownership. Flipping a domain's flag in prod is explicitly
+  **Federico-only, at canary** (`docs/superpowers/plans/2026-07-24-cutover-verification-harness.md`) — a
+  manual owner decision, made for team-intel's read surface only. "Built + parity-verified + dark" is still
+  the correct description for the other 12 read/write pieces; don't generalize team-intel's exception to them.
 
 ### Compliance-by-design — CB-1/1b/1c/2a/2b — **SHIPPED** (`docs/architecture/compliance/00-compliance-by-design-roadmap.md`)
 
