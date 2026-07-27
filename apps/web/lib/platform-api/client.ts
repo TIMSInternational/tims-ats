@@ -126,3 +126,160 @@ export async function platformGet<P extends GetPaths>(
 
   return (await response.json()) as GetJsonResponse<P>;
 }
+
+/**
+ * Untyped GET escape hatch for the rare endpoint whose C# minimal-API mapping never called
+ * `.Produces<T>()` on its 200 response (an anonymous-object return, e.g. `/audit/logs` — the
+ * OpenAPI doc then has no typed response body, so `GetPaths`/`platformGet` can't accept the
+ * path). Same auth/base-URL/error handling as {@link platformGet}; callers hand-type the
+ * parsed body themselves (mirroring how the server-side `platformGetWithAuth` handles the
+ * same gap for `packages/api`). Prefer {@link platformGet} whenever the path IS typed — this
+ * exists only because a handful of endpoints predate/lack a `.Produces<T>()` annotation.
+ */
+export async function platformGetRaw(path: string, query?: QueryParams, pathParams?: PathParams): Promise<unknown> {
+  if (!isPlatformApiEnabled()) {
+    throw new Error('Platform API is disabled: NEXT_PUBLIC_TIMS_PLATFORM_API_URL is unset.');
+  }
+
+  const token = await getAccessToken();
+  const headers: Record<string, string> = { Accept: 'application/json' };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const base = PLATFORM_API_URL!.replace(/\/+$/, '');
+  const resolvedPath = applyPathParams(path, pathParams);
+  const response = await fetch(`${base}${resolvedPath}${buildQueryString(query)}`, {
+    method: 'GET',
+    headers,
+    credentials: 'omit',
+  });
+
+  if (!response.ok) {
+    throw new PlatformApiError(response.status, response.statusText);
+  }
+
+  return response.json();
+}
+
+// ---------------------------------------------------------------------------
+// Mutations (POST / PATCH / DELETE) — needed by the write-side dark-cutover wrappers.
+// Mirrors the GET pattern above verbatim, once per HTTP verb (openapi-typescript keys each
+// verb separately per path, so a single generic-over-method helper can't cleanly express
+// "extends this shape under whichever verb" — three explicit blocks are simpler and safer
+// than one clever one).
+// ---------------------------------------------------------------------------
+
+type PostPaths = {
+  [P in keyof paths]: paths[P] extends {
+    post: { responses: { 200: { content: { 'application/json': unknown } } } };
+  }
+    ? P
+    : paths[P] extends { post: { responses: { 201: { content: { 'application/json': unknown } } } } }
+      ? P
+      : never;
+}[keyof paths];
+
+type PostJsonResponse<P extends PostPaths> = paths[P] extends {
+  post: { responses: { 200: { content: { 'application/json': infer R } } } };
+}
+  ? R
+  : paths[P] extends { post: { responses: { 201: { content: { 'application/json': infer R } } } } }
+    ? R
+    : never;
+
+type PostJsonBody<P extends PostPaths> = paths[P] extends {
+  post: { requestBody: { content: { 'application/json': infer B } } };
+}
+  ? B
+  : undefined;
+
+type PatchPaths = {
+  [P in keyof paths]: paths[P] extends {
+    patch: { responses: { 200: { content: { 'application/json': unknown } } } };
+  }
+    ? P
+    : never;
+}[keyof paths];
+
+type PatchJsonResponse<P extends PatchPaths> = paths[P] extends {
+  patch: { responses: { 200: { content: { 'application/json': infer R } } } };
+}
+  ? R
+  : never;
+
+type PatchJsonBody<P extends PatchPaths> = paths[P] extends {
+  patch: { requestBody: { content: { 'application/json': infer B } } };
+}
+  ? B
+  : undefined;
+
+// DELETE paths in this contract return either a typed 200 body (removeSuccessor echoes the
+// deleted row) or a bare success with no body (removeCalibrationMember) — accept both by
+// keying off the verb's mere presence, and resolve the body type to `unknown` when untyped.
+type DeletePaths = {
+  [P in keyof paths]: paths[P] extends { delete: unknown } ? P : never;
+}[keyof paths];
+
+type DeleteJsonResponse<P extends DeletePaths> = paths[P] extends {
+  delete: { responses: { 200: { content: { 'application/json': infer R } } } };
+}
+  ? R
+  : unknown;
+
+async function mutate(
+  method: 'POST' | 'PATCH' | 'DELETE',
+  path: string,
+  body: unknown,
+  pathParams: PathParams | undefined,
+): Promise<unknown> {
+  if (!isPlatformApiEnabled()) {
+    throw new Error('Platform API is disabled: NEXT_PUBLIC_TIMS_PLATFORM_API_URL is unset.');
+  }
+
+  const token = await getAccessToken();
+  const headers: Record<string, string> = { Accept: 'application/json' };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  if (body !== undefined) headers['Content-Type'] = 'application/json';
+
+  const base = PLATFORM_API_URL!.replace(/\/+$/, '');
+  const resolvedPath = applyPathParams(path, pathParams);
+  const response = await fetch(`${base}${resolvedPath}`, {
+    method,
+    headers,
+    credentials: 'omit',
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+
+  if (!response.ok) {
+    throw new PlatformApiError(response.status, response.statusText);
+  }
+
+  if (response.status === 204) return undefined;
+  const text = await response.text();
+  return text.length > 0 ? JSON.parse(text) : undefined;
+}
+
+/** Typed POST against the C# Platform service. Mirrors {@link platformGet}'s contract-typing. */
+export async function platformPost<P extends PostPaths>(
+  path: P,
+  body: PostJsonBody<P>,
+  pathParams?: PathParams,
+): Promise<PostJsonResponse<P>> {
+  return mutate('POST', path, body, pathParams) as Promise<PostJsonResponse<P>>;
+}
+
+/** Typed PATCH against the C# Platform service. Mirrors {@link platformGet}'s contract-typing. */
+export async function platformPatch<P extends PatchPaths>(
+  path: P,
+  body: PatchJsonBody<P>,
+  pathParams?: PathParams,
+): Promise<PatchJsonResponse<P>> {
+  return mutate('PATCH', path, body, pathParams) as Promise<PatchJsonResponse<P>>;
+}
+
+/** Typed DELETE against the C# Platform service. Mirrors {@link platformGet}'s contract-typing. */
+export async function platformDelete<P extends DeletePaths>(
+  path: P,
+  pathParams?: PathParams,
+): Promise<DeleteJsonResponse<P>> {
+  return mutate('DELETE', path, undefined, pathParams) as Promise<DeleteJsonResponse<P>>;
+}
