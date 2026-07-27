@@ -23,15 +23,33 @@ export function isPlatformApiEnabled(): boolean {
   return typeof PLATFORM_API_URL === 'string' && PLATFORM_API_URL.trim().length > 0;
 }
 
-/** Typed error thrown on any non-2xx response. Carries the HTTP status. */
+/**
+ * Typed error thrown on any non-2xx response. Carries the HTTP status and, when the response body
+ * parses as JSON with a `message` string, that friendly message — e.g. `err.message` reads
+ * "Sucesor no encontrado" instead of a generic placeholder. Falls back to a generic
+ * "status statusText" message when the body isn't JSON (the billing webhook's bare 400
+ * "Invalid signature" text/plain response) or has no `message` key (e.g. `{ error: "invalid_input" }`).
+ */
 export class PlatformApiError extends Error {
   readonly status: number;
 
-  constructor(status: number, statusText: string) {
-    super(`Platform API request failed: ${status} ${statusText}`);
+  constructor(status: number, statusText: string, body?: unknown) {
+    super(extractErrorMessage(body) ?? `Platform API request failed: ${status} ${statusText}`);
     this.name = 'PlatformApiError';
     this.status = status;
   }
+}
+
+// The C# minimal-API error responses are shaped `{ message: string }` (e.g. every
+// `Results.Json(new { message = ... }, statusCode: ...)` across the write endpoints) — read it
+// through so callers see the actual backend text, matching the TS-side TRPCError message a
+// consumer's `onError` already displays today.
+function extractErrorMessage(body: unknown): string | undefined {
+  if (body && typeof body === 'object' && 'message' in body) {
+    const message = (body as { message?: unknown }).message;
+    if (typeof message === 'string' && message.length > 0) return message;
+  }
+  return undefined;
 }
 
 // Paths that expose a GET returning an application/json 200 body.
@@ -121,7 +139,8 @@ export async function platformGet<P extends GetPaths>(
   });
 
   if (!response.ok) {
-    throw new PlatformApiError(response.status, response.statusText);
+    const errorBody = await response.json().catch(() => undefined);
+    throw new PlatformApiError(response.status, response.statusText, errorBody);
   }
 
   return (await response.json()) as GetJsonResponse<P>;
@@ -154,7 +173,8 @@ export async function platformGetRaw(path: string, query?: QueryParams, pathPara
   });
 
   if (!response.ok) {
-    throw new PlatformApiError(response.status, response.statusText);
+    const errorBody = await response.json().catch(() => undefined);
+    throw new PlatformApiError(response.status, response.statusText, errorBody);
   }
 
   return response.json();
@@ -250,7 +270,8 @@ async function mutate(
   });
 
   if (!response.ok) {
-    throw new PlatformApiError(response.status, response.statusText);
+    const errorBody = await response.json().catch(() => undefined);
+    throw new PlatformApiError(response.status, response.statusText, errorBody);
   }
 
   if (response.status === 204) return undefined;

@@ -45,7 +45,7 @@ export function SurveyTakeModal({ surveyId, onClose }: SurveyTakeModalProps) {
       onClose();
     },
     // Byte-identical message on both stacks (DuplicateResponseMessage / 'Ya respondiste esta
-    // encuesta') — matched by text since the C# path's PlatformApiError carries no error code.
+    // encuesta') — matched by text, not the tRPC-specific error code, so it works on either path.
     onError: (err) => {
       toast(err.message === 'Ya respondiste esta encuesta' ? e.surveyAlreadyAnswered : err.message, { type: 'error' });
     },
