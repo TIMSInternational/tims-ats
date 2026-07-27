@@ -188,9 +188,36 @@ prod-verify you drop the TS router/service/repo and flip its tables to `efcore` 
     **COEXISTENCE** for the TERMINAL state only — those three files still call `db.survey`/`db.actionPlan`
     (Prisma models), so deleting the TS engagement router / moving surveys/survey_responses/action_plans to
     `efcore` stays blocked until they're ported too.
-13. `BillingWebhookWriteEnabled` (set `Stripe__*` + re-point the Stripe webhook to C# first) → `BillingSelfServeEnabled`
-    — **COEXISTENCE:** `subscriptions`/`invoices` ownership flip stays blocked (non-billing TS writers in the
-    provisioning txns).
+13. `BillingWebhookWriteEnabled` → `BillingSelfServeEnabled` — **COEXISTENCE:** `subscriptions`/`invoices`
+    ownership flip stays blocked (non-billing TS writers in the provisioning txns).
+
+    **Resolved 2026-07-27 (was ambiguous — see below): NO Stripe dashboard/API change. Do NOT register a new
+    webhook endpoint or generate a new signing secret.** Flipping this flag only changes what the EXISTING
+    Next.js route (`apps/web/app/api/webhooks/stripe/route.ts`) does internally — Stripe keeps POSTing to the
+    exact same URL it always has. Proof, from the current code (not aspirational):
+    - `billing-webhook.service.ts`'s `handleStripeWebhook` (packages/api/src/services/billing-webhook.service.ts:226-229)
+      branches on the flag BEFORE any TS-side signature verification. When true it calls
+      `handleStripeWebhookViaCSharp` (same file, :210-222), which forwards the RAW body + `Stripe-Signature`
+      header **verbatim** via `platformPostRaw('/billing/webhooks/stripe', …)` — an internal server-to-server
+      call from the Next.js process to the C# App Runner service, never exposed to Stripe.
+    - The C# side (`BillingWebhookEndpoints.cs:27-45`) reads the raw body itself and verifies the signature
+      independently, using its OWN `Stripe:WebhookSecret` config value (`Program.cs:452`,
+      `StripeBillingOptions.cs:26`) — TS does not pre-verify and does not pass a pre-verified flag through.
+    - Nowhere in the codebase (routes, Terraform, docs) is the C# App Runner service URL ever registered as a
+      Stripe webhook target — `NEXT_PUBLIC_TIMS_PLATFORM_API_URL` / the Terraform output of the same name is
+      used only for (a) server-to-server calls like the one above and (b) the FE's generated OpenAPI client.
+      There is no route today for Stripe to hit the C# service directly, so interpretation (b) ("re-point the
+      Stripe webhook to C#") is not just unnecessary — it isn't wired up at all.
+    - **Consequence for `Stripe__WebhookSecret` (`services/Tims.Platform/deploy/terraform/main.tf:26`,
+      `variables.tf:101` `manage_stripe_secrets`):** because Stripe's registered endpoint and its signing
+      secret never change, this MUST be set to the exact same value as the existing TS `STRIPE_WEBHOOK_SECRET`
+      (`packages/api/src/lib/stripe.ts:116`) — a copied/passthrough secret, NOT a fresh secret from a
+      separately-created Stripe endpoint object. Setting a different value here will make every webhook 400
+      once the flag flips (signature verification will fail against the wrong secret).
+    - **Operational steps:** (1) copy the existing `STRIPE_WEBHOOK_SECRET` value into the C# service's
+      `Stripe__WebhookSecret` secret (and the existing `STRIPE_SECRET_KEY` into `Stripe__SecretKey`); (2) flip
+      `manage_stripe_secrets = true` + `Platform:BillingWebhookWriteEnabled = true`; (3) no Stripe
+      dashboard/API action of any kind is required.
 
 **The H1/both-stacks hardenings ship LIVE with the TS side already** (succession/nine-box/engagement reject cross-org
 FK refs) — they only ever reject previously-broken writes, so they are safe irrespective of cutover timing.

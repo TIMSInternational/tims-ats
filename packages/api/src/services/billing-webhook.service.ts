@@ -197,6 +197,15 @@ export interface WebhookResult {
 // EXTERNAL_VENDOR_WRITE_VIA_CSHARP: Stripe calls this route directly (no browser is ever
 // involved), so the decision is made entirely server-side. Mirrors the C# side's own
 // `Platform:BillingWebhookWriteEnabled` flag. DEFAULT false (dark).
+//
+// IMPORTANT (resolved ambiguity, see PROD-DEPLOY-RUNBOOK-gate-g3.md §6 item 13): flipping this
+// flag does NOT re-point Stripe's registered webhook endpoint. Stripe keeps POSTing to THIS route
+// (route.ts) forever; this flag only changes what the route does with the request internally —
+// forward the untouched raw body + signature to the C# service instead of verifying it here. The
+// C# service verifies the signature itself with its OWN `Stripe:WebhookSecret`, which therefore
+// MUST be a copy of this same STRIPE_WEBHOOK_SECRET (see lib/stripe.ts), never a secret from a
+// separately-registered Stripe endpoint — Stripe signs with the secret of the endpoint that
+// received the request, and that endpoint (this URL) never changes.
 const BILLING_WEBHOOK_WRITE_VIA_CSHARP = process.env.BILLING_WEBHOOK_WRITE_VIA_CSHARP === 'true';
 
 // Proxies the webhook to the C# `POST /billing/webhooks/stripe` endpoint, forwarding the RAW body
