@@ -6,6 +6,7 @@ import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
 import { Modal } from '../../../../components';
+import { useCompensationCreateAdjustment } from '../../../../lib/platform-api/compensation';
 
 interface RequestAdjustmentModalProps {
   userId: string;
@@ -45,7 +46,7 @@ export function RequestAdjustmentModal({
   const [reason, setReason] = useState('');
   const [effectiveDate, setEffectiveDate] = useState(todayIso());
 
-  const submit = trpc.compensation.createAdjustment.useMutation({
+  const submit = useCompensationCreateAdjustment({
     onSuccess: () => {
       utils.succession.getCompGapAlerts.invalidate();
       utils.compensation.listPendingAdjustments.invalidate();
@@ -61,8 +62,7 @@ export function RequestAdjustmentModal({
   });
 
   const parsedNewSalary = Number(newSalary);
-  const canSubmit =
-    Number.isFinite(parsedNewSalary) && parsedNewSalary > 0 && !!effectiveDate && !submit.isPending;
+  const canSubmit = Number.isFinite(parsedNewSalary) && parsedNewSalary > 0 && !!effectiveDate && !submit.isPending;
 
   const onSubmit = () => {
     if (!canSubmit) return;
@@ -80,14 +80,11 @@ export function RequestAdjustmentModal({
     <Modal title={t.succession.requestAdjustmentTitle} onClose={onClose} maxWidth="max-w-md">
       <div className="space-y-4">
         <p className="text-[13px] text-[#585858]">
-          {t.succession.requestAdjustmentDesc}{' '}
-          <span className="font-semibold text-[#333]">{employeeName}</span>
+          {t.succession.requestAdjustmentDesc} <span className="font-semibold text-[#333]">{employeeName}</span>
         </p>
 
         <div>
-          <label className="block text-[12px] font-medium text-[#333] mb-1.5">
-            {t.succession.previousSalaryLabel}
-          </label>
+          <label className="block text-[12px] font-medium text-[#333] mb-1.5">{t.succession.previousSalaryLabel}</label>
           <input
             type="number"
             value={previousSalary}
@@ -97,9 +94,7 @@ export function RequestAdjustmentModal({
         </div>
 
         <div>
-          <label className="block text-[12px] font-medium text-[#333] mb-1.5">
-            {t.succession.newSalaryLabel}
-          </label>
+          <label className="block text-[12px] font-medium text-[#333] mb-1.5">{t.succession.newSalaryLabel}</label>
           <input
             type="number"
             min={1}
@@ -111,9 +106,7 @@ export function RequestAdjustmentModal({
         </div>
 
         <div>
-          <label className="block text-[12px] font-medium text-[#333] mb-1.5">
-            {t.common.date}
-          </label>
+          <label className="block text-[12px] font-medium text-[#333] mb-1.5">{t.common.date}</label>
           <input
             type="date"
             value={effectiveDate}
@@ -124,9 +117,7 @@ export function RequestAdjustmentModal({
         </div>
 
         <div>
-          <label className="block text-[12px] font-medium text-[#333] mb-1.5">
-            {t.succession.reasonLabel}
-          </label>
+          <label className="block text-[12px] font-medium text-[#333] mb-1.5">{t.succession.reasonLabel}</label>
           <textarea
             value={reason}
             onChange={(e) => setReason(e.target.value.slice(0, MAX_REASON))}

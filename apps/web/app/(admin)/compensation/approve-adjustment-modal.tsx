@@ -6,6 +6,7 @@ import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
 import { toast } from '../../../lib/toast';
 import { Modal } from '../../../components';
+import { useCompensationApproveAdjustment } from '../../../lib/platform-api/compensation';
 
 interface ApproveAdjustmentModalProps {
   adjustmentId: string;
@@ -23,7 +24,7 @@ export function ApproveAdjustmentModal({ adjustmentId, employeeName, mode, onClo
 
   const [comment, setComment] = useState('');
 
-  const submit = trpc.compensation.approveAdjustment.useMutation({
+  const submit = useCompensationApproveAdjustment({
     onSuccess: () => {
       utils.compensation.listPendingAdjustments.invalidate();
       utils.compensation.getDashboardKpis.invalidate();
@@ -54,13 +55,11 @@ export function ApproveAdjustmentModal({ adjustmentId, employeeName, mode, onClo
     <Modal title={title} onClose={onClose} maxWidth="max-w-md">
       <div className="space-y-4">
         <p className="text-[13px] text-[#585858]">
-          {confirmBody}{' '}<span className="font-semibold text-[#333]">{employeeName}</span>?
+          {confirmBody} <span className="font-semibold text-[#333]">{employeeName}</span>?
         </p>
 
         <div>
-          <label className="block text-[12px] font-medium text-[#333] mb-1.5">
-            {t.compensation.commentLabel}
-          </label>
+          <label className="block text-[12px] font-medium text-[#333] mb-1.5">{t.compensation.commentLabel}</label>
           <textarea
             value={comment}
             onChange={(e) => setComment(e.target.value.slice(0, MAX_COMMENT))}
