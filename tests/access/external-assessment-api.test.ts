@@ -14,9 +14,15 @@ describe('classification — external reads the full assessment profile (Federic
   it('selectFor(external) includes anchors + all score fields', () => {
     const sel = selectFor(['external'], 'assessmentResult');
     expect(sel).toMatchObject({
-      id: true, organizationId: true, assignmentId: true,
-      normalizedScore: true, percentile: true, interpretation: true,
-      breakdown: true, rawScore: true, modelVersion: true,
+      id: true,
+      organizationId: true,
+      assignmentId: true,
+      normalizedScore: true,
+      percentile: true,
+      interpretation: true,
+      breakdown: true,
+      rawScore: true,
+      modelVersion: true,
     });
   });
 
@@ -29,12 +35,20 @@ describe('classification — external reads the full assessment profile (Federic
 
 describe('external assessment DTO v1 (stable contract)', () => {
   const row = {
-    id: 'res-1', organizationId: 'org-1', assignmentId: 'asg-1',
-    rawScore: 50, normalizedScore: 72.5, percentile: 84,
-    breakdown: { verbal: 80 }, interpretation: { band: 'high' },
-    modelVersion: 'v3', scoredAt: new Date('2026-06-10T00:00:00Z'),
+    id: 'res-1',
+    organizationId: 'org-1',
+    assignmentId: 'asg-1',
+    rawScore: 50,
+    normalizedScore: 72.5,
+    percentile: 84,
+    breakdown: { verbal: 80 },
+    interpretation: { band: 'high' },
+    modelVersion: 'v3',
+    scoredAt: new Date('2026-06-10T00:00:00Z'),
     assignment: {
-      candidateId: 'cand-1', vacancyId: 'vac-1', status: 'completed',
+      candidateId: 'cand-1',
+      vacancyId: 'vac-1',
+      status: 'completed',
       assignedAt: new Date('2026-06-01T00:00:00Z'),
       startedAt: new Date('2026-06-02T00:00:00Z'),
       completedAt: new Date('2026-06-03T00:00:00Z'),
@@ -103,9 +117,7 @@ describe('external-assessment repository — behavioral (select includes scoredA
     vi.doMock('@tims/db', () => ({
       tenantDb: { assessmentResult: { findMany, findFirst: vi.fn() } },
     }));
-    const { listExternalResults } = await import(
-      '../../packages/api/src/repositories/external-assessment.repository'
-    );
+    const { listExternalResults } = await import('../../packages/api/src/repositories/external-assessment.repository');
     // Org-scope access → scopeWhereFor returns {} without touching anchors.
     const access = { allowed: true as const, scope: 'organization' as const, roles: ['external'], anchors: null };
     await listExternalResults(access, 'org-1', 'key-1', 10);
@@ -141,13 +153,23 @@ describe('external-assessment repository — behavioral (select includes scoredA
 
 describe('external-assessment service — fail-closed audited export', () => {
   const sampleRow = {
-    id: 'res-1', assignmentId: 'asg-1', rawScore: 1, normalizedScore: 2, percentile: 3,
-    interpretation: {}, breakdown: {}, modelVersion: 'v1',
+    id: 'res-1',
+    assignmentId: 'asg-1',
+    rawScore: 1,
+    normalizedScore: 2,
+    percentile: 3,
+    interpretation: {},
+    breakdown: {},
+    modelVersion: 'v1',
     scoredAt: new Date('2026-06-10T00:00:00Z'),
     assignment: {
-      candidateId: 'c1', vacancyId: 'v1', status: 'completed',
-      assignedAt: new Date('2026-06-01T00:00:00Z'), startedAt: null,
-      completedAt: new Date('2026-06-03T00:00:00Z'), expiresAt: null,
+      candidateId: 'c1',
+      vacancyId: 'v1',
+      status: 'completed',
+      assignedAt: new Date('2026-06-01T00:00:00Z'),
+      startedAt: null,
+      completedAt: new Date('2026-06-03T00:00:00Z'),
+      expiresAt: null,
       assessmentType: { name: 'Battery' },
     },
   };
@@ -168,13 +190,22 @@ describe('external-assessment service — fail-closed audited export', () => {
 
   const access = { allowed: true as const, scope: 'organization' as const, roles: ['external'], anchors: null };
   const meta = { organizationId: 'org-1', apiKeyId: 'key-1', ipAddress: '1.2.3.4', userAgent: 'ua' };
+  // Inert for these tests — EXTERNAL_VENDOR_READ_VIA_CSHARP defaults unset, so list()/getOne()
+  // always take the Prisma fallback path below and never read this value. Only exercised once
+  // the C#-proxy dark-cutover path is flag-enabled (see external-assessment.service.ts).
+  const authHeader = 'Bearer tims_test_key';
 
   it('list audits every record fail-closed (actorId=apiKeyId, entity=assessmentResult) then maps to v1', async () => {
     const { mod, logDataAccess } = await load({ rows: [sampleRow] });
-    const out = await mod.externalAssessmentService.list(access, meta, 10);
+    const out = await mod.externalAssessmentService.list(access, meta, 10, undefined, authHeader);
     expect(logDataAccess).toHaveBeenCalledTimes(1);
     const [event, options] = logDataAccess.mock.calls[0];
-    expect(event).toMatchObject({ organizationId: 'org-1', actorId: 'key-1', entity: 'assessmentResult', recordId: 'res-1' });
+    expect(event).toMatchObject({
+      organizationId: 'org-1',
+      actorId: 'key-1',
+      entity: 'assessmentResult',
+      recordId: 'res-1',
+    });
     expect(options).toEqual({ failClosed: true });
     expect(out.items[0]).toMatchObject({ schemaVersion: 'v1', assignmentId: 'asg-1', normalizedScore: 2 });
     vi.doUnmock('../../packages/api/src/access/audit');
@@ -183,14 +214,14 @@ describe('external-assessment service — fail-closed audited export', () => {
 
   it('list aborts (throws) if a fail-closed audit write fails — no data returned', async () => {
     const { mod } = await load({ rows: [sampleRow], auditThrows: true });
-    await expect(mod.externalAssessmentService.list(access, meta, 10)).rejects.toThrow();
+    await expect(mod.externalAssessmentService.list(access, meta, 10, undefined, authHeader)).rejects.toThrow();
     vi.doUnmock('../../packages/api/src/access/audit');
     vi.doUnmock('../../packages/api/src/repositories/external-assessment.repository');
   });
 
   it('getOne throws NOT_FOUND when the repo returns null (no audit)', async () => {
     const { mod, logDataAccess } = await load({ one: null });
-    await expect(mod.externalAssessmentService.getOne(access, meta, 'missing')).rejects.toThrow();
+    await expect(mod.externalAssessmentService.getOne(access, meta, 'missing', authHeader)).rejects.toThrow();
     expect(logDataAccess).not.toHaveBeenCalled();
     vi.doUnmock('../../packages/api/src/access/audit');
     vi.doUnmock('../../packages/api/src/repositories/external-assessment.repository');
@@ -198,7 +229,7 @@ describe('external-assessment service — fail-closed audited export', () => {
 
   it('getOne audits fail-closed then returns the v1 DTO', async () => {
     const { mod, logDataAccess } = await load({ one: sampleRow });
-    const dto = await mod.externalAssessmentService.getOne(access, meta, 'asg-1');
+    const dto = await mod.externalAssessmentService.getOne(access, meta, 'asg-1', authHeader);
     expect(logDataAccess).toHaveBeenCalledTimes(1);
     expect(logDataAccess.mock.calls[0][1]).toEqual({ failClosed: true });
     expect(dto).toMatchObject({ schemaVersion: 'v1', assignmentId: 'asg-1' });
