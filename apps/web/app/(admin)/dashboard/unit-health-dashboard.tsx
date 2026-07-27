@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
+import { useEngagementListActionPlans, useEngagementListLeaderCommitments } from '../../../lib/platform-api/engagement';
 import { KpiCard, KpiCardSkeleton, EmptyState, Skeleton } from '../../../components';
 import { LoadError } from './load-error';
 
@@ -13,27 +14,13 @@ import { LoadError } from './load-error';
 // the full (scope-narrowed) set, so we count the returned items directly.
 const OKR_LIST_LIMIT = 100;
 
-const CARD_DOT_COLORS = [
-  'bg-blue-400',
-  'bg-green-400',
-  'bg-purple-400',
-  'bg-teal-400',
-  'bg-indigo-400',
-];
+const CARD_DOT_COLORS = ['bg-blue-400', 'bg-green-400', 'bg-purple-400', 'bg-teal-400', 'bg-indigo-400'];
 
-const CARD_BG_COLORS = [
-  'bg-blue-50',
-  'bg-green-50',
-  'bg-purple-50',
-  'bg-teal-50',
-  'bg-indigo-50',
-];
+const CARD_BG_COLORS = ['bg-blue-50', 'bg-green-50', 'bg-purple-50', 'bg-teal-50', 'bg-indigo-50'];
 
 function Dot({ index }: { index: number }) {
   return (
-    <span
-      className={`w-2.5 h-2.5 rounded-full inline-block ${CARD_DOT_COLORS[index % CARD_DOT_COLORS.length]}`}
-    />
+    <span className={`w-2.5 h-2.5 rounded-full inline-block ${CARD_DOT_COLORS[index % CARD_DOT_COLORS.length]}`} />
   );
 }
 
@@ -50,9 +37,7 @@ function VacancySkeletonRows() {
   );
 }
 
-const EMPTY_ICON = (
-  <span className="w-8 h-8 rounded-full bg-[#F0F0F0] inline-block" aria-hidden />
-);
+const EMPTY_ICON = <span className="w-8 h-8 rounded-full bg-[#F0F0F0] inline-block" aria-hidden />;
 
 export function UnitHealthDashboard() {
   const { t } = useI18n();
@@ -62,8 +47,8 @@ export function UnitHealthDashboard() {
   const vac = trpc.vacancy.getDashboardKpis.useQuery();
   const cand = trpc.candidate.getDashboardKpis.useQuery();
   const okrs = trpc.performance.listOkrs.useQuery({ limit: OKR_LIST_LIMIT, status: 'active' });
-  const actionPlans = trpc.engagement.listActionPlans.useQuery();
-  const commitments = trpc.engagement.listLeaderCommitments.useQuery();
+  const actionPlans = useEngagementListActionPlans();
+  const commitments = useEngagementListLeaderCommitments();
 
   // Recruiting KPI strip depends on the two scope-aware KPI queries.
   const recruitingLoading = vac.isLoading || cand.isLoading;
@@ -76,10 +61,8 @@ export function UnitHealthDashboard() {
   const pendingApproval = vac.data?.totalPendingApproval ?? 0;
   // listOkrs already filters status: 'active' server-side.
   const activeOkrsCount = okrs.data?.okrs.length ?? 0;
-  const openActionPlansCount =
-    actionPlans.data?.filter((p) => p.status !== 'completed').length ?? 0;
-  const openCommitmentsCount =
-    commitments.data?.filter((c) => c.status !== 'fulfilled').length ?? 0;
+  const openActionPlansCount = actionPlans.data?.filter((p) => p.status !== 'completed').length ?? 0;
+  const openCommitmentsCount = commitments.data?.filter((c) => c.status !== 'fulfilled').length ?? 0;
 
   return (
     <div className="h-full flex flex-col overflow-hidden p-6">
@@ -132,9 +115,7 @@ export function UnitHealthDashboard() {
 
         {/* Recent Vacancies panel */}
         <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 mb-8">
-          <h2 className="text-sm font-semibold text-[#1F114C] mb-4">
-            {u.recentVacanciesTitle}
-          </h2>
+          <h2 className="text-sm font-semibold text-[#1F114C] mb-4">{u.recentVacanciesTitle}</h2>
           {vac.isError ? (
             <LoadError message={u.loadError} />
           ) : vac.isLoading ? (
@@ -149,9 +130,7 @@ export function UnitHealthDashboard() {
                   href={`/recruitment/vacancies/${v.id}`}
                   className="flex items-center justify-between rounded-lg px-3 py-2.5 -mx-3 hover:bg-[#F6F6F6] transition"
                 >
-                  <span className="text-sm text-[#333] font-medium truncate">
-                    {v.title}
-                  </span>
+                  <span className="text-sm text-[#333] font-medium truncate">{v.title}</span>
                   <span className="text-[13px] text-[#8B8B8B] truncate ml-3">
                     {v.status} · {v._count.applications}
                   </span>

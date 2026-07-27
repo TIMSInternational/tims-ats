@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
 import { toast } from '../../../lib/toast';
+import { useEngagementSurveyForResponse } from '../../../lib/platform-api/engagement';
 import { Modal, Skeleton } from '../../../components';
 import { LoadError } from './load-error';
 import { parseSurveyQuestions, type SurveyAnswer, type SurveyQuestion } from './survey-question';
@@ -24,7 +25,7 @@ export function SurveyTakeModal({ surveyId, onClose }: SurveyTakeModalProps) {
   const e = t.employeeHome;
   const utils = trpc.useUtils();
 
-  const survey = trpc.engagement.getSurveyForResponse.useQuery({ surveyId });
+  const survey = useEngagementSurveyForResponse(surveyId);
   const questions: SurveyQuestion[] = useMemo(
     () => parseSurveyQuestions(survey.data?.questions),
     [survey.data?.questions],
@@ -32,8 +33,7 @@ export function SurveyTakeModal({ surveyId, onClose }: SurveyTakeModalProps) {
 
   const [answers, setAnswers] = useState<Record<string, SurveyAnswer>>({});
 
-  const setAnswer = (text: string, value: SurveyAnswer) =>
-    setAnswers((prev) => ({ ...prev, [text]: value }));
+  const setAnswer = (text: string, value: SurveyAnswer) => setAnswers((prev) => ({ ...prev, [text]: value }));
 
   const submit = trpc.engagement.submitSurveyResponse.useMutation({
     onSuccess: () => {
@@ -94,9 +94,7 @@ export function SurveyTakeModal({ surveyId, onClose }: SurveyTakeModalProps) {
             />
           ))}
 
-          {!requiredMet ? (
-            <p className="text-[11px] text-[#DD0C15]">{e.surveyRequiredError}</p>
-          ) : null}
+          {!requiredMet ? <p className="text-[11px] text-[#DD0C15]">{e.surveyRequiredError}</p> : null}
 
           <div className="flex justify-end gap-2 pt-1">
             <button
