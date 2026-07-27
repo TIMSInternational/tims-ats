@@ -42,11 +42,11 @@
 // on separate schedules (the FX ones need `fx_rates` populated by the first `FxRefreshJob` run
 // first).
 
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import type { inferRouterOutputs } from '@trpc/server';
 import type { AppRouter } from '@tims/api';
 import { trpc } from '../trpc';
-import { isPlatformApiEnabled, platformGet } from './client';
+import { isPlatformApiEnabled, platformGet, platformPost } from './client';
 
 type RouterOutput = inferRouterOutputs<AppRouter>;
 type SalaryBandsOutput = RouterOutput['compensation']['getSalaryBands'];
@@ -57,6 +57,8 @@ type MyCompensationOutput = RouterOutput['compensation']['myCompensation'];
 type BandDistributionOutput = RouterOutput['compensation']['getBandDistribution'];
 type TotalCompBreakdownOutput = RouterOutput['compensation']['getTotalCompBreakdown'];
 type CompDashboardKpisOutput = RouterOutput['compensation']['getDashboardKpis'];
+type CreateAdjustmentOutput = RouterOutput['compensation']['createAdjustment'];
+type ApproveAdjustmentOutput = RouterOutput['compensation']['approveAdjustment'];
 
 // Second gate: even when the client is enabled, compensation only routes to C# when its own flag
 // is exactly 'true'. NEXT_PUBLIC_* so it is inlined for the browser.
@@ -440,4 +442,88 @@ export function useCompensationDashboardKpis() {
   });
 
   return viaCSharp ? csharpQuery : trpcQuery;
+}
+
+// ---------------------------------------------------------------------------
+// Writes (Phase-5 Slice 12) — a SEPARATE flag from the reads above, mirroring backend
+// `Platform:CompensationWriteEnabled` (independent of CompensationReadEnabled/FxReadsEnabled). Both
+// C# mutations (createAdjustment/approveAdjustment) have live FE consumers (request-adjustment-modal.tsx,
+// approve-adjustment-modal.tsx) — this is the FIRST write port with a 100% wrap rate (no zero-consumer
+// procedure to skip, unlike succession/nine-box). Each hook mirrors trpc's useMutation shape
+// ({ onSuccess?, onError? }) so existing call sites swap in with a one-line change; both consumers
+// already invalidate the `['platform-api','compensation',...]` (and, for createAdjustment, `['platform-
+// api','succession',...]` comp-gap) query keys themselves post-success — this file only supplies the
+// mutation itself. Error messages are byte-identical between stacks for every outcome (createAdjustment's
+// FORBIDDEN, approveAdjustment's NOT_FOUND/CONFLICT all share the exact TS/C# message constants) — no
+// documented exceptions, unlike succession's addSuccessor 409.
+// ---------------------------------------------------------------------------
+
+const COMPENSATION_WRITE_VIA_CSHARP = process.env.NEXT_PUBLIC_COMPENSATION_WRITE_VIA_CSHARP === 'true';
+
+interface MutationOptions {
+  onSuccess?: () => void;
+  onError?: (err: { message: string }) => void;
+  onSettled?: () => void;
+}
+
+function useCSharpMutation<TInput>(
+  mutationFn: (input: TInput) => Promise<unknown>,
+  options: MutationOptions | undefined,
+) {
+  return useMutation({
+    mutationFn,
+    onSuccess: options?.onSuccess,
+    onError: (err: unknown) => options?.onError?.(err instanceof Error ? err : { message: 'Unknown error' }),
+    onSettled: options?.onSettled,
+  });
+}
+
+interface CreateAdjustmentInputShape {
+  userId: string;
+  type: string;
+  previousSalary: number;
+  newSalary: number;
+  currency?: string;
+  reason?: string;
+  effectiveDate: string;
+}
+
+/** STAFF: request a salary adjustment (1 call site: talent/succession/request-adjustment-modal.tsx). */
+export function useCompensationCreateAdjustment(options?: MutationOptions) {
+  const viaCSharp = isPlatformApiEnabled() && COMPENSATION_WRITE_VIA_CSHARP;
+  const trpcMutation = trpc.compensation.createAdjustment.useMutation(options);
+  const csharpMutation = useCSharpMutation(async (input: CreateAdjustmentInputShape) => {
+    const raw = await platformPost('/compensation/adjustments', {
+      userId: input.userId,
+      type: input.type,
+      previousSalary: input.previousSalary,
+      newSalary: input.newSalary,
+      currency: input.currency,
+      reason: input.reason,
+      effectiveDate: input.effectiveDate,
+    });
+    return { id: raw.id, status: raw.status } satisfies CreateAdjustmentOutput;
+  }, options);
+  return viaCSharp ? csharpMutation : trpcMutation;
+}
+
+interface ApproveAdjustmentInputShape {
+  id: string;
+  approved: boolean;
+  comment?: string;
+}
+
+/** STAFF: approve/reject a pending adjustment (1 call site: compensation/approve-adjustment-modal.tsx). */
+export function useCompensationApproveAdjustment(options?: MutationOptions) {
+  const viaCSharp = isPlatformApiEnabled() && COMPENSATION_WRITE_VIA_CSHARP;
+  const trpcMutation = trpc.compensation.approveAdjustment.useMutation(options);
+  const csharpMutation = useCSharpMutation(async (input: ApproveAdjustmentInputShape) => {
+    const raw = await platformPost(
+      '/compensation/adjustments/{id}/approve',
+      { approved: input.approved, comment: input.comment },
+      { id: input.id },
+    );
+    return { id: raw.id, status: raw.status } satisfies ApproveAdjustmentOutput;
+  }, options);
+  return viaCSharp ? csharpMutation : trpcMutation;
 }
