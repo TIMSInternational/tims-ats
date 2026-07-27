@@ -353,14 +353,12 @@ export function useEngagementDashboardKpis() {
 // generic over TData (like ninebox's, unlike compensation's void-only) because launch-survey-modal.tsx
 // chains `create.onSuccess: (survey) => activate.mutate({ id: survey.id })` off the created survey's id.
 //
-// KNOWN GAP (submitSurveyResponse's CONFLICT toast): survey-take-modal.tsx distinguishes the
-// duplicate-response case via the tRPC-specific `err.data?.code === 'CONFLICT'` shape, which the C#
-// path's PlatformApiError cannot produce (it carries only `status`, not a parsed error body). Both
-// stacks throw the exact same message text ('Ya respondiste esta encuesta' / DuplicateResponseMessage),
-// so the consumer is updated to match on `err.message` instead — behavior-identical on the tRPC path,
-// and correct once cutover is live PROVIDED platformPost's error path is later extended to surface the
-// response body's `message` field (it currently only uses `response.statusText`) — a pre-existing
-// client.ts limitation, not something this wrapper changes.
+// submitSurveyResponse's CONFLICT toast: survey-take-modal.tsx distinguishes the duplicate-response
+// case by matching `err.message` against the exact backend text ('Ya respondiste esta encuesta' /
+// DuplicateResponseMessage — byte-identical on both stacks), rather than the tRPC-specific
+// `err.data?.code === 'CONFLICT'` shape the C# path can't produce. `PlatformApiError` now parses the
+// response body's `message` field (client.ts), so this match works correctly on either path, not
+// just the tRPC default.
 // ---------------------------------------------------------------------------
 
 const ENGAGEMENT_WRITE_VIA_CSHARP = process.env.NEXT_PUBLIC_ENGAGEMENT_WRITE_VIA_CSHARP === 'true';
