@@ -295,6 +295,23 @@ describe('runRlsEndpoint', () => {
       expect(result.detail).toContain('inconclusive');
     });
 
+    it('ok:true + inconclusive:true when both orgs get an IDENTICAL empty-list envelope ({items:[]}) — not a leak', async () => {
+      // Regression guard (billing-invoices false-positive, 2026-07-28): a shallow emptiness
+      // check sees `{items:[]}` as non-empty (it has an own key, `items`) even though the
+      // array itself carries zero rows — the exact shape a paginated list endpoint returns
+      // for a freshly-seeded org with no data. Must be treated the same as `{}`/`null`, not
+      // flagged as a "possible global leak".
+      const fake = vi.fn().mockResolvedValue({ status: 200, body: { items: [] } });
+      const result = await runRlsEndpoint(
+        orgScopedEp,
+        { base: 'http://csharp.local', orgAToken: 'org-a-token', orgBToken: 'org-b-token' },
+        fake,
+      );
+      expect(result.ok).toBe(true);
+      expect(result.inconclusive).toBe(true);
+      expect(result.detail).toContain('inconclusive');
+    });
+
     it('ok:true + inconclusive:true when both orgs get an IDENTICAL k-anonymity-suppressed payload (not a leak)', async () => {
       const fake = vi.fn().mockResolvedValue({ status: 200, body: { groups: [], suppressed: true } });
       const result = await runRlsEndpoint(

@@ -31,25 +31,13 @@ export interface RlsContext {
 }
 
 /**
- * Body-emptiness check shared by `assertIsolated` and `runRlsEndpoint`'s Mode B
- * (identical-payload) comparison. Empty = null, undefined, empty string, or an
- * object with no own keys. Deliberately does NOT treat `0`/`false` as empty —
- * those never appear as a bare REST JSON body here.
- */
-function isEmpty(body: unknown): boolean {
-  return (
-    body === null || body === undefined || body === '' || (typeof body === 'object' && Object.keys(body).length === 0)
-  );
-}
-
-/**
  * True when `body` is a k-anonymity-SUPPRESSED payload (`{ ..., suppressed: true, ... }`).
  * By contract (see `DeiKernels.BuildDistribution`/`LeadershipDiversity`/`SuppressBelowMin5` and
  * their siblings across every k-anonymity domain in this codebase), `suppressed: true` ALWAYS
  * pairs with an empty/null group payload — the kernel wipes the real counts before returning,
  * so this shape can never carry real cross-tenant data regardless of which org asked. It is
- * shallow-non-empty (has real keys: `suppressed`, `groups: []`, etc.) so plain `isEmpty()` misses
- * it, which is exactly what caused a false "possible global leak" flag on DEI's distribution
+ * `suppressed: true` is itself a real, non-empty scalar value, so `isDeepEmpty` doesn't treat this
+ * shape as empty either — which is exactly what caused a false "possible global leak" flag on DEI's distribution
  * endpoints once small (<5-row) test-org fixtures triggered suppression identically for both
  * orgs — suppression working correctly, not a leak. This is the k-anonymity analog of Mode B's
  * existing "both orgs returned empty" inconclusive case, not a new isolation guarantee.
@@ -63,8 +51,10 @@ function isSuppressedPayload(body: unknown): boolean {
  * positive control). Some by-id routes model a cross-tenant / not-found read as an
  * HTTP 200 with a null-SHAPED body (e.g. ninebox `/employee/{id}` returns
  * `{evaluation: null, history: []}` — structurally non-empty, semantically NO data)
- * rather than a 404 (which compensation/succession use). The shallow `isEmpty` above
- * would misread that shape as a payload and flag a false "leak". `isDeepEmpty` treats
+ * rather than a 404 (which compensation/succession use). Mode B's identical-payload
+ * comparison (below) reuses this SAME function — a shallow keys-only emptiness check
+ * would misread a paginated list envelope like `{items: []}` as non-empty and flag a
+ * false "possible global leak" (billing-invoices, 2026-07-28). `isDeepEmpty` treats
  * a value as empty when null/undefined/'', an array with no (deep-)non-empty elements,
  * or an object whose every own value is deep-empty. `0`/`false` are NOT empty (a real
  * scalar payload). A genuine leak (`{evaluation: {...org-B data...}}`) stays non-empty
@@ -279,7 +269,7 @@ export async function runRlsEndpoint(ep: EndpointDef, ctx: RlsContext, callCshar
     };
   }
 
-  const bothNonEmpty = !isEmpty(orgAResponse.body) && !isEmpty(orgBResponse.body);
+  const bothNonEmpty = !isDeepEmpty(orgAResponse.body) && !isDeepEmpty(orgBResponse.body);
   const identical = JSON.stringify(orgAResponse.body) === JSON.stringify(orgBResponse.body);
 
   // Both k-anonymity-suppressed: identical is EXPECTED and safe (see isSuppressedPayload's doc
@@ -305,7 +295,7 @@ export async function runRlsEndpoint(ep: EndpointDef, ctx: RlsContext, callCshar
     };
   }
 
-  const bothEmpty = isEmpty(orgAResponse.body) && isEmpty(orgBResponse.body);
+  const bothEmpty = isDeepEmpty(orgAResponse.body) && isDeepEmpty(orgBResponse.body);
 
   if (bothEmpty) {
     // Structural pass only: no cross-tenant data existed to compare, so this
