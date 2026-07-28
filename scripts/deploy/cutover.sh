@@ -65,7 +65,7 @@ surface_row() {
       echo "read|ReportingReadEnabled|verify|reporting|NEXT_PUBLIC_REPORTING_READ_VIA_CSHARP|FLIP_READY|Runbook §6 Phase A #2."
       ;;
     billing-read)
-      echo "read|BillingReadEnabled|verify|billing-invoices|NONE|FLIP_READY|Runbook §6 Phase A #3 (part 1). CAVEAT: no NEXT_PUBLIC_*_VIA_CSHARP wrapper found anywhere under apps/web/lib/platform-api/billing.ts (only BILLING_USAGE_VIA_CSHARP + BILLING_SELF_SERVE_WRITE_VIA_CSHARP exist there) — the FE-rewiring PR for invoice reads does not appear to have shipped despite the runbook's 'already done for all 12 domains' framing. Confirm with Federico before treating the FE half as cutover-ready; the backend flip below is unaffected either way."
+      echo "read|BillingReadEnabled|verify|billing-invoices|NEXT_PUBLIC_BILLING_INVOICES_VIA_CSHARP|FLIP_READY|Runbook §6 Phase A #3 (part 1). UPDATE 2026-07-28: the FE wrapper now exists (apps/web/lib/platform-api/billing.ts's useBillingInvoices/useBillingInvoice hooks, wired into the new apps/web/app/(admin)/settings/billing/billing-invoices.tsx card) — first-ever FE consumer of this surface. Ships dark (unset/false, mirrors every other surface's default-off convention); flipping this flag is a real single-flag flip like the rest of the table, not a caveat anymore."
       ;;
     billing-usage)
       echo "read|BillingUsageEnabled|verify|billing-usage|NEXT_PUBLIC_BILLING_USAGE_VIA_CSHARP|FLIP_READY|Runbook §6 Phase A #3 (part 2)."
