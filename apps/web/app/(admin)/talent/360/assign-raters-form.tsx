@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { RATER_RELATIONSHIPS, type RaterRelationshipValue } from '@tims/shared';
-import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
 import { UserPicker } from '../../../../components';
@@ -23,7 +22,6 @@ interface AssignRatersFormProps {
  * subject and submits them via evaluation360.assignRaters in a single call. */
 export function AssignRatersForm({ cycleId }: AssignRatersFormProps) {
   const { t } = useI18n();
-  const utils = trpc.useUtils();
   const queryClient = useQueryClient();
 
   const [subject, setSubject] = useState<PickedUser | null>(null);
@@ -33,10 +31,6 @@ export function AssignRatersForm({ cycleId }: AssignRatersFormProps) {
   const assignRaters = useEvaluation360AssignRaters({
     onSuccess: () => {
       toast(t.evaluation360.assignSuccess, { type: 'success' });
-      // Refresh getCycleProgress from BOTH read paths: the tRPC cache and — when the C# read
-      // cutover is live (NEXT_PUBLIC_EVALUATION360_READ_VIA_CSHARP) — the platform-api query key,
-      // which the tRPC invalidate does not reach. Harmless (no-op key) while dark.
-      utils.evaluation360.getCycleProgress.invalidate({ cycleId });
       queryClient.invalidateQueries({
         queryKey: ['platform-api', 'evaluation360', 'cycle-progress', cycleId],
       });

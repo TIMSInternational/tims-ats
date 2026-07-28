@@ -40,13 +40,16 @@ PARITY_CLI="scripts/parity/cli.ts"
 #   flag           the exact PlatformOptions.cs property name (Platform__<flag> is the App Runner
 #                  env var; Platform:<flag> is the config-section notation used in docs)
 #   parity_command "verify" (read surfaces, scripts/parity/surfaces.ts SURFACES) or "verify-write"
-#                  (write surfaces, scripts/parity/write-surfaces.ts WRITE_SURFACES)
+#                  (write surfaces, scripts/parity/write-surfaces.ts WRITE_SURFACES), or the
+#                  literal string NONE when no TS side exists to diff against at all (the TS
+#                  router was deleted outright — see reporting/evaluation360 below)
 #   parity_key     the key registered in that file — NOT always identical to our surface name
-#                  (see billing-read -> billing-invoices, nine-box -> ninebox below)
+#                  (see billing-read -> billing-invoices, nine-box -> ninebox below), or NONE
+#                  when parity_command is NONE
 #   fe_flag        the NEXT_PUBLIC_*_VIA_CSHARP flag wired in apps/web/lib/platform-api/*.ts, or
 #                  the literal string NONE when no such flag exists in the repo today
-#   status         CONFIRMED_LIVE | FLIP_READY | COEXISTENCE | BLOCKED — see --list for the
-#                  human-readable note attached to each
+#   status         CONFIRMED_LIVE | FLIP_READY | COEXISTENCE | BLOCKED | TS_DELETED — see --list
+#                  for the human-readable note attached to each
 #
 # Cross-checked directly against:
 #   services/Tims.Platform/src/Tims.Api/Configuration/PlatformOptions.cs   (flag names — the
@@ -62,7 +65,7 @@ surface_row() {
       echo "read|TeamIntelReadEnabled|verify|team-intel|NEXT_PUBLIC_TEAMINTEL_READ_VIA_CSHARP|CONFIRMED_LIVE|Flipped + confirmed live in prod 2026-07-27 (Federico) — runbook intro + §6 Phase A #1. Reference/proof case for this whole script."
       ;;
     reporting)
-      echo "read|ReportingReadEnabled|verify|reporting|NEXT_PUBLIC_REPORTING_READ_VIA_CSHARP|FLIP_READY|Runbook §6 Phase A #2."
+      echo "read|ReportingReadEnabled|NONE|NONE|NEXT_PUBLIC_REPORTING_READ_VIA_CSHARP|TS_DELETED|Runbook §6 Phase A #2. UPDATE 2026-07-28: the TS recruitment-analytics router (packages/api/src/routers/recruitment-analytics.ts) and its FE tRPC fallback (apps/web/lib/platform-api/reporting.ts) have been deleted — the C# read path is the sole implementation now, so scripts/parity/surfaces.ts's 'reporting' entry was removed too and there is no TS side left to diff against. --verify-only for this surface is now a no-op (see run_verify) rather than a real parity check."
       ;;
     billing-read)
       echo "read|BillingReadEnabled|verify|billing-invoices|NEXT_PUBLIC_BILLING_INVOICES_VIA_CSHARP|FLIP_READY|Runbook §6 Phase A #3 (part 1). UPDATE 2026-07-28: the FE wrapper now exists (apps/web/lib/platform-api/billing.ts's useBillingInvoices/useBillingInvoice hooks, wired into the new apps/web/app/(admin)/settings/billing/billing-invoices.tsx card) — first-ever FE consumer of this surface. Ships dark (unset/false, mirrors every other surface's default-off convention); flipping this flag is a real single-flag flip like the rest of the table, not a caveat anymore."
@@ -71,7 +74,7 @@ surface_row() {
       echo "read|BillingUsageEnabled|verify|billing-usage|NEXT_PUBLIC_BILLING_USAGE_VIA_CSHARP|FLIP_READY|Runbook §6 Phase A #3 (part 2)."
       ;;
     evaluation360)
-      echo "read|Evaluation360ReadEnabled|verify|evaluation360|NEXT_PUBLIC_EVALUATION360_READ_VIA_CSHARP|FLIP_READY|Runbook §6 Phase A #4."
+      echo "read|Evaluation360ReadEnabled|NONE|NONE|NEXT_PUBLIC_EVALUATION360_READ_VIA_CSHARP|TS_DELETED|Runbook §6 Phase A #4. UPDATE 2026-07-28: the TS evaluation360 router (packages/api/src/routers/evaluation360.ts) and its FE tRPC fallback (apps/web/lib/platform-api/evaluation360.ts, both read AND write) have been deleted — the C# read path is the sole implementation now, so scripts/parity/surfaces.ts's 'evaluation360' entry was removed too and there is no TS side left to diff against for reads. --verify-only for this surface is now a no-op (see run_verify) rather than a real parity check. NOTE: the WRITE surface is unaffected by this — see the evaluation360-write row below; scripts/parity/write-surfaces.ts still registers 'evaluation360' for verify-write."
       ;;
     succession)
       echo "read|SuccessionReadEnabled|verify|succession|NEXT_PUBLIC_SUCCESSION_READ_VIA_CSHARP|FLIP_READY|Runbook §6 Phase A #4."
@@ -95,7 +98,7 @@ surface_row() {
       echo "read|AccessReviewReadEnabled|verify|access-review|NEXT_PUBLIC_ACCESS_REVIEW_READ_VIA_CSHARP|FLIP_READY|Phase-5 Slice-18 — same situation as audit-log: post-dates the runbook's §6 lists. Read side is efcoreReadOnly over Phase-2 identity tables (users/roles/user_roles/role_permissions/permissions/organizations); access_reviews itself stays Prisma-owned until the WRITE flag (access-review-write) flips."
       ;;
     evaluation360-write)
-      echo "write|Evaluation360WriteEnabled|verify-write|evaluation360|NEXT_PUBLIC_EVALUATION360_WRITE_VIA_CSHARP|FLIP_READY|Runbook §6 Phase B #8 — FLIP-READY: once verified, drop the TS eval360 router + flip review_cycles/rater_assignments/rater_responses to efcore."
+      echo "write|Evaluation360WriteEnabled|verify-write|evaluation360|NEXT_PUBLIC_EVALUATION360_WRITE_VIA_CSHARP|FLIP_READY|Runbook §6 Phase B #8 — FLIP-READY. UPDATE 2026-07-28: this note used to say 'once verified, drop the TS eval360 router' as a pending future step — that's now DONE (packages/api/src/routers/evaluation360.ts + its FE fallback in apps/web/lib/platform-api/evaluation360.ts were deleted outright), independent of this flag's flip state. verify-write itself is UNAFFECTED by that deletion (scripts/parity/write-surfaces.ts's 'evaluation360' entry hits the C# API directly for RBAC/IDOR checks — it never depended on the TS router). Flipping Platform:Evaluation360WriteEnabled is still the pending step to move review_cycles/rater_assignments/rater_responses to efcore table-ownership."
       ;;
     succession-write)
       echo "write|SuccessionWriteEnabled|verify-write|succession|NEXT_PUBLIC_SUCCESSION_WRITE_VIA_CSHARP|FLIP_READY|Runbook §6 Phase B #9 — FLIP-READY: drop TS succession router, flip critical_roles/successors."
@@ -131,6 +134,7 @@ status_label() {
     FLIP_READY) echo "FLIP-READY" ;;
     COEXISTENCE) echo "COEXISTENCE" ;;
     BLOCKED) echo "BLOCKED" ;;
+    TS_DELETED) echo "TS DELETED (no parity)" ;;
     *) echo "$1" ;;
   esac
 }
@@ -169,11 +173,14 @@ OPTIONS
   --help                      Print this message.
 
 EXAMPLES
-  scripts/deploy/cutover.sh reporting --verify-only
-  scripts/deploy/cutover.sh reporting --verify-only --flip-backend --yes
+  scripts/deploy/cutover.sh billing-usage --verify-only
+  scripts/deploy/cutover.sh billing-usage --verify-only --flip-backend --yes
   scripts/deploy/cutover.sh access-review-write --flip-backend --skip-verify-confirm-i-know-what-im-doing
   scripts/deploy/cutover.sh dei --rollback --yes
   scripts/deploy/cutover.sh --list
+  # NOTE: "reporting" and "evaluation360" (read) no longer have a real --verify-only check — their
+  # TS routers were deleted 2026-07-28, so there's nothing left to diff against. --verify-only for
+  # either still runs (prints a no-op notice and exits 0) rather than erroring.
 
 See scripts/deploy/README-cutover.md for the full worked flow.
 EOF
@@ -217,6 +224,12 @@ run_verify() {
   pkey="$(field "$row" 4)"
 
   echo "==> verify-only: ${surface} (kind=${kind})"
+  if [ "$pcmd" = "NONE" ]; then
+    echo "    No parity command registered for \"${surface}\" — its TS router was deleted outright,"
+    echo "    so there is no TS side left to diff against (see --list for detail). Treating this as"
+    echo "    trivially passed: nothing to verify."
+    return 0
+  fi
   echo "    npx tsx ${PARITY_CLI} ${pcmd} ${pkey}"
   (
     cd "$REPO_ROOT"
@@ -515,7 +528,9 @@ fi
 
 # Exit code contract: a bare `--verify-only` (the default mode) must propagate the parity CLI's
 # own pass/fail so this script is usable as a CI/scripting gate, e.g.
-# `./cutover.sh reporting --verify-only && ./cutover.sh reporting --flip-backend --yes`. Once a
+# `./cutover.sh billing-usage --verify-only && ./cutover.sh billing-usage --flip-backend --yes`
+# (for "reporting"/"evaluation360" read, whose TS routers are deleted, run_verify's NONE branch
+# above returns 0 unconditionally instead of a real pass/fail). Once a
 # mutating mode (--flip-backend/--rollback) also ran, THEIR success is what the exit code reports
 # (they already refuse to run on a verify failure, so reaching this point means they printed/ran
 # fine even if the earlier bundled verify had failed and was overridden via the escape hatch).

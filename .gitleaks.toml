@@ -12,4 +12,5 @@ description = "Known non-secret false positives"
 # cutover client). These are domain identifiers, not secrets. Matched against the finding's secret.
 regexes = [
   '''^evaluation360$''',
+  '''^Eval360Competency$''',
 ]

@@ -4,7 +4,6 @@ import { organizationRouter } from './routers/organization';
 import { userRouter } from './routers/user';
 import { vacancyRouter } from './routers/vacancy';
 import { pipelineRouter } from './routers/pipeline';
-import { recruitmentAnalyticsRouter } from './routers/recruitment-analytics';
 import { candidateRouter } from './routers/candidate';
 import { assessmentRouter } from './routers/assessment';
 import { interviewRouter } from './routers/interview';
@@ -32,7 +31,6 @@ import { consentRouter } from './routers/consent';
 import { aiInterviewRouter } from './routers/ai-interview';
 import { entitlementRouter } from './routers/entitlement';
 import { fitEngineRouter } from './routers/fit-engine';
-import { evaluation360Router } from './routers/evaluation360';
 
 export { createContext } from './context';
 export type { TRPCContext } from './context';
@@ -45,10 +43,7 @@ export {
 export { evaluateAlertRules } from './services/alert-evaluation.service';
 export type { AlertEvaluationSummary } from './services/alert-evaluation.service';
 export { candidatePortalService } from './services/candidate-portal.service';
-export {
-  handleStripeWebhook,
-  isWebhookVerificationError,
-} from './services/billing-webhook.service';
+export { handleStripeWebhook, isWebhookVerificationError } from './services/billing-webhook.service';
 export type { WebhookResult } from './services/billing-webhook.service';
 export { verifyWebhookSignature } from './integrations/elevenlabs';
 export { aiInterviewService } from './services/ai-interview.service';
@@ -61,7 +56,6 @@ export const appRouter = router({
   user: userRouter,
   vacancy: vacancyRouter,
   pipeline: pipelineRouter,
-  recruitmentAnalytics: recruitmentAnalyticsRouter,
   candidate: candidateRouter,
   assessment: assessmentRouter,
   interview: interviewRouter,
@@ -89,7 +83,6 @@ export const appRouter = router({
   aiInterview: aiInterviewRouter,
   entitlement: entitlementRouter,
   fitEngine: fitEngineRouter,
-  evaluation360: evaluation360Router,
 });
 
 export const createCaller = createCallerFactory(appRouter);
