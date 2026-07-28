@@ -15,6 +15,7 @@ import {
 import { toast } from '../../../../lib/toast';
 import { ErrorState } from '../../../../components';
 import { BillingPlans } from './billing-plans';
+import { BillingInvoices } from './billing-invoices';
 
 type T = ReturnType<typeof useI18n>['t'];
 
@@ -228,6 +229,7 @@ export default function BillingPage() {
         </div>
 
         <BillingPlans currentPlan={currentPlan} configured={configured} />
+        <BillingInvoices />
       </div>
     </div>
   );

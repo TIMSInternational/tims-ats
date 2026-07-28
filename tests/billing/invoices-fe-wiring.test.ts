@@ -63,3 +63,26 @@ describe('billing-invoices FE consumer — i18n', () => {
     }
   });
 });
+
+describe('billing-invoices FE consumer — component', () => {
+  it('billing-invoices.tsx wires the shared components and new hooks', () => {
+    const component = read('apps/web/app/(admin)/settings/billing/billing-invoices.tsx');
+    expect(component).toMatch(/export function BillingInvoices/);
+    expect(component).toMatch(/useBillingInvoices/);
+    expect(component).toMatch(/useBillingInvoice\(/);
+    expect(component).toMatch(/<DataTable/);
+    expect(component).toMatch(/<Drawer/);
+    expect(component).toMatch(/<EmptyState/);
+    expect(component).toMatch(/<ErrorState/);
+    expect(component).toMatch(/<StatusBadge/);
+    expect(component).not.toMatch(/style=\{\{/);
+    expect(component).not.toMatch(/:\s*any\b/);
+    expect(component).not.toMatch(/\bas any\b/);
+  });
+
+  it('settings/billing page.tsx mounts BillingInvoices after BillingPlans', () => {
+    const page = read('apps/web/app/(admin)/settings/billing/page.tsx');
+    expect(page).toMatch(/import\s*\{\s*BillingInvoices\s*\}\s*from\s*['"]\.\/billing-invoices['"]/);
+    expect(page).toMatch(/<BillingPlans[\s\S]*<BillingInvoices/);
+  });
+});
