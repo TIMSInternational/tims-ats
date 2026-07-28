@@ -28,9 +28,14 @@ Federico execution.
 
 ## 0. Blocking pre-reqs (clear BEFORE the C# deploy)
 
-- [ ] **0.1 — 🔴 Rotate the leaked prod DB password** (leaked to a chat transcript during the 2026-07-20 qrtz
-      apply) **+ update Vercel `DATABASE_URL`/`DIRECT_URL` in the SAME maintenance window** — resetting the password
-      alone breaks the live TS app until Vercel env is updated. Do this first; the new password feeds §2.
+- [x] **0.1 — 🔴 Rotate the leaked prod DB password — DONE 2026-07-27 (Federico).** The password leaked
+      to a chat transcript a second time (during this session's parity-harness setup, in addition to the
+      original 2026-07-20 leak this item was written for) — rotated via the Supabase dashboard, Vercel
+      `DATABASE_URL`/`DIRECT_URL` updated in the same session, prod redeployed (`vercel --prod`), and the
+      live TS app confirmed working post-rotation. The C# App Runner service's `/ready` also returned 200
+      throughout — either it uses a different DB role than the rotated `postgres` password, or it was
+      riding an existing pooled connection; **not independently confirmed which**, worth a proactive check
+      of the `Platform__DatabaseConnectionString` Secrets Manager value next time this comes up.
 - [ ] **0.2 — (recommended, independent of C#) apply the pending compliance prod SQL** (`psql -v ON_ERROR_STOP=1
 --single-transaction "<DIRECT_PROD_URL>" -f <file>`): merge **PR #144** then apply CB-1
       (`packages/db/prisma/manual/2026-07-17-data-access-logs-immutable.sql`), CB-1b
