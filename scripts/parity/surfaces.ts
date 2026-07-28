@@ -665,7 +665,12 @@ export const SURFACES: Record<string, Surface> = {
     key: 'audit-log',
     flag: 'Platform__AuditLogReadEnabled',
     roles: ['platform_owner', 'org_admin'],
-    probeRole: 'org_admin', // org-scoped role — RLS/cross-tenant probing is N/A here; see globalScope below.
+    // MUST be the ALLOWED role (200), not the denied one: the parity check always calls
+    // probeRole's token expecting success, and stripTrpcJson (scripts/parity/trpc.ts:11)
+    // deliberately throws on any tRPC error response — a crash, not a soft [FAIL] — so
+    // pointing probeRole at a denied role takes down the whole verify run. org_admin (403)
+    // is still fully covered by the separate RBAC check via `tokensByRole`.
+    probeRole: 'platform_owner',
     endpoints: [
       {
         name: 'logs',
@@ -686,7 +691,8 @@ export const SURFACES: Record<string, Surface> = {
     key: 'access-review',
     flag: 'Platform__AccessReviewReadEnabled',
     roles: ['platform_owner', 'org_admin'],
-    probeRole: 'org_admin', // org-scoped role — RLS/cross-tenant probing is N/A here; see globalScope below.
+    // See audit-log's probeRole comment above — same fix, same reason.
+    probeRole: 'platform_owner',
     endpoints: [
       {
         name: 'report',

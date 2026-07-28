@@ -109,7 +109,14 @@ async function mintTokens(
     }
   }
   if (!orgAToken) throw new Error(`mintTokens: failed to mint org-A token for role "${primaryRole}"`);
-  if (!orgBToken) throw new Error(`mintTokens: failed to mint org-B token for role "${primaryRole}"`);
+  // platform_owner is deliberately seeded ONLY under org A (see planSeed's comment: it's an
+  // org-less identity, seeded once purely to hang the token cache off of) — an org-B counterpart
+  // structurally does not exist, so don't require one. Every surface that uses platform_owner as
+  // probeRole (access-review, audit-log) has globalScope:true on every endpoint, so orgBToken is
+  // never actually read by the RLS check for them; leaving it '' is safe.
+  if (!orgBToken && primaryRole !== 'platform_owner') {
+    throw new Error(`mintTokens: failed to mint org-B token for role "${primaryRole}"`);
+  }
   if (!orgACookie) throw new Error(`mintTokens: failed to mint org-A session cookie for role "${primaryRole}"`);
   return { orgAToken, orgBToken, orgACookie, tokensByRole };
 }
@@ -129,7 +136,8 @@ async function runChecks(command: CheckCommand, cfg: HarnessConfig, surface: Sur
   const resources: SeedResources | undefined = needsResources ? await resolveResources(cfg) : undefined;
   const pairFor = (ep: EndpointDef) => {
     const pair = resources?.[ep.idScopeKey as keyof SeedResources];
-    if (!pair) throw new Error(`runChecks: no resolved resource for idScopeKey "${ep.idScopeKey}" on endpoint "${ep.name}"`);
+    if (!pair)
+      throw new Error(`runChecks: no resolved resource for idScopeKey "${ep.idScopeKey}" on endpoint "${ep.name}"`);
     return pair;
   };
   const orgAEndpoint = (ep: EndpointDef): EndpointDef => (ep.idScopeKey ? substituteEndpointId(ep, pairFor(ep).a) : ep);
@@ -188,7 +196,9 @@ async function cmdAuth(): Promise<number> {
       ok++;
     } catch (err) {
       failed++;
-      console.error(`parity: auth failed for ${u.orgKey}:${u.role} (${u.email}): ${err instanceof Error ? err.message : String(err)}`);
+      console.error(
+        `parity: auth failed for ${u.orgKey}:${u.role} (${u.email}): ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   }
   console.log(`parity: auth — ${ok} succeeded, ${failed} failed (of ${plan.users.length}).`);
@@ -197,7 +207,9 @@ async function cmdAuth(): Promise<number> {
 
 async function cmdCheck(command: CheckCommand, surfaceKey: string | undefined): Promise<number> {
   if (!surfaceKey) {
-    console.error(`Error: "${command}" requires a <surface> argument. Known surfaces: ${Object.keys(SURFACES).join(', ')}`);
+    console.error(
+      `Error: "${command}" requires a <surface> argument. Known surfaces: ${Object.keys(SURFACES).join(', ')}`,
+    );
     return 1;
   }
   const surface = SURFACES[surfaceKey];
@@ -221,12 +233,16 @@ async function cmdCheck(command: CheckCommand, surfaceKey: string | undefined): 
  */
 async function cmdVerifyWrite(surfaceKey: string | undefined): Promise<number> {
   if (!surfaceKey) {
-    console.error(`Error: "verify-write" requires a <surface> argument. Known write surfaces: ${Object.keys(WRITE_SURFACES).join(', ')}`);
+    console.error(
+      `Error: "verify-write" requires a <surface> argument. Known write surfaces: ${Object.keys(WRITE_SURFACES).join(', ')}`,
+    );
     return 1;
   }
   const surface = WRITE_SURFACES[surfaceKey];
   if (!surface) {
-    console.error(`Error: unknown write surface "${surfaceKey}". Known write surfaces: ${Object.keys(WRITE_SURFACES).join(', ')}`);
+    console.error(
+      `Error: unknown write surface "${surfaceKey}". Known write surfaces: ${Object.keys(WRITE_SURFACES).join(', ')}`,
+    );
     return 1;
   }
   const cfg = loadConfig();
@@ -255,7 +271,13 @@ async function cmdVerifyWrite(surfaceKey: string | undefined): Promise<number> {
   // dark backend would 404 the by-id cross-org probes and FALSE-PASS those IDOR checks (a route-absent
   // 404 is indistinguishable from an access-denied 404). Bail loudly unless we see the mounted-401.
   const pf = surface.endpoints[0];
-  const pfProbe = await callCsharpWrite(res.base, pf.method, pf.buildParity(res).path, '', pf.method === 'POST' ? {} : null);
+  const pfProbe = await callCsharpWrite(
+    res.base,
+    pf.method,
+    pf.buildParity(res).path,
+    '',
+    pf.method === 'POST' ? {} : null,
+  );
   if (pfProbe.status !== 401) {
     console.error(
       `verify-write: the "${surface.key}" write routes do not appear MOUNTED — a no-auth probe of ${pf.method} ${pf.buildParity(res).path} returned ${pfProbe.status}, expected 401 (a mounted auth-protected route rejects a no-token request with 401; 404/405/other ⇒ the write flag is likely OFF). Flip ${surface.flag}=true at canary, then re-run. (Running against a dark backend would false-pass the by-id IDOR checks.)`,
