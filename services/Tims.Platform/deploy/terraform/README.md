@@ -9,15 +9,21 @@ Infrastructure-as-Code for the first C# Platform prod deploy (Gate G3). Turns th
 > authored but NOT `validate`/`plan`-checked locally — your first step is `terraform init && validate && plan`.
 
 ## What it creates
+
 ECR repo (immutable tags, scan-on-push) · IAM ECR-access role + instance role (Secrets Manager read
 only) · Secrets Manager **containers** for the sensitive config (values set out-of-band) · App Runner
 auto-scaling config · the App Runner service (port 8080, `/health` liveness, env + secret refs, all
 feature flags **off**). Default public egress reaches the Supabase pooler — no VPC connector.
 
 ## Decisions you must make first
-1. **Which AWS account/org.** The runbook flagged that `747814092517` is the FormMaps account and
-   TIMS ATS is not on it. Decide the target account; configure your AWS credentials/profile for it
-   before `apply`.
+
+1. **Which AWS account/org — RESOLVED (2026-07-27, confirmed by Federico).** `747814092517` was
+   originally flagged as "the FormMaps account, TIMS ATS is not on it" — that assumption was WRONG.
+   Both FormMaps and TIMS ATS are the same company's different software products and intentionally
+   share this one AWS account. `747814092517` IS the correct target account for `tims-platform-api`.
+   Configure AWS credentials/profile for this account before `apply` (a dedicated IAM user, e.g.
+   `claude-code-agent`, already exists in it from prior FormMaps work — reusable here, or provision a
+   TIMS-specific one if tighter separation is preferred).
 2. **State backend.** `versions.tf` has a commented S3+DynamoDB backend — point it at your org's
    remote state before any real `apply` (local state is fine only for the first throwaway `plan`).
 3. **The dual-role DB login** (the #1 deploy risk — runbook §2). The `Platform__DatabaseConnectionString`
@@ -27,6 +33,7 @@ feature flags **off**). Default public egress reaches the Supabase pooler — no
    the secret (below). `/whoami` in the smoke gate proves it.
 
 ## Deploy flow
+
 ```bash
 # 0) Pre-reqs (runbook §0): rotate the leaked prod DB password + update Vercel env first.
 
@@ -55,11 +62,13 @@ aws secretsmanager put-secret-value --secret-id <impersonation-arn> --secret-str
 ```
 
 ## Cutover (per surface, later)
+
 Flip the backend flag in `feature_flags` (→ `terraform apply`) AND set the matching FE flag
 (`NEXT_PUBLIC_<SURFACE>_VIA_CSHARP=true` + `NEXT_PUBLIC_TIMS_PLATFORM_API_URL=<service_url output>`)
 → canary → verify → delete the TS surface. Rollback = flag back to false + unset the FE flag.
 
 ## Notes
+
 - **Secrets are never in TF state or code** — only empty containers + an ignored placeholder version.
   Real values are written with `put-secret-value` and TF won't revert them (`ignore_changes`).
 - **Workers/HRIS deferred** — this module is the `Tims.Api` service only. Add a sibling for
