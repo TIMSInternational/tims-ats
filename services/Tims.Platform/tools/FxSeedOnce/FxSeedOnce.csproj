@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- FxSeedOnce: one-off manual tool to populate fx_rates outside the Tims.Workers host, which
+       has never been deployed (blocked on BambooHR creds, unrelated timeline — see
+       docs/architecture/csharp-migration/PROD-DEPLOY-RUNBOOK-gate-g3.md:57-64). Reuses
+       RefreshFxRatesUseCase unmodified. See docs/architecture/csharp-migration/fx-seed-once-runbook.md
+       for exact run instructions — Federico runs this against prod himself, per the standing
+       "I never touch prod" rule; Claude only builds and verifies it locally. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- DEVIATION from the plan's literal Step 1 (tracked in task-1-report.md): the plan's
+         OutputType=Exe anticipates Task 2's Program.cs entrypoint, but with zero .cs files
+         containing a Main method, Exe fails CS5001 at build time — which blocks Task 1's own
+         RED/GREEN test cycle. Left as the implicit default (Library, matching every other
+         Tims.* project's csproj) for Task 1; Task 2 MUST add <OutputType>Exe</OutputType> back
+         to this file when it adds Program.cs. -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Tims.Application\Tims.Application.csproj" />
+    <ProjectReference Include="..\..\src\Tims.Infrastructure\Tims.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Required by FxSeedRunner's services.AddLogging(builder => builder.AddConsole()) call —
+         not referenced transitively by Tims.Application/Tims.Infrastructure (this repo's hosts use
+         Serilog, not Microsoft.Extensions.Logging.Console). Pinned to 10.0.10 to match this repo's
+         existing pin pattern for Microsoft.* 10.x packages (e.g. Tims.Api's JwtBearer/OpenApi). -->
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.10" />
+  </ItemGroup>
+
+</Project>

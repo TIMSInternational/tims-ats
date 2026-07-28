@@ -49,6 +49,7 @@
          per-connector failure ISOLATION (fake-based, no DB). This project already carries the
          Infrastructure graph the job depends on. -->
     <ProjectReference Include="..\..\src\Tims.Workers\Tims.Workers.csproj" />
+    <ProjectReference Include="..\..\tools\FxSeedOnce\FxSeedOnce.csproj" />
   </ItemGroup>
 
 </Project>
