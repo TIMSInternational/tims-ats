@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { submitRatingsInput } from '../../packages/api/src/routers/evaluation360';
+import { submitRatingsInput } from '@tims/shared';
 
 // Sprint 1.7 Slice 3 — evaluation360 router self-service procedures
 // (myRaterTasks/submitRatings). CRITICAL DESIGN: these are IDENTITY-ANCHORED
