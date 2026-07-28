@@ -28,3 +28,38 @@ describe('billing-invoices FE consumer — hooks wiring', () => {
     expect(billing).not.toMatch(/\bas any\b/);
   });
 });
+
+describe('billing-invoices FE consumer — i18n', () => {
+  const en = JSON.parse(read('apps/web/lib/i18n/en.json'));
+  const es = JSON.parse(read('apps/web/lib/i18n/es.json'));
+
+  const expectedKeys = [
+    'invoicesTitle',
+    'invoicesEmpty',
+    'invoicesEmptyDesc',
+    'invoiceColDate',
+    'invoiceColAmount',
+    'invoiceColStatus',
+    'invoiceStatusDraft',
+    'invoiceStatusPending',
+    'invoiceStatusPaid',
+    'invoiceStatusVoid',
+    'loadMoreInvoices',
+    'loadingMoreInvoices',
+    'invoiceSubtotal',
+    'invoiceTax',
+    'invoicePoNumber',
+    'invoiceNotes',
+    'invoicePeriod',
+    'invoiceDownload',
+    'invoiceNumber',
+    'invoiceDueDate',
+  ];
+
+  it('every new key exists and is non-empty in both locales', () => {
+    for (const key of expectedKeys) {
+      expect(en.billing[key], `en.billing.${key}`).toBeTruthy();
+      expect(es.billing[key], `es.billing.${key}`).toBeTruthy();
+    }
+  });
+});
