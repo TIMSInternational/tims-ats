@@ -9,11 +9,11 @@
 // output type (inferRouterOutputs), so each mapper below is compile-time-locked to the live
 // contract's shape — including the superjson Date semantics on the getCurrentPlan subscription.
 
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
 import type { inferRouterOutputs } from '@trpc/server';
 import type { AppRouter } from '@tims/api';
 import { trpc } from '../trpc';
-import { isPlatformApiEnabled, platformGet, platformPostRaw } from './client';
+import { isPlatformApiEnabled, platformGet, platformGetRaw, platformPostRaw } from './client';
 
 type RouterOutput = inferRouterOutputs<AppRouter>;
 type BillingConfigOutput = RouterOutput['billing']['getBillingConfig'];
@@ -22,12 +22,21 @@ type UsageOutput = RouterOutput['billing']['getUsage'];
 type CreateCheckoutSessionOutput = RouterOutput['billing']['createCheckoutSession'];
 type CreatePortalSessionOutput = RouterOutput['billing']['createPortalSession'];
 type CancelSubscriptionOutput = RouterOutput['billing']['cancelSubscription'];
+type ListInvoicesOutput = RouterOutput['billing']['listInvoices'];
+type InvoiceListItem = ListInvoicesOutput['items'][number];
+type GetInvoiceOutput = RouterOutput['billing']['getInvoice'];
+type InvoiceSubscription = NonNullable<GetInvoiceOutput['subscription']>;
 
 // All three live behind the C# `Platform:BillingUsageEnabled` backend flag (verified in
 // services/Tims.Platform/src/Tims.Api/Billing/BillingUsageEndpoints.cs — getUsage /getCurrentPlan
 // /getBillingConfig are all mapped by MapBillingUsageEndpoints, gated on BillingUsageEnabled), so
 // they share ONE FE flag mirroring that backend flag. NEXT_PUBLIC_* so it is inlined for the browser.
 const BILLING_USAGE_VIA_CSHARP = process.env.NEXT_PUBLIC_BILLING_USAGE_VIA_CSHARP === 'true';
+
+// A FOURTH, independent read surface (added 2026-07-28): tenant invoice history had ZERO FE
+// consumer of any kind (TS or C#) until this wrapper. Own flag (not reused from
+// BILLING_USAGE_VIA_CSHARP) since it cuts over independently of the other three billing reads.
+const BILLING_INVOICES_VIA_CSHARP = process.env.NEXT_PUBLIC_BILLING_INVOICES_VIA_CSHARP === 'true';
 
 const num = (v: number | string): number => Number(v);
 const numOrNull = (v: number | string | null | undefined): number | null => (v == null ? null : Number(v));
@@ -130,6 +139,163 @@ export function useBillingUsage() {
         apiCalls: { used: null, limit: null },
         periodStart: raw.periodStart == null ? null : String(raw.periodStart),
         periodEnd: raw.periodEnd == null ? null : String(raw.periodEnd),
+      };
+    },
+  });
+
+  return viaCSharp ? csharpQuery : trpcQuery;
+}
+
+// The C# /billing/invoices list endpoint has no `.Produces<T>()` annotation (verified in
+// schema.d.ts: `content?: never` at 200), so its shape isn't in the generated contract —
+// hand-typed here from the same Invoice model the tRPC `listInvoices` procedure queries
+// (packages/api/src/routers/billing.ts), one field looser (string | number for numerics,
+// unknown for date-times) matching every other raw-JSON mapper in this file.
+interface RawInvoiceListItem {
+  id: string;
+  invoiceNumber: number | string;
+  organizationId: string;
+  subscriptionId: string | null;
+  stripeInvoiceId: string | null;
+  amount: number | string;
+  subtotal: number | string | null;
+  taxRate: number | string | null;
+  currency: string;
+  status: string;
+  description: string | null;
+  invoiceDate: unknown;
+  dueDate: unknown;
+  poNumber: string | null;
+  notes: string | null;
+  memo: string | null;
+  emailTo: string | null;
+  emailCc: string | null;
+  paidAt: unknown;
+  invoiceUrl: string | null;
+  periodStart: unknown;
+  periodEnd: unknown;
+  createdAt: unknown;
+}
+
+function mapInvoiceListItem(raw: RawInvoiceListItem): InvoiceListItem {
+  return {
+    id: raw.id,
+    invoiceNumber: num(raw.invoiceNumber),
+    organizationId: raw.organizationId,
+    subscriptionId: raw.subscriptionId,
+    stripeInvoiceId: raw.stripeInvoiceId,
+    amount: num(raw.amount),
+    subtotal: numOrNull(raw.subtotal),
+    taxRate: numOrNull(raw.taxRate),
+    currency: raw.currency,
+    status: raw.status as InvoiceListItem['status'],
+    description: raw.description,
+    invoiceDate: toDate(raw.invoiceDate),
+    dueDate: toDateOrNull(raw.dueDate),
+    poNumber: raw.poNumber,
+    notes: raw.notes,
+    memo: raw.memo,
+    emailTo: raw.emailTo,
+    emailCc: raw.emailCc,
+    paidAt: toDateOrNull(raw.paidAt),
+    invoiceUrl: raw.invoiceUrl,
+    periodStart: toDateOrNull(raw.periodStart),
+    periodEnd: toDateOrNull(raw.periodEnd),
+    createdAt: toDate(raw.createdAt),
+  };
+}
+
+// Mirrors useBillingCurrentPlan's raw→Date mapping above, applied to the nested subscription
+// on a single invoice's detail (InvoiceDetailV1.subscription in schema.d.ts) — duplicated
+// rather than shared to avoid touching the already-live useBillingCurrentPlan hook.
+function mapInvoiceSubscription(raw: {
+  id: string;
+  organizationId: string;
+  stripeCustomerId: string | null;
+  stripeSubscriptionId: string | null;
+  plan: string;
+  status: string;
+  currentPeriodStart: unknown;
+  currentPeriodEnd: unknown;
+  trialEndsAt: unknown;
+  cancelledAt: unknown;
+  lastStripeEventAt: unknown;
+  createdAt: unknown;
+  updatedAt: unknown;
+}): InvoiceSubscription {
+  return {
+    id: raw.id,
+    organizationId: raw.organizationId,
+    stripeCustomerId: raw.stripeCustomerId,
+    stripeSubscriptionId: raw.stripeSubscriptionId,
+    plan: raw.plan as InvoiceSubscription['plan'],
+    status: raw.status as InvoiceSubscription['status'],
+    currentPeriodStart: toDateOrNull(raw.currentPeriodStart),
+    currentPeriodEnd: toDateOrNull(raw.currentPeriodEnd),
+    trialEndsAt: toDateOrNull(raw.trialEndsAt),
+    cancelledAt: toDateOrNull(raw.cancelledAt),
+    lastStripeEventAt: toDateOrNull(raw.lastStripeEventAt),
+    createdAt: toDate(raw.createdAt),
+    updatedAt: toDate(raw.updatedAt),
+  };
+}
+
+/**
+ * Tenant invoice history, cursor-paginated (`take`/`cursor`, 20 per page — matches the tRPC
+ * procedure's default). Gate: `isPlatformApiEnabled() && NEXT_PUBLIC_BILLING_INVOICES_VIA_CSHARP
+ * === 'true'`. First-ever FE consumer of this read surface (2026-07-28) — ships dark.
+ *  - true  → GET /billing/invoices?take=&cursor= via {@link platformGetRaw} (this endpoint has
+ *            no `.Produces<T>()` annotation, so it isn't in `GetPaths`/`platformGet`'s contract).
+ *  - false → trpc.billing.listInvoices.useInfiniteQuery (the DEFAULT), matching
+ *            trpc.notification.list.useInfiniteQuery's shape on the notifications page.
+ */
+export function useBillingInvoices() {
+  const viaCSharp = isPlatformApiEnabled() && BILLING_INVOICES_VIA_CSHARP;
+
+  const trpcQuery = trpc.billing.listInvoices.useInfiniteQuery(
+    { take: 20 },
+    { getNextPageParam: (lastPage) => lastPage.nextCursor, enabled: !viaCSharp },
+  );
+
+  const csharpQuery = useInfiniteQuery<ListInvoicesOutput>({
+    queryKey: ['platform-api', 'billing', 'invoices'],
+    enabled: viaCSharp,
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
+    queryFn: async ({ pageParam }) => {
+      const raw = (await platformGetRaw('/billing/invoices', {
+        take: 20,
+        cursor: pageParam as string | undefined,
+      })) as { items: RawInvoiceListItem[]; nextCursor?: string };
+      return {
+        items: raw.items.map(mapInvoiceListItem),
+        nextCursor: raw.nextCursor,
+      };
+    },
+  });
+
+  return viaCSharp ? csharpQuery : trpcQuery;
+}
+
+/**
+ * Single invoice detail (1 call site: the invoices drawer on settings/billing). Gate as above.
+ *  - true  → GET /billing/invoices/{id}, **typed** via {@link platformGet} (schema.d.ts confirms
+ *            `InvoiceDetailV1` IS `.Produces<T>()`-annotated, unlike the list endpoint above).
+ *  - false → trpc.billing.getInvoice.useQuery({ id }) (the DEFAULT).
+ */
+export function useBillingInvoice(id: string) {
+  const viaCSharp = isPlatformApiEnabled() && BILLING_INVOICES_VIA_CSHARP;
+
+  const trpcQuery = trpc.billing.getInvoice.useQuery({ id }, { enabled: !viaCSharp && id.length > 0 });
+
+  const csharpQuery = useQuery<GetInvoiceOutput>({
+    queryKey: ['platform-api', 'billing', 'invoice', id],
+    enabled: viaCSharp && id.length > 0,
+    queryFn: async () => {
+      const raw = await platformGet('/billing/invoices/{id}', undefined, { id });
+      return {
+        ...mapInvoiceListItem(raw),
+        subscription: raw.subscription ? mapInvoiceSubscription(raw.subscription) : null,
       };
     },
   });
