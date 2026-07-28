@@ -32,6 +32,26 @@ get-caller-identity` before doing anything else on a real run, so a missing
 
 ## The pre-deploy scripts (see cutover docs above for the flip/verify scripts)
 
+### `set-parity-secrets.sh`
+
+Interactively prompts for `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` (the two
+`scripts/parity/.env` values that can't be safely typed on a command line or handed to an
+AI session) and writes them into `scripts/parity/.env`. Input is read with terminal echo
+OFF (`read -rs`), so the value is never printed to the screen, never appears in shell
+history, and is never logged anywhere — same discipline as `apply-compliance-sql.sh`'s
+`DIRECT_PROD_URL` handling. Run this yourself, locally, after filling in the other 4
+`scripts/parity/.env` values (`SUPABASE_URL`/`SUPABASE_PROJECT_REF`/`TIMS_CSHARP_BASE`/
+`TIMS_TS_BASE`) by hand:
+
+```bash
+cp scripts/parity/.env.example scripts/parity/.env   # then fill in the 4 non-secret values
+bash scripts/deploy/set-parity-secrets.sh            # prompts for the 2 secret values
+```
+
+**Never paste a Supabase key into a chat, ticket, or anything else that persists it in
+plaintext** — if a key was ever pasted somewhere like that, rotate it in the Supabase
+dashboard (Project Settings → API → reset JWT secret) before using it here.
+
 ### `preflight-check.sh`
 
 Pure local, credential-free readiness check. Safe to run anywhere, any time,
