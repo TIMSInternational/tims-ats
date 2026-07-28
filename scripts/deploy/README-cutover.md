@@ -25,29 +25,36 @@ executed.
 | `--rollback`     | Only with `--yes` | Same recipe, flips the flag back to `false`, plus prints the FE Vercel-revert steps.                         |
 
 Run `./scripts/deploy/cutover.sh --list` for the full surface table (flag name, parity CLI key, FE
-flag, and CONFIRMED LIVE / FLIP-READY / COEXISTENCE status per
+flag, and CONFIRMED LIVE / FLIP-READY / COEXISTENCE / TS DELETED status per
 [the runbook's §6 classification](../../docs/architecture/csharp-migration/PROD-DEPLOY-RUNBOOK-gate-g3.md#6-per-surface-cutover-one-flag-at-a-time-ts-stays-until-prod-verified)).
 
-## Worked example: cutting over `reporting`
+## Worked example: cutting over `billing-usage`
 
 ```bash
 # 1) Verify — safe, non-mutating, needs scripts/parity/.env populated (see scripts/parity/README.md)
 #    and a live, reachable C# service.
-./scripts/deploy/cutover.sh reporting --verify-only
+./scripts/deploy/cutover.sh billing-usage --verify-only
 
 # 2) Once that's green, flip the backend flag AND re-verify in the same breath — the script
 #    refuses to flip unless a verify pass is bundled into the same invocation (see "sequencing
 #    safety" below). --yes is what actually executes the AWS CLI call; without it you get a
 #    dry-run printout of the exact command.
-./scripts/deploy/cutover.sh reporting --verify-only --flip-backend --yes
+./scripts/deploy/cutover.sh billing-usage --verify-only --flip-backend --yes
 
-# 3) Canary/monitor per the runbook, then flip the FE flag too (NEXT_PUBLIC_REPORTING_READ_VIA_CSHARP=true
+# 3) Canary/monitor per the runbook, then flip the FE flag too (NEXT_PUBLIC_BILLING_USAGE_VIA_CSHARP=true
 #    in Vercel Production + redeploy) — this script does not touch Vercel; that step stays manual
 #    per the runbook (§6: "The flag alone does not move the FE.").
 
 # If anything looks wrong at any point, roll back immediately — no re-verify needed:
-./scripts/deploy/cutover.sh reporting --rollback --yes
+./scripts/deploy/cutover.sh billing-usage --rollback --yes
 ```
+
+**Why not `reporting` for this walkthrough (like before)?** As of 2026-07-28 the TS
+recruitment-analytics router and its FE tRPC fallback were deleted outright (the C# read path is
+the sole implementation now), and the same happened to the TS evaluation360 router (both read AND
+write) — see the table below. Neither `reporting` nor `evaluation360` (read) has a parity command
+left to demonstrate; `--verify-only` for either is now a no-op that prints an explanatory notice
+and exits 0 rather than running a real check.
 
 ## Sequencing safety (the guardrail)
 
@@ -102,10 +109,10 @@ number) and independently corroborated by the `flag:` field in `scripts/parity/s
 | Surface (this script) | Kind  | Backend flag                | Parity CLI invocation        | FE flag (`apps/web`)                         | Status         |
 | --------------------- | ----- | --------------------------- | ---------------------------- | -------------------------------------------- | -------------- |
 | `team-intel`          | read  | `TeamIntelReadEnabled`      | `verify team-intel`          | `NEXT_PUBLIC_TEAMINTEL_READ_VIA_CSHARP`      | CONFIRMED LIVE |
-| `reporting`           | read  | `ReportingReadEnabled`      | `verify reporting`           | `NEXT_PUBLIC_REPORTING_READ_VIA_CSHARP`      | FLIP-READY     |
+| `reporting`           | read  | `ReportingReadEnabled`      | `NONE` (TS router deleted)   | `NEXT_PUBLIC_REPORTING_READ_VIA_CSHARP`      | TS DELETED     |
 | `billing-read`        | read  | `BillingReadEnabled`        | `verify billing-invoices`    | `NEXT_PUBLIC_BILLING_INVOICES_VIA_CSHARP`    | FLIP-READY     |
 | `billing-usage`       | read  | `BillingUsageEnabled`       | `verify billing-usage`       | `NEXT_PUBLIC_BILLING_USAGE_VIA_CSHARP`       | FLIP-READY     |
-| `evaluation360`       | read  | `Evaluation360ReadEnabled`  | `verify evaluation360`       | `NEXT_PUBLIC_EVALUATION360_READ_VIA_CSHARP`  | FLIP-READY     |
+| `evaluation360`       | read  | `Evaluation360ReadEnabled`  | `NONE` (TS router deleted)   | `NEXT_PUBLIC_EVALUATION360_READ_VIA_CSHARP`  | TS DELETED     |
 | `succession`          | read  | `SuccessionReadEnabled`     | `verify succession`          | `NEXT_PUBLIC_SUCCESSION_READ_VIA_CSHARP`     | FLIP-READY     |
 | `compensation`        | read  | `CompensationReadEnabled`   | `verify compensation`        | `NEXT_PUBLIC_COMPENSATION_READ_VIA_CSHARP`   | FLIP-READY     |
 | `nine-box`            | read  | `NineBoxReadEnabled`        | `verify ninebox`             | `NEXT_PUBLIC_NINEBOX_READ_VIA_CSHARP`        | FLIP-READY     |
@@ -159,6 +166,19 @@ classified the way it is, and every naming quirk below).
   is this script's own inference, not a citation of the runbook's Phase A/B lists like every other
   row is. Treat these two as "probably fine, but nobody has written the official classification
   down yet" until the runbook doc gets its own update.
+- **`reporting` and `evaluation360` (read) have their TS side deleted outright (2026-07-28).** The
+  TS recruitment-analytics router and the TS evaluation360 router (plus both routers' FE tRPC
+  fallback in `apps/web/lib/platform-api/{reporting,evaluation360}.ts`) were removed once the C#
+  read paths were confirmed fully live in prod — see
+  `docs/plans/2026-07-28-ts-dead-code-deletion-reporting-eval360.md`. `scripts/parity/surfaces.ts`'s
+  `reporting` and `evaluation360` entries were removed at the same time, so there is no TS side left
+  to diff against for either read surface: their `parity_command` is `NONE` and `--verify-only`
+  just prints a no-op notice and exits 0. This does NOT touch the `evaluation360-write` surface —
+  `scripts/parity/write-surfaces.ts` still registers `evaluation360` for `verify-write` (it tests
+  the C# API's RBAC/IDOR behavior directly, not a TS diff), so that row's parity command is
+  unaffected and still real. The `evaluation360-write` row's note used to say "once verified, drop
+  the TS eval360 router" as a pending step — that deletion already happened (both read AND write TS
+  code are gone), independent of whether the write flag itself has been flipped yet.
 - **Write-surface names use an explicit `-write` suffix** (`access-review-write`,
   `evaluation360-write`, etc.) to keep them addressable independently from their read counterpart
   — a domain's read and write flags cut over at different points in the runbook's Phase A / Phase B
