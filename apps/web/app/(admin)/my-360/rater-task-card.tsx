@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { EVAL360_COMPETENCIES } from '@tims/shared';
-import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
 import { toast } from '../../../lib/toast';
 import type { Eval360RaterTask } from '../../../lib/trpc-types';
@@ -23,7 +22,6 @@ interface RaterTaskCardProps {
  * enforced both by the zod boundary and by always sending the fixed set here). */
 export function RaterTaskCard({ task }: RaterTaskCardProps) {
   const { t } = useI18n();
-  const utils = trpc.useUtils();
   const queryClient = useQueryClient();
 
   const [ratings, setRatings] = useState<Record<CompetencyKey, number>>(
@@ -34,10 +32,6 @@ export function RaterTaskCard({ task }: RaterTaskCardProps) {
   const submit = useEvaluation360SubmitRatings({
     onSuccess: () => {
       toast(t.my360.submitSuccess, { type: 'success' });
-      // Refresh myRaterTasks from BOTH read paths: the tRPC cache and — when the C# read cutover is
-      // live (NEXT_PUBLIC_EVALUATION360_READ_VIA_CSHARP) — the platform-api query key, which the
-      // tRPC invalidate does not reach. Harmless (no-op key) while dark.
-      utils.evaluation360.myRaterTasks.invalidate();
       queryClient.invalidateQueries({ queryKey: ['platform-api', 'evaluation360', 'my-rater-tasks'] });
     },
     onError: (err) => toast(err.message, { type: 'error' }),

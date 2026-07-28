@@ -51,20 +51,12 @@ describe('SURFACES', () => {
       'pending-adjustments',
       'salary-bands',
     ]);
-    expect(SURFACES['evaluation360'].flag).toBe('Platform__Evaluation360ReadEnabled');
-    expect(SURFACES['evaluation360'].endpoints.map((e) => e.name).sort()).toEqual([
-      'cycle-progress',
-      'cycles',
-      'my-rater-tasks',
-      'my-report',
-      'my-report-cycles',
-    ]);
     expect(SURFACES['ninebox'].flag).toBe('Platform__NineBoxReadEnabled');
     expect(SURFACES['ninebox'].endpoints).toHaveLength(11);
     expect(SURFACES['succession'].flag).toBe('Platform__SuccessionReadEnabled');
     expect(SURFACES['succession'].endpoints.map((e) => e.name)).toContain('comp-gap-alerts');
     expect(SURFACES['succession'].endpoints).toHaveLength(9);
-    for (const key of ['compensation', 'evaluation360', 'ninebox', 'succession']) {
+    for (const key of ['compensation', 'ninebox', 'succession']) {
       expect(SURFACES[key].probeRole).toBe('super_admin');
     }
   });
@@ -73,8 +65,6 @@ describe('SURFACES', () => {
     // The 9 by-id Mode-A IDOR endpoints and the resource key each threads.
     const expected: Record<string, string> = {
       'compensation/employee': 'employee',
-      'evaluation360/cycle-progress': 'eval-cycle-staff',
-      'evaluation360/my-report': 'eval-cycle-self',
       'ninebox/employee': 'employee',
       'ninebox/axis-breakdown': 'employee',
       'ninebox/calibration': 'calibration',
@@ -95,7 +85,7 @@ describe('SURFACES', () => {
         expect(JSON.stringify(ep.input), k).toContain('{id}');
       }
     }
-    expect(byIdCount).toBe(9);
+    expect(byIdCount).toBe(7);
   });
 
   it('nine-box marks only the two pure kernels as globalScope', () => {

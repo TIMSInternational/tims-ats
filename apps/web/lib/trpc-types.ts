@@ -92,11 +92,17 @@ export type LowProgressAlertsResult = RouterOutput['performance']['getLowProgres
 export type LowProgressOkr = LowProgressAlertsResult['lowProgressOkrs'][number];
 export type OverdueCommitment = LowProgressAlertsResult['overdueCommitments'][number];
 
-// Evaluation 360 (Sprint 1.7 Slice 5) — participant "My 360" + admin console
-export type Eval360Cycle = RouterOutput['evaluation360']['listCycles'][number];
-export type Eval360CycleProgress = RouterOutput['evaluation360']['getCycleProgress'];
-export type Eval360ProgressRow = Eval360CycleProgress['progress'][number];
-export type Eval360RaterTask = RouterOutput['evaluation360']['myRaterTasks'][number];
-export type Eval360Report = RouterOutput['evaluation360']['myReport'];
-export type Eval360ReportBucket = Eval360Report['buckets'][number];
-export type Eval360ReportCycle = RouterOutput['evaluation360']['myReportCycles'][number];
+// Evaluation 360 (Sprint 1.7 Slice 5) — participant "My 360" + admin console. The TS
+// evaluation360 router has been deleted (C# cutover complete), so these are re-exported from the
+// C#-only FE wrapper's hand-declared types instead of inferRouterOutputs — same names, so every
+// consumer (cycle-row.tsx, cycle-table.tsx, rater-task-card.tsx, report-bucket-card.tsx) needs no
+// changes.
+export type {
+  EvaluationCycle as Eval360Cycle,
+  CycleProgress as Eval360CycleProgress,
+  CycleProgressRow as Eval360ProgressRow,
+  RaterTask as Eval360RaterTask,
+  MyReport as Eval360Report,
+  ReportBucket as Eval360ReportBucket,
+  MyReportCycle as Eval360ReportCycle,
+} from './platform-api/evaluation360';

@@ -31,7 +31,6 @@ import { consentRouter } from './routers/consent';
 import { aiInterviewRouter } from './routers/ai-interview';
 import { entitlementRouter } from './routers/entitlement';
 import { fitEngineRouter } from './routers/fit-engine';
-import { evaluation360Router } from './routers/evaluation360';
 
 export { createContext } from './context';
 export type { TRPCContext } from './context';
@@ -84,7 +83,6 @@ export const appRouter = router({
   aiInterview: aiInterviewRouter,
   entitlement: entitlementRouter,
   fitEngine: fitEngineRouter,
-  evaluation360: evaluation360Router,
 });
 
 export const createCaller = createCallerFactory(appRouter);
