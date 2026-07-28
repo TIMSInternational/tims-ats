@@ -38,11 +38,24 @@ export interface RlsContext {
  */
 function isEmpty(body: unknown): boolean {
   return (
-    body === null ||
-    body === undefined ||
-    body === '' ||
-    (typeof body === 'object' && Object.keys(body).length === 0)
+    body === null || body === undefined || body === '' || (typeof body === 'object' && Object.keys(body).length === 0)
   );
+}
+
+/**
+ * True when `body` is a k-anonymity-SUPPRESSED payload (`{ ..., suppressed: true, ... }`).
+ * By contract (see `DeiKernels.BuildDistribution`/`LeadershipDiversity`/`SuppressBelowMin5` and
+ * their siblings across every k-anonymity domain in this codebase), `suppressed: true` ALWAYS
+ * pairs with an empty/null group payload — the kernel wipes the real counts before returning,
+ * so this shape can never carry real cross-tenant data regardless of which org asked. It is
+ * shallow-non-empty (has real keys: `suppressed`, `groups: []`, etc.) so plain `isEmpty()` misses
+ * it, which is exactly what caused a false "possible global leak" flag on DEI's distribution
+ * endpoints once small (<5-row) test-org fixtures triggered suppression identically for both
+ * orgs — suppression working correctly, not a leak. This is the k-anonymity analog of Mode B's
+ * existing "both orgs returned empty" inconclusive case, not a new isolation guarantee.
+ */
+function isSuppressedPayload(body: unknown): boolean {
+  return typeof body === 'object' && body !== null && (body as Record<string, unknown>).suppressed === true;
 }
 
 /**
@@ -177,11 +190,7 @@ function buildProbePath(csharpPath: string, orgBResourceId: string): string {
  * guarantee for org-scoped resources still comes from a Mode A probe on their
  * by-id sibling endpoints, where one exists.
  */
-export async function runRlsEndpoint(
-  ep: EndpointDef,
-  ctx: RlsContext,
-  callCsharp: CallCsharp,
-): Promise<CheckResult> {
+export async function runRlsEndpoint(ep: EndpointDef, ctx: RlsContext, callCsharp: CallCsharp): Promise<CheckResult> {
   // globalScope — a non-tenant endpoint (e.g. /billing/config): its payload is
   // org-independent by design, so identical cross-org responses are CORRECT, not
   // a leak. There is no tenant isolation to prove here, so report a documented
@@ -227,7 +236,8 @@ export async function runRlsEndpoint(
         check: 'rls',
         endpoint: ep.name,
         ok: false,
-        detail: 'rls: Mode-A by-id probe requires orgBToken for the positive control (cannot produce a strong IDOR proof without it)',
+        detail:
+          'rls: Mode-A by-id probe requires orgBToken for the positive control (cannot produce a strong IDOR proof without it)',
       };
     }
     const control = await callCsharp(ctx.base, probePath, ctx.orgBToken);
@@ -271,6 +281,20 @@ export async function runRlsEndpoint(
 
   const bothNonEmpty = !isEmpty(orgAResponse.body) && !isEmpty(orgBResponse.body);
   const identical = JSON.stringify(orgAResponse.body) === JSON.stringify(orgBResponse.body);
+
+  // Both k-anonymity-suppressed: identical is EXPECTED and safe (see isSuppressedPayload's doc
+  // comment) — small/sparse per-org fixtures legitimately suppress to the same "no data" shape
+  // for both orgs. Same category as the bothEmpty case below, just k-anonymity's version of it.
+  if (bothNonEmpty && identical && isSuppressedPayload(orgAResponse.body) && isSuppressedPayload(orgBResponse.body)) {
+    return {
+      check: 'rls',
+      endpoint: ep.name,
+      ok: true,
+      inconclusive: true,
+      detail:
+        'inconclusive: both orgs returned an identical k-anonymity-suppressed payload — structural pass only, no real cross-tenant demographic data was compared',
+    };
+  }
 
   if (bothNonEmpty && identical) {
     return {

@@ -1014,6 +1014,180 @@ export async function seedSuccessionData(db: Client, orgAId: string, userIds: Ma
   );
 }
 
+/** Grants hr_admin the dei:read + dei:export permissions at org scope in each seeded org, matching
+ *  seed-access-matrix.ts:53 (`{ module: 'dei', actions: ['read', 'export'], scope: 'organization' }`).
+ *  Same rationale as seedTeamIntelGrants: real prod seeds the full matrix during org provisioning;
+ *  the harness seeds just this one surface's grant for its own test orgs. hrbp is intentionally
+ *  ungranted (dei is absent from hrbp's module list — its 403 is the RBAC deny proof). */
+async function seedDeiGrants(db: Client, roleIds: Map<string, string>): Promise<void> {
+  const readPerm = await upsertPermission(db, 'dei', 'read');
+  const exportPerm = await upsertPermission(db, 'dei', 'export');
+  for (const key of ORG_KEYS) {
+    const hrAdminRoleId = roleIds.get(`${key}:hr_admin`);
+    if (hrAdminRoleId) {
+      await upsertRolePermission(db, hrAdminRoleId, readPerm, 'organization');
+      await upsertRolePermission(db, hrAdminRoleId, exportPerm, 'organization');
+    }
+  }
+}
+
+// ── DEI demographic fixtures (org A ONLY — org B stays empty → strong Mode B) ───────────────────
+// getGenderRepresentation/getNationalityDiversity/getEthnicityDistribution/getDisabilityDistribution/
+// getAgeDistribution/getLeadershipDiversity/getPromotionEquity/getInclusionIndex all run their raw
+// counts through KAnonymity's min-5 suppression (Tims.Domain.Access.KAnonymity.SuppressBelowMin5:
+// a group of 1..4 suppresses the WHOLE distribution; a group of exactly 0 does NOT). With NO
+// employee_demographics rows seeded anywhere (the pre-existing gap this fixture closes), every org's
+// distribution suppresses identically to the same empty shape — org A and org B become
+// indistinguishable, which the RLS Mode B check misread as a possible cross-tenant leak (it wasn't;
+// see isSuppressedPayload's doc comment in checks/rls.ts for the harness-side half of this fix).
+// 10 fixed-UUID bare org-A users (never log in), split 5/5 on every demographic axis so each
+// populated bucket clears the min-5 floor: gender 5 female + 5 male, nationality 5 CO + 5 US,
+// ethnicity 5 mestizo + 5 blanco, disabilityStatus 5 none + 5 has_disability, all 10 DOBs in the SAME
+// age band (25-34) so that band clears min-5 while every other band stays at a not-suppressed 0.
+const DEI_USER_SUPA: string[] = [
+  '00000000-0000-4000-8000-0000000d0001',
+  '00000000-0000-4000-8000-0000000d0002',
+  '00000000-0000-4000-8000-0000000d0003',
+  '00000000-0000-4000-8000-0000000d0004',
+  '00000000-0000-4000-8000-0000000d0005',
+  '00000000-0000-4000-8000-0000000d0006',
+  '00000000-0000-4000-8000-0000000d0007',
+  '00000000-0000-4000-8000-0000000d0008',
+  '00000000-0000-4000-8000-0000000d0009',
+  '00000000-0000-4000-8000-0000000d000a',
+];
+
+async function upsertEmployeeDemographics(
+  db: Client,
+  orgId: string,
+  userId: string,
+  gender: string,
+  dateOfBirth: string,
+  nationality: string,
+  ethnicity: string,
+  disabilityStatus: string,
+): Promise<void> {
+  await db.query(
+    `INSERT INTO employee_demographics
+       (id, organization_id, user_id, gender, date_of_birth, nationality, ethnicity, disability_status, self_identified, updated_at)
+     VALUES (gen_random_uuid(), $1, $2, $3::"Gender", $4::date, $5, $6::"Ethnicity", $7::"DisabilityStatus", true, now())
+     ON CONFLICT (user_id) DO UPDATE SET
+       gender = EXCLUDED.gender, date_of_birth = EXCLUDED.date_of_birth, nationality = EXCLUDED.nationality,
+       ethnicity = EXCLUDED.ethnicity, disability_status = EXCLUDED.disability_status, updated_at = now()`,
+    [orgId, userId, gender, dateOfBirth, nationality, ethnicity, disabilityStatus],
+  );
+}
+
+/** Seeds a promotion-type salary_adjustments row (getPromotionEquity counts these by year,
+ *  server-resolved to the current UTC year when no `year` query param is given — effectiveDate
+ *  `now()` always lands in that window). `requestedById` just needs to be a valid org-A user. */
+async function upsertPromotionAdjustment(
+  db: Client,
+  orgId: string,
+  userId: string,
+  requestedById: string,
+): Promise<void> {
+  await db.query(
+    `INSERT INTO salary_adjustments
+       (id, organization_id, user_id, type, previous_salary, new_salary, currency, status, requested_by_id, effective_date, updated_at)
+     VALUES (gen_random_uuid(), $1, $2, 'promotion', 60000, 66000, 'USD', 'approved', $3, now(), now())
+     ON CONFLICT DO NOTHING`,
+    [orgId, userId, requestedById],
+  );
+}
+
+/** Seeds a published climate survey + 5 answered responses (getInclusionIndex: <5 responses or
+ *  all-skipped/all-answered-but-<5-either-side suppresses; 5 respondents ALL answering the one
+ *  inclusion question clears both the total-N and the contributing/skipped floors — a genuine,
+ *  non-suppressed index gets computed for org A, differing from org B's "no survey at all" null
+ *  result). `createdById` just needs to be a valid org-A user. */
+async function seedDeiClimateSurvey(
+  db: Client,
+  orgId: string,
+  createdById: string,
+  respondentIds: string[],
+): Promise<void> {
+  const found = await db.query<IdRow>(
+    `SELECT id FROM surveys WHERE organization_id = $1 AND type = 'climate' AND title = $2 LIMIT 1`,
+    [orgId, 'Parity DEI Climate Survey A'],
+  );
+  const surveyId =
+    found.rows[0]?.id ??
+    (
+      await db.query<IdRow>(
+        `INSERT INTO surveys (id, organization_id, title, type, status, questions, created_by_id, updated_at)
+         VALUES (gen_random_uuid(), $1, $2, 'climate', 'published', $3::jsonb, $4, now())
+         RETURNING id`,
+        [orgId, 'Parity DEI Climate Survey A', JSON.stringify([{ category: 'inclusion', text: 'q1' }]), createdById],
+      )
+    ).rows[0].id;
+
+  for (const [i, userId] of respondentIds.entries()) {
+    await db.query(
+      `INSERT INTO survey_responses (id, organization_id, survey_id, user_id, answers, submitted_at)
+       VALUES (gen_random_uuid(), $1, $2, $3, $4::jsonb, now())
+       ON CONFLICT (survey_id, user_id) DO UPDATE SET answers = EXCLUDED.answers, submitted_at = now()`,
+      [orgId, surveyId, userId, JSON.stringify({ q1: 60 + i })],
+    );
+  }
+}
+
+/** Seeds DIFFERENTIATED DEI data so org-A's demographic distributions clear k-anonymity's min-5
+ *  floor (real, non-suppressed data) while org B stays completely empty (suppressed/null) — see the
+ *  block comment above. Idempotent; only runs when hr_admin was seeded (leadership-diversity grants
+ *  the cohort the existing a:hr_admin role). */
+export async function seedDeiData(db: Client, orgAId: string, userIds: Map<string, string>): Promise<void> {
+  const superId = userIds.get('a:super_admin');
+  if (!superId) return;
+
+  const deiUserIds: string[] = [];
+  for (const [i, supaId] of DEI_USER_SUPA.entries()) {
+    const userId = await upsertBareUser(db, orgAId, supaId, `parity+a-dei${i + 1}@tims.test`, 'Dei', `Fixture${i + 1}`);
+    deiUserIds.push(userId);
+  }
+
+  for (const [i, userId] of deiUserIds.entries()) {
+    const gender = i < 5 ? 'female' : 'male';
+    const nationality = i < 5 ? 'CO' : 'US';
+    const ethnicity = i < 5 ? 'mestizo' : 'blanco';
+    const disabilityStatus = i < 5 ? 'none' : 'has_disability';
+    // All 10 in the SAME 25-34 age band (born 2 years ago) — see block comment.
+    await upsertEmployeeDemographics(
+      db,
+      orgAId,
+      userId,
+      gender,
+      '2000-06-15',
+      nationality,
+      ethnicity,
+      disabilityStatus,
+    );
+  }
+
+  // Sequential, not Promise.all: `db` is a single pg.Client (not a Pool) — it can only run one
+  // query at a time; concurrent .query() calls on it are deprecated in pg and unsafe.
+  for (const userId of deiUserIds) {
+    await upsertPromotionAdjustment(db, orgAId, userId, superId);
+  }
+  await seedDeiClimateSurvey(db, orgAId, superId, deiUserIds.slice(0, 5));
+}
+
+/** Grants the first 5 DEI fixture users (all "female", see seedDeiData) the existing a:hr_admin role
+ *  so getLeadershipDiversity has a real, non-suppressed (5 >= min-5) leadership cohort to count —
+ *  hr_admin is in LeadershipSlugs (Tims.Infrastructure.Dei.DeiReadRepository.LeadershipSlugs). Must
+ *  run AFTER seedDeiData (needs the fixture users to already exist) — see call order in seed(). */
+async function seedDeiLeadershipGrants(db: Client, orgAId: string, roleIds: Map<string, string>): Promise<void> {
+  const hrAdminRoleId = roleIds.get('a:hr_admin');
+  if (!hrAdminRoleId) return;
+  const found = await db.query<IdRow>(
+    `SELECT id FROM users WHERE organization_id = $1 AND supabase_user_id = ANY($2) ORDER BY supabase_user_id LIMIT 5`,
+    [orgAId, DEI_USER_SUPA.slice(0, 5)],
+  );
+  for (const row of found.rows) {
+    await upsertUserRoleGrant(db, row.id, hrAdminRoleId);
+  }
+}
+
 // ── Tier-2 by-id ORG-B mirrors ───────────────────────────────────────────────
 // The Tier-1 seed puts every fixture in org A ONLY (org B empty → strong Mode B).
 // The Tier-2 by-id Mode-A IDOR probes additionally need the org-B resource to be
@@ -2053,6 +2227,14 @@ export async function seed(cfg: HarnessConfig, roles: string[]): Promise<SeedRes
     // the engagement write fixtures are seeded in ensureEngagementWritePreconditions (write path only).
     if (roles.includes('hr_admin')) await seedEngagementGrants(db, roleIds);
 
+    // dei fixtures (grant + org-A-only demographic/promotion/climate-survey dataset). Grant only when
+    // hr_admin was seeded; data seed runs unconditionally (needs only a:super_admin, like other domains).
+    // Leadership grant runs AFTER seedDeiData (needs the fixture users to exist) and after roleIds is
+    // populated (needs a:hr_admin's role id).
+    if (roles.includes('hr_admin')) await seedDeiGrants(db, roleIds);
+    await seedDeiData(db, orgIds.a, userIds);
+    if (roles.includes('hr_admin')) await seedDeiLeadershipGrants(db, orgIds.a, roleIds);
+
     // Tier-2 by-id ORG-B mirrors: make each by-id resource LIVE in org B so the RLS Mode-A IDOR
     // positive control (org-B super_admin reaches its own resource → 200) can distinguish a real
     // isolation pass from a trivial 404. Additive to the org-A-only Tier-1 fixtures above.
@@ -2159,11 +2341,15 @@ export async function teardown(cfg: HarnessConfig): Promise<void> {
       // succession fixture (org A). successors/critical_roles FK→users → precede the users delete.
       await db.query('DELETE FROM successors WHERE organization_id = ANY($1)', [orgIds]);
       await db.query('DELETE FROM critical_roles WHERE organization_id = ANY($1)', [orgIds]);
-      // engagement write fixtures (both orgs). survey_responses FK→surveys+users, surveys/action_plans
-      // FK→users → all precede the users delete. Swept even though seeded only in the write-verify path.
+      // engagement write fixtures (both orgs) + dei's climate survey (org A). survey_responses
+      // FK→surveys+users, surveys/action_plans FK→users → all precede the users delete. Swept even
+      // though the engagement half is seeded only in the write-verify path.
       await db.query('DELETE FROM survey_responses WHERE organization_id = ANY($1)', [orgIds]);
       await db.query('DELETE FROM surveys WHERE organization_id = ANY($1)', [orgIds]);
       await db.query('DELETE FROM action_plans WHERE organization_id = ANY($1)', [orgIds]);
+      // dei fixture (org A). user_id FK is ON DELETE CASCADE (would be swept by the users delete
+      // below regardless), but swept explicitly here for clarity, matching this file's convention.
+      await db.query('DELETE FROM employee_demographics WHERE organization_id = ANY($1)', [orgIds]);
     }
     // role_permissions grant rows (permissions themselves are a global catalog — never deleted).
     if (roleIds.length) await db.query('DELETE FROM role_permissions WHERE role_id = ANY($1)', [roleIds]);

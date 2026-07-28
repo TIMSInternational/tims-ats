@@ -47,7 +47,10 @@ describe('assertIsolated', () => {
   it('with emptyOk, a deep-empty nested shape is isolated; a populated entity still leaks', () => {
     expect(assertIsolated({ status: 200, body: { a: null, b: [], c: {}, d: '' } }, { emptyOk: true }).ok).toBe(true);
     // a genuine leak (populated entity) FAILS even under emptyOk.
-    const leak = assertIsolated({ status: 200, body: { evaluation: { id: 'orgB', potentialScore: 55 }, history: [] } }, { emptyOk: true });
+    const leak = assertIsolated(
+      { status: 200, body: { evaluation: { id: 'orgB', potentialScore: 55 }, history: [] } },
+      { emptyOk: true },
+    );
     expect(leak.ok).toBe(false);
     expect(leak.detail).toContain('cross-tenant');
   });
@@ -92,36 +95,70 @@ describe('runRlsEndpoint', () => {
       const fake = byToken({ status: 404, body: null }, { status: 200, body: { id: 'org-b-team-id', name: 'B' } });
       const result = await runRlsEndpoint(
         idScopedEp,
-        { base: 'http://csharp.local', orgAToken: 'org-a-token', orgBToken: 'org-b-token', orgBResourceId: 'org-b-team-id' },
+        {
+          base: 'http://csharp.local',
+          orgAToken: 'org-a-token',
+          orgBToken: 'org-b-token',
+          orgBResourceId: 'org-b-team-id',
+        },
         fake,
       );
       expect(result.ok).toBe(true);
       expect(result.inconclusive).toBeFalsy();
       expect(result.endpoint).toBe('team-profile');
       // isolation call (org-A) + positive control (org-B), same probe path.
-      expect(fake).toHaveBeenCalledWith('http://csharp.local', '/team-intel/teams/org-b-team-id/profile', 'org-a-token');
-      expect(fake).toHaveBeenCalledWith('http://csharp.local', '/team-intel/teams/org-b-team-id/profile', 'org-b-token');
+      expect(fake).toHaveBeenCalledWith(
+        'http://csharp.local',
+        '/team-intel/teams/org-b-team-id/profile',
+        'org-a-token',
+      );
+      expect(fake).toHaveBeenCalledWith(
+        'http://csharp.local',
+        '/team-intel/teams/org-b-team-id/profile',
+        'org-b-token',
+      );
     });
 
     it('ok:false with cross-tenant detail when org-A token gets 200+data for org-B resource id (leak)', async () => {
-      const fake = byToken({ status: 200, body: { id: 'org-b-team-id', name: 'Org B Team' } }, { status: 200, body: { id: 'x' } });
+      const fake = byToken(
+        { status: 200, body: { id: 'org-b-team-id', name: 'Org B Team' } },
+        { status: 200, body: { id: 'x' } },
+      );
       const result = await runRlsEndpoint(
         idScopedEp,
-        { base: 'http://csharp.local', orgAToken: 'org-a-token', orgBToken: 'org-b-token', orgBResourceId: 'org-b-team-id' },
+        {
+          base: 'http://csharp.local',
+          orgAToken: 'org-a-token',
+          orgBToken: 'org-b-token',
+          orgBResourceId: 'org-b-team-id',
+        },
         fake,
       );
       expect(result.ok).toBe(false);
       expect(result.detail).toContain('cross-tenant');
       // A confirmed leak is FAIL regardless of the positive control — no need to probe org-B.
-      expect(fake).toHaveBeenCalledWith('http://csharp.local', '/team-intel/teams/org-b-team-id/profile', 'org-a-token');
-      expect(fake).not.toHaveBeenCalledWith('http://csharp.local', '/team-intel/teams/org-b-team-id/profile', 'org-b-token');
+      expect(fake).toHaveBeenCalledWith(
+        'http://csharp.local',
+        '/team-intel/teams/org-b-team-id/profile',
+        'org-a-token',
+      );
+      expect(fake).not.toHaveBeenCalledWith(
+        'http://csharp.local',
+        '/team-intel/teams/org-b-team-id/profile',
+        'org-b-token',
+      );
     });
 
     it('FAIL (not a silent pass) when isolation holds but org-B cannot itself reach the id (not live → trivial 404)', async () => {
       const fake = byToken({ status: 404, body: null }, { status: 404, body: null });
       const result = await runRlsEndpoint(
         idScopedEp,
-        { base: 'http://csharp.local', orgAToken: 'org-a-token', orgBToken: 'org-b-token', orgBResourceId: 'org-b-team-id' },
+        {
+          base: 'http://csharp.local',
+          orgAToken: 'org-a-token',
+          orgBToken: 'org-b-token',
+          orgBResourceId: 'org-b-team-id',
+        },
         fake,
       );
       expect(result.ok).toBe(false);
@@ -133,7 +170,12 @@ describe('runRlsEndpoint', () => {
       const fake = byToken({ status: 404, body: null }, { status: 200, body: {} });
       const result = await runRlsEndpoint(
         idScopedEp,
-        { base: 'http://csharp.local', orgAToken: 'org-a-token', orgBToken: 'org-b-token', orgBResourceId: 'org-b-team-id' },
+        {
+          base: 'http://csharp.local',
+          orgAToken: 'org-a-token',
+          orgBToken: 'org-b-token',
+          orgBResourceId: 'org-b-team-id',
+        },
         fake,
       );
       expect(result.ok).toBe(false);
@@ -153,10 +195,18 @@ describe('runRlsEndpoint', () => {
     it('by DEFAULT a 200 EMPTY isolation response FAILS (a 404 denial was expected, not a processed-empty 200)', async () => {
       // org-A gets a 200 null-shape, org-B (positive control) gets live data. Without crossTenantEmptyOk
       // the 200-empty is an anomaly → FAIL (a possible missing-404 / existence oracle).
-      const fake = byToken({ status: 200, body: { evaluation: null, history: [] } }, { status: 200, body: { id: 'x', v: 1 } });
+      const fake = byToken(
+        { status: 200, body: { evaluation: null, history: [] } },
+        { status: 200, body: { id: 'x', v: 1 } },
+      );
       const result = await runRlsEndpoint(
         idScopedEp,
-        { base: 'http://csharp.local', orgAToken: 'org-a-token', orgBToken: 'org-b-token', orgBResourceId: 'org-b-team-id' },
+        {
+          base: 'http://csharp.local',
+          orgAToken: 'org-a-token',
+          orgBToken: 'org-b-token',
+          orgBResourceId: 'org-b-team-id',
+        },
         fake,
       );
       expect(result.ok).toBe(false);
@@ -165,10 +215,18 @@ describe('runRlsEndpoint', () => {
 
     it('with crossTenantEmptyOk a 200 null-shape isolation response is isolated (ninebox /employee/{id} case)', async () => {
       const emptyOkEp: EndpointDef = { ...idScopedEp, crossTenantEmptyOk: true };
-      const fake = byToken({ status: 200, body: { evaluation: null, history: [] } }, { status: 200, body: { evaluation: { id: 'b', s: 55 } } });
+      const fake = byToken(
+        { status: 200, body: { evaluation: null, history: [] } },
+        { status: 200, body: { evaluation: { id: 'b', s: 55 } } },
+      );
       const result = await runRlsEndpoint(
         emptyOkEp,
-        { base: 'http://csharp.local', orgAToken: 'org-a-token', orgBToken: 'org-b-token', orgBResourceId: 'org-b-team-id' },
+        {
+          base: 'http://csharp.local',
+          orgAToken: 'org-a-token',
+          orgBToken: 'org-b-token',
+          orgBResourceId: 'org-b-team-id',
+        },
         fake,
       );
       expect(result.ok).toBe(true);
@@ -177,11 +235,7 @@ describe('runRlsEndpoint', () => {
 
     it('ok:false fail-closed when orgBResourceId is missing', async () => {
       const fake = vi.fn();
-      const result = await runRlsEndpoint(
-        idScopedEp,
-        { base: 'http://csharp.local', orgAToken: 'org-a-token' },
-        fake,
-      );
+      const result = await runRlsEndpoint(idScopedEp, { base: 'http://csharp.local', orgAToken: 'org-a-token' }, fake);
       expect(result.ok).toBe(false);
       expect(result.detail).toBe('rls: idScopeKey set but no orgBResourceId provided');
       expect(fake).not.toHaveBeenCalled();
@@ -190,11 +244,8 @@ describe('runRlsEndpoint', () => {
 
   describe('Mode B — org-scoped endpoint (idScopeKey not set)', () => {
     it('ok:true when both orgs get 200 with DIFFERENT non-empty bodies', async () => {
-      const fake = vi.fn(
-        async (_base: string, _path: string, token: string) =>
-          token === 'org-a-token'
-            ? { status: 200, body: { openRoles: 3 } }
-            : { status: 200, body: { openRoles: 7 } },
+      const fake = vi.fn(async (_base: string, _path: string, token: string) =>
+        token === 'org-a-token' ? { status: 200, body: { openRoles: 3 } } : { status: 200, body: { openRoles: 7 } },
       );
       const result = await runRlsEndpoint(
         orgScopedEp,
@@ -244,10 +295,38 @@ describe('runRlsEndpoint', () => {
       expect(result.detail).toContain('inconclusive');
     });
 
+    it('ok:true + inconclusive:true when both orgs get an IDENTICAL k-anonymity-suppressed payload (not a leak)', async () => {
+      const fake = vi.fn().mockResolvedValue({ status: 200, body: { groups: [], suppressed: true } });
+      const result = await runRlsEndpoint(
+        orgScopedEp,
+        { base: 'http://csharp.local', orgAToken: 'org-a-token', orgBToken: 'org-b-token' },
+        fake,
+      );
+      expect(result.ok).toBe(true);
+      expect(result.inconclusive).toBe(true);
+      expect(result.detail).toContain('inconclusive');
+      expect(result.detail).toContain('k-anonymity-suppressed');
+    });
+
+    it('ok:false when both orgs get an IDENTICAL non-empty payload that is NOT suppressed (still a real leak)', async () => {
+      // Regression guard: a shape that merely HAS a `suppressed` key set to false (or any
+      // non-true value) must still hit the normal identical-non-empty leak check — only
+      // `suppressed === true` gets the k-anonymity carve-out.
+      const fake = vi
+        .fn()
+        .mockResolvedValue({ status: 200, body: { groups: [{ key: 'female', count: 42 }], suppressed: false } });
+      const result = await runRlsEndpoint(
+        orgScopedEp,
+        { base: 'http://csharp.local', orgAToken: 'org-a-token', orgBToken: 'org-b-token' },
+        fake,
+      );
+      expect(result.ok).toBe(false);
+      expect(result.detail).toContain('cross-tenant');
+    });
+
     it('ok:false fail-closed when either response is not 200', async () => {
-      const fake = vi.fn(
-        async (_base: string, _path: string, token: string) =>
-          token === 'org-a-token' ? { status: 500, body: null } : { status: 200, body: { openRoles: 7 } },
+      const fake = vi.fn(async (_base: string, _path: string, token: string) =>
+        token === 'org-a-token' ? { status: 500, body: null } : { status: 200, body: { openRoles: 7 } },
       );
       const result = await runRlsEndpoint(
         orgScopedEp,
@@ -259,11 +338,7 @@ describe('runRlsEndpoint', () => {
 
     it('ok:false fail-closed when orgBToken is missing', async () => {
       const fake = vi.fn();
-      const result = await runRlsEndpoint(
-        orgScopedEp,
-        { base: 'http://csharp.local', orgAToken: 'org-a-token' },
-        fake,
-      );
+      const result = await runRlsEndpoint(orgScopedEp, { base: 'http://csharp.local', orgAToken: 'org-a-token' }, fake);
       expect(result.ok).toBe(false);
       expect(result.detail).toBe('rls: org-scoped check needs orgBToken');
       expect(fake).not.toHaveBeenCalled();
