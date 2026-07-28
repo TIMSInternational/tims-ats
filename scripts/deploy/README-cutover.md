@@ -103,7 +103,7 @@ number) and independently corroborated by the `flag:` field in `scripts/parity/s
 | --------------------- | ----- | --------------------------- | ---------------------------- | -------------------------------------------- | -------------- |
 | `team-intel`          | read  | `TeamIntelReadEnabled`      | `verify team-intel`          | `NEXT_PUBLIC_TEAMINTEL_READ_VIA_CSHARP`      | CONFIRMED LIVE |
 | `reporting`           | read  | `ReportingReadEnabled`      | `verify reporting`           | `NEXT_PUBLIC_REPORTING_READ_VIA_CSHARP`      | FLIP-READY     |
-| `billing-read`        | read  | `BillingReadEnabled`        | `verify billing-invoices`    | _(none found — see caveat below)_            | FLIP-READY     |
+| `billing-read`        | read  | `BillingReadEnabled`        | `verify billing-invoices`    | `NEXT_PUBLIC_BILLING_INVOICES_VIA_CSHARP`    | FLIP-READY     |
 | `billing-usage`       | read  | `BillingUsageEnabled`       | `verify billing-usage`       | `NEXT_PUBLIC_BILLING_USAGE_VIA_CSHARP`       | FLIP-READY     |
 | `evaluation360`       | read  | `Evaluation360ReadEnabled`  | `verify evaluation360`       | `NEXT_PUBLIC_EVALUATION360_READ_VIA_CSHARP`  | FLIP-READY     |
 | `succession`          | read  | `SuccessionReadEnabled`     | `verify succession`          | `NEXT_PUBLIC_SUCCESSION_READ_VIA_CSHARP`     | FLIP-READY     |
@@ -134,15 +134,14 @@ classified the way it is, and every naming quirk below).
   parity CLI's registered key for the invoice-read surface is `billing-invoices`, not
   `billing-read` — this script accepts the friendlier `billing-read` name and maps it internally so
   the CLI-facing vocabulary matches the runbook's prose.
-- **`billing-read` has no FE flag today.** Every other surface here has a matching
-  `NEXT_PUBLIC_*_VIA_CSHARP` flag wired somewhere under `apps/web/lib/platform-api/`. Billing
-  invoice reads do not — `apps/web/lib/platform-api/billing.ts` only wires
-  `BILLING_USAGE_VIA_CSHARP` and `BILLING_SELF_SERVE_WRITE_VIA_CSHARP`. That means the
-  FE-rewiring PR for `BillingReadEnabled` does not appear to have shipped yet, despite the
-  runbook's intro claiming the FE side is "ALREADY DONE for all 12 domains." The backend flip
-  works regardless (a flipped-but-uncalled C# route is harmless), but there is no FE-visible
-  cutover to do for this surface until that PR exists — confirm with Federico before assuming
-  otherwise.
+- **`billing-read` now has an FE flag too (2026-07-28).** `apps/web/lib/platform-api/billing.ts`
+  wires a fourth, independent flag — `NEXT_PUBLIC_BILLING_INVOICES_VIA_CSHARP` — gating the
+  `useBillingInvoices`/`useBillingInvoice` hooks (separate from `BILLING_USAGE_VIA_CSHARP`, which
+  still only covers the other three billing reads). The new
+  `apps/web/app/(admin)/settings/billing/billing-invoices.tsx` card, wired into
+  `settings/billing/page.tsx`, is the first-ever FE consumer of this surface. It ships dark
+  (unset/false) exactly like every other surface's default-off convention — this is now a real
+  single-flag flip candidate like the rest of the table, not an exception.
 - **`nine-box` vs `ninebox`.** The parity harness (and the C# route paths, e.g. `/ninebox/grid`)
   spell this with no hyphen. The runbook prose and this script's public surface name use the
   hyphenated `nine-box` for readability; the script maps it to the harness's `ninebox` key
