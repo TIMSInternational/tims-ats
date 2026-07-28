@@ -47,3 +47,4 @@ packages/db/prisma/migrations/*.sql
 # misc
 *.tsbuildinfo
 .vercel
+.env*.local
