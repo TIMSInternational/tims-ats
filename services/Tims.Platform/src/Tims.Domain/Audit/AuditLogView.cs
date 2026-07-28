@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Tims.Domain.Json;
 
@@ -22,7 +23,7 @@ public sealed record AuditLogListItem(
     string Entity,
     string? EntityId,
     Guid? UserId,
-    string? Metadata,
+    JsonNode? Metadata,
     [property: JsonConverter(typeof(NodeIsoDateTimeConverter))] DateTime CreatedAt,
     string? IpAddress,
     AuditLogActorView? Actor);

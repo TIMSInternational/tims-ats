@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
 using Tims.Application.Audit;
 using Tims.Domain.Audit;
@@ -72,7 +73,7 @@ public sealed class AuditReadRepository(AuditReadDbContext db) : IAuditReadRepos
             .ToDictionaryAsync(u => u.Id, cancellationToken).ConfigureAwait(false);
 
         var items = page.Select(a => new AuditLogListItem(
-            a.Id, a.Action, a.Entity, a.EntityId, a.UserId, a.Metadata, a.CreatedAt, a.IpAddress,
+            a.Id, a.Action, a.Entity, a.EntityId, a.UserId, ParseNode(a.Metadata), a.CreatedAt, a.IpAddress,
             a.ActorId is { } actorId && actors.TryGetValue(actorId, out var actor)
                 ? new AuditLogActorView(actor.Id, actor.FirstName, actor.LastName, actor.Email, actor.Avatar)
                 : null)).ToList();
@@ -110,6 +111,13 @@ public sealed class AuditReadRepository(AuditReadDbContext db) : IAuditReadRepos
                 org.Name, actor?.FirstName, actor?.LastName, actor?.Email);
         }).ToList();
     }
+
+    // Matches EngagementReadRepository.ParseNode exactly — the established pattern for turning a
+    // jsonb column's raw text (AuditLogEntity.Metadata, kept as string for the append-only writer
+    // side) into the parsed JSON value TS's Prisma client already returns, so the wire response
+    // doesn't double-encode metadata as a quoted string.
+    private static JsonNode? ParseNode(string? json) =>
+        string.IsNullOrWhiteSpace(json) ? null : JsonNode.Parse(json);
 
     private static IQueryable<AuditLogEntity> ApplyFilter(IQueryable<AuditLogEntity> query, AuditLogFilter filter)
     {
