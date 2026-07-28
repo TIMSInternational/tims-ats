@@ -20,10 +20,6 @@ fi
 
 set_env_var() {
   local key="$1" value="$2"
-  if [ -z "$value" ]; then
-    echo "ERROR: empty value for $key — aborting without writing anything." >&2
-    exit 1
-  fi
   # Drop any existing line for this key (so re-running this script is safe/idempotent),
   # then append the new one. Uses a temp file + mv, never prints $value.
   grep -v "^${key}=" "$ENV_FILE" > "${ENV_FILE}.tmp" 2>/dev/null || true
@@ -31,18 +27,36 @@ set_env_var() {
   printf '%s=%s\n' "$key" "$value" >> "$ENV_FILE"
 }
 
+# Prompts (retrying on empty input) and prints the result to stdout only —
+# every diagnostic message goes to stderr so it never contaminates the
+# captured value when called as VAR="$(prompt_secret "label")".
+prompt_secret() {
+  local label="$1" value=""
+  while [ -z "$value" ]; do
+    printf 'Paste the %s (input hidden), then press Enter: ' "$label" >&2
+    read -rs value
+    echo "" >&2
+    # Strip CR and leading/trailing whitespace — a stray blank line or space
+    # from clipboard/terminal paste handling is a common cause of a "paste
+    # succeeded but the value came back empty" failure with a plain `read -s`.
+    value="$(printf '%s' "$value" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+    if [ -z "$value" ]; then
+      echo "  Nothing received — try again. If pasting doesn't seem to register at all," >&2
+      echo "  try Cmd+V (not a terminal right-click/middle-click paste) or retype it." >&2
+    else
+      echo "  Received ${#value} characters." >&2
+    fi
+  done
+  printf '%s' "$value"
+}
+
 echo "⚠️  If these keys were EVER pasted into a chat, ticket, or anywhere else non-private,"
 echo "   rotate them in the Supabase dashboard FIRST (Project Settings -> API -> reset JWT secret)"
 echo "   and enter the NEW values below, not the old ones."
 echo ""
 
-echo -n "Paste the anon key (input hidden), then press Enter: "
-read -rs ANON_KEY
-echo ""
-
-echo -n "Paste the service_role key (input hidden), then press Enter: "
-read -rs SERVICE_ROLE_KEY
-echo ""
+ANON_KEY="$(prompt_secret "anon key")"
+SERVICE_ROLE_KEY="$(prompt_secret "service_role key")"
 
 set_env_var "SUPABASE_ANON_KEY" "$ANON_KEY"
 set_env_var "SUPABASE_SERVICE_ROLE_KEY" "$SERVICE_ROLE_KEY"
