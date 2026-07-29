@@ -1,13 +1,23 @@
 'use client';
 
-// Per-surface read gate for the three billing reads (config / current-plan / usage) — the
-// third read surface staged to route to the C# Platform service. DARK by default: unless
-// BOTH env vars are set at deploy time, every hook returns the existing tRPC query unchanged
-// (byte-identical to today). Merging changes nothing in prod until Federico flips the flag.
+// This file now mixes TWO states across its hooks:
 //
-// Mirrors lib/platform-api/team-intel.ts exactly. The C# useQuery is typed to the EXACT tRPC
-// output type (inferRouterOutputs), so each mapper below is compile-time-locked to the live
-// contract's shape — including the superjson Date semantics on the getCurrentPlan subscription.
+// C#-only (useBillingConfig / useBillingCurrentPlan / useBillingUsage) — the TS tRPC procedures
+// (getBillingConfig/getCurrentPlan/getUsage in packages/api/src/routers/billing.ts) have been
+// deleted — there is no TS fallback path left for these three. NEXT_PUBLIC_BILLING_USAGE_VIA_CSHARP
+// is confirmed live in prod (2026-07-29) and local dev's .env.local mirrors production values
+// directly, so these hooks call the C# service unconditionally rather than gating on the flag
+// (mirrors lib/platform-api/team-intel.ts's precedent for a fully-deleted surface). Since these
+// TS procedures are gone, two of the three C# outputs below are hand-declared rather than
+// `inferRouterOutputs`-derived (see BillingConfigOutput/Subscription below).
+//
+// Still genuinely DARK-by-default (useBillingInvoices / useBillingInvoice, gated on
+// NEXT_PUBLIC_BILLING_INVOICES_VIA_CSHARP; and the 3 self-serve write mutations, gated on
+// NEXT_PUBLIC_BILLING_SELF_SERVE_WRITE_VIA_CSHARP) — unless their respective env vars are set at
+// deploy time, these hooks return the existing tRPC query/mutation unchanged (byte-identical to
+// today). The C# useQuery/useMutation for these is typed to the EXACT tRPC output type
+// (inferRouterOutputs), so each mapper below is compile-time-locked to the live contract's shape —
+// including the superjson Date semantics on the invoice date fields.
 
 import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
 import type { inferRouterOutputs } from '@trpc/server';
@@ -53,8 +63,8 @@ interface Subscription {
 type CurrentPlanOutput = Subscription | null;
 
 // A FOURTH, independent read surface (added 2026-07-28): tenant invoice history had ZERO FE
-// consumer of any kind (TS or C#) until this wrapper. Own flag (not reused from
-// BILLING_USAGE_VIA_CSHARP) since it cuts over independently of the other three billing reads.
+// consumer of any kind (TS or C#) until this wrapper. Its own independent flag, since it cuts
+// over independently of the other three (now C#-only) billing reads above.
 const BILLING_INVOICES_VIA_CSHARP = process.env.NEXT_PUBLIC_BILLING_INVOICES_VIA_CSHARP === 'true';
 
 const num = (v: number | string): number => Number(v);

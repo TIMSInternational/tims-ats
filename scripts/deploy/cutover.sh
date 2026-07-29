@@ -173,14 +173,15 @@ OPTIONS
   --help                      Print this message.
 
 EXAMPLES
-  scripts/deploy/cutover.sh billing-usage --verify-only
-  scripts/deploy/cutover.sh billing-usage --verify-only --flip-backend --yes
+  scripts/deploy/cutover.sh compensation --verify-only
+  scripts/deploy/cutover.sh compensation --verify-only --flip-backend --yes
   scripts/deploy/cutover.sh access-review-write --flip-backend --skip-verify-confirm-i-know-what-im-doing
   scripts/deploy/cutover.sh dei --rollback --yes
   scripts/deploy/cutover.sh --list
-  # NOTE: "reporting" and "evaluation360" (read) no longer have a real --verify-only check — their
-  # TS routers were deleted 2026-07-28, so there's nothing left to diff against. --verify-only for
-  # either still runs (prints a no-op notice and exits 0) rather than erroring.
+  # NOTE: "reporting", "evaluation360" (read), "team-intel", and "billing-usage" no longer have a
+  # real --verify-only check — their TS routers were deleted (2026-07-28 for the first two,
+  # 2026-07-29 for the latter two), so there's nothing left to diff against. --verify-only for any
+  # of these four still runs (prints a no-op notice and exits 0) rather than erroring.
 
 See scripts/deploy/README-cutover.md for the full worked flow.
 EOF
@@ -536,9 +537,9 @@ fi
 
 # Exit code contract: a bare `--verify-only` (the default mode) must propagate the parity CLI's
 # own pass/fail so this script is usable as a CI/scripting gate, e.g.
-# `./cutover.sh billing-usage --verify-only && ./cutover.sh billing-usage --flip-backend --yes`
-# (for "reporting"/"evaluation360" read, whose TS routers are deleted, run_verify's NONE branch
-# above returns 0 unconditionally instead of a real pass/fail). Once a
+# `./cutover.sh compensation --verify-only && ./cutover.sh compensation --flip-backend --yes`
+# (for "reporting"/"evaluation360" read/"team-intel"/"billing-usage", whose TS routers are
+# deleted, run_verify's NONE branch above returns 0 unconditionally instead of a real pass/fail). Once a
 # mutating mode (--flip-backend/--rollback) also ran, THEIR success is what the exit code reports
 # (they already refuse to run on a verify failure, so reaching this point means they printed/ran
 # fine even if the earlier bundled verify had failed and was overridden via the escape hatch).

@@ -655,19 +655,18 @@ export const SURFACES: Record<string, Surface> = {
   },
   // ── billing-invoices ────────────────────────────────────────────────────────────────────────
   // Coverage-audit addition (2026-07-27): `BillingReadEndpoints` (Phase-5 Slice 3) ships
-  // `listInvoices`/`getInvoice` behind `Platform__BillingReadEnabled` — a SEPARATE flag from
-  // `billing-usage`'s `Platform__BillingUsageEnabled` above, so it needs its OWN surface entry
-  // (one flag per surface is this registry's convention) rather than folding into `billing-usage`.
+  // `listInvoices`/`getInvoice` behind `Platform__BillingReadEnabled` — its own independent flag
+  // (one flag per surface is this registry's convention), so it gets its OWN surface entry here.
   //
   // Only `listInvoices` (Tier-1, static path) is included here. `getInvoice` (by-id,
   // `/billing/invoices/{id}`) is a Tier-2 follow-up: it needs an `invoice` idScopeKey + a seeded
   // Invoice row pair in `SeedResources`/`seed.ts`, which does not exist yet — same documented
   // deferral pattern as the by-id endpoints noted elsewhere in this registry.
   //
-  // Gating: `permissionProcedure('billing','read')` — the SAME `BillingStaffGate` as
-  // `billing-usage`, and `billing` is SUPER-ADMIN-ONLY in seed-access-matrix.ts (absent from both
-  // hr_admin's and hrbp's module lists) — so this reuses `billing-usage`'s exact 1-allow/2-deny
-  // verdicts, no new grant needs seeding.
+  // Gating: `permissionProcedure('billing','read')` — the same `BillingStaffGate` used by the
+  // rest of the billing router, and `billing` is SUPER-ADMIN-ONLY in seed-access-matrix.ts
+  // (absent from both hr_admin's and hrbp's module lists) — hence the 1-allow/2-deny verdicts
+  // below (super_admin: 200, hr_admin/hrbp: 403), no new grant needs seeding.
   'billing-invoices': {
     key: 'billing-invoices',
     flag: 'Platform__BillingReadEnabled',
