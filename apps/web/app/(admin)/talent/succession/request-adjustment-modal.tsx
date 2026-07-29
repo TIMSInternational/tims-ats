@@ -24,12 +24,13 @@ const MAX_REASON = 500;
 
 /**
  * Sprint 1.4 Task 4 — the comp-gap badge's "Request adjustment" trigger.
- * This is small frontend wiring of the EXISTING, already-fully-built
- * `compensation.createAdjustment` mutation (which had zero frontend callers
- * before this) — NOT a new self-serve adjustment-request flow/page. Fields
- * are pre-filled from the computed comp gap and remain editable; nothing is
- * auto-submitted, same "suggest, human confirms" pattern as the Suggested
- * Successors panel.
+ * This is small frontend wiring of the EXISTING, already-fully-built salary-adjustment
+ * create endpoint (POST /compensation/adjustments on the C# Platform service, via
+ * useCompensationCreateAdjustment; its TS tRPC counterpart `compensation.createAdjustment`
+ * was deleted 2026-07-29 once the write flag was confirmed live) — NOT a new self-serve
+ * adjustment-request flow/page. Fields are pre-filled from the computed comp gap and remain
+ * editable; nothing is auto-submitted, same "suggest, human confirms" pattern as the
+ * Suggested Successors panel.
  */
 export function RequestAdjustmentModal({
   userId,
@@ -48,10 +49,12 @@ export function RequestAdjustmentModal({
 
   const submit = useCompensationCreateAdjustment({
     onSuccess: () => {
-      utils.compensation.listPendingAdjustments.invalidate();
+      // getDashboardKpis is FX-dependent and still tRPC-served, so its tRPC cache needs an explicit
+      // invalidate.
       utils.compensation.getDashboardKpis.invalidate();
-      // Cutover parity: refresh the C# platform-api succession (comp-gap, TS tRPC read deleted)
-      // AND compensation reads (listPendingAdjustments is driven by this create).
+      // Refresh the C# platform-api succession (comp-gap, TS tRPC read deleted) AND compensation
+      // reads — pending-adjustments (driven by this create) is C#-only now, so this prefix
+      // invalidation is the ONLY thing that refreshes it.
       queryClient.invalidateQueries({ queryKey: ['platform-api', 'succession'] });
       queryClient.invalidateQueries({ queryKey: ['platform-api', 'compensation'] });
       toast(t.succession.requestAdjustmentSuccess, { type: 'success' });

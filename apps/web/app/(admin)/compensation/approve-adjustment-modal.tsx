@@ -26,13 +26,13 @@ export function ApproveAdjustmentModal({ adjustmentId, employeeName, mode, onClo
 
   const submit = useCompensationApproveAdjustment({
     onSuccess: () => {
-      utils.compensation.listPendingAdjustments.invalidate();
+      // The 3 FX-dependent reads are still tRPC-served (NEXT_PUBLIC_COMPENSATION_FX_READ_VIA_CSHARP
+      // does not exist in Vercel yet), so their tRPC caches still need an explicit invalidate.
       utils.compensation.getDashboardKpis.invalidate();
       utils.compensation.getBandDistribution.invalidate();
-      utils.compensation.getCompaRatioDistribution.invalidate();
       utils.compensation.getTotalCompBreakdown.invalidate();
-      // Cutover parity: refresh the C# platform-api compensation reads (pending-adjustments,
-      // compa-ratio-distribution) so a flag-on cache stays coherent. No-op under tRPC.
+      // pending-adjustments and compa-ratio-distribution are C#-only now (their tRPC procedures were
+      // deleted), so this prefix invalidation is the ONLY thing that refreshes them.
       queryClient.invalidateQueries({ queryKey: ['platform-api', 'compensation'] });
       toast(mode === 'approve' ? t.compensation.approveSuccess : t.compensation.rejectSuccess, { type: 'success' });
       onClose();

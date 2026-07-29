@@ -1,71 +1,137 @@
 'use client';
 
-// Per-surface read gate for the FIVE FE-consumed FX-FREE compensation reads
-// (getSalaryBands / getBenefitsUtilization / getCompaRatioDistribution /
-// listPendingAdjustments / myCompensation) — the sixth FE cutover surface staged to route to
-// the C# Platform service. DARK by default: unless BOTH the platform-api base URL and
-// NEXT_PUBLIC_COMPENSATION_READ_VIA_CSHARP are set at deploy time, every hook returns the
-// existing tRPC query unchanged (byte-identical to today). Merging changes nothing in prod
-// until Federico flips the flag at cutover.
+// Compensation FE data layer — a SPLIT file, unlike every other platform-api wrapper.
 //
-// Mirrors lib/platform-api/{access-review,audit-log,billing,dei,engagement}.ts exactly: each hook
-// calls BOTH the tRPC hook (enabled when NOT viaCSharp) and a C# useQuery (enabled when
-// viaCSharp), then returns the active one. The C# useQuery is typed to the EXACT tRPC output
-// type (inferRouterOutputs), so each mapper below is compile-time-locked to the live contract's
-// shape — including the superjson Date semantics on the SalaryBand/adjustment date fields and
-// the number-as-string wire artifacts.
+// C#-ONLY (7 of the 10 hooks below). Their TS tRPC procedures were DELETED on 2026-07-29:
+// getSalaryBands / getBenefitsUtilization / getCompaRatioDistribution / listPendingAdjustments /
+// myCompensation (reads) and createAdjustment / approveAdjustment (writes). Both
+// NEXT_PUBLIC_COMPENSATION_READ_VIA_CSHARP and NEXT_PUBLIC_COMPENSATION_WRITE_VIA_CSHARP were
+// confirmed live in prod on 2026-07-28, so these hooks call the C# service unconditionally and no
+// longer read either flag — both flags are now DEAD (see .env.example). Their output types are
+// hand-declared below, or re-sourced from the @tims/shared kernels the C# port is golden-fixtured
+// against, because no tRPC procedure remains to infer them from.
 //
-// SCOPE — FX-FREE subset (Slice-9): exactly the reads that need no currency conversion. The two
-// not consumed by the FE (getMarketComparison / getEmployeeComp) get NO wrapper here.
+// STILL DUAL-PATH (3 hooks): useCompensationBandDistribution / useCompensationTotalCompBreakdown /
+// useCompensationDashboardKpis. These are the FX-DEPENDENT reads (getBandDistribution /
+// getTotalCompBreakdown / getDashboardKpis), gated by a DIFFERENT backend flag
+// (`Platform:FxReadsEnabled`, shared cross-domain with `dei.getPayEquity` — see platform-api/dei.ts's
+// header) and by their OWN FE flag, NEXT_PUBLIC_COMPENSATION_FX_READ_VIA_CSHARP, which does NOT exist
+// in Vercel yet (blocked on seeding `fx_rates` via the first FxRefreshJob run — see
+// docs/architecture/csharp-migration/fx-seed-once-runbook.md). Their tRPC procedures are the LIVE
+// PRODUCTION PATH for those 3 reads today and are DELIBERATELY RETAINED in
+// packages/api/src/routers/compensation.ts. ONLY these 3 hooks still mirror the
+// lib/platform-api/{access-review,audit-log,billing,dei,engagement}.ts pattern (each calls BOTH the
+// tRPC hook, enabled when NOT viaCSharp, and a C# useQuery, enabled when viaCSharp, then returns the
+// active one), and only they keep an inferRouterOutputs<AppRouter> type alias — compile-time-locked
+// to the still-live contract.
 //
-// FIELD-AUTH NUANCE (myCompensation + listPendingAdjustments): the C# OpenAPI types these 200
-// bodies as free-form `object` (JsonObject / oneOf[null,object]) — the field-authed shape is
-// dynamic (restricted keys ABSENT for lower tiers, not null), so platformGet returns a loosely
-// typed object. Each wrapper reads the raw object through a lens, maps it to the EXACT
-// inferRouterOutputs shape PRESERVING key absence (no null injected for an absent restricted
-// key), then casts `as <Output>` — the field-auth guarantees are enforced server-side + covered
-// by the backend integration tests; the FE wrapper only needs shape-compatibility. No `any`.
+// NOT WRAPPED AT ALL: getPayEquity (compensation's own — distinct from the DEI domain's
+// `dei.getPayEquity`, wrapped in platform-api/dei.ts), simulateAdjustment, getMarketComparison and
+// getEmployeeComp have zero FE call sites and get no hook here; their TS procedures stay live and
+// untouched.
 //
-// All five live behind the C# `Platform:CompensationReadEnabled` backend flag (see the FX-free
-// GETs mapped in the compensation read endpoints), so they share ONE FE flag mirroring it.
-//
-// FX-DEPENDENT SUBSET (Slice 11c, added later — see useCompensationBandDistribution /
-// useCompensationTotalCompBreakdown / useCompensationDashboardKpis below): THREE of the five
-// deferred FX reads have live FE consumers (getBandDistribution, getTotalCompBreakdown,
-// getDashboardKpis); getPayEquity (compensation's own — distinct from the DEI domain's
-// `dei.getPayEquity`, already wrapped in platform-api/dei.ts) and simulateAdjustment have NO
-// call site and get no wrapper. These three are gated by a DIFFERENT backend flag,
-// `Platform:FxReadsEnabled` (shared cross-domain with `dei.getPayEquity`'s backend gate — see
-// platform-api/dei.ts's header) — so they get their OWN FE flag,
-// `NEXT_PUBLIC_COMPENSATION_FX_READ_VIA_CSHARP`, independent of `NEXT_PUBLIC_COMPENSATION_
-// READ_VIA_CSHARP` above. Federico can cut over the FX-free and FX-dependent compensation reads
-// on separate schedules (the FX ones need `fx_rates` populated by the first `FxRefreshJob` run
-// first).
+// FIELD-AUTH NUANCE (my-compensation + pending-adjustments): the C# OpenAPI types these 200 bodies as
+// free-form `object` (JsonObject / oneOf[null,object]) — the field-authed shape is dynamic (restricted
+// keys ABSENT for lower tiers, not null), so platformGet returns a loosely typed object. Each wrapper
+// reads the raw object through a lens, maps it to the hand-declared shape PRESERVING key absence (no
+// null injected for an absent restricted key), then casts. The field-auth guarantees are enforced
+// server-side by the C# implementation + its integration tests; the FE wrapper only needs
+// shape-compatibility. No `any`.
 
 import { useMutation, useQuery } from '@tanstack/react-query';
 import type { inferRouterOutputs } from '@trpc/server';
 import type { AppRouter } from '@tims/api';
+import type { BenefitUtilizationItem, CompaRatioDistribution } from '@tims/shared';
 import { trpc } from '../trpc';
 import { isPlatformApiEnabled, platformGet, platformPost } from './client';
 
+// The 3 FX-gated hooks still have a live tRPC procedure, so their types stay INFERRED from the
+// router contract — the dual-path mappers below remain compile-time-locked to it.
 type RouterOutput = inferRouterOutputs<AppRouter>;
-type SalaryBandsOutput = RouterOutput['compensation']['getSalaryBands'];
-type BenefitsUtilizationOutput = RouterOutput['compensation']['getBenefitsUtilization'];
-type CompaRatioDistributionOutput = RouterOutput['compensation']['getCompaRatioDistribution'];
-type PendingAdjustmentsOutput = RouterOutput['compensation']['listPendingAdjustments'];
-type MyCompensationOutput = RouterOutput['compensation']['myCompensation'];
 type BandDistributionOutput = RouterOutput['compensation']['getBandDistribution'];
 type TotalCompBreakdownOutput = RouterOutput['compensation']['getTotalCompBreakdown'];
 type CompDashboardKpisOutput = RouterOutput['compensation']['getDashboardKpis'];
-type CreateAdjustmentOutput = RouterOutput['compensation']['createAdjustment'];
-type ApproveAdjustmentOutput = RouterOutput['compensation']['approveAdjustment'];
 
-// Second gate: even when the client is enabled, compensation only routes to C# when its own flag
-// is exactly 'true'. NEXT_PUBLIC_* so it is inlined for the browser.
-const COMPENSATION_VIA_CSHARP = process.env.NEXT_PUBLIC_COMPENSATION_READ_VIA_CSHARP === 'true';
+// The 7 C#-only hooks' output types are hand-declared (there is no tRPC procedure left to infer
+// from). Shapes mirror what the deleted procedures returned, so every call site is unchanged.
 
-// Third gate, FX-dependent subset only: independent of COMPENSATION_VIA_CSHARP above (see the
-// file header) — gates getBandDistribution / getTotalCompBreakdown / getDashboardKpis.
+// Prisma `SalaryBand` scalar row (packages/db/prisma/schema/compensation.prisma:1-19). The deleted
+// getSalaryBands was a bare findMany with no `select`, so the tRPC output was the full 11-field row
+// with superjson-rebuilt Dates — exactly what the mapper below produces. Every status/type column in
+// that schema file is a plain `String` (no Prisma enums), so nothing is a union type.
+interface SalaryBandRow {
+  id: string;
+  organizationId: string;
+  level: string;
+  title: string | null;
+  minSalary: number;
+  midSalary: number;
+  maxSalary: number;
+  currency: string;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+type SalaryBandsOutput = SalaryBandRow[];
+
+// buildBenefitsUtilization / buildCompaRatioDistribution are the pure @tims/shared kernels the
+// deleted procedures returned verbatim AND the C# port is golden-fixtured against
+// (contracts/compensation-fixtures/*), so sourcing these two shapes from @tims/shared keeps the FE
+// contract-locked to the one definition both stacks share.
+type BenefitsUtilizationOutput = BenefitUtilizationItem[];
+type CompaRatioDistributionOutput = CompaRatioDistribution;
+
+// Field-authed dynamic shape: id/createdAt/user/requester are always present; the restricted salary
+// keys are PRESENT for entitled tiers (super/hr; type/status also hrbp) and ABSENT otherwise — never
+// nulled. Optional keys model exactly that.
+interface PendingAdjustmentRow {
+  id: string;
+  createdAt: Date;
+  previousSalary?: number;
+  newSalary?: number;
+  currency?: string;
+  reason?: string | null;
+  type?: string;
+  status?: string;
+  user: { id: string; firstName: string; lastName: string; jobTitle: string | null };
+  requester: { id: string; firstName: string; lastName: string };
+}
+type PendingAdjustmentsOutput = PendingAdjustmentRow[];
+
+// Mirrors EmployeeCompDto (packages/api/src/services/compensation.service.ts:33-40), which is NOT
+// re-exported from @tims/api's entrypoint (package.json main/types = ./src/root.ts, which exports
+// only the router + AppRouter) — so it is hand-declared here rather than imported. Same field-auth
+// key-absence semantics as PendingAdjustmentRow above.
+interface MyCompensationDto {
+  userId: string;
+  currency?: string;
+  currentSalary?: number;
+  variablePay?: number;
+  compaRatio?: number | null;
+  band?: {
+    level: string | null;
+    title: string | null;
+    min: number;
+    mid: number;
+    max: number;
+    currency: string;
+  } | null;
+}
+type MyCompensationOutput = MyCompensationDto | null;
+
+// §21 minimal-select: both write endpoints return only id + status (the deleted TS procedures did
+// `select: { id: true, status: true }` and `return { id: input.id, status: newStatus }` respectively).
+interface AdjustmentMutationResult {
+  id: string;
+  status: string;
+}
+type CreateAdjustmentOutput = AdjustmentMutationResult;
+type ApproveAdjustmentOutput = AdjustmentMutationResult;
+
+// Second gate, FX-dependent subset ONLY (the 3 hooks that still have a tRPC fallback): even when the
+// client is enabled, they route to C# only when this flag is exactly 'true'. NEXT_PUBLIC_* so it is
+// inlined for the browser. This is now the ONLY compensation FE flag any code reads — the read/write
+// flags it used to sit beside are retired (see the file header + .env.example).
 const COMPENSATION_FX_VIA_CSHARP = process.env.NEXT_PUBLIC_COMPENSATION_FX_READ_VIA_CSHARP === 'true';
 
 // The C# minimal-API OpenAPI contract types every int32/double as `number | string` (a
@@ -80,22 +146,13 @@ const numOrNull = (v: number | string | null | undefined): number | null => (v =
 const toDate = (v: unknown): Date => new Date(v as string);
 
 /**
- * HR-admin org catalog: raw SalaryBand rows (no per-person salary data). Gate:
- * `isPlatformApiEnabled() && NEXT_PUBLIC_COMPENSATION_READ_VIA_CSHARP === 'true'`.
- *  - true  → GET /compensation/salary-bands (optional companyId query; min/mid/maxSalary doubles
- *            coerced; createdAt/updatedAt Dates rebuilt; title null preserved).
- *  - false → trpc.compensation.getSalaryBands.useQuery(filters) (the DEFAULT).
+ * HR-admin org catalog: raw SalaryBand rows (no per-person salary data). C#-ONLY — the TS tRPC
+ * procedure was deleted. GET /compensation/salary-bands (optional companyId query;
+ * min/mid/maxSalary doubles coerced; createdAt/updatedAt Dates rebuilt; title null preserved).
  */
 export function useCompensationSalaryBands(filters?: { companyId?: string }) {
-  const viaCSharp = isPlatformApiEnabled() && COMPENSATION_VIA_CSHARP;
-
-  const trpcQuery = trpc.compensation.getSalaryBands.useQuery(filters ?? {}, {
-    enabled: !viaCSharp,
-  });
-
-  const csharpQuery = useQuery<SalaryBandsOutput>({
+  return useQuery<SalaryBandsOutput>({
     queryKey: ['platform-api', 'compensation', 'salary-bands', filters ?? {}],
-    enabled: viaCSharp,
     queryFn: async () => {
       const raw = await platformGet('/compensation/salary-bands', { companyId: filters?.companyId });
       return raw.map((b) => ({
@@ -113,25 +170,17 @@ export function useCompensationSalaryBands(filters?: { companyId?: string }) {
       }));
     },
   });
-
-  return viaCSharp ? csharpQuery : trpcQuery;
 }
 
 /**
- * STAFF org-rollup: per-plan benefits utilization (pure kernel output; no min-5). Gate as above.
- *  - true  → GET /compensation/benefits-utilization (enrolled int + utilization double coerced).
- *  - false → trpc.compensation.getBenefitsUtilization.useQuery() (the DEFAULT).
+ * STAFF org-rollup: per-plan benefits utilization (pure kernel output; no min-5). C#-ONLY — the TS
+ * tRPC procedure was deleted. GET /compensation/benefits-utilization (enrolled int + utilization
+ * double coerced). The row shape is @tims/shared's BenefitUtilizationItem, the same kernel output
+ * the C# port is golden-fixtured against.
  */
 export function useCompensationBenefitsUtilization() {
-  const viaCSharp = isPlatformApiEnabled() && COMPENSATION_VIA_CSHARP;
-
-  const trpcQuery = trpc.compensation.getBenefitsUtilization.useQuery(undefined, {
-    enabled: !viaCSharp,
-  });
-
-  const csharpQuery = useQuery<BenefitsUtilizationOutput>({
+  return useQuery<BenefitsUtilizationOutput>({
     queryKey: ['platform-api', 'compensation', 'benefits-utilization'],
-    enabled: viaCSharp,
     queryFn: async () => {
       const raw = await platformGet('/compensation/benefits-utilization');
       return raw.map((b) => ({
@@ -143,27 +192,18 @@ export function useCompensationBenefitsUtilization() {
       }));
     },
   });
-
-  return viaCSharp ? csharpQuery : trpcQuery;
 }
 
 /**
- * STAFF org-rollup: the min-5 compa-ratio distribution kernel. Gate as above.
- *  - true  → GET /compensation/compa-ratio-distribution (optional companyId/businessUnitId query;
- *            bucket keys ("<0.80" etc.) preserved verbatim; per-bucket count int|null coerced,
- *            null preserved; avgCompaRatio/totalEmployees int|null coerced; suppressed boolean).
- *  - false → trpc.compensation.getCompaRatioDistribution.useQuery(filters) (the DEFAULT).
+ * STAFF org-rollup: the min-5 compa-ratio distribution kernel. C#-ONLY — the TS tRPC procedure was
+ * deleted. GET /compensation/compa-ratio-distribution (optional companyId/businessUnitId query;
+ * bucket keys ("<0.80" etc.) preserved verbatim; per-bucket count int|null coerced, null preserved;
+ * avgCompaRatio/totalEmployees int|null coerced; suppressed boolean). The shape is @tims/shared's
+ * CompaRatioDistribution, the same kernel output the C# port is golden-fixtured against.
  */
 export function useCompensationCompaRatioDistribution(filters?: { companyId?: string; businessUnitId?: string }) {
-  const viaCSharp = isPlatformApiEnabled() && COMPENSATION_VIA_CSHARP;
-
-  const trpcQuery = trpc.compensation.getCompaRatioDistribution.useQuery(filters ?? {}, {
-    enabled: !viaCSharp,
-  });
-
-  const csharpQuery = useQuery<CompaRatioDistributionOutput>({
+  return useQuery<CompaRatioDistributionOutput>({
     queryKey: ['platform-api', 'compensation', 'compa-ratio-distribution', filters ?? {}],
-    enabled: viaCSharp,
     queryFn: async () => {
       const raw = await platformGet('/compensation/compa-ratio-distribution', {
         companyId: filters?.companyId,
@@ -184,29 +224,19 @@ export function useCompensationCompaRatioDistribution(filters?: { companyId?: st
       };
     },
   });
-
-  return viaCSharp ? csharpQuery : trpcQuery;
 }
 
 /**
  * STAFF row-scoped + FIELD-AUTHED: pending salary adjustments. The restricted salary fields
  * (previousSalary/newSalary/currency/reason/type/status) are PRESENT only for entitled tiers
  * (super/hr; type/status also hrbp) and ABSENT otherwise — key absence is preserved (not nulled).
- * Gate as above.
- *  - true  → GET /compensation/pending-adjustments (JsonObject[]; dynamic field-authed shape;
- *            createdAt Date rebuilt; salaries coerced; absent restricted keys stay absent).
- *  - false → trpc.compensation.listPendingAdjustments.useQuery() (the DEFAULT).
+ * C#-ONLY — the TS tRPC procedure was deleted. GET /compensation/pending-adjustments (JsonObject[];
+ * dynamic field-authed shape; createdAt Date rebuilt; salaries coerced; absent restricted keys stay
+ * absent).
  */
 export function useCompensationListPendingAdjustments() {
-  const viaCSharp = isPlatformApiEnabled() && COMPENSATION_VIA_CSHARP;
-
-  const trpcQuery = trpc.compensation.listPendingAdjustments.useQuery(undefined, {
-    enabled: !viaCSharp,
-  });
-
-  const csharpQuery = useQuery<PendingAdjustmentsOutput>({
+  return useQuery<PendingAdjustmentsOutput>({
     queryKey: ['platform-api', 'compensation', 'pending-adjustments'],
-    enabled: viaCSharp,
     queryFn: async () => {
       const raw = await platformGet('/compensation/pending-adjustments');
       // JsonObject is `Record<string, never>`; read through a lens that mirrors the field-authed
@@ -247,34 +277,24 @@ export function useCompensationListPendingAdjustments() {
             lastName: a.requester.lastName,
           },
         };
-        // The dynamic field-authed shape (optional restricted keys) is guaranteed server-side +
-        // by backend integration tests; cast the mapped rows to the exact tRPC output type.
+        // The dynamic field-authed shape (optional restricted keys) is guaranteed server-side by the
+        // C# implementation + its integration tests; cast the mapped rows to the declared type.
       }) as PendingAdjustmentsOutput;
     },
   });
-
-  return viaCSharp ? csharpQuery : trpcQuery;
 }
 
 /**
  * OWN-scoped + FIELD-AUTHED: the caller's own compensation, or null when no row exists. The
  * restricted analytics fields (variablePay/compaRatio/band; currency/currentSalary for entitled
  * tiers) are PRESENT only for entitled roles and ABSENT otherwise — key absence is preserved.
- * Gate as above.
- *  - true  → GET /compensation/my-compensation (oneOf[null,object]; null → null; salaries coerced;
- *            band bounds coerced, band null preserved; absent restricted keys stay absent).
- *  - false → trpc.compensation.myCompensation.useQuery() (the DEFAULT).
+ * C#-ONLY — the TS tRPC procedure was deleted. GET /compensation/my-compensation
+ * (oneOf[null,object]; null → null; salaries coerced; band bounds coerced, band null preserved;
+ * absent restricted keys stay absent).
  */
 export function useCompensationMyCompensation() {
-  const viaCSharp = isPlatformApiEnabled() && COMPENSATION_VIA_CSHARP;
-
-  const trpcQuery = trpc.compensation.myCompensation.useQuery(undefined, {
-    enabled: !viaCSharp,
-  });
-
-  const csharpQuery = useQuery<MyCompensationOutput>({
+  return useQuery<MyCompensationOutput>({
     queryKey: ['platform-api', 'compensation', 'my-compensation'],
-    enabled: viaCSharp,
     queryFn: async () => {
       const raw = await platformGet('/compensation/my-compensation');
       // 200 body is oneOf[null, object]: a missing comp row → null (graceful empty for the UI).
@@ -315,13 +335,11 @@ export function useCompensationMyCompensation() {
                 : null,
             }
           : {}),
-        // The dynamic field-authed DTO (optional restricted keys) is guaranteed server-side +
-        // by backend integration tests; cast the mapped object to the exact tRPC output type.
+        // The dynamic field-authed DTO (optional restricted keys) is guaranteed server-side by the
+        // C# implementation + its integration tests; cast the mapped object to the declared type.
       } as MyCompensationOutput;
     },
   });
-
-  return viaCSharp ? csharpQuery : trpcQuery;
 }
 
 /**
@@ -445,20 +463,20 @@ export function useCompensationDashboardKpis() {
 }
 
 // ---------------------------------------------------------------------------
-// Writes (Phase-5 Slice 12) — a SEPARATE flag from the reads above, mirroring backend
-// `Platform:CompensationWriteEnabled` (independent of CompensationReadEnabled/FxReadsEnabled). Both
-// C# mutations (createAdjustment/approveAdjustment) have live FE consumers (request-adjustment-modal.tsx,
-// approve-adjustment-modal.tsx) — this is the FIRST write port with a 100% wrap rate (no zero-consumer
-// procedure to skip, unlike succession/nine-box). Each hook mirrors trpc's useMutation shape
-// ({ onSuccess?, onError? }) so existing call sites swap in with a one-line change; both consumers
-// already invalidate the `['platform-api','compensation',...]` (and, for createAdjustment, `['platform-
-// api','succession',...]` comp-gap) query keys themselves post-success — this file only supplies the
-// mutation itself. Error messages are byte-identical between stacks for every outcome (createAdjustment's
-// FORBIDDEN, approveAdjustment's NOT_FOUND/CONFLICT all share the exact TS/C# message constants) — no
-// documented exceptions, unlike succession's addSuccessor 409.
+// Writes (Phase-5 Slice 12) — C#-ONLY. Both TS tRPC mutations (compensation.createAdjustment /
+// compensation.approveAdjustment) were deleted on 2026-07-29;
+// NEXT_PUBLIC_COMPENSATION_WRITE_VIA_CSHARP was confirmed live in prod on 2026-07-28 and is no
+// longer read here (the flag is retired — see .env.example). Both mutations have live FE consumers
+// (talent/succession/request-adjustment-modal.tsx, compensation/approve-adjustment-modal.tsx) — a
+// 100% wrap rate, so nothing was left unwrapped. Each hook keeps trpc's useMutation option shape
+// ({ onSuccess?, onError?, onSettled? }), so both call sites are unchanged; both consumers invalidate
+// the `['platform-api','compensation',...]` (and, for createAdjustment,
+// `['platform-api','succession',...]` comp-gap) query keys themselves post-success — this file only
+// supplies the mutation itself. Error messages were byte-identical between stacks before the TS side
+// was removed (createAdjustment's FORBIDDEN, approveAdjustment's NOT_FOUND/CONFLICT all shared the
+// exact TS/C# message constants), so the C# strings the consumers surface today are the same strings
+// users already saw.
 // ---------------------------------------------------------------------------
-
-const COMPENSATION_WRITE_VIA_CSHARP = process.env.NEXT_PUBLIC_COMPENSATION_WRITE_VIA_CSHARP === 'true';
 
 interface MutationOptions {
   onSuccess?: () => void;
@@ -490,9 +508,7 @@ interface CreateAdjustmentInputShape {
 
 /** STAFF: request a salary adjustment (1 call site: talent/succession/request-adjustment-modal.tsx). */
 export function useCompensationCreateAdjustment(options?: MutationOptions) {
-  const viaCSharp = isPlatformApiEnabled() && COMPENSATION_WRITE_VIA_CSHARP;
-  const trpcMutation = trpc.compensation.createAdjustment.useMutation(options);
-  const csharpMutation = useCSharpMutation(async (input: CreateAdjustmentInputShape) => {
+  return useCSharpMutation(async (input: CreateAdjustmentInputShape) => {
     const raw = await platformPost('/compensation/adjustments', {
       userId: input.userId,
       type: input.type,
@@ -504,7 +520,6 @@ export function useCompensationCreateAdjustment(options?: MutationOptions) {
     });
     return { id: raw.id, status: raw.status } satisfies CreateAdjustmentOutput;
   }, options);
-  return viaCSharp ? csharpMutation : trpcMutation;
 }
 
 interface ApproveAdjustmentInputShape {
@@ -515,9 +530,7 @@ interface ApproveAdjustmentInputShape {
 
 /** STAFF: approve/reject a pending adjustment (1 call site: compensation/approve-adjustment-modal.tsx). */
 export function useCompensationApproveAdjustment(options?: MutationOptions) {
-  const viaCSharp = isPlatformApiEnabled() && COMPENSATION_WRITE_VIA_CSHARP;
-  const trpcMutation = trpc.compensation.approveAdjustment.useMutation(options);
-  const csharpMutation = useCSharpMutation(async (input: ApproveAdjustmentInputShape) => {
+  return useCSharpMutation(async (input: ApproveAdjustmentInputShape) => {
     const raw = await platformPost(
       '/compensation/adjustments/{id}/approve',
       { approved: input.approved, comment: input.comment },
@@ -525,5 +538,4 @@ export function useCompensationApproveAdjustment(options?: MutationOptions) {
     );
     return { id: raw.id, status: raw.status } satisfies ApproveAdjustmentOutput;
   }, options);
-  return viaCSharp ? csharpMutation : trpcMutation;
 }

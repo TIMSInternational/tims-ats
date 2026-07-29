@@ -299,7 +299,8 @@ export function useBillingInvoice(id: string) {
 // Writes (Phase-5 Slice 4b) — a SEPARATE flag from the reads above, mirroring backend
 // `Platform:BillingSelfServeEnabled` (independent of BillingUsageEnabled). All 3 C# self-serve
 // mutations (createCheckoutSession/createPortalSession/cancelSubscription) have live FE consumers
-// (billing-plans.tsx, settings/billing/page.tsx) — a 100% wrap rate, like compensation's. Each hook
+// (billing-plans.tsx, settings/billing/page.tsx) — a 100% wrap rate, as compensation's writes also
+// had before their TS side was deleted (they are C#-only now). Each hook
 // mirrors trpc's useMutation shape ({ onSuccess?, onError? }); MutationOptions is generic over TData
 // (like ninebox's/engagement's) because both consumers redirect via `window.location.href = url`
 // from the resolved data. Uses {@link platformPostRaw} (NOT the typed platformPost) because all

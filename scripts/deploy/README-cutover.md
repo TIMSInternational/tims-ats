@@ -28,38 +28,43 @@ Run `./scripts/deploy/cutover.sh --list` for the full surface table (flag name, 
 flag, and CONFIRMED LIVE / FLIP-READY / COEXISTENCE / TS DELETED status per
 [the runbook's §6 classification](../../docs/architecture/csharp-migration/PROD-DEPLOY-RUNBOOK-gate-g3.md#6-per-surface-cutover-one-flag-at-a-time-ts-stays-until-prod-verified)).
 
-## Worked example: cutting over `compensation`
+## Worked example: cutting over `dei`
 
 ```bash
 # 1) Verify — safe, non-mutating, needs scripts/parity/.env populated (see scripts/parity/README.md)
 #    and a live, reachable C# service.
-./scripts/deploy/cutover.sh compensation --verify-only
+./scripts/deploy/cutover.sh dei --verify-only
 
 # 2) Once that's green, flip the backend flag AND re-verify in the same breath — the script
 #    refuses to flip unless a verify pass is bundled into the same invocation (see "sequencing
 #    safety" below). --yes is what actually executes the AWS CLI call; without it you get a
 #    dry-run printout of the exact command.
-./scripts/deploy/cutover.sh compensation --verify-only --flip-backend --yes
+./scripts/deploy/cutover.sh dei --verify-only --flip-backend --yes
 
-# 3) Canary/monitor per the runbook, then flip the FE flag too (NEXT_PUBLIC_COMPENSATION_READ_VIA_CSHARP=true
+# 3) Canary/monitor per the runbook, then flip the FE flag too (NEXT_PUBLIC_DEI_READ_VIA_CSHARP=true
 #    in Vercel Production + redeploy) — this script does not touch Vercel; that step stays manual
 #    per the runbook (§6: "The flag alone does not move the FE.").
 
 # If anything looks wrong at any point, roll back immediately — no re-verify needed:
-./scripts/deploy/cutover.sh compensation --rollback --yes
+./scripts/deploy/cutover.sh dei --rollback --yes
 ```
 
-**Why not `reporting` for this walkthrough (like before)?** As of 2026-07-28 the TS
-recruitment-analytics router and its FE tRPC fallback were deleted outright (the C# read path is
-the sole implementation now), and the same happened to the TS evaluation360 router (both read AND
-write) — see the table below. As of 2026-07-29, the TS `team-intel` `getDashboardKpis` procedure
-and the TS `billing-usage` `getBillingConfig`/`getCurrentPlan`/`getUsage` procedures joined this
-group too (each time, only the specific dead procedure(s) were removed — team-intel's and
-billing.ts's routers stay alive for their other, still-dark-or-unrelated procedures). None of
-`reporting`, `evaluation360` (read), `team-intel`, or `billing-usage` has a parity command left to
-demonstrate; `--verify-only` for any of them is now a no-op that prints an explanatory notice and
-exits 0 rather than running a real check. `compensation` (FX-free read subset) is this
-walkthrough's surface instead — still `FLIP_READY` as of this writing.
+**Why `dei` and not one of the other surfaces?** A worked example is only honest on a surface that
+is genuinely still un-flipped AND still has a live TS side to verify against. As of 2026-07-29 most
+surfaces fail one half or the other. `reporting`, `evaluation360` (read), `team-intel` and
+`billing-usage` had their TS routers/procedures deleted outright (the C# read path is the sole
+implementation now — each time only the specific dead procedure(s) were removed, so team-intel's and
+billing.ts's routers stay alive for their other, still-dark-or-unrelated procedures), so
+`--verify-only` for any of them is a no-op that prints an explanatory notice and exits 0 rather than
+running a real check. `succession`, `nine-box` and `compensation` are already CONFIRMED LIVE in prod
+with their TS side partially deleted, so "flip the flag" and "roll back" no longer describe reality
+for them — `compensation` in particular held this walkthrough until 2026-07-29, when 5 of its 7
+registered read procedures were deleted. `dei` read is the cleanest remaining demonstration:
+`NEXT_PUBLIC_DEI_READ_VIA_CSHARP` does not exist in Vercel yet, the whole TS DEI router is live, and
+`verify dei` runs a real 10-endpoint parity/RLS/RBAC check. (`engagement` read is in the same state
+and substitutes cleanly if DEI ever flips first.) One DEI caveat, also printed by `--list`:
+`dei.getPayEquity` is gated by the separate `Platform:FxReadsEnabled` flag and is NOT covered by
+this surface.
 
 ## Sequencing safety (the guardrail)
 

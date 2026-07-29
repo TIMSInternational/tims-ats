@@ -9,9 +9,10 @@ import {
 /**
  * Shared field-auth + audited read of ONE employee's compensation.
  *
- * Single source of truth for both `compensation.getEmployeeComp` (HR/leader
- * reading a subject in their scope) and `compensation.myCompensation` (an
- * employee reading their OWN row, subject hard-pinned to the caller). Reusing
+ * Used by `compensation.getEmployeeComp` (HR/leader reading a subject in their
+ * scope). It was also the single source of truth for `compensation.myCompensation`
+ * (an employee reading their OWN row, subject hard-pinned to the caller) until that
+ * procedure was deleted on 2026-07-29 — the C# port keeps the same shared shape. Reusing
  * one helper guarantees BOTH callers get identical §21 guarantees:
  *   • assertSubjectInScope — caller must be authorized for `subjectUserId`
  *     (own scope passes trivially when subject === actor).

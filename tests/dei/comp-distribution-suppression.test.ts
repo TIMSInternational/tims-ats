@@ -3,10 +3,12 @@ import { initTRPC } from '@trpc/server';
 
 // ── Behavioral test for compensation distribution suppression (round 7) ──────────
 // Round 7 (present-key cardinality) SUPERSEDES the round-5 uniform-flag-keep-keys
-// approach. getCompaRatioDistribution (buckets) and getBandDistribution (bands) must:
-//  emit an EMPTY distribution/bands (no per-bucket/band keys) when the OWN population
-//  is 1..4 OR ANY bucket/band/unbanded bucket is below the floor — so N + the present-
-//  key set can never pin singletons. The top-level `suppressed` flag is the only signal.
+// approach. getBandDistribution (bands) must emit an EMPTY bands array (no per-band
+// keys) when the OWN population is 1..4 OR ANY band/unbanded bucket is below the floor
+// — so N + the present-key set can never pin singletons. The top-level `suppressed`
+// flag is the only signal. (getCompaRatioDistribution carried the identical guarantee;
+// its TS procedure was deleted 2026-07-29 — the kernel-level guard is still covered by
+// tests/compensation/compa-ratio-distribution-fixtures.test.ts + the C# unit tests.)
 
 const compFindMany = vi.fn();
 const compCount = vi.fn();
@@ -23,10 +25,15 @@ vi.mock('@tims/db', () => ({
 }));
 
 vi.mock('../../packages/api/src/access', async () => {
-  const actual = await vi.importActual<typeof import('../../packages/api/src/access')>(
-    '../../packages/api/src/access',
-  );
-  return { ...actual, requireOrgScope: vi.fn(), assertScoped: vi.fn(), assertSubjectInScope: vi.fn(), scopeWhereFor: vi.fn(async () => ({})), logDataAccess: vi.fn(async () => undefined) };
+  const actual = await vi.importActual<typeof import('../../packages/api/src/access')>('../../packages/api/src/access');
+  return {
+    ...actual,
+    requireOrgScope: vi.fn(),
+    assertScoped: vi.fn(),
+    assertSubjectInScope: vi.fn(),
+    scopeWhereFor: vi.fn(async () => ({})),
+    logDataAccess: vi.fn(async () => undefined),
+  };
 });
 
 vi.mock('../../packages/api/src/trpc', () => {
@@ -37,11 +44,6 @@ vi.mock('../../packages/api/src/trpc', () => {
 import { compensationRouter } from '../../packages/api/src/routers/compensation';
 
 interface CompCaller {
-  getCompaRatioDistribution(input?: unknown): Promise<{
-    distribution: Record<string, { suppressed: boolean; count: number | null }>;
-    totalEmployees: number | null;
-    suppressed: boolean;
-  }>;
   getBandDistribution(): Promise<Array<{ level: string; dots: unknown[]; suppressed: boolean }>>;
   getTotalCompBreakdown(input?: unknown): Promise<{
     totalComp: number | null;
@@ -66,85 +68,29 @@ interface CompCaller {
 }
 
 const t = initTRPC.context<{ user: { organizationId: string; id: string }; access: { roles: string[] } }>().create();
-const createCaller = t.createCallerFactory(compensationRouter as unknown as Parameters<typeof t.createCallerFactory>[0]);
-const caller = () => createCaller({ user: { organizationId: 'org-1', id: 'u-1' }, access: { roles: ['super_admin'] } }) as unknown as CompCaller;
-
-const compRow = (cr: number) => ({ id: 'x', currentSalary: 5_000_000, currency: 'USD', compaRatio: cr, userId: 'u' });
+const createCaller = t.createCallerFactory(
+  compensationRouter as unknown as Parameters<typeof t.createCallerFactory>[0],
+);
+const caller = () =>
+  createCaller({
+    user: { organizationId: 'org-1', id: 'u-1' },
+    access: { roles: ['super_admin'] },
+  }) as unknown as CompCaller;
 
 beforeEach(() => {
   vi.clearAllMocks();
   companyFindFirst.mockResolvedValue({ currency: 'USD' });
 });
 
-describe('getCompaRatioDistribution suppression (round 7)', () => {
-  it('N=6 with one sub-floor bucket → EMPTY distribution + null total + suppressed (no bucket keys)', async () => {
-    // 5 employees at compaRatio 1.05 (bucket 1.00-1.10) + 1 at 0.85 (bucket 0.80-0.90, sub-floor).
-    compFindMany.mockResolvedValue([
-      compRow(1.05), compRow(1.05), compRow(1.05), compRow(1.05), compRow(1.05),
-      compRow(0.85),
-    ]);
-    const r = await caller().getCompaRatioDistribution();
-    // round 7: no bucket keys survive → N + present-key set cannot pin the singleton bucket.
-    expect(Object.keys(r.distribution)).toEqual([]);
-    expect(r.suppressed).toBe(true);
-    expect(r.totalEmployees).toBeNull();
-  });
-
-  it('N=3 total → EMPTY distribution + null total (no bucket keys to pin values)', async () => {
-    compFindMany.mockResolvedValue([compRow(1.05), compRow(0.85), compRow(0.95)]);
-    const r = await caller().getCompaRatioDistribution();
-    expect(Object.keys(r.distribution)).toEqual([]);
-    expect(r.suppressed).toBe(true);
-    expect(r.totalEmployees).toBeNull();
-  });
-
-  it('all buckets >= 5 → real counts, real total', async () => {
-    const rows = [
-      ...Array.from({ length: 5 }, () => compRow(1.05)), // 1.00-1.10
-      ...Array.from({ length: 5 }, () => compRow(0.85)), // 0.80-0.90
-    ];
-    compFindMany.mockResolvedValue(rows);
-    const r = await caller().getCompaRatioDistribution();
-    expect(r.distribution['1.00-1.10']!.count).toBe(5);
-    expect(r.distribution['0.80-0.90']!.count).toBe(5);
-    expect(r.totalEmployees).toBe(10);
-  });
-
-  // ── round 13-14: positive-salary alignment + non-positive complement (compa-ratio) ──
-  // 25 comp rows / 22 positive-salary / 3 zero-salary. totalEmployees must report the
-  // positive-salary population (== compensatedEmployees), NOT 25, and the 3-row
-  // non-positive complement (1..4) must trip suppression so `totalEmployees −
-  // compensatedEmployees` can never recover the 3 bucket.
-  const compRowSalary = (salary: number, cr: number) => ({ id: 'x', currentSalary: salary, compaRatio: cr, userId: 'u' });
-
-  it('25 / 22 positive / 3 zero-salary → suppressed + null total (non-positive complement = 3, 25 never returned)', async () => {
-    compFindMany.mockResolvedValue([
-      ...Array.from({ length: 22 }, () => compRowSalary(5_000_000, 1.05)), // bucket 1.00-1.10
-      ...Array.from({ length: 3 }, () => compRowSalary(0, 0)), // 3 zero-salary (non-positive bucket)
-    ]);
-    const r = await caller().getCompaRatioDistribution();
-    expect(r.suppressed).toBe(true);
-    expect(r.totalEmployees).toBeNull();
-    expect(r.totalEmployees).not.toBe(25);
-    expect(Object.keys(r.distribution)).toEqual([]);
-  });
-
-  it('27 / 22 positive / 5 zero-salary → totalEmployees == 22 (positive population), never 27', async () => {
-    compFindMany.mockResolvedValue([
-      ...Array.from({ length: 22 }, () => compRowSalary(5_000_000, 1.05)),
-      ...Array.from({ length: 5 }, () => compRowSalary(0, 0)), // non-positive bucket = 5 (clears floor)
-    ]);
-    const r = await caller().getCompaRatioDistribution();
-    // totalEmployees is the canonical positive-salary count (22), aligned to
-    // compensatedEmployees — NOT the all-rows count (27). Subtraction yields 0, not 5.
-    expect(r.totalEmployees).toBe(22);
-    expect(r.suppressed).toBe(false);
-    expect(r.distribution['1.00-1.10']!.count).toBe(22);
-  });
-});
-
 describe('getBandDistribution suppression (round 7)', () => {
-  const band = (id: string) => ({ id, level: 'L' + id, title: 'T' + id, minSalary: 4_000_000, midSalary: 5_000_000, maxSalary: 6_000_000 });
+  const band = (id: string) => ({
+    id,
+    level: 'L' + id,
+    title: 'T' + id,
+    minSalary: 4_000_000,
+    midSalary: 5_000_000,
+    maxSalary: 6_000_000,
+  });
   const banded = (bandId: string) => ({ currentSalary: 5_000_000, band: band(bandId) });
 
   it('one sub-floor band → EMPTY bands array (no band keys to pin)', async () => {
@@ -237,10 +183,7 @@ describe('getTotalCompBreakdown — denominator alignment + complementary-bucket
   it('(B) 5 positive + 1 zero row → NOT suppressed, employeeCount == 5 (positive population, not 6)', async () => {
     // nonPositiveContributors = 1 → 1..4 → suppresses entirely.
     // Wait — 1 non-positive triggers the complementary-bucket. Suppressed.
-    compFindMany.mockResolvedValue([
-      ...Array.from({ length: 5 }, () => makeRow(5_000_000, 500_000)),
-      makeRow(0),
-    ]);
+    compFindMany.mockResolvedValue([...Array.from({ length: 5 }, () => makeRow(5_000_000, 500_000)), makeRow(0)]);
     const r = await caller().getTotalCompBreakdown();
     // Non-positive bucket = 1 → 1..4 → whole endpoint suppresses.
     expect(r.suppressed).toBe(true);

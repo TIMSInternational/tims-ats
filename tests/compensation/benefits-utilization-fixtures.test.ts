@@ -1,8 +1,8 @@
 /**
  * benefits-utilization-fixtures.test.ts — Phase-5 compensation strangler, Slice 9.
  *
- * Asserts the REAL @tims/shared buildBenefitsUtilization (the SAME kernel compensation
- * .getBenefitsUtilization now returns) against the shared golden
+ * Asserts the REAL @tims/shared buildBenefitsUtilization (the kernel the deleted
+ * compensation.getBenefitsUtilization used to return, and the one the C# port mirrors) against the shared golden
  * contracts/compensation-fixtures/benefits-utilization.json — the SAME fixture the C#
  * CompensationKernels.BuildBenefitsUtilization unit tests assert. Anti-drift: any divergence in either
  * stack (half-up rounding, no-users→0, NO min-5) turns this red.

@@ -135,7 +135,7 @@ test_query "dei.getDashboardKpis" "dei.getDashboardKpis"
 
 echo ""
 echo "--- compensation ---"
-test_query "compensation.getSalaryBands" "compensation.getSalaryBands"
+test_query "compensation.getMarketComparison" "compensation.getMarketComparison"
 test_query "compensation.getDashboardKpis" "compensation.getDashboardKpis"
 
 echo ""

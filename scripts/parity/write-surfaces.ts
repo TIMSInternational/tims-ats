@@ -196,6 +196,15 @@ const compensationBody = (userId: string) => ({
 // id → 404). super/hr_admin allow, hrbp denied (no create/approve grant). Approve runs a tx:
 // salary_adjustments.status pending→approved (+ approved_by_id) AND employee_compensations.current_salary
 // = new_salary for the subject.
+//
+// UPDATE 2026-07-29: the TS tRPC counterparts (compensation.createAdjustment /
+// compensation.approveAdjustment) have been DELETED — the permissionProcedure / assertSubjectInScope /
+// assertScoped wiring described above is now the C# implementation's, not TypeScript's. This surface is
+// UNAFFECTED: it drives literal C# HTTP paths and asserts side effects with raw SQL readbacks, so
+// `verify-write compensation` never depended on the TS router. Those readbacks
+// (readbackMutated / readbackNoMutation) are now the ONLY automated assertion of the atomic
+// pending→approved transition and of the §21 minimal-select no-leak guarantee — see the security note
+// in the TS-deletion commit.
 const compensationSurface: WriteSurface<CompensationWriteResolved> = {
   key: 'compensation',
   flag: 'Platform__CompensationWriteEnabled',

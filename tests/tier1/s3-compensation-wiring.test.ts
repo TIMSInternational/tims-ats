@@ -11,10 +11,10 @@ describe('S3 compensation approve/reject wiring', () => {
   const en = JSON.parse(read('apps/web/lib/i18n/en.json'));
 
   it('calls the real mutation (not a comingSoon stub)', () => {
-    // Cut over to the dark platform-api wrapper (apps/web/lib/platform-api/compensation.ts,
-    // Phase-5 Slice-12 write wrapper) — it still calls trpc.compensation.approveAdjustment.useMutation
-    // internally on the default (non-C#) path, so this assertion follows the refactor rather
-    // than the raw call (same pattern as tests/access/survey-take-ui.test.ts's engagement fix).
+    // Cut over to the platform-api wrapper (apps/web/lib/platform-api/compensation.ts, Phase-5
+    // Slice-12 write wrapper). As of 2026-07-29 that hook calls the C# service unconditionally —
+    // trpc.compensation.approveAdjustment was deleted — so this assertion targets the hook rather
+    // than the raw tRPC call (same pattern as tests/access/survey-take-ui.test.ts's engagement fix).
     expect(modal).toMatch(/useCompensationApproveAdjustment/);
     expect(modal).not.toMatch(/comingSoon/);
   });
@@ -27,14 +27,13 @@ describe('S3 compensation approve/reject wiring', () => {
     expect(host).toMatch(/mode:\s*['"]reject['"]/);
   });
 
-  it('invalidates listPendingAdjustments', () => {
-    expect(modal).toMatch(/utils\.compensation\.listPendingAdjustments\.invalidate/);
+  it('invalidates the C# platform-api compensation cache (pending-adjustments + compa-ratio are C#-only now)', () => {
+    expect(modal).toMatch(/queryClient\.invalidateQueries\(\{\s*queryKey:\s*\['platform-api',\s*'compensation'\]/);
   });
 
-  it('invalidates all five queries', () => {
+  it('invalidates the three surviving FX tRPC queries', () => {
     expect(modal).toMatch(/utils\.compensation\.getDashboardKpis\.invalidate/);
     expect(modal).toMatch(/utils\.compensation\.getBandDistribution\.invalidate/);
-    expect(modal).toMatch(/utils\.compensation\.getCompaRatioDistribution\.invalidate/);
     expect(modal).toMatch(/utils\.compensation\.getTotalCompBreakdown\.invalidate/);
   });
 

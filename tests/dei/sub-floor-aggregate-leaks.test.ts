@@ -5,7 +5,6 @@ import { initTRPC } from '@trpc/server';
 // Closes the dashboard/summary endpoints that returned a salary/demographic/
 // engagement count/sum/avg/ratio computed over a 1..4-person population without a
 // min-5 floor. Covers:
-//   HIGH 1  getCompaRatioDistribution  → avgCompaRatio null at sub-floor population
 //   HIGH 2  getTotalCompBreakdown      → totals + employeeCount null + suppressed
 //   HIGH 3  compensation getDashboardKpis → payroll/avgSalary/compensated/avgCompaRatio
 //   HIGH 4  nationality/ethnicity sort  → order independent of hidden counts
@@ -65,9 +64,7 @@ vi.mock('@tims/db', () => ({
 }));
 
 vi.mock('../../packages/api/src/access', async () => {
-  const actual = await vi.importActual<typeof import('../../packages/api/src/access')>(
-    '../../packages/api/src/access',
-  );
+  const actual = await vi.importActual<typeof import('../../packages/api/src/access')>('../../packages/api/src/access');
   return {
     ...actual,
     requireOrgScope: vi.fn(),
@@ -80,7 +77,11 @@ vi.mock('../../packages/api/src/access', async () => {
 
 vi.mock('../../packages/api/src/trpc', () => {
   const t = initTRPC
-    .context<{ user: { organizationId: string; id: string; impersonatorId?: string }; access: { roles: string[] }; headers: Headers }>()
+    .context<{
+      user: { organizationId: string; id: string; impersonatorId?: string };
+      access: { roles: string[] };
+      headers: Headers;
+    }>()
     .create();
   return { router: t.router, permissionProcedure: () => t.procedure };
 });
@@ -89,70 +90,81 @@ import { compensationRouter } from '../../packages/api/src/routers/compensation'
 import { engagementRouter } from '../../packages/api/src/routers/engagement';
 
 const t = initTRPC
-  .context<{ user: { organizationId: string; id: string; impersonatorId?: string }; access: { roles: string[] }; headers: Headers }>()
+  .context<{
+    user: { organizationId: string; id: string; impersonatorId?: string };
+    access: { roles: string[] };
+    headers: Headers;
+  }>()
   .create();
 
 const compFactory = t.createCallerFactory(compensationRouter as unknown as Parameters<typeof t.createCallerFactory>[0]);
 const engFactory = t.createCallerFactory(engagementRouter as unknown as Parameters<typeof t.createCallerFactory>[0]);
 
 const compCaller = (roles: string[] = ['super_admin']) =>
-  compFactory({ user: { organizationId: 'org-1', id: 'u-1' }, access: { roles }, headers: new Headers() }) as unknown as {
-    getCompaRatioDistribution(input?: unknown): Promise<{ distribution: Record<string, unknown>; avgCompaRatio: number | null; totalEmployees: number | null; suppressed: boolean }>;
-    getTotalCompBreakdown(input?: unknown): Promise<{ totalComp: number | null; employeeCount: number | null; suppressed: boolean; breakdown: { baseSalary: { total: number | null; percentage: number | null }; variablePay: { total: number | null; percentage: number | null } } }>;
-    getDashboardKpis(): Promise<{ totalMonthlyPayroll: number | null; avgSalary: number | null; compensatedEmployees: number | null; compensatedSuppressed: boolean; avgCompaRatio: number | null; activeEmployees: number; pendingAdjustments: number | null; pendingAdjustmentsSuppressed: boolean }>;
+  compFactory({
+    user: { organizationId: 'org-1', id: 'u-1' },
+    access: { roles },
+    headers: new Headers(),
+  }) as unknown as {
+    getTotalCompBreakdown(input?: unknown): Promise<{
+      totalComp: number | null;
+      employeeCount: number | null;
+      suppressed: boolean;
+      breakdown: {
+        baseSalary: { total: number | null; percentage: number | null };
+        variablePay: { total: number | null; percentage: number | null };
+      };
+    }>;
+    getDashboardKpis(): Promise<{
+      totalMonthlyPayroll: number | null;
+      avgSalary: number | null;
+      compensatedEmployees: number | null;
+      compensatedSuppressed: boolean;
+      avgCompaRatio: number | null;
+      activeEmployees: number;
+      pendingAdjustments: number | null;
+      pendingAdjustmentsSuppressed: boolean;
+    }>;
     simulateAdjustment(input: { userId: string; proposedSalary: number }): Promise<Record<string, unknown>>;
   };
 
 const engCaller = () =>
-  engFactory({ user: { organizationId: 'org-1', id: 'u-1' }, access: { roles: ['super_admin'] }, headers: new Headers() }) as unknown as {
-    getSurveyResults(input: { surveyId: string }): Promise<{ totalResponses: number | null; suppressed: boolean; questionSummaries: Array<{ question: unknown; count: number | null; average?: number | null; suppressed: boolean }> }>;
-    getDashboardKpis(): Promise<{ totalResponses: number | null; totalResponsesSuppressed: boolean; activeSurveys: number; actionPlansOpen: number }>;
-    getClimateHeatmap(input?: unknown): Promise<{ surveyId: string | null; title: string; suppressed: boolean; data: Array<{ category: string; score: number | null }> }>;
-    listSurveys(input?: unknown): Promise<{ items: Array<{ id: string; responseCount: number | null; responseCountSuppressed: boolean }>; total: number }>;
+  engFactory({
+    user: { organizationId: 'org-1', id: 'u-1' },
+    access: { roles: ['super_admin'] },
+    headers: new Headers(),
+  }) as unknown as {
+    getSurveyResults(input: { surveyId: string }): Promise<{
+      totalResponses: number | null;
+      suppressed: boolean;
+      questionSummaries: Array<{
+        question: unknown;
+        count: number | null;
+        average?: number | null;
+        suppressed: boolean;
+      }>;
+    }>;
+    getDashboardKpis(): Promise<{
+      totalResponses: number | null;
+      totalResponsesSuppressed: boolean;
+      activeSurveys: number;
+      actionPlansOpen: number;
+    }>;
+    getClimateHeatmap(input?: unknown): Promise<{
+      surveyId: string | null;
+      title: string;
+      suppressed: boolean;
+      data: Array<{ category: string; score: number | null }>;
+    }>;
+    listSurveys(input?: unknown): Promise<{
+      items: Array<{ id: string; responseCount: number | null; responseCountSuppressed: boolean }>;
+      total: number;
+    }>;
   };
-
-const compRow = (cr: number) => ({ id: 'x', currentSalary: 5_000_000, currency: 'USD', compaRatio: cr, userId: 'u' });
 
 beforeEach(() => {
   vi.clearAllMocks();
   companyFindFirst.mockResolvedValue({ currency: 'USD' });
-});
-
-// ── HIGH 1: getCompaRatioDistribution avgCompaRatio null at sub-floor ─────────
-describe('getCompaRatioDistribution avgCompaRatio (HIGH 1)', () => {
-  it('N=3 → distribution empty, totalEmployees null, avgCompaRatio null', async () => {
-    compFindMany.mockResolvedValue([compRow(1.05), compRow(0.85), compRow(0.95)]);
-    const r = await compCaller().getCompaRatioDistribution();
-    expect(Object.keys(r.distribution)).toEqual([]);
-    expect(r.totalEmployees).toBeNull();
-    // avgCompaRatio is a MEAN over the same 1..4 population → must be null, not a number.
-    expect(r.avgCompaRatio).toBeNull();
-  });
-
-  it('population >= 5 → avgCompaRatio is a real number', async () => {
-    compFindMany.mockResolvedValue(Array.from({ length: 6 }, () => compRow(1.0)));
-    const r = await compCaller().getCompaRatioDistribution();
-    expect(r.avgCompaRatio).toBe(1.0);
-  });
-
-  // round 7 finding 1: avgCompaRatio is the mean of the NON-NULL compaRatio values, a
-  // smaller sub-population than all comp rows. >=5 comp rows but only 1..4 ratio
-  // contributors → avgCompaRatio must be null (that mean is individual-level data),
-  // even though the distribution itself clears the comp-population floor.
-  it('>=5 comp rows but 1..4 non-null ratio contributors → avgCompaRatio null', async () => {
-    // 8 rows, but only 3 have a non-null/non-zero compaRatio (5 have compaRatio 0).
-    compFindMany.mockResolvedValue([
-      compRow(1.05), compRow(0.95), compRow(1.1),
-      compRow(0), compRow(0), compRow(0), compRow(0), compRow(0),
-    ]);
-    const r = await compCaller().getCompaRatioDistribution();
-    expect(r.avgCompaRatio).toBeNull();
-    // 5 of the 8 rows land in the >1.20-or-on-target buckets? No: cr=0 → bucket '<0.80'
-    // (5 rows, clears floor); the 3 nonzero land in their buckets (each 1..4) → ANY
-    // bucket sub-floor → distribution empties too.
-    expect(Object.keys(r.distribution)).toEqual([]);
-    expect(r.suppressed).toBe(true);
-  });
 });
 
 // ── HIGH 2: getTotalCompBreakdown min-5 floor ────────────────────────────────
@@ -173,8 +185,12 @@ describe('getTotalCompBreakdown (HIGH 2)', () => {
   it('population >= 5 but a sub-floor variablePay-contributor set still suppresses', async () => {
     // 6 base contributors, but only 2 have nonzero variablePay → variable sum is sub-floor.
     compFindMany.mockResolvedValue([
-      row(5_000_000, 1_000_000), row(5_000_000, 1_000_000),
-      row(5_000_000, 0), row(5_000_000, 0), row(5_000_000, 0), row(5_000_000, 0),
+      row(5_000_000, 1_000_000),
+      row(5_000_000, 1_000_000),
+      row(5_000_000, 0),
+      row(5_000_000, 0),
+      row(5_000_000, 0),
+      row(5_000_000, 0),
     ]);
     const r = await compCaller().getTotalCompBreakdown();
     expect(r.suppressed).toBe(true);
@@ -292,10 +308,7 @@ describe('getClimateHeatmap category contributor floor (finding 5)', () => {
 
   it('10-response survey, one category answered by only 1 person → category scores suppressed', async () => {
     // All 10 answer q1 (wellbeing); only 1 answers q2 (growth) → growth has 1 contributor.
-    const responses = [
-      { answers: { q1: 5, q2: 4 } },
-      ...Array.from({ length: 9 }, () => ({ answers: { q1: 5 } })),
-    ];
+    const responses = [{ answers: { q1: 5, q2: 4 } }, ...Array.from({ length: 9 }, () => ({ answers: { q1: 5 } }))];
     surveyFindMany.mockResolvedValue([survey(responses)]);
     const r = await engCaller().getClimateHeatmap();
     // uniform suppression: every category score null + suppressed:true.
@@ -316,8 +329,14 @@ describe('getClimateHeatmap category contributor floor (finding 5)', () => {
 // ── round 7 finding 6: listSurveys responseCount floored ─────────────────────
 describe('listSurveys responseCount floor (finding 6)', () => {
   const surveyRow = (responseCount: number) => ({
-    id: 's-1', title: 'Pulse', type: 'pulse', status: 'active',
-    startsAt: null, endsAt: null, createdAt: new Date(), updatedAt: new Date(),
+    id: 's-1',
+    title: 'Pulse',
+    type: 'pulse',
+    status: 'active',
+    startsAt: null,
+    endsAt: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
     responseCount,
   });
 

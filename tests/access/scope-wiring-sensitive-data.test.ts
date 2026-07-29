@@ -14,15 +14,15 @@ import { suppressBelowMin5, aggregateGroups } from '../../packages/api/src/acces
 const ROOT = join(__dirname, '..', '..');
 const readComp = () => readFileSync(join(ROOT, 'packages/api/src/routers/compensation.ts'), 'utf8');
 // Phase-5 Slice 9 (compensation strangler): the compa-ratio min-5 distribution + benefits utilization are
-// now the pure @tims/shared kernels the router RETURNS (honest-fixture rule) + the C# port mirrors. The
-// min-5 guards that USED to live inline in the router now live in the kernel (and are golden-fixtured BOTH
-// stacks via contracts/compensation-fixtures), so the source tripwires read the kernel + assert delegation.
+// pure @tims/shared kernels golden-fixtured against the C# port (contracts/compensation-fixtures). Their TS
+// router procedures were DELETED on 2026-07-29 (C#-only now), so the router no longer calls either kernel —
+// these tripwires guard the kernels themselves, which remain the live cross-stack contract.
 const readCompKernel = () => readFileSync(join(ROOT, 'packages/shared/src/compensation.ts'), 'utf8');
 // The per-person employeeCompensation read (selectFor + FULL+AUDIT logDataAccess)
 // lives in the shared compensation.service.ts helper (getEmployeeCompForSubject),
-// reused by BOTH compensation.getEmployeeComp and compensation.myCompensation
-// (Slice 5B). Audit-guarantee tripwires that count the employeeCompensation audit
-// path read the router + service together so the guarantee is enforced wherever
+// used by compensation.getEmployeeComp (its second caller, compensation.myCompensation,
+// was deleted 2026-07-29). Audit-guarantee tripwires that count the employeeCompensation
+// audit path read the router + service together so the guarantee is enforced wherever
 // the code physically lives.
 const readCompAudited = () =>
   readComp() + readFileSync(join(ROOT, 'packages/api/src/services/compensation.service.ts'), 'utf8');
@@ -38,7 +38,8 @@ const readEngagement = () => readFileSync(join(ROOT, 'packages/api/src/routers/e
 // floors themselves live here. Tripwires that guarded the (formerly inline) suppression now guard the kernel.
 const readEngagementKernels = () => readFileSync(join(ROOT, 'packages/shared/src/engagement.ts'), 'utf8');
 const readAssessment = () => readFileSync(join(ROOT, 'packages/api/src/routers/assessment.ts'), 'utf8');
-const readCandidateRepo = () => readFileSync(join(ROOT, 'packages/api/src/repositories/candidate.repository.ts'), 'utf8');
+const readCandidateRepo = () =>
+  readFileSync(join(ROOT, 'packages/api/src/repositories/candidate.repository.ts'), 'utf8');
 
 describe('compensation aggregate buckets honor min-5', () => {
   it('a bucket with 3 members is reported suppressed', () => {
@@ -131,7 +132,9 @@ describe('DEI demographic distributions honor min-5', () => {
     expect(readDeiService()).toMatch(/results: \[\] as PayOut\[\], gapPct: null as number \| null, suppressed: true/);
     // The retired round-5 uniform-flag-keep-keys design is gone from the kernel.
     expect(kernel).not.toMatch(/const anySuppressed = /);
-    expect(kernel).not.toMatch(/count:\s*null as number \| null,\s*percentage:\s*null as number \| null,\s*suppressed:\s*true/);
+    expect(kernel).not.toMatch(
+      /count:\s*null as number \| null,\s*percentage:\s*null as number \| null,\s*suppressed:\s*true/,
+    );
   });
 
   // ── round 7: present-key cardinality — empty distribution when any group sub-floor ──
@@ -238,7 +241,8 @@ describe('assessment.ts result readers use selectFor + audit', () => {
 
   it('derives includesRaw from the select and audits with failClosed: includesRaw', () => {
     const src = readAssessment();
-    const includesRaw = src.match(/const includesRaw = 'breakdown' in resultSelect \|\| 'rawScore' in resultSelect;/g) ?? [];
+    const includesRaw =
+      src.match(/const includesRaw = 'breakdown' in resultSelect \|\| 'rawScore' in resultSelect;/g) ?? [];
     expect(includesRaw.length).toBeGreaterThanOrEqual(3);
     expect(src).toMatch(/failClosed:\s*includesRaw/);
   });
@@ -275,8 +279,12 @@ describe('DEI getDashboardKpis closes cross-endpoint differencing (fix 1)', () =
   // The dashboard-KPI differencing suppression moved into the shared deiDashboardKpis kernel (Slice-11b).
   it('computes anyGenderSuppressed / anyLeaderGenderSuppressed over the per-group counts (kernel)', () => {
     const kernel = readDeiKernel();
-    expect(kernel).toMatch(/const anyGenderSuppressed = input\.genders\.some\(\(g\) => suppressBelowMin5\(g\.count\)\.suppressed\)/);
-    expect(kernel).toMatch(/const anyLeaderGenderSuppressed = \[\.\.\.leaderCounts\.values\(\)\]\.some\(\(c\) => suppressBelowMin5\(c\)\.suppressed\)/);
+    expect(kernel).toMatch(
+      /const anyGenderSuppressed = input\.genders\.some\(\(g\) => suppressBelowMin5\(g\.count\)\.suppressed\)/,
+    );
+    expect(kernel).toMatch(
+      /const anyLeaderGenderSuppressed = \[\.\.\.leaderCounts\.values\(\)\]\.some\(\(c\) => suppressBelowMin5\(c\)\.suppressed\)/,
+    );
   });
 
   it('nulls genderParityIndex + womenPct when any gender group is suppressed (kernel)', () => {
@@ -286,7 +294,9 @@ describe('DEI getDashboardKpis closes cross-endpoint differencing (fix 1)', () =
   });
 
   it('nulls leadershipWomenPct when any leader-gender group is suppressed (kernel)', () => {
-    expect(readDeiKernel()).toMatch(/leadershipWomenPct:\s*anyLeaderGenderSuppressed \? null : pct\(leaderFemale, input\.leaderGenders\.length\)/);
+    expect(readDeiKernel()).toMatch(
+      /leadershipWomenPct:\s*anyLeaderGenderSuppressed \? null : pct\(leaderFemale, input\.leaderGenders\.length\)/,
+    );
   });
 
   // Round 2 + round 7: demographicsCoverage × totalEmployees reconstructs the shared
@@ -294,8 +304,12 @@ describe('DEI getDashboardKpis closes cross-endpoint differencing (fix 1)', () =
   // distribution (gender OR nationality OR ethnicity OR null-DOB) is suppressed.
   it('nulls demographicsCoverage when any demographic distribution is suppressed (round 7 belt-and-suspenders + round 8 null-DOB) (kernel)', () => {
     const kernel = readDeiKernel();
-    expect(kernel).toMatch(/anyGenderSuppressed \|\| nationalitySuppressed \|\| ethnicitySuppressed \|\| nullDobSuppressed/);
-    expect(kernel).toMatch(/demographicsCoverage:\s*anyDemographicSuppressed \? null : pct\(input\.withDemographics, input\.totalEmployees\)/);
+    expect(kernel).toMatch(
+      /anyGenderSuppressed \|\| nationalitySuppressed \|\| ethnicitySuppressed \|\| nullDobSuppressed/,
+    );
+    expect(kernel).toMatch(
+      /demographicsCoverage:\s*anyDemographicSuppressed \? null : pct\(input\.withDemographics, input\.totalEmployees\)/,
+    );
   });
 });
 
@@ -305,15 +319,19 @@ describe('compa-ratio present-key cardinality (fix 2, round 7)', () => {
   // bucket keys) + null total + top-level suppressed:true. No keys ⇒ N + present-key
   // set can never pin a singleton bucket, and N − Σ visible has no operands.
   it('emits an empty distribution + null total + suppressed when the population OR any bucket is sub-floor', () => {
-    // The router now DELEGATES to the shared kernel (honest-fixture); the guards live in the kernel.
-    expect(readComp()).toMatch(/return buildCompaRatioDistribution\(/);
+    // The TS router procedure was deleted 2026-07-29 (C#-only); the guards live in the shared kernel,
+    // which both stacks are golden-fixtured against.
     const src = readCompKernel();
-    expect(src).toMatch(/const anyBucketSuppressed = Object\.values\(buckets\)\.some\(\(count\) => suppressBelowMin5\(count\)\.suppressed\)/);
+    expect(src).toMatch(
+      /const anyBucketSuppressed = Object\.values\(buckets\)\.some\(\(count\) => suppressBelowMin5\(count\)\.suppressed\)/,
+    );
     // round 13-14: floor on the positive-salary population + the non-positive complement
     // (NOT rows.length) so totalEmployees − compensatedEmployees can't recover the non-positive bucket.
     expect(src).toMatch(/suppressBelowMin5\(positiveCount\)\.suppressed/);
     expect(src).toMatch(/suppressBelowMin5\(nonPositiveCount\)\.suppressed/);
-    expect(src).toMatch(/return \{ distribution: distributionShape, avgCompaRatio, totalEmployees: null, suppressed: true \}/);
+    expect(src).toMatch(
+      /return \{ distribution: distributionShape, avgCompaRatio, totalEmployees: null, suppressed: true \}/,
+    );
     // totalEmployees on the non-suppressed path reports the canonical positive-salary count.
     expect(src).toMatch(/totalEmployees: positiveCount, suppressed: false/);
   });
@@ -397,7 +415,9 @@ describe('getDashboardKpis closes the org survey-total differencing oracle (FIX 
 // a bare unselected findMany / include of full response rows.
 describe('surveyResponse reads/writes use explicit minimal selects (FIX 3)', () => {
   it('submitSurveyResponse create selects only id + submittedAt (no answers echoed)', () => {
-    expect(readEngagement()).toMatch(/surveyResponse\.create\([\s\S]*?select:\s*\{\s*id:\s*true,\s*submittedAt:\s*true\s*\}/);
+    expect(readEngagement()).toMatch(
+      /surveyResponse\.create\([\s\S]*?select:\s*\{\s*id:\s*true,\s*submittedAt:\s*true\s*\}/,
+    );
   });
 
   it('getEnps findMany selects only answers (no full response rows)', () => {
@@ -433,114 +453,14 @@ describe('restricted compensation reads are audited fail-closed (fix 4)', () => 
     expect(calls.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('listPendingAdjustments audits each returned row on salaryAdjustment', () => {
-    const src = readComp();
-    expect(src).toMatch(/entity:\s*'salaryAdjustment'/);
-    // the list audits every row via Promise.all over the returned adjustments
-    expect(src).toMatch(/adjustments\.map\(\(a\) =>\s*\n?\s*logDataAccess\(/);
-  });
-
   it('audits actorId via impersonatorId fallback and reads ip/ua from headers', () => {
     const src = readComp();
     expect(src).toMatch(/ctx\.user\.impersonatorId \?\? ctx\.user\.id/);
     expect(src).toMatch(/ctx\.headers\.get\('x-forwarded-for'\) \|\| ctx\.headers\.get\('x-real-ip'\)/);
   });
 
-  it('three restricted readers call logDataAccess (getEmployeeComp, simulateAdjustment, listPendingAdjustments)', () => {
+  it('the surviving restricted reader calls logDataAccess in the router (simulateAdjustment; getEmployeeComp audits inside the shared service)', () => {
     const calls = readComp().match(/logDataAccess\(/g) ?? [];
-    expect(calls.length).toBeGreaterThanOrEqual(3);
-  });
-});
-
-// ── Slice 6: minimal-select invariant on SalaryAdjustment write mutations ────
-// createAdjustment and approveAdjustment must never return an unselected
-// SalaryAdjustment row. Both are defense-in-depth: super/hr callers are entitled
-// to salary fields, but a write response echoing the full restricted row is
-// unnecessary (UI needs only id/status as a creation/approval confirmation) and
-// violates the per-record restricted-access invariant.
-describe('createAdjustment + approveAdjustment use minimal selects (slice 6 write mutations)', () => {
-  it('salaryAdjustment.create has an explicit select (no bare unselected create)', () => {
-    const src = readComp();
-    // The bare form `salaryAdjustment.create({` without a subsequent `select:` is banned.
-    // We check that every salaryAdjustment.create call has a select key.
-    expect(src).not.toMatch(/salaryAdjustment\.create\(\{(?:(?!\bselect\b)[\s\S])*?\}\)/);
-  });
-
-  it('createAdjustment select is minimal — id and status only', () => {
-    const src = readComp();
-    // The create select must contain id:true and status:true and be followed by
-    // the closing of the create call (no extra salary-data fields).
-    expect(src).toMatch(/salaryAdjustment\.create\([\s\S]*?select:\s*\{\s*id:\s*true,\s*status:\s*true\s*\}/);
-  });
-
-  it('approveAdjustment findFirst has an explicit select (not full-row)', () => {
-    const src = readComp();
-    // The findFirst inside approveAdjustment must have a select so restricted salary
-    // fields are not loaded unless explicitly listed.
-    expect(src).toMatch(/salaryAdjustment\.findFirst\(\{[\s\S]*?status:\s*'pending'[\s\S]*?select:\s*\{/);
-  });
-
-  it("approveAdjustment findFirst select includes userId/newSalary/currency (needed by the approval logic) but NOT previousSalary or reason", () => {
-    const src = readComp();
-    // Extract the findFirst block: from 'findFirst' up to the closing of that call.
-    // We check the select fields that appear near it.
-    expect(src).toMatch(/select:\s*\{\s*id:\s*true,\s*userId:\s*true,\s*newSalary:\s*true,\s*currency:\s*true\s*\}/);
-    // previousSalary and reason must NOT appear in the findFirst select.
-    // (They may appear elsewhere in the file — e.g. listPendingAdjustments — so we
-    //  check that the findFirst select block specifically is minimal.)
-    expect(src).not.toMatch(/salaryAdjustment\.findFirst\(\{[\s\S]*?select:\s*\{[\s\S]*?\bpreviousSalary\b[\s\S]*?\}\s*\}\s*\)/);
-  });
-
-  it('approveAdjustment audits the restricted newSalary read via logDataAccess before the update', () => {
-    const src = readComp();
-    // The audit (entity: salaryAdjustment, action: update) must appear between the
-    // findFirst and the salaryAdjustment.update call within approveAdjustment.
-    // We verify both exist and that the action:'update' variant is present.
-    expect(src).toMatch(/action:\s*'update'/);
-    expect(src).toMatch(/entity:\s*'salaryAdjustment'[\s\S]*?action:\s*'update'/);
-  });
-
-  it('approveAdjustment returns only id+status (no full restricted row echoed back)', () => {
-    // The status transition is now a conditional updateMany inside a $transaction
-    // (see the atomicity tests below); the handler returns a plain { id, status }
-    // confirmation object — never an unselected SalaryAdjustment row.
-    expect(readComp()).toMatch(/return \{ id: input\.id, status: newStatus \}/);
-  });
-
-  it('four or more logDataAccess calls now exist (getEmployeeComp[service] + simulateAdjustment + listPendingAdjustments + approveAdjustment)', () => {
-    // getEmployeeComp's logDataAccess moved into compensation.service.ts; count
-    // across router + service so the four restricted-read audits are all present.
-    const calls = readCompAudited().match(/logDataAccess\(/g) ?? [];
-    expect(calls.length).toBeGreaterThanOrEqual(4);
-  });
-});
-
-// ── FIX 1 (slice 6 round 8): approveAdjustment is atomic + conditional ───────
-// Two concurrent approves could both pass the `status: 'pending'` findFirst and
-// race; a failure after the status write left the adjustment 'approved' but
-// currentSalary stale. The transition is now a CONDITIONAL updateMany (where
-// status:'pending') guarded by count===0 → CONFLICT, and the EmployeeCompensation
-// propagation runs in the SAME $transaction so they commit/roll back together.
-describe('approveAdjustment is an atomic, conditional state transition (FIX 1)', () => {
-  it('wraps the transition + compensation update in a $transaction', () => {
-    expect(readComp()).toMatch(/await db\.\$transaction\(async \(tx\) => \{/);
-  });
-
-  it('makes the status transition conditional via updateMany on status:pending', () => {
-    const src = readComp();
-    expect(src).toMatch(/tx\.salaryAdjustment\.updateMany\(\{\s*\n?\s*where:\s*\{\s*id:\s*input\.id,\s*organizationId:\s*ctx\.user\.organizationId,\s*status:\s*'pending'\s*\}/);
-  });
-
-  it('throws CONFLICT when the conditional transition matched no row (count === 0)', () => {
-    const src = readComp();
-    expect(src).toMatch(/if \(transition\.count === 0\)/);
-    expect(src).toMatch(/code:\s*'CONFLICT'/);
-  });
-
-  it('propagates the approved salary to employeeCompensation INSIDE the transaction', () => {
-    // the tx callback updates employeeCompensation via the same `tx` client, not `db`.
-    expect(readComp()).toMatch(/tx\.employeeCompensation\.updateMany\(/);
-    // and there is no longer a separate post-update db.employeeCompensation write.
-    expect(readComp()).not.toMatch(/await db\.employeeCompensation\.updateMany\(/);
+    expect(calls.length).toBeGreaterThanOrEqual(1);
   });
 });
