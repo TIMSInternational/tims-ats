@@ -265,76 +265,29 @@ export const SURFACES: Record<string, Surface> = {
     ],
   },
   // ── succession ──────────────────────────────────────────────────────────────────────────────
-  // 6 of the 9 succession reads (the 3 by-id critical-roles/{id}, suggested-successors, simulate-exit
-  // are a Tier-2 follow-up needing the harness Mode-A id extension). All org-scoped Mode B. One flag
-  // Platform:SuccessionReadEnabled. RBAC (hr_admin succession:read@org [+ compensation:read@org from the
-  // compensation seed, for the comp-gap secondary check], hrbp @unit): critical-roles uses scopeWhereFor
-  // (hrbp → 200-empty, faithful — hrbp holds unit-scoped succession read); the org-rollup reads (flight-risk,
-  // competency-coverage, roles-without-successor, comp-gap-alerts, dashboard-kpis) → requireOrgScope →
-  // hrbp 403. super_admin bypasses.
-  // (The critical_roles.target_band_level + nine_box_evaluations.updated_at columns that these reads / the
-  // nine-box reads select were missing from prod and have been migrated in — the harness surfaced that drift.)
+  // UPDATE 2026-07-29: 8 of the original 9 registered succession reads had their TS procedures
+  // deleted (NEXT_PUBLIC_SUCCESSION_READ_VIA_CSHARP confirmed live in prod) — only `critical-role`
+  // (getCriticalRole) survives below, since it's the one read with zero FE consumers, so its TS
+  // side was never a cutover candidate and stays live. RBAC: hr_admin succession:read@org, hrbp
+  // @unit — getCriticalRole uses assertScoped (an IDOR-safe by-id probe returning 404, not 403,
+  // for out-of-scope — see the endpoint's own comment).
   succession: {
     key: 'succession',
     flag: 'Platform__SuccessionReadEnabled',
     roles: ['super_admin', 'hr_admin', 'hrbp'],
     probeRole: 'super_admin',
     endpoints: [
-      {
-        name: 'critical-roles',
-        csharpPath: '/succession/critical-roles',
-        tsProcedure: 'succession.listCriticalRoles',
-        input: {},
-        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 200 },
-        normalize: { dropNullish: true, sortArraysBy: 'id' },
-      },
-      {
-        name: 'flight-risk',
-        csharpPath: '/succession/flight-risk',
-        tsProcedure: 'succession.getFlightRisk',
-        input: {},
-        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
-        normalize: { dropNullish: true, sortArraysBy: 'id' },
-      },
-      {
-        name: 'competency-coverage',
-        csharpPath: '/succession/competency-coverage',
-        tsProcedure: 'succession.getCompetencyCoverage',
-        input: {},
-        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
-        // TS has no orderBy here; C# orders by roleId → canonicalize both by roleId before diffing.
-        normalize: { dropNullish: true, sortArraysBy: 'roleId' },
-      },
-      {
-        name: 'roles-without-successor',
-        csharpPath: '/succession/roles-without-successor',
-        tsProcedure: 'succession.getRolesWithoutSuccessor',
-        input: {},
-        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
-        normalize: { dropNullish: true, sortArraysBy: 'id' },
-      },
-      {
-        name: 'comp-gap-alerts',
-        csharpPath: '/succession/comp-gap-alerts',
-        tsProcedure: 'succession.getCompGapAlerts',
-        input: {},
-        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
-        normalize: { dropNullish: true, sortArraysBy: 'userId' },
-      },
-      {
-        name: 'dashboard-kpis',
-        csharpPath: '/succession/dashboard-kpis',
-        tsProcedure: 'succession.getDashboardKpis',
-        input: {},
-        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
-        normalize: { dropNullish: true },
-      },
-      // Tier-2 by-id: getCriticalRole/getSuggestedSuccessors/simulateExit = permissionProcedure('succession',
-      // 'read') + assertScoped('criticalRole', id) — an IDOR-safe probe that returns 404 (NOT 403) for
-      // out-of-scope. Org-A target = cr1 ('Parity Critical Role A1', holder super). super/hr_admin (org) → 200;
-      // hrbp out-of-scope → 404 → OMITTED (404 isn't representable in 200|403 and isn't an RBAC-permission
-      // signal). Mode-A IDOR: org-A token → org-B critical role → 404 (assertScoped ScopedNotFound). NOTE the
-      // TS param name differs (`id` for getCriticalRole; `criticalRoleId` for the other two).
+      // UPDATE 2026-07-29: 8 of the original 9 endpoints here (critical-roles, flight-risk,
+      // competency-coverage, roles-without-successor, comp-gap-alerts, dashboard-kpis,
+      // suggested-successors, simulate-exit) were removed alongside the TS-deletion of their
+      // procedures — packages/api/src/routers/succession.ts's listCriticalRoles/getFlightRisk/
+      // getCompetencyCoverage/getRolesWithoutSuccessor/getCompGapAlerts/getDashboardKpis/
+      // getSuggestedSuccessors/simulateExit and their FE tRPC fallback
+      // (apps/web/lib/platform-api/succession.ts) have been deleted — there is no TS side left
+      // to diff against for those 8. This surface stays registered (rather than removed
+      // outright, unlike team-intel/billing-usage) because getCriticalRole below is NOT
+      // deleted — it has zero FE consumers so was never wrapped, but its TS implementation is
+      // still live, so `verify succession` still runs one REAL parity/RLS/RBAC check.
       {
         name: 'critical-role',
         csharpPath: '/succession/critical-roles/{id}',
@@ -343,25 +296,6 @@ export const SURFACES: Record<string, Surface> = {
         idScopeKey: 'critical-role',
         expectedByRole: { super_admin: 200, hr_admin: 200 },
         // nested successors[] (≤1 seeded) → canonicalize any array by id before diffing.
-        normalize: { dropNullish: true, sortArraysBy: 'id' },
-      },
-      {
-        name: 'suggested-successors',
-        csharpPath: '/succession/critical-roles/{id}/suggested-successors',
-        tsProcedure: 'succession.getSuggestedSuccessors',
-        input: { criticalRoleId: ID_SENTINEL },
-        idScopeKey: 'critical-role',
-        expectedByRole: { super_admin: 200, hr_admin: 200 },
-        // ranked candidate list (from nine-box evals) — deterministic kernel; sort by userId to be safe.
-        normalize: { dropNullish: true, sortArraysBy: 'userId' },
-      },
-      {
-        name: 'simulate-exit',
-        csharpPath: '/succession/critical-roles/{id}/simulate-exit',
-        tsProcedure: 'succession.simulateExit',
-        input: { criticalRoleId: ID_SENTINEL },
-        idScopeKey: 'critical-role',
-        expectedByRole: { super_admin: 200, hr_admin: 200 },
         normalize: { dropNullish: true, sortArraysBy: 'id' },
       },
     ],
