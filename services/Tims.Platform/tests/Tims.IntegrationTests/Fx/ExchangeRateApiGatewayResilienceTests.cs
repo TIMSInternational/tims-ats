@@ -10,15 +10,18 @@ namespace Tims.IntegrationTests.Fx;
 
 /// <summary>
 /// Slice 11c — drives the REAL Polly-v8 resilience pipeline <see cref="FxServiceCollectionExtensions"/> wires
-/// onto the frankfurter typed client, using the stub <see cref="StubHttpMessageHandler"/> (NO live frankfurter
-/// call — a live rate is NEVER golden-parity fixtured). Proves: transient 429/5xx are retried then succeed and
-/// the ECB date + rates parse; persistent 5xx opens the circuit (<see cref="BrokenCircuitException"/>); the
-/// request URL carries base + symbols; frankfurter is KEYLESS (NO Authorization header ever sent).
+/// onto the ExchangeRate-API typed client, using the stub <see cref="StubHttpMessageHandler"/> (NO live
+/// external call — a live rate is NEVER golden-parity fixtured). Proves: transient 429/5xx are retried then
+/// succeed and the date + rates parse; persistent 5xx opens the circuit (<see cref="BrokenCircuitException"/>);
+/// ExchangeRate-API is KEYLESS (NO Authorization header ever sent); a non-"success" result throws; the gateway
+/// filters the response down to only the requested quote currencies (this provider has no server-side symbols
+/// filter, unlike the Frankfurter adapter it replaced — see
+/// docs/architecture/csharp-migration/fx-provider-swap-2026-07-28.md).
 /// </summary>
-public sealed class FrankfurterFxGatewayResilienceTests
+public sealed class ExchangeRateApiGatewayResilienceTests
 {
     private const string LatestBody =
-        """{"amount":1.0,"base":"USD","date":"2026-07-21","rates":{"COP":4000.0,"EUR":0.92}}""";
+        """{"result":"success","base_code":"USD","time_last_update_unix":1785196951,"rates":{"COP":4000.0,"EUR":0.92}}""";
 
     private static readonly string[] Quotes = { "COP", "EUR" };
 
@@ -39,11 +42,11 @@ public sealed class FrankfurterFxGatewayResilienceTests
         var result = await gateway.FetchLatestAsync("USD", Quotes, CancellationToken.None);
 
         Assert.Equal(3, stub.CallCount); // 429 → 500 → 200
-        Assert.Equal(new DateOnly(2026, 7, 21), result.AsOf);
+        Assert.Equal(new DateOnly(2026, 7, 28), result.AsOf); // 1785196951 == 2026-07-28T00:02:31Z
         Assert.Equal("USD", result.BaseCurrency);
         Assert.Equal(4000.0, result.Rates["COP"]);
         Assert.Equal(0.92, result.Rates["EUR"]);
-        // frankfurter is KEYLESS — no Authorization header is ever attached.
+        // ExchangeRate-API is KEYLESS — no Authorization header is ever attached.
         Assert.Null(stub.LastAuthorization);
     }
 
@@ -82,11 +85,50 @@ public sealed class FrankfurterFxGatewayResilienceTests
         Assert.NotNull(broken);
     }
 
+    [Fact]
+    public async Task Filters_the_response_down_to_only_the_requested_quote_currencies()
+    {
+        // The real API always returns ALL ~166 currencies — this stub mirrors that by including MXN, which
+        // was never requested, alongside the two that were (COP, EUR).
+        const string bodyWithExtraCurrencies =
+            """{"result":"success","base_code":"USD","time_last_update_unix":1785196951,"rates":{"COP":4000.0,"EUR":0.92,"MXN":17.47}}""";
+        var stub = new StubHttpMessageHandler(StubHttpMessageHandler.Sequence(bodyWithExtraCurrencies, HttpStatusCode.OK));
+
+        using var provider = BuildProvider(stub, new Dictionary<string, string?>
+        {
+            ["Fx:CircuitMinimumThroughput"] = "100", // disabled for this test
+        });
+        var gateway = provider.GetRequiredService<IFxRateGateway>();
+
+        var result = await gateway.FetchLatestAsync("USD", Quotes, CancellationToken.None);
+
+        Assert.Equal(2, result.Rates.Count);
+        Assert.True(result.Rates.ContainsKey("COP"));
+        Assert.True(result.Rates.ContainsKey("EUR"));
+        Assert.False(result.Rates.ContainsKey("MXN"));
+    }
+
+    [Fact]
+    public async Task A_non_success_result_throws_instead_of_returning_bad_data()
+    {
+        const string errorBody = """{"result":"error","error-type":"unsupported-code"}""";
+        var stub = new StubHttpMessageHandler(StubHttpMessageHandler.Sequence(errorBody, HttpStatusCode.OK));
+
+        using var provider = BuildProvider(stub, new Dictionary<string, string?>
+        {
+            ["Fx:CircuitMinimumThroughput"] = "100", // disabled for this test
+        });
+        var gateway = provider.GetRequiredService<IFxRateGateway>();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => gateway.FetchLatestAsync("USD", Quotes, CancellationToken.None));
+    }
+
     private static ServiceProvider BuildProvider(StubHttpMessageHandler stub, Dictionary<string, string?> overrides)
     {
         var settings = new Dictionary<string, string?>
         {
-            ["Fx:FrankfurterBaseUrl"] = "https://frankfurter.test/v1/",
+            ["Fx:ExchangeRateApiBaseUrl"] = "https://exchangerate-api.test/",
             ["Fx:TotalTimeoutSeconds"] = "30",
             ["Fx:MaxRetryAttempts"] = "3",
             ["Fx:BaseRetryDelayMilliseconds"] = "1",
@@ -107,7 +149,7 @@ public sealed class FrankfurterFxGatewayResilienceTests
         services.AddOptions<FxOptions>().Bind(configuration.GetSection(FxOptions.SectionName)).ValidateDataAnnotations();
         services.AddFxRateGateway();
         // Override the typed client's transport with the stub (same named client → accumulates config).
-        services.AddHttpClient<IFxRateGateway, FrankfurterFxGateway>().ConfigurePrimaryHttpMessageHandler(() => stub);
+        services.AddHttpClient<IFxRateGateway, ExchangeRateApiGateway>().ConfigurePrimaryHttpMessageHandler(() => stub);
         return services.BuildServiceProvider();
     }
 }

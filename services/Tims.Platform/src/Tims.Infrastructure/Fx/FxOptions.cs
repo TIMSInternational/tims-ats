@@ -4,18 +4,20 @@ namespace Tims.Infrastructure.Fx;
 
 /// <summary>
 /// Strongly-typed FX-gateway configuration, bound from the "Fx" section and validated at startup
-/// (ValidateDataAnnotations + ValidateOnStart), mirroring <c>HrisOptions</c>. Flat by design. frankfurter is
-/// KEYLESS — there is NO secret here (only currency codes egress; register it in the SOC2 subprocessor register).
-/// Carries the pinned base URL + the Polly v8 resilience knobs.
+/// (ValidateDataAnnotations + ValidateOnStart), mirroring <c>HrisOptions</c>. Flat by design. ExchangeRate-API's
+/// open tier is KEYLESS — there is NO secret here (only currency codes egress; register the real provider
+/// domain in the SOC2 subprocessor register). Carries the pinned base URL + the Polly v8 resilience knobs.
 /// </summary>
 public sealed class FxOptions
 {
     public const string SectionName = "Fx";
 
-    /// <summary>The frankfurter (ECB) API base URL. The gateway calls <c>latest?base=…&amp;symbols=…</c>
-    /// relative to it. Pinned in config so the ONLY frankfurter surface is auditable.</summary>
+    /// <summary>The ExchangeRate-API (open/free tier) base URL. The gateway calls <c>v6/latest/{base}</c>
+    /// relative to it. Pinned in config so the ONLY egress surface is auditable. See
+    /// docs/architecture/csharp-migration/fx-provider-swap-2026-07-28.md for why this replaced Frankfurter
+    /// (ECB) — Frankfurter's fixed currency list does not include COP or CRC.</summary>
     [Required]
-    public string FrankfurterBaseUrl { get; init; } = "https://api.frankfurter.dev/v1/";
+    public string ExchangeRateApiBaseUrl { get; init; } = "https://open.er-api.com/";
 
     // --- Resilience knobs (Polly v8 pipeline) — same shape as HrisOptions ---------------
 
@@ -48,6 +50,6 @@ public sealed class FxOptions
     public int CircuitBreakDurationSeconds { get; init; } = 15;
 
     /// <summary>The base URL guaranteed to end with '/' so relative fetches resolve correctly.</summary>
-    public string ResolvedFrankfurterBaseUrl() =>
-        FrankfurterBaseUrl.EndsWith('/') ? FrankfurterBaseUrl : FrankfurterBaseUrl + "/";
+    public string ResolvedExchangeRateApiBaseUrl() =>
+        ExchangeRateApiBaseUrl.EndsWith('/') ? ExchangeRateApiBaseUrl : ExchangeRateApiBaseUrl + "/";
 }
