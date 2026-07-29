@@ -151,8 +151,8 @@ wrapped in `if (options.<X>Enabled || isOpenApiDocGeneration) { ... }`, defaulti
   live-Stripe-key cutover), audit-log, access-review, external-vendor (none of these last three ever
   got a `NEXT_PUBLIC_*` flag in Vercel — no FE consumer or different cutover mechanism, see their
   respective slice docs). TS-code deletion (step 7) has now happened for 4 of the now-11 live
-  read/write surfaces — reporting, evaluation360, team-intel, and billing-usage (2026-07-28 and 2026-07-29
-  respectively) — the remaining live surfaces (succession, nine-box, compensation)
+  read/write surfaces — reporting and evaluation360 (2026-07-28), and team-intel and billing-usage
+  (2026-07-29) — the remaining live surfaces (succession, nine-box, compensation)
   still have their TS fallback code sitting dead-but-undeleted behind their (now-always-true) flags. Flipping a
   domain's flag in prod is explicitly **Federico-only, at canary**
   (`docs/superpowers/plans/2026-07-24-cutover-verification-harness.md`); TS-code deletion is AI-doable
