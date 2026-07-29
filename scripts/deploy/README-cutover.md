@@ -28,34 +28,38 @@ Run `./scripts/deploy/cutover.sh --list` for the full surface table (flag name, 
 flag, and CONFIRMED LIVE / FLIP-READY / COEXISTENCE / TS DELETED status per
 [the runbook's §6 classification](../../docs/architecture/csharp-migration/PROD-DEPLOY-RUNBOOK-gate-g3.md#6-per-surface-cutover-one-flag-at-a-time-ts-stays-until-prod-verified)).
 
-## Worked example: cutting over `billing-usage`
+## Worked example: cutting over `compensation`
 
 ```bash
 # 1) Verify — safe, non-mutating, needs scripts/parity/.env populated (see scripts/parity/README.md)
 #    and a live, reachable C# service.
-./scripts/deploy/cutover.sh billing-usage --verify-only
+./scripts/deploy/cutover.sh compensation --verify-only
 
 # 2) Once that's green, flip the backend flag AND re-verify in the same breath — the script
 #    refuses to flip unless a verify pass is bundled into the same invocation (see "sequencing
 #    safety" below). --yes is what actually executes the AWS CLI call; without it you get a
 #    dry-run printout of the exact command.
-./scripts/deploy/cutover.sh billing-usage --verify-only --flip-backend --yes
+./scripts/deploy/cutover.sh compensation --verify-only --flip-backend --yes
 
-# 3) Canary/monitor per the runbook, then flip the FE flag too (NEXT_PUBLIC_BILLING_USAGE_VIA_CSHARP=true
+# 3) Canary/monitor per the runbook, then flip the FE flag too (NEXT_PUBLIC_COMPENSATION_READ_VIA_CSHARP=true
 #    in Vercel Production + redeploy) — this script does not touch Vercel; that step stays manual
 #    per the runbook (§6: "The flag alone does not move the FE.").
 
 # If anything looks wrong at any point, roll back immediately — no re-verify needed:
-./scripts/deploy/cutover.sh billing-usage --rollback --yes
+./scripts/deploy/cutover.sh compensation --rollback --yes
 ```
 
 **Why not `reporting` for this walkthrough (like before)?** As of 2026-07-28 the TS
 recruitment-analytics router and its FE tRPC fallback were deleted outright (the C# read path is
 the sole implementation now), and the same happened to the TS evaluation360 router (both read AND
 write) — see the table below. As of 2026-07-29, the TS `team-intel` `getDashboardKpis` procedure
-and its FE tRPC fallback joined this group too. None of `reporting`, `evaluation360` (read), or
-`team-intel` has a parity command left to demonstrate; `--verify-only` for any of them is now a
-no-op that prints an explanatory notice and exits 0 rather than running a real check.
+and the TS `billing-usage` `getBillingConfig`/`getCurrentPlan`/`getUsage` procedures joined this
+group too (each time, only the specific dead procedure(s) were removed — team-intel's and
+billing.ts's routers stay alive for their other, still-dark-or-unrelated procedures). None of
+`reporting`, `evaluation360` (read), `team-intel`, or `billing-usage` has a parity command left to
+demonstrate; `--verify-only` for any of them is now a no-op that prints an explanatory notice and
+exits 0 rather than running a real check. `compensation` (FX-free read subset) is this
+walkthrough's surface instead — still `FLIP_READY` as of this writing.
 
 ## Sequencing safety (the guardrail)
 
@@ -112,7 +116,7 @@ number) and independently corroborated by the `flag:` field in `scripts/parity/s
 | `team-intel`          | read  | `TeamIntelReadEnabled`      | `NONE` (TS router deleted)   | `NEXT_PUBLIC_TEAMINTEL_READ_VIA_CSHARP`      | TS DELETED  |
 | `reporting`           | read  | `ReportingReadEnabled`      | `NONE` (TS router deleted)   | `NEXT_PUBLIC_REPORTING_READ_VIA_CSHARP`      | TS DELETED  |
 | `billing-read`        | read  | `BillingReadEnabled`        | `verify billing-invoices`    | `NEXT_PUBLIC_BILLING_INVOICES_VIA_CSHARP`    | FLIP-READY  |
-| `billing-usage`       | read  | `BillingUsageEnabled`       | `verify billing-usage`       | `NEXT_PUBLIC_BILLING_USAGE_VIA_CSHARP`       | FLIP-READY  |
+| `billing-usage`       | read  | `BillingUsageEnabled`       | `NONE` (TS router deleted)   | `NEXT_PUBLIC_BILLING_USAGE_VIA_CSHARP`       | TS DELETED  |
 | `evaluation360`       | read  | `Evaluation360ReadEnabled`  | `NONE` (TS router deleted)   | `NEXT_PUBLIC_EVALUATION360_READ_VIA_CSHARP`  | TS DELETED  |
 | `succession`          | read  | `SuccessionReadEnabled`     | `verify succession`          | `NEXT_PUBLIC_SUCCESSION_READ_VIA_CSHARP`     | FLIP-READY  |
 | `compensation`        | read  | `CompensationReadEnabled`   | `verify compensation`        | `NEXT_PUBLIC_COMPENSATION_READ_VIA_CSHARP`   | FLIP-READY  |

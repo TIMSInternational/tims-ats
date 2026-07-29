@@ -71,7 +71,7 @@ surface_row() {
       echo "read|BillingReadEnabled|verify|billing-invoices|NEXT_PUBLIC_BILLING_INVOICES_VIA_CSHARP|FLIP_READY|Runbook §6 Phase A #3 (part 1). UPDATE 2026-07-28: the FE wrapper now exists (apps/web/lib/platform-api/billing.ts's useBillingInvoices/useBillingInvoice hooks, wired into the new apps/web/app/(admin)/settings/billing/billing-invoices.tsx card) — first-ever FE consumer of this surface. Ships dark (unset/false, mirrors every other surface's default-off convention); flipping this flag is a real single-flag flip like the rest of the table, not a caveat anymore."
       ;;
     billing-usage)
-      echo "read|BillingUsageEnabled|verify|billing-usage|NEXT_PUBLIC_BILLING_USAGE_VIA_CSHARP|FLIP_READY|Runbook §6 Phase A #3 (part 2)."
+      echo "read|BillingUsageEnabled|NONE|NONE|NEXT_PUBLIC_BILLING_USAGE_VIA_CSHARP|TS_DELETED|Runbook §6 Phase A #3 (part 2). UPDATE 2026-07-29: the TS getBillingConfig/getCurrentPlan/getUsage procedures (packages/api/src/routers/billing.ts) and their FE tRPC fallback (apps/web/lib/platform-api/billing.ts) have been deleted — the C# read path is the sole implementation now, so scripts/parity/surfaces.ts's 'billing-usage' entry was removed too and there is no TS side left to diff against. --verify-only for this surface is now a no-op (see run_verify) rather than a real parity check. NOTE: billing.ts's other 5 hooks (useBillingInvoices, useBillingInvoice, and the 3 self-serve write mutations) are untouched — separate flags, both still dark."
       ;;
     evaluation360)
       echo "read|Evaluation360ReadEnabled|NONE|NONE|NEXT_PUBLIC_EVALUATION360_READ_VIA_CSHARP|TS_DELETED|Runbook §6 Phase A #4. UPDATE 2026-07-28: the TS evaluation360 router (packages/api/src/routers/evaluation360.ts) and its FE tRPC fallback (apps/web/lib/platform-api/evaluation360.ts, both read AND write) have been deleted — the C# read path is the sole implementation now, so scripts/parity/surfaces.ts's 'evaluation360' entry was removed too and there is no TS side left to diff against for reads. --verify-only for this surface is now a no-op (see run_verify) rather than a real parity check. NOTE: the WRITE surface is unaffected by this — see the evaluation360-write row below; scripts/parity/write-surfaces.ts still registers 'evaluation360' for verify-write."
@@ -173,14 +173,15 @@ OPTIONS
   --help                      Print this message.
 
 EXAMPLES
-  scripts/deploy/cutover.sh billing-usage --verify-only
-  scripts/deploy/cutover.sh billing-usage --verify-only --flip-backend --yes
+  scripts/deploy/cutover.sh compensation --verify-only
+  scripts/deploy/cutover.sh compensation --verify-only --flip-backend --yes
   scripts/deploy/cutover.sh access-review-write --flip-backend --skip-verify-confirm-i-know-what-im-doing
   scripts/deploy/cutover.sh dei --rollback --yes
   scripts/deploy/cutover.sh --list
-  # NOTE: "reporting" and "evaluation360" (read) no longer have a real --verify-only check — their
-  # TS routers were deleted 2026-07-28, so there's nothing left to diff against. --verify-only for
-  # either still runs (prints a no-op notice and exits 0) rather than erroring.
+  # NOTE: "reporting", "evaluation360" (read), "team-intel", and "billing-usage" no longer have a
+  # real --verify-only check — their TS routers were deleted (2026-07-28 for the first two,
+  # 2026-07-29 for the latter two), so there's nothing left to diff against. --verify-only for any
+  # of these four still runs (prints a no-op notice and exits 0) rather than erroring.
 
 See scripts/deploy/README-cutover.md for the full worked flow.
 EOF
@@ -536,9 +537,9 @@ fi
 
 # Exit code contract: a bare `--verify-only` (the default mode) must propagate the parity CLI's
 # own pass/fail so this script is usable as a CI/scripting gate, e.g.
-# `./cutover.sh billing-usage --verify-only && ./cutover.sh billing-usage --flip-backend --yes`
-# (for "reporting"/"evaluation360" read, whose TS routers are deleted, run_verify's NONE branch
-# above returns 0 unconditionally instead of a real pass/fail). Once a
+# `./cutover.sh compensation --verify-only && ./cutover.sh compensation --flip-backend --yes`
+# (for "reporting"/"evaluation360" read/"team-intel"/"billing-usage", whose TS routers are
+# deleted, run_verify's NONE branch above returns 0 unconditionally instead of a real pass/fail). Once a
 # mutating mode (--flip-backend/--rollback) also ran, THEIR success is what the exit code reports
 # (they already refuse to run on a verify failure, so reaching this point means they printed/ran
 # fine even if the earlier bundled verify had failed and was overridden via the escape hatch).
