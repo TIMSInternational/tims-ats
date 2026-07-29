@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using Tims.Application.Fx;
 
 namespace Tims.Infrastructure.Fx;
@@ -9,14 +10,17 @@ namespace Tims.Infrastructure.Fx;
 /// whose message pipeline carries the Polly-v8 resilience handler wired in
 /// <see cref="FxServiceCollectionExtensions"/> (total timeout → retry+backoff+jitter on 429/5xx → circuit
 /// breaker). Keyless — NO Authorization header, NO secret. The ONLY egress is currency codes (no PII).
-/// Replaces the original Frankfurter adapter (Slice 11c): Frankfurter's fixed ~30-currency ECB list does not
-/// include COP or CRC — the actual currencies this platform's real customer orgs use — so it could never
-/// satisfy the FX-dependent compensation reads for them. See
-/// docs/architecture/csharp-migration/fx-provider-swap-2026-07-28.md.
+/// Replaces the original Frankfurter adapter (Slice 11c): the original gateway called Frankfurter's v1
+/// (ECB) batch endpoint, whose fixed ~30-currency list does not include COP or CRC — the actual
+/// currencies this platform's real customer orgs use. Frankfurter's v2 per-pair endpoint DOES support
+/// both, but only one currency pair per call; ExchangeRate-API was kept instead because it returns all
+/// needed currencies in a single batch call. See
+/// docs/architecture/csharp-migration/fx-provider-swap-2026-07-28.md (correction dated 2026-07-29).
 /// </summary>
-public sealed class ExchangeRateApiGateway(HttpClient httpClient) : IFxRateGateway
+public sealed class ExchangeRateApiGateway(HttpClient httpClient, ILogger<ExchangeRateApiGateway> logger) : IFxRateGateway
 {
     private readonly HttpClient _httpClient = httpClient;
+    private readonly ILogger<ExchangeRateApiGateway> _logger = logger;
 
     public async Task<FxGatewayRates> FetchLatestAsync(
         string baseCurrency, IReadOnlyCollection<string> quoteCurrencies, CancellationToken cancellationToken)
@@ -67,6 +71,19 @@ public sealed class ExchangeRateApiGateway(HttpClient httpClient) : IFxRateGatew
                     rates[pair.Name] = rate;
                 }
             }
+        }
+
+        // Log any requested currency the response didn't carry — silent partial coverage is exactly the
+        // failure mode that let the original v1-based gap under-pin COP/CRC unnoticed. This gateway still
+        // returns whatever it did find (fail-soft, per RefreshFxRatesUseCase's cold-start contract); the log
+        // is what gives that silent gap visibility.
+        if (rates.Count < quoteSet.Count)
+        {
+            var missing = quoteSet.Where(quote => !rates.ContainsKey(quote)).ToArray();
+            _logger.LogWarning(
+                "ExchangeRate-API response for base {BaseCurrency} is missing {MissingCount} requested " +
+                "currency(ies): {MissingCurrencies}. Returning the {FoundCount} that were found.",
+                baseCurrency, missing.Length, string.Join(", ", missing), rates.Count);
         }
 
         return new FxGatewayRates(baseCurrency, asOf, rates);

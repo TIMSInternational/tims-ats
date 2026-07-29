@@ -13,7 +13,8 @@ namespace Tims.Infrastructure.Fx;
 /// <see cref="FxOptions"/> first (ValidateOnStart), exactly as it does for HrisOptions; the same registration is
 /// driven from the resilience tests with test options. ExchangeRate-API's open tier is KEYLESS — no secret store
 /// is involved. See docs/architecture/csharp-migration/fx-provider-swap-2026-07-28.md for why this replaced
-/// Frankfurter (ECB) — Frankfurter's fixed currency list does not include COP or CRC.
+/// Frankfurter (ECB) — Frankfurter's v1 endpoint doesn't cover COP/CRC; its v2 per-pair endpoint does, but
+/// only one currency pair per call, so ExchangeRate-API was kept for single-batch-call simplicity.
 /// </summary>
 public static class FxServiceCollectionExtensions
 {

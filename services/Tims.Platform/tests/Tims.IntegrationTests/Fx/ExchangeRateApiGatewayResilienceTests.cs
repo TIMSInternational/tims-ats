@@ -109,6 +109,32 @@ public sealed class ExchangeRateApiGatewayResilienceTests
     }
 
     [Fact]
+    public async Task Returns_partial_results_when_a_requested_currency_is_missing_from_the_response()
+    {
+        // Mirrors the exact failure mode that let the original v1-based gap silently under-pin 2 of 4
+        // currencies for an unknown period: the response is missing one of the two requested currencies
+        // (EUR present, COP absent). The gateway must NOT throw and must NOT fabricate a phantom COP rate
+        // — it returns only what it actually found (fail-soft, per RefreshFxRatesUseCase's cold-start
+        // contract), while a warning is logged naming the missing currency (not asserted here — see the
+        // gateway's own doc comment for why log-content assertions are skipped).
+        const string bodyMissingCop =
+            """{"result":"success","base_code":"USD","time_last_update_unix":1785196951,"rates":{"EUR":0.92}}""";
+        var stub = new StubHttpMessageHandler(StubHttpMessageHandler.Sequence(bodyMissingCop, HttpStatusCode.OK));
+
+        using var provider = BuildProvider(stub, new Dictionary<string, string?>
+        {
+            ["Fx:CircuitMinimumThroughput"] = "100", // disabled for this test
+        });
+        var gateway = provider.GetRequiredService<IFxRateGateway>();
+
+        var result = await gateway.FetchLatestAsync("USD", Quotes, CancellationToken.None);
+
+        Assert.Single(result.Rates);
+        Assert.True(result.Rates.ContainsKey("EUR"));
+        Assert.False(result.Rates.ContainsKey("COP"));
+    }
+
+    [Fact]
     public async Task A_non_success_result_throws_instead_of_returning_bad_data()
     {
         const string errorBody = """{"result":"error","error-type":"unsupported-code"}""";

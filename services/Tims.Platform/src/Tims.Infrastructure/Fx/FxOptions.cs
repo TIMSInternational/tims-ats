@@ -15,7 +15,8 @@ public sealed class FxOptions
     /// <summary>The ExchangeRate-API (open/free tier) base URL. The gateway calls <c>v6/latest/{base}</c>
     /// relative to it. Pinned in config so the ONLY egress surface is auditable. See
     /// docs/architecture/csharp-migration/fx-provider-swap-2026-07-28.md for why this replaced Frankfurter
-    /// (ECB) — Frankfurter's fixed currency list does not include COP or CRC.</summary>
+    /// (ECB) — Frankfurter's v1 endpoint doesn't cover COP/CRC; its v2 per-pair endpoint does, but only one
+    /// currency pair per call, so ExchangeRate-API was kept for single-batch-call simplicity.</summary>
     [Required]
     public string ExchangeRateApiBaseUrl { get; init; } = "https://open.er-api.com/";
 
