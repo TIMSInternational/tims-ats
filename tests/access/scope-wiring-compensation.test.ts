@@ -5,20 +5,17 @@ import { join } from 'path';
 // Wave 2.5 slice 4 — static tripwires for the compensation module.
 // Compensation is the most sensitive module (salary data) — fail closed.
 //
-// Endpoint taxonomy (all 13 procedures enumerated):
-//   getSalaryBands        → org catalog (band definitions, no per-person data)
-//                           UNTOUCHED — safe without scoping.
+// Endpoint taxonomy — the 7 SURVIVING procedures. The other 7 (getSalaryBands,
+// getCompaRatioDistribution, getBenefitsUtilization, listPendingAdjustments, myCompensation,
+// createAdjustment, approveAdjustment) were DELETED on 2026-07-29 once their C# read/write
+// surfaces were confirmed live in prod; their guarantees now live in the C# implementation +
+// scripts/parity/{surfaces,write-surfaces}.ts.
 //   getMarketComparison   → org catalog (salaryBand only, no per-person data)
 //                           UNTOUCHED — safe without scoping.
-//   getBandDistribution   → org-rollup aggregate  → requireOrgScope
-//   getCompaRatioDistrib. → org-rollup aggregate  → requireOrgScope
+//   getBandDistribution   → org-rollup aggregate  → requireOrgScope   (FX — still TS-served)
 //   getPayEquity          → org-rollup aggregate  → requireOrgScope
-//   getBenefitsUtilization→ org-rollup aggregate  → requireOrgScope
-//   getTotalCompBreakdown → org-rollup aggregate  → requireOrgScope
-//   getDashboardKpis      → org-rollup aggregate  → requireOrgScope
-//   listPendingAdjustments→ row-level (salaryAdjustment) → AND-compose fragment
-//   createAdjustment      → write targeting input.userId → assertSubjectInScope
-//   approveAdjustment     → by-id mutation on salaryAdjustment → assertScoped
+//   getTotalCompBreakdown → org-rollup aggregate  → requireOrgScope   (FX — still TS-served)
+//   getDashboardKpis      → org-rollup aggregate  → requireOrgScope   (FX — still TS-served)
 //   simulateAdjustment    → per-person read (employeeCompensation by userId)
 //                           → assertSubjectInScope on input.userId
 //   getEmployeeComp       → per-person read (employeeCompensation by userId)
@@ -35,13 +32,6 @@ const read = () => readFileSync(join(ROOT, 'packages/api/src/routers/compensatio
 const readKernel = () => readFileSync(join(ROOT, 'packages/shared/src/compensation.ts'), 'utf8');
 
 describe('compensation module scope wiring', () => {
-  it('composes salaryAdjustment fragment (listPendingAdjustments is row-level)', () => {
-    const src = read();
-    expect(src).toMatch(/scopeWhereFor\('salaryAdjustment'/);
-    // AND-composition required (no spread)
-    expect(src).toMatch(/AND:\s*\[/);
-  });
-
   it('composes employeeCompensation fragment or subjects per-user reads', () => {
     // simulateAdjustment and getEmployeeComp target a specific userId —
     // assertSubjectInScope enforces the same scope constraint for point-reads.
@@ -49,18 +39,10 @@ describe('compensation module scope wiring', () => {
     expect(src).toMatch(/scopeWhereFor\('employeeCompensation'|assertSubjectInScope/);
   });
 
-  it('approveAdjustment probes salaryAdjustment via assertScoped', () => {
-    expect(read()).toMatch(/assertScoped\('salaryAdjustment'/);
-  });
-
-  it('createAdjustment gates the target user via assertSubjectInScope', () => {
-    expect(read()).toMatch(/assertSubjectInScope/);
-  });
-
-  it('org-rollup analytics gated via requireOrgScope (≥6 calls: getBandDistribution, getCompaRatioDistribution, getPayEquity, getBenefitsUtilization, getTotalCompBreakdown, getDashboardKpis)', () => {
+  it('org-rollup analytics gated via requireOrgScope (≥4 calls: getBandDistribution, getPayEquity, getTotalCompBreakdown, getDashboardKpis)', () => {
     const src = read();
     const matches = src.match(/requireOrgScope/g) ?? [];
-    expect(matches.length).toBeGreaterThanOrEqual(6);
+    expect(matches.length).toBeGreaterThanOrEqual(4);
   });
 
   it('no file spreads a scope fragment (AND-composition invariant, CI check 13)', () => {
@@ -113,12 +95,6 @@ describe('compensation module scope wiring', () => {
     expect(k).toMatch(/anyBandSuppressed\s*=\s*[\s\S]{0,300}suppressBelowMin5\(unassignedCount\)/);
   });
 
-  it('getCompaRatioDistribution routes every bucket count through suppressBelowMin5 (shared kernel)', () => {
-    // buildCompaRatioDistribution folds each bucket count through the floor; the router delegates.
-    expect(readKernel()).toMatch(/suppressBelowMin5\(count\)/);
-    expect(read()).toMatch(/buildCompaRatioDistribution\(/);
-  });
-
   it('getPayEquity routes the group count through suppressBelowMin5 (shared kernel)', () => {
     const k = readKernel();
     // buildCompPayEquity floors the org-wide 'all' group count; a suppressed group nulls the salary stats.
@@ -129,7 +105,12 @@ describe('compensation module scope wiring', () => {
 
   it('the aggregate reads delegate their min-5 shaping to the shared kernels', () => {
     const src = read();
-    for (const shaper of ['buildBandDistribution', 'buildCompPayEquity', 'buildTotalCompBreakdown', 'buildCompDashboardKpis']) {
+    for (const shaper of [
+      'buildBandDistribution',
+      'buildCompPayEquity',
+      'buildTotalCompBreakdown',
+      'buildCompDashboardKpis',
+    ]) {
       expect(src, `router must call ${shaper}`).toMatch(new RegExp(`\\b${shaper}\\(`));
     }
     // The suppression floors themselves live in the kernel now (≥6 calls across the five shapers).

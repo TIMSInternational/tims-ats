@@ -84,7 +84,11 @@ wrapped in `if (options.<X>Enabled || isOpenApiDocGeneration) { ... }`, defaulti
     reads (`getBandDistribution`, `getTotalCompBreakdown`, `getDashboardKpis`) are gated on a
     SEPARATE flag, `NEXT_PUBLIC_COMPENSATION_FX_READ_VIA_CSHARP`, which does **not** exist in Vercel
     yet — still TS-served, blocked on seeding the `fx_rates` table
-    (`docs/architecture/csharp-migration/fx-seed-once-runbook.md`, Federico-only).
+    (`docs/architecture/csharp-migration/fx-seed-once-runbook.md`, Federico-only). **TS deletion
+    2026-07-29:** 7 of the router's 14 procedures were deleted (the 5 FX-free reads + both writes);
+    the 3 FX-dependent procedures are **deliberately retained as the live prod path**, and the 4
+    zero-FE-consumer procedures (`getPayEquity`, `simulateAdjustment`, `getMarketComparison`,
+    `getEmployeeComp`) are untouched pre-existing dead code.
   - Nine-box — read (#164) + calibration write (#172). **Both flipped and live in prod** (2026-07-28),
     same confirmation method as evaluation360 above.
   - Engagement — read (#166) + write (#173). **Write flipped and live in prod** (2026-07-28) —
@@ -103,7 +107,11 @@ wrapped in `if (options.<X>Enabled || isOpenApiDocGeneration) { ... }`, defaulti
     previously-undocumented layer distinct from the backend PRs above: every domain's tRPC consumers can
     now route through the C# service one flag at a time. READS — all 12 domains (external-vendor, billing,
     reporting, team-intel, evaluation360, succession, compensation, nine-box, engagement, DEI, audit-log,
-    FX-dependent compensation/DEI reads) have a dark `useX()` hook per read, mirroring the exact tRPC output
+    FX-dependent compensation/DEI reads) have a `useX()` hook per read, originally dark and mirroring the exact
+    tRPC output type — though for domains whose flag has since gone live and whose TS procedures were
+    subsequently deleted (reporting, evaluation360, team-intel, billing-usage, succession, nine-box, and
+    compensation's 5 FX-free reads) the hook is now C#-only with hand-declared types, no longer dark and no
+    longer mirroring a tRPC output
     type — **including billing's invoice-read** (`billing.listInvoices`/`billing.getInvoice`,
     `packages/api/src/routers/billing.ts:58,83`, backend PR #141, ported by `BillingReadEndpoints.cs` behind
     `Platform:BillingReadEnabled`): a 2026-07-27 gap audit (cutover-automation script flagged the missing
@@ -119,8 +127,10 @@ wrapped in `if (options.<X>Enabled || isOpenApiDocGeneration) { ... }`, defaulti
     `app/(admin)/platform/invoices/*` admin UI is untouched. "Billing" in the READS list above now means all
     4 reads (usage/plan/config/invoices). WRITES — all 8
     write-capable domains (external-vendor, evaluation360, succession, nine-box, compensation, engagement,
-    billing-webhook, billing-self-serve) have a dark `useXMutation()` hook per write MUTATION THAT HAS A
-    LIVE FE CALL SITE — several procedures per domain (e.g. succession's `addCriticalRole`, engagement's
+    billing-webhook, billing-self-serve) have a `useXMutation()` hook per write MUTATION THAT HAS A
+    LIVE FE CALL SITE — originally dark; where the write flag has since gone live and the TS mutation was
+    deleted (succession, nine-box, compensation) the hook is now C#-only — several procedures per domain
+    (e.g. succession's `addCriticalRole`, engagement's
     `createActionPlan`) have zero consumers and were intentionally left unwrapped (dead code otherwise). The
     billing Stripe-webhook write is a proxy inside `packages/api/src/services/billing-webhook.service.ts`,
     not a browser wrapper — Stripe calls the Next.js route directly, so the flag lives entirely server-side.
@@ -150,15 +160,21 @@ wrapped in `if (options.<X>Enabled || isOpenApiDocGeneration) { ... }`, defaulti
   engagement read, DEI read, billing Stripe-webhook/self-serve writes (Federico has declined the
   live-Stripe-key cutover), audit-log, access-review, external-vendor (none of these last three ever
   got a `NEXT_PUBLIC_*` flag in Vercel — no FE consumer or different cutover mechanism, see their
-  respective slice docs). TS-code deletion (step 7) has now happened for 6 of the now-12 live
+  respective slice docs). TS-code deletion (step 7) has now happened for 7 of the now-12 live
   read/write surfaces — reporting and evaluation360 (2026-07-28), team-intel and billing-usage
   (2026-07-29), succession (2026-07-29, **partially** deleted — 8 of 9 read procedures + 2 of
   5 write procedures; `getCriticalRole` and 3 zero-consumer write mutations remain untouched,
-  unrelated dead code), and nine-box (2026-07-29, **partially** deleted — 7 of 11 read procedures +
+  unrelated dead code), nine-box (2026-07-29, **partially** deleted — 7 of 11 read procedures +
   3 of 5 write procedures; `getAxisBreakdown`/`getMovementHistory`/`simulate`/`getQuadrantPlan`
   (reads) and `submitCalibrationVote`/`finalizeCalibration` (writes) remain untouched, unrelated
-  zero-consumer dead code) — the remaining live surfaces (compensation, engagement write) still
-  have their TS fallback code sitting dead-but-undeleted behind their (now-always-true) flags. Flipping a
+  zero-consumer dead code), and compensation (2026-07-29, **partially** deleted — 5 of 8
+  FE-consumed read procedures + both write procedures; the 3 FX-dependent reads
+  `getBandDistribution`/`getTotalCompBreakdown`/`getDashboardKpis` are DELIBERATELY RETAINED because
+  `NEXT_PUBLIC_COMPENSATION_FX_READ_VIA_CSHARP` still does not exist in Vercel and TypeScript is
+  their live prod path, and `getPayEquity`/`simulateAdjustment`/`getMarketComparison`/
+  `getEmployeeComp` remain untouched zero-consumer dead code) — the one remaining live surface,
+  engagement write, still has its TS fallback code sitting dead-but-undeleted behind its
+  (now-always-true) flag. Flipping a
   domain's flag in prod is explicitly **Federico-only, at canary**
   (`docs/superpowers/plans/2026-07-24-cutover-verification-harness.md`); TS-code deletion is AI-doable
   per-domain once a flag is confirmed live, per the reporting/evaluation360 precedent.
@@ -253,7 +269,7 @@ The mutations were real but no UI invoked them; all wired via shared modal patte
 - **Succession** — Add Successor (`addSuccessor`). ✅
 - **Engagement** — Create + Launch Survey (`createSurvey` + new `activateSurvey` draft→active). ✅
 - **Learning** — Enroll per-course (`enrollUser`). ✅ _(enrollment "complete" deferred — needs an admin enrollment-list view; no surface exists yet.)_
-- **Compensation** — Approve/Reject adjustment (`approveAdjustment`, atomic). ✅
+- **Compensation** — Approve/Reject adjustment (atomic; originally `compensation.approveAdjustment`, now the C# `POST /compensation/adjustments/{id}/approve` behind `useCompensationApproveAdjustment` — the TS procedure was deleted 2026-07-29). ✅
 - **Performance** — Create OKR / Commitment / Log Coaching session (`createOkr`/`createCommitment`/`createCoachingSession`). ✅
 - **Onboarding** — Create Plan (`onboarding.create`) + inline task toggle (`updateTask`). ✅
 - Out of scope (still open): Export buttons (Tier 4 CSV infra), Simulate stubs (Tier 2/sim).

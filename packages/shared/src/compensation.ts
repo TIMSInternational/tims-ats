@@ -6,6 +6,12 @@
 // min-5 kernel) and buildBenefitsUtilization (read #3). The five FX-dependent reads (convertMoney/getFxRate)
 // stay in the router and are Slice 9b.
 //
+// NOTE (2026-07-29): the TS router no longer calls buildCompaRatioDistribution or
+// buildBenefitsUtilization — those two procedures were deleted once the C# read surface went live.
+// Both kernels are DELIBERATELY KEPT: they remain the golden-fixtured cross-stack contract
+// (contracts/compensation-fixtures/*, asserted by both this repo's vitest and the C# unit tests),
+// and apps/web/lib/platform-api/compensation.ts imports their result types.
+//
 // PARITY PINS (each red-if-regressed in contracts/compensation-fixtures/*):
 //  - min-5 k-anon (suppressBelowMin5 byte-identical to access/aggregate.ts): 1..4 → suppressed; 0 or ≥5 → not.
 //  - compaRatio 6 FIXED buckets; bucket ONLY positive-salary rows (currentSalary > 0), so Σ buckets =

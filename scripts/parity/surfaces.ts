@@ -58,18 +58,23 @@ export interface Surface {
  */
 export const SURFACES: Record<string, Surface> = {
   // ── compensation ────────────────────────────────────────────────────────────────────────────
-  // 6 of the 7 compensation reads (the FX-FREE subset; the /employee/{userId} by-id read is a
-  // Tier-2 follow-up needing the harness Mode-A id extension). `compensation.getSalaryBands/
-  // getMarketComparison/getBenefitsUtilization/getCompaRatioDistribution/listPendingAdjustments/
-  // myCompensation` → /compensation/{salary-bands,market-comparison,benefits-utilization,
-  // compa-ratio-distribution,pending-adjustments,my-compensation}. All permissionProcedure(
-  // 'compensation','read'). One flag Platform:CompensationReadEnabled + FE NEXT_PUBLIC_COMPENSATION_READ_VIA_CSHARP.
-  // RBAC (seed grants hr_admin compensation:read@org, hrbp @unit): grant-only reads (salary-bands/
-  // market-comparison/pending-adjustments) → hrbp 200 (pending-adjustments returns scoped-empty rows,
-  // not 403); requireOrgScope reads (benefits-utilization/compa-ratio-distribution) → hrbp 403;
-  // my-compensation → hrbp 403 (SubjectInScope unit: caller's own id ∉ empty unit-member set).
-  // compa-ratio-distribution needs ≥5 org-A comp rows in ONE compa bucket (min-5) or it self-
-  // suppresses to an all-zero object identical to empty org B → false-fail; the seed provides 5.
+  // UPDATE 2026-07-29: 5 of the original 7 registered compensation reads had their TS procedures
+  // DELETED (NEXT_PUBLIC_COMPENSATION_READ_VIA_CSHARP confirmed live in prod) — salary-bands,
+  // benefits-utilization, compa-ratio-distribution, pending-adjustments and my-compensation are
+  // REMOVED below (no TS side left to diff against for any of them). The 2 that survive
+  // (market-comparison, employee) map to the router's zero-FE-consumer procedures, which stay live
+  // — pre-existing dead code unrelated to this migration — so `verify compensation` still runs 2
+  // REAL parity/RLS/RBAC checks, not a no-op. One flag Platform:CompensationReadEnabled still gates
+  // the C# side for all 7 backend endpoints; only these 2 have a TS side left to compare against.
+  //
+  // FX EXCLUSION (unchanged): the 3 FE-consumed FX-dependent reads (getBandDistribution /
+  // getTotalCompBreakdown / getDashboardKpis) were NEVER registered here — they are gated by the
+  // separate Platform__FxReadsEnabled flag (the same FX-tied-endpoint exclusion applied to
+  // `dei.getPayEquity` further down this registry), and their TS implementations are DELIBERATELY
+  // RETAINED as the live production path for those 3 reads.
+  //
+  // RBAC (seed grants hr_admin compensation:read@org, hrbp @unit): market-comparison is a grant-only
+  // org-catalog read → hrbp 200; employee is subject-scoped → hrbp 403 (target ∉ its subject set).
   compensation: {
     key: 'compensation',
     flag: 'Platform__CompensationReadEnabled',
@@ -77,54 +82,12 @@ export const SURFACES: Record<string, Surface> = {
     probeRole: 'super_admin',
     endpoints: [
       {
-        name: 'salary-bands',
-        csharpPath: '/compensation/salary-bands',
-        tsProcedure: 'compensation.getSalaryBands',
-        input: {},
-        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 200 },
-        normalize: { dropNullish: true, sortArraysBy: 'level' },
-      },
-      {
         name: 'market-comparison',
         csharpPath: '/compensation/market-comparison',
         tsProcedure: 'compensation.getMarketComparison',
         input: {},
         expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 200 },
         normalize: { dropNullish: true, sortArraysBy: 'level' },
-      },
-      {
-        name: 'benefits-utilization',
-        csharpPath: '/compensation/benefits-utilization',
-        tsProcedure: 'compensation.getBenefitsUtilization',
-        input: {},
-        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
-        normalize: { dropNullish: true, sortArraysBy: 'name' },
-      },
-      {
-        name: 'compa-ratio-distribution',
-        csharpPath: '/compensation/compa-ratio-distribution',
-        tsProcedure: 'compensation.getCompaRatioDistribution',
-        input: {},
-        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
-        normalize: { dropNullish: true },
-      },
-      {
-        name: 'pending-adjustments',
-        csharpPath: '/compensation/pending-adjustments',
-        tsProcedure: 'compensation.listPendingAdjustments',
-        input: {},
-        // grant-only gate; hrbp unit-scope → scoped-empty rows, HTTP 200 (NOT 403).
-        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 200 },
-        normalize: { dropNullish: true, sortArraysBy: 'id' },
-      },
-      {
-        name: 'my-compensation',
-        csharpPath: '/compensation/my-compensation',
-        tsProcedure: 'compensation.myCompensation',
-        input: {},
-        // identity-anchored (own row); hrbp own id ∉ empty unit-member set → 403.
-        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
-        normalize: { dropNullish: true },
       },
       // Tier-2 by-id: getEmployeeComp = permissionProcedure('compensation','read') + assertSubjectInScope.
       // Org-A target = a:hr_admin (has a comp row). super_admin bypass → 200; hr_admin reads its own id →

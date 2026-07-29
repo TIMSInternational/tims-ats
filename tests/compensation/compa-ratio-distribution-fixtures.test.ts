@@ -1,8 +1,8 @@
 /**
  * compa-ratio-distribution-fixtures.test.ts — Phase-5 compensation strangler, Slice 9.
  *
- * Asserts the REAL @tims/shared buildCompaRatioDistribution (the SAME kernel compensation
- * .getCompaRatioDistribution now returns) against the shared golden
+ * Asserts the REAL @tims/shared buildCompaRatioDistribution (the kernel the deleted
+ * compensation.getCompaRatioDistribution used to return, and the one the C# port mirrors) against the shared golden
  * contracts/compensation-fixtures/compa-ratio-distribution.json — the SAME fixture the C#
  * CompensationKernels.BuildCompaRatioDistribution unit tests assert. Anti-drift: any divergence in either
  * stack (positive-salary bucketing, contributor-count avg floor, all-or-nothing empty distribution,

@@ -80,7 +80,7 @@ surface_row() {
       echo "read|SuccessionReadEnabled|verify|succession|NEXT_PUBLIC_SUCCESSION_READ_VIA_CSHARP|CONFIRMED_LIVE|Runbook §6 Phase A #4. UPDATE 2026-07-29: flag confirmed live in prod; 8 of 9 registered read procedures (all but getCriticalRole, which has zero FE consumers) have ALSO had their TS side deleted — scripts/parity/surfaces.ts's 'succession' entry now registers only getCriticalRole's endpoint. --verify-only still runs a REAL (smaller) check, unlike reporting/evaluation360/team-intel/billing-usage's now-fully-no-op surfaces — do not treat this as TS_DELETED."
       ;;
     compensation)
-      echo "read|CompensationReadEnabled|verify|compensation|NEXT_PUBLIC_COMPENSATION_READ_VIA_CSHARP|FLIP_READY|Runbook §6 Phase A #4 — the FX-FREE subset only (7 of 12 comp reads). The 5 FX-dependent reads sit behind the separate FxReadsEnabled flag (needs the fx_rates migration + a seed first) and are intentionally NOT covered by this surface name."
+      echo "read|CompensationReadEnabled|verify|compensation|NEXT_PUBLIC_COMPENSATION_READ_VIA_CSHARP|CONFIRMED_LIVE|Runbook §6 Phase A #4. UPDATE 2026-07-29: flag confirmed live in prod; 5 of 7 registered read procedures (salary-bands, benefits-utilization, compa-ratio-distribution, pending-adjustments, my-compensation) have ALSO had their TS side deleted — scripts/parity/surfaces.ts's 'compensation' entry now registers only market-comparison + employee (both zero-FE-consumer procedures that stay live). --verify-only still runs a REAL (smaller) check, unlike reporting/evaluation360/team-intel/billing-usage's now-fully-no-op surfaces — do not treat this as TS_DELETED. FX SPLIT: the 3 FE-consumed FX-dependent reads (getBandDistribution/getTotalCompBreakdown/getDashboardKpis) are NOT part of this surface, are gated by the separate Platform:FxReadsEnabled + NEXT_PUBLIC_COMPENSATION_FX_READ_VIA_CSHARP (which still does not exist in Vercel), and their TS implementations are DELIBERATELY RETAINED — they are the live production path for those 3 reads today."
       ;;
     nine-box)
       echo "read|NineBoxReadEnabled|verify|ninebox|NEXT_PUBLIC_NINEBOX_READ_VIA_CSHARP|CONFIRMED_LIVE|Runbook §6 Phase A #4. UPDATE 2026-07-29: flag confirmed live in prod; 7 of 11 registered read procedures (all but getAxisBreakdown, getMovementHistory, simulate, getQuadrantPlan, which have zero FE consumers) have ALSO had their TS side deleted — scripts/parity/surfaces.ts's 'ninebox' entry now registers only those 4 zero-consumer procedures' endpoints. --verify-only still runs a REAL (smaller) check, unlike reporting/evaluation360/team-intel/billing-usage's now-fully-no-op surfaces — do not treat this as TS_DELETED. NOTE: the parity harness registers this surface as \"ninebox\" (no hyphen) — this script accepts the friendlier \"nine-box\" and maps it internally."
@@ -107,7 +107,7 @@ surface_row() {
       echo "write|NineBoxWriteEnabled|verify-write|ninebox|NEXT_PUBLIC_NINEBOX_WRITE_VIA_CSHARP|CONFIRMED_LIVE|Runbook §6 Phase B #10. UPDATE 2026-07-29: flag confirmed live in prod. 3 of 5 mutations (createCalibration, addCalibrationMember, removeCalibrationMember) have had their TS side deleted; the other 2 (submitCalibrationVote, finalizeCalibration) have zero FE consumers and are untouched, unrelated dead code. scripts/parity/write-surfaces.ts's nineboxSurface tests the C# HTTP endpoints directly regardless of TS state — verify-write is fully unaffected either way."
       ;;
     compensation-write)
-      echo "write|CompensationWriteEnabled|verify-write|compensation|NEXT_PUBLIC_COMPENSATION_WRITE_VIA_CSHARP|COEXISTENCE|Runbook §6 Phase B #11 — COEXISTENCE: salary_adjustments/employee_compensations stay read by other surfaces; table stays efcoreStranglerWrite, no ownership flip."
+      echo "write|CompensationWriteEnabled|verify-write|compensation|NEXT_PUBLIC_COMPENSATION_WRITE_VIA_CSHARP|COEXISTENCE|Runbook §6 Phase B #11 — COEXISTENCE: salary_adjustments/employee_compensations stay read by other surfaces; table stays efcoreStranglerWrite, no ownership flip. UPDATE 2026-07-29: the flag IS confirmed live in prod and both TS mutations (createAdjustment/approveAdjustment) have now been DELETED — but the status stays COEXISTENCE, not CONFIRMED_LIVE, because COEXISTENCE classifies TABLE OWNERSHIP and that reason is MORE true after the deletion: employee_compensations is still read in TypeScript by getTotalCompBreakdown/getDashboardKpis/getPayEquity/simulateAdjustment (two of which are the still-TS-served FX reads). verify-write is unaffected either way — write-surfaces.ts's compensationSurface hits the C# HTTP endpoints directly and asserts side effects with raw SQL, never via the TS router."
       ;;
     engagement-write)
       echo "write|EngagementWriteEnabled|verify-write|engagement|NEXT_PUBLIC_ENGAGEMENT_WRITE_VIA_CSHARP|COEXISTENCE|Runbook §6 Phase B #12 — the flag flip itself is documented as canary-safe today (byte-identical rows both stacks), but COEXISTENCE for the terminal state: monitoring.ts/dei.ts/the alert cron still call Prisma models directly, so the TS router can't be deleted yet."
@@ -173,8 +173,8 @@ OPTIONS
   --help                      Print this message.
 
 EXAMPLES
-  scripts/deploy/cutover.sh compensation --verify-only
-  scripts/deploy/cutover.sh compensation --verify-only --flip-backend --yes
+  scripts/deploy/cutover.sh dei --verify-only
+  scripts/deploy/cutover.sh dei --verify-only --flip-backend --yes
   scripts/deploy/cutover.sh access-review-write --flip-backend --skip-verify-confirm-i-know-what-im-doing
   scripts/deploy/cutover.sh dei --rollback --yes
   scripts/deploy/cutover.sh --list
@@ -537,7 +537,7 @@ fi
 
 # Exit code contract: a bare `--verify-only` (the default mode) must propagate the parity CLI's
 # own pass/fail so this script is usable as a CI/scripting gate, e.g.
-# `./cutover.sh compensation --verify-only && ./cutover.sh compensation --flip-backend --yes`
+# `./cutover.sh dei --verify-only && ./cutover.sh dei --flip-backend --yes`
 # (for "reporting"/"evaluation360" read/"team-intel"/"billing-usage", whose TS routers are
 # deleted, run_verify's NONE branch above returns 0 unconditionally instead of a real pass/fail). Once a
 # mutating mode (--flip-backend/--rollback) also ran, THEIR success is what the exit code reports

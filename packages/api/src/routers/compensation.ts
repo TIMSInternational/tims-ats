@@ -1,15 +1,11 @@
 import { z } from 'zod';
-import { TRPCError } from '@trpc/server';
 import { router, permissionProcedure } from '../trpc';
 import { tenantDb as db } from '@tims/db';
-import type { Prisma } from '@tims/db';
-import { scopeWhereFor, assertScoped, assertSubjectInScope, requireOrgScope, suppressBelowMin5, logDataAccess, selectFor } from '../access';
+import { assertSubjectInScope, requireOrgScope, suppressBelowMin5, logDataAccess, selectFor } from '../access';
 import { getEmployeeCompForSubject } from '../services/compensation.service';
 import { convertMoney, sumMoney } from '../lib/currency';
 import {
   normalizeCurrencyCode,
-  buildCompaRatioDistribution,
-  buildBenefitsUtilization,
   buildBandDistribution,
   buildCompPayEquity,
   buildTotalCompBreakdown,
@@ -19,24 +15,6 @@ import {
 } from '@tims/shared';
 
 export const compensationRouter = router({
-  // ── Salary Bands ───────────────────────────────────────────────────
-  // Org-level catalog: band definitions contain no per-person salary data.
-  // Scoping is unnecessary and would break HR-admin band management.
-  getSalaryBands: permissionProcedure('compensation', 'read')
-    .input(
-      z.object({
-        companyId: z.string().uuid().optional(),
-      }).optional(),
-    )
-    .query(async ({ ctx, input }) => {
-      return db.salaryBand.findMany({
-        where: {
-          organizationId: ctx.user.organizationId,
-        },
-        orderBy: [{ level: 'asc' }],
-      });
-    }),
-
   // ── Band Distribution (employees plotted within their band) ────────
   // Org-scope gated; min-5 suppression applied to per-band dots below (defense-in-
   // depth on top of requireOrgScope, NOT a replacement — the gate stays).
@@ -103,39 +81,6 @@ export const compensationRouter = router({
     return buildBandDistribution(rows, unassignedCount, nonPositiveBanded, positiveUnbanded);
   }),
 
-  // ── Compa-Ratio Distribution ───────────────────────────────────────
-  // Org-scope gated; min-5 suppression applied to bucket counts below (defense-in-
-  // depth on top of requireOrgScope, NOT a replacement — the gate stays).
-  getCompaRatioDistribution: permissionProcedure('compensation', 'read')
-    .input(
-      z.object({
-        companyId: z.string().uuid().optional(),
-        businessUnitId: z.string().uuid().optional(),
-      }).optional(),
-    )
-    .query(async ({ ctx, input }) => {
-      requireOrgScope(ctx.access);
-      const compensations = await db.employeeCompensation.findMany({
-        where: {
-          organizationId: ctx.user.organizationId,
-        },
-        select: {
-          id: true,
-          currentSalary: true,
-          compaRatio: true,
-          userId: true,
-        },
-      });
-
-      // The six-bucket min-5 compa-ratio distribution is now the SINGLE pure kernel the C# port mirrors
-      // (buildCompaRatioDistribution in @tims/shared, golden-fixtured both stacks). The router returns it
-      // verbatim — honest-fixture rule — preserving every anonymity guard (positive-salary bucketing,
-      // contributor-count avg floor, all-or-nothing empty distribution, totalEmployees == positiveCount).
-      return buildCompaRatioDistribution(
-        compensations.map((c) => ({ currentSalary: Number(c.currentSalary) || 0, compaRatio: c.compaRatio })),
-      );
-    }),
-
   // ── Pay Equity ─────────────────────────────────────────────────────
   // Org-scope gated; min-5 suppression applied to group counts/averages below
   // (defense-in-depth on top of requireOrgScope, NOT a replacement — the gate stays).
@@ -178,233 +123,6 @@ export const compensationRouter = router({
       // individual salary data at that size). Defense-in-depth on top of requireOrgScope. The router does the
       // impure FX conversion above and returns the kernel verbatim — honest-fixture rule.
       return buildCompPayEquity(salaries, displayCurrency);
-    }),
-
-  // ── Benefits Utilization ───────────────────────────────────────────
-  // Org-scope gate only. Per-plan `enrolled` is a head-count that could be <5 in a
-  // small org — benefits enrollment is NOT in the §21 sensitive-data matrix, so
-  // min-5 suppression for it is a deliberate follow-on (recorded in REMAINING-WORK),
-  // not silently assumed here.
-  getBenefitsUtilization: permissionProcedure('compensation', 'read')
-    .input(
-      z.object({ companyId: z.string().uuid().optional() }).optional(),
-    )
-    .query(async ({ ctx }) => {
-      requireOrgScope(ctx.access);
-      const benefits = await db.benefitPlan.findMany({
-        where: {
-          organizationId: ctx.user.organizationId,
-        },
-        include: {
-          _count: { select: { enrollments: true } },
-        },
-        orderBy: { name: 'asc' },
-      });
-
-      const totalUsers = await db.user.count({
-        where: {
-          organizationId: ctx.user.organizationId,
-          isActive: true,
-        },
-      });
-
-      // Per-plan utilization is now the pure buildBenefitsUtilization kernel (@tims/shared, golden-fixtured
-      // both stacks). The router returns it verbatim — honest-fixture rule. NO min-5 (deliberate).
-      return buildBenefitsUtilization(
-        benefits.map((b) => ({ id: b.id, name: b.name, category: b.type, enrolled: b._count.enrollments })),
-        totalUsers,
-      );
-    }),
-
-  // ── Adjustments ────────────────────────────────────────────────────
-  // Row-level: each SalaryAdjustment is anchored on userId (the employee being
-  // adjusted). Compose the salaryAdjustment scope fragment via AND.
-  listPendingAdjustments: permissionProcedure('compensation', 'read').query(async ({ ctx }) => {
-    const scopeWhere = (await scopeWhereFor('salaryAdjustment', ctx.access, ctx.user.id)) as Prisma.SalaryAdjustmentWhereInput;
-
-    // §21 field-auth (slice 6 round 5): replace the `include`/full-row return with an
-    // explicit select built from selectFor('salaryAdjustment'). previousSalary/newSalary/
-    // reason are restricted (super/hr only); type/status are confidential/internal
-    // (super/hr/hrbp[/leader/employee]). A leader/hrbp caller with compensation:read thus
-    // NEVER receives the restricted salary fields. The related user/requester name fields
-    // are not classified salary fields, so they are kept as-is.
-    const sel = selectFor(ctx.access.roles, 'salaryAdjustment');
-    const adjustments = await db.salaryAdjustment.findMany({
-      where: {
-        AND: [
-          { organizationId: ctx.user.organizationId, status: 'pending' },
-          scopeWhere,
-        ],
-      },
-      select: {
-        id: true,
-        createdAt: true,
-        ...(sel.previousSalary ? { previousSalary: true } : {}),
-        ...(sel.newSalary ? { newSalary: true } : {}),
-        ...(sel.currency ? { currency: true } : {}),
-        ...(sel.reason ? { reason: true } : {}),
-        ...(sel.type ? { type: true } : {}),
-        ...(sel.status ? { status: true } : {}),
-        user: { select: { id: true, firstName: true, lastName: true, jobTitle: true } },
-        requester: { select: { id: true, firstName: true, lastName: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    // §21 matrix: salaryAdjustment is restricted (FULL+AUDIT). Audit every returned row
-    // BEFORE returning so a fail-closed audit-write failure aborts pre-serialization.
-    const actorId = ctx.user.impersonatorId ?? ctx.user.id;
-    const ipAddress = ctx.headers.get('x-forwarded-for') || ctx.headers.get('x-real-ip');
-    const userAgent = ctx.headers.get('user-agent');
-    await Promise.all(
-      adjustments.map((a) =>
-        logDataAccess({
-          organizationId: ctx.user.organizationId,
-          actorId,
-          entity: 'salaryAdjustment',
-          recordId: a.id,
-          action: 'read',
-          ipAddress,
-          userAgent,
-        }),
-      ),
-    );
-
-    return adjustments;
-  }),
-
-  createAdjustment: permissionProcedure('compensation', 'create')
-    .input(
-      z.object({
-        userId: z.string().uuid(),
-        type: z.enum(['merit', 'promotion', 'market', 'equity', 'other']),
-        previousSalary: z.number().positive(),
-        newSalary: z.number().positive(),
-        currency: z.string().trim().length(3).transform((v) => v.toUpperCase()).optional(),
-        reason: z.string().max(1000).optional(),
-        effectiveDate: z.string().datetime(),
-      }),
-    )
-    .mutation(async ({ ctx, input }) => {
-      // Write-rule: no row exists yet — gate on whether the TARGET user is within
-      // the caller's subject set (own/team/unit). Most sensitive check in the module.
-      await assertSubjectInScope(
-        ctx.access,
-        ctx.user.id,
-        input.userId,
-        'No puedes crear ajustes para este usuario',
-      );
-
-      // Both-stacks H1 hardening (parity with the C# port; surfaced by the write-verification
-      // harness): assertSubjectInScope no-ops for organization/company scope (it enforces SCOPE,
-      // not org membership), so an org-scoped caller could otherwise persist a cross-tenant userId
-      // — the salary_adjustments.userId FK check bypasses RLS, producing an org-A row that references
-      // an org-B employee. Verify the target user is a member of the caller's org before the INSERT;
-      // a cross-org user → FORBIDDEN (never persisted).
-      const targetUser = await db.user.findFirst({
-        where: { id: input.userId, organizationId: ctx.user.organizationId },
-        select: { id: true },
-      });
-      if (!targetUser) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'No puedes crear ajustes para este usuario' });
-      }
-
-      const currentComp = await db.employeeCompensation.findFirst({
-        where: { userId: input.userId, organizationId: ctx.user.organizationId },
-        select: { currency: true },
-      });
-      const currency = normalizeCurrencyCode(input.currency, currentComp?.currency ?? 'USD');
-
-      // §21 minimal-select: create returns only id+status; the full restricted row
-      // (previousSalary/newSalary/reason) must never be echoed back from a write
-      // response. No audit is required here because no restricted field is returned.
-      return db.salaryAdjustment.create({
-        data: {
-          userId: input.userId,
-          type: input.type,
-          previousSalary: input.previousSalary,
-          newSalary: input.newSalary,
-          currency,
-          reason: input.reason,
-          effectiveDate: new Date(input.effectiveDate),
-          organizationId: ctx.user.organizationId,
-          requestedById: ctx.user.id,
-          status: 'pending',
-        },
-        select: { id: true, status: true },
-      });
-    }),
-
-  approveAdjustment: permissionProcedure('compensation', 'approve')
-    .input(
-      z.object({
-        id: z.string().uuid(),
-        approved: z.boolean(),
-        comment: z.string().max(500).optional(),
-      }),
-    )
-    .mutation(async ({ ctx, input }) => {
-      // Scope probe (belt-and-braces): the approve action requires an explicit
-      // org grant in the matrix; the probe adds an extra narrow-scope guard.
-      await assertScoped('salaryAdjustment', input.id, ctx.access, ctx.user.id, ctx.user.organizationId);
-
-      // §21 minimal-select: load only the fields the approval logic actually uses.
-      // newSalary (restricted) is read to propagate the approved figure to
-      // employeeCompensation.currentSalary — the caller (super/hr) is entitled, but
-      // reading a restricted field mandates an audit trail (fail-closed policy).
-      const adjustment = await db.salaryAdjustment.findFirst({
-        where: { id: input.id, organizationId: ctx.user.organizationId, status: 'pending' },
-        select: { id: true, userId: true, newSalary: true, currency: true },
-      });
-
-      if (!adjustment) throw new Error('Ajuste no encontrado o ya procesado');
-
-      // Audit the restricted-field read (newSalary) before the update so a
-      // fail-closed audit-write failure aborts pre-mutation.
-      await logDataAccess({
-        organizationId: ctx.user.organizationId,
-        actorId: ctx.user.impersonatorId ?? ctx.user.id,
-        entity: 'salaryAdjustment',
-        recordId: adjustment.id,
-        action: 'update',
-        ipAddress: ctx.headers.get('x-forwarded-for') || ctx.headers.get('x-real-ip'),
-        userAgent: ctx.headers.get('user-agent'),
-      });
-
-      // Atomic + conditional state transition (race fix): two concurrent approves
-      // could both pass the `status: 'pending'` findFirst above, and a failure
-      // between the SalaryAdjustment update and the EmployeeCompensation update
-      // could leave the adjustment 'approved' while currentSalary stays stale.
-      // Wrap both writes in a single interactive $transaction (tenantDb wraps
-      // PrismaClient and exposes $transaction; same pattern as user.ts) and make
-      // the status transition CONDITIONAL via updateMany on `status: 'pending'`.
-      // If count === 0 the row was already approved/rejected (or vanished) — the
-      // losing racer throws CONFLICT and nothing else in the tx runs. §21
-      // minimal-select is preserved: nothing restricted is echoed back.
-      const newStatus = input.approved ? 'approved' : 'rejected';
-      await db.$transaction(async (tx) => {
-        const transition = await tx.salaryAdjustment.updateMany({
-          where: { id: input.id, organizationId: ctx.user.organizationId, status: 'pending' },
-          data: { status: newStatus, approvedById: ctx.user.id },
-        });
-
-        if (transition.count === 0) {
-          // Already processed by a concurrent approve/reject (or no longer pending) —
-          // abort the whole transaction so no compensation update is applied.
-          throw new TRPCError({ code: 'CONFLICT', message: 'Ajuste no encontrado o ya procesado' });
-        }
-
-        // Propagate the approved figure within the SAME transaction so the
-        // adjustment status and currentSalary commit (or roll back) together.
-        if (input.approved) {
-          await tx.employeeCompensation.updateMany({
-            where: { userId: adjustment.userId, organizationId: ctx.user.organizationId },
-            data: { currentSalary: adjustment.newSalary, currency: adjustment.currency },
-          });
-        }
-      });
-
-      return { id: input.id, status: newStatus };
     }),
 
   simulateAdjustment: permissionProcedure('compensation', 'read')
@@ -508,7 +226,8 @@ export const compensationRouter = router({
 
   // ── Market Comparison ──────────────────────────────────────────────
   // Org-level catalog: reads only salaryBand definitions, no per-person data.
-  // Scoping is unnecessary — same justification as getSalaryBands.
+  // Scoping is unnecessary — org-level catalog data, no per-person salary (same
+  // justification the deleted getSalaryBands procedure used to state here).
   getMarketComparison: permissionProcedure('compensation', 'read')
     .input(
       z.object({
@@ -658,7 +377,8 @@ export const compensationRouter = router({
   // ── Employee Compensation Detail ───────────────────────────────────
   // Per-person read: caller must be authorized to view this employee's compensation.
   // Delegates to the shared service helper so the §21 field-auth (selectFor) and
-  // FULL+AUDIT logging live in ONE place (reused by myCompensation below).
+  // FULL+AUDIT logging live in ONE place (this was also reused by compensation.myCompensation
+  // until that procedure was deleted 2026-07-29 — the shared service helper itself is unchanged).
   getEmployeeComp: permissionProcedure('compensation', 'read')
     .input(z.object({ userId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
@@ -678,29 +398,6 @@ export const compensationRouter = router({
       if (!dto) throw new Error('Compensacion no encontrada');
       return dto;
     }),
-
-  // ── My Compensation (Slice 5B) ─────────────────────────────────────
-  // OWN-scoped self-service read. No input → the subject is HARD-PINNED to
-  // ctx.user.id (never a client-supplied userId, which would widen). Routes
-  // through the SAME getEmployeeCompForSubject service as getEmployeeComp, so
-  // the field-level selectFor gating AND the restricted-data audit are
-  // preserved identically. assertSubjectInScope(own scope, subject == actor)
-  // passes trivially. No requireOrgScope — this is own, not an org rollup. A
-  // missing comp row returns null gracefully (not an error) for the landing UI.
-  myCompensation: permissionProcedure('compensation', 'read').query(async ({ ctx }) => {
-    return getEmployeeCompForSubject(
-      ctx.access,
-      ctx.user.organizationId,
-      ctx.user.id,
-      ctx.user.id, // subject hard-pinned to the caller — own-only, no widening
-      {
-        actorId: ctx.user.impersonatorId ?? ctx.user.id,
-        ipAddress: ctx.headers.get('x-forwarded-for') || ctx.headers.get('x-real-ip'),
-        userAgent: ctx.headers.get('user-agent'),
-      },
-      'No puedes ver esta compensacion',
-    );
-  }),
 
   // ── Dashboard KPIs ─────────────────────────────────────────────────
   // Org-scope gate only.

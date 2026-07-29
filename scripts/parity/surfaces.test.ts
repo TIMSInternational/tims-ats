@@ -2,17 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { SURFACES } from './surfaces';
 
 describe('SURFACES', () => {
-  it('the four read surfaces are registered with their flags + full endpoint sets (Tier-1 + Tier-2 by-id)', () => {
+  it('the three read surfaces that still have a TS side are registered with their flags + current endpoint sets (Tier-1 + Tier-2 by-id)', () => {
     expect(SURFACES['compensation'].flag).toBe('Platform__CompensationReadEnabled');
-    expect(SURFACES['compensation'].endpoints.map((e) => e.name).sort()).toEqual([
-      'benefits-utilization',
-      'compa-ratio-distribution',
-      'employee',
-      'market-comparison',
-      'my-compensation',
-      'pending-adjustments',
-      'salary-bands',
-    ]);
+    // 2026-07-29: shrunk from 7 to 2 — the other 5 TS procedures were deleted (C#-only now).
+    expect(SURFACES['compensation'].endpoints.map((e) => e.name).sort()).toEqual(['employee', 'market-comparison']);
     expect(SURFACES['ninebox'].flag).toBe('Platform__NineBoxReadEnabled');
     expect(SURFACES['ninebox'].endpoints).toHaveLength(4);
     expect(SURFACES['succession'].flag).toBe('Platform__SuccessionReadEnabled');

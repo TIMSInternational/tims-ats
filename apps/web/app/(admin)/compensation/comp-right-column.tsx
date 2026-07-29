@@ -11,7 +11,8 @@ import { ApproveAdjustmentModal } from './approve-adjustment-modal';
 
 const fmtCOP = (n: number) => `$${Math.round(n / 1000).toLocaleString('es-CO')}K`;
 
-// Compa-ratio buckets as returned by getCompaRatioDistribution, with display meta.
+// Compa-ratio buckets as returned by the C# GET /compensation/compa-ratio-distribution read
+// (via useCompensationCompaRatioDistribution), with display meta.
 const CR_BUCKETS = [
   { key: '<0.80', label: '< 0.80', color: 'bg-[#DD0C15]', textColor: 'text-[#DD0C15]', tag: 'crUnderpaid' as const },
   { key: '0.80-0.90', label: '0.80 - 0.90', color: 'bg-amber-400', textColor: 'text-amber-600', tag: 'crBelow' as const },

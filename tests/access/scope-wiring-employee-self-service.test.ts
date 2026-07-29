@@ -2,26 +2,22 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
-// Wave (role rebuild) Slice 5B — static tripwires for the three OWN-scoped
-// employee self-service reads. An employee sees ONLY their own data, never an
-// org-wide rollup. These guards fail closed if a future edit widens scope.
+// Wave (role rebuild) Slice 5B — static tripwires for the OWN-scoped employee
+// self-service reads. An employee sees ONLY their own data, never an org-wide
+// rollup. These guards fail closed if a future edit widens scope. (The third
+// read, compensation.myCompensation, was deleted 2026-07-29 — C#-only now.)
 //
 //   engagement.myPendingSurveys → active surveys the caller has NOT responded to.
 //                                 Org filter + anti-join on ctx.user.id. NO
 //                                 requireOrgScope (would FORBID the own-scoped
 //                                 caller). `survey` is not a scopeWhereFor entity
 //                                 → hand-rolled org + anti-join filter.
-//   compensation.myCompensation → CURRENT user's own comp via the existing
-//                                 getEmployeeComp SERVICE path (field-auth +
-//                                 audit preserved). Subject hard-pinned to
-//                                 ctx.user.id — never an input userId.
 //   consent.myConsents          → CURRENT user's DataConsent rows, subjectUserId
 //                                 hard-pinned to ctx.user.id. protectedProcedure
 //                                 (reading your own consent is inherently safe).
 
 const ROOT = join(__dirname, '..', '..');
 const readEngagement = () => readFileSync(join(ROOT, 'packages/api/src/routers/engagement.ts'), 'utf8');
-const readCompensation = () => readFileSync(join(ROOT, 'packages/api/src/routers/compensation.ts'), 'utf8');
 const readConsent = () => readFileSync(join(ROOT, 'packages/api/src/routers/consent.ts'), 'utf8');
 
 // Isolate the body of a named procedure (`name: ...` up to the next top-level
@@ -42,7 +38,7 @@ describe('engagement.myPendingSurveys — own-scoped survey anti-join', () => {
     expect(readEngagement()).toMatch(/myPendingSurveys:/);
   });
 
-  it('uses permissionProcedure(\'engagement\', \'read\') (employee has this grant)', () => {
+  it("uses permissionProcedure('engagement', 'read') (employee has this grant)", () => {
     expect(body()).toMatch(/permissionProcedure\('engagement',\s*'read'\)/);
   });
 
@@ -67,39 +63,6 @@ describe('engagement.myPendingSurveys — own-scoped survey anti-join', () => {
     const b = body();
     expect(b).toMatch(/select:\s*\{/);
     expect(b).toMatch(/take:/);
-  });
-});
-
-describe('compensation.myCompensation — own-pinned through the field-auth/audit service', () => {
-  const body = () => procedureBody(readCompensation(), 'myCompensation');
-
-  it('exists', () => {
-    expect(readCompensation()).toMatch(/myCompensation:/);
-  });
-
-  it('uses permissionProcedure(\'compensation\', \'read\') (employee has this grant)', () => {
-    expect(body()).toMatch(/permissionProcedure\('compensation',\s*'read'\)/);
-  });
-
-  it('does NOT call requireOrgScope (own-scoped, not an org rollup)', () => {
-    expect(body()).not.toMatch(/requireOrgScope/);
-  });
-
-  it('takes NO userId input — the subject is hard-pinned to ctx.user.id', () => {
-    const b = body();
-    // No userId field declared in this procedure's input schema.
-    expect(b).not.toMatch(/userId:\s*z\./);
-    // The subject MUST be ctx.user.id (own), never an input.
-    expect(b).toMatch(/ctx\.user\.id/);
-    expect(b).not.toMatch(/input\.userId/);
-  });
-
-  it('routes through the existing getEmployeeComp field-auth/audit service path (not a raw db read)', () => {
-    const b = body();
-    // Must reuse the shared service helper that performs selectFor + logDataAccess.
-    expect(b).toMatch(/getEmployeeCompForSubject|getEmployeeComp/);
-    // It must NOT re-implement a raw employeeCompensation findFirst inside this body.
-    expect(b).not.toMatch(/db\.employeeCompensation\.findFirst/);
   });
 });
 
