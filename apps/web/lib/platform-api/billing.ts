@@ -12,13 +12,11 @@
 import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
 import type { inferRouterOutputs } from '@trpc/server';
 import type { AppRouter } from '@tims/api';
+import type { UsageView } from '@tims/shared';
 import { trpc } from '../trpc';
 import { isPlatformApiEnabled, platformGet, platformGetRaw, platformPostRaw } from './client';
 
 type RouterOutput = inferRouterOutputs<AppRouter>;
-type BillingConfigOutput = RouterOutput['billing']['getBillingConfig'];
-type CurrentPlanOutput = RouterOutput['billing']['getCurrentPlan'];
-type UsageOutput = RouterOutput['billing']['getUsage'];
 type CreateCheckoutSessionOutput = RouterOutput['billing']['createCheckoutSession'];
 type CreatePortalSessionOutput = RouterOutput['billing']['createPortalSession'];
 type CancelSubscriptionOutput = RouterOutput['billing']['cancelSubscription'];
@@ -27,11 +25,32 @@ type InvoiceListItem = ListInvoicesOutput['items'][number];
 type GetInvoiceOutput = RouterOutput['billing']['getInvoice'];
 type InvoiceSubscription = NonNullable<GetInvoiceOutput['subscription']>;
 
-// All three live behind the C# `Platform:BillingUsageEnabled` backend flag (verified in
-// services/Tims.Platform/src/Tims.Api/Billing/BillingUsageEndpoints.cs — getUsage /getCurrentPlan
-// /getBillingConfig are all mapped by MapBillingUsageEndpoints, gated on BillingUsageEnabled), so
-// they share ONE FE flag mirroring that backend flag. NEXT_PUBLIC_* so it is inlined for the browser.
-const BILLING_USAGE_VIA_CSHARP = process.env.NEXT_PUBLIC_BILLING_USAGE_VIA_CSHARP === 'true';
+// getBillingConfig's output — the TS tRPC procedure has been deleted, so this can no longer
+// be derived via inferRouterOutputs; hand-declared to match its one field exactly.
+interface BillingConfigOutput {
+  configured: boolean;
+}
+
+// getCurrentPlan's output — the Prisma Subscription row or null (findUnique parity). The TS
+// tRPC procedure has been deleted; hand-declared to match packages/db/prisma/schema/billing.prisma's
+// Subscription model exactly (duplicated rather than reusing InvoiceSubscription below, which is a
+// distinct concern — mirrors this file's own established convention, see mapInvoiceSubscription's comment).
+interface Subscription {
+  id: string;
+  organizationId: string;
+  stripeCustomerId: string | null;
+  stripeSubscriptionId: string | null;
+  plan: 'trial' | 'starter' | 'professional' | 'enterprise';
+  status: 'trialing' | 'active' | 'past_due' | 'cancelled';
+  currentPeriodStart: Date | null;
+  currentPeriodEnd: Date | null;
+  trialEndsAt: Date | null;
+  cancelledAt: Date | null;
+  lastStripeEventAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+type CurrentPlanOutput = Subscription | null;
 
 // A FOURTH, independent read surface (added 2026-07-28): tenant invoice history had ZERO FE
 // consumer of any kind (TS or C#) until this wrapper. Own flag (not reused from
@@ -50,43 +69,21 @@ const numOrNull = (v: number | string | null | undefined): number | null => (v =
 const toDate = (v: unknown): Date => new Date(v as string);
 const toDateOrNull = (v: unknown): Date | null => (v == null ? null : new Date(v as string));
 
-/**
- * Whether Stripe self-serve billing is configured for this deploy. Gate:
- * `isPlatformApiEnabled() && NEXT_PUBLIC_BILLING_USAGE_VIA_CSHARP === 'true'`.
- *  - true  → GET /billing/config; false → trpc.billing.getBillingConfig.useQuery (the DEFAULT).
- */
+/** Whether Stripe self-serve billing is configured for this deploy. GET /billing/config. */
 export function useBillingConfig() {
-  const viaCSharp = isPlatformApiEnabled() && BILLING_USAGE_VIA_CSHARP;
-
-  const trpcQuery = trpc.billing.getBillingConfig.useQuery(undefined, { enabled: !viaCSharp });
-
-  const csharpQuery = useQuery<BillingConfigOutput>({
+  return useQuery<BillingConfigOutput>({
     queryKey: ['platform-api', 'billing', 'config'],
-    enabled: viaCSharp,
     queryFn: async () => {
       const raw = await platformGet('/billing/config');
       return { configured: raw.configured };
     },
   });
-
-  return viaCSharp ? csharpQuery : trpcQuery;
 }
 
-/**
- * The org's raw Subscription row (full model) or `null` (findUnique parity). Gate as above.
- *  - true  → GET /billing/plan (200 body is the subscription object OR the literal `null`);
- *            ISO date strings are rebuilt into Date objects and the plan/status DB-enum strings
- *            are narrowed to the Prisma enum unions.
- *  - false → trpc.billing.getCurrentPlan.useQuery (the DEFAULT).
- */
+/** The org's raw Subscription row (full model) or `null` (findUnique parity). GET /billing/plan. */
 export function useBillingCurrentPlan() {
-  const viaCSharp = isPlatformApiEnabled() && BILLING_USAGE_VIA_CSHARP;
-
-  const trpcQuery = trpc.billing.getCurrentPlan.useQuery(undefined, { enabled: !viaCSharp });
-
-  const csharpQuery = useQuery<CurrentPlanOutput>({
+  return useQuery<CurrentPlanOutput>({
     queryKey: ['platform-api', 'billing', 'plan'],
-    enabled: viaCSharp,
     queryFn: async () => {
       const raw = await platformGet('/billing/plan');
       if (raw == null) return null;
@@ -95,8 +92,8 @@ export function useBillingCurrentPlan() {
         organizationId: raw.organizationId,
         stripeCustomerId: raw.stripeCustomerId,
         stripeSubscriptionId: raw.stripeSubscriptionId,
-        // DB-enum strings on the wire → the Prisma OrgPlan / SubscriptionStatus unions the tRPC
-        // output declares (the C# service only ever emits valid DB enum values).
+        // DB-enum strings on the wire → the Prisma OrgPlan / SubscriptionStatus unions.
+        // The C# service only ever emits valid DB enum values.
         plan: raw.plan as NonNullable<CurrentPlanOutput>['plan'],
         status: raw.status as NonNullable<CurrentPlanOutput>['status'],
         currentPeriodStart: toDateOrNull(raw.currentPeriodStart),
@@ -109,25 +106,12 @@ export function useBillingCurrentPlan() {
       };
     },
   });
-
-  return viaCSharp ? csharpQuery : trpcQuery;
 }
 
-/**
- * Usage — real org-scoped counts + entitled-plan limits (honest null storage/apiCalls). Gate as
- * above.
- *  - true  → GET /billing/usage (numeric artifacts coerced; storage/apiCalls stay null; the ISO
- *            period strings pass through as string|null — the same shape buildUsageView emits).
- *  - false → trpc.billing.getUsage.useQuery (the DEFAULT).
- */
+/** Usage — real org-scoped counts + entitled-plan limits. GET /billing/usage. */
 export function useBillingUsage() {
-  const viaCSharp = isPlatformApiEnabled() && BILLING_USAGE_VIA_CSHARP;
-
-  const trpcQuery = trpc.billing.getUsage.useQuery(undefined, { enabled: !viaCSharp });
-
-  const csharpQuery = useQuery<UsageOutput>({
+  return useQuery<UsageView>({
     queryKey: ['platform-api', 'billing', 'usage'],
-    enabled: viaCSharp,
     queryFn: async () => {
       const raw = await platformGet('/billing/usage');
       return {
@@ -142,8 +126,6 @@ export function useBillingUsage() {
       };
     },
   });
-
-  return viaCSharp ? csharpQuery : trpcQuery;
 }
 
 // The C# /billing/invoices list endpoint has no `.Produces<T>()` annotation (verified in

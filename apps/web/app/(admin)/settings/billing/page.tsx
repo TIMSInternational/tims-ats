@@ -3,7 +3,6 @@
 import { useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
-import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
 import {
   useBillingConfig,
@@ -84,7 +83,6 @@ export default function BillingPage() {
   const config = useBillingConfig();
   const plan = useBillingCurrentPlan();
   const usage = useBillingUsage();
-  const utils = trpc.useUtils();
   const queryClient = useQueryClient();
 
   const portal = useBillingCreatePortalSession({
@@ -96,10 +94,8 @@ export default function BillingPage() {
   const cancel = useBillingCancelSubscription({
     onSuccess: () => {
       toast(t.billing.cancelScheduled, { type: 'success' });
-      // Refresh the plan panel from BOTH read paths: the tRPC cache and — when the C# read
-      // cutover is live (NEXT_PUBLIC_BILLING_USAGE_VIA_CSHARP) — the platform-api query key,
-      // which the tRPC invalidate above does not reach. Harmless (no-op key) while dark.
-      utils.billing.getCurrentPlan.invalidate();
+      // getCurrentPlan's TS tRPC procedure has been deleted — the platform-api query key is
+      // the only read path left to invalidate.
       queryClient.invalidateQueries({ queryKey: ['platform-api', 'billing', 'plan'] });
     },
     onError: () => toast(t.billing.cancelError, { type: 'error' }),
