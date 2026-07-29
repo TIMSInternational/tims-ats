@@ -14,7 +14,8 @@ import { parseSurveyQuestions, type SurveyQuestion } from '../../apps/web/app/(a
 // normalizing to one renderable union the field component consumes. Fixtures
 // below are copied from the ACTUAL seed shapes (packages/db/prisma/seed-demo.ts
 // ~1162-1198) plus the authoring shape — since 2026-07-29 owned by C#
-// (services/Tims.Platform/src/Tims.Api/Engagement/EngagementWriteModels.cs), mirrored FE-side by
+// (services/Tims.Platform/src/Tims.Domain/Engagement/EngagementWriteModels.cs record shape,
+// validated in Tims.Api/Engagement/EngagementWriteEndpoints.cs), mirrored FE-side by
 // CreateSurveyQuestionShape in apps/web/lib/platform-api/engagement.ts.
 
 // --- Fixtures copied from the REAL stored shapes (seed-demo.ts) ---
@@ -35,8 +36,10 @@ const SEED_CLIMATE: unknown = [
   { id: 'q5', text: 'Comentarios adicionales', type: 'open_text' },
 ];
 
-// Authoring shape accepted by the C# create-survey endpoint (EngagementWriteModels.cs; FE mirror:
-// CreateSurveyQuestionShape in apps/web/lib/platform-api/engagement.ts).
+// Authoring shape accepted by the C# create-survey endpoint (Tims.Domain/Engagement/
+// EngagementWriteModels.cs record shape, validated in Tims.Api/Engagement/
+// EngagementWriteEndpoints.cs; FE mirror: CreateSurveyQuestionShape in
+// apps/web/lib/platform-api/engagement.ts).
 const AUTHORING_MC: unknown = [
   { text: 'Que tan satisfecho estas?', type: 'multiple_choice', options: ['a', 'b'], required: true },
 ];
