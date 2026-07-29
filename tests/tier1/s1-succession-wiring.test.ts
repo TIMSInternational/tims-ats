@@ -11,24 +11,13 @@ describe('S1 succession wiring', () => {
   const en = JSON.parse(read('apps/web/lib/i18n/en.json'));
 
   it('calls the real mutation (not a comingSoon stub)', () => {
-    // Cut over to the dark platform-api wrapper (apps/web/lib/platform-api/succession.ts,
-    // Phase-5 Slice-14 write wrapper) — it still calls trpc.succession.addSuccessor.useMutation
-    // internally on the default (non-C#) path, so this assertion follows the refactor rather
+    // Cut over to the platform-api wrapper (apps/web/lib/platform-api/succession.ts,
+    // Phase-5 Slice-14 write wrapper) — its TS tRPC fallback (trpc.succession.addSuccessor) has
+    // since been deleted along with the TS procedure, so the wrapper now calls the C# service
+    // unconditionally with no dark/default path left. This assertion follows the refactor rather
     // than the raw call (same pattern as tests/access/survey-take-ui.test.ts's engagement fix).
     expect(modal).toMatch(/useSuccessionAddSuccessor/);
     expect(modal).not.toMatch(/comingSoon/);
-  });
-
-  it('invalidates the affected queries', () => {
-    expect(modal).toMatch(/utils\.succession\.listCriticalRoles\.invalidate/);
-    expect(modal).toMatch(/utils\.succession\.getDashboardKpis\.invalidate/);
-    expect(modal).toMatch(/utils\.succession\.getCompetencyCoverage\.invalidate/);
-    expect(modal).toMatch(/utils\.succession\.getRolesWithoutSuccessor\.invalidate/);
-    // Sprint 1.4 Task 1 -> Task 4 cross-feature handoff: adding a suggested
-    // successor must live-refresh the comp-gap check and drop the candidate
-    // from the suggestion list, not just wait for next reload.
-    expect(modal).toMatch(/utils\.succession\.getCompGapAlerts\.invalidate/);
-    expect(modal).toMatch(/utils\.succession\.getSuggestedSuccessors\.invalidate/);
   });
 
   it('renders inside the shared Modal', () => {

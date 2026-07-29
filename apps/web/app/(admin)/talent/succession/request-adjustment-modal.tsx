@@ -48,11 +48,10 @@ export function RequestAdjustmentModal({
 
   const submit = useCompensationCreateAdjustment({
     onSuccess: () => {
-      utils.succession.getCompGapAlerts.invalidate();
       utils.compensation.listPendingAdjustments.invalidate();
       utils.compensation.getDashboardKpis.invalidate();
-      // Cutover parity: refresh the C# platform-api succession reads (comp-gap) AND the
-      // compensation reads (listPendingAdjustments is driven by this create). No-op under tRPC.
+      // Cutover parity: refresh the C# platform-api succession (comp-gap, TS tRPC read deleted)
+      // AND compensation reads (listPendingAdjustments is driven by this create).
       queryClient.invalidateQueries({ queryKey: ['platform-api', 'succession'] });
       queryClient.invalidateQueries({ queryKey: ['platform-api', 'compensation'] });
       toast(t.succession.requestAdjustmentSuccess, { type: 'success' });

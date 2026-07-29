@@ -1,68 +1,43 @@
 'use client';
 
-// Per-surface read gate for the EIGHT FE-consumed succession reads (getDashboardKpis /
-// listCriticalRoles / getCompetencyCoverage / getFlightRisk / getRolesWithoutSuccessor /
-// getCompGapAlerts / getSuggestedSuccessors / simulateExit) — the fifth read surface staged to
-// route to the C# Platform service. DARK by default: unless BOTH the platform-api base URL and
-// NEXT_PUBLIC_SUCCESSION_READ_VIA_CSHARP are set at deploy time, every hook returns the existing
-// tRPC query unchanged (byte-identical to today). Merging changes nothing in prod until Federico
-// flips the flag at cutover.
+// C#-only succession reads + writes. The 8 TS tRPC read procedures
+// (getDashboardKpis/listCriticalRoles/getCompetencyCoverage/getFlightRisk/
+// getRolesWithoutSuccessor/getCompGapAlerts/getSuggestedSuccessors/simulateExit) and 2 TS tRPC
+// write procedures (addSuccessor/updateCriticalRoleBand) have been deleted — there is no TS
+// fallback path left for any of the 10 hooks below. NEXT_PUBLIC_SUCCESSION_READ_VIA_CSHARP and
+// NEXT_PUBLIC_SUCCESSION_WRITE_VIA_CSHARP are both confirmed live in prod; this file calls the C#
+// service unconditionally rather than gating on either flag.
 //
-// Mirrors lib/platform-api/{reporting,billing,evaluation360}.ts exactly: each hook calls BOTH the
-// tRPC hook (enabled when NOT viaCSharp) and a C# useQuery (enabled when viaCSharp), then returns
-// the active one. The C# useQuery is typed to the EXACT tRPC output type (inferRouterOutputs), so
-// each mapper below is compile-time-locked to the live contract's shape — including the superjson
-// Date semantics on the CriticalRole/Successor date fields and the number-as-string wire artifacts.
-//
-// All eight live behind the C# `Platform:SuccessionReadEnabled` backend flag (see
-// services/Tims.Platform/src/Tims.Api/Succession/SuccessionReadEndpoints.cs — the nine GETs are
-// mapped by MapSuccessionReadEndpoints, gated on SuccessionReadEnabled; getCriticalRole is the one
-// not consumed by the FE, so it gets no wrapper here), so they share ONE FE flag mirroring it.
+// getCriticalRole (the one read with zero FE consumers) still has a live TS implementation in
+// packages/api/src/routers/succession.ts — it was never wrapped here and stays untouched.
 
 import { useMutation, useQuery } from '@tanstack/react-query';
-import type { inferRouterOutputs } from '@trpc/server';
-import type { AppRouter } from '@tims/api';
-import { trpc } from '../trpc';
-import { isPlatformApiEnabled, platformGet, platformPatch, platformPost } from './client';
-
-type RouterOutput = inferRouterOutputs<AppRouter>;
-type DashboardKpisOutput = RouterOutput['succession']['getDashboardKpis'];
-type ListCriticalRolesOutput = RouterOutput['succession']['listCriticalRoles'];
-type CompetencyCoverageOutput = RouterOutput['succession']['getCompetencyCoverage'];
-type FlightRiskOutput = RouterOutput['succession']['getFlightRisk'];
-type RolesWithoutSuccessorOutput = RouterOutput['succession']['getRolesWithoutSuccessor'];
-type CompGapAlertsOutput = RouterOutput['succession']['getCompGapAlerts'];
-type SuggestedSuccessorsOutput = RouterOutput['succession']['getSuggestedSuccessors'];
-type SimulateExitOutput = RouterOutput['succession']['simulateExit'];
-type AddSuccessorOutput = RouterOutput['succession']['addSuccessor'];
-type UpdateCriticalRoleBandOutput = RouterOutput['succession']['updateCriticalRoleBand'];
-
-// Nested-shape aliases so the number-as-string / DB-enum-string wire artifacts are narrowed back to
-// the EXACT unions each tRPC output declares (no `any`; cast a widened wire value to the contract
-// type). The C# service only ever emits valid DB enum strings — a `string`-typed field makes the
-// cast a no-op, a union-typed field is narrowed to it.
-type ListRoleOut = ListCriticalRolesOutput[number];
-type ListSuccOut = ListRoleOut['successors'][number];
-type CoverageRowOut = CompetencyCoverageOutput[number];
-type SuggestedOut = SuggestedSuccessorsOutput[number];
-type ExitSuccOut = SimulateExitOutput['successors'][number];
-
-// Second gate: even when the client is enabled, succession only routes to C# when its own flag is
-// exactly 'true'. NEXT_PUBLIC_* so it is inlined for the browser.
-const SUCCESSION_VIA_CSHARP = process.env.NEXT_PUBLIC_SUCCESSION_READ_VIA_CSHARP === 'true';
+import type { SuccessionKpiView, CoverageRow, SuggestedSuccessor, CompGapAlert, ExitRiskLevel } from '@tims/shared';
+import { platformGet, platformPatch, platformPost } from './client';
 
 // The C# minimal-API OpenAPI contract types every int32/double as `number | string` (a
-// number-as-string read artifact); coerce back to the `number` the tRPC output declares.
+// number-as-string read artifact); coerce back to `number`.
 const num = (v: number | string): number => Number(v);
 const numOrNull = (v: number | string | null | undefined): number | null => (v == null ? null : Number(v));
 
-// DateTime fields serialize as canonical Node-ISO strings (…fffZ) via the shared Node-ISO converter.
-// The tRPC output types them as Prisma `Date` (superjson rebuilds real Date objects), so the C# path
-// reconstructs Date objects to be byte-identical at cutover. The contract types the raw values as
-// `unknown`; parse to Date.
+// DateTime fields serialize as canonical Node-ISO strings (…fffZ). Reconstruct real Date objects
+// so every shape below is byte-identical to what the deleted tRPC procedures used to return.
 const toDate = (v: unknown): Date => new Date(v as string);
 
-// Successor sub-shape shared by listCriticalRoles (the only FE read whose successors the UI reads).
+export interface SuccessorItem {
+  id: string;
+  organizationId: string;
+  criticalRoleId: string;
+  userId: string;
+  readiness: 'ready_now' | 'ready_1_year' | 'ready_2_years' | 'developing';
+  type: 'internal' | 'external';
+  developmentPlan: string | null;
+  addedById: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  user: { id: string; firstName: string; lastName: string; avatar: string | null; jobTitle: string | null };
+}
+
 const mapListSuccessor = (s: {
   id: string;
   organizationId: string;
@@ -75,13 +50,13 @@ const mapListSuccessor = (s: {
   createdAt: unknown;
   updatedAt: unknown;
   user: { id: string; firstName: string; lastName: string; avatar?: string | null; jobTitle?: string | null };
-}) => ({
+}): SuccessorItem => ({
   id: s.id,
   organizationId: s.organizationId,
   criticalRoleId: s.criticalRoleId,
   userId: s.userId,
-  readiness: s.readiness as ListSuccOut['readiness'],
-  type: s.type as ListSuccOut['type'],
+  readiness: s.readiness as SuccessorItem['readiness'],
+  type: s.type as SuccessorItem['type'],
   developmentPlan: s.developmentPlan ?? null,
   addedById: s.addedById ?? null,
   createdAt: toDate(s.createdAt),
@@ -95,21 +70,104 @@ const mapListSuccessor = (s: {
   },
 });
 
-/**
- * STAFF org-rollup: the succession KPI dashboard tile counts. Gate:
- * `isPlatformApiEnabled() && NEXT_PUBLIC_SUCCESSION_READ_VIA_CSHARP === 'true'`.
- *  - true  → GET /succession/dashboard-kpis (integer/double counts coerced to number; note the
- *            lowercase-"to" wire key `ready1to2YearsCount`).
- *  - false → trpc.succession.getDashboardKpis.useQuery() (the DEFAULT).
- */
+export interface CriticalRoleListItem {
+  id: string;
+  organizationId: string;
+  title: string;
+  positionId: string | null;
+  currentHolderId: string | null;
+  companyId: string | null;
+  unitId: string | null;
+  criticality: 'critical' | 'high' | 'medium' | 'low';
+  flightRisk: number | null;
+  targetBandLevel: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  currentHolder: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    avatar: string | null;
+    jobTitle: string | null;
+  } | null;
+  successors: SuccessorItem[];
+}
+type ListCriticalRolesOutput = CriticalRoleListItem[];
+
+export interface FlightRiskItem {
+  id: string;
+  organizationId: string;
+  title: string;
+  positionId: string | null;
+  currentHolderId: string | null;
+  companyId: string | null;
+  unitId: string | null;
+  criticality: 'critical' | 'high' | 'medium' | 'low';
+  flightRisk: number | null;
+  targetBandLevel: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  currentHolder: { id: string; firstName: string; lastName: string; avatar: string | null } | null;
+  _count: { successors: number };
+}
+type FlightRiskOutput = FlightRiskItem[];
+
+export interface RoleWithoutSuccessorItem {
+  id: string;
+  organizationId: string;
+  title: string;
+  positionId: string | null;
+  currentHolderId: string | null;
+  companyId: string | null;
+  unitId: string | null;
+  criticality: 'critical' | 'high' | 'medium' | 'low';
+  flightRisk: number | null;
+  targetBandLevel: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  currentHolder: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    avatar: string | null;
+    jobTitle: string | null;
+  } | null;
+}
+type RolesWithoutSuccessorOutput = RoleWithoutSuccessorItem[];
+
+export interface SimulateExitOutput {
+  role: { id: string; title: string; criticality: 'critical' | 'high' | 'medium' | 'low' };
+  currentHolder: { id: string; firstName: string; lastName: string } | null;
+  riskLevel: ExitRiskLevel;
+  recommendation: string;
+  successors: SuccessorItem[];
+  readyNowCount: number;
+  pipelineCount: number;
+}
+
+export interface AddSuccessorOutput {
+  id: string;
+  organizationId: string;
+  criticalRoleId: string;
+  userId: string;
+  readiness: 'ready_now' | 'ready_1_year' | 'ready_2_years' | 'developing';
+  type: 'internal' | 'external';
+  developmentPlan: string | null;
+  addedById: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  user: { id: string; firstName: string; lastName: string; avatar: string | null };
+}
+
+export interface UpdateCriticalRoleBandOutput {
+  id: string;
+  targetBandLevel: string | null;
+}
+
+/** STAFF org-rollup: the succession KPI dashboard tile counts. GET /succession/dashboard-kpis. */
 export function useSuccessionDashboardKpis() {
-  const viaCSharp = isPlatformApiEnabled() && SUCCESSION_VIA_CSHARP;
-
-  const trpcQuery = trpc.succession.getDashboardKpis.useQuery(undefined, { enabled: !viaCSharp });
-
-  const csharpQuery = useQuery<DashboardKpisOutput>({
+  return useQuery<SuccessionKpiView>({
     queryKey: ['platform-api', 'succession', 'dashboard-kpis'],
-    enabled: viaCSharp,
     queryFn: async () => {
       const raw = await platformGet('/succession/dashboard-kpis');
       return {
@@ -124,31 +182,17 @@ export function useSuccessionDashboardKpis() {
       };
     },
   });
-
-  return viaCSharp ? csharpQuery : trpcQuery;
 }
 
-/**
- * STAFF row-scoped: critical roles (scope-filtered) + their in-scope successors. Gate as above.
- *  - true  → GET /succession/critical-roles (optional companyId/unitId/criticality/search query;
- *            flightRisk number|null; createdAt/updatedAt Dates; nested successors' dates rebuilt).
- *  - false → trpc.succession.listCriticalRoles.useQuery(filters) (the DEFAULT).
- */
+/** STAFF row-scoped: critical roles (scope-filtered) + their in-scope successors. GET /succession/critical-roles. */
 export function useSuccessionCriticalRoles(filters?: {
   companyId?: string;
   unitId?: string;
   criticality?: string;
   search?: string;
 }) {
-  const viaCSharp = isPlatformApiEnabled() && SUCCESSION_VIA_CSHARP;
-
-  const trpcQuery = trpc.succession.listCriticalRoles.useQuery(filters ?? {}, {
-    enabled: !viaCSharp,
-  });
-
-  const csharpQuery = useQuery<ListCriticalRolesOutput>({
+  return useQuery<ListCriticalRolesOutput>({
     queryKey: ['platform-api', 'succession', 'critical-roles', filters ?? {}],
-    enabled: viaCSharp,
     queryFn: async () => {
       const raw = await platformGet('/succession/critical-roles', {
         companyId: filters?.companyId,
@@ -164,7 +208,7 @@ export function useSuccessionCriticalRoles(filters?: {
         currentHolderId: r.currentHolderId ?? null,
         companyId: r.companyId ?? null,
         unitId: r.unitId ?? null,
-        criticality: r.criticality as ListRoleOut['criticality'],
+        criticality: r.criticality as CriticalRoleListItem['criticality'],
         flightRisk: numOrNull(r.flightRisk),
         targetBandLevel: r.targetBandLevel ?? null,
         createdAt: toDate(r.createdAt),
@@ -182,57 +226,32 @@ export function useSuccessionCriticalRoles(filters?: {
       }));
     },
   });
-
-  return viaCSharp ? csharpQuery : trpcQuery;
 }
 
-/**
- * STAFF org-rollup: per-role competency-coverage rows (kernel output). Gate as above.
- *  - true  → GET /succession/competency-coverage (integer counts coerced to number).
- *  - false → trpc.succession.getCompetencyCoverage.useQuery() (the DEFAULT).
- */
+/** STAFF org-rollup: per-role competency-coverage rows. GET /succession/competency-coverage. */
 export function useSuccessionCompetencyCoverage() {
-  const viaCSharp = isPlatformApiEnabled() && SUCCESSION_VIA_CSHARP;
-
-  const trpcQuery = trpc.succession.getCompetencyCoverage.useQuery(undefined, {
-    enabled: !viaCSharp,
-  });
-
-  const csharpQuery = useQuery<CompetencyCoverageOutput>({
+  return useQuery<CoverageRow[]>({
     queryKey: ['platform-api', 'succession', 'competency-coverage'],
-    enabled: viaCSharp,
     queryFn: async () => {
       const raw = await platformGet('/succession/competency-coverage');
       return raw.map((row) => ({
         roleId: row.roleId,
         title: row.title,
-        criticality: row.criticality as CoverageRowOut['criticality'],
+        criticality: row.criticality,
         totalSuccessors: num(row.totalSuccessors),
         readyNow: num(row.readyNow),
         readySoon: num(row.readySoon),
         developing: num(row.developing),
-        coverageStatus: row.coverageStatus as CoverageRowOut['coverageStatus'],
+        coverageStatus: row.coverageStatus as CoverageRow['coverageStatus'],
       }));
     },
   });
-
-  return viaCSharp ? csharpQuery : trpcQuery;
 }
 
-/**
- * STAFF org-rollup: the flight-risk register (roles ≥ threshold + `_count.successors`). Gate as above.
- *  - true  → GET /succession/flight-risk (optional threshold query; flightRisk number|null;
- *            createdAt/updatedAt Dates; `_count.successors` coerced to number).
- *  - false → trpc.succession.getFlightRisk.useQuery(input) (the DEFAULT).
- */
+/** STAFF org-rollup: the flight-risk register. GET /succession/flight-risk. */
 export function useSuccessionFlightRisk(input?: { threshold?: number }) {
-  const viaCSharp = isPlatformApiEnabled() && SUCCESSION_VIA_CSHARP;
-
-  const trpcQuery = trpc.succession.getFlightRisk.useQuery(input ?? {}, { enabled: !viaCSharp });
-
-  const csharpQuery = useQuery<FlightRiskOutput>({
+  return useQuery<FlightRiskOutput>({
     queryKey: ['platform-api', 'succession', 'flight-risk', input?.threshold ?? null],
-    enabled: viaCSharp,
     queryFn: async () => {
       const raw = await platformGet('/succession/flight-risk', { threshold: input?.threshold });
       return raw.map((r) => ({
@@ -243,7 +262,7 @@ export function useSuccessionFlightRisk(input?: { threshold?: number }) {
         currentHolderId: r.currentHolderId ?? null,
         companyId: r.companyId ?? null,
         unitId: r.unitId ?? null,
-        criticality: r.criticality as ListRoleOut['criticality'],
+        criticality: r.criticality as FlightRiskItem['criticality'],
         flightRisk: numOrNull(r.flightRisk),
         targetBandLevel: r.targetBandLevel ?? null,
         createdAt: toDate(r.createdAt),
@@ -260,25 +279,12 @@ export function useSuccessionFlightRisk(input?: { threshold?: number }) {
       }));
     },
   });
-
-  return viaCSharp ? csharpQuery : trpcQuery;
 }
 
-/**
- * STAFF org-rollup: critical roles with no successor. Gate as above.
- *  - true  → GET /succession/roles-without-successor (flightRisk number|null; dates rebuilt).
- *  - false → trpc.succession.getRolesWithoutSuccessor.useQuery() (the DEFAULT).
- */
+/** STAFF org-rollup: critical roles with no successor. GET /succession/roles-without-successor. */
 export function useSuccessionRolesWithoutSuccessor() {
-  const viaCSharp = isPlatformApiEnabled() && SUCCESSION_VIA_CSHARP;
-
-  const trpcQuery = trpc.succession.getRolesWithoutSuccessor.useQuery(undefined, {
-    enabled: !viaCSharp,
-  });
-
-  const csharpQuery = useQuery<RolesWithoutSuccessorOutput>({
+  return useQuery<RolesWithoutSuccessorOutput>({
     queryKey: ['platform-api', 'succession', 'roles-without-successor'],
-    enabled: viaCSharp,
     queryFn: async () => {
       const raw = await platformGet('/succession/roles-without-successor');
       return raw.map((r) => ({
@@ -289,7 +295,7 @@ export function useSuccessionRolesWithoutSuccessor() {
         currentHolderId: r.currentHolderId ?? null,
         companyId: r.companyId ?? null,
         unitId: r.unitId ?? null,
-        criticality: r.criticality as ListRoleOut['criticality'],
+        criticality: r.criticality as RoleWithoutSuccessorItem['criticality'],
         flightRisk: numOrNull(r.flightRisk),
         targetBandLevel: r.targetBandLevel ?? null,
         createdAt: toDate(r.createdAt),
@@ -306,25 +312,12 @@ export function useSuccessionRolesWithoutSuccessor() {
       }));
     },
   });
-
-  return viaCSharp ? csharpQuery : trpcQuery;
 }
 
-/**
- * STAFF org-rollup: comp-gap alerts (ready_now successors below their target band midpoint).
- * NOTE: the C# endpoint applies the caller's compensation ROW-scope + field classification, matching
- * the hardened live-TS behavior. Gate as above.
- *  - true  → GET /succession/comp-gap-alerts (salary/midSalary doubles + gapPercent int coerced).
- *  - false → trpc.succession.getCompGapAlerts.useQuery() (the DEFAULT).
- */
+/** STAFF org-rollup: comp-gap alerts. GET /succession/comp-gap-alerts. */
 export function useSuccessionCompGapAlerts() {
-  const viaCSharp = isPlatformApiEnabled() && SUCCESSION_VIA_CSHARP;
-
-  const trpcQuery = trpc.succession.getCompGapAlerts.useQuery(undefined, { enabled: !viaCSharp });
-
-  const csharpQuery = useQuery<CompGapAlertsOutput>({
+  return useQuery<CompGapAlert[]>({
     queryKey: ['platform-api', 'succession', 'comp-gap-alerts'],
-    enabled: viaCSharp,
     queryFn: async () => {
       const raw = await platformGet('/succession/comp-gap-alerts');
       return raw.map((a) => ({
@@ -346,28 +339,14 @@ export function useSuccessionCompGapAlerts() {
       }));
     },
   });
-
-  return viaCSharp ? csharpQuery : trpcQuery;
 }
 
-/**
- * STAFF by-id (assertScoped): ranked suggested successors for a critical role. Gate as above; the
- * query is disabled until a role is selected (matching the call site's `enabled: !!roleId`).
- *  - true  → GET /succession/critical-roles/{criticalRoleId}/suggested-successors (scores coerced).
- *  - false → trpc.succession.getSuggestedSuccessors.useQuery({ criticalRoleId }) (the DEFAULT).
- */
+/** STAFF by-id: ranked suggested successors for a critical role. GET /succession/critical-roles/{criticalRoleId}/suggested-successors. */
 export function useSuccessionSuggestedSuccessors(criticalRoleId: string) {
   const enabledId = !!criticalRoleId;
-  const viaCSharp = isPlatformApiEnabled() && SUCCESSION_VIA_CSHARP;
-
-  const trpcQuery = trpc.succession.getSuggestedSuccessors.useQuery(
-    { criticalRoleId },
-    { enabled: !viaCSharp && enabledId },
-  );
-
-  const csharpQuery = useQuery<SuggestedSuccessorsOutput>({
+  return useQuery<SuggestedSuccessor[]>({
     queryKey: ['platform-api', 'succession', 'suggested-successors', criticalRoleId],
-    enabled: viaCSharp && enabledId,
+    enabled: enabledId,
     queryFn: async () => {
       const raw = await platformGet('/succession/critical-roles/{criticalRoleId}/suggested-successors', undefined, {
         criticalRoleId,
@@ -381,33 +360,21 @@ export function useSuccessionSuggestedSuccessors(criticalRoleId: string) {
           avatar: s.user.avatar ?? null,
           jobTitle: s.user.jobTitle ?? null,
         },
-        quadrant: s.quadrant as SuggestedOut['quadrant'],
+        quadrant: s.quadrant,
         potentialScore: num(s.potentialScore),
         performanceScore: num(s.performanceScore),
-        suggestedReadiness: s.suggestedReadiness as SuggestedOut['suggestedReadiness'],
+        suggestedReadiness: s.suggestedReadiness as SuggestedSuccessor['suggestedReadiness'],
       }));
     },
   });
-
-  return viaCSharp ? csharpQuery : trpcQuery;
 }
 
-/**
- * STAFF by-id (assertScoped): exit-impact simulation for a critical role. Gate as above; disabled
- * until a role is selected (matching the call site's `enabled: !!selectedId`).
- *  - true  → GET /succession/critical-roles/{criticalRoleId}/simulate-exit (successor dates rebuilt;
- *            readyNowCount/pipelineCount coerced).
- *  - false → trpc.succession.simulateExit.useQuery({ criticalRoleId }) (the DEFAULT).
- */
+/** STAFF by-id: exit-impact simulation for a critical role. GET /succession/critical-roles/{criticalRoleId}/simulate-exit. */
 export function useSuccessionSimulateExit(criticalRoleId: string) {
   const enabledId = !!criticalRoleId;
-  const viaCSharp = isPlatformApiEnabled() && SUCCESSION_VIA_CSHARP;
-
-  const trpcQuery = trpc.succession.simulateExit.useQuery({ criticalRoleId }, { enabled: !viaCSharp && enabledId });
-
-  const csharpQuery = useQuery<SimulateExitOutput>({
+  return useQuery<SimulateExitOutput>({
     queryKey: ['platform-api', 'succession', 'simulate-exit', criticalRoleId],
-    enabled: viaCSharp && enabledId,
+    enabled: enabledId,
     queryFn: async () => {
       const raw = await platformGet('/succession/critical-roles/{criticalRoleId}/simulate-exit', undefined, {
         criticalRoleId,
@@ -425,15 +392,15 @@ export function useSuccessionSimulateExit(criticalRoleId: string) {
               lastName: raw.currentHolder.lastName,
             }
           : null,
-        riskLevel: raw.riskLevel as SimulateExitOutput['riskLevel'],
+        riskLevel: raw.riskLevel as ExitRiskLevel,
         recommendation: raw.recommendation,
         successors: raw.successors.map((s) => ({
           id: s.id,
           organizationId: s.organizationId,
           criticalRoleId: s.criticalRoleId,
           userId: s.userId,
-          readiness: s.readiness as ExitSuccOut['readiness'],
-          type: s.type as ExitSuccOut['type'],
+          readiness: s.readiness as SuccessorItem['readiness'],
+          type: s.type as SuccessorItem['type'],
           developmentPlan: s.developmentPlan ?? null,
           addedById: s.addedById ?? null,
           createdAt: toDate(s.createdAt),
@@ -442,6 +409,7 @@ export function useSuccessionSimulateExit(criticalRoleId: string) {
             id: s.user.id,
             firstName: s.user.firstName,
             lastName: s.user.lastName,
+            avatar: null,
             jobTitle: s.user.jobTitle ?? null,
           },
         })),
@@ -450,29 +418,7 @@ export function useSuccessionSimulateExit(criticalRoleId: string) {
       };
     },
   });
-
-  return viaCSharp ? csharpQuery : trpcQuery;
 }
-
-// ---------------------------------------------------------------------------
-// Writes (Phase-5 Slice 14) — a SEPARATE flag from the reads above, mirroring backend
-// `Platform:SuccessionWriteEnabled` (independent of SuccessionReadEnabled). Of the 5 C# mutations
-// (addCriticalRole/addSuccessor/removeSuccessor/updateSuccessorReadiness/updateCriticalRoleBand),
-// only addSuccessor (add-successor-modal.tsx) and updateCriticalRoleBand (succession-pipeline.tsx)
-// have live FE consumers — a full-repo grep confirms addCriticalRole/removeSuccessor/
-// updateSuccessorReadiness have zero call sites anywhere (same situation as access-review and
-// offer.updateValidation), so they are intentionally NOT wrapped here. Each hook mirrors trpc's
-// useMutation shape ({ onSuccess?, onError? }) so existing call sites swap in with a one-line
-// change; both consumers already invalidate the `['platform-api','succession',...]` query keys
-// themselves post-success — this file only supplies the mutation itself. Error messages are
-// byte-identical between stacks for the NOT_FOUND/FORBIDDEN paths (verified against
-// SuccessionWriteEndpoints.cs's message constants and packages/api/src/access's shared message
-// tables); the addSuccessor 409 duplicate-successor conflict is the one documented exception — TS
-// surfaces a raw Prisma unique-constraint error where C# returns a friendly 409 message (a
-// pre-existing, intentional C#-side improvement, not something this wrapper changes).
-// ---------------------------------------------------------------------------
-
-const SUCCESSION_WRITE_VIA_CSHARP = process.env.NEXT_PUBLIC_SUCCESSION_WRITE_VIA_CSHARP === 'true';
 
 interface MutationOptions {
   onSuccess?: () => void;
@@ -502,9 +448,7 @@ interface AddSuccessorInputShape {
 
 /** STAFF: add a successor to a critical role (1 call site: add-successor-modal.tsx). */
 export function useSuccessionAddSuccessor(options?: MutationOptions) {
-  const viaCSharp = isPlatformApiEnabled() && SUCCESSION_WRITE_VIA_CSHARP;
-  const trpcMutation = trpc.succession.addSuccessor.useMutation(options);
-  const csharpMutation = useCSharpMutation(async (input: AddSuccessorInputShape) => {
+  return useCSharpMutation(async (input: AddSuccessorInputShape) => {
     const raw = await platformPost(
       '/succession/critical-roles/{criticalRoleId}/successors',
       {
@@ -534,7 +478,6 @@ export function useSuccessionAddSuccessor(options?: MutationOptions) {
       },
     } satisfies AddSuccessorOutput;
   }, options);
-  return viaCSharp ? csharpMutation : trpcMutation;
 }
 
 interface UpdateCriticalRoleBandInputShape {
@@ -544,9 +487,7 @@ interface UpdateCriticalRoleBandInputShape {
 
 /** STAFF: set a critical role's target salary band level (1 call site: succession-pipeline.tsx). */
 export function useSuccessionUpdateCriticalRoleBand(options?: MutationOptions) {
-  const viaCSharp = isPlatformApiEnabled() && SUCCESSION_WRITE_VIA_CSHARP;
-  const trpcMutation = trpc.succession.updateCriticalRoleBand.useMutation(options);
-  const csharpMutation = useCSharpMutation(async (input: UpdateCriticalRoleBandInputShape) => {
+  return useCSharpMutation(async (input: UpdateCriticalRoleBandInputShape) => {
     const raw = await platformPatch(
       '/succession/critical-roles/{criticalRoleId}/band',
       { targetBandLevel: input.targetBandLevel },
@@ -554,5 +495,4 @@ export function useSuccessionUpdateCriticalRoleBand(options?: MutationOptions) {
     );
     return { id: raw.id, targetBandLevel: raw.targetBandLevel } satisfies UpdateCriticalRoleBandOutput;
   }, options);
-  return viaCSharp ? csharpMutation : trpcMutation;
 }

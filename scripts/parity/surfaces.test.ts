@@ -16,8 +16,8 @@ describe('SURFACES', () => {
     expect(SURFACES['ninebox'].flag).toBe('Platform__NineBoxReadEnabled');
     expect(SURFACES['ninebox'].endpoints).toHaveLength(11);
     expect(SURFACES['succession'].flag).toBe('Platform__SuccessionReadEnabled');
-    expect(SURFACES['succession'].endpoints.map((e) => e.name)).toContain('comp-gap-alerts');
-    expect(SURFACES['succession'].endpoints).toHaveLength(9);
+    expect(SURFACES['succession'].endpoints.map((e) => e.name)).toContain('critical-role');
+    expect(SURFACES['succession'].endpoints).toHaveLength(1);
     for (const key of ['compensation', 'ninebox', 'succession']) {
       expect(SURFACES[key].probeRole).toBe('super_admin');
     }
@@ -31,8 +31,6 @@ describe('SURFACES', () => {
       'ninebox/axis-breakdown': 'employee',
       'ninebox/calibration': 'calibration',
       'succession/critical-role': 'critical-role',
-      'succession/suggested-successors': 'critical-role',
-      'succession/simulate-exit': 'critical-role',
     };
     let byIdCount = 0;
     for (const [surfaceKey, surface] of Object.entries(SURFACES)) {
@@ -47,7 +45,7 @@ describe('SURFACES', () => {
         expect(JSON.stringify(ep.input), k).toContain('{id}');
       }
     }
-    expect(byIdCount).toBe(7);
+    expect(byIdCount).toBe(5);
   });
 
   it('nine-box marks only the two pure kernels as globalScope', () => {

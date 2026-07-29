@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { ErrorState, Skeleton } from '../../../../components';
 import { RequestAdjustmentModal } from './request-adjustment-modal';
@@ -126,7 +125,6 @@ const READINESS_STYLES: Record<string, { border: string; bg: string; label: stri
 const AVATAR_COLORS = ['bg-[#1F114C]', 'bg-violet-600', 'bg-teal-600', 'bg-blue-600', 'bg-pink-600'];
 
 export function SuccessionPipeline({ roles, loading, isError, bands, compGapAlerts, t }: SuccessionPipelineProps) {
-  const utils = trpc.useUtils();
   const queryClient = useQueryClient();
   const [adjustmentTarget, setAdjustmentTarget] = useState<{
     userId: string;
@@ -137,9 +135,8 @@ export function SuccessionPipeline({ roles, loading, isError, bands, compGapAler
 
   const updateBand = useSuccessionUpdateCriticalRoleBand({
     onSuccess: () => {
-      utils.succession.listCriticalRoles.invalidate();
-      utils.succession.getCompGapAlerts.invalidate();
-      // Cutover parity: refresh the C# platform-api succession reads. No-op under tRPC.
+      // The TS tRPC succession reads have been deleted — the platform-api query key is the only
+      // read path left to invalidate.
       queryClient.invalidateQueries({ queryKey: ['platform-api', 'succession'] });
       toast(t.targetBandUpdateSuccess, { type: 'success' });
     },

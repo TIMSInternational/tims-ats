@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
 import { Modal, UserPicker } from '../../../../components';
@@ -42,7 +41,6 @@ export function AddSuccessorModal({
   initialReadiness,
 }: AddSuccessorModalProps) {
   const { t } = useI18n();
-  const utils = trpc.useUtils();
   const queryClient = useQueryClient();
 
   const [roleId, setRoleId] = useState(initialRoleId ?? '');
@@ -53,18 +51,8 @@ export function AddSuccessorModal({
 
   const submit = useSuccessionAddSuccessor({
     onSuccess: () => {
-      utils.succession.listCriticalRoles.invalidate();
-      utils.succession.getDashboardKpis.invalidate();
-      utils.succession.getCompetencyCoverage.invalidate();
-      utils.succession.getRolesWithoutSuccessor.invalidate();
-      // Sprint 1.4 Task 1 → Task 4 cross-feature handoff: adding a suggested
-      // successor (from the Nine Box panel) must live-refresh both the
-      // comp-gap check (now sees the new ready_now successor) and the
-      // suggestion list itself (must drop the just-added candidate).
-      utils.succession.getCompGapAlerts.invalidate();
-      utils.succession.getSuggestedSuccessors.invalidate();
-      // Cutover parity: also refresh the C# platform-api succession reads (prefix match covers all
-      // eight) so a flag-on cache stays coherent. No-op while the reads route through tRPC.
+      // The TS tRPC succession reads have been deleted — the platform-api query keys are the
+      // only read path left to invalidate.
       queryClient.invalidateQueries({ queryKey: ['platform-api', 'succession'] });
       toast(t.succession.addSuccessorSuccess, { type: 'success' });
       onClose();
