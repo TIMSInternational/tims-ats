@@ -16,7 +16,7 @@ namespace Tims.Application.Fx;
 public sealed class RefreshFxRatesUseCase(IFxRateGateway gateway, IFxRateWriteRepository repository)
 {
     private const string BaseCurrency = CurrencyCodes.PlatformBillingCurrency; // USD
-    private const string Source = "frankfurter";
+    private const string Source = "exchangerate-api";
 
     // A small seed set so cold-start still pins the common currencies even before any comp/company/band row
     // references them (COP + CRC = the live TIMS/INVU currencies; EUR/MXN common). Unioned with the discovered set.

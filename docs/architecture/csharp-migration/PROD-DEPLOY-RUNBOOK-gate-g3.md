@@ -11,7 +11,15 @@ Federico execution.
 > (`fx_rates`), and several **flip-ready** write domains. §2 (flag surface), §1 (migrations), and §6 (cutover
 > order) below are updated to the full current set. **UPDATE 2026-07-27:** this is no longer universally true —
 > `TeamIntelReadEnabled` has been flipped and confirmed live in prod (Federico). Every OTHER surface below is
-> still dark; nothing else has been deployed.
+> still dark; nothing else has been deployed. **UPDATE 2026-07-28:** the FX rate provider was swapped from
+> Frankfurter to ExchangeRate-API (`open.er-api.com`) — the gateway called Frankfurter's v1 (ECB) batch
+> endpoint, which doesn't support COP/CRC, the actual currencies real customer orgs use. **Correction
+> (2026-07-29):** Frankfurter's v2 API DOES support both, via a real batch endpoint too
+> (`GET /v2/rates?base=X&quotes=Y,Z,...`) — so ExchangeRate-API was kept instead because Frankfurter's own
+> `/v2/currencies` catalog doesn't list COP/CRC even though its rate endpoints serve real data for both, an
+> inconsistency ExchangeRate-API's ~166-currency catalog doesn't have. See
+> `docs/architecture/csharp-migration/fx-provider-swap-2026-07-28.md` for the full correction.
+> The `fx_rates` migration/table/job design in §1/§8 is unaffected — only the upstream data source changed.
 
 > **Who runs what.** Everything in this runbook that touches PROD (AWS, secrets, prod DDL, DNS, feature-flag
 > flips, deleting TS) is **Federico-run** — the standing migration rule (`I never touch prod`). Claude prepared
@@ -173,8 +181,9 @@ prod-verify you drop the TS router/service/repo and flip its tables to `efcore` 
 4. `Evaluation360ReadEnabled` → `SuccessionReadEnabled` → `CompensationReadEnabled` → `NineBoxReadEnabled` →
    `EngagementReadEnabled` → `DeiReadEnabled` (the people/comp dashboards — staff-JWT reads; k-anon suppression
    lives in the shared kernels, already golden-parity).
-5. `FxReadsEnabled` — **prereq: apply `fx_rates` (§1) + seed the first frankfurter refresh** (register frankfurter.dev
-   in the SOC2 subprocessor list). Backs the FX-dependent comp + dei pay-equity reads.
+5. `FxReadsEnabled` — **prereq: apply `fx_rates` (§1) + seed the first ExchangeRate-API refresh** (register
+   exchangerate-api.com in the SOC2 subprocessor list — the gateway is ExchangeRate-API, not Frankfurter; see
+   the 2026-07-28/29 UPDATE above). Backs the FX-dependent comp + dei pay-equity reads.
 6. `ExternalVendorReadEnabled` — API-key surface; coordinate the external vendor.
 
 **Phase B — writes (after each domain's reads are verified; writes last):**

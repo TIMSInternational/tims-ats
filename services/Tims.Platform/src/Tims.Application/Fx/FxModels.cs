@@ -1,6 +1,6 @@
 namespace Tims.Application.Fx;
 
-/// <summary>The result of one frankfurter "latest" fetch (Slice 11c gateway): the ECB effective date + the
+/// <summary>The result of one gateway "latest" fetch (Slice 11c gateway): the provider's effective date + the
 /// base→quote rates for the requested quote currencies. NEVER golden-fixtured (it wraps a live fetch).</summary>
 public sealed record FxGatewayRates(string BaseCurrency, DateOnly AsOf, IReadOnlyDictionary<string, double> Rates);
 

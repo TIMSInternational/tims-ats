@@ -1013,6 +1013,14 @@
           "xunit.extensibility.core": "[2.9.3]"
         }
       },
+      "fxseedonce": {
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.Extensions.Logging.Console": "[10.0.10, )",
+          "Tims.Application": "[1.0.0, )",
+          "Tims.Infrastructure": "[1.0.0, )"
+        }
+      },
       "tims.api": {
         "type": "Project",
         "dependencies": {

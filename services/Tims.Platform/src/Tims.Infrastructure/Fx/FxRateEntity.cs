@@ -20,12 +20,13 @@ public sealed class FxRateEntity
     /// <summary>base→quote rate (units of quote per 1 unit of base).</summary>
     public double Rate { get; set; }
 
-    /// <summary>The ECB effective date the rate is for (frankfurter's <c>date</c>).</summary>
+    /// <summary>The provider's effective date the rate is for.</summary>
     public DateOnly AsOf { get; set; }
 
     /// <summary>When the refresh job fetched + pinned this rate (provenance; never a parity input).</summary>
     public DateTime FetchedAt { get; set; }
 
-    /// <summary>The rate source — always <c>frankfurter</c> for now.</summary>
-    public string Source { get; set; } = "frankfurter";
+    /// <summary>The rate source — always <c>exchangerate-api</c> for now (see
+    /// docs/architecture/csharp-migration/fx-provider-swap-2026-07-28.md).</summary>
+    public string Source { get; set; } = "exchangerate-api";
 }

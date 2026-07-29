@@ -101,9 +101,14 @@ try
     builder.Services.AddHrisConnectors();
     builder.Services.AddHrisSyncWorker();
 
-    // --- FX gateway plane (Slice 11c): the daily refresh job pins frankfurter (ECB) rates into fx_rates ----
+    // --- FX gateway plane (Slice 11c): the daily refresh job pins ExchangeRate-API rates into fx_rates ------
+    // (originally Frankfurter/ECB v1; swapped 2026-07-28 — see
+    // docs/architecture/csharp-migration/fx-provider-swap-2026-07-28.md — v1's batch endpoint didn't cover
+    // COP/CRC, v2's API does (including a real batch endpoint), but Frankfurter's own currency catalog
+    // doesn't list COP/CRC even though its rate endpoints serve real data for both; ExchangeRate-API was
+    // kept for its consistent, documented currency coverage).
     // The global RLS-exempt FxRateDbContext writes on the PRIVILEGED/owner connection (no TenantScope). The
-    // typed frankfurter client + Polly resilience is AddFxRateGateway; the write repo + use case are scoped so
+    // typed client + Polly resilience is AddFxRateGateway; the write repo + use case are scoped so
     // Quartz's per-fire DI scope resolves them fresh. AddDbContext is lazy — a placeholder conn never blocks boot.
     builder.Services.AddDbContext<FxRateDbContext>(options => options.UseNpgsql(databaseConnectionString));
     builder.Services.AddFxRateGateway();

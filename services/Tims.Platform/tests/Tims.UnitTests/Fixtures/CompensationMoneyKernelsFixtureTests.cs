@@ -11,7 +11,7 @@ namespace Tims.UnitTests.Fixtures;
 /// (contracts/compensation-fixtures/{convert-money,sum-money}.json) — the SAME cases the TS vitest
 /// (tests/currency/convert-money-fixtures.test.ts) asserts against the REAL @tims/shared PURE exports
 /// (convertMoneyWithRate / sumMoneyWithRates, which the live currency.ts now delegates to). FIXED rates only:
-/// the live frankfurter fetch is NEVER fixtured. Byte-parity for the EPSILON half-up bias (1.005 -> 1.01),
+/// the live FX-gateway fetch is NEVER fixtured. Byte-parity for the EPSILON half-up bias (1.005 -> 1.01),
 /// round-then-sum, and the `converted` flag. A drift on either stack turns its CI red.
 /// </summary>
 public sealed class CompensationMoneyKernelsFixtureTests

@@ -70,8 +70,12 @@ jobs:
 
       # Integration tests (Spike A Testcontainers RLS proof + API health/ready/OpenAPI smoke).
       # Docker is available on ubuntu-latest; Testcontainers pulls postgres and runs real DDL.
+      # Category!=LiveNetwork excludes FxSeedRunnerTests' real open.er-api.com call — a live external
+      # dependency has no place gating unrelated PRs (rate limits/network blips would redden CI for
+      # everyone). Run it explicitly with --filter "Category=LiveNetwork" (or the full --filter Fx)
+      # for a local/manual verification pass.
       - name: Integration tests (Testcontainers)
-        run: dotnet test tests/Tims.IntegrationTests/Tims.IntegrationTests.csproj --no-build -c Release
+        run: dotnet test tests/Tims.IntegrationTests/Tims.IntegrationTests.csproj --no-build -c Release --filter "Category!=LiveNetwork"
 
   container:
     name: Container image builds
