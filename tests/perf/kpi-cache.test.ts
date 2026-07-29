@@ -30,23 +30,9 @@ vi.mock('@tims/db', () => ({
     auditLog: { create: vi.fn().mockResolvedValue(undefined) },
     featureFlag: {
       findUnique: vi.fn().mockResolvedValue(null),
-      update: vi
-        .fn()
-        .mockResolvedValue({
-          id: 'flag-1',
-          key: 'some_flag',
-          enabled: true,
-          payload: null,
-          organizationId: 'org-uuid-1',
-        }),
+      update: vi.fn().mockResolvedValue({ id: 'flag-1', key: 'some_flag', enabled: true, payload: null, organizationId: 'org-uuid-1' }),
       upsert: vi.fn().mockResolvedValue({ id: 'flag-1', key: 'some_flag', enabled: true }),
-      delete: vi
-        .fn()
-        .mockResolvedValue({
-          id: 'c0000000-0000-0000-0000-000000000001',
-          key: 'some_flag',
-          organizationId: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
-        }),
+      delete: vi.fn().mockResolvedValue({ id: 'c0000000-0000-0000-0000-000000000001', key: 'some_flag', organizationId: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11' }),
       deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
     organization: { findMany: vi.fn().mockResolvedValue([]) },
@@ -77,15 +63,7 @@ vi.mock('@tims/db', () => ({
     application: { count: vi.fn().mockResolvedValue(0), findMany: vi.fn().mockResolvedValue([]) },
     featureFlag: {
       findUnique: vi.fn().mockResolvedValue(null),
-      update: vi
-        .fn()
-        .mockResolvedValue({
-          id: 'flag-1',
-          key: 'some_flag',
-          enabled: true,
-          payload: null,
-          organizationId: 'org-uuid-1',
-        }),
+      update: vi.fn().mockResolvedValue({ id: 'flag-1', key: 'some_flag', enabled: true, payload: null, organizationId: 'org-uuid-1' }),
     },
   },
   runWithTenant: (_orgId: string, fn: () => unknown) => fn(),
@@ -162,7 +140,9 @@ function baseCtx() {
 
 async function makePerformanceCaller() {
   const { createCallerFactory, router } = await import('../../packages/api/src/trpc');
-  const { performanceDashboardRouter } = await import('../../packages/api/src/routers/performance/dashboard');
+  const { performanceDashboardRouter } = await import(
+    '../../packages/api/src/routers/performance/dashboard'
+  );
   const testRouter = router({ performanceDashboard: performanceDashboardRouter });
   const factory = createCallerFactory(testRouter);
   return factory(baseCtx() as never);
@@ -172,14 +152,6 @@ async function makeLearningCaller() {
   const { createCallerFactory, router } = await import('../../packages/api/src/trpc');
   const { learningRouter } = await import('../../packages/api/src/routers/learning');
   const testRouter = router({ learning: learningRouter });
-  const factory = createCallerFactory(testRouter);
-  return factory(baseCtx() as never);
-}
-
-async function makeTeamIntelCaller() {
-  const { createCallerFactory, router } = await import('../../packages/api/src/trpc');
-  const { teamIntelRouter } = await import('../../packages/api/src/routers/teamIntel');
-  const testRouter = router({ teamIntel: teamIntelRouter });
   const factory = createCallerFactory(testRouter);
   return factory(baseCtx() as never);
 }
@@ -241,11 +213,7 @@ beforeEach(() => {
 
   // db (platform/privileged path) defaults
   vi.mocked(db.featureFlag.upsert).mockResolvedValue({ id: 'flag-1', key: 'some_flag', enabled: true } as never);
-  vi.mocked(db.featureFlag.delete).mockResolvedValue({
-    id: 'c0000000-0000-0000-0000-000000000001',
-    key: 'some_flag',
-    organizationId: TEST_ORG_ID,
-  } as never);
+  vi.mocked(db.featureFlag.delete).mockResolvedValue({ id: 'c0000000-0000-0000-0000-000000000001', key: 'some_flag', organizationId: TEST_ORG_ID } as never);
   vi.mocked(db.featureFlag.deleteMany).mockResolvedValue({ count: 0 });
   vi.mocked(db.organization.findMany).mockResolvedValue([]);
   vi.mocked(db.auditLog.create).mockResolvedValue(undefined as never);
@@ -284,7 +252,11 @@ describe('performanceDashboard.getDashboardKpis — cache-aside', () => {
     const caller = await makePerformanceCaller();
     await caller.performanceDashboard.getDashboardKpis();
 
-    expect(vi.mocked(cacheSet)).toHaveBeenCalledWith(`tims:kpis:performance:${TEST_ORG_ID}`, expect.anything(), 45);
+    expect(vi.mocked(cacheSet)).toHaveBeenCalledWith(
+      `tims:kpis:performance:${TEST_ORG_ID}`,
+      expect.anything(),
+      45,
+    );
   });
 });
 
@@ -312,7 +284,11 @@ describe('learning.getDashboardKpis — cache-aside', () => {
     const caller = await makeLearningCaller();
     await caller.learning.getDashboardKpis();
 
-    expect(vi.mocked(cacheSet)).toHaveBeenCalledWith(`tims:kpis:learning:${TEST_ORG_ID}`, expect.anything(), 45);
+    expect(vi.mocked(cacheSet)).toHaveBeenCalledWith(
+      `tims:kpis:learning:${TEST_ORG_ID}`,
+      expect.anything(),
+      45,
+    );
   });
 });
 
@@ -392,7 +368,9 @@ describe('featureFlag.update — cache invalidation', () => {
       enabled: true,
     });
 
-    expect(vi.mocked(cacheInvalidatePrefix)).toHaveBeenCalledWith(`tims:flagcheck:${TEST_ORG_ID}:`);
+    expect(vi.mocked(cacheInvalidatePrefix)).toHaveBeenCalledWith(
+      `tims:flagcheck:${TEST_ORG_ID}:`,
+    );
   });
 });
 
@@ -440,9 +418,7 @@ async function makeSystemCaller() {
 describe('platform.system.updateFeatureFlag — cache invalidation (Finding 1)', () => {
   it('calls cacheInvalidatePrefix with the org flag prefix after upsert', async () => {
     vi.mocked(db.featureFlag.upsert).mockResolvedValue({
-      id: 'flag-1',
-      key: 'ai_enabled',
-      enabled: true,
+      id: 'flag-1', key: 'ai_enabled', enabled: true,
     } as never);
 
     const caller = await makeSystemCaller();
@@ -452,7 +428,9 @@ describe('platform.system.updateFeatureFlag — cache invalidation (Finding 1)',
       enabled: true,
     });
 
-    expect(vi.mocked(cacheInvalidatePrefix)).toHaveBeenCalledWith(`tims:flagcheck:${TEST_ORG_ID}:`);
+    expect(vi.mocked(cacheInvalidatePrefix)).toHaveBeenCalledWith(
+      `tims:flagcheck:${TEST_ORG_ID}:`,
+    );
   });
 });
 
@@ -461,15 +439,15 @@ describe('platform.system.deleteFeatureFlag — cache invalidation (Finding 1)',
   it('calls cacheInvalidatePrefix with the deleted flag org prefix', async () => {
     const FLAG_ID = 'c0000000-0000-0000-0000-000000000001';
     vi.mocked(db.featureFlag.delete).mockResolvedValue({
-      id: FLAG_ID,
-      key: 'ai_enabled',
-      organizationId: TEST_ORG_ID,
+      id: FLAG_ID, key: 'ai_enabled', organizationId: TEST_ORG_ID,
     } as never);
 
     const caller = await makeSystemCaller();
     await caller.system.deleteFeatureFlag({ id: FLAG_ID });
 
-    expect(vi.mocked(cacheInvalidatePrefix)).toHaveBeenCalledWith(`tims:flagcheck:${TEST_ORG_ID}:`);
+    expect(vi.mocked(cacheInvalidatePrefix)).toHaveBeenCalledWith(
+      `tims:flagcheck:${TEST_ORG_ID}:`,
+    );
   });
 });
 
@@ -489,7 +467,7 @@ describe('vacancy.getDashboardKpis — Date revival on cache hit (Finding 3)', (
           id: 'vac-1',
           title: 'Engineer',
           status: 'published',
-          createdAt: isoString, // Simulates JSON.parse — arrives as string
+          createdAt: isoString,          // Simulates JSON.parse — arrives as string
           _count: { applications: 5 },
         },
       ],

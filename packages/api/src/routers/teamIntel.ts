@@ -149,7 +149,10 @@ export const teamIntelRouter = router({
       const scopeWhere = (await scopeWhereFor('team', ctx.access, ctx.user.id)) as Prisma.TeamWhereInput;
       const teams = await db.team.findMany({
         where: {
-          AND: [{ id: { in: input.teamIds }, organizationId: ctx.user.organizationId }, scopeWhere],
+          AND: [
+            { id: { in: input.teamIds }, organizationId: ctx.user.organizationId },
+            scopeWhere,
+          ],
         },
         include: {
           leader: {
