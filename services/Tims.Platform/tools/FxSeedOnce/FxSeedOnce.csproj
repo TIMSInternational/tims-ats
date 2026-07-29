@@ -10,12 +10,10 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <!-- DEVIATION from the plan's literal Step 1 (tracked in task-1-report.md): the plan's
-         OutputType=Exe anticipates Task 2's Program.cs entrypoint, but with zero .cs files
-         containing a Main method, Exe fails CS5001 at build time — which blocks Task 1's own
-         RED/GREEN test cycle. Left as the implicit default (Library, matching every other
-         Tims.* project's csproj) for Task 1; Task 2 MUST add <OutputType>Exe</OutputType> back
-         to this file when it adds Program.cs. -->
+    <!-- Task 2 adds Program.cs (a top-level-statements Main), so OutputType flips back to Exe here
+         per the note left in Task 1 (see task-1-report.md) — Task 1 deliberately left this as the
+         implicit Library default because Exe with zero Main-bearing .cs files fails CS5001. -->
+    <OutputType>Exe</OutputType>
   </PropertyGroup>
 
   <ItemGroup>
