@@ -125,20 +125,6 @@ test_query "learning.listCourses" "learning.listCourses"
 test_query "learning.getDashboardKpis" "learning.getDashboardKpis"
 
 echo ""
-echo "--- ninebox ---"
-test_query "ninebox.getGrid" "ninebox.getGrid" '{"period":"Q2-2026"}'
-test_query "ninebox.getDashboardKpis" "ninebox.getDashboardKpis" '{"period":"Q2-2026"}'
-
-echo ""
-echo "--- succession ---"
-test_query "succession.listCriticalRoles" "succession.listCriticalRoles"
-test_query "succession.getDashboardKpis" "succession.getDashboardKpis"
-
-echo ""
-echo "--- teamIntel ---"
-test_query "teamIntel.getDashboardKpis" "teamIntel.getDashboardKpis" '{"teamId":"3f94e234-db8c-4679-bf1c-3d4ede630775"}'
-
-echo ""
 echo "--- engagement ---"
 test_query "engagement.listSurveys" "engagement.listSurveys"
 test_query "engagement.getDashboardKpis" "engagement.getDashboardKpis"
@@ -168,7 +154,7 @@ test_query "audit.listLogs" "audit.listLogs" '{"limit":5}'
 
 echo ""
 echo "--- billing ---"
-test_query "billing.getCurrentPlan" "billing.getCurrentPlan"
+test_query "billing.listInvoices" "billing.listInvoices" '{"take":5}'
 
 echo ""
 echo "--- featureFlag ---"

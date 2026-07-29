@@ -213,7 +213,7 @@ describe('runRlsEndpoint', () => {
       expect(result.detail).toContain('404 denial was expected');
     });
 
-    it('with crossTenantEmptyOk a 200 null-shape isolation response is isolated (ninebox /employee/{id} case)', async () => {
+    it('with crossTenantEmptyOk a 200 null-shape isolation response is isolated (synthetic case — no currently-live endpoint sets crossTenantEmptyOk; the ninebox /employee/{id} endpoint that originally motivated this flag was TS-deleted)', async () => {
       const emptyOkEp: EndpointDef = { ...idScopedEp, crossTenantEmptyOk: true };
       const fake = byToken(
         { status: 200, body: { evaluation: null, history: [] } },

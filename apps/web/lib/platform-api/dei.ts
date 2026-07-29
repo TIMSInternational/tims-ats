@@ -8,7 +8,7 @@
 // every hook returns the existing tRPC query unchanged (byte-identical to today). Merging
 // changes nothing in prod until Federico flips the flag at cutover.
 //
-// Mirrors lib/platform-api/{reporting,billing,evaluation360,succession,compensation,ninebox,
+// Mirrors lib/platform-api/{access-review,audit-log,billing,compensation,
 // engagement}.ts exactly: each hook calls BOTH the tRPC hook (enabled when NOT viaCSharp) and a
 // C# useQuery (enabled when viaCSharp), then returns the active one. The C# useQuery is typed
 // to the EXACT tRPC output type (inferRouterOutputs), so each mapper below is compile-time-

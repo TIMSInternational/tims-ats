@@ -81,8 +81,6 @@ export type CompanyListItem = RouterOutput['organization']['listCompanies'][numb
 export type BusinessUnitListItem = RouterOutput['organization']['listBusinessUnits'][number];
 export type UnitMember = RouterOutput['organization']['listUnitMembers'][number];
 
-// Nine-box — calibration committee (Wave 2.5 slice 7a)
-
 // Offer (types will be added when offer service is refactored in Phase 1.4)
 
 // Performance — low-progress alerts panel (Sprint 1.4 Task 2)

@@ -6,7 +6,7 @@ describe('substituteEndpointId', () => {
   const base: EndpointDef = {
     name: 'ninebox-employee',
     csharpPath: '/ninebox/employee/{id}?period=2026-Q1',
-    tsProcedure: 'ninebox.getEmployeeDetail',
+    tsProcedure: 'ninebox.getAxisBreakdown',
     input: { userId: ID_SENTINEL, period: '2026-Q1' },
     idScopeKey: 'employee',
     expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },

@@ -24,7 +24,7 @@ describe('SURFACES', () => {
   });
 
   it('every Tier-2 by-id endpoint sets idScopeKey and carries the {id} sentinel in path + input', () => {
-    // The 9 by-id Mode-A IDOR endpoints and the resource key each threads.
+    // The 3 by-id Mode-A IDOR endpoints and the resource key each threads.
     const expected: Record<string, string> = {
       'compensation/employee': 'employee',
       'ninebox/axis-breakdown': 'employee',
