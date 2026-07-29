@@ -4,12 +4,27 @@
 
 While building the `FxSeedOnce` one-off tool to populate `fx_rates` (needed to flip
 `NEXT_PUBLIC_COMPENSATION_FX_READ_VIA_CSHARP`), its integration test made the first-ever real call
-to the live Frankfurter API with COP and CRC. Frankfurter (ECB) does not support either currency —
-confirmed via `curl https://api.frankfurter.dev/v1/currencies`, a fixed list of ~30 major/regional
-currencies. Per `RefreshFxRatesUseCase.cs`'s own original comment, COP/CRC are "the live
-TIMS/INVU currencies" — the actual currencies this platform's real customer orgs use. No existing
-test had ever exercised the real gateway with these currency codes before (existing tests used
-synthetic hand-supplied rates).
+to the live Frankfurter API with COP and CRC. The gateway called Frankfurter's **v1** batch endpoint
+(`v1/latest?base=X&symbols=Y,Z`) — its ECB-sourced list of ~30 major/regional currencies genuinely
+does not include COP or CRC, confirmed via `curl https://api.frankfurter.dev/v1/currencies`. Per
+`RefreshFxRatesUseCase.cs`'s own original comment, COP/CRC are "the live TIMS/INVU currencies" —
+the actual currencies this platform's real customer orgs use. No existing test had ever exercised
+the real gateway with these currency codes before (existing tests used synthetic hand-supplied
+rates).
+
+## Correction (2026-07-29)
+
+The original write-up above overstated the gap: Frankfurter's **v2** API, via its per-pair endpoint
+(`GET /v2/rate/{base}/{quote}`), DOES return real rates for both COP and CRC — confirmed live:
+`curl https://api.frankfurter.dev/v2/rate/USD/COP` returns
+`{"date":"...","base":"USD","quote":"COP","rate":3203.02}`. The gap is in Frankfurter's v1 batch
+endpoint (the one the original gateway called), not in Frankfurter as a provider.
+
+**The decision to keep ExchangeRate-API still stands**, but the honest reason is narrower than
+originally stated: ExchangeRate-API returns ALL needed currencies (COP/CRC/EUR/MXN) in ONE batch
+HTTP call, whereas Frankfurter v2 only supports per-pair lookups — refreshing the same four
+currencies against v2 would need 4 separate calls instead of 1. ExchangeRate-API was kept for
+single-batch-call simplicity, not because Frankfurter is incapable of resolving COP/CRC.
 
 ## What changed
 

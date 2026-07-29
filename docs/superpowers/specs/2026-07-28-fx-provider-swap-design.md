@@ -1,5 +1,20 @@
 # FX Rate Provider Swap (Frankfurter → ExchangeRate-API) — Design
 
+## Correction (2026-07-29)
+
+The Provider Selection table below marks Frankfurter "**No** — confirmed via live API" for
+COP/CRC. That verification only exercised Frankfurter's **v1** endpoints (`v1/currencies`,
+`v1/latest`), whose fixed ~30-currency ECB list genuinely excludes COP/CRC. Frankfurter's **v2**
+API, via its per-pair endpoint (`GET /v2/rate/{base}/{quote}`), DOES return real rates for both —
+confirmed live: `curl https://api.frankfurter.dev/v2/rate/USD/COP` returns
+`{"date":"...","base":"USD","quote":"COP","rate":3203.02}`.
+
+This does not change the decision recorded below: ExchangeRate-API stays, but the honest
+justification is narrower than the table implies — it returns all needed currencies in ONE batch
+call, while Frankfurter v2 only supports per-pair lookups (refreshing COP/CRC/EUR/MXN would need 4
+separate v2 calls instead of 1). The table and prose below are left as originally written (this is
+a point-in-time design record); read the "Frankfurter: No" row with this correction in mind.
+
 ## Problem
 
 The FX-rates seed tool built this session (`FxSeedOnce`) exists to unblock the compensation

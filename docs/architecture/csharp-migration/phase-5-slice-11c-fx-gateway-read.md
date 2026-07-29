@@ -4,13 +4,18 @@
 **FEDERICO DECISION MADE (2026-07-22): DB-pinned rates + daily Quartz refresh.** Build against that.
 **Depends on:** compensation FX-free (#162) + DEI (11b) merged. Branch off main after 11b.
 
-**UPDATE 2026-07-28: FX PROVIDER SWAPPED.** Frankfurter's fixed ~30-currency ECB list does not
-include COP or CRC — the actual currencies this platform's real customer orgs use — discovered via
-the first-ever live COP/CRC API call (the `FxSeedOnce` tool's integration test). Replaced with
-ExchangeRate-API's open/free tier (still keyless, still free) — see
-`docs/architecture/csharp-migration/fx-provider-swap-2026-07-28.md`. Every mention of
-"frankfurter"/"ECB" below is historical (describes what shipped originally, not the current
-provider); the table/job/gateway design itself is unaffected.
+**UPDATE 2026-07-28: FX PROVIDER SWAPPED.** The gateway called Frankfurter's v1 batch endpoint,
+whose fixed ~30-currency ECB list does not include COP or CRC — the actual currencies this
+platform's real customer orgs use — discovered via the first-ever live COP/CRC API call (the
+`FxSeedOnce` tool's integration test). **Correction (2026-07-29):** Frankfurter's v2 per-pair
+endpoint (`GET /v2/rate/{base}/{quote}`) DOES return real COP/CRC rates — confirmed live — so the
+gap was in the v1 endpoint the gateway called, not in Frankfurter as a provider. Replaced with
+ExchangeRate-API's open/free tier (still keyless, still free) anyway, on the honest basis that it
+returns all needed currencies in ONE batch call, whereas Frankfurter v2 would need one per-pair
+call per currency per refresh — see
+`docs/architecture/csharp-migration/fx-provider-swap-2026-07-28.md` for the full correction. Every
+mention of "frankfurter"/"ECB" below is historical (describes what shipped originally, not the
+current provider); the table/job/gateway design itself is unaffected.
 
 ## The gateway (net-new external-integration pattern — 3rd after BambooHR/Stripe)
 
@@ -54,7 +59,10 @@ provider); the table/job/gateway design itself is unaffected.
 
 - Apply the `fx_rates` EF migration DDL to prod (new efcore-owned table, RLS-exempt + app_tenant SELECT grant).
 - Confirm the FxRefreshJob cron + that the Workers host runs it; seed the first rate pull.
-- Register frankfurter.dev in the subprocessor/vendor register (SOC2).
+- Register exchangerate-api.com in the subprocessor/vendor register (SOC2) — the FX gateway now
+  uses ExchangeRate-API, not Frankfurter (see the 2026-07-28 UPDATE above); also plan for the
+  ExchangeRate-API attribution requirement once its rates render in the UI (see
+  `docs/REMAINING-WORK.md`'s Hygiene / recorded debt section).
 - Flip `Platform:FxReadsEnabled` at canary AFTER the first refresh populates fx_rates.
 
 ## After 11c
