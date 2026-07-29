@@ -30,14 +30,18 @@ public sealed class FxSeedRunnerTests(FxSchemaFixture fixture)
 
         var pinned = await FxSeedRunner.RunAsync(_fixture.ConnectionString, CancellationToken.None);
 
-        // NOTE (2026-07-28 — see docs/architecture/csharp-migration/fx-provider-swap-2026-07-28.md):
-        // the original outbound gateway (ECB-backed, keyless) did NOT publish rates for COP or CRC
-        // at all (its currency set is a fixed reference list of ~30 majors), so this test's
-        // assertion was temporarily narrowed to the 2 currencies that provider *did* support
-        // (EUR/MXN) when the gap was first discovered live. IFxRateGateway's adapter has since
-        // been swapped to ExchangeRateApiGateway, which covers both COP and CRC — restoring the
-        // assertion below to its original intent (all 4 seed currencies) now that the fix is
-        // verified live.
+        // NOTE (2026-07-28, corrected 2026-07-29 — see
+        // docs/architecture/csharp-migration/fx-provider-swap-2026-07-28.md):
+        // the original outbound gateway called Frankfurter's v1 (ECB) batch endpoint, whose fixed
+        // ~30-currency reference list did NOT publish rates for COP or CRC, so this test's
+        // assertion was temporarily narrowed to the 2 currencies that endpoint *did* support
+        // (EUR/MXN) when the gap was first discovered live. Frankfurter's v2 API does return real
+        // COP/CRC rates (including via a real batch endpoint) — but its own `/v2/currencies`
+        // catalog doesn't list either currency even though its rate endpoints serve real data for
+        // both, an unexplained catalog/endpoint gap. IFxRateGateway's adapter has since been
+        // swapped to ExchangeRateApiGateway, whose ~166-currency catalog consistently includes
+        // both COP and CRC with no such mismatch — restoring the assertion below to its original
+        // intent (all 4 seed currencies) now that the fix is verified live.
         Assert.True(pinned >= 4, $"expected all 4 seed currencies (COP/CRC/EUR/MXN) — the whole reason for the provider swap; got {pinned}");
 
         await using var db = _fixture.NewContext();

@@ -14,8 +14,10 @@ Federico execution.
 > still dark; nothing else has been deployed. **UPDATE 2026-07-28:** the FX rate provider was swapped from
 > Frankfurter to ExchangeRate-API (`open.er-api.com`) — the gateway called Frankfurter's v1 (ECB) batch
 > endpoint, which doesn't support COP/CRC, the actual currencies real customer orgs use. **Correction
-> (2026-07-29):** Frankfurter's v2 per-pair endpoint DOES support both, but only one currency pair per call,
-> so ExchangeRate-API was kept for its single-batch-call coverage of all needed currencies instead. See
+> (2026-07-29):** Frankfurter's v2 API DOES support both, via a real batch endpoint too
+> (`GET /v2/rates?base=X&quotes=Y,Z,...`) — so ExchangeRate-API was kept instead because Frankfurter's own
+> `/v2/currencies` catalog doesn't list COP/CRC even though its rate endpoints serve real data for both, an
+> inconsistency ExchangeRate-API's ~166-currency catalog doesn't have. See
 > `docs/architecture/csharp-migration/fx-provider-swap-2026-07-28.md` for the full correction.
 > The `fx_rates` migration/table/job design in §1/§8 is unaffected — only the upstream data source changed.
 

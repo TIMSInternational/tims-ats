@@ -617,6 +617,8 @@ to:
     // --- FX gateway plane (Slice 11c): the daily refresh job pins ExchangeRate-API rates into fx_rates ------
     // (originally Frankfurter/ECB; swapped 2026-07-28 — see
     // docs/architecture/csharp-migration/fx-provider-swap-2026-07-28.md, Frankfurter never supported COP/CRC).
+    // (Correction, per that doc: Frankfurter's v2 API does support both; ExchangeRate-API was kept because
+    // Frankfurter's own /v2/currencies catalog doesn't list COP/CRC even though its rate endpoints do.)
     // The global RLS-exempt FxRateDbContext writes on the PRIVILEGED/owner connection (no TenantScope). The
     // typed client + Polly resilience is AddFxRateGateway; the write repo + use case are scoped so
     // Quartz's per-fire DI scope resolves them fresh. AddDbContext is lazy — a placeholder conn never blocks boot.
@@ -661,10 +663,14 @@ While building the `FxSeedOnce` one-off tool to populate `fx_rates` (needed to f
 `NEXT_PUBLIC_COMPENSATION_FX_READ_VIA_CSHARP`), its integration test made the first-ever real call
 to the live Frankfurter API with COP and CRC. Frankfurter (ECB) does not support either currency —
 confirmed via `curl https://api.frankfurter.dev/v1/currencies`, a fixed list of ~30 major/regional
-currencies. Per `RefreshFxRatesUseCase.cs`'s own original comment, COP/CRC are "the live
-TIMS/INVU currencies" — the actual currencies this platform's real customer orgs use. No existing
-test had ever exercised the real gateway with these currency codes before (existing tests used
-synthetic hand-supplied rates).
+currencies. (Correction, see `docs/architecture/csharp-migration/fx-provider-swap-2026-07-28.md`:
+this only held for Frankfurter's **v1** endpoints — its v2 API does return real COP/CRC rates, via
+a real batch endpoint too; the final reason ExchangeRate-API was kept is that Frankfurter's own
+`/v2/currencies` catalog doesn't list COP/CRC even though its v2 rate endpoints serve real data for
+both, an inconsistency ExchangeRate-API's catalog doesn't have.) Per `RefreshFxRatesUseCase.cs`'s
+own original comment, COP/CRC are "the live TIMS/INVU currencies" — the actual currencies this
+platform's real customer orgs use. No existing test had ever exercised the real gateway with these
+currency codes before (existing tests used synthetic hand-supplied rates).
 
 ## What changed
 
@@ -716,7 +722,10 @@ changed since 2026-07-21.**`), append a new sentence at the end of that blockquo
 ```markdown
 **UPDATE 2026-07-28:** the FX rate provider was swapped from Frankfurter to ExchangeRate-API
 (`open.er-api.com`) — Frankfurter never supported COP/CRC, the actual currencies real customer orgs
-use. See `docs/architecture/csharp-migration/fx-provider-swap-2026-07-28.md`. The `fx_rates`
+use. (Correction: only Frankfurter's v1 endpoint lacked COP/CRC; its v2 API does support both, but
+ExchangeRate-API was kept because Frankfurter's own `/v2/currencies` catalog doesn't list COP/CRC
+even though its rate endpoints serve real data for both.) See
+`docs/architecture/csharp-migration/fx-provider-swap-2026-07-28.md`. The `fx_rates`
 migration/table/job design in §1/§8 is unaffected — only the upstream data source changed.
 ```
 

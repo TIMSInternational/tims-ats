@@ -12,10 +12,12 @@ namespace Tims.Infrastructure.Fx;
 /// breaker). Keyless — NO Authorization header, NO secret. The ONLY egress is currency codes (no PII).
 /// Replaces the original Frankfurter adapter (Slice 11c): the original gateway called Frankfurter's v1
 /// (ECB) batch endpoint, whose fixed ~30-currency list does not include COP or CRC — the actual
-/// currencies this platform's real customer orgs use. Frankfurter's v2 per-pair endpoint DOES support
-/// both, but only one currency pair per call; ExchangeRate-API was kept instead because it returns all
-/// needed currencies in a single batch call. See
-/// docs/architecture/csharp-migration/fx-provider-swap-2026-07-28.md (correction dated 2026-07-29).
+/// currencies this platform's real customer orgs use. Frankfurter's v2 API DOES support both, via a real
+/// batch endpoint too; ExchangeRate-API was kept instead because Frankfurter's own `/v2/currencies`
+/// catalog doesn't list COP/CRC even though its rate endpoints serve real data for both — an
+/// unexplained catalog/endpoint gap that ExchangeRate-API's consistent ~166-currency catalog doesn't
+/// have. See docs/architecture/csharp-migration/fx-provider-swap-2026-07-28.md (correction dated
+/// 2026-07-29).
 /// </summary>
 public sealed class ExchangeRateApiGateway(HttpClient httpClient, ILogger<ExchangeRateApiGateway> logger) : IFxRateGateway
 {

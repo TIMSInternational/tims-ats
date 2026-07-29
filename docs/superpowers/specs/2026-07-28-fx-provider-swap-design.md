@@ -9,11 +9,19 @@ API, via its per-pair endpoint (`GET /v2/rate/{base}/{quote}`), DOES return real
 confirmed live: `curl https://api.frankfurter.dev/v2/rate/USD/COP` returns
 `{"date":"...","base":"USD","quote":"COP","rate":3203.02}`.
 
-This does not change the decision recorded below: ExchangeRate-API stays, but the honest
-justification is narrower than the table implies — it returns all needed currencies in ONE batch
-call, while Frankfurter v2 only supports per-pair lookups (refreshing COP/CRC/EUR/MXN would need 4
-separate v2 calls instead of 1). The table and prose below are left as originally written (this is
-a point-in-time design record); read the "Frankfurter: No" row with this correction in mind.
+This does not change the decision recorded below: ExchangeRate-API stays. **Further correction
+(2026-07-28, later same day):** the justification above is ALSO wrong — Frankfurter v2 has a real
+batch endpoint too (`GET /v2/rates?base=USD&quotes=COP,CRC,EUR,MXN` returns all four in one 200
+response, confirmed live), so "single batch call vs. N per-pair calls" is not a valid
+distinguishing reason either. The actual final reason: Frankfurter's own `/v2/currencies` catalog
+(165 entries) does NOT list COP or CRC, even though `/v2/rate(s)` return real, distinctly-dated
+data for both — an inconsistency in Frankfurter's own API. ExchangeRate-API's response
+consistently includes both COP and CRC among its ~166 currencies, with no such catalog/endpoint
+mismatch — the documented-and-consistent provider was chosen over the one with an unexplained gap
+between what its endpoints serve and what its own catalog claims to support. See
+`docs/architecture/csharp-migration/fx-provider-swap-2026-07-28.md` for the fully corrected
+write-up. The table and prose below are left as originally written (this is a point-in-time
+design record); read the "Frankfurter: No" row with both corrections in mind.
 
 ## Problem
 

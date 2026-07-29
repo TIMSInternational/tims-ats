@@ -3,8 +3,10 @@ namespace Tims.Application.Fx;
 /// <summary>
 /// The outbound port to the external FX-rate provider (ExchangeRate-API, KEYLESS — see
 /// docs/architecture/csharp-migration/fx-provider-swap-2026-07-28.md; originally Frankfurter/ECB v1, whose
-/// batch endpoint didn't cover COP/CRC — v2's per-pair endpoint does, but ExchangeRate-API's single batch
-/// call was kept for simplicity). The ONLY egress surface — implemented by the typed
+/// batch endpoint didn't cover COP/CRC — v2's API does, including a real batch endpoint, but Frankfurter's
+/// own currency catalog doesn't list COP/CRC even though its rate endpoints serve real data for both, so
+/// ExchangeRate-API was kept for its consistent, documented currency coverage). The ONLY egress surface —
+/// implemented by the typed
 /// <c>ExchangeRateApiGateway</c> (HttpClient + Polly resilience). Used ONLY by the daily refresh job to PIN
 /// rates into <c>fx_rates</c>; the FX-derived reads read the pins, never this gateway. Fake-tested with a stub
 /// HttpMessageHandler — a live rate is NEVER golden-parity fixtured.

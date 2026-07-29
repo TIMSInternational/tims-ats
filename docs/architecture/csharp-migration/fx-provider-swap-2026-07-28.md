@@ -12,19 +12,25 @@ the actual currencies this platform's real customer orgs use. No existing test h
 the real gateway with these currency codes before (existing tests used synthetic hand-supplied
 rates).
 
-## Correction (2026-07-29)
+## Correction (2026-07-29, revised)
 
-The original write-up above overstated the gap: Frankfurter's **v2** API, via its per-pair endpoint
-(`GET /v2/rate/{base}/{quote}`), DOES return real rates for both COP and CRC — confirmed live:
-`curl https://api.frankfurter.dev/v2/rate/USD/COP` returns
-`{"date":"...","base":"USD","quote":"COP","rate":3203.02}`. The gap is in Frankfurter's v1 batch
-endpoint (the one the original gateway called), not in Frankfurter as a provider.
+The original write-up overstated the gap, and a first correction attempt (below, struck through in
+spirit) was ALSO wrong: Frankfurter's **v2** API does return real rates for COP/CRC, via both
+`GET /v2/rate/{base}/{quote}` and a genuine batch endpoint, `GET /v2/rates?base=X&quotes=Y,Z,...`
+— confirmed live: `curl "https://api.frankfurter.dev/v2/rates?base=USD&quotes=COP,CRC,EUR,MXN"`
+returns all four currencies in one 200 response. So "ExchangeRate-API was kept for single-batch-call
+simplicity" (the first correction's claim) is not a valid distinguishing reason either — Frankfurter
+v2 has its own batch endpoint.
 
-**The decision to keep ExchangeRate-API still stands**, but the honest reason is narrower than
-originally stated: ExchangeRate-API returns ALL needed currencies (COP/CRC/EUR/MXN) in ONE batch
-HTTP call, whereas Frankfurter v2 only supports per-pair lookups — refreshing the same four
-currencies against v2 would need 4 separate calls instead of 1. ExchangeRate-API was kept for
-single-batch-call simplicity, not because Frankfurter is incapable of resolving COP/CRC.
+**The real, final reason ExchangeRate-API was kept:** Frankfurter's own `/v2/currencies` catalog
+(165 entries) does NOT list COP or CRC, even though `/v2/rate(s)` return real, distinctly-dated data
+for both. This is an inconsistency in Frankfurter's own API — its rate endpoints serve currencies its
+own currency catalog doesn't document. ExchangeRate-API's response explicitly and consistently
+includes both COP and CRC among its ~166 currencies, with no such catalog/endpoint mismatch. Given
+this is production financial data, the documented-and-consistent provider was chosen over the one
+with an unexplained gap between what its endpoints serve and what its own catalog claims to support
+— accepting ExchangeRate-API's attribution + subprocessor-registration overhead (tracked in
+`docs/REMAINING-WORK.md`) as the cost of that reliability guarantee.
 
 ## What changed
 

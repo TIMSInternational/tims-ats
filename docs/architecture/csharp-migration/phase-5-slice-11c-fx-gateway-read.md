@@ -7,12 +7,16 @@
 **UPDATE 2026-07-28: FX PROVIDER SWAPPED.** The gateway called Frankfurter's v1 batch endpoint,
 whose fixed ~30-currency ECB list does not include COP or CRC — the actual currencies this
 platform's real customer orgs use — discovered via the first-ever live COP/CRC API call (the
-`FxSeedOnce` tool's integration test). **Correction (2026-07-29):** Frankfurter's v2 per-pair
-endpoint (`GET /v2/rate/{base}/{quote}`) DOES return real COP/CRC rates — confirmed live — so the
-gap was in the v1 endpoint the gateway called, not in Frankfurter as a provider. Replaced with
-ExchangeRate-API's open/free tier (still keyless, still free) anyway, on the honest basis that it
-returns all needed currencies in ONE batch call, whereas Frankfurter v2 would need one per-pair
-call per currency per refresh — see
+`FxSeedOnce` tool's integration test). **Correction (2026-07-29):** Frankfurter's v2 API DOES
+return real COP/CRC rates, via both a per-pair endpoint and a genuine batch endpoint
+(`GET /v2/rates?base=X&quotes=Y,Z,...`) — confirmed live — so the gap was in the v1 endpoint the
+gateway called, not in Frankfurter's batch capability. Replaced with ExchangeRate-API's open/free
+tier (still keyless, still free) anyway, on the real final basis: Frankfurter's own
+`/v2/currencies` catalog (165 entries) doesn't list COP or CRC even though its rate endpoints
+return real, distinctly-dated data for both — an inconsistency between what Frankfurter's
+endpoints serve and what its own catalog documents. ExchangeRate-API's response consistently
+includes both among its ~166 currencies with no such catalog/endpoint mismatch, so it was kept as
+the provider with documented, consistent coverage — see
 `docs/architecture/csharp-migration/fx-provider-swap-2026-07-28.md` for the full correction. Every
 mention of "frankfurter"/"ECB" below is historical (describes what shipped originally, not the
 current provider); the table/job/gateway design itself is unaffected.
