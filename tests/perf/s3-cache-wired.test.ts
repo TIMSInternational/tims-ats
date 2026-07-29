@@ -55,21 +55,6 @@ describe('s3-cache-wired tripwire', () => {
     expect(src).toMatch(/cacheSet/);
   });
 
-  it('teamIntel.ts getDashboardKpis references cacheGet', () => {
-    const src = readRouter('packages/api/src/routers/teamIntel.ts');
-    expect(src).toMatch(/cacheGet/);
-  });
-
-  it('teamIntel.ts getDashboardKpis references cacheSet', () => {
-    const src = readRouter('packages/api/src/routers/teamIntel.ts');
-    expect(src).toMatch(/cacheSet/);
-  });
-
-  it('teamIntel.ts uses orgId in cache key', () => {
-    const src = readRouter('packages/api/src/routers/teamIntel.ts');
-    expect(src).toMatch(/tims:kpis:teamintel:/);
-  });
-
   it('featureFlag.ts references cacheInvalidatePrefix', () => {
     const src = readRouter('packages/api/src/routers/featureFlag.ts');
     expect(src).toMatch(/cacheInvalidatePrefix/);

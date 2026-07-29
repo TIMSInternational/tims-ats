@@ -1,17 +1,16 @@
 'use client';
 
-// Per-surface read gate for the team-intel dashboard KPIs — the FIRST read surface
-// staged to route to the C# Platform service. DARK by default: unless BOTH env vars
-// are set at deploy time, this returns the existing tRPC query unchanged (byte-identical
-// to today). Merging changes nothing in prod until Federico flips the flag at cutover.
+// C#-only team-intelligence dashboard-KPIs read. The TS tRPC procedure
+// (packages/api/src/routers/teamIntel.ts's getDashboardKpis) has been deleted — there is
+// no TS fallback path left. NEXT_PUBLIC_TEAMINTEL_READ_VIA_CSHARP is confirmed live in
+// prod (2026-07-27) and local dev's .env.local mirrors production values directly, so
+// this file calls the C# service unconditionally rather than gating on the flag.
 
 import { useQuery } from '@tanstack/react-query';
-import { trpc } from '../trpc';
-import { isPlatformApiEnabled, platformGet } from './client';
+import { platformGet } from './client';
 
-// The KPI data shape — identical field-for-field to the tRPC getDashboardKpis output
-// AND to the C# DashboardKpiView (all camelCase). Verified against
-// packages/api/src/routers/teamIntel.ts + services/Tims.Platform/.../TeamIntelReadModels.cs.
+// The KPI data shape — identical field-for-field to the deleted tRPC getDashboardKpis
+// output AND to the C# DashboardKpiView (all camelCase).
 export interface DashboardKpis {
   totalTeams: number;
   totalMembers: number;
@@ -22,38 +21,18 @@ export interface DashboardKpis {
   diversityIndex: number;
 }
 
-// Second gate: even when the client is enabled, this specific surface only routes to
-// C# when its own flag is 'true'. NEXT_PUBLIC_* so it is inlined for the browser.
-const TEAMINTEL_VIA_CSHARP = process.env.NEXT_PUBLIC_TEAMINTEL_READ_VIA_CSHARP === 'true';
-
 /**
  * Returns the team-intel dashboard KPIs with a React Query result API
- * (`{ data, isLoading, isError, ... }`) — identical whether the data comes from the
- * C# Platform service or the existing tRPC endpoint.
- *
- * Gate: `isPlatformApiEnabled() && NEXT_PUBLIC_TEAMINTEL_READ_VIA_CSHARP === 'true'`.
- *  - true  → GET /team-intel/dashboard-kpis from the C# service.
- *  - false → the existing trpc.teamIntel.getDashboardKpis.useQuery() (the DEFAULT).
- *
- * Both hooks are always called (React hook rules); the inactive branch is disabled via
- * `enabled`, so exactly one performs a request and the other is inert.
+ * (`{ data, isLoading, isError, ... }`). GET /team-intel/dashboard-kpis.
  */
 export function useTeamIntelDashboardKpis() {
-  const viaCSharp = isPlatformApiEnabled() && TEAMINTEL_VIA_CSHARP;
-
-  // DEFAULT path — identical to today's page.tsx call. When viaCSharp is false this is
-  // enabled (the tRPC hook's default), so behavior is unchanged.
-  const trpcQuery = trpc.teamIntel.getDashboardKpis.useQuery(undefined, { enabled: !viaCSharp });
-
-  // C# path — inert (never fetches) unless the gate is on.
-  const csharpQuery = useQuery<DashboardKpis>({
+  return useQuery<DashboardKpis>({
     queryKey: ['platform-api', 'team-intel', 'dashboard-kpis'],
-    enabled: viaCSharp,
     queryFn: async () => {
       const raw = await platformGet('/team-intel/dashboard-kpis');
       // Contract types the numeric fields as number|string (a minimal-API OpenAPI
       // number-as-string read artifact); coerce to number so the returned shape is
-      // byte-identical to the tRPC output.
+      // byte-identical to the old tRPC output.
       return {
         totalTeams: Number(raw.totalTeams),
         totalMembers: Number(raw.totalMembers),
@@ -65,6 +44,4 @@ export function useTeamIntelDashboardKpis() {
       };
     },
   });
-
-  return viaCSharp ? csharpQuery : trpcQuery;
 }
