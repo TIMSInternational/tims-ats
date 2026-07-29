@@ -267,7 +267,8 @@ public sealed class PlatformOptions
     /// a cold-start missing pin FAILS SOFT (the FX-derived field is omitted/suppressed, never a 500). The
     /// k-anon min-5 + scope/field-auth mechanics mirror Slice-9/11b. Dark-by-default (TS's live currency.ts +
     /// frankfurter path stays the sole active reader until Federico flips it AFTER the first FxRefreshJob run
-    /// populates fx_rates at canary).
+    /// populates fx_rates at canary; the upstream FX data provider was swapped from Frankfurter to
+    /// ExchangeRate-API 2026-07-28 — see docs/architecture/csharp-migration/fx-provider-swap-2026-07-28.md).
     /// </summary>
     public bool FxReadsEnabled { get; init; }
 

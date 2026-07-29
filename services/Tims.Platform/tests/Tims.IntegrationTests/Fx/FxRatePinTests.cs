@@ -27,11 +27,11 @@ public sealed class FxRatePinTests(FxSchemaFixture fixture)
         var asOf2 = new DateOnly(2026, 7, 22);
 
         // First pin for as_of1.
-        var w1 = await repo.UpsertRatesAsync("USD", asOf1, Rates(("COP", 4000)), DateTime.UtcNow, "frankfurter", default);
+        var w1 = await repo.UpsertRatesAsync("USD", asOf1, Rates(("COP", 4000)), DateTime.UtcNow, "exchangerate-api", default);
         Assert.Equal(1, w1);
 
         // SAME as_of, new rate → the existing row is UPDATED in place (no duplicate).
-        var w2 = await repo.UpsertRatesAsync("USD", asOf1, Rates(("COP", 4001)), DateTime.UtcNow, "frankfurter", default);
+        var w2 = await repo.UpsertRatesAsync("USD", asOf1, Rates(("COP", 4001)), DateTime.UtcNow, "exchangerate-api", default);
         Assert.Equal(1, w2);
 
         await using (var verify = _fixture.NewContext())
@@ -44,7 +44,7 @@ public sealed class FxRatePinTests(FxSchemaFixture fixture)
         }
 
         // A NEW as_of → a NEW row (history preserved).
-        await repo.UpsertRatesAsync("USD", asOf2, Rates(("COP", 4002)), DateTime.UtcNow, "frankfurter", default);
+        await repo.UpsertRatesAsync("USD", asOf2, Rates(("COP", 4002)), DateTime.UtcNow, "exchangerate-api", default);
         await using (var verify = _fixture.NewContext())
         {
             var allCop = await verify.FxRates.AsNoTracking()
@@ -61,7 +61,7 @@ public sealed class FxRatePinTests(FxSchemaFixture fixture)
         await using (var seed = _fixture.NewContext())
         {
             await new FxRateWriteRepository(seed).UpsertRatesAsync(
-                "USD", new DateOnly(2026, 7, 21), Rates(("COP", 4000)), DateTime.UtcNow, "frankfurter", default);
+                "USD", new DateOnly(2026, 7, 21), Rates(("COP", 4000)), DateTime.UtcNow, "exchangerate-api", default);
         }
 
         // Read UNDER a tenant scope: SET LOCAL ROLE app_tenant + an EMPTY org GUC (organizationId: null). For an
@@ -86,7 +86,7 @@ public sealed class FxRatePinTests(FxSchemaFixture fixture)
                 new DateOnly(2026, 7, 21),
                 Rates(("COP", 4000), ("EUR", 0.92)),
                 DateTime.UtcNow,
-                "frankfurter",
+                "exchangerate-api",
                 default);
         }
 
@@ -122,8 +122,8 @@ public sealed class FxRatePinTests(FxSchemaFixture fixture)
         await using (var seed = _fixture.NewContext())
         {
             var repo = new FxRateWriteRepository(seed);
-            await repo.UpsertRatesAsync("USD", new DateOnly(2026, 7, 20), Rates(("COP", 4000)), DateTime.UtcNow, "frankfurter", default);
-            await repo.UpsertRatesAsync("USD", new DateOnly(2026, 7, 22), Rates(("COP", 4200)), DateTime.UtcNow, "frankfurter", default);
+            await repo.UpsertRatesAsync("USD", new DateOnly(2026, 7, 20), Rates(("COP", 4000)), DateTime.UtcNow, "exchangerate-api", default);
+            await repo.UpsertRatesAsync("USD", new DateOnly(2026, 7, 22), Rates(("COP", 4200)), DateTime.UtcNow, "exchangerate-api", default);
         }
 
         await using var db = _fixture.NewContext();

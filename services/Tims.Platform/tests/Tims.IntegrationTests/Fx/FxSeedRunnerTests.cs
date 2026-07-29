@@ -5,7 +5,7 @@ namespace Tims.IntegrationTests.Fx;
 
 /// <summary>
 /// Proves FxSeedRunner's composition root actually works end-to-end: the real fx_rates migration
-/// (via FxSchemaFixture), a real call to the public Frankfurter API, and a real upsert into
+/// (via FxSchemaFixture), a real call to the public ExchangeRate-API, and a real upsert into
 /// fx_rates. This is the closest proof possible that the tool Federico runs by hand against
 /// production will work, without Claude ever touching production itself.
 /// </summary>
@@ -15,26 +15,25 @@ public sealed class FxSeedRunnerTests(FxSchemaFixture fixture)
     private readonly FxSchemaFixture _fixture = fixture;
 
     [Fact]
-    public async Task RunAsync_pins_the_seed_currencies_against_the_real_frankfurter_api()
+    public async Task RunAsync_pins_the_seed_currencies_against_the_real_exchange_rate_api()
     {
         await _fixture.ResetAsync();
 
         var pinned = await FxSeedRunner.RunAsync(_fixture.ConnectionString, CancellationToken.None);
 
-        // NOTE (verified live against api.frankfurter.dev, 2026-07-28 — see task-1-report.md):
-        // Frankfurter/ECB does NOT publish rates for COP or CRC at all (its currency set is the
-        // fixed ECB reference list of ~31 majors). RefreshFxRatesUseCase's SeedQuoteCurrencies
-        // {COP, CRC, EUR, MXN} is therefore only ever satisfiable for EUR/MXN via this provider —
-        // COP/CRC (the two currencies TIMS/INVU actually need) can never be pinned this way. This
-        // is a pre-existing gap in RefreshFxRatesUseCase/FrankfurterFxGateway (untouched by this
-        // task) surfaced for the first time by this test actually calling the real API — flagged
-        // to Federico rather than silently worked around. The brief's original `>= 4` assumed all
-        // 4 seed currencies were fetchable; corrected here to the verified real minimum (EUR+MXN).
-        Assert.True(pinned >= 2, $"expected at least the 2 Frankfurter-supported seed currencies (EUR/MXN), got {pinned}");
+        // NOTE (2026-07-28 — see docs/architecture/csharp-migration/fx-provider-swap-2026-07-28.md):
+        // the original outbound gateway (ECB-backed, keyless) did NOT publish rates for COP or CRC
+        // at all (its currency set is a fixed reference list of ~30 majors), so this test's
+        // assertion was temporarily narrowed to the 2 currencies that provider *did* support
+        // (EUR/MXN) when the gap was first discovered live. IFxRateGateway's adapter has since
+        // been swapped to ExchangeRateApiGateway, which covers both COP and CRC — restoring the
+        // assertion below to its original intent (all 4 seed currencies) now that the fix is
+        // verified live.
+        Assert.True(pinned >= 4, $"expected all 4 seed currencies (COP/CRC/EUR/MXN) — the whole reason for the provider swap; got {pinned}");
 
         await using var db = _fixture.NewContext();
         var rows = await db.FxRates.AsNoTracking().ToListAsync();
-        Assert.True(rows.Count >= 2);
+        Assert.True(rows.Count >= 4);
         Assert.All(rows, row =>
         {
             Assert.Equal("USD", row.BaseCurrency);

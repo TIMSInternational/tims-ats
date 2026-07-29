@@ -12,8 +12,8 @@ namespace FxSeedOnce;
 /// AddFxRateGateway, IFxRateWriteRepository, RefreshFxRatesUseCase), minus Quartz scheduling,
 /// OpenTelemetry, health checks, and the unrelated HRIS wiring, then invokes
 /// RefreshFxRatesUseCase.RunAsync exactly once. FxOptions is registered with no explicit binding —
-/// its class-level defaults (frankfurter.dev base URL + standard Polly resilience knobs) are used
-/// as-is, identical to what Tims.Workers would use with an empty "Fx" config section.
+/// its class-level defaults (ExchangeRate-API's open.er-api.com base URL + standard Polly resilience
+/// knobs) are used as-is, identical to what Tims.Workers would use with an empty "Fx" config section.
 /// </summary>
 public static class FxSeedRunner
 {

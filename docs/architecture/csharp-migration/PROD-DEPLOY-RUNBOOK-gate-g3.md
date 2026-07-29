@@ -11,7 +11,10 @@ Federico execution.
 > (`fx_rates`), and several **flip-ready** write domains. §2 (flag surface), §1 (migrations), and §6 (cutover
 > order) below are updated to the full current set. **UPDATE 2026-07-27:** this is no longer universally true —
 > `TeamIntelReadEnabled` has been flipped and confirmed live in prod (Federico). Every OTHER surface below is
-> still dark; nothing else has been deployed.
+> still dark; nothing else has been deployed. **UPDATE 2026-07-28:** the FX rate provider was swapped from
+> Frankfurter to ExchangeRate-API (`open.er-api.com`) — Frankfurter never supported COP/CRC, the actual
+> currencies real customer orgs use. See `docs/architecture/csharp-migration/fx-provider-swap-2026-07-28.md`.
+> The `fx_rates` migration/table/job design in §1/§8 is unaffected — only the upstream data source changed.
 
 > **Who runs what.** Everything in this runbook that touches PROD (AWS, secrets, prod DDL, DNS, feature-flag
 > flips, deleting TS) is **Federico-run** — the standing migration rule (`I never touch prod`). Claude prepared
