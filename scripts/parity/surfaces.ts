@@ -270,7 +270,7 @@ export const SURFACES: Record<string, Surface> = {
   // (getCriticalRole) survives below, since it's the one read with zero FE consumers, so its TS
   // side was never a cutover candidate and stays live. RBAC: hr_admin succession:read@org, hrbp
   // @unit — getCriticalRole uses assertScoped (an IDOR-safe by-id probe returning 404, not 403,
-  // for out-of-scope — see the endpoint's own comment).
+  // for out-of-scope).
   succession: {
     key: 'succession',
     flag: 'Platform__SuccessionReadEnabled',
@@ -288,6 +288,12 @@ export const SURFACES: Record<string, Surface> = {
       // outright, unlike team-intel/billing-usage) because getCriticalRole below is NOT
       // deleted — it has zero FE consumers so was never wrapped, but its TS implementation is
       // still live, so `verify succession` still runs one REAL parity/RLS/RBAC check.
+      // Tier-2 by-id: getCriticalRole = permissionProcedure('succession', 'read') +
+      // assertScoped('criticalRole', id) — an IDOR-safe probe that returns 404 (NOT 403) for
+      // out-of-scope, so hrbp is OMITTED from expectedByRole (404 isn't representable in a
+      // 200|403 map and isn't an RBAC-permission signal). Org-A target = cr1 ('Parity Critical
+      // Role A1', holder super_admin, seeded in seed.ts). Mode-A IDOR: org-A token → org-B
+      // critical role → 404 (assertScoped's ScopedNotFound).
       {
         name: 'critical-role',
         csharpPath: '/succession/critical-roles/{id}',

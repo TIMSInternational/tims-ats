@@ -3,7 +3,7 @@
 // This is the reusable foundation for routing individual READ surfaces to the C#
 // backend one env-flag at a time during the backend migration. It is DARK by default:
 // when NEXT_PUBLIC_TIMS_PLATFORM_API_URL is unset the client is DISABLED and callers
-// fall back to the existing tRPC path (see lib/platform-api/succession.ts).
+// fall back to the existing tRPC path (see lib/platform-api/ninebox.ts).
 //
 // Auth reuses the SAME Supabase browser session helper the rest of apps/web uses
 // (`createSupabaseBrowserClient` from '@tims/auth/client') — no new auth path. No
