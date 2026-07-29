@@ -61,21 +61,35 @@ wrapped in `if (options.<X>Enabled || isOpenApiDocGeneration) { ... }`, defaulti
   - External-vendor assessment — read (#139) + write (#140); the staff `updateValidation` write (#151) made
     BOTH writers C#, so this table is FLIP-READY.
   - Billing — invoice read (#141) + usage/plan/config read (#142) + Stripe-webhook write (#145) + tenant
-    self-serve billing (#146).
-  - Reporting / recruitment-analytics — read (#150).
-  - Team-intel — read (#153). **CONFIRMED FLIPPED AND LIVE in prod** (2026-07-27, verbal confirmation from
-    Federico) — `NEXT_PUBLIC_TEAMINTEL_READ_VIA_CSHARP=true` in Vercel prod and `Platform:TeamIntelReadEnabled=true`
-    on App Runner. This is the ONE exception to "TS remains the sole active reader" above and to the "NOT DONE
-    for ANY domain" note below — `dashboard-kpis` and the rest of the team-intel reads are served by C# today.
-    The flip attempt is visible in the repo as commit `49c74d3` (CORS, #183) and commit `cf83fba` (CSP fix,
-    #184) on 2026-07-24; neither the flag value nor the App Runner env config is committed to git, so this
-    status can only be confirmed by asking, not by reading the repo — now confirmed.
-  - Evaluation360 — read (#158) + write (#170).
-  - Succession — read (#160) + write (#171).
+    self-serve billing (#146). Usage/plan/config read **flipped and live in prod** —
+    `NEXT_PUBLIC_BILLING_USAGE_VIA_CSHARP=true`. Invoice read, Stripe-webhook write, and self-serve
+    write remain dark: no `NEXT_PUBLIC_BILLING_INVOICES_VIA_CSHARP` flag exists in Vercel yet despite
+    the FE consumer being built (2026-07-28); webhook/self-serve are test-mode verified end-to-end
+    but Federico has explicitly declined the live-Stripe-key prod cutover.
+  - Reporting / recruitment-analytics — read (#150). **Flipped and live in prod**
+    (`NEXT_PUBLIC_REPORTING_READ_VIA_CSHARP=true`) — and its TS router/wrapper-fallback has since
+    been fully deleted (2026-07-28, see "TS dead-code deletion" note below), not just flagged.
+  - Team-intel — read (#153). **CONFIRMED FLIPPED AND LIVE in prod** (2026-07-27) —
+    `NEXT_PUBLIC_TEAMINTEL_READ_VIA_CSHARP=true` in Vercel prod and `Platform:TeamIntelReadEnabled=true`
+    on App Runner. `dashboard-kpis` and the rest of the team-intel reads are served by C# today.
+  - Evaluation360 — read (#158) + write (#170). **Both flipped and live in prod** (2026-07-28) —
+    `NEXT_PUBLIC_EVALUATION360_READ_VIA_CSHARP` and `_WRITE_VIA_CSHARP` both confirmed `true` via
+    `vercel env pull`, real prod redeploys reached `● Ready`. Its TS router/wrapper-fallback has
+    since been fully deleted (2026-07-28, see "TS dead-code deletion" note below).
+  - Succession — read (#160) + write (#171). **Both flipped and live in prod** (2026-07-28), same
+    confirmation method as evaluation360 above.
   - Compensation — FX-free read (#162) + FX-gateway/FX-dependent reads (#168) + write (#169).
-  - Nine-box — read (#164) + calibration write (#172).
-  - Engagement — read (#166) + write (#173).
-  - DEI — read (#167).
+    **Read (FX-free) and write flipped and live in prod** (2026-07-28) —
+    `NEXT_PUBLIC_COMPENSATION_READ_VIA_CSHARP` and `_WRITE_VIA_CSHARP` both `true`. The FX-dependent
+    reads (`getBandDistribution`, `getTotalCompBreakdown`, `getDashboardKpis`) are gated on a
+    SEPARATE flag, `NEXT_PUBLIC_COMPENSATION_FX_READ_VIA_CSHARP`, which does **not** exist in Vercel
+    yet — still TS-served, blocked on seeding the `fx_rates` table
+    (`docs/architecture/csharp-migration/fx-seed-once-runbook.md`, Federico-only).
+  - Nine-box — read (#164) + calibration write (#172). **Both flipped and live in prod** (2026-07-28),
+    same confirmation method as evaluation360 above.
+  - Engagement — read (#166) + write (#173). **Write flipped and live in prod** (2026-07-28) —
+    `NEXT_PUBLIC_ENGAGEMENT_WRITE_VIA_CSHARP=true`. Read flag does not exist in Vercel — still dark.
+  - DEI — read (#167). No `NEXT_PUBLIC_DEI*_VIA_CSHARP` flag exists in Vercel — still dark.
   - Audit-log (Phase-5 Slice-17) — read (#195). Dark; the C# service has never been independently
     deployed, so this has no live traffic either way.
   - Access-review (Phase-5 Slice-18) — read + write (#196). Platform-owner-only, fixed-org-id surface;
@@ -123,15 +137,26 @@ wrapped in `if (options.<X>Enabled || isOpenApiDocGeneration) { ... }`, defaulti
     was the team-intel read flip; Federico confirmed it completed and is still live in prod. This does NOT
     mean the broader App Runner deployment is otherwise fully verified/stable — only that this one specific
     surface is confirmed receiving live traffic.)_
-- **DONE for exactly ONE domain (team-intel read, see above); NOT DONE for the other 12 pieces — do not
-  overstate the rest as shipped.** The production ownership flip (recipe step 6) and TS-code deletion (step 7)
-  have not happened for any OTHER domain as of this truth-up — team-intel's read is C#-live, but its TS
-  `teamIntel`/`team-intel-metrics` router has NOT been deleted (step 7 is still pending even for the one
-  flipped surface), and `okrs`/etc. correctly stay `efcoreReadOnly` (not `efcore`) in the ownership ledger
-  since a READ flip never transfers DDL ownership. Flipping a domain's flag in prod is explicitly
-  **Federico-only, at canary** (`docs/superpowers/plans/2026-07-24-cutover-verification-harness.md`) — a
-  manual owner decision, made for team-intel's read surface only. "Built + parity-verified + dark" is still
-  the correct description for the other 12 read/write pieces; don't generalize team-intel's exception to them.
+- **Truth-up 2026-07-29: 12 of the ~20 `NEXT_PUBLIC_*_VIA_CSHARP` flags are now flipped and live in
+  prod** (confirmed via `vercel env ls`/`vercel env pull` against the real Vercel project, cross-checked
+  against real prod redeploys reaching `● Ready`). This entry replaces a prior "DONE for exactly ONE
+  domain (team-intel read); NOT DONE for the other 12 pieces" claim that was accurate as of 2026-07-27
+  but went stale after the 2026-07-28 write-flag-flip session and was never truthed up in the same PR
+  (a process miss — flag flips in prod are Federico-only and don't always land alongside a
+  doc-updating commit; flag this doc explicitly whenever a flip session happens). **Live now:** team-intel read, reporting read, billing-usage read, succession read+write,
+  nine-box read+write, evaluation360 read+write, compensation read (FX-free subset)+write, engagement
+  write. **Still dark:** compensation FX-dependent read subset (blocked on seeding `fx_rates`, see the
+  `feat/fx-seed-once` work), billing invoice-read (flag never created despite the FE consumer existing),
+  engagement read, DEI read, billing Stripe-webhook/self-serve writes (Federico has declined the
+  live-Stripe-key cutover), audit-log, access-review, external-vendor (none of these last three ever
+  got a `NEXT_PUBLIC_*` flag in Vercel — no FE consumer or different cutover mechanism, see their
+  respective slice docs). TS-code deletion (step 7) has only actually happened for 2 of the now-11 live
+  read/write surfaces so far — reporting and evaluation360 (both fully deleted, 2026-07-28) — the
+  remaining live surfaces (team-intel, billing-usage, succession, nine-box, compensation) still have
+  their TS fallback code sitting dead-but-undeleted behind their (now-always-true) flags. Flipping a
+  domain's flag in prod is explicitly **Federico-only, at canary**
+  (`docs/superpowers/plans/2026-07-24-cutover-verification-harness.md`); TS-code deletion is AI-doable
+  per-domain once a flag is confirmed live, per the reporting/evaluation360 precedent.
 
 ### Compliance-by-design — CB-1/1b/1c/2a/2b — **SHIPPED** (`docs/architecture/compliance/00-compliance-by-design-roadmap.md`)
 
