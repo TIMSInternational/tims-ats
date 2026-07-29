@@ -52,9 +52,10 @@ flag, and CONFIRMED LIVE / FLIP-READY / COEXISTENCE / TS DELETED status per
 **Why not `reporting` for this walkthrough (like before)?** As of 2026-07-28 the TS
 recruitment-analytics router and its FE tRPC fallback were deleted outright (the C# read path is
 the sole implementation now), and the same happened to the TS evaluation360 router (both read AND
-write) — see the table below. Neither `reporting` nor `evaluation360` (read) has a parity command
-left to demonstrate; `--verify-only` for either is now a no-op that prints an explanatory notice
-and exits 0 rather than running a real check.
+write) — see the table below. As of 2026-07-29, the TS `team-intel` `getDashboardKpis` procedure
+and its FE tRPC fallback joined this group too. None of `reporting`, `evaluation360` (read), or
+`team-intel` has a parity command left to demonstrate; `--verify-only` for any of them is now a
+no-op that prints an explanatory notice and exits 0 rather than running a real check.
 
 ## Sequencing safety (the guardrail)
 
@@ -173,7 +174,15 @@ classified the way it is, and every naming quirk below).
   `docs/plans/2026-07-28-ts-dead-code-deletion-reporting-eval360.md`. `scripts/parity/surfaces.ts`'s
   `reporting` and `evaluation360` entries were removed at the same time, so there is no TS side left
   to diff against for either read surface: their `parity_command` is `NONE` and `--verify-only`
-  just prints a no-op notice and exits 0. This does NOT touch the `evaluation360-write` surface —
+  just prints a no-op notice and exits 0. **`team-intel` (read) joined this group on 2026-07-29** —
+  but unlike `reporting`/`evaluation360`, only the `getDashboardKpis` procedure inside
+  `packages/api/src/routers/teamIntel.ts` (plus its FE tRPC fallback in
+  `apps/web/lib/platform-api/team-intel.ts`) was deleted, not the whole router: `teamIntel.ts` still
+  serves 6 other unrelated procedures (`getTeamProfile`, `getMembers`, `getBalanceScore`,
+  `getBalanceAlerts`, `getRecommendedHires`, `compareTeams`) with zero FE consumers, so the router
+  file itself stays in place. `scripts/parity/surfaces.ts`'s `team-intel` entry was removed the same
+  way, so its `parity_command` is likewise `NONE` and `--verify-only` for it is the same no-op. This
+  does NOT touch the `evaluation360-write` surface —
   `scripts/parity/write-surfaces.ts` still registers `evaluation360` for `verify-write` (it tests
   the C# API's RBAC/IDOR behavior directly, not a TS diff), so that row's parity command is
   unaffected and still real. The `evaluation360-write` row's note used to say "once verified, drop

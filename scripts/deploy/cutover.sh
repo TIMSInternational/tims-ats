@@ -370,9 +370,10 @@ do_flip_backend() {
 }
 
 do_rollback() {
-  local surface="$1" row fe
+  local surface="$1" row fe status
   row="$(surface_row "$surface")"
   fe="$(field "$row" 5)"
+  status="$(field "$row" 6)"
   echo "==> rollback: ${surface} -> false"
   local cmd
   cmd="$(flip_command_block "$surface" "false")"
@@ -386,10 +387,17 @@ do_rollback() {
     echo "$cmd"
   fi
   echo
-  echo "--- ALSO revert the FE flag (fastest path — do this immediately after the backend flip) ---"
-  if [ "$fe" = "NONE" ]; then
+  if [ "$status" = "TS_DELETED" ]; then
+    echo "--- FE rollback is NOT available for this surface ---"
+    echo "This surface's TS fallback code has been deleted (status: TS_DELETED). Setting"
+    echo "${fe}=false would NOT restore old behavior — there is no tRPC path left to fall back to."
+    echo "The only real rollback path is reverting the code (git revert the TS-deletion commit(s))"
+    echo "and redeploying apps/web, in addition to the backend flag flip above."
+  elif [ "$fe" = "NONE" ]; then
+    echo "--- ALSO revert the FE flag (fastest path — do this immediately after the backend flip) ---"
     echo "No NEXT_PUBLIC_*_VIA_CSHARP flag is wired for this surface in apps/web today — nothing to revert on the FE side."
   else
+    echo "--- ALSO revert the FE flag (fastest path — do this immediately after the backend flip) ---"
     cat <<EOF
 1. Vercel dashboard -> tims-ats project -> Settings -> Environment Variables -> Production.
 2. Set ${fe}=false (or delete it — the code in apps/web/lib/platform-api/*.ts treats anything
