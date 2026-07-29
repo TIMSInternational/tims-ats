@@ -150,12 +150,15 @@ wrapped in `if (options.<X>Enabled || isOpenApiDocGeneration) { ... }`, defaulti
   engagement read, DEI read, billing Stripe-webhook/self-serve writes (Federico has declined the
   live-Stripe-key cutover), audit-log, access-review, external-vendor (none of these last three ever
   got a `NEXT_PUBLIC_*` flag in Vercel — no FE consumer or different cutover mechanism, see their
-  respective slice docs). TS-code deletion (step 7) has now happened for 5 of the now-12 live
+  respective slice docs). TS-code deletion (step 7) has now happened for 6 of the now-12 live
   read/write surfaces — reporting and evaluation360 (2026-07-28), team-intel and billing-usage
-  (2026-07-29), and succession (2026-07-29, **partially** deleted — 8 of 9 read procedures + 2 of
+  (2026-07-29), succession (2026-07-29, **partially** deleted — 8 of 9 read procedures + 2 of
   5 write procedures; `getCriticalRole` and 3 zero-consumer write mutations remain untouched,
-  unrelated dead code) — the remaining live surfaces (nine-box, compensation, engagement write)
-  still have their TS fallback code sitting dead-but-undeleted behind their (now-always-true) flags. Flipping a
+  unrelated dead code), and nine-box (2026-07-29, **partially** deleted — 7 of 11 read procedures +
+  3 of 5 write procedures; `getAxisBreakdown`/`getMovementHistory`/`simulate`/`getQuadrantPlan`
+  (reads) and `submitCalibrationVote`/`finalizeCalibration` (writes) remain untouched, unrelated
+  zero-consumer dead code) — the remaining live surfaces (compensation, engagement write) still
+  have their TS fallback code sitting dead-but-undeleted behind their (now-always-true) flags. Flipping a
   domain's flag in prod is explicitly **Federico-only, at canary**
   (`docs/superpowers/plans/2026-07-24-cutover-verification-harness.md`); TS-code deletion is AI-doable
   per-domain once a flag is confirmed live, per the reporting/evaluation360 precedent.

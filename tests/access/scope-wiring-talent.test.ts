@@ -8,20 +8,22 @@ import { join } from 'path';
 // the matrix, so own/team/unit reads must filter rows.
 //
 // ── ninebox taxonomy ──────────────────────────────────────────────────
-//   getGrid / getAxisBreakdown / getMovementHistory → row-level reads of
+// UPDATE 2026-07-29: getGrid, getEmployeeDetail, createCalibration,
+// listCalibrations, getCalibration, myCalibrations, getBenchStrength,
+// getDashboardKpis had their TS side DELETED (7 reads + 3 writes wrapped
+// live in prod) — the taxonomy below now covers only the 6 zero-FE-consumer
+// procedures that remain, unrelated dead code out of scope for that deletion.
+//   getAxisBreakdown / getMovementHistory → row-level reads of
 //     NineBoxEvaluation → AND-compose the nineBoxEvaluation fragment (the
 //     existing teamId/unitId/companyId input branches only INTERSECT).
-//   getEmployeeDetail   → point-read of one employee → assertSubjectInScope.
+//     getAxisBreakdown additionally subjects its target userId via
+//     assertSubjectInScope (point-read).
 //   simulate            → pure math on input scores (no DB read) → untouched.
-//   createCalibration   → session creation is an org-governance act (not a
-//     committee grant) → requireOrgScope.
-//   getCalibration      → org-scoped + member-or-creator check.
 //   submitCalibrationVote → THE membership rule (mirrors submitScorecard):
 //     fetch session org-scoped, require the VOTER is a calibrationMember,
 //     FORBIDDEN otherwise. voterId already comes from ctx.user.id (not input).
 //   finalizeCalibration → session lifecycle write → requireOrgScope.
 //   getQuadrantPlan     → static plan lookup (no DB read) → untouched.
-//   getBenchStrength / getDashboardKpis → org-rollup aggregates → requireOrgScope.
 //
 // ── succession taxonomy ───────────────────────────────────────────────
 //   listCriticalRoles / getCriticalRole → row-level → AND-compose criticalRole.
@@ -51,7 +53,7 @@ describe('ninebox module scope wiring', () => {
     expect(src()).toMatch(/AND:\s*\[/);
   });
 
-  it('getEmployeeDetail subjects the target user via assertSubjectInScope', () => {
+  it('getAxisBreakdown subjects the target user via assertSubjectInScope', () => {
     expect(src()).toMatch(/assertSubjectInScope/);
   });
 
@@ -63,51 +65,8 @@ describe('ninebox module scope wiring', () => {
     expect(s).toMatch(/FORBIDDEN/);
   });
 
-  it('org-rollup / lifecycle endpoints gated via requireOrgScope', () => {
+  it('finalizeCalibration (lifecycle write) gated via requireOrgScope', () => {
     expect(src()).toMatch(/requireOrgScope/);
-  });
-
-  // Slice 5A — committee "Mis Calibraciones": a member-scoped read of the
-  // caller's OWN calibration sessions. Mirrors getCalibration's member-anchor
-  // (createdById OR a CalibrationMember row), NOT requireOrgScope, NOT
-  // scopeWhereFor (calibrationSession is not a registered ENTITY).
-  describe('myCalibrations (committee landing)', () => {
-    // Isolate the procedure block so requireOrgScope on OTHER endpoints can't
-    // satisfy these assertions.
-    const block = () => {
-      const s = src();
-      const start = s.indexOf('myCalibrations:');
-      expect(start).toBeGreaterThan(-1);
-      // next top-level procedure after myCalibrations
-      const rest = s.slice(start + 'myCalibrations:'.length);
-      const nextProc = rest.search(/\n {2}\w+:\s*permissionProcedure/);
-      return nextProc === -1 ? rest : rest.slice(0, nextProc);
-    };
-
-    it('anchors on createdById OR a CalibrationMember userId (own/member, not org-wide)', () => {
-      const b = block();
-      expect(b).toMatch(/createdById:\s*ctx\.user\.id/);
-      expect(b).toMatch(/members:\s*\{\s*some:\s*\{\s*userId:\s*ctx\.user\.id/);
-      expect(b).toMatch(/OR:\s*\[/);
-    });
-
-    it('does NOT use requireOrgScope (committee is team-scoped)', () => {
-      expect(block()).not.toMatch(/requireOrgScope/);
-    });
-
-    it('does NOT call scopeWhereFor for calibrationSession (not a registered ENTITY)', () => {
-      expect(block()).not.toMatch(/scopeWhereFor\('calibrationSession'/);
-    });
-
-    it('always filters by organizationId (tenant isolation)', () => {
-      expect(block()).toMatch(/organizationId:\s*ctx\.user\.organizationId/);
-    });
-
-    it('uses an explicit select (no full-record leak) and bounds the list', () => {
-      const b = block();
-      expect(b).toMatch(/select:\s*\{/);
-      expect(b).toMatch(/take:\s*\d+/);
-    });
   });
 });
 

@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
 import { UserPicker, CandidateAvatar, Skeleton } from '../../../../components';
@@ -19,21 +18,19 @@ interface CommitteeMembersPanelProps {
 
 /**
  * Committee-membership manager for a single calibration session.
- * Reads `ninebox.getCalibration().members`; add/remove via
- * addCalibrationMember / removeCalibrationMember, invalidating getCalibration
- * on success. Self-contained — mount it anywhere a sessionId is in scope.
+ * Reads the calibration via `useNineBoxCalibration`; add/remove via
+ * addCalibrationMember / removeCalibrationMember, invalidating the C# nine-box
+ * reads (including this session) on success. Self-contained — mount it
+ * anywhere a sessionId is in scope.
  */
 export function CommitteeMembersPanel({ sessionId }: CommitteeMembersPanelProps) {
   const { t } = useI18n();
-  const utils = trpc.useUtils();
   const queryClient = useQueryClient();
   const [adding, setAdding] = useState(false);
 
   const calibration = useNineBoxCalibration(sessionId);
 
   const invalidate = () => {
-    utils.ninebox.getCalibration.invalidate({ id: sessionId });
-    // Cutover parity: refresh the C# platform-api nine-box reads. No-op under tRPC.
     invalidateNineboxPlatformReads(queryClient);
   };
 
