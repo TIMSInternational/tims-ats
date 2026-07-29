@@ -42,39 +42,6 @@ describe('organization router hardening', () => {
   });
 });
 
-describe('engagement.submitSurveyResponse hardening', () => {
-  const src = () => read('packages/api/src/routers/engagement.ts');
-
-  it('is gated by engagement:create', () => {
-    expect(src()).toMatch(/submitSurveyResponse:\s*permissionProcedure\('engagement',\s*'create'\)/);
-  });
-
-  it('respondent identity comes from ctx, never from input; no anonymous bypass', () => {
-    // The input schema must not accept a userId; the create data derives userId
-    // from ctx.user.id. No `anonymous` flag: userId NULL would bypass the
-    // @@unique([surveyId, userId]) dedup (Postgres NULLs never collide) —
-    // ballot-stuffing. Display anonymity is the slice-6 aggregation layer's job.
-    const block = src().slice(src().indexOf('submitSurveyResponse'));
-    const inputBlock = block.slice(0, block.indexOf('.mutation'));
-    expect(inputBlock).not.toContain('userId');
-    expect(inputBlock).not.toContain('anonymous');
-    expect(block).toContain('userId: ctx.user.id');
-  });
-
-  it('answers record is bounded (max 100 keys, bounded key/value sizes)', () => {
-    const block = src().slice(src().indexOf('submitSurveyResponse'));
-    expect(block).toMatch(/\.max\(200\)/);   // key bound
-    expect(block).toMatch(/\.max\(5000\)/);  // string-answer bound
-    expect(block).toMatch(/length\s*<=\s*100/); // key-count bound
-  });
-
-  it('maps duplicate-submission P2002 to a clean CONFLICT (not a 500)', () => {
-    const block = src().slice(src().indexOf('submitSurveyResponse'));
-    expect(block).toMatch(/P2002/);
-    expect(block).toMatch(/CONFLICT/);
-  });
-});
-
 describe('portal router contains only public career-site procedures', () => {
   const src = () => read('packages/api/src/routers/portal.ts');
 

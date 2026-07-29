@@ -35,10 +35,11 @@ describe('survey-take-modal — query + mutation wiring', () => {
   });
 
   it('submits via the useEngagementSubmitSurveyResponse cutover wrapper', () => {
-    // Cut over to the dark platform-api wrapper (apps/web/lib/platform-api/engagement.ts,
-    // Phase-5 Slice-16 write wrapper) — it still calls trpc.engagement.submitSurveyResponse.useMutation
-    // internally on the default (non-C#) path, so this assertion follows the refactor rather
-    // than the raw call (same pattern as this file's getSurveyForResponse wrapper assertion above).
+    // Cut over to the platform-api wrapper (apps/web/lib/platform-api/engagement.ts, Phase-5
+    // Slice-16 write wrapper). As of 2026-07-29 that wrapper is C#-ONLY for this mutation —
+    // trpc.engagement.submitSurveyResponse was deleted — so this assertion targets the wrapper hook
+    // name rather than a raw trpc call. Contrast the getSurveyForResponse assertion above: the READ
+    // wrapper is STILL dual-path, because NEXT_PUBLIC_ENGAGEMENT_READ_VIA_CSHARP is still dark.
     expect(src()).toContain('useEngagementSubmitSurveyResponse');
   });
 

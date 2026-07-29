@@ -62,7 +62,10 @@ for them — `compensation` in particular held this walkthrough until 2026-07-29
 registered read procedures were deleted. `dei` read is the cleanest remaining demonstration:
 `NEXT_PUBLIC_DEI_READ_VIA_CSHARP` does not exist in Vercel yet, the whole TS DEI router is live, and
 `verify dei` runs a real 10-endpoint parity/RLS/RBAC check. (`engagement` read is in the same state
-and substitutes cleanly if DEI ever flips first.) One DEI caveat, also printed by `--list`:
+and substitutes cleanly if DEI ever flips first — engagement's 2026-07-29 TS deletion touched ONLY
+its WRITE side, 3 of 5 mutations, leaving all 14 reads and the real 9-endpoint `verify engagement`
+check fully intact. `engagement-write` itself is therefore now a partial-TS-deletion surface too,
+but that does not affect the read worked example.) One DEI caveat, also printed by `--list`:
 `dei.getPayEquity` is gated by the separate `Platform:FxReadsEnabled` flag and is NOT covered by
 this surface.
 
@@ -134,7 +137,7 @@ number) and independently corroborated by the `flag:` field in `scripts/parity/s
 | `succession-write`    | write | `SuccessionWriteEnabled`    | `verify-write succession`    | `NEXT_PUBLIC_SUCCESSION_WRITE_VIA_CSHARP`    | CONFIRMED LIVE                                                              |
 | `nine-box-write`      | write | `NineBoxWriteEnabled`       | `verify-write ninebox`       | `NEXT_PUBLIC_NINEBOX_WRITE_VIA_CSHARP`       | CONFIRMED LIVE                                                              |
 | `compensation-write`  | write | `CompensationWriteEnabled`  | `verify-write compensation`  | `NEXT_PUBLIC_COMPENSATION_WRITE_VIA_CSHARP`  | COEXISTENCE (flag live; both TS mutations deleted — see cutover.sh)         |
-| `engagement-write`    | write | `EngagementWriteEnabled`    | `verify-write engagement`    | `NEXT_PUBLIC_ENGAGEMENT_WRITE_VIA_CSHARP`    | COEXISTENCE                                                                 |
+| `engagement-write`    | write | `EngagementWriteEnabled`    | `verify-write engagement`    | `NEXT_PUBLIC_ENGAGEMENT_WRITE_VIA_CSHARP`    | COEXISTENCE (flag live; 3 of 5 TS mutations deleted — see cutover.sh)       |
 | `access-review-write` | write | `AccessReviewWriteEnabled`  | `verify-write access-review` | `NEXT_PUBLIC_ACCESS_REVIEW_WRITE_VIA_CSHARP` | FLIP-READY                                                                  |
 
 Run `./scripts/deploy/cutover.sh --list` for the per-surface long-form notes (why each is

@@ -7,7 +7,10 @@ import { z } from 'zod';
 //   1. LEGACY / SEED (packages/db/prisma/seed-demo.ts): authored by hand and by
 //      older tooling. Uses `{ id, text, type, min?, max? }` with type one of
 //      'scale' | 'nps' | 'open_text' | 'yes_no' (plus 'emoji' etc. we can't render).
-//   2. AUTHORING (createSurvey's Zod in packages/api .../engagement.ts): produces
+//   2. AUTHORING (the C# create-survey endpoint's question shape, since 2026-07-29 —
+//      Tims.Domain/Engagement/EngagementWriteModels.cs record + validation in
+//      Tims.Api/Engagement/EngagementWriteEndpoints.cs; formerly createSurvey's Zod in
+//      packages/api/.../engagement.ts before its TS side was deleted): produces
 //      `{ text, type, options?, required, category? }` with type one of
 //      'scale' | 'text' | 'multiple_choice' | 'yes_no' (no id/min/max).
 //
@@ -17,7 +20,9 @@ import { z } from 'zod';
 // rendered empty. Instead we parse each element INDEPENDENTLY and DROP only the
 // invalid ones, normalizing every accepted element into ONE renderable union
 // (`SurveyQuestion`) that the field component consumes — no `any`, with the
-// answer value staying `string | number` (matches submitSurveyResponse's input).
+// answer value staying `string | number` (matches the C# submit-survey-response
+// endpoint's input; formerly submitSurveyResponse's Zod input before its TS side
+// was deleted 2026-07-29).
 
 // Default numeric ranges when the stored question omits min/max.
 const SCALE_DEFAULT_MIN = 1;
@@ -63,7 +68,9 @@ export interface YesNoQuestion {
 export type SurveyQuestion = ScaleQuestion | TextQuestion | ChoiceQuestion | YesNoQuestion;
 
 // An answer is a number (scale/nps) or a string (text / choice / yes_no),
-// matching submitSurveyResponse's input (z.union([z.string(), z.number()])).
+// matching the C# submit-survey-response endpoint's input (still
+// z.union([z.string(), z.number()]) shape server-side, now enforced in
+// EngagementWriteEndpoints.cs rather than a TS Zod schema).
 export type SurveyAnswer = string | number;
 
 // Tolerant per-element schema: accept the SUPERSET of fields across both stored

@@ -92,7 +92,11 @@ wrapped in `if (options.<X>Enabled || isOpenApiDocGeneration) { ... }`, defaulti
   - Nine-box — read (#164) + calibration write (#172). **Both flipped and live in prod** (2026-07-28),
     same confirmation method as evaluation360 above.
   - Engagement — read (#166) + write (#173). **Write flipped and live in prod** (2026-07-28) —
-    `NEXT_PUBLIC_ENGAGEMENT_WRITE_VIA_CSHARP=true`. Read flag does not exist in Vercel — still dark.
+    `NEXT_PUBLIC_ENGAGEMENT_WRITE_VIA_CSHARP=true` (value re-read directly from Vercel production on
+    2026-07-29). TS side deleted 2026-07-29 for the 3 FE-consumed mutations (`createSurvey`,
+    `activateSurvey`, `submitSurveyResponse`); `createActionPlan`/`updateActionPlan` are untouched
+    zero-FE-consumer dead code. Read flag does not exist in Vercel — still dark, so all 14 TS reads
+    are DELIBERATELY RETAINED (TypeScript is their live prod path).
   - DEI — read (#167). No `NEXT_PUBLIC_DEI*_VIA_CSHARP` flag exists in Vercel — still dark.
   - Audit-log (Phase-5 Slice-17) — read (#195). Dark; the C# service has never been independently
     deployed, so this has no live traffic either way.
@@ -129,7 +133,7 @@ wrapped in `if (options.<X>Enabled || isOpenApiDocGeneration) { ... }`, defaulti
     write-capable domains (external-vendor, evaluation360, succession, nine-box, compensation, engagement,
     billing-webhook, billing-self-serve) have a `useXMutation()` hook per write MUTATION THAT HAS A
     LIVE FE CALL SITE — originally dark; where the write flag has since gone live and the TS mutation was
-    deleted (succession, nine-box, compensation) the hook is now C#-only — several procedures per domain
+    deleted (succession, nine-box, compensation, engagement) the hook is now C#-only — several procedures per domain
     (e.g. succession's `addCriticalRole`, engagement's
     `createActionPlan`) have zero consumers and were intentionally left unwrapped (dead code otherwise). The
     billing Stripe-webhook write is a proxy inside `packages/api/src/services/billing-webhook.service.ts`,
@@ -160,8 +164,8 @@ wrapped in `if (options.<X>Enabled || isOpenApiDocGeneration) { ... }`, defaulti
   engagement read, DEI read, billing Stripe-webhook/self-serve writes (Federico has declined the
   live-Stripe-key cutover), audit-log, access-review, external-vendor (none of these last three ever
   got a `NEXT_PUBLIC_*` flag in Vercel — no FE consumer or different cutover mechanism, see their
-  respective slice docs). TS-code deletion (step 7) has now happened for 7 of the now-12 live
-  read/write surfaces — reporting and evaluation360 (2026-07-28), team-intel and billing-usage
+  respective slice docs). TS-code deletion (step 7) has now happened for all 8 domains, covering
+  all 12 live read/write surfaces — reporting and evaluation360 (2026-07-28), team-intel and billing-usage
   (2026-07-29), succession (2026-07-29, **partially** deleted — 8 of 9 read procedures + 2 of
   5 write procedures; `getCriticalRole` and 3 zero-consumer write mutations remain untouched,
   unrelated dead code), nine-box (2026-07-29, **partially** deleted — 7 of 11 read procedures +
@@ -172,9 +176,24 @@ wrapped in `if (options.<X>Enabled || isOpenApiDocGeneration) { ... }`, defaulti
   `getBandDistribution`/`getTotalCompBreakdown`/`getDashboardKpis` are DELIBERATELY RETAINED because
   `NEXT_PUBLIC_COMPENSATION_FX_READ_VIA_CSHARP` still does not exist in Vercel and TypeScript is
   their live prod path, and `getPayEquity`/`simulateAdjustment`/`getMarketComparison`/
-  `getEmployeeComp` remain untouched zero-consumer dead code) — the one remaining live surface,
-  engagement write, still has its TS fallback code sitting dead-but-undeleted behind its
-  (now-always-true) flag. Flipping a
+  `getEmployeeComp` remain untouched zero-consumer dead code), and engagement (2026-07-29,
+  **partially** deleted — 3 of 5 write procedures, `createSurvey`/`activateSurvey`/
+  `submitSurveyResponse`; `createActionPlan`/`updateActionPlan` remain untouched zero-consumer dead
+  code, and ALL 14 read procedures are DELIBERATELY RETAINED because
+  `NEXT_PUBLIC_ENGAGEMENT_READ_VIA_CSHARP` still does not exist in Vercel and TypeScript is their
+  live prod path — structurally the same reason compensation retained its 3 FX reads). **This closes
+  the S5 item-4 TS-deletion sequence: all 12 live surfaces (across all 8 domains) have had their dead
+  TS code deleted, and ZERO live surfaces are left with undeleted TS fallback code sitting behind an
+  always-true flag.** Two known, deliberately-deferred follow-ups from this sequence, recorded here so
+  they aren't lost with no successor TS-deletion branch to carry them: (1) once any domain's dark READ
+  flag is eventually flipped, that domain's FE modal `invalidate()` calls that target now-C#-routed
+  reads will invalidate a dead tRPC cache key instead of the real `['platform-api', <domain>, …]` key
+  — a latent bug common to every dual-path wrapper in this migration, not introduced by any single
+  domain's deletion, and only surfaces at the next flag flip; (2) several C# XML doc-comments across
+  `services/Tims.Platform/src/**/Engagement/*.cs` still cite `engagement.ts` line numbers from before
+  this domain's TS deletion (some now point at unrelated surviving code rather than failing loudly) —
+  C# source was explicitly out of scope for this migration's TS-deletion sweeps, so this drift was
+  never going to be caught in-branch; worth a dedicated cleanup pass, not urgent. Flipping a
   domain's flag in prod is explicitly **Federico-only, at canary**
   (`docs/superpowers/plans/2026-07-24-cutover-verification-harness.md`); TS-code deletion is AI-doable
   per-domain once a flag is confirmed live, per the reporting/evaluation360 precedent.
@@ -267,7 +286,7 @@ First slices of the SOC 1 Type II / SOC 2 Type II / ISO 27001 engineering contro
 The mutations were real but no UI invoked them; all wired via shared modal pattern (useState + `Modal` + tRPC + invalidate + i18n). Shipped + live in prod:
 
 - **Succession** — Add Successor (`addSuccessor`). ✅
-- **Engagement** — Create + Launch Survey (`createSurvey` + new `activateSurvey` draft→active). ✅
+- **Engagement** — Create + Launch Survey (originally `createSurvey` + `activateSurvey` draft→active; now the C# `POST /engagement/surveys` + `POST /engagement/surveys/{id}/activate` behind `useEngagementCreateSurvey`/`useEngagementActivateSurvey` — both TS procedures were deleted 2026-07-29). ✅
 - **Learning** — Enroll per-course (`enrollUser`). ✅ _(enrollment "complete" deferred — needs an admin enrollment-list view; no surface exists yet.)_
 - **Compensation** — Approve/Reject adjustment (atomic; originally `compensation.approveAdjustment`, now the C# `POST /compensation/adjustments/{id}/approve` behind `useCompensationApproveAdjustment` — the TS procedure was deleted 2026-07-29). ✅
 - **Performance** — Create OKR / Commitment / Log Coaching session (`createOkr`/`createCommitment`/`createCoachingSession`). ✅
@@ -313,7 +332,7 @@ Honest-hybrid pass: real metric where data exists + cheap; honest `N/D`/`EmptySt
 - **ElevenLabs config**: the live gate (`routers/ai-interview.ts`) omits `ELEVENLABS_WEBHOOK_SECRET` (a missing secret → interviews run but never bill/analyze); the 3-var `lib/elevenlabs.ts` helper is dead. Consolidate; add EL vars to `.env.example` + `lib/env.ts`; rotate any committed secrets.
 - **ExchangeRate-API attribution + subprocessor registration**: the C# FX gateway (`ExchangeRateApiGateway`, `services/Tims.Platform/src/Tims.Infrastructure/Fx/`) uses ExchangeRate-API's free/open tier, whose ToS requires (a) attribution — a link to https://www.exchangerate-api.com somewhere in the product once its rates are used to render converted amounts in the UI — and (b) registering it as a data subprocessor (SOC2). Neither is done yet; do both before/when `NEXT_PUBLIC_COMPENSATION_FX_READ_VIA_CSHARP` is flipped live. See `docs/architecture/csharp-migration/fx-provider-swap-2026-07-28.md`.
 - **i18n stragglers** the scanner can't catch (precision-first): a handful of detector-missed literals (e.g. a `'Iniciar Sesion'`-class button) + 2 server→client conversions (`auth/layout.tsx`, `why-work-section.tsx`) made to use the hook; `global-error.tsx` keeps a hardcoded ES fallback (no `I18nProvider` in scope) — allowlisted.
-- **Wave 2.5 follow-ups (recorded, not faked):** `data_access_logs` purge job + its `@@index([organizationId, createdAt])`; consent 30-day anonymization job (matrix-compliant deferral); shared Zod/const unions for dataType/action/consentType; `tims:perm:` legacy cache-prefix removal; candidate→employee role transition (needs product def); several accepted k-anonymity residuals (org-wide ratio denominators, `getBenefitsUtilization` head-count, `getEnps` div-guard artifact); tighten DEI/engagement tests toward behavioral.
+- **Wave 2.5 follow-ups (recorded, not faked):** `data_access_logs` purge job + its `@@index([organizationId, createdAt])`; consent 30-day anonymization job (matrix-compliant deferral); shared Zod/const unions for dataType/action/consentType; `tims:perm:` legacy cache-prefix removal; candidate→employee role transition (needs product def); several accepted k-anonymity residuals (org-wide ratio denominators, `getBenefitsUtilization` head-count, `getEnps` div-guard artifact); tighten DEI/engagement tests toward behavioral (note: engagement's ONLY behavioral test, `tests/tier1/s2-activate-survey.test.ts`, was retired on 2026-07-29 together with its subject — the deleted `activateSurvey` TS procedure — so the remaining engagement tests are all static-tripwire or pure-kernel; the behavioral coverage now lives in `EngagementWriteTests.cs` and the parity harness).
 - **Talent-pool mobile filter drawer** (filters hidden <md — deliberate tradeoff).
 - **Honest-unavailable panels** awaiting backing features: external market salary feed (compensation), NLP service (climate wordcloud/sentiment).
 - **Nine-box** grid is select-only (no drag-to-persist; "Simulador" is a declared backend stub).

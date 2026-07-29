@@ -11,10 +11,10 @@ describe('S2 engagement wiring', () => {
   const en = JSON.parse(read('apps/web/lib/i18n/en.json'));
 
   it('calls createSurvey mutation (not a comingSoon stub)', () => {
-    // Cut over to the dark platform-api wrapper (apps/web/lib/platform-api/engagement.ts,
-    // Phase-5 Slice-16 write wrapper) — it still calls trpc.engagement.createSurvey.useMutation
-    // internally on the default (non-C#) path, so this assertion follows the refactor rather
-    // than the raw call (same pattern as tests/access/survey-take-ui.test.ts's engagement fix).
+    // Cut over to the platform-api wrapper (apps/web/lib/platform-api/engagement.ts, Phase-5
+    // Slice-16 write wrapper). As of 2026-07-29 that wrapper is C#-ONLY for this mutation —
+    // trpc.engagement.createSurvey was deleted — so this assertion targets the wrapper hook name
+    // rather than a raw trpc call (same pattern as tests/access/survey-take-ui.test.ts's fix).
     expect(modal).toMatch(/useEngagementCreateSurvey/);
     expect(modal).not.toMatch(/comingSoon/);
   });
