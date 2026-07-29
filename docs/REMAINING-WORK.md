@@ -167,7 +167,7 @@ wrapped in `if (options.<X>Enabled || isOpenApiDocGeneration) { ... }`, defaulti
   unrelated dead code), nine-box (2026-07-29, **partially** deleted — 7 of 11 read procedures +
   3 of 5 write procedures; `getAxisBreakdown`/`getMovementHistory`/`simulate`/`getQuadrantPlan`
   (reads) and `submitCalibrationVote`/`finalizeCalibration` (writes) remain untouched, unrelated
-  zero-consumer dead code), and compensation (2026-07-29, **partially** deleted — 5 of 10
+  zero-consumer dead code), and compensation (2026-07-29, **partially** deleted — 5 of 8
   FE-consumed read procedures + both write procedures; the 3 FX-dependent reads
   `getBandDistribution`/`getTotalCompBreakdown`/`getDashboardKpis` are DELIBERATELY RETAINED because
   `NEXT_PUBLIC_COMPENSATION_FX_READ_VIA_CSHARP` still does not exist in Vercel and TypeScript is

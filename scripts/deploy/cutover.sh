@@ -173,8 +173,8 @@ OPTIONS
   --help                      Print this message.
 
 EXAMPLES
-  scripts/deploy/cutover.sh compensation --verify-only
-  scripts/deploy/cutover.sh compensation --verify-only --flip-backend --yes
+  scripts/deploy/cutover.sh dei --verify-only
+  scripts/deploy/cutover.sh dei --verify-only --flip-backend --yes
   scripts/deploy/cutover.sh access-review-write --flip-backend --skip-verify-confirm-i-know-what-im-doing
   scripts/deploy/cutover.sh dei --rollback --yes
   scripts/deploy/cutover.sh --list
@@ -537,7 +537,7 @@ fi
 
 # Exit code contract: a bare `--verify-only` (the default mode) must propagate the parity CLI's
 # own pass/fail so this script is usable as a CI/scripting gate, e.g.
-# `./cutover.sh compensation --verify-only && ./cutover.sh compensation --flip-backend --yes`
+# `./cutover.sh dei --verify-only && ./cutover.sh dei --flip-backend --yes`
 # (for "reporting"/"evaluation360" read/"team-intel"/"billing-usage", whose TS routers are
 # deleted, run_verify's NONE branch above returns 0 unconditionally instead of a real pass/fail). Once a
 # mutating mode (--flip-backend/--rollback) also ran, THEIR success is what the exit code reports
