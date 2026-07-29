@@ -14,7 +14,16 @@ public sealed class FxSeedRunnerTests(FxSchemaFixture fixture)
 {
     private readonly FxSchemaFixture _fixture = fixture;
 
+    // This is the ONE test in the whole Fx suite that makes a REAL call to the public
+    // open.er-api.com API (by design — see the class doc comment above; "a live rate is NEVER
+    // golden-parity fixtured" means this can't be faked, it has to hit the real thing). That also
+    // makes it the one test whose success depends on a third party's uptime/rate-limits, which is
+    // NOT something an unrelated PR's CI run should be able to turn red. Tagged out of the default
+    // CI run (dotnet-platform.yml filters "Category!=LiveNetwork") and run explicitly instead —
+    // e.g. `dotnet test --filter "Category=LiveNetwork"` or the full `--filter Fx` for a local/manual
+    // verification pass.
     [Fact]
+    [Trait("Category", "LiveNetwork")]
     public async Task RunAsync_pins_the_seed_currencies_against_the_real_exchange_rate_api()
     {
         await _fixture.ResetAsync();
