@@ -83,7 +83,7 @@ surface_row() {
       echo "read|CompensationReadEnabled|verify|compensation|NEXT_PUBLIC_COMPENSATION_READ_VIA_CSHARP|FLIP_READY|Runbook §6 Phase A #4 — the FX-FREE subset only (7 of 12 comp reads). The 5 FX-dependent reads sit behind the separate FxReadsEnabled flag (needs the fx_rates migration + a seed first) and are intentionally NOT covered by this surface name."
       ;;
     nine-box)
-      echo "read|NineBoxReadEnabled|verify|ninebox|NEXT_PUBLIC_NINEBOX_READ_VIA_CSHARP|FLIP_READY|Runbook §6 Phase A #4. NOTE: the parity harness registers this surface as \"ninebox\" (no hyphen) — this script accepts the friendlier \"nine-box\" and maps it internally."
+      echo "read|NineBoxReadEnabled|verify|ninebox|NEXT_PUBLIC_NINEBOX_READ_VIA_CSHARP|CONFIRMED_LIVE|Runbook §6 Phase A #4. UPDATE 2026-07-29: flag confirmed live in prod; 7 of 11 registered read procedures (all but getAxisBreakdown, getMovementHistory, simulate, getQuadrantPlan, which have zero FE consumers) have ALSO had their TS side deleted — scripts/parity/surfaces.ts's 'ninebox' entry now registers only those 4 zero-consumer procedures' endpoints. --verify-only still runs a REAL (smaller) check, unlike reporting/evaluation360/team-intel/billing-usage's now-fully-no-op surfaces — do not treat this as TS_DELETED. NOTE: the parity harness registers this surface as \"ninebox\" (no hyphen) — this script accepts the friendlier \"nine-box\" and maps it internally."
       ;;
     engagement)
       echo "read|EngagementReadEnabled|verify|engagement|NEXT_PUBLIC_ENGAGEMENT_READ_VIA_CSHARP|FLIP_READY|Runbook §6 Phase A #4."
@@ -104,7 +104,7 @@ surface_row() {
       echo "write|SuccessionWriteEnabled|verify-write|succession|NEXT_PUBLIC_SUCCESSION_WRITE_VIA_CSHARP|CONFIRMED_LIVE|Runbook §6 Phase B #9. UPDATE 2026-07-29: flag confirmed live in prod. 2 of 5 mutations (addSuccessor, updateCriticalRoleBand) have had their TS side deleted; the other 3 (addCriticalRole, removeSuccessor, updateSuccessorReadiness) have zero FE consumers and are untouched, unrelated dead code. scripts/parity/write-surfaces.ts's successionSurface tests the C# HTTP endpoints directly regardless of TS state — verify-write is fully unaffected either way."
       ;;
     nine-box-write)
-      echo "write|NineBoxWriteEnabled|verify-write|ninebox|NEXT_PUBLIC_NINEBOX_WRITE_VIA_CSHARP|FLIP_READY|Runbook §6 Phase B #10 — FLIP-READY: drop TS ninebox router, flip calibration_sessions/members/votes."
+      echo "write|NineBoxWriteEnabled|verify-write|ninebox|NEXT_PUBLIC_NINEBOX_WRITE_VIA_CSHARP|CONFIRMED_LIVE|Runbook §6 Phase B #10. UPDATE 2026-07-29: flag confirmed live in prod. 3 of 5 mutations (createCalibration, addCalibrationMember, removeCalibrationMember) have had their TS side deleted; the other 2 (submitCalibrationVote, finalizeCalibration) have zero FE consumers and are untouched, unrelated dead code. scripts/parity/write-surfaces.ts's nineboxSurface tests the C# HTTP endpoints directly regardless of TS state — verify-write is fully unaffected either way."
       ;;
     compensation-write)
       echo "write|CompensationWriteEnabled|verify-write|compensation|NEXT_PUBLIC_COMPENSATION_WRITE_VIA_CSHARP|COEXISTENCE|Runbook §6 Phase B #11 — COEXISTENCE: salary_adjustments/employee_compensations stay read by other surfaces; table stays efcoreStranglerWrite, no ownership flip."

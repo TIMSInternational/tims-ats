@@ -1,82 +1,30 @@
 'use client';
 
-// Per-surface read gate for the SEVEN FE-consumed nine-box reads (getGrid /
-// getEmployeeDetail / getBenchStrength / getDashboardKpis / listCalibrations / getCalibration /
-// myCalibrations) — the seventh read surface staged to route to the C# Platform service. DARK by
-// default: unless BOTH the platform-api base URL and NEXT_PUBLIC_NINEBOX_READ_VIA_CSHARP are set at
-// deploy time, every hook returns the existing tRPC query unchanged (byte-identical to today).
-// Merging changes nothing in prod until Federico flips the flag at cutover.
+// C#-only nine-box reads + the 3 wrapped writes. The TS ninebox tRPC procedures backing these
+// hooks (getGrid, getEmployeeDetail, getBenchStrength, getDashboardKpis, listCalibrations,
+// getCalibration, myCalibrations, createCalibration, addCalibrationMember,
+// removeCalibrationMember) have been DELETED from packages/api/src/routers/ninebox.ts —
+// NEXT_PUBLIC_NINEBOX_READ_VIA_CSHARP and NEXT_PUBLIC_NINEBOX_WRITE_VIA_CSHARP are both true in
+// every environment and there is no TS fallback left to route to. Types below are hand-declared
+// (previously derived from inferRouterOutputs<AppRouter>) since the deleted procedures no longer
+// exist to infer from; quadrant/status stay `string` (the Prisma columns — NineBoxEvaluation.quadrant,
+// CalibrationSession.status, CalibrationMember.status, CalibrationVote.quadrant — are plain String
+// with no enum, unlike succession's criticality/readiness).
 //
-// Mirrors lib/platform-api/{reporting,billing,evaluation360,succession,compensation}.ts exactly:
-// each hook calls BOTH the tRPC hook (enabled when NOT viaCSharp) and a C# useQuery (enabled when
-// viaCSharp), then returns the active one. The C# useQuery is typed to the EXACT tRPC output type
-// (inferRouterOutputs), so each mapper below is compile-time-locked to the live contract's shape —
-// including the superjson Date semantics on the evaluation/calibration date fields, the jsonb
-// `axisBreakdown` passthrough, and the number-as-string wire artifacts.
-//
-// SCOPE — the nine-box router exposes ELEVEN reads; only SEVEN are consumed by the FE (the three
-// call sites: talent/nine-box/page.tsx, talent/nine-box/committee-members-panel.tsx,
-// dashboard/committee-tasks-dashboard.tsx). The four NOT consumed by the FE — getMovementHistory,
-// getAxisBreakdown, simulate, getQuadrantPlan — get NO wrapper here (they stay on tRPC; there is no
-// call site to route). All eleven live behind the C# `Platform:NineBoxReadEnabled` backend flag
-// (services/Tims.Platform/src/Tims.Api/NineBox/NineBoxReadEndpoints.cs), so the seven wrapped here
-// share ONE FE flag mirroring it.
-//
-// MISSING-RECORD PARITY (verified per read against ninebox.ts + NineBoxReadEndpoints.cs):
-//   - getEmployeeDetail — tRPC uses `findFirst` (returns null, NOT a throw); the C# route ALWAYS
-//     returns 200 with a NULLABLE `evaluation` (EmployeeDetailView.Evaluation is `EmployeeDetail
-//     Evaluation?`). No 404 is emitted for this read, so the wrapper just maps through, PRESERVING
-//     `evaluation: null` (the empty state the page renders as "select an employee"). No throw.
-//   - getCalibration — tRPC uses `findFirstOrThrow` (a missing session THROWS NOT_FOUND → the panel
-//     renders its error branch); the C# route returns a clean 404 for the same case. Its tRPC output
-//     type is NON-nullable, so returning null is impossible — the wrapper lets the 404 PROPAGATE as a
-//     thrown PlatformApiError (react-query error state), matching tRPC's throw-on-missing exactly.
-//   - getAxisBreakdown is the only OTHER 404-emitting read, and it is NOT FE-consumed (skipped).
-//
-// FORBIDDEN PARITY (listCalibrations): the tRPC read is org-governance — narrow-scope committee
-// members reach the page but get FORBIDDEN. The page deliberately treats that as "no sessions
-// visible" (empty state, never a crash). The C# route returns 403 for the same case. `isNineboxForbid
-// denError` normalizes BOTH error shapes (tRPC `error.data.code === 'FORBIDDEN'` and PlatformApi
-// Error status 403) so the call site's forbidden-as-empty rendering is identical on either path.
+// The router itself SURVIVES for its 6 zero-FE-consumer procedures (getAxisBreakdown,
+// getMovementHistory, simulate, submitCalibrationVote, finalizeCalibration, getQuadrantPlan) —
+// pre-existing dead code unrelated to this migration. None of those six ever had a wrapper here,
+// so nothing below references them.
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { inferRouterOutputs } from '@trpc/server';
-import type { AppRouter } from '@tims/api';
-import { trpc } from '../trpc';
-import { isPlatformApiEnabled, platformDelete, platformGet, platformPost, PlatformApiError } from './client';
-
-type RouterOutput = inferRouterOutputs<AppRouter>;
-type GridOutput = RouterOutput['ninebox']['getGrid'];
-type EmployeeDetailOutput = RouterOutput['ninebox']['getEmployeeDetail'];
-type BenchStrengthOutput = RouterOutput['ninebox']['getBenchStrength'];
-type DashboardKpisOutput = RouterOutput['ninebox']['getDashboardKpis'];
-type ListCalibrationsOutput = RouterOutput['ninebox']['listCalibrations'];
-type CalibrationOutput = RouterOutput['ninebox']['getCalibration'];
-type MyCalibrationsOutput = RouterOutput['ninebox']['myCalibrations'];
-type CreateCalibrationOutput = RouterOutput['ninebox']['createCalibration'];
-type AddCalibrationMemberOutput = RouterOutput['ninebox']['addCalibrationMember'];
-type RemoveCalibrationMemberOutput = RouterOutput['ninebox']['removeCalibrationMember'];
-
-// Nested-shape aliases so each mapper is narrowed to the EXACT sub-object the tRPC output declares
-// (no `any`; the jsonb `axisBreakdown` widened wire value is cast to the contract's JsonValue).
-type GridEvalOut = GridOutput['grid'][string][number];
-type EmployeeDetailEvalOut = NonNullable<EmployeeDetailOutput['evaluation']>;
-type EmployeeHistoryOut = EmployeeDetailOutput['history'][number];
-type CalibrationMemberOut = CalibrationOutput['members'][number];
-type CalibrationVoteOut = CalibrationOutput['votes'][number];
-
-// Second gate: even when the client is enabled, nine-box only routes to C# when its own flag is
-// exactly 'true'. NEXT_PUBLIC_* so it is inlined for the browser.
-const NINEBOX_VIA_CSHARP = process.env.NEXT_PUBLIC_NINEBOX_READ_VIA_CSHARP === 'true';
+import { platformDelete, platformGet, platformPost, PlatformApiError } from './client';
 
 // The C# minimal-API OpenAPI contract types every int32/double as `number | string` (a
-// number-as-string read artifact); coerce back to the `number` the tRPC output declares.
+// number-as-string read artifact); coerce back to a real `number`.
 const num = (v: number | string): number => Number(v);
 
-// DateTime fields serialize as canonical Node-ISO strings (…fffZ) via the shared Node-ISO converter.
-// The tRPC output types them as Prisma `Date` (superjson rebuilds real Date objects), so the C# path
-// reconstructs Date objects to be byte-identical at cutover. The contract types the raw values as
-// `unknown`; parse to Date (or null for the nullable scheduledAt/completedAt columns).
+// DateTime fields serialize as canonical Node-ISO strings (…fffZ) via the shared Node-ISO converter;
+// parse to Date (or null for the nullable scheduledAt/completedAt columns).
 const toDate = (v: unknown): Date => new Date(v as string);
 const toDateOrNull = (v: unknown): Date | null => (v == null ? null : new Date(v as string));
 
@@ -86,18 +34,163 @@ const mapDistribution = (raw: { [key: string]: number | string }): Record<string
   Object.fromEntries(Object.entries(raw).map(([k, v]) => [k, num(v)]));
 
 /**
- * True when an error is the nine-box FORBIDDEN case, normalized across BOTH read paths: the tRPC
- * client error (`error.data.code === 'FORBIDDEN'`) and the C# {@link PlatformApiError} (status 403).
- * The nine-box page uses it so a narrow-scope committee member's listCalibrations 403 renders as an
- * empty session list (never an error card) on either path. Takes `unknown` → safe on the union.
+ * True when an error is the nine-box FORBIDDEN case (a narrow-scope committee member reading
+ * org-governance data). Only the C# {@link PlatformApiError} shape exists now (status 403) — the
+ * tRPC `error.data.code === 'FORBIDDEN'` branch was removed alongside the TS procedures. Takes
+ * `unknown` → safe on the union; callers don't need to change.
  */
 export function isNineboxForbiddenError(err: unknown): boolean {
-  if (err instanceof PlatformApiError) return err.status === 403;
-  if (err && typeof err === 'object' && 'data' in err) {
-    const data = (err as { data?: { code?: string } | null }).data;
-    return data?.code === 'FORBIDDEN';
-  }
-  return false;
+  return err instanceof PlatformApiError && err.status === 403;
+}
+
+interface NineBoxUserSummary {
+  id: string;
+  firstName: string;
+  lastName: string;
+  avatar: string | null;
+  jobTitle: string | null;
+}
+
+interface NineBoxEvaluationView {
+  id: string;
+  organizationId: string;
+  userId: string;
+  period: string;
+  potentialScore: number;
+  performanceScore: number;
+  quadrant: string;
+  confidence: number;
+  axisBreakdown: unknown;
+  evaluatedAt: Date;
+  createdAt: Date;
+  user: NineBoxUserSummary;
+}
+
+interface GridOutput {
+  period: string;
+  grid: Record<string, NineBoxEvaluationView[]>;
+  totalEvaluations: number;
+}
+
+interface EmployeeDetailHistoryRow {
+  period: string;
+  quadrant: string;
+  potentialScore: number;
+  performanceScore: number;
+  evaluatedAt: Date;
+}
+
+interface EmployeeDetailEvaluationView extends Omit<NineBoxEvaluationView, 'user'> {
+  user: NineBoxUserSummary & { email: string };
+}
+
+interface EmployeeDetailOutput {
+  evaluation: EmployeeDetailEvaluationView | null;
+  history: EmployeeDetailHistoryRow[];
+}
+
+interface BenchStrengthOutput {
+  period: string;
+  total: number;
+  distribution: Record<string, number>;
+  highPotentialRatio: number;
+  benchStrength: number;
+}
+
+interface DashboardKpisOutput {
+  period: string;
+  totalEvaluations: number;
+  calibrationSessions: number;
+  activeCalibrations: number;
+  distribution: Record<string, number>;
+}
+
+interface CalibrationSessionSummary {
+  id: string;
+  period: string;
+  status: string;
+  scheduledAt: Date | null;
+  createdAt: Date;
+  _count: { members: number };
+}
+
+type ListCalibrationsOutput = CalibrationSessionSummary[];
+
+interface MyCalibrationSummary {
+  id: string;
+  period: string;
+  status: string;
+  scheduledAt: Date | null;
+  completedAt: Date | null;
+  createdAt: Date;
+  _count: { members: number; votes: number };
+}
+
+type MyCalibrationsOutput = MyCalibrationSummary[];
+
+interface CalibrationMemberOut {
+  id: string;
+  sessionId: string;
+  userId: string;
+  status: string;
+  createdAt: Date;
+  user: { id: string; firstName: string; lastName: string; avatar: string | null };
+}
+
+interface CalibrationVoteOut {
+  id: string;
+  sessionId: string;
+  evaluatedUserId: string;
+  voterId: string;
+  quadrant: string;
+  justification: string | null;
+  createdAt: Date;
+  evaluatedUser: { id: string; firstName: string; lastName: string };
+  voter: { id: string; firstName: string; lastName: string };
+}
+
+interface CalibrationOutput {
+  id: string;
+  organizationId: string;
+  period: string;
+  status: string;
+  scheduledAt: Date | null;
+  completedAt: Date | null;
+  createdById: string;
+  createdAt: Date;
+  updatedAt: Date;
+  creator: { id: string; firstName: string; lastName: string };
+  members: CalibrationMemberOut[];
+  votes: CalibrationVoteOut[];
+}
+
+interface CreateCalibrationMemberRow {
+  id: string;
+  sessionId: string;
+  userId: string;
+  status: string;
+  createdAt: Date;
+}
+
+interface CreateCalibrationOutput {
+  id: string;
+  organizationId: string;
+  period: string;
+  status: string;
+  scheduledAt: Date | null;
+  completedAt: Date | null;
+  createdById: string;
+  createdAt: Date;
+  updatedAt: Date;
+  members: CreateCalibrationMemberRow[];
+}
+
+interface AddCalibrationMemberOutput {
+  id: string;
+}
+
+interface RemoveCalibrationMemberOutput {
+  success: boolean;
 }
 
 // Full nine-box evaluation scalars shared by getGrid (grid cells). The user select carries
@@ -115,7 +208,7 @@ const mapGridEvaluation = (e: {
   evaluatedAt: unknown;
   createdAt: unknown;
   user: { id: string; firstName: string; lastName: string; avatar: string | null; jobTitle: string | null };
-}): GridEvalOut => ({
+}): NineBoxEvaluationView => ({
   id: e.id,
   organizationId: e.organizationId,
   userId: e.userId,
@@ -124,9 +217,7 @@ const mapGridEvaluation = (e: {
   performanceScore: num(e.performanceScore),
   quadrant: e.quadrant,
   confidence: num(e.confidence),
-  // jsonb passthrough: the contract widens the column to `unknown`; narrow it back to the exact
-  // Prisma JsonValue the tRPC output declares (no `null` injection — the column is a real value).
-  axisBreakdown: e.axisBreakdown as GridEvalOut['axisBreakdown'],
+  axisBreakdown: e.axisBreakdown,
   evaluatedAt: toDate(e.evaluatedAt),
   createdAt: toDate(e.createdAt),
   user: {
@@ -140,19 +231,12 @@ const mapGridEvaluation = (e: {
 
 /**
  * STAFF row-scoped: the nine-box grid (scope-filtered evaluations grouped by grid cell, evaluatedAt-
- * desc order preserved). Gate: `isPlatformApiEnabled() && NEXT_PUBLIC_NINEBOX_READ_VIA_CSHARP === 'true'`.
- *  - true  → GET /ninebox/grid?period= (per-cell arrays; scores/confidence coerced; jsonb axis passthrough;
- *            evaluatedAt/createdAt Dates rebuilt; key + within-cell order preserved verbatim).
- *  - false → trpc.ninebox.getGrid.useQuery({ period }) (the DEFAULT).
+ * desc order preserved). GET /ninebox/grid?period= (per-cell arrays; scores/confidence coerced;
+ * jsonb axis passthrough; evaluatedAt/createdAt Dates rebuilt; key + within-cell order preserved).
  */
 export function useNineBoxGrid(period: string) {
-  const viaCSharp = isPlatformApiEnabled() && NINEBOX_VIA_CSHARP;
-
-  const trpcQuery = trpc.ninebox.getGrid.useQuery({ period }, { enabled: !viaCSharp });
-
-  const csharpQuery = useQuery<GridOutput>({
+  return useQuery<GridOutput>({
     queryKey: ['platform-api', 'ninebox', 'grid', period],
-    enabled: viaCSharp,
     queryFn: async () => {
       const raw = await platformGet('/ninebox/grid', { period });
       return {
@@ -162,33 +246,21 @@ export function useNineBoxGrid(period: string) {
       };
     },
   });
-
-  return viaCSharp ? csharpQuery : trpcQuery;
 }
 
 /**
  * STAFF subject-scoped point-read: one employee's current evaluation (nullable) + cross-period
- * history. Gate as above; disabled until a person is selected (matching the call site's
- * `enabled: !!selectedUserId`).
- *  - true  → GET /ninebox/employee/{userId}?period= (200 with NULLABLE evaluation — findFirst parity;
- *            evaluation user select carries email; history is evaluatedAt-asc).
- *  - false → trpc.ninebox.getEmployeeDetail.useQuery({ userId, period }) (the DEFAULT).
+ * history. Disabled until a person is selected (matching the call site's `enabled: !!selectedUserId`).
+ * GET /ninebox/employee/{userId}?period= (200 with NULLABLE evaluation — findFirst parity;
+ * evaluation user select carries email; history is evaluatedAt-asc).
  */
 export function useNineBoxEmployeeDetail(userId: string | null, period: string) {
-  const enabledId = !!userId;
-  const viaCSharp = isPlatformApiEnabled() && NINEBOX_VIA_CSHARP;
-
-  const trpcQuery = trpc.ninebox.getEmployeeDetail.useQuery(
-    { userId: userId!, period },
-    { enabled: !viaCSharp && enabledId },
-  );
-
-  const csharpQuery = useQuery<EmployeeDetailOutput>({
+  return useQuery<EmployeeDetailOutput>({
     queryKey: ['platform-api', 'ninebox', 'employee', userId, period],
-    enabled: viaCSharp && enabledId,
+    enabled: !!userId,
     queryFn: async () => {
       const raw = await platformGet('/ninebox/employee/{userId}', { period }, { userId: userId! });
-      const evaluation: EmployeeDetailEvalOut | null = raw.evaluation
+      const evaluation: EmployeeDetailEvaluationView | null = raw.evaluation
         ? {
             id: raw.evaluation.id,
             organizationId: raw.evaluation.organizationId,
@@ -198,7 +270,7 @@ export function useNineBoxEmployeeDetail(userId: string | null, period: string) 
             performanceScore: num(raw.evaluation.performanceScore),
             quadrant: raw.evaluation.quadrant,
             confidence: num(raw.evaluation.confidence),
-            axisBreakdown: raw.evaluation.axisBreakdown as EmployeeDetailEvalOut['axisBreakdown'],
+            axisBreakdown: raw.evaluation.axisBreakdown,
             evaluatedAt: toDate(raw.evaluation.evaluatedAt),
             createdAt: toDate(raw.evaluation.createdAt),
             user: {
@@ -214,7 +286,7 @@ export function useNineBoxEmployeeDetail(userId: string | null, period: string) 
       return {
         evaluation,
         history: raw.history.map(
-          (h): EmployeeHistoryOut => ({
+          (h): EmployeeDetailHistoryRow => ({
             period: h.period,
             quadrant: h.quadrant,
             potentialScore: num(h.potentialScore),
@@ -225,25 +297,16 @@ export function useNineBoxEmployeeDetail(userId: string | null, period: string) 
       };
     },
   });
-
-  return viaCSharp ? csharpQuery : trpcQuery;
 }
 
 /**
- * STAFF org-rollup: bench-strength (quadrant distribution + high-potential ratio kernel). Gate as
- * above.
- *  - true  → GET /ninebox/bench-strength?period= (total/highPotentialRatio/benchStrength coerced;
- *            distribution values coerced, key order preserved).
- *  - false → trpc.ninebox.getBenchStrength.useQuery({ period }) (the DEFAULT).
+ * STAFF org-rollup: bench-strength (quadrant distribution + high-potential ratio kernel).
+ * GET /ninebox/bench-strength?period= (total/highPotentialRatio/benchStrength coerced;
+ * distribution values coerced, key order preserved).
  */
 export function useNineBoxBenchStrength(period: string) {
-  const viaCSharp = isPlatformApiEnabled() && NINEBOX_VIA_CSHARP;
-
-  const trpcQuery = trpc.ninebox.getBenchStrength.useQuery({ period }, { enabled: !viaCSharp });
-
-  const csharpQuery = useQuery<BenchStrengthOutput>({
+  return useQuery<BenchStrengthOutput>({
     queryKey: ['platform-api', 'ninebox', 'bench-strength', period],
-    enabled: viaCSharp,
     queryFn: async () => {
       const raw = await platformGet('/ninebox/bench-strength', { period });
       return {
@@ -255,24 +318,15 @@ export function useNineBoxBenchStrength(period: string) {
       };
     },
   });
-
-  return viaCSharp ? csharpQuery : trpcQuery;
 }
 
 /**
- * STAFF org-rollup: nine-box dashboard KPIs (counts + quadrant distribution). Gate as above.
- *  - true  → GET /ninebox/dashboard-kpis?period= (counts coerced; distribution values coerced,
- *            key order preserved).
- *  - false → trpc.ninebox.getDashboardKpis.useQuery({ period }) (the DEFAULT).
+ * STAFF org-rollup: nine-box dashboard KPIs (counts + quadrant distribution).
+ * GET /ninebox/dashboard-kpis?period= (counts coerced; distribution values coerced, key order preserved).
  */
 export function useNineBoxDashboardKpis(period: string) {
-  const viaCSharp = isPlatformApiEnabled() && NINEBOX_VIA_CSHARP;
-
-  const trpcQuery = trpc.ninebox.getDashboardKpis.useQuery({ period }, { enabled: !viaCSharp });
-
-  const csharpQuery = useQuery<DashboardKpisOutput>({
+  return useQuery<DashboardKpisOutput>({
     queryKey: ['platform-api', 'ninebox', 'dashboard-kpis', period],
-    enabled: viaCSharp,
     queryFn: async () => {
       const raw = await platformGet('/ninebox/dashboard-kpis', { period });
       return {
@@ -284,28 +338,17 @@ export function useNineBoxDashboardKpis(period: string) {
       };
     },
   });
-
-  return viaCSharp ? csharpQuery : trpcQuery;
 }
 
 /**
  * ORG-GOVERNANCE list: all calibration sessions (bounded 100, createdAt desc; narrow scope → 403).
- * Gate as above. A 403 propagates as a react-query error on BOTH paths; the call site treats it as
- * "no sessions visible" via {@link isNineboxForbiddenError}, so the 403 is NOT retried here.
- *  - true  → GET /ninebox/calibrations (scheduledAt Date|null; createdAt Date; _count.members coerced).
- *  - false → trpc.ninebox.listCalibrations.useQuery() (the DEFAULT), retry-disabled on FORBIDDEN.
+ * A 403 propagates as a react-query error; the call site treats it as "no sessions visible" via
+ * {@link isNineboxForbiddenError}, so it is NOT retried here. GET /ninebox/calibrations
+ * (scheduledAt Date|null; createdAt Date; _count.members coerced).
  */
 export function useNineBoxListCalibrations() {
-  const viaCSharp = isPlatformApiEnabled() && NINEBOX_VIA_CSHARP;
-
-  const trpcQuery = trpc.ninebox.listCalibrations.useQuery(undefined, {
-    enabled: !viaCSharp,
-    retry: (failureCount, err) => (err.data?.code === 'FORBIDDEN' ? false : failureCount < 3),
-  });
-
-  const csharpQuery = useQuery<ListCalibrationsOutput>({
+  return useQuery<ListCalibrationsOutput>({
     queryKey: ['platform-api', 'ninebox', 'calibrations'],
-    enabled: viaCSharp,
     retry: (failureCount, err) => (err instanceof PlatformApiError && err.status === 403 ? false : failureCount < 3),
     queryFn: async () => {
       const raw = await platformGet('/ninebox/calibrations');
@@ -319,25 +362,16 @@ export function useNineBoxListCalibrations() {
       }));
     },
   });
-
-  return viaCSharp ? csharpQuery : trpcQuery;
 }
 
 /**
  * STAFF hand-rolled membership gate: one calibration session (creator + members + votes,
- * deterministically ordered). Gate as above.
- *  - true  → GET /ninebox/calibrations/{id} (scalars + Dates; members/votes ordered by C#; a missing
- *            session → clean 404 which PROPAGATES as a thrown error — findFirstOrThrow parity).
- *  - false → trpc.ninebox.getCalibration.useQuery({ id }) (the DEFAULT).
+ * deterministically ordered). A missing session → clean 404 which PROPAGATES as a thrown error
+ * (findFirstOrThrow parity). GET /ninebox/calibrations/{id}.
  */
 export function useNineBoxCalibration(id: string) {
-  const viaCSharp = isPlatformApiEnabled() && NINEBOX_VIA_CSHARP;
-
-  const trpcQuery = trpc.ninebox.getCalibration.useQuery({ id }, { enabled: !viaCSharp });
-
-  const csharpQuery = useQuery<CalibrationOutput>({
+  return useQuery<CalibrationOutput>({
     queryKey: ['platform-api', 'ninebox', 'calibration', id],
-    enabled: viaCSharp,
     queryFn: async () => {
       const raw = await platformGet('/ninebox/calibrations/{id}', undefined, { id });
       return {
@@ -394,25 +428,16 @@ export function useNineBoxCalibration(id: string) {
       };
     },
   });
-
-  return viaCSharp ? csharpQuery : trpcQuery;
 }
 
 /**
- * MEMBER-scoped self list: the caller's OWN calibration sessions (created or a member of). Gate as
- * above.
- *  - true  → GET /ninebox/my-calibrations (bounded 100, createdAt desc; scheduledAt/completedAt
- *            Date|null; createdAt Date; _count.{members,votes} coerced).
- *  - false → trpc.ninebox.myCalibrations.useQuery() (the DEFAULT).
+ * MEMBER-scoped self list: the caller's OWN calibration sessions (created or a member of).
+ * GET /ninebox/my-calibrations (bounded 100, createdAt desc; scheduledAt/completedAt Date|null;
+ * createdAt Date; _count.{members,votes} coerced).
  */
 export function useNineBoxMyCalibrations() {
-  const viaCSharp = isPlatformApiEnabled() && NINEBOX_VIA_CSHARP;
-
-  const trpcQuery = trpc.ninebox.myCalibrations.useQuery(undefined, { enabled: !viaCSharp });
-
-  const csharpQuery = useQuery<MyCalibrationsOutput>({
+  return useQuery<MyCalibrationsOutput>({
     queryKey: ['platform-api', 'ninebox', 'my-calibrations'],
-    enabled: viaCSharp,
     queryFn: async () => {
       const raw = await platformGet('/ninebox/my-calibrations');
       return raw.map((s) => ({
@@ -426,38 +451,22 @@ export function useNineBoxMyCalibrations() {
       }));
     },
   });
-
-  return viaCSharp ? csharpQuery : trpcQuery;
 }
 
 /**
- * Invalidate every C#-routed nine-box read (the `['platform-api','ninebox']` query-key prefix) after
- * a nine-box mutation, so the C# path refreshes exactly like `utils.ninebox.*.invalidate()` refreshes
- * the tRPC path. No-op under tRPC (nothing is cached at that prefix). Call from a mutation onSuccess
- * alongside the existing tRPC invalidations; pass the `useQueryClient()` instance.
+ * Invalidate every C#-routed nine-box read (the `['platform-api','ninebox']` query-key prefix)
+ * after a nine-box mutation. Call from a mutation onSuccess; pass the `useQueryClient()` instance.
  */
 export function invalidateNineboxPlatformReads(queryClient: ReturnType<typeof useQueryClient>): void {
   queryClient.invalidateQueries({ queryKey: ['platform-api', 'ninebox'] });
 }
 
 // ---------------------------------------------------------------------------
-// Writes (Phase-5 Slice 15) — a SEPARATE flag from the reads above, mirroring backend
-// `Platform:NineBoxWriteEnabled` (independent of NineBoxReadEnabled). Of the 5 C# mutations
-// (createCalibration/submitCalibrationVote/addCalibrationMember/removeCalibrationMember/
-// finalizeCalibration), only createCalibration (talent/nine-box/page.tsx) and
-// addCalibrationMember/removeCalibrationMember (committee-members-panel.tsx) have live FE
-// consumers — a full-repo grep confirms submitCalibrationVote/finalizeCalibration have zero call
-// sites anywhere (same situation as succession's addCriticalRole/removeSuccessor/
-// updateSuccessorReadiness), so they are intentionally NOT wrapped here. Each hook mirrors trpc's
-// useMutation shape ({ onSuccess?, onError? }) so existing call sites swap in with a one-line
-// change; both consumers already invalidate via `invalidateNineboxPlatformReads` post-success —
-// this file only supplies the mutation itself. Error messages are byte-identical between stacks
-// (verified against NineBoxWriteEndpoints.cs's message constants and the TS router's inline
-// messages), including the addCalibrationMember 409 duplicate-member conflict (unlike succession's
-// addSuccessor, both stacks here already throw a friendly 409/CONFLICT with the same message).
+// Writes — createCalibration (talent/nine-box/page.tsx) and addCalibrationMember/
+// removeCalibrationMember (committee-members-panel.tsx) are the 3 mutations with live FE
+// consumers. submitCalibrationVote/finalizeCalibration have zero call sites and stay untouched,
+// unrelated dead code in the TS router (see ninebox.ts).
 // ---------------------------------------------------------------------------
-
-const NINEBOX_WRITE_VIA_CSHARP = process.env.NEXT_PUBLIC_NINEBOX_WRITE_VIA_CSHARP === 'true';
 
 interface MutationOptions<TData = void> {
   onSuccess?: (data: TData) => void;
@@ -486,11 +495,10 @@ interface CreateCalibrationInputShape {
 /**
  * STAFF: start a new calibration session (1 call site: talent/nine-box/page.tsx, which reads
  * `session.id` from the resolved data to auto-open the new session's committee panel).
+ * POST /ninebox/calibrations.
  */
 export function useNineBoxCreateCalibration(options?: MutationOptions<CreateCalibrationOutput>) {
-  const viaCSharp = isPlatformApiEnabled() && NINEBOX_WRITE_VIA_CSHARP;
-  const trpcMutation = trpc.ninebox.createCalibration.useMutation(options);
-  const csharpMutation = useCSharpMutation(async (input: CreateCalibrationInputShape) => {
+  return useCSharpMutation(async (input: CreateCalibrationInputShape) => {
     const raw = await platformPost('/ninebox/calibrations', {
       period: input.period,
       scheduledAt: input.scheduledAt,
@@ -515,7 +523,6 @@ export function useNineBoxCreateCalibration(options?: MutationOptions<CreateCali
       })),
     } satisfies CreateCalibrationOutput;
   }, options);
-  return viaCSharp ? csharpMutation : trpcMutation;
 }
 
 interface AddCalibrationMemberInputShape {
@@ -523,11 +530,12 @@ interface AddCalibrationMemberInputShape {
   userId: string;
 }
 
-/** STAFF: add a committee member to a calibration session (1 call site: committee-members-panel.tsx). */
+/**
+ * STAFF: add a committee member to a calibration session (1 call site: committee-members-panel.tsx).
+ * POST /ninebox/calibrations/{sessionId}/members.
+ */
 export function useNineBoxAddCalibrationMember(options?: MutationOptions<AddCalibrationMemberOutput>) {
-  const viaCSharp = isPlatformApiEnabled() && NINEBOX_WRITE_VIA_CSHARP;
-  const trpcMutation = trpc.ninebox.addCalibrationMember.useMutation(options);
-  const csharpMutation = useCSharpMutation(async (input: AddCalibrationMemberInputShape) => {
+  return useCSharpMutation(async (input: AddCalibrationMemberInputShape) => {
     const raw = await platformPost(
       '/ninebox/calibrations/{sessionId}/members',
       { userId: input.userId },
@@ -535,7 +543,6 @@ export function useNineBoxAddCalibrationMember(options?: MutationOptions<AddCali
     );
     return { id: raw.id } satisfies AddCalibrationMemberOutput;
   }, options);
-  return viaCSharp ? csharpMutation : trpcMutation;
 }
 
 interface RemoveCalibrationMemberInputShape {
@@ -543,16 +550,16 @@ interface RemoveCalibrationMemberInputShape {
   userId: string;
 }
 
-/** STAFF: remove a committee member from a calibration session (1 call site: committee-members-panel.tsx). */
+/**
+ * STAFF: remove a committee member from a calibration session (1 call site: committee-members-panel.tsx).
+ * DELETE /ninebox/calibrations/{sessionId}/members/{userId}.
+ */
 export function useNineBoxRemoveCalibrationMember(options?: MutationOptions<RemoveCalibrationMemberOutput>) {
-  const viaCSharp = isPlatformApiEnabled() && NINEBOX_WRITE_VIA_CSHARP;
-  const trpcMutation = trpc.ninebox.removeCalibrationMember.useMutation(options);
-  const csharpMutation = useCSharpMutation(async (input: RemoveCalibrationMemberInputShape) => {
+  return useCSharpMutation(async (input: RemoveCalibrationMemberInputShape) => {
     const raw = await platformDelete('/ninebox/calibrations/{sessionId}/members/{userId}', {
       sessionId: input.sessionId,
       userId: input.userId,
     });
     return raw satisfies RemoveCalibrationMemberOutput;
   }, options);
-  return viaCSharp ? csharpMutation : trpcMutation;
 }

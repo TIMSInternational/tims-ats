@@ -2,18 +2,6 @@ import { z } from 'zod';
 
 // ── Grid ─────────────────────────────────────────────────────────────
 
-export const getGridInput = z.object({
-  period: z.string().max(100),
-  companyId: z.string().uuid().optional(),
-  unitId: z.string().uuid().optional(),
-  teamId: z.string().uuid().optional(),
-});
-
-export const getEmployeeDetailInput = z.object({
-  userId: z.string().uuid(),
-  period: z.string().max(100),
-});
-
 export const getAxisBreakdownInput = z.object({
   userId: z.string().uuid(),
   period: z.string().max(100),
@@ -32,14 +20,6 @@ export const simulateInput = z.object({
 
 // ── Calibration ──────────────────────────────────────────────────────
 
-export const createCalibrationInput = z.object({
-  period: z.string().max(100),
-  scheduledAt: z.string().datetime().optional(),
-  memberIds: z.array(z.string().uuid()).max(100).optional(),
-});
-
-export const getCalibrationInput = z.object({ id: z.string().uuid() });
-
 export const submitCalibrationVoteInput = z.object({
   sessionId: z.string().uuid(),
   evaluatedUserId: z.string().uuid(),
@@ -52,9 +32,3 @@ export const finalizeCalibrationInput = z.object({ sessionId: z.string().uuid() 
 // ── Plans & Analytics ────────────────────────────────────────────────
 
 export const getQuadrantPlanInput = z.object({ quadrant: z.string().max(100) });
-
-export const getBenchStrengthInput = z.object({ period: z.string().max(100) });
-
-// ── Dashboard KPIs ───────────────────────────────────────────────────
-
-export const getDashboardKpisInput = z.object({ period: z.string().max(100) });

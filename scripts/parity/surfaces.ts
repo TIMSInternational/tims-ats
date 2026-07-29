@@ -141,14 +141,18 @@ export const SURFACES: Record<string, Surface> = {
     ],
   },
   // ── nine-box ────────────────────────────────────────────────────────────────────────────────
-  // 8 of the 11 nine-box reads (the 3 by-id employee/{userId}, axis-breakdown, calibrations/{id} are a
-  // Tier-2 follow-up needing the harness Mode-A id extension). 6 org-scoped Mode-B (grid, movement-history,
-  // calibrations, my-calibrations, bench-strength, dashboard-kpis) + 2 globalScope pure kernels (simulate,
-  // quadrant-plan — org-independent by design → RLS N/A, parity + RBAC still run). One flag
-  // Platform:NineBoxReadEnabled. RBAC (hr_admin ninebox:read@org, hrbp @unit): requireOrgScope reads
-  // (calibrations, bench-strength, dashboard-kpis) → hrbp 403; grant-only reads (my-calibrations, simulate,
-  // quadrant-plan) → hrbp 200; grid + movement-history use scopeWhereFor (hrbp → 200-empty, fragile) so
-  // hrbp is OMITTED from their expectedByRole (the runner iterates only present keys). super_admin bypasses.
+  // UPDATE 2026-07-29: 7 of the original 11 registered nine-box reads had their TS procedures
+  // deleted (NEXT_PUBLIC_NINEBOX_READ_VIA_CSHARP confirmed live in prod) — grid, calibrations,
+  // my-calibrations, bench-strength, dashboard-kpis, employee, calibration are REMOVED below (no
+  // TS side left to diff against for any of them). The 4 that survive (movement-history, simulate,
+  // quadrant-plan, axis-breakdown) map to the router's zero-FE-consumer procedures, which stay
+  // live — pre-existing dead code unrelated to this migration — so `verify ninebox` still runs 4
+  // REAL parity/RLS/RBAC checks, not a no-op. One flag Platform:NineBoxReadEnabled still gates the
+  // C# side for all 11 backend endpoints; only these 4 have a TS side left to compare against.
+  // RBAC (hr_admin ninebox:read@org, hrbp @unit): movement-history uses scopeWhereFor (hrbp →
+  // 200-empty, fragile, OMITTED from expectedByRole); axis-breakdown is subject-scoped (hrbp @unit,
+  // target ∉ subject set → 403); simulate/quadrant-plan are globalScope pure kernels (org-independent
+  // by design → RLS N/A, parity + RBAC still run). super_admin bypasses.
   ninebox: {
     key: 'ninebox',
     flag: 'Platform__NineBoxReadEnabled',
@@ -156,52 +160,12 @@ export const SURFACES: Record<string, Surface> = {
     probeRole: 'super_admin',
     endpoints: [
       {
-        name: 'grid',
-        csharpPath: '/ninebox/grid?period=2026-Q1',
-        tsProcedure: 'ninebox.getGrid',
-        input: { period: '2026-Q1' },
-        expectedByRole: { super_admin: 200, hr_admin: 200 },
-        normalize: { dropNullish: true },
-      },
-      {
         name: 'movement-history',
         csharpPath: '/ninebox/movement-history',
         tsProcedure: 'ninebox.getMovementHistory',
         input: {},
         expectedByRole: { super_admin: 200, hr_admin: 200 },
         normalize: { dropNullish: true, sortArraysBy: 'userId' },
-      },
-      {
-        name: 'calibrations',
-        csharpPath: '/ninebox/calibrations',
-        tsProcedure: 'ninebox.listCalibrations',
-        input: {},
-        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
-        normalize: { dropNullish: true, sortArraysBy: 'id' },
-      },
-      {
-        name: 'my-calibrations',
-        csharpPath: '/ninebox/my-calibrations',
-        tsProcedure: 'ninebox.myCalibrations',
-        input: {},
-        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 200 },
-        normalize: { dropNullish: true, sortArraysBy: 'id' },
-      },
-      {
-        name: 'bench-strength',
-        csharpPath: '/ninebox/bench-strength?period=2026-Q1',
-        tsProcedure: 'ninebox.getBenchStrength',
-        input: { period: '2026-Q1' },
-        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
-        normalize: { dropNullish: true },
-      },
-      {
-        name: 'dashboard-kpis',
-        csharpPath: '/ninebox/dashboard-kpis?period=2026-Q1',
-        tsProcedure: 'ninebox.getDashboardKpis',
-        input: { period: '2026-Q1' },
-        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
-        normalize: { dropNullish: true },
       },
       {
         name: 'simulate',
@@ -224,22 +188,9 @@ export const SURFACES: Record<string, Surface> = {
         expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 200 },
         normalize: { dropNullish: true },
       },
-      // Tier-2 by-id: getEmployeeDetail/getAxisBreakdown = permissionProcedure('ninebox','read') +
-      // assertSubjectInScope; both take ?period=2026-Q1. Org-A target = a:hr_admin (has a 2026-Q1 eval).
-      // super/hr_admin (own id) → 200; hrbp @unit → target ∉ subject set → 403. Mode-A: → org-B b:hr_admin.
-      {
-        name: 'employee',
-        csharpPath: '/ninebox/employee/{id}?period=2026-Q1',
-        tsProcedure: 'ninebox.getEmployeeDetail',
-        input: { userId: ID_SENTINEL, period: '2026-Q1' },
-        idScopeKey: 'employee',
-        // UNIQUE among the 9 by-id reads: getEmployeeDetail models a cross-tenant/absent id as a 200
-        // null-SHAPE (`{evaluation:null, history:[]}`), not a 404 (verified live on both stacks) — so a
-        // 200-empty here is isolation-held, not a missing-404 anomaly. All other by-id reads 404.
-        crossTenantEmptyOk: true,
-        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
-        normalize: { dropNullish: true, sortArraysBy: 'period' },
-      },
+      // Tier-2 by-id: getAxisBreakdown = permissionProcedure('ninebox','read') + assertSubjectInScope;
+      // takes ?period=2026-Q1. Org-A target = a:hr_admin (has a 2026-Q1 eval). super/hr_admin (own id)
+      // → 200; hrbp @unit → target ∉ subject set → 403. Mode-A: → org-B b:hr_admin.
       {
         name: 'axis-breakdown',
         csharpPath: '/ninebox/employee/{id}/axis-breakdown?period=2026-Q1',
@@ -248,19 +199,6 @@ export const SURFACES: Record<string, Surface> = {
         idScopeKey: 'employee',
         expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
         normalize: { dropNullish: true },
-      },
-      // Tier-2 by-id: getCalibration = permissionProcedure('ninebox','read') + hand-rolled committee-membership
-      // gate (org/company scope → any in-org session; narrow → creator-or-member else 403). Org-A target = the
-      // org-A calibration session (created by super). super/hr_admin (org) → 200; hrbp not creator/member → 403.
-      {
-        name: 'calibration',
-        csharpPath: '/ninebox/calibrations/{id}',
-        tsProcedure: 'ninebox.getCalibration',
-        input: { id: ID_SENTINEL },
-        idScopeKey: 'calibration',
-        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
-        // nested members[]/votes[] arrays (≤1 each seeded); canonicalize any array by id before diffing.
-        normalize: { dropNullish: true, sortArraysBy: 'id' },
       },
     ],
   },

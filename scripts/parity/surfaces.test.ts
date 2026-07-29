@@ -14,7 +14,7 @@ describe('SURFACES', () => {
       'salary-bands',
     ]);
     expect(SURFACES['ninebox'].flag).toBe('Platform__NineBoxReadEnabled');
-    expect(SURFACES['ninebox'].endpoints).toHaveLength(11);
+    expect(SURFACES['ninebox'].endpoints).toHaveLength(4);
     expect(SURFACES['succession'].flag).toBe('Platform__SuccessionReadEnabled');
     expect(SURFACES['succession'].endpoints.map((e) => e.name)).toContain('critical-role');
     expect(SURFACES['succession'].endpoints).toHaveLength(1);
@@ -24,12 +24,10 @@ describe('SURFACES', () => {
   });
 
   it('every Tier-2 by-id endpoint sets idScopeKey and carries the {id} sentinel in path + input', () => {
-    // The 9 by-id Mode-A IDOR endpoints and the resource key each threads.
+    // The 3 by-id Mode-A IDOR endpoints and the resource key each threads.
     const expected: Record<string, string> = {
       'compensation/employee': 'employee',
-      'ninebox/employee': 'employee',
       'ninebox/axis-breakdown': 'employee',
-      'ninebox/calibration': 'calibration',
       'succession/critical-role': 'critical-role',
     };
     let byIdCount = 0;
@@ -45,17 +43,17 @@ describe('SURFACES', () => {
         expect(JSON.stringify(ep.input), k).toContain('{id}');
       }
     }
-    expect(byIdCount).toBe(5);
+    expect(byIdCount).toBe(3);
   });
 
   it('nine-box marks only the two pure kernels as globalScope', () => {
     const nb = SURFACES['ninebox'];
     expect(nb.endpoints.find((e) => e.name === 'simulate')?.globalScope).toBe(true);
     expect(nb.endpoints.find((e) => e.name === 'quadrant-plan')?.globalScope).toBe(true);
-    expect(nb.endpoints.find((e) => e.name === 'grid')?.globalScope).toBeUndefined();
-    // grid + movement-history omit hrbp (scopeWhereFor fragile); the org-rollup reads deny hrbp.
-    expect(nb.endpoints.find((e) => e.name === 'grid')?.expectedByRole['hrbp']).toBeUndefined();
-    expect(nb.endpoints.find((e) => e.name === 'dashboard-kpis')?.expectedByRole['hrbp']).toBe(403);
+    expect(nb.endpoints.find((e) => e.name === 'movement-history')?.globalScope).toBeUndefined();
+    // movement-history omits hrbp (scopeWhereFor fragile); axis-breakdown (subject-scoped) denies hrbp.
+    expect(nb.endpoints.find((e) => e.name === 'movement-history')?.expectedByRole['hrbp']).toBeUndefined();
+    expect(nb.endpoints.find((e) => e.name === 'axis-breakdown')?.expectedByRole['hrbp']).toBe(403);
   });
 
   // ── Coverage-audit additions (2026-07-27) ────────────────────────────────────────────────────
