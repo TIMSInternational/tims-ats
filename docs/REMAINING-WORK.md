@@ -182,9 +182,18 @@ wrapped in `if (options.<X>Enabled || isOpenApiDocGeneration) { ... }`, defaulti
   code, and ALL 14 read procedures are DELIBERATELY RETAINED because
   `NEXT_PUBLIC_ENGAGEMENT_READ_VIA_CSHARP` still does not exist in Vercel and TypeScript is their
   live prod path — structurally the same reason compensation retained its 3 FX reads). **This closes
-  the S5 item-4 TS-deletion sequence: 8 of 12 live surfaces have had their dead TS code deleted, and
-  ZERO live surfaces are left with undeleted TS fallback code sitting behind an always-true flag.**
-  Flipping a
+  the S5 item-4 TS-deletion sequence: all 12 live surfaces (across all 8 domains) have had their dead
+  TS code deleted, and ZERO live surfaces are left with undeleted TS fallback code sitting behind an
+  always-true flag.** Two known, deliberately-deferred follow-ups from this sequence, recorded here so
+  they aren't lost with no successor TS-deletion branch to carry them: (1) once any domain's dark READ
+  flag is eventually flipped, that domain's FE modal `invalidate()` calls that target now-C#-routed
+  reads will invalidate a dead tRPC cache key instead of the real `['platform-api', <domain>, …]` key
+  — a latent bug common to every dual-path wrapper in this migration, not introduced by any single
+  domain's deletion, and only surfaces at the next flag flip; (2) several C# XML doc-comments across
+  `services/Tims.Platform/src/**/Engagement/*.cs` still cite `engagement.ts` line numbers from before
+  this domain's TS deletion (some now point at unrelated surviving code rather than failing loudly) —
+  C# source was explicitly out of scope for this migration's TS-deletion sweeps, so this drift was
+  never going to be caught in-branch; worth a dedicated cleanup pass, not urgent. Flipping a
   domain's flag in prod is explicitly **Federico-only, at canary**
   (`docs/superpowers/plans/2026-07-24-cutover-verification-harness.md`); TS-code deletion is AI-doable
   per-domain once a flag is confirmed live, per the reporting/evaluation360 precedent.
