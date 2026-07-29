@@ -51,9 +51,48 @@ type LowClimateAlertsOutput = RouterOutput['engagement']['getLowClimateAlerts'];
 type ListActionPlansOutput = RouterOutput['engagement']['listActionPlans'];
 type ListLeaderCommitmentsOutput = RouterOutput['engagement']['listLeaderCommitments'];
 type DashboardKpisOutput = RouterOutput['engagement']['getDashboardKpis'];
-type CreateSurveyOutput = RouterOutput['engagement']['createSurvey'];
-type ActivateSurveyOutput = RouterOutput['engagement']['activateSurvey'];
-type SubmitSurveyResponseOutput = RouterOutput['engagement']['submitSurveyResponse'];
+// ── Hand-declared write output shapes (2026-07-29) ─────────────────────────
+// The 3 TS mutations these hooks used to fall back to (engagement.createSurvey /
+// activateSurvey / submitSurveyResponse) were DELETED, so RouterOutput['engagement'][…] no longer
+// resolves for them. The shapes below reproduce, field for field, exactly what those procedures
+// returned (source of truth: packages/db/prisma/schema/engagement.prisma's Survey + SurveyResponse
+// models and the deleted procedures' `select` clauses), so every consumer's return type is
+// byte-identical to before the deletion.
+//
+// `questions` / `targetGroups` are Prisma `Json` / `Json?` columns; the deleted tRPC output typed
+// them as `Prisma.JsonValue`. apps/web does not import @prisma/client, and CLAUDE.md bans `any` and
+// unnarrowed `unknown`, so the recursive JSON union is declared locally.
+type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+
+// createSurvey called `db.survey.create({ data: … })` with NO select → the full 13-field Survey row.
+interface CreateSurveyOutput {
+  id: string;
+  organizationId: string;
+  title: string;
+  type: string;
+  status: string;
+  questions: JsonValue;
+  targetGroups: JsonValue | null;
+  startsAt: Date | null;
+  endsAt: Date | null;
+  responseCount: number;
+  createdById: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// §21 minimal-select: activateSurvey returned `select: { id: true, status: true }`.
+interface ActivateSurveyOutput {
+  id: string;
+  status: string;
+}
+
+// §21 minimal-select: submitSurveyResponse returned `select: { id: true, submittedAt: true }` — it
+// deliberately never echoed the confidential `answers` JSON back to the respondent.
+interface SubmitSurveyResponseOutput {
+  id: string;
+  submittedAt: Date;
+}
 
 // Second gate: even when the client is enabled, engagement only routes to C# when its own flag is
 // exactly 'true'. NEXT_PUBLIC_* so it is inlined for the browser.
@@ -343,26 +382,37 @@ export function useEngagementDashboardKpis() {
 }
 
 // ---------------------------------------------------------------------------
-// Writes (Phase-5 Slice 16) — a SEPARATE flag from the reads above, mirroring backend
-// `Platform:EngagementWriteEnabled` (independent of EngagementReadEnabled). Of the 5 C# mutations
-// (createSurvey/activateSurvey/submitSurveyResponse/createActionPlan/updateActionPlan), only
-// createSurvey + activateSurvey (climate/launch-survey-modal.tsx) and submitSurveyResponse
-// (dashboard/survey-take-modal.tsx) have live FE consumers — a full-repo grep confirms
-// createActionPlan/updateActionPlan have zero call sites anywhere (same situation as succession's
-// addCriticalRole/removeSuccessor/updateSuccessorReadiness), so they are intentionally NOT wrapped
-// here. Each hook mirrors trpc's useMutation shape ({ onSuccess?, onError? }); MutationOptions is
-// generic over TData (like ninebox's, unlike compensation's void-only) because launch-survey-modal.tsx
-// chains `create.onSuccess: (survey) => activate.mutate({ id: survey.id })` off the created survey's id.
+// Writes (Phase-5 Slice 16) — C#-ONLY. All three TS tRPC mutations
+// (engagement.createSurvey / activateSurvey / submitSurveyResponse) were deleted on 2026-07-29;
+// NEXT_PUBLIC_ENGAGEMENT_WRITE_VIA_CSHARP was confirmed live in prod on 2026-07-28 (value re-read
+// directly from Vercel production on 2026-07-29) and is no longer read here — the FE flag is
+// retired. It was never listed in .env.example, so there is nothing to retire there. The BACKEND
+// flag `Platform:EngagementWriteEnabled` is still real and still gates the C# routes.
+//
+// Of the 5 C# mutations, only these 3 have live FE consumers — createSurvey + activateSurvey
+// (climate/launch-survey-modal.tsx) and submitSurveyResponse (dashboard/survey-take-modal.tsx). A
+// full-repo grep still confirms createActionPlan/updateActionPlan have ZERO call sites anywhere
+// (same situation as succession's addCriticalRole), so they are intentionally NOT wrapped here —
+// and, for the same reason, their TS procedures were deliberately left undeleted.
+//
+// Each hook keeps trpc's useMutation option shape ({ onSuccess?, onError?, onSettled? }), so both
+// call sites are unchanged. MutationOptions stays generic over TData (like ninebox's, unlike
+// compensation's void-only) because launch-survey-modal.tsx chains
+// `create.onSuccess: (survey) => activate.mutate({ id: survey.id })` off the created survey's id.
+//
+// ⚠️ THE READS ABOVE ARE UNAFFECTED, AND THAT HAS A CONSEQUENCE: NEXT_PUBLIC_ENGAGEMENT_READ_VIA_
+// CSHARP still does not exist in Vercel, so all 8 read hooks stay dual-path and TypeScript is their
+// LIVE prod path. Therefore both consumers' `utils.engagement.*.invalidate()` calls — listSurveys +
+// getDashboardKpis in launch-survey-modal.tsx, myPendingSurveys in survey-take-modal.tsx — are STILL
+// LIVE and must NOT be removed. This is the one domain in the TS-deletion sequence where those calls
+// did not die alongside the mutation; do not "clean them up" by analogy with the other domains.
 //
 // submitSurveyResponse's CONFLICT toast: survey-take-modal.tsx distinguishes the duplicate-response
 // case by matching `err.message` against the exact backend text ('Ya respondiste esta encuesta' /
-// DuplicateResponseMessage — byte-identical on both stacks), rather than the tRPC-specific
-// `err.data?.code === 'CONFLICT'` shape the C# path can't produce. `PlatformApiError` now parses the
-// response body's `message` field (client.ts), so this match works correctly on either path, not
-// just the tRPC default.
+// DuplicateResponseMessage), rather than the tRPC-specific `err.data?.code === 'CONFLICT'` shape the
+// C# path can't produce. `PlatformApiError` parses the response body's `message` field (client.ts),
+// so this match works correctly — and it is now the ONLY path, which makes that note load-bearing.
 // ---------------------------------------------------------------------------
-
-const ENGAGEMENT_WRITE_VIA_CSHARP = process.env.NEXT_PUBLIC_ENGAGEMENT_WRITE_VIA_CSHARP === 'true';
 
 interface MutationOptions<TData = void> {
   onSuccess?: (data: TData) => void;
@@ -404,9 +454,7 @@ interface CreateSurveyInputShape {
  * from the resolved data to immediately chain into activateSurvey).
  */
 export function useEngagementCreateSurvey(options?: MutationOptions<CreateSurveyOutput>) {
-  const viaCSharp = isPlatformApiEnabled() && ENGAGEMENT_WRITE_VIA_CSHARP;
-  const trpcMutation = trpc.engagement.createSurvey.useMutation(options);
-  const csharpMutation = useCSharpMutation(async (input: CreateSurveyInputShape) => {
+  return useCSharpMutation(async (input: CreateSurveyInputShape) => {
     const raw = await platformPost('/engagement/surveys', {
       title: input.title,
       type: input.type,
@@ -431,7 +479,6 @@ export function useEngagementCreateSurvey(options?: MutationOptions<CreateSurvey
       updatedAt: toDate(raw.updatedAt),
     } satisfies CreateSurveyOutput;
   }, options);
-  return viaCSharp ? csharpMutation : trpcMutation;
 }
 
 interface ActivateSurveyInputShape {
@@ -440,15 +487,12 @@ interface ActivateSurveyInputShape {
 
 /** STAFF: activate a draft survey (1 call site: climate/launch-survey-modal.tsx). */
 export function useEngagementActivateSurvey(options?: MutationOptions<ActivateSurveyOutput>) {
-  const viaCSharp = isPlatformApiEnabled() && ENGAGEMENT_WRITE_VIA_CSHARP;
-  const trpcMutation = trpc.engagement.activateSurvey.useMutation(options);
-  const csharpMutation = useCSharpMutation(async (input: ActivateSurveyInputShape) => {
+  return useCSharpMutation(async (input: ActivateSurveyInputShape) => {
     const raw = await platformPost('/engagement/surveys/{surveyId}/activate', undefined, {
       surveyId: input.id,
     });
     return { id: raw.id, status: raw.status } satisfies ActivateSurveyOutput;
   }, options);
-  return viaCSharp ? csharpMutation : trpcMutation;
 }
 
 interface SubmitSurveyResponseInputShape {
@@ -458,9 +502,7 @@ interface SubmitSurveyResponseInputShape {
 
 /** SELF-SERVICE: submit answers to a survey (1 call site: dashboard/survey-take-modal.tsx). */
 export function useEngagementSubmitSurveyResponse(options?: MutationOptions<SubmitSurveyResponseOutput>) {
-  const viaCSharp = isPlatformApiEnabled() && ENGAGEMENT_WRITE_VIA_CSHARP;
-  const trpcMutation = trpc.engagement.submitSurveyResponse.useMutation(options);
-  const csharpMutation = useCSharpMutation(async (input: SubmitSurveyResponseInputShape) => {
+  return useCSharpMutation(async (input: SubmitSurveyResponseInputShape) => {
     const raw = await platformPost(
       '/engagement/surveys/{surveyId}/responses',
       // The generated contract types `answers` as `Record<string, never>` (an openapi-typescript
@@ -471,5 +513,4 @@ export function useEngagementSubmitSurveyResponse(options?: MutationOptions<Subm
     );
     return { id: raw.id, submittedAt: toDate(raw.submittedAt) } satisfies SubmitSurveyResponseOutput;
   }, options);
-  return viaCSharp ? csharpMutation : trpcMutation;
 }

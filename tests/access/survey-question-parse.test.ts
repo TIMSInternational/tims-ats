@@ -1,8 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  parseSurveyQuestions,
-  type SurveyQuestion,
-} from '../../apps/web/app/(admin)/dashboard/survey-question';
+import { parseSurveyQuestions, type SurveyQuestion } from '../../apps/web/app/(admin)/dashboard/survey-question';
 
 // Behavioral tests for the tolerant, normalizing survey-question parser.
 //
@@ -16,7 +13,9 @@ import {
 // The parser must now be PER-QUESTION tolerant and accept BOTH shapes,
 // normalizing to one renderable union the field component consumes. Fixtures
 // below are copied from the ACTUAL seed shapes (packages/db/prisma/seed-demo.ts
-// ~1162-1198) plus the authoring shape (createSurvey Zod in engagement.ts).
+// ~1162-1198) plus the authoring shape — since 2026-07-29 owned by C#
+// (services/Tims.Platform/src/Tims.Api/Engagement/EngagementWriteModels.cs), mirrored FE-side by
+// CreateSurveyQuestionShape in apps/web/lib/platform-api/engagement.ts.
 
 // --- Fixtures copied from the REAL stored shapes (seed-demo.ts) ---
 
@@ -36,7 +35,8 @@ const SEED_CLIMATE: unknown = [
   { id: 'q5', text: 'Comentarios adicionales', type: 'open_text' },
 ];
 
-// Authoring shape produced by createSurvey's Zod.
+// Authoring shape accepted by the C# create-survey endpoint (EngagementWriteModels.cs; FE mirror:
+// CreateSurveyQuestionShape in apps/web/lib/platform-api/engagement.ts).
 const AUTHORING_MC: unknown = [
   { text: 'Que tan satisfecho estas?', type: 'multiple_choice', options: ['a', 'b'], required: true },
 ];

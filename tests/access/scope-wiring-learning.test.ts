@@ -8,7 +8,8 @@ import { join } from 'path';
 // engagement.ts: aggregate reads get requireOrgScope (interim until slice-6
 //   min-5 scope-aware aggregation); action plans are row-level (responsibleId
 //   people anchor added to registry + scoped via assertSubjectInScope /
-//   assertScoped); listSurveys/createSurvey/submitSurveyResponse UNTOUCHED.
+//   assertScoped); listSurveys UNTOUCHED — createSurvey/submitSurveyResponse were later DELETED
+//   (2026-07-29; C# is the sole implementation, live in prod).
 // Fragment behavior covered by tests/access/entity-policies.test.ts;
 // write-rules by tests/access/write-rules.test.ts.
 

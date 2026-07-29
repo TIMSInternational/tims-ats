@@ -887,6 +887,15 @@ const surveyBody = () => ({
 // create grant; cross-org survey → 404; user_id attributed → allow-live) + createActionPlan (assertSubject
 // InScope + H1 cross-org responsibleId → 403) + updateActionPlan (assertScoped by-id → 404). hrbp is
 // ungranted → every write 403 at the gate.
+//
+// UPDATE 2026-07-29: the TS counterparts of createSurvey / activateSurvey / submitSurveyResponse were
+// DELETED (the FE write flag is confirmed live in prod; C# is the sole implementation). This surface is
+// UNAFFECTED — it hits the C# HTTP endpoints directly and never went through the TS router — but the
+// readbacks below are now the ONLY automated assertion of provenance stamping (created_by_id = caller),
+// identity anchoring (user_id = caller, never an input) and the duplicate-response 409 CONFLICT, outside
+// the C# integration tests. Treat them as security-load-bearing; do not weaken them.
+// createActionPlan / updateActionPlan still have live TS twins (zero-FE-consumer dead code, deliberately
+// retained), so those two rows continue to describe a genuine two-stack surface.
 const engagementSurface: WriteSurface<EngagementWriteResolved> = {
   key: 'engagement',
   flag: 'Platform__EngagementWriteEnabled',

@@ -410,16 +410,13 @@ describe('getDashboardKpis closes the org survey-total differencing oracle (FIX 
 });
 
 // ── FIX 3 (slice 6 round 8): no raw/unselected surveyResponse rows ──────────
-// submitSurveyResponse must not echo the confidential answers JSON; getEnps (and
-// the other readers) must select only the fields the aggregation consumes — never
-// a bare unselected findMany / include of full response rows.
-describe('surveyResponse reads/writes use explicit minimal selects (FIX 3)', () => {
-  it('submitSurveyResponse create selects only id + submittedAt (no answers echoed)', () => {
-    expect(readEngagement()).toMatch(
-      /surveyResponse\.create\([\s\S]*?select:\s*\{\s*id:\s*true,\s*submittedAt:\s*true\s*\}/,
-    );
-  });
-
+// getEnps (and the other readers) must select only the fields the aggregation
+// consumes — never a bare unselected findMany / include of full response rows.
+// UPDATE 2026-07-29: the submitSurveyResponse write-side clause was retired together with the TS
+// procedure itself (deleted; C# is the sole implementation). Its `select: { id, submittedAt }`
+// no-answers-echoed guarantee is now asserted by
+// services/Tims.Platform/tests/Tims.IntegrationTests/Engagement/EngagementWriteTests.cs.
+describe('surveyResponse reads use explicit minimal selects (FIX 3)', () => {
   it('getEnps findMany selects only answers (no full response rows)', () => {
     expect(readEngagement()).toMatch(/surveyResponse\.findMany\(\{[\s\S]*?select:\s*\{\s*answers:\s*true\s*\}/);
   });

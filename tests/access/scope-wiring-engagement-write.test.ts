@@ -2,14 +2,18 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
-// Phase-5 Slice 16 — static tripwires for the engagement WRITE surface (the 5 mutations) + the H1 both-stacks
+// Phase-5 Slice 16 — static tripwires for the engagement WRITE surface + the H1 both-stacks
 // hardening. Engagement's router calls the tenant `db` inline (no service layer), so — like the compensation /
 // succession scope-wiring tripwires — behavior is guarded by source tripwires rather than a behavioral db mock.
 //
-// Write taxonomy:
-//   createSurvey          → grant-only; createdById = ctx.user.id (provenance)
-//   activateSurvey        → grant-only; 404 on missing/cross-org; startsAt preserve-else-now
-//   submitSurveyResponse  → IDENTITY-anchored (userId = ctx.user.id); P2002 → CONFLICT; NO requireOrgScope
+// UPDATE 2026-07-29: the surface was 5 mutations. createSurvey / activateSurvey / submitSurveyResponse
+// had their TS side DELETED (NEXT_PUBLIC_ENGAGEMENT_WRITE_VIA_CSHARP is live in prod; C# is the sole
+// implementation), and their 4 tripwires went with them. The equivalent guarantees — provenance
+// stamping, cross-org 404, identity anchoring, P2002 → CONFLICT — are now asserted against the live
+// C# API by scripts/parity/write-surfaces.ts's engagementSurface raw-SQL readbacks and by
+// services/Tims.Platform/tests/Tims.IntegrationTests/Engagement/EngagementWriteTests.cs.
+//
+// Write taxonomy (the 2 mutations that remain in TS — both zero-FE-consumer dead code, deliberately kept):
 //   createActionPlan      → assertSubjectInScope(responsibleId) + H1 in-org backstop
 //   updateActionPlan      → assertScoped('actionPlan') + (reassign → assertSubjectInScope + H1 in-org backstop)
 
@@ -17,32 +21,6 @@ const ROOT = join(__dirname, '..', '..');
 const read = () => readFileSync(join(ROOT, 'packages/api/src/routers/engagement.ts'), 'utf8');
 
 describe('engagement write scope wiring', () => {
-  it('createSurvey stamps createdById = ctx.user.id (provenance, never an input)', () => {
-    expect(read()).toMatch(/createdById:\s*ctx\.user\.id/);
-  });
-
-  it('activateSurvey 404s on missing/cross-org and preserves-else-stamps startsAt', () => {
-    const src = read();
-    expect(src).toMatch(/activateSurvey/);
-    expect(src).toMatch(/code:\s*'NOT_FOUND'/);
-    expect(src).toMatch(/startsAt:\s*existing\.startsAt\s*\?\?\s*new Date\(\)/);
-  });
-
-  it('submitSurveyResponse is identity-anchored (userId = ctx.user.id) with NO requireOrgScope', () => {
-    const src = read();
-    // The response is anchored to the caller — an org-admin cannot forge another user's response.
-    expect(src).toMatch(/surveyResponse\.create[\s\S]*?userId:\s*ctx\.user\.id/);
-    // No org-gate on the submit (it would forbid the own-scoped employee).
-    const submitBody = src.slice(src.indexOf('submitSurveyResponse'), src.indexOf('getEnps'));
-    expect(submitBody).not.toMatch(/requireOrgScope/);
-  });
-
-  it('submitSurveyResponse maps the P2002 unique(surveyId,userId) violation to CONFLICT', () => {
-    const src = read();
-    expect(src).toMatch(/code\s*===\s*'P2002'/);
-    expect(src).toMatch(/code:\s*'CONFLICT'[\s\S]*?Ya respondiste esta encuesta/);
-  });
-
   it('createActionPlan + updateActionPlan gate the target via assertSubjectInScope', () => {
     const src = read();
     const matches = src.match(/assertSubjectInScope/g) ?? [];

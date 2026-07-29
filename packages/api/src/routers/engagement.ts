@@ -65,60 +65,6 @@ export const engagementRouter = router({
       return { items, total, page, limit };
     }),
 
-  createSurvey: permissionProcedure('engagement', 'create')
-    .input(
-      z.object({
-        title: z.string().min(1).max(200),
-        type: z.enum(['pulse', 'enps', 'climate', 'custom']),
-        questions: z.array(
-          z.object({
-            text: z.string().min(1).max(500),
-            type: z.enum(['scale', 'text', 'multiple_choice', 'yes_no']),
-            options: z.array(z.string().max(200)).max(100).optional(),
-            required: z.boolean().default(true),
-            category: z.string().max(100).optional(),
-          }),
-        ).min(1),
-        targetGroups: z.object({
-          companyIds: z.array(z.string().uuid()).max(1000).optional(),
-          businessUnitIds: z.array(z.string().uuid()).max(1000).optional(),
-          teamIds: z.array(z.string().uuid()).max(1000).optional(),
-        }).optional(),
-        startsAt: z.string().datetime().optional(),
-        endsAt: z.string().datetime().optional(),
-      }),
-    )
-    .mutation(async ({ ctx, input }) => {
-      return db.survey.create({
-        data: {
-          title: input.title,
-          type: input.type,
-          questions: input.questions as unknown as Prisma.JsonArray,
-          targetGroups: input.targetGroups as unknown as Prisma.JsonObject ?? undefined,
-          startsAt: input.startsAt ? new Date(input.startsAt) : undefined,
-          endsAt: input.endsAt ? new Date(input.endsAt) : undefined,
-          organizationId: ctx.user.organizationId,
-          createdById: ctx.user.id,
-          status: 'draft',
-        },
-      });
-    }),
-
-  activateSurvey: permissionProcedure('engagement', 'create')
-    .input(z.object({ id: z.string().uuid() }))
-    .mutation(async ({ ctx, input }) => {
-      const existing = await db.survey.findFirst({
-        where: { id: input.id, organizationId: ctx.user.organizationId },
-        select: { id: true, startsAt: true },
-      });
-      if (!existing) throw new TRPCError({ code: 'NOT_FOUND' });
-      return db.survey.update({
-        where: { id: existing.id },
-        data: { status: 'active', startsAt: existing.startsAt ?? new Date() },
-        select: { id: true, status: true },
-      });
-    }),
-
   getSurveyResults: permissionProcedure('engagement', 'read')
     .input(z.object({ surveyId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
@@ -237,55 +183,6 @@ export const engagementRouter = router({
       }
 
       return survey;
-    }),
-
-  submitSurveyResponse: permissionProcedure('engagement', 'create')
-    .input(
-      z.object({
-        surveyId: z.string().uuid(),
-        answers: z
-          .record(z.string().max(200), z.union([z.string().max(5000), z.number()]))
-          .refine((obj) => Object.keys(obj).length <= 100, {
-            message: 'Demasiadas respuestas (max 100)',
-          }),
-      }),
-    )
-    .mutation(async ({ ctx, input }) => {
-      // Existence/active check only — select the id alone (no Survey scalars, esp. not
-      // responseCount) so the unselected-findFirst rule holds and no sensitive scalar
-      // is even read here.
-      const survey = await db.survey.findFirst({
-        where: {
-          id: input.surveyId,
-          organizationId: ctx.user.organizationId,
-          status: 'active',
-        },
-        select: { id: true },
-      });
-
-      if (!survey) {
-        throw new Error('Encuesta no encontrada o no activa');
-      }
-
-      try {
-        // §21 minimal-select: a write response must never echo the confidential
-        // `answers` JSON back. The caller (the respondent) only needs a submission
-        // confirmation — id + submittedAt — not the row it just wrote.
-        return await db.surveyResponse.create({
-          data: {
-            surveyId: input.surveyId,
-            userId: ctx.user.id,
-            answers: input.answers as unknown as Prisma.JsonObject,
-            organizationId: ctx.user.organizationId,
-          },
-          select: { id: true, submittedAt: true },
-        });
-      } catch (err) {
-        if ((err as { code?: string }).code === 'P2002') {
-          throw new TRPCError({ code: 'CONFLICT', message: 'Ya respondiste esta encuesta' });
-        }
-        throw err;
-      }
     }),
 
   // ── eNPS ───────────────────────────────────────────────────────────
