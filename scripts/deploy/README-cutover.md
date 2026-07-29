@@ -52,9 +52,10 @@ flag, and CONFIRMED LIVE / FLIP-READY / COEXISTENCE / TS DELETED status per
 **Why not `reporting` for this walkthrough (like before)?** As of 2026-07-28 the TS
 recruitment-analytics router and its FE tRPC fallback were deleted outright (the C# read path is
 the sole implementation now), and the same happened to the TS evaluation360 router (both read AND
-write) — see the table below. Neither `reporting` nor `evaluation360` (read) has a parity command
-left to demonstrate; `--verify-only` for either is now a no-op that prints an explanatory notice
-and exits 0 rather than running a real check.
+write) — see the table below. As of 2026-07-29, the TS `team-intel` `getDashboardKpis` procedure
+and its FE tRPC fallback joined this group too. None of `reporting`, `evaluation360` (read), or
+`team-intel` has a parity command left to demonstrate; `--verify-only` for any of them is now a
+no-op that prints an explanatory notice and exits 0 rather than running a real check.
 
 ## Sequencing safety (the guardrail)
 
@@ -106,26 +107,26 @@ Cross-checked directly against `services/Tims.Platform/src/Tims.Api/Configuratio
 number) and independently corroborated by the `flag:` field in `scripts/parity/surfaces.ts` /
 `scripts/parity/write-surfaces.ts`.
 
-| Surface (this script) | Kind  | Backend flag                | Parity CLI invocation        | FE flag (`apps/web`)                         | Status         |
-| --------------------- | ----- | --------------------------- | ---------------------------- | -------------------------------------------- | -------------- |
-| `team-intel`          | read  | `TeamIntelReadEnabled`      | `verify team-intel`          | `NEXT_PUBLIC_TEAMINTEL_READ_VIA_CSHARP`      | CONFIRMED LIVE |
-| `reporting`           | read  | `ReportingReadEnabled`      | `NONE` (TS router deleted)   | `NEXT_PUBLIC_REPORTING_READ_VIA_CSHARP`      | TS DELETED     |
-| `billing-read`        | read  | `BillingReadEnabled`        | `verify billing-invoices`    | `NEXT_PUBLIC_BILLING_INVOICES_VIA_CSHARP`    | FLIP-READY     |
-| `billing-usage`       | read  | `BillingUsageEnabled`       | `verify billing-usage`       | `NEXT_PUBLIC_BILLING_USAGE_VIA_CSHARP`       | FLIP-READY     |
-| `evaluation360`       | read  | `Evaluation360ReadEnabled`  | `NONE` (TS router deleted)   | `NEXT_PUBLIC_EVALUATION360_READ_VIA_CSHARP`  | TS DELETED     |
-| `succession`          | read  | `SuccessionReadEnabled`     | `verify succession`          | `NEXT_PUBLIC_SUCCESSION_READ_VIA_CSHARP`     | FLIP-READY     |
-| `compensation`        | read  | `CompensationReadEnabled`   | `verify compensation`        | `NEXT_PUBLIC_COMPENSATION_READ_VIA_CSHARP`   | FLIP-READY     |
-| `nine-box`            | read  | `NineBoxReadEnabled`        | `verify ninebox`             | `NEXT_PUBLIC_NINEBOX_READ_VIA_CSHARP`        | FLIP-READY     |
-| `engagement`          | read  | `EngagementReadEnabled`     | `verify engagement`          | `NEXT_PUBLIC_ENGAGEMENT_READ_VIA_CSHARP`     | FLIP-READY     |
-| `dei`                 | read  | `DeiReadEnabled`            | `verify dei`                 | `NEXT_PUBLIC_DEI_READ_VIA_CSHARP`            | FLIP-READY     |
-| `audit-log`           | read  | `AuditLogReadEnabled`       | `verify audit-log`           | `NEXT_PUBLIC_AUDIT_LOG_READ_VIA_CSHARP`      | FLIP-READY     |
-| `access-review`       | read  | `AccessReviewReadEnabled`   | `verify access-review`       | `NEXT_PUBLIC_ACCESS_REVIEW_READ_VIA_CSHARP`  | FLIP-READY     |
-| `evaluation360-write` | write | `Evaluation360WriteEnabled` | `verify-write evaluation360` | `NEXT_PUBLIC_EVALUATION360_WRITE_VIA_CSHARP` | FLIP-READY     |
-| `succession-write`    | write | `SuccessionWriteEnabled`    | `verify-write succession`    | `NEXT_PUBLIC_SUCCESSION_WRITE_VIA_CSHARP`    | FLIP-READY     |
-| `nine-box-write`      | write | `NineBoxWriteEnabled`       | `verify-write ninebox`       | `NEXT_PUBLIC_NINEBOX_WRITE_VIA_CSHARP`       | FLIP-READY     |
-| `compensation-write`  | write | `CompensationWriteEnabled`  | `verify-write compensation`  | `NEXT_PUBLIC_COMPENSATION_WRITE_VIA_CSHARP`  | COEXISTENCE    |
-| `engagement-write`    | write | `EngagementWriteEnabled`    | `verify-write engagement`    | `NEXT_PUBLIC_ENGAGEMENT_WRITE_VIA_CSHARP`    | COEXISTENCE    |
-| `access-review-write` | write | `AccessReviewWriteEnabled`  | `verify-write access-review` | `NEXT_PUBLIC_ACCESS_REVIEW_WRITE_VIA_CSHARP` | FLIP-READY     |
+| Surface (this script) | Kind  | Backend flag                | Parity CLI invocation        | FE flag (`apps/web`)                         | Status      |
+| --------------------- | ----- | --------------------------- | ---------------------------- | -------------------------------------------- | ----------- |
+| `team-intel`          | read  | `TeamIntelReadEnabled`      | `NONE` (TS router deleted)   | `NEXT_PUBLIC_TEAMINTEL_READ_VIA_CSHARP`      | TS DELETED  |
+| `reporting`           | read  | `ReportingReadEnabled`      | `NONE` (TS router deleted)   | `NEXT_PUBLIC_REPORTING_READ_VIA_CSHARP`      | TS DELETED  |
+| `billing-read`        | read  | `BillingReadEnabled`        | `verify billing-invoices`    | `NEXT_PUBLIC_BILLING_INVOICES_VIA_CSHARP`    | FLIP-READY  |
+| `billing-usage`       | read  | `BillingUsageEnabled`       | `verify billing-usage`       | `NEXT_PUBLIC_BILLING_USAGE_VIA_CSHARP`       | FLIP-READY  |
+| `evaluation360`       | read  | `Evaluation360ReadEnabled`  | `NONE` (TS router deleted)   | `NEXT_PUBLIC_EVALUATION360_READ_VIA_CSHARP`  | TS DELETED  |
+| `succession`          | read  | `SuccessionReadEnabled`     | `verify succession`          | `NEXT_PUBLIC_SUCCESSION_READ_VIA_CSHARP`     | FLIP-READY  |
+| `compensation`        | read  | `CompensationReadEnabled`   | `verify compensation`        | `NEXT_PUBLIC_COMPENSATION_READ_VIA_CSHARP`   | FLIP-READY  |
+| `nine-box`            | read  | `NineBoxReadEnabled`        | `verify ninebox`             | `NEXT_PUBLIC_NINEBOX_READ_VIA_CSHARP`        | FLIP-READY  |
+| `engagement`          | read  | `EngagementReadEnabled`     | `verify engagement`          | `NEXT_PUBLIC_ENGAGEMENT_READ_VIA_CSHARP`     | FLIP-READY  |
+| `dei`                 | read  | `DeiReadEnabled`            | `verify dei`                 | `NEXT_PUBLIC_DEI_READ_VIA_CSHARP`            | FLIP-READY  |
+| `audit-log`           | read  | `AuditLogReadEnabled`       | `verify audit-log`           | `NEXT_PUBLIC_AUDIT_LOG_READ_VIA_CSHARP`      | FLIP-READY  |
+| `access-review`       | read  | `AccessReviewReadEnabled`   | `verify access-review`       | `NEXT_PUBLIC_ACCESS_REVIEW_READ_VIA_CSHARP`  | FLIP-READY  |
+| `evaluation360-write` | write | `Evaluation360WriteEnabled` | `verify-write evaluation360` | `NEXT_PUBLIC_EVALUATION360_WRITE_VIA_CSHARP` | FLIP-READY  |
+| `succession-write`    | write | `SuccessionWriteEnabled`    | `verify-write succession`    | `NEXT_PUBLIC_SUCCESSION_WRITE_VIA_CSHARP`    | FLIP-READY  |
+| `nine-box-write`      | write | `NineBoxWriteEnabled`       | `verify-write ninebox`       | `NEXT_PUBLIC_NINEBOX_WRITE_VIA_CSHARP`       | FLIP-READY  |
+| `compensation-write`  | write | `CompensationWriteEnabled`  | `verify-write compensation`  | `NEXT_PUBLIC_COMPENSATION_WRITE_VIA_CSHARP`  | COEXISTENCE |
+| `engagement-write`    | write | `EngagementWriteEnabled`    | `verify-write engagement`    | `NEXT_PUBLIC_ENGAGEMENT_WRITE_VIA_CSHARP`    | COEXISTENCE |
+| `access-review-write` | write | `AccessReviewWriteEnabled`  | `verify-write access-review` | `NEXT_PUBLIC_ACCESS_REVIEW_WRITE_VIA_CSHARP` | FLIP-READY  |
 
 Run `./scripts/deploy/cutover.sh --list` for the per-surface long-form notes (why each is
 classified the way it is, and every naming quirk below).
@@ -173,7 +174,15 @@ classified the way it is, and every naming quirk below).
   `docs/plans/2026-07-28-ts-dead-code-deletion-reporting-eval360.md`. `scripts/parity/surfaces.ts`'s
   `reporting` and `evaluation360` entries were removed at the same time, so there is no TS side left
   to diff against for either read surface: their `parity_command` is `NONE` and `--verify-only`
-  just prints a no-op notice and exits 0. This does NOT touch the `evaluation360-write` surface —
+  just prints a no-op notice and exits 0. **`team-intel` (read) joined this group on 2026-07-29** —
+  but unlike `reporting`/`evaluation360`, only the `getDashboardKpis` procedure inside
+  `packages/api/src/routers/teamIntel.ts` (plus its FE tRPC fallback in
+  `apps/web/lib/platform-api/team-intel.ts`) was deleted, not the whole router: `teamIntel.ts` still
+  serves 6 other unrelated procedures (`getTeamProfile`, `getMembers`, `getBalanceScore`,
+  `getBalanceAlerts`, `getRecommendedHires`, `compareTeams`) with zero FE consumers, so the router
+  file itself stays in place. `scripts/parity/surfaces.ts`'s `team-intel` entry was removed the same
+  way, so its `parity_command` is likewise `NONE` and `--verify-only` for it is the same no-op. This
+  does NOT touch the `evaluation360-write` surface —
   `scripts/parity/write-surfaces.ts` still registers `evaluation360` for `verify-write` (it tests
   the C# API's RBAC/IDOR behavior directly, not a TS diff), so that row's parity command is
   unaffected and still real. The `evaluation360-write` row's note used to say "once verified, drop

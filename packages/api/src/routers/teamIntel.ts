@@ -3,10 +3,8 @@ import { TRPCError } from '@trpc/server';
 import { router, permissionProcedure } from '../trpc';
 import { tenantDb as db } from '@tims/db';
 import type { Prisma } from '@tims/db';
-import { scopeWhereFor, assertScoped, requireOrgScope } from '../access';
-import { computeAvgTenureYears, computeRoleDiversity } from './team-intel-metrics';
+import { scopeWhereFor, assertScoped } from '../access';
 import { buildBalanceScore, buildTeamComparison } from '@tims/shared';
-import { cacheGet, cacheSet } from '../lib/cache';
 
 export const teamIntelRouter = router({
   // ── Team Profile ─────────────────────────────────────────────────────
@@ -184,64 +182,5 @@ export const teamIntelRouter = router({
         })),
         Date.now(),
       );
-    }),
-
-  // ── Dashboard KPIs ───────────────────────────────────────────────────
-
-  getDashboardKpis: permissionProcedure('team_intel', 'read')
-    .query(async ({ ctx }) => {
-      // Org-rollup dashboard aggregate → interim org-gate (slice-6 follow-up).
-      requireOrgScope(ctx.access);
-
-      const orgId = ctx.user.organizationId;
-
-      type KpiResult = {
-        totalTeams: number;
-        totalMembers: number;
-        teamsWithLeader: number;
-        teamsWithoutLeader: number;
-        avgTeamSize: number;
-        avgTenureYears: number;
-        diversityIndex: number;
-      };
-
-      // Safe to key on orgId alone: requireOrgScope() above gates this to org/company
-      // callers only (no sub-org scope reaches here), so all callers see the identical
-      // org rollup. If scope-aware aggregation is ever added, the key MUST include scope
-      // identity (see vacancy/stats.ts).
-      const cacheKey = `tims:kpis:teamintel:${orgId}`;
-      const cached = await cacheGet<KpiResult>(cacheKey);
-      if (cached) return cached;
-
-      // NOTE on populations: `totalMembers` (the "Team Size" KPI) counts userTeam
-      // membership rows, whereas `members` (used for tenure + diversity below) is the
-      // org's active headcount. Different sets by design — each KPI is labeled independently.
-      const [totalTeams, totalMembers, teamsWithLeader, members] = await Promise.all([
-        db.team.count({ where: { organizationId: orgId, isActive: true } }),
-        db.userTeam.count({
-          where: { team: { organizationId: orgId, isActive: true } },
-        }),
-        db.team.count({
-          where: { organizationId: orgId, isActive: true, leaderId: { not: null } },
-        }),
-        db.user.findMany({
-          where: { organizationId: orgId, isActive: true },
-          select: { createdAt: true, jobTitle: true },
-        }),
-      ]);
-
-      const avgTeamSize = totalTeams > 0 ? Math.round((totalMembers / totalTeams) * 10) / 10 : 0;
-
-      const result: KpiResult = {
-        totalTeams,
-        totalMembers,
-        teamsWithLeader,
-        teamsWithoutLeader: totalTeams - teamsWithLeader,
-        avgTeamSize,
-        avgTenureYears: computeAvgTenureYears(members, Date.now()),
-        diversityIndex: computeRoleDiversity(members),
-      };
-      await cacheSet(cacheKey, result, 45);
-      return result;
     }),
 });

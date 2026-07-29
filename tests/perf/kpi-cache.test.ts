@@ -156,14 +156,6 @@ async function makeLearningCaller() {
   return factory(baseCtx() as never);
 }
 
-async function makeTeamIntelCaller() {
-  const { createCallerFactory, router } = await import('../../packages/api/src/trpc');
-  const { teamIntelRouter } = await import('../../packages/api/src/routers/teamIntel');
-  const testRouter = router({ teamIntel: teamIntelRouter });
-  const factory = createCallerFactory(testRouter);
-  return factory(baseCtx() as never);
-}
-
 async function makeVacancyCaller(userId: string, scope: string) {
   const { createCallerFactory, router } = await import('../../packages/api/src/trpc');
   const { vacancyStatsRouter } = await import('../../packages/api/src/routers/vacancy/stats');
@@ -294,42 +286,6 @@ describe('learning.getDashboardKpis — cache-aside', () => {
 
     expect(vi.mocked(cacheSet)).toHaveBeenCalledWith(
       `tims:kpis:learning:${TEST_ORG_ID}`,
-      expect.anything(),
-      45,
-    );
-  });
-});
-
-// ---------------------------------------------------------------------------
-// teamIntel.getDashboardKpis — cache-aside
-// ---------------------------------------------------------------------------
-
-describe('teamIntel.getDashboardKpis — cache-aside', () => {
-  it('calls the DB body only once when invoked twice (second call uses cache hit)', async () => {
-    vi.mocked(cacheGet).mockResolvedValueOnce(null);
-    const caller = await makeTeamIntelCaller();
-    await caller.teamIntel.getDashboardKpis();
-
-    const dbCallsAfterFirst = vi.mocked(tenantDb.team.count).mock.calls.length;
-    expect(dbCallsAfterFirst).toBeGreaterThan(0);
-    expect(vi.mocked(cacheSet)).toHaveBeenCalledTimes(1);
-
-    // Second call: cache HIT → return cached value, skip DB body.
-    const cachedValue = { totalTeams: 4, totalMembers: 20, teamsWithLeader: 3, teamsWithoutLeader: 1, avgTeamSize: 5, avgTenureYears: 1.5, diversityIndex: 0.8 };
-    vi.mocked(cacheGet).mockResolvedValueOnce(cachedValue);
-
-    const result2 = await caller.teamIntel.getDashboardKpis();
-    expect(vi.mocked(tenantDb.team.count).mock.calls.length).toBe(dbCallsAfterFirst);
-    expect(result2).toEqual(cachedValue);
-  });
-
-  it('cacheSet is called with key tims:kpis:teamintel:<orgId> and TTL 45', async () => {
-    vi.mocked(cacheGet).mockResolvedValue(null);
-    const caller = await makeTeamIntelCaller();
-    await caller.teamIntel.getDashboardKpis();
-
-    expect(vi.mocked(cacheSet)).toHaveBeenCalledWith(
-      `tims:kpis:teamintel:${TEST_ORG_ID}`,
       expect.anything(),
       45,
     );

@@ -62,7 +62,7 @@ PARITY_CLI="scripts/parity/cli.ts"
 surface_row() {
   case "$1" in
     team-intel)
-      echo "read|TeamIntelReadEnabled|verify|team-intel|NEXT_PUBLIC_TEAMINTEL_READ_VIA_CSHARP|CONFIRMED_LIVE|Flipped + confirmed live in prod 2026-07-27 (Federico) — runbook intro + §6 Phase A #1. Reference/proof case for this whole script."
+      echo "read|TeamIntelReadEnabled|NONE|NONE|NEXT_PUBLIC_TEAMINTEL_READ_VIA_CSHARP|TS_DELETED|Runbook intro + §6 Phase A #1. UPDATE 2026-07-29: the TS getDashboardKpis procedure (packages/api/src/routers/teamIntel.ts) and its FE tRPC fallback (apps/web/lib/platform-api/team-intel.ts) have been deleted — the C# read path is the sole implementation now, so scripts/parity/surfaces.ts's 'team-intel' entry was removed too and there is no TS side left to diff against. --verify-only for this surface is now a no-op (see run_verify) rather than a real parity check. NOTE: teamIntel.ts's other 6 procedures (getTeamProfile, getMembers, getBalanceScore, getBalanceAlerts, getRecommendedHires, compareTeams) are untouched — they have zero FE consumers and were never part of the C# cutover."
       ;;
     reporting)
       echo "read|ReportingReadEnabled|NONE|NONE|NEXT_PUBLIC_REPORTING_READ_VIA_CSHARP|TS_DELETED|Runbook §6 Phase A #2. UPDATE 2026-07-28: the TS recruitment-analytics router (packages/api/src/routers/recruitment-analytics.ts) and its FE tRPC fallback (apps/web/lib/platform-api/reporting.ts) have been deleted — the C# read path is the sole implementation now, so scripts/parity/surfaces.ts's 'reporting' entry was removed too and there is no TS side left to diff against. --verify-only for this surface is now a no-op (see run_verify) rather than a real parity check."
@@ -370,9 +370,10 @@ do_flip_backend() {
 }
 
 do_rollback() {
-  local surface="$1" row fe
+  local surface="$1" row fe status
   row="$(surface_row "$surface")"
   fe="$(field "$row" 5)"
+  status="$(field "$row" 6)"
   echo "==> rollback: ${surface} -> false"
   local cmd
   cmd="$(flip_command_block "$surface" "false")"
@@ -386,10 +387,17 @@ do_rollback() {
     echo "$cmd"
   fi
   echo
-  echo "--- ALSO revert the FE flag (fastest path — do this immediately after the backend flip) ---"
-  if [ "$fe" = "NONE" ]; then
+  if [ "$status" = "TS_DELETED" ]; then
+    echo "--- FE rollback is NOT available for this surface ---"
+    echo "This surface's TS fallback code has been deleted (status: TS_DELETED). Setting"
+    echo "${fe}=false would NOT restore old behavior — there is no tRPC path left to fall back to."
+    echo "The only real rollback path is reverting the code (git revert the TS-deletion commit(s))"
+    echo "and redeploying apps/web, in addition to the backend flag flip above."
+  elif [ "$fe" = "NONE" ]; then
+    echo "--- ALSO revert the FE flag (fastest path — do this immediately after the backend flip) ---"
     echo "No NEXT_PUBLIC_*_VIA_CSHARP flag is wired for this surface in apps/web today — nothing to revert on the FE side."
   else
+    echo "--- ALSO revert the FE flag (fastest path — do this immediately after the backend flip) ---"
     cat <<EOF
 1. Vercel dashboard -> tims-ats project -> Settings -> Environment Variables -> Production.
 2. Set ${fe}=false (or delete it — the code in apps/web/lib/platform-api/*.ts treats anything
