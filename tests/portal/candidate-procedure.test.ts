@@ -191,8 +191,19 @@ describe('candidate FAQ rate limiting', () => {
 
 describe('candidate assessment take-flow — security invariants (Wave 1.5a slice 2)', () => {
   it('every new candidate-portal assessment endpoint uses candidateProcedure', () => {
-    for (const name of ['getMyAssessments', 'startAssessment', 'getAssessmentQuestions', 'submitAssessment']) {
-      const slice = ROUTER.slice(ROUTER.indexOf(`${name}:`));
+    // Bound each endpoint's slice to end at the START of the NEXT endpoint (in
+    // real router order) so each slice contains ONLY that one endpoint's own
+    // procedure definition — a plain end-of-file slice would let earlier
+    // endpoints "pass" merely because a LATER endpoint still uses
+    // candidateProcedure, even if the earlier one were changed to publicProcedure.
+    const ASSESSMENT_ENDPOINTS = ['getMyAssessments', 'startAssessment', 'getAssessmentQuestions', 'submitAssessment'];
+    for (let i = 0; i < ASSESSMENT_ENDPOINTS.length; i++) {
+      const name = ASSESSMENT_ENDPOINTS[i];
+      const start = ROUTER.indexOf(`${name}:`);
+      expect(start).toBeGreaterThan(-1);
+      const nextName = ASSESSMENT_ENDPOINTS[i + 1];
+      const end = nextName ? ROUTER.indexOf(`${nextName}:`) : ROUTER.length;
+      const slice = ROUTER.slice(start, end);
       expect(slice).toMatch(/candidateProcedure/);
     }
   });
@@ -218,9 +229,31 @@ describe('candidate assessment take-flow — security invariants (Wave 1.5a slic
     expect(answerKeySlice.slice(0, 300)).toContain('correctOptionIds');
   });
 
+  it('correctOptionIds never appears anywhere in the read-only candidateAssessmentRepo section', () => {
+    // The two assertions above only prove correctOptionIds is absent from ONE
+    // named select and present in ONE named *InTx function — neither proves it
+    // doesn't leak from some OTHER read-only export. Scan the entire read-only
+    // section (everything before the write repo begins) for the field, ignoring
+    // comments (a doc comment legitimately names the field to explain why it's
+    // omitted — that's not a code-level leak).
+    const readOnlySection = ASSESSMENT_REPO.slice(0, ASSESSMENT_REPO.indexOf('candidateAssessmentWriteRepo'));
+    expect(readOnlySection.length).toBeGreaterThan(0);
+    const readOnlyCode = readOnlySection.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
+    expect(readOnlyCode).not.toContain('correctOptionIds');
+  });
+
   it('every assessment repo read is scoped by BOTH organizationId and candidateId (IDOR)', () => {
     expect(ASSESSMENT_REPO).toMatch(
       /findOwnedAssignment\([^)]*\)\s*\{\s*return\s+tenantDb\.assessmentAssignment\.findFirst\(\{\s*where:\s*\{[^}]*organizationId[^}]*candidateId/s,
+    );
+    // findAssignmentsForCandidate (read repo, listing) — same double-scoping.
+    expect(ASSESSMENT_REPO).toMatch(
+      /findAssignmentsForCandidate\([^)]*\)\s*\{\s*return\s+tenantDb\.assessmentAssignment\.findMany\(\{\s*where:\s*\{[^}]*organizationId[^}]*candidateId/s,
+    );
+    // findAssignmentInTx (write repo, the double-submit-race re-check) — must
+    // stay double-scoped too, or the in-tx recheck itself becomes an IDOR hole.
+    expect(ASSESSMENT_REPO).toMatch(
+      /findAssignmentInTx\([^)]*\)\s*\{\s*return\s+tx\.assessmentAssignment\.findFirst\(\{\s*where:\s*\{[^}]*organizationId[^}]*candidateId/s,
     );
   });
 
@@ -229,10 +262,28 @@ describe('candidate assessment take-flow — security invariants (Wave 1.5a slic
     expect(ASSESSMENT_SERVICE).not.toMatch(/tenantDb\.\$transaction/);
   });
 
-  it('submitAssessment re-checks assignment status INSIDE the transaction (closes the double-submit race)', () => {
+  it('submitAssessment re-checks assignment status INSIDE the transaction before any write (early recheck)', () => {
+    // This confirms ownership/status is re-verified early in the tx, before any
+    // write happens — a real, still-valid property. It does NOT by itself close
+    // the double-submit race (see the next test for the mechanism that does).
     const submitSlice = ASSESSMENT_SERVICE.slice(ASSESSMENT_SERVICE.indexOf('async submitAssessment'));
     expect(submitSlice).toContain('findAssignmentInTx');
     expect(submitSlice).toMatch(/assignment_already_completed/);
+  });
+
+  it('submitAssessment closes the double-submit race via a conditional final write, not just an early re-check', () => {
+    // The early findAssignmentInTx recheck alone does NOT close the race under
+    // READ COMMITTED (a plain SELECT takes no row lock) — the actual guard is
+    // the conditional completeAssignmentInTx write + count===0 check.
+    expect(ASSESSMENT_REPO).toMatch(
+      /completeAssignmentInTx\([^)]*\)\s*\{\s*return\s+tx\.assessmentAssignment\.updateMany\(\{\s*where:\s*\{[^}]*status:\s*'in_progress'/s,
+    );
+    const submitSlice = ASSESSMENT_SERVICE.slice(ASSESSMENT_SERVICE.indexOf('async submitAssessment'));
+    const completionIdx = submitSlice.indexOf('completeAssignmentInTx(tx');
+    expect(completionIdx).toBeGreaterThan(0);
+    const afterCompletion = submitSlice.slice(completionIdx, completionIdx + 300);
+    expect(afterCompletion).toMatch(/count\s*===\s*0/);
+    expect(afterCompletion).toMatch(/assignment_already_completed/);
   });
 
   it("submitAssessment validates every questionId belongs to the assignment's assessmentTypeId before writing", () => {
