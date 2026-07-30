@@ -18,6 +18,8 @@ const CONTEXT = read('packages/api/src/context.ts');
 const ROUTER = read('packages/api/src/routers/candidate-portal.ts');
 const SERVICE = read('packages/api/src/services/candidate-portal.service.ts');
 const REPO = read('packages/api/src/repositories/candidate-portal.repository.ts');
+const ASSESSMENT_SERVICE = read('packages/api/src/services/candidate-assessment.service.ts');
+const ASSESSMENT_REPO = read('packages/api/src/repositories/candidate-assessment.repository.ts');
 const RATE_LIMIT = read('packages/api/src/middleware/rate-limit.ts');
 const ME_PAGE = read('apps/web/app/(portal)/careers/[orgSlug]/me/page.tsx');
 
@@ -184,5 +186,76 @@ describe('candidate FAQ rate limiting', () => {
   it('routes FAQ/chatbot endpoints through the AI rate-limit bucket', () => {
     expect(RATE_LIMIT).toMatch(/'faq'/);
     expect(RATE_LIMIT).toMatch(/'assistant'/);
+  });
+});
+
+describe('candidate assessment take-flow — security invariants (Wave 1.5a slice 2)', () => {
+  it('every new candidate-portal assessment endpoint uses candidateProcedure', () => {
+    for (const name of ['getMyAssessments', 'startAssessment', 'getAssessmentQuestions', 'submitAssessment']) {
+      const slice = ROUTER.slice(ROUTER.indexOf(`${name}:`));
+      expect(slice).toMatch(/candidateProcedure/);
+    }
+  });
+
+  it('never accepts a client-supplied candidateId or email on the assessment endpoints', () => {
+    const slice = ROUTER.slice(ROUTER.indexOf('getMyAssessments:'));
+    expect(slice).not.toMatch(/candidateId:\s*z\./);
+    expect(slice).not.toMatch(/email:\s*z\./);
+  });
+
+  it('getAssessmentQuestions repo select never includes correctOptionIds', () => {
+    const candidateSelect = ASSESSMENT_REPO.slice(
+      ASSESSMENT_REPO.indexOf('candidateQuestionSelect'),
+      ASSESSMENT_REPO.indexOf('assignmentSummarySelect'),
+    );
+    expect(candidateSelect).not.toContain('correctOptionIds');
+  });
+
+  it('the answer-key select is confined to the *InTx helpers (never returned to the candidate)', () => {
+    expect(ASSESSMENT_REPO).toContain('findQuestionsWithAnswerKeyInTx');
+    // Only the tx-bound (write-path) function may select correctOptionIds.
+    const answerKeySlice = ASSESSMENT_REPO.slice(ASSESSMENT_REPO.indexOf('findQuestionsWithAnswerKeyInTx'));
+    expect(answerKeySlice.slice(0, 300)).toContain('correctOptionIds');
+  });
+
+  it('every assessment repo read is scoped by BOTH organizationId and candidateId (IDOR)', () => {
+    expect(ASSESSMENT_REPO).toMatch(
+      /findOwnedAssignment\([^)]*\)\s*\{\s*return\s+tenantDb\.assessmentAssignment\.findFirst\(\{\s*where:\s*\{[^}]*organizationId[^}]*candidateId/s,
+    );
+  });
+
+  it('submitAssessment uses runTenantTransaction, never tenantDb.$transaction (Prisma #17948)', () => {
+    expect(ASSESSMENT_SERVICE).toContain('runTenantTransaction');
+    expect(ASSESSMENT_SERVICE).not.toMatch(/tenantDb\.\$transaction/);
+  });
+
+  it('submitAssessment re-checks assignment status INSIDE the transaction (closes the double-submit race)', () => {
+    const submitSlice = ASSESSMENT_SERVICE.slice(ASSESSMENT_SERVICE.indexOf('async submitAssessment'));
+    expect(submitSlice).toContain('findAssignmentInTx');
+    expect(submitSlice).toMatch(/assignment_already_completed/);
+  });
+
+  it("submitAssessment validates every questionId belongs to the assignment's assessmentTypeId before writing", () => {
+    const submitSlice = ASSESSMENT_SERVICE.slice(ASSESSMENT_SERVICE.indexOf('async submitAssessment'));
+    const validateIdx = submitSlice.indexOf('question_not_in_assessment');
+    const firstWriteIdx = submitSlice.indexOf('upsertResponseInTx(tx');
+    expect(validateIdx).toBeGreaterThan(0);
+    expect(firstWriteIdx).toBeGreaterThan(validateIdx);
+  });
+
+  it('free_text answers are never auto-graded (no fabricated AI/auto score — rule #4)', () => {
+    const submitSlice = ASSESSMENT_SERVICE.slice(ASSESSMENT_SERVICE.indexOf('async submitAssessment'));
+    const freeTextBranch = submitSlice.slice(submitSlice.indexOf("if (question.type === 'free_text') {"));
+    expect(freeTextBranch.slice(0, 400)).toMatch(/isCorrect:\s*null/);
+    expect(freeTextBranch.slice(0, 400)).toMatch(/pointsAwarded:\s*null/);
+  });
+
+  it('all submitAssessment inputs are bounded (answers array + freeText + selectedOptionIds)', () => {
+    const SHARED_ASSESSMENT = read('packages/shared/src/validators/assessment.ts');
+    expect(SHARED_ASSESSMENT).toMatch(
+      /submitAssessmentAnswersSchema\s*=\s*z\.array\(answerInputSchema\)\.min\(1\)\.max\(/,
+    );
+    expect(SHARED_ASSESSMENT).toMatch(/freeText:\s*z\.string\(\)\.max\(/);
+    expect(SHARED_ASSESSMENT).toMatch(/selectedOptionIds:\s*z\.array\(z\.string\(\)\.min\(1\)\.max\(64\)\)\.max\(/);
   });
 });
