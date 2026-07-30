@@ -11,6 +11,11 @@ describe('isSafePortalNext', () => {
     expect(isSafePortalNext('/careers/acme/me')).toBe('/careers/acme/me');
   });
 
+  it('accepts the new candidate dashboard path (and its assessment sub-routes)', () => {
+    expect(isSafePortalNext('/careers/tims-international/dashboard')).toBe('/careers/tims-international/dashboard');
+    expect(isSafePortalNext('/careers/acme/dashboard/assessments/a1')).toBe('/careers/acme/dashboard/assessments/a1');
+  });
+
   it('rejects protocol-relative and absolute URLs (open redirect)', () => {
     expect(isSafePortalNext('//evil.com')).toBeNull();
     expect(isSafePortalNext('//evil.com/careers/x')).toBeNull();

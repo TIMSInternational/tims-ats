@@ -22,6 +22,7 @@ const ASSESSMENT_SERVICE = read('packages/api/src/services/candidate-assessment.
 const ASSESSMENT_REPO = read('packages/api/src/repositories/candidate-assessment.repository.ts');
 const RATE_LIMIT = read('packages/api/src/middleware/rate-limit.ts');
 const DASHBOARD_PAGE = read('apps/web/app/(portal)/careers/[orgSlug]/dashboard/page.tsx');
+const LEGACY_ME_PAGE = read('apps/web/app/(portal)/careers/[orgSlug]/me/page.tsx');
 
 describe('candidateProcedure infrastructure', () => {
   it('context exposes a Supabase auth identity decoupled from the staff user', () => {
@@ -326,5 +327,16 @@ describe('candidate assessment take-flow — security invariants (Wave 1.5a slic
     );
     expect(SHARED_ASSESSMENT).toMatch(/freeText:\s*z\.string\(\)\.max\(/);
     expect(SHARED_ASSESSMENT).toMatch(/selectedOptionIds:\s*z\.array\(z\.string\(\)\.min\(1\)\.max\(64\)\)\.max\(/);
+  });
+});
+
+describe('legacy /me → /dashboard redirect', () => {
+  it('redirects to the new dashboard path, preserving orgSlug', () => {
+    expect(LEGACY_ME_PAGE).toContain('redirect(`/careers/${orgSlug}/dashboard');
+  });
+
+  it('is a thin redirect only — does not duplicate the candidate SSR lookup', () => {
+    expect(LEGACY_ME_PAGE).not.toContain('candidatePortalService');
+    expect(LEGACY_ME_PAGE).not.toMatch(/db\.candidate\b/);
   });
 });
