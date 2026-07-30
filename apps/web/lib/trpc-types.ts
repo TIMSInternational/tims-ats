@@ -102,3 +102,7 @@ export type {
   ReportBucket as Eval360ReportBucket,
   MyReportCycle as Eval360ReportCycle,
 } from './platform-api/evaluation360';
+
+// Candidate portal — assessment player (Wave 1.5a slice 3)
+export type AssignmentSummary = RouterOutput['candidatePortal']['getMyAssessments'][number];
+export type AssessmentQuestionDto = RouterOutput['candidatePortal']['getAssessmentQuestions'][number];
