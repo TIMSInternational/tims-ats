@@ -68,4 +68,25 @@ export const candidateAssessmentService = {
       return candidateAssessmentRepo.markStarted(assignmentId);
     });
   },
+
+  async getAssessmentQuestions(email: string, orgSlug: string, assignmentId: string) {
+    const org = await resolveOrg(orgSlug);
+    return runWithTenant(org.id, async () => {
+      const candidate = await candidatePortalRepo.findActiveCandidate(org.id, email);
+      if (!candidate) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Asignacion no encontrada' });
+      }
+      const assignment = await candidateAssessmentRepo.findOwnedAssignment(org.id, candidate.id, assignmentId);
+      if (!assignment) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Asignacion no encontrada' });
+      }
+      if (assignment.status !== 'in_progress') {
+        throw new TRPCError({ code: 'CONFLICT', message: 'assignment_not_in_progress' });
+      }
+      if (isExpired(assignment.expiresAt)) {
+        throw new TRPCError({ code: 'CONFLICT', message: 'assignment_expired' });
+      }
+      return candidateAssessmentRepo.findQuestionsForType(org.id, assignment.assessmentTypeId);
+    });
+  },
 };

@@ -140,3 +140,61 @@ describe('candidateAssessmentService.startAssessment', () => {
     expect(result.status).toBe('in_progress');
   });
 });
+
+describe('candidateAssessmentService.getAssessmentQuestions', () => {
+  it('throws NOT_FOUND when the assignment is not owned by this candidate', async () => {
+    vi.mocked(candidatePortalRepo.findActiveCandidate).mockResolvedValue({ id: 'cand-1' } as never);
+    vi.mocked(candidateAssessmentRepo.findOwnedAssignment).mockResolvedValue(null);
+    await expect(candidateAssessmentService.getAssessmentQuestions(EMAIL, SLUG, ASSIGNMENT_ID)).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+    });
+  });
+
+  it('rejects when the assignment has not been started', async () => {
+    vi.mocked(candidatePortalRepo.findActiveCandidate).mockResolvedValue({ id: 'cand-1' } as never);
+    vi.mocked(candidateAssessmentRepo.findOwnedAssignment).mockResolvedValue({
+      id: ASSIGNMENT_ID,
+      status: 'assigned',
+      expiresAt: null,
+      assessmentTypeId: 'type-1',
+    } as never);
+    await expect(candidateAssessmentService.getAssessmentQuestions(EMAIL, SLUG, ASSIGNMENT_ID)).rejects.toMatchObject({
+      code: 'CONFLICT',
+      message: 'assignment_not_in_progress',
+    });
+  });
+
+  it('rejects an expired in_progress assignment', async () => {
+    vi.mocked(candidatePortalRepo.findActiveCandidate).mockResolvedValue({ id: 'cand-1' } as never);
+    vi.mocked(candidateAssessmentRepo.findOwnedAssignment).mockResolvedValue({
+      id: ASSIGNMENT_ID,
+      status: 'in_progress',
+      expiresAt: new Date('2020-01-01'),
+      assessmentTypeId: 'type-1',
+    } as never);
+    await expect(candidateAssessmentService.getAssessmentQuestions(EMAIL, SLUG, ASSIGNMENT_ID)).rejects.toMatchObject({
+      code: 'CONFLICT',
+      message: 'assignment_expired',
+    });
+  });
+
+  it("returns the assessment type's questions without correctOptionIds", async () => {
+    vi.mocked(candidatePortalRepo.findActiveCandidate).mockResolvedValue({ id: 'cand-1' } as never);
+    vi.mocked(candidateAssessmentRepo.findOwnedAssignment).mockResolvedValue({
+      id: ASSIGNMENT_ID,
+      status: 'in_progress',
+      expiresAt: null,
+      assessmentTypeId: 'type-1',
+    } as never);
+    const questions = [
+      { id: 'q1', order: 0, type: 'single_choice', prompt: 'p', options: [{ id: 'a', label: 'A' }], points: 1 },
+    ];
+    vi.mocked(candidateAssessmentRepo.findQuestionsForType).mockResolvedValue(questions as never);
+
+    const result = await candidateAssessmentService.getAssessmentQuestions(EMAIL, SLUG, ASSIGNMENT_ID);
+
+    expect(result).toEqual(questions);
+    expect(JSON.stringify(result)).not.toContain('correctOptionIds');
+    expect(candidateAssessmentRepo.findQuestionsForType).toHaveBeenCalledWith('org-1', 'type-1');
+  });
+});
