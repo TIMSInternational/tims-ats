@@ -140,30 +140,57 @@ export const candidateAssessmentService = {
       );
       const questionsById = new Map(questions.map((q) => [q.id, q]));
 
+      // Up-front validation pass over the SUBMITTED answers — membership
+      // (every questionId belongs to this assessment type) and per-type
+      // coherence (a choice question needs selectedOptionIds, a free_text
+      // question needs freeText, never both) are both checked here, before
+      // any write, so a bad answer never leaves partial writes to roll back
+      // (review finding #4 — the schema comment promised this is enforced
+      // server-side; nothing previously did).
       for (const answer of answers) {
-        if (!questionsById.has(answer.questionId)) {
+        const question = questionsById.get(answer.questionId);
+        if (!question) {
           throw new TRPCError({ code: 'BAD_REQUEST', message: 'question_not_in_assessment' });
+        }
+        const hasFreeText = typeof answer.freeText === 'string' && answer.freeText.length > 0;
+        const hasSelected = Array.isArray(answer.selectedOptionIds) && answer.selectedOptionIds.length > 0;
+        const mismatch =
+          (question.type !== 'free_text' && hasFreeText && !hasSelected) ||
+          (question.type === 'free_text' && hasSelected);
+        if (mismatch) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'answer_type_mismatch' });
         }
       }
 
+      // Grade by iterating the QUESTION SET, not the submitted answers array
+      // (review finding #2). Iterating `answers` let a duplicate questionId
+      // double-count the score and let an unanswered question simply vanish
+      // from both numerator and denominator (a 1-of-10 submission scored
+      // 100%). A Map naturally resolves a duplicate submitted questionId to
+      // its LAST occurrence — that's an accepted simple resolution, not a bug.
+      const answersByQuestionId = new Map(answers.map((a) => [a.questionId, a]));
+
       const graded: GradedAnswer[] = [];
       const pendingManual: string[] = [];
-      for (const answer of answers) {
-        const question = questionsById.get(answer.questionId)!;
+      for (const question of questions) {
+        const answer = answersByQuestionId.get(question.id);
         if (question.type === 'free_text') {
           await candidateAssessmentWriteRepo.upsertResponseInTx(tx, {
             organizationId: org.id,
             assignmentId,
             questionId: question.id,
             selectedOptionIds: null,
-            freeText: answer.freeText ?? '',
+            freeText: answer?.freeText ?? '',
             isCorrect: null,
             pointsAwarded: null,
           });
           graded.push({ isCorrect: null, pointsAwarded: null, points: question.points });
           pendingManual.push(question.id);
         } else {
-          const selected = answer.selectedOptionIds ?? [];
+          // Unanswered choice question: score via scoreChoice([], ...) — an
+          // empty selection naturally scores 0/incorrect, no special-casing,
+          // and it still lands in computeResult's denominator.
+          const selected = answer?.selectedOptionIds ?? [];
           const { isCorrect, pointsAwarded } = scoreChoice(
             selected,
             question.correctOptionIds as string[],
@@ -192,7 +219,16 @@ export const candidateAssessmentService = {
         normalizedScore,
         breakdown: { autoScored, pendingManual },
       });
-      await candidateAssessmentWriteRepo.completeAssignmentInTx(tx, assignmentId);
+
+      // Conditional final write — the ACTUAL double-submit race guard
+      // (review finding #1). A losing concurrent submit's updateMany matches
+      // 0 rows once the winner has committed; throwing here rolls back this
+      // entire transaction (the response upserts + result upsert above),
+      // so the loser leaves zero trace, not partial data.
+      const completion = await candidateAssessmentWriteRepo.completeAssignmentInTx(tx, assignmentId);
+      if (completion.count === 0) {
+        throw new TRPCError({ code: 'CONFLICT', message: 'assignment_already_completed' });
+      }
 
       return { rawScore, normalizedScore, hasPending };
     });

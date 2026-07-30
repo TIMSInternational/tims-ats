@@ -64,14 +64,19 @@ export type TenantDb = typeof tenantDb;
 // boundary. RLS_ENFORCED is read at call time (not module load) so it composes
 // with vi.stubEnv in tests without needing vi.resetModules().
 export function runTenantTransaction<T>(orgId: string, fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
-  return db.$transaction(async (tx) => {
-    const rlsEnforced = process.env.RLS_ENFORCED === 'true';
-    if (!rlsEnforced) {
-      assertRlsEnforced(process.env.NODE_ENV, rlsEnforced);
+  return db.$transaction(
+    async (tx) => {
+      const rlsEnforced = process.env.RLS_ENFORCED === 'true';
+      if (!rlsEnforced) {
+        assertRlsEnforced(process.env.NODE_ENV, rlsEnforced);
+        return fn(tx);
+      }
+      await tx.$executeRaw`SET LOCAL ROLE app_tenant`;
+      await tx.$executeRaw`SELECT set_config('app.current_org_id', ${orgId}, true)`;
       return fn(tx);
-    }
-    await tx.$executeRaw`SET LOCAL ROLE app_tenant`;
-    await tx.$executeRaw`SELECT set_config('app.current_org_id', ${orgId}, true)`;
-    return fn(tx);
-  });
+    },
+    // Generous enough for a 200-answer submission's sequential round-trips
+    // (Wave 1.5a slice 2 review finding #3) — default is 5s.
+    { timeout: 30000 },
+  );
 }

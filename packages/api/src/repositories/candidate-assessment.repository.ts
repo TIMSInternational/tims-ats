@@ -177,9 +177,15 @@ export const candidateAssessmentWriteRepo = {
     });
   },
 
+  // Conditional write is the ACTUAL double-submit race guard (the early
+  // findAssignmentInTx check above is not, under READ COMMITTED — see
+  // review finding #1). The WHERE clause only matches a still-in_progress
+  // row; a losing concurrent submit's updateMany blocks on the winner's row
+  // lock, then re-evaluates this predicate against the now-committed
+  // 'completed' row and matches 0 rows. Callers must check `count`.
   completeAssignmentInTx(tx: Prisma.TransactionClient, assignmentId: string) {
-    return tx.assessmentAssignment.update({
-      where: { id: assignmentId },
+    return tx.assessmentAssignment.updateMany({
+      where: { id: assignmentId, status: 'in_progress' },
       data: { status: 'completed', completedAt: new Date() },
     });
   },

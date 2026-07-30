@@ -312,6 +312,7 @@ describe('candidateAssessmentService.submitAssessment', () => {
       SINGLE_CHOICE_Q,
       FREE_TEXT_Q,
     ] as never);
+    vi.mocked(candidateAssessmentWriteRepo.completeAssignmentInTx).mockResolvedValue({ count: 1 } as never);
 
     const result = await candidateAssessmentService.submitAssessment(EMAIL, SLUG, ASSIGNMENT_ID, [
       { questionId: 'q1', selectedOptionIds: ['b'] },
@@ -333,5 +334,153 @@ describe('candidateAssessmentService.submitAssessment', () => {
     );
     expect(candidateAssessmentWriteRepo.completeAssignmentInTx).toHaveBeenCalledWith({}, ASSIGNMENT_ID);
     expect(result).toEqual({ rawScore: 5, normalizedScore: 100, hasPending: true });
+  });
+
+  it('closes the double-submit race via the conditional final write (finding #1)', async () => {
+    // Both assignments report in_progress (the early in-tx probe does NOT
+    // catch this race under READ COMMITTED — see repository comment) but the
+    // conditional completeAssignmentInTx updateMany matches 0 rows because a
+    // concurrent winner already flipped the row to completed.
+    vi.mocked(candidateAssessmentRepo.findOwnedAssignment).mockResolvedValue({
+      id: ASSIGNMENT_ID,
+      status: 'in_progress',
+      expiresAt: null,
+      assessmentTypeId: 'type-1',
+    } as never);
+    vi.mocked(candidateAssessmentWriteRepo.findAssignmentInTx).mockResolvedValue({
+      id: ASSIGNMENT_ID,
+      status: 'in_progress',
+      expiresAt: null,
+      assessmentTypeId: 'type-1',
+    } as never);
+    vi.mocked(candidateAssessmentWriteRepo.findQuestionsWithAnswerKeyInTx).mockResolvedValue([
+      SINGLE_CHOICE_Q,
+    ] as never);
+    vi.mocked(candidateAssessmentWriteRepo.completeAssignmentInTx).mockResolvedValue({ count: 0 } as never);
+
+    await expect(
+      candidateAssessmentService.submitAssessment(EMAIL, SLUG, ASSIGNMENT_ID, [
+        { questionId: 'q1', selectedOptionIds: ['b'] },
+      ]),
+    ).rejects.toMatchObject({ code: 'CONFLICT', message: 'assignment_already_completed' });
+    expect(candidateAssessmentWriteRepo.completeAssignmentInTx).toHaveBeenCalledWith({}, ASSIGNMENT_ID);
+  });
+
+  it('does not double-count a duplicate questionId in the submitted answers (finding #2a)', async () => {
+    vi.mocked(candidateAssessmentRepo.findOwnedAssignment).mockResolvedValue({
+      id: ASSIGNMENT_ID,
+      status: 'in_progress',
+      expiresAt: null,
+      assessmentTypeId: 'type-1',
+    } as never);
+    vi.mocked(candidateAssessmentWriteRepo.findAssignmentInTx).mockResolvedValue({
+      id: ASSIGNMENT_ID,
+      status: 'in_progress',
+      expiresAt: null,
+      assessmentTypeId: 'type-1',
+    } as never);
+    vi.mocked(candidateAssessmentWriteRepo.findQuestionsWithAnswerKeyInTx).mockResolvedValue([
+      SINGLE_CHOICE_Q,
+    ] as never);
+    vi.mocked(candidateAssessmentWriteRepo.completeAssignmentInTx).mockResolvedValue({ count: 1 } as never);
+
+    // q1 submitted twice — a correct answer then a wrong one. The Map keeps
+    // the LAST occurrence, so the wrong one wins and only ONE response row
+    // is written (not two, which would have doubled rawScore to 10).
+    const result = await candidateAssessmentService.submitAssessment(EMAIL, SLUG, ASSIGNMENT_ID, [
+      { questionId: 'q1', selectedOptionIds: ['b'] },
+      { questionId: 'q1', selectedOptionIds: ['a'] },
+    ]);
+
+    expect(candidateAssessmentWriteRepo.upsertResponseInTx).toHaveBeenCalledTimes(1);
+    expect(candidateAssessmentWriteRepo.upsertResponseInTx).toHaveBeenCalledWith(
+      {},
+      expect.objectContaining({ questionId: 'q1', isCorrect: false, pointsAwarded: 0 }),
+    );
+    expect(result).toEqual({ rawScore: 0, normalizedScore: 0, hasPending: false });
+  });
+
+  it('counts an unanswered question in the denominator instead of yielding 100% (finding #2b)', async () => {
+    vi.mocked(candidateAssessmentRepo.findOwnedAssignment).mockResolvedValue({
+      id: ASSIGNMENT_ID,
+      status: 'in_progress',
+      expiresAt: null,
+      assessmentTypeId: 'type-1',
+    } as never);
+    vi.mocked(candidateAssessmentWriteRepo.findAssignmentInTx).mockResolvedValue({
+      id: ASSIGNMENT_ID,
+      status: 'in_progress',
+      expiresAt: null,
+      assessmentTypeId: 'type-1',
+    } as never);
+    const SECOND_CHOICE_Q = { id: 'q3', type: 'single_choice', correctOptionIds: ['x'], points: 5 };
+    vi.mocked(candidateAssessmentWriteRepo.findQuestionsWithAnswerKeyInTx).mockResolvedValue([
+      SINGLE_CHOICE_Q,
+      SECOND_CHOICE_Q,
+    ] as never);
+    vi.mocked(candidateAssessmentWriteRepo.completeAssignmentInTx).mockResolvedValue({ count: 1 } as never);
+
+    // Only q1 (of 2 questions) is answered, correctly.
+    const result = await candidateAssessmentService.submitAssessment(EMAIL, SLUG, ASSIGNMENT_ID, [
+      { questionId: 'q1', selectedOptionIds: ['b'] },
+    ]);
+
+    // Unanswered q3 still gets a response row (empty selection -> incorrect)
+    // and lands in computeResult's denominator, so the score is 5/10 = 50%,
+    // not 5/5 = 100%.
+    expect(candidateAssessmentWriteRepo.upsertResponseInTx).toHaveBeenCalledTimes(2);
+    expect(candidateAssessmentWriteRepo.upsertResponseInTx).toHaveBeenCalledWith(
+      {},
+      expect.objectContaining({ questionId: 'q3', selectedOptionIds: [], isCorrect: false, pointsAwarded: 0 }),
+    );
+    expect(result).toEqual({ rawScore: 5, normalizedScore: 50, hasPending: false });
+  });
+
+  it('rejects a free_text answer that also supplies selectedOptionIds (finding #4)', async () => {
+    vi.mocked(candidateAssessmentRepo.findOwnedAssignment).mockResolvedValue({
+      id: ASSIGNMENT_ID,
+      status: 'in_progress',
+      expiresAt: null,
+      assessmentTypeId: 'type-1',
+    } as never);
+    vi.mocked(candidateAssessmentWriteRepo.findAssignmentInTx).mockResolvedValue({
+      id: ASSIGNMENT_ID,
+      status: 'in_progress',
+      expiresAt: null,
+      assessmentTypeId: 'type-1',
+    } as never);
+    vi.mocked(candidateAssessmentWriteRepo.findQuestionsWithAnswerKeyInTx).mockResolvedValue([FREE_TEXT_Q] as never);
+
+    await expect(
+      candidateAssessmentService.submitAssessment(EMAIL, SLUG, ASSIGNMENT_ID, [
+        { questionId: 'q2', freeText: 'my essay', selectedOptionIds: ['a'] },
+      ]),
+    ).rejects.toMatchObject({ code: 'BAD_REQUEST', message: 'answer_type_mismatch' });
+    expect(candidateAssessmentWriteRepo.upsertResponseInTx).not.toHaveBeenCalled();
+  });
+
+  it('rejects a choice-question answer that supplies freeText instead of selectedOptionIds (finding #4)', async () => {
+    vi.mocked(candidateAssessmentRepo.findOwnedAssignment).mockResolvedValue({
+      id: ASSIGNMENT_ID,
+      status: 'in_progress',
+      expiresAt: null,
+      assessmentTypeId: 'type-1',
+    } as never);
+    vi.mocked(candidateAssessmentWriteRepo.findAssignmentInTx).mockResolvedValue({
+      id: ASSIGNMENT_ID,
+      status: 'in_progress',
+      expiresAt: null,
+      assessmentTypeId: 'type-1',
+    } as never);
+    vi.mocked(candidateAssessmentWriteRepo.findQuestionsWithAnswerKeyInTx).mockResolvedValue([
+      SINGLE_CHOICE_Q,
+    ] as never);
+
+    await expect(
+      candidateAssessmentService.submitAssessment(EMAIL, SLUG, ASSIGNMENT_ID, [
+        { questionId: 'q1', freeText: 'oops, wrong field' },
+      ]),
+    ).rejects.toMatchObject({ code: 'BAD_REQUEST', message: 'answer_type_mismatch' });
+    expect(candidateAssessmentWriteRepo.upsertResponseInTx).not.toHaveBeenCalled();
   });
 });
