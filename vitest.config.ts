@@ -1,5 +1,6 @@
 import { defineConfig } from 'vitest/config';
 import { resolve } from 'path';
+import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   resolve: {
@@ -22,8 +23,25 @@ export default defineConfig({
     },
   },
   test: {
-    globals: true,
-    environment: 'node',
-    include: ['tests/**/*.test.ts', 'scripts/**/*.test.ts'],
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: { label: 'node', color: 'green' },
+          environment: 'node',
+          include: ['tests/**/*.test.ts', 'scripts/**/*.test.ts'],
+        },
+      },
+      {
+        extends: true,
+        plugins: [react()],
+        test: {
+          name: { label: 'web-components', color: 'magenta' },
+          environment: 'happy-dom',
+          include: ['tests/**/*.test.tsx'],
+          setupFiles: ['./tests/setup/component-test-setup.ts'],
+        },
+      },
+    ],
   },
 });
