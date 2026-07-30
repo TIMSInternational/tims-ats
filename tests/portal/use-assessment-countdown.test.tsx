@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useAssessmentCountdown } from '../../apps/web/app/(portal)/careers/[orgSlug]/me/assessments/[assignmentId]/_lib/use-assessment-countdown';
+import { useAssessmentCountdown } from '../../apps/web/app/(portal)/careers/[orgSlug]/dashboard/assessments/[assignmentId]/_lib/use-assessment-countdown';
 
 describe('useAssessmentCountdown', () => {
   beforeEach(() => vi.useFakeTimers());

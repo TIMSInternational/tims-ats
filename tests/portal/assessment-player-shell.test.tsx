@@ -21,11 +21,11 @@ vi.mock('../../apps/web/lib/trpc', () => ({
   },
 }));
 vi.mock(
-  '../../apps/web/app/(portal)/careers/[orgSlug]/me/assessments/[assignmentId]/_components/assessment-question-wizard',
+  '../../apps/web/app/(portal)/careers/[orgSlug]/dashboard/assessments/[assignmentId]/_components/assessment-question-wizard',
   () => ({ AssessmentQuestionWizard: () => <div>wizard-stub</div> }),
 );
 
-import { AssessmentPlayerShell } from '../../apps/web/app/(portal)/careers/[orgSlug]/me/assessments/[assignmentId]/_components/assessment-player-shell';
+import { AssessmentPlayerShell } from '../../apps/web/app/(portal)/careers/[orgSlug]/dashboard/assessments/[assignmentId]/_components/assessment-player-shell';
 
 function renderShell() {
   // Set locale to EN for this test (matches the pattern used by every sibling

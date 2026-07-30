@@ -8,7 +8,7 @@ import { useI18n } from '../../../../../lib/i18n';
 
 // Candidate portal login — passwordless magic link. We always show the same
 // "check your email" confirmation regardless of whether the email maps to a
-// candidate (no account enumeration); access is gated downstream at /me by the
+// candidate (no account enumeration); access is gated downstream at /dashboard by the
 // Candidate lookup.
 export default function PortalLoginPage() {
   const { orgSlug } = useParams<{ orgSlug: string }>();
@@ -27,7 +27,7 @@ export default function PortalLoginPage() {
     const supabase = createSupabaseBrowserClient();
     const { error: otpError } = await supabase.auth.signInWithOtp({
       email: value,
-      options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=/careers/${orgSlug}/me` },
+      options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=/careers/${orgSlug}/dashboard` },
     });
     setBusy(false);
     if (otpError) {
@@ -52,7 +52,15 @@ export default function PortalLoginPage() {
           {sent ? (
             <div className="text-center">
               <div className="w-12 h-12 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-4">
-                <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" /></svg>
+                <svg
+                  className="w-6 h-6 text-green-600"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                  viewBox="0 0 24 24"
+                >
+                  <path d="M5 13l4 4L19 7" />
+                </svg>
               </div>
               <h3 className="text-[15px] font-semibold text-[#1F114C] mb-2">{t.portalAuth.checkEmailTitle}</h3>
               <p className="text-[13px] text-[#585858]">{t.portalAuth.checkEmailDesc}</p>
@@ -60,7 +68,9 @@ export default function PortalLoginPage() {
           ) : (
             <form onSubmit={submit} className="space-y-4">
               {error && (
-                <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-[13px] text-red-700">{error}</div>
+                <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-[13px] text-red-700">
+                  {error}
+                </div>
               )}
               <div>
                 <label className="block text-[12px] font-medium text-[#585858] mb-1.5">{t.portalAuth.emailLabel}</label>
@@ -85,7 +95,10 @@ export default function PortalLoginPage() {
         </div>
 
         <div className="text-center mt-5">
-          <Link href={`/careers/${orgSlug}`} className="text-[13px] text-[#8B8B8B] hover:text-[#585858] hover:underline">
+          <Link
+            href={`/careers/${orgSlug}`}
+            className="text-[13px] text-[#8B8B8B] hover:text-[#585858] hover:underline"
+          >
             {t.portalAuth.backToJobs}
           </Link>
         </div>

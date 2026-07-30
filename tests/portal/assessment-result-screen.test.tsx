@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import en from '../../apps/web/lib/i18n/en.json';
 import { I18nProvider } from '../../apps/web/lib/i18n';
-import { AssessmentResultScreen } from '../../apps/web/app/(portal)/careers/[orgSlug]/me/assessments/[assignmentId]/_components/assessment-result-screen';
+import { AssessmentResultScreen } from '../../apps/web/app/(portal)/careers/[orgSlug]/dashboard/assessments/[assignmentId]/_components/assessment-result-screen';
 
 function renderResult(props: React.ComponentProps<typeof AssessmentResultScreen>) {
   localStorage.setItem('tims-locale', 'EN');

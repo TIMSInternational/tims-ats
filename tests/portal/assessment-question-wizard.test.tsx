@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import en from '../../apps/web/lib/i18n/en.json';
 import { I18nProvider } from '../../apps/web/lib/i18n';
-import { writeDraft } from '../../apps/web/app/(portal)/careers/[orgSlug]/me/assessments/[assignmentId]/_lib/assessment-draft-storage';
+import { writeDraft } from '../../apps/web/app/(portal)/careers/[orgSlug]/dashboard/assessments/[assignmentId]/_lib/assessment-draft-storage';
 
 const mutateSubmit = vi.fn();
 const invalidate = vi.fn();
@@ -47,7 +47,7 @@ vi.mock('../../apps/web/lib/trpc', () => ({
   },
 }));
 
-import { AssessmentQuestionWizard } from '../../apps/web/app/(portal)/careers/[orgSlug]/me/assessments/[assignmentId]/_components/assessment-question-wizard';
+import { AssessmentQuestionWizard } from '../../apps/web/app/(portal)/careers/[orgSlug]/dashboard/assessments/[assignmentId]/_components/assessment-question-wizard';
 
 function renderWizard(overrides: Partial<React.ComponentProps<typeof AssessmentQuestionWizard>> = {}) {
   // Set locale to EN for this test (matches the pattern used by every sibling

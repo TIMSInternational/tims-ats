@@ -15,29 +15,29 @@ interface ChatMessage {
 function sourceLabel(source: Source, t: ReturnType<typeof useI18n>['t']) {
   switch (source) {
     case 'profile':
-      return t.portalMe.faqSourceProfile;
+      return t.portalDashboard.faqSourceProfile;
     case 'applications':
-      return t.portalMe.faqSourceApplications;
+      return t.portalDashboard.faqSourceApplications;
     case 'interviews':
-      return t.portalMe.faqSourceInterviews;
+      return t.portalDashboard.faqSourceInterviews;
     case 'offers':
-      return t.portalMe.faqSourceOffers;
+      return t.portalDashboard.faqSourceOffers;
   }
 }
 
 // Candidate FAQ assistant. The browser sends only an org slug and free-text
 // question; the API derives the candidate and allowed context from the Supabase
 // session server-side before calling the gated AI agent.
-export function MeFaqChat({ orgSlug }: { orgSlug: string }) {
+export function DashboardFaqChat({ orgSlug }: { orgSlug: string }) {
   const { t } = useI18n();
   const [question, setQuestion] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const ask = trpc.candidatePortal.askFaq.useMutation();
 
   const suggestions = [
-    t.portalMe.faqSuggestionStatus,
-    t.portalMe.faqSuggestionInterview,
-    t.portalMe.faqSuggestionOffer,
+    t.portalDashboard.faqSuggestionStatus,
+    t.portalDashboard.faqSuggestionInterview,
+    t.portalDashboard.faqSuggestionOffer,
   ];
 
   const submitQuestion = (rawQuestion: string) => {
@@ -50,16 +50,10 @@ export function MeFaqChat({ orgSlug }: { orgSlug: string }) {
       { orgSlug, question: trimmed },
       {
         onSuccess: (data) => {
-          setMessages((current) => [
-            ...current,
-            { role: 'assistant', text: data.answer, sources: data.sources },
-          ]);
+          setMessages((current) => [...current, { role: 'assistant', text: data.answer, sources: data.sources }]);
         },
         onError: () => {
-          setMessages((current) => [
-            ...current,
-            { role: 'assistant', text: t.portalMe.faqError },
-          ]);
+          setMessages((current) => [...current, { role: 'assistant', text: t.portalDashboard.faqError }]);
         },
       },
     );
@@ -74,8 +68,8 @@ export function MeFaqChat({ orgSlug }: { orgSlug: string }) {
     <section className="bg-white rounded-2xl border border-[#EDEDED] p-5">
       <div className="flex items-start justify-between gap-4 mb-4">
         <div>
-          <h2 className="text-[14px] font-semibold text-[#1F114C]">{t.portalMe.faqTitle}</h2>
-          <p className="text-[12px] text-[#8B8B8B] mt-1">{t.portalMe.faqSubtitle}</p>
+          <h2 className="text-[14px] font-semibold text-[#1F114C]">{t.portalDashboard.faqTitle}</h2>
+          <p className="text-[12px] text-[#8B8B8B] mt-1">{t.portalDashboard.faqSubtitle}</p>
         </div>
       </div>
 
@@ -100,7 +94,7 @@ export function MeFaqChat({ orgSlug }: { orgSlug: string }) {
             return (
               <div key={`${message.role}-${index}`} className={mine ? 'text-right' : 'text-left'}>
                 <p className="text-[11px] font-medium text-[#8B8B8B] mb-1">
-                  {mine ? t.portalMe.faqYouLabel : t.portalMe.faqAssistantLabel}
+                  {mine ? t.portalDashboard.faqYouLabel : t.portalDashboard.faqAssistantLabel}
                 </p>
                 <div
                   className={
@@ -112,7 +106,7 @@ export function MeFaqChat({ orgSlug }: { orgSlug: string }) {
                   <p className="whitespace-pre-wrap leading-relaxed">{message.text}</p>
                   {message.sources && message.sources.length > 0 && (
                     <p className="mt-2 text-[11px] text-[#8B8B8B]">
-                      {t.portalMe.faqSources}: {message.sources.map((s) => sourceLabel(s, t)).join(', ')}
+                      {t.portalDashboard.faqSources}: {message.sources.map((s) => sourceLabel(s, t)).join(', ')}
                     </p>
                   )}
                 </div>
@@ -128,18 +122,18 @@ export function MeFaqChat({ orgSlug }: { orgSlug: string }) {
           onChange={(event) => setQuestion(event.target.value.slice(0, 800))}
           rows={3}
           maxLength={800}
-          placeholder={t.portalMe.faqPlaceholder}
-          aria-label={t.portalMe.faqInputLabel}
+          placeholder={t.portalDashboard.faqPlaceholder}
+          aria-label={t.portalDashboard.faqInputLabel}
           className="w-full resize-none rounded-xl border border-[#EDEDED] px-3 py-2 text-[13px] text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20"
         />
         <div className="flex items-center justify-between gap-3">
-          <p className="text-[11px] text-[#8B8B8B]">{t.portalMe.faqPrivacy}</p>
+          <p className="text-[11px] text-[#8B8B8B]">{t.portalDashboard.faqPrivacy}</p>
           <button
             type="submit"
             disabled={question.trim().length < 3 || ask.isPending}
             className="h-9 shrink-0 rounded-xl bg-[#1F114C] px-4 text-[12px] font-semibold text-white hover:bg-[#2a1a5e] disabled:opacity-50"
           >
-            {ask.isPending ? t.portalMe.faqSending : t.portalMe.faqSend}
+            {ask.isPending ? t.portalDashboard.faqSending : t.portalDashboard.faqSend}
           </button>
         </div>
       </form>

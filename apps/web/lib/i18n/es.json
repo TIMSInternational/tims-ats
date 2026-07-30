@@ -2768,7 +2768,7 @@
     "errorGeneric": "No se pudo enviar el enlace. Inténtalo de nuevo.",
     "backToJobs": "Volver a las vacantes"
   },
-  "portalMe": {
+  "portalDashboard": {
     "welcome": "Hola",
     "signOut": "Cerrar sesión",
     "applications": "Mis postulaciones",

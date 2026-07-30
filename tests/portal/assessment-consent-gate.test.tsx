@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import en from '../../apps/web/lib/i18n/en.json';
 import { I18nProvider } from '../../apps/web/lib/i18n';
-import { AssessmentConsentGate } from '../../apps/web/app/(portal)/careers/[orgSlug]/me/assessments/[assignmentId]/_components/assessment-consent-gate';
+import { AssessmentConsentGate } from '../../apps/web/app/(portal)/careers/[orgSlug]/dashboard/assessments/[assignmentId]/_components/assessment-consent-gate';
 
 function renderGate(props: Partial<React.ComponentProps<typeof AssessmentConsentGate>> = {}) {
   localStorage.setItem('tims-locale', 'EN');

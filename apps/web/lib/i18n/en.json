@@ -2768,7 +2768,7 @@
     "errorGeneric": "Couldn't send the link. Try again.",
     "backToJobs": "Back to jobs"
   },
-  "portalMe": {
+  "portalDashboard": {
     "welcome": "Hi",
     "signOut": "Sign out",
     "applications": "My applications",

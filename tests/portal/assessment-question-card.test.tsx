@@ -5,7 +5,7 @@ import { I18nProvider } from '../../apps/web/lib/i18n';
 import {
   AssessmentQuestionCard,
   type QuestionCardQuestion,
-} from '../../apps/web/app/(portal)/careers/[orgSlug]/me/assessments/[assignmentId]/_components/assessment-question-card';
+} from '../../apps/web/app/(portal)/careers/[orgSlug]/dashboard/assessments/[assignmentId]/_components/assessment-question-card';
 
 const singleChoiceQuestion: QuestionCardQuestion = {
   id: 'q1',

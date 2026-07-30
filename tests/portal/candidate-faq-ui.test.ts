@@ -5,8 +5,8 @@ import { join } from 'path';
 const ROOT = join(__dirname, '../..');
 const read = (p: string) => readFileSync(join(ROOT, p), 'utf8');
 
-const WIDGET = read('apps/web/app/(portal)/careers/[orgSlug]/me/me-faq-chat.tsx');
-const SHELL = read('apps/web/app/(portal)/careers/[orgSlug]/me/me-shell.tsx');
+const WIDGET = read('apps/web/app/(portal)/careers/[orgSlug]/dashboard/dashboard-faq-chat.tsx');
+const SHELL = read('apps/web/app/(portal)/careers/[orgSlug]/dashboard/dashboard-shell.tsx');
 const EN = JSON.parse(read('apps/web/lib/i18n/en.json'));
 const ES = JSON.parse(read('apps/web/lib/i18n/es.json'));
 
@@ -18,8 +18,8 @@ describe('candidate FAQ portal UI', () => {
   });
 
   it('renders inside the authenticated candidate dashboard shell', () => {
-    expect(SHELL).toContain("import { MeFaqChat } from './me-faq-chat'");
-    expect(SHELL).toContain('<MeFaqChat orgSlug={orgSlug} />');
+    expect(SHELL).toContain("import { DashboardFaqChat } from './dashboard-faq-chat'");
+    expect(SHELL).toContain('<DashboardFaqChat orgSlug={orgSlug} />');
   });
 
   it('has both locale dictionaries for every candidate FAQ label', () => {
@@ -45,8 +45,8 @@ describe('candidate FAQ portal UI', () => {
     ];
 
     for (const key of keys) {
-      expect(EN.portalMe[key]).toBeTruthy();
-      expect(ES.portalMe[key]).toBeTruthy();
+      expect(EN.portalDashboard[key]).toBeTruthy();
+      expect(ES.portalDashboard[key]).toBeTruthy();
     }
   });
 });

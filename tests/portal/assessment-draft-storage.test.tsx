@@ -3,7 +3,7 @@ import {
   readDraft,
   writeDraft,
   clearDraft,
-} from '../../apps/web/app/(portal)/careers/[orgSlug]/me/assessments/[assignmentId]/_lib/assessment-draft-storage';
+} from '../../apps/web/app/(portal)/careers/[orgSlug]/dashboard/assessments/[assignmentId]/_lib/assessment-draft-storage';
 
 describe('assessment-draft-storage', () => {
   beforeEach(() => window.localStorage.clear());

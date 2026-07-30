@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import en from '../../apps/web/lib/i18n/en.json';
-import { mapAssessmentErrorMessage } from '../../apps/web/app/(portal)/careers/[orgSlug]/me/assessments/[assignmentId]/_components/assessment-error-messages';
+import { mapAssessmentErrorMessage } from '../../apps/web/app/(portal)/careers/[orgSlug]/dashboard/assessments/[assignmentId]/_components/assessment-error-messages';
 
 const t = en.assessmentPlayer;
 

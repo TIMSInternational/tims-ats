@@ -21,7 +21,7 @@ const REPO = read('packages/api/src/repositories/candidate-portal.repository.ts'
 const ASSESSMENT_SERVICE = read('packages/api/src/services/candidate-assessment.service.ts');
 const ASSESSMENT_REPO = read('packages/api/src/repositories/candidate-assessment.repository.ts');
 const RATE_LIMIT = read('packages/api/src/middleware/rate-limit.ts');
-const ME_PAGE = read('apps/web/app/(portal)/careers/[orgSlug]/me/page.tsx');
+const DASHBOARD_PAGE = read('apps/web/app/(portal)/careers/[orgSlug]/dashboard/page.tsx');
 
 describe('candidateProcedure infrastructure', () => {
   it('context exposes a Supabase auth identity decoupled from the staff user', () => {
@@ -172,13 +172,13 @@ describe('candidate-portal offer service — safe DTO (Slice 4)', () => {
   });
 });
 
-describe('portal /me SSR gate — no privileged candidate read', () => {
+describe('portal /dashboard SSR gate — no privileged candidate read', () => {
   it('reads the candidate through the tenant-scoped service, not the privileged db', () => {
-    // The /me server component must not touch db.candidate directly — that bypasses
-    // RLS. It resolves the org by slug (db is fine for that) but the candidate read
-    // goes through candidatePortalService (runWithTenant + tenantDb).
-    expect(ME_PAGE).not.toMatch(/db\.candidate\b/);
-    expect(ME_PAGE).toContain('candidatePortalService');
+    // The /dashboard server component must not touch db.candidate directly — that
+    // bypasses RLS. It resolves the org by slug (db is fine for that) but the
+    // candidate read goes through candidatePortalService (runWithTenant + tenantDb).
+    expect(DASHBOARD_PAGE).not.toMatch(/db\.candidate\b/);
+    expect(DASHBOARD_PAGE).toContain('candidatePortalService');
   });
 });
 

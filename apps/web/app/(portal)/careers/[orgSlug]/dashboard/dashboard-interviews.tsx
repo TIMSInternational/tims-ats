@@ -21,30 +21,30 @@ function safeMeetingUrl(url: string | null): string | null {
   }
 }
 
-export function MeInterviews({ orgSlug }: { orgSlug: string }) {
+export function DashboardInterviews({ orgSlug }: { orgSlug: string }) {
   const { t } = useI18n();
   const { data, isLoading, isError } = trpc.candidatePortal.myInterviews.useQuery({ orgSlug });
 
   const statusLabel = (s: string) => {
     switch (s) {
       case 'scheduled':
-        return t.portalMe.intStatusScheduled;
+        return t.portalDashboard.intStatusScheduled;
       case 'confirmed':
-        return t.portalMe.intStatusConfirmed;
+        return t.portalDashboard.intStatusConfirmed;
       case 'rescheduled':
-        return t.portalMe.intStatusRescheduled;
+        return t.portalDashboard.intStatusRescheduled;
       default:
         return s;
     }
   };
 
-  const header = <h2 className="text-[14px] font-semibold text-[#1F114C] mb-3">{t.portalMe.interviews}</h2>;
+  const header = <h2 className="text-[14px] font-semibold text-[#1F114C] mb-3">{t.portalDashboard.interviews}</h2>;
 
   if (isLoading) {
     return (
       <section className="bg-white rounded-2xl border border-[#EDEDED] p-5">
         {header}
-        <p className="text-[12px] text-[#8B8B8B]">{t.portalMe.intLoading}</p>
+        <p className="text-[12px] text-[#8B8B8B]">{t.portalDashboard.intLoading}</p>
       </section>
     );
   }
@@ -52,7 +52,7 @@ export function MeInterviews({ orgSlug }: { orgSlug: string }) {
     return (
       <section className="bg-white rounded-2xl border border-[#EDEDED] p-5">
         {header}
-        <p className="text-[12px] text-[#B42318]">{t.portalMe.intError}</p>
+        <p className="text-[12px] text-[#B42318]">{t.portalDashboard.intError}</p>
       </section>
     );
   }
@@ -64,7 +64,7 @@ export function MeInterviews({ orgSlug }: { orgSlug: string }) {
       {header}
 
       {interviews.length === 0 ? (
-        <p className="text-[12px] text-[#8B8B8B]">{t.portalMe.intEmpty}</p>
+        <p className="text-[12px] text-[#8B8B8B]">{t.portalDashboard.intEmpty}</p>
       ) : (
         <ul className="space-y-3">
           {interviews.map((iv) => {
@@ -73,17 +73,15 @@ export function MeInterviews({ orgSlug }: { orgSlug: string }) {
               <li key={iv.id} className="rounded-xl border border-[#EDEDED] p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-[14px] font-semibold text-[#1F114C] truncate">
-                      {iv.vacancy.title}
-                    </p>
+                    <p className="text-[14px] font-semibold text-[#1F114C] truncate">{iv.vacancy.title}</p>
                     <p className="text-[12px] text-[#585858] mt-0.5 capitalize">{iv.type}</p>
                     <p className="text-[11px] text-[#8B8B8B] mt-1">
                       {new Date(iv.scheduledAt).toLocaleString()}
-                      {iv.duration ? ` · ${iv.duration} ${t.portalMe.intMinutes}` : ''}
+                      {iv.duration ? ` · ${iv.duration} ${t.portalDashboard.intMinutes}` : ''}
                     </p>
                     {iv.location && (
                       <p className="text-[11px] text-[#8B8B8B] mt-0.5">
-                        {t.portalMe.intLocation}: {iv.location}
+                        {t.portalDashboard.intLocation}: {iv.location}
                       </p>
                     )}
                   </div>
@@ -99,7 +97,7 @@ export function MeInterviews({ orgSlug }: { orgSlug: string }) {
                     rel="noopener noreferrer"
                     className="mt-3 inline-flex h-9 items-center rounded-xl bg-[#1F114C] px-4 text-[12px] font-semibold text-white hover:bg-[#2a1a5e] transition"
                   >
-                    {t.portalMe.intJoin}
+                    {t.portalDashboard.intJoin}
                   </a>
                 )}
               </li>

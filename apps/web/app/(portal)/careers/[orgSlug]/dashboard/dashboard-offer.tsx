@@ -8,18 +8,18 @@ import { useI18n } from '../../../../../lib/i18n';
 // candidate's offers with key terms and links a 'sent' offer to the existing public
 // signing flow (/offers/sign/[token]) — acceptance is NOT re-implemented in-portal.
 // Data comes from candidatePortal.myOffers, scoped server-side to this candidate.
-export function MeOffer({ orgSlug }: { orgSlug: string }) {
+export function DashboardOffer({ orgSlug }: { orgSlug: string }) {
   const { t } = useI18n();
   const { data, isLoading, isError } = trpc.candidatePortal.myOffers.useQuery({ orgSlug });
 
   const statusLabel = (s: string) => {
     switch (s) {
       case 'sent':
-        return t.portalMe.offerStatusSent;
+        return t.portalDashboard.offerStatusSent;
       case 'accepted':
-        return t.portalMe.offerStatusAccepted;
+        return t.portalDashboard.offerStatusAccepted;
       case 'declined':
-        return t.portalMe.offerStatusDeclined;
+        return t.portalDashboard.offerStatusDeclined;
       default:
         return s;
     }
@@ -37,13 +37,13 @@ export function MeOffer({ orgSlug }: { orgSlug: string }) {
     }
   };
 
-  const header = <h2 className="text-[14px] font-semibold text-[#1F114C] mb-3">{t.portalMe.offer}</h2>;
+  const header = <h2 className="text-[14px] font-semibold text-[#1F114C] mb-3">{t.portalDashboard.offer}</h2>;
 
   if (isLoading) {
     return (
       <section className="bg-white rounded-2xl border border-[#EDEDED] p-5">
         {header}
-        <p className="text-[12px] text-[#8B8B8B]">{t.portalMe.offerLoading}</p>
+        <p className="text-[12px] text-[#8B8B8B]">{t.portalDashboard.offerLoading}</p>
       </section>
     );
   }
@@ -51,7 +51,7 @@ export function MeOffer({ orgSlug }: { orgSlug: string }) {
     return (
       <section className="bg-white rounded-2xl border border-[#EDEDED] p-5">
         {header}
-        <p className="text-[12px] text-[#B42318]">{t.portalMe.offerError}</p>
+        <p className="text-[12px] text-[#B42318]">{t.portalDashboard.offerError}</p>
       </section>
     );
   }
@@ -63,16 +63,14 @@ export function MeOffer({ orgSlug }: { orgSlug: string }) {
       {header}
 
       {offers.length === 0 ? (
-        <p className="text-[12px] text-[#8B8B8B]">{t.portalMe.offerEmpty}</p>
+        <p className="text-[12px] text-[#8B8B8B]">{t.portalDashboard.offerEmpty}</p>
       ) : (
         <ul className="space-y-3">
           {offers.map((offer) => (
             <li key={offer.id} className="rounded-xl border border-[#EDEDED] p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-[14px] font-semibold text-[#1F114C] truncate">
-                    {offer.vacancy.title}
-                  </p>
+                  <p className="text-[14px] font-semibold text-[#1F114C] truncate">{offer.vacancy.title}</p>
                   {offer.vacancy.company?.name && (
                     <p className="text-[12px] text-[#8B8B8B] truncate">{offer.vacancy.company.name}</p>
                   )}
@@ -86,22 +84,22 @@ export function MeOffer({ orgSlug }: { orgSlug: string }) {
 
               <dl className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-1 text-[12px]">
                 <div>
-                  <dt className="text-[#8B8B8B]">{t.portalMe.offerSalary}</dt>
+                  <dt className="text-[#8B8B8B]">{t.portalDashboard.offerSalary}</dt>
                   <dd className="text-[#1F114C]">{money(offer.salary, offer.currency)}</dd>
                 </div>
                 <div>
-                  <dt className="text-[#8B8B8B]">{t.portalMe.offerStartDate}</dt>
+                  <dt className="text-[#8B8B8B]">{t.portalDashboard.offerStartDate}</dt>
                   <dd className="text-[#1F114C]">{new Date(offer.startDate).toLocaleDateString()}</dd>
                 </div>
                 <div>
-                  <dt className="text-[#8B8B8B]">{t.portalMe.offerContract}</dt>
+                  <dt className="text-[#8B8B8B]">{t.portalDashboard.offerContract}</dt>
                   <dd className="text-[#1F114C] capitalize">{offer.contractType}</dd>
                 </div>
               </dl>
 
               {offer.expiresAt && (
                 <p className="text-[11px] text-[#8B8B8B] mt-2">
-                  {t.portalMe.offerExpiresOn} {new Date(offer.expiresAt).toLocaleDateString()}
+                  {t.portalDashboard.offerExpiresOn} {new Date(offer.expiresAt).toLocaleDateString()}
                 </p>
               )}
 
@@ -110,7 +108,7 @@ export function MeOffer({ orgSlug }: { orgSlug: string }) {
                   href={`/offers/sign/${offer.signingToken}`}
                   className="mt-3 inline-flex h-9 items-center rounded-xl bg-[#1F114C] px-4 text-[12px] font-semibold text-white hover:bg-[#2a1a5e] transition"
                 >
-                  {t.portalMe.offerReviewSign}
+                  {t.portalDashboard.offerReviewSign}
                 </Link>
               )}
             </li>
