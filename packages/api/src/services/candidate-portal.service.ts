@@ -21,7 +21,9 @@ function extractSigningToken(settings: unknown): string | null {
 
 // Resolve and validate the org from its careers slug. Throws NOT_FOUND for missing
 // or deactivated orgs (don't leak existence of inactive tenants).
-async function resolveOrg(orgSlug: string) {
+// Exported for reuse by candidate-assessment.service.ts (same org-resolution
+// contract every candidate-portal endpoint needs).
+export async function resolveOrg(orgSlug: string) {
   const org = await candidatePortalRepo.findOrgBySlug(orgSlug);
   if (!org || !org.isActive) {
     throw new TRPCError({ code: 'NOT_FOUND', message: 'Organizacion no encontrada' });
@@ -29,12 +31,8 @@ async function resolveOrg(orgSlug: string) {
   return org;
 }
 
-type CandidateProfile = NonNullable<
-  Awaited<ReturnType<typeof candidatePortalRepo.findActiveCandidateProfile>>
->;
-type CandidateApplication = Awaited<
-  ReturnType<typeof candidatePortalRepo.findApplications>
->[number];
+type CandidateProfile = NonNullable<Awaited<ReturnType<typeof candidatePortalRepo.findActiveCandidateProfile>>>;
+type CandidateApplication = Awaited<ReturnType<typeof candidatePortalRepo.findApplications>>[number];
 type CandidateInterview = Awaited<ReturnType<typeof candidatePortalRepo.findInterviews>>[number];
 type CandidateOffer = Awaited<ReturnType<typeof candidatePortalRepo.findOffers>>[number];
 
@@ -83,8 +81,7 @@ export function buildCandidateFaqContext(
       hasJoinLink: Boolean(interview.meetingUrl),
     })),
     offers: offers.slice(0, 5).map((offer) => {
-      const signable =
-        offer.status === 'sent' && (!offer.expiresAt || offer.expiresAt.getTime() > Date.now());
+      const signable = offer.status === 'sent' && (!offer.expiresAt || offer.expiresAt.getTime() > Date.now());
       return {
         vacancyTitle: offer.vacancy.title,
         companyName: offer.vacancy.company?.name ?? null,
@@ -148,8 +145,7 @@ export const candidatePortalService = {
         // SIGNABLE (status 'sent', not past its expiry). For accepted/declined/
         // expired offers the token is withheld (null) — no point handing the
         // browser a reusable bearer URL for a historical offer (codex review).
-        const signable =
-          offer.status === 'sent' && (!offer.expiresAt || offer.expiresAt.getTime() > now);
+        const signable = offer.status === 'sent' && (!offer.expiresAt || offer.expiresAt.getTime() > now);
         return {
           ...offer,
           signingToken: signable ? extractSigningToken(settings) : null,
@@ -168,11 +164,7 @@ export const candidatePortalService = {
       if (!candidate) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Postulacion no encontrada' });
       }
-      const application = await candidatePortalRepo.findApplicationDetail(
-        org.id,
-        candidate.id,
-        applicationId,
-      );
+      const application = await candidatePortalRepo.findApplicationDetail(org.id, candidate.id, applicationId);
       if (!application) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Postulacion no encontrada' });
       }
@@ -184,12 +176,7 @@ export const candidatePortalService = {
   // slug, optional application focus, and question text. Candidate identity comes
   // from the Supabase session email; the prompt context is built server-side from
   // the same candidate-visible portal reads used by the dashboard.
-  async askFaq(
-    email: string,
-    orgSlug: string,
-    question: string,
-    applicationId?: string,
-  ) {
+  async askFaq(email: string, orgSlug: string, question: string, applicationId?: string) {
     const org = await resolveOrg(orgSlug);
     const context = await runWithTenant(org.id, async () => {
       const candidate = await candidatePortalRepo.findActiveCandidateProfile(org.id, email);
@@ -207,14 +194,7 @@ export const candidatePortalService = {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Postulacion no encontrada' });
       }
 
-      return buildCandidateFaqContext(
-        org.name,
-        candidate,
-        applications,
-        interviews,
-        offers,
-        applicationId,
-      );
+      return buildCandidateFaqContext(org.name, candidate, applications, interviews, offers, applicationId);
     });
 
     return answerCandidateFaq(org.id, { question, context });
