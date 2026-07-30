@@ -94,3 +94,93 @@ export const candidateAssessmentRepo = {
     });
   },
 };
+
+export const candidateAssessmentWriteRepo = {
+  // Re-probed INSIDE the transaction (not just before it) to close the
+  // double-submit race: two concurrent submitAssessment calls must not both
+  // pass the outer pre-check and both write.
+  findAssignmentInTx(tx: Prisma.TransactionClient, organizationId: string, candidateId: string, assignmentId: string) {
+    return tx.assessmentAssignment.findFirst({
+      where: { id: assignmentId, organizationId, candidateId },
+      select: { id: true, status: true, expiresAt: true, assessmentTypeId: true },
+    });
+  },
+
+  // Answer-key select is ONLY ever used inside the write transaction, never
+  // returned to the candidate — the read-side findQuestionsForType above is the
+  // candidate-facing DTO and never selects correctOptionIds.
+  findQuestionsWithAnswerKeyInTx(tx: Prisma.TransactionClient, organizationId: string, assessmentTypeId: string) {
+    return tx.assessmentQuestion.findMany({
+      where: { organizationId, assessmentTypeId },
+      select: { id: true, type: true, correctOptionIds: true, points: true },
+    });
+  },
+
+  upsertResponseInTx(
+    tx: Prisma.TransactionClient,
+    data: {
+      organizationId: string;
+      assignmentId: string;
+      questionId: string;
+      selectedOptionIds: Prisma.InputJsonValue | null;
+      freeText: string | null;
+      isCorrect: boolean | null;
+      pointsAwarded: number | null;
+    },
+  ) {
+    return tx.assessmentResponse.upsert({
+      where: { assignmentId_questionId: { assignmentId: data.assignmentId, questionId: data.questionId } },
+      create: {
+        organizationId: data.organizationId,
+        assignmentId: data.assignmentId,
+        questionId: data.questionId,
+        selectedOptionIds: data.selectedOptionIds ?? undefined,
+        freeText: data.freeText,
+        isCorrect: data.isCorrect,
+        pointsAwarded: data.pointsAwarded,
+        submittedAt: new Date(),
+      },
+      update: {
+        selectedOptionIds: data.selectedOptionIds ?? undefined,
+        freeText: data.freeText,
+        isCorrect: data.isCorrect,
+        pointsAwarded: data.pointsAwarded,
+        submittedAt: new Date(),
+      },
+    });
+  },
+
+  upsertResultInTx(
+    tx: Prisma.TransactionClient,
+    data: {
+      organizationId: string;
+      assignmentId: string;
+      rawScore: number;
+      normalizedScore: number;
+      breakdown: Prisma.InputJsonValue;
+    },
+  ) {
+    return tx.assessmentResult.upsert({
+      where: { assignmentId: data.assignmentId },
+      create: {
+        organizationId: data.organizationId,
+        assignmentId: data.assignmentId,
+        rawScore: data.rawScore,
+        normalizedScore: data.normalizedScore,
+        breakdown: data.breakdown,
+      },
+      update: {
+        rawScore: data.rawScore,
+        normalizedScore: data.normalizedScore,
+        breakdown: data.breakdown,
+      },
+    });
+  },
+
+  completeAssignmentInTx(tx: Prisma.TransactionClient, assignmentId: string) {
+    return tx.assessmentAssignment.update({
+      where: { id: assignmentId },
+      data: { status: 'completed', completedAt: new Date() },
+    });
+  },
+};

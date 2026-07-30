@@ -1,24 +1,43 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('../../packages/api/src/repositories/candidate-assessment.repository', () => ({
-  candidateAssessmentRepo: {
-    findAssignmentsForCandidate: vi.fn(),
-    findOwnedAssignment: vi.fn(),
-    findQuestionsForType: vi.fn(),
-    upsertConsent: vi.fn(),
-    markStarted: vi.fn(),
-  },
-}));
+vi.mock('../../packages/api/src/repositories/candidate-assessment.repository', async () => {
+  const actual = await vi.importActual<
+    typeof import('../../packages/api/src/repositories/candidate-assessment.repository')
+  >('../../packages/api/src/repositories/candidate-assessment.repository');
+  return {
+    ...actual,
+    candidateAssessmentRepo: {
+      findAssignmentsForCandidate: vi.fn(),
+      findOwnedAssignment: vi.fn(),
+      findQuestionsForType: vi.fn(),
+      upsertConsent: vi.fn(),
+      markStarted: vi.fn(),
+    },
+    candidateAssessmentWriteRepo: {
+      findAssignmentInTx: vi.fn(),
+      findQuestionsWithAnswerKeyInTx: vi.fn(),
+      upsertResponseInTx: vi.fn(),
+      upsertResultInTx: vi.fn(),
+      completeAssignmentInTx: vi.fn(),
+    },
+  };
+});
 vi.mock('../../packages/api/src/repositories/candidate-portal.repository', () => ({
   candidatePortalRepo: {
     findOrgBySlug: vi.fn(),
     findActiveCandidate: vi.fn(),
   },
 }));
-vi.mock('@tims/db', () => ({ runWithTenant: (_o: string, f: () => unknown) => f() }));
+vi.mock('@tims/db', () => ({
+  runWithTenant: (_o: string, f: () => unknown) => f(),
+  runTenantTransaction: (_o: string, f: (tx: unknown) => unknown) => f({}),
+}));
 
 import { candidateAssessmentService } from '../../packages/api/src/services/candidate-assessment.service';
-import { candidateAssessmentRepo } from '../../packages/api/src/repositories/candidate-assessment.repository';
+import {
+  candidateAssessmentRepo,
+  candidateAssessmentWriteRepo,
+} from '../../packages/api/src/repositories/candidate-assessment.repository';
 import { candidatePortalRepo } from '../../packages/api/src/repositories/candidate-portal.repository';
 
 const ORG = { id: 'org-1', name: 'TIMS', isActive: true };
@@ -196,5 +215,123 @@ describe('candidateAssessmentService.getAssessmentQuestions', () => {
     expect(result).toEqual(questions);
     expect(JSON.stringify(result)).not.toContain('correctOptionIds');
     expect(candidateAssessmentRepo.findQuestionsForType).toHaveBeenCalledWith('org-1', 'type-1');
+  });
+});
+
+const SINGLE_CHOICE_Q = { id: 'q1', type: 'single_choice', correctOptionIds: ['b'], points: 5 };
+const FREE_TEXT_Q = { id: 'q2', type: 'free_text', correctOptionIds: [], points: 20 };
+
+describe('candidateAssessmentService.submitAssessment', () => {
+  beforeEach(() => {
+    vi.mocked(candidatePortalRepo.findActiveCandidate).mockResolvedValue({ id: 'cand-1' } as never);
+  });
+
+  it('throws NOT_FOUND when the assignment is not owned (pre-check)', async () => {
+    vi.mocked(candidateAssessmentRepo.findOwnedAssignment).mockResolvedValue(null);
+    await expect(
+      candidateAssessmentService.submitAssessment(EMAIL, SLUG, ASSIGNMENT_ID, [
+        { questionId: 'q1', selectedOptionIds: ['b'] },
+      ]),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+  });
+
+  it('rejects a double-submit against an already-completed assignment (pre-check)', async () => {
+    vi.mocked(candidateAssessmentRepo.findOwnedAssignment).mockResolvedValue({
+      id: ASSIGNMENT_ID,
+      status: 'completed',
+      expiresAt: null,
+      assessmentTypeId: 'type-1',
+    } as never);
+    await expect(
+      candidateAssessmentService.submitAssessment(EMAIL, SLUG, ASSIGNMENT_ID, [
+        { questionId: 'q1', selectedOptionIds: ['b'] },
+      ]),
+    ).rejects.toMatchObject({ code: 'CONFLICT', message: 'assignment_already_completed' });
+    expect(candidateAssessmentWriteRepo.findAssignmentInTx).not.toHaveBeenCalled();
+  });
+
+  it('rejects a double-submit caught only inside the transaction (race)', async () => {
+    vi.mocked(candidateAssessmentRepo.findOwnedAssignment).mockResolvedValue({
+      id: ASSIGNMENT_ID,
+      status: 'in_progress',
+      expiresAt: null,
+      assessmentTypeId: 'type-1',
+    } as never);
+    vi.mocked(candidateAssessmentWriteRepo.findAssignmentInTx).mockResolvedValue({
+      id: ASSIGNMENT_ID,
+      status: 'completed',
+      expiresAt: null,
+      assessmentTypeId: 'type-1',
+    } as never);
+    await expect(
+      candidateAssessmentService.submitAssessment(EMAIL, SLUG, ASSIGNMENT_ID, [
+        { questionId: 'q1', selectedOptionIds: ['b'] },
+      ]),
+    ).rejects.toMatchObject({ code: 'CONFLICT', message: 'assignment_already_completed' });
+    expect(candidateAssessmentWriteRepo.upsertResponseInTx).not.toHaveBeenCalled();
+  });
+
+  it("rejects a questionId that does not belong to the assignment's assessmentTypeId", async () => {
+    vi.mocked(candidateAssessmentRepo.findOwnedAssignment).mockResolvedValue({
+      id: ASSIGNMENT_ID,
+      status: 'in_progress',
+      expiresAt: null,
+      assessmentTypeId: 'type-1',
+    } as never);
+    vi.mocked(candidateAssessmentWriteRepo.findAssignmentInTx).mockResolvedValue({
+      id: ASSIGNMENT_ID,
+      status: 'in_progress',
+      expiresAt: null,
+      assessmentTypeId: 'type-1',
+    } as never);
+    vi.mocked(candidateAssessmentWriteRepo.findQuestionsWithAnswerKeyInTx).mockResolvedValue([
+      SINGLE_CHOICE_Q,
+    ] as never);
+    await expect(
+      candidateAssessmentService.submitAssessment(EMAIL, SLUG, ASSIGNMENT_ID, [
+        { questionId: 'not-in-type', selectedOptionIds: ['b'] },
+      ]),
+    ).rejects.toMatchObject({ code: 'BAD_REQUEST', message: 'question_not_in_assessment' });
+    expect(candidateAssessmentWriteRepo.upsertResponseInTx).not.toHaveBeenCalled();
+  });
+
+  it('auto-scores MCQ, leaves free_text ungraded, and completes the assignment atomically', async () => {
+    vi.mocked(candidateAssessmentRepo.findOwnedAssignment).mockResolvedValue({
+      id: ASSIGNMENT_ID,
+      status: 'in_progress',
+      expiresAt: null,
+      assessmentTypeId: 'type-1',
+    } as never);
+    vi.mocked(candidateAssessmentWriteRepo.findAssignmentInTx).mockResolvedValue({
+      id: ASSIGNMENT_ID,
+      status: 'in_progress',
+      expiresAt: null,
+      assessmentTypeId: 'type-1',
+    } as never);
+    vi.mocked(candidateAssessmentWriteRepo.findQuestionsWithAnswerKeyInTx).mockResolvedValue([
+      SINGLE_CHOICE_Q,
+      FREE_TEXT_Q,
+    ] as never);
+
+    const result = await candidateAssessmentService.submitAssessment(EMAIL, SLUG, ASSIGNMENT_ID, [
+      { questionId: 'q1', selectedOptionIds: ['b'] },
+      { questionId: 'q2', freeText: 'my essay' },
+    ]);
+
+    expect(candidateAssessmentWriteRepo.upsertResponseInTx).toHaveBeenCalledTimes(2);
+    expect(candidateAssessmentWriteRepo.upsertResponseInTx).toHaveBeenCalledWith(
+      {},
+      expect.objectContaining({ questionId: 'q1', isCorrect: true, pointsAwarded: 5 }),
+    );
+    expect(candidateAssessmentWriteRepo.upsertResponseInTx).toHaveBeenCalledWith(
+      {},
+      expect.objectContaining({ questionId: 'q2', isCorrect: null, pointsAwarded: null, freeText: 'my essay' }),
+    );
+    expect(candidateAssessmentWriteRepo.upsertResultInTx).toHaveBeenCalledWith(
+      {},
+      expect.objectContaining({ rawScore: 5, normalizedScore: 100 }),
+    );
+    expect(candidateAssessmentWriteRepo.completeAssignmentInTx).toHaveBeenCalledWith({}, ASSIGNMENT_ID);
+    expect(result).toEqual({ rawScore: 5, normalizedScore: 100, hasPending: true });
   });
 });
