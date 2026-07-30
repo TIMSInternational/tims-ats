@@ -61,9 +61,7 @@ export type QuestionCoherenceErrorCode =
   | 'correct_not_in_options'
   | 'duplicate_correct_ids';
 
-export type QuestionCoherenceResult =
-  | { valid: true }
-  | { valid: false; code: QuestionCoherenceErrorCode };
+export type QuestionCoherenceResult = { valid: true } | { valid: false; code: QuestionCoherenceErrorCode };
 
 interface QuestionCoherenceInput {
   type: QuestionType;
@@ -114,3 +112,76 @@ export function validateQuestionCoherence(input: QuestionCoherenceInput): Questi
 
   return { valid: true };
 }
+
+// ---------------------------------------------------------------------------
+// Candidate-facing take-flow (Wave 1.5a slice 2). Pure grading logic first
+// (TDD, no DB/network) — mirrors validateQuestionCoherence above.
+// ---------------------------------------------------------------------------
+
+export interface ScoreChoiceResult {
+  isCorrect: boolean;
+  pointsAwarded: number;
+}
+
+/**
+ * Order-independent set-equality between the candidate's selected option ids
+ * and the question's correct option ids. Full credit or zero — no partial
+ * credit for multi_choice (a simpler bar than staff authoring coherence).
+ */
+export function scoreChoice(
+  selectedOptionIds: string[],
+  correctOptionIds: string[],
+  points: number,
+): ScoreChoiceResult {
+  const selected = new Set(selectedOptionIds);
+  const correct = new Set(correctOptionIds);
+  const isCorrect = selected.size === correct.size && [...selected].every((id) => correct.has(id));
+  return { isCorrect, pointsAwarded: isCorrect ? points : 0 };
+}
+
+export interface GradedAnswer {
+  // null for free_text — ungraded, never fabricated (rule #4).
+  isCorrect: boolean | null;
+  pointsAwarded: number | null;
+  points: number;
+}
+
+export interface ComputeResultOutput {
+  rawScore: number;
+  normalizedScore: number;
+  hasPending: boolean;
+}
+
+/**
+ * Aggregates a submitted attempt's per-question grades into a result summary.
+ * normalizedScore is raw/maxAutoPoints*100 over the AUTO-SCORABLE subset only
+ * (free_text questions are excluded from the denominator, not scored 0) — an
+ * all-essay assessment must not show 0% just because nothing was auto-graded.
+ */
+export function computeResult(graded: GradedAnswer[]): ComputeResultOutput {
+  const autoScored = graded.filter((g) => g.pointsAwarded !== null);
+  const rawScore = autoScored.reduce((sum, g) => sum + (g.pointsAwarded ?? 0), 0);
+  const maxAutoPoints = autoScored.reduce((sum, g) => sum + g.points, 0);
+  const normalizedScore = maxAutoPoints > 0 ? (rawScore / maxAutoPoints) * 100 : 0;
+  const hasPending = graded.some((g) => g.isCorrect === null);
+  return { rawScore, normalizedScore, hasPending };
+}
+
+// ---------------------------------------------------------------------------
+// Candidate submit input (Zod). Full type-coherence (must supply
+// selectedOptionIds for a choice question, freeText for free_text) needs the
+// DB question type and is enforced server-side in the service, not here —
+// same split as staff authoring's validateQuestionCoherence vs createQuestionSchema.
+// ---------------------------------------------------------------------------
+
+const MAX_ANSWERS_PER_SUBMIT = 200;
+const MAX_FREE_TEXT = 20000;
+
+export const answerInputSchema = z.object({
+  questionId: z.string().uuid(),
+  selectedOptionIds: z.array(z.string().min(1).max(64)).max(MAX_OPTIONS).optional(),
+  freeText: z.string().max(MAX_FREE_TEXT).optional(),
+});
+export type AnswerInput = z.infer<typeof answerInputSchema>;
+
+export const submitAssessmentAnswersSchema = z.array(answerInputSchema).min(1).max(MAX_ANSWERS_PER_SUBMIT);
