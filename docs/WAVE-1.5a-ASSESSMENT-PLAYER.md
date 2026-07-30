@@ -47,7 +47,7 @@
   responses; webcam consent is a separate 1.5b record.) RLS-enabled like every tenant table.
 - **`AssessmentResult`** reused: on submit compute `rawScore` = Σ auto `pointsAwarded`,
   `normalizedScore` = raw / maxAutoPoints × 100, `breakdown` = `{autoScored, pendingManual:
-  [questionIds]}`, `interpretation` null (until AI/manual), `modelVersion` null.
+[questionIds]}`, `interpretation` null (until AI/manual), `modelVersion` null.
 
 ## Backend (clean arch: candidateProcedure → candidate-portal.service → repo)
 
@@ -56,7 +56,7 @@ All candidate endpoints take `orgSlug`, resolve org (→NOT_FOUND), run under
 correctOptionIds to candidates). New `candidatePortal.*` (remove the dead staff stubs):
 
 - **`getMyAssessments(orgSlug)`** — assignments for the candidate: type name, duration,
-  status, expiresAt, result summary (score if completed). Surfaces in `/me`.
+  status, expiresAt, result summary (score if completed). Surfaces in `/dashboard`.
 - **`startAssessment({orgSlug, assignmentId, consentAccepted})`** — verify ownership +
   not expired + status ∈ {assigned, in_progress}; require `consentAccepted` (record
   `AssessmentConsent` w/ ip/ua + textVersion on first start); set `startedAt` + status
@@ -70,8 +70,8 @@ correctOptionIds to candidates). New `candidatePortal.*` (remove the dead staff 
   upsert one `AssessmentResponse` per question; **auto-score MCQ** (`selectedOptionIds`
   set-equals `correctOptionIds` → isCorrect/pointsAwarded), free_text → isCorrect/points
   null; compute+upsert `AssessmentResult` (partial when essays present); set `completedAt`
-  + status `completed`. Bounded: `answers` `.max(N)`, `freeText` `.max(...)`,
-  `selectedOptionIds` `.max(...)`. Returns result summary (auto score; essays pending).
+  - status `completed`. Bounded: `answers` `.max(N)`, `freeText` `.max(...)`,
+    `selectedOptionIds` `.max(...)`. Returns result summary (auto score; essays pending).
 
 **Pure, TDD-first functions** (no DB/network): `scoreChoice(selectedIds, correctIds, points)`
 → `{isCorrect, pointsAwarded}` (set-equality, order-independent); `computeResult(graded)` →
@@ -85,8 +85,9 @@ confirm at slice 1.)
 
 ## Frontend (Player)
 
-Route under the candidate portal (logged-in): `/(portal)/careers/[orgSlug]/me/assessments/[assignmentId]`
+Route under the candidate portal (logged-in): `/(portal)/careers/[orgSlug]/dashboard/assessments/[assignmentId]`
 (or the empty `(assessment)` group, scoped to candidates). States: loading/error/empty.
+
 - **Consent gate** first: Habeas-Data data-processing text (es/en, versioned) + checkbox →
   `startAssessment`. Blocks the test until accepted.
 - **Player**: question navigator + progress, **timer** from `AssessmentType.duration`
@@ -99,7 +100,7 @@ Route under the candidate portal (logged-in): `/(portal)/careers/[orgSlug]/me/as
 1. **Schema + staff authoring** — 3 new models + enum + migration; `assessment.*` question
    CRUD + minimal authoring UI. TDD: option/correct coherence validation.
 2. **Candidate take backend** — `getMyAssessments / startAssessment(consent) /
-   getAssessmentQuestions / submitAssessment(auto-score)` via candidateProcedure; remove
+getAssessmentQuestions / submitAssessment(auto-score)` via candidateProcedure; remove
    dead `portal.getMyAssessments`/`startAssessment` stubs (ALREADY REMOVED — Wave 2.5 slice 2 deleted all eight dead staff-session portal
    stubs; this step is a no-op, skip it.). TDD: `scoreChoice`,
    `computeResult`, ownership/expiry/no-correct-leak/double-submit guards.
@@ -108,7 +109,7 @@ Route under the candidate portal (logged-in): `/(portal)/careers/[orgSlug]/me/as
    `assessmentTypeId` and that response org == assignment org (no DB composite FK in
    slice 1 — the response table has no writer yet; enforce here before any write).
 3. **Player UI** — consent gate + navigator + timer + MCQ/essay + submit + result; i18n.
-4. **/me integration** — "My Assessments" section + entry point + result display. Keeps
+4. **/dashboard integration** — "My Assessments" section + entry point + result display. Keeps
    `assessment.getExplainability` NOT_IMPLEMENTED (Wave 3).
 
 ## Security / invariants
