@@ -225,7 +225,12 @@ export const candidateAssessmentService = {
       // 0 rows once the winner has committed; throwing here rolls back this
       // entire transaction (the response upserts + result upsert above),
       // so the loser leaves zero trace, not partial data.
-      const completion = await candidateAssessmentWriteRepo.completeAssignmentInTx(tx, assignmentId);
+      const completion = await candidateAssessmentWriteRepo.completeAssignmentInTx(
+        tx,
+        org.id,
+        candidate.id,
+        assignmentId,
+      );
       if (completion.count === 0) {
         throw new TRPCError({ code: 'CONFLICT', message: 'assignment_already_completed' });
       }

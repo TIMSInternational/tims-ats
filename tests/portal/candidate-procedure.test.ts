@@ -279,11 +279,29 @@ describe('candidate assessment take-flow — security invariants (Wave 1.5a slic
       /completeAssignmentInTx\([^)]*\)\s*\{\s*return\s+tx\.assessmentAssignment\.updateMany\(\{\s*where:\s*\{[^}]*status:\s*'in_progress'/s,
     );
     const submitSlice = ASSESSMENT_SERVICE.slice(ASSESSMENT_SERVICE.indexOf('async submitAssessment'));
-    const completionIdx = submitSlice.indexOf('completeAssignmentInTx(tx');
+    // Search for 'completeAssignmentInTx(' rather than 'completeAssignmentInTx(tx'
+    // — prettier may wrap the call's argument list (tx, org.id, candidate.id,
+    // assignmentId) across multiple lines, so the arguments don't necessarily
+    // follow the opening paren on the same line.
+    const completionIdx = submitSlice.indexOf('completeAssignmentInTx(');
     expect(completionIdx).toBeGreaterThan(0);
     const afterCompletion = submitSlice.slice(completionIdx, completionIdx + 300);
     expect(afterCompletion).toMatch(/count\s*===\s*0/);
     expect(afterCompletion).toMatch(/assignment_already_completed/);
+  });
+
+  it('completeAssignmentInTx is called with both org.id AND candidate.id (final review finding #3 — independently IDOR-safe, not merely correct-by-surrounding-context)', () => {
+    const submitSlice = ASSESSMENT_SERVICE.slice(ASSESSMENT_SERVICE.indexOf('async submitAssessment'));
+    const completionIdx = submitSlice.indexOf('completeAssignmentInTx(');
+    expect(completionIdx).toBeGreaterThan(0);
+    const callSite = submitSlice.slice(completionIdx, completionIdx + 150);
+    expect(callSite).toMatch(/org\.id/);
+    expect(callSite).toMatch(/candidate\.id/);
+    // The repo function itself must accept and use both in its WHERE clause —
+    // the same double-scoping pattern as findAssignmentInTx/findOwnedAssignment.
+    expect(ASSESSMENT_REPO).toMatch(
+      /completeAssignmentInTx\([^)]*organizationId[^)]*candidateId[^)]*\)\s*\{\s*return\s+tx\.assessmentAssignment\.updateMany\(\{\s*where:\s*\{[^}]*organizationId[^}]*candidateId[^}]*status:\s*'in_progress'/s,
+    );
   });
 
   it("submitAssessment validates every questionId belongs to the assignment's assessmentTypeId before writing", () => {

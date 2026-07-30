@@ -83,13 +83,25 @@ export const candidateAssessmentRepo = {
     });
   },
 
-  // Idempotent: only flips assigned -> in_progress; a retry while already
-  // in_progress or completed is a caller-level idempotency/guard concern
-  // (handled in the service), not this write's.
-  markStarted(assignmentId: string) {
-    return tenantDb.assessmentAssignment.update({
-      where: { id: assignmentId },
+  // Idempotent: only flips assigned -> in_progress, and only sets startedAt on
+  // that FIRST transition. The conditional updateMany's WHERE clause is the
+  // guard — it matches 0 rows when the assignment is already in_progress (or
+  // completed), so a repeat call (e.g. a candidate's page refresh) never
+  // touches startedAt again. Same non-repudiation reasoning as upsertConsent
+  // above: only the first event counts as the timing record (review finding
+  // #2 — an unconditional update() here reset startedAt on every re-entry).
+  async markStarted(assignmentId: string) {
+    const result = await tenantDb.assessmentAssignment.updateMany({
+      where: { id: assignmentId, status: 'assigned' },
       data: { status: 'in_progress', startedAt: new Date() },
+    });
+    if (result.count > 0) {
+      return { id: assignmentId, status: 'in_progress' as const };
+    }
+    // Already in_progress (or completed) — return current state without
+    // touching startedAt.
+    return tenantDb.assessmentAssignment.findUniqueOrThrow({
+      where: { id: assignmentId },
       select: { id: true, status: true },
     });
   },
@@ -109,9 +121,18 @@ export const candidateAssessmentWriteRepo = {
   // Answer-key select is ONLY ever used inside the write transaction, never
   // returned to the candidate — the read-side findQuestionsForType above is the
   // candidate-facing DTO and never selects correctOptionIds.
+  //
+  // isActive: true MUST match findQuestionsForType's filter exactly. Staff
+  // deactivate (never hard-delete) a question once it has submitted responses,
+  // to preserve answer history. If grading ignored isActive, a deactivated
+  // question would still be graded (scored 0 via scoreChoice([], ...)) and
+  // still contribute its points to computeResult's denominator — silently
+  // deflating every subsequent candidate's score on that assessment type, and
+  // letting a deactivated question be accepted as a valid submission target
+  // when it should be rejected as question_not_in_assessment (review finding #1).
   findQuestionsWithAnswerKeyInTx(tx: Prisma.TransactionClient, organizationId: string, assessmentTypeId: string) {
     return tx.assessmentQuestion.findMany({
-      where: { organizationId, assessmentTypeId },
+      where: { organizationId, assessmentTypeId, isActive: true },
       select: { id: true, type: true, correctOptionIds: true, points: true },
     });
   },
@@ -183,9 +204,22 @@ export const candidateAssessmentWriteRepo = {
   // row; a losing concurrent submit's updateMany blocks on the winner's row
   // lock, then re-evaluates this predicate against the now-committed
   // 'completed' row and matches 0 rows. Callers must check `count`.
-  completeAssignmentInTx(tx: Prisma.TransactionClient, assignmentId: string) {
+  //
+  // organizationId + candidateId are included even though this write is
+  // currently only reachable after ownership was already verified earlier in
+  // the same transaction (findAssignmentInTx). This is the transaction's
+  // actual authoritative guard, so it must be independently IDOR-safe, not
+  // merely correct-by-surrounding-context — same double-scoping pattern as
+  // findAssignmentInTx/findAssignmentsForCandidate/findOwnedAssignment above
+  // (review finding #3).
+  completeAssignmentInTx(
+    tx: Prisma.TransactionClient,
+    organizationId: string,
+    candidateId: string,
+    assignmentId: string,
+  ) {
     return tx.assessmentAssignment.updateMany({
-      where: { id: assignmentId, status: 'in_progress' },
+      where: { id: assignmentId, organizationId, candidateId, status: 'in_progress' },
       data: { status: 'completed', completedAt: new Date() },
     });
   },

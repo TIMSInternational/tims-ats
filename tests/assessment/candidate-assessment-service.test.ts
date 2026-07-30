@@ -143,6 +143,13 @@ describe('candidateAssessmentService.startAssessment', () => {
   });
 
   it('is idempotent when already in_progress — re-marks started without erroring', async () => {
+    // markStarted is mocked here (candidateAssessmentRepo is fully vi.fn()'d
+    // at the top of this file), so this only proves the SERVICE's control
+    // flow tolerates a repeat call. The actual guarantee that a repeat call
+    // does not overwrite startedAt lives in the repository's conditional
+    // updateMany and is proven against a real tenantDb mock in
+    // tests/assessment/candidate-assessment-repository.test.ts (review
+    // finding #2).
     vi.mocked(candidatePortalRepo.findActiveCandidate).mockResolvedValue({ id: 'cand-1' } as never);
     vi.mocked(candidateAssessmentRepo.findOwnedAssignment).mockResolvedValue({
       id: ASSIGNMENT_ID,
@@ -332,7 +339,12 @@ describe('candidateAssessmentService.submitAssessment', () => {
       {},
       expect.objectContaining({ rawScore: 5, normalizedScore: 100 }),
     );
-    expect(candidateAssessmentWriteRepo.completeAssignmentInTx).toHaveBeenCalledWith({}, ASSIGNMENT_ID);
+    expect(candidateAssessmentWriteRepo.completeAssignmentInTx).toHaveBeenCalledWith(
+      {},
+      'org-1',
+      'cand-1',
+      ASSIGNMENT_ID,
+    );
     expect(result).toEqual({ rawScore: 5, normalizedScore: 100, hasPending: true });
   });
 
@@ -363,7 +375,12 @@ describe('candidateAssessmentService.submitAssessment', () => {
         { questionId: 'q1', selectedOptionIds: ['b'] },
       ]),
     ).rejects.toMatchObject({ code: 'CONFLICT', message: 'assignment_already_completed' });
-    expect(candidateAssessmentWriteRepo.completeAssignmentInTx).toHaveBeenCalledWith({}, ASSIGNMENT_ID);
+    expect(candidateAssessmentWriteRepo.completeAssignmentInTx).toHaveBeenCalledWith(
+      {},
+      'org-1',
+      'cand-1',
+      ASSIGNMENT_ID,
+    );
   });
 
   it('does not double-count a duplicate questionId in the submitted answers (finding #2a)', async () => {
@@ -434,6 +451,48 @@ describe('candidateAssessmentService.submitAssessment', () => {
       expect.objectContaining({ questionId: 'q3', selectedOptionIds: [], isCorrect: false, pointsAwarded: 0 }),
     );
     expect(result).toEqual({ rawScore: 5, normalizedScore: 50, hasPending: false });
+  });
+
+  it('grades only against active questions and rejects a deactivated questionId (final review finding #1)', async () => {
+    // Simulates the FIXED repo behavior: findQuestionsWithAnswerKeyInTx now
+    // filters isActive: true (packages/api/src/repositories/candidate-assessment.repository.ts),
+    // so a deactivated question is simply absent from the set the service
+    // grades against — from the service's perspective, that's the same shape
+    // as a completely nonexistent questionId. The mock here returns ONLY the
+    // one active question; a second, deactivated question ('q-deactivated')
+    // is deliberately NOT in the mock's returned set.
+    vi.mocked(candidateAssessmentRepo.findOwnedAssignment).mockResolvedValue({
+      id: ASSIGNMENT_ID,
+      status: 'in_progress',
+      expiresAt: null,
+      assessmentTypeId: 'type-1',
+    } as never);
+    vi.mocked(candidateAssessmentWriteRepo.findAssignmentInTx).mockResolvedValue({
+      id: ASSIGNMENT_ID,
+      status: 'in_progress',
+      expiresAt: null,
+      assessmentTypeId: 'type-1',
+    } as never);
+    vi.mocked(candidateAssessmentWriteRepo.findQuestionsWithAnswerKeyInTx).mockResolvedValue([
+      SINGLE_CHOICE_Q,
+    ] as never);
+    vi.mocked(candidateAssessmentWriteRepo.completeAssignmentInTx).mockResolvedValue({ count: 1 } as never);
+
+    // (a) A correct answer on the ONE active question yields normalizedScore
+    // 100 — not diluted by a phantom deactivated question in the denominator.
+    const result = await candidateAssessmentService.submitAssessment(EMAIL, SLUG, ASSIGNMENT_ID, [
+      { questionId: 'q1', selectedOptionIds: ['b'] },
+    ]);
+    expect(result).toEqual({ rawScore: 5, normalizedScore: 100, hasPending: false });
+
+    // (b) Submitting an answer for the deactivated question ('q-deactivated',
+    // absent from the filtered set) is rejected the same way as any other
+    // unknown questionId — question_not_in_assessment, no partial write.
+    await expect(
+      candidateAssessmentService.submitAssessment(EMAIL, SLUG, ASSIGNMENT_ID, [
+        { questionId: 'q-deactivated', selectedOptionIds: ['b'] },
+      ]),
+    ).rejects.toMatchObject({ code: 'BAD_REQUEST', message: 'question_not_in_assessment' });
   });
 
   it('rejects a free_text answer that also supplies selectedOptionIds (finding #4)', async () => {
