@@ -21,7 +21,10 @@ const assignmentSummarySelect = {
   completedAt: true,
   expiresAt: true,
   assessmentType: { select: { id: true, name: true, duration: true } },
-  result: { select: { normalizedScore: true, percentile: true } },
+  // breakdown is selected ONLY so candidateAssessmentService.getMyAssessments can derive
+  // hasPending (Wave 1.5a slice 3) — it is stripped before the DTO leaves the service,
+  // never returned to the client as raw JSON.
+  result: { select: { normalizedScore: true, percentile: true, breakdown: true } },
 } satisfies Prisma.AssessmentAssignmentSelect;
 
 export const candidateAssessmentRepo = {

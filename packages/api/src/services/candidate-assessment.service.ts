@@ -15,6 +15,32 @@ function isExpired(expiresAt: Date | null): boolean {
   return expiresAt !== null && expiresAt.getTime() < Date.now();
 }
 
+// AssessmentResult.breakdown is a Prisma Json? column shaped { autoScored, pendingManual }
+// (see candidateAssessmentWriteRepo's upsertResultInTx caller in submitAssessment below) — but
+// Json has no compile-time shape, so this is a runtime guard, never a cast to `any`.
+function hasPendingManualReview(breakdown: Prisma.JsonValue | null | undefined): boolean {
+  if (breakdown === null || breakdown === undefined || typeof breakdown !== 'object' || Array.isArray(breakdown)) {
+    return false;
+  }
+  const pendingManual = (breakdown as Record<string, unknown>).pendingManual;
+  return Array.isArray(pendingManual) && pendingManual.length > 0;
+}
+
+interface AssignmentResultSummary {
+  normalizedScore: number | null;
+  percentile: number | null;
+  breakdown: Prisma.JsonValue | null;
+}
+
+// Strips the internal `breakdown` JSON and replaces it with a derived `hasPending` boolean —
+// the candidate-facing result screen (Wave 1.5a slice 3) must never receive raw breakdown JSON.
+function withPendingFlag<T extends { result: AssignmentResultSummary | null }>(assignment: T) {
+  const { result, ...rest } = assignment;
+  if (!result) return { ...rest, result: null };
+  const { breakdown, ...resultRest } = result;
+  return { ...rest, result: { ...resultRest, hasPending: hasPendingManualReview(breakdown) } };
+}
+
 const STARTABLE_STATUSES = new Set(['assigned', 'in_progress']);
 
 export const candidateAssessmentService = {
@@ -25,7 +51,8 @@ export const candidateAssessmentService = {
     return runWithTenant(org.id, async () => {
       const candidate = await candidatePortalRepo.findActiveCandidate(org.id, email);
       if (!candidate) return [];
-      return candidateAssessmentRepo.findAssignmentsForCandidate(org.id, candidate.id);
+      const assignments = await candidateAssessmentRepo.findAssignmentsForCandidate(org.id, candidate.id);
+      return assignments.map(withPendingFlag);
     });
   },
 

@@ -66,8 +66,42 @@ describe('candidateAssessmentService.getMyAssessments', () => {
 
   it("returns the candidate's assignments", async () => {
     vi.mocked(candidatePortalRepo.findActiveCandidate).mockResolvedValue({ id: 'cand-1' } as never);
-    vi.mocked(candidateAssessmentRepo.findAssignmentsForCandidate).mockResolvedValue([{ id: 'a1' }] as never);
-    expect(await candidateAssessmentService.getMyAssessments(EMAIL, SLUG)).toEqual([{ id: 'a1' }]);
+    vi.mocked(candidateAssessmentRepo.findAssignmentsForCandidate).mockResolvedValue([
+      { id: 'a1', status: 'assigned', result: null },
+    ] as never);
+    expect(await candidateAssessmentService.getMyAssessments(EMAIL, SLUG)).toEqual([
+      { id: 'a1', status: 'assigned', result: null },
+    ]);
+  });
+
+  it('derives hasPending=true and strips breakdown when the result has pending manual questions', async () => {
+    vi.mocked(candidatePortalRepo.findActiveCandidate).mockResolvedValue({ id: 'cand-1' } as never);
+    vi.mocked(candidateAssessmentRepo.findAssignmentsForCandidate).mockResolvedValue([
+      {
+        id: 'a1',
+        status: 'completed',
+        result: { normalizedScore: 80, percentile: null, breakdown: { autoScored: 3, pendingManual: ['q1'] } },
+      },
+    ] as never);
+    const result = await candidateAssessmentService.getMyAssessments(EMAIL, SLUG);
+    expect(result).toEqual([
+      { id: 'a1', status: 'completed', result: { normalizedScore: 80, percentile: null, hasPending: true } },
+    ]);
+  });
+
+  it('derives hasPending=false when breakdown.pendingManual is empty', async () => {
+    vi.mocked(candidatePortalRepo.findActiveCandidate).mockResolvedValue({ id: 'cand-1' } as never);
+    vi.mocked(candidateAssessmentRepo.findAssignmentsForCandidate).mockResolvedValue([
+      {
+        id: 'a2',
+        status: 'completed',
+        result: { normalizedScore: 100, percentile: 90, breakdown: { autoScored: 3, pendingManual: [] } },
+      },
+    ] as never);
+    const result = await candidateAssessmentService.getMyAssessments(EMAIL, SLUG);
+    expect(result).toEqual([
+      { id: 'a2', status: 'completed', result: { normalizedScore: 100, percentile: 90, hasPending: false } },
+    ]);
   });
 });
 
