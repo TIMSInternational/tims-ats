@@ -10,8 +10,9 @@ import { DashboardAssessments } from './dashboard-assessments';
 import { DashboardOffer } from './dashboard-offer';
 import { DashboardFaqChat } from './dashboard-faq-chat';
 
-// Candidate dashboard shell. Renders the authenticated frame with the full Wave 1
-// dashboard: My Applications (Slice 2), My Interviews (Slice 3), My Offer (Slice 4).
+// Candidate dashboard shell. Renders the authenticated frame with the full
+// dashboard: My Applications (Wave 1 Slice 2), My Interviews (Wave 1 Slice 3),
+// My Offer (Wave 1 Slice 4), My Assessments (Wave 1.5a Slice 4).
 // If the signed-in email has no Candidate at this org, shows an empty state instead.
 export function PortalDashboardShell({
   orgSlug,

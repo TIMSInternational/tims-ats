@@ -108,7 +108,7 @@ export async function middleware(request: NextRequest) {
 
   // Redirect logged-in users away from the STAFF auth pages only. The candidate
   // portal (/careers/*) is intentionally excluded: a candidate has a Supabase
-  // session and must stay in the portal (e.g. /careers/[org]/me) rather than be
+  // session and must stay in the portal (e.g. /careers/[org]/dashboard) rather than be
   // bounced into the staff app. /auth/* (callback/confirm) is also excluded.
   const STAFF_AUTH_PAGES = ['/login', '/register', '/forgot-password', '/reset-password'];
   if (user && STAFF_AUTH_PAGES.some((p) => pathname.startsWith(p))) {

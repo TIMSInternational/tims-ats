@@ -99,7 +99,7 @@ export function buildCandidateFaqContext(
 
 export const candidatePortalService = {
   // The signed-in candidate's display name at one org, or null if no candidate
-  // matches. Used by the /me SSR gate so that candidate read also runs under tenant
+  // matches. Used by the /dashboard SSR gate so that candidate read also runs under tenant
   // RLS (runWithTenant), never on the privileged db. The org is already resolved by
   // the caller (it owns the notFound() decision for a bad slug).
   getDisplayCandidate(orgId: string, email: string) {

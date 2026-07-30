@@ -40,7 +40,7 @@ export const candidatePortalRepo = {
     });
   },
 
-  // The candidate's display name for the portal /me header. Same tenant-scoped path
+  // The candidate's display name for the portal /dashboard header. Same tenant-scoped path
   // as everything else here — the SSR gate must NOT read candidate data on the
   // privileged db (that would bypass RLS).
   findCandidateName(organizationId: string, email: string) {

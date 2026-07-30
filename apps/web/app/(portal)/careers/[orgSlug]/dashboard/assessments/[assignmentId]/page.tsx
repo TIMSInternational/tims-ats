@@ -4,10 +4,9 @@ import { redirect, notFound } from 'next/navigation';
 import { db } from '@tims/db';
 import { AssessmentPlayerShell } from './_components/assessment-player-shell';
 
-// Direct-URL-only entry point (Wave 1.5a slice 3). Slice 4 (the /me dashboard
-// "My Assessments" section) will link here; until then this page has no
-// discoverable entry point from the candidate dashboard, matching the design
-// doc's vertical slice ordering.
+// Reachable two ways: directly by URL, and (as of Wave 1.5a Slice 4) linked
+// from the candidate dashboard's "My Assessments" section
+// (dashboard-assessments.tsx).
 export default async function AssessmentPlayerPage({
   params,
 }: {
