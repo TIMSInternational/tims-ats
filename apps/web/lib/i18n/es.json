@@ -3483,6 +3483,7 @@
     "errorAssignmentNotInProgress": "Esta evaluacion no esta en progreso actualmente.",
     "errorQuestionNotInAssessment": "Una de tus respuestas hace referencia a una pregunta que no es parte de esta evaluacion.",
     "errorAnswerTypeMismatch": "Una de tus respuestas no coincide con el formato esperado de su pregunta.",
-    "errorGeneric": "Algo salio mal. Intenta de nuevo."
+    "errorGeneric": "Algo salio mal. Intenta de nuevo.",
+    "backToDashboard": "Volver al panel"
   }
 }

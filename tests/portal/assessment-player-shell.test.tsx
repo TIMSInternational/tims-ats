@@ -49,15 +49,17 @@ describe('AssessmentPlayerShell', () => {
     assessmentsQueryData = [{ id: 'other', status: 'assigned', result: null }];
     renderShell();
     expect(screen.getByText(en.assessmentPlayer.notFound)).toBeInTheDocument();
+    expect(screen.getByText(en.assessmentPlayer.backToDashboard)).toBeInTheDocument();
   });
 
   it('renders the consent gate for status=assigned', () => {
     assessmentsQueryData = [{ id: 'a1', status: 'assigned', result: null }];
     renderShell();
     expect(screen.getByText(en.assessmentPlayer.consentTitle)).toBeInTheDocument();
+    expect(screen.getByText(en.assessmentPlayer.backToDashboard)).toBeInTheDocument();
   });
 
-  it('renders the question wizard for status=in_progress', () => {
+  it('renders the question wizard for status=in_progress, WITHOUT the back-to-dashboard link', () => {
     assessmentsQueryData = [
       {
         id: 'a1',
@@ -70,6 +72,7 @@ describe('AssessmentPlayerShell', () => {
     ];
     renderShell();
     expect(screen.getByText('wizard-stub')).toBeInTheDocument();
+    expect(screen.queryByText(en.assessmentPlayer.backToDashboard)).not.toBeInTheDocument();
   });
 
   it('renders the result screen for status=completed, using the list item result directly (no extra fetch)', () => {
@@ -78,12 +81,14 @@ describe('AssessmentPlayerShell', () => {
     ];
     renderShell();
     expect(screen.getByText(/90%/)).toBeInTheDocument();
+    expect(screen.getByText(en.assessmentPlayer.backToDashboard)).toBeInTheDocument();
   });
 
   it('renders a plain cancelled message for status=cancelled', () => {
     assessmentsQueryData = [{ id: 'a1', status: 'cancelled', result: null }];
     renderShell();
     expect(screen.getByText(en.assessmentPlayer.cancelled)).toBeInTheDocument();
+    expect(screen.getByText(en.assessmentPlayer.backToDashboard)).toBeInTheDocument();
   });
 
   it('renders a fallback message (not the consent gate) for an unrecognized status like pending', () => {
@@ -91,5 +96,6 @@ describe('AssessmentPlayerShell', () => {
     renderShell();
     expect(screen.getByText(en.assessmentPlayer.notStartable)).toBeInTheDocument();
     expect(screen.queryByText(en.assessmentPlayer.consentTitle)).not.toBeInTheDocument();
+    expect(screen.getByText(en.assessmentPlayer.backToDashboard)).toBeInTheDocument();
   });
 });

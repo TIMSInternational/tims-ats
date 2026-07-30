@@ -3483,6 +3483,7 @@
     "errorAssignmentNotInProgress": "This assessment isn't currently in progress.",
     "errorQuestionNotInAssessment": "One of your answers referenced a question that isn't part of this assessment.",
     "errorAnswerTypeMismatch": "One of your answers doesn't match its question's expected format.",
-    "errorGeneric": "Something went wrong. Please try again."
+    "errorGeneric": "Something went wrong. Please try again.",
+    "backToDashboard": "Back to dashboard"
   }
 }

@@ -7,6 +7,7 @@ import { AssessmentConsentGate } from './assessment-consent-gate';
 import { AssessmentQuestionWizard } from './assessment-question-wizard';
 import { AssessmentResultScreen } from './assessment-result-screen';
 import { mapAssessmentErrorMessage } from './assessment-error-messages';
+import { AssessmentBackLink } from './assessment-back-link';
 
 interface AssessmentPlayerShellProps {
   orgSlug: string;
@@ -26,27 +27,50 @@ export function AssessmentPlayerShell({ orgSlug, assignmentId }: AssessmentPlaye
   });
 
   if (assessmentsQuery.isLoading) {
-    return <p className="text-center text-[13px] text-[#8B8B8B] p-8">{t.assessmentPlayer.loading}</p>;
+    return (
+      <>
+        <AssessmentBackLink orgSlug={orgSlug} />
+        <p className="text-center text-[13px] text-[#8B8B8B] p-8">{t.assessmentPlayer.loading}</p>
+      </>
+    );
   }
   if (assessmentsQuery.isError) {
-    return <p className="text-center text-[13px] text-[#B42318] p-8">{t.assessmentPlayer.loadError}</p>;
+    return (
+      <>
+        <AssessmentBackLink orgSlug={orgSlug} />
+        <p className="text-center text-[13px] text-[#B42318] p-8">{t.assessmentPlayer.loadError}</p>
+      </>
+    );
   }
 
   const assignment = (assessmentsQuery.data ?? []).find((item) => item.id === assignmentId);
   if (!assignment) {
-    return <p className="text-center text-[13px] text-[#585858] p-8">{t.assessmentPlayer.notFound}</p>;
+    return (
+      <>
+        <AssessmentBackLink orgSlug={orgSlug} />
+        <p className="text-center text-[13px] text-[#585858] p-8">{t.assessmentPlayer.notFound}</p>
+      </>
+    );
   }
 
   if (assignment.status === 'cancelled') {
-    return <p className="text-center text-[13px] text-[#585858] p-8">{t.assessmentPlayer.cancelled}</p>;
+    return (
+      <>
+        <AssessmentBackLink orgSlug={orgSlug} />
+        <p className="text-center text-[13px] text-[#585858] p-8">{t.assessmentPlayer.cancelled}</p>
+      </>
+    );
   }
 
   if (assignment.status === 'completed') {
     return (
-      <AssessmentResultScreen
-        normalizedScore={assignment.result?.normalizedScore ?? null}
-        hasPending={assignment.result?.hasPending ?? false}
-      />
+      <>
+        <AssessmentBackLink orgSlug={orgSlug} />
+        <AssessmentResultScreen
+          normalizedScore={assignment.result?.normalizedScore ?? null}
+          hasPending={assignment.result?.hasPending ?? false}
+        />
+      </>
     );
   }
 
@@ -67,14 +91,17 @@ export function AssessmentPlayerShell({ orgSlug, assignmentId }: AssessmentPlaye
 
   if (assignment.status === 'assigned') {
     return (
-      <AssessmentConsentGate
-        isSubmitting={startMutation.isPending}
-        errorMessage={consentError}
-        onStart={() => {
-          setConsentError(null);
-          startMutation.mutate({ orgSlug, assignmentId, consentAccepted: true });
-        }}
-      />
+      <>
+        <AssessmentBackLink orgSlug={orgSlug} />
+        <AssessmentConsentGate
+          isSubmitting={startMutation.isPending}
+          errorMessage={consentError}
+          onStart={() => {
+            setConsentError(null);
+            startMutation.mutate({ orgSlug, assignmentId, consentAccepted: true });
+          }}
+        />
+      </>
     );
   }
 
@@ -82,5 +109,10 @@ export function AssessmentPlayerShell({ orgSlug, assignmentId }: AssessmentPlaye
   // handled by the branches above. Falling through to the consent gate here would
   // let the candidate click Start and hit a confusing assignment_not_startable
   // backend error, so render a plain message instead.
-  return <p className="text-center text-[13px] text-[#585858] p-8">{t.assessmentPlayer.notStartable}</p>;
+  return (
+    <>
+      <AssessmentBackLink orgSlug={orgSlug} />
+      <p className="text-center text-[13px] text-[#585858] p-8">{t.assessmentPlayer.notStartable}</p>
+    </>
+  );
 }
