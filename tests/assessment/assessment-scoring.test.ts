@@ -4,6 +4,7 @@ import {
   computeResult,
   answerInputSchema,
   submitAssessmentAnswersSchema,
+  MAX_FREE_TEXT,
 } from '../../packages/shared/src/validators/assessment';
 
 describe('scoreChoice', () => {
@@ -72,5 +73,11 @@ describe('answerInputSchema / submitAssessmentAnswersSchema', () => {
         freeText: 'x'.repeat(20001),
       }),
     ).toThrow();
+  });
+});
+
+describe('MAX_FREE_TEXT', () => {
+  it('is exported for the frontend free_text textarea bound to mirror', () => {
+    expect(MAX_FREE_TEXT).toBe(20000);
   });
 });

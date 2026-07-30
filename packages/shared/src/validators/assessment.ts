@@ -175,7 +175,7 @@ export function computeResult(graded: GradedAnswer[]): ComputeResultOutput {
 // ---------------------------------------------------------------------------
 
 const MAX_ANSWERS_PER_SUBMIT = 200;
-const MAX_FREE_TEXT = 20000;
+export const MAX_FREE_TEXT = 20000;
 
 export const answerInputSchema = z.object({
   questionId: z.string().uuid(),
