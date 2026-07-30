@@ -862,7 +862,7 @@ Expected: FAIL — module doesn't exist yet.
 Create `apps/web/app/(portal)/careers/[orgSlug]/me/assessments/[assignmentId]/_components/assessment-error-messages.ts`:
 
 ```ts
-import type en from '../../../../../../../lib/i18n/en.json';
+import type en from '../../../../../../../../lib/i18n/en.json';
 
 export type AssessmentPlayerT = (typeof en)['assessmentPlayer'];
 
@@ -998,7 +998,7 @@ Create `apps/web/app/(portal)/careers/[orgSlug]/me/assessments/[assignmentId]/_c
 'use client';
 
 import { MAX_FREE_TEXT } from '@tims/shared';
-import { useI18n } from '../../../../../../../lib/i18n';
+import { useI18n } from '../../../../../../../../lib/i18n';
 
 export interface QuestionCardOption {
   id: string;
@@ -1166,7 +1166,7 @@ Create `apps/web/app/(portal)/careers/[orgSlug]/me/assessments/[assignmentId]/_c
 'use client';
 
 import { useState } from 'react';
-import { useI18n } from '../../../../../../../lib/i18n';
+import { useI18n } from '../../../../../../../../lib/i18n';
 
 interface AssessmentConsentGateProps {
   onStart: () => void;
@@ -1300,7 +1300,7 @@ Create `apps/web/app/(portal)/careers/[orgSlug]/me/assessments/[assignmentId]/_c
 ```tsx
 'use client';
 
-import { useI18n } from '../../../../../../../lib/i18n';
+import { useI18n } from '../../../../../../../../lib/i18n';
 
 interface AssessmentSubmitConfirmProps {
   unansweredOrders: number[];
@@ -1431,7 +1431,7 @@ Create `apps/web/app/(portal)/careers/[orgSlug]/me/assessments/[assignmentId]/_c
 ```tsx
 'use client';
 
-import { useI18n } from '../../../../../../../lib/i18n';
+import { useI18n } from '../../../../../../../../lib/i18n';
 
 interface AssessmentResultScreenProps {
   normalizedScore: number | null;
@@ -1651,8 +1651,8 @@ Create `apps/web/app/(portal)/careers/[orgSlug]/me/assessments/[assignmentId]/_c
 'use client';
 
 import { useCallback, useState } from 'react';
-import { trpc } from '../../../../../../../lib/trpc';
-import { useI18n } from '../../../../../../../lib/i18n';
+import { trpc } from '../../../../../../../../lib/trpc';
+import { useI18n } from '../../../../../../../../lib/i18n';
 import { AssessmentQuestionCard, type QuestionCardAnswer } from './assessment-question-card';
 import { AssessmentSubmitConfirm } from './assessment-submit-confirm';
 import { mapAssessmentErrorMessage } from './assessment-error-messages';
@@ -1954,8 +1954,8 @@ Create `apps/web/app/(portal)/careers/[orgSlug]/me/assessments/[assignmentId]/_c
 'use client';
 
 import { useState } from 'react';
-import { trpc } from '../../../../../../../lib/trpc';
-import { useI18n } from '../../../../../../../lib/i18n';
+import { trpc } from '../../../../../../../../lib/trpc';
+import { useI18n } from '../../../../../../../../lib/i18n';
 import { AssessmentConsentGate } from './assessment-consent-gate';
 import { AssessmentQuestionWizard } from './assessment-question-wizard';
 import { AssessmentResultScreen } from './assessment-result-screen';
