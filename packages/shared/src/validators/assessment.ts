@@ -160,7 +160,7 @@ export interface ComputeResultOutput {
  */
 export function computeResult(graded: GradedAnswer[]): ComputeResultOutput {
   const autoScored = graded.filter((g) => g.pointsAwarded !== null);
-  const rawScore = autoScored.reduce((sum, g) => sum + (g.pointsAwarded ?? 0), 0);
+  const rawScore = autoScored.reduce((sum, g) => sum + g.pointsAwarded!, 0);
   const maxAutoPoints = autoScored.reduce((sum, g) => sum + g.points, 0);
   const normalizedScore = maxAutoPoints > 0 ? (rawScore / maxAutoPoints) * 100 : 0;
   const hasPending = graded.some((g) => g.isCorrect === null);
