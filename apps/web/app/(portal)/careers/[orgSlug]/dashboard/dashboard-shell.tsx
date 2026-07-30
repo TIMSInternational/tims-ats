@@ -6,6 +6,7 @@ import { createSupabaseBrowserClient } from '@tims/auth/client';
 import { useI18n } from '../../../../../lib/i18n';
 import { DashboardApplications } from './dashboard-applications';
 import { DashboardInterviews } from './dashboard-interviews';
+import { DashboardAssessments } from './dashboard-assessments';
 import { DashboardOffer } from './dashboard-offer';
 import { DashboardFaqChat } from './dashboard-faq-chat';
 
@@ -58,6 +59,7 @@ export function PortalDashboardShell({
           <div className="mt-6 space-y-4">
             <DashboardApplications orgSlug={orgSlug} />
             <DashboardInterviews orgSlug={orgSlug} />
+            <DashboardAssessments orgSlug={orgSlug} />
             <DashboardOffer orgSlug={orgSlug} />
             <DashboardFaqChat orgSlug={orgSlug} />
           </div>

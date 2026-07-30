@@ -2830,7 +2830,21 @@
     "faqSourceProfile": "profile",
     "faqSourceApplications": "applications",
     "faqSourceInterviews": "interviews",
-    "faqSourceOffers": "offers"
+    "faqSourceOffers": "offers",
+    "assessments": "My Assessments",
+    "assessLoading": "Loading your assessments…",
+    "assessError": "We couldn't load your assessments.",
+    "assessEmpty": "You don't have any assessments yet.",
+    "assessMinutes": "min",
+    "assessStatusAssigned": "Not started",
+    "assessStatusInProgress": "In progress",
+    "assessStatusCompleted": "Completed",
+    "assessStatusExpired": "Expired",
+    "assessStatusCancelled": "Cancelled",
+    "assessStart": "Start",
+    "assessContinue": "Continue",
+    "assessScoreLabel": "Score",
+    "assessPendingNotice": "Pending review"
   },
   "billing": {
     "breadcrumbParent": "Settings",
