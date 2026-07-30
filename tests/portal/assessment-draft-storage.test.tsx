@@ -1,8 +1,3 @@
-// @vitest-environment happy-dom
-//
-// This module is pure logic but touches the browser `localStorage` global, so it
-// needs a DOM environment even though it has no JSX — an override docblock keeps
-// it in the fast `node` project's .test.ts glob instead of moving it to .tsx.
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   readDraft,

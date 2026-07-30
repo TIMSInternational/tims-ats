@@ -40,6 +40,11 @@ export default defineConfig({
           environment: 'happy-dom',
           include: ['tests/**/*.test.tsx'],
           setupFiles: ['./tests/setup/component-test-setup.ts'],
+          // Node v25.9.0's --experimental-webstorage defines a native globalThis.localStorage
+          // stub by default that shadows happy-dom's real window.localStorage even under this
+          // correctly-configured project (confirmed by direct reproduction). Disabling it here
+          // ensures happy-dom's own implementation is what test code actually gets.
+          execArgv: ['--no-experimental-webstorage'],
         },
       },
     ],
