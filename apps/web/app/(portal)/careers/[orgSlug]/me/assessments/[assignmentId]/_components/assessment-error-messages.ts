@@ -1,4 +1,4 @@
-import type en from '../../../../../../../lib/i18n/en.json';
+import type en from '../../../../../../../../lib/i18n/en.json';
 
 export type AssessmentPlayerT = (typeof en)['assessmentPlayer'];
 
