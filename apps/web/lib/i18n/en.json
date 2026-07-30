@@ -3435,4 +3435,41 @@
     "loadingUsers": "Loading users...",
     "noUsersFound": "No users found"
   }
+
+,
+  "assessmentPlayer": {
+    "loading": "Loading...",
+    "loadError": "Something went wrong loading your assessment.",
+    "notFound": "We couldn't find that assessment.",
+    "cancelled": "This assessment was cancelled.",
+    "consentTitle": "Before you begin",
+    "consentBody": "This assessment will collect your responses and, where applicable, timing data to evaluate your application. By continuing, you agree to this processing of your data for recruitment purposes, in line with our data protection policy. (Placeholder copy pending legal review.)",
+    "consentCheckboxLabel": "I have read and agree to the data processing terms above.",
+    "consentStartButton": "Start assessment",
+    "consentStarting": "Starting...",
+    "questionLabel": "Question",
+    "ofLabel": "of",
+    "timerLabel": "Time remaining:",
+    "wizardBack": "Back",
+    "wizardNext": "Next",
+    "wizardReviewSubmit": "Review & submit",
+    "questionCardFreeTextPlaceholder": "Type your answer here...",
+    "submitConfirmTitle": "Submit your assessment?",
+    "submitConfirmUnansweredPrefix": "Unanswered questions:",
+    "submitConfirmBody": "Once submitted, you cannot change your answers.",
+    "submitConfirmCancelButton": "Keep reviewing",
+    "submitConfirmConfirmButton": "Submit",
+    "submitConfirmSubmitting": "Submitting...",
+    "resultTitle": "Assessment complete",
+    "resultScoreLabel": "You scored",
+    "resultPendingNotice": "Some of your answers are still awaiting manual review — your final score may change.",
+    "resultSummary": "Thank you for completing this assessment. Our team will follow up with next steps.",
+    "errorConsentRequired": "You must accept the data processing terms to continue.",
+    "errorAssignmentExpired": "This assessment's time window has expired.",
+    "errorAssignmentNotStartable": "This assessment can no longer be started.",
+    "errorAssignmentNotInProgress": "This assessment isn't currently in progress.",
+    "errorQuestionNotInAssessment": "One of your answers referenced a question that isn't part of this assessment.",
+    "errorAnswerTypeMismatch": "One of your answers doesn't match its question's expected format.",
+    "errorGeneric": "Something went wrong. Please try again."
+  }
 }

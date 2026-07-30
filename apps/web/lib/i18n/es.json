@@ -3435,4 +3435,41 @@
     "loadingUsers": "Cargando usuarios...",
     "noUsersFound": "No se encontraron usuarios"
   }
+
+,
+  "assessmentPlayer": {
+    "loading": "Cargando...",
+    "loadError": "Ocurrio un error al cargar tu evaluacion.",
+    "notFound": "No encontramos esa evaluacion.",
+    "cancelled": "Esta evaluacion fue cancelada.",
+    "consentTitle": "Antes de comenzar",
+    "consentBody": "Esta evaluacion recopilara tus respuestas y, cuando aplique, datos de tiempo para evaluar tu postulacion. Al continuar, aceptas este tratamiento de tus datos con fines de reclutamiento, conforme a nuestra politica de proteccion de datos. (Texto provisional pendiente de revision legal.)",
+    "consentCheckboxLabel": "He leido y acepto los terminos de tratamiento de datos anteriores.",
+    "consentStartButton": "Iniciar evaluacion",
+    "consentStarting": "Iniciando...",
+    "questionLabel": "Pregunta",
+    "ofLabel": "de",
+    "timerLabel": "Tiempo restante:",
+    "wizardBack": "Atras",
+    "wizardNext": "Siguiente",
+    "wizardReviewSubmit": "Revisar y enviar",
+    "questionCardFreeTextPlaceholder": "Escribe tu respuesta aqui...",
+    "submitConfirmTitle": "Enviar tu evaluacion?",
+    "submitConfirmUnansweredPrefix": "Preguntas sin responder:",
+    "submitConfirmBody": "Una vez enviada, no podras cambiar tus respuestas.",
+    "submitConfirmCancelButton": "Seguir revisando",
+    "submitConfirmConfirmButton": "Enviar",
+    "submitConfirmSubmitting": "Enviando...",
+    "resultTitle": "Evaluacion completada",
+    "resultScoreLabel": "Obtuviste",
+    "resultPendingNotice": "Algunas de tus respuestas aun estan en revision manual — tu puntaje final puede cambiar.",
+    "resultSummary": "Gracias por completar esta evaluacion. Nuestro equipo dara seguimiento con los proximos pasos.",
+    "errorConsentRequired": "Debes aceptar los terminos de tratamiento de datos para continuar.",
+    "errorAssignmentExpired": "El tiempo de esta evaluacion ha expirado.",
+    "errorAssignmentNotStartable": "Esta evaluacion ya no se puede iniciar.",
+    "errorAssignmentNotInProgress": "Esta evaluacion no esta en progreso actualmente.",
+    "errorQuestionNotInAssessment": "Una de tus respuestas hace referencia a una pregunta que no es parte de esta evaluacion.",
+    "errorAnswerTypeMismatch": "Una de tus respuestas no coincide con el formato esperado de su pregunta.",
+    "errorGeneric": "Algo salio mal. Intenta de nuevo."
+  }
 }
