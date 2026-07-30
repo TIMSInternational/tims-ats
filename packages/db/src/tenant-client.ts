@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import { db } from './client';
 import { getTenantOrgId } from './tenant-context';
 import { assertRlsEnforced } from './rls-guard';
@@ -47,3 +48,30 @@ export const tenantDb = db.$extends({
 });
 
 export type TenantDb = typeof tenantDb;
+
+// Interactive-transaction counterpart to tenantDb. tenantDb's $allOperations
+// extension gives each individual query its OWN self-contained mini-transaction
+// (SET LOCAL ROLE + set_config + that one query, batched via db.$transaction on
+// the closed-over base `db`) — composing it with an outer $transaction does NOT
+// make multiple writes atomic, because each nested tenantDb.* call still commits
+// independently (documented Prisma limitation: client extensions in interactive
+// transactions are bound to the base client, prisma/prisma#17948). Call sites
+// that need several writes to succeed or fail together (e.g. Wave 1.5a
+// submitAssessment: grade N responses + upsert the result + mark the assignment
+// completed) must use this instead: it sets the RLS role/GUC ONCE as the first
+// statements of a single interactive transaction, then hands the SAME
+// transactional client to fn() so every write inside shares that one atomic
+// boundary. RLS_ENFORCED is read at call time (not module load) so it composes
+// with vi.stubEnv in tests without needing vi.resetModules().
+export function runTenantTransaction<T>(orgId: string, fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+  return db.$transaction(async (tx) => {
+    const rlsEnforced = process.env.RLS_ENFORCED === 'true';
+    if (!rlsEnforced) {
+      assertRlsEnforced(process.env.NODE_ENV, rlsEnforced);
+      return fn(tx);
+    }
+    await tx.$executeRaw`SET LOCAL ROLE app_tenant`;
+    await tx.$executeRaw`SELECT set_config('app.current_org_id', ${orgId}, true)`;
+    return fn(tx);
+  });
+}
