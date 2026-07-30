@@ -20,6 +20,9 @@ export default defineConfig({
       // (its default export is a hard `throw`). Alias it to an empty module so the
       // pure, unit-testable core of server-only helpers can be imported under vitest.
       'server-only': resolve(__dirname, 'tests/stubs/server-only.ts'),
+      // Allow component tests to resolve React from apps/web
+      react: resolve(__dirname, 'apps/web/node_modules/react'),
+      'react/jsx-dev-runtime': resolve(__dirname, 'apps/web/node_modules/react/jsx-dev-runtime'),
     },
   },
   test: {
