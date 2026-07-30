@@ -2,11 +2,28 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import en from '../../apps/web/lib/i18n/en.json';
 import { I18nProvider } from '../../apps/web/lib/i18n';
+import { writeDraft } from '../../apps/web/app/(portal)/careers/[orgSlug]/me/assessments/[assignmentId]/_lib/assessment-draft-storage';
 
 const mutateSubmit = vi.fn();
 const invalidate = vi.fn();
 let submitOnSuccess: (() => void) | undefined;
 let submitOnError: ((error: { message: string }) => void) | undefined;
+
+const defaultQuestions = [
+  {
+    id: 'q1',
+    order: 0,
+    type: 'single_choice',
+    prompt: 'Q1?',
+    points: 1,
+    options: [
+      { id: 'a', label: 'A' },
+      { id: 'b', label: 'B' },
+    ],
+  },
+  { id: 'q2', order: 1, type: 'free_text', prompt: 'Q2?', points: 5, options: [] },
+];
+let questionsQueryData: unknown[] = defaultQuestions;
 
 vi.mock('../../apps/web/lib/trpc', () => ({
   trpc: {
@@ -16,20 +33,7 @@ vi.mock('../../apps/web/lib/trpc', () => ({
         useQuery: () => ({
           isLoading: false,
           isError: false,
-          data: [
-            {
-              id: 'q1',
-              order: 0,
-              type: 'single_choice',
-              prompt: 'Q1?',
-              points: 1,
-              options: [
-                { id: 'a', label: 'A' },
-                { id: 'b', label: 'B' },
-              ],
-            },
-            { id: 'q2', order: 1, type: 'free_text', prompt: 'Q2?', points: 5, options: [] },
-          ],
+          data: questionsQueryData,
         }),
       },
       submitAssessment: {
@@ -70,9 +74,33 @@ describe('AssessmentQuestionWizard', () => {
     window.localStorage.clear();
     mutateSubmit.mockClear();
     invalidate.mockClear();
+    questionsQueryData = defaultQuestions;
     vi.useFakeTimers();
   });
   afterEach(() => vi.useRealTimers());
+
+  it('renders a friendly message instead of crashing when getAssessmentQuestions returns []', () => {
+    questionsQueryData = [];
+    expect(() => renderWizard()).not.toThrow();
+    expect(screen.getByText(en.assessmentPlayer.loadError)).toBeInTheDocument();
+  });
+
+  it('drops a stale draft answer for a question no longer in the fetched set before submitting', () => {
+    // Seed a draft with an extra answer for a questionId that isn't part of the
+    // currently-fetched question set (e.g. deactivated between draft-write and submit).
+    writeDraft('a1', {
+      q1: { selectedOptionIds: ['a'] },
+      q2: { freeText: 'my answer' },
+      stale_q: { freeText: 'orphaned answer' },
+    });
+    renderWizard();
+    fireEvent.click(screen.getByRole('button', { name: en.assessmentPlayer.wizardNext }));
+    fireEvent.click(screen.getByRole('button', { name: en.assessmentPlayer.wizardReviewSubmit }));
+    fireEvent.click(screen.getByRole('button', { name: en.assessmentPlayer.submitConfirmConfirmButton }));
+    const payload = mutateSubmit.mock.calls[0][0];
+    expect(payload.answers.map((a: { questionId: string }) => a.questionId).sort()).toEqual(['q1', 'q2']);
+    expect(payload.answers.some((a: { questionId: string }) => a.questionId === 'stale_q')).toBe(false);
+  });
 
   it('Back/Next navigate between questions without ever calling the server', () => {
     renderWizard();

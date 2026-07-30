@@ -6,15 +6,7 @@ import {
 } from '../../apps/web/app/(portal)/careers/[orgSlug]/me/assessments/[assignmentId]/_lib/assessment-draft-storage';
 
 describe('assessment-draft-storage', () => {
-  beforeEach(() => {
-    // happy-dom's localStorage may not have .clear(), so manually remove all keys
-    if (typeof window.localStorage.clear === 'function') {
-      window.localStorage.clear();
-    } else {
-      const keys = Object.keys(window.localStorage);
-      keys.forEach((key) => window.localStorage.removeItem(key));
-    }
-  });
+  beforeEach(() => window.localStorage.clear());
 
   it('returns null when nothing is stored for this assignment', () => {
     expect(readDraft('a1')).toBeNull();

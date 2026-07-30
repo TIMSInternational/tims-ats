@@ -3434,13 +3434,12 @@
     "searchRaterPlaceholder": "Search rater by name...",
     "loadingUsers": "Loading users...",
     "noUsersFound": "No users found"
-  }
-
-,
+  },
   "assessmentPlayer": {
     "loading": "Loading...",
     "loadError": "Something went wrong loading your assessment.",
     "notFound": "We couldn't find that assessment.",
+    "notStartable": "This assessment isn't ready to start yet.",
     "cancelled": "This assessment was cancelled.",
     "consentTitle": "Before you begin",
     "consentBody": "This assessment will collect your responses and, where applicable, timing data to evaluate your application. By continuing, you agree to this processing of your data for recruitment purposes, in line with our data protection policy. (Placeholder copy pending legal review.)",

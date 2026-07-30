@@ -3434,13 +3434,12 @@
     "searchRaterPlaceholder": "Buscar evaluador por nombre...",
     "loadingUsers": "Cargando usuarios...",
     "noUsersFound": "No se encontraron usuarios"
-  }
-
-,
+  },
   "assessmentPlayer": {
     "loading": "Cargando...",
     "loadError": "Ocurrio un error al cargar tu evaluacion.",
     "notFound": "No encontramos esa evaluacion.",
+    "notStartable": "Esta evaluacion aun no esta lista para iniciar.",
     "cancelled": "Esta evaluacion fue cancelada.",
     "consentTitle": "Antes de comenzar",
     "consentBody": "Esta evaluacion recopilara tus respuestas y, cuando aplique, datos de tiempo para evaluar tu postulacion. Al continuar, aceptas este tratamiento de tus datos con fines de reclutamiento, conforme a nuestra politica de proteccion de datos. (Texto provisional pendiente de revision legal.)",

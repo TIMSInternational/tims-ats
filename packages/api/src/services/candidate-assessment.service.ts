@@ -9,6 +9,13 @@ import { scoreChoice, computeResult, type AnswerInput, type GradedAnswer } from 
 // Versioned Habeas-Data data-processing consent text identifier (non-repudiation
 // record). The actual legal text lives in the Slice 3 FE i18n bundle; the server
 // only needs a stable version id to prove which text the candidate agreed to.
+//
+// IMPORTANT: the copy in en.json/es.json's assessmentPlayer.consentBody and
+// assessmentPlayer.consentCheckboxLabel is currently PLACEHOLDER TEXT pending
+// legal review. This version id MUST be bumped (e.g. to 'habeas-data-assessment-v2')
+// whenever that copy is replaced with the real legal text — otherwise every
+// existing AssessmentConsent.textVersion='v1' record silently points at text that
+// no longer exists, undermining the audit trail this mechanism exists for.
 const HABEAS_DATA_CONSENT_VERSION = 'habeas-data-assessment-v1';
 
 function isExpired(expiresAt: Date | null): boolean {

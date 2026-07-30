@@ -40,7 +40,6 @@ export function AssessmentQuestionWizard({
   const submitMutation = trpc.candidatePortal.submitAssessment.useMutation({
     onSuccess: () => {
       clearDraft(assignmentId);
-      utils.candidatePortal.getMyAssessments.invalidate();
       onSubmitted();
     },
     onError: (error: { message: string }) => {
@@ -54,15 +53,21 @@ export function AssessmentQuestionWizard({
     },
   });
 
-  const buildSubmission = useCallback(
-    () =>
-      Object.entries(answers).map(([questionId, a]) => ({
+  // Filters out any stale draft answer for a question no longer present in the
+  // fetched set (e.g. deactivated between draft-write and submit) — otherwise the
+  // backend's question_not_in_assessment check rejects the submission, and since
+  // the draft persists with no clear-draft affordance, the candidate would be
+  // permanently stuck resubmitting the same rejected payload.
+  const buildSubmission = useCallback(() => {
+    const validQuestionIds = new Set((questionsQuery.data ?? []).map((q) => q.id));
+    return Object.entries(answers)
+      .filter(([questionId]) => validQuestionIds.has(questionId))
+      .map(([questionId, a]) => ({
         questionId,
         selectedOptionIds: a.selectedOptionIds,
         freeText: a.freeText,
-      })),
-    [answers],
-  );
+      }));
+  }, [answers, questionsQuery.data]);
 
   const doSubmit = useCallback(() => {
     submitMutation.mutate({ orgSlug, assignmentId, answers: buildSubmission() });
@@ -93,6 +98,14 @@ export function AssessmentQuestionWizard({
     ...q,
     options: (q.options as unknown as QuestionCardOption[]) ?? [],
   }));
+
+  // An assessment type with no active questions (not-yet-authored, or fully
+  // deactivated after assignment) has nothing to render — bail out with the
+  // generic load-error message rather than crashing on questions[0].id below.
+  if (questions.length === 0) {
+    return <p className="text-center text-[13px] text-[#B42318] p-8">{t.assessmentPlayer.loadError}</p>;
+  }
+
   const total = questions.length;
   const question = questions[currentIndex];
   const isLast = currentIndex === total - 1;

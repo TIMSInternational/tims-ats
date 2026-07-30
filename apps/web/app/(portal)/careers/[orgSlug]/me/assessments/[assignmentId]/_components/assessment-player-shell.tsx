@@ -65,15 +65,22 @@ export function AssessmentPlayerShell({ orgSlug, assignmentId }: AssessmentPlaye
     );
   }
 
-  // status === 'assigned'
-  return (
-    <AssessmentConsentGate
-      isSubmitting={startMutation.isPending}
-      errorMessage={consentError}
-      onStart={() => {
-        setConsentError(null);
-        startMutation.mutate({ orgSlug, assignmentId, consentAccepted: true });
-      }}
-    />
-  );
+  if (assignment.status === 'assigned') {
+    return (
+      <AssessmentConsentGate
+        isSubmitting={startMutation.isPending}
+        errorMessage={consentError}
+        onStart={() => {
+          setConsentError(null);
+          startMutation.mutate({ orgSlug, assignmentId, consentAccepted: true });
+        }}
+      />
+    );
+  }
+
+  // Any other status (e.g. seed-data's 'pending' — not yet assigned/started) isn't
+  // handled by the branches above. Falling through to the consent gate here would
+  // let the candidate click Start and hit a confusing assignment_not_startable
+  // backend error, so render a plain message instead.
+  return <p className="text-center text-[13px] text-[#585858] p-8">{t.assessmentPlayer.notStartable}</p>;
 }

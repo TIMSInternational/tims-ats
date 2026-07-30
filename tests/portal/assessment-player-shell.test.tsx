@@ -85,4 +85,11 @@ describe('AssessmentPlayerShell', () => {
     renderShell();
     expect(screen.getByText(en.assessmentPlayer.cancelled)).toBeInTheDocument();
   });
+
+  it('renders a fallback message (not the consent gate) for an unrecognized status like pending', () => {
+    assessmentsQueryData = [{ id: 'a1', status: 'pending', result: null }];
+    renderShell();
+    expect(screen.getByText(en.assessmentPlayer.notStartable)).toBeInTheDocument();
+    expect(screen.queryByText(en.assessmentPlayer.consentTitle)).not.toBeInTheDocument();
+  });
 });
