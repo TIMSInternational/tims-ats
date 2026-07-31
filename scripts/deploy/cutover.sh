@@ -92,10 +92,10 @@ surface_row() {
       echo "read|DeiReadEnabled|verify|dei|NEXT_PUBLIC_DEI_READ_VIA_CSHARP|FLIP_READY|Runbook §6 Phase A #4. getPayEquity (FX) is a separate Slice-11c surface, not covered here."
       ;;
     audit-log)
-      echo "read|AuditLogReadEnabled|verify|audit-log|NEXT_PUBLIC_AUDIT_LOG_READ_VIA_CSHARP|FLIP_READY|Phase-5 Slice-17 — merged AFTER this runbook doc was last updated, so it is absent from the doc's own §6 Phase A/B lists. Classified FLIP-READY from PlatformOptions.cs + team memory (merged to main e0b70ed, dark; the service has never been redeployed with this code, so 'flip-ready' here means code-ready, not yet deploy-verified)."
+      echo "read|AuditLogReadEnabled|NONE|NONE|NEXT_PUBLIC_AUDIT_LOG_READ_VIA_CSHARP|TS_DELETED|Phase-5 Slice-17. UPDATE 2026-07-31: flag confirmed live in prod, and this surface's only registered read procedure (platform.getCrossOrgAuditLogs, plus platform.exportAuditLogsCsv which shared the same TS router) has been deleted (packages/api/src/routers/platform/system.ts) — the C# read path is the sole implementation now, so scripts/parity/surfaces.ts's 'audit-log' entry was removed too and there is no TS side left to diff against. The FE wrapper (apps/web/lib/platform-api/audit-log.ts) now calls the C# service unconditionally rather than gating on the flag. --verify-only for this surface is now a no-op (see run_verify) rather than a real parity check."
       ;;
     access-review)
-      echo "read|AccessReviewReadEnabled|NONE|NONE|NEXT_PUBLIC_ACCESS_REVIEW_READ_VIA_CSHARP|TS_DELETED|Phase-5 Slice-18. UPDATE 2026-07-31: flag confirmed live in prod; all 3 registered TS read procedures (getAccessReview/exportAccessReviewCsv/listAccessReviewAttestations, packages/api/src/routers/platform/access-review.ts) have been deleted — the C# read path is the sole implementation now, so scripts/parity/surfaces.ts's 'access-review' entry was removed too and there is no TS side left to diff against. --verify-only for this surface is now a no-op (see run_verify) rather than a real parity check. NOTE: unlike team-intel/reporting, the TS router itself was NOT deleted outright — attestAccessReview (the write) still lives there, gated by the separate access-review-write flag below, which is unaffected by this. Read side is efcoreReadOnly over Phase-2 identity tables (users/roles/user_roles/role_permissions/permissions/organizations); access_reviews itself stays Prisma-owned until the WRITE flag (access-review-write) flips."
+      echo "read|AccessReviewReadEnabled|NONE|NONE|NEXT_PUBLIC_ACCESS_REVIEW_READ_VIA_CSHARP|TS_DELETED|Phase-5 Slice-18. UPDATE 2026-07-31: flag confirmed live in prod; all 3 registered TS read procedures (getAccessReview/exportAccessReviewCsv/listAccessReviewAttestations) have been deleted — the C# read path is the sole implementation now, so scripts/parity/surfaces.ts's 'access-review' entry was removed too and there is no TS side left to diff against. --verify-only for this surface is now a no-op (see run_verify) rather than a real parity check. UPDATE (same day, continued): the write flag (access-review-write) was ALSO confirmed live and its TS side deleted the same session — with BOTH sides gone, the whole TS router (packages/api/src/routers/platform/access-review.ts + its schemas/service/repository) was removed outright, matching the team-intel/reporting precedent, unlike this entry's original note. Read side is efcoreReadOnly over Phase-2 identity tables (users/roles/user_roles/role_permissions/permissions/organizations); access_reviews itself stays Prisma-owned (the C# write is a coexistence write, not an ownership flip — see table-ownership.md)."
       ;;
     evaluation360-write)
       echo "write|Evaluation360WriteEnabled|verify-write|evaluation360|NEXT_PUBLIC_EVALUATION360_WRITE_VIA_CSHARP|FLIP_READY|Runbook §6 Phase B #8 — FLIP-READY. UPDATE 2026-07-28: this note used to say 'once verified, drop the TS eval360 router' as a pending future step — that's now DONE (packages/api/src/routers/evaluation360.ts + its FE fallback in apps/web/lib/platform-api/evaluation360.ts were deleted outright), independent of this flag's flip state. verify-write itself is UNAFFECTED by that deletion (scripts/parity/write-surfaces.ts's 'evaluation360' entry hits the C# API directly for RBAC/IDOR checks — it never depended on the TS router). Flipping Platform:Evaluation360WriteEnabled is still the pending step to move review_cycles/rater_assignments/rater_responses to efcore table-ownership."
@@ -178,10 +178,11 @@ EXAMPLES
   scripts/deploy/cutover.sh access-review-write --flip-backend --skip-verify-confirm-i-know-what-im-doing
   scripts/deploy/cutover.sh dei --rollback --yes
   scripts/deploy/cutover.sh --list
-  # NOTE: "reporting", "evaluation360" (read), "team-intel", and "billing-usage" no longer have a
-  # real --verify-only check — their TS routers were deleted (2026-07-28 for the first two,
-  # 2026-07-29 for the latter two), so there's nothing left to diff against. --verify-only for any
-  # of these four still runs (prints a no-op notice and exits 0) rather than erroring.
+  # NOTE: "reporting", "evaluation360" (read), "team-intel", "billing-usage", and "audit-log" no
+  # longer have a real --verify-only check — their TS procedures were deleted (2026-07-28 for the
+  # first two, 2026-07-29 for the next two, 2026-07-31 for audit-log), so there's nothing left to
+  # diff against. --verify-only for any of these five still runs (prints a no-op notice and exits
+  # 0) rather than erroring.
 
 See scripts/deploy/README-cutover.md for the full worked flow.
 EOF

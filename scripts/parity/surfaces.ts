@@ -208,47 +208,30 @@ export const SURFACES: Record<string, Surface> = {
     ],
   },
   // ── audit-log ────────────────────────────────────────────────────────────────────────────
-  // Doesn't fit the other surfaces' org-scoped-RBAC shape: this surface's gate is PRINCIPAL
-  // TYPE (platform owner vs everyone else — `users.is_platform_owner`, see PlatformOwnerGate.cs
-  // + TS `platformProcedure`), independent of any org. Rather than add a new harness concept for
-  // one surface, it reuses `roles`/`expectedByRole` with two sentinel role keys seed.ts already
-  // has a home for: `platform_owner` (a real, org-less platform-owner identity — seeded once,
-  // see the planSeed comment in seed.ts) and `org_admin` (an ordinary seeded role) as the denied
-  // probe.
-  'audit-log': {
-    key: 'audit-log',
-    flag: 'Platform__AuditLogReadEnabled',
-    roles: ['platform_owner', 'org_admin'],
-    // MUST be the ALLOWED role (200), not the denied one: the parity check always calls
-    // probeRole's token expecting success, and stripTrpcJson (scripts/parity/trpc.ts:11)
-    // deliberately throws on any tRPC error response — a crash, not a soft [FAIL] — so
-    // pointing probeRole at a denied role takes down the whole verify run. org_admin (403)
-    // is still fully covered by the separate RBAC check via `tokensByRole`.
-    probeRole: 'platform_owner',
-    endpoints: [
-      {
-        name: 'logs',
-        csharpPath: '/audit/logs',
-        tsProcedure: 'platform.getCrossOrgAuditLogs',
-        input: {},
-        expectedByRole: { platform_owner: 200, org_admin: 403 },
-        // This surface is intentionally cross-org (a platform owner sees every org's rows) — the
-        // Mode-B "identical payload across orgs ⇒ leak" heuristic does not apply the way it does for
-        // a genuinely global/config read (e.g. billing/config); it isn't tenant-scoped at all, so the
-        // RLS check for this endpoint is a documented N/A, not a leak signal. Parity + RBAC (the
-        // platform-owner-vs-denied gate) still run unchanged and are the meaningful checks here.
-        globalScope: true,
-      },
-    ],
-  },
-  // 'access-review' read surface REMOVED (2026-07-31): all 3 registered TS procedures
-  // (getAccessReview/exportAccessReviewCsv/listAccessReviewAttestations) were deleted —
-  // NEXT_PUBLIC_ACCESS_REVIEW_READ_VIA_CSHARP confirmed live in prod — so there is no TS side
-  // left to diff against for any endpoint (unlike compensation/ninebox/succession above, no
-  // zero-consumer procedure survives to keep a real check running). `verify access-review` is
-  // now a no-op (see cutover.sh). The WRITE surface (attestAccessReview) is UNAFFECTED — it
-  // still has a live TS procedure behind a separate flag and stays registered in
-  // write-surfaces.ts's WRITE_SURFACES['access-review'].
+  // REMOVED (TS-deletion, 2026-07-31): this surface's only endpoint (`logs`,
+  // tsProcedure `platform.getCrossOrgAuditLogs`) was deleted from
+  // packages/api/src/routers/platform/system.ts once NEXT_PUBLIC_AUDIT_LOG_READ_VIA_CSHARP was
+  // confirmed live in prod and the FE wrapper (apps/web/lib/platform-api/audit-log.ts) moved to
+  // calling the C# service unconditionally — there is no TS side left to diff against. See
+  // scripts/deploy/cutover.sh's `audit-log` row (status TS_DELETED) for the cutover-tooling
+  // side of this change.
+  //
+  // ── access-review ────────────────────────────────────────────────────────────────────────
+  // READ surface REMOVED (TS-deletion, 2026-07-31): report/export/attestations
+  // (getAccessReview/exportAccessReviewCsv/listAccessReviewAttestations) were deleted from
+  // packages/api/src/routers/platform/access-review.ts once NEXT_PUBLIC_ACCESS_REVIEW_READ_VIA_CSHARP
+  // was confirmed live — there is no TS side left to diff against, so `verify access-review` is
+  // now a no-op (see cutover.sh's `access-review` row, status TS_DELETED). Its former
+  // principal-type-gate pattern (platform owner vs everyone else — see `PlatformOwnerGate.cs` +
+  // TS `platformProcedure`, independent of any org) is gone from this harness too.
+  //
+  // The WRITE surface (attestAccessReview) is UNAFFECTED here even though its own TS procedure
+  // was ALSO deleted the same day (NEXT_PUBLIC_ACCESS_REVIEW_WRITE_VIA_CSHARP confirmed live) —
+  // write-surfaces.ts's WRITE_SURFACES['access-review'] tests the C# endpoint directly via raw
+  // SQL + HTTP (no TS comparison, no tsProcedure field), so it has zero dependency on the TS
+  // procedure's existence and stays fully valid/registered forever. `verify-write access-review`
+  // still runs a real check (see cutover.sh's `access-review-write` row, status TS DELETED but
+  // parity CLI invocation still `verify-write access-review`, not `NONE`).
   // ── engagement ──────────────────────────────────────────────────────────────────────────────
   // Coverage-audit addition (2026-07-27): the C# `EngagementReadEndpoints` (Phase-5 Slice 11, 14
   // read routes) has been mapped/dark since PR history predating this audit, and the `engagement`

@@ -2,16 +2,13 @@ import { router } from '../../trpc';
 import { db } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { platformProcedure } from './_common';
-import { logPlatformExport, logSecurityEvent } from '../../access/security-audit';
+import { logSecurityEvent } from '../../access/security-audit';
 import { PLAN_PRICES } from '../../lib/plan-prices';
 import { auditLogSelect, SYSTEM_FLAG_KEYS, buildSystemHealthServices } from './system.helpers';
 import { cacheInvalidatePrefix } from '../../lib/cache';
-import { csvRow } from '@tims/shared';
 import {
   sendBulkNotificationInput,
   getRecentPlatformEventsInput,
-  getCrossOrgAuditLogsInput,
-  exportAuditLogsCsvInput,
   getOrgAuditLogsInput,
   updateFeatureFlagInput,
   createFeatureFlagForAllOrgsInput,
@@ -262,110 +259,6 @@ export const systemRouter = router({
         topAgents: topAgents.slice(0, 5),
       },
     };
-  }),
-
-  getCrossOrgAuditLogs: platformProcedure.input(getCrossOrgAuditLogsInput).query(async ({ input }) => {
-    const { cursor, limit, userId, organizationId, action, entity, dateFrom, dateTo } = input;
-
-    const where: Prisma.AuditLogWhereInput = {};
-    if (userId) where.actorId = userId;
-    if (organizationId) where.organizationId = organizationId;
-    if (action) where.action = action;
-    if (entity) where.entity = entity;
-    if (dateFrom || dateTo) {
-      const createdAt: Prisma.DateTimeFilter = {};
-      if (dateFrom) createdAt.gte = dateFrom;
-      if (dateTo) createdAt.lte = dateTo;
-      where.createdAt = createdAt;
-    }
-
-    const logs = await db.auditLog.findMany({
-      where,
-      take: limit + 1,
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-      orderBy: { createdAt: 'desc' },
-      select: auditLogSelect,
-    });
-
-    let nextCursor: string | undefined;
-    if (logs.length > limit) {
-      const n = logs.pop();
-      nextCursor = n?.id;
-    }
-
-    const total = await db.auditLog.count({ where });
-
-    return { logs, nextCursor, total };
-  }),
-
-  exportAuditLogsCsv: platformProcedure.input(exportAuditLogsCsvInput).query(async ({ ctx, input }) => {
-    const where: Prisma.AuditLogWhereInput = {};
-    if (input.organizationId) where.organizationId = input.organizationId;
-    if (input.action) where.action = input.action;
-    if (input.entity) where.entity = input.entity;
-    if (input.dateFrom || input.dateTo) {
-      const createdAt: Prisma.DateTimeFilter = {};
-      if (input.dateFrom) createdAt.gte = input.dateFrom;
-      if (input.dateTo) createdAt.lte = input.dateTo;
-      where.createdAt = createdAt;
-    }
-
-    const logs = await db.auditLog.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      take: 1000,
-      select: {
-        action: true,
-        entity: true,
-        entityId: true,
-        ipAddress: true,
-        createdAt: true,
-        organization: { select: { name: true } },
-        actor: { select: { firstName: true, lastName: true, email: true } },
-      },
-    });
-
-    logPlatformExport(ctx, {
-      resource: 'audit_logs',
-      count: logs.length,
-      format: input.format,
-      targetOrgId: input.organizationId,
-    });
-
-    const actorName = (l: (typeof logs)[number]) =>
-      l.actor ? `${l.actor.firstName} ${l.actor.lastName}`.trim() || l.actor.email : 'Sistema';
-
-    if (input.format === 'json') {
-      const json = JSON.stringify(
-        logs.map((l) => ({
-          date: l.createdAt.toISOString(),
-          organization: l.organization?.name ?? null,
-          actor: actorName(l),
-          action: l.action,
-          entity: l.entity || null,
-          entityId: l.entityId || null,
-          ip: l.ipAddress || null,
-        })),
-        null,
-        2,
-      );
-      return { format: 'json' as const, data: json, count: logs.length };
-    }
-
-    const header = csvRow(['Fecha', 'Organizacion', 'Actor', 'Accion', 'Entidad', 'ID Entidad', 'IP']);
-    const rows = logs.map((l) =>
-      csvRow([
-        l.createdAt.toISOString(),
-        l.organization?.name ?? '-',
-        actorName(l),
-        l.action,
-        l.entity || '-',
-        l.entityId || '-',
-        l.ipAddress || '-',
-      ]),
-    );
-
-    return { format: 'csv' as const, data: [header, ...rows].join('\n'), count: logs.length };
   }),
 
   getOrgAuditLogs: platformProcedure.input(getOrgAuditLogsInput).query(async ({ input }) => {

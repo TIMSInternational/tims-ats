@@ -91,9 +91,7 @@ describe('logSecurityEvent — primitive', () => {
 
   it('is FAIL-SOFT: a throwing create is swallowed (never blocks auth / a mutation)', async () => {
     createMock.mockRejectedValueOnce(new Error('db down'));
-    await expect(
-      logSecurityEvent({ organizationId: 'org1', action: 'x', entity: 'y' }),
-    ).resolves.toBeUndefined();
+    await expect(logSecurityEvent({ organizationId: 'org1', action: 'x', entity: 'y' })).resolves.toBeUndefined();
   });
 
   it('SKIPS the insert when organizationId is empty (NOT-NULL FK guard, centralized)', async () => {
@@ -163,7 +161,11 @@ describe('observeDenial — decision logic', () => {
     // middleware and convert the denial into a 500. The safe() wrapper must absorb it.
     const throwingCtx = {
       user: { id: 'u1', organizationId: 'org1', impersonatorId: null },
-      headers: { get: () => { throw new Error('boom'); } } as unknown as Headers,
+      headers: {
+        get: () => {
+          throw new Error('boom');
+        },
+      } as unknown as Headers,
     };
     expect(() =>
       observeDenial({ error: new TRPCError({ code: 'FORBIDDEN' }), path: 'x', ctx: throwingCtx }),
@@ -188,11 +190,20 @@ describe('observeExternalDenial — API-key surface (org resolved from the key)'
     expect(arg.data.organizationId).toBe('orgExt');
     expect(arg.data.actorId).toBeNull();
     expect(arg.data.entity).toBe('trpc:external.getAssessmentResults');
-    expect(arg.data.metadata).toMatchObject({ principal: 'api_key', apiKeyId: 'key_123', reason: 'scope', requiredScope: 'assessment:read' });
+    expect(arg.data.metadata).toMatchObject({
+      principal: 'api_key',
+      apiKeyId: 'key_123',
+      reason: 'scope',
+      requiredScope: 'assessment:read',
+    });
   });
 
   it('is non-throwing on a hostile headers object', () => {
-    const headers = { get: () => { throw new Error('boom'); } } as unknown as Headers;
+    const headers = {
+      get: () => {
+        throw new Error('boom');
+      },
+    } as unknown as Headers;
     expect(() =>
       observeExternalDenial({ organizationId: 'o', apiKeyId: 'k', path: 'x', reason: 'grant', headers }),
     ).not.toThrow();
@@ -331,11 +342,14 @@ describe('wiring — security events are instrumented at their sites', () => {
   it('every CSV/JSON platform export endpoint logs a platform_export', () => {
     // data-requests (DSAR) is intentionally EXCLUDED — it is audited as
     // `data_subject_export` per affected subject-org (better attribution).
+    // platform/system.ts is EXCLUDED too, as of 2026-07-31: its only export endpoint,
+    // exportAuditLogsCsv, was deleted alongside getCrossOrgAuditLogs (both C#-only now,
+    // NEXT_PUBLIC_AUDIT_LOG_READ_VIA_CSHARP confirmed live) — system.ts has zero export
+    // endpoints left, so this assertion no longer applies to it.
     const files = [
       'packages/api/src/routers/platform/ai-agents.ts',
       'packages/api/src/routers/platform/invoices.ts',
       'packages/api/src/routers/platform/invitations.ts',
-      'packages/api/src/routers/platform/system.ts',
       'packages/api/src/routers/platform/subscriptions.ts',
       'packages/api/src/routers/platform/users.ts',
     ];

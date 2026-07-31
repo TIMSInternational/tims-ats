@@ -1,22 +1,22 @@
 /**
  * csv-export-hardening.test.ts
  *
- * Pins the shared CSV formula/row-injection defense (CWE-1236) and proves the
- * still-TS-served platform CSV export (the cross-org audit-log export) wires it in.
- * exportAuditLogsCsv previously escaped only commas, leaving a formula-injection gap
- * (an org/actor name starting with =/+/-/@ executes as a formula when an auditor
- * opens the export in Excel/Sheets) — fixed by reusing what was access-review's csvCell logic.
+ * Pins the shared CSV formula/row-injection defense (CWE-1236) — originally added because
+ * exportAuditLogsCsv escaped only commas, leaving a formula-injection gap (an org/actor name
+ * starting with =/+/-/@ executes as a formula when an auditor opens the export in
+ * Excel/Sheets) — fixed by introducing the shared `csvCell`/`csvRow` helpers and wiring both
+ * TS platform CSV exports (access-review, audit-log) through them.
  *
- * access-review's OWN exportAccessReviewCsv (the original csvCell wiring this suite pinned)
- * was DELETED 2026-07-31 — NEXT_PUBLIC_ACCESS_REVIEW_READ_VIA_CSHARP confirmed live in prod, so
- * the C# read surface is the sole implementation now; see
- * packages/api/src/routers/platform/access-review.ts's header comment. The `csvCell`/`csvRow`
- * unit tests below are unaffected (they pin the shared helper directly, still used by
- * system.ts's audit-log export).
+ * Both original callers are now gone (TS-deletion, 2026-07-31): access-review's
+ * exportAccessReviewCsv and audit-log's exportAuditLogsCsv were both deleted once their
+ * respective NEXT_PUBLIC_*_VIA_CSHARP flags were confirmed live in prod — the C# endpoints
+ * (`/access-review/export`, `/audit/logs/export`) are the sole implementations now. There is no
+ * TS platform CSV export left to wire-test. The `csvCell`/`csvRow` unit tests below remain the
+ * pin for the shared helper's neutralization behavior — still load-bearing for any future TS
+ * CSV export (e.g. the untouched DSAR/data-requests export, which uses its own logic, not this
+ * one).
  */
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'fs';
-import { join } from 'path';
 import { csvCell, csvRow } from '../../packages/shared/src/csv';
 
 describe('csvCell', () => {
@@ -44,16 +44,5 @@ describe('csvCell', () => {
 describe('csvRow', () => {
   it('joins escaped cells with commas', () => {
     expect(csvRow(['a', '=evil', null])).toBe('"a","\'=evil",""');
-  });
-});
-
-const ROOT = join(__dirname, '..', '..');
-const read = (p: string) => readFileSync(join(ROOT, p), 'utf8');
-
-describe('wiring — the still-TS-served platform CSV export uses the shared hardened helper', () => {
-  it('the cross-org audit-log CSV export imports csvRow from @tims/shared', () => {
-    const src = read('packages/api/src/routers/platform/system.ts');
-    expect(src).toMatch(/import\s*\{\s*csvRow\s*\}\s*from\s*'@tims\/shared'/);
-    expect(src).not.toMatch(/\.replace\(\/,\/g,\s*'\s*'\)/); // the old comma-only "escaping"
   });
 });

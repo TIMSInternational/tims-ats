@@ -11,26 +11,6 @@ export const getRecentPlatformEventsInput = z.object({
   limit: z.number().int().min(1).max(50).default(10),
 });
 
-export const getCrossOrgAuditLogsInput = z.object({
-  cursor: z.string().uuid().optional(),
-  limit: z.number().int().min(1).max(50).default(20),
-  userId: z.string().uuid().optional(),
-  organizationId: z.string().uuid().optional(),
-  action: z.string().max(100).optional(),
-  entity: z.string().max(100).optional(),
-  dateFrom: z.date().optional(),
-  dateTo: z.date().optional(),
-});
-
-export const exportAuditLogsCsvInput = z.object({
-  organizationId: z.string().uuid().optional(),
-  action: z.string().max(100).optional(),
-  entity: z.string().max(100).optional(),
-  dateFrom: z.date().optional(),
-  dateTo: z.date().optional(),
-  format: z.enum(['csv', 'json']).default('csv'),
-});
-
 export const getOrgAuditLogsInput = z.object({
   organizationId: z.string().uuid(),
   limit: z.number().int().min(1).max(50).default(10),
@@ -43,7 +23,11 @@ export const updateFeatureFlagInput = z.object({
 });
 
 export const createFeatureFlagForAllOrgsInput = z.object({
-  key: z.string().min(1).max(100).regex(/^[a-z0-9_]+$/),
+  key: z
+    .string()
+    .min(1)
+    .max(100)
+    .regex(/^[a-z0-9_]+$/),
   enabled: z.boolean().default(false),
 });
 
