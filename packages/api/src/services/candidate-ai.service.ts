@@ -23,13 +23,13 @@ export const candidateAiService = {
   /**
    * Parse CV text into structured candidate data via the gated cv-parser agent.
    *
-   * Operates on TEXT the caller provides (paste-in / extracted upstream): the
-   * document store is still a mock with no extracted text, and faking it would
-   * violate rule #4. Real file → text extraction (S3 + PDF/DOCX) is a separate,
-   * future phase (rule #9). When a documentId is given, the parse result is
-   * persisted to that document. When a candidateId is given, the parsed
-   * education/languages are additionally promoted onto the Candidate row so
-   * the FIT Engine's experience/education/languages dimensions can read them.
+   * Operates on TEXT the caller provides. Staff paste text by hand; the public
+   * apply flow (portalApplicationService.processCvUpload) extracts it from an
+   * uploaded PDF/DOCX via S3 first. When a documentId is given, the parse
+   * result is persisted to that document. When a candidateId is given, the
+   * parsed education/languages are additionally promoted onto the Candidate
+   * row so the FIT Engine's experience/education/languages dimensions can
+   * read them.
    */
   async parseCV(orgId: string, text: string, documentId?: string, candidateId?: string) {
     // Verify document ownership BEFORE spending an AI call on it.
