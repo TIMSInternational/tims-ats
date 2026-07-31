@@ -3,12 +3,18 @@
  *
  * Asserts the REAL @tims/shared PURE shaping kernels for the five FX-derived compensation reads
  * (buildBandDistribution / buildCompPayEquity / buildTotalCompBreakdown / buildCompDashboardKpis /
- * buildSimulateAdjustment — the SAME kernels packages/api/src/routers/compensation.ts now delegates to) against
- * the shared goldens contracts/compensation-fixtures/{band-distribution,pay-equity,total-comp-breakdown,
- * dashboard-kpis,simulate-adjustment}.json — the SAME fixtures the C# Tims.Domain.Compensation.CompensationKernels
- * unit tests assert. Inputs are ALREADY converted (the impure convertMoney/sumMoney runs in the router). Any drift
- * in either stack (FIX 1 positive-unbanded fold, FIX 3 band-less compa shape, FIX 7 0-mean → null, min-5 triggers,
- * round-then-sum) turns this red.
+ * buildSimulateAdjustment) against the shared goldens contracts/compensation-fixtures/{band-distribution,
+ * pay-equity,total-comp-breakdown,dashboard-kpis,simulate-adjustment}.json — the SAME fixtures the C#
+ * Tims.Domain.Compensation.CompensationKernels unit tests assert. Only buildCompPayEquity/
+ * buildSimulateAdjustment are still called from packages/api/src/routers/compensation.ts today
+ * (getPayEquity/simulateAdjustment); buildBandDistribution/buildTotalCompBreakdown/buildCompDashboardKpis
+ * lost their router call site when getBandDistribution/getTotalCompBreakdown/getDashboardKpis were
+ * TS-deleted once NEXT_PUBLIC_COMPENSATION_FX_READ_VIA_CSHARP went permanently live — this file is now
+ * their ONLY cross-stack contract test, exercising them directly rather than through the router (same
+ * as benefits-utilization/compa-ratio-distribution's fixtures tests after those procedures were deleted
+ * 2026-07-29). Inputs are ALREADY converted (the impure convertMoney/sumMoney ran in the deleted router
+ * code; the C# side's impure conversion is unaffected). Any drift in either stack (FIX 1 positive-unbanded
+ * fold, FIX 3 band-less compa shape, FIX 7 0-mean → null, min-5 triggers, round-then-sum) turns this red.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';

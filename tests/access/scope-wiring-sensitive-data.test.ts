@@ -16,7 +16,12 @@ const readComp = () => readFileSync(join(ROOT, 'packages/api/src/routers/compens
 // Phase-5 Slice 9 (compensation strangler): the compa-ratio min-5 distribution + benefits utilization are
 // pure @tims/shared kernels golden-fixtured against the C# port (contracts/compensation-fixtures). Their TS
 // router procedures were DELETED on 2026-07-29 (C#-only now), so the router no longer calls either kernel —
-// these tripwires guard the kernels themselves, which remain the live cross-stack contract.
+// these tripwires guard the kernels themselves, which remain the live cross-stack contract. UPDATE
+// 2026-07-31: band-distribution/total-comp-breakdown/dashboard-kpis joined them — their TS procedures
+// (getBandDistribution/getTotalCompBreakdown/getDashboardKpis) were also deleted once
+// NEXT_PUBLIC_COMPENSATION_FX_READ_VIA_CSHARP went permanently live, so the router no longer calls
+// buildBandDistribution/buildTotalCompBreakdown/buildCompDashboardKpis either — same kernel-only tripwire
+// pattern applies to all five now.
 const readCompKernel = () => readFileSync(join(ROOT, 'packages/shared/src/compensation.ts'), 'utf8');
 // The per-person employeeCompensation read (selectFor + FULL+AUDIT logDataAccess)
 // lives in the shared compensation.service.ts helper (getEmployeeCompForSubject),
@@ -59,10 +64,11 @@ describe('compensation aggregate buckets honor min-5', () => {
   it('a bucket exactly at the floor (5) is not suppressed', () => {
     expect(suppressBelowMin5(5)).toEqual({ suppressed: false, count: 5 });
   });
-  it('compensation router imports and uses suppressBelowMin5', () => {
-    const src = readComp();
-    expect(src).toMatch(/suppressBelowMin5/);
-  });
+  // The router's own suppressBelowMin5 import was dropped once getBandDistribution/
+  // getTotalCompBreakdown/getDashboardKpis — its only callers — were TS-deleted 2026-07-31 (the FX
+  // flag went permanently live); getPayEquity delegates to buildCompPayEquity, which imports the
+  // helper itself. The guarantee now lives entirely in packages/shared/src/compensation.ts, guarded
+  // by the kernel-level tripwires below + tests/compensation/comp-fx-shaping-fixtures.test.ts.
   it('compensation keeps requireOrgScope on aggregates (defense in depth)', () => {
     const src = readComp();
     expect(src).toMatch(/requireOrgScope\(ctx\.access\)/);
@@ -357,9 +363,10 @@ describe('compa-ratio present-key cardinality (fix 2, round 7)', () => {
   });
 
   // getBandDistribution: round 7 emits an EMPTY bands array (no band keys) when the total banded+unbanded
-  // population is 1..4 OR any band/unbanded bucket is sub-floor. Slice 11c (honest-fixture): the all-or-nothing
-  // trigger now lives in the shared buildBandDistribution kernel (golden-fixtured both stacks), and the router
-  // DELEGATES to it — so the tripwire reads the kernel + asserts delegation.
+  // population is 1..4 OR any band/unbanded bucket is sub-floor. The TS router procedure was TS-deleted
+  // 2026-07-31 (NEXT_PUBLIC_COMPENSATION_FX_READ_VIA_CSHARP confirmed permanently live; C#-only now), so
+  // the router no longer calls buildBandDistribution — this tripwire now guards the kernel itself, the
+  // live cross-stack contract, same as the compa-ratio tripwires above.
   it('getBandDistribution emits an empty bands array when the population OR any band is sub-floor (round 7 → shared kernel)', () => {
     const k = readCompKernel();
     expect(k).toMatch(/allBands\.some\(\(band\) => suppressBelowMin5\(band\.dots\.length\)\.suppressed\)/);
@@ -370,8 +377,6 @@ describe('compa-ratio present-key cardinality (fix 2, round 7)', () => {
     // FIX 1 (Codex#1): the POSITIVE-unbanded sub-bucket is ALSO folded into the trigger, closing the
     // `dashboard.compensatedEmployees − Σdots = positiveUnbanded` differencing oracle.
     expect(k).toMatch(/suppressBelowMin5\(positiveUnbanded\)\.suppressed/);
-    // …and the router delegates to the kernel (honest-fixture rule).
-    expect(readComp()).toMatch(/buildBandDistribution\(/);
   });
 });
 

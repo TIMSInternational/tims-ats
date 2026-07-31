@@ -93,7 +93,16 @@ wrapped in `if (options.<X>Enabled || isOpenApiDocGeneration) { ... }`, defaulti
     2026-07-29:** 7 of the router's 14 procedures were deleted (the 5 FX-free reads + both writes);
     the 3 FX-dependent procedures are **deliberately retained as the live prod path**, and the 4
     zero-FE-consumer procedures (`getPayEquity`, `simulateAdjustment`, `getMarketComparison`,
-    `getEmployeeComp`) are untouched pre-existing dead code.
+    `getEmployeeComp`) are untouched pre-existing dead code. _(UPDATE 2026-07-31: the FX carve-out
+    above is now closed — `NEXT_PUBLIC_COMPENSATION_FX_READ_VIA_CSHARP` is confirmed permanently
+    live in prod, parity-verified 10/10 PASS via `scripts/parity/cli.ts verify compensation`, and
+    `getBandDistribution`/`getTotalCompBreakdown`/`getDashboardKpis` have now had their TS side
+    deleted too (`packages/api/src/routers/compensation.ts`), following the same TS-deletion
+    pattern as the other 8 domains' second-pass entries elsewhere in this doc. The FE wrapper
+    (`apps/web/lib/platform-api/compensation.ts`) now calls the C# service unconditionally for all
+    10 of its hooks — the file is no longer split. `getPayEquity`/`simulateAdjustment`/
+    `getMarketComparison`/`getEmployeeComp` remain untouched, unrelated zero-FE-consumer dead code,
+    unaffected by this change.)_
   - Nine-box — read (#164) + calibration write (#172). **Both flipped and live in prod** (2026-07-28),
     same confirmation method as evaluation360 above.
   - Engagement — read (#166) + write (#173). **Write flipped and live in prod** (2026-07-28) —
@@ -236,7 +245,9 @@ describe-service`; only the frontend Vercel flag was missing.)
   `getBandDistribution`/`getTotalCompBreakdown`/`getDashboardKpis` are DELIBERATELY RETAINED because
   `NEXT_PUBLIC_COMPENSATION_FX_READ_VIA_CSHARP` still does not exist in Vercel and TypeScript is
   their live prod path, and `getPayEquity`/`simulateAdjustment`/`getMarketComparison`/
-  `getEmployeeComp` remain untouched zero-consumer dead code), and engagement (2026-07-29,
+  `getEmployeeComp` remain untouched zero-consumer dead code — _(this "DELIBERATELY RETAINED" claim
+  is now stale, see the "UPDATE 2026-07-31" note on the Compensation entry above: the FX flag went
+  permanently live and these 3 procedures were TS-deleted too)_), and engagement (2026-07-29,
   **partially** deleted — 3 of 5 write procedures, `createSurvey`/`activateSurvey`/
   `submitSurveyResponse`; `createActionPlan`/`updateActionPlan` remain untouched zero-consumer dead
   code, and — AS OF THIS 2026-07-29 ENTRY — ALL 14 read procedures were DELIBERATELY RETAINED

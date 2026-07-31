@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
 import { Modal } from '../../../../components';
@@ -40,7 +39,6 @@ export function RequestAdjustmentModal({
   onClose,
 }: RequestAdjustmentModalProps) {
   const { t } = useI18n();
-  const utils = trpc.useUtils();
   const queryClient = useQueryClient();
 
   const [newSalary, setNewSalary] = useState(String(Math.round(suggestedNewSalary)));
@@ -49,12 +47,9 @@ export function RequestAdjustmentModal({
 
   const submit = useCompensationCreateAdjustment({
     onSuccess: () => {
-      // getDashboardKpis is FX-dependent and still tRPC-served, so its tRPC cache needs an explicit
-      // invalidate.
-      utils.compensation.getDashboardKpis.invalidate();
-      // Refresh the C# platform-api succession (comp-gap, TS tRPC read deleted) AND compensation
-      // reads — pending-adjustments (driven by this create) is C#-only now, so this prefix
-      // invalidation is the ONLY thing that refreshes it.
+      // All compensation reads (incl. the FX-dependent getDashboardKpis) are C#-only now. Refresh
+      // the C# platform-api succession (comp-gap) AND compensation reads — this prefix invalidation
+      // is the ONLY thing that refreshes any of them.
       queryClient.invalidateQueries({ queryKey: ['platform-api', 'succession'] });
       queryClient.invalidateQueries({ queryKey: ['platform-api', 'compensation'] });
       toast(t.succession.requestAdjustmentSuccess, { type: 'success' });
