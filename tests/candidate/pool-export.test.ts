@@ -3,6 +3,7 @@ import { readFileSync } from 'fs';
 import { resolve } from 'path';
 
 const candidateFindMany = vi.fn();
+const auditLogCreate = vi.fn().mockResolvedValue({});
 
 vi.mock('@tims/db', () => ({
   tenantDb: {
@@ -10,7 +11,35 @@ vi.mock('@tims/db', () => ({
       findMany: (...args: unknown[]) => candidateFindMany(...args),
     },
   },
+  // Router-level behavioral test below needs a real tRPC caller, which threads
+  // through trpc.ts's `db`/`runWithTenant` imports (audit logging + tenant
+  // context). Stubbed here rather than left undefined so those middleware
+  // calls no-op cleanly instead of relying on their own fail-soft catch.
+  db: {
+    auditLog: {
+      create: (...args: unknown[]) => auditLogCreate(...args),
+    },
+  },
+  runWithTenant: (_orgId: string | null, fn: () => unknown) => fn(),
 }));
+
+// Scope-filtering (the router's headline security property) is mocked so the
+// behavioral test below can assert the resolved scopeWhere fragment actually
+// flows into candidateService.exportPool — see the "router (behavioral)"
+// describe block. Pattern mirrors tests/candidate/documents-router.test.ts.
+const buildAccessForUserMock = vi.hoisted(() =>
+  vi.fn(async () => ({ allowed: true, scope: 'organization', roles: ['hr_admin'] })),
+);
+const scopeWhereForMock = vi.hoisted(() => vi.fn().mockResolvedValue({ __marker: 'scope-fragment' }));
+
+vi.mock('../../packages/api/src/access', async () => {
+  const actual = await vi.importActual<typeof import('../../packages/api/src/access')>('../../packages/api/src/access');
+  return {
+    ...actual,
+    buildAccessForUser: buildAccessForUserMock,
+    scopeWhereFor: scopeWhereForMock,
+  };
+});
 
 import { candidateRepository } from '../../packages/api/src/repositories/candidate.repository';
 
@@ -20,12 +49,12 @@ describe('candidateRepository.findForExport', () => {
     candidateFindMany.mockResolvedValue([]);
   });
 
-  it('composes organizationId, deletedAt: null, and scopeWhere via AND (never spread)', async () => {
+  it('composes organizationId, isActive: true, deletedAt: null, and scopeWhere via AND (never spread)', async () => {
     const scopeWhere = { __marker: 'scope-fragment' };
     await candidateRepository.findForExport('org-1', scopeWhere as never, {}, 5000);
 
     const call = candidateFindMany.mock.calls[0]?.[0];
-    expect(call.where.AND).toContainEqual({ organizationId: 'org-1', deletedAt: null });
+    expect(call.where.AND).toContainEqual({ organizationId: 'org-1', isActive: true, deletedAt: null });
     expect(call.where.AND).toContainEqual(scopeWhere);
   });
 
@@ -195,23 +224,71 @@ describe('candidate.pool.export router (source text checks)', () => {
     expect(src).not.toContain("z.enum(['csv', 'xlsx'])");
   });
 
-  it('applies scope filtering (the old stub applied none)', () => {
-    // Extract ONLY the export procedure block to ensure scopeWhereFor is present INSIDE it
-    // (not just anywhere in the file, e.g., in getPoolStats which already has it)
-    // Match from "export:" to the closing "}),\n" that ends the procedure (not the object)
-    // by looking for the closing brace AFTER the mutation function
-    const exportMatch = src.match(
-      /export:\s*permissionProcedure\('candidate',\s*'read'\)[\s\S]*?\.mutation\([\s\S]*?\n\s*}\),/,
-    );
-    expect(exportMatch).toBeDefined();
-    const exportBlock = exportMatch![0];
-    expect(exportBlock).toContain("scopeWhereFor('candidate', ctx.access, ctx.user.id)");
-  });
-
   it('calls the real service and logs the export', () => {
     expect(src).toContain('candidateService.exportPool');
     expect(src).toContain('logPlatformExport');
     expect(src).not.toContain('stub_generated');
     expect(src).not.toContain('storage.tims.app');
+  });
+});
+
+// Behavioral replacement for the old "applies scope filtering" source-text check:
+// a real tRPC caller is built for candidatePoolRouter with scopeWhereFor mocked to
+// return a distinctive marker fragment, and we assert that marker actually flows
+// into candidateService.exportPool's scopeWhere argument — proving the tenant/scope
+// filter reaches the service call, not just that the source text mentions it.
+// Pattern mirrors tests/candidate/documents-router.test.ts.
+describe('candidate.pool.export router (behavioral)', () => {
+  const ORG_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
+
+  async function makePoolCaller() {
+    const { createCallerFactory, router } = await import('../../packages/api/src/trpc');
+    const { candidatePoolRouter } = await import('../../packages/api/src/routers/candidate/pool');
+    const testRouter = router({ pool: candidatePoolRouter });
+    const callerFactory = createCallerFactory(testRouter);
+    return callerFactory({
+      user: {
+        id: 'user-1',
+        organizationId: ORG_ID,
+        roles: ['hr_admin'],
+        isPlatformOwner: false,
+        impersonatorId: null,
+        email: 'hr@tims.co',
+        isActive: true,
+      },
+      headers: new Headers(),
+      supabaseAuth: null,
+      externalAuth: null,
+    } as never) as unknown as {
+      pool: {
+        export(input: { format: 'csv'; poolType?: string; tags?: string[] }): Promise<unknown>;
+      };
+    };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    buildAccessForUserMock.mockResolvedValue({ allowed: true, scope: 'organization', roles: ['hr_admin'] });
+    scopeWhereForMock.mockResolvedValue({ __marker: 'scope-fragment' });
+    auditLogCreate.mockResolvedValue({});
+  });
+
+  it('threads the scopeWhereFor result into candidateService.exportPool as scopeWhere', async () => {
+    const exportPoolSpy = vi
+      .spyOn(candidateService, 'exportPool')
+      .mockResolvedValue({ csv: 'header\n', count: 0, truncated: false });
+
+    try {
+      const caller = await makePoolCaller();
+      await caller.pool.export({ format: 'csv' });
+
+      expect(exportPoolSpy).toHaveBeenCalledWith(
+        ORG_ID,
+        { __marker: 'scope-fragment' },
+        expect.objectContaining({ poolType: undefined, tags: undefined }),
+      );
+    } finally {
+      exportPoolSpy.mockRestore();
+    }
   });
 });
