@@ -391,10 +391,11 @@ export const SURFACES: Record<string, Surface> = {
   // Slice 11c's separately-flagged pay-equity) was mapped/dark with no verify surface at all —
   // this is the first registry entry for the `dei` domain.
   //
-  // ALL 10 reads share the SAME grant-only `DeiStaffGate` (`permissionProcedure('dei','read')`,
-  // NO org-gate — the reads are org-wide demographic rollups whose disclosure control is
-  // k-anonymity in the pure kernel, not RBAC scope) — so every endpoint gets the identical
-  // `expectedByRole`, grounded directly in seed-access-matrix.ts:
+  // ALL reads (registered here or not) share the SAME grant-only `DeiStaffGate`
+  // (`permissionProcedure('dei','read')`, NO org-gate — the reads are org-wide demographic
+  // rollups whose disclosure control is k-anonymity in the pure kernel, not RBAC scope) — so
+  // every endpoint gets the identical `expectedByRole`, grounded directly in
+  // seed-access-matrix.ts:
   //   - super_admin → 200: code-guaranteed bypass in both stacks (see the team-intel precedent
   //     above), also holds `dei` r/c/u/d@organization (seed-access-matrix.ts:34).
   //   - hr_admin → 200: `dei` read+export@organization (seed-access-matrix.ts:53) — a real grant.
@@ -404,46 +405,23 @@ export const SURFACES: Record<string, Surface> = {
   // `getPayEquity` (`/dei/pay-equity`) is DELIBERATELY EXCLUDED: it is gated by the separate
   // `Platform__FxReadsEnabled` flag (not `Platform__DeiReadEnabled`), the same FX-tied-endpoint
   // exclusion already applied to compensation's live-FX reads elsewhere in this registry (see the
-  // "FX-reads cutover" precedent) — a documented deferral, not an oversight. One flag
-  // `Platform__DeiReadEnabled` covers the other 10.
+  // "FX-reads cutover" precedent) — a documented deferral, not an oversight.
+  //
+  // UPDATE 2026-07-31: `Platform__DeiReadEnabled` / NEXT_PUBLIC_DEI_READ_VIA_CSHARP were confirmed
+  // live in prod, and 8 of the 10 registered TS procedures (getDashboardKpis,
+  // getGenderRepresentation, getAgeDistribution, getNationalityDiversity, getLeadershipDiversity,
+  // getHiringFunnel, getPromotionEquity, getInclusionIndex) have since been DELETED from
+  // packages/api/src/routers/dei.ts — see the TS-deletion note there. This entry now registers
+  // only getEthnicityDistribution's and getDisabilityDistribution's endpoints, the two
+  // zero-FE-consumer procedures that were deliberately retained. `verify dei` still runs a REAL
+  // (smaller) check against those two — do not treat this surface as fully TS_DELETED (mirrors
+  // the succession/nine-box/compensation precedent).
   dei: {
     key: 'dei',
     flag: 'Platform__DeiReadEnabled',
     roles: ['super_admin', 'hr_admin', 'hrbp'],
     probeRole: 'super_admin',
     endpoints: [
-      {
-        name: 'dashboard-kpis',
-        csharpPath: '/dei/dashboard-kpis',
-        tsProcedure: 'dei.getDashboardKpis',
-        input: {},
-        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
-        normalize: { dropNullish: true },
-      },
-      {
-        name: 'gender-representation',
-        csharpPath: '/dei/gender-representation',
-        tsProcedure: 'dei.getGenderRepresentation',
-        input: {},
-        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
-        normalize: { dropNullish: true },
-      },
-      {
-        name: 'age-distribution',
-        csharpPath: '/dei/age-distribution',
-        tsProcedure: 'dei.getAgeDistribution',
-        input: {},
-        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
-        normalize: { dropNullish: true },
-      },
-      {
-        name: 'nationality-diversity',
-        csharpPath: '/dei/nationality-diversity',
-        tsProcedure: 'dei.getNationalityDiversity',
-        input: {},
-        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
-        normalize: { dropNullish: true },
-      },
       {
         name: 'ethnicity-distribution',
         csharpPath: '/dei/ethnicity-distribution',
@@ -456,38 +434,6 @@ export const SURFACES: Record<string, Surface> = {
         name: 'disability-distribution',
         csharpPath: '/dei/disability-distribution',
         tsProcedure: 'dei.getDisabilityDistribution',
-        input: {},
-        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
-        normalize: { dropNullish: true },
-      },
-      {
-        name: 'leadership-diversity',
-        csharpPath: '/dei/leadership-diversity',
-        tsProcedure: 'dei.getLeadershipDiversity',
-        input: {},
-        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
-        normalize: { dropNullish: true },
-      },
-      {
-        name: 'hiring-funnel',
-        csharpPath: '/dei/hiring-funnel',
-        tsProcedure: 'dei.getHiringFunnel',
-        input: {},
-        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
-        normalize: { dropNullish: true },
-      },
-      {
-        name: 'promotion-equity',
-        csharpPath: '/dei/promotion-equity',
-        tsProcedure: 'dei.getPromotionEquity',
-        input: {},
-        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
-        normalize: { dropNullish: true },
-      },
-      {
-        name: 'inclusion-index',
-        csharpPath: '/dei/inclusion-index',
-        tsProcedure: 'dei.getInclusionIndex',
         input: {},
         expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
         normalize: { dropNullish: true },

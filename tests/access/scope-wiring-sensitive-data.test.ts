@@ -100,36 +100,43 @@ describe('aggregateGroups k-anonymity contract (demographic/engagement groups)',
 });
 
 // ── Source tripwires: DEI service honors min-5 (Task 7 Part A) ───────────────
+// TS-DELETION (2026-07-31): getDashboardKpis / getGenderRepresentation / getAgeDistribution /
+// getNationalityDiversity / getPayEquity / getLeadershipDiversity were deleted from dei.service.ts
+// (their router callers were deleted after NEXT_PUBLIC_DEI_READ_VIA_CSHARP went live — see
+// packages/api/src/routers/dei.ts). Only getEthnicityDistribution/getDisabilityDistribution
+// remain, both DELEGATING to the shared buildDistribution kernel — so the service no longer
+// imports suppressBelowMin5 at all (that lived in the now-deleted getPayEquity) and no longer
+// calls leadershipDiversity/deiDashboardKpis (their sole callers are also deleted). Those two
+// kernels — and getPayEquity's shape/floors — remain live in @tims/shared and are still exercised
+// directly by kernels-fixtures.test.ts / pay-equity-fixtures.test.ts (golden-fixtured against the
+// C# port), so these tripwires now assert on the KERNEL only, not the (smaller) service.
 describe('DEI demographic distributions honor min-5', () => {
-  it('dei.service imports suppressBelowMin5 (payEquity, still inline) + DELEGATES the demographic aggregates to the shared kernels (honest-fixture)', () => {
+  it('dei.service DELEGATES its remaining aggregates to the shared buildDistribution kernel (honest-fixture)', () => {
     const src = readDeiService();
-    // suppressBelowMin5 stays imported for getPayEquity (inline until Slice 11c).
-    expect(src).toMatch(/import\s*\{\s*suppressBelowMin5\s*\}\s*from '\.\.\/access'/);
-    // Delegation tripwire (#141 honest-fixture): the kernelized reads import + CALL the shared shapers,
+    // Delegation tripwire (#141 honest-fixture): the kernelized reads import + CALL the shared shaper,
     // never a re-implemented inline mirror.
     expect(src).toMatch(/from '@tims\/shared'/);
-    for (const kernel of ['buildDistribution', 'leadershipDiversity', 'deiDashboardKpis']) {
-      expect(src, `dei.service must call ${kernel}`).toMatch(new RegExp(`\\b${kernel}\\(`));
-    }
+    expect(src, 'dei.service must call buildDistribution').toMatch(/\bbuildDistribution\(/);
+    // suppressBelowMin5 / leadershipDiversity / deiDashboardKpis were only used by the now-deleted
+    // getPayEquity / getLeadershipDiversity / getDashboardKpis methods — no longer imported here.
+    expect(src).not.toMatch(/suppressBelowMin5/);
+    expect(src).not.toMatch(/\bleadershipDiversity\(/);
+    expect(src).not.toMatch(/\bdeiDashboardKpis\(/);
   });
 
-  it('every per-group distribution routes a count through suppressBelowMin5 — in the KERNEL (>=7 calls) + payEquity in the service', () => {
-    // gender/age/nationality/ethnicity/disability/leadership/dashboard/inclusion floors live in the kernel now.
+  it('every per-group distribution routes a count through suppressBelowMin5 in the KERNEL (>=7 calls)', () => {
+    // gender/age/nationality/ethnicity/disability/leadership/dashboard/inclusion floors live in the kernel;
+    // payEquity's floors live there too (golden-fixtured, asserted directly by pay-equity-fixtures.test.ts).
     const kernelCalls = readDeiKernel().match(/suppressBelowMin5\(/g) ?? [];
     expect(kernelCalls.length).toBeGreaterThanOrEqual(7);
-    // payEquity retains its floors in the service (population, skipped, per-gender) until Slice 11c.
-    const serviceCalls = readDeiService().match(/suppressBelowMin5\(/g) ?? [];
-    expect(serviceCalls.length).toBeGreaterThanOrEqual(3);
   });
 
-  it('every per-group distribution emits an empty shape + top-level suppressed (round 7 present-key cardinality)', () => {
+  it('every per-group distribution emits an empty shape + top-level suppressed (round 7 present-key cardinality) (kernel)', () => {
     const kernel = readDeiKernel();
     // round 7: when ANY group/bucket is sub-floor (or population 1..4) the distribution is EMPTY (no group keys)
-    // + a single top-level `suppressed: true`. buildDistribution + leadershipDiversity own these shapes now.
+    // + a single top-level `suppressed: true`. buildDistribution + leadershipDiversity own these shapes.
     expect(kernel).toMatch(/return \{ groups: \[\], suppressed: true \}/);
     expect(kernel).toMatch(/return \{ totalLeaders: null, byGender: \[\], suppressed: true \}/);
-    // payEquity's empty-suppressed shape stays inline in the service (Slice 11c).
-    expect(readDeiService()).toMatch(/results: \[\] as PayOut\[\], gapPct: null as number \| null, suppressed: true/);
     // The retired round-5 uniform-flag-keep-keys design is gone from the kernel.
     expect(kernel).not.toMatch(/const anySuppressed = /);
     expect(kernel).not.toMatch(
