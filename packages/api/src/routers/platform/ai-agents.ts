@@ -6,6 +6,7 @@ import { platformProcedure } from './_common';
 import { logPlatformExport } from '../../access/security-audit';
 import { loadAiInterviewConfig, AI_VOICE_INTERVIEW_SLUG } from '../../services/ai-interview-access.service';
 import { buildAiInterviewInvoiceLines } from '../../services/ai-interview-billing';
+import { AGENT_REGISTRY } from '@tims/ai';
 
 const agentListSelect = {
   id: true,
@@ -53,11 +54,15 @@ export const aiAgentsRouter = router({
   }),
 
   listAiAgents: platformProcedure
-    .input(z.object({
-      category: AGENT_CATEGORY.optional(),
-      status: AGENT_STATUS.optional(),
-      search: z.string().max(100).optional(),
-    }).optional())
+    .input(
+      z
+        .object({
+          category: AGENT_CATEGORY.optional(),
+          status: AGENT_STATUS.optional(),
+          search: z.string().max(100).optional(),
+        })
+        .optional(),
+    )
     .query(async ({ input }) => {
       const where: Prisma.AiAgentWhereInput = {};
       if (input?.category) where.category = input.category;
@@ -77,40 +82,40 @@ export const aiAgentsRouter = router({
       });
     }),
 
-  getAiAgent: platformProcedure
-    .input(z.object({ id: z.string().uuid() }))
-    .query(async ({ input }) => {
-      const agent = await db.aiAgent.findUnique({
-        where: { id: input.id },
-        select: {
-          ...agentListSelect,
-          orgConfigs: {
-            select: {
-              id: true,
-              enabled: true,
-              monthlyBudget: true,
-              addonMonthlyFeeUsd: true,
-              billableUsdPerMinute: true,
-              aiInterviewDefaultMaxMinutes: true,
-              aiInterviewMaxMinutesByType: true,
-              organization: { select: { id: true, name: true } },
-            },
+  getAiAgent: platformProcedure.input(z.object({ id: z.string().uuid() })).query(async ({ input }) => {
+    const agent = await db.aiAgent.findUnique({
+      where: { id: input.id },
+      select: {
+        ...agentListSelect,
+        orgConfigs: {
+          select: {
+            id: true,
+            enabled: true,
+            monthlyBudget: true,
+            addonMonthlyFeeUsd: true,
+            billableUsdPerMinute: true,
+            aiInterviewDefaultMaxMinutes: true,
+            aiInterviewMaxMinutesByType: true,
+            organization: { select: { id: true, name: true } },
           },
         },
-      });
-      if (!agent) throw new TRPCError({ code: 'NOT_FOUND', message: 'Agente no encontrado' });
-      return agent;
-    }),
+      },
+    });
+    if (!agent) throw new TRPCError({ code: 'NOT_FOUND', message: 'Agente no encontrado' });
+    return agent;
+  }),
 
   updateAiAgent: platformProcedure
-    .input(z.object({
-      id: z.string().uuid(),
-      status: AGENT_STATUS.optional(),
-      model: AGENT_MODEL.optional(),
-      cacheTtlSeconds: z.number().int().min(0).max(86400).optional(),
-      batchEligible: z.boolean().optional(),
-      description: z.string().max(500).optional(),
-    }))
+    .input(
+      z.object({
+        id: z.string().uuid(),
+        status: AGENT_STATUS.optional(),
+        model: AGENT_MODEL.optional(),
+        cacheTtlSeconds: z.number().int().min(0).max(86400).optional(),
+        batchEligible: z.boolean().optional(),
+        description: z.string().max(500).optional(),
+      }),
+    )
     .mutation(async ({ input }) => {
       const existing = await db.aiAgent.findUnique({
         where: { id: input.id },
@@ -126,40 +131,50 @@ export const aiAgentsRouter = router({
       });
 
       if (input.status && input.status !== existing.status) {
-        await db.auditLog.create({
-          data: {
-            action: `ai_agent_status_${input.status}`,
-            entity: 'ai_agent',
-            entityId: id,
-            organizationId: '00000000-0000-0000-0000-000000000000',
-            metadata: { slug: existing.slug, from: existing.status, to: input.status },
-          },
-        }).catch(() => {});
+        await db.auditLog
+          .create({
+            data: {
+              action: `ai_agent_status_${input.status}`,
+              entity: 'ai_agent',
+              entityId: id,
+              organizationId: '00000000-0000-0000-0000-000000000000',
+              metadata: { slug: existing.slug, from: existing.status, to: input.status },
+            },
+          })
+          .catch(() => {});
       }
 
       return updated;
     }),
 
   updateAiAgentOrgConfig: platformProcedure
-    .input(z.object({
-      agentId: z.string().uuid(),
-      organizationId: z.string().uuid(),
-      enabled: z.boolean().optional(),
-      // nullable so clearing the field sends null (Prisma strips undefined, so
-      // undefined could never clear an existing cap).
-      monthlyBudget: z.number().min(0).max(100000).nullable().optional(),
-      addonMonthlyFeeUsd: z.number().min(0).max(100000).nullable().optional(),
-      billableUsdPerMinute: z.number().min(0).max(1000).nullable().optional(),
-      aiInterviewDefaultMaxMinutes: z.number().int().min(1).max(180).nullable().optional(),
-      aiInterviewMaxMinutesByType: z.record(z.string().max(50), z.number().int().min(1).max(180)).nullable().optional(),
-    }))
+    .input(
+      z.object({
+        agentId: z.string().uuid(),
+        organizationId: z.string().uuid(),
+        enabled: z.boolean().optional(),
+        // nullable so clearing the field sends null (Prisma strips undefined, so
+        // undefined could never clear an existing cap).
+        monthlyBudget: z.number().min(0).max(100000).nullable().optional(),
+        addonMonthlyFeeUsd: z.number().min(0).max(100000).nullable().optional(),
+        billableUsdPerMinute: z.number().min(0).max(1000).nullable().optional(),
+        aiInterviewDefaultMaxMinutes: z.number().int().min(1).max(180).nullable().optional(),
+        aiInterviewMaxMinutesByType: z
+          .record(z.string().max(50), z.number().int().min(1).max(180))
+          .nullable()
+          .optional(),
+      }),
+    )
     .mutation(async ({ input }) => {
       const { agentId, organizationId, aiInterviewMaxMinutesByType, ...rest } = input;
       const data = {
         ...rest,
         ...(aiInterviewMaxMinutesByType === undefined
           ? {}
-          : { aiInterviewMaxMinutesByType: aiInterviewMaxMinutesByType === null ? Prisma.DbNull : aiInterviewMaxMinutesByType }),
+          : {
+              aiInterviewMaxMinutesByType:
+                aiInterviewMaxMinutesByType === null ? Prisma.DbNull : aiInterviewMaxMinutesByType,
+            }),
       };
       return db.aiAgentOrgConfig.upsert({
         where: { agentId_organizationId: { agentId, organizationId } },
@@ -178,32 +193,34 @@ export const aiAgentsRouter = router({
       });
     }),
 
-  getOrgAiConfigs: platformProcedure
-    .input(z.object({ organizationId: z.string().uuid() }))
-    .query(async ({ input }) => {
-      return db.aiAgentOrgConfig.findMany({
-        where: { organizationId: input.organizationId },
-        select: {
-          id: true,
-          enabled: true,
-          monthlyBudget: true,
-          addonMonthlyFeeUsd: true,
-          billableUsdPerMinute: true,
-          aiInterviewDefaultMaxMinutes: true,
-          aiInterviewMaxMinutesByType: true,
-          agent: {
-            select: { id: true, name: true, slug: true, category: true, model: true, status: true, costPerCall: true },
-          },
+  getOrgAiConfigs: platformProcedure.input(z.object({ organizationId: z.string().uuid() })).query(async ({ input }) => {
+    return db.aiAgentOrgConfig.findMany({
+      where: { organizationId: input.organizationId },
+      select: {
+        id: true,
+        enabled: true,
+        monthlyBudget: true,
+        addonMonthlyFeeUsd: true,
+        billableUsdPerMinute: true,
+        aiInterviewDefaultMaxMinutes: true,
+        aiInterviewMaxMinutesByType: true,
+        agent: {
+          select: { id: true, name: true, slug: true, category: true, model: true, status: true, costPerCall: true },
         },
-      });
-    }),
+      },
+    });
+  }),
 
   getAiAgentUsage: platformProcedure
-    .input(z.object({
-      agentId: z.string().uuid().optional(),
-      organizationId: z.string().uuid().optional(),
-      days: z.number().int().min(1).max(90).default(30),
-    }).optional())
+    .input(
+      z
+        .object({
+          agentId: z.string().uuid().optional(),
+          organizationId: z.string().uuid().optional(),
+          days: z.number().int().min(1).max(90).default(30),
+        })
+        .optional(),
+    )
     .query(async ({ input }) => {
       const since = new Date(Date.now() - (input?.days ?? 30) * 24 * 60 * 60 * 1000);
       const where: Prisma.AiAgentUsageLogWhereInput = { createdAt: { gte: since } };
@@ -246,27 +263,44 @@ export const aiAgentsRouter = router({
     const agents = await db.aiAgent.findMany({
       orderBy: [{ category: 'asc' }, { name: 'asc' }],
       select: {
-        name: true, slug: true, category: true, model: true, status: true,
-        batchEligible: true, cacheTtlSeconds: true, costPerCall: true,
+        name: true,
+        slug: true,
+        category: true,
+        model: true,
+        status: true,
+        batchEligible: true,
+        cacheTtlSeconds: true,
+        costPerCall: true,
         _count: { select: { orgConfigs: true, usageLogs: true } },
       },
     });
     const header = 'Name,Slug,Category,Model,Status,Batch,Cache TTL,Cost/Call,Org Configs,Usage Logs';
-    const rows = agents.map(a => [
-      a.name, a.slug, a.category, a.model, a.status,
-      a.batchEligible ? 'Yes' : 'No', a.cacheTtlSeconds,
-      `$${a.costPerCall.toFixed(3)}`, a._count.orgConfigs, a._count.usageLogs,
-    ].join(','));
+    const rows = agents.map((a) =>
+      [
+        a.name,
+        a.slug,
+        a.category,
+        a.model,
+        a.status,
+        a.batchEligible ? 'Yes' : 'No',
+        a.cacheTtlSeconds,
+        `$${a.costPerCall.toFixed(3)}`,
+        a._count.orgConfigs,
+        a._count.usageLogs,
+      ].join(','),
+    );
     logPlatformExport(ctx, { resource: 'ai_agents', count: agents.length, format: 'csv' });
     return { csv: [header, ...rows].join('\n'), count: agents.length };
   }),
 
   getAiInterviewBillingPreview: platformProcedure
-    .input(z.object({
-      organizationId: z.string().uuid(),
-      periodStart: z.date().optional(),
-      periodEnd: z.date().optional(),
-    }))
+    .input(
+      z.object({
+        organizationId: z.string().uuid(),
+        periodStart: z.date().optional(),
+        periodEnd: z.date().optional(),
+      }),
+    )
     .query(async ({ input }) => {
       const config = await loadAiInterviewConfig(input.organizationId);
       const now = new Date();
@@ -301,41 +335,390 @@ export const aiAgentsRouter = router({
     if (existing > 0) return { seeded: false, count: existing };
 
     const agents = [
-      { slug: 'cv-parser', name: 'CV Parser', description: 'Extrae datos estructurados de hojas de vida', category: 'recruitment', model: 'haiku', batchEligible: true, cacheTtlSeconds: 0, costPerCall: 0.003, status: 'stub' },
-      { slug: 'vacancy-writer', name: 'Vacancy Writer', description: 'Genera descripciones de vacantes optimizadas', category: 'recruitment', model: 'sonnet', batchEligible: false, cacheTtlSeconds: 300, costPerCall: 0.015, status: 'stub' },
-      { slug: 'inclusive-language', name: 'Inclusive Language Checker', description: 'Revisa lenguaje inclusivo en descripciones de vacantes', category: 'recruitment', model: 'haiku', batchEligible: false, cacheTtlSeconds: 600, costPerCall: 0.003, status: 'stub' },
-      { slug: 'candidate-screener', name: 'Candidate Screener', description: 'Evalua candidatos contra requisitos de vacante', category: 'recruitment', model: 'sonnet', batchEligible: true, cacheTtlSeconds: 0, costPerCall: 0.015, status: 'stub' },
-      { slug: 'candidate-matcher', name: 'Candidate Matcher', description: 'Matching automatico candidato-vacante con scoring', category: 'recruitment', model: 'sonnet', batchEligible: true, cacheTtlSeconds: 0, costPerCall: 0.015, status: 'stub' },
-      { slug: 'interview-question-gen', name: 'Interview Question Generator', description: 'Genera preguntas de entrevista personalizadas', category: 'interview', model: 'sonnet', batchEligible: false, cacheTtlSeconds: 300, costPerCall: 0.015, status: 'stub' },
-      { slug: 'interview-summarizer', name: 'Interview Summarizer', description: 'Resume entrevistas con puntos clave y evaluacion', category: 'interview', model: 'sonnet', batchEligible: false, cacheTtlSeconds: 0, costPerCall: 0.015, status: 'stub' },
-      { slug: 'assessment-evaluator', name: 'Assessment Evaluator', description: 'Evalua respuestas de assessments automaticamente', category: 'assessment', model: 'sonnet', batchEligible: true, cacheTtlSeconds: 0, costPerCall: 0.015, status: 'stub' },
-      { slug: 'pipeline-optimizer', name: 'Pipeline Optimizer', description: 'Sugiere optimizaciones del pipeline de reclutamiento', category: 'pipeline', model: 'sonnet', batchEligible: false, cacheTtlSeconds: 1800, costPerCall: 0.015, status: 'stub' },
-      { slug: 'email-composer', name: 'Email Composer', description: 'Compone emails personalizados para candidatos', category: 'recruitment', model: 'haiku', batchEligible: false, cacheTtlSeconds: 0, costPerCall: 0.003, status: 'stub' },
-      { slug: 'offer-letter-gen', name: 'Offer Letter Generator', description: 'Genera cartas de oferta personalizadas', category: 'recruitment', model: 'sonnet', batchEligible: false, cacheTtlSeconds: 0, costPerCall: 0.015, status: 'stub' },
-      { slug: 'talent-insights', name: 'Talent Insights', description: 'Analytics avanzados de talento con predicciones', category: 'talent', model: 'sonnet', batchEligible: false, cacheTtlSeconds: 3600, costPerCall: 0.015, status: 'stub' },
-      { slug: 'succession-planner', name: 'Succession Planner', description: 'Planificacion de sucesion asistida por IA', category: 'talent', model: 'sonnet', batchEligible: false, cacheTtlSeconds: 3600, costPerCall: 0.015, status: 'stub' },
-      { slug: 'performance-reviewer', name: 'Performance Reviewer', description: 'Asistente de evaluacion de desempeno', category: 'talent', model: 'sonnet', batchEligible: false, cacheTtlSeconds: 0, costPerCall: 0.015, status: 'stub' },
-      { slug: 'okr-assistant', name: 'OKR Assistant', description: 'Ayuda a definir y alinear OKRs', category: 'talent', model: 'haiku', batchEligible: false, cacheTtlSeconds: 600, costPerCall: 0.003, status: 'stub' },
-      { slug: 'onboarding-planner', name: 'Onboarding Planner', description: 'Crea planes de onboarding personalizados', category: 'talent', model: 'sonnet', batchEligible: false, cacheTtlSeconds: 1800, costPerCall: 0.015, status: 'stub' },
-      { slug: 'dei-analyzer', name: 'DEI Analyzer', description: 'Analisis de diversidad, equidad e inclusion', category: 'talent', model: 'sonnet', batchEligible: false, cacheTtlSeconds: 3600, costPerCall: 0.015, status: 'stub' },
-      { slug: 'compensation-benchmarker', name: 'Compensation Benchmarker', description: 'Benchmarking salarial con datos de mercado', category: 'talent', model: 'sonnet', batchEligible: false, cacheTtlSeconds: 86400, costPerCall: 0.015, status: 'stub' },
-      { slug: 'learning-recommender', name: 'Learning Recommender', description: 'Recomienda rutas de aprendizaje personalizadas', category: 'talent', model: 'haiku', batchEligible: false, cacheTtlSeconds: 3600, costPerCall: 0.003, status: 'stub' },
-      { slug: 'engagement-predictor', name: 'Engagement Predictor', description: 'Predice riesgo de rotacion y engagement', category: 'talent', model: 'sonnet', batchEligible: true, cacheTtlSeconds: 3600, costPerCall: 0.015, status: 'stub' },
-      { slug: 'nine-box-evaluator', name: 'Nine-Box Evaluator', description: 'Evaluacion automatica para nine-box grid', category: 'talent', model: 'sonnet', batchEligible: true, cacheTtlSeconds: 0, costPerCall: 0.015, status: 'stub' },
-      { slug: 'video-analyzer', name: 'Video Interview Analyzer', description: 'Analiza entrevistas en video con NLP', category: 'interview', model: 'sonnet', batchEligible: false, cacheTtlSeconds: 0, costPerCall: 0.030, status: 'stub' },
-      { slug: 'sentiment-analyzer', name: 'Sentiment Analyzer', description: 'Analisis de sentimiento en comunicaciones', category: 'assessment', model: 'haiku', batchEligible: true, cacheTtlSeconds: 0, costPerCall: 0.003, status: 'stub' },
-      { slug: 'skills-extractor', name: 'Skills Extractor', description: 'Extrae habilidades de CVs y perfiles', category: 'recruitment', model: 'haiku', batchEligible: true, cacheTtlSeconds: 300, costPerCall: 0.003, status: 'stub' },
-      { slug: 'job-classifier', name: 'Job Classifier', description: 'Clasifica vacantes por familia y nivel', category: 'recruitment', model: 'haiku', batchEligible: true, cacheTtlSeconds: 600, costPerCall: 0.003, status: 'stub' },
-      { slug: 'reference-checker', name: 'Reference Checker', description: 'Asistente de verificacion de referencias', category: 'recruitment', model: 'haiku', batchEligible: false, cacheTtlSeconds: 0, costPerCall: 0.003, status: 'stub' },
-      { slug: 'interview-coach', name: 'Interview Coach', description: 'Coaching para entrevistadores con feedback', category: 'interview', model: 'sonnet', batchEligible: false, cacheTtlSeconds: 600, costPerCall: 0.015, status: 'stub' },
-      { slug: 'assessment-designer', name: 'Assessment Designer', description: 'Disena assessments y pruebas tecnicas', category: 'assessment', model: 'sonnet', batchEligible: false, cacheTtlSeconds: 1800, costPerCall: 0.015, status: 'stub' },
-      { slug: 'bias-detector', name: 'Bias Detector', description: 'Detecta sesgos en procesos de seleccion', category: 'assessment', model: 'sonnet', batchEligible: false, cacheTtlSeconds: 0, costPerCall: 0.015, status: 'stub' },
-      { slug: 'workforce-planner', name: 'Workforce Planner', description: 'Planificacion de fuerza laboral con IA', category: 'talent', model: 'sonnet', batchEligible: false, cacheTtlSeconds: 3600, costPerCall: 0.015, status: 'stub' },
-      { slug: 'report-generator', name: 'Report Generator', description: 'Genera reportes de RRHH automatizados', category: 'pipeline', model: 'sonnet', batchEligible: false, cacheTtlSeconds: 1800, costPerCall: 0.015, status: 'stub' },
-      { slug: 'chatbot-assistant', name: 'Chatbot Assistant', description: 'Chatbot de soporte para candidatos y empleados', category: 'general', model: 'haiku', batchEligible: false, cacheTtlSeconds: 0, costPerCall: 0.003, status: 'stub' },
+      {
+        slug: 'cv-parser',
+        name: 'CV Parser',
+        description: 'Extrae datos estructurados de hojas de vida',
+        category: 'recruitment',
+        model: 'haiku',
+        batchEligible: true,
+        cacheTtlSeconds: 0,
+        costPerCall: 0.003,
+      },
+      {
+        slug: 'vacancy-writer',
+        name: 'Vacancy Writer',
+        description: 'Genera descripciones de vacantes optimizadas',
+        category: 'recruitment',
+        model: 'sonnet',
+        batchEligible: false,
+        cacheTtlSeconds: 300,
+        costPerCall: 0.015,
+      },
+      {
+        slug: 'inclusive-language',
+        name: 'Inclusive Language Checker',
+        description: 'Revisa lenguaje inclusivo en descripciones de vacantes',
+        category: 'recruitment',
+        model: 'haiku',
+        batchEligible: false,
+        cacheTtlSeconds: 600,
+        costPerCall: 0.003,
+      },
+      {
+        slug: 'candidate-screener',
+        name: 'Candidate Screener',
+        description: 'Evalua candidatos contra requisitos de vacante',
+        category: 'recruitment',
+        model: 'sonnet',
+        batchEligible: true,
+        cacheTtlSeconds: 0,
+        costPerCall: 0.015,
+      },
+      {
+        slug: 'candidate-matcher',
+        name: 'Candidate Matcher',
+        description: 'Matching automatico candidato-vacante con scoring',
+        category: 'recruitment',
+        model: 'sonnet',
+        batchEligible: true,
+        cacheTtlSeconds: 0,
+        costPerCall: 0.015,
+      },
+      {
+        slug: 'interview-question-gen',
+        name: 'Interview Question Generator',
+        description: 'Genera preguntas de entrevista personalizadas',
+        category: 'interview',
+        model: 'sonnet',
+        batchEligible: false,
+        cacheTtlSeconds: 300,
+        costPerCall: 0.015,
+      },
+      {
+        slug: 'interview-summarizer',
+        name: 'Interview Summarizer',
+        description: 'Resume entrevistas con puntos clave y evaluacion',
+        category: 'interview',
+        model: 'sonnet',
+        batchEligible: false,
+        cacheTtlSeconds: 0,
+        costPerCall: 0.015,
+      },
+      {
+        slug: 'assessment-evaluator',
+        name: 'Assessment Evaluator',
+        description: 'Evalua respuestas de assessments automaticamente',
+        category: 'assessment',
+        model: 'sonnet',
+        batchEligible: true,
+        cacheTtlSeconds: 0,
+        costPerCall: 0.015,
+      },
+      {
+        slug: 'pipeline-optimizer',
+        name: 'Pipeline Optimizer',
+        description: 'Sugiere optimizaciones del pipeline de reclutamiento',
+        category: 'pipeline',
+        model: 'sonnet',
+        batchEligible: false,
+        cacheTtlSeconds: 1800,
+        costPerCall: 0.015,
+      },
+      {
+        slug: 'email-composer',
+        name: 'Email Composer',
+        description: 'Compone emails personalizados para candidatos',
+        category: 'recruitment',
+        model: 'haiku',
+        batchEligible: false,
+        cacheTtlSeconds: 0,
+        costPerCall: 0.003,
+      },
+      {
+        slug: 'offer-letter-gen',
+        name: 'Offer Letter Generator',
+        description: 'Genera cartas de oferta personalizadas',
+        category: 'recruitment',
+        model: 'sonnet',
+        batchEligible: false,
+        cacheTtlSeconds: 0,
+        costPerCall: 0.015,
+      },
+      {
+        slug: 'talent-insights',
+        name: 'Talent Insights',
+        description: 'Analytics avanzados de talento con predicciones',
+        category: 'talent',
+        model: 'sonnet',
+        batchEligible: false,
+        cacheTtlSeconds: 3600,
+        costPerCall: 0.015,
+      },
+      {
+        slug: 'succession-planner',
+        name: 'Succession Planner',
+        description: 'Planificacion de sucesion asistida por IA',
+        category: 'talent',
+        model: 'sonnet',
+        batchEligible: false,
+        cacheTtlSeconds: 3600,
+        costPerCall: 0.015,
+      },
+      {
+        slug: 'performance-reviewer',
+        name: 'Performance Reviewer',
+        description: 'Asistente de evaluacion de desempeno',
+        category: 'talent',
+        model: 'sonnet',
+        batchEligible: false,
+        cacheTtlSeconds: 0,
+        costPerCall: 0.015,
+      },
+      {
+        slug: 'okr-assistant',
+        name: 'OKR Assistant',
+        description: 'Ayuda a definir y alinear OKRs',
+        category: 'talent',
+        model: 'haiku',
+        batchEligible: false,
+        cacheTtlSeconds: 600,
+        costPerCall: 0.003,
+      },
+      {
+        slug: 'onboarding-planner',
+        name: 'Onboarding Planner',
+        description: 'Crea planes de onboarding personalizados',
+        category: 'talent',
+        model: 'sonnet',
+        batchEligible: false,
+        cacheTtlSeconds: 1800,
+        costPerCall: 0.015,
+      },
+      {
+        slug: 'dei-analyzer',
+        name: 'DEI Analyzer',
+        description: 'Analisis de diversidad, equidad e inclusion',
+        category: 'talent',
+        model: 'sonnet',
+        batchEligible: false,
+        cacheTtlSeconds: 3600,
+        costPerCall: 0.015,
+      },
+      {
+        slug: 'compensation-benchmarker',
+        name: 'Compensation Benchmarker',
+        description: 'Benchmarking salarial con datos de mercado',
+        category: 'talent',
+        model: 'sonnet',
+        batchEligible: false,
+        cacheTtlSeconds: 86400,
+        costPerCall: 0.015,
+      },
+      {
+        slug: 'learning-recommender',
+        name: 'Learning Recommender',
+        description: 'Recomienda rutas de aprendizaje personalizadas',
+        category: 'talent',
+        model: 'haiku',
+        batchEligible: false,
+        cacheTtlSeconds: 3600,
+        costPerCall: 0.003,
+      },
+      {
+        slug: 'engagement-predictor',
+        name: 'Engagement Predictor',
+        description: 'Predice riesgo de rotacion y engagement',
+        category: 'talent',
+        model: 'sonnet',
+        batchEligible: true,
+        cacheTtlSeconds: 3600,
+        costPerCall: 0.015,
+      },
+      {
+        slug: 'nine-box-evaluator',
+        name: 'Nine-Box Evaluator',
+        description: 'Evaluacion automatica para nine-box grid',
+        category: 'talent',
+        model: 'sonnet',
+        batchEligible: true,
+        cacheTtlSeconds: 0,
+        costPerCall: 0.015,
+      },
+      {
+        slug: 'video-analyzer',
+        name: 'Video Interview Analyzer',
+        description: 'Analiza entrevistas en video con NLP',
+        category: 'interview',
+        model: 'sonnet',
+        batchEligible: false,
+        cacheTtlSeconds: 0,
+        costPerCall: 0.03,
+      },
+      {
+        slug: 'sentiment-analyzer',
+        name: 'Sentiment Analyzer',
+        description: 'Analisis de sentimiento en comunicaciones',
+        category: 'assessment',
+        model: 'haiku',
+        batchEligible: true,
+        cacheTtlSeconds: 0,
+        costPerCall: 0.003,
+      },
+      {
+        slug: 'skills-extractor',
+        name: 'Skills Extractor',
+        description: 'Extrae habilidades de CVs y perfiles',
+        category: 'recruitment',
+        model: 'haiku',
+        batchEligible: true,
+        cacheTtlSeconds: 300,
+        costPerCall: 0.003,
+      },
+      {
+        slug: 'job-classifier',
+        name: 'Job Classifier',
+        description: 'Clasifica vacantes por familia y nivel',
+        category: 'recruitment',
+        model: 'haiku',
+        batchEligible: true,
+        cacheTtlSeconds: 600,
+        costPerCall: 0.003,
+      },
+      {
+        slug: 'reference-checker',
+        name: 'Reference Checker',
+        description: 'Asistente de verificacion de referencias',
+        category: 'recruitment',
+        model: 'haiku',
+        batchEligible: false,
+        cacheTtlSeconds: 0,
+        costPerCall: 0.003,
+      },
+      {
+        slug: 'interview-coach',
+        name: 'Interview Coach',
+        description: 'Coaching para entrevistadores con feedback',
+        category: 'interview',
+        model: 'sonnet',
+        batchEligible: false,
+        cacheTtlSeconds: 600,
+        costPerCall: 0.015,
+      },
+      {
+        slug: 'assessment-designer',
+        name: 'Assessment Designer',
+        description: 'Disena assessments y pruebas tecnicas',
+        category: 'assessment',
+        model: 'sonnet',
+        batchEligible: false,
+        cacheTtlSeconds: 1800,
+        costPerCall: 0.015,
+      },
+      {
+        slug: 'bias-detector',
+        name: 'Bias Detector',
+        description: 'Detecta sesgos en procesos de seleccion',
+        category: 'assessment',
+        model: 'sonnet',
+        batchEligible: false,
+        cacheTtlSeconds: 0,
+        costPerCall: 0.015,
+      },
+      {
+        slug: 'workforce-planner',
+        name: 'Workforce Planner',
+        description: 'Planificacion de fuerza laboral con IA',
+        category: 'talent',
+        model: 'sonnet',
+        batchEligible: false,
+        cacheTtlSeconds: 3600,
+        costPerCall: 0.015,
+      },
+      {
+        slug: 'report-generator',
+        name: 'Report Generator',
+        description: 'Genera reportes de RRHH automatizados',
+        category: 'pipeline',
+        model: 'sonnet',
+        batchEligible: false,
+        cacheTtlSeconds: 1800,
+        costPerCall: 0.015,
+      },
+      {
+        slug: 'chatbot-assistant',
+        name: 'Chatbot Assistant',
+        description: 'Chatbot de soporte para candidatos y empleados',
+        category: 'general',
+        model: 'haiku',
+        batchEligible: false,
+        cacheTtlSeconds: 0,
+        costPerCall: 0.003,
+      },
+      // The 5 entries below were missing from this catalog entirely (not just
+      // mis-statused) even though they are real, live AGENT_REGISTRY agents
+      // (packages/ai/src/registry.ts) already serving Bedrock calls.
+      {
+        slug: 'candidate-faq',
+        name: 'Candidate FAQ Assistant',
+        description: 'Asistente de preguntas frecuentes para candidatos',
+        category: 'recruitment',
+        model: 'haiku',
+        batchEligible: false,
+        cacheTtlSeconds: 0,
+        costPerCall: 0.003,
+      },
+      {
+        slug: 'interview-guide',
+        name: 'Interview Guide Generator',
+        description: 'Genera guias de entrevista personalizadas por rol y candidato',
+        category: 'interview',
+        model: 'haiku',
+        batchEligible: false,
+        cacheTtlSeconds: 0,
+        costPerCall: 0.003,
+      },
+      {
+        slug: 'ai-voice-interview',
+        name: 'AI Voice Interview',
+        description: 'Entrevista de voz conducida por IA con analisis posterior',
+        category: 'interview',
+        model: 'sonnet',
+        batchEligible: false,
+        cacheTtlSeconds: 0,
+        costPerCall: 0.015,
+      },
+      {
+        slug: 'interview-fit-score',
+        name: 'Interview Fit Scorer',
+        description: 'Califica el ajuste del candidato a partir de la transcripcion de la entrevista',
+        category: 'interview',
+        model: 'haiku',
+        batchEligible: false,
+        cacheTtlSeconds: 0,
+        costPerCall: 0.003,
+      },
+      {
+        slug: 'fit-explainer',
+        name: 'FIT Score Explainer',
+        description: 'Explica el puntaje de ajuste (FIT) del candidato',
+        category: 'recruitment',
+        model: 'sonnet',
+        batchEligible: false,
+        cacheTtlSeconds: 0,
+        costPerCall: 0.015,
+      },
     ];
 
-    await db.aiAgent.createMany({ data: agents });
-    return { seeded: true, count: agents.length };
+    // Status reflects reality at seed time: a slug present in the live
+    // AGENT_REGISTRY (packages/ai) really calls Bedrock via invokeAgent, so it
+    // seeds as 'active' rather than a blanket 'stub' for all 32 catalog rows.
+    const agentsWithStatus = agents.map((a) => ({
+      ...a,
+      status: (a.slug in AGENT_REGISTRY ? 'active' : 'stub') as 'active' | 'stub',
+    }));
+
+    await db.aiAgent.createMany({ data: agentsWithStatus });
+    return { seeded: true, count: agentsWithStatus.length };
   }),
 });
