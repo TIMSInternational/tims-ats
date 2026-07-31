@@ -1,13 +1,7 @@
 import { TRPCError } from '@trpc/server';
 import type { AccessContext } from '../access/types';
-import { logDataAccess } from '../access/audit';
-import { listExternalResults, getExternalResult } from '../repositories/external-assessment.repository';
-import {
-  toExternalAssessmentResultV1,
-  type ExternalAssessmentResultV1,
-  type ExternalResultRow,
-} from '../dto/external-assessment';
-import { isPlatformApiEnabled, platformGetWithAuth } from '../lib/platform-api-client';
+import type { ExternalAssessmentResultV1 } from '../dto/external-assessment';
+import { platformGetWithAuth } from '../lib/platform-api-client';
 
 export interface ExternalAuditMeta {
   organizationId: string;
@@ -16,16 +10,13 @@ export interface ExternalAuditMeta {
   userAgent?: string | null;
 }
 
-// Dark per-surface cutover flag (Phase-5 Slice 1) — SERVER-ONLY, deliberately NOT
-// NEXT_PUBLIC_*: this decision is made entirely server-side (no browser is ever involved in the
-// external-vendor surface), so there is nothing to inline into a client bundle. When both this
-// AND NEXT_PUBLIC_TIMS_PLATFORM_API_URL are set, list()/getOne() below proxy the vendor's OWN
-// bearer token to the C# service (services/Tims.Platform) instead of querying Prisma directly.
-// DEFAULT false (dark) — TS remains the sole active reader until Federico flips this at canary,
-// mirroring the C# side's own `Platform:ExternalVendorReadEnabled` flag (which independently
-// gates whether the C# routes are even mapped — if the two flags are ever out of lockstep with
-// this one on but that one off, the proxied request 404s).
-const EXTERNAL_VENDOR_READ_VIA_CSHARP = process.env.EXTERNAL_VENDOR_READ_VIA_CSHARP === 'true';
+// Phase-5 Slice 1 cutover: `EXTERNAL_VENDOR_READ_VIA_CSHARP` (server-only env var) is confirmed
+// `true` in production (flipped 2026-07-31) — list()/getOne() below now proxy the vendor's OWN
+// bearer token to the C# service (services/Tims.Platform) UNCONDITIONALLY. The Prisma-backed TS
+// fallback (previously gated behind the flag) has been deleted as provably dead code; the C#
+// side's own `Platform:ExternalVendorReadEnabled` flag is independently `true` on App Runner.
+// `platformGetWithAuth` itself throws if `NEXT_PUBLIC_TIMS_PLATFORM_API_URL` is unset, so a
+// misconfigured environment fails loudly rather than silently degrading to Prisma.
 
 // The C# minimal-API JSON contract types every nullable double as `number | string | null` (a
 // number-as-string wire artifact); restore the exact `number | null` the v1 DTO declares.
@@ -85,74 +76,42 @@ function mapProxyError(status: number): TRPCError {
   return new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'External read via platform service failed' });
 }
 
-// Audit one exported psychometric record FAIL-CLOSED. Awaited before the row is
-// returned, so an audit-write failure aborts the export (TRPCError) — no unlogged
-// psychometric data leaves the building.
-async function auditExport(row: ExternalResultRow, meta: ExternalAuditMeta): Promise<void> {
-  await logDataAccess(
-    {
-      organizationId: meta.organizationId,
-      actorId: meta.apiKeyId,
-      entity: 'assessmentResult',
-      recordId: row.id,
-      action: 'export',
-      ipAddress: meta.ipAddress,
-      userAgent: meta.userAgent,
-    },
-    { failClosed: true },
-  );
-}
-
 export const externalAssessmentService = {
   async list(
-    access: AccessContext,
-    meta: ExternalAuditMeta,
+    _access: AccessContext,
+    _meta: ExternalAuditMeta,
     take: number,
     cursor: string | undefined,
     authorizationHeader: string,
   ): Promise<{ items: ExternalAssessmentResultV1[]; nextCursor?: string }> {
-    if (isPlatformApiEnabled() && EXTERNAL_VENDOR_READ_VIA_CSHARP) {
-      // The C# use case writes its OWN fail-closed audit row per exported item (mirroring
-      // auditExport below) — do NOT also audit here, or every export would be double-logged.
-      const { status, body } = await platformGetWithAuth('/external/assessment-results', authorizationHeader, {
-        take,
-        cursor,
-      });
-      if (status !== 200) throw mapProxyError(status);
-      const raw = body as { items: RawExternalAssessmentResultV1[]; nextCursor: string | null };
-      return { items: raw.items.map(mapRawResultV1), nextCursor: raw.nextCursor ?? undefined };
-    }
-
-    const { rows, nextCursor } = await listExternalResults(access, meta.organizationId, meta.apiKeyId, take, cursor);
-    // Audit every record fail-closed BEFORE returning any data.
-    for (const row of rows) await auditExport(row, meta);
-    return { items: rows.map(toExternalAssessmentResultV1), nextCursor };
+    // `_access`/`_meta` are unused now that the Prisma fallback is gone — kept in the signature
+    // so this still matches the router's call site (packages/api/src/routers/external.ts),
+    // which is out of scope for this deletion. The C# use case writes its OWN fail-closed audit
+    // row per exported item — do NOT also audit here, or every export would be double-logged.
+    const { status, body } = await platformGetWithAuth('/external/assessment-results', authorizationHeader, {
+      take,
+      cursor,
+    });
+    if (status !== 200) throw mapProxyError(status);
+    const raw = body as { items: RawExternalAssessmentResultV1[]; nextCursor: string | null };
+    return { items: raw.items.map(mapRawResultV1), nextCursor: raw.nextCursor ?? undefined };
   },
 
   async getOne(
-    access: AccessContext,
-    meta: ExternalAuditMeta,
+    _access: AccessContext,
+    _meta: ExternalAuditMeta,
     assignmentId: string,
     authorizationHeader: string,
   ): Promise<ExternalAssessmentResultV1> {
-    if (isPlatformApiEnabled() && EXTERNAL_VENDOR_READ_VIA_CSHARP) {
-      // Same no-double-audit rationale as list() above.
-      const { status, body } = await platformGetWithAuth(
-        `/external/assessment-results/${encodeURIComponent(assignmentId)}`,
-        authorizationHeader,
-      );
-      if (status === 404) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Resultado de evaluacion no encontrado' });
-      }
-      if (status !== 200) throw mapProxyError(status);
-      return mapRawResultV1(body as RawExternalAssessmentResultV1);
-    }
-
-    const row = await getExternalResult(access, meta.organizationId, meta.apiKeyId, assignmentId);
-    if (!row) {
+    // Same unused-params + no-double-audit rationale as list() above.
+    const { status, body } = await platformGetWithAuth(
+      `/external/assessment-results/${encodeURIComponent(assignmentId)}`,
+      authorizationHeader,
+    );
+    if (status === 404) {
       throw new TRPCError({ code: 'NOT_FOUND', message: 'Resultado de evaluacion no encontrado' });
     }
-    await auditExport(row, meta);
-    return toExternalAssessmentResultV1(row);
+    if (status !== 200) throw mapProxyError(status);
+    return mapRawResultV1(body as RawExternalAssessmentResultV1);
   },
 };

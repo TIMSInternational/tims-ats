@@ -91,150 +91,96 @@ import { join } from 'path';
 const RR = join(__dirname, '../..');
 const rd = (p: string) => readFileSync(join(RR, p), 'utf8');
 
-describe('external-assessment repository scoping', () => {
-  const REPO = rd('packages/api/src/repositories/external-assessment.repository.ts');
-  it('reads through tenantDb (RLS), never the privileged db', () => {
-    expect(REPO).toContain('tenantDb');
-    expect(REPO).not.toMatch(/import\s*\{\s*db\s*\}\s*from\s*'@tims\/db'/);
-  });
-  it('projects result fields via selectFor(external) — no hand-rolled score select', () => {
-    expect(REPO).toMatch(/selectFor\(\s*\[\s*'external'\s*\]\s*,\s*'assessmentResult'\s*\)/);
-  });
-  it('composes scopeWhereFor for assessmentAssignment (AND, never spread)', () => {
-    expect(REPO).toMatch(/scopeWhereFor\(\s*'assessmentAssignment'/);
-    expect(REPO).toMatch(/AND:\s*\[/);
-  });
-  it('bounds the page and orders deterministically for cursor pagination', () => {
-    expect(REPO).toMatch(/take:/);
-    expect(REPO).toMatch(/orderBy:/);
-  });
-});
+// TS-deletion (2026-07-31): `EXTERNAL_VENDOR_READ_VIA_CSHARP` is confirmed live in prod, so the
+// Prisma-backed fallback (packages/api/src/repositories/external-assessment.repository.ts) was
+// deleted as provably dead code — list()/getOne() now proxy unconditionally to the C# service.
+// The repository-scoping + repository-behavioral suites that used to live here tested that
+// deleted file directly and have no replacement target; DTO-mapping coverage for
+// toExternalAssessmentResultV1 (the row -> v1 remap) still lives above in this file and in
+// tests/external-vendor/assessment-result-v1-fixtures.test.ts (golden-fixture parity with the C#
+// mapper), both of which are untouched since dto/external-assessment.ts still exports it for
+// those independent consumers.
 
-describe('external-assessment repository — behavioral (select includes scoredAt)', () => {
-  it('listExternalResults selects scoredAt + all score fields and scopes via AND', async () => {
-    vi.resetModules();
-    const findMany = vi.fn().mockResolvedValue([]);
-    vi.doMock('@tims/db', () => ({
-      tenantDb: { assessmentResult: { findMany, findFirst: vi.fn() } },
-    }));
-    const { listExternalResults } = await import('../../packages/api/src/repositories/external-assessment.repository');
-    // Org-scope access → scopeWhereFor returns {} without touching anchors.
-    const access = { allowed: true as const, scope: 'organization' as const, roles: ['external'], anchors: null };
-    await listExternalResults(access, 'org-1', 'key-1', 10);
-    const arg = findMany.mock.calls[0][0];
-    // The bug: scoredAt was missing from select.
-    expect(arg.select.scoredAt).toBe(true);
-    expect(arg.select.normalizedScore).toBe(true);
-    expect(arg.select.breakdown).toBe(true);
-    expect(arg.select.assignment.select.completedAt).toBe(true);
-    expect(arg.select.assignment.select.assessmentType.select.name).toBe(true);
-    // Scope composed via AND (never spread).
-    expect(Array.isArray(arg.where.AND)).toBe(true);
-    // Defense-in-depth: explicit organizationId predicate must be present.
-    expect(JSON.stringify(arg.where)).toContain('"organizationId":"org-1"');
-    expect(arg.take).toBe(11); // take + 1 probe
-    expect(arg.orderBy).toEqual([{ scoredAt: 'desc' }, { assignmentId: 'asc' }]);
-    vi.doUnmock('@tims/db');
-  });
+describe('external-assessment service — unconditional C# proxy (read cutover live)', () => {
+  const access = { allowed: true as const, scope: 'organization' as const, roles: ['external'], anchors: null };
+  const meta = { organizationId: 'org-1', apiKeyId: 'key-1', ipAddress: '1.2.3.4', userAgent: 'ua' };
+  const authHeader = 'Bearer tims_test_key';
 
-  it('getExternalResult gates on completed assignment (lifecycle parity with list)', async () => {
-    vi.resetModules();
-    const findFirst = vi.fn().mockResolvedValue(null);
-    vi.doMock('@tims/db', () => ({ tenantDb: { assessmentResult: { findFirst, findMany: vi.fn() } } }));
-    const { getExternalResult } = await import('../../packages/api/src/repositories/external-assessment.repository');
-    const access = { allowed: true as const, scope: 'organization' as const, roles: ['external'], anchors: null };
-    await getExternalResult(access, 'org-1', 'key-1', '11111111-1111-1111-1111-111111111111');
-    const where = JSON.stringify(findFirst.mock.calls[0][0].where);
-    expect(where).toContain('"status":"completed"');
-    expect(where).toContain('"organizationId":"org-1"');
-    vi.doUnmock('@tims/db');
-  });
-});
-
-describe('external-assessment service — fail-closed audited export', () => {
-  const sampleRow = {
-    id: 'res-1',
+  const rawRow = {
+    schemaVersion: 'v1',
     assignmentId: 'asg-1',
+    candidateId: 'c1',
+    vacancyId: 'v1',
+    assessmentType: 'Battery',
+    status: 'completed',
+    assignedAt: '2026-06-01T00:00:00.000Z',
+    startedAt: null,
+    completedAt: '2026-06-03T00:00:00.000Z',
+    expiresAt: null,
+    scoredAt: '2026-06-10T00:00:00.000Z',
     rawScore: 1,
     normalizedScore: 2,
     percentile: 3,
     interpretation: {},
     breakdown: {},
     modelVersion: 'v1',
-    scoredAt: new Date('2026-06-10T00:00:00Z'),
-    assignment: {
-      candidateId: 'c1',
-      vacancyId: 'v1',
-      status: 'completed',
-      assignedAt: new Date('2026-06-01T00:00:00Z'),
-      startedAt: null,
-      completedAt: new Date('2026-06-03T00:00:00Z'),
-      expiresAt: null,
-      assessmentType: { name: 'Battery' },
-    },
   };
 
-  async function load(opts: { rows?: unknown[]; one?: unknown; auditThrows?: boolean }) {
+  async function load() {
     vi.resetModules();
-    const logDataAccess = vi.fn(async (_e: unknown, o?: { failClosed?: boolean }) => {
-      if (opts.auditThrows && o?.failClosed) throw new Error('audit down');
-    });
-    vi.doMock('../../packages/api/src/access/audit', () => ({ logDataAccess, auditRequiredFor: () => true }));
-    vi.doMock('../../packages/api/src/repositories/external-assessment.repository', () => ({
-      listExternalResults: vi.fn(async () => ({ rows: opts.rows ?? [], nextCursor: undefined })),
-      getExternalResult: vi.fn(async () => opts.one ?? null),
-    }));
+    const platformGetWithAuth = vi.fn();
+    vi.doMock('../../packages/api/src/lib/platform-api-client', () => ({ platformGetWithAuth }));
     const mod = await import('../../packages/api/src/services/external-assessment.service');
-    return { mod, logDataAccess };
+    return { mod, platformGetWithAuth };
   }
 
-  const access = { allowed: true as const, scope: 'organization' as const, roles: ['external'], anchors: null };
-  const meta = { organizationId: 'org-1', apiKeyId: 'key-1', ipAddress: '1.2.3.4', userAgent: 'ua' };
-  // Inert for these tests — EXTERNAL_VENDOR_READ_VIA_CSHARP defaults unset, so list()/getOne()
-  // always take the Prisma fallback path below and never read this value. Only exercised once
-  // the C#-proxy dark-cutover path is flag-enabled (see external-assessment.service.ts).
-  const authHeader = 'Bearer tims_test_key';
-
-  it('list audits every record fail-closed (actorId=apiKeyId, entity=assessmentResult) then maps to v1', async () => {
-    const { mod, logDataAccess } = await load({ rows: [sampleRow] });
-    const out = await mod.externalAssessmentService.list(access, meta, 10, undefined, authHeader);
-    expect(logDataAccess).toHaveBeenCalledTimes(1);
-    const [event, options] = logDataAccess.mock.calls[0];
-    expect(event).toMatchObject({
-      organizationId: 'org-1',
-      actorId: 'key-1',
-      entity: 'assessmentResult',
-      recordId: 'res-1',
+  it('list proxies to /external/assessment-results with take/cursor and maps items to v1', async () => {
+    const { mod, platformGetWithAuth } = await load();
+    platformGetWithAuth.mockResolvedValue({ status: 200, body: { items: [rawRow], nextCursor: 'asg-1' } });
+    const out = await mod.externalAssessmentService.list(access, meta, 10, 'cursor-0', authHeader);
+    expect(platformGetWithAuth).toHaveBeenCalledWith('/external/assessment-results', authHeader, {
+      take: 10,
+      cursor: 'cursor-0',
     });
-    expect(options).toEqual({ failClosed: true });
     expect(out.items[0]).toMatchObject({ schemaVersion: 'v1', assignmentId: 'asg-1', normalizedScore: 2 });
-    vi.doUnmock('../../packages/api/src/access/audit');
-    vi.doUnmock('../../packages/api/src/repositories/external-assessment.repository');
+    expect(out.nextCursor).toBe('asg-1');
+    vi.doUnmock('../../packages/api/src/lib/platform-api-client');
   });
 
-  it('list aborts (throws) if a fail-closed audit write fails — no data returned', async () => {
-    const { mod } = await load({ rows: [sampleRow], auditThrows: true });
-    await expect(mod.externalAssessmentService.list(access, meta, 10, undefined, authHeader)).rejects.toThrow();
-    vi.doUnmock('../../packages/api/src/access/audit');
-    vi.doUnmock('../../packages/api/src/repositories/external-assessment.repository');
+  it('list maps a non-200 proxy response to the corresponding tRPC error', async () => {
+    const { mod, platformGetWithAuth } = await load();
+    platformGetWithAuth.mockResolvedValue({ status: 401, body: null });
+    await expect(mod.externalAssessmentService.list(access, meta, 10, undefined, authHeader)).rejects.toMatchObject({
+      code: 'UNAUTHORIZED',
+    });
+    vi.doUnmock('../../packages/api/src/lib/platform-api-client');
   });
 
-  it('getOne throws NOT_FOUND when the repo returns null (no audit)', async () => {
-    const { mod, logDataAccess } = await load({ one: null });
-    await expect(mod.externalAssessmentService.getOne(access, meta, 'missing', authHeader)).rejects.toThrow();
-    expect(logDataAccess).not.toHaveBeenCalled();
-    vi.doUnmock('../../packages/api/src/access/audit');
-    vi.doUnmock('../../packages/api/src/repositories/external-assessment.repository');
-  });
-
-  it('getOne audits fail-closed then returns the v1 DTO', async () => {
-    const { mod, logDataAccess } = await load({ one: sampleRow });
+  it('getOne proxies to the by-id endpoint and returns the v1 DTO on 200', async () => {
+    const { mod, platformGetWithAuth } = await load();
+    platformGetWithAuth.mockResolvedValue({ status: 200, body: rawRow });
     const dto = await mod.externalAssessmentService.getOne(access, meta, 'asg-1', authHeader);
-    expect(logDataAccess).toHaveBeenCalledTimes(1);
-    expect(logDataAccess.mock.calls[0][1]).toEqual({ failClosed: true });
+    expect(platformGetWithAuth).toHaveBeenCalledWith('/external/assessment-results/asg-1', authHeader);
     expect(dto).toMatchObject({ schemaVersion: 'v1', assignmentId: 'asg-1' });
-    vi.doUnmock('../../packages/api/src/access/audit');
-    vi.doUnmock('../../packages/api/src/repositories/external-assessment.repository');
+    vi.doUnmock('../../packages/api/src/lib/platform-api-client');
+  });
+
+  it('getOne throws NOT_FOUND on a proxy 404', async () => {
+    const { mod, platformGetWithAuth } = await load();
+    platformGetWithAuth.mockResolvedValue({ status: 404, body: null });
+    await expect(mod.externalAssessmentService.getOne(access, meta, 'missing', authHeader)).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+    });
+    vi.doUnmock('../../packages/api/src/lib/platform-api-client');
+  });
+
+  it('getOne maps a non-200/404 proxy response to INTERNAL_SERVER_ERROR', async () => {
+    const { mod, platformGetWithAuth } = await load();
+    platformGetWithAuth.mockResolvedValue({ status: 500, body: null });
+    await expect(mod.externalAssessmentService.getOne(access, meta, 'asg-1', authHeader)).rejects.toMatchObject({
+      code: 'INTERNAL_SERVER_ERROR',
+    });
+    vi.doUnmock('../../packages/api/src/lib/platform-api-client');
   });
 });
 
