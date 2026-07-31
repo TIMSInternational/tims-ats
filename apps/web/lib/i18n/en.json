@@ -86,7 +86,8 @@
     "myLearning": "My Learning",
     "myOnboarding": "My Onboarding",
     "my360": "My 360",
-    "evaluations360": "360 Evaluation"
+    "evaluations360": "360 Evaluation",
+    "auditLog": "Audit Log"
   },
   "platformSidebar": {
     "platform": "Platform",
