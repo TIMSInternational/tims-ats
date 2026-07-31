@@ -69,10 +69,7 @@ Ownership transfers (Phase 5 strangler) move a table from `prisma` to `efcore` i
     "employee_demographics",
     "companies"
   ],
-  "efcoreAppendOnly": [
-    "data_access_logs",
-    "audit_logs"
-  ],
+  "efcoreAppendOnly": ["data_access_logs", "audit_logs"],
   "efcoreStranglerWrite": [
     "preemployment_validations",
     "subscriptions",
@@ -140,20 +137,17 @@ Ownership transfers (Phase 5 strangler) move a table from `prisma` to `efcore` i
   Every EF `ToTable(...)` in `Tims.Platform` must appear in one of the four EF lists, or the CI check fails;
   every `quartzInfra` table must be claimed by neither ORM.
 
-## Security follow-up — DB-enforce insert-only on `data_access_logs` (OPEN, Federico)
+## Security follow-up — DB-enforce insert-only on `data_access_logs` / `audit_logs` (RESOLVED 2026-07-31)
 
-The audit ledger is append-only at the C# writer, but **not yet at the database**. The live migration
-`20260612000000_access_control_models` GRANTs `UPDATE, DELETE` on `data_access_logs` to `app_tenant`
-(line ~84), and the tenant RLS policy (line ~99) only scopes rows to the caller's org — so a tenant-role
-SQL-injection or application bug could still **alter or erase same-org audit rows** after a restricted
-read. To make append-only a real invariant, a **prod migration (owner action — Federico)** should:
-
-1. `REVOKE UPDATE, DELETE ON data_access_logs FROM app_tenant;` (keep `INSERT`, `SELECT`).
-2. Add an insert-only guard — a `BEFORE UPDATE OR DELETE` trigger that `RAISE`s (or an RLS policy with a
-   `USING (false)` clause for `UPDATE`/`DELETE`) — so even a future accidental grant cannot mutate the ledger.
-
-This is DOC-ONLY here (no migration/DB change in this slice); `scripts/table-ownership.mjs` continues to
-treat `data_access_logs` as Prisma-owned + EF append-only.
+**Verified live in prod (2026-07-31):** `app_tenant` holds only `INSERT`/`SELECT` on both `data_access_logs`
+and `audit_logs` (no `UPDATE`/`DELETE` grant present — the stale `UPDATE, DELETE` grant this section
+originally warned about is gone, likely closed in an earlier untracked pass). Both tables also carry a
+`BEFORE UPDATE OR DELETE` trigger (`data_access_logs_append_only`, `audit_logs_append_only`) that `RAISE`s
+`42501` on any mutation attempt — confirmed by `information_schema.triggers`, and independently corroborated
+by the parity harness's own `seed --teardown` failing with exactly this guard (`audit_logs is append-only:
+UPDATE is not permitted | code=42501`) when it tried to clean up fixture rows. Append-only is now a real
+DB-enforced invariant on both tables, not just a writer-discipline convention. `scripts/table-ownership.mjs`
+continues to treat both as Prisma-owned + EF append-only — that classification is unaffected.
 
 ## What the CI check enforces (Phase 1)
 
