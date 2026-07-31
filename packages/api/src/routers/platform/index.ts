@@ -13,7 +13,6 @@ import { systemRouter } from './system';
 import { dataRequestsRouter } from './data-requests';
 import { entitlementsAdminRouter } from './entitlements';
 import { usageBillingRouter } from './usage-billing';
-import { accessReviewRouter } from './access-review';
 
 export const platformRouter = mergeRouters(
   dashboardRouter,
@@ -30,5 +29,4 @@ export const platformRouter = mergeRouters(
   dataRequestsRouter,
   entitlementsAdminRouter,
   usageBillingRouter,
-  accessReviewRouter,
 );

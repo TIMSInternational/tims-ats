@@ -234,7 +234,17 @@ describe-service`; only the frontend Vercel flag was missing.)
   live prod path — structurally the same reason compensation retained its 3 FX reads). **This closes
   the S5 item-4 TS-deletion sequence: all 12 live surfaces (across all 8 domains) have had their dead
   TS code deleted, and ZERO live surfaces are left with undeleted TS fallback code sitting behind an
-  always-true flag.** Two known, deliberately-deferred follow-ups from this sequence, recorded here so
+  always-true flag.** **UPDATE 2026-07-31: a 9th domain joined this sequence** — access-review
+  (read), whose flag (`NEXT_PUBLIC_ACCESS_REVIEW_READ_VIA_CSHARP`) flipped live the same day (see the
+  Access-review entry above). All 3 registered TS read procedures
+  (getAccessReview/exportAccessReviewCsv/listAccessReviewAttestations,
+  `packages/api/src/routers/platform/access-review.ts`) were deleted — unlike succession/nine-box/
+  compensation, no zero-consumer procedure survived, so this domain follows the
+  reporting/evaluation360/team-intel/billing-usage "fully deleted read surface" pattern instead of
+  the "partial" one. The TS router itself was NOT deleted outright, though — attestAccessReview (the
+  write) still lives there; its own flag (`NEXT_PUBLIC_ACCESS_REVIEW_WRITE_VIA_CSHARP`) is ALSO now
+  confirmed live in prod (2026-07-31, see the Access-review entry above), but its TS-deletion is a
+  separate, not-yet-done follow-up task. Two known, deliberately-deferred follow-ups from this sequence, recorded here so
   they aren't lost with no successor TS-deletion branch to carry them: (1) once any domain's dark READ
   flag is eventually flipped, that domain's FE modal `invalidate()` calls that target now-C#-routed
   reads will invalidate a dead tRPC cache key instead of the real `['platform-api', <domain>, …]` key

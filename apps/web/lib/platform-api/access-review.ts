@@ -1,18 +1,20 @@
 'use client';
 
-// Per-surface dark-cutover wrapper for the access-review surface (Phase-5 Slice 18) — the C# port
+// Per-surface cutover wrapper for the access-review surface (Phase-5 Slice 18) — the C# port
 // of `platform.getAccessReview`/`exportAccessReviewCsv`/`attestAccessReview`/
-// `listAccessReviewAttestations`. DARK by default for the 3 READ hooks: unless BOTH the
-// platform-api base URL and NEXT_PUBLIC_ACCESS_REVIEW_READ_VIA_CSHARP are set at deploy time,
-// each read hook returns the existing tRPC call unchanged. Mirrors lib/platform-api/audit-log.ts —
-// this is the SAME platform-owner-only, untyped-response situation.
+// `listAccessReviewAttestations`. Mirrors lib/platform-api/audit-log.ts's untyped-response
+// situation.
 //
-// TWO independent flags, matching the backend split: reads (getAccessReview/exportAccessReviewCsv/
-// listAccessReviewAttestations) live behind `Platform:AccessReviewReadEnabled`, still dark-gated
-// below (their TS deletion is a separate, out-of-scope task). The attest WRITE — gated behind
-// `Platform:AccessReviewWriteEnabled` — is DIFFERENT: as of 2026-07-31 its flag is confirmed live
-// and its TS tRPC procedure was deleted, so `useAccessReviewAttest` below always calls the C#
-// endpoint unconditionally (no more tRPC fallback, no more gate check).
+// FULLY C#-ONLY (2026-07-31): both NEXT_PUBLIC_ACCESS_REVIEW_READ_VIA_CSHARP and
+// NEXT_PUBLIC_ACCESS_REVIEW_WRITE_VIA_CSHARP were confirmed live in prod, and with both flags
+// live the entire TS access-review app-wiring layer (packages/api/src/routers/platform/
+// access-review.ts + .schemas.ts + services/access-review.service.ts +
+// repositories/access-review.repository.ts) had zero remaining callers and was deleted
+// (matching the `reporting` domain precedent — delete the whole router once it's fully dead,
+// don't leave an empty stub). Every hook below calls the C# service unconditionally; there is
+// no tRPC fallback and no flag check left anywhere in this file. All output types are
+// hand-declared, mirroring what the deleted TS procedures used to return, since there is no
+// tRPC procedure left to infer them from.
 //
 // UNTYPED RESPONSE BODIES — like audit-log, NONE of the 4 C# access-review endpoints
 // (`GET /access-review`, `GET /access-review/export`, `GET /access-review/attestations`,
@@ -21,24 +23,72 @@
 // `platformGetRaw`/`platformPostRaw` escape hatches and hand-types the response.
 
 import { useMutation, useQuery } from '@tanstack/react-query';
-import type { inferRouterOutputs } from '@trpc/server';
-import type { AppRouter } from '@tims/api';
-import { trpc } from '../trpc';
-import { isPlatformApiEnabled, platformGetRaw, platformPostRaw } from './client';
+import { platformGetRaw, platformPostRaw } from './client';
 
-type RouterOutput = inferRouterOutputs<AppRouter>;
-type AccessReviewReportOutput = RouterOutput['platform']['getAccessReview'];
-type AccessReviewExportOutput = RouterOutput['platform']['exportAccessReviewCsv'];
-type ListAttestationsOutput = RouterOutput['platform']['listAccessReviewAttestations'];
-// `attestAccessReview` (the write) is gone from the router — deleted 2026-07-31 alongside its
-// TS procedure. `AttestAccessReviewOutput` is now hand-declared (there is no tRPC procedure
-// left to infer it from) right above `useAccessReviewAttest` below.
-type AccessReviewRow = AccessReviewReportOutput['rows'][number];
-type RoleGrantView = AccessReviewRow['roles'][number];
+export interface RoleGrantView {
+  slug: string;
+  name: string;
+  roleActive: boolean;
+  assignedAt: Date;
+  assignedBy: string | null;
+  companyScope: string | null;
+  unitScope: string | null;
+  expiresAt: Date | null;
+  grants: string[];
+}
 
-const ACCESS_REVIEW_READ_VIA_CSHARP = process.env.NEXT_PUBLIC_ACCESS_REVIEW_READ_VIA_CSHARP === 'true';
-// NOTE: NEXT_PUBLIC_ACCESS_REVIEW_WRITE_VIA_CSHARP is no longer read here — the write hook
-// (`useAccessReviewAttest` below) went C#-only 2026-07-31 and no longer branches on it.
+export interface AccessReviewRow {
+  userId: string;
+  name: string;
+  email: string;
+  organizationId: string;
+  orgName: string | null;
+  status: 'active' | 'inactive' | 'deleted';
+  isPlatformOwner: boolean;
+  lastLoginAt: Date | null;
+  roles: RoleGrantView[];
+  flags: {
+    neverLoggedIn: boolean;
+    stale: boolean;
+    privileged: boolean;
+    deprovisionGap: boolean;
+    expiredGrant: boolean;
+    crossOrgRole: boolean;
+  };
+}
+
+export interface AccessReviewReportOutput {
+  rows: AccessReviewRow[];
+  summary: {
+    userCount: number;
+    privilegedCount: number;
+    staleCount: number;
+    deprovisionGapCount: number;
+    expiredGapCount: number;
+  };
+  crossOrgRoleCount: number;
+  truncated: boolean;
+}
+
+export interface AccessReviewExportOutput {
+  format: 'csv';
+  data: string;
+  count: number;
+  truncated: boolean;
+}
+
+export interface AccessReviewAttestationRecord {
+  id: string;
+  reviewedAt: Date;
+  userCount: number;
+  privilegedCount: number;
+  staleCount: number;
+  deprovisionGapCount: number;
+  expiredGapCount: number;
+  notes: string | null;
+  reviewer: { firstName: string; lastName: string; email: string };
+}
+type ListAttestationsOutput = AccessReviewAttestationRecord[];
 
 // The C# `int` fields have no custom converter and serialize as plain JSON numbers, but every
 // other domain in this migration defensively coerces numeric wire values the same way (in case a
@@ -138,79 +188,52 @@ function mapRawReport(raw: RawAccessReviewReport): AccessReviewReportOutput {
 
 /**
  * PLATFORM-OWNER: one org's full access-review report (users × roles × grants × risk flags).
- * Gate: `isPlatformApiEnabled() && NEXT_PUBLIC_ACCESS_REVIEW_READ_VIA_CSHARP === 'true'`.
- *  - true  → GET /access-review?organizationId=... (dates rebuilt into Date objects, counts
- *            coerced, status/flags pass through).
- *  - false → trpc.platform.getAccessReview.useQuery({ organizationId }) (the DEFAULT).
- * Disabled until an organizationId is selected (mirrors the call site's `enabled: !!organizationId`).
+ * C#-ONLY (TS getAccessReview deleted) — GET /access-review?organizationId=... (dates rebuilt
+ * into Date objects, counts coerced, status/flags pass through). Disabled until an
+ * organizationId is selected (mirrors the call site's `enabled: !!organizationId`).
  */
 export function useAccessReview(organizationId: string) {
-  const viaCSharp = isPlatformApiEnabled() && ACCESS_REVIEW_READ_VIA_CSHARP;
-  const enabledId = !!organizationId;
-
-  const trpcQuery = trpc.platform.getAccessReview.useQuery({ organizationId }, { enabled: !viaCSharp && enabledId });
-
-  const csharpQuery = useQuery<AccessReviewReportOutput>({
+  return useQuery<AccessReviewReportOutput>({
     queryKey: ['platform-api', 'access-review', 'report', organizationId],
-    enabled: viaCSharp && enabledId,
+    enabled: !!organizationId,
     queryFn: async () => {
       const raw = (await platformGetRaw('/access-review', { organizationId })) as RawAccessReviewReport;
       return mapRawReport(raw);
     },
   });
-
-  return viaCSharp ? csharpQuery : trpcQuery;
 }
 
 /**
  * PLATFORM-OWNER: CSV export, invoked imperatively on a button click (not a `useQuery`) — same
- * shape as `useAuditLogsExport`. Gate as above.
- *  - true  → GET /access-review/export?organizationId=... (count coerced).
- *  - false → utils.platform.exportAccessReviewCsv.fetch({ organizationId }) (the DEFAULT).
+ * shape as `useAuditLogsExport`. C#-ONLY (TS exportAccessReviewCsv deleted) — GET
+ * /access-review/export?organizationId=... (count coerced).
  */
 export function useAccessReviewExport() {
-  const utils = trpc.useUtils();
-  const viaCSharp = isPlatformApiEnabled() && ACCESS_REVIEW_READ_VIA_CSHARP;
-
   return async (organizationId: string): Promise<AccessReviewExportOutput> => {
-    if (viaCSharp) {
-      const raw = (await platformGetRaw('/access-review/export', { organizationId })) as {
-        format: 'csv';
-        data: string;
-        count: number | string;
-        truncated: boolean;
-      };
-      return {
-        format: raw.format,
-        data: raw.data,
-        count: num(raw.count),
-        truncated: raw.truncated,
-      } as AccessReviewExportOutput;
-    }
-    return utils.platform.exportAccessReviewCsv.fetch({ organizationId });
+    const raw = (await platformGetRaw('/access-review/export', { organizationId })) as {
+      format: 'csv';
+      data: string;
+      count: number | string;
+      truncated: boolean;
+    };
+    return {
+      format: raw.format,
+      data: raw.data,
+      count: num(raw.count),
+      truncated: raw.truncated,
+    };
   };
 }
 
 /**
- * PLATFORM-OWNER: the org's attestation (recertification) history, newest first. Gate as above
- * (the READ flag — attestations are a read, not the attest write itself).
- *  - true  → GET /access-review/attestations?organizationId=...&limit=... (reviewedAt rebuilt,
- *            counts coerced).
- *  - false → trpc.platform.listAccessReviewAttestations.useQuery({ organizationId, limit }).
- * Disabled until an organizationId is selected.
+ * PLATFORM-OWNER: the org's attestation (recertification) history, newest first. C#-ONLY (TS
+ * listAccessReviewAttestations deleted) — GET /access-review/attestations?organizationId=...
+ * &limit=... (reviewedAt rebuilt, counts coerced). Disabled until an organizationId is selected.
  */
 export function useAccessReviewAttestations(organizationId: string, limit = 20) {
-  const viaCSharp = isPlatformApiEnabled() && ACCESS_REVIEW_READ_VIA_CSHARP;
-  const enabledId = !!organizationId;
-
-  const trpcQuery = trpc.platform.listAccessReviewAttestations.useQuery(
-    { organizationId, limit },
-    { enabled: !viaCSharp && enabledId },
-  );
-
-  const csharpQuery = useQuery<ListAttestationsOutput>({
+  return useQuery<ListAttestationsOutput>({
     queryKey: ['platform-api', 'access-review', 'attestations', organizationId, limit],
-    enabled: viaCSharp && enabledId,
+    enabled: !!organizationId,
     queryFn: async () => {
       const raw = (await platformGetRaw('/access-review/attestations', {
         organizationId,
@@ -236,11 +259,9 @@ export function useAccessReviewAttestations(organizationId: string, limit = 20) 
         expiredGapCount: num(a.expiredGapCount),
         notes: a.notes,
         reviewer: a.reviewer,
-      })) as ListAttestationsOutput;
+      }));
     },
   });
-
-  return viaCSharp ? csharpQuery : trpcQuery;
 }
 
 // ---------------------------------------------------------------------------

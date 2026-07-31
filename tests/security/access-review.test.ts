@@ -1,12 +1,18 @@
 /**
  * access-review.test.ts — CB-2b
  *
- * Pins the access-review risk kernel (each flag bites) + the wiring of the report /
- * export / attestation surface.
+ * Pins the access-review risk kernel (each flag bites). The TS router/service/repository
+ * wiring this file used to also test was deleted 2026-07-31: both the read
+ * (NEXT_PUBLIC_ACCESS_REVIEW_READ_VIA_CSHARP) and write (NEXT_PUBLIC_ACCESS_REVIEW_WRITE_VIA_CSHARP)
+ * flags are confirmed live in prod, and with both gone the whole TS app-wiring layer
+ * (packages/api/src/routers/platform/access-review.ts + .schemas.ts +
+ * services/access-review.service.ts + repositories/access-review.repository.ts) had zero
+ * remaining callers and was removed, matching the `reporting` domain precedent (delete the
+ * whole router once it's fully dead, don't leave an empty stub). The kernel below
+ * (access-review-kernel.ts) stays as a pinned-contract spec the C# port must match — see
+ * also tests/parity/access-review-fixtures.test.ts for the golden-fixture pin.
  */
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'fs';
-import { join } from 'path';
 import {
   assessUserAccess,
   accessStatusOf,
@@ -111,59 +117,5 @@ describe('assessUserAccess — risk flags (each bites)', () => {
     expect(f.neverLoggedIn).toBe(false);
     expect(f.stale).toBe(false);
     expect(f.expiredGrant).toBe(false);
-  });
-});
-
-const ROOT = join(__dirname, '..', '..');
-const read = (p: string) => readFileSync(join(ROOT, p), 'utf8');
-
-describe('wiring — access-review surface', () => {
-  const router = () => read('packages/api/src/routers/platform/access-review.ts');
-
-  it('report / export / history are platform-only procedures', () => {
-    // NOTE: `attestAccessReview` (the write) was DELETED 2026-07-31 — its C# port is confirmed
-    // live and is now the sole writer of `access_reviews`. This assertion used to also cover it;
-    // see the security-event/repository assertions below for what replaced its coverage.
-    const src = router();
-    expect(src).toMatch(/getAccessReview:\s*platformProcedure/);
-    expect(src).toMatch(/exportAccessReviewCsv:\s*platformProcedure/);
-    expect(src).toMatch(/listAccessReviewAttestations:\s*platformProcedure/);
-  });
-
-  it('export is audited via the CB-1c logPlatformExport (access_review resource)', () => {
-    expect(router()).toMatch(/logPlatformExport/);
-    expect(router()).toMatch(/access_review/);
-  });
-
-  it('both the report READ and the export REQUIRE an org (no unauditable platform-wide egress)', () => {
-    // accessReviewReportInput is required-org (no .optional()); export aliases it.
-    const schemas = read('packages/api/src/routers/platform/access-review.schemas.ts');
-    expect(schemas).toMatch(/accessReviewReportInput[\s\S]*organizationId:\s*z\.string\(\)\.uuid\(\),/);
-    expect(schemas).not.toMatch(/organizationId:\s*z\.string\(\)\.uuid\(\)\.optional\(\)/);
-    // getAccessReview audits the access (same sensitive dataset as the export)
-    expect(router()).toMatch(/access_review_viewed/);
-  });
-
-  it('export hardens CSV against formula/row injection (RFC-4180 quoting + leading =/+/-/@)', () => {
-    expect(router()).toMatch(/csvCell/);
-    // the escaping regex itself lives in the shared @tims/shared csv helper, reused by
-    // every CSV export (access-review + the platform audit-log export).
-    const sharedCsv = read('packages/shared/src/csv.ts');
-    expect(sharedCsv).toMatch(/\^\[=\+/);
-  });
-
-  // NOTE: the two tests that used to live here — "attest refuses a truncated org rather than
-  // persist under-counted evidence" and "attest records an access_recertified security event
-  // (router) + writes the snapshot (repo)" — pinned the TS `attest()`/`attestAccessReview`
-  // implementation (PRECONDITION_FAILED refusal, `access_recertified` event, `accessReview.create`
-  // insert). That implementation was DELETED 2026-07-31: its C# port
-  // (`AccessReviewService.AttestAsync`) is confirmed live in prod
-  // (`NEXT_PUBLIC_ACCESS_REVIEW_WRITE_VIA_CSHARP=true`) and parity-verified 3/3 PASS via
-  // `scripts/parity/cli.ts verify-write access-review`, which is now the source of truth for this
-  // behavior instead of a TS-source regex pin.
-
-  it('the access-review router is merged into the platform router', () => {
-    const platformRoot = read('packages/api/src/routers/platform/index.ts');
-    expect(platformRoot).toMatch(/accessReviewRouter/);
   });
 });
