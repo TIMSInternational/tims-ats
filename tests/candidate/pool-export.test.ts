@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 
 const candidateFindMany = vi.fn();
 
@@ -182,5 +184,25 @@ describe('candidateService.exportPool', () => {
     await candidateService.exportPool('org-1', {} as never, { poolType: 'active', tags: ['vip'] });
 
     expect(findForExportSpy).toHaveBeenCalledWith('org-1', {}, { poolType: 'active', tags: ['vip'] }, 5000);
+  });
+});
+
+describe('candidate.pool.export router (source text checks)', () => {
+  const src = readFileSync(resolve(__dirname, '../../packages/api/src/routers/candidate/pool.ts'), 'utf8');
+
+  it('narrows the format input to csv only (drops the unfulfilled xlsx promise)', () => {
+    expect(src).toMatch(/format:\s*z\.literal\('csv'\)/);
+    expect(src).not.toContain("z.enum(['csv', 'xlsx'])");
+  });
+
+  it('applies scope filtering (the old stub applied none)', () => {
+    expect(src).toContain("scopeWhereFor('candidate', ctx.access, ctx.user.id)");
+  });
+
+  it('calls the real service and logs the export', () => {
+    expect(src).toContain('candidateService.exportPool');
+    expect(src).toContain('logPlatformExport');
+    expect(src).not.toContain('stub_generated');
+    expect(src).not.toContain('storage.tims.app');
   });
 });
