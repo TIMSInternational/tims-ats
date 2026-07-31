@@ -61,11 +61,12 @@ with their TS side partially deleted, so "flip the flag" and "roll back" no long
 for them — `compensation` in particular held this walkthrough until 2026-07-29, when 5 of its 7
 registered read procedures were deleted. `dei` read is the cleanest remaining demonstration:
 `NEXT_PUBLIC_DEI_READ_VIA_CSHARP` does not exist in Vercel yet, the whole TS DEI router is live, and
-`verify dei` runs a real 10-endpoint parity/RLS/RBAC check. (`engagement` read is in the same state
-and substitutes cleanly if DEI ever flips first — engagement's 2026-07-29 TS deletion touched ONLY
-its WRITE side, 3 of 5 mutations, leaving all 14 reads and the real 9-endpoint `verify engagement`
-check fully intact. `engagement-write` itself is therefore now a partial-TS-deletion surface too,
-but that does not affect the read worked example.) One DEI caveat, also printed by `--list`:
+`verify dei` runs a real 10-endpoint parity/RLS/RBAC check. (UPDATE 2026-07-31: `engagement` read no
+longer substitutes for this walkthrough — its flag flipped live in prod and 7 of its 9 registered
+read procedures were deleted, same CONFIRMED_LIVE/partial-TS-deletion shape as
+succession/nine-box/compensation above, not the "still fully un-flipped" state this worked example
+needs. `verify engagement` still runs a REAL, smaller 2-endpoint check — see cutover.sh's engagement
+row — it just isn't a clean stand-in for DEI's walkthrough anymore.) One DEI caveat, also printed by `--list`:
 `dei.getPayEquity` is gated by the separate `Platform:FxReadsEnabled` flag and is NOT covered by
 this surface.
 
@@ -129,7 +130,7 @@ number) and independently corroborated by the `flag:` field in `scripts/parity/s
 | `succession`          | read  | `SuccessionReadEnabled`     | `verify succession`          | `NEXT_PUBLIC_SUCCESSION_READ_VIA_CSHARP`     | CONFIRMED LIVE (partial TS deletion — 8/9 procedures, see cutover.sh)       |
 | `compensation`        | read  | `CompensationReadEnabled`   | `verify compensation`        | `NEXT_PUBLIC_COMPENSATION_READ_VIA_CSHARP`   | CONFIRMED LIVE (partial TS deletion — 5/7 read procedures, see cutover.sh)  |
 | `nine-box`            | read  | `NineBoxReadEnabled`        | `verify ninebox`             | `NEXT_PUBLIC_NINEBOX_READ_VIA_CSHARP`        | CONFIRMED LIVE (partial TS deletion — 7/11 read procedures, see cutover.sh) |
-| `engagement`          | read  | `EngagementReadEnabled`     | `verify engagement`          | `NEXT_PUBLIC_ENGAGEMENT_READ_VIA_CSHARP`     | FLIP-READY                                                                  |
+| `engagement`          | read  | `EngagementReadEnabled`     | `verify engagement`          | `NEXT_PUBLIC_ENGAGEMENT_READ_VIA_CSHARP`     | CONFIRMED LIVE (partial TS deletion — 7/9 read procedures, see cutover.sh)  |
 | `dei`                 | read  | `DeiReadEnabled`            | `verify dei`                 | `NEXT_PUBLIC_DEI_READ_VIA_CSHARP`            | FLIP-READY                                                                  |
 | `audit-log`           | read  | `AuditLogReadEnabled`       | `verify audit-log`           | `NEXT_PUBLIC_AUDIT_LOG_READ_VIA_CSHARP`      | FLIP-READY                                                                  |
 | `access-review`       | read  | `AccessReviewReadEnabled`   | `verify access-review`       | `NEXT_PUBLIC_ACCESS_REVIEW_READ_VIA_CSHARP`  | FLIP-READY                                                                  |

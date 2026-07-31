@@ -24,9 +24,16 @@ describe('S2 engagement wiring', () => {
     expect(modal).toMatch(/activate\.mutate/);
   });
 
-  it('invalidates listSurveys and getDashboardKpis', () => {
+  it('invalidates listSurveys (tRPC) and dashboard-kpis (platform-api)', () => {
+    // listSurveys is still tRPC-served — its TS procedure was never a cutover candidate (zero
+    // wrapper consumers). getDashboardKpis's TS procedure was deleted 2026-07-31
+    // (NEXT_PUBLIC_ENGAGEMENT_READ_VIA_CSHARP confirmed live in prod), so its invalidate was
+    // repointed from the dead trpc.engagement.getDashboardKpis cache key to the live platform-api
+    // one — see the note in lib/platform-api/engagement.ts's write section.
     expect(modal).toMatch(/utils\.engagement\.listSurveys\.invalidate/);
-    expect(modal).toMatch(/utils\.engagement\.getDashboardKpis\.invalidate/);
+    expect(modal).toMatch(
+      /queryClient\.invalidateQueries\(\{\s*queryKey:\s*\['platform-api',\s*'engagement',\s*'dashboard-kpis'\]\s*\}\)/,
+    );
   });
 
   it('renders inside the shared Modal', () => {

@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { trpc } from '../../../lib/trpc';
+import { useQueryClient } from '@tanstack/react-query';
 import { useI18n } from '../../../lib/i18n';
 import { toast } from '../../../lib/toast';
 import {
@@ -26,7 +26,7 @@ interface SurveyTakeModalProps {
 export function SurveyTakeModal({ surveyId, onClose }: SurveyTakeModalProps) {
   const { t } = useI18n();
   const e = t.employeeHome;
-  const utils = trpc.useUtils();
+  const queryClient = useQueryClient();
 
   const survey = useEngagementSurveyForResponse(surveyId);
   const questions: SurveyQuestion[] = useMemo(
@@ -40,7 +40,10 @@ export function SurveyTakeModal({ surveyId, onClose }: SurveyTakeModalProps) {
 
   const submit = useEngagementSubmitSurveyResponse({
     onSuccess: () => {
-      utils.engagement.myPendingSurveys.invalidate();
+      // myPendingSurveys is C#-only now (NEXT_PUBLIC_ENGAGEMENT_READ_VIA_CSHARP live, its TS
+      // procedure deleted 2026-07-31) — invalidate its platform-api cache key directly instead of
+      // the dead trpc.engagement.myPendingSurveys cache.
+      queryClient.invalidateQueries({ queryKey: ['platform-api', 'engagement', 'my-pending-surveys'] });
       toast(e.surveySubmitSuccess, { type: 'success' });
       onClose();
     },

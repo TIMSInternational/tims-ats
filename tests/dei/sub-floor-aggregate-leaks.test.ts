@@ -11,7 +11,13 @@ import { initTRPC } from '@trpc/server';
 //   MEDIUM 5 simulateAdjustment select  → omits compaRatio/bandId for leader/employee
 //   MEDIUM 6 dei getDashboardKpis       → totalNationalities null when distribution hidden
 //   MEDIUM 7 getSurveyResults           → uniform-suppress every question summary
-//   MEDIUM 8 engagement getDashboardKpis → totalResponses min-5 floored
+//   (finding 5 getClimateHeatmap category-contributor floor, MEDIUM 8 engagement
+//    getDashboardKpis totalResponses floor — both REMOVED 2026-07-31: their TS procedures were
+//    deleted, NEXT_PUBLIC_ENGAGEMENT_READ_VIA_CSHARP confirmed live in prod. The underlying min-5
+//    guards still live in the shared @tims/shared kernels (buildClimateHeatmap /
+//    buildEngagementKpis), covered by tests/engagement/kernels-fixtures.test.ts's golden-fixture
+//    parity + services/Tims.Platform/tests/Tims.IntegrationTests/Engagement/
+//    EngagementReadEndpointTests.cs on the C# side.)
 //
 // Compensation/engagement resolvers live inline in the router behind the full
 // middleware stack — we mock `../trpc` so permissionProcedure is a bare pass-through,
@@ -33,9 +39,6 @@ const benefitPlanFindMany = vi.fn();
 const surveyFindFirst = vi.fn();
 const surveyFindMany = vi.fn();
 const surveyCount = vi.fn();
-const surveyResponseCount = vi.fn();
-const surveyResponseGroupBy = vi.fn();
-const actionPlanCount = vi.fn();
 
 vi.mock('@tims/db', () => ({
   tenantDb: {
@@ -55,11 +58,6 @@ vi.mock('@tims/db', () => ({
       findMany: (...a: unknown[]) => surveyFindMany(...a),
       count: (...a: unknown[]) => surveyCount(...a),
     },
-    surveyResponse: {
-      count: (...a: unknown[]) => surveyResponseCount(...a),
-      groupBy: (...a: unknown[]) => surveyResponseGroupBy(...a),
-    },
-    actionPlan: { count: (...a: unknown[]) => actionPlanCount(...a) },
   },
 }));
 
@@ -144,18 +142,8 @@ const engCaller = () =>
         suppressed: boolean;
       }>;
     }>;
-    getDashboardKpis(): Promise<{
-      totalResponses: number | null;
-      totalResponsesSuppressed: boolean;
-      activeSurveys: number;
-      actionPlansOpen: number;
-    }>;
-    getClimateHeatmap(input?: unknown): Promise<{
-      surveyId: string | null;
-      title: string;
-      suppressed: boolean;
-      data: Array<{ category: string; score: number | null }>;
-    }>;
+    // getDashboardKpis / getClimateHeatmap REMOVED from this caller type 2026-07-31 — their TS
+    // procedures were deleted (see the file header note).
     listSurveys(input?: unknown): Promise<{
       items: Array<{ id: string; responseCount: number | null; responseCountSuppressed: boolean }>;
       total: number;
@@ -294,37 +282,8 @@ describe('compensation getDashboardKpis (HIGH 3)', () => {
   });
 });
 
-// ── round 7 finding 5: getClimateHeatmap per-category distinct-respondent floor ──
-describe('getClimateHeatmap category contributor floor (finding 5)', () => {
-  const survey = (responses: Array<{ answers: Record<string, number> }>) => ({
-    id: 's-1',
-    title: 'Climate',
-    questions: [
-      { text: 'q1', type: 'scale', category: 'wellbeing' },
-      { text: 'q2', type: 'scale', category: 'growth' },
-    ],
-    responses,
-  });
-
-  it('10-response survey, one category answered by only 1 person → category scores suppressed', async () => {
-    // All 10 answer q1 (wellbeing); only 1 answers q2 (growth) → growth has 1 contributor.
-    const responses = [{ answers: { q1: 5, q2: 4 } }, ...Array.from({ length: 9 }, () => ({ answers: { q1: 5 } }))];
-    surveyFindMany.mockResolvedValue([survey(responses)]);
-    const r = await engCaller().getClimateHeatmap();
-    // uniform suppression: every category score null + suppressed:true.
-    expect(r.suppressed).toBe(true);
-    expect(r.data.every((d) => d.score === null)).toBe(true);
-  });
-
-  it('all categories answered by >= 5 people → real category scores', async () => {
-    const responses = Array.from({ length: 6 }, () => ({ answers: { q1: 5, q2: 4 } }));
-    surveyFindMany.mockResolvedValue([survey(responses)]);
-    const r = await engCaller().getClimateHeatmap();
-    expect(r.suppressed).toBe(false);
-    expect(r.data.find((d) => d.category === 'wellbeing')!.score).toBe(5);
-    expect(r.data.find((d) => d.category === 'growth')!.score).toBe(4);
-  });
-});
+// round 7 finding 5 (getClimateHeatmap per-category distinct-respondent floor) REMOVED 2026-07-31
+// — see the file header note.
 
 // ── round 7 finding 6: listSurveys responseCount floored ─────────────────────
 describe('listSurveys responseCount floor (finding 6)', () => {
@@ -455,40 +414,5 @@ describe('getSurveyResults all-or-nothing question suppression (MEDIUM 7 / round
   });
 });
 
-// ── MEDIUM 8: engagement getDashboardKpis totalResponses floor ──────────────
-describe('engagement getDashboardKpis totalResponses (MEDIUM 8)', () => {
-  it('3 org-wide responses → totalResponses null + suppressed; surveys/plans stay', async () => {
-    surveyCount.mockResolvedValue(1);
-    surveyResponseCount.mockResolvedValue(3);
-    surveyResponseGroupBy.mockResolvedValue([{ surveyId: 's1', _count: { _all: 3 } }]);
-    actionPlanCount.mockResolvedValue(2);
-    const r = await engCaller().getDashboardKpis();
-    expect(r.totalResponses).toBeNull();
-    expect(r.totalResponsesSuppressed).toBe(true);
-    expect(r.activeSurveys).toBe(1);
-    expect(r.actionPlansOpen).toBe(2);
-  });
-
-  it('>= 5 responses → real count (all surveys clear the floor)', async () => {
-    surveyCount.mockResolvedValue(2);
-    surveyResponseCount.mockResolvedValue(40);
-    surveyResponseGroupBy.mockResolvedValue([
-      { surveyId: 's1', _count: { _all: 25 } },
-      { surveyId: 's2', _count: { _all: 15 } },
-    ]);
-    actionPlanCount.mockResolvedValue(0);
-    const r = await engCaller().getDashboardKpis();
-    expect(r.totalResponses).toBe(40);
-    expect(r.totalResponsesSuppressed).toBe(false);
-  });
-
-  it('0 responses passes through (reveals no individual)', async () => {
-    surveyCount.mockResolvedValue(0);
-    surveyResponseCount.mockResolvedValue(0);
-    surveyResponseGroupBy.mockResolvedValue([]);
-    actionPlanCount.mockResolvedValue(0);
-    const r = await engCaller().getDashboardKpis();
-    expect(r.totalResponses).toBe(0);
-    expect(r.totalResponsesSuppressed).toBe(false);
-  });
-});
+// MEDIUM 8 (engagement getDashboardKpis totalResponses floor) REMOVED 2026-07-31 — see the file
+// header note.

@@ -4,23 +4,19 @@ import { router, permissionProcedure } from '../trpc';
 import { tenantDb as db } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { scopeWhereFor, assertScoped, assertSubjectInScope, requireOrgScope, suppressBelowMin5 } from '../access';
-import {
-  computeEnps,
-  summarizeSurveyResults,
-  buildClimateHeatmap,
-  buildResultsByArea,
-  buildEngagementKpis,
-} from '@tims/shared';
+import { summarizeSurveyResults, buildResultsByArea } from '@tims/shared';
 
 export const engagementRouter = router({
   // ── Surveys ────────────────────────────────────────────────────────
   listSurveys: permissionProcedure('engagement', 'read')
     .input(
-      z.object({
-        status: z.enum(['draft', 'active', 'closed']).optional(),
-        page: z.number().int().min(1).default(1),
-        limit: z.number().int().min(1).max(100).default(20),
-      }).optional(),
+      z
+        .object({
+          status: z.enum(['draft', 'active', 'closed']).optional(),
+          page: z.number().int().min(1).default(1),
+          limit: z.number().int().min(1).max(100).default(20),
+        })
+        .optional(),
     )
     .query(async ({ ctx, input }) => {
       const { status, page = 1, limit = 20 } = input ?? {};
@@ -101,181 +97,12 @@ export const engagementRouter = router({
       return { surveyId: survey.id, title: survey.title, ...summary };
     }),
 
-  // ── My Pending Surveys (Slice 5B) ──────────────────────────────────
-  // OWN-scoped self-service read: the ACTIVE surveys the caller has NOT yet
-  // responded to. NOT an org rollup, so NO requireOrgScope (it would FORBID the
-  // own-scoped employee caller). `survey` is NOT a scopeWhereFor entity, so the
-  // org + anti-join filter is hand-rolled rather than composed via the helper.
-  //
-  // "Pending" = active Survey rows (status active + within the start/end window)
-  // MINUS the surveys this user already answered, expressed as an anti-join on the
-  // `responses` relation: `responses: { none: { userId: ctx.user.id } }`. The
-  // user filter lives INSIDE the relation `none`, so it narrows to the caller —
-  // it cannot widen. Explicit select (list-UI fields only, never the raw
-  // responseCount scalar) + bounded take.
-  myPendingSurveys: permissionProcedure('engagement', 'read').query(async ({ ctx }) => {
-    const now = new Date();
-    return db.survey.findMany({
-      where: {
-        AND: [
-          { organizationId: ctx.user.organizationId },
-          // Active window: status active AND (no startsAt or already started) AND
-          // (no endsAt or not yet ended). Open-ended dates are treated as active.
-          { status: 'active' },
-          { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
-          { OR: [{ endsAt: null }, { endsAt: { gte: now } }] },
-          // Anti-join: exclude surveys the CALLER has already responded to.
-          { responses: { none: { userId: ctx.user.id } } },
-        ],
-      },
-      select: {
-        id: true,
-        title: true,
-        type: true,
-        startsAt: true,
-        endsAt: true,
-      },
-      orderBy: { endsAt: 'asc' },
-      take: 50,
-    });
-  }),
-
-  // ── Take a Survey (own-scoped renderable definition) ───────────────
-  // OWN-scoped self-service read used by the take form. The employee holds the
-  // engagement:read@own grant, so this is permissionProcedure('engagement',
-  // 'read') and intentionally does no org-rollup gate (an org-rollup gate would
-  // FORBID the own-scoped caller — contrast the org-only aggregate reads above).
-  //
-  // `survey` is not a row-scoped entity, so the org filter + answerability gate
-  // is hand-rolled in the where-clause: a survey is renderable to the caller
-  // ONLY if it is `status: 'active'`, within its `[startsAt, endsAt]` window
-  // (null bounds = open), and in the caller's organization. Anything else →
-  // NOT_FOUND (never leak the existence of an out-of-window / cross-org survey).
-  //
-  // Explicit select of the RENDERABLE fields only (id/title/type/questions) —
-  // never the raw responseCount scalar and never other respondents' answers.
-  // already-answered is intentionally NOT pre-checked here: the submit endpoint
-  // owns the duplicate-response CONFLICT, which the take UI handles.
-  getSurveyForResponse: permissionProcedure('engagement', 'read')
-    .input(z.object({ surveyId: z.string().uuid() }))
-    .query(async ({ ctx, input }) => {
-      const now = new Date();
-      const survey = await db.survey.findFirst({
-        where: {
-          AND: [
-            { id: input.surveyId },
-            { organizationId: ctx.user.organizationId },
-            { status: 'active' },
-            { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
-            { OR: [{ endsAt: null }, { endsAt: { gte: now } }] },
-          ],
-        },
-        select: {
-          id: true,
-          title: true,
-          type: true,
-          questions: true,
-        },
-      });
-
-      if (!survey) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Encuesta no encontrada o no disponible' });
-      }
-
-      return survey;
-    }),
-
-  // ── eNPS ───────────────────────────────────────────────────────────
-  getEnps: permissionProcedure('engagement', 'read')
-    .input(
-      z.object({
-        period: z.enum(['month', 'quarter', 'year']).default('quarter'),
-        companyId: z.string().uuid().optional(),
-      }).optional(),
-    )
-    .query(async ({ ctx, input }) => {
-      // min-5 (slice 6): getEnps returns a SINGLE org-wide eNPS score and the
-      // promoter/passive/detractor split. Those are raw small-group head-counts: for a
-      // period with 1..4 eNPS responses they expose the exact split (and the totalled
-      // count is itself a small head-count), re-identifying individuals. Suppress the
-      // whole result below the floor. requireOrgScope stays as defense-in-depth.
-      requireOrgScope(ctx.access);
-
-      const { period = 'quarter' } = input ?? {};
-      const now = new Date();
-      const since = new Date(now);
-
-      if (period === 'month') since.setMonth(now.getMonth() - 1);
-      else if (period === 'quarter') since.setMonth(now.getMonth() - 3);
-      else since.setFullYear(now.getFullYear() - 1);
-
-      // §21 minimal-select: the eNPS computation reads ONLY the score out of each
-      // response's `answers` JSON (Object.values(answers)[0]). Select just `answers`
-      // so we never over-fetch full SurveyResponse rows (userId, ids, timestamps).
-      const responses = await db.surveyResponse.findMany({
-        where: {
-          organizationId: ctx.user.organizationId,
-          survey: { type: 'enps' },
-          submittedAt: { gte: since },
-        },
-        select: { answers: true },
-      });
-
-      // The eNPS score + promoter/passive/detractor split + the response/skip/per-split min-5 floors live in
-      // the shared kernel (golden-fixtured both stacks). It reads the raw response `answers` objects (first
-      // value → number as-is else parseInt), so the router owns only the auth + period window + fetch.
-      return computeEnps(
-        responses.map((r) => r.answers as Record<string, unknown>),
-        period,
-      );
-    }),
-
-  // ── Climate ────────────────────────────────────────────────────────
-  getClimateHeatmap: permissionProcedure('engagement', 'read')
-    .input(
-      z.object({
-        surveyId: z.string().uuid().optional(),
-      }).optional(),
-    )
-    .query(async ({ ctx, input }) => {
-      // min-5 (slice 6): the heatmap is per-CATEGORY (survey dimension) scores, each
-      // averaged over ALL respondents to the survey — categories are question groupings,
-      // not respondent segments, so no PER-CATEGORY suppression applies. BUT a survey
-      // with 1..4 total respondents derives every category average from <5 people, so a
-      // survey-LEVEL floor is required: suppress all categories below the floor.
-      // requireOrgScope stays as defense-in-depth.
-      requireOrgScope(ctx.access);
-
-      // §21 minimal-select: the heatmap reads only survey scalars (title, questions) and
-      // each response's `answers` JSON — select those, not full response rows.
-      const surveys = await db.survey.findMany({
-        where: {
-          organizationId: ctx.user.organizationId,
-          type: 'climate',
-          ...(input?.surveyId ? { id: input.surveyId } : {}),
-        },
-        select: {
-          id: true,
-          title: true,
-          questions: true,
-          responses: { select: { answers: true } },
-        },
-        orderBy: { createdAt: 'desc' },
-        take: 1,
-      });
-
-      const survey = surveys[0];
-      if (!survey) return { surveyId: null as string | null, title: '', suppressed: false, data: [] };
-
-      // Per-category averages + the survey/per-category/skip all-or-nothing min-5 suppression live in the
-      // shared kernel (golden-fixtured both stacks); the router owns the auth + fetch + surveyId/title wrap.
-      const heatmap = buildClimateHeatmap(
-        survey.questions as Array<Record<string, unknown>>,
-        survey.responses as Array<{ answers: Record<string, unknown> | null }>,
-      );
-      return { surveyId: survey.id, title: survey.title, ...heatmap };
-    }),
-
+  // TS-deletion (2026-07-31, NEXT_PUBLIC_ENGAGEMENT_READ_VIA_CSHARP confirmed live in prod): the 8
+  // reads with a live FE wrapper — the exact list is enumerated in
+  // apps/web/lib/platform-api/engagement.ts's file header — were deleted here; the wrapper now
+  // routes to the C# service unconditionally for all 8. getSurveyResults above and
+  // getResultsByArea/getWordCloud/getSentiment/getRotationRisk below (plus listSurveys further
+  // above) are untouched, pre-existing zero-wrapper procedures, unrelated to this deletion.
   getResultsByArea: permissionProcedure('engagement', 'read')
     .input(
       z.object({
@@ -352,55 +179,9 @@ export const engagementRouter = router({
     }),
 
   // ── Alerts & Action Plans ──────────────────────────────────────────
-  getLowClimateAlerts: permissionProcedure('engagement', 'read')
-    .input(
-      z.object({ threshold: z.number().min(0).max(10).default(3) }).optional(),
-    )
-    .query(async ({ ctx }) => {
-      // Aggregate over all respondents — org-only until slice-6 min-5
-      // scope-aware aggregation (recorded in REMAINING-WORK).
-      requireOrgScope(ctx.access);
-
-      // No EngagementAlert model; use the Alert model from monitoring
-      const alerts = await db.alert.findMany({
-        where: {
-          organizationId: ctx.user.organizationId,
-          module: 'engagement',
-          status: 'active',
-        },
-        orderBy: { createdAt: 'desc' },
-      });
-
-      return alerts;
-    }),
-
-  listActionPlans: permissionProcedure('engagement', 'read')
-    .input(
-      z.object({
-        status: z.enum(['open', 'in_progress', 'completed', 'pending']).optional(),
-      }).optional(),
-    )
-    .query(async ({ ctx, input }) => {
-      // Row-level list: compose the actionPlan scope fragment so narrow-scoped
-      // callers only see plans they are responsible for (own) or within their
-      // team/unit subject set.
-      const scopeWhere = (await scopeWhereFor('actionPlan', ctx.access, ctx.user.id)) as Prisma.ActionPlanWhereInput;
-
-      return db.actionPlan.findMany({
-        where: {
-          AND: [
-            { organizationId: ctx.user.organizationId },
-            scopeWhere,
-            { ...(input?.status ? { status: input.status } : {}) },
-          ],
-        },
-        include: {
-          responsible: { select: { id: true, firstName: true, lastName: true, avatar: true } },
-        },
-        orderBy: { createdAt: 'desc' },
-      });
-    }),
-
+  // getLowClimateAlerts + listActionPlans (the two reads) were deleted in the 2026-07-31
+  // TS-deletion pass — see the note above getResultsByArea. The two action-plan write
+  // mutations below are unaffected (write-side, unrelated to the read flag).
   createActionPlan: permissionProcedure('engagement', 'create')
     .input(
       z.object({
@@ -413,7 +194,12 @@ export const engagementRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       // Write-rule: the responsible person must be within the caller's subject set.
-      await assertSubjectInScope(ctx.access, ctx.user.id, input.responsibleId, 'No puedes asignar este plan a ese usuario');
+      await assertSubjectInScope(
+        ctx.access,
+        ctx.user.id,
+        input.responsibleId,
+        'No puedes asignar este plan a ese usuario',
+      );
 
       // H1 (both-stacks hardening — succession #171 / 11c precedent): assertSubjectInScope no-ops for
       // organization/company scope (write-rules.ts:20), and the pre-seed engagement:create grants are org-wide, so the
@@ -457,7 +243,12 @@ export const engagementRouter = router({
       // Codex: reassigning responsibility must also target the caller's
       // subject set — otherwise an in-scope plan can be pushed out of scope.
       if (input.responsibleId) {
-        await assertSubjectInScope(ctx.access, ctx.user.id, input.responsibleId, 'No puedes asignar este plan a ese usuario');
+        await assertSubjectInScope(
+          ctx.access,
+          ctx.user.id,
+          input.responsibleId,
+          'No puedes asignar este plan a ese usuario',
+        );
         // H1 (both-stacks): a reassignment must target a user in the caller's org. assertSubjectInScope no-ops for
         // org/company scope, so back it with an in-org existence check (RLS-scoped) — a cross-org responsibleId is a
         // cross-tenant integrity/enumeration hole. Mirrors createActionPlan + the C# EngagementWriteRepository backstop.
@@ -507,44 +298,17 @@ export const engagementRouter = router({
       });
     }),
 
-  // ── Leader Commitments ─────────────────────────────────────────────
-  listLeaderCommitments: permissionProcedure('engagement', 'read')
-    .input(
-      z.object({
-        leaderId: z.string().uuid().optional(),
-        status: z.enum(['pending', 'fulfilled', 'overdue']).optional(),
-      }).optional(),
-    )
-    .query(async ({ ctx, input }) => {
-      // LeaderCommitment rows anchor on leaderId — the fragment scopes them
-      // (own → only mine; team/unit → leaders in my subject set; org → all).
-      // The input leaderId filter can only intersect, never widen.
-      const scopeWhere = await scopeWhereFor('leaderCommitment', ctx.access, ctx.user.id);
-      return db.leaderCommitment.findMany({
-        where: {
-          AND: [
-            { organizationId: ctx.user.organizationId },
-            scopeWhere as Prisma.LeaderCommitmentWhereInput,
-            {
-              ...(input?.leaderId ? { leaderId: input.leaderId } : {}),
-              ...(input?.status ? { status: input.status } : {}),
-            },
-          ],
-        },
-        include: {
-          leader: { select: { id: true, firstName: true, lastName: true, avatar: true } },
-        },
-        orderBy: { dueDate: 'asc' },
-      });
-    }),
-
   // ── Rotation Risk ──────────────────────────────────────────────────
+  // (listLeaderCommitments, formerly here, was deleted in the 2026-07-31 TS-deletion pass — see
+  // the note above getResultsByArea.)
   getRotationRisk: permissionProcedure('engagement', 'read')
     .input(
-      z.object({
-        companyId: z.string().uuid().optional(),
-        businessUnitId: z.string().uuid().optional(),
-      }).optional(),
+      z
+        .object({
+          companyId: z.string().uuid().optional(),
+          businessUnitId: z.string().uuid().optional(),
+        })
+        .optional(),
     )
     .query(async ({ ctx, input }) => {
       // Aggregate over org users — org-only until slice-6 min-5
@@ -567,33 +331,6 @@ export const engagementRouter = router({
       };
     }),
 
-  // ── Dashboard KPIs ─────────────────────────────────────────────────
-  getDashboardKpis: permissionProcedure('engagement', 'read').query(async ({ ctx }) => {
-    // Org-rollup aggregate: only available at org/company scope until slice-6
-    // introduces scope-aware aggregation (recorded in REMAINING-WORK).
-    requireOrgScope(ctx.access);
-
-    const orgId = ctx.user.organizationId;
-
-    const [activeSurveys, totalResponses, perSurveyGroups, actionPlansOpen] = await Promise.all([
-      db.survey.count({ where: { organizationId: orgId, status: 'active' } }),
-      db.surveyResponse.count({ where: { organizationId: orgId } }),
-      db.surveyResponse.groupBy({
-        by: ['surveyId'],
-        where: { organizationId: orgId },
-        _count: { _all: true },
-      }),
-      db.actionPlan.count({ where: { organizationId: orgId, status: { in: ['pending', 'in_progress'] } } }),
-    ]);
-
-    // The org-total min-5 floor + the cross-endpoint per-survey DIFFERENCING guard live in the shared kernel
-    // (golden-fixtured both stacks): if ANY per-survey response count is 1..4, the org total is nulled too
-    // (else the visible surveys' sum subtracted from the org total recovers a suppressed survey's count).
-    return buildEngagementKpis(
-      activeSurveys,
-      totalResponses,
-      perSurveyGroups.map((g) => g._count._all),
-      actionPlansOpen,
-    );
-  }),
+  // (getDashboardKpis, formerly here, was deleted in the 2026-07-31 TS-deletion pass — see the note
+  // above getResultsByArea.)
 });

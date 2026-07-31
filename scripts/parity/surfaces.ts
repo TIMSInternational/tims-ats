@@ -284,24 +284,31 @@ export const SURFACES: Record<string, Surface> = {
   // surface was never registered, so `verify engagement` / `parity engagement` / `rls engagement`
   // errored "unknown surface". This entry closes that gap.
   //
-  // 9 of the 14 reads (the Tier-1 static-path subset — confirmed against
-  // EngagementReadEndpoints.cs's live route table). The remaining 5 (getSurveyResults,
-  // getSurveyForResponse, getResultsByArea, getWordCloud, getSentiment) are by-id
-  // (`/engagement/surveys/{surveyId}/...`) Tier-2 follow-ups needing a `survey` idScopeKey +
-  // seeded survey rows in `SeedResources`/`seed.ts` — the same "needs the harness Mode-A id
-  // extension" deferral already used above for compensation/evaluation360/ninebox/succession's
-  // by-id reads, not a silent omission. One flag `Platform__EngagementReadEnabled`.
+  // UPDATE 2026-07-31: 7 of the original 9 registered engagement reads had their TS procedures
+  // deleted (NEXT_PUBLIC_ENGAGEMENT_READ_VIA_CSHARP confirmed live in prod) — my-pending-surveys,
+  // enps, climate-heatmap, alerts, action-plans, leader-commitments, dashboard-kpis are REMOVED
+  // below (no TS side left to diff against for any of them). The 2 that survive (surveys,
+  // rotation-risk) map to the router's zero-FE-wrapper procedures (listSurveys/getRotationRisk),
+  // which stay live — pre-existing dead-or-live code unrelated to this migration — so
+  // `verify engagement` still runs 2 REAL parity/RLS/RBAC checks, not a no-op. One flag
+  // `Platform__EngagementReadEnabled` still gates the C# side for all 14 backend endpoints; only
+  // these 2 have a TS side left to compare against. (getSurveyForResponse was never registered
+  // here in the first place — it was always a Tier-2 by-id deferral, see the original comment
+  // below — so its 2026-07-31 TS deletion needs no removal here.)
+  //
+  // Remaining 5 (getSurveyResults, getSurveyForResponse, getResultsByArea, getWordCloud,
+  // getSentiment) are by-id (`/engagement/surveys/{surveyId}/...`) Tier-2 follow-ups needing a
+  // `survey` idScopeKey + seeded survey rows in `SeedResources`/`seed.ts` — the same "needs the
+  // harness Mode-A id extension" deferral already used above for
+  // compensation/evaluation360/ninebox/succession's by-id reads, not a silent omission.
   //
   // Gating (per `EngagementReadEndpoints.cs`'s own docstring, grounded in
   // seed-access-matrix.ts:44-48,58-76,104,122): hr_admin holds `engagement` r/c/u/d@organization;
   // hrbp holds `engagement` read@unit (NOT org/company) — passes any GRANT-ONLY check but fails
   // `requireOrgScope`.
-  //   - listSurveys / myPendingSurveys: grant-only / self-service (NO org-gate) → hrbp 200.
-  //   - getEnps / getClimateHeatmap / getLowClimateAlerts / getDashboardKpis / getRotationRisk:
-  //     staff gate THEN `requireOrgScope` (`AuthorizeOrgRollupAsync`) → hrbp 403 (unit ≠ org/company).
-  //   - listActionPlans / listLeaderCommitments: `scopeWhereFor` row-filter (hrbp → 200-empty,
-  //     fragile) → hrbp OMITTED from `expectedByRole`, same convention as nine-box's
-  //     grid/movement-history above.
+  //   - listSurveys: grant-only (NO org-gate) → hrbp 200.
+  //   - getRotationRisk: staff gate THEN `requireOrgScope` (`AuthorizeOrgRollupAsync`) → hrbp 403
+  //     (unit ≠ org/company).
   // super_admin bypasses everywhere (code-guaranteed in both stacks, per the team-intel/succession
   // precedent above).
   engagement: {
@@ -317,64 +324,6 @@ export const SURFACES: Record<string, Surface> = {
         input: {},
         expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 200 },
         normalize: { dropNullish: true, sortArraysBy: 'id' },
-      },
-      {
-        name: 'my-pending-surveys',
-        csharpPath: '/engagement/my/pending-surveys',
-        tsProcedure: 'engagement.myPendingSurveys',
-        input: {},
-        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 200 },
-        normalize: { dropNullish: true, sortArraysBy: 'id' },
-      },
-      {
-        name: 'enps',
-        csharpPath: '/engagement/enps',
-        tsProcedure: 'engagement.getEnps',
-        input: {},
-        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
-        normalize: { dropNullish: true },
-      },
-      {
-        name: 'climate-heatmap',
-        csharpPath: '/engagement/climate-heatmap',
-        tsProcedure: 'engagement.getClimateHeatmap',
-        input: {},
-        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
-        normalize: { dropNullish: true },
-      },
-      {
-        name: 'alerts',
-        csharpPath: '/engagement/alerts',
-        tsProcedure: 'engagement.getLowClimateAlerts',
-        input: {},
-        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
-        normalize: { dropNullish: true, sortArraysBy: 'id' },
-      },
-      {
-        name: 'action-plans',
-        csharpPath: '/engagement/action-plans',
-        tsProcedure: 'engagement.listActionPlans',
-        input: {},
-        // scopeWhereFor row-filter — hrbp omitted (see the surface-level comment above).
-        expectedByRole: { super_admin: 200, hr_admin: 200 },
-        normalize: { dropNullish: true, sortArraysBy: 'id' },
-      },
-      {
-        name: 'leader-commitments',
-        csharpPath: '/engagement/leader-commitments',
-        tsProcedure: 'engagement.listLeaderCommitments',
-        input: {},
-        // scopeWhereFor row-filter — hrbp omitted (see the surface-level comment above).
-        expectedByRole: { super_admin: 200, hr_admin: 200 },
-        normalize: { dropNullish: true, sortArraysBy: 'id' },
-      },
-      {
-        name: 'dashboard-kpis',
-        csharpPath: '/engagement/dashboard-kpis',
-        tsProcedure: 'engagement.getDashboardKpis',
-        input: {},
-        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
-        normalize: { dropNullish: true },
       },
       {
         name: 'rotation-risk',

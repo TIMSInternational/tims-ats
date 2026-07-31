@@ -34,8 +34,13 @@ const readDeiKernel = () => readFileSync(join(ROOT, 'packages/shared/src/dei.ts'
 const readEngagement = () => readFileSync(join(ROOT, 'packages/api/src/routers/engagement.ts'), 'utf8');
 // Phase-5 Slice-11: the engagement min-5 aggregate suppression (survey-results / eNPS / climate / results-by-area
 // / dashboard-KPI differencing guard) was extracted VERBATIM into the shared @tims/shared engagement kernels so
-// BOTH the live TS router AND the C# port consume ONE golden-fixtured definition. The router now CALLS them; the
-// floors themselves live here. Tripwires that guarded the (formerly inline) suppression now guard the kernel.
+// BOTH the live TS router AND the C# port consume ONE golden-fixtured definition. The floors themselves live
+// here. UPDATE 2026-07-31 (NEXT_PUBLIC_ENGAGEMENT_READ_VIA_CSHARP confirmed live in prod): getEnps/
+// getClimateHeatmap/getDashboardKpis's TS procedures were DELETED (C#-only now), so the router no longer calls
+// computeEnps/buildClimateHeatmap/buildEngagementKpis — only summarizeSurveyResults (getSurveyResults) and
+// buildResultsByArea (getResultsByArea) are still router-delegated. All five kernels remain the live
+// cross-stack contract regardless (golden-fixtured against contracts/engagement-fixtures/*.json and covered by
+// tests/engagement/kernels-fixtures.test.ts) — these tripwires guard the kernels themselves.
 const readEngagementKernels = () => readFileSync(join(ROOT, 'packages/shared/src/engagement.ts'), 'utf8');
 const readAssessment = () => readFileSync(join(ROOT, 'packages/api/src/routers/assessment.ts'), 'utf8');
 const readCandidateRepo = () =>
@@ -155,19 +160,19 @@ describe('engagement aggregates honor min-5', () => {
     expect(readEngagement()).toMatch(/suppressBelowMin5.*from '\.\.\/access'/);
   });
 
-  it('the router DELEGATES the aggregates to the golden-fixtured shared kernels (honest-fixture)', () => {
+  it('the router DELEGATES its surviving aggregates to the golden-fixtured shared kernels (honest-fixture)', () => {
     const src = readEngagement();
-    // the router imports the five suppression kernels from @tims/shared and calls each aggregate through them
-    // (never a re-implemented inline mirror — #141 synthetic-fixture lesson).
+    // UPDATE 2026-07-31: getEnps/getClimateHeatmap/getDashboardKpis were deleted (C#-only now), so only
+    // getSurveyResults + getResultsByArea still delegate to a shared kernel from the router — never a
+    // re-implemented inline mirror (#141 synthetic-fixture lesson).
     expect(src).toMatch(/from '@tims\/shared'/);
-    for (const kernel of [
-      'summarizeSurveyResults',
-      'computeEnps',
-      'buildClimateHeatmap',
-      'buildResultsByArea',
-      'buildEngagementKpis',
-    ]) {
+    for (const kernel of ['summarizeSurveyResults', 'buildResultsByArea']) {
       expect(src, `router must call ${kernel}`).toMatch(new RegExp(`\\b${kernel}\\(`));
+    }
+    // computeEnps/buildClimateHeatmap/buildEngagementKpis are no longer called by the TS router at all —
+    // their only remaining TS reference is tests/engagement/kernels-fixtures.test.ts (golden-fixture parity).
+    for (const kernel of ['computeEnps', 'buildClimateHeatmap', 'buildEngagementKpis']) {
+      expect(src, `router must NOT call deleted-procedure kernel ${kernel}`).not.toMatch(new RegExp(`\\b${kernel}\\(`));
     }
   });
 
@@ -202,11 +207,12 @@ describe('engagement aggregates honor min-5', () => {
     expect(readEngagementKernels()).toMatch(/suppressBelowMin5\(responses\.length\)/);
   });
 
-  it('keeps requireOrgScope on engagement aggregates (defense in depth)', () => {
+  it('keeps requireOrgScope on the surviving engagement aggregates (defense in depth)', () => {
     const matches = readEngagement().match(/requireOrgScope\(ctx\.access\)/g) ?? [];
-    // getSurveyResults, getEnps, getClimateHeatmap, getResultsByArea, getWordCloud,
-    // getSentiment, getLowClimateAlerts, getRotationRisk, getDashboardKpis
-    expect(matches.length).toBeGreaterThanOrEqual(8);
+    // UPDATE 2026-07-31: getEnps, getClimateHeatmap, getLowClimateAlerts, getDashboardKpis were deleted
+    // (C#-only now) — each of those 4 also called requireOrgScope, so the floor dropped from 8 to 5. The
+    // survivors: getSurveyResults, getResultsByArea, getWordCloud, getSentiment, getRotationRisk.
+    expect(matches.length).toBeGreaterThanOrEqual(5);
   });
 });
 
@@ -393,10 +399,12 @@ describe('engagement survey/area total leaks (fix 3)', () => {
 // all-or-nothing trigger: if ANY survey has a 1..4 response count, null the org
 // total too.
 describe('getDashboardKpis closes the org survey-total differencing oracle (FIX 2)', () => {
-  it('computes per-survey response counts via groupBy(surveyId)', () => {
-    const src = readEngagement();
-    expect(src).toMatch(/surveyResponse\.groupBy\(\{\s*\n?\s*by:\s*\['surveyId'\]/);
-  });
+  // UPDATE 2026-07-31: getDashboardKpis's TS procedure was deleted (NEXT_PUBLIC_ENGAGEMENT_READ_VIA_CSHARP
+  // confirmed live in prod; C# is the sole implementation now) — the router no longer runs
+  // `surveyResponse.groupBy({ by: ['surveyId'] })` at all, so that source tripwire is gone. The
+  // per-survey-count differencing guard itself still lives in (and is guarded by) the shared kernel below;
+  // the equivalent C# groupBy is covered by
+  // services/Tims.Platform/tests/Tims.IntegrationTests/Engagement/EngagementReadEndpointTests.cs.
 
   it('suppresses the org total when ANY individual survey is sub-floor (shared kernel)', () => {
     const k = readEngagementKernels();
@@ -417,24 +425,23 @@ describe('getDashboardKpis closes the org survey-total differencing oracle (FIX 
 // no-answers-echoed guarantee is now asserted by
 // services/Tims.Platform/tests/Tims.IntegrationTests/Engagement/EngagementWriteTests.cs.
 describe('surveyResponse reads use explicit minimal selects (FIX 3)', () => {
-  it('getEnps findMany selects only answers (no full response rows)', () => {
-    expect(readEngagement()).toMatch(/surveyResponse\.findMany\(\{[\s\S]*?select:\s*\{\s*answers:\s*true\s*\}/);
-  });
-
-  it('no surveyResponse.findMany without an explicit select remains in engagement.ts', () => {
-    // every surveyResponse.findMany(...) block must contain a `select:`.
-    const src = readEngagement();
-    expect(src).not.toMatch(/surveyResponse\.findMany\(\{(?:(?!\bselect\b)[\s\S])*?\}\)/);
+  // UPDATE 2026-07-31: getEnps's TS procedure was deleted (NEXT_PUBLIC_ENGAGEMENT_READ_VIA_CSHARP confirmed
+  // live in prod; C# is the sole implementation now). Its `surveyResponse.findMany({ select: { answers: true
+  // } })` no-full-row guarantee is now asserted by
+  // services/Tims.Platform/tests/Tims.IntegrationTests/Engagement/EngagementReadEndpointTests.cs — mirrors how
+  // submitSurveyResponse's write-side minimal-select tripwire was retired below.
+  it('no surveyResponse.findMany at all remains in engagement.ts (getEnps was the only caller)', () => {
+    expect(readEngagement()).not.toMatch(/surveyResponse\.findMany\(/);
   });
 
   it('survey readers select responses.{answers} instead of include: responses: true (no full rows)', () => {
     const src = readEngagement();
-    // the broad `include: { responses: true }` (full SurveyResponse rows incl. answers,
-    // userId, ids) is gone from getSurveyResults / getClimateHeatmap.
+    // UPDATE 2026-07-31: getClimateHeatmap's TS procedure was deleted alongside getEnps above — only
+    // getSurveyResults still selects responses.{answers} from the router; the broad `include: { responses:
+    // true }` (full SurveyResponse rows incl. answers, userId, ids) stays gone from both.
     expect(src).not.toMatch(/include:\s*\{\s*responses:\s*true\s*\}/);
-    // both readers now select only the answers JSON off each response.
     const scoped = src.match(/responses:\s*\{\s*select:\s*\{\s*answers:\s*true\s*\}\s*\}/g) ?? [];
-    expect(scoped.length).toBeGreaterThanOrEqual(2);
+    expect(scoped.length).toBeGreaterThanOrEqual(1);
   });
 });
 
