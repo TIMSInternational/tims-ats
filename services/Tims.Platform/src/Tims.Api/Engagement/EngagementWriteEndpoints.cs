@@ -109,7 +109,8 @@ public static class EngagementWriteEndpoints
                     return gate.Failure;
                 }
 
-                // findFirst {id, org} → null ⇒ 404 NOT_FOUND (missing / cross-org, RLS-hidden). engagement.ts:114.
+                // findFirst {id, org} → null ⇒ 404 NOT_FOUND (missing / cross-org, RLS-hidden) — matches the deleted
+                // TS activateSurvey mutation.
                 var result = await useCase.ActivateSurveyAsync(
                     gate.Context!.OrganizationId, surveyId, timeProvider.GetUtcNow(), cancellationToken);
                 return result is null
@@ -190,7 +191,8 @@ public static class EngagementWriteEndpoints
                 var orgId = Guid.Parse(gate.Context!.OrganizationId);
                 var callerId = Guid.Parse(gate.Context!.UserId);
 
-                // Write-rule (engagement.ts:519): the responsible person must be within the caller's subject set.
+                // Write-rule (matching the TS createActionPlan mutation): the responsible person must be within the
+                // caller's subject set.
                 // Out-of-set → 403. Org/company scope short-circuits (true); narrow scopes query the anchors.
                 var subjectFailure = await AssertSubjectInScopeAsync(
                     anchorLoaderFactory, gate.Scope!.Value, orgId, callerId, input.ResponsibleId, cancellationToken);
@@ -200,7 +202,8 @@ public static class EngagementWriteEndpoints
                 }
 
                 // H1 backstop: a null return = the responsibleId is not a member of the caller's org (assertSubjectInScope
-                // no-ops for org/company scope) → 403, no INSERT. Fixed in BOTH stacks (engagement.ts).
+                // no-ops for org/company scope) → 403, no INSERT. Fixed in BOTH stacks (the TS createActionPlan
+                // mutation too).
                 var row = await useCase.CreateActionPlanAsync(
                     gate.Context!.OrganizationId, input, timeProvider.GetUtcNow(), cancellationToken);
                 return row is null
@@ -239,7 +242,8 @@ public static class EngagementWriteEndpoints
                 var orgId = Guid.Parse(gate.Context!.OrganizationId);
                 var callerId = Guid.Parse(gate.Context!.UserId);
 
-                // (1) The action plan must be in the caller's grant (engagement.ts:547). Out-of-grant / nonexistent →
+                // (1) The action plan must be in the caller's grant (matching the TS updateActionPlan mutation's
+                // in-grant check). Out-of-grant / nonexistent →
                 // ScopedNotFoundException (404, "Plan de accion no encontrado") — never confirms the id exists.
                 var anchors = anchorLoaderFactory.Create(orgId, callerId);
                 ScopePredicateSqlTranslator.Translated scopeGuard;
@@ -249,7 +253,8 @@ public static class EngagementWriteEndpoints
                         ScopedEntity.ActionPlan, actionPlanId, gate.Scope!.Value, anchors, orgId, callerId,
                         cancellationToken);
 
-                    // (2) Reassignment can't push out of scope (engagement.ts:550) — the target must be in the caller's
+                    // (2) Reassignment can't push out of scope (matching the TS updateActionPlan mutation) — the
+                    // target must be in the caller's
                     // subject set → out-of-set → 403.
                     if (input.ResponsibleId is { } responsibleId)
                     {

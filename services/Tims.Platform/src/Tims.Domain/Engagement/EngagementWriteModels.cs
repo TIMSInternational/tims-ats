@@ -50,7 +50,8 @@ public static class ActionPlanStatusValues
 }
 
 /// <summary>
-/// The validated createSurvey input (Zod-parity, engagement.ts:68-105). <see cref="Questions"/> is the validated
+/// The validated createSurvey input (Zod-parity with the deleted TS createSurvey mutation's input schema — title,
+/// type, questions array, optional targetGroups/startsAt/endsAt). <see cref="Questions"/> is the validated
 /// non-empty questions array (each item text/type/options/required/category checked at the endpoint); it is stored as
 /// opaque jsonb. <see cref="TargetGroups"/> is the whole optional object (or <c>null</c> when absent) — stored
 /// opaque, NEVER validated in-org (spec §2.2 LOW). startsAt/endsAt are <c>null</c> when absent (Prisma leaves the
@@ -64,17 +65,20 @@ public sealed record CreateSurveyInput(
     DateTimeOffset? StartsAt,
     DateTimeOffset? EndsAt);
 
-/// <summary>The validated activateSurvey input (Zod-parity, engagement.ts:107-120). Just the route-param id.</summary>
+/// <summary>The validated activateSurvey input (Zod-parity with the deleted TS activateSurvey mutation's input
+/// schema). Just the route-param id.</summary>
 public sealed record ActivateSurveyInput(Guid Id);
 
 /// <summary>
-/// The validated submitSurveyResponse input (Zod-parity, engagement.ts:242-289). <see cref="SurveyId"/> is the route
+/// The validated submitSurveyResponse input (Zod-parity with the deleted TS submitSurveyResponse mutation's input
+/// schema). <see cref="SurveyId"/> is the route
 /// param; <see cref="Answers"/> is the opaque jsonb answers object (record, ≤100 keys, string≤5000 | number values).
 /// The userId is NEVER an input — it is the resolved caller, stamped server-side (identity anchor).
 /// </summary>
 public sealed record SubmitSurveyResponseInput(Guid SurveyId, JsonObject Answers);
 
-/// <summary>The validated createActionPlan input (Zod-parity, engagement.ts:507-532). <see cref="Area"/>/
+/// <summary>The validated createActionPlan input (Zod-parity with the TS createActionPlan mutation's input schema).
+/// <see cref="Area"/>/
 /// <see cref="Notes"/>/<see cref="DueDate"/> are <c>null</c> when absent (Prisma leaves the column NULL). status is
 /// hard-coded 'pending'; organizationId = caller.</summary>
 public sealed record CreateActionPlanInput(
@@ -85,9 +89,10 @@ public sealed record CreateActionPlanInput(
     DateTimeOffset? DueDate);
 
 /// <summary>
-/// The validated updateActionPlan input (Zod-parity, engagement.ts:534-562). Every field is optional; the
-/// <c>Has*</c> flags carry the Prisma "absent optional key is skipped (never nulled)" spread. <see cref="DueDate"/>
-/// is a tri-state (engagement.ts:559): <see cref="HasDueDate"/> false ⇒ unchanged; true + <see cref="DueDate"/> null
+/// The validated updateActionPlan input (Zod-parity with the TS updateActionPlan mutation's input schema). Every
+/// field is optional; the <c>Has*</c> flags carry the Prisma "absent optional key is skipped (never nulled)"
+/// spread. <see cref="DueDate"/> is a tri-state (matching the TS mutation's dueDate spread):
+/// <see cref="HasDueDate"/> false ⇒ unchanged; true + <see cref="DueDate"/> null
 /// ⇒ CLEAR the column; true + a value ⇒ set it. <see cref="ResponsibleId"/> present ⇒ a reassignment (the H1 in-org
 /// backstop + assertSubjectInScope both run).
 /// </summary>
@@ -123,11 +128,13 @@ public sealed record SurveyRow(
     [property: JsonConverter(typeof(NodeIsoDateTimeOffsetConverter))] DateTimeOffset CreatedAt,
     [property: JsonConverter(typeof(NodeIsoDateTimeOffsetConverter))] DateTimeOffset UpdatedAt);
 
-/// <summary>The activateSurvey return — the narrowed Prisma <c>select { id, status }</c> (engagement.ts:118).</summary>
+/// <summary>The activateSurvey return — the narrowed Prisma <c>select { id, status }</c> of the deleted TS
+/// activateSurvey mutation.</summary>
 public sealed record ActivateSurveyResult(string Id, string Status);
 
-/// <summary>The submitSurveyResponse success return — the narrowed Prisma <c>select { id, submittedAt }</c>
-/// (engagement.ts:281). The confidential <c>answers</c> is NEVER echoed. submittedAt is Node-ISO.</summary>
+/// <summary>The submitSurveyResponse success return — the narrowed Prisma <c>select { id, submittedAt }</c> of the
+/// deleted TS submitSurveyResponse mutation. The confidential <c>answers</c> is NEVER echoed. submittedAt is
+/// Node-ISO.</summary>
 public sealed record SubmitSurveyResponseRow(
     string Id,
     [property: JsonConverter(typeof(NodeIsoDateTimeOffsetConverter))] DateTimeOffset SubmittedAt);
