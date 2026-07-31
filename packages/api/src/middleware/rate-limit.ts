@@ -17,11 +17,11 @@ const redis =
 // Rate-limit definitions per category
 // ---------------------------------------------------------------------------
 const LIMITS = {
-  mutation: { requests: 30, window: '1m' as const },   // 30 mutations/min
-  query: { requests: 100, window: '1m' as const },     // 100 queries/min
-  auth: { requests: 10, window: '5m' as const },       // 10 auth attempts/5min
-  ai: { requests: 10, window: '1m' as const },         // 10 AI calls/min
-  export: { requests: 5, window: '5m' as const },      // 5 exports/5min
+  mutation: { requests: 30, window: '1m' as const }, // 30 mutations/min
+  query: { requests: 100, window: '1m' as const }, // 100 queries/min
+  auth: { requests: 10, window: '5m' as const }, // 10 auth attempts/5min
+  ai: { requests: 10, window: '1m' as const }, // 10 AI calls/min
+  export: { requests: 5, window: '5m' as const }, // 5 exports/5min
 } as const;
 
 type RateLimitCategory = keyof typeof LIMITS;
@@ -58,12 +58,15 @@ interface RateLimitEntry {
 const memoryStore = new Map<string, RateLimitEntry>();
 
 // Cleanup old entries every 5 minutes
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, entry] of memoryStore) {
-    if (entry.resetAt < now) memoryStore.delete(key);
-  }
-}, 5 * 60 * 1000);
+setInterval(
+  () => {
+    const now = Date.now();
+    for (const [key, entry] of memoryStore) {
+      if (entry.resetAt < now) memoryStore.delete(key);
+    }
+  },
+  5 * 60 * 1000,
+);
 
 /** Converts our window notation to milliseconds */
 function windowToMs(window: string): number {
@@ -72,11 +75,16 @@ function windowToMs(window: string): number {
   const [, value, unit] = match;
   const n = parseInt(value!, 10);
   switch (unit) {
-    case 's': return n * 1_000;
-    case 'm': return n * 60_000;
-    case 'h': return n * 3_600_000;
-    case 'd': return n * 86_400_000;
-    default: return 60_000;
+    case 's':
+      return n * 1_000;
+    case 'm':
+      return n * 60_000;
+    case 'h':
+      return n * 3_600_000;
+    case 'd':
+      return n * 86_400_000;
+    default:
+      return 60_000;
   }
 }
 
@@ -108,10 +116,7 @@ function checkMemoryRateLimit(identifier: string, category: RateLimitCategory): 
 // Public API — same interface as before, no changes needed in trpc.ts
 // ---------------------------------------------------------------------------
 
-export async function checkRateLimit(
-  identifier: string,
-  category: RateLimitCategory = 'query'
-): Promise<void> {
+export async function checkRateLimit(identifier: string, category: RateLimitCategory = 'query'): Promise<void> {
   const upstash = upstashLimiters[category];
 
   if (upstash) {
@@ -137,15 +142,33 @@ export async function checkRateLimit(
 // pipeline (Phase 1). `simulate` is intentionally excluded — compensation's
 // simulate-adjustment is a pure calculation, not an AI call.
 const AI_PATH_KEYWORDS = [
-  'generate', 'parse', 'analyze', 'inclusive', 'screen', 'recommend',
-  'explainab', 'nextbestaction', 'detectbias', 'wordcloud', 'sentiment',
-  'medical', 'getguide', 'faq', 'assistant',
+  'generate',
+  'parse',
+  'analyze',
+  'inclusive',
+  'screen',
+  'recommend',
+  'explainab',
+  'nextbestaction',
+  'detectbias',
+  'wordcloud',
+  'sentiment',
+  'medical',
+  'getguide',
+  'faq',
+  'assistant',
 ];
 
 export function getRateLimitCategory(path: string, type: 'query' | 'mutation'): RateLimitCategory {
   // Auth endpoints
   if (path.startsWith('auth.')) return 'auth';
   const p = path.toLowerCase();
+  // portal.applyToVacancy now synchronously invokes the AI cv-parser agent when a CV is
+  // attached — the ai tier despite being an unauthenticated public mutation. Matched by
+  // exact path, not an AI_PATH_KEYWORDS substring: the staff-authenticated
+  // candidate.applyToVacancy shares the same procedure name and never calls AI, so a
+  // generic 'apply' keyword would incorrectly recategorize it too.
+  if (p === 'portal.applytovacancy') return 'ai';
   // AI-related endpoints
   if (AI_PATH_KEYWORDS.some((k) => p.includes(k))) return 'ai';
   // Export endpoints

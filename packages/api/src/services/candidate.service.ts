@@ -47,22 +47,26 @@ export const candidateService = {
     return candidate;
   },
 
-  async create(orgId: string, userId: string, input: {
-    firstName: string;
-    lastName: string;
-    email: string;
-    phone?: string;
-    source: string;
-    poolType: string;
-    avatar?: string;
-    location?: string;
-    currentTitle?: string;
-    currentCompany?: string;
-    yearsExperience?: number;
-    skills?: string[];
-    linkedinUrl?: string;
-    notes?: string;
-  }) {
+  async create(
+    orgId: string,
+    userId: string,
+    input: {
+      firstName: string;
+      lastName: string;
+      email: string;
+      phone?: string;
+      source: string;
+      poolType: string;
+      avatar?: string;
+      location?: string;
+      currentTitle?: string;
+      currentCompany?: string;
+      yearsExperience?: number;
+      skills?: string[];
+      linkedinUrl?: string;
+      notes?: string;
+    },
+  ) {
     return candidateRepository.create(orgId, userId, {
       firstName: input.firstName,
       lastName: input.lastName,
@@ -98,8 +102,11 @@ export const candidateService = {
     scopeWhere: Prisma.CandidateWhereInput,
     appScopeWhere: Prisma.ApplicationWhereInput,
   ) {
-    const [total, newThisMonth, activeApplications, poolStats] =
-      await candidateRepository.getDashboardKpis(orgId, scopeWhere, appScopeWhere);
+    const [total, newThisMonth, activeApplications, poolStats] = await candidateRepository.getDashboardKpis(
+      orgId,
+      scopeWhere,
+      appScopeWhere,
+    );
 
     return {
       total,
@@ -111,8 +118,11 @@ export const candidateService = {
 
   // Timeline
   async getTimeline(orgId: string, candidateId: string, appScopeWhere: Prisma.ApplicationWhereInput) {
-    const [applications, assessments, documents] =
-      await candidateRepository.getTimelineData(orgId, candidateId, appScopeWhere);
+    const [applications, assessments, documents] = await candidateRepository.getTimelineData(
+      orgId,
+      candidateId,
+      appScopeWhere,
+    );
 
     type TimelineEvent = {
       id: string;
@@ -214,7 +224,11 @@ export const candidateService = {
     return {
       overallRisk: latestFit && latestFit.overallScore < 40 ? 'high' : rejectedCount > 2 ? 'medium' : 'low',
       factors: [
-        { label: 'Fit Score', value: latestFit?.overallScore ?? null, risk: latestFit && latestFit.overallScore < 40 ? 'high' : 'low' },
+        {
+          label: 'Fit Score',
+          value: latestFit?.overallScore ?? null,
+          risk: latestFit && latestFit.overallScore < 40 ? 'high' : 'low',
+        },
         { label: 'Previous Rejections', value: rejectedCount, risk: rejectedCount > 2 ? 'medium' : 'low' },
       ],
     };
@@ -240,10 +254,19 @@ export const candidateService = {
   },
 
   // Documents
+  // This staff-side upload path is still a mock (fabricates fileUrl, never accepts real
+  // bytes) — unlike the public apply flow's real S3 upload (portalApplicationService,
+  // packages/api/src/routers/portal.ts), which is out of scope for this staff path.
   async uploadDocument(orgId: string, candidateId: string, type: string, fileName: string, fileSize?: number) {
     await candidateService.verifyExists(orgId, candidateId);
     const mockUrl = `https://storage.tims.app/${orgId}/${candidateId}/${fileName}`;
-    const doc = await candidateRepository.createDocument(orgId, { candidateId, type, fileName, fileUrl: mockUrl, fileSize });
+    const doc = await candidateRepository.createDocument(orgId, {
+      candidateId,
+      type,
+      fileName,
+      fileUrl: mockUrl,
+      fileSize,
+    });
     return { document: doc, uploadUrl: mockUrl };
   },
 
@@ -273,7 +296,13 @@ export const candidateService = {
     return { success: true };
   },
 
-  async bulkTag(orgId: string, scopeWhere: Prisma.CandidateWhereInput, candidateIds: string[], tag: string, source: string) {
+  async bulkTag(
+    orgId: string,
+    scopeWhere: Prisma.CandidateWhereInput,
+    candidateIds: string[],
+    tag: string,
+    source: string,
+  ) {
     const uniqueIds = [...new Set(candidateIds)];
     const count = await candidateRepository.countCandidatesInScope(orgId, uniqueIds, scopeWhere);
     if (count !== uniqueIds.length) {

@@ -86,4 +86,19 @@ describe('portalApplicationService.processCvUpload', () => {
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     );
   });
+
+  it('never throws, and never blocks the caller past the timeout, when a step hangs forever', async () => {
+    vi.useFakeTimers();
+    try {
+      fetchCvObjectMock.mockImplementation(() => new Promise(() => {})); // never resolves
+
+      const resultPromise = portalApplicationService.processCvUpload(ORG_ID, CANDIDATE_ID, KEY, 'resume.pdf');
+      await vi.advanceTimersByTimeAsync(20_000);
+
+      await expect(resultPromise).resolves.toBeUndefined();
+      expect(createDocumentMock).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

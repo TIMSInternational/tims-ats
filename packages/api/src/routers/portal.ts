@@ -246,7 +246,13 @@ export const portalRouter = router({
         // Only NEW applications get CV processing — the idempotent-duplicate
         // early-return above and the P2002 race-catch below intentionally
         // skip it, so a resubmit never re-runs S3 fetch + extraction + an AI call.
-        if (input.cvFileKey) {
+        // The key must belong to THIS org's upload prefix — cvFileKey is client-supplied
+        // and otherwise unvalidated, so without this check a candidate could pass an
+        // arbitrary key and have the server fetch+process another org's S3 object into
+        // their own CandidateDocument row (a cross-tenant leak once a future "download
+        // the CV" feature generates a signed GET from fileUrl). Silently skipped, same
+        // non-fatal posture as every other CV failure.
+        if (input.cvFileKey && input.cvFileKey.startsWith(`cv-uploads/${orgId}/`)) {
           await portalApplicationService.processCvUpload(
             orgId,
             candidate.id,

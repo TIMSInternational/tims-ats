@@ -10,6 +10,22 @@ function contentTypeFromKey(key: string): CvContentType {
   throw new Error(`Cannot infer CV content type from key: ${key}`);
 }
 
+// S3 fetch + PDF/DOCX parse + a Bedrock round-trip have no deadline of their own — without
+// one here, a slow/adversarial input could run past the platform's own function timeout and
+// take the whole (already-committed) application submission down with it. This bounds
+// processCvUpload's own promise; it does not cancel the underlying work, which may keep
+// running detached — acceptable, since nothing awaits or depends on it after the race.
+const CV_PROCESSING_TIMEOUT_MS = 20_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    }),
+  ]);
+}
+
 export const portalApplicationService = {
   /**
    * Fetches an uploaded CV from S3, extracts its text, and runs it through the
@@ -18,21 +34,29 @@ export const portalApplicationService = {
    * The CandidateDocument row is created as soon as the upload itself is
    * confirmed (so staff can see a file was submitted), before extraction is
    * attempted — a later extraction/parse failure leaves that row without
-   * parsedData rather than rolling it back.
+   * parsedData rather than rolling it back. The whole chain is time-boxed
+   * (see CV_PROCESSING_TIMEOUT_MS) so a slow S3/parse/AI call can't run past
+   * the platform's own function timeout.
    */
   async processCvUpload(orgId: string, candidateId: string, cvFileKey: string, fileName: string): Promise<void> {
     try {
-      const { buffer, sizeBytes } = await fetchCvObject(cvFileKey);
-      const doc = await candidateRepository.createDocument(orgId, {
-        candidateId,
-        type: 'cv',
-        fileName,
-        fileUrl: cvFileKey,
-        fileSize: sizeBytes,
-      });
+      await withTimeout(
+        (async () => {
+          const { buffer, sizeBytes } = await fetchCvObject(cvFileKey);
+          const doc = await candidateRepository.createDocument(orgId, {
+            candidateId,
+            type: 'cv',
+            fileName,
+            fileUrl: cvFileKey,
+            fileSize: sizeBytes,
+          });
 
-      const text = await extractCvText(buffer, contentTypeFromKey(cvFileKey));
-      await candidateAiService.parseCV(orgId, text, doc.id, candidateId);
+          const text = await extractCvText(buffer, contentTypeFromKey(cvFileKey));
+          await candidateAiService.parseCV(orgId, text, doc.id, candidateId);
+        })(),
+        CV_PROCESSING_TIMEOUT_MS,
+        'CV upload processing',
+      );
     } catch (error) {
       logger.error(
         {

@@ -35,6 +35,16 @@ public static class RateLimitPolicy
 
         var p = path.ToLowerInvariant();
 
+        // portal.applyToVacancy now synchronously invokes the AI cv-parser agent when a CV is
+        // attached — the ai tier despite being an unauthenticated public mutation. Matched by
+        // exact path, not an AI keyword substring: the staff-authenticated
+        // candidate.applyToVacancy shares the same procedure name and never calls AI, so a
+        // generic 'apply' keyword would incorrectly recategorize it too.
+        if (p == "portal.applytovacancy")
+        {
+            return RateLimitCategory.Ai;
+        }
+
         // AI-related endpoints (checked before export, matching TS ordering).
         foreach (var keyword in AiPathKeywords)
         {

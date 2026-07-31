@@ -7,15 +7,23 @@ import { assertScoped } from '../../access';
 
 export const candidateDocumentsRouter = router({
   uploadDocument: permissionProcedure('candidate', 'update')
-    .input(z.object({
-      candidateId: z.string().uuid(),
-      type: z.string().min(1).max(50),
-      fileName: z.string().min(1).max(255),
-      fileSize: z.number().int().min(0).max(52428800).optional(),
-    }))
+    .input(
+      z.object({
+        candidateId: z.string().uuid(),
+        type: z.string().min(1).max(50),
+        fileName: z.string().min(1).max(255),
+        fileSize: z.number().int().min(0).max(52428800).optional(),
+      }),
+    )
     .mutation(async ({ ctx, input }) => {
       await assertScoped('candidate', input.candidateId, ctx.access, ctx.user.id, ctx.user.organizationId);
-      return candidateService.uploadDocument(ctx.user.organizationId, input.candidateId, input.type, input.fileName, input.fileSize);
+      return candidateService.uploadDocument(
+        ctx.user.organizationId,
+        input.candidateId,
+        input.type,
+        input.fileName,
+        input.fileSize,
+      );
     }),
 
   deleteDocument: permissionProcedure('candidate', 'update')
@@ -27,18 +35,22 @@ export const candidateDocumentsRouter = router({
       return candidateService.deleteDocument(ctx.user.organizationId, input.documentId);
     }),
 
-  // Parses CV TEXT (paste-in / extracted upstream) via the gated cv-parser
-  // agent. Optionally persists the result to a document, and always promotes
-  // the parsed education/languages onto the owning Candidate row (so the FIT
+  // Parses CV TEXT the staff member pastes in, via the gated cv-parser agent.
+  // Optionally persists the result to a document, and always promotes the
+  // parsed education/languages onto the owning Candidate row (so the FIT
   // Engine's education/languages dimensions can read them — see
   // candidateAiService.parseCV). Real file→text extraction (S3 + PDF/DOCX) is
-  // a separate future phase.
+  // done on the public apply flow instead — see
+  // portalApplicationService.processCvUpload — which is public-portal-only
+  // and does not go through this staff-authenticated router.
   parseCV: permissionProcedure('candidate', 'update')
-    .input(z.object({
-      candidateId: z.string().uuid(),
-      text: z.string().min(1).max(20000),
-      documentId: z.string().uuid().optional(),
-    }))
+    .input(
+      z.object({
+        candidateId: z.string().uuid(),
+        text: z.string().min(1).max(20000),
+        documentId: z.string().uuid().optional(),
+      }),
+    )
     .mutation(async ({ ctx, input }) => {
       await assertScoped('candidate', input.candidateId, ctx.access, ctx.user.id, ctx.user.organizationId);
       if (input.documentId) {

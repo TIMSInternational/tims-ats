@@ -71,21 +71,21 @@ describe('portal.applyToVacancy — CV processing', () => {
     const caller = await makeCaller();
     await caller.portal.applyToVacancy({
       ...baseApplyInput,
-      cvFileKey: 'cv-uploads/org/x.pdf',
+      cvFileKey: `cv-uploads/${ORG_ID}/x.pdf`,
       cvFileName: 'resume.pdf',
     });
 
-    expect(processCvUploadMock).toHaveBeenCalledWith(ORG_ID, CANDIDATE_ID, 'cv-uploads/org/x.pdf', 'resume.pdf');
+    expect(processCvUploadMock).toHaveBeenCalledWith(ORG_ID, CANDIDATE_ID, `cv-uploads/${ORG_ID}/x.pdf`, 'resume.pdf');
   });
 
   it('falls back to the key basename when cvFileName is omitted', async () => {
     const caller = await makeCaller();
     await caller.portal.applyToVacancy({
       ...baseApplyInput,
-      cvFileKey: 'cv-uploads/org/x.pdf',
+      cvFileKey: `cv-uploads/${ORG_ID}/x.pdf`,
     });
 
-    expect(processCvUploadMock).toHaveBeenCalledWith(ORG_ID, CANDIDATE_ID, 'cv-uploads/org/x.pdf', 'x.pdf');
+    expect(processCvUploadMock).toHaveBeenCalledWith(ORG_ID, CANDIDATE_ID, `cv-uploads/${ORG_ID}/x.pdf`, 'x.pdf');
   });
 
   it('never processes a CV when cvFileKey is omitted', async () => {
@@ -100,10 +100,22 @@ describe('portal.applyToVacancy — CV processing', () => {
     const caller = await makeCaller();
     await caller.portal.applyToVacancy({
       ...baseApplyInput,
-      cvFileKey: 'cv-uploads/org/x.pdf',
+      cvFileKey: `cv-uploads/${ORG_ID}/x.pdf`,
     });
 
     expect(dbMocks.application.create).not.toHaveBeenCalled();
+    expect(processCvUploadMock).not.toHaveBeenCalled();
+  });
+
+  it('silently ignores a cvFileKey that does not belong to this org (IDOR guard)', async () => {
+    const caller = await makeCaller();
+    await caller.portal.applyToVacancy({
+      ...baseApplyInput,
+      cvFileKey: 'cv-uploads/some-other-org/x.pdf',
+      cvFileName: 'resume.pdf',
+    });
+
+    expect(dbMocks.application.create).toHaveBeenCalled();
     expect(processCvUploadMock).not.toHaveBeenCalled();
   });
 });
