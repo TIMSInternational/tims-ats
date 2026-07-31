@@ -10,6 +10,12 @@ vi.mock('@tims/db', () => ({
   },
 }));
 
+vi.mock('../../packages/api/src/repositories/candidate.repository', () => ({
+  candidateRepository: {
+    findForExport: vi.fn(),
+  },
+}));
+
 import { candidateRepository } from '../../packages/api/src/repositories/candidate.repository';
 
 describe('candidateRepository.findForExport', () => {
@@ -62,5 +68,121 @@ describe('candidateRepository.findForExport', () => {
       tags: { select: { tag: true } },
       createdAt: true,
     });
+  });
+});
+
+import { candidateService } from '../../packages/api/src/services/candidate.service';
+import { candidateRepository as actualCandidateRepository } from '../../packages/api/src/repositories/candidate.repository';
+
+const findForExportMock = actualCandidateRepository.findForExport as ReturnType<typeof vi.fn>;
+
+describe('candidateService.exportPool', () => {
+  beforeEach(() => {
+    findForExportMock.mockReset();
+  });
+
+  it('builds a CSV header + one row per candidate', async () => {
+    findForExportMock.mockResolvedValue([
+      {
+        firstName: 'Ana',
+        lastName: 'Diaz',
+        email: 'ana@x.com',
+        phone: '555-1',
+        source: 'referral',
+        poolType: 'active',
+        currentTitle: 'Engineer',
+        currentCompany: 'Acme',
+        yearsExperience: 5,
+        location: 'Bogota',
+        tags: [{ tag: 'vip' }, { tag: 'senior' }],
+        createdAt: new Date('2026-01-01'),
+      },
+    ]);
+
+    const result = await candidateService.exportPool('org-1', {} as never, {});
+
+    expect(result.count).toBe(1);
+    expect(result.truncated).toBe(false);
+    const lines = result.csv.split('\n');
+    expect(lines[0]).toContain('First Name');
+    expect(lines[1]).toContain('"Ana"');
+    expect(lines[1]).toContain('"vip; senior"');
+  });
+
+  it('caps at 5000 rows and marks truncated when the repository returns 5001', async () => {
+    const rows = Array.from({ length: 5001 }, (_, i) => ({
+      firstName: `F${i}`,
+      lastName: 'L',
+      email: `e${i}@x.com`,
+      phone: null,
+      source: 's',
+      poolType: 'active',
+      currentTitle: null,
+      currentCompany: null,
+      yearsExperience: null,
+      location: null,
+      tags: [],
+      createdAt: new Date(),
+    }));
+    findForExportMock.mockResolvedValue(rows);
+
+    const result = await candidateService.exportPool('org-1', {} as never, {});
+
+    expect(result.count).toBe(5000);
+    expect(result.truncated).toBe(true);
+    expect(result.csv.split('\n').length).toBe(5001); // header + 5000 rows
+  });
+
+  it('does not mark truncated at exactly 5000 rows', async () => {
+    const rows = Array.from({ length: 5000 }, (_, i) => ({
+      firstName: `F${i}`,
+      lastName: 'L',
+      email: `e${i}@x.com`,
+      phone: null,
+      source: 's',
+      poolType: 'active',
+      currentTitle: null,
+      currentCompany: null,
+      yearsExperience: null,
+      location: null,
+      tags: [],
+      createdAt: new Date(),
+    }));
+    findForExportMock.mockResolvedValue(rows);
+
+    const result = await candidateService.exportPool('org-1', {} as never, {});
+
+    expect(result.count).toBe(5000);
+    expect(result.truncated).toBe(false);
+  });
+
+  it('neutralizes a formula-injection field (CWE-1236)', async () => {
+    findForExportMock.mockResolvedValue([
+      {
+        firstName: 'Ana',
+        lastName: 'Diaz',
+        email: 'ana@x.com',
+        phone: null,
+        source: 's',
+        poolType: 'active',
+        currentTitle: null,
+        currentCompany: '=SUM(A1:A10)',
+        yearsExperience: null,
+        location: null,
+        tags: [],
+        createdAt: new Date(),
+      },
+    ]);
+
+    const result = await candidateService.exportPool('org-1', {} as never, {});
+
+    expect(result.csv).toContain('"\'=SUM(A1:A10)"');
+  });
+
+  it('passes poolType/tags input through to the repository as filters', async () => {
+    findForExportMock.mockResolvedValue([]);
+    await candidateService.exportPool('org-1', {} as never, { poolType: 'active', tags: ['vip'] });
+
+    expect(findForExportMock).toHaveBeenCalledWith('org-1', {}, { poolType: 'active', tags: ['vip'] }, 5000);
   });
 });
