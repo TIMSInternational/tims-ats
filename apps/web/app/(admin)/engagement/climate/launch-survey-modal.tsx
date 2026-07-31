@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
@@ -43,6 +44,7 @@ const QUESTION_TYPES: {
 export function LaunchSurveyModal({ onClose }: LaunchSurveyModalProps) {
   const { t } = useI18n();
   const utils = trpc.useUtils();
+  const queryClient = useQueryClient();
 
   const [title, setTitle] = useState('');
   const [type, setType] = useState<SurveyType>('climate');
@@ -50,8 +52,14 @@ export function LaunchSurveyModal({ onClose }: LaunchSurveyModalProps) {
 
   const activate = useEngagementActivateSurvey({
     onSuccess: () => {
+      // listSurveys is still tRPC-served (its own TS procedure was never a cutover
+      // candidate — see engagement.ts's file header), so it still needs an explicit
+      // tRPC-cache invalidate.
       utils.engagement.listSurveys.invalidate();
-      utils.engagement.getDashboardKpis.invalidate();
+      // getDashboardKpis is C#-only now (NEXT_PUBLIC_ENGAGEMENT_READ_VIA_CSHARP live,
+      // its TS procedure deleted 2026-07-31) — invalidate its platform-api cache key
+      // directly instead of the dead trpc.engagement.getDashboardKpis cache.
+      queryClient.invalidateQueries({ queryKey: ['platform-api', 'engagement', 'dashboard-kpis'] });
       toast(t.climate.launchSurveySuccess, { type: 'success' });
       onClose();
     },

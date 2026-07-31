@@ -7,64 +7,19 @@ import { join } from 'path';
 // rollup. These guards fail closed if a future edit widens scope. (The third
 // read, compensation.myCompensation, was deleted 2026-07-29 — C#-only now.)
 //
-//   engagement.myPendingSurveys → active surveys the caller has NOT responded to.
-//                                 Org filter + anti-join on ctx.user.id. NO
-//                                 requireOrgScope (would FORBID the own-scoped
-//                                 caller). `survey` is not a scopeWhereFor entity
-//                                 → hand-rolled org + anti-join filter.
+//   engagement.myPendingSurveys → REMOVED 2026-07-31 (NEXT_PUBLIC_ENGAGEMENT_READ_VIA_CSHARP
+//                                 confirmed live in prod; its TS procedure was deleted, C# is the
+//                                 sole implementation now). Its own-scoped anti-join guarantee
+//                                 (org filter + `responses: { none: { userId: ctx.user.id } } }`,
+//                                 no requireOrgScope) is now asserted against the live C# API by
+//                                 services/Tims.Platform/tests/Tims.IntegrationTests/Engagement/
+//                                 EngagementReadEndpointTests.cs.
 //   consent.myConsents          → CURRENT user's DataConsent rows, subjectUserId
 //                                 hard-pinned to ctx.user.id. protectedProcedure
 //                                 (reading your own consent is inherently safe).
 
 const ROOT = join(__dirname, '..', '..');
-const readEngagement = () => readFileSync(join(ROOT, 'packages/api/src/routers/engagement.ts'), 'utf8');
 const readConsent = () => readFileSync(join(ROOT, 'packages/api/src/routers/consent.ts'), 'utf8');
-
-// Isolate the body of a named procedure (`name: ...` up to the next top-level
-// `procedure,` boundary) so assertions target THAT endpoint, not the whole file.
-function procedureBody(src: string, name: string): string {
-  const start = src.indexOf(`${name}:`);
-  expect(start, `procedure ${name} not found`).toBeGreaterThanOrEqual(0);
-  // Grab a generous slice; the next `\n  <name>:` sibling or end-of-file bounds it.
-  const rest = src.slice(start + name.length);
-  const next = rest.search(/\n {2}[a-zA-Z]+:\s*(permissionProcedure|protectedProcedure|router)/);
-  return next >= 0 ? rest.slice(0, next) : rest;
-}
-
-describe('engagement.myPendingSurveys — own-scoped survey anti-join', () => {
-  const body = () => procedureBody(readEngagement(), 'myPendingSurveys');
-
-  it('exists', () => {
-    expect(readEngagement()).toMatch(/myPendingSurveys:/);
-  });
-
-  it("uses permissionProcedure('engagement', 'read') (employee has this grant)", () => {
-    expect(body()).toMatch(/permissionProcedure\('engagement',\s*'read'\)/);
-  });
-
-  it('does NOT call requireOrgScope (own-scoped, not an org rollup)', () => {
-    expect(body()).not.toMatch(/requireOrgScope/);
-  });
-
-  it('does NOT call scopeWhereFor (survey is not a scopeWhereFor entity)', () => {
-    expect(body()).not.toMatch(/scopeWhereFor/);
-  });
-
-  it('filters by organizationId', () => {
-    expect(body()).toMatch(/organizationId:\s*ctx\.user\.organizationId/);
-  });
-
-  it('anti-joins on ctx.user.id (responses none: userId)', () => {
-    const b = body();
-    expect(b).toMatch(/responses:\s*\{\s*none:\s*\{\s*userId:\s*ctx\.user\.id/);
-  });
-
-  it('uses an explicit select and a bounded take', () => {
-    const b = body();
-    expect(b).toMatch(/select:\s*\{/);
-    expect(b).toMatch(/take:/);
-  });
-});
 
 describe('consent.myConsents — own-pinned DataConsent read', () => {
   const src = () => readConsent();

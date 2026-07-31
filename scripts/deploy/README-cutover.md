@@ -50,26 +50,23 @@ flag, and CONFIRMED LIVE / FLIP-READY / COEXISTENCE / TS DELETED status per
 ./scripts/deploy/cutover.sh engagement --rollback --yes
 ```
 
-**Why `engagement` and not one of the other surfaces?** A worked example is only honest on a surface
-that is genuinely still un-flipped AND still has a live TS side to verify against. As of 2026-07-31
-most surfaces fail one half or the other. `reporting`, `evaluation360` (read), `team-intel`,
-`billing-usage`, and `audit-log` had their TS routers/procedures deleted outright (the C# read path
-is the sole implementation now — each time only the specific dead procedure(s) were removed, so
-team-intel's and billing.ts's routers stay alive for their other, still-dark-or-unrelated
-procedures), so `--verify-only` for any of them is a no-op that prints an explanatory notice and
-exits 0 rather than running a real check. `succession`, `nine-box`, `compensation`, and now `dei`
-are already CONFIRMED LIVE in prod with their TS side partially deleted, so "flip the flag" and
-"roll back" no longer describe reality for them — `dei` held this walkthrough until 2026-07-31, when
-9 of its 11 registered read procedures were deleted (only getEthnicityDistribution/
-getDisabilityDistribution, both zero-FE-consumer exceptions, still have a TS side). `engagement`
-read is the cleanest remaining demonstration: `NEXT_PUBLIC_ENGAGEMENT_READ_VIA_CSHARP` does not
-exist in Vercel yet, the whole TS engagement router's reads are live (its 2026-07-29 TS deletion
-touched ONLY the WRITE side, 3 of 5 mutations — `engagement-write` itself is therefore now a
-partial-TS-deletion surface, but that does not affect the read worked example), and `verify
-engagement` runs a real 9-endpoint parity/RLS/RBAC check (5 by-id reads deferred — see
-surfaces.ts). DEI's own caveat, also printed by `--list`: `dei.getPayEquity` was gated by the
-separate `Platform:FxReadsEnabled` flag but shared DEI's ONE FE flag, so its TS side was deleted in
-the same pass as the other 8 despite that backend-flag split.
+**Why `engagement` was the last worked example, and what to use now.** As of 2026-07-31, every
+standard surface this script covers has either had its TS side fully deleted (`team-intel`,
+`reporting`, `billing-read`, `billing-usage`, `evaluation360` read, `audit-log`, `access-review`
+read+write — all TS DELETED) or is CONFIRMED LIVE with partial TS deletion (`succession`,
+`compensation`, `nine-box`, `dei`, `engagement` read — a live-traffic surface whose router still
+holds zero-FE-consumer dead code). None is "genuinely still un-flipped with a fully live TS side"
+anymore, so no surface can honestly fill this worked example's original role. `engagement` was the
+last one to hold it: `NEXT_PUBLIC_ENGAGEMENT_READ_VIA_CSHARP` is now confirmed live and 8 of its 14
+registered read procedures were deleted (myPendingSurveys/getSurveyForResponse/getEnps/
+getClimateHeatmap/getLowClimateAlerts/listActionPlans/listLeaderCommitments/getDashboardKpis); the
+other 6 (listSurveys/getSurveyResults/getResultsByArea/getWordCloud/getSentiment/getRotationRisk)
+are zero-FE-consumer exceptions, deliberately untouched. `verify engagement` still runs a real,
+smaller 6-endpoint check against those survivors — see cutover.sh's `engagement` row. The steps
+above remain the correct recipe for any FUTURE domain that starts a fresh cutover (Phase 6/7 work,
+or a re-opened surface); there just isn't a live example to run today. One DEI caveat, also printed
+by `--list`: `dei.getPayEquity` is gated by the separate `Platform:FxReadsEnabled` flag and is NOT
+covered by this surface.
 
 ## Sequencing safety (the guardrail)
 
@@ -131,7 +128,7 @@ number) and independently corroborated by the `flag:` field in `scripts/parity/s
 | `succession`          | read  | `SuccessionReadEnabled`     | `verify succession`            | `NEXT_PUBLIC_SUCCESSION_READ_VIA_CSHARP`     | CONFIRMED LIVE (partial TS deletion — 8/9 procedures, see cutover.sh)       |
 | `compensation`        | read  | `CompensationReadEnabled`   | `verify compensation`          | `NEXT_PUBLIC_COMPENSATION_READ_VIA_CSHARP`   | CONFIRMED LIVE (partial TS deletion — 5/7 read procedures, see cutover.sh)  |
 | `nine-box`            | read  | `NineBoxReadEnabled`        | `verify ninebox`               | `NEXT_PUBLIC_NINEBOX_READ_VIA_CSHARP`        | CONFIRMED LIVE (partial TS deletion — 7/11 read procedures, see cutover.sh) |
-| `engagement`          | read  | `EngagementReadEnabled`     | `verify engagement`            | `NEXT_PUBLIC_ENGAGEMENT_READ_VIA_CSHARP`     | FLIP-READY                                                                  |
+| `engagement`          | read  | `EngagementReadEnabled`     | `verify engagement`            | `NEXT_PUBLIC_ENGAGEMENT_READ_VIA_CSHARP`     | CONFIRMED LIVE (partial TS deletion — 8/14 read procedures, see cutover.sh) |
 | `dei`                 | read  | `DeiReadEnabled`            | `verify dei`                   | `NEXT_PUBLIC_DEI_READ_VIA_CSHARP`            | CONFIRMED LIVE (partial TS deletion — 9/11 read procedures, see cutover.sh) |
 | `audit-log`           | read  | `AuditLogReadEnabled`       | `NONE` (TS procedures deleted) | `NEXT_PUBLIC_AUDIT_LOG_READ_VIA_CSHARP`      | TS DELETED                                                                  |
 | `access-review`       | read  | `AccessReviewReadEnabled`   | `NONE` (TS procedures deleted) | `NEXT_PUBLIC_ACCESS_REVIEW_READ_VIA_CSHARP`  | TS DELETED                                                                  |

@@ -28,9 +28,10 @@ describe('survey-take-modal — query + mutation wiring', () => {
   });
 
   it('fetches the renderable survey via the useEngagementSurveyForResponse cutover wrapper', () => {
-    // Cut over to the dark platform-api wrapper (apps/web/lib/platform-api/engagement.ts,
-    // PR #197) — it still calls trpc.engagement.getSurveyForResponse.useQuery internally on the
-    // default (non-C#) path, so this assertion follows the refactor rather than the raw call.
+    // Cut over to the platform-api wrapper (apps/web/lib/platform-api/engagement.ts, PR #197).
+    // As of 2026-07-31 (NEXT_PUBLIC_ENGAGEMENT_READ_VIA_CSHARP confirmed live in prod) that wrapper
+    // is C#-ONLY for this read too — trpc.engagement.getSurveyForResponse was deleted — so this
+    // assertion targets the wrapper hook name rather than a raw trpc call.
     expect(src()).toContain('useEngagementSurveyForResponse');
   });
 
@@ -38,13 +39,18 @@ describe('survey-take-modal — query + mutation wiring', () => {
     // Cut over to the platform-api wrapper (apps/web/lib/platform-api/engagement.ts, Phase-5
     // Slice-16 write wrapper). As of 2026-07-29 that wrapper is C#-ONLY for this mutation —
     // trpc.engagement.submitSurveyResponse was deleted — so this assertion targets the wrapper hook
-    // name rather than a raw trpc call. Contrast the getSurveyForResponse assertion above: the READ
-    // wrapper is STILL dual-path, because NEXT_PUBLIC_ENGAGEMENT_READ_VIA_CSHARP is still dark.
+    // name rather than a raw trpc call. (The getSurveyForResponse read above went C#-only later,
+    // 2026-07-31 — both are now unconditional wrapper calls, no dual-path branch left in either.)
     expect(src()).toContain('useEngagementSubmitSurveyResponse');
   });
 
-  it('invalidates myPendingSurveys on success', () => {
-    expect(src()).toContain('myPendingSurveys.invalidate');
+  it('invalidates the my-pending-surveys platform-api cache on success', () => {
+    // myPendingSurveys' TS procedure was deleted 2026-07-31 alongside the read-flag flip; the
+    // invalidate call was repointed from the dead trpc.engagement.myPendingSurveys cache key to
+    // the live platform-api one (see the note in lib/platform-api/engagement.ts's write section).
+    expect(src()).toContain(
+      "queryClient.invalidateQueries({ queryKey: ['platform-api', 'engagement', 'my-pending-surveys'] })",
+    );
   });
 
   it('has an onError toast on the mutation', () => {

@@ -43,13 +43,14 @@ describe('learning module scope wiring', () => {
 });
 
 describe('engagement module scope wiring', () => {
-  it('engagement.ts gates aggregate reads via requireOrgScope (≥9 calls)', () => {
+  it('engagement.ts gates the surviving aggregate reads via requireOrgScope (≥5 calls)', () => {
     const src = readRouter('engagement.ts');
     const matches = src.match(/requireOrgScope/g) ?? [];
-    // 9 aggregate reads: getSurveyResults, getEnps, getClimateHeatmap,
-    // getResultsByArea, getWordCloud, getSentiment, getLowClimateAlerts,
-    // getRotationRisk, getDashboardKpis — all must be gated.
-    expect(matches.length).toBeGreaterThanOrEqual(9);
+    // UPDATE 2026-07-31 (NEXT_PUBLIC_ENGAGEMENT_READ_VIA_CSHARP confirmed live in prod): getEnps,
+    // getClimateHeatmap, getLowClimateAlerts, getDashboardKpis were deleted (C#-only now), each of
+    // which also called requireOrgScope — the floor dropped from 9 to 5. Survivors: getSurveyResults,
+    // getResultsByArea, getWordCloud, getSentiment, getRotationRisk — all must still be gated.
+    expect(matches.length).toBeGreaterThanOrEqual(5);
   });
 
   it('no spread of scope fragment in engagement.ts (AND-composition, CI check 13)', () => {
@@ -57,14 +58,11 @@ describe('engagement module scope wiring', () => {
   });
 });
 
-describe('engagement leaderCommitment scoping (review follow-up)', () => {
-  it('listLeaderCommitments composes the leaderCommitment fragment via AND', () => {
-    const src = readFileSync(join(ROOT, 'packages/api/src/routers/engagement.ts'), 'utf8');
-    const block = src.slice(src.indexOf('listLeaderCommitments'));
-    expect(block).toMatch(/scopeWhereFor\('leaderCommitment'/);
-    expect(block).toMatch(/AND:\s*\[/);
-  });
-});
+// 'engagement leaderCommitment scoping (review follow-up)' (listLeaderCommitments) REMOVED
+// 2026-07-31 — its TS procedure was deleted (NEXT_PUBLIC_ENGAGEMENT_READ_VIA_CSHARP confirmed live
+// in prod; C# is the sole implementation now). The equivalent scopeWhereFor('leaderCommitment')
+// row-filter guarantee is now asserted against the live C# API by
+// services/Tims.Platform/tests/Tims.IntegrationTests/Engagement/EngagementReadEndpointTests.cs.
 
 describe('course detail enrollment scoping (codex)', () => {
   it('getCourseById scopes the embedded enrollments', () => {

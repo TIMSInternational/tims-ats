@@ -1,130 +1,166 @@
 'use client';
 
-// Per-surface read gate for the EIGHT FE-consumed engagement reads (myPendingSurveys /
-// getSurveyForResponse / getEnps / getClimateHeatmap / getLowClimateAlerts / listActionPlans /
-// listLeaderCommitments / getDashboardKpis) — staged to route to the C# Platform service. DARK by
-// default: unless BOTH the platform-api base URL and NEXT_PUBLIC_ENGAGEMENT_READ_VIA_CSHARP are set
-// at deploy time, every hook returns the existing tRPC query unchanged (byte-identical to today).
-// Merging changes nothing in prod until Federico flips the flag at cutover.
+// Engagement FE data layer.
 //
-// Mirrors lib/platform-api/{access-review,audit-log,billing,dei}.ts — and compensation.ts's 3
-// FX-gated hooks only (its other 7 went C#-only on 2026-07-29) — exactly: each hook calls BOTH
-// the tRPC hook (enabled when NOT viaCSharp) and a C# useQuery
-// (enabled when viaCSharp), then returns the active one. The C# useQuery is typed to the EXACT
-// tRPC output type (inferRouterOutputs), so each mapper below is compile-time-locked to the live
-// contract's shape.
+// C#-ONLY (8 of the 8 read hooks below, plus the 3 write mutations at the bottom). Their TS tRPC
+// procedures were DELETED — the 3 writes (createSurvey/activateSurvey/submitSurveyResponse) on
+// 2026-07-29 (NEXT_PUBLIC_ENGAGEMENT_WRITE_VIA_CSHARP confirmed live in prod), and all 8 reads
+// (myPendingSurveys/getSurveyForResponse/getEnps/getClimateHeatmap/getLowClimateAlerts/
+// listActionPlans/listLeaderCommitments/getDashboardKpis) on 2026-07-31
+// (NEXT_PUBLIC_ENGAGEMENT_READ_VIA_CSHARP confirmed live in prod — see docs/REMAINING-WORK.md).
+// Every hook here now calls the C# service unconditionally and no longer reads either FE flag —
+// both flags are DEAD (mirrors the succession/nine-box/compensation precedent once their reads
+// went C#-only). Output types are hand-declared below, or re-sourced from the @tims/shared
+// kernels the C# port is golden-fixtured against, because no tRPC procedure remains to infer
+// them from.
 //
-// SCOPE — the engagement router exposes FOURTEEN reads; only EIGHT are consumed by the FE. The six
-// NOT consumed — listSurveys (only ever `.invalidate()`d, never queried), getSurveyResults,
+// NOT WRAPPED AT ALL: listSurveys (only ever `.invalidate()`d by launch-survey-modal.tsx, never
+// queried — its TS procedure is still the live path for that invalidate), getSurveyResults,
 // getResultsByArea, getWordCloud, getSentiment (climate-sidebar.tsx explicitly renders a static
-// "unavailable" placeholder instead of calling these two stubs), getRotationRisk — get NO wrapper
-// here (they stay on tRPC; there is no call site to route). All fourteen live behind the C#
-// `Platform:EngagementReadEnabled` backend flag
-// (services/Tims.Platform/src/Tims.Api/Engagement/EngagementReadEndpoints.cs), so the eight
-// wrapped here share ONE FE flag mirroring it.
+// "unavailable" placeholder instead of calling these two stubs), getRotationRisk — zero real FE
+// call sites, so these get no hook here and their TS procedures stay live/untouched
+// (packages/api/src/routers/engagement.ts).
 //
-// PARITY NOTES (verified per read against engagement.ts + EngagementReadEndpoints.cs):
+// PARITY NOTES (verified per read against the pre-deletion engagement.ts +
+// EngagementReadEndpoints.cs, retained for the mapping rationale):
 //   - getSurveyForResponse — both stacks throw/404 on a missing, out-of-window, or cross-org
 //     survey (tRPC: `throw new Error(...)`; C#: a clean 404). The wrapper does not special-case
-//     this — a missing survey PROPAGATES as a thrown error on either path, matching react-query's
-//     error state on both.
+//     this — a missing survey PROPAGATES as a thrown error, matching react-query's error state.
 //   - getEnps/getClimateHeatmap/getLowClimateAlerts/listActionPlans/listLeaderCommitments all
-//     accept OPTIONAL TS-side filters (period/companyId/surveyId/threshold/status/leaderId) that
-//     NO live FE call site ever passes (every consumer calls with `{}` or no args) — the C# routes
-//     mirror this (their query params are `?never` in the OpenAPI contract for the alerts/dashboard/
-//     survey-response paths, or optional-and-unused for enps/heatmap/action-plans/commitments).
-//     Matching the ninebox precedent's "wrap only what's actually consumed" principle, these hooks
-//     take NO arguments — do not add unused filter params.
+//     accepted OPTIONAL TS-side filters (period/companyId/surveyId/threshold/status/leaderId) that
+//     NO live FE call site ever passed (every consumer called with `{}` or no args) — matching the
+//     ninebox precedent's "wrap only what's actually consumed" principle, these hooks take NO
+//     arguments.
 
 import { useMutation, useQuery } from '@tanstack/react-query';
-import type { inferRouterOutputs } from '@trpc/server';
-import type { AppRouter } from '@tims/api';
-import { trpc } from '../trpc';
-import { isPlatformApiEnabled, platformGet, platformPost } from './client';
+import { platformGet, platformPost } from './client';
 
-type RouterOutput = inferRouterOutputs<AppRouter>;
-type MyPendingSurveysOutput = RouterOutput['engagement']['myPendingSurveys'];
-type SurveyForResponseOutput = RouterOutput['engagement']['getSurveyForResponse'];
-type EnpsOutput = RouterOutput['engagement']['getEnps'];
-type ClimateHeatmapOutput = RouterOutput['engagement']['getClimateHeatmap'];
-type LowClimateAlertsOutput = RouterOutput['engagement']['getLowClimateAlerts'];
-type ListActionPlansOutput = RouterOutput['engagement']['listActionPlans'];
-type ListLeaderCommitmentsOutput = RouterOutput['engagement']['listLeaderCommitments'];
-type DashboardKpisOutput = RouterOutput['engagement']['getDashboardKpis'];
-// ── Hand-declared write output shapes (2026-07-29) ─────────────────────────
-// The 3 TS mutations these hooks used to fall back to (engagement.createSurvey /
-// activateSurvey / submitSurveyResponse) were DELETED, so RouterOutput['engagement'][…] no longer
-// resolves for them. The shapes below reproduce, field for field, exactly what those procedures
-// returned (source of truth: packages/db/prisma/schema/engagement.prisma's Survey + SurveyResponse
-// models and the deleted procedures' `select` clauses), so every consumer's return type is
-// byte-identical to before the deletion.
-//
-// `questions` / `targetGroups` are Prisma `Json` / `Json?` columns; the deleted tRPC output typed
-// them as `Prisma.JsonValue`. apps/web does not import @prisma/client, and CLAUDE.md bans `any` and
-// unnarrowed `unknown`, so the recursive JSON union is declared locally.
+// The C#-only hooks' output types are hand-declared (there is no tRPC procedure left to infer
+// from). Shapes mirror what the deleted procedures returned, so every call site is unchanged.
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
-// createSurvey called `db.survey.create({ data: … })` with NO select → the full 13-field Survey row.
-interface CreateSurveyOutput {
+interface MyPendingSurveyRow {
+  id: string;
+  title: string;
+  type: string;
+  startsAt: Date | null;
+  endsAt: Date | null;
+}
+type MyPendingSurveysOutput = MyPendingSurveyRow[];
+
+// §21 minimal-select: getSurveyForResponse returned `select: { id, title, type, questions }`.
+interface SurveyForResponseOutput {
+  id: string;
+  title: string;
+  type: string;
+  questions: JsonValue;
+}
+
+// computeEnps's return shape (packages/shared/src/engagement.ts) — the deleted getEnps procedure
+// returned it verbatim. Hand-declared rather than imported so this file stays decoupled from the
+// TS-only kernel now that no TS caller invokes it directly; the C# port is golden-fixtured
+// against the same shape.
+interface EnpsOutput {
+  enps: number | null;
+  promoters: number | null;
+  passives: number | null;
+  detractors: number | null;
+  totalResponses: number | null;
+  suppressed: boolean;
+  period: string;
+}
+
+interface ClimateHeatmapOutput {
+  surveyId: string | null;
+  title: string;
+  suppressed: boolean;
+  data: Array<{ category: string; score: number | null }>;
+}
+
+// Prisma `Alert` scalar row (packages/db/prisma/schema/monitoring.prisma:21-44). The deleted
+// getLowClimateAlerts was a bare findMany with no `select`, so the tRPC output was the full
+// 12-field row with superjson-rebuilt Dates.
+interface LowClimateAlertRow {
+  id: string;
+  organizationId: string;
+  ruleId: string | null;
+  module: string;
+  severity: string;
+  title: string;
+  message: string;
+  metadata: JsonValue | null;
+  status: string;
+  dismissedById: string | null;
+  dismissedAt: Date | null;
+  createdAt: Date;
+}
+type LowClimateAlertsOutput = LowClimateAlertRow[];
+
+// Prisma `ActionPlan` row (packages/db/prisma/schema/engagement.prisma:41-58) + the `responsible`
+// relation the deleted listActionPlans `include`d.
+interface ActionPlanRow {
   id: string;
   organizationId: string;
   title: string;
-  type: string;
+  responsibleId: string;
+  area: string | null;
   status: string;
-  questions: JsonValue;
-  targetGroups: JsonValue | null;
-  startsAt: Date | null;
-  endsAt: Date | null;
-  responseCount: number;
-  createdById: string;
+  dueDate: Date | null;
+  actions: JsonValue | null;
+  notes: string | null;
   createdAt: Date;
   updatedAt: Date;
+  responsible: { id: string; firstName: string; lastName: string; avatar: string | null };
 }
+type ListActionPlansOutput = ActionPlanRow[];
 
-// §21 minimal-select: activateSurvey returned `select: { id: true, status: true }`.
-interface ActivateSurveyOutput {
+// Prisma `LeaderCommitment` row (packages/db/prisma/schema/engagement.prisma:61-77) + the
+// `leader` relation the deleted listLeaderCommitments `include`d.
+interface LeaderCommitmentRow {
   id: string;
+  organizationId: string;
+  leaderId: string;
+  description: string;
   status: string;
+  dueDate: Date | null;
+  completedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+  leader: { id: string; firstName: string; lastName: string; avatar: string | null };
 }
+type ListLeaderCommitmentsOutput = LeaderCommitmentRow[];
 
-// §21 minimal-select: submitSurveyResponse returned `select: { id: true, submittedAt: true }` — it
-// deliberately never echoed the confidential `answers` JSON back to the respondent.
-interface SubmitSurveyResponseOutput {
-  id: string;
-  submittedAt: Date;
+// buildEngagementKpis's return shape (packages/shared/src/engagement.ts) — the deleted
+// getDashboardKpis procedure returned it verbatim.
+interface DashboardKpisOutput {
+  activeSurveys: number;
+  totalResponses: number | null;
+  totalResponsesSuppressed: boolean;
+  actionPlansOpen: number;
+  highRiskCount: number;
 }
-
-// Second gate: even when the client is enabled, engagement only routes to C# when its own flag is
-// exactly 'true'. NEXT_PUBLIC_* so it is inlined for the browser.
-const ENGAGEMENT_VIA_CSHARP = process.env.NEXT_PUBLIC_ENGAGEMENT_READ_VIA_CSHARP === 'true';
 
 // The C# minimal-API OpenAPI contract types every int32/double as `number | string` (a
-// number-as-string read artifact); coerce back to the `number` the tRPC output declares. Nullable
+// number-as-string read artifact); coerce back to the `number` the tRPC output declared. Nullable
 // numeric fields need the null-preserving variant.
 const num = (v: number | string): number => Number(v);
 const numOrNull = (v: number | string | null): number | null => (v == null ? null : Number(v));
 
 // DateTime fields serialize as canonical Node-ISO strings (…fffZ) via the shared Node-ISO
-// converter. The tRPC output types them as Prisma `Date` (superjson rebuilds real Date objects), so
-// the C# path reconstructs Date objects to be byte-identical at cutover. The contract types the raw
-// values as `unknown`; parse to Date (or null for nullable date columns).
+// converter. The tRPC output typed them as Prisma `Date` (superjson rebuilds real Date objects),
+// so the C# path reconstructs Date objects to stay byte-identical to the pre-cutover shape. The
+// contract types the raw values as `unknown`; parse to Date (or null for nullable date columns).
 const toDate = (v: unknown): Date => new Date(v as string);
 const toDateOrNull = (v: unknown): Date | null => (v == null ? null : new Date(v as string));
 
 /**
- * SELF-scoped list: the caller's own not-yet-answered active surveys. Gate:
- * `isPlatformApiEnabled() && NEXT_PUBLIC_ENGAGEMENT_READ_VIA_CSHARP === 'true'`.
- *  - true  → GET /engagement/my/pending-surveys (id/title/type scalars; startsAt/endsAt Date|null).
- *  - false → trpc.engagement.myPendingSurveys.useQuery() (the DEFAULT).
+ * SELF-scoped list: the caller's own not-yet-answered active surveys. C#-ONLY — the TS tRPC
+ * procedure was deleted 2026-07-31. GET /engagement/my/pending-surveys (id/title/type scalars;
+ * startsAt/endsAt Date|null).
  */
 export function useEngagementMyPendingSurveys() {
-  const viaCSharp = isPlatformApiEnabled() && ENGAGEMENT_VIA_CSHARP;
-
-  const trpcQuery = trpc.engagement.myPendingSurveys.useQuery(undefined, { enabled: !viaCSharp });
-
-  const csharpQuery = useQuery<MyPendingSurveysOutput>({
+  return useQuery<MyPendingSurveysOutput>({
     queryKey: ['platform-api', 'engagement', 'my-pending-surveys'],
-    enabled: viaCSharp,
     queryFn: async () => {
       const raw = await platformGet('/engagement/my/pending-surveys');
       return raw.map((s) => ({
@@ -136,30 +172,20 @@ export function useEngagementMyPendingSurveys() {
       }));
     },
   });
-
-  return viaCSharp ? csharpQuery : trpcQuery;
 }
 
 /**
- * SELF-scoped point-read: the renderable definition of one survey the caller may answer. Gate as
- * above; disabled until a survey is opened (matching the call site's `enabled: !!surveyId`).
- *  - true  → GET /engagement/surveys/{surveyId}/take (id/title/type/questions; a missing,
- *            out-of-window, or cross-org survey 404s — PROPAGATES as a thrown error, matching
- *            tRPC's `throw new Error(...)` on the same case).
- *  - false → trpc.engagement.getSurveyForResponse.useQuery({ surveyId }) (the DEFAULT).
+ * SELF-scoped point-read: the renderable definition of one survey the caller may answer. C#-ONLY
+ * — the TS tRPC procedure was deleted 2026-07-31. Disabled until a survey is opened (matching the
+ * call site's `enabled: !!surveyId`). GET /engagement/surveys/{surveyId}/take (id/title/type/
+ * questions; a missing, out-of-window, or cross-org survey 404s — PROPAGATES as a thrown error).
  */
 export function useEngagementSurveyForResponse(surveyId: string | null) {
   const enabledId = !!surveyId;
-  const viaCSharp = isPlatformApiEnabled() && ENGAGEMENT_VIA_CSHARP;
 
-  const trpcQuery = trpc.engagement.getSurveyForResponse.useQuery(
-    { surveyId: surveyId! },
-    { enabled: !viaCSharp && enabledId },
-  );
-
-  const csharpQuery = useQuery<SurveyForResponseOutput>({
+  return useQuery<SurveyForResponseOutput>({
     queryKey: ['platform-api', 'engagement', 'survey-for-response', surveyId],
-    enabled: viaCSharp && enabledId,
+    enabled: enabledId,
     queryFn: async () => {
       const raw = await platformGet('/engagement/surveys/{surveyId}/take', undefined, { surveyId: surveyId! });
       return {
@@ -170,24 +196,16 @@ export function useEngagementSurveyForResponse(surveyId: string | null) {
       };
     },
   });
-
-  return viaCSharp ? csharpQuery : trpcQuery;
 }
 
 /**
- * ORG-rollup: the single org-wide eNPS score (min-5 suppressed). Gate as above.
- *  - true  → GET /engagement/enps (enps/promoters/passives/detractors/totalResponses coerced,
- *            null-preserving; suppressed/period passed through).
- *  - false → trpc.engagement.getEnps.useQuery({}) (the DEFAULT).
+ * ORG-rollup: the single org-wide eNPS score (min-5 suppressed). C#-ONLY — the TS tRPC procedure
+ * was deleted 2026-07-31. GET /engagement/enps (enps/promoters/passives/detractors/
+ * totalResponses coerced, null-preserving; suppressed/period passed through).
  */
 export function useEngagementEnps() {
-  const viaCSharp = isPlatformApiEnabled() && ENGAGEMENT_VIA_CSHARP;
-
-  const trpcQuery = trpc.engagement.getEnps.useQuery({}, { enabled: !viaCSharp });
-
-  const csharpQuery = useQuery<EnpsOutput>({
+  return useQuery<EnpsOutput>({
     queryKey: ['platform-api', 'engagement', 'enps'],
-    enabled: viaCSharp,
     queryFn: async () => {
       const raw = await platformGet('/engagement/enps');
       return {
@@ -201,25 +219,17 @@ export function useEngagementEnps() {
       };
     },
   });
-
-  return viaCSharp ? csharpQuery : trpcQuery;
 }
 
 /**
- * ORG-rollup: the latest climate survey's per-category heatmap (survey-level min-5 floor). Gate as
- * above.
- *  - true  → GET /engagement/climate-heatmap (surveyId|null, title, suppressed passed through;
- *            data[].score coerced, null-preserving, category order preserved).
- *  - false → trpc.engagement.getClimateHeatmap.useQuery({}) (the DEFAULT).
+ * ORG-rollup: the latest climate survey's per-category heatmap (survey-level min-5 floor).
+ * C#-ONLY — the TS tRPC procedure was deleted 2026-07-31. GET /engagement/climate-heatmap
+ * (surveyId|null, title, suppressed passed through; data[].score coerced, null-preserving,
+ * category order preserved).
  */
 export function useEngagementClimateHeatmap() {
-  const viaCSharp = isPlatformApiEnabled() && ENGAGEMENT_VIA_CSHARP;
-
-  const trpcQuery = trpc.engagement.getClimateHeatmap.useQuery({}, { enabled: !viaCSharp });
-
-  const csharpQuery = useQuery<ClimateHeatmapOutput>({
+  return useQuery<ClimateHeatmapOutput>({
     queryKey: ['platform-api', 'engagement', 'climate-heatmap'],
-    enabled: viaCSharp,
     queryFn: async () => {
       const raw = await platformGet('/engagement/climate-heatmap');
       return {
@@ -230,23 +240,16 @@ export function useEngagementClimateHeatmap() {
       } as ClimateHeatmapOutput;
     },
   });
-
-  return viaCSharp ? csharpQuery : trpcQuery;
 }
 
 /**
- * ORG-rollup list: active low-climate alerts (module='engagement'), newest first. Gate as above.
- *  - true  → GET /engagement/alerts (scalars passed through; dismissedAt/createdAt Date-reconstructed).
- *  - false → trpc.engagement.getLowClimateAlerts.useQuery({}) (the DEFAULT).
+ * ORG-rollup list: active low-climate alerts (module='engagement'), newest first. C#-ONLY — the
+ * TS tRPC procedure was deleted 2026-07-31. GET /engagement/alerts (scalars passed through;
+ * dismissedAt/createdAt Date-reconstructed).
  */
 export function useEngagementLowClimateAlerts() {
-  const viaCSharp = isPlatformApiEnabled() && ENGAGEMENT_VIA_CSHARP;
-
-  const trpcQuery = trpc.engagement.getLowClimateAlerts.useQuery({}, { enabled: !viaCSharp });
-
-  const csharpQuery = useQuery<LowClimateAlertsOutput>({
+  return useQuery<LowClimateAlertsOutput>({
     queryKey: ['platform-api', 'engagement', 'low-climate-alerts'],
-    enabled: viaCSharp,
     queryFn: async () => {
       const raw = await platformGet('/engagement/alerts');
       return raw.map((a) => ({
@@ -265,25 +268,16 @@ export function useEngagementLowClimateAlerts() {
       }));
     },
   });
-
-  return viaCSharp ? csharpQuery : trpcQuery;
 }
 
 /**
- * ROW-scoped list: action plans within the caller's scope (own/team/unit/org), newest first. Gate
- * as above.
- *  - true  → GET /engagement/action-plans (scalars passed through; dueDate/createdAt/updatedAt
- *            Date-reconstructed; nested `responsible` mapped).
- *  - false → trpc.engagement.listActionPlans.useQuery({}) (the DEFAULT).
+ * ROW-scoped list: action plans within the caller's scope (own/team/unit/org), newest first.
+ * C#-ONLY — the TS tRPC procedure was deleted 2026-07-31. GET /engagement/action-plans (scalars
+ * passed through; dueDate/createdAt/updatedAt Date-reconstructed; nested `responsible` mapped).
  */
 export function useEngagementListActionPlans() {
-  const viaCSharp = isPlatformApiEnabled() && ENGAGEMENT_VIA_CSHARP;
-
-  const trpcQuery = trpc.engagement.listActionPlans.useQuery({}, { enabled: !viaCSharp });
-
-  const csharpQuery = useQuery<ListActionPlansOutput>({
+  return useQuery<ListActionPlansOutput>({
     queryKey: ['platform-api', 'engagement', 'action-plans'],
-    enabled: viaCSharp,
     queryFn: async () => {
       const raw = await platformGet('/engagement/action-plans');
       return raw.map((p) => ({
@@ -307,25 +301,17 @@ export function useEngagementListActionPlans() {
       }));
     },
   });
-
-  return viaCSharp ? csharpQuery : trpcQuery;
 }
 
 /**
  * ROW-scoped list: leader commitments within the caller's scope, ordered by due date ascending.
- * Gate as above.
- *  - true  → GET /engagement/leader-commitments (scalars passed through; dueDate/completedAt/
- *            createdAt/updatedAt Date-reconstructed; nested `leader` mapped).
- *  - false → trpc.engagement.listLeaderCommitments.useQuery({}) (the DEFAULT).
+ * C#-ONLY — the TS tRPC procedure was deleted 2026-07-31. GET /engagement/leader-commitments
+ * (scalars passed through; dueDate/completedAt/createdAt/updatedAt Date-reconstructed; nested
+ * `leader` mapped).
  */
 export function useEngagementListLeaderCommitments() {
-  const viaCSharp = isPlatformApiEnabled() && ENGAGEMENT_VIA_CSHARP;
-
-  const trpcQuery = trpc.engagement.listLeaderCommitments.useQuery({}, { enabled: !viaCSharp });
-
-  const csharpQuery = useQuery<ListLeaderCommitmentsOutput>({
+  return useQuery<ListLeaderCommitmentsOutput>({
     queryKey: ['platform-api', 'engagement', 'leader-commitments'],
-    enabled: viaCSharp,
     queryFn: async () => {
       const raw = await platformGet('/engagement/leader-commitments');
       return raw.map((c) => ({
@@ -347,25 +333,18 @@ export function useEngagementListLeaderCommitments() {
       }));
     },
   });
-
-  return viaCSharp ? csharpQuery : trpcQuery;
 }
 
 /**
  * ORG-rollup: engagement dashboard KPIs (active surveys, total responses, open action plans, high
- * risk count) — min-5 + cross-endpoint differencing guard live in the shared kernel. Gate as above.
- *  - true  → GET /engagement/dashboard-kpis (activeSurveys/actionPlansOpen/highRiskCount coerced;
- *            totalResponses coerced, null-preserving; totalResponsesSuppressed passed through).
- *  - false → trpc.engagement.getDashboardKpis.useQuery() (the DEFAULT).
+ * risk count) — min-5 + cross-endpoint differencing guard live in the shared kernel. C#-ONLY — the
+ * TS tRPC procedure was deleted 2026-07-31. GET /engagement/dashboard-kpis (activeSurveys/
+ * actionPlansOpen/highRiskCount coerced; totalResponses coerced, null-preserving;
+ * totalResponsesSuppressed passed through).
  */
 export function useEngagementDashboardKpis() {
-  const viaCSharp = isPlatformApiEnabled() && ENGAGEMENT_VIA_CSHARP;
-
-  const trpcQuery = trpc.engagement.getDashboardKpis.useQuery(undefined, { enabled: !viaCSharp });
-
-  const csharpQuery = useQuery<DashboardKpisOutput>({
+  return useQuery<DashboardKpisOutput>({
     queryKey: ['platform-api', 'engagement', 'dashboard-kpis'],
-    enabled: viaCSharp,
     queryFn: async () => {
       const raw = await platformGet('/engagement/dashboard-kpis');
       return {
@@ -377,8 +356,6 @@ export function useEngagementDashboardKpis() {
       };
     },
   });
-
-  return viaCSharp ? csharpQuery : trpcQuery;
 }
 
 // ---------------------------------------------------------------------------
@@ -400,12 +377,13 @@ export function useEngagementDashboardKpis() {
 // compensation's void-only) because launch-survey-modal.tsx chains
 // `create.onSuccess: (survey) => activate.mutate({ id: survey.id })` off the created survey's id.
 //
-// ⚠️ THE READS ABOVE ARE UNAFFECTED, AND THAT HAS A CONSEQUENCE: NEXT_PUBLIC_ENGAGEMENT_READ_VIA_
-// CSHARP still does not exist in Vercel, so all 8 read hooks stay dual-path and TypeScript is their
-// LIVE prod path. Therefore both consumers' `utils.engagement.*.invalidate()` calls — listSurveys +
-// getDashboardKpis in launch-survey-modal.tsx, myPendingSurveys in survey-take-modal.tsx — are STILL
-// LIVE and must NOT be removed. This is the one domain in the TS-deletion sequence where those calls
-// did not die alongside the mutation; do not "clean them up" by analogy with the other domains.
+// The 8 reads above are now ALSO C#-only (2026-07-31 TS-deletion — see the file header), so both
+// consumers' `.invalidate()` calls that used to target `utils.engagement.getDashboardKpis`/
+// `myPendingSurveys` were repointed to `queryClient.invalidateQueries({ queryKey: ['platform-api',
+// 'engagement', …] })` in launch-survey-modal.tsx / survey-take-modal.tsx respectively — the dead
+// tRPC cache key would no longer invalidate anything real. `utils.engagement.listSurveys.
+// invalidate()` in launch-survey-modal.tsx is UNCHANGED — listSurveys has zero FE query
+// consumers and was never a cutover candidate, so its tRPC cache is still the one that matters.
 //
 // submitSurveyResponse's CONFLICT toast: survey-take-modal.tsx distinguishes the duplicate-response
 // case by matching `err.message` against the exact backend text ('Ya respondiste esta encuesta' /
@@ -430,6 +408,36 @@ function useCSharpMutation<TInput, TData>(
     onError: (err: unknown) => options?.onError?.(err instanceof Error ? err : { message: 'Unknown error' }),
     onSettled: options?.onSettled,
   });
+}
+
+// §21 minimal-select: activateSurvey returned `select: { id: true, status: true }`.
+interface ActivateSurveyOutput {
+  id: string;
+  status: string;
+}
+
+// §21 minimal-select: submitSurveyResponse returned `select: { id: true, submittedAt: true }` — it
+// deliberately never echoed the confidential `answers` JSON back to the respondent.
+interface SubmitSurveyResponseOutput {
+  id: string;
+  submittedAt: Date;
+}
+
+// createSurvey called `db.survey.create({ data: … })` with NO select → the full 13-field Survey row.
+interface CreateSurveyOutput {
+  id: string;
+  organizationId: string;
+  title: string;
+  type: string;
+  status: string;
+  questions: JsonValue;
+  targetGroups: JsonValue | null;
+  startsAt: Date | null;
+  endsAt: Date | null;
+  responseCount: number;
+  createdById: string;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 interface CreateSurveyQuestionShape {

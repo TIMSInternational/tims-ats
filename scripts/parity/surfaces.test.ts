@@ -50,36 +50,21 @@ describe('SURFACES', () => {
   });
 
   // ── Coverage-audit additions (2026-07-27) ────────────────────────────────────────────────────
-  it('engagement is registered with its flag + the 9 Tier-1 reads (5 by-id reads deferred)', () => {
+  it('engagement is registered with its flag + the 2 reads that still have a TS side', () => {
     const s = SURFACES['engagement'];
     expect(s.flag).toBe('Platform__EngagementReadEnabled');
     expect(s.probeRole).toBe('super_admin');
-    expect(s.endpoints.map((e) => e.name).sort()).toEqual([
-      'action-plans',
-      'alerts',
-      'climate-heatmap',
-      'dashboard-kpis',
-      'enps',
-      'leader-commitments',
-      'my-pending-surveys',
-      'rotation-risk',
-      'surveys',
-    ]);
-    // none of the Tier-1 engagement reads is by-id yet (see the surface-level deferral comment).
+    // UPDATE 2026-07-31: shrunk from 9 to 2 — the other 7 TS procedures were deleted (C#-only now,
+    // NEXT_PUBLIC_ENGAGEMENT_READ_VIA_CSHARP confirmed live in prod).
+    expect(s.endpoints.map((e) => e.name).sort()).toEqual(['rotation-risk', 'surveys']);
+    // neither surviving engagement read is by-id.
     for (const e of s.endpoints) expect(e.idScopeKey).toBeUndefined();
   });
 
-  it('engagement: grant-only/self-service reads pass hrbp; org-rollup reads deny hrbp; scopeWhereFor reads omit hrbp', () => {
+  it('engagement: listSurveys (grant-only) passes hrbp; getRotationRisk (org-rollup) denies hrbp', () => {
     const s = SURFACES['engagement'];
-    for (const name of ['surveys', 'my-pending-surveys']) {
-      expect(s.endpoints.find((e) => e.name === name)?.expectedByRole['hrbp'], name).toBe(200);
-    }
-    for (const name of ['enps', 'climate-heatmap', 'alerts', 'dashboard-kpis', 'rotation-risk']) {
-      expect(s.endpoints.find((e) => e.name === name)?.expectedByRole['hrbp'], name).toBe(403);
-    }
-    for (const name of ['action-plans', 'leader-commitments']) {
-      expect(s.endpoints.find((e) => e.name === name)?.expectedByRole['hrbp'], name).toBeUndefined();
-    }
+    expect(s.endpoints.find((e) => e.name === 'surveys')?.expectedByRole['hrbp']).toBe(200);
+    expect(s.endpoints.find((e) => e.name === 'rotation-risk')?.expectedByRole['hrbp']).toBe(403);
     // super_admin/hr_admin allow everywhere.
     for (const e of s.endpoints) {
       expect(e.expectedByRole['super_admin'], e.name).toBe(200);
