@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const candidateFindMany = vi.fn();
 
@@ -7,12 +7,6 @@ vi.mock('@tims/db', () => ({
     candidate: {
       findMany: (...args: unknown[]) => candidateFindMany(...args),
     },
-  },
-}));
-
-vi.mock('../../packages/api/src/repositories/candidate.repository', () => ({
-  candidateRepository: {
-    findForExport: vi.fn(),
   },
 }));
 
@@ -72,17 +66,21 @@ describe('candidateRepository.findForExport', () => {
 });
 
 import { candidateService } from '../../packages/api/src/services/candidate.service';
-import { candidateRepository as actualCandidateRepository } from '../../packages/api/src/repositories/candidate.repository';
-
-const findForExportMock = actualCandidateRepository.findForExport as ReturnType<typeof vi.fn>;
+import * as candidateRepositoryModule from '../../packages/api/src/repositories/candidate.repository';
 
 describe('candidateService.exportPool', () => {
+  let findForExportSpy: ReturnType<typeof vi.spyOn>;
+
   beforeEach(() => {
-    findForExportMock.mockReset();
+    findForExportSpy = vi.spyOn(candidateRepositoryModule.candidateRepository, 'findForExport');
+  });
+
+  afterEach(() => {
+    findForExportSpy.mockRestore();
   });
 
   it('builds a CSV header + one row per candidate', async () => {
-    findForExportMock.mockResolvedValue([
+    findForExportSpy.mockResolvedValue([
       {
         firstName: 'Ana',
         lastName: 'Diaz',
@@ -124,7 +122,7 @@ describe('candidateService.exportPool', () => {
       tags: [],
       createdAt: new Date(),
     }));
-    findForExportMock.mockResolvedValue(rows);
+    findForExportSpy.mockResolvedValue(rows);
 
     const result = await candidateService.exportPool('org-1', {} as never, {});
 
@@ -148,7 +146,7 @@ describe('candidateService.exportPool', () => {
       tags: [],
       createdAt: new Date(),
     }));
-    findForExportMock.mockResolvedValue(rows);
+    findForExportSpy.mockResolvedValue(rows);
 
     const result = await candidateService.exportPool('org-1', {} as never, {});
 
@@ -157,7 +155,7 @@ describe('candidateService.exportPool', () => {
   });
 
   it('neutralizes a formula-injection field (CWE-1236)', async () => {
-    findForExportMock.mockResolvedValue([
+    findForExportSpy.mockResolvedValue([
       {
         firstName: 'Ana',
         lastName: 'Diaz',
@@ -180,9 +178,9 @@ describe('candidateService.exportPool', () => {
   });
 
   it('passes poolType/tags input through to the repository as filters', async () => {
-    findForExportMock.mockResolvedValue([]);
+    findForExportSpy.mockResolvedValue([]);
     await candidateService.exportPool('org-1', {} as never, { poolType: 'active', tags: ['vip'] });
 
-    expect(findForExportMock).toHaveBeenCalledWith('org-1', {}, { poolType: 'active', tags: ['vip'] }, 5000);
+    expect(findForExportSpy).toHaveBeenCalledWith('org-1', {}, { poolType: 'active', tags: ['vip'] }, 5000);
   });
 });
