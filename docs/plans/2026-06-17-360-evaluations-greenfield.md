@@ -1,5 +1,16 @@
 # 360° Evaluations (Fase 7) — greenfield scoping + recommendation
 
+> **SUPERSEDED (2026-07-31): this doc is stale.** The feature this doc scopes as
+> unbuilt was actually built shortly after this doc was written — Sprint 1.7
+> (`8df2000`, 2026-07-13) shipped `ReviewCycle`/`RaterAssignment`/`RaterResponse`
+> (`packages/db/prisma/schema/evaluation360.prisma`), admin UI
+> (`apps/web/app/(admin)/talent/360/`), and participant UI
+> (`apps/web/app/(admin)/my-360/`). It was subsequently ported to C# (Phase-5
+> Slice-7 read / Slice-13 write), flipped live in prod, and its TS side was
+> deleted. **360° Evaluations is DONE, not greenfield.** Kept below for
+> historical context only — do not use it to scope new work without first
+> grepping the current codebase.
+
 **Status: NOT built this session — recommended as its own milestone.** Unlike the other
 Slice 5+ items (which had backends to surface), 360 is fully greenfield: no model, router,
 or service exists (`grep 360|multiRater|peerReview` → no domain hits). Half-building it
@@ -7,14 +18,16 @@ or service exists (`grep 360|multiRater|peerReview` → no domain hits). Half-bu
 bar and leave a misleading partial feature. This doc is the blueprint to execute later.
 
 ## Why it's a milestone, not a slice
+
 A real 360 needs a **cycle → rater-set → per-rater response → aggregation → publish** pipeline
 with three distinct actor experiences (admin runs cycles; raters complete assignments;
 subjects read their published report) and new RBAC. That's schema migration + 3–4 routers +
 services + 3 UI surfaces + i18n + a new permission module + grant re-seed. ~5–6 vertical slices.
 
 ## Existing primitives to build on (not reuse wholesale)
+
 - `Feedback` (`performance.prisma:92`): `fromUserId/toUserId/type/message/isAnonymous` — a
-  single-rater row. It's the conceptual ancestor of a 360 *response* but lacks cycle binding,
+  single-rater row. It's the conceptual ancestor of a 360 _response_ but lacks cycle binding,
   rater relationship, competency structure, and rating scale. Use as a shape reference, not the table.
 - `Recognition` (`performance.prisma:111`) — same org-wide peer pattern; not applicable.
 - Own-scope house pattern: `scopeWhereFor(entity, ctx.access, ctx.user.id)` AND-composed for
@@ -22,23 +35,25 @@ services + 3 UI surfaces + i18n + a new permission module + grant re-seed. ~5–
   switch in `packages/api/src/access/entity-policies.ts` with their anchor column.
 
 ## Proposed schema (new file `packages/db/prisma/schema/evaluation360.prisma`)
+
 - **`ReviewCycle`**: `id, organizationId, name, status (DRAFT|OPEN|CLOSED|PUBLISHED), opensAt,
-  closesAt, createdById`. Org-scoped. `@@index([organizationId])`.
+closesAt, createdById`. Org-scoped. `@@index([organizationId])`.
 - **`RaterAssignment`**: `id, organizationId, cycleId, subjectUserId, raterUserId,
-  relationship (SELF|PEER|MANAGER|REPORT), status (PENDING|SUBMITTED), submittedAt`.
+relationship (SELF|PEER|MANAGER|REPORT), status (PENDING|SUBMITTED), submittedAt`.
   `@@unique([cycleId, subjectUserId, raterUserId])`, `@@index([raterUserId])`,
   `@@index([subjectUserId])`. This is the anchor for both rater-scope and subject-scope.
 - **`RaterResponse`**: `id, organizationId, assignmentId, competencyKey, rating (Int),
-  comment (String?)`. `@@index([assignmentId])`. (Competencies from a config/enum, reusing the
+comment (String?)`. `@@index([assignmentId])`. (Competencies from a config/enum, reusing the
   LIA competency taxonomy if one exists.)
 - Prisma enums for every status/relationship field (db.md). Explicit `onDelete` cascades.
 - Migration via `prisma db execute --file=<sql>` against prod (prod is NOT migrate-managed — see
   [[tims-build-roadmap]]).
 
 ## RBAC (new module)
+
 - Add module `evaluation360` (or `review_cycle`) to the Module union in `seed-access-matrix.ts`
-  + the Action/Module types. (Slice 0 removed the dead `evaluation` module; this is a real
-  re-add with a live surface.)
+  - the Action/Module types. (Slice 0 removed the dead `evaluation` module; this is a real
+    re-add with a live surface.)
 - Grants: `hr_admin`/`super_admin` → `manage@organization` (run cycles); `leader` →
   `read@team` (monitor team completion, optional); raters/subjects use **scope-aware** reads
   keyed on `RaterAssignment.raterUserId` / `subjectUserId` (own/assigned scope) — register
@@ -46,6 +61,7 @@ services + 3 UI surfaces + i18n + a new permission module + grant re-seed. ~5–
   and a subject-anchored read for the published report.
 
 ## Routers/services
+
 - `evaluation360` router: `createCycle/openCycle/closeCycle/publishCycle` (org-scoped admin),
   `assignRaters` (org-scoped), `listCycleProgress` (admin monitor). Service + repository layers.
 - Rater-facing: `myRaterTasks` (assignments where `raterUserId = ctx.user.id`, status PENDING),
@@ -56,6 +72,7 @@ services + 3 UI surfaces + i18n + a new permission module + grant re-seed. ~5–
   [[tims-wave-2.5-access-control]].
 
 ## UI surfaces
+
 - **Employee participant** ("My 360"): pending rater tasks + (when published) my report. New
   participant section.
 - **hr_admin/super_admin** (admin shell): 360 admin — create cycle, assign raters, monitor
@@ -63,6 +80,7 @@ services + 3 UI surfaces + i18n + a new permission module + grant re-seed. ~5–
 - All i18n es/en; Loading/Error/Empty per frontend.md.
 
 ## Recommended sequencing (separate milestone)
+
 1. Schema + migration + RBAC module + grant re-seed.
 2. Admin cycle CRUD + rater assignment (org-scoped).
 3. Rater task list + submission (assigned-scope, own-only).

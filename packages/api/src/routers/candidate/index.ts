@@ -1,4 +1,4 @@
-import { mergeRouters } from '../../trpc';
+import { mergeRouters, router } from '../../trpc';
 import { candidateCrudRouter } from './crud';
 import { candidateDocumentsRouter } from './documents';
 import { candidateTagsRouter } from './tags';
@@ -10,7 +10,9 @@ export const candidateRouter = mergeRouters(
   candidateCrudRouter,
   candidateDocumentsRouter,
   candidateTagsRouter,
-  candidatePoolRouter,
   candidateTimelineRouter,
   candidateAiRouter,
+  router({
+    pool: candidatePoolRouter,
+  }),
 );

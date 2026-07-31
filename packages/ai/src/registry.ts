@@ -21,27 +21,104 @@ export interface AgentDef {
 }
 
 export const AGENT_REGISTRY: Record<string, AgentDef> = {
-  'cv-parser': { slug: 'cv-parser', name: 'CV Parser', model: 'haiku', category: 'recruitment', batchEligible: true, cacheTtlSeconds: 0 },
-  'candidate-screener': { slug: 'candidate-screener', name: 'Candidate Screener', model: 'sonnet', category: 'recruitment', batchEligible: true, cacheTtlSeconds: 0 },
+  'cv-parser': {
+    slug: 'cv-parser',
+    name: 'CV Parser',
+    model: 'haiku',
+    category: 'recruitment',
+    batchEligible: true,
+    cacheTtlSeconds: 0,
+  },
+  'candidate-screener': {
+    slug: 'candidate-screener',
+    name: 'Candidate Screener',
+    model: 'sonnet',
+    category: 'recruitment',
+    batchEligible: true,
+    cacheTtlSeconds: 0,
+  },
   // Candidate-specific portal FAQ. Prompt includes application/interview/offer context ⇒ no cache.
-  'candidate-faq': { slug: 'candidate-faq', name: 'Candidate FAQ Assistant', model: 'haiku', category: 'recruitment', batchEligible: false, cacheTtlSeconds: 0 },
-  'vacancy-writer': { slug: 'vacancy-writer', name: 'Vacancy Writer', model: 'sonnet', category: 'recruitment', batchEligible: false, cacheTtlSeconds: 2_592_000 },
-  'inclusive-language': { slug: 'inclusive-language', name: 'Inclusive Language Checker', model: 'haiku', category: 'recruitment', batchEligible: false, cacheTtlSeconds: 86_400 },
+  'candidate-faq': {
+    slug: 'candidate-faq',
+    name: 'Candidate FAQ Assistant',
+    model: 'haiku',
+    category: 'recruitment',
+    batchEligible: false,
+    cacheTtlSeconds: 0,
+  },
+  'vacancy-writer': {
+    slug: 'vacancy-writer',
+    name: 'Vacancy Writer',
+    model: 'sonnet',
+    category: 'recruitment',
+    batchEligible: false,
+    cacheTtlSeconds: 2_592_000,
+  },
+  'inclusive-language': {
+    slug: 'inclusive-language',
+    name: 'Inclusive Language Checker',
+    model: 'haiku',
+    category: 'recruitment',
+    batchEligible: false,
+    cacheTtlSeconds: 86_400,
+  },
   // Interview agents — all operate on candidate PII / evaluator opinions ⇒ ttl 0 (never cached).
   // On 'haiku' (Haiku 4.5) deliberately: the Bedrock account's Sonnet 4.5 Marketplace subscription
   // can't complete until a valid payment instrument is on file. Haiku 4.5 is current-gen and capable
   // for guide/analysis. Upgrade these back to 'sonnet' once the account billing is fixed.
-  'interview-summarizer': { slug: 'interview-summarizer', name: 'Interview Summarizer', model: 'haiku', category: 'recruitment', batchEligible: false, cacheTtlSeconds: 0 },
-  'interview-guide': { slug: 'interview-guide', name: 'Interview Guide Generator', model: 'haiku', category: 'recruitment', batchEligible: false, cacheTtlSeconds: 0 },
-  'bias-detector': { slug: 'bias-detector', name: 'Scorecard Bias Detector', model: 'haiku', category: 'recruitment', batchEligible: false, cacheTtlSeconds: 0 },
+  'interview-summarizer': {
+    slug: 'interview-summarizer',
+    name: 'Interview Summarizer',
+    model: 'haiku',
+    category: 'recruitment',
+    batchEligible: false,
+    cacheTtlSeconds: 0,
+  },
+  'interview-guide': {
+    slug: 'interview-guide',
+    name: 'Interview Guide Generator',
+    model: 'haiku',
+    category: 'recruitment',
+    batchEligible: false,
+    cacheTtlSeconds: 0,
+  },
+  'bias-detector': {
+    slug: 'bias-detector',
+    name: 'Scorecard Bias Detector',
+    model: 'haiku',
+    category: 'recruitment',
+    batchEligible: false,
+    cacheTtlSeconds: 0,
+  },
   // AI Voice Interview — ElevenLabs conversational agent + post-call analysis.
   // Budget-gated via AiAgentOrgConfig.monthlyBudget; status starts as 'stub' until
   // the ElevenLabs integration is live.
-  'ai-voice-interview': { slug: 'ai-voice-interview', name: 'AI Voice Interview', model: 'sonnet', category: 'recruitment', batchEligible: false, cacheTtlSeconds: 0 },
+  'ai-voice-interview': {
+    slug: 'ai-voice-interview',
+    name: 'AI Voice Interview',
+    model: 'sonnet',
+    category: 'recruitment',
+    batchEligible: false,
+    cacheTtlSeconds: 0,
+  },
   // 'haiku' (Haiku 4.5) pending the account's Sonnet 4.5 billing fix — see note above; upgrade to 'sonnet' after.
-  'interview-fit-score': { slug: 'interview-fit-score', name: 'Interview Fit Scorer', model: 'haiku', category: 'recruitment', batchEligible: false, cacheTtlSeconds: 0 },
+  'interview-fit-score': {
+    slug: 'interview-fit-score',
+    name: 'Interview Fit Scorer',
+    model: 'haiku',
+    category: 'recruitment',
+    batchEligible: false,
+    cacheTtlSeconds: 0,
+  },
   // Consequential candidate-evaluation narrative (not interview-analysis-cluster) ⇒ 'sonnet', matching candidate-screener.
-  'fit-explainer': { slug: 'fit-explainer', name: 'FIT Score Explainer', model: 'sonnet', category: 'recruitment', batchEligible: false, cacheTtlSeconds: 0 },
+  'fit-explainer': {
+    slug: 'fit-explainer',
+    name: 'FIT Score Explainer',
+    model: 'sonnet',
+    category: 'recruitment',
+    batchEligible: false,
+    cacheTtlSeconds: 0,
+  },
 };
 
 // Process-local memo (the ai_agents catalog is global/immutable enough that an
@@ -57,9 +134,13 @@ export async function resolveAgentId(slug: string): Promise<string> {
   if (cached) return cached;
 
   const def = AGENT_REGISTRY[slug];
+  // update: { status: 'active' } — not a no-op. A live agent's catalog row may
+  // already exist as 'stub' (e.g. seeded by the admin catalog seeder before this
+  // agent was ever invoked); every real invocation promotes it to 'active' so the
+  // admin AI-agent dashboard never shows an actually-live agent as stub.
   const agent = await db.aiAgent.upsert({
     where: { slug },
-    update: {},
+    update: { status: 'active' },
     create: {
       slug,
       name: def?.name ?? slug,

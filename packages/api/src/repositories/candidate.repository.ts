@@ -242,21 +242,32 @@ export const candidateRepository = {
   ) {
     return db.candidate.findFirst({
       where: {
-        AND: [
-          { id, organizationId: orgId, deletedAt: null },
-          scopeWhere as Prisma.CandidateWhereInput,
-        ],
+        AND: [{ id, organizationId: orgId, deletedAt: null }, scopeWhere as Prisma.CandidateWhereInput],
       },
       select: buildCandidateDetailSelect(appScopeWhere),
     });
   },
 
-  async create(orgId: string, userId: string, data: {
-    firstName: string; lastName: string; email: string; phone?: string;
-    source: string; poolType: string; avatar?: string; location?: string;
-    currentTitle?: string; currentCompany?: string; yearsExperience?: number;
-    skills?: string[]; linkedinUrl?: string; notes?: string;
-  }) {
+  async create(
+    orgId: string,
+    userId: string,
+    data: {
+      firstName: string;
+      lastName: string;
+      email: string;
+      phone?: string;
+      source: string;
+      poolType: string;
+      avatar?: string;
+      location?: string;
+      currentTitle?: string;
+      currentCompany?: string;
+      yearsExperience?: number;
+      skills?: string[];
+      linkedinUrl?: string;
+      notes?: string;
+    },
+  ) {
     return db.candidate.create({
       data: {
         ...data,
@@ -312,7 +323,10 @@ export const candidateRepository = {
   },
 
   // Documents
-  async createDocument(orgId: string, data: { candidateId: string; type: string; fileName: string; fileUrl: string; fileSize?: number }) {
+  async createDocument(
+    orgId: string,
+    data: { candidateId: string; type: string; fileName: string; fileUrl: string; fileSize?: number },
+  ) {
     return db.candidateDocument.create({
       data: { organizationId: orgId, ...data },
       select: documentSelect,
@@ -397,10 +411,7 @@ export const candidateRepository = {
     return db.candidate.groupBy({
       by: ['poolType'],
       where: {
-        AND: [
-          { organizationId: orgId, isActive: true, deletedAt: null },
-          scopeWhere as Prisma.CandidateWhereInput,
-        ],
+        AND: [{ organizationId: orgId, isActive: true, deletedAt: null }, scopeWhere as Prisma.CandidateWhereInput],
       },
       _count: { id: true },
     });
@@ -458,11 +469,7 @@ export const candidateRepository = {
   // Codex F1: application/assessment child loads are scope-filtered via the
   // threaded appScopeWhere ({vacancy: frag}) so out-of-scope rows never surface
   // in the timeline. At org scope appScopeWhere is {} → no behavior change.
-  async getTimelineData(
-    orgId: string,
-    candidateId: string,
-    appScopeWhere: Prisma.ApplicationWhereInput,
-  ) {
+  async getTimelineData(orgId: string, candidateId: string, appScopeWhere: Prisma.ApplicationWhereInput) {
     return Promise.all([
       db.application.findMany({
         where: { AND: [{ candidateId, organizationId: orgId }, appScopeWhere] },
@@ -487,7 +494,9 @@ export const candidateRepository = {
         orderBy: { appliedAt: 'desc' },
       }),
       db.assessmentAssignment.findMany({
-        where: { AND: [{ candidateId, organizationId: orgId }, appScopeWhere as Prisma.AssessmentAssignmentWhereInput] },
+        where: {
+          AND: [{ candidateId, organizationId: orgId }, appScopeWhere as Prisma.AssessmentAssignmentWhereInput],
+        },
         select: {
           id: true,
           status: true,
@@ -539,11 +548,7 @@ export const candidateRepository = {
   },
 
   // Risks
-  async getCandidateForRisks(
-    orgId: string,
-    candidateId: string,
-    appScopeWhere: Prisma.ApplicationWhereInput,
-  ) {
+  async getCandidateForRisks(orgId: string, candidateId: string, appScopeWhere: Prisma.ApplicationWhereInput) {
     // Codex re-review: risk factors must derive only from IN-SCOPE applications
     // and fit scores. {} at org scope → previous behavior.
     return db.candidate.findFirst({
@@ -573,10 +578,7 @@ export const candidateRepository = {
     return Promise.all([
       db.candidate.count({
         where: {
-          AND: [
-            { organizationId: orgId, isActive: true, deletedAt: null },
-            scopeWhere as Prisma.CandidateWhereInput,
-          ],
+          AND: [{ organizationId: orgId, isActive: true, deletedAt: null }, scopeWhere as Prisma.CandidateWhereInput],
         },
       }),
       db.candidate.count({
@@ -595,13 +597,50 @@ export const candidateRepository = {
       db.candidate.groupBy({
         by: ['poolType'],
         where: {
-          AND: [
-            { organizationId: orgId, isActive: true, deletedAt: null },
-            scopeWhere as Prisma.CandidateWhereInput,
-          ],
+          AND: [{ organizationId: orgId, isActive: true, deletedAt: null }, scopeWhere as Prisma.CandidateWhereInput],
         },
         _count: { id: true },
       }),
     ]);
+  },
+
+  // Export
+  async findForExport(
+    orgId: string,
+    scopeWhere: Prisma.CandidateWhereInput,
+    filters: { poolType?: string; tags?: string[] },
+    limit: number,
+  ) {
+    const filterClause: Prisma.CandidateWhereInput = {};
+    if (filters.poolType) filterClause.poolType = filters.poolType;
+    if (filters.tags && filters.tags.length > 0) {
+      filterClause.tags = { some: { tag: { in: filters.tags } } };
+    }
+
+    return db.candidate.findMany({
+      where: {
+        AND: [
+          { organizationId: orgId, isActive: true, deletedAt: null },
+          scopeWhere as Prisma.CandidateWhereInput,
+          filterClause,
+        ],
+      },
+      take: limit + 1,
+      orderBy: { createdAt: 'desc' },
+      select: {
+        firstName: true,
+        lastName: true,
+        email: true,
+        phone: true,
+        source: true,
+        poolType: true,
+        currentTitle: true,
+        currentCompany: true,
+        yearsExperience: true,
+        location: true,
+        tags: { select: { tag: true } },
+        createdAt: true,
+      },
+    });
   },
 };
