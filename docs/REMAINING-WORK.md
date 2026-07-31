@@ -124,10 +124,17 @@ describe-service`; only the frontend Vercel flag was missing.)
     **READ FLIPPED AND LIVE IN PROD 2026-07-31** — `NEXT_PUBLIC_ACCESS_REVIEW_READ_VIA_CSHARP=true`,
     parity-verified fresh 12/12 PASS immediately before flipping. (Prior claim of "zero FE consumers in
     either stack" was stale — `apps/web/app/(admin)/platform/access-review/page.tsx` +
-    `attest-modal.tsx` already consumed the wrapper.) **WRITE remains dark** — the backend flag
-    `Platform__AccessReviewWriteEnabled` is not yet set on App Runner (unlike read), and flipping it
-    requires a full-map `aws apprunner update-service` replace against the shared prod service (MEDIUM
-    risk — a single omitted key would silently darken all other live domains); Federico-only.
+    `attest-modal.tsx` already consumed the wrapper.) **WRITE ALSO FLIPPED AND LIVE 2026-07-31** —
+    `NEXT_PUBLIC_ACCESS_REVIEW_WRITE_VIA_CSHARP=true`, backend `Platform__AccessReviewWriteEnabled`
+    added via full-map `aws apprunner update-service`, parity-verified fresh 3/3 PASS immediately
+    before flipping.
+  - Engagement — read (#166). **FLIPPED AND LIVE IN PROD 2026-07-31** —
+    `NEXT_PUBLIC_ENGAGEMENT_READ_VIA_CSHARP=true`. First attempt at this flip caught a real
+    parity-verify failure (12/43 FAIL: apparent eNPS cross-tenant leak + hr_admin 403s everywhere) —
+    root-caused as a parity-harness fixture gap, not an app bug (harness never seeded
+    `engagement:read` grants or eNPS fixtures for the test orgs; see commit `7fd23a7`). Backend flag
+    was rolled back immediately, harness fixed + 782/782 unit + 1012/1012 integration tests still
+    passing, re-verified 43/43 PASS, then re-flipped for real.
   - **Cutover-verification harness** (`scripts/parity/`, PRs #177–#194): a TypeScript CLI proving
     parity/RLS/RBAC for each surface against the real Supabase prod DB before any flag flips.
   - **FE/TS dark-cutover wrapper layer (2026-07-27, PRs #197–#212) — now fully COMPLETE, both reads and
