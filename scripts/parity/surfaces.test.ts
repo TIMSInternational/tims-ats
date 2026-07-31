@@ -110,15 +110,10 @@ describe('SURFACES', () => {
     }
   });
 
-  it('billing-invoices reuses billing-usage RBAC verdicts under its own (BillingReadEnabled) flag', () => {
-    const s = SURFACES['billing-invoices'];
-    expect(s.flag).toBe('Platform__BillingReadEnabled');
-    expect(s.probeRole).toBe('super_admin');
-    expect(s.endpoints.map((e) => e.name)).toEqual(['invoices']);
-    const e = s.endpoints[0];
-    expect(e.expectedByRole).toEqual({ super_admin: 200, hr_admin: 403, hrbp: 403 });
-    expect(e.tsProcedure).toBe('billing.listInvoices');
-    // getInvoice (by-id) is a documented Tier-2 follow-up, not registered here.
-    expect(s.endpoints.find((x) => x.idScopeKey)).toBeUndefined();
+  // billing-invoices' SURFACES entry was removed 2026-07-31 (TS listInvoices/getInvoice deleted,
+  // NEXT_PUBLIC_BILLING_INVOICES_VIA_CSHARP confirmed live) — no TS side left to diff against, so
+  // there is nothing left for this suite to assert about it.
+  it('billing-invoices is no longer registered (TS side deleted)', () => {
+    expect(SURFACES['billing-invoices']).toBeUndefined();
   });
 });

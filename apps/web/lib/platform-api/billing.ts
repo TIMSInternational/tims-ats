@@ -2,22 +2,22 @@
 
 // This file now mixes TWO states across its hooks:
 //
-// C#-only (useBillingConfig / useBillingCurrentPlan / useBillingUsage) — the TS tRPC procedures
-// (getBillingConfig/getCurrentPlan/getUsage in packages/api/src/routers/billing.ts) have been
-// deleted — there is no TS fallback path left for these three. NEXT_PUBLIC_BILLING_USAGE_VIA_CSHARP
-// is confirmed live in prod (2026-07-29) and local dev's .env.local mirrors production values
-// directly, so these hooks call the C# service unconditionally rather than gating on the flag
-// (mirrors lib/platform-api/team-intel.ts's precedent for a fully-deleted surface). Since these
-// TS procedures are gone, two of the three C# outputs below are hand-declared rather than
-// `inferRouterOutputs`-derived (see BillingConfigOutput/Subscription below).
+// C#-only (useBillingConfig / useBillingCurrentPlan / useBillingUsage / useBillingInvoices /
+// useBillingInvoice) — the TS tRPC procedures (getBillingConfig/getCurrentPlan/getUsage/
+// listInvoices/getInvoice in packages/api/src/routers/billing.ts) have been deleted — there is no
+// TS fallback path left for any of these five. NEXT_PUBLIC_BILLING_USAGE_VIA_CSHARP (2026-07-29)
+// and NEXT_PUBLIC_BILLING_INVOICES_VIA_CSHARP (2026-07-31) are both confirmed live in prod and
+// local dev's .env.local mirrors production values directly, so these hooks call the C# service
+// unconditionally rather than gating on the flag (mirrors lib/platform-api/team-intel.ts's
+// precedent for a fully-deleted surface). Since these TS procedures are gone, several of the C#
+// outputs below are hand-declared rather than `inferRouterOutputs`-derived (see
+// BillingConfigOutput/Subscription/InvoiceListItem/InvoiceSubscription below).
 //
-// Still genuinely DARK-by-default (useBillingInvoices / useBillingInvoice, gated on
-// NEXT_PUBLIC_BILLING_INVOICES_VIA_CSHARP; and the 3 self-serve write mutations, gated on
-// NEXT_PUBLIC_BILLING_SELF_SERVE_WRITE_VIA_CSHARP) — unless their respective env vars are set at
-// deploy time, these hooks return the existing tRPC query/mutation unchanged (byte-identical to
-// today). The C# useQuery/useMutation for these is typed to the EXACT tRPC output type
-// (inferRouterOutputs), so each mapper below is compile-time-locked to the live contract's shape —
-// including the superjson Date semantics on the invoice date fields.
+// Still genuinely DARK-by-default (the 3 self-serve write mutations, gated on
+// NEXT_PUBLIC_BILLING_SELF_SERVE_WRITE_VIA_CSHARP) — unless that env var is set at deploy time,
+// these hooks return the existing tRPC mutation unchanged (byte-identical to today). The C#
+// useMutation for these is typed to the EXACT tRPC output type (inferRouterOutputs), so each
+// mapper below is compile-time-locked to the live contract's shape.
 
 import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
 import type { inferRouterOutputs } from '@trpc/server';
@@ -30,10 +30,6 @@ type RouterOutput = inferRouterOutputs<AppRouter>;
 type CreateCheckoutSessionOutput = RouterOutput['billing']['createCheckoutSession'];
 type CreatePortalSessionOutput = RouterOutput['billing']['createPortalSession'];
 type CancelSubscriptionOutput = RouterOutput['billing']['cancelSubscription'];
-type ListInvoicesOutput = RouterOutput['billing']['listInvoices'];
-type InvoiceListItem = ListInvoicesOutput['items'][number];
-type GetInvoiceOutput = RouterOutput['billing']['getInvoice'];
-type InvoiceSubscription = NonNullable<GetInvoiceOutput['subscription']>;
 
 // getBillingConfig's output — the TS tRPC procedure has been deleted, so this can no longer
 // be derived via inferRouterOutputs; hand-declared to match its one field exactly.
@@ -62,10 +58,58 @@ interface Subscription {
 }
 type CurrentPlanOutput = Subscription | null;
 
-// A FOURTH, independent read surface (added 2026-07-28): tenant invoice history had ZERO FE
-// consumer of any kind (TS or C#) until this wrapper. Its own independent flag, since it cuts
-// over independently of the other three (now C#-only) billing reads above.
-const BILLING_INVOICES_VIA_CSHARP = process.env.NEXT_PUBLIC_BILLING_INVOICES_VIA_CSHARP === 'true';
+// listInvoices/getInvoice's output — the TS tRPC procedures have been deleted (2026-07-31,
+// NEXT_PUBLIC_BILLING_INVOICES_VIA_CSHARP confirmed live in prod), so these can no longer be
+// derived via inferRouterOutputs; hand-declared to match packages/db/prisma/schema/billing.prisma's
+// Invoice model exactly.
+interface InvoiceListItem {
+  id: string;
+  invoiceNumber: number;
+  organizationId: string;
+  subscriptionId: string | null;
+  stripeInvoiceId: string | null;
+  amount: number;
+  subtotal: number | null;
+  taxRate: number | null;
+  currency: string;
+  status: 'draft' | 'pending' | 'paid' | 'void';
+  description: string | null;
+  invoiceDate: Date;
+  dueDate: Date | null;
+  poNumber: string | null;
+  notes: string | null;
+  memo: string | null;
+  emailTo: string | null;
+  emailCc: string | null;
+  paidAt: Date | null;
+  invoiceUrl: string | null;
+  periodStart: Date | null;
+  periodEnd: Date | null;
+  createdAt: Date;
+}
+interface ListInvoicesOutput {
+  items: InvoiceListItem[];
+  nextCursor?: string;
+}
+
+// The nested subscription on getInvoice's output — mirrors Subscription above (duplicated rather
+// than reused, this file's established convention, see mapInvoiceSubscription's comment).
+interface InvoiceSubscription {
+  id: string;
+  organizationId: string;
+  stripeCustomerId: string | null;
+  stripeSubscriptionId: string | null;
+  plan: 'trial' | 'starter' | 'professional' | 'enterprise';
+  status: 'trialing' | 'active' | 'past_due' | 'cancelled';
+  currentPeriodStart: Date | null;
+  currentPeriodEnd: Date | null;
+  trialEndsAt: Date | null;
+  cancelledAt: Date | null;
+  lastStripeEventAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+type GetInvoiceOutput = InvoiceListItem & { subscription: InvoiceSubscription | null };
 
 const num = (v: number | string): number => Number(v);
 const numOrNull = (v: number | string | null | undefined): number | null => (v == null ? null : Number(v));
@@ -233,25 +277,16 @@ function mapInvoiceSubscription(raw: {
 }
 
 /**
- * Tenant invoice history, cursor-paginated (`take`/`cursor`, 20 per page — matches the tRPC
- * procedure's default). Gate: `isPlatformApiEnabled() && NEXT_PUBLIC_BILLING_INVOICES_VIA_CSHARP
- * === 'true'`. First-ever FE consumer of this read surface (2026-07-28) — ships dark.
- *  - true  → GET /billing/invoices?take=&cursor= via {@link platformGetRaw} (this endpoint has
- *            no `.Produces<T>()` annotation, so it isn't in `GetPaths`/`platformGet`'s contract).
- *  - false → trpc.billing.listInvoices.useInfiniteQuery (the DEFAULT), matching
- *            trpc.notification.list.useInfiniteQuery's shape on the notifications page.
+ * Tenant invoice history, cursor-paginated (`take`/`cursor`, 20 per page). C#-only — the TS
+ * `listInvoices` procedure has been deleted; NEXT_PUBLIC_BILLING_INVOICES_VIA_CSHARP is confirmed
+ * live in prod (2026-07-31), so this calls the C# service unconditionally (mirrors
+ * useBillingUsage's precedent above). GET /billing/invoices?take=&cursor= via
+ * {@link platformGetRaw} (this endpoint has no `.Produces<T>()` annotation, so it isn't in
+ * `GetPaths`/`platformGet`'s contract).
  */
 export function useBillingInvoices() {
-  const viaCSharp = isPlatformApiEnabled() && BILLING_INVOICES_VIA_CSHARP;
-
-  const trpcQuery = trpc.billing.listInvoices.useInfiniteQuery(
-    { take: 20 },
-    { getNextPageParam: (lastPage) => lastPage.nextCursor, enabled: !viaCSharp },
-  );
-
-  const csharpQuery = useInfiniteQuery<ListInvoicesOutput>({
+  return useInfiniteQuery<ListInvoicesOutput>({
     queryKey: ['platform-api', 'billing', 'invoices'],
-    enabled: viaCSharp,
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.nextCursor,
     queryFn: async ({ pageParam }) => {
@@ -265,24 +300,18 @@ export function useBillingInvoices() {
       };
     },
   });
-
-  return viaCSharp ? csharpQuery : trpcQuery;
 }
 
 /**
- * Single invoice detail (1 call site: the invoices drawer on settings/billing). Gate as above.
- *  - true  → GET /billing/invoices/{id}, **typed** via {@link platformGet} (schema.d.ts confirms
- *            `InvoiceDetailV1` IS `.Produces<T>()`-annotated, unlike the list endpoint above).
- *  - false → trpc.billing.getInvoice.useQuery({ id }) (the DEFAULT).
+ * Single invoice detail (1 call site: the invoices drawer on settings/billing). C#-only — the TS
+ * `getInvoice` procedure has been deleted; same live-flag precedent as useBillingInvoices above.
+ * GET /billing/invoices/{id}, **typed** via {@link platformGet} (schema.d.ts confirms
+ * `InvoiceDetailV1` IS `.Produces<T>()`-annotated, unlike the list endpoint above).
  */
 export function useBillingInvoice(id: string) {
-  const viaCSharp = isPlatformApiEnabled() && BILLING_INVOICES_VIA_CSHARP;
-
-  const trpcQuery = trpc.billing.getInvoice.useQuery({ id }, { enabled: !viaCSharp && id.length > 0 });
-
-  const csharpQuery = useQuery<GetInvoiceOutput>({
+  return useQuery<GetInvoiceOutput>({
     queryKey: ['platform-api', 'billing', 'invoice', id],
-    enabled: viaCSharp && id.length > 0,
+    enabled: id.length > 0,
     queryFn: async () => {
       const raw = await platformGet('/billing/invoices/{id}', undefined, { id });
       return {
@@ -291,8 +320,6 @@ export function useBillingInvoice(id: string) {
       };
     },
   });
-
-  return viaCSharp ? csharpQuery : trpcQuery;
 }
 
 // ---------------------------------------------------------------------------
