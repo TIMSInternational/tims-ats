@@ -19,9 +19,6 @@ export type SubscriptionDetail = RouterOutput['platform']['getSubscriptionDetail
 // Platform owner emails
 export type PlatformOwnerEmailList = RouterOutput['platform']['listPlatformOwnerEmails'];
 
-// Audit logs
-export type AuditLogEntry = RouterOutput['platform']['getCrossOrgAuditLogs']['logs'][number];
-
 // AI Agents
 export type AiAgentItem = RouterOutput['platform']['listAiAgents'][number];
 

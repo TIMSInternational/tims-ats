@@ -92,7 +92,7 @@ surface_row() {
       echo "read|DeiReadEnabled|verify|dei|NEXT_PUBLIC_DEI_READ_VIA_CSHARP|FLIP_READY|Runbook §6 Phase A #4. getPayEquity (FX) is a separate Slice-11c surface, not covered here."
       ;;
     audit-log)
-      echo "read|AuditLogReadEnabled|verify|audit-log|NEXT_PUBLIC_AUDIT_LOG_READ_VIA_CSHARP|FLIP_READY|Phase-5 Slice-17 — merged AFTER this runbook doc was last updated, so it is absent from the doc's own §6 Phase A/B lists. Classified FLIP-READY from PlatformOptions.cs + team memory (merged to main e0b70ed, dark; the service has never been redeployed with this code, so 'flip-ready' here means code-ready, not yet deploy-verified)."
+      echo "read|AuditLogReadEnabled|NONE|NONE|NEXT_PUBLIC_AUDIT_LOG_READ_VIA_CSHARP|TS_DELETED|Phase-5 Slice-17. UPDATE 2026-07-31: flag confirmed live in prod, and this surface's only registered read procedure (platform.getCrossOrgAuditLogs, plus platform.exportAuditLogsCsv which shared the same TS router) has been deleted (packages/api/src/routers/platform/system.ts) — the C# read path is the sole implementation now, so scripts/parity/surfaces.ts's 'audit-log' entry was removed too and there is no TS side left to diff against. The FE wrapper (apps/web/lib/platform-api/audit-log.ts) now calls the C# service unconditionally rather than gating on the flag. --verify-only for this surface is now a no-op (see run_verify) rather than a real parity check."
       ;;
     access-review)
       echo "read|AccessReviewReadEnabled|verify|access-review|NEXT_PUBLIC_ACCESS_REVIEW_READ_VIA_CSHARP|FLIP_READY|Phase-5 Slice-18 — same situation as audit-log: post-dates the runbook's §6 lists. Read side is efcoreReadOnly over Phase-2 identity tables (users/roles/user_roles/role_permissions/permissions/organizations); access_reviews itself stays Prisma-owned until the WRITE flag (access-review-write) flips."
@@ -178,10 +178,11 @@ EXAMPLES
   scripts/deploy/cutover.sh access-review-write --flip-backend --skip-verify-confirm-i-know-what-im-doing
   scripts/deploy/cutover.sh dei --rollback --yes
   scripts/deploy/cutover.sh --list
-  # NOTE: "reporting", "evaluation360" (read), "team-intel", and "billing-usage" no longer have a
-  # real --verify-only check — their TS routers were deleted (2026-07-28 for the first two,
-  # 2026-07-29 for the latter two), so there's nothing left to diff against. --verify-only for any
-  # of these four still runs (prints a no-op notice and exits 0) rather than erroring.
+  # NOTE: "reporting", "evaluation360" (read), "team-intel", "billing-usage", and "audit-log" no
+  # longer have a real --verify-only check — their TS procedures were deleted (2026-07-28 for the
+  # first two, 2026-07-29 for the next two, 2026-07-31 for audit-log), so there's nothing left to
+  # diff against. --verify-only for any of these five still runs (prints a no-op notice and exits
+  # 0) rather than erroring.
 
 See scripts/deploy/README-cutover.md for the full worked flow.
 EOF

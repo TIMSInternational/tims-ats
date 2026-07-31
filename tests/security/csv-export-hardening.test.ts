@@ -1,11 +1,15 @@
 /**
  * csv-export-hardening.test.ts
  *
- * Pins the shared CSV formula/row-injection defense (CWE-1236) and proves both
- * platform CSV exports (access-review + the cross-org audit-log export) wire it in.
- * exportAuditLogsCsv previously escaped only commas, leaving a formula-injection gap
- * (an org/actor name starting with =/+/-/@ executes as a formula when an auditor
- * opens the export in Excel/Sheets) — fixed by reusing access-review's csvCell logic.
+ * Pins the shared CSV formula/row-injection defense (CWE-1236) and proves the remaining
+ * TS platform CSV export (access-review) wires it in. The cross-org audit-log export
+ * (`platform.exportAuditLogsCsv`) that originally motivated this fix — it escaped only commas,
+ * leaving a formula-injection gap where an org/actor name starting with =/+/-/@ executes as a
+ * formula when an auditor opens the export in Excel/Sheets — has since been deleted outright
+ * (TS-deletion, 2026-07-31): NEXT_PUBLIC_AUDIT_LOG_READ_VIA_CSHARP is confirmed live in prod and
+ * the C# `/audit/logs/export` endpoint is the sole implementation now (see
+ * apps/web/lib/platform-api/audit-log.ts). `csvRow`'s own neutralization behavior (below) still
+ * pins the fix at the shared-helper level regardless of which callers remain.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
@@ -43,15 +47,9 @@ describe('csvRow', () => {
 const ROOT = join(__dirname, '..', '..');
 const read = (p: string) => readFileSync(join(ROOT, p), 'utf8');
 
-describe('wiring — both platform CSV exports use the shared hardened helper', () => {
+describe('wiring — the remaining TS platform CSV export uses the shared hardened helper', () => {
   it('access-review CSV export imports csvCell from @tims/shared', () => {
     const src = read('packages/api/src/routers/platform/access-review.ts');
     expect(src).toMatch(/import\s*\{\s*csvCell\s*\}\s*from\s*'@tims\/shared'/);
-  });
-
-  it('the cross-org audit-log CSV export imports csvRow from @tims/shared', () => {
-    const src = read('packages/api/src/routers/platform/system.ts');
-    expect(src).toMatch(/import\s*\{\s*csvRow\s*\}\s*from\s*'@tims\/shared'/);
-    expect(src).not.toMatch(/\.replace\(\/,\/g,\s*'\s*'\)/); // the old comma-only "escaping"
   });
 });
