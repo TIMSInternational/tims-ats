@@ -1086,6 +1086,7 @@
     "candidateAdded": "Candidato agregado al pool",
     "candidateCreateError": "Error al crear candidato",
     "exportStarted": "Exportación iniciada",
+    "exportTruncated": "Exportacion limitada a {count} filas",
     "recontactStarted": "Campaña de recontacto iniciada",
     "contactStarted": "Contacto iniciado",
     "export": "Exportar",
