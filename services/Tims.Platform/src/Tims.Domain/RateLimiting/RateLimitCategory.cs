@@ -18,7 +18,9 @@ public enum RateLimitCategory
     /// <summary>10 auth attempts / 5m.</summary>
     Auth,
 
-    /// <summary>10 AI calls / 1m — cost-controlled, keyed per-ORGANIZATION.</summary>
+    /// <summary>10 AI calls / 1m — cost-controlled, keyed per-ORGANIZATION when the caller is
+    /// authenticated; falls back to per-IP for unauthenticated public endpoints (the org isn't
+    /// known until input is parsed), backstopped there by the per-org AI budget check.</summary>
     Ai,
 
     /// <summary>5 exports / 5m.</summary>

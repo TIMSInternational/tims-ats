@@ -20,8 +20,9 @@ public static class RateLimitPolicy
 
     /// <summary>
     /// Selects the rate-limit category for a tRPC path + procedure type. Order matters and mirrors
-    /// TS exactly: (1) <c>auth.</c> prefix wins outright; (2) any AI keyword substring → ai;
-    /// (3) <c>export</c> substring → export; (4) otherwise the query/mutation default.
+    /// TS exactly: (1) <c>auth.</c> prefix wins outright; (2) exact path
+    /// <c>portal.applytovacancy</c> → ai; (3) any AI keyword substring → ai; (4) <c>export</c>
+    /// substring → export; (5) otherwise the query/mutation default.
     /// </summary>
     public static RateLimitCategory CategoryFor(string path, RateLimitRequestType type)
     {
