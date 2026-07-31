@@ -940,6 +940,25 @@
     "of": "of",
     "system": "System"
   },
+  "auditExport": {
+    "breadcrumbParent": "Settings",
+    "title": "Audit Log Export",
+    "description": "Export your organization's audit events as CSV or JSON.",
+    "dateFrom": "From",
+    "dateTo": "To",
+    "actionLabel": "Action",
+    "actionPlaceholder": "e.g. create, update, delete",
+    "entityLabel": "Entity",
+    "entityPlaceholder": "e.g. candidate, vacancy",
+    "actorLabel": "Actor",
+    "allActors": "All actors",
+    "exportCsv": "Export CSV",
+    "exportJson": "Export JSON",
+    "exportSuccess": "Export ready: {count} rows",
+    "exportTruncated": "Export capped at {count} rows",
+    "exportError": "Failed to generate export",
+    "clearFilters": "Clear filters"
+  },
   "accessReview": {
     "title": "Access Review",
     "selectOrgPlaceholder": "Select an organization",

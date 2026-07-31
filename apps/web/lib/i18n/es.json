@@ -940,6 +940,25 @@
     "of": "de",
     "system": "Sistema"
   },
+  "auditExport": {
+    "breadcrumbParent": "Configuracion",
+    "title": "Exportar Registro de Auditoria",
+    "description": "Exporta los eventos de auditoria de tu organizacion en CSV o JSON.",
+    "dateFrom": "Desde",
+    "dateTo": "Hasta",
+    "actionLabel": "Accion",
+    "actionPlaceholder": "ej. create, update, delete",
+    "entityLabel": "Entidad",
+    "entityPlaceholder": "ej. candidate, vacancy",
+    "actorLabel": "Actor",
+    "allActors": "Todos los actores",
+    "exportCsv": "Exportar CSV",
+    "exportJson": "Exportar JSON",
+    "exportSuccess": "Exportacion lista: {count} filas",
+    "exportTruncated": "Exportacion limitada a {count} filas",
+    "exportError": "Error al generar la exportacion",
+    "clearFilters": "Limpiar filtros"
+  },
   "accessReview": {
     "title": "Revision de Acceso",
     "selectOrgPlaceholder": "Selecciona una organizacion",
