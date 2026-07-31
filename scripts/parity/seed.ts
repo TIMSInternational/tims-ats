@@ -1727,9 +1727,111 @@ export async function resolveSuccessionWriteResources(cfg: HarnessConfig): Promi
   }
 }
 
+// ── eNPS read fixtures (RLS Mode B — DIFFERENTIATED per-org, non-suppressed) ────────────────────
+// getEnps (`EngagementReadRepository.GetEnpsAnswersAsync` / packages/api/src/routers/engagement.ts's
+// `getEnps`) only reads `survey.type = 'enps'` responses. With NO eNPS survey/response fixtures
+// seeded anywhere (the pre-existing gap this fixture closes), org A and org B both had ZERO
+// responses, both tripped the k-anonymity response floor (`Suppress(0)`) identically, and the RLS
+// Mode B check saw two byte-identical `{suppressed:true,...}` payloads — misread as a possible
+// cross-tenant leak (it wasn't; same false-positive class as DEI's distribution suppression — see
+// `isSuppressedPayload`'s doc comment in checks/rls.ts, and seedDeiData's comment above). 5 bare
+// (never-login) respondents per org, ALL scoring the SAME bucket so every split clears (or
+// trivially avoids) the min-5 floor: org A → 5× promoter (score 9) → enps=100,
+// promoters=5/passives=0/detractors=0 (0 is NOT suppressed — `KAnonymity.SuppressBelowMin5` only
+// suppresses counts of 1..4); org B → 5× detractor (score 0) → enps=-100. Real, non-suppressed,
+// and DIFFERENT between orgs — a strong RLS Mode-B comparison instead of two suppressed nulls.
+const ENPS_USER_SUPA: Record<string, string> = {
+  a1: '00000000-0000-4000-8000-0000000e0a01',
+  a2: '00000000-0000-4000-8000-0000000e0a02',
+  a3: '00000000-0000-4000-8000-0000000e0a03',
+  a4: '00000000-0000-4000-8000-0000000e0a04',
+  a5: '00000000-0000-4000-8000-0000000e0a05',
+  b1: '00000000-0000-4000-8000-0000000e0b01',
+  b2: '00000000-0000-4000-8000-0000000e0b02',
+  b3: '00000000-0000-4000-8000-0000000e0b03',
+  b4: '00000000-0000-4000-8000-0000000e0b04',
+  b5: '00000000-0000-4000-8000-0000000e0b05',
+};
+
+async function seedEngagementEnpsOrg(
+  db: Client,
+  orgId: string,
+  createdById: string,
+  title: string,
+  score: number,
+  userSupaIds: string[],
+  emailPrefix: string,
+): Promise<void> {
+  const found = await db.query<IdRow>(
+    `SELECT id FROM surveys WHERE organization_id = $1 AND type = 'enps' AND title = $2 LIMIT 1`,
+    [orgId, title],
+  );
+  const surveyId =
+    found.rows[0]?.id ??
+    (
+      await db.query<IdRow>(
+        `INSERT INTO surveys (id, organization_id, title, type, status, questions, created_by_id, updated_at)
+         VALUES (gen_random_uuid(), $1, $2, 'enps', 'active', $3::jsonb, $4, now())
+         RETURNING id`,
+        [orgId, title, JSON.stringify([{ text: 'score', type: 'scale', required: true }]), createdById],
+      )
+    ).rows[0].id;
+
+  for (const [i, supaId] of userSupaIds.entries()) {
+    const userId = await upsertBareUser(
+      db,
+      orgId,
+      supaId,
+      `parity+${emailPrefix}-enps${i + 1}@tims.test`,
+      'Enps',
+      `Fixture${emailPrefix}${i + 1}`,
+    );
+    await db.query(
+      `INSERT INTO survey_responses (id, organization_id, survey_id, user_id, answers, submitted_at)
+       VALUES (gen_random_uuid(), $1, $2, $3, $4::jsonb, now())
+       ON CONFLICT (survey_id, user_id) DO UPDATE SET answers = EXCLUDED.answers, submitted_at = now()`,
+      [orgId, surveyId, userId, JSON.stringify({ score })],
+    );
+  }
+}
+
+/** Seeds DIFFERENTIATED eNPS data for both orgs (org A promoters / org B detractors) — see the
+ *  fixture-rationale comment above `ENPS_USER_SUPA`. Guards on both orgs' super_admin existing
+ *  (the `createdById` FK target), same early-return convention as `seedDeiData`. */
+export async function seedEngagementEnpsData(
+  db: Client,
+  orgAId: string,
+  orgBId: string,
+  userIds: Map<string, string>,
+): Promise<void> {
+  const superA = userIds.get('a:super_admin');
+  const superB = userIds.get('b:super_admin');
+  if (!superA || !superB) return;
+
+  await seedEngagementEnpsOrg(
+    db,
+    orgAId,
+    superA,
+    'Parity eNPS Survey A',
+    9,
+    [ENPS_USER_SUPA.a1, ENPS_USER_SUPA.a2, ENPS_USER_SUPA.a3, ENPS_USER_SUPA.a4, ENPS_USER_SUPA.a5],
+    'a',
+  );
+  await seedEngagementEnpsOrg(
+    db,
+    orgBId,
+    superB,
+    'Parity eNPS Survey B',
+    0,
+    [ENPS_USER_SUPA.b1, ENPS_USER_SUPA.b2, ENPS_USER_SUPA.b3, ENPS_USER_SUPA.b4, ENPS_USER_SUPA.b5],
+    'b',
+  );
+}
+
 // ── engagement write-verification preconditions ──────────────────────────────
-// Engagement reads were NOT cut over, so there is no shared engagement seed — the write surface
-// brings its own grants + fixtures. 5 writes: createSurvey (grant-only create; created_by attributed
+// The write surface brings its own FIXED-id fixtures (below), separate from the shared read-side
+// grants (seedEngagementGrants) and eNPS data (seedEngagementEnpsData) seeded above. 5 writes:
+// createSurvey (grant-only create; created_by attributed
 // → allow-live) + activateSurvey (by-id draft→active; cross-org → 404) + submitSurveyResponse
 // (identity: userId=caller, create-grant; cross-org survey → 404; user_id attributed → allow-live) +
 // createActionPlan (assertSubjectInScope + H1 cross-org responsibleId → 403) + updateActionPlan
@@ -1737,16 +1839,27 @@ export async function resolveSuccessionWriteResources(cfg: HarnessConfig): Promi
 // only; teardown sweeps surveys/survey_responses/action_plans by org (both orgs).
 
 /** Grants hr_admin engagement:create + :update @org (a genuine non-bypass write role — createSurvey
- *  + submitSurveyResponse allow-live-test it). hrbp stays ungranted → every write 403 at the gate. */
+ *  + submitSurveyResponse allow-live-test it). hrbp stays ungranted → every write 403 at the gate.
+ *
+ *  ALSO grants the READ side, per seed-access-matrix.ts:44-49,58-76 — hr_admin holds
+ *  engagement:read@organization, hrbp holds engagement:read@unit. The read surface
+ *  (EngagementReadEndpoints.cs) shares this same grant with the write surface (one `engagement`
+ *  module), so both must be seeded here even though the read/write flags are independent — without
+ *  this, `EngagementStaffGate`'s `PermissionService.CheckAsync` legitimately finds zero
+ *  RolePermission rows and 403s hr_admin/hrbp on every read endpoint (parity bug, not a C# bug). */
 async function seedEngagementGrants(db: Client, roleIds: Map<string, string>): Promise<void> {
+  const readPerm = await upsertPermission(db, 'engagement', 'read');
   const createPerm = await upsertPermission(db, 'engagement', 'create');
   const updatePerm = await upsertPermission(db, 'engagement', 'update');
   for (const key of ORG_KEYS) {
     const hrAdmin = roleIds.get(`${key}:hr_admin`);
     if (hrAdmin) {
+      await upsertRolePermission(db, hrAdmin, readPerm, 'organization');
       await upsertRolePermission(db, hrAdmin, createPerm, 'organization');
       await upsertRolePermission(db, hrAdmin, updatePerm, 'organization');
     }
+    const hrbp = roleIds.get(`${key}:hrbp`);
+    if (hrbp) await upsertRolePermission(db, hrbp, readPerm, 'unit');
   }
 }
 
@@ -2223,9 +2336,16 @@ export async function seed(cfg: HarnessConfig, roles: string[]): Promise<SeedRes
     if (roles.includes('hr_admin') || roles.includes('hrbp')) await seedSuccessionGrants(db, roleIds);
     await seedSuccessionData(db, orgIds.a, userIds);
 
-    // engagement WRITE grants (hr_admin create+update@org). Reads not cut over → no shared data seed;
-    // the engagement write fixtures are seeded in ensureEngagementWritePreconditions (write path only).
-    if (roles.includes('hr_admin')) await seedEngagementGrants(db, roleIds);
+    // engagement grants: hr_admin read/create/update@org, hrbp read@unit (seed-access-matrix.ts).
+    // Covers both the WRITE surface (createSurvey/submitSurveyResponse allow-live-test hr_admin's
+    // create+update grant; hrbp stays ungranted for writes → 403 at the gate) and the READ surface
+    // (EngagementReadEndpoints.cs shares the same `engagement` module grant). No shared engagement
+    // data seed here — write fixtures are seeded in ensureEngagementWritePreconditions (write path
+    // only); read fixtures (surveys/survey_responses for enps etc.) are seeded separately below.
+    if (roles.includes('hr_admin') || roles.includes('hrbp')) await seedEngagementGrants(db, roleIds);
+    // eNPS read data (both orgs, DIFFERENTIATED — see the fixture-rationale comment above
+    // seedEngagementEnpsData). Org-independent of `roles`; only needs each org's super_admin id.
+    await seedEngagementEnpsData(db, orgIds.a, orgIds.b, userIds);
 
     // dei fixtures (grant + org-A-only demographic/promotion/climate-survey dataset). Grant only when
     // hr_admin was seeded; data seed runs unconditionally (needs only a:super_admin, like other domains).
@@ -2341,9 +2461,9 @@ export async function teardown(cfg: HarnessConfig): Promise<void> {
       // succession fixture (org A). successors/critical_roles FK→users → precede the users delete.
       await db.query('DELETE FROM successors WHERE organization_id = ANY($1)', [orgIds]);
       await db.query('DELETE FROM critical_roles WHERE organization_id = ANY($1)', [orgIds]);
-      // engagement write fixtures (both orgs) + dei's climate survey (org A). survey_responses
-      // FK→surveys+users, surveys/action_plans FK→users → all precede the users delete. Swept even
-      // though the engagement half is seeded only in the write-verify path.
+      // engagement write fixtures (both orgs) + engagement eNPS read fixtures (both orgs) + dei's
+      // climate survey (org A). survey_responses FK→surveys+users, surveys/action_plans FK→users
+      // → all precede the users delete.
       await db.query('DELETE FROM survey_responses WHERE organization_id = ANY($1)', [orgIds]);
       await db.query('DELETE FROM surveys WHERE organization_id = ANY($1)', [orgIds]);
       await db.query('DELETE FROM action_plans WHERE organization_id = ANY($1)', [orgIds]);

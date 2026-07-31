@@ -11,14 +11,18 @@ namespace Tims.IntegrationTests.Engagement;
 /// <c>app_tenant</c>, ENABLE + FORCE ROW LEVEL SECURITY, fail-closed <c>tenant_isolation</c>).
 ///
 /// Seed (OrgA): S1 climate (active, 6 responses M1..M6 — M1-M4 companyA, M5-M6 companyB); S2 pulse (closed, 3
-/// responses M1/M2/M3 → SUB-FLOOR); S_enps (active, 6 recent responses). ActionPlans: AP1(resp=M1,pending),
-/// AP2(resp=M4,pending), AP3(resp=M2,completed). LeaderCommitments: LC1(leader=M1), LC2(leader=M4). Alert A1
-/// (engagement/active). TeamLead leads Team1 (members M1/M2/M3) → teamMemberIds={TeamLead,M1,M2,M3}; M4 is OUT.
-/// OrgB seeds a DISTINCT survey/response/alert so a cross-org RLS bleed shows.
+/// responses M1/M2/M3 → SUB-FLOOR); S_enps (active, 6 recent responses, ALL score 9 → promoters=6, enps=100,
+/// non-suppressed). ActionPlans: AP1(resp=M1,pending), AP2(resp=M4,pending), AP3(resp=M2,completed).
+/// LeaderCommitments: LC1(leader=M1), LC2(leader=M4). Alert A1 (engagement/active). TeamLead leads Team1
+/// (members M1/M2/M3) → teamMemberIds={TeamLead,M1,M2,M3}; M4 is OUT. OrgB seeds a DISTINCT survey/response/alert
+/// so a cross-org RLS bleed shows, PLUS its own eNPS survey (5 responses MB..MB4, ALL score 0 → detractors=5,
+/// enps=-100, non-suppressed and DIFFERENT from OrgA's) so the eNPS cross-tenant isolation check has real,
+/// differentiated data to compare instead of two k-anonymity-suppressed nulls.
 ///
-/// RBAC: hr_admin=engagement:read@organization (org-gate pass); recruiter=engagement:read@company (org-gate pass,
-/// scopeWhereFor→MatchAll); leader=engagement:read@team (narrow → 403 on the org-rollup reads; scopeWhereFor drops
-/// out-of-team rows; own-scoped reads still pass); employee=no grant (403).
+/// RBAC: hr_admin=engagement:read@organization (org-gate pass, both OrgA's OrgReader AND OrgB's OrgBReader);
+/// recruiter=engagement:read@company (org-gate pass, scopeWhereFor→MatchAll); leader=engagement:read@team
+/// (narrow → 403 on the org-rollup reads; scopeWhereFor drops out-of-team rows; own-scoped reads still pass);
+/// employee=no grant (403).
 /// </summary>
 public sealed class EngagementReadFixture : IAsyncLifetime
 {
@@ -38,6 +42,7 @@ public sealed class EngagementReadFixture : IAsyncLifetime
     public static readonly Guid TeamLeadId = Guid.Parse("a0000000-0000-0000-0000-000000000002");
     public static readonly Guid NoGrantId = Guid.Parse("a0000000-0000-0000-0000-000000000003");
     public static readonly Guid CompanyReaderId = Guid.Parse("a0000000-0000-0000-0000-000000000004");
+    public static readonly Guid OrgBReaderId = Guid.Parse("a0000000-0000-0000-0000-0000000000b1");
 
     public static readonly Guid M1 = Guid.Parse("d0000000-0000-0000-0000-000000000001");
     public static readonly Guid M2 = Guid.Parse("d0000000-0000-0000-0000-000000000002");
@@ -61,6 +66,7 @@ public sealed class EngagementReadFixture : IAsyncLifetime
     public const string TeamLeadSub = "sub-eng-lead";
     public const string NoGrantSub = "sub-eng-none";
     public const string CompanyReaderSub = "sub-eng-company";
+    public const string OrgBReaderSub = "sub-eng-org-b";
 
     private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:16-alpine")
         .WithUsername(LoginRole)
@@ -197,7 +203,8 @@ public sealed class EngagementReadFixture : IAsyncLifetime
           ('c0000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'hr_admin', 'HR Admin'),
           ('c0000000-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'leader', 'Leader'),
           ('c0000000-0000-0000-0000-000000000003', '11111111-1111-1111-1111-111111111111', 'employee', 'Employee'),
-          ('c0000000-0000-0000-0000-000000000004', '11111111-1111-1111-1111-111111111111', 'recruiter', 'Recruiter');
+          ('c0000000-0000-0000-0000-000000000004', '11111111-1111-1111-1111-111111111111', 'recruiter', 'Recruiter'),
+          ('c0000000-0000-0000-0000-0000000000b1', '22222222-2222-2222-2222-222222222222', 'hr_admin', 'HR Admin');
 
         INSERT INTO permissions (id, module, action) VALUES
           ('b0000000-0000-0000-0000-000000000001', 'engagement', 'read');
@@ -205,26 +212,33 @@ public sealed class EngagementReadFixture : IAsyncLifetime
         INSERT INTO role_permissions (id, role_id, permission_id, scope) VALUES
           ('90000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000001', 'organization'),
           ('90000000-0000-0000-0000-000000000002', 'c0000000-0000-0000-0000-000000000002', 'b0000000-0000-0000-0000-000000000001', 'team'),
-          ('90000000-0000-0000-0000-000000000004', 'c0000000-0000-0000-0000-000000000004', 'b0000000-0000-0000-0000-000000000001', 'company');
+          ('90000000-0000-0000-0000-000000000004', 'c0000000-0000-0000-0000-000000000004', 'b0000000-0000-0000-0000-000000000001', 'company'),
+          ('90000000-0000-0000-0000-0000000000b1', 'c0000000-0000-0000-0000-0000000000b1', 'b0000000-0000-0000-0000-000000000001', 'organization');
 
         INSERT INTO users (id, organization_id, supabase_user_id, email, first_name, last_name, avatar, job_title, company_id, business_unit_id, created_at, is_platform_owner, is_active) VALUES
           ('a0000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'sub-eng-org',     'org@t.test',     'Ana',  'Admin',   NULL, 'HR', NULL, NULL, '2024-01-01 00:00:00', false, true),
           ('a0000000-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'sub-eng-lead',    'lead@t.test',    'Tara', 'Team',    NULL, 'Lead', NULL, NULL, '2024-01-01 00:00:00', false, true),
           ('a0000000-0000-0000-0000-000000000003', '11111111-1111-1111-1111-111111111111', 'sub-eng-none',    'none@t.test',    'Ned',  'None',    NULL, 'X', NULL, NULL, '2024-01-01 00:00:00', false, true),
           ('a0000000-0000-0000-0000-000000000004', '11111111-1111-1111-1111-111111111111', 'sub-eng-company', 'comp@t.test',    'Cara', 'Company', NULL, 'Rec', NULL, NULL, '2024-01-01 00:00:00', false, true),
+          ('a0000000-0000-0000-0000-0000000000b1', '22222222-2222-2222-2222-222222222222', 'sub-eng-org-b',   'orgb@t.test',    'Bea',  'AdminB',  NULL, 'HR', NULL, NULL, '2024-01-01 00:00:00', false, true),
           ('d0000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'sub-eng-m1', 'm1@t.test', 'Mia', 'One',   'a1.png', 'Eng', 'c0c00000-0000-0000-0000-00000000000a', NULL, '2024-01-01 00:00:00', false, true),
           ('d0000000-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'sub-eng-m2', 'm2@t.test', 'Max', 'Two',   NULL, 'PM', 'c0c00000-0000-0000-0000-00000000000a', NULL, '2024-01-01 00:00:00', false, true),
           ('d0000000-0000-0000-0000-000000000003', '11111111-1111-1111-1111-111111111111', 'sub-eng-m3', 'm3@t.test', 'Moe', 'Three', NULL, 'Eng', 'c0c00000-0000-0000-0000-00000000000a', NULL, '2024-01-01 00:00:00', false, true),
           ('d0000000-0000-0000-0000-000000000004', '11111111-1111-1111-1111-111111111111', 'sub-eng-m4', 'm4@t.test', 'Mel', 'Four',  NULL, 'Eng', 'c0c00000-0000-0000-0000-00000000000a', NULL, '2024-01-01 00:00:00', false, true),
           ('d0000000-0000-0000-0000-000000000005', '11111111-1111-1111-1111-111111111111', 'sub-eng-m5', 'm5@t.test', 'Mo',  'Five',  NULL, 'Eng', 'c0c00000-0000-0000-0000-00000000000b', NULL, '2024-01-01 00:00:00', false, true),
           ('d0000000-0000-0000-0000-000000000006', '11111111-1111-1111-1111-111111111111', 'sub-eng-m6', 'm6@t.test', 'My',  'Six',   NULL, 'Eng', 'c0c00000-0000-0000-0000-00000000000b', NULL, '2024-01-01 00:00:00', false, true),
-          ('d0000000-0000-0000-0000-0000000000b0', '22222222-2222-2222-2222-222222222222', 'sub-eng-mb', 'mb@t.test', 'Bob', 'OrgB',  NULL, 'X', NULL, NULL, '2024-01-01 00:00:00', false, true);
+          ('d0000000-0000-0000-0000-0000000000b0', '22222222-2222-2222-2222-222222222222', 'sub-eng-mb', 'mb@t.test', 'Bob', 'OrgB',  NULL, 'X', NULL, NULL, '2024-01-01 00:00:00', false, true),
+          ('d0000000-0000-0000-0000-0000000000b1', '22222222-2222-2222-2222-222222222222', 'sub-eng-mb1', 'mb1@t.test', 'Bo', 'OrgB1', NULL, 'X', NULL, NULL, '2024-01-01 00:00:00', false, true),
+          ('d0000000-0000-0000-0000-0000000000b2', '22222222-2222-2222-2222-222222222222', 'sub-eng-mb2', 'mb2@t.test', 'Bi', 'OrgB2', NULL, 'X', NULL, NULL, '2024-01-01 00:00:00', false, true),
+          ('d0000000-0000-0000-0000-0000000000b3', '22222222-2222-2222-2222-222222222222', 'sub-eng-mb3', 'mb3@t.test', 'Bu', 'OrgB3', NULL, 'X', NULL, NULL, '2024-01-01 00:00:00', false, true),
+          ('d0000000-0000-0000-0000-0000000000b4', '22222222-2222-2222-2222-222222222222', 'sub-eng-mb4', 'mb4@t.test', 'Be', 'OrgB4', NULL, 'X', NULL, NULL, '2024-01-01 00:00:00', false, true);
 
         INSERT INTO user_roles (id, user_id, role_id) VALUES
           ('e0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000001'),
           ('e0000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000002', 'c0000000-0000-0000-0000-000000000002'),
           ('e0000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000003', 'c0000000-0000-0000-0000-000000000003'),
-          ('e0000000-0000-0000-0000-000000000004', 'a0000000-0000-0000-0000-000000000004', 'c0000000-0000-0000-0000-000000000004');
+          ('e0000000-0000-0000-0000-000000000004', 'a0000000-0000-0000-0000-000000000004', 'c0000000-0000-0000-0000-000000000004'),
+          ('e0000000-0000-0000-0000-0000000000b1', 'a0000000-0000-0000-0000-0000000000b1', 'c0000000-0000-0000-0000-0000000000b1');
         """;
 
     private const string EngagementSeedSql =
@@ -247,7 +261,13 @@ public sealed class EngagementReadFixture : IAsyncLifetime
           ('50000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'Clima', 'climate', 'active', '[{"text":"q1","type":"scale","category":"Ambiente"}]', '2020-01-01 00:00:00', NULL, 6, 'a0000000-0000-0000-0000-000000000001', '2026-05-01 00:00:00', '2026-05-01 00:00:00'),
           ('50000000-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'Pulse', 'pulse',   'closed', '[{"text":"q1","type":"scale"}]', '2020-01-01 00:00:00', '2021-01-01 00:00:00', 3, 'a0000000-0000-0000-0000-000000000001', '2026-04-01 00:00:00', '2026-04-01 00:00:00'),
           ('50000000-0000-0000-0000-0000000000e0', '11111111-1111-1111-1111-111111111111', 'eNPS',  'enps',    'active', '[{"text":"score","type":"scale"}]', '2020-01-01 00:00:00', NULL, 6, 'a0000000-0000-0000-0000-000000000001', '2026-05-01 00:00:00', '2026-05-01 00:00:00'),
-          ('50000000-0000-0000-0000-0000000000b0', '22222222-2222-2222-2222-222222222222', 'OrgB',  'climate', 'active', '[{"text":"q1","type":"scale"}]', '2020-01-01 00:00:00', NULL, 5, 'd0000000-0000-0000-0000-0000000000b0', '2026-05-01 00:00:00', '2026-05-01 00:00:00');
+          ('50000000-0000-0000-0000-0000000000b0', '22222222-2222-2222-2222-222222222222', 'OrgB',  'climate', 'active', '[{"text":"q1","type":"scale"}]', '2020-01-01 00:00:00', NULL, 5, 'd0000000-0000-0000-0000-0000000000b0', '2026-05-01 00:00:00', '2026-05-01 00:00:00'),
+          -- OrgB eNPS: 5 DETRACTOR (score 0) responses → real, non-suppressed, and DIFFERENT from
+          -- OrgA's 6 promoter (score 9) responses above. Regression guard for the cross-tenant eNPS
+          -- leak: with no OrgB eNPS data at all, OrgA and OrgB both trip the k-anonymity floor
+          -- identically and return byte-identical suppressed payloads (see
+          -- GetEnps_CrossOrg_ReturnsDifferentiatedData in EngagementReadEndpointTests.cs).
+          ('50000000-0000-0000-0000-0000000000e1', '22222222-2222-2222-2222-222222222222', 'eNPS OrgB', 'enps', 'active', '[{"text":"score","type":"scale"}]', '2020-01-01 00:00:00', NULL, 5, 'd0000000-0000-0000-0000-0000000000b0', '2026-05-01 00:00:00', '2026-05-01 00:00:00');
 
         INSERT INTO survey_responses (id, organization_id, survey_id, user_id, answers, submitted_at) VALUES
           ('51000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', '50000000-0000-0000-0000-000000000001', 'd0000000-0000-0000-0000-000000000001', '{"q1":4}', '2026-05-02 00:00:00'),
@@ -265,7 +285,12 @@ public sealed class EngagementReadFixture : IAsyncLifetime
           ('5e000000-0000-0000-0000-000000000004', '11111111-1111-1111-1111-111111111111', '50000000-0000-0000-0000-0000000000e0', 'd0000000-0000-0000-0000-000000000004', '{"score":9}', now()),
           ('5e000000-0000-0000-0000-000000000005', '11111111-1111-1111-1111-111111111111', '50000000-0000-0000-0000-0000000000e0', 'd0000000-0000-0000-0000-000000000005', '{"score":9}', now()),
           ('5e000000-0000-0000-0000-000000000006', '11111111-1111-1111-1111-111111111111', '50000000-0000-0000-0000-0000000000e0', 'd0000000-0000-0000-0000-000000000006', '{"score":9}', now()),
-          ('5b000000-0000-0000-0000-000000000001', '22222222-2222-2222-2222-222222222222', '50000000-0000-0000-0000-0000000000b0', 'd0000000-0000-0000-0000-0000000000b0', '{"q1":4}', '2026-05-02 00:00:00');
+          ('5b000000-0000-0000-0000-000000000001', '22222222-2222-2222-2222-222222222222', '50000000-0000-0000-0000-0000000000b0', 'd0000000-0000-0000-0000-0000000000b0', '{"q1":4}', '2026-05-02 00:00:00'),
+          ('5f000000-0000-0000-0000-000000000001', '22222222-2222-2222-2222-222222222222', '50000000-0000-0000-0000-0000000000e1', 'd0000000-0000-0000-0000-0000000000b0', '{"score":0}', now()),
+          ('5f000000-0000-0000-0000-000000000002', '22222222-2222-2222-2222-222222222222', '50000000-0000-0000-0000-0000000000e1', 'd0000000-0000-0000-0000-0000000000b1', '{"score":0}', now()),
+          ('5f000000-0000-0000-0000-000000000003', '22222222-2222-2222-2222-222222222222', '50000000-0000-0000-0000-0000000000e1', 'd0000000-0000-0000-0000-0000000000b2', '{"score":0}', now()),
+          ('5f000000-0000-0000-0000-000000000004', '22222222-2222-2222-2222-222222222222', '50000000-0000-0000-0000-0000000000e1', 'd0000000-0000-0000-0000-0000000000b3', '{"score":0}', now()),
+          ('5f000000-0000-0000-0000-000000000005', '22222222-2222-2222-2222-222222222222', '50000000-0000-0000-0000-0000000000e1', 'd0000000-0000-0000-0000-0000000000b4', '{"score":0}', now());
 
         INSERT INTO action_plans (id, organization_id, title, responsible_id, area, status, due_date, actions, notes, created_at, updated_at) VALUES
           ('a9000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'AP1', 'd0000000-0000-0000-0000-000000000001', 'Ambiente', 'pending',   NULL, NULL, NULL, '2026-05-03 00:00:00', '2026-05-03 00:00:00'),

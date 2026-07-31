@@ -262,6 +262,86 @@ public sealed class EngagementReadEndpointTests(EngagementReadFixture fixture)
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
+    // ── RBAC regression guard: hr_admin (org-scope grant) gets 200 — NOT 403 — on every
+    // org-rollup read. Found by scripts/parity/cli.ts verify engagement against real prod data:
+    // the parity harness's seed fixtures never granted hr_admin an `engagement:read` RolePermission
+    // row (the fixture ONLY seeded engagement:create/:update for the write surface), so every
+    // engagement-read endpoint 403'd for hr_admin even though this C# gate (EngagementStaffGate →
+    // PermissionService.CheckAsync) was already correct — a harness gap, not an app bug. This
+    // fixture's OrgReader DOES hold the grant, so these are the positive counterpart to
+    // TeamScope_OrgRollupReads_Are403_OrgGate above; without them the suite never asserted hr_admin
+    // actually reaches enps/climate-heatmap/rotation-risk (only dashboard-kpis/alerts were covered).
+    [Theory]
+    [InlineData(Enps)]
+    [InlineData(ClimateHeatmap)]
+    [InlineData(Alerts)]
+    [InlineData(DashboardKpis)]
+    [InlineData(RotationRisk)]
+    public async Task OrgScope_HrAdmin_OrgRollupReads_Are200(string path)
+    {
+        await using var factory = EnabledFactory();
+        using var client = factory.CreateClient();
+        var response = await Get(client, path, Mint(EngagementReadFixture.OrgReaderSub));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    // ── eNPS: hr_admin gets a REAL, non-suppressed score (regression guard alongside the RBAC
+    // theory above — this also proves the endpoint isn't silently suppressing everything) ──
+    [Fact]
+    public async Task GetEnps_OrgReader_Is200_NotSuppressed_WithRealScore()
+    {
+        await using var factory = EnabledFactory();
+        using var client = factory.CreateClient();
+        // S_enps: 6 responses, all score 9 → all promoters → enps = round((6-0)/6*100) = 100.
+        var response = await Get(client, Enps, Mint(EngagementReadFixture.OrgReaderSub));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("\"suppressed\":false", body);
+        Assert.Contains("\"enps\":100", body);
+        Assert.Contains("\"promoters\":6", body);
+        Assert.Contains("\"totalResponses\":6", body);
+    }
+
+    // ── eNPS cross-tenant isolation regression guard. Found by scripts/parity/cli.ts verify
+    // engagement against real prod data: "rls enps — cross-tenant: org-A and org-B received
+    // identical non-empty payloads (possible global leak)". Root cause was NOT a missing
+    // organizationId filter (EngagementReadRepository.GetEnpsAnswersAsync scopes correctly, same
+    // as the passing dashboard-kpis/rotation-risk siblings) — it was that NO eNPS fixture data
+    // existed for either org in the parity harness, so both orgs independently tripped the
+    // k-anonymity floor and returned the SAME suppressed-null shape, which a naive identical-
+    // payload comparator misread as a leak. This test asserts the real, non-degenerate case: with
+    // genuinely differentiated per-org data (OrgA promoters vs OrgB detractors, both non-suppressed
+    // to enforce a strong comparison rather than allowing the "both empty" trivial pass), the two
+    // orgs' eNPS results MUST differ and each org's response must NOT contain the other org's value.
+    [Fact]
+    public async Task GetEnps_CrossOrg_ReturnsDifferentiatedData()
+    {
+        await using var factory = EnabledFactory();
+        using var client = factory.CreateClient();
+
+        var orgAResponse = await Get(client, Enps, Mint(EngagementReadFixture.OrgReaderSub));
+        var orgBResponse = await Get(client, Enps, Mint(EngagementReadFixture.OrgBReaderSub));
+
+        Assert.Equal(HttpStatusCode.OK, orgAResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, orgBResponse.StatusCode);
+        var orgABody = await orgAResponse.Content.ReadAsStringAsync();
+        var orgBBody = await orgBResponse.Content.ReadAsStringAsync();
+
+        // Both non-suppressed (a real comparison, not the "both k-anonymity-suppressed" trivial case).
+        Assert.Contains("\"suppressed\":false", orgABody);
+        Assert.Contains("\"suppressed\":false", orgBBody);
+
+        // OrgA: 6 promoters → enps=100. OrgB: 5 detractors → enps=-100. Genuinely different payloads.
+        Assert.NotEqual(orgABody, orgBBody);
+        Assert.Contains("\"enps\":100", orgABody);
+        Assert.Contains("\"enps\":-100", orgBBody);
+
+        // Neither org's response leaks the other org's eNPS value.
+        Assert.DoesNotContain("\"enps\":-100", orgABody);
+        Assert.DoesNotContain("\"enps\":100", orgBBody);
+    }
+
     // ── cross-org RLS isolation: OrgA reader never sees OrgB rows ──
     [Fact]
     public async Task OrgScope_Alerts_DoesNotLeakOtherOrg()
