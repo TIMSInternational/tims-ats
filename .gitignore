@@ -48,3 +48,4 @@ packages/db/prisma/migrations/*.sql
 *.tsbuildinfo
 .vercel
 .env*.local
+scripts/deploy/.migration-checklist-progress
