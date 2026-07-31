@@ -119,26 +119,26 @@ Cross-checked directly against `services/Tims.Platform/src/Tims.Api/Configuratio
 number) and independently corroborated by the `flag:` field in `scripts/parity/surfaces.ts` /
 `scripts/parity/write-surfaces.ts`.
 
-| Surface (this script) | Kind  | Backend flag                | Parity CLI invocation        | FE flag (`apps/web`)                         | Status                                                                      |
-| --------------------- | ----- | --------------------------- | ---------------------------- | -------------------------------------------- | --------------------------------------------------------------------------- |
-| `team-intel`          | read  | `TeamIntelReadEnabled`      | `NONE` (TS router deleted)   | `NEXT_PUBLIC_TEAMINTEL_READ_VIA_CSHARP`      | TS DELETED                                                                  |
-| `reporting`           | read  | `ReportingReadEnabled`      | `NONE` (TS router deleted)   | `NEXT_PUBLIC_REPORTING_READ_VIA_CSHARP`      | TS DELETED                                                                  |
-| `billing-read`        | read  | `BillingReadEnabled`        | `verify billing-invoices`    | `NEXT_PUBLIC_BILLING_INVOICES_VIA_CSHARP`    | FLIP-READY                                                                  |
-| `billing-usage`       | read  | `BillingUsageEnabled`       | `NONE` (TS router deleted)   | `NEXT_PUBLIC_BILLING_USAGE_VIA_CSHARP`       | TS DELETED                                                                  |
-| `evaluation360`       | read  | `Evaluation360ReadEnabled`  | `NONE` (TS router deleted)   | `NEXT_PUBLIC_EVALUATION360_READ_VIA_CSHARP`  | TS DELETED                                                                  |
-| `succession`          | read  | `SuccessionReadEnabled`     | `verify succession`          | `NEXT_PUBLIC_SUCCESSION_READ_VIA_CSHARP`     | CONFIRMED LIVE (partial TS deletion — 8/9 procedures, see cutover.sh)       |
-| `compensation`        | read  | `CompensationReadEnabled`   | `verify compensation`        | `NEXT_PUBLIC_COMPENSATION_READ_VIA_CSHARP`   | CONFIRMED LIVE (partial TS deletion — 5/7 read procedures, see cutover.sh)  |
-| `nine-box`            | read  | `NineBoxReadEnabled`        | `verify ninebox`             | `NEXT_PUBLIC_NINEBOX_READ_VIA_CSHARP`        | CONFIRMED LIVE (partial TS deletion — 7/11 read procedures, see cutover.sh) |
-| `engagement`          | read  | `EngagementReadEnabled`     | `verify engagement`          | `NEXT_PUBLIC_ENGAGEMENT_READ_VIA_CSHARP`     | FLIP-READY                                                                  |
-| `dei`                 | read  | `DeiReadEnabled`            | `verify dei`                 | `NEXT_PUBLIC_DEI_READ_VIA_CSHARP`            | FLIP-READY                                                                  |
-| `audit-log`           | read  | `AuditLogReadEnabled`       | `verify audit-log`           | `NEXT_PUBLIC_AUDIT_LOG_READ_VIA_CSHARP`      | FLIP-READY                                                                  |
-| `access-review`       | read  | `AccessReviewReadEnabled`   | `verify access-review`       | `NEXT_PUBLIC_ACCESS_REVIEW_READ_VIA_CSHARP`  | FLIP-READY                                                                  |
-| `evaluation360-write` | write | `Evaluation360WriteEnabled` | `verify-write evaluation360` | `NEXT_PUBLIC_EVALUATION360_WRITE_VIA_CSHARP` | FLIP-READY                                                                  |
-| `succession-write`    | write | `SuccessionWriteEnabled`    | `verify-write succession`    | `NEXT_PUBLIC_SUCCESSION_WRITE_VIA_CSHARP`    | CONFIRMED LIVE                                                              |
-| `nine-box-write`      | write | `NineBoxWriteEnabled`       | `verify-write ninebox`       | `NEXT_PUBLIC_NINEBOX_WRITE_VIA_CSHARP`       | CONFIRMED LIVE                                                              |
-| `compensation-write`  | write | `CompensationWriteEnabled`  | `verify-write compensation`  | `NEXT_PUBLIC_COMPENSATION_WRITE_VIA_CSHARP`  | COEXISTENCE (flag live; both TS mutations deleted — see cutover.sh)         |
-| `engagement-write`    | write | `EngagementWriteEnabled`    | `verify-write engagement`    | `NEXT_PUBLIC_ENGAGEMENT_WRITE_VIA_CSHARP`    | COEXISTENCE (flag live; 3 of 5 TS mutations deleted — see cutover.sh)       |
-| `access-review-write` | write | `AccessReviewWriteEnabled`  | `verify-write access-review` | `NEXT_PUBLIC_ACCESS_REVIEW_WRITE_VIA_CSHARP` | FLIP-READY                                                                  |
+| Surface (this script) | Kind  | Backend flag                | Parity CLI invocation          | FE flag (`apps/web`)                         | Status                                                                      |
+| --------------------- | ----- | --------------------------- | ------------------------------ | -------------------------------------------- | --------------------------------------------------------------------------- |
+| `team-intel`          | read  | `TeamIntelReadEnabled`      | `NONE` (TS router deleted)     | `NEXT_PUBLIC_TEAMINTEL_READ_VIA_CSHARP`      | TS DELETED                                                                  |
+| `reporting`           | read  | `ReportingReadEnabled`      | `NONE` (TS router deleted)     | `NEXT_PUBLIC_REPORTING_READ_VIA_CSHARP`      | TS DELETED                                                                  |
+| `billing-read`        | read  | `BillingReadEnabled`        | `verify billing-invoices`      | `NEXT_PUBLIC_BILLING_INVOICES_VIA_CSHARP`    | FLIP-READY                                                                  |
+| `billing-usage`       | read  | `BillingUsageEnabled`       | `NONE` (TS router deleted)     | `NEXT_PUBLIC_BILLING_USAGE_VIA_CSHARP`       | TS DELETED                                                                  |
+| `evaluation360`       | read  | `Evaluation360ReadEnabled`  | `NONE` (TS router deleted)     | `NEXT_PUBLIC_EVALUATION360_READ_VIA_CSHARP`  | TS DELETED                                                                  |
+| `succession`          | read  | `SuccessionReadEnabled`     | `verify succession`            | `NEXT_PUBLIC_SUCCESSION_READ_VIA_CSHARP`     | CONFIRMED LIVE (partial TS deletion — 8/9 procedures, see cutover.sh)       |
+| `compensation`        | read  | `CompensationReadEnabled`   | `verify compensation`          | `NEXT_PUBLIC_COMPENSATION_READ_VIA_CSHARP`   | CONFIRMED LIVE (partial TS deletion — 5/7 read procedures, see cutover.sh)  |
+| `nine-box`            | read  | `NineBoxReadEnabled`        | `verify ninebox`               | `NEXT_PUBLIC_NINEBOX_READ_VIA_CSHARP`        | CONFIRMED LIVE (partial TS deletion — 7/11 read procedures, see cutover.sh) |
+| `engagement`          | read  | `EngagementReadEnabled`     | `verify engagement`            | `NEXT_PUBLIC_ENGAGEMENT_READ_VIA_CSHARP`     | FLIP-READY                                                                  |
+| `dei`                 | read  | `DeiReadEnabled`            | `verify dei`                   | `NEXT_PUBLIC_DEI_READ_VIA_CSHARP`            | FLIP-READY                                                                  |
+| `audit-log`           | read  | `AuditLogReadEnabled`       | `verify audit-log`             | `NEXT_PUBLIC_AUDIT_LOG_READ_VIA_CSHARP`      | FLIP-READY                                                                  |
+| `access-review`       | read  | `AccessReviewReadEnabled`   | `NONE` (TS procedures deleted) | `NEXT_PUBLIC_ACCESS_REVIEW_READ_VIA_CSHARP`  | TS DELETED                                                                  |
+| `evaluation360-write` | write | `Evaluation360WriteEnabled` | `verify-write evaluation360`   | `NEXT_PUBLIC_EVALUATION360_WRITE_VIA_CSHARP` | FLIP-READY                                                                  |
+| `succession-write`    | write | `SuccessionWriteEnabled`    | `verify-write succession`      | `NEXT_PUBLIC_SUCCESSION_WRITE_VIA_CSHARP`    | CONFIRMED LIVE                                                              |
+| `nine-box-write`      | write | `NineBoxWriteEnabled`       | `verify-write ninebox`         | `NEXT_PUBLIC_NINEBOX_WRITE_VIA_CSHARP`       | CONFIRMED LIVE                                                              |
+| `compensation-write`  | write | `CompensationWriteEnabled`  | `verify-write compensation`    | `NEXT_PUBLIC_COMPENSATION_WRITE_VIA_CSHARP`  | COEXISTENCE (flag live; both TS mutations deleted — see cutover.sh)         |
+| `engagement-write`    | write | `EngagementWriteEnabled`    | `verify-write engagement`      | `NEXT_PUBLIC_ENGAGEMENT_WRITE_VIA_CSHARP`    | COEXISTENCE (flag live; 3 of 5 TS mutations deleted — see cutover.sh)       |
+| `access-review-write` | write | `AccessReviewWriteEnabled`  | `verify-write access-review`   | `NEXT_PUBLIC_ACCESS_REVIEW_WRITE_VIA_CSHARP` | FLIP-READY                                                                  |
 
 Run `./scripts/deploy/cutover.sh --list` for the per-surface long-form notes (why each is
 classified the way it is, and every naming quirk below).
@@ -171,14 +171,15 @@ classified the way it is, and every naming quirk below).
   (`surface.key`, the runbook, this script) uses the hyphenated `team-intel`. Copy-paste the flag
   name from `--list` rather than deriving it from the surface name — it is the one flag in the
   whole set whose casing doesn't follow the `<SURFACE>_..._VIA_CSHARP` pattern literally.
-- **`audit-log` and `access-review` (both read and write) post-date the runbook doc.** The runbook
+- **`audit-log` (read) and `access-review-write` post-date the runbook doc.** The runbook
   (`PROD-DEPLOY-RUNBOOK-gate-g3.md`) was last updated 2026-07-23; Slices 17 (audit-log) and 18
   (access-review) merged after that (memory: PRs up to #215, 2026-07-27), so neither appears in the
   doc's own §6 Phase A/B lists. This script classifies both as FLIP-READY based on
   `PlatformOptions.cs` + team memory (merged to `main`, dark, code-ready) — but that classification
   is this script's own inference, not a citation of the runbook's Phase A/B lists like every other
   row is. Treat these two as "probably fine, but nobody has written the official classification
-  down yet" until the runbook doc gets its own update.
+  down yet" until the runbook doc gets its own update. `access-review` (read) itself has since moved
+  on to TS DELETED — see the next bullet.
 - **`reporting` and `evaluation360` (read) have their TS side deleted outright (2026-07-28).** The
   TS recruitment-analytics router and the TS evaluation360 router (plus both routers' FE tRPC
   fallback in `apps/web/lib/platform-api/{reporting,evaluation360}.ts`) were removed once the C#
@@ -200,6 +201,16 @@ classified the way it is, and every naming quirk below).
   unaffected and still real. The `evaluation360-write` row's note used to say "once verified, drop
   the TS eval360 router" as a pending step — that deletion already happened (both read AND write TS
   code are gone), independent of whether the write flag itself has been flipped yet.
+  **`access-review` (read) joined this group on 2026-07-31** — all 3 registered TS read procedures
+  (`getAccessReview`/`exportAccessReviewCsv`/`listAccessReviewAttestations`,
+  `packages/api/src/routers/platform/access-review.ts`) were deleted, same "no zero-consumer
+  procedure survives" situation as reporting/evaluation360, not the partial-deletion pattern
+  succession/nine-box/compensation hit below. Like `team-intel`, the router file itself stays in
+  place — `attestAccessReview` (the write) still lives there, gated by the separate
+  `access-review-write` flag, unaffected by this. `scripts/parity/surfaces.ts`'s `access-review`
+  entry was removed the same way, so its `parity_command` is `NONE` and `--verify-only` is a no-op.
+  This does NOT touch `access-review-write` — `scripts/parity/write-surfaces.ts` still registers
+  `access-review` for `verify-write` (it tests the C# API directly, not a TS diff).
 - **Write-surface names use an explicit `-write` suffix** (`access-review-write`,
   `evaluation360-write`, etc.) to keep them addressable independently from their read counterpart
   — a domain's read and write flags cut over at different points in the runbook's Phase A / Phase B

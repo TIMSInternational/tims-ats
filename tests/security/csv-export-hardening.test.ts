@@ -1,11 +1,18 @@
 /**
  * csv-export-hardening.test.ts
  *
- * Pins the shared CSV formula/row-injection defense (CWE-1236) and proves both
- * platform CSV exports (access-review + the cross-org audit-log export) wire it in.
+ * Pins the shared CSV formula/row-injection defense (CWE-1236) and proves the
+ * still-TS-served platform CSV export (the cross-org audit-log export) wires it in.
  * exportAuditLogsCsv previously escaped only commas, leaving a formula-injection gap
  * (an org/actor name starting with =/+/-/@ executes as a formula when an auditor
- * opens the export in Excel/Sheets) — fixed by reusing access-review's csvCell logic.
+ * opens the export in Excel/Sheets) — fixed by reusing what was access-review's csvCell logic.
+ *
+ * access-review's OWN exportAccessReviewCsv (the original csvCell wiring this suite pinned)
+ * was DELETED 2026-07-31 — NEXT_PUBLIC_ACCESS_REVIEW_READ_VIA_CSHARP confirmed live in prod, so
+ * the C# read surface is the sole implementation now; see
+ * packages/api/src/routers/platform/access-review.ts's header comment. The `csvCell`/`csvRow`
+ * unit tests below are unaffected (they pin the shared helper directly, still used by
+ * system.ts's audit-log export).
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
@@ -43,12 +50,7 @@ describe('csvRow', () => {
 const ROOT = join(__dirname, '..', '..');
 const read = (p: string) => readFileSync(join(ROOT, p), 'utf8');
 
-describe('wiring — both platform CSV exports use the shared hardened helper', () => {
-  it('access-review CSV export imports csvCell from @tims/shared', () => {
-    const src = read('packages/api/src/routers/platform/access-review.ts');
-    expect(src).toMatch(/import\s*\{\s*csvCell\s*\}\s*from\s*'@tims\/shared'/);
-  });
-
+describe('wiring — the still-TS-served platform CSV export uses the shared hardened helper', () => {
   it('the cross-org audit-log CSV export imports csvRow from @tims/shared', () => {
     const src = read('packages/api/src/routers/platform/system.ts');
     expect(src).toMatch(/import\s*\{\s*csvRow\s*\}\s*from\s*'@tims\/shared'/);

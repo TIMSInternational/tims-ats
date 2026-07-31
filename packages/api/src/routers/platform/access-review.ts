@@ -1,93 +1,21 @@
 import { router } from '../../trpc';
 import { platformProcedure } from './_common';
 import { accessReviewService } from '../../services/access-review.service';
-import { logPlatformExport, logSecurityEvent } from '../../access/security-audit';
-import { csvCell } from '@tims/shared';
-import {
-  accessReviewReportInput,
-  exportAccessReviewCsvInput,
-  attestAccessReviewInput,
-  listAccessReviewAttestationsInput,
-} from './access-review.schemas';
+import { logSecurityEvent } from '../../access/security-audit';
+import { attestAccessReviewInput } from './access-review.schemas';
 
 // CB-2b — access review + per-org recertification (SOC 2 CC6.2–6.3 / ISO A.5.18).
-// Platform-owner-only; reads/writes via the privileged db across orgs.
+// Platform-owner-only; writes via the privileged db across orgs.
+//
+// READ SIDE DELETED (2026-07-31): getAccessReview, exportAccessReviewCsv, and
+// listAccessReviewAttestations were removed — NEXT_PUBLIC_ACCESS_REVIEW_READ_VIA_CSHARP is
+// confirmed live in prod, so the C# read surface (`AccessReviewDbContext`) is the sole
+// implementation now; apps/web/lib/platform-api/access-review.ts's useAccessReview /
+// useAccessReviewExport / useAccessReviewAttestations hooks call it unconditionally.
+// attestAccessReview (the write) stays here untouched — it is gated by a SEPARATE flag
+// (NEXT_PUBLIC_ACCESS_REVIEW_WRITE_VIA_CSHARP, also confirmed live in prod 2026-07-31) and its
+// TS-deletion is tracked as its own follow-up task, out of scope here.
 export const accessReviewRouter = router({
-  // The report: one org's users × roles × grants × last-login × risk flags. REQUIRES an
-  // org (no unauditable platform-wide bulk read) and audits the access as a security
-  // event — this dataset is the same sensitive aggregate the CSV export carries.
-  getAccessReview: platformProcedure.input(accessReviewReportInput).query(async ({ ctx, input }) => {
-    const report = await accessReviewService.buildReport(input.organizationId, new Date());
-    void logSecurityEvent({
-      organizationId: input.organizationId,
-      actorId: ctx.user.impersonatorId ?? ctx.user.id,
-      action: 'access_review_viewed',
-      entity: 'access_review',
-      metadata: { targetOrgId: input.organizationId, userCount: report.summary.userCount },
-    });
-    return report;
-  }),
-
-  // CSV export (data egress) — REQUIRES an org (always auditable + bounded) and is
-  // audited via the CB-1c logPlatformExport. One line per (user, role); users with no
-  // role emit a single line with role '-'. Fields are RFC-4180 quoted + formula-safe.
-  exportAccessReviewCsv: platformProcedure.input(exportAccessReviewCsvInput).query(async ({ ctx, input }) => {
-    const report = await accessReviewService.buildReport(input.organizationId, new Date());
-    logPlatformExport(ctx, {
-      resource: 'access_review',
-      count: report.rows.length,
-      format: 'csv',
-      targetOrgId: input.organizationId,
-      truncated: report.truncated,
-    });
-    const header = [
-      'Usuario',
-      'Email',
-      'Organizacion',
-      'Estado',
-      'Rol',
-      'Alcance',
-      'AsignadoPor',
-      'Privilegiado',
-      'Inactivo',
-      'SinAcceso',
-      'BrechaBaja',
-      'Expirado',
-      'RolCruzado',
-    ]
-      .map(csvCell)
-      .join(',');
-    const lines: string[] = [];
-    for (const r of report.rows) {
-      const roleList = r.roles.length ? r.roles : [null];
-      for (const role of roleList) {
-        lines.push(
-          [
-            csvCell(r.name),
-            csvCell(r.email),
-            csvCell(r.orgName),
-            csvCell(r.status),
-            csvCell(role?.slug ?? '-'),
-            csvCell([role?.companyScope, role?.unitScope].filter(Boolean).join('|') || '-'),
-            csvCell(role?.assignedBy ?? '-'),
-            csvCell(r.flags.privileged ? 'Y' : 'N'),
-            csvCell(r.flags.stale ? 'Y' : 'N'),
-            csvCell(r.flags.neverLoggedIn ? 'Y' : 'N'),
-            csvCell(r.flags.deprovisionGap ? 'Y' : 'N'),
-            csvCell(r.flags.expiredGrant ? 'Y' : 'N'),
-            csvCell(r.flags.crossOrgRole ? 'Y' : 'N'),
-          ].join(','),
-        );
-      }
-    }
-    return {
-      format: 'csv' as const,
-      data: [header, ...lines].join('\n'),
-      count: report.rows.length,
-      truncated: report.truncated,
-    };
-  }),
-
   // Record a per-org recertification (the retained CC6.2–6.3 evidence) + a security event.
   attestAccessReview: platformProcedure.input(attestAccessReviewInput).mutation(async ({ ctx, input }) => {
     const { attestation, summary } = await accessReviewService.attest(
@@ -106,9 +34,4 @@ export const accessReviewRouter = router({
     });
     return attestation;
   }),
-
-  // Attestation history for one org — proves the quarterly cadence to an auditor.
-  listAccessReviewAttestations: platformProcedure
-    .input(listAccessReviewAttestationsInput)
-    .query(({ input }) => accessReviewService.listAttestations(input.organizationId, input.limit)),
 });

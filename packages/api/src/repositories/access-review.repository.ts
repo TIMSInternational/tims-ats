@@ -79,25 +79,6 @@ export const accessReviewRepository = {
     });
   },
 
-  async listAttestations(organizationId: string, limit: number) {
-    return db.accessReview.findMany({
-      where: { organizationId },
-      orderBy: { reviewedAt: 'desc' },
-      take: limit,
-      select: {
-        id: true,
-        reviewedAt: true,
-        userCount: true,
-        privilegedCount: true,
-        staleCount: true,
-        deprovisionGapCount: true,
-        expiredGapCount: true,
-        notes: true,
-        reviewer: { select: { firstName: true, lastName: true, email: true } },
-      },
-    });
-  },
-
   /** Verify the target org exists (attest requires a real org for the FK + message). */
   async orgExists(organizationId: string): Promise<boolean> {
     const org = await db.organization.findUnique({ where: { id: organizationId }, select: { id: true } });

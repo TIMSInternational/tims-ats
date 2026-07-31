@@ -1,10 +1,6 @@
 import { TRPCError } from '@trpc/server';
 import { accessReviewRepository } from '../repositories/access-review.repository';
-import {
-  assessUserAccess,
-  type AccessStatus,
-  type AccessRiskFlags,
-} from '../access/access-review-kernel';
+import { assessUserAccess, type AccessStatus, type AccessRiskFlags } from '../access/access-review-kernel';
 
 // CB-2b — access-review orchestration: apply the risk kernel, shape rows, compute the
 // per-org summary that feeds a recertification attestation. Pure of tRPC/audit concerns
@@ -130,7 +126,10 @@ export const accessReviewService = {
     reviewerId: string,
     notes: string | null,
     now: Date,
-  ): Promise<{ attestation: Awaited<ReturnType<typeof accessReviewRepository.insertAttestation>>; summary: AccessReviewSummary }> {
+  ): Promise<{
+    attestation: Awaited<ReturnType<typeof accessReviewRepository.insertAttestation>>;
+    summary: AccessReviewSummary;
+  }> {
     if (!(await accessReviewRepository.orgExists(organizationId))) {
       throw new TRPCError({ code: 'NOT_FOUND', message: 'Organizacion no encontrada' });
     }
@@ -153,9 +152,5 @@ export const accessReviewService = {
       notes,
     });
     return { attestation, summary };
-  },
-
-  listAttestations(organizationId: string, limit: number) {
-    return accessReviewRepository.listAttestations(organizationId, limit);
   },
 };

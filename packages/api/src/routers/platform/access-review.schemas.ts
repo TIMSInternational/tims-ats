@@ -1,21 +1,10 @@
 import { z } from 'zod';
 
-// CB-2b — access-review inputs. Both the report READ and the CSV export REQUIRE an
-// org: a whole-platform read/export of cross-org access data would be an unauditable
-// bulk egress for an org-less platform owner (audit_logs.organizationId is NOT-NULL),
-// and the per-org unit matches the attestation + is always bounded + auditable.
-export const accessReviewReportInput = z.object({
-  organizationId: z.string().uuid(),
-});
-
-export const exportAccessReviewCsvInput = accessReviewReportInput;
-
+// CB-2b — access-review inputs. The report/export/attestations-history READ inputs
+// (accessReviewReportInput, exportAccessReviewCsvInput, listAccessReviewAttestationsInput)
+// were deleted 2026-07-31 alongside their now-dead TS procedures — see access-review.ts's
+// header comment. Only the attest WRITE input survives (separate flag, still dark).
 export const attestAccessReviewInput = z.object({
   organizationId: z.string().uuid(),
   notes: z.string().max(2000).optional(),
-});
-
-export const listAccessReviewAttestationsInput = z.object({
-  organizationId: z.string().uuid(),
-  limit: z.number().int().min(1).max(100).default(20),
 });

@@ -120,34 +120,22 @@ const read = (p: string) => readFileSync(join(ROOT, p), 'utf8');
 describe('wiring — access-review surface', () => {
   const router = () => read('packages/api/src/routers/platform/access-review.ts');
 
-  it('report / export / attest / history are platform-only procedures', () => {
-    const src = router();
-    expect(src).toMatch(/getAccessReview:\s*platformProcedure/);
-    expect(src).toMatch(/exportAccessReviewCsv:\s*platformProcedure/);
-    expect(src).toMatch(/attestAccessReview:\s*platformProcedure/);
-    expect(src).toMatch(/listAccessReviewAttestations:\s*platformProcedure/);
+  // READ SIDE DELETED (2026-07-31): getAccessReview, exportAccessReviewCsv, and
+  // listAccessReviewAttestations — plus their input schemas (accessReviewReportInput,
+  // exportAccessReviewCsvInput, listAccessReviewAttestationsInput), the CSV-injection-hardening
+  // export procedure, and the access_review_viewed audit event — were removed once
+  // NEXT_PUBLIC_ACCESS_REVIEW_READ_VIA_CSHARP was confirmed live in prod; the C# read surface
+  // (AccessReviewDbContext) is the sole implementation now. Only attestAccessReview (the write,
+  // gated by the separate, still-dark access-review-write flag) survives — see the tests below.
+
+  it('attest is a platform-only procedure', () => {
+    expect(router()).toMatch(/attestAccessReview:\s*platformProcedure/);
   });
 
-  it('export is audited via the CB-1c logPlatformExport (access_review resource)', () => {
-    expect(router()).toMatch(/logPlatformExport/);
-    expect(router()).toMatch(/access_review/);
-  });
-
-  it('both the report READ and the export REQUIRE an org (no unauditable platform-wide egress)', () => {
-    // accessReviewReportInput is required-org (no .optional()); export aliases it.
+  it('attest requires an org (attestAccessReviewInput has no .optional() organizationId)', () => {
     const schemas = read('packages/api/src/routers/platform/access-review.schemas.ts');
-    expect(schemas).toMatch(/accessReviewReportInput[\s\S]*organizationId:\s*z\.string\(\)\.uuid\(\),/);
+    expect(schemas).toMatch(/attestAccessReviewInput[\s\S]*organizationId:\s*z\.string\(\)\.uuid\(\),/);
     expect(schemas).not.toMatch(/organizationId:\s*z\.string\(\)\.uuid\(\)\.optional\(\)/);
-    // getAccessReview audits the access (same sensitive dataset as the export)
-    expect(router()).toMatch(/access_review_viewed/);
-  });
-
-  it('export hardens CSV against formula/row injection (RFC-4180 quoting + leading =/+/-/@)', () => {
-    expect(router()).toMatch(/csvCell/);
-    // the escaping regex itself lives in the shared @tims/shared csv helper, reused by
-    // every CSV export (access-review + the platform audit-log export).
-    const sharedCsv = read('packages/shared/src/csv.ts');
-    expect(sharedCsv).toMatch(/\^\[=\+/);
   });
 
   it('attest refuses a truncated org rather than persist under-counted evidence', () => {

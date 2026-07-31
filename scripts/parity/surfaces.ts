@@ -241,42 +241,14 @@ export const SURFACES: Record<string, Surface> = {
       },
     ],
   },
-  'access-review': {
-    key: 'access-review',
-    flag: 'Platform__AccessReviewReadEnabled',
-    roles: ['platform_owner', 'org_admin'],
-    // See audit-log's probeRole comment above — same fix, same reason.
-    probeRole: 'platform_owner',
-    endpoints: [
-      {
-        name: 'report',
-        csharpPath: '/access-review?organizationId=00000000-0000-0000-0000-000000000000',
-        tsProcedure: 'platform.getAccessReview',
-        input: { organizationId: '00000000-0000-0000-0000-000000000000' },
-        expectedByRole: { platform_owner: 200, org_admin: 403 },
-        // Platform-owner-gated (not org-RBAC), like audit-log — see that entry's own comment. The
-        // fixed org id is arbitrary and need not exist: neither the 200 (platform_owner) nor the 403
-        // (org_admin, blocked by PlatformOwnerGate before any org lookup) depends on org existence.
-        globalScope: true,
-      },
-      {
-        name: 'export',
-        csharpPath: '/access-review/export?organizationId=00000000-0000-0000-0000-000000000000',
-        tsProcedure: 'platform.exportAccessReviewCsv',
-        input: { organizationId: '00000000-0000-0000-0000-000000000000' },
-        expectedByRole: { platform_owner: 200, org_admin: 403 },
-        globalScope: true,
-      },
-      {
-        name: 'attestations',
-        csharpPath: '/access-review/attestations?organizationId=00000000-0000-0000-0000-000000000000',
-        tsProcedure: 'platform.listAccessReviewAttestations',
-        input: { organizationId: '00000000-0000-0000-0000-000000000000' },
-        expectedByRole: { platform_owner: 200, org_admin: 403 },
-        globalScope: true,
-      },
-    ],
-  },
+  // 'access-review' read surface REMOVED (2026-07-31): all 3 registered TS procedures
+  // (getAccessReview/exportAccessReviewCsv/listAccessReviewAttestations) were deleted —
+  // NEXT_PUBLIC_ACCESS_REVIEW_READ_VIA_CSHARP confirmed live in prod — so there is no TS side
+  // left to diff against for any endpoint (unlike compensation/ninebox/succession above, no
+  // zero-consumer procedure survives to keep a real check running). `verify access-review` is
+  // now a no-op (see cutover.sh). The WRITE surface (attestAccessReview) is UNAFFECTED — it
+  // still has a live TS procedure behind a separate flag and stays registered in
+  // write-surfaces.ts's WRITE_SURFACES['access-review'].
   // ── engagement ──────────────────────────────────────────────────────────────────────────────
   // Coverage-audit addition (2026-07-27): the C# `EngagementReadEndpoints` (Phase-5 Slice 11, 14
   // read routes) has been mapped/dark since PR history predating this audit, and the `engagement`
