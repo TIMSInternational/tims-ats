@@ -20,8 +20,9 @@ public static class RateLimitPolicy
 
     /// <summary>
     /// Selects the rate-limit category for a tRPC path + procedure type. Order matters and mirrors
-    /// TS exactly: (1) <c>auth.</c> prefix wins outright; (2) any AI keyword substring → ai;
-    /// (3) <c>export</c> substring → export; (4) otherwise the query/mutation default.
+    /// TS exactly: (1) <c>auth.</c> prefix wins outright; (2) exact path
+    /// <c>portal.applytovacancy</c> → ai; (3) any AI keyword substring → ai; (4) <c>export</c>
+    /// substring → export; (5) otherwise the query/mutation default.
     /// </summary>
     public static RateLimitCategory CategoryFor(string path, RateLimitRequestType type)
     {
@@ -34,6 +35,16 @@ public static class RateLimitPolicy
         }
 
         var p = path.ToLowerInvariant();
+
+        // portal.applyToVacancy now synchronously invokes the AI cv-parser agent when a CV is
+        // attached — the ai tier despite being an unauthenticated public mutation. Matched by
+        // exact path, not an AI keyword substring: the staff-authenticated
+        // candidate.applyToVacancy shares the same procedure name and never calls AI, so a
+        // generic 'apply' keyword would incorrectly recategorize it too.
+        if (p == "portal.applytovacancy")
+        {
+            return RateLimitCategory.Ai;
+        }
 
         // AI-related endpoints (checked before export, matching TS ordering).
         foreach (var keyword in AiPathKeywords)

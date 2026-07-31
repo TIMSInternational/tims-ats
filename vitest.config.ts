@@ -16,6 +16,17 @@ export default defineConfig({
       // Allow tests to import @prisma/client directly (e.g. Prisma.PrismaClientKnownRequestError
       // for P2002 error-shaped mocks), hosted under packages/api's node_modules via pnpm.
       '@prisma/client': resolve(__dirname, 'packages/api/node_modules/@prisma/client'),
+      // Same pnpm symlink-path mismatch as above: a test at repo root and
+      // packages/api/src/lib/cv-extraction.ts otherwise resolve 'pdf-parse'/'mammoth'
+      // through different symlink chains into the pnpm store, so vi.mock() in the
+      // test doesn't intercept the import the source file makes. Force both to the
+      // same resolved path.
+      'pdf-parse': resolve(__dirname, 'packages/api/node_modules/pdf-parse'),
+      mammoth: resolve(__dirname, 'packages/api/node_modules/mammoth'),
+      // Same fix, pre-applied for the CV-upload plan's S3 library (packages/api/src/lib/s3.ts)
+      // and its tests, which hit the identical mismatch for these two packages.
+      '@aws-sdk/client-s3': resolve(__dirname, 'packages/api/node_modules/@aws-sdk/client-s3'),
+      '@aws-sdk/s3-presigned-post': resolve(__dirname, 'packages/api/node_modules/@aws-sdk/s3-presigned-post'),
       // `import 'server-only'` throws when imported outside the Next.js server bundler
       // (its default export is a hard `throw`). Alias it to an empty module so the
       // pure, unit-testable core of server-only helpers can be imported under vitest.

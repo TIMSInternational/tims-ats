@@ -33,7 +33,10 @@ function anonymousIdentifier(headers: Headers): string {
   if (realIp) return `ip:${realIp}`;
   const xff = headers.get('x-forwarded-for');
   if (xff) {
-    const hops = xff.split(',').map((p) => p.trim()).filter(Boolean);
+    const hops = xff
+      .split(',')
+      .map((p) => p.trim())
+      .filter(Boolean);
     if (hops.length > 0) return `ip:${hops[hops.length - 1]}`;
   }
   return 'anonymous';
@@ -42,9 +45,12 @@ function anonymousIdentifier(headers: Headers): string {
 // Rate limiting middleware
 const withRateLimit = t.middleware(async ({ ctx, next, path, type }) => {
   const category = getRateLimitCategory(path, type as 'query' | 'mutation');
-  // AI calls are cost-controlled per ORGANIZATION, not per user: neither one user
-  // nor an org's users collectively may exceed the org's AI throughput/budget.
-  // Everything else is keyed per user (or per trusted IP for anonymous requests).
+  // AI calls are cost-controlled per ORGANIZATION when the caller is authenticated:
+  // neither one user nor an org's users collectively may exceed the org's AI
+  // throughput/budget. The org isn't known for an unauthenticated publicProcedure
+  // (e.g. portal.applyToVacancy) until its input is parsed, so those fall back to
+  // per-IP like everything else — the org-level `checkBudget` in packages/ai/src/invoke.ts
+  // is the real backstop against IP-distributed abuse for that case.
   const identifier =
     category === 'ai' && ctx.user?.organizationId
       ? `org:${ctx.user.organizationId}`
@@ -143,9 +149,7 @@ function requirePermission(module: string, action: string) {
       });
     }
 
-    const anchors = ctx.user.organizationId
-      ? createAnchorLoader(ctx.user.organizationId, ctx.user.id)
-      : null;
+    const anchors = ctx.user.organizationId ? createAnchorLoader(ctx.user.organizationId, ctx.user.id) : null;
     const accessContext: AccessContext = { ...access, anchors };
     // Pass `user` explicitly (narrowed non-null above) — spreading `...ctx` would
     // re-widen user to nullable and break every downstream `ctx.user.x` access.
@@ -161,19 +165,21 @@ const withAudit = t.middleware(async ({ ctx, next, path }) => {
   // so attribute the action to the real operator (impersonatorId) and record the
   // impersonated account in metadata — never misattribute it to the target.
   if (ctx.user) {
-    await db.auditLog.create({
-      data: {
-        organizationId: ctx.user.organizationId,
-        actorId: ctx.user.impersonatorId ?? ctx.user.id,
-        action: 'access',
-        entity: path,
-        ...(ctx.user.impersonatorId ? { metadata: { impersonatedUserId: ctx.user.id } } : {}),
-        ipAddress: ctx.headers.get('x-forwarded-for') || ctx.headers.get('x-real-ip'),
-        userAgent: ctx.headers.get('user-agent'),
-      },
-    }).catch(() => {
-      // Don't fail the request if audit logging fails
-    });
+    await db.auditLog
+      .create({
+        data: {
+          organizationId: ctx.user.organizationId,
+          actorId: ctx.user.impersonatorId ?? ctx.user.id,
+          action: 'access',
+          entity: path,
+          ...(ctx.user.impersonatorId ? { metadata: { impersonatedUserId: ctx.user.id } } : {}),
+          ipAddress: ctx.headers.get('x-forwarded-for') || ctx.headers.get('x-real-ip'),
+          userAgent: ctx.headers.get('user-agent'),
+        },
+      })
+      .catch(() => {
+        // Don't fail the request if audit logging fails
+      });
   }
 
   return result;
@@ -290,12 +296,26 @@ function requireExternalPermission(module: string, action: string, requiredScope
     // CB-1c: log denials on the paid external API-key surface — the org is known here
     // (from the key), unlike the base-context observer which only sees ctx.user.
     if (!externalScopeSatisfied(requiredScope, ext.scopes, alwaysEnforceScope)) {
-      observeExternalDenial({ organizationId: ext.organizationId, apiKeyId: ext.apiKeyId, path, reason: 'scope', requiredScope, headers: ctx.headers });
+      observeExternalDenial({
+        organizationId: ext.organizationId,
+        apiKeyId: ext.apiKeyId,
+        path,
+        reason: 'scope',
+        requiredScope,
+        headers: ctx.headers,
+      });
       throw new TRPCError({ code: 'FORBIDDEN', message: 'La clave de API no incluye este alcance' });
     }
     const access = await buildAccessForUser(buildExternalAccessUser(ext), module, action);
     if (!access.allowed) {
-      observeExternalDenial({ organizationId: ext.organizationId, apiKeyId: ext.apiKeyId, path, reason: 'grant', requiredScope, headers: ctx.headers });
+      observeExternalDenial({
+        organizationId: ext.organizationId,
+        apiKeyId: ext.apiKeyId,
+        path,
+        reason: 'grant',
+        requiredScope,
+        headers: ctx.headers,
+      });
       throw new TRPCError({ code: 'FORBIDDEN', message: `Sin permiso para ${action} en ${module}` });
     }
     const accessContext: AccessContext = { ...access, anchors: null };
@@ -303,7 +323,12 @@ function requireExternalPermission(module: string, action: string, requiredScope
   });
 }
 
-export function externalPermissionProcedure(module: Module, action: Action, requiredScope?: string, alwaysEnforceScope = false) {
+export function externalPermissionProcedure(
+  module: Module,
+  action: Action,
+  requiredScope?: string,
+  alwaysEnforceScope = false,
+) {
   return externalProcedure.use(requireExternalPermission(module, action, requiredScope, alwaysEnforceScope));
 }
 

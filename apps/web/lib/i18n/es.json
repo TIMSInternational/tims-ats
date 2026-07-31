@@ -3232,7 +3232,13 @@
     "manyApplicants": "personas aplicaron",
     "sendingShort": "Enviando...",
     "teamWillReviewPrefix": "El equipo de",
-    "teamWillReviewSuffix": "revisara tu perfil y te contactara si avanzas en el proceso."
+    "teamWillReviewSuffix": "revisara tu perfil y te contactara si avanzas en el proceso.",
+    "cvLabel": "Hoja de vida (opcional)",
+    "cvHelperText": "PDF o Word, maximo 5MB",
+    "cvRemove": "Quitar archivo",
+    "cvInvalidType": "Solo se aceptan archivos PDF o Word (.docx)",
+    "cvTooLarge": "El archivo supera el limite de 5MB",
+    "cvUploadFailed": "No se pudo subir el archivo. Intenta de nuevo o continua sin el."
   },
   "aiInterview": {
     "title": "Entrevista de Voz con IA",

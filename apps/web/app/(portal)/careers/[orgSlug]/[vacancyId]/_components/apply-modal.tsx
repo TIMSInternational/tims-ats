@@ -6,6 +6,10 @@ import { toast } from '../../../../../../lib/toast';
 import { Modal } from '../../../../../../components';
 import { TurnstileWidget } from '../../../../../../components/turnstile-widget';
 import { useI18n } from '../../../../../../lib/i18n';
+import { ApplyModalStep1 } from './apply-modal-step1';
+import { ApplyModalStep2 } from './apply-modal-step2';
+import { useCvUpload } from '../_lib/use-cv-upload';
+import { EXPERIENCE_LEVELS } from '../_lib/experience-levels';
 
 interface ApplyModalProps {
   vacancyId: string;
@@ -15,21 +19,6 @@ interface ApplyModalProps {
 }
 
 type Step = 1 | 2 | 3;
-
-const EXPERIENCE_LEVELS = [
-  { value: '', label: 'Seleccionar...' },
-  { value: '0', label: 'Sin experiencia' },
-  { value: '1', label: '1 ano' },
-  { value: '2', label: '2 anos' },
-  { value: '3', label: '3-4 anos' },
-  { value: '5', label: '5-7 anos' },
-  { value: '8', label: '8-10 anos' },
-  { value: '12', label: '10+ anos' },
-];
-
-const inputCls = 'w-full h-10 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#333] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 focus:border-[#1F114C] disabled:opacity-50 disabled:bg-[#FAFAFA]';
-const labelCls = 'block text-xs font-medium text-[#585858] mb-1';
-const textareaCls = 'w-full px-3 py-2 rounded-lg border border-[#EDEDED] text-sm text-[#333] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 focus:border-[#1F114C] resize-none disabled:opacity-50';
 
 export function ApplyModal({ vacancyId, vacancyTitle, companyName, onClose }: ApplyModalProps) {
   const { t } = useI18n();
@@ -50,6 +39,7 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, onClose }: Ap
   const [linkedinUrl, setLinkedinUrl] = useState('');
   const [coverLetter, setCoverLetter] = useState('');
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const cv = useCvUpload(vacancyId);
 
   const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
   const applyMutation = trpc.portal.applyToVacancy.useMutation();
@@ -60,8 +50,9 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, onClose }: Ap
 
   const handleSubmit = async () => {
     if (!isStep1Valid) return;
+    setSubmitting(true);
     try {
-      setSubmitting(true);
+      const { cvFileKey, cvFileName } = await cv.uploadCvIfNeeded();
       await applyMutation.mutateAsync({
         vacancyId,
         firstName: firstName.trim(),
@@ -74,11 +65,18 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, onClose }: Ap
         yearsExperience: yearsExperience ? parseInt(yearsExperience) : undefined,
         linkedinUrl: linkedinUrl.trim() || undefined,
         coverLetter: coverLetter.trim() || undefined,
+        cvFileKey,
+        cvFileName,
         captchaToken: captchaToken ?? undefined,
         source: 'portal',
       });
       setSuccess(true);
     } catch (err) {
+      if (err instanceof Error && err.message === 'cv_upload_failed') {
+        toast(p.cvUploadFailed, { type: 'error' });
+        setSubmitting(false);
+        return;
+      }
       const msg = err instanceof Error ? err.message : 'Error al enviar la aplicacion';
       if (msg.includes('unique') || msg.includes('Unique') || msg.includes('already')) {
         toast(p.applyModalDuplicateError, { type: 'error' });
@@ -94,13 +92,20 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, onClose }: Ap
       <Modal title="" onClose={onClose} maxWidth="max-w-lg">
         <div className="flex flex-col items-center py-6 text-center">
           <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-50">
-            <svg className="h-8 w-8 text-green-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <svg
+              className="h-8 w-8 text-green-500"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              viewBox="0 0 24 24"
+            >
               <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
             </svg>
           </div>
           <h3 className="mb-2 text-[18px] font-bold text-[#1F114C]">{p.applicationSentTitle}</h3>
           <p className="mb-1 text-[14px] text-[#585858]">
-            {p.applicationReceivedPrefix} <span className="font-medium text-[#333]">{vacancyTitle}</span> {p.applicationReceivedSuffix}
+            {p.applicationReceivedPrefix} <span className="font-medium text-[#333]">{vacancyTitle}</span>{' '}
+            {p.applicationReceivedSuffix}
           </p>
           <p className="mb-6 text-[13px] text-[#8B8B8B]">
             {p.teamWillReviewPrefix} {companyName} {p.teamWillReviewSuffix}
@@ -124,12 +129,20 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, onClose }: Ap
       <div className="mb-6 flex items-center gap-2">
         {stepLabels.map((label, i) => (
           <div key={i} className="flex flex-1 items-center gap-2">
-            <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${
-              step > i + 1 ? 'bg-green-500 text-white' : step === i + 1 ? 'bg-[#DD0C15] text-white' : 'bg-[#EDEDED] text-[#8B8B8B]'
-            }`}>
+            <div
+              className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${
+                step > i + 1
+                  ? 'bg-green-500 text-white'
+                  : step === i + 1
+                    ? 'bg-[#DD0C15] text-white'
+                    : 'bg-[#EDEDED] text-[#8B8B8B]'
+              }`}
+            >
               {step > i + 1 ? '✓' : i + 1}
             </div>
-            <span className={`text-[11px] ${step === i + 1 ? 'font-medium text-[#1F114C]' : 'text-[#8B8B8B]'}`}>{label}</span>
+            <span className={`text-[11px] ${step === i + 1 ? 'font-medium text-[#1F114C]' : 'text-[#8B8B8B]'}`}>
+              {label}
+            </span>
             {i < 2 && <div className={`h-[1px] flex-1 ${step > i + 1 ? 'bg-green-500' : 'bg-[#EDEDED]'}`} />}
           </div>
         ))}
@@ -137,72 +150,39 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, onClose }: Ap
 
       {/* Step 1: Personal Info */}
       {step === 1 && (
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={labelCls}>{p.firstNameLabel}</label>
-              <input type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} maxLength={100} className={inputCls} placeholder="Maria" autoFocus />
-            </div>
-            <div>
-              <label className={labelCls}>{p.lastNameLabel}</label>
-              <input type="text" value={lastName} onChange={(e) => setLastName(e.target.value)} maxLength={100} className={inputCls} placeholder={p.lastNamePlaceholder} />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={labelCls}>{p.emailLabel}</label>
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} maxLength={254} className={inputCls} placeholder="maria.lopez@gmail.com" />
-            </div>
-            <div>
-              <label className={labelCls}>Telefono</label>
-              <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} maxLength={30} className={inputCls} placeholder="+57 310 123 4567" />
-            </div>
-          </div>
-          <div>
-            <label className={labelCls}>Ubicacion</label>
-            <input type="text" value={location} onChange={(e) => setLocation(e.target.value)} maxLength={200} className={inputCls} placeholder={p.cityCountryPlaceholder} />
-          </div>
-        </div>
+        <ApplyModalStep1
+          firstName={firstName}
+          setFirstName={setFirstName}
+          lastName={lastName}
+          setLastName={setLastName}
+          email={email}
+          setEmail={setEmail}
+          phone={phone}
+          setPhone={setPhone}
+          location={location}
+          setLocation={setLocation}
+        />
       )}
 
       {/* Step 2: Professional + Cover Letter */}
       {step === 2 && (
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={labelCls}>{p.currentTitleLabel}</label>
-              <input type="text" value={currentTitle} onChange={(e) => setCurrentTitle(e.target.value)} maxLength={200} className={inputCls} placeholder={p.currentTitlePlaceholder} />
-            </div>
-            <div>
-              <label className={labelCls}>{p.currentCompanyLabel}</label>
-              <input type="text" value={currentCompany} onChange={(e) => setCurrentCompany(e.target.value)} maxLength={200} className={inputCls} placeholder={p.currentCompanyPlaceholder} />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={labelCls}>{p.yearsExpLabel}</label>
-              <select value={yearsExperience} onChange={(e) => setYearsExperience(e.target.value)} className={`${inputCls} bg-white`}>
-                {EXPERIENCE_LEVELS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className={labelCls}>LinkedIn</label>
-              <input type="url" value={linkedinUrl} onChange={(e) => setLinkedinUrl(e.target.value)} maxLength={2048} className={inputCls} placeholder="https://linkedin.com/in/tu-perfil" />
-            </div>
-          </div>
-          <div>
-            <label className={labelCls}>{p.coverLetterLabel}</label>
-            <textarea
-              value={coverLetter}
-              onChange={(e) => setCoverLetter(e.target.value)}
-              maxLength={5000}
-              rows={5}
-              className={textareaCls}
-              placeholder={p.coverLetterPlaceholder}
-            />
-            <p className="mt-1 text-right text-[10px] text-[#8B8B8B]">{coverLetter.length}/5000</p>
-          </div>
-        </div>
+        <ApplyModalStep2
+          currentTitle={currentTitle}
+          setCurrentTitle={setCurrentTitle}
+          currentCompany={currentCompany}
+          setCurrentCompany={setCurrentCompany}
+          yearsExperience={yearsExperience}
+          setYearsExperience={setYearsExperience}
+          linkedinUrl={linkedinUrl}
+          setLinkedinUrl={setLinkedinUrl}
+          coverLetter={coverLetter}
+          setCoverLetter={setCoverLetter}
+          cvFile={cv.file}
+          cvError={cv.error}
+          cvUploading={cv.uploading}
+          onCvFileChange={cv.handleFileChange}
+          onCvRemove={cv.removeFile}
+        />
       )}
 
       {/* Step 3: Review & Submit */}
@@ -213,8 +193,18 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, onClose }: Ap
             <SummaryRow label={p.summaryEmail} value={email} />
             {phone && <SummaryRow label={p.summaryPhone} value={phone} />}
             {location && <SummaryRow label={p.summaryLocation} value={location} />}
-            {currentTitle && <SummaryRow label={p.summaryCurrentTitle} value={`${currentTitle}${currentCompany ? ` en ${currentCompany}` : ''}`} />}
-            {yearsExperience && <SummaryRow label={p.summaryExperience} value={EXPERIENCE_LEVELS.find((l) => l.value === yearsExperience)?.label ?? yearsExperience} />}
+            {currentTitle && (
+              <SummaryRow
+                label={p.summaryCurrentTitle}
+                value={`${currentTitle}${currentCompany ? ` en ${currentCompany}` : ''}`}
+              />
+            )}
+            {yearsExperience && (
+              <SummaryRow
+                label={p.summaryExperience}
+                value={EXPERIENCE_LEVELS.find((l) => l.value === yearsExperience)?.label ?? yearsExperience}
+              />
+            )}
             {linkedinUrl && <SummaryRow label="LinkedIn" value={linkedinUrl} />}
             <SummaryRow label={p.summaryVacancy} value={vacancyTitle} />
           </div>
@@ -235,7 +225,8 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, onClose }: Ap
           )}
 
           <p className="text-[11px] text-[#8B8B8B]">
-            Al enviar tu aplicacion, aceptas que {companyName} procese tus datos personales con fines de seleccion de personal.
+            Al enviar tu aplicacion, aceptas que {companyName} procese tus datos personales con fines de seleccion de
+            personal.
           </p>
         </div>
       )}
@@ -244,8 +235,13 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, onClose }: Ap
       <div className="mt-6 flex items-center justify-between border-t border-[#EDEDED] pt-4">
         <div>
           {step > 1 && !submitting && (
-            <button onClick={() => setStep((step - 1) as Step)} className="flex items-center gap-1 text-[12px] text-[#585858] transition hover:text-[#1F114C]">
-              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
+            <button
+              onClick={() => setStep((step - 1) as Step)}
+              className="flex items-center gap-1 text-[12px] text-[#585858] transition hover:text-[#1F114C]"
+            >
+              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path d="M15.75 19.5L8.25 12l7.5-7.5" />
+              </svg>
               Anterior
             </button>
           )}
@@ -257,7 +253,11 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, onClose }: Ap
           )}
         </div>
         <div className="flex gap-3">
-          <button onClick={onClose} disabled={submitting} className="h-9 rounded-lg border border-[#EDEDED] px-4 text-sm text-[#585858] transition hover:bg-[#F6F6F6] disabled:opacity-50">
+          <button
+            onClick={onClose}
+            disabled={submitting}
+            className="h-9 rounded-lg border border-[#EDEDED] px-4 text-sm text-[#585858] transition hover:bg-[#F6F6F6] disabled:opacity-50"
+          >
             Cancelar
           </button>
           {step < 3 ? (
@@ -267,7 +267,9 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, onClose }: Ap
               className="flex h-9 items-center gap-1 rounded-lg bg-[#1F114C] px-5 text-sm font-medium text-white transition hover:bg-[#2a1a5c] disabled:opacity-50"
             >
               Siguiente
-              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg>
+              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+              </svg>
             </button>
           ) : (
             <button
