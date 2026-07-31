@@ -123,7 +123,7 @@ number) and independently corroborated by the `flag:` field in `scripts/parity/s
 | --------------------- | ----- | --------------------------- | ---------------------------- | -------------------------------------------- | --------------------------------------------------------------------------- |
 | `team-intel`          | read  | `TeamIntelReadEnabled`      | `NONE` (TS router deleted)   | `NEXT_PUBLIC_TEAMINTEL_READ_VIA_CSHARP`      | TS DELETED                                                                  |
 | `reporting`           | read  | `ReportingReadEnabled`      | `NONE` (TS router deleted)   | `NEXT_PUBLIC_REPORTING_READ_VIA_CSHARP`      | TS DELETED                                                                  |
-| `billing-read`        | read  | `BillingReadEnabled`        | `verify billing-invoices`    | `NEXT_PUBLIC_BILLING_INVOICES_VIA_CSHARP`    | FLIP-READY                                                                  |
+| `billing-read`        | read  | `BillingReadEnabled`        | `NONE` (TS router deleted)   | `NEXT_PUBLIC_BILLING_INVOICES_VIA_CSHARP`    | TS DELETED                                                                  |
 | `billing-usage`       | read  | `BillingUsageEnabled`       | `NONE` (TS router deleted)   | `NEXT_PUBLIC_BILLING_USAGE_VIA_CSHARP`       | TS DELETED                                                                  |
 | `evaluation360`       | read  | `Evaluation360ReadEnabled`  | `NONE` (TS router deleted)   | `NEXT_PUBLIC_EVALUATION360_READ_VIA_CSHARP`  | TS DELETED                                                                  |
 | `succession`          | read  | `SuccessionReadEnabled`     | `verify succession`          | `NEXT_PUBLIC_SUCCESSION_READ_VIA_CSHARP`     | CONFIRMED LIVE (partial TS deletion — 8/9 procedures, see cutover.sh)       |
@@ -150,18 +150,20 @@ classified the way it is, and every naming quirk below).
   agree they are genuinely two independent flags (`BillingReadEnabled` / `BillingUsageEnabled`),
   each with its own cutover step. This script keeps them as two separate surfaces
   (`billing-read`, `billing-usage`) rather than folding them together, matching the parity
-  harness's own "one flag per surface" convention (see `scripts/parity/surfaces.ts:939-941`). The
-  parity CLI's registered key for the invoice-read surface is `billing-invoices`, not
-  `billing-read` — this script accepts the friendlier `billing-read` name and maps it internally so
-  the CLI-facing vocabulary matches the runbook's prose.
-- **`billing-read` now has an FE flag too (2026-07-28).** `apps/web/lib/platform-api/billing.ts`
-  wires a fourth, independent flag — `NEXT_PUBLIC_BILLING_INVOICES_VIA_CSHARP` — gating the
-  `useBillingInvoices`/`useBillingInvoice` hooks (separate from `BILLING_USAGE_VIA_CSHARP`, which
-  still only covers the other three billing reads). The new
-  `apps/web/app/(admin)/settings/billing/billing-invoices.tsx` card, wired into
-  `settings/billing/page.tsx`, is the first-ever FE consumer of this surface. It ships dark
-  (unset/false) exactly like every other surface's default-off convention — this is now a real
-  single-flag flip candidate like the rest of the table, not an exception.
+  harness's own "one flag per surface" convention (see `scripts/parity/surfaces.ts:939-941`).
+  UPDATE 2026-07-31: `billing-read`'s TS side (`billing.listInvoices`/`billing.getInvoice`) has
+  been deleted, so the parity harness's `billing-invoices` key was removed too (same treatment as
+  `team-intel`/`reporting`/`billing-usage` above) — there is no longer a `billing-invoices` parity
+  key to map `billing-read` onto; `--verify-only` for this surface is now a no-op like the other
+  TS_DELETED rows.
+- **`billing-read`'s FE flag (added 2026-07-28, confirmed live 2026-07-31).**
+  `apps/web/lib/platform-api/billing.ts` wires a fourth, independent flag —
+  `NEXT_PUBLIC_BILLING_INVOICES_VIA_CSHARP` — gating the `useBillingInvoices`/`useBillingInvoice`
+  hooks (separate from `BILLING_USAGE_VIA_CSHARP`, which still only covers the other three billing
+  reads). The `apps/web/app/(admin)/settings/billing/billing-invoices.tsx` card, wired into
+  `settings/billing/page.tsx`, is the first-ever FE consumer of this surface. UPDATE 2026-07-31:
+  the flag is confirmed live in prod and both hooks are now C#-only (no TS fallback left) —
+  no longer "ships dark."
 - **`nine-box` vs `ninebox`.** The parity harness (and the C# route paths, e.g. `/ninebox/grid`)
   spell this with no hyphen. The runbook prose and this script's public surface name use the
   hyphenated `nine-box` for readability; the script maps it to the harness's `ninebox` key

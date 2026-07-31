@@ -494,34 +494,9 @@ export const SURFACES: Record<string, Surface> = {
       },
     ],
   },
-  // ── billing-invoices ────────────────────────────────────────────────────────────────────────
-  // Coverage-audit addition (2026-07-27): `BillingReadEndpoints` (Phase-5 Slice 3) ships
-  // `listInvoices`/`getInvoice` behind `Platform__BillingReadEnabled` — its own independent flag
-  // (one flag per surface is this registry's convention), so it gets its OWN surface entry here.
-  //
-  // Only `listInvoices` (Tier-1, static path) is included here. `getInvoice` (by-id,
-  // `/billing/invoices/{id}`) is a Tier-2 follow-up: it needs an `invoice` idScopeKey + a seeded
-  // Invoice row pair in `SeedResources`/`seed.ts`, which does not exist yet — same documented
-  // deferral pattern as the by-id endpoints noted elsewhere in this registry.
-  //
-  // Gating: `permissionProcedure('billing','read')` — the same `BillingStaffGate` used by the
-  // rest of the billing router, and `billing` is SUPER-ADMIN-ONLY in seed-access-matrix.ts
-  // (absent from both hr_admin's and hrbp's module lists) — hence the 1-allow/2-deny verdicts
-  // below (super_admin: 200, hr_admin/hrbp: 403), no new grant needs seeding.
-  'billing-invoices': {
-    key: 'billing-invoices',
-    flag: 'Platform__BillingReadEnabled',
-    roles: ['super_admin', 'hr_admin', 'hrbp'],
-    probeRole: 'super_admin',
-    endpoints: [
-      {
-        name: 'invoices',
-        csharpPath: '/billing/invoices?take=20',
-        tsProcedure: 'billing.listInvoices',
-        input: { take: 20 },
-        expectedByRole: { super_admin: 200, hr_admin: 403, hrbp: 403 },
-        normalize: { dropNullish: true, sortArraysBy: 'id' },
-      },
-    ],
-  },
+  // billing-invoices REMOVED (2026-07-31): the TS listInvoices/getInvoice procedures
+  // (packages/api/src/routers/billing.ts) have been deleted — NEXT_PUBLIC_BILLING_INVOICES_VIA_CSHARP
+  // / Platform__BillingReadEnabled is confirmed live in prod, so there is no TS side left to diff
+  // against (same treatment as the team-intel/reporting/billing-usage/evaluation360 entries removed
+  // before this one — see scripts/deploy/cutover.sh's billing-read row, now TS_DELETED).
 };

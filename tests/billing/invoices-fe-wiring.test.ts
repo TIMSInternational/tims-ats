@@ -7,19 +7,23 @@ const read = (p: string) => readFileSync(resolve(__dirname, '../../', p), 'utf8'
 describe('billing-invoices FE consumer — hooks wiring', () => {
   const billing = read('apps/web/lib/platform-api/billing.ts');
 
-  it('defines the new dark-launch flag', () => {
+  // TS deletion (2026-07-31): NEXT_PUBLIC_BILLING_INVOICES_VIA_CSHARP is confirmed live in prod
+  // and the TS listInvoices/getInvoice procedures have been deleted from packages/api/src/routers/
+  // billing.ts — these hooks are now C#-only (no dark/live branching left to assert), mirroring
+  // useBillingUsage's precedent.
+  it('mentions the (now-always-live) flag in the file-header commentary', () => {
     expect(billing).toMatch(/NEXT_PUBLIC_BILLING_INVOICES_VIA_CSHARP/);
   });
 
-  it('exports useBillingInvoices with cursor-infinite-query dark/live branching', () => {
+  it('exports useBillingInvoices as a C#-only cursor-infinite-query, no TS fallback', () => {
     expect(billing).toMatch(/export function useBillingInvoices/);
-    expect(billing).toMatch(/trpc\.billing\.listInvoices\.useInfiniteQuery/);
+    expect(billing).not.toMatch(/trpc\.billing\.listInvoices/);
     expect(billing).toMatch(/platformGetRaw\(['"]\/billing\/invoices['"]/);
   });
 
-  it('exports useBillingInvoice with typed single-fetch dark/live branching', () => {
+  it('exports useBillingInvoice as a C#-only typed single-fetch, no TS fallback', () => {
     expect(billing).toMatch(/export function useBillingInvoice\(/);
-    expect(billing).toMatch(/trpc\.billing\.getInvoice\.useQuery/);
+    expect(billing).not.toMatch(/trpc\.billing\.getInvoice/);
     expect(billing).toMatch(/platformGet\(['"]\/billing\/invoices\/\{id\}['"]/);
   });
 

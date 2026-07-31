@@ -65,7 +65,10 @@ wrapped in `if (options.<X>Enabled || isOpenApiDocGeneration) { ... }`, defaulti
     `NEXT_PUBLIC_BILLING_USAGE_VIA_CSHARP=true`. **Invoice read FLIPPED AND LIVE IN PROD 2026-07-31** —
     `NEXT_PUBLIC_BILLING_INVOICES_VIA_CSHARP=true`, parity-verified fresh 5/5 PASS immediately before
     flipping (RLS check was structurally-pass-only — both parity test orgs had zero seeded invoices, so
-    cross-tenant isolation wasn't data-proven, only structurally). Stripe-webhook write and self-serve
+    cross-tenant isolation wasn't data-proven, only structurally). Its TS `listInvoices`/`getInvoice`
+    procedures and FE tRPC fallback (`apps/web/lib/platform-api/billing.ts`) have since been fully
+    deleted too (branch `ts-deletion-billing-invoices-read`, same day) — a 9th domain TS deletion, after
+    the S5 item-4 8-domain sequence below had already closed. Stripe-webhook write and self-serve
     write remain dark: test-mode verified end-to-end but Federico has explicitly declined the
     live-Stripe-key prod cutover.
   - Reporting / recruitment-analytics — read (#150). **Flipped and live in prod**

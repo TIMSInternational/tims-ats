@@ -1,9 +1,14 @@
 # Phase 5 Slice 3 — billing invoice READ surface → C# (strangler domain #2, reads-first)
 
-Date: 2026-07-16 · Status: **In build (SDD).** Parent: `phase-5-strangler.md`.
-Branch: `feat/csharp-phase5-billing-reads` off main `16efcc2`. **Cutover deferred + dark-by-default.**
+Date: 2026-07-16 · Status: **TS DELETED — flipped and live in prod (2026-07-31).**
+Branch: `feat/csharp-phase5-billing-reads` off main `16efcc2`. UPDATE 2026-07-31:
+`NEXT_PUBLIC_BILLING_INVOICES_VIA_CSHARP` / `Platform:BillingReadEnabled` confirmed live in prod
+(parity-verified fresh 5/5 PASS immediately before flipping); the TS `billing.listInvoices`/
+`billing.getInvoice` procedures and their FE tRPC fallback have since been deleted
+(`ts-deletion-billing-invoices-read` branch) — the C# read route is the sole implementation now.
 
 ## Objective + scope
+
 Begin the SECOND strangler domain (billing, plan order #2) with its READ surface (recipe: "reads first").
 **Scope = the invoice reads: `billing.listInvoices` + `billing.getInvoice`** (`packages/api/src/routers/billing.ts`).
 This is the **FIRST staff-JWT C# product surface** (all prior C# product endpoints were external API-key);
@@ -14,8 +19,10 @@ external-integration boundary, a later slice). Cutover (route→canary→flip→
 is **dark-by-default** (standing lesson from #140: every strangled C# product surface is flag-gated).
 
 ## Characterized TS contract (source of truth — `routers/billing.ts`)
+
 Both `permissionProcedure('billing','read')` — staff JWT + `billing:read` grant (org scope; billing is
 org-level, no per-row scope narrowing).
+
 - **listInvoices**(`take` 1..100 default 20, `cursor` uuid?) → `{ items: Invoice[], nextCursor? }`.
   `db.invoice.findMany({ where:{organizationId}, take:take+1, cursor?:{id}, skip:1?, orderBy:{createdAt:'desc'} })`;
   `hasMore = items.length > take`; `nextCursor = hasMore ? items[take-1].id : undefined`. **Returns the RAW
@@ -29,6 +36,7 @@ isolation (org filter + RLS) → cross-org getInvoice = NOT_FOUND (INV-tenant); 
 `orderBy createdAt desc` (INV-page); the FULL model shape faithfully reproduced (INV-shape).
 
 ## Money + wire-format (the parity cruxes)
+
 - **Money is `Float` (double), NOT Decimal** — `Invoice.amount/subtotal/taxRate`, `InvoiceLineItem.unitPrice/total`.
   So the DTO carries `double`/`double?`; wire = a JSON number. Golden-fixture representative money values
   (e.g. `1234.56`, `100`, `0.5`, `1234.5`, `0`) and confirm STJ ⇄ JS number-serialization parity; flag any
@@ -40,6 +48,7 @@ isolation (org filter + RLS) → cross-org getInvoice = NOT_FOUND (INV-tenant); 
   references + the fixture test. `timestamp`-column reads → `DateTime.SpecifyKind(Unspecified)` (as prior slices).
 
 ## C# port — structure (`services/Tims.Platform/`)
+
 ```
 src/Tims.Domain/Json/
   NodeIsoDateTimeOffsetConverter.cs → MOVED here (shared); external-vendor DTOs re-point their [JsonConverter].
@@ -63,12 +72,14 @@ src/Tims.Api/Billing/
 ```
 
 ## Auth (first staff-JWT product surface)
+
 Reuse the `/require-permission` machinery: `RequireAuthorization()` (JWT scheme) → resolve the TIMS principal
 (`PrincipalResolutionMiddleware` stash or `PrincipalResolver.ResolveStaffAsync`), unresolved → **401**;
 `PermissionService.CheckAsync(context, "billing", "read")` denied → **403**. The read runs under the resolved
 principal's org `TenantScope` (RLS). No per-row scope narrowing (billing is org-level).
 
 ## Golden parity (both CIs) + regression corpus
+
 - `contracts/billing-fixtures/invoice-v1.json` + `subscription-v1.json` — full row → v1 mapping byte-identical
   TS (real Prisma-shaped fixtures → the TS wire shape) + C#, incl. money-Float values + canonical `…fffZ` dates.
 - **Testcontainers (real RLS):** seed two orgs × invoices (+ a subscription) → prove tenant isolation
@@ -78,16 +89,24 @@ principal's org `TenantScope` (RLS). No per-row scope narrowing (billing is org-
 - Regression corpus: tenant isolation (getInvoice cross-org NOT_FOUND), cursor pagination, honest full-shape.
 
 ## Ledger + flags
-`efcoreReadOnly += invoices, subscriptions`. `PlatformOptions.BillingReadEnabled` (default false); Program.cs
-maps the endpoints only when on (or `GetDocument.Insider` build-time OpenAPI). Cutover deferred.
+
+`efcoreReadOnly += invoices, subscriptions`. `PlatformOptions.BillingReadEnabled` — **UPDATE 2026-07-31:
+confirmed `true` in prod** (was default `false`; Program.cs maps the endpoints only when on, or via
+`GetDocument.Insider` build-time OpenAPI). Cutover DONE: TS `listInvoices`/`getInvoice` deleted.
 
 ## Deferred
-Slice 3b (getUsage/getCurrentPlan/getBillingConfig + `planLimits`/`entitledPlan` kernel + counts); billing
-writes (Stripe checkout/portal/cancel — external boundary); the eventual ownership flip (billing OWNS its
-tables → a clean flip candidate, unlike the shared `preemployment_validations`). All deploy-gated.
+
+Slice 3b (getUsage/getCurrentPlan/getBillingConfig + `planLimits`/`entitledPlan` kernel + counts — see the
+separate `NEXT_PUBLIC_BILLING_USAGE_VIA_CSHARP` flag, also since flipped and TS-deleted); billing
+writes (Stripe checkout/portal/cancel — external boundary, still dark, Federico has declined the live-Stripe
+cutover); the eventual ownership flip (billing OWNS its tables → a clean flip candidate, unlike the shared
+`preemployment_validations` — TS-code deletion is NOT the same as an ownership flip, see
+`table-ownership.md`).
 
 ## Adjudicated review-gate fixes (2026-07-16)
+
 A review-gate batch tightened the drop-in parity of this surface:
+
 - **No `schemaVersion` on the billing wire (parity break fixed).** The live TS `listInvoices`/`getInvoice`
   return the RAW Prisma row (findMany/findFirstOrThrow, no `select`/mapper) — no `schemaVersion`. The field
   was dropped from the C# wire entirely (`InvoiceWireV1` base carries no such field; `SubscriptionV1` never
@@ -117,6 +136,7 @@ A review-gate batch tightened the drop-in parity of this surface:
   ExternalValidation/Audit). The wrapper keeps it exclusive to `BillingReadDbContext`.
 
 ### DELIBERATE deviation (cutover-flag for Federico) — getInvoice not-found
+
 The live TS `getInvoice` uses `findFirstOrThrow`, which throws Prisma **P2025** on a missing/cross-org id.
 `trpc.ts` has NO P2025→`NOT_FOUND` mapping (its `errorFormatter` returns the shape unchanged, and no global
 handler maps it) — so the uncaught P2025 surfaces as tRPC **INTERNAL_SERVER_ERROR (HTTP 500)**, an error
@@ -126,6 +146,7 @@ deliberate port IMPROVEMENT (mirrors the Slice-1 completed-only leak-fix), NOT a
 **flag at cutover.**
 
 ## Local gate
+
 From `services/Tims.Platform`: build `-c Release` 0-warn · `dotnet format` · unit + integration (Docker).
 Root: `node scripts/table-ownership.mjs`. TS (shared fixtures): `prisma generate` → `@tims/api tsc` →
 `apps/web tsc` → `vitest run`.
