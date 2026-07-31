@@ -3232,7 +3232,13 @@
     "manyApplicants": "people applied",
     "sendingShort": "Sending...",
     "teamWillReviewPrefix": "The",
-    "teamWillReviewSuffix": "team will review your profile and contact you if you advance in the process."
+    "teamWillReviewSuffix": "team will review your profile and contact you if you advance in the process.",
+    "cvLabel": "Resume (optional)",
+    "cvHelperText": "PDF or Word, max 5MB",
+    "cvRemove": "Remove file",
+    "cvInvalidType": "Only PDF or Word (.docx) files are accepted",
+    "cvTooLarge": "File exceeds the 5MB limit",
+    "cvUploadFailed": "Could not upload the file. Try again or continue without it."
   },
   "aiInterview": {
     "title": "AI Voice Interview",
