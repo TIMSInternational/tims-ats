@@ -36,6 +36,7 @@ describe('Authentication & Authorization', () => {
       'listVacancies',
       'getVacancy',
       'applyToVacancy',
+      'getCvUploadUrl',
       // Offer signing — candidate accesses an offer via an emailed signing token (no account)
       'getBySigningToken',
       'acceptByToken',

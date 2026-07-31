@@ -3,6 +3,9 @@ import { TRPCError } from '@trpc/server';
 import { router, publicProcedure } from '../trpc';
 import { db } from '@tims/db';
 import { captchaBypassAllowed } from './portal-helpers';
+import { createCvUploadPresignedPost } from '../lib/s3';
+import { CV_ALLOWED_CONTENT_TYPES } from '../lib/cv-extraction';
+import { portalApplicationService } from '../services/portal-application.service';
 
 // Verify a Cloudflare Turnstile token on the public apply form. In production the
 // secret MUST be configured (else every apply is rejected — fail closed). Once the
@@ -29,21 +32,19 @@ export const portalRouter = router({
   // ── Public (no auth) ────────────────────────────────────────
 
   // Get portal stats for hero section
-  getPortalStats: publicProcedure
-    .input(z.object({ organizationId: z.string().uuid() }))
-    .query(async ({ input }) => {
-      const where = { organizationId: input.organizationId, status: 'published', deletedAt: null };
-      const [totalVacancies, vacancies] = await Promise.all([
-        db.vacancy.count({ where }),
-        db.vacancy.findMany({
-          where,
-          select: { location: true, unit: { select: { name: true } } },
-        }),
-      ]);
-      const locations = new Set(vacancies.map((v) => v.location).filter(Boolean));
-      const departments = new Set(vacancies.map((v) => v.unit?.name).filter(Boolean));
-      return { totalVacancies, totalLocations: locations.size, totalDepartments: departments.size };
-    }),
+  getPortalStats: publicProcedure.input(z.object({ organizationId: z.string().uuid() })).query(async ({ input }) => {
+    const where = { organizationId: input.organizationId, status: 'published', deletedAt: null };
+    const [totalVacancies, vacancies] = await Promise.all([
+      db.vacancy.count({ where }),
+      db.vacancy.findMany({
+        where,
+        select: { location: true, unit: { select: { name: true } } },
+      }),
+    ]);
+    const locations = new Set(vacancies.map((v) => v.location).filter(Boolean));
+    const departments = new Set(vacancies.map((v) => v.unit?.name).filter(Boolean));
+    return { totalVacancies, totalLocations: locations.size, totalDepartments: departments.size };
+  }),
 
   // List published vacancies for the careers portal
   listVacancies: publicProcedure
@@ -54,7 +55,7 @@ export const portalRouter = router({
         search: z.string().trim().max(100).optional(),
         take: z.number().min(1).max(50).default(20),
         cursor: z.string().uuid().optional(),
-      })
+      }),
     )
     .query(async ({ input }) => {
       const where: Record<string, unknown> = {
@@ -93,38 +94,55 @@ export const portalRouter = router({
     }),
 
   // Get single vacancy detail for portal
-  getVacancy: publicProcedure
-    .input(z.object({ id: z.string().uuid() }))
-    .query(async ({ input }) => {
-      const [vacancy, applicantCount] = await Promise.all([
-        db.vacancy.findFirstOrThrow({
-          where: { id: input.id, status: 'published', deletedAt: null },
-          select: {
-            id: true,
-            organizationId: true,
-            title: true,
-            description: true,
-            location: true,
-            remotePolicy: true,
-            contractType: true,
-            salary: true,
-            positions: true,
-            priority: true,
-            settings: true,
-            createdAt: true,
-            company: { select: { id: true, name: true } },
-            unit: { select: { name: true } },
-            organization: { select: { name: true, logo: true } },
-            jobProfile: {
-              select: { competencies: true, requirements: true },
-            },
+  getVacancy: publicProcedure.input(z.object({ id: z.string().uuid() })).query(async ({ input }) => {
+    const [vacancy, applicantCount] = await Promise.all([
+      db.vacancy.findFirstOrThrow({
+        where: { id: input.id, status: 'published', deletedAt: null },
+        select: {
+          id: true,
+          organizationId: true,
+          title: true,
+          description: true,
+          location: true,
+          remotePolicy: true,
+          contractType: true,
+          salary: true,
+          positions: true,
+          priority: true,
+          settings: true,
+          createdAt: true,
+          company: { select: { id: true, name: true } },
+          unit: { select: { name: true } },
+          organization: { select: { name: true, logo: true } },
+          jobProfile: {
+            select: { competencies: true, requirements: true },
           },
-        }),
-        db.application.count({
-          where: { vacancyId: input.id },
-        }),
-      ]);
-      return { ...vacancy, applicantCount };
+        },
+      }),
+      db.application.count({
+        where: { vacancyId: input.id },
+      }),
+    ]);
+    return { ...vacancy, applicantCount };
+  }),
+
+  // Get a presigned S3 POST for the candidate to upload a CV directly, before
+  // applying. Server-enforced size cap + content-type via the POST policy's
+  // conditions (not merely trusted from the client).
+  getCvUploadUrl: publicProcedure
+    .input(
+      z.object({
+        vacancyId: z.string().uuid(),
+        fileName: z.string().min(1).max(255),
+        contentType: z.enum(CV_ALLOWED_CONTENT_TYPES),
+      }),
+    )
+    .mutation(async ({ input }) => {
+      const vacancy = await db.vacancy.findFirstOrThrow({
+        where: { id: input.vacancyId, status: 'published', deletedAt: null },
+        select: { organizationId: true },
+      });
+      return createCvUploadPresignedPost(vacancy.organizationId, input.contentType);
     }),
 
   // Apply to a vacancy (public — creates candidate + application)
@@ -143,8 +161,10 @@ export const portalRouter = router({
         yearsExperience: z.number().int().min(0).max(50).optional(),
         location: z.string().max(200).optional(),
         coverLetter: z.string().max(5000).optional(),
+        cvFileKey: z.string().max(500).optional(),
+        cvFileName: z.string().min(1).max(255).optional(),
         captchaToken: z.string().max(4096).optional(),
-      })
+      }),
     )
     .mutation(async ({ input }) => {
       if (!(await verifyCaptcha(input.captchaToken))) {
@@ -201,11 +221,15 @@ export const portalRouter = router({
       }
 
       const defaultStage = vacancy.stages[0];
-      const stageId = defaultStage?.id ?? (await db.pipelineStage.findFirstOrThrow({
-        where: { vacancyId: vacancy.id },
-        orderBy: { order: 'asc' },
-        select: { id: true },
-      })).id;
+      const stageId =
+        defaultStage?.id ??
+        (
+          await db.pipelineStage.findFirstOrThrow({
+            where: { vacancyId: vacancy.id },
+            orderBy: { order: 'asc' },
+            select: { id: true },
+          })
+        ).id;
 
       try {
         const application = await db.application.create({
@@ -218,6 +242,19 @@ export const portalRouter = router({
             coverLetter: input.coverLetter,
           },
         });
+
+        // Only NEW applications get CV processing — the idempotent-duplicate
+        // early-return above and the P2002 race-catch below intentionally
+        // skip it, so a resubmit never re-runs S3 fetch + extraction + an AI call.
+        if (input.cvFileKey) {
+          await portalApplicationService.processCvUpload(
+            orgId,
+            candidate.id,
+            input.cvFileKey,
+            input.cvFileName ?? input.cvFileKey.split('/').pop() ?? 'cv',
+          );
+        }
+
         return { applicationId: application.id, candidateId: candidate.id };
       } catch (err) {
         // Unique-constraint race on concurrent double-submit — resolve idempotently
@@ -231,5 +268,4 @@ export const portalRouter = router({
         throw err;
       }
     }),
-
 });
