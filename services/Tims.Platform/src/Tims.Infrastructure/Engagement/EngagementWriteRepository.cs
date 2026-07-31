@@ -13,7 +13,8 @@ namespace Tims.Infrastructure.Engagement;
 /// <see cref="TenantScope"/> (SET LOCAL ROLE app_tenant + org GUC → RLS) with an EXPLICIT <c>organizationId</c>
 /// filter/value (defense-in-depth). Client-set id (<c>Guid.NewGuid()</c>) + createdAt/updatedAt/submittedAt (all
 /// explicit) — Prisma <c>@default(uuid())</c> / <c>@default(now())</c> / <c>@updatedAt</c> are client-side.
-/// submitSurveyResponse stamps <c>userId = caller</c> server-side (identity anchor, engagement.ts:277) and maps the
+/// submitSurveyResponse stamps <c>userId = caller</c> server-side (identity anchor, matching the deleted TS
+/// submitSurveyResponse mutation) and maps the
 /// <c>@@unique([surveyId, userId])</c> violation (23505) → <see cref="SubmitSurveyResponseOutcome.Conflict"/>. The
 /// survey active-gate not-found → <see cref="SubmitSurveyResponseOutcome.SurveyNotActive"/> (the documented clean-404
 /// improvement over the TS plain-Error 500). createActionPlan / updateActionPlan(reassign) prove the
@@ -46,7 +47,8 @@ public sealed class EngagementWriteRepository(EngagementWriteDbContext db) : IEn
             StartsAt = input.StartsAt is { } s ? ToTimestamp(s) : null,
             EndsAt = input.EndsAt is { } e ? ToTimestamp(e) : null,
             ResponseCount = 0,
-            // Anti-forgery: createdById is ALWAYS the resolved caller (engagement.ts:101), never from input.
+            // Anti-forgery: createdById is ALWAYS the resolved caller (matching the deleted TS createSurvey
+            // mutation), never from input.
             CreatedById = callerId,
             CreatedAt = nowTs,
             UpdatedAt = nowTs,
@@ -82,7 +84,8 @@ public sealed class EngagementWriteRepository(EngagementWriteDbContext db) : IEn
         }
 
         entity.Status = "active";
-        // startsAt = existing.startsAt ?? now (preserve a prior startsAt, else stamp now) — engagement.ts:117.
+        // startsAt = existing.startsAt ?? now (preserve a prior startsAt, else stamp now) — matches the deleted TS
+        // activateSurvey mutation.
         entity.StartsAt ??= nowTs;
         entity.UpdatedAt = nowTs;
         try
@@ -127,7 +130,8 @@ public sealed class EngagementWriteRepository(EngagementWriteDbContext db) : IEn
             Id = Guid.NewGuid(),
             OrganizationId = orgId,
             SurveyId = input.SurveyId,
-            // IDENTITY anchor: userId is ALWAYS the resolved caller (engagement.ts:277), NEVER from input — an
+            // IDENTITY anchor: userId is ALWAYS the resolved caller (matching the deleted TS submitSurveyResponse
+            // mutation), NEVER from input — an
             // org-admin cannot forge another user's response.
             UserId = callerId,
             Answers = input.Answers.ToJsonString(),
@@ -166,8 +170,8 @@ public sealed class EngagementWriteRepository(EngagementWriteDbContext db) : IEn
         // caller could otherwise persist a cross-tenant responsibleId (a bare FK to users — the FK checks EXISTS in
         // ANY org; RLS WITH CHECK on action_plans guards only organization_id). Prove the responsible user is in the
         // caller's org AUTHORITATIVELY here — this same-txn lookup is RLS-filtered to the org, so a cross-org
-        // responsibleId returns false ⇒ null (→ 403). Fixed in BOTH stacks (engagement.ts) to keep parity + ship the
-        // prod hardening.
+        // responsibleId returns false ⇒ null (→ 403). Fixed in BOTH stacks (the TS createActionPlan mutation too) to
+        // keep parity + ship the prod hardening.
         if (!await ResponsibleInOrgAsync(orgId, input.ResponsibleId, cancellationToken).ConfigureAwait(false))
         {
             return null;
@@ -222,7 +226,7 @@ public sealed class EngagementWriteRepository(EngagementWriteDbContext db) : IEn
 
         // H1 (both-stacks): a reassignment must target a user in the caller's org (assertSubjectInScope no-ops for
         // org/company scope). Validate BEFORE the UPDATE — not-in-org ⇒ ResponsibleNotInOrg (→ 403), no reassignment
-        // persisted. Fixed in BOTH stacks (engagement.ts).
+        // persisted. Fixed in BOTH stacks (the TS updateActionPlan mutation too).
         if (input.ResponsibleId is { } responsibleId
             && !await ResponsibleInOrgAsync(orgId, responsibleId, cancellationToken).ConfigureAwait(false))
         {
@@ -239,7 +243,8 @@ public sealed class EngagementWriteRepository(EngagementWriteDbContext db) : IEn
         }
 
         // TS spread `data: { title?, notes?, status?, responsibleId?, ...dueDate-tri-state }` — an ABSENT optional key
-        // is skipped by Prisma (never nulled); dueDate: absent = unchanged, null = CLEAR, value = set (engagement.ts:559).
+        // is skipped by Prisma (never nulled); dueDate: absent = unchanged, null = CLEAR, value = set — matches the
+        // TS updateActionPlan mutation's dueDate spread.
         if (input.HasTitle)
         {
             entity.Title = input.Title!;
