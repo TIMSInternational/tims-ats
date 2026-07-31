@@ -114,6 +114,16 @@ wrapped in `if (options.<X>Enabled || isOpenApiDocGeneration) { ... }`, defaulti
     create a scoped API key via Settings→Integrations, which can't be re-run headlessly. Backend flag
     `Platform__ExternalVendorWriteEnabled` is already `true` on App Runner, so flipping the Vercel flag
     alone would activate it — recommend Federico do one fresh manual write test before flipping.
+    **TS deletion (2026-07-31):** the Prisma-backed fallback in `external-assessment.service.ts`'s
+    `list()`/`getOne()` (gated behind `EXTERNAL_VENDOR_READ_VIA_CSHARP`) was provably dead and has
+    been deleted — both methods now proxy to the C# service unconditionally. Deleted the now-fully-
+    unused `packages/api/src/repositories/external-assessment.repository.ts` and the dead
+    `auditExport()` helper (the C# use case audits its own exports). `dto/external-assessment.ts`
+    (`toExternalAssessmentResultV1`/`ExternalResultRow`) is DELIBERATELY RETAINED — it has independent
+    live consumers beyond the deleted repository/fallback: `tests/access/external-assessment-api.test.ts`
+    and the golden-fixture parity suite `tests/external-vendor/assessment-result-v1-fixtures.test.ts`.
+    The WRITE side (`external-validation.service.ts`, `EXTERNAL_VENDOR_WRITE_VIA_CSHARP`) is untouched —
+    still dark, its TS path is still live prod.
   - Audit-log (Phase-5 Slice-17) — read (#195). **FLIPPED AND LIVE IN PROD 2026-07-31** —
     `NEXT_PUBLIC_AUDIT_LOG_READ_VIA_CSHARP=true`, real FE consumer is
     `apps/web/app/(admin)/platform/audit/page.tsx`. (Prior claim that "the C# service has never been
