@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { router, permissionProcedure } from '../trpc';
 import { tenantDb as db } from '@tims/db';
+import { auditService } from '../services/audit.service';
+import { logPlatformExport } from '../access/security-audit';
 
 export const auditRouter = router({
   // List logs with cursor pagination and filters
@@ -14,7 +16,7 @@ export const auditRouter = router({
         dateTo: z.date().optional(),
         take: z.number().min(1).max(100).default(25),
         cursor: z.string().uuid().optional(),
-      })
+      }),
     )
     .query(async ({ ctx, input }) => {
       const where: Record<string, unknown> = {
@@ -60,21 +62,27 @@ export const auditRouter = router({
       });
     }),
 
-  // Export logs — stub
-  exportLogs: permissionProcedure('audit', 'read')
+  // Export logs — tenant-scoped CSV/JSON export, gated on audit:export.
+  exportLogs: permissionProcedure('audit', 'export')
     .input(
       z.object({
-        format: z.enum(['csv', 'json']).default('csv'),
+        format: z.enum(['csv', 'json']),
         dateFrom: z.date().optional(),
         dateTo: z.date().optional(),
-      })
+        actorId: z.string().uuid().optional(),
+        entity: z.string().max(200).optional(),
+        action: z.string().max(200).optional(),
+      }),
     )
-    .mutation(async () => {
-      // Stub — would generate an export file and return a download URL
-      return {
-        status: 'queued',
-        message: 'Export is being generated. You will receive a download link shortly.',
-      };
+    .mutation(async ({ ctx, input }) => {
+      const result = await auditService.exportLogs(ctx.user.organizationId, input);
+      logPlatformExport(ctx, {
+        resource: 'audit_log',
+        count: result.count,
+        format: result.format,
+        truncated: result.truncated,
+      });
+      return result;
     }),
 
   // Access report — who accessed what
@@ -83,7 +91,7 @@ export const auditRouter = router({
       z.object({
         dateFrom: z.date().optional(),
         dateTo: z.date().optional(),
-      })
+      }),
     )
     .query(async ({ ctx, input }) => {
       const where: Record<string, unknown> = {
@@ -116,7 +124,7 @@ export const auditRouter = router({
         entityId: z.string().max(200),
         take: z.number().min(1).max(100).default(25),
         cursor: z.string().uuid().optional(),
-      })
+      }),
     )
     .query(async ({ ctx, input }) => {
       const items = await db.auditLog.findMany({

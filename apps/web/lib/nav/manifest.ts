@@ -5,14 +5,22 @@ export type NavSubItem = { readonly href: string; readonly labelKey: string; rea
 // sub-items inherit their parent's module-gate rather than being independently permission-checked
 // (there is no real case requiring per-sub-item permissions today; add one only when a manifest
 // actually needs it).
-export type NavItem = { readonly href: string; readonly labelKey: string; readonly icon: string; readonly module: Module | null; readonly sub?: readonly NavSubItem[] };
+export type NavItem = {
+  readonly href: string;
+  readonly labelKey: string;
+  readonly icon: string;
+  readonly module: Module | null;
+  readonly sub?: readonly NavSubItem[];
+};
 export type NavSection = { readonly labelKey: string | null; readonly items: readonly NavItem[] };
 export type Shell = 'admin' | 'participant' | 'platform';
-export type RoleManifest = { readonly shell: Shell; readonly landing: string; readonly sections: readonly NavSection[] };
+export type RoleManifest = {
+  readonly shell: Shell;
+  readonly landing: string;
+  readonly sections: readonly NavSection[];
+};
 
-export const NAV_ROLES = [
-  'super_admin', 'hr_admin', 'hrbp', 'recruiter', 'leader', 'committee', 'employee',
-] as const;
+export const NAV_ROLES = ['super_admin', 'hr_admin', 'hrbp', 'recruiter', 'leader', 'committee', 'employee'] as const;
 export type NavRole = (typeof NAV_ROLES)[number];
 
 // Highest-precedence first (mirrors ROLE_PRECEDENCE in permissions.tsx, minus platform_owner
@@ -82,6 +90,7 @@ const SETTINGS: NavSection = {
     { href: '/settings/fit-weights', labelKey: 'sidebar.fitWeights', icon: 'settings', module: 'fit_engine' },
     { href: '/settings/billing', labelKey: 'sidebar.billing', icon: 'dollar', module: 'billing' },
     { href: '/settings/integrations', labelKey: 'sidebar.integrations', icon: 'settings', module: 'integration' },
+    { href: '/settings/audit-log', labelKey: 'sidebar.auditLog', icon: 'clipboard', module: 'audit' },
   ],
 };
 
@@ -113,13 +122,9 @@ const LEADER_COCKPIT: NavSection[] = [COMMAND_CENTER, LEADER_MY_HIRING, LEADER_M
 // no billing/integrations — org-config is read-only per the access spec). can() still prunes.
 const HR_ADMIN_SETTINGS: NavSection = {
   labelKey: null,
-  items: [
-    { href: '/settings/business-units', labelKey: 'sidebar.businessUnits', icon: 'team', module: 'user' },
-  ],
+  items: [{ href: '/settings/business-units', labelKey: 'sidebar.businessUnits', icon: 'team', module: 'user' }],
 };
-const HR_ADMIN_PEOPLE_FIRST: NavSection[] = [
-  COMMAND_CENTER, PEOPLE, TALENT, CULTURE, RECRUITMENT, HR_ADMIN_SETTINGS,
-];
+const HR_ADMIN_PEOPLE_FIRST: NavSection[] = [COMMAND_CENTER, PEOPLE, TALENT, CULTURE, RECRUITMENT, HR_ADMIN_SETTINGS];
 
 // hrbp = HR business partner scoped to assigned units ("Mis Unidades"). Unit-native IA, no org-admin
 // chrome. CULTURE keeps monitoring (hrbp has monitoring:read@unit); can() prunes DEI (no dei grant).
@@ -134,7 +139,11 @@ const RECRUITER_ATS: NavSection[] = [COMMAND_CENTER, RECRUITMENT];
 
 const adminManifest = (sections: NavSection[]): RoleManifest => ({ shell: 'admin', landing: '/dashboard', sections });
 
-const participantManifest = (sections: NavSection[]): RoleManifest => ({ shell: 'participant', landing: '/dashboard', sections });
+const participantManifest = (sections: NavSection[]): RoleManifest => ({
+  shell: 'participant',
+  landing: '/dashboard',
+  sections,
+});
 
 // committee = interview panels they're assigned to (their real task). "Mis Calibraciones" is now
 // surfaced as a panel ON the committee landing (useNineBoxMyCalibrations, member-scoped) rather than a
@@ -201,10 +210,9 @@ export function isNavItemActive(pathname: string, href: string): boolean {
 
 /** Resolve a dot-path label key against an i18n message object. Falls back to the key. */
 export function resolveLabel(messages: Record<string, unknown>, key: string): string {
-  const v = key.split('.').reduce<unknown>(
-    (o, k) => (o && typeof o === 'object' ? (o as Record<string, unknown>)[k] : undefined),
-    messages,
-  );
+  const v = key
+    .split('.')
+    .reduce<unknown>((o, k) => (o && typeof o === 'object' ? (o as Record<string, unknown>)[k] : undefined), messages);
   return typeof v === 'string' ? v : key;
 }
 
