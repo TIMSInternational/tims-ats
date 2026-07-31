@@ -196,7 +196,16 @@ describe('candidate.pool.export router (source text checks)', () => {
   });
 
   it('applies scope filtering (the old stub applied none)', () => {
-    expect(src).toContain("scopeWhereFor('candidate', ctx.access, ctx.user.id)");
+    // Extract ONLY the export procedure block to ensure scopeWhereFor is present INSIDE it
+    // (not just anywhere in the file, e.g., in getPoolStats which already has it)
+    // Match from "export:" to the closing "}),\n" that ends the procedure (not the object)
+    // by looking for the closing brace AFTER the mutation function
+    const exportMatch = src.match(
+      /export:\s*permissionProcedure\('candidate',\s*'read'\)[\s\S]*?\.mutation\([\s\S]*?\n\s*}\),/,
+    );
+    expect(exportMatch).toBeDefined();
+    const exportBlock = exportMatch![0];
+    expect(exportBlock).toContain("scopeWhereFor('candidate', ctx.access, ctx.user.id)");
   });
 
   it('calls the real service and logs the export', () => {
