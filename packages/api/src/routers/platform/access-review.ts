@@ -6,7 +6,6 @@ import { csvCell } from '@tims/shared';
 import {
   accessReviewReportInput,
   exportAccessReviewCsvInput,
-  attestAccessReviewInput,
   listAccessReviewAttestationsInput,
 } from './access-review.schemas';
 
@@ -88,24 +87,11 @@ export const accessReviewRouter = router({
     };
   }),
 
-  // Record a per-org recertification (the retained CC6.2–6.3 evidence) + a security event.
-  attestAccessReview: platformProcedure.input(attestAccessReviewInput).mutation(async ({ ctx, input }) => {
-    const { attestation, summary } = await accessReviewService.attest(
-      input.organizationId,
-      ctx.user.id,
-      input.notes ?? null,
-      new Date(),
-    );
-    void logSecurityEvent({
-      organizationId: input.organizationId,
-      actorId: ctx.user.impersonatorId ?? ctx.user.id,
-      action: 'access_recertified',
-      entity: 'access_review',
-      entityId: attestation.id,
-      metadata: { ...summary },
-    });
-    return attestation;
-  }),
+  // NOTE: `attestAccessReview` (the recertification WRITE) was DELETED 2026-07-31 — its C#
+  // port is confirmed live (`NEXT_PUBLIC_ACCESS_REVIEW_WRITE_VIA_CSHARP=true`, parity-verified
+  // 3/3 PASS via `scripts/parity/cli.ts verify-write access-review`) and the FE wrapper
+  // (`apps/web/lib/platform-api/access-review.ts`'s `useAccessReviewAttest`) now calls the C#
+  // endpoint unconditionally. See `accessReviewService.attest`'s removal for the equivalent note.
 
   // Attestation history for one org — proves the quarterly cadence to an auditor.
   listAccessReviewAttestations: platformProcedure

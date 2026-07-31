@@ -10,10 +10,9 @@ export const accessReviewReportInput = z.object({
 
 export const exportAccessReviewCsvInput = accessReviewReportInput;
 
-export const attestAccessReviewInput = z.object({
-  organizationId: z.string().uuid(),
-  notes: z.string().max(2000).optional(),
-});
+// NOTE: `attestAccessReviewInput` (the write's input schema) was DELETED 2026-07-31 alongside
+// the `attestAccessReview` procedure — its C# port is confirmed live and is the sole active
+// writer of `access_reviews`. See `packages/api/src/routers/platform/access-review.ts`.
 
 export const listAccessReviewAttestationsInput = z.object({
   organizationId: z.string().uuid(),

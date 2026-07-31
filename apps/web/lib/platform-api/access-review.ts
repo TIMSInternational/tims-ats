@@ -2,14 +2,17 @@
 
 // Per-surface dark-cutover wrapper for the access-review surface (Phase-5 Slice 18) — the C# port
 // of `platform.getAccessReview`/`exportAccessReviewCsv`/`attestAccessReview`/
-// `listAccessReviewAttestations`. DARK by default: unless BOTH the platform-api base URL and the
-// relevant NEXT_PUBLIC_ACCESS_REVIEW_{READ,WRITE}_VIA_CSHARP flag are set at deploy time, every
-// hook returns the existing tRPC call unchanged. Mirrors lib/platform-api/audit-log.ts exactly —
+// `listAccessReviewAttestations`. DARK by default for the 3 READ hooks: unless BOTH the
+// platform-api base URL and NEXT_PUBLIC_ACCESS_REVIEW_READ_VIA_CSHARP are set at deploy time,
+// each read hook returns the existing tRPC call unchanged. Mirrors lib/platform-api/audit-log.ts —
 // this is the SAME platform-owner-only, untyped-response situation.
 //
 // TWO independent flags, matching the backend split: reads (getAccessReview/exportAccessReviewCsv/
-// listAccessReviewAttestations) live behind `Platform:AccessReviewReadEnabled`; the attest write
-// lives behind `Platform:AccessReviewWriteEnabled` — so Federico can canary them separately.
+// listAccessReviewAttestations) live behind `Platform:AccessReviewReadEnabled`, still dark-gated
+// below (their TS deletion is a separate, out-of-scope task). The attest WRITE — gated behind
+// `Platform:AccessReviewWriteEnabled` — is DIFFERENT: as of 2026-07-31 its flag is confirmed live
+// and its TS tRPC procedure was deleted, so `useAccessReviewAttest` below always calls the C#
+// endpoint unconditionally (no more tRPC fallback, no more gate check).
 //
 // UNTYPED RESPONSE BODIES — like audit-log, NONE of the 4 C# access-review endpoints
 // (`GET /access-review`, `GET /access-review/export`, `GET /access-review/attestations`,
@@ -26,13 +29,16 @@ import { isPlatformApiEnabled, platformGetRaw, platformPostRaw } from './client'
 type RouterOutput = inferRouterOutputs<AppRouter>;
 type AccessReviewReportOutput = RouterOutput['platform']['getAccessReview'];
 type AccessReviewExportOutput = RouterOutput['platform']['exportAccessReviewCsv'];
-type AttestAccessReviewOutput = RouterOutput['platform']['attestAccessReview'];
 type ListAttestationsOutput = RouterOutput['platform']['listAccessReviewAttestations'];
+// `attestAccessReview` (the write) is gone from the router — deleted 2026-07-31 alongside its
+// TS procedure. `AttestAccessReviewOutput` is now hand-declared (there is no tRPC procedure
+// left to infer it from) right above `useAccessReviewAttest` below.
 type AccessReviewRow = AccessReviewReportOutput['rows'][number];
 type RoleGrantView = AccessReviewRow['roles'][number];
 
 const ACCESS_REVIEW_READ_VIA_CSHARP = process.env.NEXT_PUBLIC_ACCESS_REVIEW_READ_VIA_CSHARP === 'true';
-const ACCESS_REVIEW_WRITE_VIA_CSHARP = process.env.NEXT_PUBLIC_ACCESS_REVIEW_WRITE_VIA_CSHARP === 'true';
+// NOTE: NEXT_PUBLIC_ACCESS_REVIEW_WRITE_VIA_CSHARP is no longer read here — the write hook
+// (`useAccessReviewAttest` below) went C#-only 2026-07-31 and no longer branches on it.
 
 // The C# `int` fields have no custom converter and serialize as plain JSON numbers, but every
 // other domain in this migration defensively coerces numeric wire values the same way (in case a
@@ -238,8 +244,10 @@ export function useAccessReviewAttestations(organizationId: string, limit = 20) 
 }
 
 // ---------------------------------------------------------------------------
-// Write (Phase-5 Slice 18) — a SEPARATE flag from the reads above, mirroring backend
-// `Platform:AccessReviewWriteEnabled` (independent of AccessReviewReadEnabled).
+// Write (Phase-5 Slice 18) — was gated behind a SEPARATE flag from the reads above
+// (`Platform:AccessReviewWriteEnabled`, independent of AccessReviewReadEnabled). That flag is
+// now confirmed live and the TS side deleted (2026-07-31), so `useAccessReviewAttest` below is
+// unconditionally C#-only — see its docstring.
 // ---------------------------------------------------------------------------
 
 interface MutationOptions<TData = void> {
@@ -265,11 +273,29 @@ interface AttestAccessReviewInputShape {
   notes?: string;
 }
 
-/** PLATFORM-OWNER: record a quarterly recertification attestation. */
+// Hand-declared (there is no tRPC procedure left to infer from — `attestAccessReview` was
+// deleted from the router 2026-07-31). Mirrors the C# `AccessReviewService.AttestAsync` response.
+interface AttestAccessReviewOutput {
+  id: string;
+  organizationId: string;
+  reviewerId: string;
+  reviewedAt: Date;
+  userCount: number;
+  privilegedCount: number;
+  staleCount: number;
+  deprovisionGapCount: number;
+  expiredGapCount: number;
+  notes: string | null;
+}
+
+/**
+ * PLATFORM-OWNER: record a quarterly recertification attestation.
+ * C#-ONLY — the TS tRPC procedure `attestAccessReview` was deleted 2026-07-31
+ * (`NEXT_PUBLIC_ACCESS_REVIEW_WRITE_VIA_CSHARP` confirmed live, parity-verified 3/3 PASS via
+ * `scripts/parity/cli.ts verify-write access-review`). No more tRPC fallback, no gate check.
+ */
 export function useAccessReviewAttest(options?: MutationOptions<AttestAccessReviewOutput>) {
-  const viaCSharp = isPlatformApiEnabled() && ACCESS_REVIEW_WRITE_VIA_CSHARP;
-  const trpcMutation = trpc.platform.attestAccessReview.useMutation(options);
-  const csharpMutation = useCSharpMutation(async (input: AttestAccessReviewInputShape) => {
+  return useCSharpMutation(async (input: AttestAccessReviewInputShape) => {
     const raw = (await platformPostRaw('/access-review/attest', {
       organizationId: input.organizationId,
       notes: input.notes,
@@ -296,7 +322,6 @@ export function useAccessReviewAttest(options?: MutationOptions<AttestAccessRevi
       deprovisionGapCount: num(raw.deprovisionGapCount),
       expiredGapCount: num(raw.expiredGapCount),
       notes: raw.notes,
-    } as AttestAccessReviewOutput;
+    } satisfies AttestAccessReviewOutput;
   }, options);
-  return viaCSharp ? csharpMutation : trpcMutation;
 }

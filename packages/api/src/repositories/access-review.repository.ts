@@ -52,32 +52,9 @@ export const accessReviewRepository = {
     });
   },
 
-  async insertAttestation(data: {
-    organizationId: string;
-    reviewerId: string;
-    userCount: number;
-    privilegedCount: number;
-    staleCount: number;
-    deprovisionGapCount: number;
-    expiredGapCount: number;
-    notes: string | null;
-  }) {
-    return db.accessReview.create({
-      data,
-      select: {
-        id: true,
-        organizationId: true,
-        reviewerId: true,
-        reviewedAt: true,
-        userCount: true,
-        privilegedCount: true,
-        staleCount: true,
-        deprovisionGapCount: true,
-        expiredGapCount: true,
-        notes: true,
-      },
-    });
-  },
+  // NOTE: `insertAttestation` and `orgExists` were DELETED 2026-07-31 alongside
+  // `accessReviewService.attest()` — the C# write path is confirmed live and is now the sole
+  // writer of `access_reviews`. See `packages/api/src/services/access-review.service.ts`.
 
   async listAttestations(organizationId: string, limit: number) {
     return db.accessReview.findMany({
@@ -96,11 +73,5 @@ export const accessReviewRepository = {
         reviewer: { select: { firstName: true, lastName: true, email: true } },
       },
     });
-  },
-
-  /** Verify the target org exists (attest requires a real org for the FK + message). */
-  async orgExists(organizationId: string): Promise<boolean> {
-    const org = await db.organization.findUnique({ where: { id: organizationId }, select: { id: true } });
-    return !!org;
   },
 };

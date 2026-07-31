@@ -120,11 +120,13 @@ const read = (p: string) => readFileSync(join(ROOT, p), 'utf8');
 describe('wiring — access-review surface', () => {
   const router = () => read('packages/api/src/routers/platform/access-review.ts');
 
-  it('report / export / attest / history are platform-only procedures', () => {
+  it('report / export / history are platform-only procedures', () => {
+    // NOTE: `attestAccessReview` (the write) was DELETED 2026-07-31 — its C# port is confirmed
+    // live and is now the sole writer of `access_reviews`. This assertion used to also cover it;
+    // see the security-event/repository assertions below for what replaced its coverage.
     const src = router();
     expect(src).toMatch(/getAccessReview:\s*platformProcedure/);
     expect(src).toMatch(/exportAccessReviewCsv:\s*platformProcedure/);
-    expect(src).toMatch(/attestAccessReview:\s*platformProcedure/);
     expect(src).toMatch(/listAccessReviewAttestations:\s*platformProcedure/);
   });
 
@@ -150,17 +152,15 @@ describe('wiring — access-review surface', () => {
     expect(sharedCsv).toMatch(/\^\[=\+/);
   });
 
-  it('attest refuses a truncated org rather than persist under-counted evidence', () => {
-    expect(read('packages/api/src/services/access-review.service.ts')).toMatch(
-      /report\.truncated[\s\S]*PRECONDITION_FAILED|PRECONDITION_FAILED/,
-    );
-  });
-
-  it('attest records an access_recertified security event (router) + writes the snapshot (repo)', () => {
-    expect(router()).toMatch(/logSecurityEvent/);
-    expect(router()).toMatch(/access_recertified/);
-    expect(read('packages/api/src/repositories/access-review.repository.ts')).toMatch(/accessReview\.create/);
-  });
+  // NOTE: the two tests that used to live here — "attest refuses a truncated org rather than
+  // persist under-counted evidence" and "attest records an access_recertified security event
+  // (router) + writes the snapshot (repo)" — pinned the TS `attest()`/`attestAccessReview`
+  // implementation (PRECONDITION_FAILED refusal, `access_recertified` event, `accessReview.create`
+  // insert). That implementation was DELETED 2026-07-31: its C# port
+  // (`AccessReviewService.AttestAsync`) is confirmed live in prod
+  // (`NEXT_PUBLIC_ACCESS_REVIEW_WRITE_VIA_CSHARP=true`) and parity-verified 3/3 PASS via
+  // `scripts/parity/cli.ts verify-write access-review`, which is now the source of truth for this
+  // behavior instead of a TS-source regex pin.
 
   it('the access-review router is merged into the platform router', () => {
     const platformRoot = read('packages/api/src/routers/platform/index.ts');

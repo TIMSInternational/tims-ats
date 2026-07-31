@@ -1,5 +1,15 @@
 # Phase 5 Slice 18 — Access Review (CB-2b) → C# (design)
 
+> **HISTORICAL — informational only.** This is the original design doc (2026-07-26), written
+> when the surface was dark and untouched. As of 2026-07-31 the picture has changed: both flags
+> are confirmed live in prod, a real FE consumer was built (`apps/web/app/(admin)/platform/access-review/{page,attest-modal}.tsx` — the "no frontend consumer exists today" line below is stale), and the TS side of the WRITE (`attestAccessReview`/`attest()`/`insertAttestation`/
+> `orgExists`) has been deleted outright — C# is now the sole writer of `access_reviews`. The TS
+> READ procedures (getAccessReview/exportAccessReviewCsv/listAccessReviewAttestations) are
+> unaffected — their deletion is a separate, not-yet-done task. See
+> `docs/architecture/table-ownership.md`'s `access_reviews` entry and `docs/REMAINING-WORK.md`
+> for current status; the design/recipe content below is kept for historical context, not as a
+> live description of the surface.
+
 Date: 2026-07-26 · Domain #5 in the strangler order. Deferred from Slice 17
 (`phase-5-slice-17-audit-log-read.md:17-21`), which named this exact surface and predicted it would
 be a faster follow-up: it reuses tables already `efcoreReadOnly` since Phase 2, and reuses Slice 17's

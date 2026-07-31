@@ -138,7 +138,7 @@ number) and independently corroborated by the `flag:` field in `scripts/parity/s
 | `nine-box-write`      | write | `NineBoxWriteEnabled`       | `verify-write ninebox`       | `NEXT_PUBLIC_NINEBOX_WRITE_VIA_CSHARP`       | CONFIRMED LIVE                                                              |
 | `compensation-write`  | write | `CompensationWriteEnabled`  | `verify-write compensation`  | `NEXT_PUBLIC_COMPENSATION_WRITE_VIA_CSHARP`  | COEXISTENCE (flag live; both TS mutations deleted — see cutover.sh)         |
 | `engagement-write`    | write | `EngagementWriteEnabled`    | `verify-write engagement`    | `NEXT_PUBLIC_ENGAGEMENT_WRITE_VIA_CSHARP`    | COEXISTENCE (flag live; 3 of 5 TS mutations deleted — see cutover.sh)       |
-| `access-review-write` | write | `AccessReviewWriteEnabled`  | `verify-write access-review` | `NEXT_PUBLIC_ACCESS_REVIEW_WRITE_VIA_CSHARP` | FLIP-READY                                                                  |
+| `access-review-write` | write | `AccessReviewWriteEnabled`  | `verify-write access-review` | `NEXT_PUBLIC_ACCESS_REVIEW_WRITE_VIA_CSHARP` | CONFIRMED LIVE (TS side fully deleted — see cutover.sh)                     |
 
 Run `./scripts/deploy/cutover.sh --list` for the per-surface long-form notes (why each is
 classified the way it is, and every naming quirk below).
@@ -174,11 +174,14 @@ classified the way it is, and every naming quirk below).
 - **`audit-log` and `access-review` (both read and write) post-date the runbook doc.** The runbook
   (`PROD-DEPLOY-RUNBOOK-gate-g3.md`) was last updated 2026-07-23; Slices 17 (audit-log) and 18
   (access-review) merged after that (memory: PRs up to #215, 2026-07-27), so neither appears in the
-  doc's own §6 Phase A/B lists. This script classifies both as FLIP-READY based on
-  `PlatformOptions.cs` + team memory (merged to `main`, dark, code-ready) — but that classification
-  is this script's own inference, not a citation of the runbook's Phase A/B lists like every other
-  row is. Treat these two as "probably fine, but nobody has written the official classification
-  down yet" until the runbook doc gets its own update.
+  doc's own §6 Phase A/B lists. This script's original FLIP-READY classification for both was its
+  own inference (`PlatformOptions.cs` + team memory: merged to `main`, dark, code-ready), not a
+  citation of the runbook's Phase A/B lists like every other row is. **UPDATE 2026-07-31:**
+  `access-review-write` has since moved past that inference stage — its flag is confirmed live in
+  prod and its TS side is fully deleted (see the table row above and cutover.sh's note), so it is
+  no longer just "probably fine." `access-review` (read), `audit-log` (read), and every other
+  surface not yet flipped are still in the original "probably fine, but nobody has written the
+  official classification down yet" state until the runbook doc gets its own update.
 - **`reporting` and `evaluation360` (read) have their TS side deleted outright (2026-07-28).** The
   TS recruitment-analytics router and the TS evaluation360 router (plus both routers' FE tRPC
   fallback in `apps/web/lib/platform-api/{reporting,evaluation360}.ts`) were removed once the C#

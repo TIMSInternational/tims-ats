@@ -127,7 +127,12 @@ describe-service`; only the frontend Vercel flag was missing.)
     `attest-modal.tsx` already consumed the wrapper.) **WRITE ALSO FLIPPED AND LIVE 2026-07-31** —
     `NEXT_PUBLIC_ACCESS_REVIEW_WRITE_VIA_CSHARP=true`, backend `Platform__AccessReviewWriteEnabled`
     added via full-map `aws apprunner update-service`, parity-verified fresh 3/3 PASS immediately
-    before flipping.
+    before flipping. **UPDATE 2026-07-31 (TS deletion):** the TS side of the write
+    (`attestAccessReview` router procedure, `access-review.service.ts`'s `attest()`,
+    `access-review.repository.ts`'s `insertAttestation`/`orgExists`) has been DELETED outright — C#
+    is now the sole writer of `access_reviews`. The read procedures (getAccessReview/
+    exportAccessReviewCsv/listAccessReviewAttestations) are unaffected — their TS deletion is a
+    separate, not-yet-done task.
   - Engagement — read (#166). **FLIPPED AND LIVE IN PROD 2026-07-31** —
     `NEXT_PUBLIC_ENGAGEMENT_READ_VIA_CSHARP=true`. First attempt at this flip caught a real
     parity-verify failure (12/43 FAIL: apparent eNPS cross-tenant leak + hr_admin 403s everywhere) —

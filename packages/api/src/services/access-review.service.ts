@@ -1,10 +1,5 @@
-import { TRPCError } from '@trpc/server';
 import { accessReviewRepository } from '../repositories/access-review.repository';
-import {
-  assessUserAccess,
-  type AccessStatus,
-  type AccessRiskFlags,
-} from '../access/access-review-kernel';
+import { assessUserAccess, type AccessStatus, type AccessRiskFlags } from '../access/access-review-kernel';
 
 // CB-2b — access-review orchestration: apply the risk kernel, shape rows, compute the
 // per-org summary that feeds a recertification attestation. Pure of tRPC/audit concerns
@@ -53,8 +48,9 @@ export interface AccessReviewReport {
 }
 
 // The review is always ORG-SCOPED (the attestation/export/audit unit). One org is
-// bounded per-tenant, so a high safety cap guards memory; `attest` REFUSES a truncated
-// org rather than persist under-counted (false) evidence.
+// bounded per-tenant, so a high safety cap guards memory; the recertification write
+// (now C#-only — see below) refuses a truncated org rather than persist under-counted
+// (false) evidence.
 const ORG_CAP = 10000;
 
 type ReviewUser = Awaited<ReturnType<typeof accessReviewRepository.fetchUsersForReview>>[number];
@@ -120,40 +116,12 @@ export const accessReviewService = {
     };
   },
 
-  /**
-   * Record a per-org recertification: recompute the org's snapshot and persist it as
-   * durable CC6.2–6.3 evidence. REFUSES a truncated org (would persist under-counted =
-   * false compliance evidence). Returns the attestation + the summary it was built from.
-   */
-  async attest(
-    organizationId: string,
-    reviewerId: string,
-    notes: string | null,
-    now: Date,
-  ): Promise<{ attestation: Awaited<ReturnType<typeof accessReviewRepository.insertAttestation>>; summary: AccessReviewSummary }> {
-    if (!(await accessReviewRepository.orgExists(organizationId))) {
-      throw new TRPCError({ code: 'NOT_FOUND', message: 'Organizacion no encontrada' });
-    }
-    const report = await this.buildReport(organizationId, now);
-    if (report.truncated) {
-      throw new TRPCError({
-        code: 'PRECONDITION_FAILED',
-        message: `La organizacion excede ${ORG_CAP} usuarios; no se puede certificar automaticamente sin subcontar`,
-      });
-    }
-    const { summary } = report;
-    const attestation = await accessReviewRepository.insertAttestation({
-      organizationId,
-      reviewerId,
-      userCount: summary.userCount,
-      privilegedCount: summary.privilegedCount,
-      staleCount: summary.staleCount,
-      deprovisionGapCount: summary.deprovisionGapCount,
-      expiredGapCount: summary.expiredGapCount,
-      notes,
-    });
-    return { attestation, summary };
-  },
+  // NOTE: `attest()` (recompute → refuse-if-truncated → `insertAttestation`) was DELETED
+  // 2026-07-31 — its C# port (`AccessReviewService.AttestAsync`) is confirmed live
+  // (`NEXT_PUBLIC_ACCESS_REVIEW_WRITE_VIA_CSHARP=true`, parity-verified 3/3 PASS) and is now
+  // the sole writer of `access_reviews`. `buildReport` above stays in TS: it also backs the
+  // read procedures below (`getAccessReview`/`exportAccessReviewCsv`) — their READ flag is
+  // separately live, but their TS deletion is a distinct, out-of-scope task.
 
   listAttestations(organizationId: string, limit: number) {
     return accessReviewRepository.listAttestations(organizationId, limit);
