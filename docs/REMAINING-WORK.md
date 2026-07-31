@@ -106,7 +106,14 @@ wrapped in `if (options.<X>Enabled || isOpenApiDocGeneration) { ... }`, defaulti
     `NEXT_PUBLIC_DEI_READ_VIA_CSHARP=true`, parity-verified fresh 50/50 PASS immediately before
     flipping. Real FE consumers: `apps/web/app/(admin)/engagement/dei/*`,
     `apps/web/app/(admin)/dashboard/hr-exec-dashboard.tsx`,
-    `apps/web/app/(admin)/compensation/comp-left-column.tsx`.
+    `apps/web/app/(admin)/compensation/comp-left-column.tsx`. **TS deletion 2026-07-31:** 8 of the
+    router's 10 procedures were deleted (`getDashboardKpis`, `getGenderRepresentation`,
+    `getAgeDistribution`, `getNationalityDiversity`, `getPayEquity`, `getLeadershipDiversity`,
+    `getHiringFunnel`, `getPromotionEquity`, `getInclusionIndex` — 9 counting pay-equity, which
+    shares this domain's ONE FE flag despite its own separate `Platform:FxReadsEnabled` backend
+    gate); the FE wrapper (`apps/web/lib/platform-api/dei.ts`) now calls the C# service
+    unconditionally for all 9. `getEthnicityDistribution`/`getDisabilityDistribution` are
+    **deliberately retained** as untouched, pre-existing zero-FE-consumer dead code.
   - External-vendor — read (#139) + write (#140/#151). **READ FLIPPED AND LIVE IN PROD 2026-07-31** —
     `EXTERNAL_VENDOR_READ_VIA_CSHARP=true` (a plain server env var, not `NEXT_PUBLIC_`, since this
     surface is TS-server-to-C# rather than browser-to-C#). Re-checked for code drift since the
@@ -163,9 +170,9 @@ describe-service`; only the frontend Vercel flag was missing.)
     reporting, team-intel, evaluation360, succession, compensation, nine-box, engagement, DEI, audit-log,
     FX-dependent compensation/DEI reads) have a `useX()` hook per read, originally dark and mirroring the exact
     tRPC output type — though for domains whose flag has since gone live and whose TS procedures were
-    subsequently deleted (reporting, evaluation360, team-intel, billing-usage, succession, nine-box, and
-    compensation's 5 FX-free reads) the hook is now C#-only with hand-declared types, no longer dark and no
-    longer mirroring a tRPC output
+    subsequently deleted (reporting, evaluation360, team-intel, billing-usage, succession, nine-box,
+    compensation's 5 FX-free reads, and DEI's 9 of 10) the hook is now C#-only with hand-declared types, no
+    longer dark and no longer mirroring a tRPC output
     type — **including billing's invoice-read** (`billing.listInvoices`/`billing.getInvoice`,
     `packages/api/src/routers/billing.ts:58,83`, backend PR #141, ported by `BillingReadEndpoints.cs` behind
     `Platform:BillingReadEnabled`): a 2026-07-27 gap audit (cutover-automation script flagged the missing

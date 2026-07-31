@@ -99,13 +99,15 @@ export function HrExecDashboard() {
                 icon={<Dot index={4} />}
                 iconBg={CARD_BG_COLORS[4]}
               />
-              {/* Diversity — DEI headline = leadershipWomenPct. dei.getDashboardKpis
-                  returns this as a PERCENTAGE that is already `null` when ANY
-                  leader-gender group is below the min-5 floor (dei.service.ts
-                  anyLeaderGenderSuppressed). It is never a raw 1..4 head-count.
-                  Routed through suppressedValue with suppressed=false so the
-                  null-when-suppressed case renders the em-dash placeholder — a
-                  sub-floor demographic value can never reach the DOM. */}
+              {/* Diversity — DEI headline = leadershipWomenPct. useDeiDashboardKpis (C#-only
+                  since the 2026-07-31 TS deletion — see lib/platform-api/dei.ts) returns this
+                  as a PERCENTAGE that is already `null` when ANY leader-gender group is below
+                  the min-5 floor (the same anyLeaderGenderSuppressed guard, now applied
+                  server-side by the C# port of the @tims/shared deiDashboardKpis kernel — see
+                  packages/shared/src/dei.ts, golden-fixtured against Tims.Domain.Dei.DeiKernels).
+                  It is never a raw 1..4 head-count. Routed through suppressedValue with
+                  suppressed=false so the null-when-suppressed case renders the em-dash
+                  placeholder — a sub-floor demographic value can never reach the DOM. */}
               <KpiCard
                 label={hr.diversity}
                 value={suppressedValue(dei.data?.leadershipWomenPct, false, t.common.notDisclosed)}

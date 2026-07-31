@@ -28,47 +28,48 @@ Run `./scripts/deploy/cutover.sh --list` for the full surface table (flag name, 
 flag, and CONFIRMED LIVE / FLIP-READY / COEXISTENCE / TS DELETED status per
 [the runbook's §6 classification](../../docs/architecture/csharp-migration/PROD-DEPLOY-RUNBOOK-gate-g3.md#6-per-surface-cutover-one-flag-at-a-time-ts-stays-until-prod-verified)).
 
-## Worked example: cutting over `dei`
+## Worked example: cutting over `engagement`
 
 ```bash
 # 1) Verify — safe, non-mutating, needs scripts/parity/.env populated (see scripts/parity/README.md)
 #    and a live, reachable C# service.
-./scripts/deploy/cutover.sh dei --verify-only
+./scripts/deploy/cutover.sh engagement --verify-only
 
 # 2) Once that's green, flip the backend flag AND re-verify in the same breath — the script
 #    refuses to flip unless a verify pass is bundled into the same invocation (see "sequencing
 #    safety" below). --yes is what actually executes the AWS CLI call; without it you get a
 #    dry-run printout of the exact command.
-./scripts/deploy/cutover.sh dei --verify-only --flip-backend --yes
+./scripts/deploy/cutover.sh engagement --verify-only --flip-backend --yes
 
-# 3) Canary/monitor per the runbook, then flip the FE flag too (NEXT_PUBLIC_DEI_READ_VIA_CSHARP=true
-#    in Vercel Production + redeploy) — this script does not touch Vercel; that step stays manual
-#    per the runbook (§6: "The flag alone does not move the FE.").
+# 3) Canary/monitor per the runbook, then flip the FE flag too
+#    (NEXT_PUBLIC_ENGAGEMENT_READ_VIA_CSHARP=true in Vercel Production + redeploy) — this script
+#    does not touch Vercel; that step stays manual per the runbook (§6: "The flag alone does not
+#    move the FE.").
 
 # If anything looks wrong at any point, roll back immediately — no re-verify needed:
-./scripts/deploy/cutover.sh dei --rollback --yes
+./scripts/deploy/cutover.sh engagement --rollback --yes
 ```
 
-**Why `dei` and not one of the other surfaces?** A worked example is only honest on a surface that
-is genuinely still un-flipped AND still has a live TS side to verify against. As of 2026-07-29 most
-surfaces fail one half or the other (`audit-log` joined this group on 2026-07-31, after this
-rationale was written — see below). `reporting`, `evaluation360` (read), `team-intel`,
-`billing-usage`, and (since 2026-07-31) `audit-log` had their TS routers/procedures deleted
-outright (the C# read path is the sole implementation now — each time only the specific dead
-procedure(s) were removed, so team-intel's and billing.ts's routers stay alive for their other,
-still-dark-or-unrelated procedures), so `--verify-only` for any of them is a no-op that prints an
-explanatory notice and exits 0 rather than running a real check. `succession`, `nine-box` and `compensation` are already CONFIRMED LIVE in prod
-with their TS side partially deleted, so "flip the flag" and "roll back" no longer describe reality
-for them — `compensation` in particular held this walkthrough until 2026-07-29, when 5 of its 7
-registered read procedures were deleted. `dei` read is the cleanest remaining demonstration:
-`NEXT_PUBLIC_DEI_READ_VIA_CSHARP` does not exist in Vercel yet, the whole TS DEI router is live, and
-`verify dei` runs a real 10-endpoint parity/RLS/RBAC check. (`engagement` read is in the same state
-and substitutes cleanly if DEI ever flips first — engagement's 2026-07-29 TS deletion touched ONLY
-its WRITE side, 3 of 5 mutations, leaving all 14 reads and the real 9-endpoint `verify engagement`
-check fully intact. `engagement-write` itself is therefore now a partial-TS-deletion surface too,
-but that does not affect the read worked example.) One DEI caveat, also printed by `--list`:
-`dei.getPayEquity` is gated by the separate `Platform:FxReadsEnabled` flag and is NOT covered by
-this surface.
+**Why `engagement` and not one of the other surfaces?** A worked example is only honest on a surface
+that is genuinely still un-flipped AND still has a live TS side to verify against. As of 2026-07-31
+most surfaces fail one half or the other. `reporting`, `evaluation360` (read), `team-intel`,
+`billing-usage`, and `audit-log` had their TS routers/procedures deleted outright (the C# read path
+is the sole implementation now — each time only the specific dead procedure(s) were removed, so
+team-intel's and billing.ts's routers stay alive for their other, still-dark-or-unrelated
+procedures), so `--verify-only` for any of them is a no-op that prints an explanatory notice and
+exits 0 rather than running a real check. `succession`, `nine-box`, `compensation`, and now `dei`
+are already CONFIRMED LIVE in prod with their TS side partially deleted, so "flip the flag" and
+"roll back" no longer describe reality for them — `dei` held this walkthrough until 2026-07-31, when
+9 of its 11 registered read procedures were deleted (only getEthnicityDistribution/
+getDisabilityDistribution, both zero-FE-consumer exceptions, still have a TS side). `engagement`
+read is the cleanest remaining demonstration: `NEXT_PUBLIC_ENGAGEMENT_READ_VIA_CSHARP` does not
+exist in Vercel yet, the whole TS engagement router's reads are live (its 2026-07-29 TS deletion
+touched ONLY the WRITE side, 3 of 5 mutations — `engagement-write` itself is therefore now a
+partial-TS-deletion surface, but that does not affect the read worked example), and `verify
+engagement` runs a real 9-endpoint parity/RLS/RBAC check (5 by-id reads deferred — see
+surfaces.ts). DEI's own caveat, also printed by `--list`: `dei.getPayEquity` was gated by the
+separate `Platform:FxReadsEnabled` flag but shared DEI's ONE FE flag, so its TS side was deleted in
+the same pass as the other 8 despite that backend-flag split.
 
 ## Sequencing safety (the guardrail)
 
@@ -131,7 +132,7 @@ number) and independently corroborated by the `flag:` field in `scripts/parity/s
 | `compensation`        | read  | `CompensationReadEnabled`   | `verify compensation`          | `NEXT_PUBLIC_COMPENSATION_READ_VIA_CSHARP`   | CONFIRMED LIVE (partial TS deletion — 5/7 read procedures, see cutover.sh)  |
 | `nine-box`            | read  | `NineBoxReadEnabled`        | `verify ninebox`               | `NEXT_PUBLIC_NINEBOX_READ_VIA_CSHARP`        | CONFIRMED LIVE (partial TS deletion — 7/11 read procedures, see cutover.sh) |
 | `engagement`          | read  | `EngagementReadEnabled`     | `verify engagement`            | `NEXT_PUBLIC_ENGAGEMENT_READ_VIA_CSHARP`     | FLIP-READY                                                                  |
-| `dei`                 | read  | `DeiReadEnabled`            | `verify dei`                   | `NEXT_PUBLIC_DEI_READ_VIA_CSHARP`            | FLIP-READY                                                                  |
+| `dei`                 | read  | `DeiReadEnabled`            | `verify dei`                   | `NEXT_PUBLIC_DEI_READ_VIA_CSHARP`            | CONFIRMED LIVE (partial TS deletion — 9/11 read procedures, see cutover.sh) |
 | `audit-log`           | read  | `AuditLogReadEnabled`       | `NONE` (TS procedures deleted) | `NEXT_PUBLIC_AUDIT_LOG_READ_VIA_CSHARP`      | TS DELETED                                                                  |
 | `access-review`       | read  | `AccessReviewReadEnabled`   | `NONE` (TS procedures deleted) | `NEXT_PUBLIC_ACCESS_REVIEW_READ_VIA_CSHARP`  | TS DELETED                                                                  |
 | `evaluation360-write` | write | `Evaluation360WriteEnabled` | `verify-write evaluation360`   | `NEXT_PUBLIC_EVALUATION360_WRITE_VIA_CSHARP` | FLIP-READY                                                                  |

@@ -87,22 +87,13 @@ describe('SURFACES', () => {
     }
   });
 
-  it('dei is registered with its flag + the 10 reads, ALL grant-only (hrbp denied everywhere — no dei grant at all)', () => {
+  it('dei is registered with its flag + the 2 zero-FE-consumer reads, ALL grant-only (hrbp denied everywhere — no dei grant at all)', () => {
     const s = SURFACES['dei'];
     expect(s.flag).toBe('Platform__DeiReadEnabled');
     expect(s.probeRole).toBe('super_admin');
-    expect(s.endpoints.map((e) => e.name).sort()).toEqual([
-      'age-distribution',
-      'dashboard-kpis',
-      'disability-distribution',
-      'ethnicity-distribution',
-      'gender-representation',
-      'hiring-funnel',
-      'inclusion-index',
-      'leadership-diversity',
-      'nationality-diversity',
-      'promotion-equity',
-    ]);
+    // 2026-07-31: shrunk from 10 to 2 — the other 8 TS procedures were deleted (C#-only now),
+    // leaving only the two zero-FE-consumer procedures that were deliberately retained.
+    expect(s.endpoints.map((e) => e.name).sort()).toEqual(['disability-distribution', 'ethnicity-distribution']);
     // pay-equity is deliberately excluded (separate Platform__FxReadsEnabled flag).
     expect(s.endpoints.find((e) => e.name === 'pay-equity')).toBeUndefined();
     for (const e of s.endpoints) {
