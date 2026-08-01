@@ -21,7 +21,8 @@
       "@tims/shared": ["packages/shared/src/index.ts"],
       "@tims/ai": ["packages/ai/src/index.ts"],
       "@trpc/server": ["packages/api/node_modules/@trpc/server"],
-      "@prisma/client": ["packages/api/node_modules/@prisma/client"]
+      "@prisma/client": ["packages/api/node_modules/@prisma/client"],
+      "exceljs": ["packages/api/node_modules/exceljs"]
     }
   },
   "exclude": ["node_modules"]

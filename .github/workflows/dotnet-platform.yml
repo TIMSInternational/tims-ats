@@ -98,6 +98,11 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 22
-      # Dependency-free (Node stdlib) — no install needed. Fails a cross-owner PR.
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Dependency-free at runtime (Node stdlib) — install above only exists so
+      # setup-node's pnpm cache always has a real store to save/restore; without
+      # it, a pnpm-lock.yaml hash change (cache miss) fails the cache-save
+      # post-step even though this check itself passes. Fails a cross-owner PR.
       - name: Check table ownership
         run: node scripts/table-ownership.mjs

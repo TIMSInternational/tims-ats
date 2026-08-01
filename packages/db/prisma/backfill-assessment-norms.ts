@@ -6,7 +6,16 @@
  * Computes band/percentile for every already-completed, non-partial
  * AssessmentResult using TODAY's full population per org + assessment type —
  * a one-off catch-up, not a re-run of point-in-time history (see spec's
- * "Backfill" section). Safe to re-run: deterministically overwrites.
+ * "Backfill" section).
+ *
+ * Safe to re-run — but NOT by re-computing/overwriting: `--apply` only ever
+ * writes a row whose `band` is still NULL (issue #17). A stable snapshot
+ * (band/percentile/normSampleSize) is an invariant of the design spec once
+ * live scoring has set it — an unconditional overwrite here would silently
+ * reshuffle already-live-scored bands (population membership shifts every
+ * time someone else completes the same assessment type) if this script were
+ * ever re-run after live scoring started. An already-scored row is left
+ * untouched, loudly, in both dry-run and apply output.
  *
  * Usage:
  *   pnpm --filter @tims/db exec tsx prisma/backfill-assessment-norms.ts           # DRY-RUN (default)
@@ -99,7 +108,9 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const orgs = await db.organization.findMany({ select: { id: true, slug: true } });
     console.log(`Found ${orgs.length} organization(s)\n`);
 
-    let totalUpdated = 0;
+    let totalConsidered = 0;
+    let totalWritten = 0;
+    let totalSkippedAlreadyScored = 0;
 
     for (const org of orgs) {
       const results = await db.assessmentResult.findMany({
@@ -108,9 +119,17 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
           assignmentId: true,
           normalizedScore: true,
           breakdown: true,
+          band: true,
           assignment: { select: { assessmentTypeId: true, status: true } },
         },
       });
+
+      // Snapshot of each result's CURRENT band as of this read — the guard's
+      // preview. The authoritative guard is the DB-level `band: null` filter
+      // on the write itself (below), which stays correct even if a live
+      // scoring write lands between this read and the apply loop; this map
+      // only drives the loud dry-run/apply reporting.
+      const currentBandByAssignment = new Map(results.map((r) => [r.assignmentId, r.band]));
 
       const rows: ResultRow[] = results
         .filter((r) => r.assignment.status === 'completed')
@@ -122,25 +141,52 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
         }));
 
       const plan = computeBackfillPlan(rows);
-      // NOTE: this counts every non-partial result considered on this run, not
+      // NOTE: this counts every non-partial result CONSIDERED on this run, not
       // a diff against previously-stored values — a second run against
-      // already-backfilled data will log the same count again since it always
-      // recomputes deterministically (see file header). Not a bug, just not
-      // an "X changed" count.
-      console.log(`  [${org.slug}] ${plan.length} non-partial result(s) would be recomputed`);
-      totalUpdated += plan.length;
+      // already-backfilled data will log the same "considered" count again
+      // since planning always recomputes deterministically (see file header).
+      // What changes on a re-run is the eligible/skipped split below.
+      const eligibleToWrite = plan.filter((row) => currentBandByAssignment.get(row.assignmentId) == null);
+      const alreadyScored = plan.length - eligibleToWrite.length;
+
+      console.log(
+        `  [${org.slug}] ${plan.length} non-partial result(s) considered — ` +
+          `${eligibleToWrite.length} eligible to write (band IS NULL), ` +
+          `${alreadyScored} already scored`,
+      );
+      if (alreadyScored > 0) {
+        console.log(
+          `  [${org.slug}] *** SKIPPING ${alreadyScored} row(s) that already have a non-null band — ` +
+            `re-running this script NEVER overwrites an already-scored result (issue #17). ` +
+            `If you expected a full recompute, this is NOT that script. ***`,
+        );
+      }
+
+      totalConsidered += plan.length;
+      totalSkippedAlreadyScored += alreadyScored;
 
       if (!APPLY) continue;
 
       for (const row of plan) {
-        await db.assessmentResult.update({
-          where: { assignmentId: row.assignmentId },
+        // The real guard: only write a row that is STILL unscored (band IS
+        // NULL) at write time. `updateMany`'s WHERE clause is the atomic
+        // boundary — matches 0 rows for an already-scored assignment (whether
+        // it was already scored before this script ran, or was scored by a
+        // concurrent live submission after the read above), so `count` tells
+        // us the truth even under a race the in-memory snapshot could miss.
+        const result = await db.assessmentResult.updateMany({
+          where: { assignmentId: row.assignmentId, band: null },
           data: { percentile: row.percentile, band: row.band, normSampleSize: row.normSampleSize },
         });
+        totalWritten += result.count;
       }
     }
 
-    console.log(`\nmode=${APPLY ? 'APPLY' : 'DRY-RUN'} orgs=${orgs.length} total-rows=${totalUpdated}`);
+    console.log(
+      `\nmode=${APPLY ? 'APPLY' : 'DRY-RUN'} orgs=${orgs.length} considered=${totalConsidered} ` +
+        `${APPLY ? `written=${totalWritten}` : `would-write=${totalConsidered - totalSkippedAlreadyScored}`} ` +
+        `skipped-already-scored=${totalSkippedAlreadyScored}`,
+    );
   };
 
   main()

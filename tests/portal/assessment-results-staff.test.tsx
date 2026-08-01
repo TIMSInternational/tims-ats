@@ -30,6 +30,12 @@ describe('AssessmentResults staff surfacing — norm band', () => {
       fitScores: [],
     });
     expect(screen.getByText(en.assessmentPlayer.bandLabels.above_average)).toBeInTheDocument();
+    // Issue #15 — sample-size label must render next to the band label. Match
+    // the exact i18n string with the value substituted, not just the raw
+    // number, since resultSampleSizeLabel wraps it in a longer sentence.
+    expect(
+      screen.getByText(en.assessmentPlayer.resultSampleSizeLabel.replace('{sampleSize}', '12')),
+    ).toBeInTheDocument();
   });
 
   it('renders no band label when band is null (no norm data yet)', () => {

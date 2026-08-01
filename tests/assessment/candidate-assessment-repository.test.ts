@@ -67,29 +67,41 @@ describe('candidateAssessmentWriteRepo.findQuestionsWithAnswerKeyInTx', () => {
   });
 });
 
-describe('candidateAssessmentWriteRepo.listOtherNormalizedScoresInTx', () => {
-  it('selects only normalizedScore for other non-partial completed results, same org+type, excluding self', async () => {
-    const mockTx = {
-      assessmentResult: {
-        findMany: vi.fn().mockResolvedValue([{ normalizedScore: 70 }, { normalizedScore: 85 }]),
-      },
-    };
-    const scores = await candidateAssessmentWriteRepo.listOtherNormalizedScoresInTx(
+describe('candidateAssessmentWriteRepo.getNormCountsInTx (issue #16 — count-based, no full-population fetch)', () => {
+  it('issues 3 count() calls (below/equal/total) against the same org+type+non-partial scope, excluding self — never a findMany', async () => {
+    const countMock = vi
+      .fn()
+      .mockResolvedValueOnce(3) // countBelow
+      .mockResolvedValueOnce(1) // countEqual
+      .mockResolvedValueOnce(5); // sampleSize (total)
+    const mockTx = { assessmentResult: { count: countMock, findMany: vi.fn() } };
+
+    const result = await candidateAssessmentWriteRepo.getNormCountsInTx(
       mockTx as never,
       'org-1',
       'type-1',
       'assignment-self',
+      70,
     );
-    expect(scores).toEqual([70, 85]);
-    expect(mockTx.assessmentResult.findMany).toHaveBeenCalledWith({
-      where: {
-        organizationId: 'org-1',
-        normalizedScore: { not: null },
-        assignmentId: { not: 'assignment-self' },
-        assignment: { assessmentTypeId: 'type-1', status: 'completed' },
-        breakdown: { path: ['pendingManual'], equals: [] },
-      },
-      select: { normalizedScore: true },
+
+    expect(result).toEqual({ countBelow: 3, countEqual: 1, sampleSize: 5 });
+    expect(mockTx.assessmentResult.findMany).not.toHaveBeenCalled();
+    expect(countMock).toHaveBeenCalledTimes(3);
+
+    const baseScope = {
+      organizationId: 'org-1',
+      assignmentId: { not: 'assignment-self' },
+      assignment: { assessmentTypeId: 'type-1', status: 'completed' },
+      breakdown: { path: ['pendingManual'], equals: [] },
+    };
+    expect(countMock).toHaveBeenNthCalledWith(1, {
+      where: { ...baseScope, normalizedScore: { lt: 70 } },
+    });
+    expect(countMock).toHaveBeenNthCalledWith(2, {
+      where: { ...baseScope, normalizedScore: 70 },
+    });
+    expect(countMock).toHaveBeenNthCalledWith(3, {
+      where: { ...baseScope, normalizedScore: { not: null } },
     });
   });
 });

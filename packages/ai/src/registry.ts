@@ -119,6 +119,27 @@ export const AGENT_REGISTRY: Record<string, AgentDef> = {
     batchEligible: false,
     cacheTtlSeconds: 0,
   },
+  // Per-application recommendation — context (candidate + current stage) changes on
+  // every stage move, so caching would serve a stale "next action" ⇒ ttl 0.
+  'pipeline-optimizer': {
+    slug: 'pipeline-optimizer',
+    name: 'Pipeline Optimizer',
+    model: 'sonnet',
+    category: 'pipeline',
+    batchEligible: false,
+    cacheTtlSeconds: 0,
+  },
+  // Candidate <-> open-vacancy matching. Short TTL (not 0): the org's open-vacancy
+  // set changes slowly within a session, so a brief cache is safe, but it must not
+  // go stale across a full workday.
+  'candidate-matcher': {
+    slug: 'candidate-matcher',
+    name: 'Candidate Matcher',
+    model: 'sonnet',
+    category: 'recruitment',
+    batchEligible: true,
+    cacheTtlSeconds: 900,
+  },
 };
 
 // Process-local memo (the ai_agents catalog is global/immutable enough that an

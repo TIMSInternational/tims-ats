@@ -30,4 +30,18 @@ export const candidateAiRepository = {
       select: { id: true, title: true, description: true, settings: true },
     });
   },
+
+  /**
+   * Bounded, tenant-scoped set of this org's currently-open vacancies for the
+   * candidate-matcher agent — the only valid recommendation targets. "Open"
+   * mirrors vacancy/stats.ts's live-vacancy count (approved or published).
+   */
+  async getOpenVacanciesForMatching(orgId: string, limit: number) {
+    return db.vacancy.findMany({
+      where: { organizationId: orgId, status: { in: ['approved', 'published'] }, deletedAt: null },
+      take: limit,
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, title: true },
+    });
+  },
 };
