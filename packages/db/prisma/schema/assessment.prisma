@@ -52,18 +52,20 @@ model AssessmentAssignment {
 }
 
 model AssessmentResult {
-  id              String   @id @default(uuid()) @db.Uuid
-  organizationId  String   @map("organization_id") @db.Uuid
-  assignmentId    String   @unique @map("assignment_id") @db.Uuid
-  rawScore        Float?   @map("raw_score")
-  normalizedScore Float?   @map("normalized_score")
+  id              String     @id @default(uuid()) @db.Uuid
+  organizationId  String     @map("organization_id") @db.Uuid
+  assignmentId    String     @unique @map("assignment_id") @db.Uuid
+  rawScore        Float?     @map("raw_score")
+  normalizedScore Float?     @map("normalized_score")
   percentile      Float?
+  band            ScoreBand?
+  normSampleSize  Int?       @map("norm_sample_size")
   breakdown       Json?
   interpretation  Json?
-  modelVersion    String?  @map("model_version")
-  scoredAt        DateTime @default(now()) @map("scored_at")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  modelVersion    String?    @map("model_version")
+  scoredAt        DateTime   @default(now()) @map("scored_at")
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
 
   assignment AssessmentAssignment @relation(fields: [assignmentId], references: [id])
 
@@ -93,6 +95,13 @@ enum QuestionType {
   single_choice
   multi_choice
   free_text
+}
+
+enum ScoreBand {
+  below_average
+  average
+  above_average
+  excellent
 }
 
 model AssessmentQuestion {
