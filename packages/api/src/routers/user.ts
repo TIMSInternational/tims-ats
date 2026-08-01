@@ -8,18 +8,28 @@ import { logSecurityEvent } from '../access/security-audit';
 import { resolveStaffSupabaseUserId } from '../services/staff-provisioning.service';
 
 export const userRouter = router({
-  // Get current user profile
+  // Get current user profile. No real consumer exists today (grepped apps/web
+  // and tests — zero call sites), but this is a session/identity endpoint, so
+  // scope the select to profile-display fields rather than leave it wide open
+  // for whenever a consumer lands (issue #23).
   me: protectedProcedure.query(async ({ ctx }) => {
     return db.user.findUnique({
       where: { id: ctx.user.id },
-      include: {
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        avatar: true,
+        jobTitle: true,
+        isActive: true,
         userRoles: {
-          include: {
+          select: {
             role: { select: { id: true, name: true, slug: true } },
           },
         },
         teams: {
-          include: {
+          select: {
             team: { select: { id: true, name: true } },
           },
         },
