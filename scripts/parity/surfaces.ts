@@ -67,11 +67,14 @@ export const SURFACES: Record<string, Surface> = {
   // REAL parity/RLS/RBAC checks, not a no-op. One flag Platform:CompensationReadEnabled still gates
   // the C# side for all 7 backend endpoints; only these 2 have a TS side left to compare against.
   //
-  // FX EXCLUSION (unchanged): the 3 FE-consumed FX-dependent reads (getBandDistribution /
-  // getTotalCompBreakdown / getDashboardKpis) were NEVER registered here — they are gated by the
-  // separate Platform__FxReadsEnabled flag (the same FX-tied-endpoint exclusion applied to
-  // `dei.getPayEquity` further down this registry), and their TS implementations are DELIBERATELY
-  // RETAINED as the live production path for those 3 reads.
+  // FX EXCLUSION: the 3 FE-consumed FX-dependent reads (getBandDistribution / getTotalCompBreakdown
+  // / getDashboardKpis) were NEVER registered here — they were gated by the separate
+  // Platform__FxReadsEnabled flag (the same FX-tied-endpoint exclusion applied to
+  // `dei.getPayEquity` further down this registry). UPDATE 2026-07-31: that flag is now confirmed
+  // permanently live in prod, and these 3 procedures joined the other 5 already-removed
+  // compensation reads — their TS implementations were deleted outright
+  // (packages/api/src/routers/compensation.ts). They stay correctly UNREGISTERED here, same as
+  // before, since there is no TS side left to diff against for any of them.
   //
   // RBAC (seed grants hr_admin compensation:read@org, hrbp @unit): market-comparison is a grant-only
   // org-catalog read → hrbp 200; employee is subject-scoped → hrbp 403 (target ∉ its subject set).

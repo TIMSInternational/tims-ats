@@ -27,14 +27,8 @@ describe('S3 compensation approve/reject wiring', () => {
     expect(host).toMatch(/mode:\s*['"]reject['"]/);
   });
 
-  it('invalidates the C# platform-api compensation cache (pending-adjustments + compa-ratio are C#-only now)', () => {
+  it('invalidates the C# platform-api compensation cache (all compensation reads are C#-only now)', () => {
     expect(modal).toMatch(/queryClient\.invalidateQueries\(\{\s*queryKey:\s*\['platform-api',\s*'compensation'\]/);
-  });
-
-  it('invalidates the three surviving FX tRPC queries', () => {
-    expect(modal).toMatch(/utils\.compensation\.getDashboardKpis\.invalidate/);
-    expect(modal).toMatch(/utils\.compensation\.getBandDistribution\.invalidate/);
-    expect(modal).toMatch(/utils\.compensation\.getTotalCompBreakdown\.invalidate/);
   });
 
   it('renders inside the shared Modal', () => {

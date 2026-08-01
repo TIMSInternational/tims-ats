@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
 import { toast } from '../../../lib/toast';
 import { Modal } from '../../../components';
@@ -19,20 +18,15 @@ const MAX_COMMENT = 500;
 
 export function ApproveAdjustmentModal({ adjustmentId, employeeName, mode, onClose }: ApproveAdjustmentModalProps) {
   const { t } = useI18n();
-  const utils = trpc.useUtils();
   const queryClient = useQueryClient();
 
   const [comment, setComment] = useState('');
 
   const submit = useCompensationApproveAdjustment({
     onSuccess: () => {
-      // The 3 FX-dependent reads are still tRPC-served (NEXT_PUBLIC_COMPENSATION_FX_READ_VIA_CSHARP
-      // does not exist in Vercel yet), so their tRPC caches still need an explicit invalidate.
-      utils.compensation.getDashboardKpis.invalidate();
-      utils.compensation.getBandDistribution.invalidate();
-      utils.compensation.getTotalCompBreakdown.invalidate();
-      // pending-adjustments and compa-ratio-distribution are C#-only now (their tRPC procedures were
-      // deleted), so this prefix invalidation is the ONLY thing that refreshes them.
+      // All compensation reads (incl. the FX-dependent dashboard-kpis/band-distribution/
+      // total-comp-breakdown) are C#-only now — this prefix invalidation is the ONLY thing that
+      // refreshes any of them.
       queryClient.invalidateQueries({ queryKey: ['platform-api', 'compensation'] });
       toast(mode === 'approve' ? t.compensation.approveSuccess : t.compensation.rejectSuccess, { type: 'success' });
       onClose();

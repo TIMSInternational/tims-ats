@@ -5,17 +5,18 @@ import { join } from 'path';
 // Wave 2.5 slice 4 — static tripwires for the compensation module.
 // Compensation is the most sensitive module (salary data) — fail closed.
 //
-// Endpoint taxonomy — the 7 SURVIVING procedures. The other 7 (getSalaryBands,
+// Endpoint taxonomy — the 4 SURVIVING procedures. The other 10 (getSalaryBands,
 // getCompaRatioDistribution, getBenefitsUtilization, listPendingAdjustments, myCompensation,
-// createAdjustment, approveAdjustment) were DELETED on 2026-07-29 once their C# read/write
-// surfaces were confirmed live in prod; their guarantees now live in the C# implementation +
-// scripts/parity/{surfaces,write-surfaces}.ts.
+// createAdjustment, approveAdjustment — deleted 2026-07-29 — plus getBandDistribution,
+// getTotalCompBreakdown, getDashboardKpis — deleted in the FX-read TS-deletion pass once
+// NEXT_PUBLIC_COMPENSATION_FX_READ_VIA_CSHARP was confirmed permanently live) were DELETED once
+// their C# read/write surfaces were confirmed live in prod; their guarantees now live in the C#
+// implementation + scripts/parity/{surfaces,write-surfaces}.ts (and, for the min-5 shaping kernels
+// the deleted procedures used to delegate to, in tests/compensation/*-fixtures.test.ts, which
+// exercise the shared kernels directly against the golden fixtures both stacks share).
 //   getMarketComparison   → org catalog (salaryBand only, no per-person data)
 //                           UNTOUCHED — safe without scoping.
-//   getBandDistribution   → org-rollup aggregate  → requireOrgScope   (FX — still TS-served)
 //   getPayEquity          → org-rollup aggregate  → requireOrgScope
-//   getTotalCompBreakdown → org-rollup aggregate  → requireOrgScope   (FX — still TS-served)
-//   getDashboardKpis      → org-rollup aggregate  → requireOrgScope   (FX — still TS-served)
 //   simulateAdjustment    → per-person read (employeeCompensation by userId)
 //                           → assertSubjectInScope on input.userId
 //   getEmployeeComp       → per-person read (employeeCompensation by userId)
@@ -26,9 +27,9 @@ import { join } from 'path';
 
 const ROOT = join(__dirname, '..', '..');
 const read = () => readFileSync(join(ROOT, 'packages/api/src/routers/compensation.ts'), 'utf8');
-// Slice 11c (honest-fixture): the five FX-derived reads' min-5 shaping now lives in the shared kernels
-// (@tims/shared compensation.ts, golden-fixtured both stacks) and the router DELEGATES to them. Tripwires that
-// guarded the (formerly inline) suppression now read the kernel + assert the router calls the shaper.
+// Slice 11c (honest-fixture): getPayEquity's min-5 shaping lives in the shared kernel
+// (@tims/shared compensation.ts, golden-fixtured both stacks) and the router DELEGATES to it. The tripwire
+// that guards the (formerly inline) suppression reads the kernel + asserts the router calls the shaper.
 const readKernel = () => readFileSync(join(ROOT, 'packages/shared/src/compensation.ts'), 'utf8');
 
 describe('compensation module scope wiring', () => {
@@ -39,10 +40,13 @@ describe('compensation module scope wiring', () => {
     expect(src).toMatch(/scopeWhereFor\('employeeCompensation'|assertSubjectInScope/);
   });
 
-  it('org-rollup analytics gated via requireOrgScope (≥4 calls: getBandDistribution, getPayEquity, getTotalCompBreakdown, getDashboardKpis)', () => {
+  it('org-rollup analytics gated via requireOrgScope (≥1 call: getPayEquity)', () => {
+    // getBandDistribution/getTotalCompBreakdown/getDashboardKpis (also requireOrgScope-gated) were
+    // deleted in the FX-read TS-deletion pass — their gating guarantee now lives entirely in the C#
+    // implementation, not this TS source file.
     const src = read();
     const matches = src.match(/requireOrgScope/g) ?? [];
-    expect(matches.length).toBeGreaterThanOrEqual(4);
+    expect(matches.length).toBeGreaterThanOrEqual(1);
   });
 
   it('no file spreads a scope fragment (AND-composition invariant, CI check 13)', () => {
@@ -52,69 +56,16 @@ describe('compensation module scope wiring', () => {
   // ── Slice 6: min-5 k-anonymity suppression on aggregate counts ──────────
   // Defense in depth ON TOP of requireOrgScope. A salary bucket/band/group of
   // 1..4 employees must report a suppressed marker, never a raw count/avg/median.
-  it('imports suppressBelowMin5 from the access barrel', () => {
-    expect(read()).toMatch(/suppressBelowMin5.*from '\.\.\/access'/);
-  });
-
-  it('getBandDistribution routes bands through suppressBelowMin5 (EMPTY bands when any band suppressed, round 7 → shared kernel)', () => {
-    const k = readKernel();
-    // dots.length count is suppressed; round 7 (present-key cardinality) returns an EMPTY bands array — no
-    // per-band keys at all — when ANY band or the unbanded bucket is sub-floor. Lives in buildBandDistribution.
-    expect(k).toMatch(/suppressBelowMin5\(band\.dots\.length\)/);
-    expect(k).toMatch(/anyBandSuppressed\) return \[\]/);
-    // FIX 1: the positive-unbanded sub-bucket is folded into the trigger (differencing oracle).
-    expect(k).toMatch(/suppressBelowMin5\(positiveUnbanded\)\.suppressed/);
-    // The router delegates to the kernel.
-    expect(read()).toMatch(/buildBandDistribution\(/);
-  });
-
-  // ── Slice 6 round 3: implicit-bucket oracle (unbanded employees) ─────────
-  // Source tripwire — behavioral mock omitted because compensation.ts calls `db`
-  // (tenantDb) directly with no injected repository seam, so unit-mocking the DB
-  // would require heavy vitest module-level mocking that does not exist elsewhere
-  // in this test suite. A source tripwire is the established pattern here (see the
-  // slice 6 round 2 tripwires above) and gives the same CI guarantee.
-  //
-  // Attack the tripwire guards against:
-  //   20 banded employees (4 bands × 5 each) + 3 with bandId=null
-  //   → WITHOUT fix: unassignedCount=3 is NOT fed to the trigger
-  //     → anyBandSuppressed=false (all bands ≥5) → dots exposed
-  //     → attacker reads Σ(dots.length)=20, sees getTotalCompBreakdown.employeeCount=23
-  //     → 23−20 = 3 unbanded employees recovered
-  //   → WITH fix: suppressBelowMin5(3).suppressed=true added to the trigger
-  //     → anyBandSuppressed=true → all bands return dots:[]
-  //     → no visible dot-counts → oracle closed.
-  it('getBandDistribution counts bandId:null rows into the suppression trigger (implicit-bucket oracle, round 3)', () => {
-    const src = read();
-    // The router must query unassigned rows separately (bandId:null) …
-    expect(src).toMatch(/bandId:\s*null/);
-    // … and the shared kernel feeds the resulting count into the trigger expression.
-    const k = readKernel();
-    expect(k).toMatch(/suppressBelowMin5\(unassignedCount\)\.suppressed/);
-    // The trigger must OR the unbanded result with the per-band results.
-    expect(k).toMatch(/anyBandSuppressed\s*=\s*[\s\S]{0,300}suppressBelowMin5\(unassignedCount\)/);
-  });
-
+  // getPayEquity is the only surviving router-level consumer of this guarantee — the
+  // band-distribution/total-comp-breakdown/dashboard-kpis kernels' own min-5 shaping is exercised
+  // directly (not through the router) by tests/compensation/comp-fx-shaping-fixtures.test.ts, the
+  // same pattern already used for benefits-utilization/compa-ratio-distribution after their router
+  // procedures were deleted 2026-07-29.
   it('getPayEquity routes the group count through suppressBelowMin5 (shared kernel)', () => {
     const k = readKernel();
     // buildCompPayEquity floors the org-wide 'all' group count; a suppressed group nulls the salary stats.
     expect(k).toMatch(/suppressBelowMin5\(convertedSalaries\.length\)/);
     expect(k).toMatch(/averageSalary:\s*null,\s*medianSalary:\s*null/);
     expect(read()).toMatch(/buildCompPayEquity\(/);
-  });
-
-  it('the aggregate reads delegate their min-5 shaping to the shared kernels', () => {
-    const src = read();
-    for (const shaper of [
-      'buildBandDistribution',
-      'buildCompPayEquity',
-      'buildTotalCompBreakdown',
-      'buildCompDashboardKpis',
-    ]) {
-      expect(src, `router must call ${shaper}`).toMatch(new RegExp(`\\b${shaper}\\(`));
-    }
-    // The suppression floors themselves live in the kernel now (≥6 calls across the five shapers).
-    const calls = readKernel().match(/suppressBelowMin5\(/g) ?? [];
-    expect(calls.length).toBeGreaterThanOrEqual(6);
   });
 });

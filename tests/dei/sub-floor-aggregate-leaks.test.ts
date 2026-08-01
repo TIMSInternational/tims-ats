@@ -5,8 +5,6 @@ import { initTRPC } from '@trpc/server';
 // Closes the dashboard/summary endpoints that returned a salary/demographic/
 // engagement count/sum/avg/ratio computed over a 1..4-person population without a
 // min-5 floor. Covers:
-//   HIGH 2  getTotalCompBreakdown      → totals + employeeCount null + suppressed
-//   HIGH 3  compensation getDashboardKpis → payroll/avgSalary/compensated/avgCompaRatio
 //   HIGH 4  nationality/ethnicity sort  → order independent of hidden counts
 //   MEDIUM 5 simulateAdjustment select  → omits compaRatio/bandId for leader/employee
 //   MEDIUM 6 dei getDashboardKpis       → totalNationalities null when distribution hidden
@@ -17,7 +15,13 @@ import { initTRPC } from '@trpc/server';
 //    guards still live in the shared @tims/shared kernels (buildClimateHeatmap /
 //    buildEngagementKpis), covered by tests/engagement/kernels-fixtures.test.ts's golden-fixture
 //    parity + services/Tims.Platform/tests/Tims.IntegrationTests/Engagement/
-//    EngagementReadEndpointTests.cs on the C# side.)
+//    EngagementReadEndpointTests.cs on the C# side.
+//   HIGH 2 getTotalCompBreakdown / HIGH 3 compensation getDashboardKpis — ALSO REMOVED (same day,
+//    same pass): their TS procedures were deleted once NEXT_PUBLIC_COMPENSATION_FX_READ_VIA_CSHARP
+//    was confirmed permanently live. The underlying min-5 guards still live in the shared
+//    @tims/shared kernels (buildTotalCompBreakdown / buildCompDashboardKpis), covered by
+//    tests/compensation/comp-fx-shaping-fixtures.test.ts's golden-fixture parity + the C# port's
+//    own CompensationFxShapingKernelsFixtureTests.cs.)
 //
 // Compensation/engagement resolvers live inline in the router behind the full
 // middleware stack — we mock `../trpc` so permissionProcedure is a bare pass-through,
@@ -27,15 +31,8 @@ import { initTRPC } from '@trpc/server';
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared @tims/db + access + trpc mocks (compensation + engagement routers)
 // ─────────────────────────────────────────────────────────────────────────────
-const compFindMany = vi.fn();
-const compCount = vi.fn();
-const compAggregate = vi.fn();
 const compFindFirst = vi.fn();
 const bandFindUnique = vi.fn();
-const salaryAdjustmentCount = vi.fn();
-const userCount = vi.fn();
-const companyFindFirst = vi.fn();
-const benefitPlanFindMany = vi.fn();
 const surveyFindFirst = vi.fn();
 const surveyFindMany = vi.fn();
 const surveyCount = vi.fn();
@@ -43,16 +40,9 @@ const surveyCount = vi.fn();
 vi.mock('@tims/db', () => ({
   tenantDb: {
     employeeCompensation: {
-      findMany: (...a: unknown[]) => compFindMany(...a),
-      count: (...a: unknown[]) => compCount(...a),
-      aggregate: (...a: unknown[]) => compAggregate(...a),
       findFirst: (...a: unknown[]) => compFindFirst(...a),
     },
     salaryBand: { findUnique: (...a: unknown[]) => bandFindUnique(...a) },
-    salaryAdjustment: { count: (...a: unknown[]) => salaryAdjustmentCount(...a) },
-    user: { count: (...a: unknown[]) => userCount(...a) },
-    company: { findFirst: (...a: unknown[]) => companyFindFirst(...a) },
-    benefitPlan: { findMany: (...a: unknown[]) => benefitPlanFindMany(...a) },
     survey: {
       findFirst: (...a: unknown[]) => surveyFindFirst(...a),
       findMany: (...a: unknown[]) => surveyFindMany(...a),
@@ -104,25 +94,6 @@ const compCaller = (roles: string[] = ['super_admin']) =>
     access: { roles },
     headers: new Headers(),
   }) as unknown as {
-    getTotalCompBreakdown(input?: unknown): Promise<{
-      totalComp: number | null;
-      employeeCount: number | null;
-      suppressed: boolean;
-      breakdown: {
-        baseSalary: { total: number | null; percentage: number | null };
-        variablePay: { total: number | null; percentage: number | null };
-      };
-    }>;
-    getDashboardKpis(): Promise<{
-      totalMonthlyPayroll: number | null;
-      avgSalary: number | null;
-      compensatedEmployees: number | null;
-      compensatedSuppressed: boolean;
-      avgCompaRatio: number | null;
-      activeEmployees: number;
-      pendingAdjustments: number | null;
-      pendingAdjustmentsSuppressed: boolean;
-    }>;
     simulateAdjustment(input: { userId: string; proposedSalary: number }): Promise<Record<string, unknown>>;
   };
 
@@ -152,135 +123,10 @@ const engCaller = () =>
 
 beforeEach(() => {
   vi.clearAllMocks();
-  companyFindFirst.mockResolvedValue({ currency: 'USD' });
 });
 
-// ── HIGH 2: getTotalCompBreakdown min-5 floor ────────────────────────────────
-describe('getTotalCompBreakdown (HIGH 2)', () => {
-  const row = (base: number, variable: number) => ({ currentSalary: base, variablePay: variable });
-
-  it('N=3 → totalComp/base/variable/employeeCount null + suppressed', async () => {
-    compFindMany.mockResolvedValue([row(5_000_000, 1_000_000), row(4_000_000, 0), row(6_000_000, 500_000)]);
-    const r = await compCaller().getTotalCompBreakdown();
-    expect(r.suppressed).toBe(true);
-    expect(r.totalComp).toBeNull();
-    expect(r.employeeCount).toBeNull();
-    expect(r.breakdown.baseSalary.total).toBeNull();
-    expect(r.breakdown.variablePay.total).toBeNull();
-    expect(r.breakdown.baseSalary.percentage).toBeNull();
-  });
-
-  it('population >= 5 but a sub-floor variablePay-contributor set still suppresses', async () => {
-    // 6 base contributors, but only 2 have nonzero variablePay → variable sum is sub-floor.
-    compFindMany.mockResolvedValue([
-      row(5_000_000, 1_000_000),
-      row(5_000_000, 1_000_000),
-      row(5_000_000, 0),
-      row(5_000_000, 0),
-      row(5_000_000, 0),
-      row(5_000_000, 0),
-    ]);
-    const r = await compCaller().getTotalCompBreakdown();
-    expect(r.suppressed).toBe(true);
-    expect(r.totalComp).toBeNull();
-  });
-
-  it('all contributor populations >= 5 → real sums', async () => {
-    compFindMany.mockResolvedValue(Array.from({ length: 6 }, () => row(5_000_000, 1_000_000)));
-    const r = await compCaller().getTotalCompBreakdown();
-    expect(r.suppressed).toBe(false);
-    expect(r.totalComp).toBe(6 * 6_000_000);
-    expect(r.employeeCount).toBe(6);
-  });
-
-  it('empty population passes through as real zeros (no individual)', async () => {
-    compFindMany.mockResolvedValue([]);
-    const r = await compCaller().getTotalCompBreakdown();
-    expect(r.suppressed).toBe(false);
-    expect(r.totalComp).toBe(0);
-    expect(r.employeeCount).toBe(0);
-  });
-});
-
-// ── HIGH 3: compensation getDashboardKpis min-5 floor ────────────────────────
-describe('compensation getDashboardKpis (HIGH 3)', () => {
-  const stubSecondary = () => {
-    salaryAdjustmentCount.mockResolvedValue(0);
-    userCount.mockResolvedValue(50);
-    benefitPlanFindMany.mockResolvedValue([]);
-  };
-
-  it('compensated population 1..4 → payroll/avgSalary/compensatedEmployees null', async () => {
-    stubSecondary();
-    // aggregate (payroll) + count (compensated) + aggregate (compaRatio) + count (compaRatio)
-    compAggregate
-      .mockResolvedValueOnce({ _sum: { currentSalary: 12_000_000 }, _avg: { currentSalary: 4_000_000 } }) // payroll
-      .mockResolvedValueOnce({ _avg: { compaRatio: 1.02 } }); // compaRatio
-    compCount
-      .mockResolvedValueOnce(3) // compensated population (sub-floor)
-      .mockResolvedValueOnce(3); // compaRatio population (sub-floor)
-    const r = await compCaller().getDashboardKpis();
-    expect(r.totalMonthlyPayroll).toBeNull();
-    expect(r.avgSalary).toBeNull();
-    expect(r.compensatedEmployees).toBeNull();
-    expect(r.compensatedSuppressed).toBe(true);
-    expect(r.avgCompaRatio).toBeNull(); // compaRatio population also sub-floor
-    expect(r.activeEmployees).toBe(50); // org headcount stays
-  });
-
-  it('compensated >=5 but compaRatio population <5 → only avgCompaRatio null', async () => {
-    stubSecondary();
-    compFindMany.mockResolvedValue(Array.from({ length: 10 }, () => ({ currentSalary: 5_000_000, currency: 'USD' })));
-    compAggregate.mockResolvedValueOnce({ _avg: { compaRatio: 1.02 } });
-    compCount
-      .mockResolvedValueOnce(10) // compensated population clears floor
-      .mockResolvedValueOnce(3); // only 3 compaRatio rows → sub-floor
-    const r = await compCaller().getDashboardKpis();
-    expect(r.totalMonthlyPayroll).toBe(50_000_000);
-    expect(r.avgSalary).toBe(5_000_000);
-    expect(r.compensatedEmployees).toBe(10);
-    expect(r.avgCompaRatio).toBeNull();
-  });
-
-  it('all populations >= 5 → real values', async () => {
-    stubSecondary();
-    compFindMany.mockResolvedValue(Array.from({ length: 10 }, () => ({ currentSalary: 5_000_000, currency: 'USD' })));
-    compAggregate.mockResolvedValueOnce({ _avg: { compaRatio: 1.02 } });
-    compCount.mockResolvedValueOnce(10).mockResolvedValueOnce(10);
-    const r = await compCaller().getDashboardKpis();
-    expect(r.totalMonthlyPayroll).toBe(50_000_000);
-    expect(r.avgCompaRatio).toBe(1.02);
-    expect(r.compensatedSuppressed).toBe(false);
-  });
-
-  // round 7 finding 7: pendingAdjustments is a raw count over SalaryAdjustment
-  // (restricted). 3 pending → null + suppressed flag (sub-floor disclosure).
-  it('pendingAdjustments = 3 → null + pendingAdjustmentsSuppressed true', async () => {
-    userCount.mockResolvedValue(50);
-    benefitPlanFindMany.mockResolvedValue([]);
-    salaryAdjustmentCount.mockResolvedValue(3); // sub-floor
-    compAggregate
-      .mockResolvedValueOnce({ _sum: { currentSalary: 50_000_000 }, _avg: { currentSalary: 5_000_000 } })
-      .mockResolvedValueOnce({ _avg: { compaRatio: 1.02 } });
-    compCount.mockResolvedValueOnce(10).mockResolvedValueOnce(10);
-    const r = await compCaller().getDashboardKpis();
-    expect(r.pendingAdjustments).toBeNull();
-    expect(r.pendingAdjustmentsSuppressed).toBe(true);
-  });
-
-  it('pendingAdjustments = 7 → real count, not suppressed', async () => {
-    userCount.mockResolvedValue(50);
-    benefitPlanFindMany.mockResolvedValue([]);
-    salaryAdjustmentCount.mockResolvedValue(7);
-    compAggregate
-      .mockResolvedValueOnce({ _sum: { currentSalary: 50_000_000 }, _avg: { currentSalary: 5_000_000 } })
-      .mockResolvedValueOnce({ _avg: { compaRatio: 1.02 } });
-    compCount.mockResolvedValueOnce(10).mockResolvedValueOnce(10);
-    const r = await compCaller().getDashboardKpis();
-    expect(r.pendingAdjustments).toBe(7);
-    expect(r.pendingAdjustmentsSuppressed).toBe(false);
-  });
-});
+// HIGH 2 (getTotalCompBreakdown) / HIGH 3 (compensation getDashboardKpis) min-5-floor behavioral
+// tests REMOVED 2026-07-31 — see the file header note.
 
 // round 7 finding 5 (getClimateHeatmap per-category distinct-respondent floor) REMOVED 2026-07-31
 // — see the file header note.

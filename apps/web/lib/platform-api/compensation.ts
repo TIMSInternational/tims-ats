@@ -1,29 +1,27 @@
 'use client';
 
-// Compensation FE data layer — a SPLIT file, unlike every other platform-api wrapper.
+// Compensation FE data layer — C#-ONLY, all 10 hooks below.
 //
-// C#-ONLY (7 of the 10 hooks below). Their TS tRPC procedures were DELETED on 2026-07-29:
-// getSalaryBands / getBenefitsUtilization / getCompaRatioDistribution / listPendingAdjustments /
-// myCompensation (reads) and createAdjustment / approveAdjustment (writes). Both
+// The first 7 hooks' TS tRPC procedures were DELETED on 2026-07-29: getSalaryBands /
+// getBenefitsUtilization / getCompaRatioDistribution / listPendingAdjustments / myCompensation
+// (reads) and createAdjustment / approveAdjustment (writes). Both
 // NEXT_PUBLIC_COMPENSATION_READ_VIA_CSHARP and NEXT_PUBLIC_COMPENSATION_WRITE_VIA_CSHARP were
 // confirmed live in prod on 2026-07-28, so these hooks call the C# service unconditionally and no
-// longer read either flag — both flags are now DEAD (see .env.example). Their output types are
-// hand-declared below, or re-sourced from the @tims/shared kernels the C# port is golden-fixtured
-// against, because no tRPC procedure remains to infer them from.
+// longer read either flag — both flags are now DEAD (see .env.example).
 //
-// STILL DUAL-PATH (3 hooks): useCompensationBandDistribution / useCompensationTotalCompBreakdown /
-// useCompensationDashboardKpis. These are the FX-DEPENDENT reads (getBandDistribution /
-// getTotalCompBreakdown / getDashboardKpis), gated by a DIFFERENT backend flag
-// (`Platform:FxReadsEnabled`, shared cross-domain with `dei.getPayEquity` — see platform-api/dei.ts's
-// header) and by their OWN FE flag, NEXT_PUBLIC_COMPENSATION_FX_READ_VIA_CSHARP, which does NOT exist
-// in Vercel yet (blocked on seeding `fx_rates` via the first FxRefreshJob run — see
-// docs/architecture/csharp-migration/fx-seed-once-runbook.md). Their tRPC procedures are the LIVE
-// PRODUCTION PATH for those 3 reads today and are DELIBERATELY RETAINED in
-// packages/api/src/routers/compensation.ts. ONLY these 3 hooks still mirror the
-// lib/platform-api/{access-review,audit-log,billing,dei,engagement}.ts pattern (each calls BOTH the
-// tRPC hook, enabled when NOT viaCSharp, and a C# useQuery, enabled when viaCSharp, then returns the
-// active one), and only they keep an inferRouterOutputs<AppRouter> type alias — compile-time-locked
-// to the still-live contract.
+// The remaining 3 hooks — useCompensationBandDistribution / useCompensationTotalCompBreakdown /
+// useCompensationDashboardKpis — were the FX-DEPENDENT reads (getBandDistribution /
+// getTotalCompBreakdown / getDashboardKpis), gated by the backend `Platform__FxReadsEnabled` flag
+// (shared cross-domain with `dei.getPayEquity` — see platform-api/dei.ts's header) and by their own
+// FE flag, NEXT_PUBLIC_COMPENSATION_FX_READ_VIA_CSHARP. That flag is now confirmed permanently live
+// in prod (`fx_rates` seeded via the first FxRefreshJob run — see
+// docs/architecture/csharp-migration/fx-seed-once-runbook.md), and their TS tRPC procedures
+// (packages/api/src/routers/compensation.ts) were DELETED in this same pass — this closes the
+// compensation domain's TS-deletion carve-out. These 3 hooks now call the C# service
+// unconditionally too, so this file is no longer split — every hook mirrors the C#-only pattern
+// used across the rest of lib/platform-api/*.ts. Their output types are hand-declared below, or
+// re-sourced from the @tims/shared kernels the C# port is golden-fixtured against (same as the
+// first 7), because no tRPC procedure remains to infer them from.
 //
 // NOT WRAPPED AT ALL: getPayEquity (compensation's own — distinct from the DEI domain's
 // `dei.getPayEquity`, wrapped in platform-api/dei.ts), simulateAdjustment, getMarketComparison and
@@ -39,21 +37,25 @@
 // shape-compatibility. No `any`.
 
 import { useMutation, useQuery } from '@tanstack/react-query';
-import type { inferRouterOutputs } from '@trpc/server';
-import type { AppRouter } from '@tims/api';
-import type { BenefitUtilizationItem, CompaRatioDistribution } from '@tims/shared';
-import { trpc } from '../trpc';
-import { isPlatformApiEnabled, platformGet, platformPost } from './client';
+import type {
+  BandDistributionOut,
+  BenefitUtilizationItem,
+  CompaRatioDistribution,
+  CompDashboardKpisOut,
+  TotalCompBreakdownOut,
+} from '@tims/shared';
+import { platformGet, platformPost } from './client';
 
-// The 3 FX-gated hooks still have a live tRPC procedure, so their types stay INFERRED from the
-// router contract — the dual-path mappers below remain compile-time-locked to it.
-type RouterOutput = inferRouterOutputs<AppRouter>;
-type BandDistributionOutput = RouterOutput['compensation']['getBandDistribution'];
-type TotalCompBreakdownOutput = RouterOutput['compensation']['getTotalCompBreakdown'];
-type CompDashboardKpisOutput = RouterOutput['compensation']['getDashboardKpis'];
+// The 3 FX-dependent hooks' output types are re-sourced from the @tims/shared kernels the C# port
+// is golden-fixtured against (buildBandDistribution / buildTotalCompBreakdown /
+// buildCompDashboardKpis), the same strategy already used below for BenefitsUtilizationOutput /
+// CompaRatioDistributionOutput — there is no tRPC procedure left to infer from.
+type BandDistributionOutput = BandDistributionOut[];
+type TotalCompBreakdownOutput = TotalCompBreakdownOut;
+type CompDashboardKpisOutput = CompDashboardKpisOut;
 
-// The 7 C#-only hooks' output types are hand-declared (there is no tRPC procedure left to infer
-// from). Shapes mirror what the deleted procedures returned, so every call site is unchanged.
+// The other 7 C#-only hooks' output types are hand-declared (there is no tRPC procedure left to
+// infer from). Shapes mirror what the deleted procedures returned, so every call site is unchanged.
 
 // Prisma `SalaryBand` scalar row (packages/db/prisma/schema/compensation.prisma:1-19). The deleted
 // getSalaryBands was a bare findMany with no `select`, so the tRPC output was the full 11-field row
@@ -127,12 +129,6 @@ interface AdjustmentMutationResult {
 }
 type CreateAdjustmentOutput = AdjustmentMutationResult;
 type ApproveAdjustmentOutput = AdjustmentMutationResult;
-
-// Second gate, FX-dependent subset ONLY (the 3 hooks that still have a tRPC fallback): even when the
-// client is enabled, they route to C# only when this flag is exactly 'true'. NEXT_PUBLIC_* so it is
-// inlined for the browser. This is now the ONLY compensation FE flag any code reads — the read/write
-// flags it used to sit beside are retired (see the file header + .env.example).
-const COMPENSATION_FX_VIA_CSHARP = process.env.NEXT_PUBLIC_COMPENSATION_FX_READ_VIA_CSHARP === 'true';
 
 // The C# minimal-API OpenAPI contract types every int32/double as `number | string` (a
 // number-as-string read artifact); coerce back to the `number` the tRPC output declares.
@@ -344,23 +340,13 @@ export function useCompensationMyCompensation() {
 
 /**
  * STAFF org-rollup, FX-dependent: employees plotted within their salary band (1 call site:
- * comp-left-column.tsx SalaryBands). Gate: `isPlatformApiEnabled() &&
- * NEXT_PUBLIC_COMPENSATION_FX_READ_VIA_CSHARP === 'true'` (a SEPARATE flag from the FX-free
- * reads above — see the file header).
- *  - true  → GET /compensation/band-distribution (per-band min/mid/max + per-dot pos coerced;
- *            EMPTY dots on every band when suppressed).
- *  - false → trpc.compensation.getBandDistribution.useQuery() (the DEFAULT).
+ * comp-left-column.tsx SalaryBands). C#-ONLY — the TS tRPC procedure was deleted.
+ * GET /compensation/band-distribution (per-band min/mid/max + per-dot pos coerced; EMPTY dots on
+ * every band when suppressed).
  */
 export function useCompensationBandDistribution() {
-  const viaCSharp = isPlatformApiEnabled() && COMPENSATION_FX_VIA_CSHARP;
-
-  const trpcQuery = trpc.compensation.getBandDistribution.useQuery(undefined, {
-    enabled: !viaCSharp,
-  });
-
-  const csharpQuery = useQuery<BandDistributionOutput>({
+  return useQuery<BandDistributionOutput>({
     queryKey: ['platform-api', 'compensation', 'band-distribution'],
-    enabled: viaCSharp,
     queryFn: async () => {
       const raw = await platformGet('/compensation/band-distribution');
       return raw.map((b) => ({
@@ -375,28 +361,18 @@ export function useCompensationBandDistribution() {
       }));
     },
   });
-
-  return viaCSharp ? csharpQuery : trpcQuery;
 }
 
 /**
  * STAFF org-rollup, FX-dependent: the base/variable comp total, org-wide (1 call site:
- * comp-bottom-row.tsx TotalCompBreakdown). Gate as above (the FX flag). No `companyId` filter is
- * ever passed by the call site, so this hook is zero-arg.
- *  - true  → GET /compensation/total-comp-breakdown (totalComp/employeeCount coerced-or-null;
- *            breakdown.{baseSalary,variablePay}.{total,percentage} coerced-or-null).
- *  - false → trpc.compensation.getTotalCompBreakdown.useQuery() (the DEFAULT).
+ * comp-bottom-row.tsx TotalCompBreakdown). C#-ONLY — the TS tRPC procedure was deleted. No
+ * `companyId` filter is ever passed by the call site, so this hook is zero-arg.
+ * GET /compensation/total-comp-breakdown (totalComp/employeeCount coerced-or-null;
+ * breakdown.{baseSalary,variablePay}.{total,percentage} coerced-or-null).
  */
 export function useCompensationTotalCompBreakdown() {
-  const viaCSharp = isPlatformApiEnabled() && COMPENSATION_FX_VIA_CSHARP;
-
-  const trpcQuery = trpc.compensation.getTotalCompBreakdown.useQuery(undefined, {
-    enabled: !viaCSharp,
-  });
-
-  const csharpQuery = useQuery<TotalCompBreakdownOutput>({
+  return useQuery<TotalCompBreakdownOutput>({
     queryKey: ['platform-api', 'compensation', 'total-comp-breakdown'],
-    enabled: viaCSharp,
     queryFn: async () => {
       const raw = await platformGet('/compensation/total-comp-breakdown');
       return {
@@ -419,27 +395,17 @@ export function useCompensationTotalCompBreakdown() {
       };
     },
   });
-
-  return viaCSharp ? csharpQuery : trpcQuery;
 }
 
 /**
  * STAFF org-rollup, FX-dependent: the compensation dashboard KPIs (2 call sites:
- * compensation/page.tsx, hr-exec-dashboard.tsx). Gate as above (the FX flag).
- *  - true  → GET /compensation/dashboard-kpis (all numeric fields coerced-or-null per the
- *            min-5/fail-soft guards; activeEmployees/benefitsUtilizationPct never null).
- *  - false → trpc.compensation.getDashboardKpis.useQuery() (the DEFAULT).
+ * compensation/page.tsx, hr-exec-dashboard.tsx). C#-ONLY — the TS tRPC procedure was deleted.
+ * GET /compensation/dashboard-kpis (all numeric fields coerced-or-null per the min-5/fail-soft
+ * guards; activeEmployees/benefitsUtilizationPct never null).
  */
 export function useCompensationDashboardKpis() {
-  const viaCSharp = isPlatformApiEnabled() && COMPENSATION_FX_VIA_CSHARP;
-
-  const trpcQuery = trpc.compensation.getDashboardKpis.useQuery(undefined, {
-    enabled: !viaCSharp,
-  });
-
-  const csharpQuery = useQuery<CompDashboardKpisOutput>({
+  return useQuery<CompDashboardKpisOutput>({
     queryKey: ['platform-api', 'compensation', 'dashboard-kpis'],
-    enabled: viaCSharp,
     queryFn: async () => {
       const raw = await platformGet('/compensation/dashboard-kpis');
       return {
@@ -458,8 +424,6 @@ export function useCompensationDashboardKpis() {
       };
     },
   });
-
-  return viaCSharp ? csharpQuery : trpcQuery;
 }
 
 // ---------------------------------------------------------------------------
