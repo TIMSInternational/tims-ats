@@ -599,6 +599,8 @@ export const assessmentRouter = router({
           rawScore: result.rawScore ?? undefined,
           normalizedScore: result.normalizedScore ?? undefined,
           percentile: result.percentile ?? undefined,
+          band: result.band ?? undefined,
+          normSampleSize: result.normSampleSize ?? undefined,
           breakdown: result.breakdown ?? undefined,
         }));
 
