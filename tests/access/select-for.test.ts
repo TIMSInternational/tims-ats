@@ -41,4 +41,11 @@ describe('selectFor — builds a Prisma select from visible fields', () => {
     expect(sel.assignmentId).toBe(true);
     expect(sel.userId).toBeUndefined();
   });
+  it('band + normSampleSize selected for the same roles as percentile (recruiter/hr_admin), not for an unlisted role', () => {
+    expect(selectFor(['recruiter'], 'assessmentResult').band).toBe(true);
+    expect(selectFor(['recruiter'], 'assessmentResult').normSampleSize).toBe(true);
+    expect(selectFor(['hr_admin'], 'assessmentResult').band).toBe(true);
+    expect(selectFor(['leader'], 'assessmentResult').band).toBeUndefined();
+    expect(selectFor(['leader'], 'assessmentResult').normSampleSize).toBeUndefined();
+  });
 });

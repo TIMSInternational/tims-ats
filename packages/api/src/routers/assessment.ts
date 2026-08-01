@@ -3,12 +3,8 @@ import { router, protectedProcedure, permissionProcedure } from '../trpc';
 import { tenantDb as db } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
-import {
-  createQuestionSchema,
-  updateQuestionSchema,
-  listQuestionsSchema,
-  deleteQuestionSchema,
-} from '@tims/shared';
+import type { ScoreBand } from '@tims/shared';
+import { createQuestionSchema, updateQuestionSchema, listQuestionsSchema, deleteQuestionSchema } from '@tims/shared';
 import { assessmentQuestionService } from '../services/assessment-question.service';
 import { scopeWhereFor, assertScoped, selectFor, logDataAccess } from '../access';
 
@@ -26,6 +22,8 @@ interface AssessmentResultRow {
   assignmentId: string;
   normalizedScore?: number | null;
   percentile?: number | null;
+  band?: ScoreBand | null;
+  normSampleSize?: number | null;
   interpretation?: string | null;
   // restricted — present ONLY when selectFor included them (super_admin):
   rawScore?: number | null;
@@ -75,9 +73,11 @@ export const assessmentRouter = router({
   // 7.1 — List assessment types for the organization
   listTypes: permissionProcedure('assessment', 'read')
     .input(
-      z.object({
-        includeInactive: z.boolean().default(false),
-      }).optional(),
+      z
+        .object({
+          includeInactive: z.boolean().default(false),
+        })
+        .optional(),
     )
     .query(async ({ ctx, input }) => {
       return db.assessmentType.findMany({
@@ -113,7 +113,10 @@ export const assessmentRouter = router({
       // assessment types are org-catalog items; users are permitted to assess
       // any org candidate once the vacancy is in scope).
       const [assessmentType, candidate] = await Promise.all([
-        db.assessmentType.findFirst({ where: { id: input.assessmentTypeId, organizationId: orgId, isActive: true }, select: { id: true } }),
+        db.assessmentType.findFirst({
+          where: { id: input.assessmentTypeId, organizationId: orgId, isActive: true },
+          select: { id: true },
+        }),
         db.candidate.findFirst({ where: { id: input.candidateId, organizationId: orgId }, select: { id: true } }),
       ]);
       if (!assessmentType) {
@@ -158,7 +161,10 @@ export const assessmentRouter = router({
       await assertScoped('vacancy', input.vacancyId, ctx.access, ctx.user.id, orgId);
 
       const [assessmentType, candidateCount] = await Promise.all([
-        db.assessmentType.findFirst({ where: { id: input.assessmentTypeId, organizationId: orgId, isActive: true }, select: { id: true } }),
+        db.assessmentType.findFirst({
+          where: { id: input.assessmentTypeId, organizationId: orgId, isActive: true },
+          select: { id: true },
+        }),
         db.candidate.count({ where: { id: { in: uniqueCandidateIds }, organizationId: orgId } }),
       ]);
       if (!assessmentType) {
@@ -427,7 +433,13 @@ export const assessmentRouter = router({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Sesion de proctoring no encontrada' });
       }
 
-      await assertScoped('assessmentAssignment', session.assignmentId, ctx.access, ctx.user.id, ctx.user.organizationId);
+      await assertScoped(
+        'assessmentAssignment',
+        session.assignmentId,
+        ctx.access,
+        ctx.user.id,
+        ctx.user.organizationId,
+      );
 
       return {
         sessionId: session.id,
@@ -466,7 +478,13 @@ export const assessmentRouter = router({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Sesion de proctoring no encontrada' });
       }
 
-      await assertScoped('assessmentAssignment', session.assignmentId, ctx.access, ctx.user.id, ctx.user.organizationId);
+      await assertScoped(
+        'assessmentAssignment',
+        session.assignmentId,
+        ctx.access,
+        ctx.user.id,
+        ctx.user.organizationId,
+      );
 
       const existingEvents = (session.events as Array<Record<string, unknown>>) ?? [];
       const updatedEvents = [...existingEvents, input.event];
@@ -605,21 +623,15 @@ export const assessmentRouter = router({
   // 7.14 — Create a question
   createQuestion: permissionProcedure('assessment', 'create')
     .input(createQuestionSchema)
-    .mutation(({ ctx, input }) =>
-      assessmentQuestionService.create(ctx.user.organizationId, input),
-    ),
+    .mutation(({ ctx, input }) => assessmentQuestionService.create(ctx.user.organizationId, input)),
 
   // 7.15 — Update a question
   updateQuestion: permissionProcedure('assessment', 'update')
     .input(updateQuestionSchema)
-    .mutation(({ ctx, input }) =>
-      assessmentQuestionService.update(ctx.user.organizationId, input),
-    ),
+    .mutation(({ ctx, input }) => assessmentQuestionService.update(ctx.user.organizationId, input)),
 
   // 7.16 — Delete a question
   deleteQuestion: permissionProcedure('assessment', 'delete')
     .input(deleteQuestionSchema)
-    .mutation(({ ctx, input }) =>
-      assessmentQuestionService.remove(ctx.user.organizationId, input.id),
-    ),
+    .mutation(({ ctx, input }) => assessmentQuestionService.remove(ctx.user.organizationId, input.id)),
 });
