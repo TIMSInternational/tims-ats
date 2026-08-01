@@ -1,8 +1,16 @@
 import { TRPCError } from '@trpc/server';
-import { parseCV as parseCVAgent, screenCandidate as screenCandidateAgent } from '@tims/ai';
+import {
+  parseCV as parseCVAgent,
+  screenCandidate as screenCandidateAgent,
+  matchCandidate as matchCandidateAgent,
+} from '@tims/ai';
 import { candidateRepository } from '../repositories/candidate.repository';
 import { candidateAiRepository } from '../repositories/candidate-ai.repository';
 import { fitEngineService } from './fit-engine.service';
+
+// Bounded candidate set for the matcher agent's prompt — caps both DB read size
+// and Bedrock prompt size (coding rule #6).
+const OPEN_VACANCY_MATCH_LIMIT = 20;
 
 /** Coerce an unknown JSON value into a clean string[] (skills can be Json/null). */
 function toStringArray(value: unknown): string[] {
@@ -112,5 +120,47 @@ export const candidateAiService = {
     });
 
     return { ...result, model, fitScoreId: fit.fitScoreId, overallScore: fit.overallScore, isPartial: fit.isPartial };
+  },
+
+  /**
+   * Recommend open vacancies for a candidate via the gated candidate-matcher
+   * agent. The vacancy candidate set is loaded org-scoped and bounded BEFORE it
+   * ever reaches the prompt; the model may only echo back ids from that set —
+   * any hallucinated id (or one outside the fetched set) is dropped here, and
+   * the title/candidateId in the response always come from our own data, never
+   * the model's output, so a malformed response can't smuggle fabricated text.
+   */
+  async getRecommendations(orgId: string, candidateId: string) {
+    const [candidate, vacancies] = await Promise.all([
+      candidateAiRepository.getCandidateProfile(orgId, candidateId),
+      candidateAiRepository.getOpenVacanciesForMatching(orgId, OPEN_VACANCY_MATCH_LIMIT),
+    ]);
+    if (!candidate) throw new TRPCError({ code: 'NOT_FOUND', message: 'Candidato no encontrado' });
+
+    if (vacancies.length === 0) {
+      return {
+        candidateId,
+        recommendedVacancies: [],
+        suggestedActions: ['No hay vacantes abiertas para comparar en este momento.'],
+        modelVersion: 'no-open-vacancies',
+      };
+    }
+
+    const { result, model } = await matchCandidateAgent(orgId, {
+      candidateProfile: {
+        name: `${candidate.firstName} ${candidate.lastName}`,
+        title: candidate.currentTitle ?? undefined,
+        skills: toStringArray(candidate.skills),
+        experience: candidate.yearsExperience ?? undefined,
+      },
+      vacancies: vacancies.map((v) => ({ id: v.id, title: v.title })),
+    });
+
+    const vacancyTitleById = new Map(vacancies.map((v) => [v.id, v.title]));
+    const recommendedVacancies = result.recommendedVacancies
+      .filter((r) => vacancyTitleById.has(r.vacancyId))
+      .map((r) => ({ vacancyId: r.vacancyId, title: vacancyTitleById.get(r.vacancyId)!, matchScore: r.matchScore }));
+
+    return { candidateId, recommendedVacancies, suggestedActions: result.suggestedActions, modelVersion: model };
   },
 };

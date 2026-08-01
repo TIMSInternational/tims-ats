@@ -27,3 +27,11 @@ export { scoreInterviewFit, fitScoreOutputSchema } from './agents/interview-fit-
 export type { FitScoreResult, FitScoreInput } from './agents/interview-fit-score';
 export { explainFit, fitExplainerOutputSchema } from './agents/fit-explainer';
 export type { FitExplainerResult, FitExplainerInput } from './agents/fit-explainer';
+export { suggestNextBestAction, pipelineOptimizerOutputSchema } from './agents/pipeline-optimizer';
+export type { PipelineOptimizerResult, PipelineOptimizerInput } from './agents/pipeline-optimizer';
+export { matchCandidate, candidateMatcherOutputSchema } from './agents/candidate-matcher';
+export type {
+  CandidateMatcherResult,
+  CandidateMatcherInput,
+  CandidateMatcherVacancy,
+} from './agents/candidate-matcher';

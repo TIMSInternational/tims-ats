@@ -1,5 +1,6 @@
 import { TRPCError } from '@trpc/server';
 import type { Prisma } from '@tims/db';
+import { suggestNextBestAction } from '@tims/ai';
 import { pipelineRepository } from '../repositories/pipeline.repository';
 
 // ---------------------------------------------------------------------------
@@ -17,11 +18,17 @@ interface ChecklistItemConfig {
 // Shape of Application.checklistProgress — per-application, per-stage
 // completion state. Only stages the candidate has actually progressed
 // through get an entry.
-type ChecklistProgress = Record<string, Record<string, {
-  completed: boolean;
-  completedBy: string;
-  completedAt: string;
-}>>;
+type ChecklistProgress = Record<
+  string,
+  Record<
+    string,
+    {
+      completed: boolean;
+      completedBy: string;
+      completedAt: string;
+    }
+  >
+>;
 
 // Diffs a stage's configured checklist against this application's recorded
 // progress for that SAME stage, returning the labels of items not yet marked
@@ -75,7 +82,8 @@ export const pipelineService = {
     if (!application) throw new TRPCError({ code: 'NOT_FOUND', message: 'Aplicacion no encontrada' });
 
     const targetStage = await pipelineRepository.stageExistsForVacancy(toStageId, application.vacancyId);
-    if (!targetStage) throw new TRPCError({ code: 'BAD_REQUEST', message: 'La etapa destino no pertenece a esta vacante' });
+    if (!targetStage)
+      throw new TRPCError({ code: 'BAD_REQUEST', message: 'La etapa destino no pertenece a esta vacante' });
 
     const warnings = await getIncompleteChecklistWarnings(
       orgId,
@@ -83,7 +91,14 @@ export const pipelineService = {
       application.checklistProgress as ChecklistProgress | null,
     );
 
-    const moved = await pipelineRepository.moveCandidate(orgId, userId, applicationId, application.currentStageId, toStageId, reason);
+    const moved = await pipelineRepository.moveCandidate(
+      orgId,
+      userId,
+      applicationId,
+      application.currentStageId,
+      toStageId,
+      reason,
+    );
     // Always the same static shape (never a union across branches) so tRPC's
     // inferred router output type carries `warnings` as one stable optional
     // field instead of two incompatible object shapes.
@@ -110,10 +125,15 @@ export const pipelineService = {
     if (applications.length === 0) throw new TRPCError({ code: 'NOT_FOUND', message: 'Aplicaciones no encontradas' });
 
     const vacancyIds = [...new Set(applications.map((a) => a.vacancyId))];
-    if (vacancyIds.length > 1) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Todas las aplicaciones deben pertenecer a la misma vacante' });
+    if (vacancyIds.length > 1)
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message: 'Todas las aplicaciones deben pertenecer a la misma vacante',
+      });
 
     const targetStage = await pipelineRepository.stageExistsForVacancy(toStageId, vacancyIds[0]);
-    if (!targetStage) throw new TRPCError({ code: 'BAD_REQUEST', message: 'La etapa destino no pertenece a esta vacante' });
+    if (!targetStage)
+      throw new TRPCError({ code: 'BAD_REQUEST', message: 'La etapa destino no pertenece a esta vacante' });
 
     return pipelineRepository.bulkMove(orgId, userId, applications, toStageId, reason);
   },
@@ -141,10 +161,17 @@ export const pipelineService = {
     return pipelineRepository.listStages(orgId, vacancyId);
   },
 
-  async createStage(orgId: string, input: {
-    vacancyId: string; name: string; order: number;
-    slaHours?: number; checklist?: unknown; isDefault: boolean;
-  }) {
+  async createStage(
+    orgId: string,
+    input: {
+      vacancyId: string;
+      name: string;
+      order: number;
+      slaHours?: number;
+      checklist?: unknown;
+      isDefault: boolean;
+    },
+  ) {
     const vacancy = await pipelineRepository.vacancyExists(orgId, input.vacancyId);
     if (!vacancy) throw new TRPCError({ code: 'NOT_FOUND', message: 'Vacante no encontrada' });
     return pipelineRepository.createStage(orgId, input);
@@ -168,7 +195,10 @@ export const pipelineService = {
     const stage = await pipelineRepository.getStageWithApplicationCount(orgId, stageId);
     if (!stage) throw new TRPCError({ code: 'NOT_FOUND', message: 'Etapa no encontrada' });
     if (stage._count.applications > 0) {
-      throw new TRPCError({ code: 'BAD_REQUEST', message: 'No se puede eliminar una etapa con candidatos. Muevelos primero.' });
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message: 'No se puede eliminar una etapa con candidatos. Muevelos primero.',
+      });
     }
     await pipelineRepository.deleteStage(stageId);
     return { success: true };
@@ -177,7 +207,11 @@ export const pipelineService = {
   async getStageChecklist(orgId: string, stageId: string) {
     const stage = await pipelineRepository.getStageChecklist(orgId, stageId);
     if (!stage) throw new TRPCError({ code: 'NOT_FOUND', message: 'Etapa no encontrada' });
-    return { stageId: stage.id, stageName: stage.name, checklist: (stage.checklist as Array<Record<string, unknown>>) ?? [] };
+    return {
+      stageId: stage.id,
+      stageName: stage.name,
+      checklist: (stage.checklist as Array<Record<string, unknown>>) ?? [],
+    };
   },
 
   async updateChecklist(orgId: string, stageId: string, checklist: unknown) {
@@ -266,22 +300,26 @@ export const pipelineService = {
     };
   },
 
-  // Analytics — Next best action (stub)
+  // Analytics — Next best action (Bedrock-backed via the 'pipeline-optimizer' agent).
   async getNextBestAction(orgId: string, applicationId: string) {
     const app = await pipelineRepository.getApplicationForAction(orgId, applicationId);
     if (!app) throw new TRPCError({ code: 'NOT_FOUND', message: 'Aplicacion no encontrada' });
 
+    const candidateName = `${app.candidate.firstName} ${app.candidate.lastName}`;
+    const { result, model } = await suggestNextBestAction(orgId, {
+      candidateName,
+      currentStageName: app.currentStage.name,
+      currentStageOrder: app.currentStage.order,
+    });
+
     return {
       applicationId,
-      candidateName: `${app.candidate.firstName} ${app.candidate.lastName}`,
+      candidateName,
       currentStage: app.currentStage.name,
-      recommendation: 'Programar entrevista tecnica',
-      confidence: 0.82,
-      suggestedActions: [
-        { action: 'schedule_interview', label: 'Programar entrevista', priority: 'high' },
-        { action: 'request_assessment', label: 'Solicitar evaluacion', priority: 'medium' },
-      ],
-      model: 'stub',
+      recommendation: result.recommendation,
+      confidence: result.confidence,
+      suggestedActions: result.suggestedActions,
+      model,
     };
   },
 
@@ -292,7 +330,8 @@ export const pipelineService = {
 
     const stages = await pipelineRepository.getStagesForVacancy(vacancyId);
     const funnelCounts = await pipelineRepository.getFunnelCounts(vacancyId, stages);
-    const { total: totalApplications, rejected: rejectedCount } = await pipelineRepository.getApplicationCounts(vacancyId);
+    const { total: totalApplications, rejected: rejectedCount } =
+      await pipelineRepository.getApplicationCounts(vacancyId);
 
     const funnel = stages.map((stage, idx) => {
       const counts = funnelCounts.find((f) => f.stageId === stage.id);

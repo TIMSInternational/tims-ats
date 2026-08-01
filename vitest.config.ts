@@ -23,6 +23,10 @@ export default defineConfig({
       // same resolved path.
       'pdf-parse': resolve(__dirname, 'packages/api/node_modules/pdf-parse'),
       mammoth: resolve(__dirname, 'packages/api/node_modules/mammoth'),
+      // Same pnpm symlink-path mismatch, for the DEI report-generation tests (tests/dei/
+      // report-generation.test.ts), which import exceljs directly to read back the xlsx
+      // buffer produced by packages/api/src/services/dei-report-builder.ts.
+      exceljs: resolve(__dirname, 'packages/api/node_modules/exceljs'),
       // Same fix, pre-applied for the CV-upload plan's S3 library (packages/api/src/lib/s3.ts)
       // and its tests, which hit the identical mismatch for these two packages.
       '@aws-sdk/client-s3': resolve(__dirname, 'packages/api/node_modules/@aws-sdk/client-s3'),

@@ -193,23 +193,43 @@ function bandForPercentile(percentile: number): ScoreBand {
 }
 
 /**
+ * Core percentile arithmetic (issue #16 — extracted so the live write path can
+ * feed it DB-side COUNTs instead of a materialized population array). Same
+ * standard midpoint-rank formula so ties don't arbitrarily favor either side,
+ * and the same honest-null gate below MIN_NORM_SAMPLE_SIZE.
+ *
+ * `countBelow` = population rows strictly less than the candidate's score.
+ * `countEqual` = population rows exactly equal to the candidate's score.
+ * `sampleSize` = total population size (NOT derivable from countBelow+countEqual
+ * alone — it also needs the count of rows ABOVE the candidate's score, which
+ * neither of the other two counts carries).
+ */
+export function computeNormBandFromCounts(
+  countBelow: number,
+  countEqual: number,
+  sampleSize: number,
+): NormBandResult | null {
+  if (sampleSize < MIN_NORM_SAMPLE_SIZE) return null;
+  const percentile = ((countBelow + 0.5 * countEqual) / sampleSize) * 100;
+  return { percentile, band: bandForPercentile(percentile) };
+}
+
+/**
  * Percentile rank of `candidateScore` within `populationScores` (every OTHER
- * completed non-partial result for the same org + assessment type), using the
- * standard midpoint-rank formula so ties don't arbitrarily favor either side.
- * Returns null below MIN_NORM_SAMPLE_SIZE — an honest "not enough data yet",
- * never a fabricated number.
+ * completed non-partial result for the same org + assessment type). Delegates
+ * its arithmetic to computeNormBandFromCounts (see above) so the array-based
+ * path (used by the backfill script, which already reads its population in
+ * bulk outside any open write transaction) and the count-based live-scoring
+ * path can never drift apart on band boundaries or the min-sample-size gate.
  */
 export function computeNormBand(candidateScore: number, populationScores: number[]): NormBandResult | null {
-  if (populationScores.length < MIN_NORM_SAMPLE_SIZE) return null;
-
   let countBelow = 0;
   let countEqual = 0;
   for (const score of populationScores) {
     if (score < candidateScore) countBelow++;
     else if (score === candidateScore) countEqual++;
   }
-  const percentile = ((countBelow + 0.5 * countEqual) / populationScores.length) * 100;
-  return { percentile, band: bandForPercentile(percentile) };
+  return computeNormBandFromCounts(countBelow, countEqual, populationScores.length);
 }
 
 // ---------------------------------------------------------------------------

@@ -141,30 +141,44 @@ export const candidateAssessmentWriteRepo = {
     });
   },
 
-  // Population for norm-band computation: every OTHER completed, non-partial
-  // result for the SAME org + assessment type. `breakdown: { path: ['pendingManual'],
-  // equals: [] }` filters to non-partial (no essay questions pending) — an
-  // essay-containing assessment's result never enters the population until a
-  // future essay-scoring pass empties pendingManual. Explicit select — only
-  // the one numeric field a candidate never sees attributed to anyone else.
-  listOtherNormalizedScoresInTx(
+  // Norm-band counts for every OTHER completed, non-partial result in the SAME
+  // org + assessment type. `breakdown: { path: ['pendingManual'], equals: [] }`
+  // filters to non-partial (no essay questions pending) — an essay-containing
+  // assessment's result never enters the population until a future
+  // essay-scoring pass empties pendingManual (same predicate as before).
+  //
+  // Issue #16: this used to be a `findMany` that materialized the ENTIRE
+  // population into a JS array inside submitAssessment's open write
+  // transaction just to rank one candidate — O(n) memory held for the
+  // duration of a live write tx, not the "cheap aggregate" the design spec
+  // claimed. Replaced with COUNT queries: O(1) memory regardless of
+  // population size. `countBelow`/`countEqual` feed computeNormBandFromCounts'
+  // exact same midpoint-rank formula computeNormBand used to compute from the
+  // array; `sampleSize` is the population size itself, needed for both the
+  // MIN_NORM_SAMPLE_SIZE gate and the percentile denominator — it cannot be
+  // derived from countBelow+countEqual alone (that pair never sees rows ABOVE
+  // the candidate's score), so a third count against the same WHERE clause
+  // (unfiltered by score) is unavoidable. Same WHERE scope as before, no
+  // behavior change for callers — just no full-population fetch.
+  getNormCountsInTx(
     tx: Prisma.TransactionClient,
     organizationId: string,
     assessmentTypeId: string,
     excludeAssignmentId: string,
-  ): Promise<number[]> {
-    return tx.assessmentResult
-      .findMany({
-        where: {
-          organizationId,
-          normalizedScore: { not: null },
-          assignmentId: { not: excludeAssignmentId },
-          assignment: { assessmentTypeId, status: 'completed' },
-          breakdown: { path: ['pendingManual'], equals: [] },
-        },
-        select: { normalizedScore: true },
-      })
-      .then((rows) => rows.map((r) => r.normalizedScore!));
+    candidateScore: number,
+  ): Promise<{ countBelow: number; countEqual: number; sampleSize: number }> {
+    const baseWhere: Prisma.AssessmentResultWhereInput = {
+      organizationId,
+      normalizedScore: { not: null },
+      assignmentId: { not: excludeAssignmentId },
+      assignment: { assessmentTypeId, status: 'completed' },
+      breakdown: { path: ['pendingManual'], equals: [] },
+    };
+    return Promise.all([
+      tx.assessmentResult.count({ where: { ...baseWhere, normalizedScore: { lt: candidateScore } } }),
+      tx.assessmentResult.count({ where: { ...baseWhere, normalizedScore: candidateScore } }),
+      tx.assessmentResult.count({ where: baseWhere }),
+    ]).then(([countBelow, countEqual, sampleSize]) => ({ countBelow, countEqual, sampleSize }));
   },
 
   upsertResponseInTx(

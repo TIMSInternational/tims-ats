@@ -1,5 +1,6 @@
 import { deiRepository } from '../repositories/dei.repository';
 import { buildDistribution } from '@tims/shared';
+import { buildPdfReport, buildXlsxReport, type ReportSection } from './dei-report-builder';
 
 // ---------------------------------------------------------------------------
 // DEI service — turns demographic aggregates into the metrics the dashboard
@@ -25,7 +26,25 @@ import { buildDistribution } from '@tims/shared';
 // procedure, was deleted after NEXT_PUBLIC_DEI_READ_VIA_CSHARP went live) — see
 // packages/api/src/routers/dei.ts. Only getEthnicityDistribution and
 // getDisabilityDistribution remain: zero-FE-consumer exceptions, out of scope.
+//
+// generateReport (real, 2026-07-31): renders getEthnicityDistribution +
+// getDisabilityDistribution — the only two aggregate metrics this service still
+// exposes — into an actual xlsx/pdf document via dei-report-builder.ts. Stays
+// AGGREGATE-ONLY like everything else here: it never queries EmployeeDemographics
+// itself, only reuses the two suppression-safe distribution methods below.
 // ---------------------------------------------------------------------------
+
+const REPORT_SECTIONS = {
+  ethnicity: 'Ethnicity Distribution',
+  disability: 'Disability Status Distribution',
+} as const;
+
+type ReportSectionKey = keyof typeof REPORT_SECTIONS;
+
+const REPORT_MIME_TYPES = {
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  pdf: 'application/pdf',
+} as const;
 
 export const deiService = {
   async getEthnicityDistribution(orgId: string) {
@@ -59,6 +78,59 @@ export const deiService = {
         suppressed: g.suppressed,
       })),
       suppressed: dist.suppressed,
+    };
+  },
+
+  async generateReport(orgId: string, input: { format: 'pdf' | 'xlsx'; sections?: string[] }) {
+    const allKeys = Object.keys(REPORT_SECTIONS) as ReportSectionKey[];
+    const requestedKeys = input.sections?.length ? allKeys.filter((key) => input.sections!.includes(key)) : allKeys;
+
+    const sections: ReportSection[] = [];
+
+    if (requestedKeys.includes('ethnicity')) {
+      const dist = await deiService.getEthnicityDistribution(orgId);
+      sections.push({
+        key: 'ethnicity',
+        title: REPORT_SECTIONS.ethnicity,
+        columns: ['Ethnicity', 'Count', 'Percentage'],
+        rows: dist.groups.map((g) => [
+          g.ethnicity,
+          g.count == null ? '' : String(g.count),
+          g.percentage == null ? '' : `${g.percentage}%`,
+        ]),
+        suppressed: dist.suppressed,
+      });
+    }
+
+    if (requestedKeys.includes('disability')) {
+      const dist = await deiService.getDisabilityDistribution(orgId);
+      sections.push({
+        key: 'disability',
+        title: REPORT_SECTIONS.disability,
+        columns: ['Status', 'Count', 'Percentage'],
+        rows: dist.groups.map((g) => [
+          g.status,
+          g.count == null ? '' : String(g.count),
+          g.percentage == null ? '' : `${g.percentage}%`,
+        ]),
+        suppressed: dist.suppressed,
+      });
+    }
+
+    const generatedAt = new Date();
+    const buffer =
+      input.format === 'xlsx'
+        ? await buildXlsxReport(generatedAt, sections)
+        : await buildPdfReport(generatedAt, sections);
+
+    return {
+      status: 'ready' as const,
+      format: input.format,
+      mimeType: REPORT_MIME_TYPES[input.format],
+      filename: `dei-report-${generatedAt.toISOString().slice(0, 10)}.${input.format}`,
+      data: buffer.toString('base64'),
+      sections: sections.map((s) => s.key),
+      generatedAt: generatedAt.toISOString(),
     };
   },
 };

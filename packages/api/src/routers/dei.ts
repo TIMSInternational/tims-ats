@@ -14,8 +14,9 @@ import { deiService } from '../services/dei.service';
 // went through apps/web/lib/platform-api/dei.ts's wrapper hooks, which now call the C# service
 // unconditionally — and have been deleted. getEthnicityDistribution and getDisabilityDistribution
 // stay: they have ZERO FE consumers (no wrapper, no call site) and were never part of this
-// cutover — pre-existing dead code, out of scope. generateReport (export mutation stub) is
-// unrelated and also stays.
+// cutover — pre-existing dead code, out of scope. generateReport (real, 2026-07-31: renders
+// getEthnicityDistribution + getDisabilityDistribution into an actual xlsx/pdf document via
+// deiService.generateReport, see dei-report-builder.ts) is unrelated and also stays.
 // ---------------------------------------------------------------------------
 
 export const deiRouter = router({
@@ -28,7 +29,7 @@ export const deiRouter = router({
     deiService.getDisabilityDistribution(ctx.user.organizationId),
   ),
 
-  // ── Report (stub) ──────────────────────────────────────────────────
+  // ── Report (real — aggregate-only xlsx/pdf export) ──────────────────
   generateReport: permissionProcedure('dei', 'export')
     .input(
       z.object({
@@ -36,7 +37,5 @@ export const deiRouter = router({
         sections: z.array(z.string().max(100)).max(100).optional(),
       }),
     )
-    .mutation(async () => {
-      return { status: 'pending' as const, message: 'Generacion de reportes no implementada aun' };
-    }),
+    .mutation(({ ctx, input }) => deiService.generateReport(ctx.user.organizationId, input)),
 });

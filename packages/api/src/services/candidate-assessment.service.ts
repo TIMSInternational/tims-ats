@@ -7,7 +7,7 @@ import { resolveOrg } from './candidate-portal.service';
 import {
   scoreChoice,
   computeResult,
-  computeNormBand,
+  computeNormBandFromCounts,
   type AnswerInput,
   type GradedAnswer,
   type ScoreBand,
@@ -264,14 +264,15 @@ export const candidateAssessmentService = {
       let band: ScoreBand | null = null;
       let normSampleSize: number | null = null;
       if (!hasPending) {
-        const population = await candidateAssessmentWriteRepo.listOtherNormalizedScoresInTx(
+        const { countBelow, countEqual, sampleSize } = await candidateAssessmentWriteRepo.getNormCountsInTx(
           tx,
           org.id,
           assignment.assessmentTypeId,
           assignmentId,
+          normalizedScore,
         );
-        normSampleSize = population.length;
-        const normResult = computeNormBand(normalizedScore, population);
+        normSampleSize = sampleSize;
+        const normResult = computeNormBandFromCounts(countBelow, countEqual, sampleSize);
         if (normResult) {
           percentile = normResult.percentile;
           band = normResult.band;

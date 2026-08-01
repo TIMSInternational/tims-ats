@@ -2,6 +2,7 @@ import { TRPCError } from '@trpc/server';
 import type { Prisma } from '@tims/db';
 import { csvRow } from '@tims/shared';
 import { candidateRepository } from '../repositories/candidate.repository';
+import { candidateAiService } from './candidate-ai.service';
 
 // ---------------------------------------------------------------------------
 // Candidate Service — business logic only, no db imports
@@ -373,15 +374,12 @@ export const candidateService = {
     return { csv: [header, ...lines].join('\n'), count: page.length, truncated };
   },
 
-  // Recommendations (stub)
+  // Recommendations — real Bedrock-backed candidate<->vacancy matching via the
+  // gated candidate-matcher agent (candidate-ai.service.ts keeps AI/PII concerns
+  // isolated per rule #7; this layer only guards existence before any AI spend).
   async getRecommendations(orgId: string, candidateId: string) {
     await candidateService.verifyExists(orgId, candidateId);
-    return {
-      candidateId,
-      recommendedVacancies: [],
-      suggestedActions: ['Schedule technical assessment', 'Request updated CV'],
-      modelVersion: 'stub',
-    };
+    return candidateAiService.getRecommendations(orgId, candidateId);
   },
 
   // Helper

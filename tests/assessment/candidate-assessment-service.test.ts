@@ -19,7 +19,7 @@ vi.mock('../../packages/api/src/repositories/candidate-assessment.repository', a
       upsertResponseInTx: vi.fn(),
       upsertResultInTx: vi.fn(),
       completeAssignmentInTx: vi.fn(),
-      listOtherNormalizedScoresInTx: vi.fn(),
+      getNormCountsInTx: vi.fn(),
     },
   };
 });
@@ -403,7 +403,7 @@ describe('candidateAssessmentService.submitAssessment', () => {
     vi.mocked(candidateAssessmentWriteRepo.findQuestionsWithAnswerKeyInTx).mockResolvedValue([
       SINGLE_CHOICE_Q,
     ] as never);
-    vi.mocked(candidateAssessmentWriteRepo.listOtherNormalizedScoresInTx).mockResolvedValue([]);
+    vi.mocked(candidateAssessmentWriteRepo.getNormCountsInTx).mockResolvedValue({ countBelow: 0, countEqual: 0, sampleSize: 0 });
     vi.mocked(candidateAssessmentWriteRepo.completeAssignmentInTx).mockResolvedValue({ count: 0 } as never);
 
     await expect(
@@ -435,7 +435,7 @@ describe('candidateAssessmentService.submitAssessment', () => {
     vi.mocked(candidateAssessmentWriteRepo.findQuestionsWithAnswerKeyInTx).mockResolvedValue([
       SINGLE_CHOICE_Q,
     ] as never);
-    vi.mocked(candidateAssessmentWriteRepo.listOtherNormalizedScoresInTx).mockResolvedValue([]);
+    vi.mocked(candidateAssessmentWriteRepo.getNormCountsInTx).mockResolvedValue({ countBelow: 0, countEqual: 0, sampleSize: 0 });
     vi.mocked(candidateAssessmentWriteRepo.completeAssignmentInTx).mockResolvedValue({ count: 1 } as never);
 
     // q1 submitted twice — a correct answer then a wrong one. The Map keeps
@@ -472,7 +472,7 @@ describe('candidateAssessmentService.submitAssessment', () => {
       SINGLE_CHOICE_Q,
       SECOND_CHOICE_Q,
     ] as never);
-    vi.mocked(candidateAssessmentWriteRepo.listOtherNormalizedScoresInTx).mockResolvedValue([]);
+    vi.mocked(candidateAssessmentWriteRepo.getNormCountsInTx).mockResolvedValue({ countBelow: 0, countEqual: 0, sampleSize: 0 });
     vi.mocked(candidateAssessmentWriteRepo.completeAssignmentInTx).mockResolvedValue({ count: 1 } as never);
 
     // Only q1 (of 2 questions) is answered, correctly.
@@ -514,7 +514,7 @@ describe('candidateAssessmentService.submitAssessment', () => {
     vi.mocked(candidateAssessmentWriteRepo.findQuestionsWithAnswerKeyInTx).mockResolvedValue([
       SINGLE_CHOICE_Q,
     ] as never);
-    vi.mocked(candidateAssessmentWriteRepo.listOtherNormalizedScoresInTx).mockResolvedValue([]);
+    vi.mocked(candidateAssessmentWriteRepo.getNormCountsInTx).mockResolvedValue({ countBelow: 0, countEqual: 0, sampleSize: 0 });
     vi.mocked(candidateAssessmentWriteRepo.completeAssignmentInTx).mockResolvedValue({ count: 1 } as never);
 
     // (a) A correct answer on the ONE active question yields normalizedScore
@@ -598,7 +598,7 @@ describe('candidateAssessmentService.submitAssessment', () => {
     vi.mocked(candidateAssessmentWriteRepo.findQuestionsWithAnswerKeyInTx).mockResolvedValue([
       SINGLE_CHOICE_Q,
     ] as never);
-    vi.mocked(candidateAssessmentWriteRepo.listOtherNormalizedScoresInTx).mockResolvedValue([20, 30, 40, 50, 60]);
+    vi.mocked(candidateAssessmentWriteRepo.getNormCountsInTx).mockResolvedValue({ countBelow: 5, countEqual: 0, sampleSize: 5 });
     vi.mocked(candidateAssessmentWriteRepo.completeAssignmentInTx).mockResolvedValue({ count: 1 } as never);
 
     await candidateAssessmentService.submitAssessment(EMAIL, SLUG, ASSIGNMENT_ID, [
@@ -629,7 +629,7 @@ describe('candidateAssessmentService.submitAssessment', () => {
     vi.mocked(candidateAssessmentWriteRepo.findQuestionsWithAnswerKeyInTx).mockResolvedValue([
       SINGLE_CHOICE_Q,
     ] as never);
-    vi.mocked(candidateAssessmentWriteRepo.listOtherNormalizedScoresInTx).mockResolvedValue([20, 30]);
+    vi.mocked(candidateAssessmentWriteRepo.getNormCountsInTx).mockResolvedValue({ countBelow: 2, countEqual: 0, sampleSize: 2 });
     vi.mocked(candidateAssessmentWriteRepo.completeAssignmentInTx).mockResolvedValue({ count: 1 } as never);
 
     await candidateAssessmentService.submitAssessment(EMAIL, SLUG, ASSIGNMENT_ID, [
@@ -666,7 +666,7 @@ describe('candidateAssessmentService.submitAssessment', () => {
       { questionId: 'q2', freeText: 'my essay' },
     ]);
 
-    expect(candidateAssessmentWriteRepo.listOtherNormalizedScoresInTx).not.toHaveBeenCalled();
+    expect(candidateAssessmentWriteRepo.getNormCountsInTx).not.toHaveBeenCalled();
     expect(candidateAssessmentWriteRepo.upsertResultInTx).toHaveBeenCalledWith(
       {},
       expect.objectContaining({ percentile: null, band: null, normSampleSize: null }),
