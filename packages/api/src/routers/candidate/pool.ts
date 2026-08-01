@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { router, permissionProcedure } from '../../trpc';
-import { candidateService } from '../../services/candidate.service';
+import { candidatePoolService } from '../../services/candidate-pool.service';
 import { scopeWhereFor, assertScoped } from '../../access';
 import { logPlatformExport } from '../../access/security-audit';
 
@@ -14,12 +14,12 @@ export const candidatePoolRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await assertScoped('candidate', input.candidateId, ctx.access, ctx.user.id, ctx.user.organizationId);
-      return candidateService.addToPool(ctx.user.organizationId, input.candidateId, input.poolType);
+      return candidatePoolService.addToPool(ctx.user.organizationId, input.candidateId, input.poolType);
     }),
 
   getPoolStats: permissionProcedure('candidate', 'read').query(async ({ ctx }) => {
     const scopeWhere = await scopeWhereFor('candidate', ctx.access, ctx.user.id);
-    return candidateService.getPoolStats(ctx.user.organizationId, scopeWhere);
+    return candidatePoolService.getPoolStats(ctx.user.organizationId, scopeWhere);
   }),
 
   export: permissionProcedure('candidate', 'read')
@@ -32,7 +32,7 @@ export const candidatePoolRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       const scopeWhere = await scopeWhereFor('candidate', ctx.access, ctx.user.id);
-      const result = await candidateService.exportPool(ctx.user.organizationId, scopeWhere, {
+      const result = await candidatePoolService.exportPool(ctx.user.organizationId, scopeWhere, {
         poolType: input.poolType,
         tags: input.tags,
       });

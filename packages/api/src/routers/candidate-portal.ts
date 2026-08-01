@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { router, candidateProcedure } from '../trpc';
 import { candidatePortalService } from '../services/candidate-portal.service';
 import { candidateAssessmentService } from '../services/candidate-assessment.service';
+import { candidateAssessmentLifecycleService } from '../services/candidate-assessment-lifecycle.service';
 import { submitAssessmentAnswersSchema } from '@tims/shared';
 
 // Authenticated candidate portal (Wave 1 Slice 2). The candidate is identified by
@@ -52,14 +53,14 @@ export const candidatePortalRouter = router({
   // The signed-in candidate's assessment assignments at this org.
   getMyAssessments: candidateProcedure
     .input(z.object({ orgSlug }))
-    .query(({ ctx, input }) => candidateAssessmentService.getMyAssessments(ctx.supabaseAuth.email, input.orgSlug)),
+    .query(({ ctx, input }) => candidateAssessmentLifecycleService.getMyAssessments(ctx.supabaseAuth.email, input.orgSlug)),
 
   // Accept the Habeas-Data consent and move an assignment into in_progress.
   // Idempotent if already in_progress.
   startAssessment: candidateProcedure
     .input(z.object({ orgSlug, assignmentId: z.string().uuid(), consentAccepted: z.boolean() }))
     .mutation(({ ctx, input }) =>
-      candidateAssessmentService.startAssessment(
+      candidateAssessmentLifecycleService.startAssessment(
         ctx.supabaseAuth.email,
         input.orgSlug,
         input.assignmentId,
@@ -73,7 +74,7 @@ export const candidatePortalRouter = router({
   getAssessmentQuestions: candidateProcedure
     .input(z.object({ orgSlug, assignmentId: z.string().uuid() }))
     .query(({ ctx, input }) =>
-      candidateAssessmentService.getAssessmentQuestions(ctx.supabaseAuth.email, input.orgSlug, input.assignmentId),
+      candidateAssessmentLifecycleService.getAssessmentQuestions(ctx.supabaseAuth.email, input.orgSlug, input.assignmentId),
     ),
 
   // Atomic: grades every answer, upserts the result, marks the assignment

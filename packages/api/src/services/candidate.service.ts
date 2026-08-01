@@ -1,11 +1,12 @@
 import { TRPCError } from '@trpc/server';
 import type { Prisma } from '@tims/db';
-import { csvRow } from '@tims/shared';
 import { candidateRepository } from '../repositories/candidate.repository';
 import { candidateAiService } from './candidate-ai.service';
 
 // ---------------------------------------------------------------------------
-// Candidate Service — business logic only, no db imports
+// Candidate Service — business logic only, no db imports.
+// Tag CRUD lives in candidate-tags.service.ts; pool membership + CSV export in
+// candidate-pool.service.ts (split per CLAUDE.md's 300-line service cap).
 // ---------------------------------------------------------------------------
 
 export const candidateService = {
@@ -255,124 +256,11 @@ export const candidateService = {
     return candidateRepository.getAfterMerge(primaryId);
   },
 
-  // Documents
-  // This staff-side upload path is still a mock (fabricates fileUrl, never accepts real
-  // bytes) — unlike the public apply flow's real S3 upload (portalApplicationService,
-  // packages/api/src/routers/portal.ts), which is out of scope for this staff path.
-  async uploadDocument(orgId: string, candidateId: string, type: string, fileName: string, fileSize?: number) {
-    await candidateService.verifyExists(orgId, candidateId);
-    const mockUrl = `https://storage.tims.app/${orgId}/${candidateId}/${fileName}`;
-    const doc = await candidateRepository.createDocument(orgId, {
-      candidateId,
-      type,
-      fileName,
-      fileUrl: mockUrl,
-      fileSize,
-    });
-    return { document: doc, uploadUrl: mockUrl };
-  },
-
-  async getDocument(orgId: string, documentId: string) {
-    return candidateRepository.findDocument(orgId, documentId);
-  },
-
-  async deleteDocument(orgId: string, documentId: string) {
-    const doc = await candidateRepository.findDocument(orgId, documentId);
-    if (!doc) throw new TRPCError({ code: 'NOT_FOUND', message: 'Documento no encontrado' });
-    await candidateRepository.deleteDocument(documentId);
-    return { success: true };
-  },
-
+  // Documents now live in candidate-documents.service.ts.
   // CV parsing now lives in candidate-ai.service.ts (parseCV) — it runs behind
   // the gated @tims/ai cv-parser agent and operates on CV text.
-
-  // Tags
-  async addTag(orgId: string, candidateId: string, tag: string, source: string) {
-    return candidateRepository.createTag(orgId, { candidateId, tag, source });
-  },
-
-  async removeTag(orgId: string, candidateId: string, tag: string) {
-    const existing = await candidateRepository.findTag(orgId, candidateId, tag);
-    if (!existing) throw new TRPCError({ code: 'NOT_FOUND', message: 'Tag no encontrado' });
-    await candidateRepository.deleteTag(existing.id);
-    return { success: true };
-  },
-
-  async bulkTag(
-    orgId: string,
-    scopeWhere: Prisma.CandidateWhereInput,
-    candidateIds: string[],
-    tag: string,
-    source: string,
-  ) {
-    const uniqueIds = [...new Set(candidateIds)];
-    const count = await candidateRepository.countCandidatesInScope(orgId, uniqueIds, scopeWhere);
-    if (count !== uniqueIds.length) {
-      throw new TRPCError({ code: 'NOT_FOUND', message: 'Candidato no encontrado' });
-    }
-
-    const result = await candidateRepository.bulkCreateTags(
-      uniqueIds.map((candidateId) => ({ organizationId: orgId, candidateId, tag, source })),
-    );
-    return { tagged: result.count };
-  },
-
-  // Pool
-  async addToPool(orgId: string, candidateId: string, poolType: string) {
-    const existing = await candidateRepository.exists(orgId, candidateId);
-    if (!existing) throw new TRPCError({ code: 'NOT_FOUND', message: 'Candidato no encontrado' });
-    return candidateRepository.updatePool(candidateId, poolType);
-  },
-
-  async getPoolStats(orgId: string, scopeWhere: Prisma.CandidateWhereInput) {
-    const stats = await candidateRepository.getPoolStats(orgId, scopeWhere);
-    const total = stats.reduce((sum, s) => sum + s._count.id, 0);
-    return { total, byPool: stats.map((s) => ({ poolType: s.poolType, count: s._count.id })) };
-  },
-
-  async exportPool(
-    orgId: string,
-    scopeWhere: Prisma.CandidateWhereInput,
-    input: { poolType?: string; tags?: string[] },
-  ) {
-    const LIMIT = 5000;
-    const rows = await candidateRepository.findForExport(orgId, scopeWhere, input, LIMIT);
-    const truncated = rows.length > LIMIT;
-    const page = truncated ? rows.slice(0, LIMIT) : rows;
-
-    const header = csvRow([
-      'First Name',
-      'Last Name',
-      'Email',
-      'Phone',
-      'Source',
-      'Pool Type',
-      'Current Title',
-      'Current Company',
-      'Years Experience',
-      'Location',
-      'Tags',
-      'Created At',
-    ]);
-    const lines = page.map((c) =>
-      csvRow([
-        c.firstName,
-        c.lastName,
-        c.email,
-        c.phone,
-        c.source,
-        c.poolType,
-        c.currentTitle,
-        c.currentCompany,
-        c.yearsExperience == null ? '' : String(c.yearsExperience),
-        c.location,
-        c.tags.map((t) => t.tag).join('; '),
-        c.createdAt.toISOString(),
-      ]),
-    );
-
-    return { csv: [header, ...lines].join('\n'), count: page.length, truncated };
-  },
+  // Tag CRUD/bulk-tag now lives in candidate-tags.service.ts.
+  // Pool membership + CSV export now lives in candidate-pool.service.ts.
 
   // Recommendations — real Bedrock-backed candidate<->vacancy matching via the
   // gated candidate-matcher agent (candidate-ai.service.ts keeps AI/PII concerns

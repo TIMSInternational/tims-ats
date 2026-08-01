@@ -8,14 +8,14 @@ vi.mock('../../packages/api/src/repositories/pipeline.repository', () => ({
   },
 }));
 
-import { pipelineService } from '../../packages/api/src/services/pipeline.service';
+import { pipelineAnalyticsService } from '../../packages/api/src/services/pipeline-analytics.service';
 import { pipelineRepository } from '../../packages/api/src/repositories/pipeline.repository';
 
 const candidate = { id: 'c1', firstName: 'A', lastName: 'B' };
 
 beforeEach(() => vi.clearAllMocks());
 
-describe('pipelineService.getSlaStatus — hourly precision', () => {
+describe('pipelineAnalyticsService.getSlaStatus — hourly precision', () => {
   it('flags an application overdue on a sub-hour SLA breach, not just after a full extra hour', async () => {
     vi.mocked(pipelineRepository.vacancyExists).mockResolvedValue({ id: 'vac-1' } as never);
     vi.mocked(pipelineRepository.getStagesForVacancy).mockResolvedValue([
@@ -35,7 +35,7 @@ describe('pipelineService.getSlaStatus — hourly precision', () => {
       },
     ] as never);
 
-    const result = await pipelineService.getSlaStatus('org-1', 'vac-1');
+    const result = await pipelineAnalyticsService.getSlaStatus('org-1', 'vac-1');
 
     expect(result.items[0]!.isOverdue).toBe(true);
   });

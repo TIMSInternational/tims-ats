@@ -25,7 +25,7 @@ vi.mock('@tims/db', () => ({
 
 // Scope-filtering (the router's headline security property) is mocked so the
 // behavioral test below can assert the resolved scopeWhere fragment actually
-// flows into candidateService.exportPool — see the "router (behavioral)"
+// flows into candidatePoolService.exportPool — see the "router (behavioral)"
 // describe block. Pattern mirrors tests/candidate/documents-router.test.ts.
 const buildAccessForUserMock = vi.hoisted(() =>
   vi.fn(async () => ({ allowed: true, scope: 'organization', roles: ['hr_admin'] })),
@@ -96,10 +96,10 @@ describe('candidateRepository.findForExport', () => {
   });
 });
 
-import { candidateService } from '../../packages/api/src/services/candidate.service';
+import { candidatePoolService } from '../../packages/api/src/services/candidate-pool.service';
 import * as candidateRepositoryModule from '../../packages/api/src/repositories/candidate.repository';
 
-describe('candidateService.exportPool', () => {
+describe('candidatePoolService.exportPool', () => {
   let findForExportSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
@@ -128,7 +128,7 @@ describe('candidateService.exportPool', () => {
       },
     ]);
 
-    const result = await candidateService.exportPool('org-1', {} as never, {});
+    const result = await candidatePoolService.exportPool('org-1', {} as never, {});
 
     expect(result.count).toBe(1);
     expect(result.truncated).toBe(false);
@@ -155,7 +155,7 @@ describe('candidateService.exportPool', () => {
     }));
     findForExportSpy.mockResolvedValue(rows);
 
-    const result = await candidateService.exportPool('org-1', {} as never, {});
+    const result = await candidatePoolService.exportPool('org-1', {} as never, {});
 
     expect(result.count).toBe(5000);
     expect(result.truncated).toBe(true);
@@ -179,7 +179,7 @@ describe('candidateService.exportPool', () => {
     }));
     findForExportSpy.mockResolvedValue(rows);
 
-    const result = await candidateService.exportPool('org-1', {} as never, {});
+    const result = await candidatePoolService.exportPool('org-1', {} as never, {});
 
     expect(result.count).toBe(5000);
     expect(result.truncated).toBe(false);
@@ -203,14 +203,14 @@ describe('candidateService.exportPool', () => {
       },
     ]);
 
-    const result = await candidateService.exportPool('org-1', {} as never, {});
+    const result = await candidatePoolService.exportPool('org-1', {} as never, {});
 
     expect(result.csv).toContain('"\'=SUM(A1:A10)"');
   });
 
   it('passes poolType/tags input through to the repository as filters', async () => {
     findForExportSpy.mockResolvedValue([]);
-    await candidateService.exportPool('org-1', {} as never, { poolType: 'active', tags: ['vip'] });
+    await candidatePoolService.exportPool('org-1', {} as never, { poolType: 'active', tags: ['vip'] });
 
     expect(findForExportSpy).toHaveBeenCalledWith('org-1', {}, { poolType: 'active', tags: ['vip'] }, 5000);
   });
@@ -225,7 +225,7 @@ describe('candidate.pool.export router (source text checks)', () => {
   });
 
   it('calls the real service and logs the export', () => {
-    expect(src).toContain('candidateService.exportPool');
+    expect(src).toContain('candidatePoolService.exportPool');
     expect(src).toContain('logPlatformExport');
     expect(src).not.toContain('stub_generated');
     expect(src).not.toContain('storage.tims.app');
@@ -235,7 +235,7 @@ describe('candidate.pool.export router (source text checks)', () => {
 // Behavioral replacement for the old "applies scope filtering" source-text check:
 // a real tRPC caller is built for candidatePoolRouter with scopeWhereFor mocked to
 // return a distinctive marker fragment, and we assert that marker actually flows
-// into candidateService.exportPool's scopeWhere argument — proving the tenant/scope
+// into candidatePoolService.exportPool's scopeWhere argument — proving the tenant/scope
 // filter reaches the service call, not just that the source text mentions it.
 // Pattern mirrors tests/candidate/documents-router.test.ts.
 describe('candidate.pool.export router (behavioral)', () => {
@@ -273,9 +273,9 @@ describe('candidate.pool.export router (behavioral)', () => {
     auditLogCreate.mockResolvedValue({});
   });
 
-  it('threads the scopeWhereFor result into candidateService.exportPool as scopeWhere', async () => {
+  it('threads the scopeWhereFor result into candidatePoolService.exportPool as scopeWhere', async () => {
     const exportPoolSpy = vi
-      .spyOn(candidateService, 'exportPool')
+      .spyOn(candidatePoolService, 'exportPool')
       .mockResolvedValue({ csv: 'header\n', count: 0, truncated: false });
 
     try {
