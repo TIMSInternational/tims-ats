@@ -12,7 +12,7 @@ describe('assessment module scope wiring', () => {
   });
 
   it('by-id endpoints are scope-probed (≥3 assertScoped on assignments)', () => {
-    expect((src().match(/assertScoped\('assessmentAssignment'/g) ?? []).length).toBeGreaterThanOrEqual(3);
+    expect((src().match(/assertScoped\(\s*'assessmentAssignment'/g) ?? []).length).toBeGreaterThanOrEqual(3);
   });
 
   it('assign/bulkAssign probe the parent vacancy', () => {

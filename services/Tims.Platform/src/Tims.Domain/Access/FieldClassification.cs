@@ -38,6 +38,8 @@ public static class FieldClassification
                 new("rawScore", [Super, External]),
                 new("normalizedScore", [Super, Hr, Hrbp, Recruiter, Employee, External]),
                 new("percentile", [Super, Hr, Hrbp, Recruiter, Employee, External]),
+                new("band", [Super, Hr, Hrbp, Recruiter, Employee, External]),
+                new("normSampleSize", [Super, Hr, Hrbp, Recruiter, Employee, External]),
                 new("interpretation", [Super, Hr, Hrbp, Recruiter, Employee, External]),
                 new("modelVersion", [Super, Hr, External]),
             },

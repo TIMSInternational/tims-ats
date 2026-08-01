@@ -6,42 +6,60 @@
       "kind": "fieldsVisibleTo",
       "roles": ["external"],
       "entity": "assessmentResult",
-      "expected": ["breakdown", "rawScore", "normalizedScore", "percentile", "interpretation", "modelVersion"]
+      "expected": [
+        "breakdown",
+        "rawScore",
+        "normalizedScore",
+        "percentile",
+        "band",
+        "normSampleSize",
+        "interpretation",
+        "modelVersion"
+      ]
     },
     {
       "name": "fieldsVisibleTo super_admin → all six (raw + scores + modelVersion)",
       "kind": "fieldsVisibleTo",
       "roles": ["super_admin"],
       "entity": "assessmentResult",
-      "expected": ["breakdown", "rawScore", "normalizedScore", "percentile", "interpretation", "modelVersion"]
+      "expected": [
+        "breakdown",
+        "rawScore",
+        "normalizedScore",
+        "percentile",
+        "band",
+        "normSampleSize",
+        "interpretation",
+        "modelVersion"
+      ]
     },
     {
       "name": "fieldsVisibleTo hr_admin → scores + modelVersion (no raw)",
       "kind": "fieldsVisibleTo",
       "roles": ["hr_admin"],
       "entity": "assessmentResult",
-      "expected": ["normalizedScore", "percentile", "interpretation", "modelVersion"]
+      "expected": ["normalizedScore", "percentile", "band", "normSampleSize", "interpretation", "modelVersion"]
     },
     {
       "name": "fieldsVisibleTo hrbp → scores only (no raw, no modelVersion)",
       "kind": "fieldsVisibleTo",
       "roles": ["hrbp"],
       "entity": "assessmentResult",
-      "expected": ["normalizedScore", "percentile", "interpretation"]
+      "expected": ["normalizedScore", "percentile", "band", "normSampleSize", "interpretation"]
     },
     {
       "name": "fieldsVisibleTo recruiter → scores only",
       "kind": "fieldsVisibleTo",
       "roles": ["recruiter"],
       "entity": "assessmentResult",
-      "expected": ["normalizedScore", "percentile", "interpretation"]
+      "expected": ["normalizedScore", "percentile", "band", "normSampleSize", "interpretation"]
     },
     {
       "name": "fieldsVisibleTo employee → scores only",
       "kind": "fieldsVisibleTo",
       "roles": ["employee"],
       "entity": "assessmentResult",
-      "expected": ["normalizedScore", "percentile", "interpretation"]
+      "expected": ["normalizedScore", "percentile", "band", "normSampleSize", "interpretation"]
     },
     {
       "name": "fieldsVisibleTo empty roles → none (fail-closed)",
@@ -62,7 +80,19 @@
       "kind": "selectFor",
       "roles": ["external"],
       "entity": "assessmentResult",
-      "expected": ["id", "organizationId", "assignmentId", "breakdown", "rawScore", "normalizedScore", "percentile", "interpretation", "modelVersion"]
+      "expected": [
+        "id",
+        "organizationId",
+        "assignmentId",
+        "breakdown",
+        "rawScore",
+        "normalizedScore",
+        "percentile",
+        "band",
+        "normSampleSize",
+        "interpretation",
+        "modelVersion"
+      ]
     },
     {
       "name": "selectFor empty roles → anchors only",
@@ -104,7 +134,17 @@
       "kind": "selectFor",
       "roles": ["hr_admin"],
       "entity": "employeeCompensation",
-      "expected": ["id", "organizationId", "userId", "currentSalary", "currency", "effectiveDate", "compaRatio", "variablePay", "bandId"]
+      "expected": [
+        "id",
+        "organizationId",
+        "userId",
+        "currentSalary",
+        "currency",
+        "effectiveDate",
+        "compaRatio",
+        "variablePay",
+        "bandId"
+      ]
     },
     {
       "name": "selectFor employee employeeCompensation → anchors + salary/currency/effectiveDate",
@@ -160,7 +200,17 @@
       "kind": "selectFor",
       "roles": ["hr_admin"],
       "entity": "salaryAdjustment",
-      "expected": ["id", "organizationId", "userId", "previousSalary", "newSalary", "currency", "reason", "type", "status"]
+      "expected": [
+        "id",
+        "organizationId",
+        "userId",
+        "previousSalary",
+        "newSalary",
+        "currency",
+        "reason",
+        "type",
+        "status"
+      ]
     },
     {
       "name": "selectFor leader salaryAdjustment → anchors + status ONLY (bite: never the restricted salary fields)",
