@@ -148,6 +148,15 @@ export function AssessmentResults({ assignments, fitScores }: { assignments: Ass
               {a.result?.band != null && (
                 <p className="text-[11px] font-medium text-[#1F114C] mt-1">
                   {t.assessmentPlayer.bandLabels[a.result.band]}
+                  {a.result?.normSampleSize != null && (
+                    <span className="font-normal text-[#8B8B8B]">
+                      {' '}
+                      {t.assessmentPlayer.resultSampleSizeLabel.replace(
+                        '{sampleSize}',
+                        String(a.result.normSampleSize),
+                      )}
+                    </span>
+                  )}
                 </p>
               )}
               {a.result?.breakdown != null &&

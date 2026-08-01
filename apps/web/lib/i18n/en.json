@@ -3506,6 +3506,7 @@
     "resultSummary": "Thank you for completing this assessment. Our team will follow up with next steps.",
     "resultPercentileLabel": "Better than {percentile}% of candidates who took this assessment",
     "resultNoNormData": "Not enough data yet to compare against other candidates",
+    "resultSampleSizeLabel": "(based on {sampleSize} candidates)",
     "bandLabels": {
       "below_average": "Below average",
       "average": "Average",
