@@ -9,8 +9,13 @@
         "rawScore": 42.5,
         "normalizedScore": 78,
         "percentile": 91,
+        "band": "above_average",
+        "normSampleSize": 12,
         "interpretation": { "summary": "Strong analytical profile", "bands": ["A", "B"] },
-        "breakdown": [{ "dim": "numeric", "score": 80 }, { "dim": "verbal", "score": 72 }],
+        "breakdown": [
+          { "dim": "numeric", "score": 80 },
+          { "dim": "verbal", "score": 72 }
+        ],
         "modelVersion": "psy-v3",
         "scoredAt": "2026-05-01T10:00:00.000Z",
         "assignment": {
@@ -39,8 +44,13 @@
         "rawScore": 42.5,
         "normalizedScore": 78,
         "percentile": 91,
+        "band": "above_average",
+        "normSampleSize": 12,
         "interpretation": { "summary": "Strong analytical profile", "bands": ["A", "B"] },
-        "breakdown": [{ "dim": "numeric", "score": 80 }, { "dim": "verbal", "score": 72 }],
+        "breakdown": [
+          { "dim": "numeric", "score": 80 },
+          { "dim": "verbal", "score": 72 }
+        ],
         "modelVersion": "psy-v3"
       }
     },
@@ -52,6 +62,8 @@
         "rawScore": null,
         "normalizedScore": null,
         "percentile": null,
+        "band": null,
+        "normSampleSize": null,
         "interpretation": null,
         "breakdown": null,
         "modelVersion": null,
@@ -82,6 +94,8 @@
         "rawScore": null,
         "normalizedScore": null,
         "percentile": null,
+        "band": null,
+        "normSampleSize": null,
         "interpretation": null,
         "breakdown": null,
         "modelVersion": null
@@ -95,6 +109,8 @@
         "rawScore": 0,
         "normalizedScore": 55.25,
         "percentile": 50,
+        "band": "average",
+        "normSampleSize": 5,
         "interpretation": "borderline",
         "breakdown": 7,
         "modelVersion": "psy-v1",
@@ -125,6 +141,8 @@
         "rawScore": 0,
         "normalizedScore": 55.25,
         "percentile": 50,
+        "band": "average",
+        "normSampleSize": 5,
         "interpretation": "borderline",
         "breakdown": 7,
         "modelVersion": "psy-v1"

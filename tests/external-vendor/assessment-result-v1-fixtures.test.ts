@@ -1,10 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import {
-  toExternalAssessmentResultV1,
-  type ExternalResultRow,
-} from '../../packages/api/src/dto/external-assessment';
+import { toExternalAssessmentResultV1, type ExternalResultRow } from '../../packages/api/src/dto/external-assessment';
 
 // Phase-5 Slice 1: the SAME golden fixtures asserted by the C# ExternalAssessmentResultV1Mapper
 // (contracts/external-fixtures/assessment-result-v1.json) are asserted here against the REAL TS
@@ -27,6 +24,8 @@ interface InputRow {
   rawScore: number | null;
   normalizedScore: number | null;
   percentile: number | null;
+  band: string | null;
+  normSampleSize: number | null;
   interpretation: unknown;
   breakdown: unknown;
   modelVersion: string | null;
@@ -48,13 +47,18 @@ interface ExpectedV1 {
   rawScore: number | null;
   normalizedScore: number | null;
   percentile: number | null;
+  band: string | null;
+  normSampleSize: number | null;
   interpretation: unknown;
   breakdown: unknown;
   modelVersion: string | null;
 }
 
 const data = JSON.parse(
-  readFileSync(fileURLToPath(new URL('../../contracts/external-fixtures/assessment-result-v1.json', import.meta.url)), 'utf8'),
+  readFileSync(
+    fileURLToPath(new URL('../../contracts/external-fixtures/assessment-result-v1.json', import.meta.url)),
+    'utf8',
+  ),
 ) as { description: string; cases: Array<{ name: string; input: InputRow; expected: ExpectedV1 }> };
 
 const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);
@@ -68,6 +72,8 @@ describe('assessment-result-v1.json — real toExternalAssessmentResultV1', () =
       rawScore: input.rawScore,
       normalizedScore: input.normalizedScore,
       percentile: input.percentile,
+      band: input.band,
+      normSampleSize: input.normSampleSize,
       interpretation: input.interpretation,
       breakdown: input.breakdown,
       modelVersion: input.modelVersion,
@@ -100,6 +106,8 @@ describe('assessment-result-v1.json — real toExternalAssessmentResultV1', () =
     expect(v1.rawScore).toBe(expected.rawScore);
     expect(v1.normalizedScore).toBe(expected.normalizedScore);
     expect(v1.percentile).toBe(expected.percentile);
+    expect(v1.band).toBe(expected.band);
+    expect(v1.normSampleSize).toBe(expected.normSampleSize);
     expect(v1.interpretation).toEqual(expected.interpretation);
     expect(v1.breakdown).toEqual(expected.breakdown);
     expect(v1.modelVersion).toBe(expected.modelVersion);

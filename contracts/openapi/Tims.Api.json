@@ -7744,6 +7744,8 @@
           "rawScore",
           "normalizedScore",
           "percentile",
+          "band",
+          "normSampleSize",
           "interpretation",
           "breakdown",
           "modelVersion"
@@ -7812,6 +7814,21 @@
               "string"
             ],
             "format": "double"
+          },
+          "band": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "normSampleSize": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
           },
           "interpretation": {
             "oneOf": [

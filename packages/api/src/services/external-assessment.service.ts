@@ -40,6 +40,8 @@ interface RawExternalAssessmentResultV1 {
   rawScore: number | string | null;
   normalizedScore: number | string | null;
   percentile: number | string | null;
+  band: string | null;
+  normSampleSize: number | string | null;
   interpretation: unknown;
   breakdown: unknown;
   modelVersion: string | null;
@@ -61,6 +63,8 @@ function mapRawResultV1(raw: RawExternalAssessmentResultV1): ExternalAssessmentR
     rawScore: numOrNull(raw.rawScore),
     normalizedScore: numOrNull(raw.normalizedScore),
     percentile: numOrNull(raw.percentile),
+    band: raw.band,
+    normSampleSize: numOrNull(raw.normSampleSize),
     interpretation: raw.interpretation,
     breakdown: raw.breakdown,
     modelVersion: raw.modelVersion,

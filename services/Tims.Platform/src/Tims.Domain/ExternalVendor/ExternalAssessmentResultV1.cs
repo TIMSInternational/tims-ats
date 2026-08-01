@@ -7,7 +7,7 @@ namespace Tims.Domain.ExternalVendor;
 /// <summary>
 /// The row the repository returns (result row + selected assignment context) — the input to the v1
 /// mapper. A faithful port of the TS <c>ExternalResultRow</c> (packages/api/src/dto/external-assessment.ts):
-/// it carries ONLY the classification-ceiling fields for <c>external</c> (the six scored fields) plus the
+/// it carries ONLY the classification-ceiling fields for <c>external</c> (the eight scored fields) plus the
 /// non-sensitive anchors, <c>scoredAt</c>, and the assignment context the v1 shape needs — never a
 /// non-ceiling sensitive column.
 ///
@@ -21,6 +21,8 @@ public sealed record ExternalResultRow(
     double? RawScore,
     double? NormalizedScore,
     double? Percentile,
+    string? Band,
+    int? NormSampleSize,
     JsonNode? Interpretation,
     JsonNode? Breakdown,
     string? ModelVersion,
@@ -47,7 +49,7 @@ public sealed record ExternalAssignmentContext(
 /// The STABLE, versioned external contract for assessment profiles — a faithful port of the TS
 /// <c>ExternalAssessmentResultV1</c> DTO. Integrators depend on this shape, so it is mapped explicitly
 /// (never a reshape of the internal row): bump <see cref="SchemaVersion"/> and add a v2 mapper for a
-/// breaking change. The flat field set is assignment context + the six scored fields + <c>scoredAt</c>.
+/// breaking change. The flat field set is assignment context + the eight scored fields + <c>scoredAt</c>.
 /// </summary>
 public sealed record ExternalAssessmentResultV1(
     string SchemaVersion,
@@ -69,6 +71,8 @@ public sealed record ExternalAssessmentResultV1(
     double? RawScore,
     double? NormalizedScore,
     double? Percentile,
+    string? Band,
+    int? NormSampleSize,
     JsonNode? Interpretation,
     JsonNode? Breakdown,
     string? ModelVersion);
@@ -98,6 +102,8 @@ public static class ExternalAssessmentResultV1Mapper
         RawScore: row.RawScore,
         NormalizedScore: row.NormalizedScore,
         Percentile: row.Percentile,
+        Band: row.Band,
+        NormSampleSize: row.NormSampleSize,
         Interpretation: row.Interpretation,
         Breakdown: row.Breakdown,
         ModelVersion: row.ModelVersion);

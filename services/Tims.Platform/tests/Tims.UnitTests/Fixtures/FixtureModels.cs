@@ -83,6 +83,8 @@ internal sealed record V1InputRow(
     double? RawScore,
     double? NormalizedScore,
     double? Percentile,
+    string? Band,
+    int? NormSampleSize,
     System.Text.Json.Nodes.JsonNode? Interpretation,
     System.Text.Json.Nodes.JsonNode? Breakdown,
     string? ModelVersion,
@@ -113,6 +115,8 @@ internal sealed record V1Expected(
     double? RawScore,
     double? NormalizedScore,
     double? Percentile,
+    string? Band,
+    int? NormSampleSize,
     System.Text.Json.Nodes.JsonNode? Interpretation,
     System.Text.Json.Nodes.JsonNode? Breakdown,
     string? ModelVersion);
