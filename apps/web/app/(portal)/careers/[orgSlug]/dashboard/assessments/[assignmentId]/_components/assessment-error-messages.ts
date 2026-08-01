@@ -2,10 +2,15 @@ import type en from '../../../../../../../../lib/i18n/en.json';
 
 export type AssessmentPlayerT = (typeof en)['assessmentPlayer'];
 
+// Type for string-valued keys only (excludes object-valued keys like bandLabels)
+type AssessmentPlayerStringKeys = {
+  [K in keyof AssessmentPlayerT]: AssessmentPlayerT[K] extends string ? K : never;
+}[keyof AssessmentPlayerT];
+
 // Deliberately excludes assignment_already_completed — per the Slice 3 design,
 // that code is not an error state in the UI. A caller that receives it should
 // re-fetch getMyAssessments and land on the result screen, never call this mapper.
-const ERROR_MESSAGE_KEYS: Record<string, keyof AssessmentPlayerT> = {
+const ERROR_MESSAGE_KEYS: Record<string, AssessmentPlayerStringKeys> = {
   consent_required: 'errorConsentRequired',
   assignment_expired: 'errorAssignmentExpired',
   assignment_not_startable: 'errorAssignmentNotStartable',

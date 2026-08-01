@@ -157,6 +157,8 @@ public sealed class ExternalAssessmentReadUseCaseTests
         RawScore: 1,
         NormalizedScore: 2,
         Percentile: 3,
+        Band: null,
+        NormSampleSize: null,
         Interpretation: null,
         Breakdown: null,
         ModelVersion: "m",

@@ -69,6 +69,9 @@ export function AssessmentPlayerShell({ orgSlug, assignmentId }: AssessmentPlaye
         <AssessmentResultScreen
           normalizedScore={assignment.result?.normalizedScore ?? null}
           hasPending={assignment.result?.hasPending ?? false}
+          band={assignment.result?.band ?? null}
+          percentile={assignment.result?.percentile ?? null}
+          normSampleSize={assignment.result?.normSampleSize ?? null}
         />
       </>
     );

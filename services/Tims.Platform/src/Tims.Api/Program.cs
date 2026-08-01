@@ -185,7 +185,15 @@ try
     // assessment_types, run UNDER TenantScope (app_tenant + org GUC) so RLS engages. The use case audits
     // every exported psychometric row fail-closed (IDataAccessAuditor, registered above) BEFORE returning
     // any data. Cutover is deploy-gated (deferred) — no traffic is routed here yet.
-    builder.Services.AddDbContext<ExternalAssessmentDbContext>(options => options.UseNpgsql(databaseConnectionString));
+    // A dedicated data source with EnableUnmappedTypes so the native Postgres `band` enum column reads
+    // into the mapped C# string property. Registered as a WRAPPER (ExternalAssessmentDataSourceHolder),
+    // NOT the open NpgsqlDataSource service type -- exactly like BillingReadDbContext below -- so
+    // EnableUnmappedTypes stays exclusive to this context and never bleeds into the other string-based
+    // contexts.
+    builder.Services.AddSingleton(_ =>
+        new ExternalAssessmentDataSourceHolder(ExternalAssessmentDataSource.Build(databaseConnectionString ?? string.Empty)));
+    builder.Services.AddDbContext<ExternalAssessmentDbContext>((sp, options) =>
+        options.UseNpgsql(sp.GetRequiredService<ExternalAssessmentDataSourceHolder>().DataSource));
     builder.Services.AddScoped<IExternalAssessmentRepository, ExternalAssessmentRepository>();
     builder.Services.AddScoped<ExternalAssessmentReadUseCase>();
 

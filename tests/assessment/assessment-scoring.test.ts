@@ -5,6 +5,8 @@ import {
   answerInputSchema,
   submitAssessmentAnswersSchema,
   MAX_FREE_TEXT,
+  computeNormBand,
+  MIN_NORM_SAMPLE_SIZE,
 } from '../../packages/shared/src/validators/assessment';
 
 describe('scoreChoice', () => {
@@ -49,6 +51,84 @@ describe('computeResult', () => {
   it('returns 0 normalizedScore (not NaN) when everything is pending', () => {
     const result = computeResult([{ isCorrect: null, pointsAwarded: null, points: 20 }]);
     expect(result).toEqual({ rawScore: 0, normalizedScore: 0, hasPending: true });
+  });
+});
+
+describe('computeNormBand', () => {
+  it('returns null when the population is below MIN_NORM_SAMPLE_SIZE', () => {
+    expect(computeNormBand(80, [70, 75, 90, 60])).toBeNull(); // 4 < 5
+  });
+
+  it('returns null for an empty population', () => {
+    expect(computeNormBand(80, [])).toBeNull();
+  });
+
+  it('computes below_average for a score at the bottom of a 5+ population', () => {
+    expect(computeNormBand(10, [20, 30, 40, 50, 60])).toEqual({ percentile: 0, band: 'below_average' });
+  });
+
+  it('computes excellent for a score at the top of a 5+ population', () => {
+    expect(computeNormBand(100, [20, 30, 40, 50, 60])).toEqual({ percentile: 100, band: 'excellent' });
+  });
+
+  it('computes average for a score in the middle (25-50th percentile band)', () => {
+    // candidate scores 45: 2 of 6 population strictly below (20,30), 0 equal
+    // percentile = (2 + 0.5*0) / 6 * 100 = 33.33 -> average band [25,50)
+    const result = computeNormBand(45, [20, 30, 50, 60, 70, 80]);
+    expect(result?.band).toBe('average');
+    expect(result?.percentile).toBeCloseTo(33.33, 1);
+  });
+
+  it('computes above_average for a score in the 50-75th percentile band', () => {
+    // candidate scores 65: 4 of 6 below (20,30,50,60), percentile = 4/6*100 = 66.67 -> above_average
+    const result = computeNormBand(65, [20, 30, 50, 60, 70, 80]);
+    expect(result?.band).toBe('above_average');
+    expect(result?.percentile).toBeCloseTo(66.67, 1);
+  });
+
+  it('splits a tie using the midpoint-rank formula (ties do not favor either side)', () => {
+    // candidate scores 50, population has two other 50s among 5 total.
+    // countBelow=0 (nothing strictly below 50), countEqual=2 -> (0 + 0.5*2)/5*100 = 20
+    const result = computeNormBand(50, [50, 50, 60, 70, 80]);
+    expect(result?.percentile).toBeCloseTo(20, 1);
+  });
+
+  it('is exactly MIN_NORM_SAMPLE_SIZE at the boundary (5 population members is enough)', () => {
+    expect(computeNormBand(50, [10, 20, 30, 40, 60])).not.toBeNull();
+  });
+
+  it('computes exact 25th percentile boundary as average (not below_average)', () => {
+    // candidate scores 50: 2 of 8 population strictly below (10,20), 0 equal
+    // percentile = (2 + 0.5*0) / 8 * 100 = 25.00 -> average band [25,50)
+    const result = computeNormBand(50, [10, 20, 60, 70, 80, 90, 100, 110]);
+    expect(result?.percentile).toBeCloseTo(25, 1);
+    expect(result?.band).toBe('average');
+  });
+
+  it('computes exact 50th percentile boundary as above_average', () => {
+    // candidate scores 55: 3 of 6 population strictly below (10,20,30), 0 equal
+    // percentile = (3 + 0.5*0) / 6 * 100 = 50.00 -> above_average band [50,75)
+    const result = computeNormBand(55, [10, 20, 30, 60, 70, 80]);
+    expect(result?.percentile).toBeCloseTo(50, 1);
+    expect(result?.band).toBe('above_average');
+  });
+
+  it('computes exact 75th percentile boundary as excellent', () => {
+    // candidate scores 70: 6 of 8 population strictly below (10,20,30,40,50,60), 0 equal
+    // percentile = (6 + 0.5*0) / 8 * 100 = 75.00 -> excellent band [75,100]
+    const result = computeNormBand(70, [10, 20, 30, 40, 50, 60, 80, 90]);
+    expect(result?.percentile).toBeCloseTo(75, 1);
+    expect(result?.band).toBe('excellent');
+  });
+
+  it('returns null for single-population-member edge case (1 < MIN_NORM_SAMPLE_SIZE)', () => {
+    expect(computeNormBand(50, [25])).toBeNull();
+  });
+});
+
+describe('MIN_NORM_SAMPLE_SIZE', () => {
+  it('is 5', () => {
+    expect(MIN_NORM_SAMPLE_SIZE).toBe(5);
   });
 });
 

@@ -11,7 +11,7 @@ namespace Tims.Infrastructure.ExternalVendor;
 /// <see cref="TenantScope"/> (SET LOCAL ROLE app_tenant + org GUC) so RLS engages, with an EXPLICIT
 /// <c>organizationId</c> on BOTH the result AND the joined assignment (defense-in-depth, INV-E). Only
 /// COMPLETED assignments are exposed (INV-A). The projection selects ONLY the external classification
-/// ceiling (the six scored fields, all visible to <c>external</c>) + anchors + <c>scoredAt</c> + the
+/// ceiling (the eight scored fields, all visible to <c>external</c>) + anchors + <c>scoredAt</c> + the
 /// assignment context — never a non-ceiling sensitive column.
 /// </summary>
 public sealed class ExternalAssessmentRepository(ExternalAssessmentDbContext db) : IExternalAssessmentRepository
@@ -99,6 +99,8 @@ public sealed class ExternalAssessmentRepository(ExternalAssessmentDbContext db)
             r.RawScore,
             r.NormalizedScore,
             r.Percentile,
+            r.Band,
+            r.NormSampleSize,
             r.Breakdown,
             r.Interpretation,
             r.ModelVersion,
@@ -127,6 +129,8 @@ public sealed class ExternalAssessmentRepository(ExternalAssessmentDbContext db)
         r.RawScore,
         r.NormalizedScore,
         r.Percentile,
+        r.Band,
+        r.NormSampleSize,
         ParseJson(r.Interpretation),
         ParseJson(r.Breakdown),
         r.ModelVersion,
@@ -160,6 +164,8 @@ public sealed class ExternalAssessmentRepository(ExternalAssessmentDbContext db)
         double? RawScore,
         double? NormalizedScore,
         double? Percentile,
+        string? Band,
+        int? NormSampleSize,
         string? Breakdown,
         string? Interpretation,
         string? ModelVersion,

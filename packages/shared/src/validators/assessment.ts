@@ -168,6 +168,51 @@ export function computeResult(graded: GradedAnswer[]): ComputeResultOutput {
 }
 
 // ---------------------------------------------------------------------------
+// Assessment Player Slice 5 — local norm scoring (dynamic, per-org, per-type).
+// See docs/superpowers/specs/2026-08-01-assessment-player-norm-scoring-design.md.
+// Pure, TDD-first (no DB/network) — mirrors scoreChoice/computeResult above.
+// ---------------------------------------------------------------------------
+
+export type ScoreBand = 'below_average' | 'average' | 'above_average' | 'excellent';
+
+// Below this many OTHER completed results, a percentile is statistically
+// meaningless — return null (honest N/D) rather than a number computed off
+// too few data points.
+export const MIN_NORM_SAMPLE_SIZE = 5;
+
+export interface NormBandResult {
+  percentile: number;
+  band: ScoreBand;
+}
+
+function bandForPercentile(percentile: number): ScoreBand {
+  if (percentile < 25) return 'below_average';
+  if (percentile < 50) return 'average';
+  if (percentile < 75) return 'above_average';
+  return 'excellent';
+}
+
+/**
+ * Percentile rank of `candidateScore` within `populationScores` (every OTHER
+ * completed non-partial result for the same org + assessment type), using the
+ * standard midpoint-rank formula so ties don't arbitrarily favor either side.
+ * Returns null below MIN_NORM_SAMPLE_SIZE — an honest "not enough data yet",
+ * never a fabricated number.
+ */
+export function computeNormBand(candidateScore: number, populationScores: number[]): NormBandResult | null {
+  if (populationScores.length < MIN_NORM_SAMPLE_SIZE) return null;
+
+  let countBelow = 0;
+  let countEqual = 0;
+  for (const score of populationScores) {
+    if (score < candidateScore) countBelow++;
+    else if (score === candidateScore) countEqual++;
+  }
+  const percentile = ((countBelow + 0.5 * countEqual) / populationScores.length) * 100;
+  return { percentile, band: bandForPercentile(percentile) };
+}
+
+// ---------------------------------------------------------------------------
 // Candidate submit input (Zod). Full type-coherence (must supply
 // selectedOptionIds for a choice question, freeText for free_text) needs the
 // DB question type and is enforced server-side in the service, not here —

@@ -67,6 +67,33 @@ describe('candidateAssessmentWriteRepo.findQuestionsWithAnswerKeyInTx', () => {
   });
 });
 
+describe('candidateAssessmentWriteRepo.listOtherNormalizedScoresInTx', () => {
+  it('selects only normalizedScore for other non-partial completed results, same org+type, excluding self', async () => {
+    const mockTx = {
+      assessmentResult: {
+        findMany: vi.fn().mockResolvedValue([{ normalizedScore: 70 }, { normalizedScore: 85 }]),
+      },
+    };
+    const scores = await candidateAssessmentWriteRepo.listOtherNormalizedScoresInTx(
+      mockTx as never,
+      'org-1',
+      'type-1',
+      'assignment-self',
+    );
+    expect(scores).toEqual([70, 85]);
+    expect(mockTx.assessmentResult.findMany).toHaveBeenCalledWith({
+      where: {
+        organizationId: 'org-1',
+        normalizedScore: { not: null },
+        assignmentId: { not: 'assignment-self' },
+        assignment: { assessmentTypeId: 'type-1', status: 'completed' },
+        breakdown: { path: ['pendingManual'], equals: [] },
+      },
+      select: { normalizedScore: true },
+    });
+  });
+});
+
 describe('candidateAssessmentRepo.markStarted', () => {
   it('on first start: conditionally flips assigned -> in_progress and sets startedAt', async () => {
     assessmentAssignmentUpdateMany.mockResolvedValue({ count: 1 });

@@ -18,6 +18,8 @@ export interface ExternalAssessmentResultV1 {
   rawScore: number | null;
   normalizedScore: number | null;
   percentile: number | null;
+  band: string | null;
+  normSampleSize: number | null;
   interpretation: unknown;
   breakdown: unknown;
   modelVersion: string | null;
@@ -31,6 +33,8 @@ export interface ExternalResultRow {
   rawScore: number | null;
   normalizedScore: number | null;
   percentile: number | null;
+  band: string | null;
+  normSampleSize: number | null;
   interpretation: unknown;
   breakdown: unknown;
   modelVersion: string | null;
@@ -63,6 +67,8 @@ export function toExternalAssessmentResultV1(row: ExternalResultRow): ExternalAs
     rawScore: row.rawScore,
     normalizedScore: row.normalizedScore,
     percentile: row.percentile,
+    band: row.band,
+    normSampleSize: row.normSampleSize,
     interpretation: row.interpretation,
     breakdown: row.breakdown,
     modelVersion: row.modelVersion,

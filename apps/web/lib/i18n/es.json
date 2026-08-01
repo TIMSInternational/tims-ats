@@ -3504,6 +3504,15 @@
     "resultScoreLabel": "Obtuviste",
     "resultPendingNotice": "Algunas de tus respuestas aun estan en revision manual — tu puntaje final puede cambiar.",
     "resultSummary": "Gracias por completar esta evaluacion. Nuestro equipo dara seguimiento con los proximos pasos.",
+    "resultPercentileLabel": "Mejor que el {percentile}% de los candidatos que tomaron esta evaluacion",
+    "resultNoNormData": "Aun no hay suficientes datos para comparar con otros candidatos",
+    "resultSampleSizeLabel": "(basado en {sampleSize} candidatos)",
+    "bandLabels": {
+      "below_average": "Por debajo del promedio",
+      "average": "Promedio",
+      "above_average": "Por encima del promedio",
+      "excellent": "Excelente"
+    },
     "errorConsentRequired": "Debes aceptar los terminos de tratamiento de datos para continuar.",
     "errorAssignmentExpired": "El tiempo de esta evaluacion ha expirado.",
     "errorAssignmentNotStartable": "Esta evaluacion ya no se puede iniciar.",

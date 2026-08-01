@@ -47,6 +47,8 @@ public sealed class ExternalAssessmentResultV1FixtureTests
             c.Input.RawScore,
             c.Input.NormalizedScore,
             c.Input.Percentile,
+            c.Input.Band,
+            c.Input.NormSampleSize,
             c.Input.Interpretation,
             c.Input.Breakdown,
             c.Input.ModelVersion,
@@ -78,6 +80,8 @@ public sealed class ExternalAssessmentResultV1FixtureTests
         Assert.Equal(expected.RawScore, actual.RawScore);
         Assert.Equal(expected.NormalizedScore, actual.NormalizedScore);
         Assert.Equal(expected.Percentile, actual.Percentile);
+        Assert.Equal(expected.Band, actual.Band);
+        Assert.Equal(expected.NormSampleSize, actual.NormSampleSize);
         Assert.Equal(expected.ModelVersion, actual.ModelVersion);
         Assert.True(JsonNode.DeepEquals(expected.Interpretation, actual.Interpretation), "interpretation mismatch");
         Assert.True(JsonNode.DeepEquals(expected.Breakdown, actual.Breakdown), "breakdown mismatch");

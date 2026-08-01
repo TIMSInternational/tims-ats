@@ -2,7 +2,7 @@ namespace Tims.Infrastructure.ExternalVendor;
 
 /// <summary>
 /// READ-ONLY EF mapping of the Prisma-OWNED <c>assessment_results</c> table (efcoreReadOnly in
-/// docs/architecture/table-ownership.md). Maps ONLY the external classification ceiling — the six scored
+/// docs/architecture/table-ownership.md). Maps ONLY the external classification ceiling — the eight scored
 /// fields (all visible to <c>external</c>) + the anchors + <c>scored_at</c> — and NEVER a non-ceiling
 /// sensitive column. Opaque psychometric JSON (<c>breakdown</c>, <c>interpretation</c>) is read as the
 /// raw jsonb text (parsed to a JsonNode client-side). Never written: every query is <c>AsNoTracking()</c>
@@ -22,6 +22,10 @@ public sealed class ExternalAssessmentResultReadEntity
     public double? NormalizedScore { get; set; }
 
     public double? Percentile { get; set; }
+
+    public string? Band { get; set; }
+
+    public int? NormSampleSize { get; set; }
 
     public string? Breakdown { get; set; }
 

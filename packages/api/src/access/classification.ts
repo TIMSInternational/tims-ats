@@ -92,6 +92,8 @@ export const CLASSIFICATION: Readonly<Record<string, EntityClassification>> = {
       rawScore: { dataClass: 'restricted', roles: [SUPER, EXTERNAL] },
       normalizedScore: { dataClass: 'confidential', roles: [SUPER, HR, HRBP, RECRUITER, EMPLOYEE, EXTERNAL] },
       percentile: { dataClass: 'confidential', roles: [SUPER, HR, HRBP, RECRUITER, EMPLOYEE, EXTERNAL] },
+      band: { dataClass: 'confidential', roles: [SUPER, HR, HRBP, RECRUITER, EMPLOYEE, EXTERNAL] },
+      normSampleSize: { dataClass: 'confidential', roles: [SUPER, HR, HRBP, RECRUITER, EMPLOYEE, EXTERNAL] },
       interpretation: { dataClass: 'confidential', roles: [SUPER, HR, HRBP, RECRUITER, EMPLOYEE, EXTERNAL] },
       modelVersion: { dataClass: 'internal', roles: [SUPER, HR, EXTERNAL] },
     },

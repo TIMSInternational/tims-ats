@@ -19,6 +19,7 @@ vi.mock('../../packages/api/src/repositories/candidate-assessment.repository', a
       upsertResponseInTx: vi.fn(),
       upsertResultInTx: vi.fn(),
       completeAssignmentInTx: vi.fn(),
+      listOtherNormalizedScoresInTx: vi.fn(),
     },
   };
 });
@@ -402,6 +403,7 @@ describe('candidateAssessmentService.submitAssessment', () => {
     vi.mocked(candidateAssessmentWriteRepo.findQuestionsWithAnswerKeyInTx).mockResolvedValue([
       SINGLE_CHOICE_Q,
     ] as never);
+    vi.mocked(candidateAssessmentWriteRepo.listOtherNormalizedScoresInTx).mockResolvedValue([]);
     vi.mocked(candidateAssessmentWriteRepo.completeAssignmentInTx).mockResolvedValue({ count: 0 } as never);
 
     await expect(
@@ -433,6 +435,7 @@ describe('candidateAssessmentService.submitAssessment', () => {
     vi.mocked(candidateAssessmentWriteRepo.findQuestionsWithAnswerKeyInTx).mockResolvedValue([
       SINGLE_CHOICE_Q,
     ] as never);
+    vi.mocked(candidateAssessmentWriteRepo.listOtherNormalizedScoresInTx).mockResolvedValue([]);
     vi.mocked(candidateAssessmentWriteRepo.completeAssignmentInTx).mockResolvedValue({ count: 1 } as never);
 
     // q1 submitted twice — a correct answer then a wrong one. The Map keeps
@@ -469,6 +472,7 @@ describe('candidateAssessmentService.submitAssessment', () => {
       SINGLE_CHOICE_Q,
       SECOND_CHOICE_Q,
     ] as never);
+    vi.mocked(candidateAssessmentWriteRepo.listOtherNormalizedScoresInTx).mockResolvedValue([]);
     vi.mocked(candidateAssessmentWriteRepo.completeAssignmentInTx).mockResolvedValue({ count: 1 } as never);
 
     // Only q1 (of 2 questions) is answered, correctly.
@@ -510,6 +514,7 @@ describe('candidateAssessmentService.submitAssessment', () => {
     vi.mocked(candidateAssessmentWriteRepo.findQuestionsWithAnswerKeyInTx).mockResolvedValue([
       SINGLE_CHOICE_Q,
     ] as never);
+    vi.mocked(candidateAssessmentWriteRepo.listOtherNormalizedScoresInTx).mockResolvedValue([]);
     vi.mocked(candidateAssessmentWriteRepo.completeAssignmentInTx).mockResolvedValue({ count: 1 } as never);
 
     // (a) A correct answer on the ONE active question yields normalizedScore
@@ -575,5 +580,96 @@ describe('candidateAssessmentService.submitAssessment', () => {
       ]),
     ).rejects.toMatchObject({ code: 'BAD_REQUEST', message: 'answer_type_mismatch' });
     expect(candidateAssessmentWriteRepo.upsertResponseInTx).not.toHaveBeenCalled();
+  });
+
+  it('computes and stores a norm band when the population meets MIN_NORM_SAMPLE_SIZE and the result is non-partial', async () => {
+    vi.mocked(candidateAssessmentRepo.findOwnedAssignment).mockResolvedValue({
+      id: ASSIGNMENT_ID,
+      status: 'in_progress',
+      expiresAt: null,
+      assessmentTypeId: 'type-1',
+    } as never);
+    vi.mocked(candidateAssessmentWriteRepo.findAssignmentInTx).mockResolvedValue({
+      id: ASSIGNMENT_ID,
+      status: 'in_progress',
+      expiresAt: null,
+      assessmentTypeId: 'type-1',
+    } as never);
+    vi.mocked(candidateAssessmentWriteRepo.findQuestionsWithAnswerKeyInTx).mockResolvedValue([
+      SINGLE_CHOICE_Q,
+    ] as never);
+    vi.mocked(candidateAssessmentWriteRepo.listOtherNormalizedScoresInTx).mockResolvedValue([20, 30, 40, 50, 60]);
+    vi.mocked(candidateAssessmentWriteRepo.completeAssignmentInTx).mockResolvedValue({ count: 1 } as never);
+
+    await candidateAssessmentService.submitAssessment(EMAIL, SLUG, ASSIGNMENT_ID, [
+      { questionId: 'q1', selectedOptionIds: ['b'] },
+    ]);
+
+    // Candidate scores 100 (normalizedScore for a correct single_choice answer),
+    // population [20,30,40,50,60] -> percentile 100, band 'excellent'.
+    expect(candidateAssessmentWriteRepo.upsertResultInTx).toHaveBeenCalledWith(
+      {},
+      expect.objectContaining({ percentile: 100, band: 'excellent', normSampleSize: 5 }),
+    );
+  });
+
+  it('stores a null percentile/band/normSampleSize=0 when the population is below MIN_NORM_SAMPLE_SIZE', async () => {
+    vi.mocked(candidateAssessmentRepo.findOwnedAssignment).mockResolvedValue({
+      id: ASSIGNMENT_ID,
+      status: 'in_progress',
+      expiresAt: null,
+      assessmentTypeId: 'type-1',
+    } as never);
+    vi.mocked(candidateAssessmentWriteRepo.findAssignmentInTx).mockResolvedValue({
+      id: ASSIGNMENT_ID,
+      status: 'in_progress',
+      expiresAt: null,
+      assessmentTypeId: 'type-1',
+    } as never);
+    vi.mocked(candidateAssessmentWriteRepo.findQuestionsWithAnswerKeyInTx).mockResolvedValue([
+      SINGLE_CHOICE_Q,
+    ] as never);
+    vi.mocked(candidateAssessmentWriteRepo.listOtherNormalizedScoresInTx).mockResolvedValue([20, 30]);
+    vi.mocked(candidateAssessmentWriteRepo.completeAssignmentInTx).mockResolvedValue({ count: 1 } as never);
+
+    await candidateAssessmentService.submitAssessment(EMAIL, SLUG, ASSIGNMENT_ID, [
+      { questionId: 'q1', selectedOptionIds: ['b'] },
+    ]);
+
+    expect(candidateAssessmentWriteRepo.upsertResultInTx).toHaveBeenCalledWith(
+      {},
+      expect.objectContaining({ percentile: null, band: null, normSampleSize: 2 }),
+    );
+  });
+
+  it('never queries the population or stores a band when the result is partial (has a pending essay)', async () => {
+    vi.mocked(candidateAssessmentRepo.findOwnedAssignment).mockResolvedValue({
+      id: ASSIGNMENT_ID,
+      status: 'in_progress',
+      expiresAt: null,
+      assessmentTypeId: 'type-1',
+    } as never);
+    vi.mocked(candidateAssessmentWriteRepo.findAssignmentInTx).mockResolvedValue({
+      id: ASSIGNMENT_ID,
+      status: 'in_progress',
+      expiresAt: null,
+      assessmentTypeId: 'type-1',
+    } as never);
+    vi.mocked(candidateAssessmentWriteRepo.findQuestionsWithAnswerKeyInTx).mockResolvedValue([
+      SINGLE_CHOICE_Q,
+      FREE_TEXT_Q,
+    ] as never);
+    vi.mocked(candidateAssessmentWriteRepo.completeAssignmentInTx).mockResolvedValue({ count: 1 } as never);
+
+    await candidateAssessmentService.submitAssessment(EMAIL, SLUG, ASSIGNMENT_ID, [
+      { questionId: 'q1', selectedOptionIds: ['b'] },
+      { questionId: 'q2', freeText: 'my essay' },
+    ]);
+
+    expect(candidateAssessmentWriteRepo.listOtherNormalizedScoresInTx).not.toHaveBeenCalled();
+    expect(candidateAssessmentWriteRepo.upsertResultInTx).toHaveBeenCalledWith(
+      {},
+      expect.objectContaining({ percentile: null, band: null, normSampleSize: null }),
+    );
   });
 });

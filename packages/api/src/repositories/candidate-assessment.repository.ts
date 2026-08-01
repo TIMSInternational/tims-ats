@@ -1,5 +1,6 @@
 import { tenantDb } from '@tims/db';
 import type { Prisma } from '@tims/db';
+import type { ScoreBand } from '@tims/shared';
 
 // Candidate-safe question DTO. Deliberately omits correctOptionIds — the staff
 // authoring repo (assessment-question.repository.ts) selects it, this one never
@@ -24,7 +25,7 @@ const assignmentSummarySelect = {
   // breakdown is selected ONLY so candidateAssessmentService.getMyAssessments can derive
   // hasPending (Wave 1.5a slice 3) — it is stripped before the DTO leaves the service,
   // never returned to the client as raw JSON.
-  result: { select: { normalizedScore: true, percentile: true, breakdown: true } },
+  result: { select: { normalizedScore: true, percentile: true, band: true, normSampleSize: true, breakdown: true } },
 } satisfies Prisma.AssessmentAssignmentSelect;
 
 export const candidateAssessmentRepo = {
@@ -140,6 +141,32 @@ export const candidateAssessmentWriteRepo = {
     });
   },
 
+  // Population for norm-band computation: every OTHER completed, non-partial
+  // result for the SAME org + assessment type. `breakdown: { path: ['pendingManual'],
+  // equals: [] }` filters to non-partial (no essay questions pending) — an
+  // essay-containing assessment's result never enters the population until a
+  // future essay-scoring pass empties pendingManual. Explicit select — only
+  // the one numeric field a candidate never sees attributed to anyone else.
+  listOtherNormalizedScoresInTx(
+    tx: Prisma.TransactionClient,
+    organizationId: string,
+    assessmentTypeId: string,
+    excludeAssignmentId: string,
+  ): Promise<number[]> {
+    return tx.assessmentResult
+      .findMany({
+        where: {
+          organizationId,
+          normalizedScore: { not: null },
+          assignmentId: { not: excludeAssignmentId },
+          assignment: { assessmentTypeId, status: 'completed' },
+          breakdown: { path: ['pendingManual'], equals: [] },
+        },
+        select: { normalizedScore: true },
+      })
+      .then((rows) => rows.map((r) => r.normalizedScore!));
+  },
+
   upsertResponseInTx(
     tx: Prisma.TransactionClient,
     data: {
@@ -182,6 +209,9 @@ export const candidateAssessmentWriteRepo = {
       rawScore: number;
       normalizedScore: number;
       breakdown: Prisma.InputJsonValue;
+      percentile?: number | null;
+      band?: ScoreBand | null;
+      normSampleSize?: number | null;
     },
   ) {
     return tx.assessmentResult.upsert({
@@ -192,11 +222,17 @@ export const candidateAssessmentWriteRepo = {
         rawScore: data.rawScore,
         normalizedScore: data.normalizedScore,
         breakdown: data.breakdown,
+        percentile: data.percentile ?? null,
+        band: data.band ?? null,
+        normSampleSize: data.normSampleSize ?? null,
       },
       update: {
         rawScore: data.rawScore,
         normalizedScore: data.normalizedScore,
         breakdown: data.breakdown,
+        percentile: data.percentile ?? null,
+        band: data.band ?? null,
+        normSampleSize: data.normSampleSize ?? null,
       },
     });
   },

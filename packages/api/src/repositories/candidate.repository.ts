@@ -115,7 +115,7 @@ const buildCandidateDetailSelect = (appScopeWhere: Prisma.ApplicationWhereInput)
         // the assessment router's selectFor-gated + audited readers. Threading
         // ctx.access.roles down to this nested aggregate select is the documented
         // follow-on if a super_admin ever needs raw data on this path.
-        result: { select: { id: true, normalizedScore: true } },
+        result: { select: { id: true, normalizedScore: true, percentile: true, band: true, normSampleSize: true } },
       },
     },
   }) satisfies Prisma.CandidateSelect;

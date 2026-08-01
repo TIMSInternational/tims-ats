@@ -35,6 +35,12 @@ public sealed class ExternalAssessmentDbContext(DbContextOptions<ExternalAssessm
             entity.Property(r => r.RawScore).HasColumnName("raw_score");
             entity.Property(r => r.NormalizedScore).HasColumnName("normalized_score");
             entity.Property(r => r.Percentile).HasColumnName("percentile");
+            // Native Postgres enum column (score_band, 4 labels: below_average/average/above_average/
+            // excellent). READ-ONLY here and never filtered on in a WHERE clause by this read surface, so
+            // it uses the simpler EnableUnmappedTypes pattern (see ExternalAssessmentDataSource.cs) rather
+            // than MapEnum<TEnum> (reserved for enums that ARE filtered).
+            entity.Property(r => r.Band).HasColumnName("band");
+            entity.Property(r => r.NormSampleSize).HasColumnName("norm_sample_size");
             // Opaque psychometric JSON: read the jsonb column as raw text (parsed to JsonNode client-side).
             entity.Property(r => r.Breakdown).HasColumnName("breakdown").HasColumnType("jsonb");
             entity.Property(r => r.Interpretation).HasColumnName("interpretation").HasColumnType("jsonb");

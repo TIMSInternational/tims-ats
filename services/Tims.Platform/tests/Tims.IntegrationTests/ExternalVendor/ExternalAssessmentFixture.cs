@@ -70,7 +70,7 @@ public sealed class ExternalAssessmentFixture : IAsyncLifetime
 
     public string ConnectionString { get; private set; } = string.Empty;
 
-    /// <summary>A second DB on the same server WITHOUT data_access_logs — audit writes here fail.</summary>
+    /// <summary>A second DB on the same server WITHOUT data_access_logs -- audit writes here fail.</summary>
     public string MissingAuditConnectionString { get; private set; } = string.Empty;
 
     public async Task InitializeAsync()
@@ -124,9 +124,12 @@ public sealed class ExternalAssessmentFixture : IAsyncLifetime
 
     public async Task DisposeAsync() => await _container.DisposeAsync();
 
+    // Same unmapped-types data source the Program.cs DI uses (built fresh per call, scoped to the
+    // requested connection string), so the native `band` enum column reads into a C# string identically
+    // in the direct-repo tests and the booted host.
     public ExternalAssessmentDbContext NewReadContext(string? connectionString = null) =>
         new(new DbContextOptionsBuilder<ExternalAssessmentDbContext>()
-            .UseNpgsql(connectionString ?? ConnectionString).Options);
+            .UseNpgsql(ExternalAssessmentDataSource.Build(connectionString ?? ConnectionString)).Options);
 
     public DataAccessAuditDbContext NewAuditContext(string? connectionString = null) =>
         new(new DbContextOptionsBuilder<DataAccessAuditDbContext>()
@@ -174,6 +177,7 @@ public sealed class ExternalAssessmentFixture : IAsyncLifetime
             completed_at timestamp(3) NULL,
             expires_at timestamp(3) NULL
         );
+        CREATE TYPE "ScoreBand" AS ENUM ('below_average', 'average', 'above_average', 'excellent');
         CREATE TABLE assessment_results (
             id uuid PRIMARY KEY,
             organization_id uuid NOT NULL,
@@ -181,6 +185,8 @@ public sealed class ExternalAssessmentFixture : IAsyncLifetime
             raw_score double precision NULL,
             normalized_score double precision NULL,
             percentile double precision NULL,
+            band "ScoreBand" NULL,
+            norm_sample_size integer NULL,
             breakdown jsonb NULL,
             interpretation jsonb NULL,
             model_version text NULL,
@@ -330,12 +336,12 @@ public sealed class ExternalAssessmentFixture : IAsyncLifetime
           ('b0000000-0000-0000-0000-000000000001', '22222222-2222-2222-2222-222222222222', 'c0000000-0000-0000-0000-0000000000b1', 'f0000000-0000-0000-0000-0000000000b1', 'bbbbbbbb-0000-0000-0000-0000000000b1', 'completed', '2025-12-01 00:00:00', NULL, '2026-04-30 00:00:00', NULL);
 
         INSERT INTO assessment_results
-          (id, organization_id, assignment_id, raw_score, normalized_score, percentile, breakdown, interpretation, model_version, scored_at) VALUES
-          ('e0000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'a0000000-0000-0000-0000-000000000001', 10, 55, 60, '{"dim":"num"}', '["ok"]', 'psy-v1', '2026-01-01 00:00:00'),
-          ('e0000000-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'a0000000-0000-0000-0000-000000000002', 20, 65, 70, NULL, NULL, 'psy-v1', '2026-02-01 00:00:00'),
-          ('e0000000-0000-0000-0000-000000000003', '11111111-1111-1111-1111-111111111111', 'a0000000-0000-0000-0000-000000000003', 30, 75, 80, NULL, NULL, 'psy-v1', '2026-03-01 00:00:00'),
-          ('e0000000-0000-0000-0000-000000000004', '11111111-1111-1111-1111-111111111111', 'a0000000-0000-0000-0000-000000000004', 40, 85, 90, NULL, NULL, 'psy-v1', '2026-03-01 00:00:00'),
-          ('e0000000-0000-0000-0000-0000000000ff', '11111111-1111-1111-1111-111111111111', 'a0000000-0000-0000-0000-0000000000ff', 99, 99, 99, '{"leak":true}', '["should-not-show"]', 'psy-v1', '2026-03-20 00:00:00'),
-          ('e0000000-0000-0000-0000-0000000000b1', '22222222-2222-2222-2222-222222222222', 'b0000000-0000-0000-0000-000000000001', 50, 50, 50, NULL, NULL, 'psy-v1', '2026-05-01 00:00:00');
+          (id, organization_id, assignment_id, raw_score, normalized_score, percentile, band, norm_sample_size, breakdown, interpretation, model_version, scored_at) VALUES
+          ('e0000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'a0000000-0000-0000-0000-000000000001', 10, 55, 60, 'average', 12, '{"dim":"num"}', '["ok"]', 'psy-v1', '2026-01-01 00:00:00'),
+          ('e0000000-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'a0000000-0000-0000-0000-000000000002', 20, 65, 70, NULL, NULL, NULL, NULL, 'psy-v1', '2026-02-01 00:00:00'),
+          ('e0000000-0000-0000-0000-000000000003', '11111111-1111-1111-1111-111111111111', 'a0000000-0000-0000-0000-000000000003', 30, 75, 80, 'above_average', 20, NULL, NULL, 'psy-v1', '2026-03-01 00:00:00'),
+          ('e0000000-0000-0000-0000-000000000004', '11111111-1111-1111-1111-111111111111', 'a0000000-0000-0000-0000-000000000004', 40, 85, 90, 'excellent', 25, NULL, NULL, 'psy-v1', '2026-03-01 00:00:00'),
+          ('e0000000-0000-0000-0000-0000000000ff', '11111111-1111-1111-1111-111111111111', 'a0000000-0000-0000-0000-0000000000ff', 99, 99, 99, 'excellent', 99, '{"leak":true}', '["should-not-show"]', 'psy-v1', '2026-03-20 00:00:00'),
+          ('e0000000-0000-0000-0000-0000000000b1', '22222222-2222-2222-2222-222222222222', 'b0000000-0000-0000-0000-000000000001', 50, 50, 50, 'average', 15, NULL, NULL, 'psy-v1', '2026-05-01 00:00:00');
         """;
 }
