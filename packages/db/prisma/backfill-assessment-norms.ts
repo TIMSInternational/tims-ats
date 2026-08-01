@@ -13,11 +13,9 @@
  *   pnpm --filter @tims/db exec tsx prisma/backfill-assessment-norms.ts --apply   # write to DB
  */
 
+import { fileURLToPath } from 'node:url';
 import { PrismaClient, type Prisma } from '@prisma/client';
 import { computeNormBand, type ScoreBand } from '@tims/shared';
-
-const db = new PrismaClient();
-const APPLY = process.argv.includes('--apply');
 
 interface ResultRow {
   assignmentId: string;
@@ -70,54 +68,64 @@ export function computeBackfillPlan(results: ResultRow[]): BackfillPlanRow[] {
   return plan;
 }
 
-async function main() {
-  console.log(`\nMode: ${APPLY ? 'APPLY' : 'DRY-RUN'}\n`);
+// Everything below — including PrismaClient construction — is confined to
+// this entrypoint guard so that `tsx prisma/backfill-assessment-norms.ts`
+// runs the script, but the unit test's `import { computeBackfillPlan } from
+// '.../backfill-assessment-norms'` never constructs a PrismaClient or fires
+// a DB call as an import side effect.
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  const db = new PrismaClient();
+  const APPLY = process.argv.includes('--apply');
 
-  const orgs = await db.organization.findMany({ select: { id: true, slug: true } });
-  console.log(`Found ${orgs.length} organization(s)\n`);
+  const main = async () => {
+    console.log(`\nMode: ${APPLY ? 'APPLY' : 'DRY-RUN'}\n`);
 
-  let totalUpdated = 0;
+    const orgs = await db.organization.findMany({ select: { id: true, slug: true } });
+    console.log(`Found ${orgs.length} organization(s)\n`);
 
-  for (const org of orgs) {
-    const results = await db.assessmentResult.findMany({
-      where: { organizationId: org.id, normalizedScore: { not: null } },
-      select: {
-        assignmentId: true,
-        normalizedScore: true,
-        breakdown: true,
-        assignment: { select: { assessmentTypeId: true, status: true } },
-      },
-    });
+    let totalUpdated = 0;
 
-    const rows: ResultRow[] = results
-      .filter((r) => r.assignment.status === 'completed')
-      .map((r) => ({
-        assignmentId: r.assignmentId,
-        assessmentTypeId: r.assignment.assessmentTypeId,
-        normalizedScore: r.normalizedScore!,
-        hasPending: hasPendingManual(r.breakdown),
-      }));
-
-    const plan = computeBackfillPlan(rows);
-    console.log(`  [${org.slug}] ${plan.length} non-partial result(s) to update`);
-    totalUpdated += plan.length;
-
-    if (!APPLY) continue;
-
-    for (const row of plan) {
-      await db.assessmentResult.update({
-        where: { assignmentId: row.assignmentId },
-        data: { percentile: row.percentile, band: row.band, normSampleSize: row.normSampleSize },
+    for (const org of orgs) {
+      const results = await db.assessmentResult.findMany({
+        where: { organizationId: org.id, normalizedScore: { not: null } },
+        select: {
+          assignmentId: true,
+          normalizedScore: true,
+          breakdown: true,
+          assignment: { select: { assessmentTypeId: true, status: true } },
+        },
       });
+
+      const rows: ResultRow[] = results
+        .filter((r) => r.assignment.status === 'completed')
+        .map((r) => ({
+          assignmentId: r.assignmentId,
+          assessmentTypeId: r.assignment.assessmentTypeId,
+          normalizedScore: r.normalizedScore!,
+          hasPending: hasPendingManual(r.breakdown),
+        }));
+
+      const plan = computeBackfillPlan(rows);
+      console.log(`  [${org.slug}] ${plan.length} non-partial result(s) to update`);
+      totalUpdated += plan.length;
+
+      if (!APPLY) continue;
+
+      for (const row of plan) {
+        await db.assessmentResult.update({
+          where: { assignmentId: row.assignmentId },
+          data: { percentile: row.percentile, band: row.band, normSampleSize: row.normSampleSize },
+        });
+      }
     }
-  }
 
-  console.log(`\nmode=${APPLY ? 'APPLY' : 'DRY-RUN'} orgs=${orgs.length} total-rows=${totalUpdated}`);
+    console.log(`\nmode=${APPLY ? 'APPLY' : 'DRY-RUN'} orgs=${orgs.length} total-rows=${totalUpdated}`);
+  };
+
+  main()
+    .catch((err) => {
+      console.error(err);
+      process.exitCode = 1;
+    })
+    .finally(() => db.$disconnect());
 }
-
-main()
-  .catch((err) => {
-    console.error(err);
-    process.exitCode = 1;
-  })
-  .finally(() => db.$disconnect());
