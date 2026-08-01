@@ -3504,6 +3504,14 @@
     "resultScoreLabel": "You scored",
     "resultPendingNotice": "Some of your answers are still awaiting manual review — your final score may change.",
     "resultSummary": "Thank you for completing this assessment. Our team will follow up with next steps.",
+    "resultPercentileLabel": "Better than {percentile}% of candidates who took this assessment",
+    "resultNoNormData": "Not enough data yet to compare against other candidates",
+    "bandLabels": {
+      "below_average": "Below average",
+      "average": "Average",
+      "above_average": "Above average",
+      "excellent": "Excellent"
+    },
     "errorConsentRequired": "You must accept the data processing terms to continue.",
     "errorAssignmentExpired": "This assessment's time window has expired.",
     "errorAssignmentNotStartable": "This assessment can no longer be started.",
