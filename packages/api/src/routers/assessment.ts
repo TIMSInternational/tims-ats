@@ -3,8 +3,13 @@ import { router, protectedProcedure, permissionProcedure } from '../trpc';
 import { tenantDb as db } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
-import type { ScoreBand } from '@tims/shared';
-import { createQuestionSchema, updateQuestionSchema, listQuestionsSchema, deleteQuestionSchema } from '@tims/shared';
+import {
+  createQuestionSchema,
+  updateQuestionSchema,
+  listQuestionsSchema,
+  deleteQuestionSchema,
+  type ScoreBand,
+} from '@tims/shared';
 import { assessmentQuestionService } from '../services/assessment-question.service';
 import { scopeWhereFor, assertScoped, selectFor, logDataAccess } from '../access';
 
