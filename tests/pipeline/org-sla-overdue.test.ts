@@ -6,12 +6,12 @@ vi.mock('../../packages/api/src/repositories/pipeline.repository', () => ({
   },
 }));
 
-import { pipelineService } from '../../packages/api/src/services/pipeline.service';
+import { pipelineAnalyticsService } from '../../packages/api/src/services/pipeline-analytics.service';
 import { pipelineRepository } from '../../packages/api/src/repositories/pipeline.repository';
 
 beforeEach(() => vi.clearAllMocks());
 
-describe('pipelineService.getOrgSlaOverdueCount', () => {
+describe('pipelineAnalyticsService.getOrgSlaOverdueCount', () => {
   it('counts an application overdue using time-in-CURRENT-stage, not time since application', async () => {
     const now = Date.now();
     vi.mocked(pipelineRepository.getActiveApplicationsForOrgSla).mockResolvedValue([
@@ -40,7 +40,7 @@ describe('pipelineService.getOrgSlaOverdueCount', () => {
       },
     ] as never);
 
-    const count = await pipelineService.getOrgSlaOverdueCount('org-1', {});
+    const count = await pipelineAnalyticsService.getOrgSlaOverdueCount('org-1', {});
 
     expect(count).toBe(1);
   });

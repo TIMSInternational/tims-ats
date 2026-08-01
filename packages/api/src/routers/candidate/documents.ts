@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { router, permissionProcedure } from '../../trpc';
-import { candidateService } from '../../services/candidate.service';
+import { candidateDocumentsService } from '../../services/candidate-documents.service';
 import { candidateAiService } from '../../services/candidate-ai.service';
 import { assertScoped } from '../../access';
 
@@ -17,7 +17,7 @@ export const candidateDocumentsRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await assertScoped('candidate', input.candidateId, ctx.access, ctx.user.id, ctx.user.organizationId);
-      return candidateService.uploadDocument(
+      return candidateDocumentsService.uploadDocument(
         ctx.user.organizationId,
         input.candidateId,
         input.type,
@@ -29,10 +29,10 @@ export const candidateDocumentsRouter = router({
   deleteDocument: permissionProcedure('candidate', 'update')
     .input(z.object({ documentId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
-      const doc = await candidateService.getDocument(ctx.user.organizationId, input.documentId);
+      const doc = await candidateDocumentsService.getDocument(ctx.user.organizationId, input.documentId);
       if (!doc) throw new TRPCError({ code: 'NOT_FOUND', message: 'Documento no encontrado' });
       await assertScoped('candidate', doc.candidateId, ctx.access, ctx.user.id, ctx.user.organizationId);
-      return candidateService.deleteDocument(ctx.user.organizationId, input.documentId);
+      return candidateDocumentsService.deleteDocument(ctx.user.organizationId, input.documentId);
     }),
 
   // Parses CV TEXT the staff member pastes in, via the gated cv-parser agent.
@@ -54,7 +54,7 @@ export const candidateDocumentsRouter = router({
     .mutation(async ({ ctx, input }) => {
       await assertScoped('candidate', input.candidateId, ctx.access, ctx.user.id, ctx.user.organizationId);
       if (input.documentId) {
-        const doc = await candidateService.getDocument(ctx.user.organizationId, input.documentId);
+        const doc = await candidateDocumentsService.getDocument(ctx.user.organizationId, input.documentId);
         if (!doc || doc.candidateId !== input.candidateId) {
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Documento no encontrado' });
         }

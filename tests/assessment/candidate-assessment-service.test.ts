@@ -51,214 +51,9 @@ beforeEach(() => {
   vi.mocked(candidatePortalRepo.findOrgBySlug).mockResolvedValue(ORG as never);
 });
 
-describe('candidateAssessmentService.getMyAssessments', () => {
-  it('throws NOT_FOUND for a missing/inactive org', async () => {
-    vi.mocked(candidatePortalRepo.findOrgBySlug).mockResolvedValue(null);
-    await expect(candidateAssessmentService.getMyAssessments(EMAIL, SLUG)).rejects.toMatchObject({
-      code: 'NOT_FOUND',
-    });
-  });
-
-  it('returns an empty list when the session email has no candidate at this org', async () => {
-    vi.mocked(candidatePortalRepo.findActiveCandidate).mockResolvedValue(null);
-    expect(await candidateAssessmentService.getMyAssessments(EMAIL, SLUG)).toEqual([]);
-    expect(candidateAssessmentRepo.findAssignmentsForCandidate).not.toHaveBeenCalled();
-  });
-
-  it("returns the candidate's assignments", async () => {
-    vi.mocked(candidatePortalRepo.findActiveCandidate).mockResolvedValue({ id: 'cand-1' } as never);
-    vi.mocked(candidateAssessmentRepo.findAssignmentsForCandidate).mockResolvedValue([
-      { id: 'a1', status: 'assigned', result: null },
-    ] as never);
-    expect(await candidateAssessmentService.getMyAssessments(EMAIL, SLUG)).toEqual([
-      { id: 'a1', status: 'assigned', result: null },
-    ]);
-  });
-
-  it('derives hasPending=true and strips breakdown when the result has pending manual questions', async () => {
-    vi.mocked(candidatePortalRepo.findActiveCandidate).mockResolvedValue({ id: 'cand-1' } as never);
-    vi.mocked(candidateAssessmentRepo.findAssignmentsForCandidate).mockResolvedValue([
-      {
-        id: 'a1',
-        status: 'completed',
-        result: { normalizedScore: 80, percentile: null, breakdown: { autoScored: 3, pendingManual: ['q1'] } },
-      },
-    ] as never);
-    const result = await candidateAssessmentService.getMyAssessments(EMAIL, SLUG);
-    expect(result).toEqual([
-      { id: 'a1', status: 'completed', result: { normalizedScore: 80, percentile: null, hasPending: true } },
-    ]);
-  });
-
-  it('derives hasPending=false when breakdown.pendingManual is empty', async () => {
-    vi.mocked(candidatePortalRepo.findActiveCandidate).mockResolvedValue({ id: 'cand-1' } as never);
-    vi.mocked(candidateAssessmentRepo.findAssignmentsForCandidate).mockResolvedValue([
-      {
-        id: 'a2',
-        status: 'completed',
-        result: { normalizedScore: 100, percentile: 90, breakdown: { autoScored: 3, pendingManual: [] } },
-      },
-    ] as never);
-    const result = await candidateAssessmentService.getMyAssessments(EMAIL, SLUG);
-    expect(result).toEqual([
-      { id: 'a2', status: 'completed', result: { normalizedScore: 100, percentile: 90, hasPending: false } },
-    ]);
-  });
-});
-
-describe('candidateAssessmentService.startAssessment', () => {
-  it('rejects when consentAccepted is not true, before any write', async () => {
-    vi.mocked(candidatePortalRepo.findActiveCandidate).mockResolvedValue({ id: 'cand-1' } as never);
-    await expect(
-      candidateAssessmentService.startAssessment(EMAIL, SLUG, ASSIGNMENT_ID, false, null, null),
-    ).rejects.toMatchObject({ code: 'BAD_REQUEST', message: 'consent_required' });
-    expect(candidateAssessmentRepo.upsertConsent).not.toHaveBeenCalled();
-  });
-
-  it('throws NOT_FOUND when the assignment is not owned by this candidate', async () => {
-    vi.mocked(candidatePortalRepo.findActiveCandidate).mockResolvedValue({ id: 'cand-1' } as never);
-    vi.mocked(candidateAssessmentRepo.findOwnedAssignment).mockResolvedValue(null);
-    await expect(
-      candidateAssessmentService.startAssessment(EMAIL, SLUG, ASSIGNMENT_ID, true, null, null),
-    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
-  });
-
-  it('rejects an expired assignment', async () => {
-    vi.mocked(candidatePortalRepo.findActiveCandidate).mockResolvedValue({ id: 'cand-1' } as never);
-    vi.mocked(candidateAssessmentRepo.findOwnedAssignment).mockResolvedValue({
-      id: ASSIGNMENT_ID,
-      status: 'assigned',
-      expiresAt: new Date('2020-01-01'),
-      assessmentTypeId: 'type-1',
-    } as never);
-    await expect(
-      candidateAssessmentService.startAssessment(EMAIL, SLUG, ASSIGNMENT_ID, true, null, null),
-    ).rejects.toMatchObject({ code: 'CONFLICT', message: 'assignment_expired' });
-    expect(candidateAssessmentRepo.markStarted).not.toHaveBeenCalled();
-  });
-
-  it('rejects a completed/cancelled assignment (out of {assigned, in_progress})', async () => {
-    vi.mocked(candidatePortalRepo.findActiveCandidate).mockResolvedValue({ id: 'cand-1' } as never);
-    vi.mocked(candidateAssessmentRepo.findOwnedAssignment).mockResolvedValue({
-      id: ASSIGNMENT_ID,
-      status: 'completed',
-      expiresAt: null,
-      assessmentTypeId: 'type-1',
-    } as never);
-    await expect(
-      candidateAssessmentService.startAssessment(EMAIL, SLUG, ASSIGNMENT_ID, true, null, null),
-    ).rejects.toMatchObject({ code: 'CONFLICT', message: 'assignment_not_startable' });
-  });
-
-  it('records consent then marks in_progress on first start', async () => {
-    vi.mocked(candidatePortalRepo.findActiveCandidate).mockResolvedValue({ id: 'cand-1' } as never);
-    vi.mocked(candidateAssessmentRepo.findOwnedAssignment).mockResolvedValue({
-      id: ASSIGNMENT_ID,
-      status: 'assigned',
-      expiresAt: null,
-      assessmentTypeId: 'type-1',
-    } as never);
-    vi.mocked(candidateAssessmentRepo.markStarted).mockResolvedValue({
-      id: ASSIGNMENT_ID,
-      status: 'in_progress',
-    } as never);
-
-    const result = await candidateAssessmentService.startAssessment(EMAIL, SLUG, ASSIGNMENT_ID, true, '1.2.3.4', 'ua');
-
-    expect(candidateAssessmentRepo.upsertConsent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        assignmentId: ASSIGNMENT_ID,
-        candidateId: 'cand-1',
-        ipAddress: '1.2.3.4',
-        userAgent: 'ua',
-      }),
-    );
-    expect(candidateAssessmentRepo.markStarted).toHaveBeenCalledWith(ASSIGNMENT_ID);
-    expect(result).toEqual({ id: ASSIGNMENT_ID, status: 'in_progress' });
-  });
-
-  it('is idempotent when already in_progress — re-marks started without erroring', async () => {
-    // markStarted is mocked here (candidateAssessmentRepo is fully vi.fn()'d
-    // at the top of this file), so this only proves the SERVICE's control
-    // flow tolerates a repeat call. The actual guarantee that a repeat call
-    // does not overwrite startedAt lives in the repository's conditional
-    // updateMany and is proven against a real tenantDb mock in
-    // tests/assessment/candidate-assessment-repository.test.ts (review
-    // finding #2).
-    vi.mocked(candidatePortalRepo.findActiveCandidate).mockResolvedValue({ id: 'cand-1' } as never);
-    vi.mocked(candidateAssessmentRepo.findOwnedAssignment).mockResolvedValue({
-      id: ASSIGNMENT_ID,
-      status: 'in_progress',
-      expiresAt: null,
-      assessmentTypeId: 'type-1',
-    } as never);
-    vi.mocked(candidateAssessmentRepo.markStarted).mockResolvedValue({
-      id: ASSIGNMENT_ID,
-      status: 'in_progress',
-    } as never);
-
-    const result = await candidateAssessmentService.startAssessment(EMAIL, SLUG, ASSIGNMENT_ID, true, null, null);
-    expect(result.status).toBe('in_progress');
-  });
-});
-
-describe('candidateAssessmentService.getAssessmentQuestions', () => {
-  it('throws NOT_FOUND when the assignment is not owned by this candidate', async () => {
-    vi.mocked(candidatePortalRepo.findActiveCandidate).mockResolvedValue({ id: 'cand-1' } as never);
-    vi.mocked(candidateAssessmentRepo.findOwnedAssignment).mockResolvedValue(null);
-    await expect(candidateAssessmentService.getAssessmentQuestions(EMAIL, SLUG, ASSIGNMENT_ID)).rejects.toMatchObject({
-      code: 'NOT_FOUND',
-    });
-  });
-
-  it('rejects when the assignment has not been started', async () => {
-    vi.mocked(candidatePortalRepo.findActiveCandidate).mockResolvedValue({ id: 'cand-1' } as never);
-    vi.mocked(candidateAssessmentRepo.findOwnedAssignment).mockResolvedValue({
-      id: ASSIGNMENT_ID,
-      status: 'assigned',
-      expiresAt: null,
-      assessmentTypeId: 'type-1',
-    } as never);
-    await expect(candidateAssessmentService.getAssessmentQuestions(EMAIL, SLUG, ASSIGNMENT_ID)).rejects.toMatchObject({
-      code: 'CONFLICT',
-      message: 'assignment_not_in_progress',
-    });
-  });
-
-  it('rejects an expired in_progress assignment', async () => {
-    vi.mocked(candidatePortalRepo.findActiveCandidate).mockResolvedValue({ id: 'cand-1' } as never);
-    vi.mocked(candidateAssessmentRepo.findOwnedAssignment).mockResolvedValue({
-      id: ASSIGNMENT_ID,
-      status: 'in_progress',
-      expiresAt: new Date('2020-01-01'),
-      assessmentTypeId: 'type-1',
-    } as never);
-    await expect(candidateAssessmentService.getAssessmentQuestions(EMAIL, SLUG, ASSIGNMENT_ID)).rejects.toMatchObject({
-      code: 'CONFLICT',
-      message: 'assignment_expired',
-    });
-  });
-
-  it("returns the assessment type's questions without correctOptionIds", async () => {
-    vi.mocked(candidatePortalRepo.findActiveCandidate).mockResolvedValue({ id: 'cand-1' } as never);
-    vi.mocked(candidateAssessmentRepo.findOwnedAssignment).mockResolvedValue({
-      id: ASSIGNMENT_ID,
-      status: 'in_progress',
-      expiresAt: null,
-      assessmentTypeId: 'type-1',
-    } as never);
-    const questions = [
-      { id: 'q1', order: 0, type: 'single_choice', prompt: 'p', options: [{ id: 'a', label: 'A' }], points: 1 },
-    ];
-    vi.mocked(candidateAssessmentRepo.findQuestionsForType).mockResolvedValue(questions as never);
-
-    const result = await candidateAssessmentService.getAssessmentQuestions(EMAIL, SLUG, ASSIGNMENT_ID);
-
-    expect(result).toEqual(questions);
-    expect(JSON.stringify(result)).not.toContain('correctOptionIds');
-    expect(candidateAssessmentRepo.findQuestionsForType).toHaveBeenCalledWith('org-1', 'type-1');
-  });
-});
+// getMyAssessments/startAssessment/getAssessmentQuestions now live in
+// candidate-assessment-lifecycle.service.ts — see
+// tests/assessment/candidate-assessment-lifecycle-service.test.ts.
 
 const SINGLE_CHOICE_Q = { id: 'q1', type: 'single_choice', correctOptionIds: ['b'], points: 5 };
 const FREE_TEXT_Q = { id: 'q2', type: 'free_text', correctOptionIds: [], points: 20 };
@@ -403,7 +198,11 @@ describe('candidateAssessmentService.submitAssessment', () => {
     vi.mocked(candidateAssessmentWriteRepo.findQuestionsWithAnswerKeyInTx).mockResolvedValue([
       SINGLE_CHOICE_Q,
     ] as never);
-    vi.mocked(candidateAssessmentWriteRepo.getNormCountsInTx).mockResolvedValue({ countBelow: 0, countEqual: 0, sampleSize: 0 });
+    vi.mocked(candidateAssessmentWriteRepo.getNormCountsInTx).mockResolvedValue({
+      countBelow: 0,
+      countEqual: 0,
+      sampleSize: 0,
+    });
     vi.mocked(candidateAssessmentWriteRepo.completeAssignmentInTx).mockResolvedValue({ count: 0 } as never);
 
     await expect(
@@ -435,7 +234,11 @@ describe('candidateAssessmentService.submitAssessment', () => {
     vi.mocked(candidateAssessmentWriteRepo.findQuestionsWithAnswerKeyInTx).mockResolvedValue([
       SINGLE_CHOICE_Q,
     ] as never);
-    vi.mocked(candidateAssessmentWriteRepo.getNormCountsInTx).mockResolvedValue({ countBelow: 0, countEqual: 0, sampleSize: 0 });
+    vi.mocked(candidateAssessmentWriteRepo.getNormCountsInTx).mockResolvedValue({
+      countBelow: 0,
+      countEqual: 0,
+      sampleSize: 0,
+    });
     vi.mocked(candidateAssessmentWriteRepo.completeAssignmentInTx).mockResolvedValue({ count: 1 } as never);
 
     // q1 submitted twice — a correct answer then a wrong one. The Map keeps
@@ -472,7 +275,11 @@ describe('candidateAssessmentService.submitAssessment', () => {
       SINGLE_CHOICE_Q,
       SECOND_CHOICE_Q,
     ] as never);
-    vi.mocked(candidateAssessmentWriteRepo.getNormCountsInTx).mockResolvedValue({ countBelow: 0, countEqual: 0, sampleSize: 0 });
+    vi.mocked(candidateAssessmentWriteRepo.getNormCountsInTx).mockResolvedValue({
+      countBelow: 0,
+      countEqual: 0,
+      sampleSize: 0,
+    });
     vi.mocked(candidateAssessmentWriteRepo.completeAssignmentInTx).mockResolvedValue({ count: 1 } as never);
 
     // Only q1 (of 2 questions) is answered, correctly.
@@ -514,7 +321,11 @@ describe('candidateAssessmentService.submitAssessment', () => {
     vi.mocked(candidateAssessmentWriteRepo.findQuestionsWithAnswerKeyInTx).mockResolvedValue([
       SINGLE_CHOICE_Q,
     ] as never);
-    vi.mocked(candidateAssessmentWriteRepo.getNormCountsInTx).mockResolvedValue({ countBelow: 0, countEqual: 0, sampleSize: 0 });
+    vi.mocked(candidateAssessmentWriteRepo.getNormCountsInTx).mockResolvedValue({
+      countBelow: 0,
+      countEqual: 0,
+      sampleSize: 0,
+    });
     vi.mocked(candidateAssessmentWriteRepo.completeAssignmentInTx).mockResolvedValue({ count: 1 } as never);
 
     // (a) A correct answer on the ONE active question yields normalizedScore
@@ -598,7 +409,11 @@ describe('candidateAssessmentService.submitAssessment', () => {
     vi.mocked(candidateAssessmentWriteRepo.findQuestionsWithAnswerKeyInTx).mockResolvedValue([
       SINGLE_CHOICE_Q,
     ] as never);
-    vi.mocked(candidateAssessmentWriteRepo.getNormCountsInTx).mockResolvedValue({ countBelow: 5, countEqual: 0, sampleSize: 5 });
+    vi.mocked(candidateAssessmentWriteRepo.getNormCountsInTx).mockResolvedValue({
+      countBelow: 5,
+      countEqual: 0,
+      sampleSize: 5,
+    });
     vi.mocked(candidateAssessmentWriteRepo.completeAssignmentInTx).mockResolvedValue({ count: 1 } as never);
 
     await candidateAssessmentService.submitAssessment(EMAIL, SLUG, ASSIGNMENT_ID, [
@@ -629,7 +444,11 @@ describe('candidateAssessmentService.submitAssessment', () => {
     vi.mocked(candidateAssessmentWriteRepo.findQuestionsWithAnswerKeyInTx).mockResolvedValue([
       SINGLE_CHOICE_Q,
     ] as never);
-    vi.mocked(candidateAssessmentWriteRepo.getNormCountsInTx).mockResolvedValue({ countBelow: 2, countEqual: 0, sampleSize: 2 });
+    vi.mocked(candidateAssessmentWriteRepo.getNormCountsInTx).mockResolvedValue({
+      countBelow: 2,
+      countEqual: 0,
+      sampleSize: 2,
+    });
     vi.mocked(candidateAssessmentWriteRepo.completeAssignmentInTx).mockResolvedValue({ count: 1 } as never);
 
     await candidateAssessmentService.submitAssessment(EMAIL, SLUG, ASSIGNMENT_ID, [

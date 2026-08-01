@@ -39,7 +39,7 @@ describe('candidate module scope wiring', () => {
   });
 
   it('bulkTag dedupes candidateIds before the scoped count-check', () => {
-    const src = read('packages/api/src/services/candidate.service.ts');
+    const src = read('packages/api/src/services/candidate-tags.service.ts');
     const block = src.slice(src.indexOf('bulkTag'));
     expect(block).toMatch(/new Set\(/);
   });

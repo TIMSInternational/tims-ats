@@ -24,8 +24,8 @@ vi.mock('../../packages/api/src/services/candidate-ai.service', () => ({
 const getDocumentMock = vi.fn();
 const uploadDocumentMock = vi.fn();
 const deleteDocumentMock = vi.fn();
-vi.mock('../../packages/api/src/services/candidate.service', () => ({
-  candidateService: {
+vi.mock('../../packages/api/src/services/candidate-documents.service', () => ({
+  candidateDocumentsService: {
     getDocument: (...a: unknown[]) => getDocumentMock(...a),
     uploadDocument: (...a: unknown[]) => uploadDocumentMock(...a),
     deleteDocument: (...a: unknown[]) => deleteDocumentMock(...a),
@@ -63,8 +63,18 @@ async function makeCaller() {
   const testRouter = router({ candidate: candidateRouter });
   const callerFactory = createCallerFactory(testRouter);
   return callerFactory({
-    user: { id: 'user-1', organizationId: ORG_ID, roles: ['hr_admin'], isPlatformOwner: false, impersonatorId: null, email: 'hr@tims.co', isActive: true },
-    headers: new Headers(), supabaseAuth: null, externalAuth: null,
+    user: {
+      id: 'user-1',
+      organizationId: ORG_ID,
+      roles: ['hr_admin'],
+      isPlatformOwner: false,
+      impersonatorId: null,
+      email: 'hr@tims.co',
+      isActive: true,
+    },
+    headers: new Headers(),
+    supabaseAuth: null,
+    externalAuth: null,
   } as never) as unknown as {
     candidate: {
       parseCV(input: { candidateId: string; text: string; documentId?: string }): Promise<unknown>;
@@ -126,9 +136,9 @@ describe('candidate.parseCV wiring', () => {
   it('throws FORBIDDEN and never queries when the caller lacks candidate:update', async () => {
     setAccessAllowed(false);
     const caller = await makeCaller();
-    await expect(
-      caller.candidate.parseCV({ candidateId: CANDIDATE_ID, text: 'cv text' }),
-    ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    await expect(caller.candidate.parseCV({ candidateId: CANDIDATE_ID, text: 'cv text' })).rejects.toMatchObject({
+      code: 'FORBIDDEN',
+    });
     expect(parseCVMock).not.toHaveBeenCalled();
   });
 });

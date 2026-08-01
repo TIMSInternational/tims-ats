@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { router, permissionProcedure } from '../../trpc';
-import { candidateService } from '../../services/candidate.service';
+import { candidateTagsService } from '../../services/candidate-tags.service';
 import { scopeWhereFor, assertScoped } from '../../access';
 
 export const candidateTagsRouter = router({
@@ -12,14 +12,14 @@ export const candidateTagsRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       await assertScoped('candidate', input.candidateId, ctx.access, ctx.user.id, ctx.user.organizationId);
-      return candidateService.addTag(ctx.user.organizationId, input.candidateId, input.tag, input.source);
+      return candidateTagsService.addTag(ctx.user.organizationId, input.candidateId, input.tag, input.source);
     }),
 
   removeTag: permissionProcedure('candidate', 'update')
     .input(z.object({ candidateId: z.string().uuid(), tag: z.string().max(50) }))
     .mutation(async ({ ctx, input }) => {
       await assertScoped('candidate', input.candidateId, ctx.access, ctx.user.id, ctx.user.organizationId);
-      return candidateService.removeTag(ctx.user.organizationId, input.candidateId, input.tag);
+      return candidateTagsService.removeTag(ctx.user.organizationId, input.candidateId, input.tag);
     }),
 
   bulkTag: permissionProcedure('candidate', 'update')
@@ -30,6 +30,6 @@ export const candidateTagsRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       const scopeWhere = await scopeWhereFor('candidate', ctx.access, ctx.user.id);
-      return candidateService.bulkTag(ctx.user.organizationId, scopeWhere, input.candidateIds, input.tag, input.source);
+      return candidateTagsService.bulkTag(ctx.user.organizationId, scopeWhere, input.candidateIds, input.tag, input.source);
     }),
 });

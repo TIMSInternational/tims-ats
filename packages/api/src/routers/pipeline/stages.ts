@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { router, permissionProcedure } from '../../trpc';
 import { TRPCError } from '@trpc/server';
-import { pipelineService } from '../../services/pipeline.service';
+import { pipelineStagesService } from '../../services/pipeline-stages.service';
 import { assertScoped } from '../../access';
 
 const checklistItemSchema = z.object({
@@ -20,7 +20,7 @@ async function probeStageVacancy(
   access: Parameters<typeof assertScoped>[2],
   userId: string,
 ): Promise<void> {
-  const vacancyId = await pipelineService.getStageVacancyId(orgId, stageId);
+  const vacancyId = await pipelineStagesService.getStageVacancyId(orgId, stageId);
   if (!vacancyId) {
     throw new TRPCError({ code: 'NOT_FOUND', message: 'Etapa no encontrada' });
   }
@@ -32,7 +32,7 @@ export const pipelineStagesRouter = router({
     .input(z.object({ vacancyId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       await assertScoped('vacancy', input.vacancyId, ctx.access, ctx.user.id, ctx.user.organizationId);
-      return pipelineService.listStages(ctx.user.organizationId, input.vacancyId);
+      return pipelineStagesService.listStages(ctx.user.organizationId, input.vacancyId);
     }),
 
   createStage: permissionProcedure('pipeline', 'create')
@@ -46,7 +46,7 @@ export const pipelineStagesRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       await assertScoped('vacancy', input.vacancyId, ctx.access, ctx.user.id, ctx.user.organizationId);
-      return pipelineService.createStage(ctx.user.organizationId, input);
+      return pipelineStagesService.createStage(ctx.user.organizationId, input);
     }),
 
   // Fetch-then-probe: stageId → vacancyId → probe vacancy scope.
@@ -63,21 +63,21 @@ export const pipelineStagesRouter = router({
     .mutation(async ({ ctx, input }) => {
       await probeStageVacancy(ctx.user.organizationId, input.id, ctx.access, ctx.user.id);
       const { id, ...data } = input;
-      return pipelineService.updateStage(ctx.user.organizationId, id, data);
+      return pipelineStagesService.updateStage(ctx.user.organizationId, id, data);
     }),
 
   deleteStage: permissionProcedure('pipeline', 'delete')
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       await probeStageVacancy(ctx.user.organizationId, input.id, ctx.access, ctx.user.id);
-      return pipelineService.deleteStage(ctx.user.organizationId, input.id);
+      return pipelineStagesService.deleteStage(ctx.user.organizationId, input.id);
     }),
 
   getStageChecklist: permissionProcedure('pipeline', 'read')
     .input(z.object({ stageId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       await probeStageVacancy(ctx.user.organizationId, input.stageId, ctx.access, ctx.user.id);
-      return pipelineService.getStageChecklist(ctx.user.organizationId, input.stageId);
+      return pipelineStagesService.getStageChecklist(ctx.user.organizationId, input.stageId);
     }),
 
   updateChecklist: permissionProcedure('pipeline', 'update')
@@ -87,6 +87,6 @@ export const pipelineStagesRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       await probeStageVacancy(ctx.user.organizationId, input.stageId, ctx.access, ctx.user.id);
-      return pipelineService.updateChecklist(ctx.user.organizationId, input.stageId, input.checklist);
+      return pipelineStagesService.updateChecklist(ctx.user.organizationId, input.stageId, input.checklist);
     }),
 });
