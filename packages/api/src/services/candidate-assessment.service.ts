@@ -4,7 +4,14 @@ import type { Prisma } from '@tims/db';
 import { candidateAssessmentRepo, candidateAssessmentWriteRepo } from '../repositories/candidate-assessment.repository';
 import { candidatePortalRepo } from '../repositories/candidate-portal.repository';
 import { resolveOrg } from './candidate-portal.service';
-import { scoreChoice, computeResult, type AnswerInput, type GradedAnswer } from '@tims/shared';
+import {
+  scoreChoice,
+  computeResult,
+  computeNormBand,
+  type AnswerInput,
+  type GradedAnswer,
+  type ScoreBand,
+} from '@tims/shared';
 
 // Versioned Habeas-Data data-processing consent text identifier (non-repudiation
 // record). The actual legal text lives in the Slice 3 FE i18n bundle; the server
@@ -36,6 +43,8 @@ function hasPendingManualReview(breakdown: Prisma.JsonValue | null | undefined):
 interface AssignmentResultSummary {
   normalizedScore: number | null;
   percentile: number | null;
+  band: ScoreBand | null;
+  normSampleSize: number | null;
   breakdown: Prisma.JsonValue | null;
 }
 
@@ -246,12 +255,38 @@ export const candidateAssessmentService = {
       const { rawScore, normalizedScore, hasPending } = computeResult(graded);
       const autoScored = graded.filter((g) => g.isCorrect !== null).length;
 
+      // Norm band: only for a NON-partial result (no essay questions pending —
+      // hasPending false). An essay-containing assessment stays partial until a
+      // future essay-scoring pass, so it never enters or draws from the
+      // population — this is an honest consequence of the existing
+      // partial/pending design, not a gap (see the design spec's "Out of scope").
+      let percentile: number | null = null;
+      let band: ScoreBand | null = null;
+      let normSampleSize: number | null = null;
+      if (!hasPending) {
+        const population = await candidateAssessmentWriteRepo.listOtherNormalizedScoresInTx(
+          tx,
+          org.id,
+          assignment.assessmentTypeId,
+          assignmentId,
+        );
+        normSampleSize = population.length;
+        const normResult = computeNormBand(normalizedScore, population);
+        if (normResult) {
+          percentile = normResult.percentile;
+          band = normResult.band;
+        }
+      }
+
       await candidateAssessmentWriteRepo.upsertResultInTx(tx, {
         organizationId: org.id,
         assignmentId,
         rawScore,
         normalizedScore,
         breakdown: { autoScored, pendingManual },
+        percentile,
+        band,
+        normSampleSize,
       });
 
       // Conditional final write — the ACTUAL double-submit race guard
