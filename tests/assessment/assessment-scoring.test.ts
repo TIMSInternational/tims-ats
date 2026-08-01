@@ -96,6 +96,34 @@ describe('computeNormBand', () => {
   it('is exactly MIN_NORM_SAMPLE_SIZE at the boundary (5 population members is enough)', () => {
     expect(computeNormBand(50, [10, 20, 30, 40, 60])).not.toBeNull();
   });
+
+  it('computes exact 25th percentile boundary as average (not below_average)', () => {
+    // candidate scores 50: 2 of 8 population strictly below (10,20), 0 equal
+    // percentile = (2 + 0.5*0) / 8 * 100 = 25.00 -> average band [25,50)
+    const result = computeNormBand(50, [10, 20, 60, 70, 80, 90, 100, 110]);
+    expect(result?.percentile).toBeCloseTo(25, 1);
+    expect(result?.band).toBe('average');
+  });
+
+  it('computes exact 50th percentile boundary as above_average', () => {
+    // candidate scores 55: 3 of 6 population strictly below (10,20,30), 0 equal
+    // percentile = (3 + 0.5*0) / 6 * 100 = 50.00 -> above_average band [50,75)
+    const result = computeNormBand(55, [10, 20, 30, 60, 70, 80]);
+    expect(result?.percentile).toBeCloseTo(50, 1);
+    expect(result?.band).toBe('above_average');
+  });
+
+  it('computes exact 75th percentile boundary as excellent', () => {
+    // candidate scores 70: 6 of 8 population strictly below (10,20,30,40,50,60), 0 equal
+    // percentile = (6 + 0.5*0) / 8 * 100 = 75.00 -> excellent band [75,100]
+    const result = computeNormBand(70, [10, 20, 30, 40, 50, 60, 80, 90]);
+    expect(result?.percentile).toBeCloseTo(75, 1);
+    expect(result?.band).toBe('excellent');
+  });
+
+  it('returns null for single-population-member edge case (1 < MIN_NORM_SAMPLE_SIZE)', () => {
+    expect(computeNormBand(50, [25])).toBeNull();
+  });
 });
 
 describe('MIN_NORM_SAMPLE_SIZE', () => {
