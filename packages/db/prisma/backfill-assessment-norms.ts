@@ -31,10 +31,26 @@ interface BackfillPlanRow {
   normSampleSize: number;
 }
 
-function hasPendingManual(breakdown: Prisma.JsonValue | null): boolean {
+/**
+ * Mirrors the live-scoring query's "non-partial" semantics EXACTLY
+ * (`listOtherNormalizedScoresInTx`'s `breakdown: { path: ['pendingManual'],
+ * equals: [] }` predicate): a row is non-partial ONLY when `breakdown` is a
+ * plain object with a `pendingManual` key that is present, an array, AND
+ * empty.
+ *
+ * A `null` breakdown, a breakdown with no `pendingManual` key at all (e.g.
+ * externally-ingested rows, or seed-demo.ts's DISC-shaped `{D,I,S,C}`
+ * breakdowns), and a non-empty `pendingManual` array are ALL partial
+ * (excluded from scoring and from the eligible population). Previously this
+ * helper miscounted `null`/missing-key breakdowns as non-partial, which
+ * disagreed with the live path — two candidates with identical scores could
+ * get different bands depending on which path scored them. Fixed
+ * 2026-08-01 per whole-branch review finding.
+ */
+export function isNonPartial(breakdown: Prisma.JsonValue | null): boolean {
   if (breakdown === null || typeof breakdown !== 'object' || Array.isArray(breakdown)) return false;
   const pendingManual = (breakdown as Record<string, unknown>).pendingManual;
-  return Array.isArray(pendingManual) && pendingManual.length > 0;
+  return Array.isArray(pendingManual) && pendingManual.length === 0;
 }
 
 /**
@@ -102,11 +118,16 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
           assignmentId: r.assignmentId,
           assessmentTypeId: r.assignment.assessmentTypeId,
           normalizedScore: r.normalizedScore!,
-          hasPending: hasPendingManual(r.breakdown),
+          hasPending: !isNonPartial(r.breakdown),
         }));
 
       const plan = computeBackfillPlan(rows);
-      console.log(`  [${org.slug}] ${plan.length} non-partial result(s) to update`);
+      // NOTE: this counts every non-partial result considered on this run, not
+      // a diff against previously-stored values — a second run against
+      // already-backfilled data will log the same count again since it always
+      // recomputes deterministically (see file header). Not a bug, just not
+      // an "X changed" count.
+      console.log(`  [${org.slug}] ${plan.length} non-partial result(s) would be recomputed`);
       totalUpdated += plan.length;
 
       if (!APPLY) continue;
