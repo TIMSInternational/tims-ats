@@ -30,25 +30,23 @@ export const userRouter = router({
   // Update own profile — strict allowlist (updateProfileSchema) so a user cannot
   // set roleSlug / companyId / businessUnitId / isActive / isPlatformOwner on
   // themselves. Returns only non-sensitive profile fields.
-  updateProfile: protectedProcedure
-    .input(updateProfileSchema)
-    .mutation(async ({ ctx, input }) => {
-      return db.user.update({
-        where: { id: ctx.user.id },
-        data: input,
-        select: {
-          id: true,
-          firstName: true,
-          lastName: true,
-          displayName: true,
-          jobTitle: true,
-          phone: true,
-          locale: true,
-          timezone: true,
-          avatar: true,
-        },
-      });
-    }),
+  updateProfile: protectedProcedure.input(updateProfileSchema).mutation(async ({ ctx, input }) => {
+    return db.user.update({
+      where: { id: ctx.user.id },
+      data: input,
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        displayName: true,
+        jobTitle: true,
+        phone: true,
+        locale: true,
+        timezone: true,
+        avatar: true,
+      },
+    });
+  }),
 
   // List users (admin)
   list: permissionProcedure('user', 'read')
@@ -59,7 +57,7 @@ export const userRouter = router({
         search: z.string().max(200).optional(),
         roleSlug: z.string().max(100).optional(),
         isActive: z.boolean().optional(),
-      })
+      }),
     )
     .query(async ({ ctx, input }) => {
       const { cursor, limit, search, roleSlug, isActive } = input;
@@ -76,9 +74,7 @@ export const userRouter = router({
               ],
             }
           : {}),
-        ...(roleSlug
-          ? { userRoles: { some: { role: { slug: roleSlug } } } }
-          : {}),
+        ...(roleSlug ? { userRoles: { some: { role: { slug: roleSlug } } } } : {}),
       };
 
       const users = await db.user.findMany({
@@ -86,12 +82,18 @@ export const userRouter = router({
         take: limit + 1,
         ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
         orderBy: { createdAt: 'desc' },
-        include: {
-          userRoles: {
-            include: {
-              role: { select: { name: true, slug: true } },
-            },
-          },
+        // Narrow select — no sensitive fields (supabaseUserId, isPlatformOwner,
+        // mfaEnabled, phone, lastLoginAt). `userRoles`/`role` are NOT selected:
+        // no known consumer reads them (roleSlug filtering happens via the
+        // `where` clause above, not via the included relation). jobTitle is
+        // included for schedule-modal.fields.tsx's fallback label.
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          avatar: true,
+          jobTitle: true,
         },
       });
 
