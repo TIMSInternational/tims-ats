@@ -12,7 +12,15 @@ interface Assignment {
   // rawScore + breakdown are restricted Psychometric Raw (super_admin only) and
   // are no longer returned on the candidate-detail path (Wave 2.5 slice 6), so
   // they are optional here. The render guards below already null/undefined-check.
-  result: { id: string; rawScore?: number | null; normalizedScore: number | null; breakdown?: unknown } | null;
+  result: {
+    id: string;
+    rawScore?: number | null;
+    normalizedScore: number | null;
+    percentile?: number | null;
+    band?: 'below_average' | 'average' | 'above_average' | 'excellent' | null;
+    normSampleSize?: number | null;
+    breakdown?: unknown;
+  } | null;
 }
 
 interface FitScore {
@@ -24,11 +32,12 @@ interface FitScore {
 
 function StatusLabel({ status }: { status: string }) {
   const { t } = useI18n();
-  const cls = status === 'completed'
-    ? 'bg-green-50 text-green-600'
-    : status === 'in_progress'
-      ? 'bg-amber-50 text-amber-600'
-      : 'bg-gray-100 text-gray-600';
+  const cls =
+    status === 'completed'
+      ? 'bg-green-50 text-green-600'
+      : status === 'in_progress'
+        ? 'bg-amber-50 text-amber-600'
+        : 'bg-gray-100 text-gray-600';
   const label = status === 'completed' ? t.candidates.completed : status;
   return <span className={`text-[12px] font-medium px-2 py-0.5 rounded ${cls}`}>{label}</span>;
 }
@@ -83,7 +92,8 @@ export function AssessmentResults({ assignments, fitScores }: { assignments: Ass
   const { t } = useI18n();
   const latestFit = fitScores[0];
   const breakdown = latestFit?.breakdown as Record<string, number> | null;
-  const hasDisc = breakdown && (breakdown.dominance || breakdown.influence || breakdown.steadiness || breakdown.compliance);
+  const hasDisc =
+    breakdown && (breakdown.dominance || breakdown.influence || breakdown.steadiness || breakdown.compliance);
 
   // Group assignments by code for special rendering
   const byCode = new Map<string, Assignment>();
@@ -130,11 +140,19 @@ export function AssessmentResults({ assignments, fitScores }: { assignments: Ass
                     />
                   </div>
                   <p className="text-[11px] text-[#585858] mt-1">
-                    {t.candidates.level} <span className="font-medium text-[#1F114C]">{a.result.normalizedScore}/100</span>
+                    {t.candidates.level}{' '}
+                    <span className="font-medium text-[#1F114C]">{a.result.normalizedScore}/100</span>
                   </p>
                 </div>
               )}
-              {a.result?.breakdown != null && typeof a.result.breakdown === 'object' && !Array.isArray(a.result.breakdown) ? (
+              {a.result?.band != null && (
+                <p className="text-[11px] font-medium text-[#1F114C] mt-1">
+                  {t.assessmentPlayer.bandLabels[a.result.band]}
+                </p>
+              )}
+              {a.result?.breakdown != null &&
+              typeof a.result.breakdown === 'object' &&
+              !Array.isArray(a.result.breakdown) ? (
                 <BreakdownGrid data={a.result.breakdown as Record<string, number>} />
               ) : null}
             </AssessmentRow>
