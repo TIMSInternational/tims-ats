@@ -15,10 +15,14 @@ ever been flipped, and no flip has ever been reverted (§6 is UNVERIFIED; see §
 > unset GUC → 0 rows; per-org sweep across all 15 orgs → 32/32 users visible to exactly their own org,
 > 0 mismatches; 0 RLS-enabled tables left policy-less.
 >
-> **❌ Defect 2 — STILL OPEN.** **9 tables** carry `allow_all (qual: true)`, 6 of them tenant-scoped —
-> including `calibration_members` and `calibration_votes`, whose session-subquery guard the ownership
-> ledger claims exists and **which does not**. **#70 remains blocked and its hazard note is factually
-> wrong.**
+> **✅ Defect 2 — FIXED AND VERIFIED IN PROD 2026-08-02.** An `allow_all (USING true)` PERMISSIVE policy
+> sat on **7 tenant-scoped join tables** and OR'd past their correct fail-closed session-subquery guard —
+> unconditionally, in every GUC state, so those tables had no effective DB isolation at all (worse than
+> Defect 1). Dropped via `packages/db/prisma/manual/2026-08-02-fix-rls-allow-all-join-tables.sql`; unset
+> GUC now returns 0 on all 7 and a per-org sweep accounts for every row. `allow_all` is deliberately kept
+> on `permissions`/`platform_owner_emails` (global RLS-exempt catalogs). **#70's hazard note is CORRECT** —
+> an earlier claim here that the calibration session-subquery policy did not exist was an error and has
+> been withdrawn; the policy exists and is now the effective control.
 >
 > **❌ Provenance — STILL OPEN.** `org_isolation`, `allow_all` and `current_org_id()` appeared in
 > **zero repo files**. Live DDL demonstrably diverges from the repo's migrations, which independently
