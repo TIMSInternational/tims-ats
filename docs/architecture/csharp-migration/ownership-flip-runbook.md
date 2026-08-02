@@ -3,21 +3,28 @@
 Date: 2026-08-02 (rev. 2 — adversarial review pass) · Status: **Written, NEVER EXECUTED.** No table has
 ever been flipped, and no flip has ever been reverted (§6 is UNVERIFIED; see §8 Q0).
 
-> ## ⛔ BLOCKED — do not execute any flip until #111 is resolved
+> ## ⚠️ PARTIALLY UNBLOCKED — read before executing any flip (#111)
 >
 > While investigating this runbook, a direct `pg_policies` audit of the live prod DB found that **RLS in
-> production does not match the RLS in this repository's migrations**:
+> production does not match the RLS in this repository's migrations**.
 >
-> - An undocumented `org_isolation` PERMISSIVE policy family on **67 tables** made tenant isolation fail
->   **OPEN** on an unset org GUC (verified: 32/32 users across all 15 orgs visible as `app_tenant`).
-> - **9 tables** carry `allow_all (qual: true)`, 6 of them tenant-scoped — including
->   `calibration_members` and `calibration_votes`, whose session-subquery guard the ownership ledger
->   claims exists and **which does not**.
-> - `org_isolation`, `allow_all` and `current_org_id()` appear in **zero repo files**.
+> **✅ Defect 1 — FIXED AND VERIFIED IN PROD 2026-08-02.** An undocumented `org_isolation` PERMISSIVE
+> policy family on **67 tables** made tenant isolation fail **OPEN** on an unset org GUC (verified:
+> 32/32 users across all 15 orgs visible as `app_tenant`). All 67 policies have been dropped via
+> `packages/db/prisma/manual/2026-08-02-fix-rls-fail-open-org-isolation.sql`. Post-fix verification:
+> unset GUC → 0 rows; per-org sweep across all 15 orgs → 32/32 users visible to exactly their own org,
+> 0 mismatches; 0 RLS-enabled tables left policy-less.
 >
-> This invalidates a premise this runbook rests on. §0/§5 verification steps that compare against the
-> repo's migration files cannot be trusted until live DDL is reconciled — see §8's "One DDL path" finding,
-> which this independently confirms. **#64 and #70 are both blocked; #70's hazard note is factually wrong.**
+> **❌ Defect 2 — STILL OPEN.** **9 tables** carry `allow_all (qual: true)`, 6 of them tenant-scoped —
+> including `calibration_members` and `calibration_votes`, whose session-subquery guard the ownership
+> ledger claims exists and **which does not**. **#70 remains blocked and its hazard note is factually
+> wrong.**
+>
+> **❌ Provenance — STILL OPEN.** `org_isolation`, `allow_all` and `current_org_id()` appeared in
+> **zero repo files**. Live DDL demonstrably diverges from the repo's migrations, which independently
+> confirms §8's "One DDL path" finding. **Any flip precondition must be verified by querying prod, never
+> by reading migration files alone** — that caution applies to §0 and §5 of this runbook and is not
+> lifted by the Defect 1 fix.
 > Parent: `phase-5-strangler.md` step 6 (`:29-30`) · Ledger: `docs/architecture/table-ownership.md`
 > Issues: #63 (this runbook) · #64 (`surveys` + `survey_responses`, the intended first flip — §7)
 
