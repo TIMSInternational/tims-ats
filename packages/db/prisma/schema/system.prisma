@@ -40,31 +40,20 @@ model AuditLog {
   @@map("audit_logs")
 }
 
-// CB-2b — a recorded quarterly access recertification for one organization: a
-// platform owner attested that the org's user↔role↔grant access was reviewed at a
-// point in time (SOC 2 CC6.2–6.3 / ISO A.5.18 evidence). Org-scoped + RLS like every
-// tenant table; written/read via the platform privileged path.
-model AccessReview {
-  id                  String   @id @default(uuid()) @db.Uuid
-  organizationId      String   @map("organization_id") @db.Uuid
-  reviewerId          String   @map("reviewer_id") @db.Uuid
-  reviewedAt          DateTime @default(now()) @map("reviewed_at")
-  userCount           Int      @map("user_count")
-  privilegedCount     Int      @map("privileged_count")
-  staleCount          Int      @map("stale_count")
-  deprovisionGapCount Int      @map("deprovision_gap_count")
-  expiredGapCount     Int      @map("expired_gap_count")
-  notes               String?  @db.VarChar(2000)
-  createdAt           DateTime @default(now()) @map("created_at")
-
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  reviewer     User         @relation("AccessReviewReviewer", fields: [reviewerId], references: [id])
-
-  @@index([organizationId])
-  @@index([organizationId, reviewedAt])
-  @@index([reviewerId])
-  @@map("access_reviews")
-}
+// CB-2b — `access_reviews` (a recorded quarterly access recertification per org; SOC 2
+// CC6.2–6.3 / ISO A.5.18 evidence) was OWNERSHIP-FLIPPED to EF Core on 2026-08-03, the
+// first flip executed under docs/architecture/csharp-migration/ownership-flip-runbook.md
+// (#63/#65). The Prisma model was deleted here because the ledger forbids `@@map`'ing an
+// `efcore[]` table — see docs/architecture/table-ownership.md.
+//
+// The table still EXISTS in production, unchanged. C# (AccessReviewDbContext) is now its
+// sole reader, sole writer, and sole schema authority. Its DDL stays on the hand-applied
+// SQL path (runbook §4 option (c)) — EF holds no migration and no snapshot for it.
+// The original CREATE lives at
+// packages/db/prisma/migrations/20260717170000_add_access_reviews/migration.sql.
+//
+// Do NOT re-add a model for this table. If you need to read it from TypeScript, call the
+// C# API (apps/web/lib/platform-api/access-review.ts), do not reach into the database.
 
 model Session {
   id             String   @id @default(uuid()) @db.Uuid

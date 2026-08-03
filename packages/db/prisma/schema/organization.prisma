@@ -46,7 +46,8 @@ model Organization {
   roles                  Role[]
   featureFlags           FeatureFlag[]
   auditLogs              AuditLog[]
-  accessReviews          AccessReview[]
+  // accessReviews removed 2026-08-03: `access_reviews` flipped to EF-owned (#63/#65). A
+  // back-relation to a deleted model is a hard P1012. Read it via the C# API.
   vacancies              Vacancy[]
   roleFamilyWeightProfiles RoleFamilyWeightProfile[]
   subscription           Subscription?
