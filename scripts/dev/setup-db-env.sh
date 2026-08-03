@@ -51,7 +51,33 @@ say ""
 say "Supabase DB credentials → $ENV_FILE"
 say "───────────────────────────────────────────────"
 
+# ── Fast path: paste the whole URI from Supabase Dashboard → Connect ─────────────────────────────
+# This is what the dashboard actually gives you, and it removes an entire class of transcription
+# errors — wrong password, missing `postgres.<ref>` username suffix, already-percent-encoded
+# characters getting encoded a second time.
+say ""
+say "Paste the SESSION POOLER URI from Supabase Dashboard → Connect (recommended),"
+say "or press Enter to type the ref / host / password separately."
+printf 'URI (hidden, optional): '
+read -rs PASTED; printf '\n'
+
+if [[ -n "$PASTED" ]]; then
+  [[ "$PASTED" =~ ^postgres(ql)?:// ]] || die "That doesn't look like a postgres URI. Expected it to start with postgresql://"
+  # Split without ever echoing: user[:pw]@host:port/db
+  REF="$(sed -E 's#^postgres(ql)?://postgres\.([a-z0-9]+):.*#\2#' <<<"$PASTED")"
+  POOLER="$(sed -E 's#^.*@([^:/]+).*#\1#' <<<"$PASTED")"
+  RAW_PW="$(sed -E 's#^postgres(ql)?://[^:]+:([^@]+)@.*#\2#' <<<"$PASTED")"
+  [[ "$REF" =~ ^[a-z0-9]{20}$ ]] || die "Could not read a project ref from that URI — expected the username to be postgres.<20-char-ref>. Make sure you copied the POOLER URI, not the direct one."
+  export SUPA_PW="$RAW_PW" SUPA_PREENCODED=1
+  unset PASTED RAW_PW
+  ok "parsed URI — ref, host and password extracted"
+  say ""
+  # Skip the manual prompts entirely.
+  SKIP_PROMPTS=1
+fi
+
 # ── Detect sensible defaults from whatever is already on disk ────────────────────────────────────
+if [[ -z "${SKIP_PROMPTS:-}" ]]; then
 detected_ref="$(grep -hoE 'postgres\.[a-z0-9]{20}' "$ENV_FILE" .env 2>/dev/null | head -1 | cut -d. -f2 || true)"
 [[ -z "$detected_ref" ]] && detected_ref="$(grep -hoE '[a-z0-9]{20}\.supabase\.co' "$ENV_FILE" .env 2>/dev/null | head -1 | cut -d. -f1 || true)"
 [[ -z "$detected_ref" ]] && detected_ref="$DEFAULT_REF"
@@ -84,6 +110,7 @@ read -rs PW2; printf '\n'
 [[ "$PW1" == "$PW2" ]] || die "Passwords did not match."
 export SUPA_PW="$PW1"
 unset PW1 PW2
+fi   # end of manual-prompt path (skipped when a URI was pasted)
 
 # ── Back up, then rewrite ────────────────────────────────────────────────────────────────────────
 BACKUP="${ENV_FILE}.bak.$(date +%Y%m%d%H%M%S)"
@@ -97,7 +124,10 @@ import os, re
 
 ref, pooler, path, pw = os.environ['SUPA_REF'], os.environ['SUPA_POOLER'], os.environ['SUPA_ENV'], os.environ['SUPA_PW']
 from urllib.parse import quote
-enc = quote(pw, safe='')                       # a literal @ / : / ? in the password would corrupt the URL
+
+# A password pulled out of a pasted URI is ALREADY percent-encoded by Supabase — encoding it again
+# turns %23 into %2523 and silently produces a wrong password. Only encode when the user typed it raw.
+enc = pw if os.environ.get('SUPA_PREENCODED') else quote(pw, safe='')
 
 urls = {
     'DATABASE_URL': f'postgresql://postgres.{ref}:{enc}@{pooler}:6543/postgres?pgbouncer=true',
@@ -129,12 +159,36 @@ say ""
 say "Verifying"
 say "───────────────────────────────────────────────"
 
-if echo "SELECT 1;" | (cd packages/db && npx --yes prisma db execute --stdin --schema prisma/schema) >/dev/null 2>&1; then
+VERIFY_OUT="$(echo "SELECT 1;" | (cd packages/db && npx --yes prisma db execute --stdin --schema prisma/schema) 2>&1)" && VERIFY_RC=0 || VERIFY_RC=$?
+
+if [[ "$VERIFY_RC" -eq 0 ]]; then
   ok "prisma db execute — connected (P1000 resolved)"
 else
   say ""
-  die "Still cannot connect. Re-check the password in Supabase Dashboard → Connect → Session pooler.
-     Restore with:  cp $BACKUP $ENV_FILE"
+  warn "connection failed. Prisma said:"
+  # Safe to show: Prisma's errors never echo the connection string.
+  printf '%s\n' "$VERIFY_OUT" | sed -E 's#://[^:]+:[^@]+@#://***:***@#g' | tail -6 | sed 's/^/      /'
+  say ""
+  case "$VERIFY_OUT" in
+    *P1000*)
+      die "P1000 = the password is wrong (the host and username resolved fine, or you'd see P1001).
+
+     Most reliable fix: Supabase Dashboard → Connect → Session pooler → copy the WHOLE URI,
+     re-run this script, and paste it at the first prompt instead of typing a password.
+
+     If that still fails, the password has been rotated — reset it under
+     Dashboard → Settings → Database → Reset database password, then use the new URI.
+
+     Restore the previous file with:  cp $BACKUP $ENV_FILE" ;;
+    *P1001*)
+      die "P1001 = cannot reach the host. Check you used a *.pooler.supabase.com host — the legacy
+     db.<ref>.supabase.co no longer resolves.
+
+     Restore with:  cp $BACKUP $ENV_FILE" ;;
+    *)
+      die "Unexpected failure — see above.
+     Restore with:  cp $BACKUP $ENV_FILE" ;;
+  esac
 fi
 
 if [[ -f scripts/security/verify-rls-isolation.ts ]]; then
