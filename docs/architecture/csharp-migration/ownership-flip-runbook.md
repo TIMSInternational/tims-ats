@@ -1063,6 +1063,36 @@ directions is the proof of why:** nothing in prod ever changed, so there is no s
 Prisma model to disagree with. This is exactly the property §4's point-of-no-return warns you lose the
 moment any DDL touches a flipped table, by any path.
 
+### Post-flip finding — the flip leaves DEAD PRIVILEGE, exactly as §3(b) predicts
+
+Queried after the flip, `access_reviews` in prod:
+
+```
+rls_enabled      true          force_rls   true
+policies         tenant_isolation           (unchanged — no DDL moved)
+foreign keys     access_reviews_organization_id_fkey, access_reviews_reviewer_id_fkey
+grants           app_tenant: SELECT, INSERT, UPDATE, DELETE
+                 postgres:   SELECT, INSERT, UPDATE, DELETE, REFERENCES, TRIGGER, TRUNCATE
+```
+
+`app_tenant` holds **full DML on a table no TypeScript code touches**, whose only reader and writer is
+`AccessReviewDbContext` on the **privileged** connection — never `TenantScope`, so never as `app_tenant`.
+This is not a new exposure (RLS is FORCE'd and `tenant_isolation` still confines `app_tenant` to its own
+org, and no code path assumes that role for this table) but it is unnecessary standing privilege on a
+SOC-2 compliance-evidence table.
+
+It arrived exactly the way §3(b) says: `ALTER DEFAULT PRIVILEGES` grants full DML to `app_tenant` on
+every new table in `public`, so the grant was never _decided_, and a flip cannot narrow it — only an
+explicit `REVOKE` can.
+
+**The §3(f) safety check, run:** no policy anywhere in `public` references `access_reviews` in either its
+`USING` or `WITH CHECK` clause (`pg_get_expr` scan over all of `pg_policy` → 0 rows). So unlike the
+`calibration_*` parent/child case §3(f) warns about, a `REVOKE` here would break no subquery policy.
+
+Not done in this PR: a `REVOKE` is production DDL, so it needs its own reviewed script, a `.ROLLBACK.sql`,
+and a baseline re-capture per `ddl-governance.md`. Tracked as **#126**. **Generalise this** — expect every
+flip to leave the same dead privilege, and make the `pg_policy` scan a standard post-flip step.
+
 ### What this flip does NOT prove
 
 Being explicit, because #64 is a materially harder case and this transcript should not be over-read:
