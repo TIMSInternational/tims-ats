@@ -26,7 +26,28 @@
  * Exits 0 if isolation holds, 1 if any check fails. Safe to run against production: every
  * statement is a read, and the empirical probe runs inside a transaction that is always rolled back.
  */
+import { readFileSync } from 'node:fs';
 import { Client } from 'pg';
+
+/**
+ * Load DIRECT_URL / DATABASE_URL from packages/db/.env when they aren't already in the environment,
+ * so `/gate` check 14 runs standalone without a `source` incantation. Deliberately minimal — no new
+ * dependency, and it never overwrites a value the caller already exported.
+ */
+function loadDbEnv(): void {
+  if (process.env.DIRECT_URL || process.env.DATABASE_URL) return;
+  for (const path of ['packages/db/.env', '.env']) {
+    try {
+      for (const line of readFileSync(path, 'utf8').split('\n')) {
+        const m = /^\s*(DIRECT_URL|DATABASE_URL)\s*=\s*(.*)$/.exec(line);
+        if (m && !process.env[m[1]]) process.env[m[1]] = m[2].trim().replace(/^["']|["']$/g, '');
+      }
+    } catch {
+      /* file absent — try the next one */
+    }
+    if (process.env.DIRECT_URL || process.env.DATABASE_URL) return;
+  }
+}
 
 /** The ONLY policy expected on a tenant-scoped table. Anything else is a finding. */
 const EXPECTED_TENANT_POLICY = 'tenant_isolation';
@@ -46,9 +67,14 @@ const GUC_INDEPENDENT_ESCAPES = [
 type Finding = { check: string; detail: string };
 
 async function main(): Promise<void> {
+  loadDbEnv();
   const url = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
   if (!url) {
-    console.error('✖ Set DIRECT_URL or DATABASE_URL. Use the session pooler (:5432), not :6543.');
+    console.error(
+      '✖ No DIRECT_URL or DATABASE_URL found in the environment or packages/db/.env.\n' +
+        '  Run: bash scripts/dev/setup-db-env.sh   (see issue #41)\n' +
+        '  Use the SESSION pooler (:5432) — :6543 cannot SET LOCAL ROLE.',
+    );
     process.exit(1);
   }
 
