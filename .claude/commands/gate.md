@@ -43,6 +43,7 @@ pnpm --filter @tims/db exec prisma generate --schema prisma/schema
 | 12  | Secret scan                    | `gitleaks git --no-banner .` (full history, same as CI)                                                                                                                                                                                                                                                                            |
 | 13  | Scope AND-composition          | `grep -rn '\.\.\.[[:alnum:]_$.]*access\.where\|\.\.\.[[:alnum:]_$.]*scopeWhere' packages/api/src --include="*.ts"` → must be empty                                                                                                                                                                                                 |
 | 14  | RLS tenant isolation (live DB) | `npx tsx scripts/security/verify-rls-isolation.ts` → exit 0. Auto-loads `packages/db/.env`; needs the **session pooler** (:5432 — :6543 cannot `SET LOCAL ROLE`). If credentials are broken, run `bash scripts/dev/setup-db-env.sh` (#41). If no DB is reachable, report this check as ⚠️ SKIPPED with the reason — never as PASS. |
+| 15  | Cross-model review (Codex)     | `bash scripts/verification/codex-review.sh` → exit 0. **Exit 2 = Codex could not run** (quota/auth/network) — report ⚠️ NOT RUN, never PASS, and use the tier-2 fallback in `.claude/rules/verification.md`. Codex is quota-blocked until 2026-08-15, so exit 2 is currently expected.                                             |
 
 Notes:
 
