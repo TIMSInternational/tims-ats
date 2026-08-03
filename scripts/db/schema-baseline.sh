@@ -105,6 +105,12 @@ normalise() {
     | cat -s
 }
 
+# NOTE ON CREDENTIAL EXPOSURE: pg_dump takes its connection string as an argv, so the URL — password
+# included — is visible in `ps` to other processes of the same user for the duration of the dump.
+# pg_dump offers no stdin/file alternative for a URI; avoiding it would mean parsing the URL into
+# PGHOST/PGUSER/PGPASSWORD, which is its own fragile failure mode. Accepted here because this runs on a
+# developer machine against a URL already sitting in packages/db/.env. If check 16 is wired into CI
+# (#124), pass the credentials as PG* environment variables there instead.
 dump_live() {
   local url="$1" out="$2" pgd="$3"
   # --no-owner/--no-acl-less: ownership and grants are part of the security surface (#111 was a

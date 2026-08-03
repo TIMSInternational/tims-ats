@@ -37,7 +37,13 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # Only these commands mutate the schema. `generate`, `studio`, `migrate diff` etc. are read-only and
 # pass through untouched, so this can wrap the whole prisma CLI without getting in the way.
 is_mutating() {
-  local joined="$*"
+  # Collapse runs of whitespace before matching. `$*` joins on single spaces, but an argument can
+  # itself contain padding ("prisma" "db " " push"), and `prisma db  push` would then not match the
+  # `*"db push"*` pattern — silently taking the non-mutating branch and exec'ing the real command.
+  # Found by self-review 2026-08-03 before this shipped; the whole point of the guard is that its
+  # positive case cannot be sidestepped by formatting.
+  local joined
+  joined="$(printf '%s' "$*" | tr -s '[:space:]' ' ')"
   case "$joined" in
     *"db push"*|*"db execute"*|*"migrate dev"*|*"migrate deploy"*|*"migrate reset"*|*"db seed"*) return 0 ;;
     *) return 1 ;;

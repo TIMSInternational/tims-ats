@@ -333,6 +333,13 @@ describe('guard-prod-ddl.sh — refuses schema mutation against a non-local host
     expect(guard({ DATABASE_URL: PROD, DIRECT_URL: PROD }, 'prisma', 'migrate', 'deploy').code).toBe(1);
   });
 
+  it('cannot be sidestepped by whitespace padding in the arguments', () => {
+    // `prisma db  push` (double space) bypassed the substring match before whitespace collapsing.
+    expect(guard({ DATABASE_URL: PROD, DIRECT_URL: PROD }, 'prisma', 'db ', ' push').code).toBe(1);
+    expect(guard({ DATABASE_URL: PROD, DIRECT_URL: PROD }, 'prisma', 'db', '', 'push').code).toBe(1);
+    expect(guard({ DATABASE_URL: PROD, DIRECT_URL: PROD }, 'prisma', 'migrate', ' dev').code).toBe(1);
+  });
+
   it('fails closed when no URL is set — an unknown target is not a safe target', () => {
     const { code, out } = guard(
       { DATABASE_URL: undefined, DIRECT_URL: undefined, HOME: sandbox },
