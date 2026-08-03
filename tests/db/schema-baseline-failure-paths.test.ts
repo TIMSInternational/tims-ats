@@ -99,7 +99,15 @@ afterAll(() => {
 describe('schema-baseline.sh check — exit 2 means DID NOT RUN, never a pass', () => {
   it('exits 2 when no connection URL is resolvable', () => {
     const root = makeTree('no-url');
-    const { code, out } = run(root, ['check'], { DIRECT_URL: undefined, DATABASE_URL: undefined });
+    // A valid stub is REQUIRED to isolate this path. The script gates on pg_dump >= 17 first, and CI
+    // runners ship pg_dump 14/16 — without the stub this test passes for the wrong reason locally
+    // (where a v17 exists) and fails in CI on the version message instead of the URL one.
+    const stub = makeStubPgDump(root, '17.0', 'fixed');
+    const { code, out } = run(root, ['check'], {
+      DIRECT_URL: undefined,
+      DATABASE_URL: undefined,
+      PG_DUMP: stub,
+    });
     expect(code).toBe(2);
     expect(out).toMatch(/DID NOT RUN/);
     expect(out).toMatch(/DIRECT_URL or DATABASE_URL/);
@@ -143,8 +151,12 @@ describe('schema-baseline.sh check — exit 2 means DID NOT RUN, never a pass', 
 
   it('exits 2 on an unknown subcommand rather than assuming "check"', () => {
     const root = makeTree('bad-subcommand');
-    const { code } = run(root, ['definitely-not-a-command'], { DIRECT_URL: FAKE_URL });
+    const stub = makeStubPgDump(root, '17.0', 'fixed');
+    const { code, out } = run(root, ['definitely-not-a-command'], { DIRECT_URL: FAKE_URL, PG_DUMP: stub });
     expect(code).toBe(2);
+    // Assert the REASON, not just the code — otherwise this passes on any incidental exit 2 (e.g. an
+    // old pg_dump on a CI runner) without ever exercising the subcommand branch.
+    expect(out).toMatch(/usage:/);
   });
 });
 
