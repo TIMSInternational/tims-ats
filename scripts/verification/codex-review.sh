@@ -50,9 +50,19 @@ fi
 
 command -v codex >/dev/null || { bad "codex CLI not on PATH — verification cannot run."; exit 2; }
 
-DIFF="$(git diff "$BASE"...HEAD --stat 2>/dev/null)"
+# An unresolvable BASE must NOT read as "nothing to review" -> exit 0. That is a silent pass with no
+# reviewer — the exact #38 failure this script exists to prevent. Found by the tier-2 cross-model
+# reviewer on 2026-08-03, as a BLOCKING finding against this very verification tooling.
+if ! git rev-parse --verify --quiet "$BASE" >/dev/null; then
+  bad "BASE ref '$BASE' does not resolve — cannot compute a diff, so NO review can run."
+  warn "In CI, fetch it first:  git fetch origin main:refs/remotes/origin/main"
+  exit 2
+fi
+
+DIFF="$(git diff "$BASE"...HEAD --stat)" || { bad "git diff vs '$BASE' failed — no review ran."; exit 2; }
+
 if [[ -z "$DIFF" ]]; then
-  warn "no changes vs $BASE — nothing to review."
+  warn "no changes vs $BASE — genuinely nothing to review."
   exit 0
 fi
 
