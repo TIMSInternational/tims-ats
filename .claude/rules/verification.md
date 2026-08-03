@@ -49,10 +49,34 @@ reported green. **PRs #18, #19, #22, #24, #112 and #113 all merged without cross
 including #22 and #24, which were data-exposure security fixes, and #112, which changed RLS policies
 on 76 production tables.
 
-## Tier-2 fallback — when Codex is unavailable
+## Tier 2 — OmniRoute (still genuinely cross-model)
 
-Codex is **quota-blocked until 2026-08-15**. Until then exit 2 is expected, and the required
-substitute is a **3-lens same-model adversarial panel**:
+Codex is **quota-blocked until 2026-08-15**. Rather than dropping straight to same-model review,
+`scripts/verification/crossmodel-review.sh` tries a second **different-vendor** model first, via a
+locally-run [OmniRoute](https://github.com/diegosouzapw/OmniRoute) gateway (MIT, self-hosted,
+`localhost:20128`, no cloud hop).
+
+```bash
+npm i -g omniroute && omniroute      # Dashboard → Providers: add an upstream
+export OMNIROUTE_KEY=...             # Dashboard → Endpoints
+export OMNIROUTE_MODEL=openai/gpt-4.1
+bash scripts/verification/crossmodel-review.sh
+```
+
+The script **refuses an Anthropic `OMNIROUTE_MODEL`** and exits 2 rather than quietly downgrading —
+silently weakening a control is the exact failure this issue was about.
+
+Two caveats before enabling it:
+
+- **The upstream provider receives the full diff.** That is a subprocessor decision for a SOC-2 scoped
+  platform — cf. #40, which is open for precisely this omission. GitHub Models is the cleanest choice,
+  since GitHub is already a processor for this repo.
+- OmniRoute is MIT and self-hosted, but **~6 months old with ~590 open issues**. Scoped here to
+  reviewing diffs only, deliberately — not as a general request router.
+
+## Tier 3 — same-model panel, when no cross-model reviewer is available
+
+If both tiers above exit 2, the required substitute is a **3-lens same-model adversarial panel**:
 
 1. **Security / tenant-isolation** — data exposure, authz bypass, RLS, secrets, race conditions.
 2. **Claim auditor** — take every claim in the commit messages and PR body and verify it against
