@@ -1,7 +1,14 @@
 # Ownership Flip Runbook — strangler step 6 (Prisma → EF Core)
 
-Date: 2026-08-02 (rev. 2 — adversarial review pass) · Status: **Written, NEVER EXECUTED.** No table has
-ever been flipped, and no flip has ever been reverted (§6 is UNVERIFIED; see §8 Q0).
+Date: 2026-08-03 (rev. 3 — flip #1 executed) · Status: **EXECUTED ONCE.** `access_reviews` was flipped
+2026-08-03 (#63, #65) and its rollback was tested by a real `git revert`. The transcript is **§7**; the
+`surveys`/`survey_responses` analysis moved to **§7b** as the next (still blocked) flip.
+
+> **What flip #1 did and did not establish.** It proves the mechanics end-to-end for the easy case: the
+> one-PR coupling, the `P1012` back-relation trap, the ledger move, and that pure `git revert` is a
+> complete rollback under §4 option (c). It exercised **no** reader repointing (all five §1-step-6
+> coupling categories were zero for that table) and **no** DDL transfer. §8 Q6 is still open. Do not read
+> §7 as evidence that a flip with live cross-domain readers is routine — §7b is the honest picture of that.
 
 > ## ⚠️ PARTIALLY UNBLOCKED — read before executing any flip (#111)
 >
@@ -596,18 +603,28 @@ Standing rules, therefore:
 
 ## 4. What "EF owns the DDL" means here
 
-Three DDL paths reach prod today, and the `00-master-plan.md:68-70` "One DDL path" standard only
-acknowledges two:
+> **Superseded in part by #115 (2026-08-03).** DDL governance is now written down authoritatively in
+> [`../ddl-governance.md`](../ddl-governance.md), backed by a committed `pg_dump` baseline and `/gate`
+> check 16. Read that first; this section keeps the flip-specific reasoning. Two corrections from the
+> reconciliation: there are **four** paths, not three (the Supabase dashboard's SQL editor and its table
+> editor behave differently — the table editor records nothing at all), and the two Prisma rows below are
+> really **one** path, since `prisma/migrations/` is hand-applied exactly like `prisma/manual/`.
 
 | Path                                                                       | Evidence                                                                               | Tracked in                                    |
 | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | --------------------------------------------- |
-| Prisma, hand-written idempotent SQL applied via `prisma db execute`/`psql` | migration files say so, e.g. `…/20260624000000_ai_interview_session/migration.sql:4-5` | nothing — 25 dirs on disk, zero rows anywhere |
-| EF, `dotnet ef migrations script --idempotent` applied via `psql`          | `services/Tims.Platform/db/manual/20260723032952_fx_rates.sql`                         | `__EFMigrationsHistory` — **exactly one row** |
-| Supabase's own migration mechanism                                         | `list_migrations` → 4 rows, 2 with no repo counterpart                                 | `supabase_migrations`                         |
+| Prisma, hand-written idempotent SQL applied via `prisma db execute`/`psql` | migration files say so, e.g. `…/20260624000000_ai_interview_session/migration.sql:4-5` | nothing — 24 dirs on disk, zero rows anywhere |
+| EF, `dotnet ef migrations script --idempotent` applied via `psql`          | `services/Tims.Platform/db/manual/20260723032952_fx_rates.sql`                         | `__EFMigrationsHistory` — **two rows**        |
+| Supabase's own migration mechanism                                         | `list_migrations` → 5 rows, several with no repo counterpart                           | `supabase_migrations`                         |
 
-So: EF has applied DDL to prod **once**, to one global RLS-exempt table with no data dependencies and no
-Prisma reader. The four `hris_*` tables in `efcore[]` **do not exist in prod at all** — that precedent is
-code-and-Testcontainers only. Plan the first flip as first-of-kind, not as a repeat.
+EF has applied DDL to prod **twice** (`fx_rates`, and the four `hris_*` tables on 2026-08-03 via #116 —
+which is what created prod's first `__EFMigrationsHistory` row). Both were greenfield tables with no
+Prisma reader. **No flipped table has ever had its DDL moved to EF**, and flip #1 (§7) deliberately did
+not attempt it. Plan any DDL transfer as first-of-kind.
+
+> Worth knowing before trusting an EF mapping for DDL: the reconciliation found EF's generated
+> `--idempotent` script writes its own `__EFMigrationsHistory` row _inside the SQL_
+> (`20260716000000_hris_domain.sql:23,33`), which is why the EF path stays self-recording even though
+> `dotnet ef database update` is banned against prod — and why hand-writing EF SQL breaks that property.
 
 ### The decision the first flip must make
 
@@ -808,12 +825,17 @@ Run all of these. Step 0 and steps 6-9 need a real DB (0, 6, 7 and 9 against pro
 
 ## 6. Rollback
 
-> **Status: UNVERIFIED — never rehearsed.** No table has ever been flipped, therefore no flip has ever
-> been reverted, not even on a scratch DB. Everything below is reasoning about what `git revert` would
-> restore, in the same register as §7's status block and §4's option-(a) note. The one property the whole
-> strangler approach's safety rests on is the one property this document has never observed. **§8 Q0 is
-> the item that fixes that, and it is nearly free** — fold the rehearsal into the throwaway-DB procedure
-> §2 already mandates for Q1.
+> **Status: VERIFIED for an option-(c) flip, 2026-08-03.** `git revert` of flip #1 was **executed** on
+> the branch (not simulated), and the reverted tree was put through the full gate: ledger check,
+> `prisma validate` + `generate` (the back-relations return with no `P1012`), the `accessReview` delegate
+> reappearing in the generated client, both `tsc` jobs, 2636 tests, and `/gate` check 16. Transcript in
+> **§7 → "Rollback — TESTED"**. §8 Q0 is closed.
+>
+> **The scope of that verification, stated precisely:** it proves pure `git revert` is a _complete_
+> rollback when **no DDL ever moved** — which is what §4 option (c) guarantees and what check 16 proved
+> held. It does **not** verify rollback after a DDL change to a flipped table; that case is still
+> unobserved, and per the point-of-no-return below it is not a `git revert` at all but a
+> restore-from-backup. Everything in this section past that line remains reasoning, not transcript.
 
 ### What a revert does and does not cover
 
@@ -937,11 +959,127 @@ The real post-rollback verification is the §7 functional set:
 
 ---
 
-## 7. Worked example — `surveys` + `survey_responses` (issue #64)
+## 7. Worked example — **EXECUTED**: `access_reviews` (#63, #65)
 
-> **Status: procedure, not a transcript. This flip has not been executed.** Issue #63's acceptance
-> criteria require a worked example _executed_ end-to-end; that has not happened, and this section must
-> be replaced with the real transcript when it does.
+> **Status: TRANSCRIPT. Flip #1 was executed 2026-08-03.** This is what actually happened, not a
+> procedure. #63's "worked example executed end-to-end" and "rollback tested, not just written"
+> acceptance criteria are satisfied by this section. The `surveys`/`survey_responses` material that
+> used to occupy §7 is preserved below as **§7b** — it is the intended _second_ flip and is still
+> blocked.
+
+### What was flipped, and why this table
+
+`access_reviews`: `efcoreStranglerWrite[]` → `efcore[]`. Sole owner is now `AccessReviewDbContext`
+(`services/Tims.Platform/src/Tims.Infrastructure/AccessReview/AccessReviewDbContext.cs:112`).
+
+The pilot choice held up under investigation. Grep-verified couplings to unwind — **all zero**:
+
+| Coupling category (§1 step 6 lists five)            | Count |
+| --------------------------------------------------- | ----- |
+| Prisma delegate use (`db.accessReview.*`)           | **0** |
+| `Prisma.AccessReview*` generated types              | **0** |
+| access-registry (`entity-policies`, `scoped-probe`) | **0** |
+| `packages/db/src` enum re-exports                   | **0** |
+| `vi.mock('@tims/db')` delegate mocks                | **0** |
+
+So flip #1 repointed **no readers at all** — the cleanest possible first execution. The whole TS
+access-review layer (router + `.schemas` + service + repository) had already been deleted 2026-07-31,
+after both `Platform:AccessReviewReadEnabled` and `...WriteEnabled` were confirmed live in prod and
+parity-verified (12/12 reads, 3/3 writes). The surviving `apps/web` hits are i18n keys
+(`t.accessReview.*`) and the C#-backed hooks in `lib/platform-api/access-review.ts`; neither touches
+the database.
+
+### The edits — four files, code only
+
+1. `packages/db/prisma/schema/system.prisma` — deleted `model AccessReview` (was `:47-67`), replaced
+   with a comment recording where the table went, that it still exists in prod, and **not to re-add it**.
+2. `packages/db/prisma/schema/user.prisma:31` — deleted `User.accessReviews`.
+3. `packages/db/prisma/schema/organization.prisma:49` — deleted `Organization.accessReviews`.
+   Both back-relations are hard `P1012` failures if left; the ownership check does **not** catch them
+   (it only greps `@@map`).
+4. `docs/architecture/table-ownership.md` — moved the name between lists (copied, not retyped) and added
+   the flip note.
+
+**One PR, and it is forced rather than chosen.** Verified by reading `scripts/table-ownership.mjs`, per
+#63's AC: `efcore[] ∩ prismaSet` is a `cross-owner collision` (`:113-117`) **and**
+`efcoreStranglerWrite[]` requires the table _be_ in `prismaSet`. Either half alone is a red build, so no
+two-PR sequence exists that stays green.
+
+### DDL home — §4 option (c), as predicted
+
+**No production DDL ran.** The table in prod is byte-identical before and after, and that is now
+_assertable_ rather than asserted: `/gate` **check 16** (#115) diffs the live schema against the
+committed baseline and stayed green throughout. EF holds no migration and no snapshot for
+`access_reviews`, and none was created — `AccessReviewDbContext` maps 7 tables of which 6 remain
+Prisma-owned, so a migration on it would try to `CreateTable` all seven.
+
+**§0 P10 counter-caveat — RESOLVED, was safe.** The caveat warned that `AccessReviewDbContext` pins zero
+`HasColumnType`, and that this was only _believed_ safe. Verified against the baseline:
+
+```
+prod:  reviewed_at  timestamp(3) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+       created_at   timestamp(3) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+       notes        character varying(2000)
+EF:    ReviewedAt / CreatedAt → HasDefaultValueSql("now()").ValueGeneratedOnAdd()
+       Notes      → HasMaxLength(2000)
+```
+
+Safe for the reason hoped: both datetimes are `ValueGeneratedOnAdd`, so EF **never sends a value** and
+the DB default fills them; Npgsql reads `timestamp without time zone` into `DateTime` correctly, and
+`HasMaxLength(2000)` matches. Note EF declares the default as `now()` where prod says
+`CURRENT_TIMESTAMP` — semantically identical in Postgres, and inert here because EF emits no DDL. It is
+also a concrete illustration of why option (c) matters: were EF ever to scaffold a migration for this
+table, that cosmetic mismatch is one of the things it would try to `ALTER`.
+
+### Verification actually run
+
+| Check                                                      | Result                                                          |
+| ---------------------------------------------------------- | --------------------------------------------------------------- |
+| §5 step 0 — `/gate` check 16 (schema drift)                | ✅ clean, before and after — proves no DDL moved                |
+| §5 step 1 — `node scripts/table-ownership.mjs`             | ✅ `table-ownership check passed.`                              |
+| §5 step 1 — `tests/governance/table-ownership.test.ts`     | ✅ 16 tests                                                     |
+| §5 step 2 — `prisma validate` + `generate`                 | ✅ no `P1012`                                                   |
+| §5 step 3 — `tsc` api + web                                | ✅ both clean — no surviving Prisma reader                      |
+| §5 step 4 — `npx vitest run`                               | ✅ 2636 tests / 283 files                                       |
+| §5 step 5 — every `efcore[]` entry has a real EF `ToTable` | ✅ all 7 confirmed                                              |
+| Generated client no longer exposes the delegate            | ✅ `get accessReview` 0 occurrences (`get auditLog` 1, control) |
+
+### Rollback — TESTED, not just written (#63 AC)
+
+`git revert` of the flip commit was **executed** on the branch, verified, and then unwound:
+
+| After `git revert`                     | Result                                                      |
+| -------------------------------------- | ----------------------------------------------------------- |
+| Files restored                         | ✅ all 4, cleanly — no conflicts                            |
+| `table-ownership.mjs`                  | ✅ passed (back to `efcoreStranglerWrite[]`, model present) |
+| `prisma validate` + `generate`         | ✅ clean — the back-relations return without `P1012`        |
+| `get accessReview` in generated client | ✅ back to 1                                                |
+| `tsc` api + web                        | ✅ both clean                                               |
+| `npx vitest run`                       | ✅ 2636 / 283                                               |
+| `/gate` check 16                       | ✅ still clean                                              |
+
+**Pure `git revert` is a complete rollback for an option-(c) flip, and check 16 staying green in both
+directions is the proof of why:** nothing in prod ever changed, so there is no schema for the restored
+Prisma model to disagree with. This is exactly the property §4's point-of-no-return warns you lose the
+moment any DDL touches a flipped table, by any path.
+
+### What this flip does NOT prove
+
+Being explicit, because #64 is a materially harder case and this transcript should not be over-read:
+
+- **No reader repointing was exercised.** All five coupling categories were zero. §1 step 6 remains
+  untested by execution, and it is where #64's real work sits.
+- **No DDL transfer was exercised.** Option (c) was chosen precisely to avoid it; options (a) and (b)
+  in §4 are still unexecuted, and §8 Q6 (does `dotnet ef migrations add` even work on a strangler
+  context) is still open.
+- **No cross-domain reader existed.** The `efcore`-but-still-Prisma-read state that #63 predicted the
+  ledger's four categories express poorly did not arise here. It will for other tables.
+
+---
+
+## 7b. The second flip — `surveys` + `survey_responses` (#64), still BLOCKED
+
+> Retained from the pre-execution draft. This is analysis for the _next_ flip, not a transcript.
 
 ### Why these two, and one correction to the issue
 
@@ -1183,14 +1321,15 @@ Then, functionally:
 
 Ordered by how much they block the first flip.
 
-**Q0 — Has a flip revert ever been executed end-to-end? No.** Not in prod, not on a scratch DB, not once.
-`grep -niE 'rehears|drill|dry.?run'` over this file returned nothing before this revision. The single
-property the whole strangler approach's safety rests on — "rewind beats forward-fix" — is the one property
-this runbook asserts without evidence, and §6 is now labelled accordingly. **Blocks flip #1.**
-_Resolve — nearly free, fold it into the Q1 procedure:_ after step 3 of the §2 throwaway-DB procedure,
-`git revert` the scratch flip, then re-run `prisma generate`, both `tsc`, `npx vitest run`,
-`node scripts/table-ownership.mjs`, and a functional read against the throwaway DB. **Record the verbatim
-transcript in §6** and drop its UNVERIFIED label.
+**Q0 — ~~Has a flip revert ever been executed end-to-end?~~ → CLOSED 2026-08-03. Yes, once.** The flip #1
+revert was executed for real on the branch and passed the full gate — transcript in §7, and §6's
+UNVERIFIED label is dropped. "Rewind beats forward-fix" now has one piece of evidence behind it instead of
+none.
+
+**What remains open, narrowed:** the rehearsal covered an **option-(c)** flip, where no DDL moved and
+check 16 proved it. Rollback after a DDL change to a flipped table is still unobserved — and by §4's
+point-of-no-return it is not a `git revert` at all, so it needs a restore-from-backup drill, not a repeat
+of this one. Nothing blocks flip #2 on this account.
 
 **Q0b — Who builds the C# monitoring read, and the privileged cross-org read for the alert cron?**
 These are **named prerequisite slices**, not open questions in the usual sense: without them #64 is
