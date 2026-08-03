@@ -14,7 +14,7 @@ Two workstreams run in parallel, deliberately decoupled:
 - **Platform workstream (C#):** builds the C# runway, proves the two make-or-break assumptions, then
   strangles domains one at a time. Governed by the SAME gate.
 
-**The one hand-off rule between them:** from Phase 1 onward, any *new* backend-heavy domain is built in C#
+**The one hand-off rule between them:** from Phase 1 onward, any _new_ backend-heavy domain is built in C#
 (not TS-then-migrate). The AI/inference layer is the standing exception — it stays in `ai-gateway`
 (TS/Python) forever. This stops the TS backend from growing new surface we'll only have to migrate later.
 
@@ -41,33 +41,45 @@ P1 ─► P2 ─► P3 ─► P5 ─► P7
 ```
 
 **Hard external inputs (do not block P1/P2):**
+
 - Team Suite intake study (feeds P6, and refines P5 order). Scheduled separately.
 - Org cloud decision AWS vs Azure (feeds P4/P8 hosting; default AWS-in-DB-region). See architecture §8.
 
 ## 3. Definition of Done — per phase (the gate each must pass)
 
-| Phase | DONE means |
-|---|---|
+| Phase | DONE means                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **1** | `Tims.Platform` builds in CI; `/health` runs; OpenAPI emits. **Spike A:** Testcontainers proves org-A cannot read org-B and an unset GUC returns 0 rows, through EF + the RLS interceptor, on Supavisor-style transaction pooling. **Spike B:** `contracts/access-fixtures` golden set passes IDENTICALLY in the TS suite and `Tims.UnitTests`. Compensation diff-harness spike shows byte-identical results on ≥1 fixture. Table-ownership ledger + CI check + `EnableTenantRls` helper exist. |
-| **2** | C# validates a Supabase JWT (exp/iss/aud/JWKS) and the `tims_` API key; resolves all 4 principal types (platform-owner/org-user/candidate/external-key) + impersonation into `ITenantContext`; rate-limits on shared Redis keys. No product traffic yet. Every auth invariant has a golden fixture / integration test. |
-| **3** | HRIS (Sprint 1.8) ships **in C#**, prod-live, behind the auth/tenant/RLS plane, with parity/characterization tests. Zero user-visible regression. First real proof the stack delivers value. |
-| **4** | `Tims.Workers` runs ≥1 recurring job (e.g. FX refresh or audit purge) with idempotency + retry + visible failures. Long-running work is off the serverless request path. |
-| **5** | Each targeted domain migrated one at a time: characterization tests → C# impl → shared golden parity → routed (direct client/BFF) → prod-verified → **TS logic deleted**. BFF shrinks each time. |
-| **6** | Team Suite Business/Common adopted into `Tims.Domain`; its DataAccess **re-homed onto TIMS RLS/org model** (never its tenant model); its Web discarded. Wrapped/extracted/rebuilt per the study's classification. |
-| **7** | tRPC removed, Prisma retired, `packages/api` + `packages/db` deleted; frontend on the generated client + Next handlers; one identity/tenant/audit/authz kernel, all C#. `ai-gateway` remains by design. |
+| **2** | C# validates a Supabase JWT (exp/iss/aud/JWKS) and the `tims_` API key; resolves all 4 principal types (platform-owner/org-user/candidate/external-key) + impersonation into `ITenantContext`; rate-limits on shared Redis keys. No product traffic yet. Every auth invariant has a golden fixture / integration test.                                                                                                                                                                          |
+| **3** | HRIS (Sprint 1.8) ships **in C#**, prod-live, behind the auth/tenant/RLS plane, with parity/characterization tests. Zero user-visible regression. First real proof the stack delivers value.                                                                                                                                                                                                                                                                                                    |
+| **4** | `Tims.Workers` runs ≥1 recurring job (e.g. FX refresh or audit purge) with idempotency + retry + visible failures. Long-running work is off the serverless request path.                                                                                                                                                                                                                                                                                                                        |
+| **5** | Each targeted domain migrated one at a time: characterization tests → C# impl → shared golden parity → routed (direct client/BFF) → prod-verified → **TS logic deleted**. BFF shrinks each time.                                                                                                                                                                                                                                                                                                |
+| **6** | Team Suite Business/Common adopted into `Tims.Domain`; its DataAccess **re-homed onto TIMS RLS/org model** (never its tenant model); its Web discarded. Wrapped/extracted/rebuilt per the study's classification.                                                                                                                                                                                                                                                                               |
+| **7** | tRPC removed, Prisma retired, `packages/api` + `packages/db` deleted; frontend on the generated client + Next handlers; one identity/tenant/audit/authz kernel, all C#. `ai-gateway` remains by design.                                                                                                                                                                                                                                                                                         |
 
 ## 4. Cross-cutting standards (apply to every phase)
 
 - **Build discipline:** SDD (fresh implementer + reviewer per task) → whole-branch **opus + Codex adversarial**
   gate → ship. Same doctrine that runs the TS product. No C# domain ships without it.
 - **Security parity is a merge blocker:** the non-negotiable invariants (architecture §11) each need a C#
-  golden-fixture or Testcontainers-integration equivalent before the domain ships. RLS is tested *for real*
+  golden-fixture or Testcontainers-integration equivalent before the domain ships. RLS is tested _for real_
   (Testcontainers), not mocked.
 - **Golden fixtures are the anti-drift spine:** `contracts/access-fixtures/*.json` (authz, scope, k-anon) run
   in BOTH CIs. Any behavior change edits the fixture once; both stacks must agree.
-- **One DDL path:** all schema changes (Prisma- or EF-authored) are generated, reviewed as SQL, and applied
-  via psql. Never `dotnet ef database update` / `prisma migrate deploy` against prod. Every new org-scoped
-  table carries its RLS block (`EnableTenantRls`).
+- **DDL governance — see [`../ddl-governance.md`](../ddl-governance.md) (#115):** schema changes reach prod
+  as reviewed SQL applied via psql, or as an EF Core migration (preferred — the only path that records its
+  own applies). Never `dotnet ef database update` / `prisma migrate deploy` / `prisma db push` against prod.
+  The **Supabase dashboard is prohibited** for DDL. Every new org-scoped table carries its RLS block
+  (`EnableTenantRls`). Every schema PR re-captures `packages/db/baseline/prod-public-schema.sql` and passes
+  `/gate` check 16.
+  > This bullet was titled **"One DDL path"** and that was false: there are four, and it omitted the
+  > Supabase dashboard entirely — which is where the #111 fail-open RLS policies came from. It also left
+  > the psql path unrecorded (nothing logged that an apply happened) and was silent on `prisma db push`,
+  > the documented bootstrap step. (~100 of the 102 Prisma tables have no `CREATE TABLE` in any migration
+  > file; `db push` is the likely origin but psql or the dashboard could equally have created them — their
+  > provenance is genuinely unknown.) The procedure it described was accurate; the claim of singularity,
+  > and the omissions, were not. Reconciled against the
+  > live database 2026-08-03 — [`../ddl-reconciliation-2026-08-03.md`](../ddl-reconciliation-2026-08-03.md).
 - **Table-ownership ledger** (`table-ownership.md`) is CI-enforced: a PR mutating a table it doesn't own fails.
 - **Co-location:** C# services deploy in the DB's region (latency constraint). Runtime → Supavisor 6543
   (`SET LOCAL` only); DDL → direct 5432.

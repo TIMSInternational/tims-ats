@@ -1,8 +1,9 @@
 ---
 paths:
-  - "packages/db/**"
-  - "packages/api/**"
+  - 'packages/db/**'
+  - 'packages/api/**'
 ---
+
 <!-- packages/api/** is in scope because Prisma queries are WRITTEN in
      packages/api/src/repositories/ — the Prisma/Supabase safety rules
      below must load when editing query code, not only the schema. -->
@@ -23,9 +24,12 @@ paths:
 - **Always use `select` or `omit`.** Never return full records — HR data contains SSN, salary, medical info.
   ```typescript
   // WRONG — leaks all fields including password hash, SSN
-  db.candidate.findMany({ where: { organizationId } })
+  db.candidate.findMany({ where: { organizationId } });
   // RIGHT — explicit field selection
-  db.candidate.findMany({ where: { organizationId }, select: { id: true, firstName: true, lastName: true, email: true } })
+  db.candidate.findMany({
+    where: { organizationId },
+    select: { id: true, firstName: true, lastName: true, email: true },
+  });
   ```
 - **Never `$queryRawUnsafe`.** Use `$queryRaw` with tagged template literals.
 - **Wrap multi-step operations in `$transaction`.** Race conditions are the #1 AI-generated production bug.
@@ -43,10 +47,12 @@ paths:
 - **Supavisor** (Supabase's built-in pooler) on port 6543 for application queries.
 - **Direct connection** on port 5432 for migrations only.
 - **Transaction mode** — connections released after each transaction.
+
 ```env
 DATABASE_URL="postgresql://...@pooler.supabase.com:6543/postgres?pgbouncer=true"
 DIRECT_URL="postgresql://...@supabase.com:5432/postgres"
 ```
+
 ```prisma
 datasource db {
   provider  = "postgresql"
@@ -63,5 +69,29 @@ datasource db {
 
 ## Migration Discipline
 
-- `prisma db push` for dev only. Production: `prisma migrate dev` → `prisma migrate deploy`.
+**Authoritative policy: `docs/architecture/ddl-governance.md`.** Summary:
+
+- `prisma db push` / `prisma migrate dev` are **dev-only, local-only**. `pnpm push` and `pnpm migrate`
+  route through `scripts/db/guard-prod-ddl.sh`, which refuses a non-local host.
+- **`prisma migrate deploy` must NEVER be used against production.** That is a forward-looking rule, not
+  a claim about the past — keep the two separate. Prod has no `_prisma_migrations` table —
+  verified by live query — and since Prisma creates that table on first use and never drops it, it is a
+  safe inference that `migrate deploy` has never run. (Inference, not proof: someone could have dropped
+  it. No evidence suggests that.) Prisma Migrate is formally unused there (#115).
+  `packages/db/prisma/migrations/` is a
+  directory of reviewed SQL change scripts applied by hand via psql, not a Prisma Migrate history.
+  > An earlier version of this line read _"Production: `prisma migrate dev` → `prisma migrate deploy`"_.
+  > That was false and contradicted `00-master-plan.md` §4; the ownership-flip runbook flagged it as P7.
+  > Corrected 2026-08-03 (#115).
+- Schema changes reach prod as **reviewed SQL applied via psql**, or as an **EF Core migration**
+  (preferred). Both are applied by psql; `dotnet ef database update` stays banned. The EF path still
+  records itself because `dotnet ef migrations script --idempotent` emits the history bookkeeping
+  **inside the SQL** — a `CREATE TABLE IF NOT EXISTS "__EFMigrationsHistory"` plus a guarded
+  `INSERT` per migration (see `services/Tims.Platform/db/manual/20260716000000_hris_domain.sql:23,33`).
+  Applying that script via psql writes the history row; no `dotnet ef database update`, no manual insert.
+- **The Supabase dashboard is prohibited for DDL.** Its two sub-paths differ, and both are bad here: the
+  **SQL editor** does record a `supabase_migrations` row (that is how the #111 fail-open policies were
+  eventually traced — row `20260531055730`), but the file never lands in the repo, so it is unreviewable.
+  The **table editor** records nothing at all in any history table.
+- Every schema PR re-captures `packages/db/baseline/prod-public-schema.sql` and passes `/gate` check 16.
 - Never `--accept-data-loss` in production.

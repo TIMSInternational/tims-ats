@@ -6,8 +6,8 @@
   "types": "./src/index.ts",
   "scripts": {
     "generate": "prisma generate",
-    "push": "prisma db push",
-    "migrate": "prisma migrate dev",
+    "push": "bash ../../scripts/db/guard-prod-ddl.sh prisma db push",
+    "migrate": "bash ../../scripts/db/guard-prod-ddl.sh prisma migrate dev",
     "studio": "prisma studio",
     "type-check": "tsc --noEmit"
   },

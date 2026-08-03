@@ -97,21 +97,91 @@ if ! git rev-parse --verify --quiet "$BASE" >/dev/null; then
   exit 2
 fi
 
-RAW_DIFF="$(git diff "$BASE"...HEAD)" || { bad "git diff vs '$BASE' failed — no review ran."; exit 2; }
+# GENERATED ARTIFACTS ARE EXCLUDED FROM THE REVIEWED DIFF — and announced, never hidden.
+#
+# Why: `packages/db/baseline/prod-public-schema.sql` is an 8,781-line generated pg_dump. On its
+# introducing PR it consumed the ENTIRE 40,000-character review budget, so the reviewer never saw the
+# two new scripts or their tests, and reported them as "not in the diff" (tier-2 round 1, 2026-08-03).
+# A gate that silently stops reviewing the code because a generated file grew is the #38 failure mode
+# wearing a different hat.
+#
+# The exclusion is deliberately NARROW and SELF-DECLARING: only paths matching the list below are
+# dropped, the reviewer is told exactly which files were withheld and their line counts, and the
+# prompt instructs it to treat them as unreviewed. A reviewer that knows what it did not see can still
+# say so; one that silently ran out of budget cannot. Never add a path here that contains
+# hand-written logic.
+GENERATED_PATHSPECS=(':(exclude)packages/db/baseline/prod-public-schema.sql')
+
+# CODE BEFORE DOCS — because the truncation has to bite SOMETHING.
+#
+# The budget is a hard ceiling, and a real PR can exceed it several times over (the #115 spike was
+# 115,775 characters against a 40,000 budget — 65% unseen). When that happens, whatever sits at the
+# end of the diff is not reviewed. Git orders by path, so `docs/` and `.claude/` came first
+# alphabetically and the scripts fell off the end: tier-2 rounds 2 and 3 both reported the new
+# security-relevant scripts as "may not exist", and both missed that check 14 had already gained the
+# `current_org_id()` tripwire they asked for.
+#
+# So order deliberately: executable code first, prose last. A truncated review of the code plus a
+# summary of the docs is strictly more valuable than a complete review of the docs and none of the
+# code. The reviewer is still told it saw a partial diff either way.
+diff_for() { git diff "$BASE"...HEAD -- "$@" "${GENERATED_PATHSPECS[@]}"; }
+
+CODE_PATHS=(packages apps services workers scripts tests contracts '*.json' '*.ts' '*.tsx' '*.cs' '*.sh' '*.sql' '*.yml' '*.yaml')
+CODE_DIFF="$(diff_for "${CODE_PATHS[@]}")" \
+  || { bad "git diff vs '$BASE' failed — no review ran."; exit 2; }
+# Everything the code pathspecs did not already cover — docs, markdown, rules.
+PROSE_DIFF="$(git diff "$BASE"...HEAD -- . "${GENERATED_PATHSPECS[@]}" \
+  "${CODE_PATHS[@]/#/:(exclude)}")" || PROSE_DIFF=""
+
+if [[ -n "$CODE_DIFF" && -n "$PROSE_DIFF" ]]; then
+  RAW_DIFF="$CODE_DIFF
+$PROSE_DIFF"
+else
+  RAW_DIFF="${CODE_DIFF}${PROSE_DIFF}"
+fi
+
+# The full diff, to detect the "only generated files changed" case and to report what was withheld.
+FULL_STAT="$(git diff "$BASE"...HEAD --stat -- packages/db/baseline/prod-public-schema.sql)"
 
 if [[ -z "$RAW_DIFF" ]]; then
+  if [[ -n "$FULL_STAT" ]]; then
+    # Refuse rather than pass: a PR that changes ONLY the generated baseline is a pure schema-drift
+    # change, and that is precisely what must not slip through unreviewed.
+    bad "the only changes vs $BASE are generated artifacts that are excluded from review:"
+    printf '%s\n' "$FULL_STAT" | sed 's/^/      /'
+    warn "Nothing was cross-model reviewed. A baseline-only change means production DDL moved —"
+    warn "review it by hand against docs/architecture/ddl-governance.md §7 before merging."
+    exit 2
+  fi
   warn "no changes vs $BASE — genuinely nothing to review."
   exit 0
+fi
+
+if [[ -n "$FULL_STAT" ]]; then
+  EXCLUDED_NOTE="
+[EXCLUDED FROM THIS DIFF — generated artifacts, listed so you know what you did not see. Treat them
+as UNREVIEWED; do not return CLEAN on the assumption they are fine, and do not report them as
+'missing from the diff' — they exist on the branch, they were withheld to preserve budget for
+hand-written code:
+$FULL_STAT
+]"
+else
+  EXCLUDED_NOTE=""
 fi
 
 # Truncate on a CHARACTER boundary, not a byte one: `head -c` can split a multi-byte UTF-8 sequence
 # (this repo is full of em-dashes) and then json.dump raises UnicodeEncodeError. Also tell the model
 # it is seeing a partial diff, so it cannot return CLEAN about content it never saw.
-DIFF="$(MAXC=40000 python3 -c "
+# 60,000 chars (~15k tokens) rather than the original 40,000: with code ordered first, the #115 spike's
+# executable portion alone was 45,217 characters, so a 40k ceiling still cut the tests off the end.
+# Tunable because the tier-2 upstreams are free providers with unadvertised limits — if a larger prompt
+# makes one fail, the script exits 2 (no review) which is WORSE than a partial review, so lower it:
+#   REVIEW_MAX_CHARS=30000 bash scripts/verification/crossmodel-review.sh
+DIFF="$(MAXC="${REVIEW_MAX_CHARS:-60000}" python3 -c "
 import os,sys
 s=sys.stdin.read(); n=int(os.environ['MAXC'])
 sys.stdout.write(s if len(s)<=n else s[:n]+'\n\n[TRUNCATED: diff exceeds '+str(n)+' characters. You are reviewing a PARTIAL diff — say so, and do not return CLEAN on the basis of unseen content.]')
-" <<<"$RAW_DIFF")"
+" <<<"$RAW_DIFF")$EXCLUDED_NOTE"
 
 REQ="$(mktemp)"; RESP="$(mktemp)"
 trap 'rm -f "$REQ" "$RESP"' EXIT
