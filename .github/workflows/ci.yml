@@ -175,3 +175,55 @@ jobs:
         run: pnpm --filter @tims/web build
         env:
           SKIP_ENV_VALIDATION: "true"
+
+  # ========================================
+  # Verification gate (#38)
+  #
+  # Does NOT prove a review happened — it makes an ABSENT one visible in GitHub
+  # instead of buried in a session log.
+  #
+  # Context: `.claude/rules/verification.md` mandates an adversarial cross-model
+  # pass at every review gate. It did not run once between 2026-07-22 and
+  # 2026-08-02, and every build stayed green, because the Codex CLI exits 0 when
+  # quota-blocked. PRs #18, #19, #22, #24, #112 and #113 all merged without it —
+  # #22 and #24 were data-exposure security fixes.
+  #
+  # Zero-cost: no checkout, no install, pure API read. Modeled on table-ownership.
+  # ========================================
+  verification-gate:
+    name: Verification section present
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      pull-requests: read
+    steps:
+      - name: Require a Verification section or an explicit waiver
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          if grep -qiE '^[[:space:]]*#{1,4}[[:space:]]*Verification' <<<"$BODY"; then
+            echo "✓ PR body has a Verification section."
+            exit 0
+          fi
+          if grep -qiE '^[[:space:]]*Verification-waiver:[[:space:]]*\S' <<<"$BODY"; then
+            echo "⚠ Verification WAIVED:"
+            grep -iE '^[[:space:]]*Verification-waiver:' <<<"$BODY" | sed 's/^/    /'
+            echo ""
+            echo "Recorded in the PR body, which is the point — a skipped review is now visible."
+            exit 0
+          fi
+          echo "::error::PR body has no '## Verification' section and no 'Verification-waiver:' line."
+          echo ""
+          echo "Add a '## Verification' section listing what you actually ran, e.g.:"
+          echo ""
+          echo "  ## Verification"
+          echo "  - [x] pnpm --filter @tims/api exec tsc --noEmit"
+          echo "  - [x] npx vitest run"
+          echo "  - [x] bash scripts/verification/codex-review.sh   (exit 2 — quota-blocked; ran 3-lens fallback)"
+          echo ""
+          echo "Or, if verification genuinely does not apply, state why on one line:"
+          echo ""
+          echo "  Verification-waiver: docs-only change, no code paths touched"
+          echo ""
+          echo "See .claude/rules/verification.md"
+          exit 1
