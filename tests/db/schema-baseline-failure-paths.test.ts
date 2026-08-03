@@ -214,6 +214,59 @@ describe('schema-baseline.sh — capture/check round-trip and drift detection', 
 });
 
 /**
+ * `capture` prints an object-level summary of what changed. This is the mechanization of the
+ * "review the hunk" discipline that ddl-governance.md §5 admits is the control's weak point: an
+ * 8,781-line generated dump does not get read, six lines do.
+ */
+describe('schema-baseline.sh capture — object-level change summary', () => {
+  /** A stub emitting a fixed schema, so "prod changed" can be simulated by swapping stubs. */
+  function stubEmitting(root: string, name: string, lines: string[]): string {
+    const path = join(root, name);
+    writeFileSync(
+      path,
+      '#!/bin/sh\n[ "$1" = "--version" ] && { echo "pg_dump (PostgreSQL) 17.0"; exit 0; }\n' +
+        `cat <<'SQLEOF'\n${lines.join('\n')}\nSQLEOF\n`,
+    );
+    chmodSync(path, 0o755);
+    return path;
+  }
+
+  const V1 = ['CREATE TABLE public.a (id uuid NOT NULL);', 'CREATE POLICY tenant_isolation ON public.a USING (true);'];
+
+  it('reports no schema change when only the capture timestamp moved', () => {
+    const root = makeTree('summary-nochange');
+    const stub = stubEmitting(root, 'v1', V1);
+    const env = { DIRECT_URL: FAKE_URL, PG_DUMP: stub };
+    expect(run(root, ['capture'], env).code).toBe(0);
+
+    const second = run(root, ['capture'], env);
+    expect(second.code).toBe(0);
+    expect(second.out).toMatch(/No schema change/);
+  });
+
+  it('names an added table, an added policy and an added grant', () => {
+    const root = makeTree('summary-change');
+    expect(run(root, ['capture'], { DIRECT_URL: FAKE_URL, PG_DUMP: stubEmitting(root, 'v1', V1) }).code).toBe(0);
+
+    const v2 = stubEmitting(root, 'v2', [
+      ...V1,
+      'CREATE TABLE public.zz_snuck_in (id uuid NOT NULL);',
+      // The #111 shape: a second PERMISSIVE policy that ORs past the fail-closed guard.
+      'CREATE POLICY allow_all ON public.a USING (true);',
+      'GRANT SELECT ON public.zz_snuck_in TO app_tenant;',
+    ]);
+    const { code, out } = run(root, ['capture'], { DIRECT_URL: FAKE_URL, PG_DUMP: v2 });
+
+    expect(code).toBe(0);
+    expect(out).toMatch(/CREATE TABLE public\.zz_snuck_in/);
+    expect(out).toMatch(/CREATE POLICY allow_all ON public\.a/);
+    expect(out).toMatch(/GRANT SELECT ON public\.zz_snuck_in TO app_tenant/);
+    // The summary must not bury the change — it is the whole reason the summary exists.
+    expect(out).toMatch(/STOP/);
+  });
+});
+
+/**
  * The banned-policy-function assertion added to check 14 (#115) is a live DB check, so its POSITIVE
  * case cannot be exercised without creating a bad policy in production. What can and must be tested
  * offline is its matching rule — because the naive version of it produced a false reading during the

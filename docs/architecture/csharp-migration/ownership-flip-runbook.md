@@ -1236,8 +1236,10 @@ against prod" half remains formally unanswerable, because `db push` leaves no tr
 now strongly evidenced: **~100 of the 102 Prisma tables have no `CREATE TABLE` in any migration file** —
 the earliest migration is `20260604000000`, and nothing creates the base tables — so `db push` is the only
 mechanism that can have created them. Treat the §2 hazard as **real, not hypothetical**.
-`scripts/db/guard-prod-ddl.sh` now refuses `pnpm push`/`pnpm migrate` against a non-local host, and
-`/gate` check 16 detects the damage if the guard is bypassed.
+`scripts/db/guard-prod-ddl.sh` now refuses `pnpm push`/`pnpm migrate` against a non-local host. If the
+guard is bypassed, `/gate` check 16 **would surface** the damage — but only when someone runs `/gate`;
+it is local-only and not in CI (#124), so it is not continuous detection. The real recovery path for a
+bypassed guard is a database backup, not the check.
 
 **Q5 — ~~Does prod's column/FK/constraint shape actually match the Prisma models?~~ → RESOLVED: NO
 (#115, 2026-08-03).** Measured with `prisma migrate diff` in both directions against the live URL. Three

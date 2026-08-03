@@ -97,11 +97,51 @@ if ! git rev-parse --verify --quiet "$BASE" >/dev/null; then
   exit 2
 fi
 
-RAW_DIFF="$(git diff "$BASE"...HEAD)" || { bad "git diff vs '$BASE' failed — no review ran."; exit 2; }
+# GENERATED ARTIFACTS ARE EXCLUDED FROM THE REVIEWED DIFF — and announced, never hidden.
+#
+# Why: `packages/db/baseline/prod-public-schema.sql` is an 8,781-line generated pg_dump. On its
+# introducing PR it consumed the ENTIRE 40,000-character review budget, so the reviewer never saw the
+# two new scripts or their tests, and reported them as "not in the diff" (tier-2 round 1, 2026-08-03).
+# A gate that silently stops reviewing the code because a generated file grew is the #38 failure mode
+# wearing a different hat.
+#
+# The exclusion is deliberately NARROW and SELF-DECLARING: only paths matching the list below are
+# dropped, the reviewer is told exactly which files were withheld and their line counts, and the
+# prompt instructs it to treat them as unreviewed. A reviewer that knows what it did not see can still
+# say so; one that silently ran out of budget cannot. Never add a path here that contains
+# hand-written logic.
+GENERATED_PATHSPECS=(':(exclude)packages/db/baseline/prod-public-schema.sql')
+
+RAW_DIFF="$(git diff "$BASE"...HEAD -- . "${GENERATED_PATHSPECS[@]}")" \
+  || { bad "git diff vs '$BASE' failed — no review ran."; exit 2; }
+
+# The full diff, to detect the "only generated files changed" case and to report what was withheld.
+FULL_STAT="$(git diff "$BASE"...HEAD --stat -- packages/db/baseline/prod-public-schema.sql)"
 
 if [[ -z "$RAW_DIFF" ]]; then
+  if [[ -n "$FULL_STAT" ]]; then
+    # Refuse rather than pass: a PR that changes ONLY the generated baseline is a pure schema-drift
+    # change, and that is precisely what must not slip through unreviewed.
+    bad "the only changes vs $BASE are generated artifacts that are excluded from review:"
+    printf '%s\n' "$FULL_STAT" | sed 's/^/      /'
+    warn "Nothing was cross-model reviewed. A baseline-only change means production DDL moved —"
+    warn "review it by hand against docs/architecture/ddl-governance.md §7 before merging."
+    exit 2
+  fi
   warn "no changes vs $BASE — genuinely nothing to review."
   exit 0
+fi
+
+if [[ -n "$FULL_STAT" ]]; then
+  EXCLUDED_NOTE="
+[EXCLUDED FROM THIS DIFF — generated artifacts, listed so you know what you did not see. Treat them
+as UNREVIEWED; do not return CLEAN on the assumption they are fine, and do not report them as
+'missing from the diff' — they exist on the branch, they were withheld to preserve budget for
+hand-written code:
+$FULL_STAT
+]"
+else
+  EXCLUDED_NOTE=""
 fi
 
 # Truncate on a CHARACTER boundary, not a byte one: `head -c` can split a multi-byte UTF-8 sequence
@@ -111,7 +151,7 @@ DIFF="$(MAXC=40000 python3 -c "
 import os,sys
 s=sys.stdin.read(); n=int(os.environ['MAXC'])
 sys.stdout.write(s if len(s)<=n else s[:n]+'\n\n[TRUNCATED: diff exceeds '+str(n)+' characters. You are reviewing a PARTIAL diff — say so, and do not return CLEAN on the basis of unseen content.]')
-" <<<"$RAW_DIFF")"
+" <<<"$RAW_DIFF")$EXCLUDED_NOTE"
 
 REQ="$(mktemp)"; RESP="$(mktemp)"
 trap 'rm -f "$REQ" "$RESP"' EXIT

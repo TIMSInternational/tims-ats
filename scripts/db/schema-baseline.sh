@@ -151,6 +151,18 @@ normalise <"$TMP/live.sql" >"$TMP/live.norm.sql"
 case "$cmd" in
   capture)
     mkdir -p "$(dirname "$BASELINE")"
+
+    # Capture the OLD body before overwriting, so the summary below can diff old-vs-new. Doing this
+    # via git after the write would also pick up the header's capture timestamp, which changes on
+    # every run and made an unchanged schema report "1 line changed".
+    PREV_BODY="$TMP/prev.norm.sql"
+    : >"$PREV_BODY"
+    if [ -f "$BASELINE" ]; then
+      prev_end="$(awk -v s="$HEADER_SENTINEL" '$0 == s { print NR; exit }' "$BASELINE")"
+      if [ -n "$prev_end" ]; then
+        tail -n "+$((prev_end + 1))" "$BASELINE" | normalise >"$PREV_BODY"
+      fi
+    fi
     {
       echo "-- TIMS ATS — production schema baseline (issue #115)"
       echo "--"
@@ -167,7 +179,36 @@ case "$cmd" in
     } >"$BASELINE"
     echo "✓ Baseline written: ${BASELINE#"$REPO_ROOT"/}"
     echo "  Server: ${SERVER_VERSION:-unknown}  |  $(wc -l <"$BASELINE" | tr -d ' ') lines"
-    echo "  Review 'git diff' before committing — every hunk is a real production change."
+
+    # An 8,000-line generated file is not reviewable by eyeballing, and "review the diff" is the only
+    # thing standing between this control and a rubber stamp (ddl-governance.md §5). So summarise the
+    # change at OBJECT level: turn "read 8,781 lines" into "read six". Compares the new dump against
+    # the PREVIOUS baseline body — not via git — so the header's capture timestamp cannot register as
+    # a change, and so this works on an unstaged or non-git checkout too.
+    if diff -q "$PREV_BODY" "$TMP/live.norm.sql" >/dev/null 2>&1; then
+      echo "  No schema change vs the previous baseline (only the capture timestamp moved)."
+    else
+      echo
+      echo "  ── What changed vs the previous baseline ───────────────────────────────────"
+      diff -U0 "$PREV_BODY" "$TMP/live.norm.sql" \
+        | grep -E '^[+-][^+-]' \
+        | sed -E 's/^([+-]).*(CREATE TABLE [a-zA-Z0-9_."]+).*/\1 \2/;
+                  s/^([+-]).*(CREATE (UNIQUE )?INDEX [a-zA-Z0-9_."]+).*/\1 \2/;
+                  s/^([+-]).*(CREATE POLICY [a-zA-Z0-9_."]+ ON [a-zA-Z0-9_."]+).*/\1 \2/;
+                  s/^([+-]).*(ALTER TABLE [a-zA-Z0-9_."]+ (ENABLE|FORCE|DISABLE|NO FORCE) ROW LEVEL SECURITY).*/\1 \2/;
+                  s/^([+-]).*(GRANT [A-Za-z, ]+ ON [a-zA-Z0-9_."]+ TO [a-zA-Z0-9_"]+).*/\1 \2/;
+                  s/^([+-]).*(ADD CONSTRAINT [a-zA-Z0-9_."]+).*/\1 \2/;
+                  s/^([+-]).*(CREATE FUNCTION [a-zA-Z0-9_."]+).*/\1 \2/;
+                  s/^([+-]).*(CREATE TRIGGER [a-zA-Z0-9_."]+).*/\1 \2/' \
+        | sed 's/^/  /' | head -60
+      added=$(diff -U0 "$PREV_BODY" "$TMP/live.norm.sql" | grep -cE '^\+[^+]' || true)
+      removed=$(diff -U0 "$PREV_BODY" "$TMP/live.norm.sql" | grep -cE '^-[^-]' || true)
+      echo "  ───────────────────────────────────────────────────────────────────────────"
+      echo "  (+$added / -$removed changed lines; showing up to 60)"
+      echo
+      echo "  Every line above is a real production change. If one is NOT explained by this PR,"
+      echo "  STOP — see docs/architecture/ddl-governance.md §7."
+    fi
     ;;
 
   check)
