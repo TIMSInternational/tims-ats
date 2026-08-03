@@ -68,6 +68,24 @@ flipped table's own readers, to any table whose RLS policy **references** it in 
 Every box must be green **before** the flip PR is opened. Re-verify at flip time; do not trust a
 prior issue's grep — issue #64's own context is already partly stale (§7).
 
+> **P0 — Verify against the committed schema baseline, not against migration files (#115, 2026-08-03).**
+> This runbook previously had no trustworthy source for "what does the schema look like right now",
+> which was the M2 blocker. There is one now:
+> [`packages/db/baseline/prod-public-schema.sql`](../../../packages/db/baseline/prod-public-schema.sql)
+> — `pg_dump --schema-only` of prod, committed, and asserted still-current by `/gate` **check 16**.
+>
+> ```bash
+> bash scripts/db/schema-baseline.sh check   # exit 0 = the baseline still matches prod
+> ```
+>
+> **Run this first.** If it exits 1, prod has drifted since the baseline was captured and every other
+> precondition below is being measured against a stale picture. If it exits 2 it did **not run** — that
+> is not a pass. Once it is green, `grep` against the baseline file instead of querying prod ad hoc: it
+> is the same data, reviewable in the PR, and it cannot be misread the way `pg_policies` was in #111.
+>
+> The four-DDL-path reconciliation is [`../ddl-reconciliation-2026-08-03.md`](../ddl-reconciliation-2026-08-03.md);
+> the governance policy it produced is [`../ddl-governance.md`](../ddl-governance.md).
+
 **P1 — Zero TS writers, grep-verified now.**
 
 ```bash
@@ -178,11 +196,12 @@ sweep returns `tests/access/scope-wiring-sensitive-data.test.ts`, `tests/tier1/s
 They are static greps and hand-rolled mocks — a green suite is **not** evidence a flip is clean, and an
 under-enumerated tripwire list is the most common way a flip PR goes red after it is opened.
 
-**P7 — `.claude/rules/db.md:66` acknowledged.** It says _"Production: `prisma migrate dev` →
-`prisma migrate deploy`"_, which directly contradicts `00-master-plan.md:69` and the observed reality
-(prod has no `_prisma_migrations` table at all). That rule auto-loads on any edit under `packages/db/**`
-— i.e. exactly the files a flip PR touches. Read §2 before believing it. Annotating that line is a
-cheap prerequisite of the first flip.
+**P7 — ~~`.claude/rules/db.md:66` acknowledged~~ → RESOLVED 2026-08-03 (#115).** That line said
+_"Production: `prisma migrate dev` → `prisma migrate deploy`"_, contradicting `00-master-plan.md` §4 and
+the observed reality (prod has no `_prisma_migrations` table at all). It has been **corrected**, not just
+annotated: `.claude/rules/db.md` now states that Prisma Migrate is formally unused in production and
+points at [`../ddl-governance.md`](../ddl-governance.md). `00-master-plan.md` §4 was corrected in the same
+PR. No action left for the first flip.
 
 **P8 — The repo retains an executable `CREATE` for the table.** Deleting the Prisma model can remove the
 **only** DDL definition of the table in the entire repository. Check before you delete it:
@@ -664,9 +683,18 @@ one of three drift sources — but only if the baseline is written to match prod
 
 ## 5. Verification
 
-Run all of these. Steps 1-5 are local; steps 6-9 need a real DB (6, 7 and 9 against prod, read-only;
+Run all of these. Step 0 and steps 6-9 need a real DB (0, 6, 7 and 9 against prod, read-only;
 8 against a throwaway).
 
+0. **Schema drift, FIRST (#115).** Everything below compares the flip against an expected schema; this
+   proves the expected schema is still the real one.
+   ```bash
+   bash scripts/db/schema-baseline.sh check   # 0 = matches, 1 = drift, 2 = DID NOT RUN
+   ```
+   A flip PR normally changes **no** DDL, so this must be a clean exit 0 both before and after. If the
+   flip does move DDL (§4 option (a)/(b)), re-capture the baseline and commit it in the flip PR — the
+   baseline diff is then the reviewable record of exactly what the flip did to prod. **Exit 2 is not a
+   pass**; resolve it before continuing rather than proceeding on an unverified schema.
 1. **Ledger check, directly.**
    ```bash
    node scripts/table-ownership.mjs        # expect: "table-ownership check passed." exit 0
@@ -1166,8 +1194,15 @@ _how_ flip #1 is done, while this gates _whether #64 can be flip #2 at all_. _Re
 their own slices, or accept `access_reviews` as flip #1 and defer #64 behind them.
 
 **Q1 — What does `prisma migrate dev` do against a DB with no `_prisma_migrations` and heavy drift?**
-Unverified; may offer a full reset rather than a targeted `DROP`. **Blocks flip #1.**
-_Resolve:_ the throwaway-DB procedure in §2. Then ship the guard.
+Still unverified — it may offer a full reset rather than a targeted `DROP`. _Resolve:_ the throwaway-DB
+procedure in §2.
+
+**Partly answered 2026-08-03 (#115):** what Prisma _wants_ to do is now known exactly, because
+`migrate diff` is read-only and was run. Against prod today it generates `DROP TABLE` ×17 (all four
+`hris_*`, `fx_rates`, all eleven `qrtz_*`, and `__EFMigrationsHistory` itself), one `DROP COLUMN`, 16
+`DROP CONSTRAINT` and 6 `ALTER COLUMN ... DROP DEFAULT`. The open part is only whether `migrate dev`
+_escalates_ that to a reset. **The guard has shipped** (`scripts/db/guard-prod-ddl.sh`), so this no longer
+blocks flip #1 — it is now a "know your tools" item rather than a precondition.
 
 **Q2 — Is the untracked `org_isolation` policy actually fail-open?** The conclusion follows from
 Postgres semantics (permissive policies OR'd; the USING clause contains `OR current_org_id() IS NULL`)
@@ -1178,20 +1213,43 @@ _Resolve:_ run exactly that transaction with the org GUC unset, on a throwaway D
 rows, or read-only against prod with Federico present. Escalate as a security issue on its own merits,
 independent of this runbook.
 
-**Q3 — Where did `org_isolation` and `current_org_id()` come from?** 67 prod tables, zero repo files.
-Until provenance is known it is unsafe to assume any table's live RLS matches its migration, or that
-dropping them is safe. _Resolve:_ Supabase dashboard SQL history + `supabase_migrations` contents; ask
-Federico.
+**Q3 — ~~Where did `org_isolation` and `current_org_id()` come from?~~ → RESOLVED 2026-08-03 (#115).**
+Both were created by the **Supabase dashboard SQL editor**, recorded as
+`supabase_migrations.schema_migrations` row `20260531055730 enable_rls_all_tables` — a migration with no
+repo counterpart. `org_isolation` is gone (#112). `current_org_id()` still exists but is now fully
+orphaned: **0** policies call it (all 100 `tenant_isolation` policies read the GUC directly) and it has
+**0** `pg_depend` dependents. It is a latent hazard rather than a live one — a future policy written
+against it silently reintroduces the fail-open shape. Removal tracked as its own issue; not needed before
+a flip.
 
-**Q4 — How is prod DDL actually applied, and has `prisma db push` ever been pointed at it?**
-`_prisma_migrations` being absent proves `migrate deploy` never ran, but `db push` leaves no trace
-either. If someone has been pushing to prod, the §2 hazard is not hypothetical. _Resolve:_ Federico
-confirms.
+**Q4 — How is prod DDL actually applied? → RESOLVED. Has `prisma db push` ever been pointed at it? →
+PARTLY (#115, 2026-08-03).** All four paths are now reconciled — see
+[`../ddl-reconciliation-2026-08-03.md`](../ddl-reconciliation-2026-08-03.md) §5. The "has `db push` run
+against prod" half remains formally unanswerable, because `db push` leaves no trace by design. But it is
+now strongly evidenced: **~100 of the 102 Prisma tables have no `CREATE TABLE` in any migration file** —
+the earliest migration is `20260604000000`, and nothing creates the base tables — so `db push` is the only
+mechanism that can have created them. Treat the §2 hazard as **real, not hypothetical**.
+`scripts/db/guard-prod-ddl.sh` now refuses `pnpm push`/`pnpm migrate` against a non-local host, and
+`/gate` check 16 detects the damage if the guard is bypassed.
 
-**Q5 — Does prod's column/FK/constraint shape actually match the Prisma models?** Only indexes were
-compared (9 on `critical_roles`/`successors`). 21 Prisma migrations have no recorded provenance and two
-Supabase migrations have no repo counterpart, so real drift is plausible. _Resolve:_
-`pg_dump --schema-only -t <table>` and diff against the model, before any future EF adoption.
+**Q5 — ~~Does prod's column/FK/constraint shape actually match the Prisma models?~~ → RESOLVED: NO
+(#115, 2026-08-03).** Measured with `prisma migrate diff` in both directions against the live URL. Three
+drift classes, all sharing one root cause — the `migrations/*.sql` files are hand-written and were never
+reconciled back into the datamodel:
+
+- **11 undeclared FKs** — `hire_predictions` ×7 (the model declares zero `@relation` blocks) plus
+  `organization_id` FKs on `rater_assignments`, `rater_responses`, `review_cycles`,
+  `role_family_weight_profiles`.
+- **6 `gen_random_uuid()` `id` defaults** the datamodel does not declare.
+- **1 FK definition skew** — `role_family_weight_profiles_organization_id_fkey` is `ON UPDATE NO ACTION`
+  in prod because `20260710140000_add_fit_engine_schema/migration.sql:26` omitted `ON UPDATE`.
+
+Plus one column with **no provenance at all**: `nine_box_evaluations.updated_at`, absent from every repo
+file, every commit, and all three migration-history tables.
+
+Going forward, do not re-derive this per table: diff against
+[`packages/db/baseline/prod-public-schema.sql`](../../../packages/db/baseline/prod-public-schema.sql) (§0
+P0), which is the whole-schema answer and is kept current by check 16.
 
 **Q6 — Does `dotnet ef migrations add --context <StranglerContext>` even succeed?** Those contexts have
 no design-time factory; whether EF resolves them through the `Tims.Api` host's service provider is
