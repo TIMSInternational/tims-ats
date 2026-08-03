@@ -57,14 +57,26 @@ Notes:
   static analysis over the repo's migrations would have caught it. Only querying the database does.
   A skipped check 14 means tenant isolation is unverified — say so plainly rather than letting the gate
   read green.
-- **Check 16 generalises check 14** from "are the RLS policies right" to "is the whole schema what we
-  committed" (#115). It is the only control that catches an out-of-band change regardless of which of
-  the four DDL paths made it — including Supabase dashboard _table-editor_ edits, which leave no row in
-  `supabase_migrations` and are therefore invisible to any provenance audit. One such column is already
-  in production: `nine_box_evaluations.updated_at` exists in no repo file, no commit, and no migration
-  history table. See `docs/architecture/ddl-governance.md`.
+- **Checks 14 and 16 are different controls. Neither subsumes the other — do not skip one because the
+  other is green** (#115):
+  - **14 is functional/empirical.** It actually probes rows with the org GUC unset and asserts zero come
+    back. It catches a fail-open policy _whatever_ its provenance, including one that has been in prod
+    long enough to sit in the committed baseline.
+  - **16 is structural.** It diffs the whole live schema against the committed baseline, so it catches
+    change classes 14 never looks at — a dropped constraint, an added column, a missing GRANT — and it
+    does so regardless of which of the four DDL paths made the change. That includes Supabase dashboard
+    _table-editor_ edits, which leave no row in `supabase_migrations` and are invisible to any
+    provenance audit. One such column is already in production: `nine_box_evaluations.updated_at`
+    exists in no repo file, no commit, and no migration history table.
+  - **The blind spot 16 has by construction:** anything already present when the baseline was captured
+    is, by definition, "no drift". 16 tells you _the schema has not changed_, never _the schema is
+    correct_. Correctness assertions live in 14.
 - **Never make check 16 green by re-capturing a baseline you have not read.** The whole value is that
-  someone looks at the hunk. A reflexive `capture` turns the one real control into a rubber stamp.
+  someone looks at the hunk. A reflexive `capture` turns the control into a rubber stamp — and because
+  16 is trust-on-human-review, that is its realistic failure mode, not a hypothetical one.
+- **Check 16 is local-only today**, so it runs when `/gate` runs, not on every push. It needs the direct
+  connection and a `pg_dump` ≥ 17; wiring prod credentials into CI is deferred (#124). If it cannot run,
+  report ⚠️ NOT RUN and do not merge a schema change behind it — see `ddl-governance.md` §5.
 
 ## Output
 

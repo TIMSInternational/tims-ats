@@ -46,8 +46,11 @@ Phase-7 endpoint. That does **not** make it the owner of Prisma's 102 tables tod
 
 ## 3. Prisma Migrate is formally unused in production
 
-**Decision (2026-08-03).** Production has no `_prisma_migrations` table and never has:
-`prisma migrate deploy` has never run against it. `packages/db/prisma/migrations/` is **not** a Prisma
+**Decision (2026-08-03).** Production has no `_prisma_migrations` table — verified by live query. Prisma
+creates that table on first use and never drops it, so `prisma migrate deploy` has almost certainly never
+run against prod. (That last step is an inference, not proof: someone could have dropped the table. No
+evidence suggests it, and the conclusion below does not depend on which it is.)
+`packages/db/prisma/migrations/` is **not** a Prisma
 Migrate history. It is a directory of **reviewed SQL change scripts applied by hand via psql**, which
 is also exactly what `prisma/manual/` is — the split between the two directories is convention only.
 
@@ -100,13 +103,13 @@ target is unambiguous, not to imply it is built.
 Being explicit about this, because the previous version of the verification rule claimed enforcement
 that did not exist:
 
-| Control                                                  | Real?                  | Catches                                                                                                              |
-| -------------------------------------------------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `/gate` **check 16** — live schema vs committed baseline | ✅ **yes**             | **any** out-of-band change, whatever path made it — including dashboard table-editor edits that leave no history row |
-| `guard-prod-ddl.sh`                                      | ✅ yes, bypassable     | accidental `pnpm db:push` / `pnpm db:migrate` at a non-local host                                                    |
-| `table-ownership.md` CI check                            | ✅ yes (pre-existing)  | a PR mutating a table it does not own                                                                                |
-| "Never use the Supabase dashboard"                       | ❌ **convention only** | nothing. Unenforceable — dashboard access cannot be revoked from the platform owner.                                 |
-| PR body must state which path applied the DDL            | ❌ convention only     | nothing mechanically                                                                                                 |
+| Control                                                  | Real?                  | Catches                                                                                                                                                                                             |
+| -------------------------------------------------------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/gate` **check 16** — live schema vs committed baseline | ✅ **yes**             | any out-of-band change made **since the last capture**, whatever path made it — including dashboard table-editor edits that leave no history row. Not anything already in the baseline (see below). |
+| `guard-prod-ddl.sh`                                      | ✅ yes, bypassable     | accidental `pnpm db:push` / `pnpm db:migrate` at a non-local host                                                                                                                                   |
+| `table-ownership.md` CI check                            | ✅ yes (pre-existing)  | a PR mutating a table it does not own                                                                                                                                                               |
+| "Never use the Supabase dashboard"                       | ❌ **convention only** | nothing. Unenforceable — dashboard access cannot be revoked from the platform owner.                                                                                                                |
+| PR body must state which path applied the DDL            | ❌ convention only     | nothing mechanically                                                                                                                                                                                |
 
 **The Supabase dashboard prohibition has no technical enforcement and cannot have one.** Enforcement
 is _detection_: check 16 sees the resulting object regardless of provenance. That asymmetry is the
@@ -115,11 +118,53 @@ that such a path was used. Schema diffing cannot be.
 
 **There is no enforcement beyond the three ✅ rows above.**
 
-### CI
+### Check 16 and check 14 are different controls — neither replaces the other
+
+Written down because the first draft of this change called 16 a generalisation of 14, and the
+cross-model reviewer was right to call that dangerous:
+
+|                                                             | check 14 (`verify-rls-isolation.ts`)        | check 16 (`schema-baseline.sh`)                         |
+| ----------------------------------------------------------- | ------------------------------------------- | ------------------------------------------------------- |
+| Kind                                                        | functional — probes rows with the GUC unset | structural — diffs the schema text                      |
+| Answers                                                     | "is tenant isolation actually holding?"     | "has the schema changed since we last looked?"          |
+| Catches a fail-open policy that predates the baseline       | ✅ yes                                      | ❌ **no** — it is already in the baseline, so: no drift |
+| Catches a dropped constraint / added column / missing GRANT | ❌ no                                       | ✅ yes                                                  |
+
+**Check 16's blind spot is structural and permanent:** anything present at capture time is by
+definition "no drift". It says the schema has not changed, never that it is correct.
+
+Consequence, and why check 14 gained an assertion in this PR: a new policy named `tenant_isolation`
+whose `USING` clause calls the orphaned `current_org_id()` would have passed _both_ checks. Check 14 now
+rejects any policy calling a banned function by name (`BANNED_POLICY_FUNCTIONS`). Semantic assertions
+belong in 14; only 14 can carry them.
+
+### The failure paths are tested
+
+`tests/db/schema-baseline-failure-paths.test.ts` asserts the exit-code contract offline against a stub
+`pg_dump` — including a dump that fails, a dump that succeeds while emitting nothing, a missing
+baseline, and a client older than the server. Given #38, a gate whose did-not-run path is untested is
+not a gate. Exit 0 is not covered there (it needs live credentials); `/gate` check 16 covers it.
+
+### CI, and what to do when check 16 cannot run
 
 Check 16 is local-only for now: it needs the direct connection (`:5432`) and a `pg_dump` ≥ 17, and
 wiring production credentials into CI is a separate decision (#124). Until then, drift is caught when
 `/gate` runs — which is every ship — not on every push.
+
+That creates an obvious trap, so it is spelled out rather than left to be discovered: **"every schema PR
+passes check 16" is unsatisfiable on a machine with no direct connection or no `pg_dump` ≥ 17.** A rule
+that cannot be satisfied gets satisfied dishonestly — by re-capturing without reading, which is exactly
+the rubber-stamp failure §7 prohibits. The escape clause:
+
+| Situation                                      | Required action                                                                                                                                                        |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Check 16 runs, exit 0                          | Proceed.                                                                                                                                                               |
+| Check 16 runs, exit 1 (drift)                  | Resolve per §7 before merge.                                                                                                                                           |
+| Check 16 exits 2 **and the PR changes no DDL** | Record `Verification: check 16 NOT RUN (<reason>)` in the PR body and proceed. A non-DDL PR cannot have caused drift.                                                  |
+| Check 16 exits 2 **and the PR changes DDL**    | **Do not merge.** Fix the tooling (`brew install postgresql@17`, `bash scripts/dev/setup-db-env.sh`) or hand off to someone who can run it. This is the one hard stop. |
+
+Never resolve an exit 2 by re-capturing the baseline: `capture` and `check` use the same `pg_dump`, so if
+`check` could not run, `capture` cannot produce a trustworthy baseline either.
 
 ## 6. Adding a schema change: the procedure
 

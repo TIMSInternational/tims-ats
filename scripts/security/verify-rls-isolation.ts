@@ -64,6 +64,30 @@ const GUC_INDEPENDENT_ESCAPES = [
   'IS NULL', // e.g. `OR (current_org_id() IS NULL)` — the Defect 1 shape
 ];
 
+/**
+ * Functions no policy may call, with the reason. `current_org_id()` was created by the same
+ * out-of-band Supabase migration that introduced the Defect 1 `org_isolation` family
+ * (`supabase_migrations` row 20260531055730). It survives in production but is now fully orphaned:
+ * zero policies call it and it has zero `pg_depend` dependents (verified 2026-08-03, #115).
+ *
+ * WHY THIS CHECK EXISTS RATHER THAN JUST DROPPING THE FUNCTION
+ * ------------------------------------------------------------
+ * Dropping it is its own reviewed change. Meanwhile there is a real gap: a NEW policy named
+ * `tenant_isolation` whose USING clause calls `current_org_id()` — without the literal `IS NULL`
+ * escape — passes every other check here AND passes the /gate check-16 schema diff (which only
+ * asserts the schema has not changed, never that it is correct). This closes that gap by name.
+ *
+ * MATCHED WITH A PAREN, DELIBERATELY: a bare substring test for `current_org_id` matches
+ * `current_setting('app.current_org_id', true)` — the CORRECT idiom — and produced a false
+ * "100 policies use current_org_id" reading during the #115 investigation.
+ */
+const BANNED_POLICY_FUNCTIONS: ReadonlyArray<{ fn: string; why: string }> = [
+  {
+    fn: 'current_org_id',
+    why: "orphaned #111-era function that returns NULL rather than failing closed; policies must read current_setting('app.current_org_id', true) directly",
+  },
+];
+
 type Finding = { check: string; detail: string };
 
 async function main(): Promise<void> {
@@ -111,6 +135,22 @@ async function main(): Promise<void> {
           findings.push({
             check: 'guc-independent-escape',
             detail: `${p.tablename}.${p.policyname} USING contains "${escape}" — it can evaluate true with no org GUC set, which fails OPEN. qual: ${p.qual.replace(/\s+/g, ' ').slice(0, 160)}`,
+          });
+        }
+      }
+    }
+
+    // ── 2b. No policy may call a banned function (#115) ────────────────────────────────────────
+    // Covers the gap the check-16 schema diff cannot: check 16 asserts the schema has not CHANGED,
+    // so a newly added policy is caught only until its baseline is re-captured, and a policy that
+    // was already there is never flagged at all. This is a semantic assertion, not a diff.
+    for (const p of policies) {
+      for (const { fn, why } of BANNED_POLICY_FUNCTIONS) {
+        // Paren-anchored: a bare substring match would also hit current_setting('app.current_org_id').
+        if (new RegExp(`\\b${fn}\\s*\\(`).test(p.qual)) {
+          findings.push({
+            check: 'banned-policy-function',
+            detail: `${p.tablename}.${p.policyname} USING calls ${fn}() — ${why}. qual: ${p.qual.replace(/\s+/g, ' ').slice(0, 160)}`,
           });
         }
       }

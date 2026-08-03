@@ -73,8 +73,11 @@ datasource db {
 
 - `prisma db push` / `prisma migrate dev` are **dev-only, local-only**. `pnpm push` and `pnpm migrate`
   route through `scripts/db/guard-prod-ddl.sh`, which refuses a non-local host.
-- **`prisma migrate deploy` is NEVER used against production.** Prod has no `_prisma_migrations` table
-  and never has — Prisma Migrate is formally unused there (#115). `packages/db/prisma/migrations/` is a
+- **`prisma migrate deploy` is NEVER used against production.** Prod has no `_prisma_migrations` table —
+  verified by live query — and since Prisma creates that table on first use and never drops it, it is a
+  safe inference that `migrate deploy` has never run. (Inference, not proof: someone could have dropped
+  it. No evidence suggests that.) Prisma Migrate is formally unused there (#115).
+  `packages/db/prisma/migrations/` is a
   directory of reviewed SQL change scripts applied by hand via psql, not a Prisma Migrate history.
   > An earlier version of this line read _"Production: `prisma migrate dev` → `prisma migrate deploy`"_.
   > That was false and contradicted `00-master-plan.md` §4; the ownership-flip runbook flagged it as P7.

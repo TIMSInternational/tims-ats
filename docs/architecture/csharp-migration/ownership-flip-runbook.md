@@ -81,7 +81,14 @@ prior issue's grep — issue #64's own context is already partly stale (§7).
 > **Run this first.** If it exits 1, prod has drifted since the baseline was captured and every other
 > precondition below is being measured against a stale picture. If it exits 2 it did **not run** — that
 > is not a pass. Once it is green, `grep` against the baseline file instead of querying prod ad hoc: it
-> is the same data, reviewable in the PR, and it cannot be misread the way `pg_policies` was in #111.
+> is the same data, but committed and reviewable in the PR rather than read once in a session.
+>
+> That is a real improvement and **not** immunity from misreading. The baseline is `pg_dump` output — the
+> same `pg_policies` information in another form, larger and less structured than the targeted query that
+> _was_ misread in #111. It removes the "nobody else can check my query" failure mode, not the "I read it
+> wrong" one. For per-table RLS _shape_, still read `pg_get_expr(polqual, polrelid)` **per table** (P9)
+> rather than inferring structure from aggregates — that exact mistake produced a false claim about
+> `calibration_members`/`calibration_votes` during #111.
 >
 > The four-DDL-path reconciliation is [`../ddl-reconciliation-2026-08-03.md`](../ddl-reconciliation-2026-08-03.md);
 > the governance policy it produced is [`../ddl-governance.md`](../ddl-governance.md).
