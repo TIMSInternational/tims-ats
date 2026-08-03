@@ -28,7 +28,8 @@ model User {
   ledTeams         Team[]      @relation("TeamLeader")
   auditLogs        AuditLog[]  @relation("AuditUser")
   createdAuditLogs AuditLog[]  @relation("AuditActor")
-  accessReviews    AccessReview[] @relation("AccessReviewReviewer")
+  // accessReviews removed 2026-08-03: `access_reviews` flipped to EF-owned (#63/#65). A
+  // back-relation to a deleted model is a hard P1012. Read it via the C# API.
   createdVacancies Vacancy[]   @relation("VacancyCreator")
   assignedVacancies Vacancy[]  @relation("VacancyAssignee")
   vacancyApprovals VacancyApproval[] @relation("VacancyApprover")
