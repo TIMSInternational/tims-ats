@@ -53,7 +53,8 @@ was the last instance of that direction and #116 closed it. All remaining drift 
 updated_at timestamp(3) without time zone DEFAULT now() NOT NULL
 ```
 
-Searched and **absent from all of**:
+Nothing **creates or declares** it. Searched and absent from all of (the committed baseline records
+that it exists — that is the baseline doing its job; nothing anywhere explains how it got there):
 
 | Source                                                 | Result                                                                                 |
 | ------------------------------------------------------ | -------------------------------------------------------------------------------------- |

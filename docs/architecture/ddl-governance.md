@@ -6,9 +6,13 @@
 >
 > **The rule that generates every other rule here:** the repository is not evidence about production.
 > #111 put RLS policies in prod that existed in zero repo files and survived every gate for ~14
-> months. §3a of the reconciliation found a production column that exists in **no repo file, no commit,
-> and none of the three migration-history tables**. Any control that reads only the repo is not a
-> control.
+> months. §3a of the reconciliation found a production column that **no repo file creates, no commit in
+> history declares, and none of the three migration-history tables records**. Any control that reads only
+> the repo is not a control.
+>
+> (Since this change landed, the committed baseline does record that the column exists — that is the
+> point of having a baseline. What still does not exist anywhere is anything explaining how it got
+> there.)
 
 ## 1. Ground truth
 
@@ -43,6 +47,20 @@ _mechanism_; that one governs _ownership_.
 
 EF is preferred because it is the only path that already records its own applies, and it is the
 Phase-7 endpoint. That does **not** make it the owner of Prisma's 102 tables today — see §3.
+
+**How the EF path records itself without the banned command.** These two rules look contradictory and
+are not, so the mechanism is worth stating: `__EFMigrationsHistory` rows are normally written by
+`dotnet ef database update`, which is prohibited against prod. But
+`dotnet ef migrations script --idempotent` puts the bookkeeping **into the generated SQL** — a
+`CREATE TABLE IF NOT EXISTS "__EFMigrationsHistory"` and, per migration, an `INSERT` guarded by
+`IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '…')`. Applying that script
+with psql therefore writes the history row itself. Verifiable in the committed artifact:
+`services/Tims.Platform/db/manual/20260716000000_hris_domain.sql:23,33`. It is also why the script is
+safe to re-apply.
+
+This is precisely why "**never hand-write EF SQL**" (§6 step 2) matters: a hand-written equivalent
+would create the tables and silently skip the history row, putting EF back in the same unrecorded state
+as the psql path.
 
 ## 3. Prisma Migrate is formally unused in production
 

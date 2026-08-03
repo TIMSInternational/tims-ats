@@ -67,7 +67,9 @@ Notes:
     does so regardless of which of the four DDL paths made the change. That includes Supabase dashboard
     _table-editor_ edits, which leave no row in `supabase_migrations` and are invisible to any
     provenance audit. One such column is already in production: `nine_box_evaluations.updated_at`
-    exists in no repo file, no commit, and no migration history table.
+    is created by no Prisma model, no migration file, no manual SQL and no EF migration, and is
+    recorded in none of the three migration-history tables. (The committed baseline now records that
+    it EXISTS — that is the baseline doing its job. Nothing explains how it got there.)
   - **The blind spot 16 has by construction:** anything already present when the baseline was captured
     is, by definition, "no drift". 16 tells you _the schema has not changed_, never _the schema is
     correct_. Correctness assertions live in 14.

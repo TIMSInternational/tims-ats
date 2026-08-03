@@ -1233,9 +1233,14 @@ a flip.
 PARTLY (#115, 2026-08-03).** All four paths are now reconciled — see
 [`../ddl-reconciliation-2026-08-03.md`](../ddl-reconciliation-2026-08-03.md) §5. The "has `db push` run
 against prod" half remains formally unanswerable, because `db push` leaves no trace by design. But it is
-now strongly evidenced: **~100 of the 102 Prisma tables have no `CREATE TABLE` in any migration file** —
-the earliest migration is `20260604000000`, and nothing creates the base tables — so `db push` is the only
-mechanism that can have created them. Treat the §2 hazard as **real, not hypothetical**.
+now better evidenced: **~100 of the 102 Prisma tables have no `CREATE TABLE` in any migration file** —
+the earliest migration is `20260604000000`, and nothing creates the base tables.
+
+Be careful with that inference, though: it rules out the Prisma-migration path, not the other two. Bulk
+hand-applied psql or the Supabase dashboard could equally have created those tables, and the dashboard
+demonstrably created objects with no repo counterpart (Q3). So the honest statement is **"consistent with
+`db push`, and not attributable to any single path"** — the base tables' provenance is genuinely unknown,
+which is itself the finding. Either way, treat the §2 hazard as **real, not hypothetical**.
 `scripts/db/guard-prod-ddl.sh` now refuses `pnpm push`/`pnpm migrate` against a non-local host. If the
 guard is bypassed, `/gate` check 16 **would surface** the damage — but only when someone runs `/gate`;
 it is local-only and not in CI (#124), so it is not continuous detection. The real recovery path for a

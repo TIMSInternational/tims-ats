@@ -26,8 +26,10 @@ Consequences already observed in production:
 
 - **#111** — two RLS policy families existed in prod and in **zero repo files**, silently defeating
   tenant isolation for ~14 months while every gate reported green.
-- **#115 §3a** — `nine_box_evaluations.updated_at` exists in prod and in no repo file, no commit, and
-  none of the three migration-history tables. Provenance auditing cannot see it. A schema diff can.
+- **#115 §3a** — `nine_box_evaluations.updated_at` is in prod, but no repo file creates it, no commit in
+  history declares it, and none of the three migration-history tables records it. Provenance auditing
+  cannot see it. A schema diff can — which is why this file exists, and why this file is now the only
+  place in the repo that shows the column at all.
 
 That is why the control is a diff of the whole schema rather than a reconciliation of migration
 ledgers.

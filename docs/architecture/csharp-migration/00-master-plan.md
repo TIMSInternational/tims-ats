@@ -75,8 +75,10 @@ P1 ─► P2 ─► P3 ─► P5 ─► P7
   > This bullet was titled **"One DDL path"** and that was false: there are four, and it omitted the
   > Supabase dashboard entirely — which is where the #111 fail-open RLS policies came from. It also left
   > the psql path unrecorded (nothing logged that an apply happened) and was silent on `prisma db push`,
-  > the documented bootstrap step that actually created ~100 of the 102 Prisma tables. The procedure it
-  > described was accurate; the claim of singularity, and the omissions, were not. Reconciled against the
+  > the documented bootstrap step. (~100 of the 102 Prisma tables have no `CREATE TABLE` in any migration
+  > file; `db push` is the likely origin but psql or the dashboard could equally have created them — their
+  > provenance is genuinely unknown.) The procedure it described was accurate; the claim of singularity,
+  > and the omissions, were not. Reconciled against the
   > live database 2026-08-03 — [`../ddl-reconciliation-2026-08-03.md`](../ddl-reconciliation-2026-08-03.md).
 - **Table-ownership ledger** (`table-ownership.md`) is CI-enforced: a PR mutating a table it doesn't own fails.
 - **Co-location:** C# services deploy in the DB's region (latency constraint). Runtime → Supavisor 6543
