@@ -234,13 +234,34 @@ and `CLAUDE.md:32` both document `prisma db push` as the step immediately after 
 bootstrapped dev DB would simply not have the tables, and the P1-recommended raw-SQL port of
 `packages/db/prisma/seed-demo.ts:1207,1226` would hard-fail with `relation "surveys" does not exist`.
 
-The fix, before the Prisma model is deleted: commit a hand-authored idempotent
-`CREATE TABLE IF NOT EXISTS` — plus its indexes, FKs, GRANTs and the **exact live** `tenant_isolation`
-policy read from `pg_catalog`, not from the migration source — into `services/Tims.Platform/db/manual/`,
-and wire the `db push` bootstrap path to apply it. Verify it with the new §5 step 8.
-_(`access_reviews` does **not** have this problem — it has a real migration file at
+**The fix is now a tool, not hand-authoring (#128).** `scripts/db/extract-table-ddl.mjs` slices a table's
+complete definition out of the committed production baseline:
+
+```bash
+node scripts/db/extract-table-ddl.mjs --out services/Tims.Platform/db/flip-ddl/<name>.sql <table>...
+```
+
+It emits the `CREATE TABLE`, enum dependencies, sequences (with their ACLs), PK/UNIQUE constraints,
+indexes, `ENABLE`/`FORCE ROW LEVEL SECURITY`, the **exact live** policy, role-guarded GRANTs, and the FKs
+last — all idempotent, in one transaction. Crucially it reads the policy from the baseline's `pg_catalog`
+snapshot, **not** from a migration file, which is what this paragraph originally demanded and what #111
+proved is not optional.
+
+**How bad P8 actually is, measured after flip #1:** of 101 Prisma-mapped tables, only **17** have a
+`CREATE TABLE` anywhere in `packages/db/prisma/{migrations,manual}`. The other 84 were created by
+`prisma db push` and exist as DDL nowhere. P8 therefore gates almost every flip in #28, not just #64.
+
+Already committed ahead of their flips, so they are no longer P8-blocked:
+`services/Tims.Platform/db/flip-ddl/surveys.sql` (#64) and `.../compensation.sql` (#66). Round-trip
+verified: applied to an empty PostgreSQL 17 database, the resulting columns, constraints, indexes,
+policies, RLS flags and grants match production's catalog **exactly** (53/53 and 43/43 canonical lines).
+
+Per flip, commit the extracted DDL alongside the model deletion and apply it in the `db push` bootstrap
+path (see `services/Tims.Platform/db/flip-ddl/README.md`). Verify with §5 step 8.
+
+_(`access_reviews` did **not** have this problem — it has a real migration file at
 `packages/db/prisma/migrations/20260717170000_add_access_reviews/migration.sql:4`. That is one more
-reason it is the better pilot; see §7.)_
+reason it was the better pilot; see §7.)_
 
 **P9 — Per-table RLS _shape_ classified from the live DB.** Read
 `pg_get_expr(polqual, polrelid)` for every policy on the candidate table and classify it as a
@@ -798,8 +819,15 @@ Run all of these. Step 0 and steps 6-9 need a real DB (0, 6, 7 and 9 against pro
    surface. The flip does not change the write path, so this is a regression check, not a new proof.
 
 8. **Clean-checkout bootstrap still produces the table (§0 P8).** On a **scratch** DB, from a clean
-   checkout of the flip branch, run the documented bootstrap (`pnpm db:push` / the guarded equivalent plus
-   whatever applies `services/Tims.Platform/db/manual/`), then assert:
+   checkout of the flip branch, run the documented bootstrap — `pnpm db:push` (which now routes through
+   `scripts/db/guard-prod-ddl.sh`) followed by the table's extracted DDL:
+
+   ```bash
+   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f services/Tims.Platform/db/flip-ddl/<name>.sql
+   ```
+
+   Generate that file with `node scripts/db/extract-table-ddl.mjs` if it does not exist yet (#128 — it is
+   already committed for #64's and #66's tables). Then assert:
 
    ```sql
    SELECT to_regclass('public.<table>') IS NOT NULL;   -- must be true
