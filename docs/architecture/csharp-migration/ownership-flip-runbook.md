@@ -7,8 +7,17 @@ Date: 2026-08-03 (rev. 3 — flip #1 executed) · Status: **EXECUTED ONCE.** `ac
 > **What flip #1 did and did not establish.** It proves the mechanics end-to-end for the easy case: the
 > one-PR coupling, the `P1012` back-relation trap, the ledger move, and that pure `git revert` is a
 > complete rollback under §4 option (c). It exercised **no** reader repointing (all five §1-step-6
-> coupling categories were zero for that table) and **no** DDL transfer. §8 Q6 is still open. Do not read
-> §7 as evidence that a flip with live cross-domain readers is routine — §7b is the honest picture of that.
+> coupling categories were zero for that table) and **no** DDL transfer.
+>
+> **Flip #2 (§7c, `critical_roles` + `successors`, #69, executed 2026-08-04) closes two of those gaps:**
+> it repointed **real readers** (2) and was the first flip to actually need **§0 P8**'s extracted DDL. It
+> also produced the §1-step-6 correction — a flipped table's **scope policy is a cross-stack contract and
+> must NOT be deleted with the model**, only its Prisma delegate. Still open after both flips: **DDL
+> transfer** (§4 options (a)/(b)) and **§8 Q6** (EF design-time factory).
+>
+> Do not read §7 or §7c as evidence that a flip with live cross-domain readers is routine. Both flipped
+> tables that no _other domain_ reads. §7b (`surveys`) is the honest picture of that harder case, and it is
+> still blocked.
 
 > ## ⚠️ PARTIALLY UNBLOCKED — read before executing any flip (#111)
 >
@@ -114,8 +123,14 @@ Seeds count. `packages/db/prisma/seed.ts` / `seed-demo.ts` writes are writers �
 raw SQL, ported to a C# seeder (none exists today), or the flip is blocked. `scripts/parity/seed.ts`
 already writes via `pg` raw SQL, so it survives a flip mechanically.
 
-**P2 — Cross-domain Prisma READERS enumerated and each one dispositioned.** **Five** grep strategies,
+**P2 — Cross-domain Prisma READERS enumerated and each one dispositioned.** **Six** grep strategies,
 all of them (a `.model.method` grep alone is not sufficient — see §7's relation-traversal reads):
+
+> **The sixth was added 2026-08-04 after flip #2 missed it.** The first five are all `.ts`-scoped, so a
+> **data-driven** consumer is invisible to every one of them. Flip #2's first full-suite run failed on 6
+> cases in `contracts/access-fixtures/scope-where.json`, a JSON fixture that names entities as strings and
+> is read by both stacks. `tsc` cannot see it and none of the five greps looked at `*.json`. Run the sixth
+> before concluding a reader sweep is complete.
 
 ```bash
 grep -rnE '\.<model>\.[a-zA-Z]+\(' packages/ apps/web/ workers/ scripts/ --include='*.ts'   # delegates
@@ -123,6 +138,7 @@ grep -rn '<backRelationFieldName>' packages/api apps/web                        
 grep -rniE '\b<table>\b' packages/ apps/web/ workers/ scripts/                               # raw SQL / strings
 grep -rnE "'<model>'" packages/api/src/access/                                               # dynamic delegate map
 grep -rnE 'utils\.[a-zA-Z]+\.<procedure>\.(invalidate|fetch|prefetch|setData)' apps/web      # tRPC CACHE consumers
+grep -rn '<model>' contracts/ tests/ --include='*.json'                                      # SIXTH: data fixtures
 ```
 
 The fourth matters: `packages/api/src/access/scoped-probe.ts:41-63` resolves Prisma delegates from a
@@ -353,9 +369,41 @@ reader. It fails on a surviving **back-relation** (`P1012`) — a distinct conce
    never enforcement.
 
 6. **Fix every TS reader** per its P2 disposition. Expect `tsc` breakage in five distinct categories:
-   Prisma delegates; generated `Prisma.<Model>WhereInput` types; the access-registry triple
-   (`entity-policies.ts` union + set, `scoped-probe.ts` `NOT_FOUND_MESSAGES` + `DELEGATES`); hand-rolled
-   `vi.mock('@tims/db')` delegate lists; and `packages/db/src/index.ts` enum re-exports.
+   Prisma delegates; generated `Prisma.<Model>WhereInput` types; the access registry (see the correction
+   immediately below); hand-rolled `vi.mock('@tims/db')` delegate lists; and `packages/db/src/index.ts`
+   enum re-exports.
+
+   > **CORRECTED 2026-08-04 by flip #2 (#69). Do NOT strip the entity from the scope-policy registry.**
+   > An earlier version of this step said to clean "the access-registry triple (`entity-policies.ts`
+   > union + set, `scoped-probe.ts` `NOT_FOUND_MESSAGES` + `DELEGATES`)". Following that literally is
+   > **wrong and silently destructive**. Only **`scoped-probe.ts`'s `DELEGATES`** actually needs the
+   > Prisma model — it is the one place that dereferences `tenantDb.<model>`.
+   >
+   > `scopeWhereFor` in `entity-policies.ts` is a **pure function**: it builds a where-fragment and never
+   > touches the Prisma client, so a flip does not require removing it. Worse, its expected outputs live
+   > in **`contracts/access-fixtures/scope-where.json`, a cross-stack contract** asserted by
+   > `tests/access/scope-where-fixtures.test.ts` (described in that file as "the production-TS oracle that
+   > pins the fixtures") **and** by `Tims.UnitTests/Fixtures/ScopeWhereForFixtureTests.cs`. C# still needs
+   > both roots — `Tims.Domain/Access/ScopeProbeRegistry.cs` registers them for its own by-id probes and
+   > row filters. In flip #2, removing the TS entries broke **6 fixture cases**; "fixing" that by deleting
+   > the fixture cases would have deleted the oracle that pins C#'s own implementation. The flipped
+   > table's scope policy is part of the contract the C# owner must satisfy — it outlives the Prisma model.
+   >
+   > Keep `NOT_FOUND_MESSAGES` complete too: those exact Spanish strings are mirrored in
+   > `Tims.Domain/Access/ScopedNotFoundException.cs`.
+   >
+   > Make the distinction compile-enforced rather than a comment (as flip #2 did):
+   >
+   > ```ts
+   > type FlippedEntity = 'successor' | 'criticalRole';           // widen on each flip
+   > export type ProbeableEntity = Exclude<ScopedEntity, FlippedEntity>;
+   > const DELEGATES: Record<ProbeableEntity, () => unknown> = { … };  // annotate — a bare `as const`
+   >                                                                  // enforces nothing
+   > export async function assertScoped(entity: ProbeableEntity, …)
+   > ```
+   >
+   > Now a by-id probe on a flipped entity is a **compile** error instead of an undefined-delegate crash,
+   > and the next flip that forgets to widen `FlippedEntity` fails to compile at `DELEGATES`.
 
    **Find the real mock list per flip — do not reuse the example.**
    `tests/access/scoped-probe.test.ts:3-25` is the generic _pattern_ for a hand-rolled delegate mock, but
@@ -1135,9 +1183,95 @@ Being explicit, because #64 is a materially harder case and this transcript shou
 
 ---
 
+## 7c. Flip #2 — **EXECUTED**: `critical_roles` + `successors` (#69)
+
+> Executed 2026-08-04. Code-only, no DDL. This is a transcript, not a procedure.
+> **`surveys`/`survey_responses` (§7b below) is still the next candidate and is still blocked** — flip #2
+> went to succession instead, because #58 (PR #130) had already removed every TS writer there.
+
+### Why succession, and what #69's own text got wrong
+
+#69 was titled as though it were ready, and it was not. Both it and #58 inherited a claim from this
+repo's ledger that "nothing outside `packages/api/src/routers/succession.ts` touches critical_roles/
+successors — 19 hits, all in one file, zero foreign readers." That grep used
+`.(successor|criticalRole).<op>`, which **requires a trailing `.<operation>`** and therefore missed the
+access-registry entries entirely. The real state at the start of this flip, via
+`\b(db|tenantDb|prisma|tx)\.(successor|criticalRole)\b`, was **two readers and zero writers**:
+
+| Reader                                       | Disposition                                       |
+| -------------------------------------------- | ------------------------------------------------- |
+| `access/scoped-probe.ts:55-56` (`DELEGATES`) | **Removed** — a by-id probe needs a live delegate |
+| `prisma/seed-demo.ts:913-945`                | **Ported to raw SQL** (`$queryRaw`/`$executeRaw`) |
+
+Also verified zero, and worth running as a checklist: `Prisma.CriticalRole*`/`Prisma.Successor*`
+generated types, `packages/db/src` re-exports, `vi.mock('@tims/db')` delegate lists,
+`select-for.ts`/`classification.ts` `Record<string,…>` entries. `scripts/parity/seed.ts` writes both
+tables but via raw `pg`, so it survived mechanically.
+
+### The mistake this flip made, and the correction it produced
+
+Following §1 step 6 literally — "clean the access-registry triple" — **broke 6 tests and would have
+caused a silent cross-stack regression.** See the correction now inlined at §1 step 6. Short version:
+`scopeWhereFor` is pure, its fixtures are a cross-stack contract that pins the **C#** implementation, and
+only `DELEGATES` needs the Prisma model. The fix was to keep both entities in `ScopedEntity` and make the
+distinction compile-enforced via `ProbeableEntity`.
+
+The 6 failures came from `contracts/access-fixtures/scope-where.json` — invisible to `tsc` and to all
+five P2 greps, which are `.ts`-scoped. That is why P2 now has a **sixth** strategy for `*.json`.
+
+### DDL home + P8
+
+§4 option (c), same as flip #1: both tables stay on the hand-applied SQL path, EF holds no migration and
+no snapshot. **Unlike flip #1, P8 was live here** — neither table had a `CREATE TABLE` anywhere in
+`packages/db/prisma/{migrations,manual}` or `services/Tims.Platform/db/`; the only definitions were C#
+test fixtures. `services/Tims.Platform/db/flip-ddl/succession.sql` was generated from the committed
+baseline (#128) **before** the models were deleted. This is the first flip to actually need that tool.
+
+### Verification actually run
+
+`/gate` check 16 exit 0 before the change, on the change, and on the tested revert (proving no DDL moved)
+· ledger check passed · `prisma validate` + `generate` clean, both delegates confirmed absent from the
+generated client · api/web tsc clean · vitest 284 files / 2664 tests green · ghost `efcore[]` entries `[]`
+and both names resolve to real EF `ToTable`s · P10: both datetime columns pin
+`HasColumnType("timestamp")` against prod's `timestamp(3) without time zone`.
+
+Live prod shape captured (§5 step 6): RLS enabled **and forced** on both, owner `postgres`, exactly one
+**fail-closed** `tenant_isolation` policy each (no `org_isolation`/`allow_all` residue from #111), 10
+indexes across the pair, `app_tenant` = `SELECT,INSERT,UPDATE,DELETE`.
+
+### Rollback — TESTED
+
+Real `git revert` of the flip commit, then the full set on the reverted tree: ledger check passed,
+`prisma validate` clean (**the three `user.prisma` back-relations return with no P1012**), both delegates
+reappear in the regenerated client, api tsc clean, 2664 tests green, check 16 exit 0. Then unwound with a
+second revert and the client regenerated. Pure revert is complete **because no DDL moved**.
+
+### Post-flip findings
+
+- **#126 confirmed again, and a REVOKE is safe.** `app_tenant` retains blanket
+  `SELECT,INSERT,UPDATE,DELETE` on both tables — dead DML, exactly as §3(b) predicts. The §3(f)
+  pre-REVOKE scan returned **0 policies** referencing either table.
+- **The flipped pair is dependency-isolated.** Zero views, zero matviews, zero functions reference
+  either table, and the only inbound FK is `successors.critical_role_id → critical_roles` — internal to
+  the pair, so both sides moved together. Worth adding to the standard pre-flip scan: a view or a
+  `plpgsql` function over a flipped table is a raw-SQL reader invisible to `tsc`, to the ownership check
+  and to every P2 grep.
+
+### What flip #2 adds over flip #1
+
+Flip #1 proved the mechanics with **no** reader repointing and **no** P8. Flip #2 is the first to
+repoint real readers, the first to need the extracted-DDL tool, and the first to hit a **cross-stack
+contract** — which is the finding worth carrying: a flipped table's _scope policy_ outlives its Prisma
+model, because the C# owner is held to the same fixtures. §8 **Q6** (EF design-time factory) is still
+open and still untouched; both flips deliberately avoided it.
+
+---
+
 ## 7b. The second flip — `surveys` + `survey_responses` (#64), still BLOCKED
 
-> Retained from the pre-execution draft. This is analysis for the _next_ flip, not a transcript.
+> Retained from the pre-execution draft. This is analysis for a _future_ flip, not a transcript.
+> **Numbering note:** written when `surveys` was expected to be flip #2. It was not — §7c above is the
+> real flip #2. This section's "the second flip" title is kept for link stability.
 
 ### Why these two, and one correction to the issue
 
@@ -1396,6 +1530,12 @@ blocked under P2 (§7). Monitoring has no `apps/web/lib/platform-api/monitoring.
 cross-org** read that a `TenantScope`/RLS-scoped EF read cannot serve. Ranked above Q1 because Q1 gates
 _how_ flip #1 is done, while this gates _whether #64 can be flip #2 at all_. _Resolve:_ scope both as
 their own slices, or accept `access_reviews` as flip #1 and defer #64 behind them.
+
+> **RESOLVED-BY-ROUTING-AROUND, 2026-08-04.** #64 was **not** flip #2 — succession (§7c, #69) was, because
+> #58 had already removed every TS writer there and its only readers were two local ones. So Q0b no longer
+> blocks _making progress on flips_; it blocks **#64 and #66 specifically**, and it is still entirely
+> unbuilt. Both prerequisite slices remain open work: there is still no C# monitoring read surface and no
+> privileged cross-org read for the alert cron. This question stays OPEN — only its urgency changed.
 
 **Q1 — What does `prisma migrate dev` do against a DB with no `_prisma_migrations` and heavy drift?**
 Still unverified — it may offer a full reset rather than a targeted `DROP`. _Resolve:_ the throwaway-DB

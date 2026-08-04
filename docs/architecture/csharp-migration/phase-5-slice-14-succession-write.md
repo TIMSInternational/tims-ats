@@ -1,5 +1,22 @@
 # Phase-5 Slice 14 — Succession WRITE surface (5 writes) → C#
 
+> **⚠️ SUPERSEDED 2026-08-04 — this is a historical slice design doc, not current state.**
+>
+> - **Status below is stale.** The slice is BUILT and `Platform:SuccessionWriteEnabled` is confirmed live
+>   in prod (not dark, not default-false). All 5 writes plus the 9 Slice-8 reads are C#-only: the TS
+>   succession router was deleted outright in **#58** (PR #130).
+> - **The ownership flip is DONE, not deferred.** `critical_roles` + `successors` were flipped to
+>   `efcore[]` in **#69** on 2026-08-04. Their Prisma models are deleted. See
+>   `ownership-flip-runbook.md` §7c for the transcript and `table-ownership.md`'s `succession_flip` note.
+> - **The "cleanest flip candidate / touched by NOTHING outside `succession.ts`" claim below is FALSE**
+>   and caused real trouble: the grep it cites (`\.(successor|criticalRole)\.<op>`) requires a trailing
+>   `.<op>` and so missed the access-registry entries in `packages/api/src/access/scoped-probe.ts` and the
+>   `seed-demo.ts` writes. The claim propagated verbatim into issues #58 and #69, both of which were
+>   labelled ready when neither was. Use `\b(db|tenantDb|prisma|tx)\.(successor|criticalRole)\b`, and see
+>   the corrected P2 grep set (now six strategies) in the runbook.
+>
+> Everything below is preserved as the original slice design record.
+
 **Status:** to build, dark-by-default behind `Platform:SuccessionWriteEnabled` (default false).
 **Kind:** the WRITE port of the succession domain (`efcoreStranglerWrite`), completing the domain after Slice-8
 (the 9 reads). With the 5 writes ported, the ENTIRE `succession` router (9 reads + 5 writes) has a C# analog and
@@ -16,13 +33,13 @@ read slice already established). All 5 are `permissionProcedure('succession', <a
 
 ## Endpoints (dark-by-default)
 
-| Method | Route | TS analog | Gate |
-|--------|-------|-----------|------|
-| POST | `/succession/critical-roles` | addCriticalRole | staff-JWT + `succession:create` + **requireOrgScope** |
-| POST | `/succession/critical-roles/{criticalRoleId}/successors` | addSuccessor | staff-JWT + `succession:create` + **assertScoped(criticalRole)** + **assertSubjectInScope(userId)** |
-| DELETE | `/succession/successors/{successorId}` | removeSuccessor | staff-JWT + `succession:delete` + **assertScoped(successor)** |
-| PATCH | `/succession/successors/{successorId}/readiness` | updateSuccessorReadiness | staff-JWT + `succession:update` + **assertScoped(successor)** |
-| PATCH | `/succession/critical-roles/{criticalRoleId}/band` | updateCriticalRoleBand | staff-JWT + `succession:update` + **assertScoped(criticalRole)** |
+| Method | Route                                                    | TS analog                | Gate                                                                                                |
+| ------ | -------------------------------------------------------- | ------------------------ | --------------------------------------------------------------------------------------------------- |
+| POST   | `/succession/critical-roles`                             | addCriticalRole          | staff-JWT + `succession:create` + **requireOrgScope**                                               |
+| POST   | `/succession/critical-roles/{criticalRoleId}/successors` | addSuccessor             | staff-JWT + `succession:create` + **assertScoped(criticalRole)** + **assertSubjectInScope(userId)** |
+| DELETE | `/succession/successors/{successorId}`                   | removeSuccessor          | staff-JWT + `succession:delete` + **assertScoped(successor)**                                       |
+| PATCH  | `/succession/successors/{successorId}/readiness`         | updateSuccessorReadiness | staff-JWT + `succession:update` + **assertScoped(successor)**                                       |
+| PATCH  | `/succession/critical-roles/{criticalRoleId}/band`       | updateCriticalRoleBand   | staff-JWT + `succession:update` + **assertScoped(criticalRole)**                                    |
 
 Mapped ONLY when `Platform:SuccessionWriteEnabled` is true OR at build-time OpenAPI generation
 (`GetDocument.Insider`) — the emitted contract stays accurate while runtime stays dark (Slice-2 standing rule:
@@ -61,6 +78,7 @@ them; add nothing unless a root is missing.
 ## The 5 writes — faithful ports
 
 ### addCriticalRole (`succession:create` + requireOrgScope)
+
 Input (Zod, succession.ts:118-127): `{ title:1..255, positionId?:≤100, currentHolderId?:uuid, companyId?:uuid,
 unitId?:uuid, criticality:enum('critical','high','medium','low'), flightRisk?:number 0..1 }`. INSERT `critical_roles`
 `{ ...input, organizationId = caller }`. **No `select`** in TS → returns the FULL created row (id, organizationId,
@@ -70,6 +88,7 @@ updatedAt = now()` set explicitly (Prisma `@default(now())`/`@updatedAt` are cli
 write.
 
 ### addSuccessor (`succession:create` + assertScoped(criticalRole) + assertSubjectInScope(userId))
+
 Input (succession.ts:144-151): `{ criticalRoleId:uuid, userId:uuid, readiness:enum('ready_now','ready_1_year',
 'ready_2_years','developing'), type:enum('internal','external'), developmentPlan?:≤20000 }`. After BOTH scope
 checks: INSERT `successors` `{ ...input, organizationId = caller, addedById = caller.id }`, returns the row with
@@ -84,6 +103,7 @@ cutover decision. (Do the INSERT and detect the unique violation — either a pr
 catch so it stays atomic and race-safe.)
 
 ### removeSuccessor (`succession:delete` + assertScoped(successor))
+
 Input `{ id:uuid }` (route param `successorId`). After the probe: DELETE `successors WHERE id, organizationId`.
 TS `delete` returns the full deleted row. `assertScoped` already guarantees the row exists + is in grant (else 404),
 so the delete normally succeeds; guard the TOCTOU (row vanished between probe and delete) → if 0 rows affected,
@@ -91,11 +111,13 @@ return **404** `ScopedNotFoundException` message ("Sucesor no encontrado" — ma
 deleted row shape (or `{ id }` minimal — see Return shapes).
 
 ### updateSuccessorReadiness (`succession:update` + assertScoped(successor))
+
 Input (succession.ts:193-199): `{ id:uuid, readiness:enum(...4), developmentPlan?:≤20000 }`. After the probe:
 UPDATE `successors WHERE id, organizationId` SET `readiness`, `developmentPlan` (+ `updatedAt = now()`). TS returns
 the full updated row. count 0 (TOCTOU) → 404.
 
 ### updateCriticalRoleBand (`succession:update` + assertScoped(criticalRole))
+
 Input (succession.ts:215-219): `{ criticalRoleId:uuid, targetBandLevel: string ≤50 | null }`. After the probe:
 UPDATE `critical_roles WHERE id, organizationId` SET `targetBandLevel` (+ `updatedAt = now()`), returns
 **`select { id, targetBandLevel }`** (the ONLY write with a narrowed select — match it exactly). `targetBandLevel`
@@ -218,12 +240,14 @@ parity and ship the prod hardening (the 11c precedent):
   (`AddCriticalRole_NarrowLeader_MalformedBody_Is400_NotForbidden`).
 
 ### UUID canonicality (Codex recheck LOW — body fields FIXED, route-param residual documented)
+
 The Codex recheck confirmed all 6 prior findings CLOSED and flagged one residual LOW: `Guid.TryParse` accepts
 non-canonical UUID forms (braces/parens/no-hyphen) that Zod `.uuid()` rejects, vs the strict `TryParseExact(…, "D")`
 precedent in `BillingReadEndpoints`. FIXED for the BODY uuid fields (userId + currentHolderId/companyId/unitId now use
 `Guid.TryParseExact(…, "D")` → Zod-strict; bite-proven `AddCriticalRole_NonCanonicalUuid_Is400`). **Residual (accepted):**
 the `{id:guid}` ROUTE-PARAM constraint is framework-parsed and a malformed segment → 404 (not the TS 400) — the
 ESTABLISHED cross-slice pattern for every prior C# slice; accepted for consistency rather than changing the routing layer.
+
 - **Ledger:** the H2 fix adds read-only `companies` + `business_units` to `SuccessionWriteDbContext` (existence checks
   only, never written); both remain Prisma-owned `efcoreReadOnly` — no ledger change beyond the two write tables.
 

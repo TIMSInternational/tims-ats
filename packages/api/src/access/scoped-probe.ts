@@ -13,6 +13,22 @@ import type { AccessContext } from './types';
 // soft-delete guard the org-check findFirsts it replaces carried.
 const SOFT_DELETABLE: ReadonlySet<ScopedEntity> = new Set(['vacancy', 'candidate'] as const);
 
+// Entities whose table was ownership-flipped to `efcore` — their Prisma model is deleted, so there is
+// no `tenantDb` delegate to probe from TypeScript. They REMAIN valid `ScopedEntity` values on purpose:
+// `scopeWhereFor` is a pure function over the shared cross-stack contract
+// (`contracts/access-fixtures/scope-where.json`, asserted by both this stack and Tims.UnitTests'
+// ScopeWhereForFixtureTests), and C# still probes both roots via ScopeProbeRegistry. Only the by-id
+// PROBE — which needs a live Prisma delegate — is unavailable here.
+//
+// #69 (2026-08-04): successor + criticalRole. The C# equivalents are
+// SuccessionWriteEndpointAuthTests.RemoveSuccessor_Leader_OutOfScope_Is404 /
+// UpdateReadiness_Leader_OutOfScope_Is404 and SuccessionReadTests.TeamScope_OutOfScopeRole_Is404_IdorProbe.
+type FlippedEntity = 'successor' | 'criticalRole';
+
+/** A `ScopedEntity` that still has a Prisma delegate, so `assertScoped` can probe it. Calling
+ *  `assertScoped` with a flipped entity is a COMPILE error rather than a runtime `undefined` delegate. */
+export type ProbeableEntity = Exclude<ScopedEntity, FlippedEntity>;
+
 const NOT_FOUND_MESSAGES: Record<ScopedEntity, string> = {
   vacancy: 'Vacante no encontrada',
   candidate: 'Candidato no encontrado',
@@ -38,7 +54,9 @@ const NOT_FOUND_MESSAGES: Record<ScopedEntity, string> = {
   commitment: 'Compromiso no encontrado',
 };
 
-const DELEGATES = {
+// Explicitly annotated (not a bare `as const`) so the exhaustiveness claim below is real: omitting a
+// ProbeableEntity is a compile error, and leaving a flipped entity in is one too.
+const DELEGATES: Record<ProbeableEntity, () => unknown> = {
   vacancy: () => tenantDb.vacancy,
   candidate: () => tenantDb.candidate,
   application: () => tenantDb.application,
@@ -52,8 +70,9 @@ const DELEGATES = {
   enrollment: () => tenantDb.enrollment,
   certificate: () => tenantDb.certificate,
   nineBoxEvaluation: () => tenantDb.nineBoxEvaluation,
-  successor: () => tenantDb.successor,
-  criticalRole: () => tenantDb.criticalRole,
+  // successor + criticalRole intentionally ABSENT — ownership-flipped to `efcore` (#69), Prisma models
+  // deleted. `DELEGATES` is keyed on ProbeableEntity, so this map stays exhaustive and a future flip
+  // that forgets to widen FlippedEntity fails to compile here.
   employeeCompensation: () => tenantDb.employeeCompensation,
   salaryAdjustment: () => tenantDb.salaryAdjustment,
   team: () => tenantDb.team,
@@ -63,7 +82,10 @@ const DELEGATES = {
 } as const;
 
 export async function assertScoped(
-  entity: ScopedEntity,
+  // ProbeableEntity, not ScopedEntity: a by-id probe needs a live Prisma delegate, so passing a
+  // flipped entity ('successor'/'criticalRole') is rejected at compile time instead of blowing up on an
+  // undefined delegate at runtime. Their probes live in C# now — see FlippedEntity above.
+  entity: ProbeableEntity,
   id: string,
   access: AccessContext,
   userId: string,
