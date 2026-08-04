@@ -7,7 +7,8 @@
  * parser is tested against a hand-built dump whose shape mirrors real pg_dump output, plus against the
  * committed production baseline itself.
  */
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   BASELINE_REL,
@@ -279,17 +280,46 @@ describe('against the committed production baseline', () => {
     expect(buildDdl(dump, ['schema_migrations']).warnings.join(' ')).toMatch(/table not found/);
   });
 
-  it('extracts the two committed flip-DDL artifacts byte-identically (they are generated, not edited)', () => {
-    for (const [file, tables] of [
-      ['services/Tims.Platform/db/flip-ddl/surveys.sql', ['surveys', 'survey_responses']],
-      ['services/Tims.Platform/db/flip-ddl/compensation.sql', ['salary_adjustments', 'employee_compensations']],
-    ] as const) {
-      const captured = /^-- Captured:\s*(.+)$/m.exec(dump)?.[1];
-      const server = /^-- Server version:\s*(.+)$/m.exec(dump)?.[1];
-      const { sql } = buildDdl(dump, [...tables], {
-        sourceNote: [captured && `captured ${captured}`, server && `server ${server}`].filter(Boolean).join(', '),
-      });
-      expect(sql, `${file} is stale — regenerate it`).toBe(readFileSync(file, 'utf8'));
+  /**
+   * Every committed artifact must be exactly what the generator produces today — so a hand edit, or a
+   * baseline re-capture that moved the schema, fails CI instead of drifting silently.
+   *
+   * Deliberately DISCOVERS the files rather than listing them: a hard-coded list would not cover the
+   * artifact added by the next flip, which is precisely when this check matters. The table list is read
+   * back out of each file's own `-- Regenerate:` line.
+   */
+  it('keeps every committed flip-DDL artifact byte-identical to generator output', () => {
+    const dir = 'services/Tims.Platform/db/flip-ddl';
+    const files = readdirSync(dir).filter((f) => f.endsWith('.sql'));
+    expect(files.length).toBeGreaterThan(0);
+
+    const captured = /^-- Captured:\s*(.+)$/m.exec(dump)?.[1];
+    const server = /^-- Server version:\s*(.+)$/m.exec(dump)?.[1];
+    const sourceNote = [captured && `captured ${captured}`, server && `server ${server}`].filter(Boolean).join(', ');
+
+    for (const f of files) {
+      const path = join(dir, f);
+      const contents = readFileSync(path, 'utf8');
+      const cmd = /^-- Regenerate: node scripts\/db\/extract-table-ddl\.mjs (.+)$/m.exec(contents);
+      expect(cmd, `${path} has no '-- Regenerate:' line — was it hand-written?`).toBeTruthy();
+      const tables = cmd![1].trim().split(/\s+/);
+      const { sql } = buildDdl(dump, tables, { sourceNote });
+      expect(sql, `${path} is stale or hand-edited — regenerate: ${cmd![1]}`).toBe(contents);
     }
+  });
+
+  it('refuses to run the generated SQL against a Supabase-managed database', () => {
+    // "Do not apply to production" as a comment is not a control; this makes it one.
+    const { sql } = buildDdl(dump, ['surveys']);
+    expect(sql).toMatch(/schema_name = 'supabase_migrations'/);
+    expect(sql).toMatch(/RAISE EXCEPTION 'REFUSED/);
+    // Inside the transaction, so a mistaken apply changes nothing.
+    expect(sql.indexOf('BEGIN;')).toBeLessThan(sql.indexOf('RAISE EXCEPTION'));
+  });
+
+  it('rejects a table name that is not a plain identifier', () => {
+    // Such a name would break out of the header comment and land as an executable line.
+    expect(() => buildDdl(dump, ['surveys\nDROP TABLE users;'])).toThrow(/invalid table name/);
+    expect(() => buildDdl(dump, ['a b'])).toThrow(/invalid table name/);
   });
 });

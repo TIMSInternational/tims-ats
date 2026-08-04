@@ -19,6 +19,16 @@
 
 BEGIN;
 
+-- Refuse to run against a Supabase-managed database. "Do not apply to production" is otherwise only
+-- a comment, and a comment is not a control. Every Supabase project (prod, branches, previews) has a
+-- `supabase_migrations` schema; a local dev database does not. This aborts the whole transaction, so
+-- a mistaken apply changes nothing.
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.schemata WHERE schema_name = 'supabase_migrations') THEN
+    RAISE EXCEPTION 'REFUSED: this is a Supabase-managed database (supabase_migrations exists). These tables already exist here. This artifact is for local dev bootstrap only — see docs/architecture/ddl-governance.md.';
+  END IF;
+END $$;
+
 -- ──────────────────────────────────────────────────────────────────────────────────────────────
 -- 1. Tables
 -- ──────────────────────────────────────────────────────────────────────────────────────────────

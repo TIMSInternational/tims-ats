@@ -186,6 +186,15 @@ function statements(body) {
  * @param {{ sourceNote?: string }} [opts]
  */
 export function buildDdl(dump, tables, opts = {}) {
+  // Table names are echoed into the generated file's header comment. A name containing a newline would
+  // therefore break out of that comment and land as an executable line in a file people run with psql.
+  // Reject anything that is not a plain identifier rather than trying to escape it.
+  for (const t of tables) {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(t)) {
+      throw new Error(`invalid table name ${JSON.stringify(t)} — expected a plain SQL identifier`);
+    }
+  }
+
   const blocks = parseBlocks(dump);
   if (blocks.length === 0) throw new Error('no pg_dump object blocks found — is this a --schema-only dump?');
 
@@ -239,6 +248,18 @@ export function buildDdl(dump, tables, opts = {}) {
     '-- DROP POLICY IF EXISTS before CREATE POLICY, and GRANTs guarded on the role existing.',
     '',
     'BEGIN;',
+    '',
+    '-- Refuse to run against a Supabase-managed database. "Do not apply to production" is otherwise only',
+    '-- a comment, and a comment is not a control. Every Supabase project (prod, branches, previews) has a',
+    '-- `supabase_migrations` schema; a local dev database does not. This aborts the whole transaction, so',
+    '-- a mistaken apply changes nothing.',
+    'DO $$ BEGIN',
+    "  IF EXISTS (SELECT 1 FROM information_schema.schemata WHERE schema_name = 'supabase_migrations') THEN",
+    "    RAISE EXCEPTION 'REFUSED: this is a Supabase-managed database (supabase_migrations exists). "
+      + 'These tables already exist here. This artifact is for local dev bootstrap only — see '
+      + "docs/architecture/ddl-governance.md.';",
+    '  END IF;',
+    'END $$;',
   );
 
   if (enumBlocks.length) {
