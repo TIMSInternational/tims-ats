@@ -1,5 +1,5 @@
 -- ============================================================================================
--- #126 — REVOKE app_tenant's write privileges on the 20 tables it has no business writing.
+-- #126 — REVOKE app_tenant's write privileges on the 13 tables nothing writes as app_tenant.
 --
 -- WHY. Production carries this default privilege (pg_default_acl, verified 2026-08-04):
 --
@@ -7,20 +7,22 @@
 --     GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app_tenant;
 --
 -- so every table `postgres` creates in `public` inherits tenant DML whether it needs it or not.
--- 20 tables currently hold write privileges that no TS code path uses.
+-- 20 tables hold app_tenant DML without being Prisma-owned; 13 of those are genuinely dead (see below)
+-- and are what this script revokes. The other 7 are RLS-forced EF tables that C# writes AS app_tenant
+-- under TenantScope — revoking those would break production. See PART 2 below.
 --
 -- SEVERITY, STATED PLAINLY. `app_tenant` is NOLOGIN and NOBYPASSRLS: it is reachable only via
 -- `SET LOCAL ROLE app_tenant` from the app's own connection inside a transaction, so exploiting this
 -- needs app-level SQL injection or a compromised app process. It is NOT remotely exploitable. But
--- containing exactly that scenario is what `app_tenant` + RLS exist for, and 13 of the 20 have RLS
--- DISABLED entirely (0 policies), so for those the grant is the only thing in the way. Those 13 are
--- revoked first below, in their own transaction, for that reason.
+-- containing exactly that scenario is what `app_tenant` + RLS exist for, and every table revoked here has
+-- RLS DISABLED entirely (0 policies), so the grant is the only thing in the way. That is also precisely
+-- why they are safe to revoke: no RLS ⇒ not tenant-scoped ⇒ nothing writes them under TenantScope.
 --
 -- WHAT THIS DOES NOT DO. It does not touch the default ACL, so a NEWLY created table will still
 -- inherit tenant DML. That was a deliberate decision (#126): narrowing the default means explicitly
 -- granting ~99 Prisma-owned tables, and a table missed there breaks tenant writes at runtime. The
 -- regression guard instead is `scripts/security/verify-tenant-grants.ts` (`/gate` check 17), which
--- fails the moment any non-Prisma table holds app_tenant DML.
+-- fails the moment a table with NO RLS holds app_tenant DML.
 --
 -- SELECT IS DELIBERATELY RETAINED on every table here. Revoking reads is a separate, riskier change:
 -- `information_schema`/catalog reads and any diagnostic query would change behaviour, and no TS path
@@ -29,7 +31,12 @@
 -- SAFETY / PRE-FLIGHT (all verified 2026-08-04 against prod, read-only):
 --   * The §3(f) policy scan returns 0 rows — no RLS policy on ANY table references these tables, so
 --     no policy's USING/WITH CHECK clause depends on app_tenant being able to read or write them.
---   * Zero views, zero matviews and zero functions in `public` reference the flipped pair.
+--   * Zero views, zero matviews and zero functions in `public` reference these tables
+--     (scripts/db/pre-flip-scan.ts).
+--   * WRITER-VERIFIED, per table, which is the check the first draft of this script skipped:
+--     fx_rates → FxRateDbContext/FxRateWriteRepository run on a PLAIN connection as the owner role,
+--     explicitly NOT under TenantScope; qrtz_* → no Quartz source file references TenantScope at all;
+--     __EFMigrationsHistory → written by psql-applied idempotent scripts as `postgres`.
 --   * `audit_logs` and `data_access_logs` are NOT in this script: they are `efcoreAppendOnly` and the
 --     TS app genuinely appends to them. They already hold INSERT,SELECT only — the one pre-existing
 --     deliberate narrowing in the schema, and the precedent this script follows.
@@ -74,23 +81,21 @@ REVOKE INSERT, UPDATE, DELETE ON TABLE public.qrtz_triggers FROM app_tenant;
 
 COMMIT;
 
--- ── PART 2: the 7 EF-owned tables that DO have forced fail-closed RLS. ─────────────────────────
--- Lower risk (RLS bounds the damage to the caller's own org) but still dead privilege: C# owns every
--- one of these and no TS path writes them.
-BEGIN;
-
--- Ownership-flipped: EF Core is the sole writer.
-REVOKE INSERT, UPDATE, DELETE ON TABLE public.access_reviews FROM app_tenant;   -- flip #1, #63/#65
-REVOKE INSERT, UPDATE, DELETE ON TABLE public.critical_roles FROM app_tenant;   -- flip #2, #69
-REVOKE INSERT, UPDATE, DELETE ON TABLE public.successors FROM app_tenant;       -- flip #2, #69
-
--- EF-native: created greenfield for the HRIS domain, never Prisma-owned, never had a TS writer.
-REVOKE INSERT, UPDATE, DELETE ON TABLE public.hris_connectors FROM app_tenant;
-REVOKE INSERT, UPDATE, DELETE ON TABLE public.hris_external_employees FROM app_tenant;
-REVOKE INSERT, UPDATE, DELETE ON TABLE public.hris_sync_record_errors FROM app_tenant;
-REVOKE INSERT, UPDATE, DELETE ON TABLE public.hris_sync_runs FROM app_tenant;
-
-COMMIT;
+-- ── PART 2: REMOVED. It would have caused a production write outage. ──────────────────────────
+-- An earlier draft of this script ALSO revoked DML on access_reviews, critical_roles, successors and
+-- the 4 hris_* tables, on the reasoning "C# owns them, so no TS path writes them". That reasoning was
+-- WRONG, and a cross-model reviewer caught it before this was applied.
+--
+-- The C# strangler writes its tables UNDER TenantScope, and TenantScope.cs:46 issues
+--   SET LOCAL ROLE app_tenant
+-- because that is HOW those writes become RLS-enforced. So for a tenant-scoped EF table the app_tenant
+-- grant is not dead privilege — it is load-bearing. Revoking it would have broken HRIS sync,
+-- access-review attestation and succession writes in production, and the only detection would have been
+-- the write failures themselves.
+--
+-- "EF owns the table" and "app_tenant never writes it" are different claims. Do not conflate them again.
+-- The discriminator is RLS: RLS-forced ⇒ tenant-scoped ⇒ possibly written as app_tenant ⇒ KEEP the grant.
+-- Every table in Part 1 has NO RLS, which is exactly why nothing writes it under TenantScope.
 
 -- ── POST-APPLY ASSERTION (run manually; not part of the transactions above). ───────────────────
 -- Must return zero rows.
@@ -100,9 +105,12 @@ COMMIT;
 --    WHERE g.table_schema='public' AND g.grantee='app_tenant'
 --      AND g.privilege_type IN ('INSERT','UPDATE','DELETE')
 --      AND g.table_name IN (
---        '__EFMigrationsHistory','fx_rates','access_reviews','critical_roles','successors',
---        'hris_connectors','hris_external_employees','hris_sync_record_errors','hris_sync_runs',
+--        '__EFMigrationsHistory','fx_rates',
 --        'qrtz_blob_triggers','qrtz_calendars','qrtz_cron_triggers','qrtz_fired_triggers',
 --        'qrtz_job_details','qrtz_locks','qrtz_paused_trigger_grps','qrtz_scheduler_state',
 --        'qrtz_simple_triggers','qrtz_simprop_triggers','qrtz_triggers')
 --    ORDER BY 1,2;
+--
+-- NOTE the 7 RLS-forced EF tables (access_reviews, critical_roles, successors, hris_*) are deliberately
+-- ABSENT from that list. They MUST still hold app_tenant DML. If they ever appear without it, something
+-- revoked them by mistake and C# writes are broken.

@@ -92,12 +92,14 @@ export async function assertScoped(
   organizationId: string,
 ): Promise<void> {
   const fragment = await scopeWhereFor(entity, access, userId);
-  // BELT AND BRACES, and deliberately not redundant. The parameter type only constrains call sites TS
-  // can see: a caller holding a `string`, an `any`, or a cast-widened `ScopedEntity` compiles fine, and
-  // would then hit `DELEGATES[entity]()` with `undefined` and throw a bare
-  // `TypeError: ... is not a function` → an opaque 500. Worse, NOT_FOUND_MESSAGES still carries entries
-  // for the flipped entities (on purpose — those strings mirror ScopedNotFoundException.cs), so the code
-  // reads as though it supports them right up to this lookup. Fail with something that names the cause.
+  // BELT AND BRACES, and deliberately not redundant. The parameter type covers every call site the
+  // compiler can see — including one holding a widened `ScopedEntity`, which is correctly rejected. What
+  // it does NOT cover: an `any`, an explicit cast, or a JS caller. (A plain `string` IS rejected — an
+  // earlier version of this comment claimed otherwise.) Any of those reaches `DELEGATES[entity]()` with
+  // `undefined` and throws a bare `TypeError: ... is not a function` → an opaque 500. Worse,
+  // NOT_FOUND_MESSAGES still carries entries for the flipped entities (on purpose — those strings mirror
+  // ScopedNotFoundException.cs), so the code reads as though it supports them right up to this lookup.
+  // Fail with something that names the cause instead.
   const factory = DELEGATES[entity as ProbeableEntity] as (() => unknown) | undefined;
   if (typeof factory !== 'function') {
     throw new TRPCError({

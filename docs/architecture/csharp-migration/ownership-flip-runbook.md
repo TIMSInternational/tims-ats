@@ -833,7 +833,11 @@ Run all of these. Step 0 and steps 6-9 need a real DB (0, 6, 7 and 9 against pro
         inbound FKs (flagging any from *outside* the flip set), `app_tenant` grants (#126), and RLS state.
 
         Flip #2 ran these by hand and came back clean; the script exists so the next flip cannot forget one.
-        Its blocker paths are tested against a throwaway cluster with a real view and function.
+        Its blocker paths were exercised against a throwaway PG17 cluster carrying a deliberate view
+        and function over a target table (both correctly reported, exit 1). That run is not
+        committable — vitest has no database — so `tests/db/pre-flip-scan.test.ts` pins the
+        exit-code contract and the query-correctness properties offline instead, the same split as
+        `tests/db/schema-baseline-failure-paths.test.ts`.
 
 6.  **Live DB assertion — the table survived, unchanged.** Run against prod (read-only) before and after
     the PR merges, and diff. `pre-flip-scan.ts` above already reports existence, RLS, policies, grants and

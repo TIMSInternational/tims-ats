@@ -8,14 +8,20 @@ import type { AccessContext } from './types';
 // deploy-safety invariant: pre-seed prod grants are all org-equivalent, so this
 // slice is behavior-neutral until seed-access --apply runs.
 
-// ONE source of truth (#132, 2026-08-04). This list previously existed THREE times — as a `ScopedEntity`
-// union, as this runtime `ENTITIES` set, and as the case labels below — with nothing keeping them in
-// agreement. Now the type is DERIVED from the array, so union/set drift is impossible by construction.
+// ONE source of truth for the entity LIST (#132, 2026-08-04). It previously existed twice — as a
+// hand-written `ScopedEntity` union AND as this runtime `ENTITIES` set — with nothing keeping the two in
+// agreement. The type is now DERIVED from the array, so union/set drift is impossible by construction.
 // Verified behaviour-neutral at the point of the change: union, set and the
 // contracts/access-fixtures/scope-where.json entity set were all exactly these 21 names.
 //
-// Adding an entity here without a `case` below is a compile error (the switch is exhaustive over the
-// union). Adding one without a fixture case fails tests/governance/scope-fixtures.test.ts.
+// Being precise about what enforces what, since "one source of truth" alone would overstate it — the
+// names still appear in the switch below and in the fixture JSON, and those are pinned differently:
+//
+//   union ↔ this array   by CONSTRUCTION (the type is the array's element type)
+//   array ↔ switch below by the COMPILER: omit a case and `scopeWhereFor` has a code path returning
+//                        undefined against a declared `Promise<Fragment>` → TS2366. Verified empirically
+//                        by adding an entity without a case; no `assertNever` needed.
+//   array ↔ fixture JSON by tests/governance/scope-fixtures.test.ts (both directions).
 export const SCOPED_ENTITIES = [
   'vacancy',
   'candidate',

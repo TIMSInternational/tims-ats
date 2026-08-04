@@ -72,4 +72,54 @@ describe('scope-where fixture ↔ ScopedEntity registry (cross-stack contract)',
   it('SCOPED_ENTITIES has no duplicates (a dup would mask a missing entity in the counts)', () => {
     expect(new Set(SCOPED_ENTITIES).size).toBe(SCOPED_ENTITIES.length);
   });
+
+  /**
+   * The three assertions above only catch ASYMMETRIC drift. A *coordinated* removal — deleting the
+   * fixture cases AND the SCOPED_ENTITIES member together — satisfies all of them while silently
+   * shrinking the oracle that the C# port is held to. That is not hypothetical: it is exactly the shape
+   * of the "tempting fix" a future ownership flip will reach for, and the one flip #2 nearly took.
+   *
+   * So the floor is pinned explicitly. Removing an entity now requires editing this list, which is a
+   * deliberate act with a comment attached rather than a silent side effect of making a flip compile.
+   *
+   * TO REMOVE AN ENTITY LEGITIMATELY: it must no longer be a scope root in EITHER stack. Check
+   * `Tims.Domain/Access/ScopedEntity.cs` and `ScopeProbeRegistry.cs` FIRST — if C# still probes it, it
+   * stays here regardless of what the Prisma side looks like. An ownership flip alone is NOT a reason:
+   * `scopeWhereFor` is pure and outlives the Prisma model.
+   */
+  const PINNED_SCOPE_ROOTS = [
+    'actionPlan',
+    'application',
+    'assessmentAssignment',
+    'candidate',
+    'certificate',
+    'coachingSession',
+    'commitment',
+    'criticalRole', // flipped to efcore in #69 — KEEP: C# still probes it
+    'employeeCompensation',
+    'enrollment',
+    'feedback',
+    'interview',
+    'leaderCommitment',
+    'nineBoxEvaluation',
+    'offer',
+    'okr',
+    'onboardingPlan',
+    'salaryAdjustment',
+    'successor', // flipped to efcore in #69 — KEEP: C# still probes it
+    'team',
+    'vacancy',
+  ] as const;
+
+  it('no scope root disappears from BOTH sides at once (coordinated-removal guard)', () => {
+    const missing = PINNED_SCOPE_ROOTS.filter((e) => !registryEntities.includes(e));
+    expect(
+      missing,
+      `${missing.length} pinned scope root(s) are gone from SCOPED_ENTITIES: ${missing.join(', ')}.\n` +
+        `Deleting an entity from BOTH the registry and the fixture passes every other assertion in this ` +
+        `file while shrinking the cross-stack oracle, so the list is pinned here on purpose. If the ` +
+        `removal is genuinely correct, verify Tims.Domain/Access/ScopedEntity.cs and ScopeProbeRegistry.cs ` +
+        `no longer reference it, then update PINNED_SCOPE_ROOTS in the same commit and say why.`,
+    ).toEqual([]);
+  });
 });

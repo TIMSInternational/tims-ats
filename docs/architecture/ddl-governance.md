@@ -177,12 +177,29 @@ ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
 ```
 
 so **every** table `postgres` creates in `public` inherits tenant DML whether it needs it or not. Opt-out,
-not opt-in. On 2026-08-04 that was **20 tables** `app_tenant` has no business writing: the 3
-ownership-flipped ones, 5 EF-native (`fx_rates` + 4 `hris_*`), all 11 `qrtz_*`, and
-`__EFMigrationsHistory`. **13 of the 20 have RLS disabled entirely**, so for those the grant is the only
-guard.
+not opt-in.
 
-Two corrections this check encodes, both of which were wrong in #126's original framing:
+**The discriminator is RLS, not ownership — and getting that wrong nearly caused an outage.** The first
+version of this check flagged all 20 non-Prisma tables, and the accompanying REVOKE script would have
+revoked all 20. A cross-model reviewer caught that the C# strangler writes its tables **as `app_tenant`**:
+`TenantScope.cs:46` issues `SET LOCAL ROLE app_tenant`, because that is *how* those writes are
+RLS-enforced. Revoking the 7 RLS-forced EF tables would have broken HRIS sync, access-review attestation
+and succession writes in production, detectable only by the failures themselves.
+
+So the rule is:
+
+| Table shape                | Meaning                                                    | app_tenant DML |
+| -------------------------- | ---------------------------------------------------------- | -------------- |
+| Prisma-owned               | the TS app writes it via `tenantDb`                        | required       |
+| EF-owned, RLS **forced**   | tenant-scoped; C# writes it as `app_tenant` under TenantScope | **required**   |
+| No RLS                     | not tenant-scoped ⇒ nothing writes it under TenantScope    | **dead → revoke** |
+
+That leaves **13 violations**: `fx_rates` (its writer runs on a plain connection as the owner role,
+explicitly not under TenantScope), all **11 `qrtz_*`** (no Quartz source file references TenantScope), and
+`__EFMigrationsHistory` (written by psql-applied scripts as `postgres`). All 13 have RLS disabled, so the
+grant is their only guard. Writer-verified per table, which is the step the first draft skipped.
+
+Two further corrections this check encodes, both wrong in #126's original framing:
 
 - **The grant is applied at `CREATE TABLE`, not at flip time.** An ownership flip does not re-grant, so a
   `REVOKE` on a flipped table **is** durable. The earlier "every flip re-creates the condition" was wrong.

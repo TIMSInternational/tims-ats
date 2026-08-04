@@ -13,23 +13,39 @@
  * `app_tenant` has any business writing it. That is opt-out, not opt-in, and nothing noticed.
  *
  * A CORRECTION TO THE ORIGINAL #126 FRAMING: the grant is applied at CREATE TABLE time, not at
- * ownership-flip time. An ownership flip does NOT re-grant, so a REVOKE on a flipped table IS durable.
- * The real exposure is broader than the flip process — it is every non-Prisma table in the schema.
+ * ownership-flip time. An ownership flip does NOT re-grant, so a REVOKE is durable. The exposure is
+ * therefore not about flips at all — which is how 11 `qrtz_*` tables and `__EFMigrationsHistory` sat
+ * there unnoticed while the issue was scoped to "flipped tables".
  *
- * WHAT WAS ACTUALLY FOUND (2026-08-04, 20 tables)
- * ----------------------------------------------
- *   8  `efcore`            access_reviews, critical_roles, successors (flipped) + fx_rates,
- *                          hris_connectors, hris_external_employees, hris_sync_runs,
- *                          hris_sync_record_errors (EF-native, never Prisma-owned)
- *   11 `quartzInfra`       every qrtz_* table — scheduler internals
- *   1  uncategorised       __EFMigrationsHistory — migration history, forgeable/deletable
+ * WHAT COUNTS AS A VIOLATION — and the correction that shaped it
+ * --------------------------------------------------------------
+ * The first version of this check flagged every non-Prisma table: 20 of them. A cross-model reviewer
+ * pointed out that would have been a PRODUCTION WRITE OUTAGE if acted on, and it was right.
  *
- * SEVERITY, STATED HONESTLY. `app_tenant` is NOLOGIN and NOBYPASSRLS, so it is reachable only via
+ * The C# strangler writes its tables UNDER TenantScope, and `TenantScope.cs:46` issues
+ * `SET LOCAL ROLE app_tenant` — that is HOW those writes are RLS-enforced. So "EF owns it" does not
+ * mean "app_tenant never writes it"; for a tenant-scoped EF table the grant is REQUIRED.
+ *
+ * The discriminator is RLS, and it follows from the design rather than being a heuristic:
+ *
+ *   RLS enabled + forced  → tenant-scoped → an app path may write it as app_tenant → grant is LEGITIMATE
+ *   no RLS                → not tenant-scoped → nothing writes it under TenantScope → grant is DEAD
+ *
+ * Confirmed per writer for all 13 of the no-RLS tables:
+ *   fx_rates   FxRateDbContext / FxRateWriteRepository run on a PLAIN connection as the owner role,
+ *              explicitly NOT under TenantScope ("fx_rates is RLS-exempt").
+ *   qrtz_* ×11 no Quartz source file references TenantScope; the scheduler owns its own connection.
+ *   __EFMigrationsHistory  written by psql-applied idempotent scripts as `postgres`.
+ *
+ * So: 13 violations, not 20. The 7 excluded are access_reviews, critical_roles, successors (flipped)
+ * and the 4 hris_* — all RLS-forced, all written by C# as app_tenant, all legitimately granted.
+ *
+ * SEVERITY, STATED HONESTLY. `app_tenant` is NOLOGIN and NOBYPASSRLS, reachable only via
  * `SET LOCAL ROLE app_tenant` from the app's own connection inside a transaction. Exploiting this needs
- * app-level SQL injection or a compromised app process — it is NOT remotely exploitable. But that is
- * exactly the scenario `app_tenant` + RLS exists to contain, and 13 of the 20 have **RLS disabled
- * entirely** (fx_rates, all 11 qrtz_*, __EFMigrationsHistory — 0 policies each), so for those the grant
- * is the only thing standing in the way. The other 7 are bounded by a forced fail-closed policy.
+ * app-level SQL injection or a compromised app process — NOT remotely exploitable. But containing exactly
+ * that is what app_tenant + RLS exist for, and these 13 have no RLS, so the grant is the only guard.
+ * fx_rates is the sharpest case: global (no organization_id) and it feeds every tenant's compensation
+ * and pay-equity maths.
  *
  * WHY A LIVE CHECK RATHER THAN A UNIT TEST
  * ----------------------------------------
@@ -42,9 +58,9 @@
  *   npx tsx scripts/security/verify-tenant-grants.ts            # uses DIRECT_URL, else DATABASE_URL
  *   ALLOW_KNOWN_VIOLATIONS=1 npx tsx scripts/security/verify-tenant-grants.ts   # report, exit 0
  *
- * Exits 0 if `app_tenant` holds DML only on Prisma-owned tables, 1 on any violation, and 1 if it
- * cannot run (fail closed — an unrunnable privilege check is not a pass). Read-only: every statement
- * is a SELECT.
+ * Exits 0 if every table `app_tenant` can write is either Prisma-owned or RLS-protected, 1 on any
+ * violation, and 1 if it cannot run (fail closed — an unrunnable privilege check is not a pass).
+ * Read-only: every statement is a SELECT, safe against production.
  */
 import { readFileSync } from 'node:fs';
 import { Client } from 'pg';
@@ -133,6 +149,25 @@ async function main(): Promise<void> {
 
     for (const r of rows) {
       if (prismaOwned.has(r.table_name)) continue; // Prisma-owned → tenant DML is the whole point
+
+      // CORRECTED 2026-08-04 after a cross-model reviewer caught the original invariant being wrong.
+      //
+      // "Not Prisma-owned" does NOT imply "app_tenant never writes it". The C# strangler writes its
+      // tables UNDER TenantScope, and `TenantScope.cs:46` issues `SET LOCAL ROLE app_tenant` — that is
+      // precisely HOW those writes get RLS-enforced. So an EF-owned, tenant-scoped table legitimately
+      // NEEDS this grant, and revoking it would break live writes (HRIS sync, access-review attest,
+      // succession).
+      //
+      // The discriminator is RLS, and it is not a heuristic — it follows from the design. A table with
+      // RLS enabled + forced is tenant-scoped, so an app path may write it under TenantScope as
+      // app_tenant. A table with NO RLS is by definition not tenant-scoped, so nothing writes it under
+      // TenantScope, so app_tenant DML on it is dead. Confirmed per writer:
+      //   fx_rates  → FxRateDbContext/FxRateWriteRepository run on a PLAIN connection as the owner role,
+      //               explicitly NOT under TenantScope ("fx_rates is RLS-exempt").
+      //   qrtz_*    → no Quartz file references TenantScope at all; the scheduler owns its connection.
+      //   __EFMigrationsHistory → written by psql-applied idempotent scripts as `postgres`.
+      if (r.rls_enabled && Number(r.policies) > 0) continue;
+
       const privs = r.privs.split(',').filter(Boolean);
       const allowed = APPEND_ONLY_ALLOWED[r.table_name];
       const offending = allowed ? privs.filter((p) => !allowed.has(p)) : privs;
@@ -153,17 +188,14 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  // Unbacked = no RLS at all, so the grant is the ONLY thing between a compromised tenant transaction
-  // and the table. Those are the ones to fix first.
-  const unbacked = violations.filter((v) => !v.rlsEnabled || v.policies === 0);
-  console.error(`\n✖ app_tenant has write privileges on ${violations.length} non-Prisma table(s) (#126):\n`);
+  // Every surviving violation is a no-RLS table by definition (the RLS-forced ones are skipped above as
+  // legitimately written by C# under TenantScope), so the grant really is the only guard on each of them.
+  console.error(
+    `\n✖ app_tenant has write privileges on ${violations.length} table(s) that have NO RLS and that no` +
+      ` application path writes as app_tenant (#126):\n`,
+  );
   for (const v of violations) {
-    const guard =
-      v.rlsEnabled && v.policies > 0 ? `RLS on, ${v.policies} policy(ies)` : 'NO RLS — grant is the only guard';
-    console.error(`  ${v.table.padEnd(28)} ${v.privs.join(',').padEnd(20)} [${guard}]`);
-  }
-  if (unbacked.length > 0) {
-    console.error(`\n  ${unbacked.length} of these have NO RLS: ${unbacked.map((v) => v.table).join(', ')}`);
+    console.error(`  ${v.table.padEnd(28)} ${v.privs.join(',').padEnd(20)} [no RLS — grant is the only guard]`);
   }
   console.error(
     '\nFix: packages/db/prisma/manual/2026-08-04-revoke-app-tenant-dml.sql (+ its .ROLLBACK.sql).' +

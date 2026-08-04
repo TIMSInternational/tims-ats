@@ -1,7 +1,7 @@
 -- ============================================================================================
 -- ROLLBACK for 2026-08-04-revoke-app-tenant-dml.sql (#126).
 --
--- Restores app_tenant's INSERT/UPDATE/DELETE on the 20 tables the forward script revoked, returning
+-- Restores app_tenant's INSERT/UPDATE/DELETE on the 13 tables the forward script revoked, returning
 -- them to the `{app_tenant=arwd/postgres}` ACL the default privilege had conferred.
 --
 -- WHEN TO RUN THIS. Only if revoking breaks something — i.e. if some path really does write one of
@@ -23,7 +23,9 @@
 
 BEGIN;
 
--- Part 1 (the 13 with no RLS).
+-- The 13 tables with no RLS. (An earlier draft also had a Part 2 for the 7 RLS-forced EF tables; that
+-- was removed from the forward script because revoking those would break C# writes, so there is
+-- nothing to restore for them here either.)
 GRANT INSERT, UPDATE, DELETE ON TABLE public."__EFMigrationsHistory" TO app_tenant;
 GRANT INSERT, UPDATE, DELETE ON TABLE public.fx_rates TO app_tenant;
 GRANT INSERT, UPDATE, DELETE ON TABLE public.qrtz_blob_triggers TO app_tenant;
@@ -37,14 +39,5 @@ GRANT INSERT, UPDATE, DELETE ON TABLE public.qrtz_scheduler_state TO app_tenant;
 GRANT INSERT, UPDATE, DELETE ON TABLE public.qrtz_simple_triggers TO app_tenant;
 GRANT INSERT, UPDATE, DELETE ON TABLE public.qrtz_simprop_triggers TO app_tenant;
 GRANT INSERT, UPDATE, DELETE ON TABLE public.qrtz_triggers TO app_tenant;
-
--- Part 2 (the 7 EF-owned tables with forced RLS).
-GRANT INSERT, UPDATE, DELETE ON TABLE public.access_reviews TO app_tenant;
-GRANT INSERT, UPDATE, DELETE ON TABLE public.critical_roles TO app_tenant;
-GRANT INSERT, UPDATE, DELETE ON TABLE public.successors TO app_tenant;
-GRANT INSERT, UPDATE, DELETE ON TABLE public.hris_connectors TO app_tenant;
-GRANT INSERT, UPDATE, DELETE ON TABLE public.hris_external_employees TO app_tenant;
-GRANT INSERT, UPDATE, DELETE ON TABLE public.hris_sync_record_errors TO app_tenant;
-GRANT INSERT, UPDATE, DELETE ON TABLE public.hris_sync_runs TO app_tenant;
 
 COMMIT;

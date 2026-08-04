@@ -100,7 +100,7 @@ async function main(): Promise<void> {
         rls_forced: boolean;
         bytes: string | null;
       }>(
-        `SELECT to_regclass('public.'||$1) IS NOT NULL AS exists,
+        `SELECT to_regclass(format('public.%I', $1)) IS NOT NULL AS exists,
                 coalesce(c.relrowsecurity,false)      AS rls_enabled,
                 coalesce(c.relforcerowsecurity,false) AS rls_forced,
                 pg_relation_size(c.oid)               AS bytes
@@ -151,6 +151,10 @@ async function main(): Promise<void> {
            JOIN information_schema.constraint_column_usage ccu ON tc.constraint_name=ccu.constraint_name
           WHERE tc.constraint_type='FOREIGN KEY' AND tc.table_schema='public'
             AND ccu.table_name=$1
+            -- constraint_name is NOT globally unique across schemas, so join on the schema too or a
+            -- same-named constraint elsewhere produces a phantom inbound FK.
+            AND kcu.constraint_schema = tc.constraint_schema
+            AND ccu.constraint_schema = tc.constraint_schema
           ORDER BY 1`,
         [table],
       );
@@ -177,7 +181,8 @@ async function main(): Promise<void> {
       });
     }
   } finally {
-    await db.end();
+    // A failed connect() makes end() throw too, which would replace the real error with a useless one.
+    await db.end().catch(() => undefined);
   }
 
   if (asJson) {
@@ -217,11 +222,15 @@ async function main(): Promise<void> {
   }
 
   if (blockers.length === 0) {
-    console.log(
-      `\n✓ No database-side blocker for ${tables.join(', ')}.` +
-        `\n  Reported items above still belong in the flip PR body — notably app_tenant grants (#126,` +
-        `\n  dead DML after the flip) and any inbound FK from outside the flip set.\n`,
-    );
+    // Gated on !asJson: in --json mode stdout must be the JSON document and NOTHING else, or a consumer
+    // piping to jq/JSON.parse breaks precisely in the success case.
+    if (!asJson) {
+      console.log(
+        `\n✓ No database-side blocker for ${tables.join(', ')}.` +
+          `\n  Reported items above still belong in the flip PR body — notably app_tenant grants (#126,` +
+          `\n  dead DML after the flip) and any inbound FK from outside the flip set.\n`,
+      );
+    }
     process.exit(0);
   }
 
