@@ -48,10 +48,17 @@ import { join } from 'path';
 // HONEST LIMIT of the swap, so nobody over-reads it: these are not the same control. The C# tests
 // guard the C# implementation. They would NOT catch a future TS succession router reintroduced
 // without assertScoped/requireOrgScope — the tripwire that used to catch exactly that is gone, and
-// no C# test can replace it. Accepted here because the TS router is deleted rather than dormant and
-// the ledger (efcoreStranglerWrite) records C# as the writer, so a reintroduced TS writer would be
-// an ownership violation caught by scripts/table-ownership.mjs at the point it added a Prisma model
-// back. If a TS succession router is ever reintroduced, restore these tripwires with it.
+// no C# test can replace it.
+//
+// There is NO automated control covering that case today, and it is worth being blunt about why: a
+// reintroduced TS router would reuse the EXISTING `CriticalRole`/`Successor` Prisma models, which
+// are still in the schema (both tables sit in the ledger's `efcoreStranglerWrite`, which REQUIRES
+// them to remain in the Prisma schema — scripts/table-ownership.mjs asserts exactly that). So no new
+// model is added and the ownership check has nothing to flag. This gap closes when the ownership
+// flip (#69) removes both models: after that, reintroducing a TS writer means re-adding a model to
+// an `efcore` table, which the ledger check DOES reject. Until #69 lands, the only thing standing
+// between a reintroduced unsafe TS succession writer and prod is code review.
+// If a TS succession router is ever reintroduced, restore these tripwires with it.
 //
 // ── teamIntel taxonomy ────────────────────────────────────────────────
 //   getTeamProfile / getMembers / getBalanceScore / getBalanceAlerts /
