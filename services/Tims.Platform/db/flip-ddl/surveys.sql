@@ -2,7 +2,7 @@
 -- Regenerate: node scripts/db/extract-table-ddl.mjs surveys survey_responses
 --
 -- Tables: survey_responses, surveys
--- Source: packages/db/baseline/prod-public-schema.sql (captured 2026-08-03T18:13:55Z, server 17.6)
+-- Source: packages/db/baseline/prod-public-schema.sql (captured 2026-08-04T17:30:30Z, server 17.6)
 --
 -- WHY THIS FILE EXISTS (issue #128, runbook §0 P8)
 -- Deleting a Prisma model during an ownership flip can remove the only executable definition of a
