@@ -32,9 +32,9 @@ import { join } from 'path';
 // source file left for a static tripwire to grep, so the three succession assertions that
 // used to live below are gone rather than skipped.
 //
-// These tripwires were STATIC source greps. The equivalent guarantees are now enforced as
-// REAL HTTP integration tests against the C# owner — a stronger control, not a weaker one
-// (services/Tims.Platform/tests/Tims.IntegrationTests/Succession/):
+// These tripwires were STATIC source greps. The equivalent guarantees are enforced against the C#
+// owner as REAL HTTP integration tests, which for the LIVE code path is a stronger check than a
+// regex over source (services/Tims.Platform/tests/Tims.IntegrationTests/Succession/):
 //   assertScoped('successor') on remove/update  → RemoveSuccessor_Leader_OutOfScope_Is404,
 //                                                 UpdateReadiness_Leader_OutOfScope_Is404
 //   requireOrgScope on addCriticalRole          → AddCriticalRole_NarrowLeader_Is403_RequireOrgScope
@@ -44,6 +44,14 @@ import { join } from 'path';
 // The write surface also keeps its live parity/IDOR/RBAC check — scripts/parity/write-surfaces.ts's
 // successionSurface hits the C# endpoints directly (no tsProcedure), so it is unaffected by this
 // deletion. Only the READ parity surface went no-op (scripts/parity/surfaces.ts).
+//
+// HONEST LIMIT of the swap, so nobody over-reads it: these are not the same control. The C# tests
+// guard the C# implementation. They would NOT catch a future TS succession router reintroduced
+// without assertScoped/requireOrgScope — the tripwire that used to catch exactly that is gone, and
+// no C# test can replace it. Accepted here because the TS router is deleted rather than dormant and
+// the ledger (efcoreStranglerWrite) records C# as the writer, so a reintroduced TS writer would be
+// an ownership violation caught by scripts/table-ownership.mjs at the point it added a Prisma model
+// back. If a TS succession router is ever reintroduced, restore these tripwires with it.
 //
 // ── teamIntel taxonomy ────────────────────────────────────────────────
 //   getTeamProfile / getMembers / getBalanceScore / getBalanceAlerts /
