@@ -11,7 +11,10 @@
 // UPDATE 2026-08-03 (#58): packages/api/src/routers/succession.ts is now DELETED OUTRIGHT. Its last
 // 4 procedures — getCriticalRole (the one read with zero FE consumers, never wrapped here) plus the
 // 3 zero-consumer writes addCriticalRole/removeSuccessor/updateSuccessorReadiness — are gone, so
-// there is no TS succession implementation left anywhere. All 5 C# writes and 9 C# reads remain; the
+// there is no TS *tRPC* succession implementation left. (Deliberately not "none anywhere":
+// packages/db/prisma/seed-demo.ts:914-932 still writes critical_roles + successors via Prisma. It is
+// a local demo seeder, not a runtime path, but it is a real remaining TS writer and it blocks the
+// ownership flip — see #69.) All 5 C# writes and 9 C# reads remain; the
 // 3 writes and 1 read with no FE consumer are simply not wrapped in this file, by design.
 
 import { useMutation, useQuery } from '@tanstack/react-query';
