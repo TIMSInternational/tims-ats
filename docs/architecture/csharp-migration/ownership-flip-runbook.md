@@ -114,8 +114,14 @@ Seeds count. `packages/db/prisma/seed.ts` / `seed-demo.ts` writes are writers �
 raw SQL, ported to a C# seeder (none exists today), or the flip is blocked. `scripts/parity/seed.ts`
 already writes via `pg` raw SQL, so it survives a flip mechanically.
 
-**P2 — Cross-domain Prisma READERS enumerated and each one dispositioned.** **Five** grep strategies,
+**P2 — Cross-domain Prisma READERS enumerated and each one dispositioned.** **Six** grep strategies,
 all of them (a `.model.method` grep alone is not sufficient — see §7's relation-traversal reads):
+
+> **The sixth was added 2026-08-04 after flip #2 missed it.** The first five are all `.ts`-scoped, so a
+> **data-driven** consumer is invisible to every one of them. Flip #2's first full-suite run failed on 6
+> cases in `contracts/access-fixtures/scope-where.json`, a JSON fixture that names entities as strings and
+> is read by both stacks. `tsc` cannot see it and none of the five greps looked at `*.json`. Run the sixth
+> before concluding a reader sweep is complete.
 
 ```bash
 grep -rnE '\.<model>\.[a-zA-Z]+\(' packages/ apps/web/ workers/ scripts/ --include='*.ts'   # delegates
@@ -123,6 +129,7 @@ grep -rn '<backRelationFieldName>' packages/api apps/web                        
 grep -rniE '\b<table>\b' packages/ apps/web/ workers/ scripts/                               # raw SQL / strings
 grep -rnE "'<model>'" packages/api/src/access/                                               # dynamic delegate map
 grep -rnE 'utils\.[a-zA-Z]+\.<procedure>\.(invalidate|fetch|prefetch|setData)' apps/web      # tRPC CACHE consumers
+grep -rn '<model>' contracts/ tests/ --include='*.json'                                      # SIXTH: data fixtures
 ```
 
 The fourth matters: `packages/api/src/access/scoped-probe.ts:41-63` resolves Prisma delegates from a
@@ -353,9 +360,41 @@ reader. It fails on a surviving **back-relation** (`P1012`) — a distinct conce
    never enforcement.
 
 6. **Fix every TS reader** per its P2 disposition. Expect `tsc` breakage in five distinct categories:
-   Prisma delegates; generated `Prisma.<Model>WhereInput` types; the access-registry triple
-   (`entity-policies.ts` union + set, `scoped-probe.ts` `NOT_FOUND_MESSAGES` + `DELEGATES`); hand-rolled
-   `vi.mock('@tims/db')` delegate lists; and `packages/db/src/index.ts` enum re-exports.
+   Prisma delegates; generated `Prisma.<Model>WhereInput` types; the access registry (see the correction
+   immediately below); hand-rolled `vi.mock('@tims/db')` delegate lists; and `packages/db/src/index.ts`
+   enum re-exports.
+
+   > **CORRECTED 2026-08-04 by flip #2 (#69). Do NOT strip the entity from the scope-policy registry.**
+   > An earlier version of this step said to clean "the access-registry triple (`entity-policies.ts`
+   > union + set, `scoped-probe.ts` `NOT_FOUND_MESSAGES` + `DELEGATES`)". Following that literally is
+   > **wrong and silently destructive**. Only **`scoped-probe.ts`'s `DELEGATES`** actually needs the
+   > Prisma model — it is the one place that dereferences `tenantDb.<model>`.
+   >
+   > `scopeWhereFor` in `entity-policies.ts` is a **pure function**: it builds a where-fragment and never
+   > touches the Prisma client, so a flip does not require removing it. Worse, its expected outputs live
+   > in **`contracts/access-fixtures/scope-where.json`, a cross-stack contract** asserted by
+   > `tests/access/scope-where-fixtures.test.ts` (described in that file as "the production-TS oracle that
+   > pins the fixtures") **and** by `Tims.UnitTests/Fixtures/ScopeWhereForFixtureTests.cs`. C# still needs
+   > both roots — `Tims.Domain/Access/ScopeProbeRegistry.cs` registers them for its own by-id probes and
+   > row filters. In flip #2, removing the TS entries broke **6 fixture cases**; "fixing" that by deleting
+   > the fixture cases would have deleted the oracle that pins C#'s own implementation. The flipped
+   > table's scope policy is part of the contract the C# owner must satisfy — it outlives the Prisma model.
+   >
+   > Keep `NOT_FOUND_MESSAGES` complete too: those exact Spanish strings are mirrored in
+   > `Tims.Domain/Access/ScopedNotFoundException.cs`.
+   >
+   > Make the distinction compile-enforced rather than a comment (as flip #2 did):
+   >
+   > ```ts
+   > type FlippedEntity = 'successor' | 'criticalRole';           // widen on each flip
+   > export type ProbeableEntity = Exclude<ScopedEntity, FlippedEntity>;
+   > const DELEGATES: Record<ProbeableEntity, () => unknown> = { … };  // annotate — a bare `as const`
+   >                                                                  // enforces nothing
+   > export async function assertScoped(entity: ProbeableEntity, …)
+   > ```
+   >
+   > Now a by-id probe on a flipped entity is a **compile** error instead of an undefined-delegate crash,
+   > and the next flip that forgets to widen `FlippedEntity` fails to compile at `DELEGATES`.
 
    **Find the real mock list per flip — do not reuse the example.**
    `tests/access/scoped-probe.test.ts:3-25` is the generic _pattern_ for a hand-rolled delegate mock, but
