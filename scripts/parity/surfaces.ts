@@ -169,47 +169,28 @@ export const SURFACES: Record<string, Surface> = {
     ],
   },
   // ── succession ──────────────────────────────────────────────────────────────────────────────
-  // UPDATE 2026-07-29: 8 of the original 9 registered succession reads had their TS procedures
-  // deleted (NEXT_PUBLIC_SUCCESSION_READ_VIA_CSHARP confirmed live in prod) — only `critical-role`
-  // (getCriticalRole) survives below, since it's the one read with zero FE consumers, so its TS
-  // side was never a cutover candidate and stays live. RBAC: hr_admin succession:read@org, hrbp
-  // @unit — getCriticalRole uses assertScoped (an IDOR-safe by-id probe returning 404, not 403,
-  // for out-of-scope).
-  succession: {
-    key: 'succession',
-    flag: 'Platform__SuccessionReadEnabled',
-    roles: ['super_admin', 'hr_admin', 'hrbp'],
-    probeRole: 'super_admin',
-    endpoints: [
-      // UPDATE 2026-07-29: 8 of the original 9 endpoints here (critical-roles, flight-risk,
-      // competency-coverage, roles-without-successor, comp-gap-alerts, dashboard-kpis,
-      // suggested-successors, simulate-exit) were removed alongside the TS-deletion of their
-      // procedures — packages/api/src/routers/succession.ts's listCriticalRoles/getFlightRisk/
-      // getCompetencyCoverage/getRolesWithoutSuccessor/getCompGapAlerts/getDashboardKpis/
-      // getSuggestedSuccessors/simulateExit and their FE tRPC fallback
-      // (apps/web/lib/platform-api/succession.ts) have been deleted — there is no TS side left
-      // to diff against for those 8. This surface stays registered (rather than removed
-      // outright, unlike team-intel/billing-usage) because getCriticalRole below is NOT
-      // deleted — it has zero FE consumers so was never wrapped, but its TS implementation is
-      // still live, so `verify succession` still runs one REAL parity/RLS/RBAC check.
-      // Tier-2 by-id: getCriticalRole = permissionProcedure('succession', 'read') +
-      // assertScoped('criticalRole', id) — an IDOR-safe probe that returns 404 (NOT 403) for
-      // out-of-scope, so hrbp is OMITTED from expectedByRole (404 isn't representable in a
-      // 200|403 map and isn't an RBAC-permission signal). Org-A target = cr1 ('Parity Critical
-      // Role A1', holder super_admin, seeded in seed.ts). Mode-A IDOR: org-A token → org-B
-      // critical role → 404 (assertScoped's ScopedNotFound).
-      {
-        name: 'critical-role',
-        csharpPath: '/succession/critical-roles/{id}',
-        tsProcedure: 'succession.getCriticalRole',
-        input: { id: ID_SENTINEL },
-        idScopeKey: 'critical-role',
-        expectedByRole: { super_admin: 200, hr_admin: 200 },
-        // nested successors[] (≤1 seeded) → canonicalize any array by id before diffing.
-        normalize: { dropNullish: true, sortArraysBy: 'id' },
-      },
-    ],
-  },
+  // READ surface REMOVED (TS-deletion, 2026-08-03, #58): this surface's last remaining endpoint
+  // (`critical-role`, tsProcedure `succession.getCriticalRole`) was deleted from
+  // packages/api/src/routers/succession.ts — which is now deleted OUTRIGHT, all 4 residual
+  // procedures with it. The 2026-07-29 pass had already removed the other 8 registered reads
+  // (critical-roles, flight-risk, competency-coverage, roles-without-successor, comp-gap-alerts,
+  // dashboard-kpis, suggested-successors, simulate-exit); `getCriticalRole` was kept then ONLY
+  // because its TS implementation was still live, which is what made `verify succession` a real
+  // check. It no longer is, so this surface follows team-intel/billing-usage/reporting/
+  // evaluation360/audit-log and is removed rather than left registered-but-no-op.
+  //
+  // `verify succession` is therefore now a NO-OP. That is a genuine reduction in this harness's
+  // coverage and is recorded as such in scripts/deploy/cutover.sh's `succession` row — do NOT
+  // read a green `verify succession` as evidence about the C# read surface. What still covers it:
+  // the C# integration tests (SuccessionReadTests.cs / SuccessionReadEndpointAuthTests.cs,
+  // including TeamScope_OutOfScopeRole_Is404_IdorProbe and
+  // TeamScope_ListCriticalRoles_DropsOutOfScopeRole).
+  //
+  // The WRITE surface is UNAFFECTED and stays fully valid — write-surfaces.ts's successionSurface
+  // tests the C# endpoints directly via raw SQL + HTTP with no tsProcedure field, so it never
+  // depended on any TS procedure existing. `verify-write succession` still runs a REAL check on
+  // all 5 writes.
+  //
   // ── audit-log ────────────────────────────────────────────────────────────────────────────
   // REMOVED (TS-deletion, 2026-07-31): this surface's only endpoint (`logs`,
   // tsProcedure `platform.getCrossOrgAuditLogs`) was deleted from

@@ -209,8 +209,10 @@ describe-service`; only the frontend Vercel flag was missing.)
     billing-webhook, billing-self-serve) have a `useXMutation()` hook per write MUTATION THAT HAS A
     LIVE FE CALL SITE — originally dark; where the write flag has since gone live and the TS mutation was
     deleted (succession, nine-box, compensation, engagement) the hook is now C#-only — several procedures per domain
-    (e.g. succession's `addCriticalRole`, engagement's
-    `createActionPlan`) have zero consumers and were intentionally left unwrapped (dead code otherwise). The
+    (e.g. engagement's `createActionPlan`) have zero consumers and were intentionally left unwrapped (dead code
+    otherwise). **Succession's 3 such mutations (`addCriticalRole`, `removeSuccessor`,
+    `updateSuccessorReadiness`) were DELETED 2026-08-03 (#58) rather than left as dead code** — they still have
+    no FE wrapper, but the TS side no longer exists to be dead. The
     billing Stripe-webhook write is a proxy inside `packages/api/src/services/billing-webhook.service.ts`,
     not a browser wrapper — Stripe calls the Next.js route directly, so the flag lives entirely server-side.
     A real bug was found and fixed in this pass (#212): the browser `PlatformApiError` never surfaced the
@@ -241,9 +243,12 @@ describe-service`; only the frontend Vercel flag was missing.)
   got a `NEXT_PUBLIC_*` flag in Vercel — no FE consumer or different cutover mechanism, see their
   respective slice docs). TS-code deletion (step 7) has now happened for all 8 domains, covering
   all 12 live read/write surfaces — reporting and evaluation360 (2026-07-28), team-intel and billing-usage
-  (2026-07-29), succession (2026-07-29, **partially** deleted — 8 of 9 read procedures + 2 of
-  5 write procedures; `getCriticalRole` and 3 zero-consumer write mutations remain untouched,
-  unrelated dead code), nine-box (2026-07-29, **partially** deleted — 7 of 11 read procedures +
+  (2026-07-29), succession (2026-07-29 **partially**, then **COMPLETED 2026-08-03 (#58)** — the
+  residual `getCriticalRole` + 3 zero-consumer write mutations (`addCriticalRole`,
+  `removeSuccessor`, `updateSuccessorReadiness`) were deleted and `packages/api/src/routers/succession.ts`
+  removed outright, so all 9 reads + all 5 writes are now C#-only; the READ parity surface went
+  no-op and was removed, the WRITE parity surface is unaffected), nine-box (2026-07-29,
+  **partially** deleted — 7 of 11 read procedures +
   3 of 5 write procedures; `getAxisBreakdown`/`getMovementHistory`/`simulate`/`getQuadrantPlan`
   (reads) and `submitCalibrationVote`/`finalizeCalibration` (writes) remain untouched, unrelated
   zero-consumer dead code), and compensation (2026-07-29, **partially** deleted — 5 of 8

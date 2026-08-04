@@ -25,15 +25,25 @@ import { join } from 'path';
 //   finalizeCalibration → session lifecycle write → requireOrgScope.
 //   getQuadrantPlan     → static plan lookup (no DB read) → untouched.
 //
-// ── succession taxonomy ───────────────────────────────────────────────
-//   listCriticalRoles / getCriticalRole → row-level → AND-compose criticalRole.
-//   addCriticalRole     → defining org-critical roles is org governance →
-//     requireOrgScope.
-//   addSuccessor        → assertSubjectInScope on the successor's userId +
-//     assertScoped('criticalRole') on the parent role.
-//   removeSuccessor / updateSuccessorReadiness → assertScoped('successor').
-//   getFlightRisk / getCompetencyCoverage / getRolesWithoutSuccessor /
-//     simulateExit / getDashboardKpis → org-rollup analytics → requireOrgScope.
+// ── succession taxonomy — REMOVED 2026-08-03 (#58) ────────────────────
+// packages/api/src/routers/succession.ts is DELETED. The 2026-07-29 pass removed 8 of 9
+// reads + 2 of 5 writes; #58 removed the last 4 (getCriticalRole, addCriticalRole,
+// removeSuccessor, updateSuccessorReadiness — all zero-FE-consumer). There is no TS
+// source file left for a static tripwire to grep, so the three succession assertions that
+// used to live below are gone rather than skipped.
+//
+// These tripwires were STATIC source greps. The equivalent guarantees are now enforced as
+// REAL HTTP integration tests against the C# owner — a stronger control, not a weaker one
+// (services/Tims.Platform/tests/Tims.IntegrationTests/Succession/):
+//   assertScoped('successor') on remove/update  → RemoveSuccessor_Leader_OutOfScope_Is404,
+//                                                 UpdateReadiness_Leader_OutOfScope_Is404
+//   requireOrgScope on addCriticalRole          → AddCriticalRole_NarrowLeader_Is403_RequireOrgScope
+//   assertScoped('criticalRole') by-id probe    → TeamScope_OutOfScopeRole_Is404_IdorProbe,
+//                                                 TeamScope_OutOfScope_ByIdReads_Are404
+//   nested successors carry the scope fragment  → TeamScope_ListCriticalRoles_DropsOutOfScopeRole
+// The write surface also keeps its live parity/IDOR/RBAC check — scripts/parity/write-surfaces.ts's
+// successionSurface hits the C# endpoints directly (no tsProcedure), so it is unaffected by this
+// deletion. Only the READ parity surface went no-op (scripts/parity/surfaces.ts).
 //
 // ── teamIntel taxonomy ────────────────────────────────────────────────
 //   getTeamProfile / getMembers / getBalanceScore / getBalanceAlerts /
@@ -42,8 +52,7 @@ import { join } from 'path';
 //   getDashboardKpis    → org-rollup → requireOrgScope.
 
 const ROOT = join(__dirname, '..', '..');
-const readRouter = (name: string) =>
-  readFileSync(join(ROOT, 'packages/api/src/routers', name), 'utf8');
+const readRouter = (name: string) => readFileSync(join(ROOT, 'packages/api/src/routers', name), 'utf8');
 
 describe('ninebox module scope wiring', () => {
   const src = () => readRouter('ninebox.ts');
@@ -70,17 +79,9 @@ describe('ninebox module scope wiring', () => {
   });
 });
 
-describe('succession module scope wiring', () => {
-  const src = () => readRouter('succession.ts');
-
-  it('successor mutations are scope-probed (assertScoped / assertSubjectInScope)', () => {
-    expect(src()).toMatch(/assertScoped\('successor'|assertSubjectInScope/);
-  });
-
-  it('org-governance / rollup endpoints gated via requireOrgScope', () => {
-    expect(src()).toMatch(/requireOrgScope/);
-  });
-});
+// `describe('succession module scope wiring')` REMOVED 2026-08-03 (#58) — succession.ts no
+// longer exists. See the succession-taxonomy block above for the C# tests that now carry both
+// of its assertions.
 
 describe('teamIntel module scope wiring', () => {
   const src = () => readRouter('teamIntel.ts');
@@ -91,7 +92,9 @@ describe('teamIntel module scope wiring', () => {
 });
 
 describe('talent modules — no fragment spread (AND-composition invariant, CI check 13)', () => {
-  for (const name of ['ninebox.ts', 'succession.ts', 'teamIntel.ts']) {
+  // 'succession.ts' dropped 2026-08-03 (#58) — file deleted. A deleted router cannot spread a
+  // fragment, so this loses no coverage; the C# owner has no Prisma fragment to spread at all.
+  for (const name of ['ninebox.ts', 'teamIntel.ts']) {
     it(`${name} does not spread a scope fragment`, () => {
       expect(readRouter(name)).not.toMatch(/\.\.\.(await\s+)?scopeWhere/);
     });
@@ -99,10 +102,10 @@ describe('talent modules — no fragment spread (AND-composition invariant, CI c
 });
 
 describe('codex round-1 fixes (talent)', () => {
-  it('succession nested successors carry the successor fragment', () => {
-    const src = readFileSync(join(ROOT, 'packages/api/src/routers/succession.ts'), 'utf8');
-    expect((src.match(/where:\s*successorScope/g) ?? []).length).toBeGreaterThanOrEqual(1);
-  });
+  // 'succession nested successors carry the successor fragment' REMOVED 2026-08-03 (#58) —
+  // succession.ts deleted. The C# equivalent is a real behavioural test rather than a source
+  // grep: TeamScope_ListCriticalRoles_DropsOutOfScopeRole (SuccessionReadTests.cs) asserts an
+  // out-of-scope role is actually absent from the response.
   it('submitCalibrationVote validates the evaluated user belongs to the org', () => {
     const src = readFileSync(join(ROOT, 'packages/api/src/routers/ninebox.ts'), 'utf8');
     const block = src.slice(src.indexOf('submitCalibrationVote:'), src.indexOf('finalizeCalibration:'));

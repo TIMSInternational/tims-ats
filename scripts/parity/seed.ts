@@ -2201,6 +2201,11 @@ export interface SeedResources {
   'eval-cycle-staff': ResourcePair;
   'eval-cycle-self': ResourcePair;
   calibration: ResourcePair;
+  /** UNCONSUMED since 2026-08-03 (#58): the only endpoint that threaded this idScopeKey was the
+   *  succession READ surface's `critical-role` (tsProcedure succession.getCriticalRole), removed
+   *  with that surface. The seeded 'Parity Critical Role A1'/'B1' rows still exist, so resolving
+   *  it is harmless and stays for now — the succession read fixtures come out wholesale with the
+   *  ownership flip (#69), which is where removing this belongs. */
   'critical-role': ResourcePair;
 }
 

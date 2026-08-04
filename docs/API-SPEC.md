@@ -382,6 +382,16 @@ Scopes: `own` | `team` | `unit` | `company` | `organization`
 > Talent map, successors, flight risk, exit simulation.
 > Screens: #14 Talent Map & Succession
 
+> **⚠️ NONE OF THESE tRPC PROCEDURES EXIST ANY MORE — this table is a historical record of the
+> original TS contract, not a live API surface.** `packages/api/src/routers/succession.ts` was
+> deleted outright on 2026-08-03 (#58) and unregistered from `root.ts`; the 2026-07-29 cutover had
+> already removed 8 of the 9 reads and 2 of the 5 writes. The C# service is the sole implementation:
+> `SuccessionReadEndpoints.cs` + `SuccessionWriteEndpoints.cs` behind `Platform:SuccessionReadEnabled`
+> / `Platform:SuccessionWriteEnabled` (both live in prod). The live FE contract is
+> `apps/web/lib/platform-api/succession.ts`. Note the table below also predates the write surface —
+> it omits `updateCriticalRoleBand`, the 5th C# write. Rows 14.2/14.3/14.5/14.6 were the last four
+> to go; they had zero FE consumers throughout.
+
 | #     | Procedure                             | Type     | Input                                 | Output                                                                   | Permission    | Used By             |
 | ----- | ------------------------------------- | -------- | ------------------------------------- | ------------------------------------------------------------------------ | ------------- | ------------------- |
 | 14.1  | `succession.listCriticalRoles`        | query    | —                                     | `CriticalRole[]` with holder, successors, riskLevel                      | talent:read   | Succession pipeline |
