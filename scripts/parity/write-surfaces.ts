@@ -636,6 +636,13 @@ const idPresent = (b: unknown): string | null => {
   return null;
 };
 
+// NOTE 2026-08-03 (#58): the TS procedure names below (addCriticalRole, removeSuccessor,
+// updateSuccessorReadiness, …) are now HISTORICAL LABELS ONLY — packages/api/src/routers/succession.ts
+// is deleted and C# is the sole implementation. This surface is unaffected: it drives the C# HTTP
+// endpoints directly via raw SQL read-backs and has no tsProcedure field, so it never depended on the
+// TS side existing. The scope mechanics described are the C# endpoints' own behaviour, verified by
+// SuccessionWriteEndpointAuthTests.cs.
+//
 // 5 writes under ONE flag Platform__SuccessionWriteEnabled. addCriticalRole (requireOrgScope create;
 // cross-org holder → 400) + addSuccessor (assertScoped(criticalRole) 404 THEN assertSubjectInScope +
 // H1 SubjectNotInOrg → 403 for a cross-org userId) + removeSuccessor (delete, assertScoped 404) +

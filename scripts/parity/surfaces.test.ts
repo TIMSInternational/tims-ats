@@ -2,26 +2,25 @@ import { describe, it, expect } from 'vitest';
 import { SURFACES } from './surfaces';
 
 describe('SURFACES', () => {
-  it('the three read surfaces that still have a TS side are registered with their flags + current endpoint sets (Tier-1 + Tier-2 by-id)', () => {
+  // 2026-08-03 (#58): was "the three read surfaces" — succession dropped out when its last
+  // TS-backed endpoint (getCriticalRole) was deleted. See the dedicated assertion at the bottom.
+  it('the two read surfaces that still have a TS side are registered with their flags + current endpoint sets (Tier-1 + Tier-2 by-id)', () => {
     expect(SURFACES['compensation'].flag).toBe('Platform__CompensationReadEnabled');
     // 2026-07-29: shrunk from 7 to 2 — the other 5 TS procedures were deleted (C#-only now).
     expect(SURFACES['compensation'].endpoints.map((e) => e.name).sort()).toEqual(['employee', 'market-comparison']);
     expect(SURFACES['ninebox'].flag).toBe('Platform__NineBoxReadEnabled');
     expect(SURFACES['ninebox'].endpoints).toHaveLength(4);
-    expect(SURFACES['succession'].flag).toBe('Platform__SuccessionReadEnabled');
-    expect(SURFACES['succession'].endpoints.map((e) => e.name)).toContain('critical-role');
-    expect(SURFACES['succession'].endpoints).toHaveLength(1);
-    for (const key of ['compensation', 'ninebox', 'succession']) {
+    for (const key of ['compensation', 'ninebox']) {
       expect(SURFACES[key].probeRole).toBe('super_admin');
     }
   });
 
   it('every Tier-2 by-id endpoint sets idScopeKey and carries the {id} sentinel in path + input', () => {
-    // The 3 by-id Mode-A IDOR endpoints and the resource key each threads.
+    // The 2 by-id Mode-A IDOR endpoints and the resource key each threads.
+    // 2026-08-03 (#58): 'succession/critical-role' → 'critical-role' removed with the surface.
     const expected: Record<string, string> = {
       'compensation/employee': 'employee',
       'ninebox/axis-breakdown': 'employee',
-      'succession/critical-role': 'critical-role',
     };
     let byIdCount = 0;
     for (const [surfaceKey, surface] of Object.entries(SURFACES)) {
@@ -36,7 +35,7 @@ describe('SURFACES', () => {
         expect(JSON.stringify(ep.input), k).toContain('{id}');
       }
     }
-    expect(byIdCount).toBe(3);
+    expect(byIdCount).toBe(2);
   });
 
   it('nine-box marks only the two pure kernels as globalScope', () => {
@@ -91,5 +90,15 @@ describe('SURFACES', () => {
   // there is nothing left for this suite to assert about it.
   it('billing-invoices is no longer registered (TS side deleted)', () => {
     expect(SURFACES['billing-invoices']).toBeUndefined();
+  });
+
+  // succession's READ surface was removed 2026-08-03 (#58): its last TS-backed endpoint
+  // (getCriticalRole) was deleted along with the whole succession router, so there is no TS side
+  // left to diff against. `verify succession` is now a no-op — the WRITE surface is unaffected
+  // (write-surfaces.ts hits C# directly and never used a tsProcedure).
+  // The WRITE surface is unaffected and keeps its own assertion in write-surfaces.test.ts
+  // ('registers the 5 succession writes under the single write flag') — not duplicated here.
+  it('succession read is no longer registered (TS side deleted)', () => {
+    expect(SURFACES['succession']).toBeUndefined();
   });
 });

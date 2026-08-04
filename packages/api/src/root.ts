@@ -12,7 +12,10 @@ import { onboardingRouter } from './routers/onboarding';
 import { performanceRouter } from './routers/performance';
 import { learningRouter } from './routers/learning';
 import { nineboxRouter } from './routers/ninebox';
-import { successionRouter } from './routers/succession';
+// TS-deletion 2026-08-03 (#58): the succession router is GONE. Its last 4 procedures
+// (getCriticalRole, addCriticalRole, removeSuccessor, updateSuccessorReadiness) all had
+// zero FE consumers and live C# equivalents behind Platform__Succession{Read,Write}Enabled
+// (both confirmed live in prod) — see SuccessionRead/WriteEndpoints.cs.
 import { teamIntelRouter } from './routers/teamIntel';
 import { engagementRouter } from './routers/engagement';
 import { deiRouter } from './routers/dei';
@@ -64,7 +67,6 @@ export const appRouter = router({
   performance: performanceRouter,
   learning: learningRouter,
   ninebox: nineboxRouter,
-  succession: successionRouter,
   teamIntel: teamIntelRouter,
   engagement: engagementRouter,
   dei: deiRouter,
