@@ -106,11 +106,10 @@ async function main() {
   console.log(`[Users] ${Object.keys(extraUsers).length} extra display users ready`);
 
   // Create a second team
-  const team2 =
-    (await db.team.findFirst({ where: { organizationId: org.id, name: 'Equipo Producto' } })) ??
-    (await db.team.create({
+  const team2 = await db.team.findFirst({ where: { organizationId: org.id, name: 'Equipo Producto' } })
+    ?? await db.team.create({
       data: { organizationId: org.id, businessUnitId: unit.id, name: 'Equipo Producto', leaderId: leader.id },
-    }));
+    });
 
   // Assign users to teams
   const teamAssignments = [
@@ -138,266 +137,26 @@ async function main() {
   // 2. Candidates (20)
   // ===========================
   const candidateDefs = [
-    {
-      firstName: 'Ana',
-      lastName: 'Martinez',
-      email: 'ana.martinez@gmail.com',
-      phone: '+57 310 123 4567',
-      source: 'linkedin',
-      poolType: 'active',
-      location: 'Bogota, CO',
-      currentTitle: 'Senior Developer',
-      currentCompany: 'MercadoLibre',
-      yearsExperience: 7,
-      skills: ['TypeScript', 'React', 'Node.js', 'AWS'],
-    },
-    {
-      firstName: 'Pedro',
-      lastName: 'Gutierrez',
-      email: 'pedro.gutierrez@hotmail.com',
-      phone: '+57 311 234 5678',
-      source: 'referral',
-      poolType: 'active',
-      location: 'Medellin, CO',
-      currentTitle: 'Tech Lead',
-      currentCompany: 'Rappi',
-      yearsExperience: 9,
-      skills: ['Python', 'Django', 'PostgreSQL', 'Docker'],
-    },
-    {
-      firstName: 'Luisa',
-      lastName: 'Morales',
-      email: 'luisa.morales@outlook.com',
-      phone: '+57 312 345 6789',
-      source: 'portal',
-      poolType: 'active',
-      location: 'Cali, CO',
-      currentTitle: 'UX Designer',
-      currentCompany: 'Globant',
-      yearsExperience: 5,
-      skills: ['Figma', 'User Research', 'Prototyping', 'Design Systems'],
-    },
-    {
-      firstName: 'Diego',
-      lastName: 'Ramirez',
-      email: 'diego.ramirez@gmail.com',
-      phone: '+57 313 456 7890',
-      source: 'linkedin',
-      poolType: 'active',
-      location: 'Bogota, CO',
-      currentTitle: 'DevOps Engineer',
-      currentCompany: 'Nubank',
-      yearsExperience: 6,
-      skills: ['Kubernetes', 'Terraform', 'CI/CD', 'AWS'],
-    },
-    {
-      firstName: 'Carolina',
-      lastName: 'Jimenez',
-      email: 'carolina.jimenez@gmail.com',
-      phone: '+57 314 567 8901',
-      source: 'job_board',
-      poolType: 'active',
-      location: 'Barranquilla, CO',
-      currentTitle: 'Data Scientist',
-      currentCompany: 'Bancolombia',
-      yearsExperience: 4,
-      skills: ['Python', 'ML', 'TensorFlow', 'SQL'],
-    },
-    {
-      firstName: 'Alejandro',
-      lastName: 'Sanchez',
-      email: 'alejandro.sanchez@yahoo.com',
-      phone: '+57 315 678 9012',
-      source: 'referral',
-      poolType: 'active',
-      location: 'Bogota, CO',
-      currentTitle: 'Product Manager',
-      currentCompany: 'iFood',
-      yearsExperience: 8,
-      skills: ['Agile', 'Product Strategy', 'Analytics', 'Roadmapping'],
-    },
-    {
-      firstName: 'Natalia',
-      lastName: 'Torres',
-      email: 'natalia.torres@gmail.com',
-      phone: '+57 316 789 0123',
-      source: 'portal',
-      poolType: 'passive',
-      location: 'Medellin, CO',
-      currentTitle: 'QA Engineer',
-      currentCompany: 'Endava',
-      yearsExperience: 3,
-      skills: ['Cypress', 'Selenium', 'API Testing', 'Jest'],
-    },
-    {
-      firstName: 'Matias',
-      lastName: 'Lopez',
-      email: 'matias.lopez@gmail.com',
-      phone: '+57 317 890 1234',
-      source: 'linkedin',
-      poolType: 'active',
-      location: 'Bogota, CO',
-      currentTitle: 'Full Stack Developer',
-      currentCompany: 'Platzi',
-      yearsExperience: 5,
-      skills: ['Next.js', 'TypeScript', 'GraphQL', 'PostgreSQL'],
-    },
-    {
-      firstName: 'Juliana',
-      lastName: 'Cruz',
-      email: 'juliana.cruz@outlook.com',
-      phone: '+57 318 901 2345',
-      source: 'university',
-      poolType: 'active',
-      location: 'Manizales, CO',
-      currentTitle: 'Junior Developer',
-      currentCompany: null,
-      yearsExperience: 1,
-      skills: ['JavaScript', 'React', 'CSS', 'Git'],
-    },
-    {
-      firstName: 'Sebastian',
-      lastName: 'Ortiz',
-      email: 'sebastian.ortiz@gmail.com',
-      phone: '+57 319 012 3456',
-      source: 'linkedin',
-      poolType: 'passive',
-      location: 'Bogota, CO',
-      currentTitle: 'Cloud Architect',
-      currentCompany: 'AWS',
-      yearsExperience: 12,
-      skills: ['AWS', 'Azure', 'GCP', 'Microservices'],
-    },
-    {
-      firstName: 'Mariana',
-      lastName: 'Velasquez',
-      email: 'mariana.velasquez@gmail.com',
-      phone: '+57 320 123 4567',
-      source: 'referral',
-      poolType: 'active',
-      location: 'Bogota, CO',
-      currentTitle: 'HR Business Partner',
-      currentCompany: 'Avianca',
-      yearsExperience: 6,
-      skills: ['Talent Management', 'Comp & Benefits', 'Employee Relations'],
-    },
-    {
-      firstName: 'Felipe',
-      lastName: 'Pineda',
-      email: 'felipe.pineda@hotmail.com',
-      phone: '+57 321 234 5678',
-      source: 'portal',
-      poolType: 'active',
-      location: 'Cartagena, CO',
-      currentTitle: 'Marketing Manager',
-      currentCompany: 'Grupo Exito',
-      yearsExperience: 7,
-      skills: ['Digital Marketing', 'SEO', 'Analytics', 'Content Strategy'],
-    },
-    {
-      firstName: 'Andrea',
-      lastName: 'Suarez',
-      email: 'andrea.suarez@gmail.com',
-      phone: '+57 322 345 6789',
-      source: 'linkedin',
-      poolType: 'passive',
-      location: 'Bogota, CO',
-      currentTitle: 'Finance Manager',
-      currentCompany: 'Ecopetrol',
-      yearsExperience: 10,
-      skills: ['FP&A', 'SAP', 'Financial Modeling', 'Excel'],
-    },
-    {
-      firstName: 'David',
-      lastName: 'Rojas',
-      email: 'david.rojas@gmail.com',
-      phone: '+57 323 456 7890',
-      source: 'job_board',
-      poolType: 'active',
-      location: 'Bucaramanga, CO',
-      currentTitle: 'Backend Developer',
-      currentCompany: null,
-      yearsExperience: 3,
-      skills: ['Java', 'Spring Boot', 'MySQL', 'Redis'],
-    },
-    {
-      firstName: 'Paola',
-      lastName: 'Gomez',
-      email: 'paola.gomez@outlook.com',
-      phone: '+57 324 567 8901',
-      source: 'portal',
-      poolType: 'active',
-      location: 'Bogota, CO',
-      currentTitle: 'Scrum Master',
-      currentCompany: 'Pragma',
-      yearsExperience: 4,
-      skills: ['Scrum', 'Kanban', 'JIRA', 'Facilitation'],
-    },
-    {
-      firstName: 'Ricardo',
-      lastName: 'Navarro',
-      email: 'ricardo.navarro@gmail.com',
-      phone: '+57 325 678 9012',
-      source: 'referral',
-      poolType: 'active',
-      location: 'Medellin, CO',
-      currentTitle: 'iOS Developer',
-      currentCompany: 'Rappi',
-      yearsExperience: 6,
-      skills: ['Swift', 'SwiftUI', 'Objective-C', 'CoreData'],
-    },
-    {
-      firstName: 'Camila',
-      lastName: 'Aguirre',
-      email: 'camila.aguirre@gmail.com',
-      phone: '+57 326 789 0123',
-      source: 'linkedin',
-      poolType: 'passive',
-      location: 'Bogota, CO',
-      currentTitle: 'Security Engineer',
-      currentCompany: 'Globant',
-      yearsExperience: 5,
-      skills: ['Pentesting', 'OWASP', 'SOC', 'Compliance'],
-    },
-    {
-      firstName: 'Jorge',
-      lastName: 'Duarte',
-      email: 'jorge.duarte@yahoo.com',
-      phone: '+57 327 890 1234',
-      source: 'university',
-      poolType: 'active',
-      location: 'Pereira, CO',
-      currentTitle: 'Data Engineer',
-      currentCompany: null,
-      yearsExperience: 2,
-      skills: ['Python', 'Spark', 'Airflow', 'BigQuery'],
-    },
-    {
-      firstName: 'Daniela',
-      lastName: 'Mejia',
-      email: 'daniela.mejia@gmail.com',
-      phone: '+57 328 901 2345',
-      source: 'portal',
-      poolType: 'active',
-      location: 'Bogota, CO',
-      currentTitle: 'Account Executive',
-      currentCompany: 'HubSpot',
-      yearsExperience: 4,
-      skills: ['SaaS Sales', 'CRM', 'Negotiation', 'Pipeline Management'],
-    },
-    {
-      firstName: 'Oscar',
-      lastName: 'Castillo',
-      email: 'oscar.castillo@outlook.com',
-      phone: '+57 329 012 3456',
-      source: 'linkedin',
-      poolType: 'active',
-      location: 'Bogota, CO',
-      currentTitle: 'Android Developer',
-      currentCompany: 'MercadoLibre',
-      yearsExperience: 5,
-      skills: ['Kotlin', 'Jetpack Compose', 'MVVM', 'Firebase'],
-    },
+    { firstName: 'Ana', lastName: 'Martinez', email: 'ana.martinez@gmail.com', phone: '+57 310 123 4567', source: 'linkedin', poolType: 'active', location: 'Bogota, CO', currentTitle: 'Senior Developer', currentCompany: 'MercadoLibre', yearsExperience: 7, skills: ['TypeScript', 'React', 'Node.js', 'AWS'] },
+    { firstName: 'Pedro', lastName: 'Gutierrez', email: 'pedro.gutierrez@hotmail.com', phone: '+57 311 234 5678', source: 'referral', poolType: 'active', location: 'Medellin, CO', currentTitle: 'Tech Lead', currentCompany: 'Rappi', yearsExperience: 9, skills: ['Python', 'Django', 'PostgreSQL', 'Docker'] },
+    { firstName: 'Luisa', lastName: 'Morales', email: 'luisa.morales@outlook.com', phone: '+57 312 345 6789', source: 'portal', poolType: 'active', location: 'Cali, CO', currentTitle: 'UX Designer', currentCompany: 'Globant', yearsExperience: 5, skills: ['Figma', 'User Research', 'Prototyping', 'Design Systems'] },
+    { firstName: 'Diego', lastName: 'Ramirez', email: 'diego.ramirez@gmail.com', phone: '+57 313 456 7890', source: 'linkedin', poolType: 'active', location: 'Bogota, CO', currentTitle: 'DevOps Engineer', currentCompany: 'Nubank', yearsExperience: 6, skills: ['Kubernetes', 'Terraform', 'CI/CD', 'AWS'] },
+    { firstName: 'Carolina', lastName: 'Jimenez', email: 'carolina.jimenez@gmail.com', phone: '+57 314 567 8901', source: 'job_board', poolType: 'active', location: 'Barranquilla, CO', currentTitle: 'Data Scientist', currentCompany: 'Bancolombia', yearsExperience: 4, skills: ['Python', 'ML', 'TensorFlow', 'SQL'] },
+    { firstName: 'Alejandro', lastName: 'Sanchez', email: 'alejandro.sanchez@yahoo.com', phone: '+57 315 678 9012', source: 'referral', poolType: 'active', location: 'Bogota, CO', currentTitle: 'Product Manager', currentCompany: 'iFood', yearsExperience: 8, skills: ['Agile', 'Product Strategy', 'Analytics', 'Roadmapping'] },
+    { firstName: 'Natalia', lastName: 'Torres', email: 'natalia.torres@gmail.com', phone: '+57 316 789 0123', source: 'portal', poolType: 'passive', location: 'Medellin, CO', currentTitle: 'QA Engineer', currentCompany: 'Endava', yearsExperience: 3, skills: ['Cypress', 'Selenium', 'API Testing', 'Jest'] },
+    { firstName: 'Matias', lastName: 'Lopez', email: 'matias.lopez@gmail.com', phone: '+57 317 890 1234', source: 'linkedin', poolType: 'active', location: 'Bogota, CO', currentTitle: 'Full Stack Developer', currentCompany: 'Platzi', yearsExperience: 5, skills: ['Next.js', 'TypeScript', 'GraphQL', 'PostgreSQL'] },
+    { firstName: 'Juliana', lastName: 'Cruz', email: 'juliana.cruz@outlook.com', phone: '+57 318 901 2345', source: 'university', poolType: 'active', location: 'Manizales, CO', currentTitle: 'Junior Developer', currentCompany: null, yearsExperience: 1, skills: ['JavaScript', 'React', 'CSS', 'Git'] },
+    { firstName: 'Sebastian', lastName: 'Ortiz', email: 'sebastian.ortiz@gmail.com', phone: '+57 319 012 3456', source: 'linkedin', poolType: 'passive', location: 'Bogota, CO', currentTitle: 'Cloud Architect', currentCompany: 'AWS', yearsExperience: 12, skills: ['AWS', 'Azure', 'GCP', 'Microservices'] },
+    { firstName: 'Mariana', lastName: 'Velasquez', email: 'mariana.velasquez@gmail.com', phone: '+57 320 123 4567', source: 'referral', poolType: 'active', location: 'Bogota, CO', currentTitle: 'HR Business Partner', currentCompany: 'Avianca', yearsExperience: 6, skills: ['Talent Management', 'Comp & Benefits', 'Employee Relations'] },
+    { firstName: 'Felipe', lastName: 'Pineda', email: 'felipe.pineda@hotmail.com', phone: '+57 321 234 5678', source: 'portal', poolType: 'active', location: 'Cartagena, CO', currentTitle: 'Marketing Manager', currentCompany: 'Grupo Exito', yearsExperience: 7, skills: ['Digital Marketing', 'SEO', 'Analytics', 'Content Strategy'] },
+    { firstName: 'Andrea', lastName: 'Suarez', email: 'andrea.suarez@gmail.com', phone: '+57 322 345 6789', source: 'linkedin', poolType: 'passive', location: 'Bogota, CO', currentTitle: 'Finance Manager', currentCompany: 'Ecopetrol', yearsExperience: 10, skills: ['FP&A', 'SAP', 'Financial Modeling', 'Excel'] },
+    { firstName: 'David', lastName: 'Rojas', email: 'david.rojas@gmail.com', phone: '+57 323 456 7890', source: 'job_board', poolType: 'active', location: 'Bucaramanga, CO', currentTitle: 'Backend Developer', currentCompany: null, yearsExperience: 3, skills: ['Java', 'Spring Boot', 'MySQL', 'Redis'] },
+    { firstName: 'Paola', lastName: 'Gomez', email: 'paola.gomez@outlook.com', phone: '+57 324 567 8901', source: 'portal', poolType: 'active', location: 'Bogota, CO', currentTitle: 'Scrum Master', currentCompany: 'Pragma', yearsExperience: 4, skills: ['Scrum', 'Kanban', 'JIRA', 'Facilitation'] },
+    { firstName: 'Ricardo', lastName: 'Navarro', email: 'ricardo.navarro@gmail.com', phone: '+57 325 678 9012', source: 'referral', poolType: 'active', location: 'Medellin, CO', currentTitle: 'iOS Developer', currentCompany: 'Rappi', yearsExperience: 6, skills: ['Swift', 'SwiftUI', 'Objective-C', 'CoreData'] },
+    { firstName: 'Camila', lastName: 'Aguirre', email: 'camila.aguirre@gmail.com', phone: '+57 326 789 0123', source: 'linkedin', poolType: 'passive', location: 'Bogota, CO', currentTitle: 'Security Engineer', currentCompany: 'Globant', yearsExperience: 5, skills: ['Pentesting', 'OWASP', 'SOC', 'Compliance'] },
+    { firstName: 'Jorge', lastName: 'Duarte', email: 'jorge.duarte@yahoo.com', phone: '+57 327 890 1234', source: 'university', poolType: 'active', location: 'Pereira, CO', currentTitle: 'Data Engineer', currentCompany: null, yearsExperience: 2, skills: ['Python', 'Spark', 'Airflow', 'BigQuery'] },
+    { firstName: 'Daniela', lastName: 'Mejia', email: 'daniela.mejia@gmail.com', phone: '+57 328 901 2345', source: 'portal', poolType: 'active', location: 'Bogota, CO', currentTitle: 'Account Executive', currentCompany: 'HubSpot', yearsExperience: 4, skills: ['SaaS Sales', 'CRM', 'Negotiation', 'Pipeline Management'] },
+    { firstName: 'Oscar', lastName: 'Castillo', email: 'oscar.castillo@outlook.com', phone: '+57 329 012 3456', source: 'linkedin', poolType: 'active', location: 'Bogota, CO', currentTitle: 'Android Developer', currentCompany: 'MercadoLibre', yearsExperience: 5, skills: ['Kotlin', 'Jetpack Compose', 'MVVM', 'Firebase'] },
   ];
 
   const candidates: Record<string, { id: string }> = {};
@@ -458,121 +217,14 @@ async function main() {
   // 3. Vacancies (8)
   // ===========================
   const vacancyDefs = [
-    {
-      title: 'Senior Full Stack Developer',
-      description:
-        'Buscamos un desarrollador Full Stack con experiencia en React y Node.js para liderar el desarrollo de nuestra plataforma SaaS.',
-      positions: 2,
-      priority: 'high',
-      status: 'published',
-      contractType: 'indefinido',
-      location: 'Bogota, CO',
-      remotePolicy: 'hybrid',
-      salary: { min: 8000000, max: 14000000, currency: 'COP' },
-      createdBy: recruiter.id,
-      assignedTo: recruiter.id,
-      daysAgoCreated: 30,
-    },
-    {
-      title: 'UX/UI Designer',
-      description: 'Disenador UX/UI para crear experiencias de usuario excepcionales en nuestros productos digitales.',
-      positions: 1,
-      priority: 'medium',
-      status: 'published',
-      contractType: 'indefinido',
-      location: 'Medellin, CO',
-      remotePolicy: 'remote',
-      salary: { min: 5000000, max: 9000000, currency: 'COP' },
-      createdBy: hr.id,
-      assignedTo: recruiter.id,
-      daysAgoCreated: 25,
-    },
-    {
-      title: 'DevOps Engineer',
-      description: 'Ingeniero DevOps para gestionar infraestructura cloud y pipelines CI/CD.',
-      positions: 1,
-      priority: 'high',
-      status: 'published',
-      contractType: 'indefinido',
-      location: 'Bogota, CO',
-      remotePolicy: 'hybrid',
-      salary: { min: 9000000, max: 15000000, currency: 'COP' },
-      createdBy: leader.id,
-      assignedTo: recruiter.id,
-      daysAgoCreated: 20,
-    },
-    {
-      title: 'Data Scientist',
-      description: 'Cientifico de datos para construir modelos predictivos de recursos humanos.',
-      positions: 1,
-      priority: 'medium',
-      status: 'published',
-      contractType: 'indefinido',
-      location: 'Bogota, CO',
-      remotePolicy: 'remote',
-      salary: { min: 7000000, max: 12000000, currency: 'COP' },
-      createdBy: hr.id,
-      assignedTo: recruiter.id,
-      daysAgoCreated: 15,
-    },
-    {
-      title: 'Product Manager',
-      description: 'Product Manager para definir la vision y roadmap de nuestro producto ATS.',
-      positions: 1,
-      priority: 'high',
-      status: 'published',
-      contractType: 'indefinido',
-      location: 'Bogota, CO',
-      remotePolicy: 'hybrid',
-      salary: { min: 10000000, max: 18000000, currency: 'COP' },
-      createdBy: admin.id,
-      assignedTo: recruiter.id,
-      daysAgoCreated: 10,
-    },
-    {
-      title: 'QA Automation Engineer',
-      description: 'Ingeniero QA para automatizar pruebas end-to-end y garantizar calidad del software.',
-      positions: 1,
-      priority: 'low',
-      status: 'draft',
-      contractType: 'indefinido',
-      location: 'Bogota, CO',
-      remotePolicy: 'hybrid',
-      salary: { min: 5000000, max: 8000000, currency: 'COP' },
-      createdBy: leader.id,
-      assignedTo: null,
-      daysAgoCreated: 5,
-    },
-    {
-      title: 'Junior Frontend Developer',
-      description: 'Desarrollador frontend junior con conocimientos de React y TypeScript.',
-      positions: 2,
-      priority: 'low',
-      status: 'closed',
-      contractType: 'termino_fijo',
-      location: 'Bogota, CO',
-      remotePolicy: 'onsite',
-      salary: { min: 2500000, max: 4500000, currency: 'COP' },
-      createdBy: recruiter.id,
-      assignedTo: recruiter.id,
-      daysAgoCreated: 60,
-      closedAt: daysAgo(10),
-      closedReason: 'filled',
-    },
-    {
-      title: 'Cloud Architect',
-      description: 'Arquitecto cloud senior para disenar soluciones escalables en AWS.',
-      positions: 1,
-      priority: 'high',
-      status: 'frozen',
-      contractType: 'indefinido',
-      location: 'Bogota, CO',
-      remotePolicy: 'remote',
-      salary: { min: 15000000, max: 25000000, currency: 'COP' },
-      createdBy: admin.id,
-      assignedTo: recruiter.id,
-      daysAgoCreated: 40,
-    },
+    { title: 'Senior Full Stack Developer', description: 'Buscamos un desarrollador Full Stack con experiencia en React y Node.js para liderar el desarrollo de nuestra plataforma SaaS.', positions: 2, priority: 'high', status: 'published', contractType: 'indefinido', location: 'Bogota, CO', remotePolicy: 'hybrid', salary: { min: 8000000, max: 14000000, currency: 'COP' }, createdBy: recruiter.id, assignedTo: recruiter.id, daysAgoCreated: 30 },
+    { title: 'UX/UI Designer', description: 'Disenador UX/UI para crear experiencias de usuario excepcionales en nuestros productos digitales.', positions: 1, priority: 'medium', status: 'published', contractType: 'indefinido', location: 'Medellin, CO', remotePolicy: 'remote', salary: { min: 5000000, max: 9000000, currency: 'COP' }, createdBy: hr.id, assignedTo: recruiter.id, daysAgoCreated: 25 },
+    { title: 'DevOps Engineer', description: 'Ingeniero DevOps para gestionar infraestructura cloud y pipelines CI/CD.', positions: 1, priority: 'high', status: 'published', contractType: 'indefinido', location: 'Bogota, CO', remotePolicy: 'hybrid', salary: { min: 9000000, max: 15000000, currency: 'COP' }, createdBy: leader.id, assignedTo: recruiter.id, daysAgoCreated: 20 },
+    { title: 'Data Scientist', description: 'Cientifico de datos para construir modelos predictivos de recursos humanos.', positions: 1, priority: 'medium', status: 'published', contractType: 'indefinido', location: 'Bogota, CO', remotePolicy: 'remote', salary: { min: 7000000, max: 12000000, currency: 'COP' }, createdBy: hr.id, assignedTo: recruiter.id, daysAgoCreated: 15 },
+    { title: 'Product Manager', description: 'Product Manager para definir la vision y roadmap de nuestro producto ATS.', positions: 1, priority: 'high', status: 'published', contractType: 'indefinido', location: 'Bogota, CO', remotePolicy: 'hybrid', salary: { min: 10000000, max: 18000000, currency: 'COP' }, createdBy: admin.id, assignedTo: recruiter.id, daysAgoCreated: 10 },
+    { title: 'QA Automation Engineer', description: 'Ingeniero QA para automatizar pruebas end-to-end y garantizar calidad del software.', positions: 1, priority: 'low', status: 'draft', contractType: 'indefinido', location: 'Bogota, CO', remotePolicy: 'hybrid', salary: { min: 5000000, max: 8000000, currency: 'COP' }, createdBy: leader.id, assignedTo: null, daysAgoCreated: 5 },
+    { title: 'Junior Frontend Developer', description: 'Desarrollador frontend junior con conocimientos de React y TypeScript.', positions: 2, priority: 'low', status: 'closed', contractType: 'termino_fijo', location: 'Bogota, CO', remotePolicy: 'onsite', salary: { min: 2500000, max: 4500000, currency: 'COP' }, createdBy: recruiter.id, assignedTo: recruiter.id, daysAgoCreated: 60, closedAt: daysAgo(10), closedReason: 'filled' },
+    { title: 'Cloud Architect', description: 'Arquitecto cloud senior para disenar soluciones escalables en AWS.', positions: 1, priority: 'high', status: 'frozen', contractType: 'indefinido', location: 'Bogota, CO', remotePolicy: 'remote', salary: { min: 15000000, max: 25000000, currency: 'COP' }, createdBy: admin.id, assignedTo: recruiter.id, daysAgoCreated: 40 },
   ];
 
   const vacancies: { id: string; title: string }[] = [];
@@ -623,11 +275,7 @@ async function main() {
           vacancyId: v.id,
           discTargets: { D: 65, I: 55, S: 45, C: 70 },
           competencies: { leadership: 4, communication: 4, technical: 5, teamwork: 4, innovation: 3 },
-          requirements: {
-            education: 'Profesional en Ingenieria de Sistemas o afines',
-            experience: '5+ anos',
-            languages: ['Espanol nativo', 'Ingles B2+'],
-          },
+          requirements: { education: 'Profesional en Ingenieria de Sistemas o afines', experience: '5+ anos', languages: ['Espanol nativo', 'Ingles B2+'] },
         },
       });
     }
@@ -655,15 +303,7 @@ async function main() {
   // ===========================
   // 4. Pipeline Stages + Applications
   // ===========================
-  const stageNames = [
-    'Aplicado',
-    'Screening',
-    'Entrevista RRHH',
-    'Prueba Tecnica',
-    'Entrevista Final',
-    'Oferta',
-    'Contratado',
-  ];
+  const stageNames = ['Aplicado', 'Screening', 'Entrevista RRHH', 'Prueba Tecnica', 'Entrevista Final', 'Oferta', 'Contratado'];
 
   // Create stages for open vacancies (first 5)
   const vacancyStages: Record<string, { id: string; name: string; order: number }[]> = {};
@@ -697,13 +337,7 @@ async function main() {
   console.log(`[Stages] Pipeline stages for ${Object.keys(vacancyStages).length} vacancies`);
 
   // Applications: distribute candidates across vacancies and stages
-  const applicationMap: {
-    candidateEmail: string;
-    vacancyIdx: number;
-    stageIdx: number;
-    status: string;
-    source: string;
-  }[] = [
+  const applicationMap: { candidateEmail: string; vacancyIdx: number; stageIdx: number; status: string; source: string }[] = [
     // Senior Full Stack (vacancy 0) — heavily populated
     { candidateEmail: 'ana.martinez@gmail.com', vacancyIdx: 0, stageIdx: 5, status: 'active', source: 'linkedin' },
     { candidateEmail: 'matias.lopez@gmail.com', vacancyIdx: 0, stageIdx: 4, status: 'active', source: 'portal' },
@@ -769,24 +403,9 @@ async function main() {
   // 5. Assessment Types + Assignments + Results + FitScores
   // ===========================
   const assessmentTypeDefs = [
-    {
-      name: 'DISC Personality Profile',
-      code: 'disc',
-      description: 'Evaluacion de perfil de personalidad DISC',
-      duration: 30,
-    },
-    {
-      name: 'Prueba Tecnica',
-      code: 'technical',
-      description: 'Evaluacion de competencias tecnicas del cargo',
-      duration: 120,
-    },
-    {
-      name: 'Test Cognitivo',
-      code: 'cognitive',
-      description: 'Evaluacion de habilidades cognitivas y razonamiento logico',
-      duration: 45,
-    },
+    { name: 'DISC Personality Profile', code: 'disc', description: 'Evaluacion de perfil de personalidad DISC', duration: 30 },
+    { name: 'Prueba Tecnica', code: 'technical', description: 'Evaluacion de competencias tecnicas del cargo', duration: 120 },
+    { name: 'Test Cognitivo', code: 'cognitive', description: 'Evaluacion de habilidades cognitivas y razonamiento logico', duration: 45 },
     { name: 'English Proficiency', code: 'english', description: 'Evaluacion de nivel de ingles', duration: 60 },
   ];
 
@@ -809,13 +428,7 @@ async function main() {
   console.log(`[AssessmentTypes] ${Object.keys(assessmentTypes).length} types`);
 
   // Assign assessments to candidates in technical/final stages
-  const assessmentAssignments: {
-    candidateEmail: string;
-    vacancyIdx: number;
-    code: string;
-    status: string;
-    score: number | null;
-  }[] = [
+  const assessmentAssignments: { candidateEmail: string; vacancyIdx: number; code: string; status: string; score: number | null }[] = [
     { candidateEmail: 'ana.martinez@gmail.com', vacancyIdx: 0, code: 'disc', status: 'completed', score: 82 },
     { candidateEmail: 'ana.martinez@gmail.com', vacancyIdx: 0, code: 'technical', status: 'completed', score: 91 },
     { candidateEmail: 'ana.martinez@gmail.com', vacancyIdx: 0, code: 'english', status: 'completed', score: 88 },
@@ -866,24 +479,10 @@ async function main() {
             rawScore: aa.score,
             normalizedScore: aa.score,
             percentile: Math.min(99, aa.score + Math.floor(Math.random() * 10) - 5),
-            breakdown:
-              aa.code === 'disc'
-                ? {
-                    D: 55 + Math.floor(Math.random() * 30),
-                    I: 40 + Math.floor(Math.random() * 30),
-                    S: 35 + Math.floor(Math.random() * 30),
-                    C: 50 + Math.floor(Math.random() * 30),
-                  }
-                : {
-                    sections: [
-                      { name: 'Section A', score: aa.score - 5 },
-                      { name: 'Section B', score: aa.score + 3 },
-                    ],
-                  },
-            interpretation: {
-              summary: `Candidato con puntaje ${aa.score}/100`,
-              recommendation: aa.score >= 80 ? 'Altamente recomendado' : 'Recomendado con observaciones',
-            },
+            breakdown: aa.code === 'disc'
+              ? { D: 55 + Math.floor(Math.random() * 30), I: 40 + Math.floor(Math.random() * 30), S: 35 + Math.floor(Math.random() * 30), C: 50 + Math.floor(Math.random() * 30) }
+              : { sections: [{ name: 'Section A', score: aa.score - 5 }, { name: 'Section B', score: aa.score + 3 }] },
+            interpretation: { summary: `Candidato con puntaje ${aa.score}/100`, recommendation: aa.score >= 80 ? 'Altamente recomendado' : 'Recomendado con observaciones' },
           },
         });
       }
@@ -925,123 +524,19 @@ async function main() {
   // ===========================
   // 6. Interviews (12)
   // ===========================
-  const interviewDefs: {
-    candidateEmail: string;
-    vacancyIdx: number;
-    type: string;
-    status: string;
-    scheduledAt: Date;
-    duration: number;
-    location: string;
-  }[] = [
-    {
-      candidateEmail: 'ana.martinez@gmail.com',
-      vacancyIdx: 0,
-      type: 'technical',
-      status: 'completed',
-      scheduledAt: daysAgo(8),
-      duration: 60,
-      location: 'Google Meet',
-    },
-    {
-      candidateEmail: 'ana.martinez@gmail.com',
-      vacancyIdx: 0,
-      type: 'final',
-      status: 'completed',
-      scheduledAt: daysAgo(3),
-      duration: 45,
-      location: 'Oficina Bogota',
-    },
-    {
-      candidateEmail: 'matias.lopez@gmail.com',
-      vacancyIdx: 0,
-      type: 'technical',
-      status: 'completed',
-      scheduledAt: daysAgo(5),
-      duration: 60,
-      location: 'Google Meet',
-    },
-    {
-      candidateEmail: 'matias.lopez@gmail.com',
-      vacancyIdx: 0,
-      type: 'final',
-      status: 'scheduled',
-      scheduledAt: daysFromNow(2),
-      duration: 45,
-      location: 'Oficina Bogota',
-    },
-    {
-      candidateEmail: 'pedro.gutierrez@hotmail.com',
-      vacancyIdx: 0,
-      type: 'hr',
-      status: 'completed',
-      scheduledAt: daysAgo(10),
-      duration: 30,
-      location: 'Google Meet',
-    },
-    {
-      candidateEmail: 'luisa.morales@outlook.com',
-      vacancyIdx: 1,
-      type: 'portfolio',
-      status: 'completed',
-      scheduledAt: daysAgo(6),
-      duration: 45,
-      location: 'Zoom',
-    },
-    {
-      candidateEmail: 'luisa.morales@outlook.com',
-      vacancyIdx: 1,
-      type: 'final',
-      status: 'scheduled',
-      scheduledAt: daysFromNow(3),
-      duration: 45,
-      location: 'Google Meet',
-    },
-    {
-      candidateEmail: 'diego.ramirez@gmail.com',
-      vacancyIdx: 2,
-      type: 'technical',
-      status: 'completed',
-      scheduledAt: daysAgo(4),
-      duration: 90,
-      location: 'Google Meet',
-    },
-    {
-      candidateEmail: 'carolina.jimenez@gmail.com',
-      vacancyIdx: 3,
-      type: 'technical',
-      status: 'scheduled',
-      scheduledAt: hoursFromNow(26),
-      duration: 60,
-      location: 'Google Meet',
-    },
-    {
-      candidateEmail: 'alejandro.sanchez@yahoo.com',
-      vacancyIdx: 4,
-      type: 'case_study',
-      status: 'completed',
-      scheduledAt: daysAgo(7),
-      duration: 90,
-      location: 'Oficina Bogota',
-    },
-    {
-      candidateEmail: 'alejandro.sanchez@yahoo.com',
-      vacancyIdx: 4,
-      type: 'final',
-      status: 'scheduled',
-      scheduledAt: daysFromNow(1),
-      duration: 45,
-      location: 'Oficina Bogota',
-    },
-    {
-      candidateEmail: 'ricardo.navarro@gmail.com',
-      vacancyIdx: 0,
-      type: 'hr',
-      status: 'cancelled',
-      scheduledAt: daysAgo(12),
-      duration: 30,
-      location: 'Google Meet',
-    },
+  const interviewDefs: { candidateEmail: string; vacancyIdx: number; type: string; status: string; scheduledAt: Date; duration: number; location: string }[] = [
+    { candidateEmail: 'ana.martinez@gmail.com', vacancyIdx: 0, type: 'technical', status: 'completed', scheduledAt: daysAgo(8), duration: 60, location: 'Google Meet' },
+    { candidateEmail: 'ana.martinez@gmail.com', vacancyIdx: 0, type: 'final', status: 'completed', scheduledAt: daysAgo(3), duration: 45, location: 'Oficina Bogota' },
+    { candidateEmail: 'matias.lopez@gmail.com', vacancyIdx: 0, type: 'technical', status: 'completed', scheduledAt: daysAgo(5), duration: 60, location: 'Google Meet' },
+    { candidateEmail: 'matias.lopez@gmail.com', vacancyIdx: 0, type: 'final', status: 'scheduled', scheduledAt: daysFromNow(2), duration: 45, location: 'Oficina Bogota' },
+    { candidateEmail: 'pedro.gutierrez@hotmail.com', vacancyIdx: 0, type: 'hr', status: 'completed', scheduledAt: daysAgo(10), duration: 30, location: 'Google Meet' },
+    { candidateEmail: 'luisa.morales@outlook.com', vacancyIdx: 1, type: 'portfolio', status: 'completed', scheduledAt: daysAgo(6), duration: 45, location: 'Zoom' },
+    { candidateEmail: 'luisa.morales@outlook.com', vacancyIdx: 1, type: 'final', status: 'scheduled', scheduledAt: daysFromNow(3), duration: 45, location: 'Google Meet' },
+    { candidateEmail: 'diego.ramirez@gmail.com', vacancyIdx: 2, type: 'technical', status: 'completed', scheduledAt: daysAgo(4), duration: 90, location: 'Google Meet' },
+    { candidateEmail: 'carolina.jimenez@gmail.com', vacancyIdx: 3, type: 'technical', status: 'scheduled', scheduledAt: hoursFromNow(26), duration: 60, location: 'Google Meet' },
+    { candidateEmail: 'alejandro.sanchez@yahoo.com', vacancyIdx: 4, type: 'case_study', status: 'completed', scheduledAt: daysAgo(7), duration: 90, location: 'Oficina Bogota' },
+    { candidateEmail: 'alejandro.sanchez@yahoo.com', vacancyIdx: 4, type: 'final', status: 'scheduled', scheduledAt: daysFromNow(1), duration: 45, location: 'Oficina Bogota' },
+    { candidateEmail: 'ricardo.navarro@gmail.com', vacancyIdx: 0, type: 'hr', status: 'cancelled', scheduledAt: daysAgo(12), duration: 30, location: 'Google Meet' },
   ];
 
   const interviews: { id: string; candidateEmail: string }[] = [];
@@ -1074,11 +569,7 @@ async function main() {
           scheduledAt: id.scheduledAt,
           duration: id.duration,
           location: id.location,
-          meetingUrl: id.location.includes('Meet')
-            ? 'https://meet.google.com/abc-defg-hij'
-            : id.location.includes('Zoom')
-              ? 'https://zoom.us/j/123456789'
-              : null,
+          meetingUrl: id.location.includes('Meet') ? 'https://meet.google.com/abc-defg-hij' : id.location.includes('Zoom') ? 'https://zoom.us/j/123456789' : null,
           cancelledAt: id.status === 'cancelled' ? daysAgo(13) : null,
           cancelReason: id.status === 'cancelled' ? 'Candidato desistio del proceso' : null,
           createdById: recruiter.id,
@@ -1088,18 +579,11 @@ async function main() {
       interviews.push({ id: interview.id, candidateEmail: id.candidateEmail });
 
       // Add evaluators
-      const evaluators =
-        id.type === 'technical' || id.type === 'case_study'
-          ? [
-              { userId: leader.id, role: 'lead' },
-              { userId: recruiter.id, role: 'observer' },
-            ]
-          : id.type === 'final'
-            ? [
-                { userId: admin.id, role: 'lead' },
-                { userId: hr.id, role: 'panel' },
-              ]
-            : [{ userId: recruiter.id, role: 'lead' }];
+      const evaluators = id.type === 'technical' || id.type === 'case_study'
+        ? [{ userId: leader.id, role: 'lead' }, { userId: recruiter.id, role: 'observer' }]
+        : id.type === 'final'
+          ? [{ userId: admin.id, role: 'lead' }, { userId: hr.id, role: 'panel' }]
+          : [{ userId: recruiter.id, role: 'lead' }];
 
       for (const ev of evaluators) {
         await db.interviewEvaluator.create({
@@ -1118,60 +602,12 @@ async function main() {
   // ===========================
   // 7. Offers (5)
   // ===========================
-  const offerDefs: {
-    candidateEmail: string;
-    vacancyIdx: number;
-    status: string;
-    salary: number;
-    currency: string;
-    contractType: string;
-    startDate: Date;
-  }[] = [
-    {
-      candidateEmail: 'ana.martinez@gmail.com',
-      vacancyIdx: 0,
-      status: 'accepted',
-      salary: 12000000,
-      currency: 'COP',
-      contractType: 'indefinido',
-      startDate: daysFromNow(15),
-    },
-    {
-      candidateEmail: 'luisa.morales@outlook.com',
-      vacancyIdx: 1,
-      status: 'sent',
-      salary: 8000000,
-      currency: 'COP',
-      contractType: 'indefinido',
-      startDate: daysFromNow(30),
-    },
-    {
-      candidateEmail: 'diego.ramirez@gmail.com',
-      vacancyIdx: 2,
-      status: 'draft',
-      salary: 13000000,
-      currency: 'COP',
-      contractType: 'indefinido',
-      startDate: daysFromNow(45),
-    },
-    {
-      candidateEmail: 'alejandro.sanchez@yahoo.com',
-      vacancyIdx: 4,
-      status: 'sent',
-      salary: 15000000,
-      currency: 'COP',
-      contractType: 'indefinido',
-      startDate: daysFromNow(20),
-    },
-    {
-      candidateEmail: 'juliana.cruz@outlook.com',
-      vacancyIdx: 0,
-      status: 'rejected',
-      salary: 3500000,
-      currency: 'COP',
-      contractType: 'termino_fijo',
-      startDate: daysFromNow(30),
-    },
+  const offerDefs: { candidateEmail: string; vacancyIdx: number; status: string; salary: number; currency: string; contractType: string; startDate: Date }[] = [
+    { candidateEmail: 'ana.martinez@gmail.com', vacancyIdx: 0, status: 'accepted', salary: 12000000, currency: 'COP', contractType: 'indefinido', startDate: daysFromNow(15) },
+    { candidateEmail: 'luisa.morales@outlook.com', vacancyIdx: 1, status: 'sent', salary: 8000000, currency: 'COP', contractType: 'indefinido', startDate: daysFromNow(30) },
+    { candidateEmail: 'diego.ramirez@gmail.com', vacancyIdx: 2, status: 'draft', salary: 13000000, currency: 'COP', contractType: 'indefinido', startDate: daysFromNow(45) },
+    { candidateEmail: 'alejandro.sanchez@yahoo.com', vacancyIdx: 4, status: 'sent', salary: 15000000, currency: 'COP', contractType: 'indefinido', startDate: daysFromNow(20) },
+    { candidateEmail: 'juliana.cruz@outlook.com', vacancyIdx: 0, status: 'rejected', salary: 3500000, currency: 'COP', contractType: 'termino_fijo', startDate: daysFromNow(30) },
   ];
 
   for (const od of offerDefs) {
@@ -1200,13 +636,7 @@ async function main() {
           currency: od.currency,
           contractType: od.contractType,
           startDate: od.startDate,
-          benefits: {
-            healthInsurance: true,
-            dentalPlan: true,
-            gymMembership: true,
-            homeOfficeStipend: 200000,
-            trainingBudget: 3000000,
-          },
+          benefits: { healthInsurance: true, dentalPlan: true, gymMembership: true, homeOfficeStipend: 200000, trainingBudget: 3000000 },
           sentAt: ['sent', 'accepted', 'rejected'].includes(od.status) ? daysAgo(5) : null,
           respondedAt: ['accepted', 'rejected'].includes(od.status) ? daysAgo(2) : null,
           expiresAt: daysFromNow(10),
@@ -1219,22 +649,8 @@ async function main() {
       if (['sent', 'accepted'].includes(od.status)) {
         await db.offerApproval.createMany({
           data: [
-            {
-              organizationId: org.id,
-              offerId: offer.id,
-              approverId: leader.id,
-              step: 1,
-              status: 'approved',
-              decidedAt: daysAgo(7),
-            },
-            {
-              organizationId: org.id,
-              offerId: offer.id,
-              approverId: admin.id,
-              step: 2,
-              status: 'approved',
-              decidedAt: daysAgo(6),
-            },
+            { organizationId: org.id, offerId: offer.id, approverId: leader.id, step: 1, status: 'approved', decidedAt: daysAgo(7) },
+            { organizationId: org.id, offerId: offer.id, approverId: admin.id, step: 2, status: 'approved', decidedAt: daysAgo(6) },
           ],
         });
       }
@@ -1246,27 +662,9 @@ async function main() {
   // 8. Onboarding Plans (3)
   // ===========================
   const onboardingDefs = [
-    {
-      userId: employee.id,
-      buddyId: extraUsers['santiago.ospina@tims.co']!.id,
-      startDate: daysAgo(25),
-      phase: 'day31_60',
-      status: 'active',
-    },
-    {
-      userId: extraUsers['valentina.herrera@tims.co']!.id,
-      buddyId: hr.id,
-      startDate: daysAgo(55),
-      phase: 'day61_90',
-      status: 'active',
-    },
-    {
-      userId: extraUsers['daniel.vargas@tims.co']!.id,
-      buddyId: leader.id,
-      startDate: daysAgo(100),
-      phase: 'completed',
-      status: 'completed',
-    },
+    { userId: employee.id, buddyId: extraUsers['santiago.ospina@tims.co']!.id, startDate: daysAgo(25), phase: 'day31_60', status: 'active' },
+    { userId: extraUsers['valentina.herrera@tims.co']!.id, buddyId: hr.id, startDate: daysAgo(55), phase: 'day61_90', status: 'active' },
+    { userId: extraUsers['daniel.vargas@tims.co']!.id, buddyId: leader.id, startDate: daysAgo(100), phase: 'completed', status: 'completed' },
   ];
 
   for (const ob of onboardingDefs) {
@@ -1295,36 +693,11 @@ async function main() {
         { title: 'Configurar equipo de trabajo', responsible: 'IT', phase: 'day1_30', completed: true },
         { title: 'Tour por la oficina', responsible: 'Buddy', phase: 'day1_30', completed: true },
         { title: 'Reunion con equipo directo', responsible: 'Lider', phase: 'day1_30', completed: true },
-        {
-          title: 'Completar capacitacion de seguridad',
-          responsible: 'Empleado',
-          phase: 'day1_30',
-          completed: ob.phase !== 'day1_30',
-        },
-        {
-          title: 'Primer proyecto asignado',
-          responsible: 'Lider',
-          phase: 'day31_60',
-          completed: ob.status === 'completed' || ob.phase === 'day61_90',
-        },
-        {
-          title: 'Feedback 30 dias',
-          responsible: 'RRHH',
-          phase: 'day31_60',
-          completed: ob.status === 'completed' || ob.phase === 'day61_90',
-        },
-        {
-          title: 'Evaluacion de desempeno 60 dias',
-          responsible: 'Lider',
-          phase: 'day61_90',
-          completed: ob.status === 'completed',
-        },
-        {
-          title: 'Encuesta de satisfaccion onboarding',
-          responsible: 'Empleado',
-          phase: 'day61_90',
-          completed: ob.status === 'completed',
-        },
+        { title: 'Completar capacitacion de seguridad', responsible: 'Empleado', phase: 'day1_30', completed: ob.phase !== 'day1_30' },
+        { title: 'Primer proyecto asignado', responsible: 'Lider', phase: 'day31_60', completed: ob.status === 'completed' || ob.phase === 'day61_90' },
+        { title: 'Feedback 30 dias', responsible: 'RRHH', phase: 'day31_60', completed: ob.status === 'completed' || ob.phase === 'day61_90' },
+        { title: 'Evaluacion de desempeno 60 dias', responsible: 'Lider', phase: 'day61_90', completed: ob.status === 'completed' },
+        { title: 'Encuesta de satisfaccion onboarding', responsible: 'Empleado', phase: 'day61_90', completed: ob.status === 'completed' },
       ];
 
       for (let i = 0; i < tasks.length; i++) {
@@ -1351,98 +724,26 @@ async function main() {
   // 9. Performance — OKRs, Coaching, Feedback, Recognition
   // ===========================
   const okrDefs = [
-    {
-      userId: employee.id,
-      title: 'Mejorar cobertura de pruebas unitarias',
-      period: '2026',
-      progress: 0.65,
-      keyResults: [
-        {
-          title: 'Alcanzar 80% de cobertura en modulos criticos',
-          targetValue: 80,
-          currentValue: 65,
-          unit: '%',
-          status: 'on_track',
-        },
-        {
-          title: 'Documentar 10 guias de testing',
-          targetValue: 10,
-          currentValue: 7,
-          unit: 'guias',
-          status: 'on_track',
-        },
-      ],
-    },
-    {
-      userId: leader.id,
-      title: 'Reducir time-to-hire en un 20%',
-      period: '2026',
-      progress: 0.45,
-      keyResults: [
-        {
-          title: 'Time-to-hire promedio < 25 dias',
-          targetValue: 25,
-          currentValue: 30,
-          unit: 'dias',
-          status: 'at_risk',
-        },
-        { title: 'Tasa de ofertas aceptadas > 85%', targetValue: 85, currentValue: 78, unit: '%', status: 'at_risk' },
-      ],
-    },
-    {
-      userId: extraUsers['valentina.herrera@tims.co']!.id,
-      title: 'Redisenar el design system',
-      period: '2026',
-      progress: 0.8,
-      keyResults: [
-        {
-          title: 'Migrar 100% de componentes a nueva libreria',
-          targetValue: 100,
-          currentValue: 80,
-          unit: '%',
-          status: 'on_track',
-        },
-        {
-          title: 'Reducir inconsistencias de UI a 0',
-          targetValue: 0,
-          currentValue: 3,
-          unit: 'issues',
-          status: 'on_track',
-        },
-      ],
-    },
-    {
-      userId: extraUsers['santiago.ospina@tims.co']!.id,
-      title: 'Optimizar rendimiento de API',
-      period: '2026',
-      progress: 0.55,
-      keyResults: [
-        { title: 'P95 latencia < 200ms', targetValue: 200, currentValue: 280, unit: 'ms', status: 'at_risk' },
-        {
-          title: 'Eliminar N+1 queries (0 restantes)',
-          targetValue: 0,
-          currentValue: 4,
-          unit: 'queries',
-          status: 'behind',
-        },
-      ],
-    },
-    {
-      userId: hr.id,
-      title: 'Implementar programa de bienestar',
-      period: '2026',
-      progress: 0.9,
-      keyResults: [
-        {
-          title: 'Participacion > 70% en actividades',
-          targetValue: 70,
-          currentValue: 72,
-          unit: '%',
-          status: 'on_track',
-        },
-        { title: 'eNPS score > 40', targetValue: 40, currentValue: 38, unit: 'score', status: 'on_track' },
-      ],
-    },
+    { userId: employee.id, title: 'Mejorar cobertura de pruebas unitarias', period: '2026', progress: 0.65, keyResults: [
+      { title: 'Alcanzar 80% de cobertura en modulos criticos', targetValue: 80, currentValue: 65, unit: '%', status: 'on_track' },
+      { title: 'Documentar 10 guias de testing', targetValue: 10, currentValue: 7, unit: 'guias', status: 'on_track' },
+    ]},
+    { userId: leader.id, title: 'Reducir time-to-hire en un 20%', period: '2026', progress: 0.45, keyResults: [
+      { title: 'Time-to-hire promedio < 25 dias', targetValue: 25, currentValue: 30, unit: 'dias', status: 'at_risk' },
+      { title: 'Tasa de ofertas aceptadas > 85%', targetValue: 85, currentValue: 78, unit: '%', status: 'at_risk' },
+    ]},
+    { userId: extraUsers['valentina.herrera@tims.co']!.id, title: 'Redisenar el design system', period: '2026', progress: 0.80, keyResults: [
+      { title: 'Migrar 100% de componentes a nueva libreria', targetValue: 100, currentValue: 80, unit: '%', status: 'on_track' },
+      { title: 'Reducir inconsistencias de UI a 0', targetValue: 0, currentValue: 3, unit: 'issues', status: 'on_track' },
+    ]},
+    { userId: extraUsers['santiago.ospina@tims.co']!.id, title: 'Optimizar rendimiento de API', period: '2026', progress: 0.55, keyResults: [
+      { title: 'P95 latencia < 200ms', targetValue: 200, currentValue: 280, unit: 'ms', status: 'at_risk' },
+      { title: 'Eliminar N+1 queries (0 restantes)', targetValue: 0, currentValue: 4, unit: 'queries', status: 'behind' },
+    ]},
+    { userId: hr.id, title: 'Implementar programa de bienestar', period: '2026', progress: 0.90, keyResults: [
+      { title: 'Participacion > 70% en actividades', targetValue: 70, currentValue: 72, unit: '%', status: 'on_track' },
+      { title: 'eNPS score > 40', targetValue: 40, currentValue: 38, unit: 'score', status: 'on_track' },
+    ]},
   ];
 
   for (const okrDef of okrDefs) {
@@ -1474,38 +775,10 @@ async function main() {
 
   // Coaching Sessions
   const coachingDefs = [
-    {
-      employeeId: employee.id,
-      leaderId: leader.id,
-      scheduledAt: daysAgo(14),
-      topic: 'Revision de progreso en cobertura de tests',
-      status: 'completed',
-      duration: 30,
-    },
-    {
-      employeeId: employee.id,
-      leaderId: leader.id,
-      scheduledAt: daysFromNow(7),
-      topic: 'Plan de desarrollo Q3',
-      status: 'scheduled',
-      duration: 45,
-    },
-    {
-      employeeId: extraUsers['santiago.ospina@tims.co']!.id,
-      leaderId: leader.id,
-      scheduledAt: daysAgo(7),
-      topic: 'Feedback sobre optimizacion de queries',
-      status: 'completed',
-      duration: 30,
-    },
-    {
-      employeeId: extraUsers['valentina.herrera@tims.co']!.id,
-      leaderId: hr.id,
-      scheduledAt: daysFromNow(3),
-      topic: 'Revision de design system progress',
-      status: 'scheduled',
-      duration: 30,
-    },
+    { employeeId: employee.id, leaderId: leader.id, scheduledAt: daysAgo(14), topic: 'Revision de progreso en cobertura de tests', status: 'completed', duration: 30 },
+    { employeeId: employee.id, leaderId: leader.id, scheduledAt: daysFromNow(7), topic: 'Plan de desarrollo Q3', status: 'scheduled', duration: 45 },
+    { employeeId: extraUsers['santiago.ospina@tims.co']!.id, leaderId: leader.id, scheduledAt: daysAgo(7), topic: 'Feedback sobre optimizacion de queries', status: 'completed', duration: 30 },
+    { employeeId: extraUsers['valentina.herrera@tims.co']!.id, leaderId: hr.id, scheduledAt: daysFromNow(3), topic: 'Revision de design system progress', status: 'scheduled', duration: 30 },
   ];
 
   for (const cd of coachingDefs) {
@@ -1515,11 +788,7 @@ async function main() {
     });
     if (!existing) {
       const session = await db.coachingSession.create({
-        data: {
-          organizationId: org.id,
-          ...cd,
-          notes: cd.status === 'completed' ? 'Buen progreso. Acordamos enfocarnos en areas criticas.' : null,
-        },
+        data: { organizationId: org.id, ...cd, notes: cd.status === 'completed' ? 'Buen progreso. Acordamos enfocarnos en areas criticas.' : null },
         select: { id: true },
       });
       if (cd.status === 'completed') {
@@ -1541,42 +810,12 @@ async function main() {
 
   // Feedback
   const feedbackDefs = [
-    {
-      fromUserId: leader.id,
-      toUserId: employee.id,
-      type: 'praise',
-      message: 'Excelente trabajo en la implementacion del modulo de autenticacion. Codigo limpio y bien documentado.',
-    },
-    {
-      fromUserId: hr.id,
-      toUserId: recruiter.id,
-      type: 'praise',
-      message: 'Gran gestion del proceso de seleccion de Q2. Tiempos de respuesta muy buenos.',
-    },
-    {
-      fromUserId: employee.id,
-      toUserId: leader.id,
-      type: 'constructive',
-      message: 'Seria bueno tener reuniones de alineacion mas frecuentes con el equipo.',
-    },
-    {
-      fromUserId: extraUsers['santiago.ospina@tims.co']!.id,
-      toUserId: employee.id,
-      type: 'praise',
-      message: 'Muy buena colaboracion en el code review del sprint pasado.',
-    },
-    {
-      fromUserId: admin.id,
-      toUserId: hr.id,
-      type: 'praise',
-      message: 'El programa de bienestar ha tenido un impacto positivo en el clima organizacional.',
-    },
-    {
-      fromUserId: extraUsers['camila.restrepo@tims.co']!.id,
-      toUserId: leader.id,
-      type: 'praise',
-      message: 'Gracias por el apoyo en la definicion de metricas del dashboard.',
-    },
+    { fromUserId: leader.id, toUserId: employee.id, type: 'praise', message: 'Excelente trabajo en la implementacion del modulo de autenticacion. Codigo limpio y bien documentado.' },
+    { fromUserId: hr.id, toUserId: recruiter.id, type: 'praise', message: 'Gran gestion del proceso de seleccion de Q2. Tiempos de respuesta muy buenos.' },
+    { fromUserId: employee.id, toUserId: leader.id, type: 'constructive', message: 'Seria bueno tener reuniones de alineacion mas frecuentes con el equipo.' },
+    { fromUserId: extraUsers['santiago.ospina@tims.co']!.id, toUserId: employee.id, type: 'praise', message: 'Muy buena colaboracion en el code review del sprint pasado.' },
+    { fromUserId: admin.id, toUserId: hr.id, type: 'praise', message: 'El programa de bienestar ha tenido un impacto positivo en el clima organizacional.' },
+    { fromUserId: extraUsers['camila.restrepo@tims.co']!.id, toUserId: leader.id, type: 'praise', message: 'Gracias por el apoyo en la definicion de metricas del dashboard.' },
   ];
 
   const existingFeedbackCount = await db.feedback.count({ where: { organizationId: org.id } });
@@ -1591,30 +830,10 @@ async function main() {
 
   // Recognition
   const recognitionDefs = [
-    {
-      fromUserId: admin.id,
-      toUserId: recruiter.id,
-      category: 'teamwork',
-      message: 'Por liderar exitosamente la contratacion de 5 ingenieros en Q1.',
-    },
-    {
-      fromUserId: leader.id,
-      toUserId: employee.id,
-      category: 'innovation',
-      message: 'Por proponer y ejecutar la migracion a testing automatizado.',
-    },
-    {
-      fromUserId: hr.id,
-      toUserId: admin.id,
-      category: 'leadership',
-      message: 'Por guiar al equipo durante la implementacion del nuevo ATS.',
-    },
-    {
-      fromUserId: employee.id,
-      toUserId: extraUsers['santiago.ospina@tims.co']!.id,
-      category: 'teamwork',
-      message: 'Siempre disponible para pair programming y apoyo tecnico.',
-    },
+    { fromUserId: admin.id, toUserId: recruiter.id, category: 'teamwork', message: 'Por liderar exitosamente la contratacion de 5 ingenieros en Q1.' },
+    { fromUserId: leader.id, toUserId: employee.id, category: 'innovation', message: 'Por proponer y ejecutar la migracion a testing automatizado.' },
+    { fromUserId: hr.id, toUserId: admin.id, category: 'leadership', message: 'Por guiar al equipo durante la implementacion del nuevo ATS.' },
+    { fromUserId: employee.id, toUserId: extraUsers['santiago.ospina@tims.co']!.id, category: 'teamwork', message: 'Siempre disponible para pair programming y apoyo tecnico.' },
   ];
 
   const existingRecognitionCount = await db.recognition.count({ where: { organizationId: org.id } });
@@ -1633,66 +852,16 @@ async function main() {
   const nineBoxDefs = [
     { userId: employee.id, potentialScore: 4.2, performanceScore: 3.8, quadrant: 'high_potential' },
     { userId: leader.id, potentialScore: 4.5, performanceScore: 4.3, quadrant: 'star' },
-    {
-      userId: extraUsers['valentina.herrera@tims.co']!.id,
-      potentialScore: 4.0,
-      performanceScore: 4.5,
-      quadrant: 'star',
-    },
-    {
-      userId: extraUsers['santiago.ospina@tims.co']!.id,
-      potentialScore: 3.5,
-      performanceScore: 4.0,
-      quadrant: 'consistent_performer',
-    },
-    {
-      userId: extraUsers['camila.restrepo@tims.co']!.id,
-      potentialScore: 3.8,
-      performanceScore: 3.5,
-      quadrant: 'high_potential',
-    },
-    {
-      userId: extraUsers['juan.alvarez@tims.co']!.id,
-      potentialScore: 3.0,
-      performanceScore: 4.2,
-      quadrant: 'consistent_performer',
-    },
-    {
-      userId: extraUsers['isabella.cardenas@tims.co']!.id,
-      potentialScore: 4.3,
-      performanceScore: 3.2,
-      quadrant: 'high_potential',
-    },
-    {
-      userId: extraUsers['daniel.vargas@tims.co']!.id,
-      potentialScore: 2.8,
-      performanceScore: 3.0,
-      quadrant: 'core_player',
-    },
-    {
-      userId: extraUsers['gabriela.luna@tims.co']!.id,
-      potentialScore: 3.2,
-      performanceScore: 3.8,
-      quadrant: 'consistent_performer',
-    },
-    {
-      userId: extraUsers['mateo.rios@tims.co']!.id,
-      potentialScore: 2.5,
-      performanceScore: 2.8,
-      quadrant: 'underperformer',
-    },
-    {
-      userId: extraUsers['lucia.castro@tims.co']!.id,
-      potentialScore: 3.5,
-      performanceScore: 4.0,
-      quadrant: 'consistent_performer',
-    },
-    {
-      userId: extraUsers['nicolas.betancur@tims.co']!.id,
-      potentialScore: 2.0,
-      performanceScore: 3.5,
-      quadrant: 'solid_performer',
-    },
+    { userId: extraUsers['valentina.herrera@tims.co']!.id, potentialScore: 4.0, performanceScore: 4.5, quadrant: 'star' },
+    { userId: extraUsers['santiago.ospina@tims.co']!.id, potentialScore: 3.5, performanceScore: 4.0, quadrant: 'consistent_performer' },
+    { userId: extraUsers['camila.restrepo@tims.co']!.id, potentialScore: 3.8, performanceScore: 3.5, quadrant: 'high_potential' },
+    { userId: extraUsers['juan.alvarez@tims.co']!.id, potentialScore: 3.0, performanceScore: 4.2, quadrant: 'consistent_performer' },
+    { userId: extraUsers['isabella.cardenas@tims.co']!.id, potentialScore: 4.3, performanceScore: 3.2, quadrant: 'high_potential' },
+    { userId: extraUsers['daniel.vargas@tims.co']!.id, potentialScore: 2.8, performanceScore: 3.0, quadrant: 'core_player' },
+    { userId: extraUsers['gabriela.luna@tims.co']!.id, potentialScore: 3.2, performanceScore: 3.8, quadrant: 'consistent_performer' },
+    { userId: extraUsers['mateo.rios@tims.co']!.id, potentialScore: 2.5, performanceScore: 2.8, quadrant: 'underperformer' },
+    { userId: extraUsers['lucia.castro@tims.co']!.id, potentialScore: 3.5, performanceScore: 4.0, quadrant: 'consistent_performer' },
+    { userId: extraUsers['nicolas.betancur@tims.co']!.id, potentialScore: 2.0, performanceScore: 3.5, quadrant: 'solid_performer' },
     { userId: hr.id, potentialScore: 3.8, performanceScore: 4.2, quadrant: 'star' },
     { userId: recruiter.id, potentialScore: 3.5, performanceScore: 3.8, quadrant: 'consistent_performer' },
   ];
@@ -1710,16 +879,8 @@ async function main() {
         quadrant: nb.quadrant,
         confidence: 0.85,
         axisBreakdown: {
-          potential: {
-            leadership: nb.potentialScore - 0.3,
-            learning: nb.potentialScore + 0.1,
-            ambition: nb.potentialScore,
-          },
-          performance: {
-            results: nb.performanceScore,
-            competencies: nb.performanceScore - 0.2,
-            values: nb.performanceScore + 0.1,
-          },
+          potential: { leadership: nb.potentialScore - 0.3, learning: nb.potentialScore + 0.1, ambition: nb.potentialScore },
+          performance: { results: nb.performanceScore, competencies: nb.performanceScore - 0.2, values: nb.performanceScore + 0.1 },
         },
       },
     });
@@ -1730,97 +891,55 @@ async function main() {
   // 11. Succession — Critical Roles + Successors
   // ===========================
   const criticalRoleDefs = [
-    {
-      title: 'CTO',
-      criticality: 'critical',
-      holderId: federico.id,
-      flightRisk: 0.15,
-      successors: [
-        { userId: leader.id, readiness: 'ready_1_year', type: 'internal' },
-        { userId: extraUsers['santiago.ospina@tims.co']!.id, readiness: 'ready_2_years', type: 'internal' },
-      ],
-    },
-    {
-      title: 'HR Director',
-      criticality: 'critical',
-      holderId: admin.id,
-      flightRisk: 0.2,
-      successors: [
-        { userId: hr.id, readiness: 'ready_now', type: 'internal' },
-        { userId: extraUsers['gabriela.luna@tims.co']!.id, readiness: 'ready_2_years', type: 'internal' },
-      ],
-    },
-    {
-      title: 'Engineering Manager',
-      criticality: 'high',
-      holderId: leader.id,
-      flightRisk: 0.35,
-      successors: [
-        { userId: extraUsers['isabella.cardenas@tims.co']!.id, readiness: 'ready_1_year', type: 'internal' },
-      ],
-    },
-    {
-      title: 'Head of Product',
-      criticality: 'high',
-      holderId: null,
-      flightRisk: null,
-      successors: [
-        { userId: extraUsers['valentina.herrera@tims.co']!.id, readiness: 'ready_2_years', type: 'internal' },
-      ],
-    },
-    {
-      title: 'Sales Director',
-      criticality: 'medium',
-      holderId: extraUsers['mateo.rios@tims.co']!.id,
-      flightRisk: 0.45,
-      successors: [{ userId: extraUsers['lucia.castro@tims.co']!.id, readiness: 'ready_1_year', type: 'internal' }],
-    },
+    { title: 'CTO', criticality: 'critical', holderId: federico.id, flightRisk: 0.15, successors: [
+      { userId: leader.id, readiness: 'ready_1_year', type: 'internal' },
+      { userId: extraUsers['santiago.ospina@tims.co']!.id, readiness: 'ready_2_years', type: 'internal' },
+    ]},
+    { title: 'HR Director', criticality: 'critical', holderId: admin.id, flightRisk: 0.20, successors: [
+      { userId: hr.id, readiness: 'ready_now', type: 'internal' },
+      { userId: extraUsers['gabriela.luna@tims.co']!.id, readiness: 'ready_2_years', type: 'internal' },
+    ]},
+    { title: 'Engineering Manager', criticality: 'high', holderId: leader.id, flightRisk: 0.35, successors: [
+      { userId: extraUsers['isabella.cardenas@tims.co']!.id, readiness: 'ready_1_year', type: 'internal' },
+    ]},
+    { title: 'Head of Product', criticality: 'high', holderId: null, flightRisk: null, successors: [
+      { userId: extraUsers['valentina.herrera@tims.co']!.id, readiness: 'ready_2_years', type: 'internal' },
+    ]},
+    { title: 'Sales Director', criticality: 'medium', holderId: extraUsers['mateo.rios@tims.co']!.id, flightRisk: 0.45, successors: [
+      { userId: extraUsers['lucia.castro@tims.co']!.id, readiness: 'ready_1_year', type: 'internal' },
+    ]},
   ];
 
-  // RAW SQL, not Prisma delegates — critical_roles + successors were ownership-flipped to `efcore`
-  // (#69, 2026-08-04), so their Prisma models no longer exist and `db.criticalRole` / `db.successor`
-  // are gone from the client. The ownership-flip runbook's disposition for this file is exactly
-  // "port to raw SQL or drop from the demo seed"; keeping the demo data is worth the raw SQL here
-  // because /talent/succession renders empty without it.
-  //
-  // This is a DEV DEMO SEEDER, not an application read/write path — runbook §0 P2 forbids converting
-  // an *application* Prisma reader to raw SQL to make `tsc` pass (it would hide a cross-owner read from
-  // both the ownership check and the compiler). That prohibition does not apply to this file, and no
-  // application code below reads these tables.
-  //
-  // Explicit `id` and `updated_at`: production has NO default on either column for these two tables
-  // (Prisma supplied `id` client-side via @default(uuid()) and `updated_at` via @updatedAt).
-  // `created_at` does default to CURRENT_TIMESTAMP, so it is omitted.
   for (const cr of criticalRoleDefs) {
-    const existing = await db.$queryRaw<{ id: string }[]>`
-      SELECT id FROM critical_roles
-      WHERE organization_id = ${org.id}::uuid AND title = ${cr.title}
-      LIMIT 1
-    `;
-    if (existing.length === 0) {
-      const inserted = await db.$queryRaw<{ id: string }[]>`
-        INSERT INTO critical_roles
-          (id, organization_id, title, criticality, current_holder_id, company_id, unit_id,
-           flight_risk, updated_at)
-        VALUES
-          (gen_random_uuid(), ${org.id}::uuid, ${cr.title}, ${cr.criticality},
-           ${cr.holderId}::uuid, ${company.id}::uuid, ${unit.id}::uuid,
-           ${cr.flightRisk}::double precision, now())
-        RETURNING id
-      `;
-      const roleId = inserted[0]!.id;
+    const existing = await db.criticalRole.findFirst({
+      where: { organizationId: org.id, title: cr.title },
+      select: { id: true },
+    });
+    if (!existing) {
+      const role = await db.criticalRole.create({
+        data: {
+          organizationId: org.id,
+          title: cr.title,
+          criticality: cr.criticality,
+          currentHolderId: cr.holderId,
+          companyId: company.id,
+          unitId: unit.id,
+          flightRisk: cr.flightRisk,
+        },
+        select: { id: true },
+      });
       for (const s of cr.successors) {
-        // @@unique([critical_role_id, user_id]) in prod → ON CONFLICT keeps this idempotent.
-        await db.$executeRaw`
-          INSERT INTO successors
-            (id, organization_id, critical_role_id, user_id, readiness, type,
-             development_plan, added_by_id, updated_at)
-          VALUES
-            (gen_random_uuid(), ${org.id}::uuid, ${roleId}::uuid, ${s.userId}::uuid,
-             ${s.readiness}, ${s.type},
-             ${`Plan de desarrollo para sucesion de ${cr.title}`}, ${admin.id}::uuid, now())
-          ON CONFLICT (critical_role_id, user_id) DO NOTHING
-        `;
+        await db.successor.create({
+          data: {
+            organizationId: org.id,
+            criticalRoleId: role.id,
+            userId: s.userId,
+            readiness: s.readiness,
+            type: s.type,
+            developmentPlan: `Plan de desarrollo para sucesion de ${cr.title}`,
+            addedById: admin.id,
+          },
+        });
       }
     }
   }
@@ -1833,22 +952,8 @@ async function main() {
     { level: 'junior', title: 'Junior', minSalary: 2500000, midSalary: 3500000, maxSalary: 4500000, currency: 'COP' },
     { level: 'mid', title: 'Mid-Level', minSalary: 4500000, midSalary: 6500000, maxSalary: 8500000, currency: 'COP' },
     { level: 'senior', title: 'Senior', minSalary: 8000000, midSalary: 11000000, maxSalary: 14000000, currency: 'COP' },
-    {
-      level: 'lead',
-      title: 'Lead / Manager',
-      minSalary: 12000000,
-      midSalary: 16000000,
-      maxSalary: 20000000,
-      currency: 'COP',
-    },
-    {
-      level: 'director',
-      title: 'Director',
-      minSalary: 18000000,
-      midSalary: 23000000,
-      maxSalary: 28000000,
-      currency: 'COP',
-    },
+    { level: 'lead', title: 'Lead / Manager', minSalary: 12000000, midSalary: 16000000, maxSalary: 20000000, currency: 'COP' },
+    { level: 'director', title: 'Director', minSalary: 18000000, midSalary: 23000000, maxSalary: 28000000, currency: 'COP' },
   ];
 
   const salaryBands: Record<string, { id: string }> = {};
@@ -1872,35 +977,20 @@ async function main() {
   // Employee compensation
   const compDefs: { userId: string; currentSalary: number; bandLevel: string; compaRatio: number }[] = [
     { userId: employee.id, currentSalary: 7000000, bandLevel: 'mid', compaRatio: 1.08 },
-    { userId: leader.id, currentSalary: 16000000, bandLevel: 'lead', compaRatio: 1.0 },
+    { userId: leader.id, currentSalary: 16000000, bandLevel: 'lead', compaRatio: 1.00 },
     { userId: hr.id, currentSalary: 9500000, bandLevel: 'senior', compaRatio: 0.86 },
     { userId: recruiter.id, currentSalary: 6000000, bandLevel: 'mid', compaRatio: 0.92 },
     { userId: admin.id, currentSalary: 22000000, bandLevel: 'director', compaRatio: 0.96 },
-    {
-      userId: extraUsers['valentina.herrera@tims.co']!.id,
-      currentSalary: 8500000,
-      bandLevel: 'senior',
-      compaRatio: 0.77,
-    },
-    {
-      userId: extraUsers['santiago.ospina@tims.co']!.id,
-      currentSalary: 10000000,
-      bandLevel: 'senior',
-      compaRatio: 0.91,
-    },
+    { userId: extraUsers['valentina.herrera@tims.co']!.id, currentSalary: 8500000, bandLevel: 'senior', compaRatio: 0.77 },
+    { userId: extraUsers['santiago.ospina@tims.co']!.id, currentSalary: 10000000, bandLevel: 'senior', compaRatio: 0.91 },
     { userId: extraUsers['camila.restrepo@tims.co']!.id, currentSalary: 7500000, bandLevel: 'mid', compaRatio: 1.15 },
-    { userId: extraUsers['juan.alvarez@tims.co']!.id, currentSalary: 11000000, bandLevel: 'senior', compaRatio: 1.0 },
-    {
-      userId: extraUsers['isabella.cardenas@tims.co']!.id,
-      currentSalary: 9000000,
-      bandLevel: 'senior',
-      compaRatio: 0.82,
-    },
+    { userId: extraUsers['juan.alvarez@tims.co']!.id, currentSalary: 11000000, bandLevel: 'senior', compaRatio: 1.00 },
+    { userId: extraUsers['isabella.cardenas@tims.co']!.id, currentSalary: 9000000, bandLevel: 'senior', compaRatio: 0.82 },
     { userId: extraUsers['daniel.vargas@tims.co']!.id, currentSalary: 5500000, bandLevel: 'mid', compaRatio: 0.85 },
     { userId: extraUsers['gabriela.luna@tims.co']!.id, currentSalary: 5000000, bandLevel: 'mid', compaRatio: 0.77 },
     { userId: extraUsers['mateo.rios@tims.co']!.id, currentSalary: 14000000, bandLevel: 'lead', compaRatio: 0.88 },
     { userId: extraUsers['lucia.castro@tims.co']!.id, currentSalary: 12000000, bandLevel: 'lead', compaRatio: 0.75 },
-    { userId: extraUsers['nicolas.betancur@tims.co']!.id, currentSalary: 6500000, bandLevel: 'mid', compaRatio: 1.0 },
+    { userId: extraUsers['nicolas.betancur@tims.co']!.id, currentSalary: 6500000, bandLevel: 'mid', compaRatio: 1.00 },
   ];
 
   for (const cd of compDefs) {
@@ -1923,46 +1013,11 @@ async function main() {
 
   // Salary adjustments (pending + approved)
   const adjustmentDefs = [
-    {
-      userId: employee.id,
-      type: 'merit',
-      previousSalary: 6500000,
-      newSalary: 7000000,
-      status: 'approved',
-      reason: 'Aumento por desempeno Q1 2026',
-    },
-    {
-      userId: extraUsers['valentina.herrera@tims.co']!.id,
-      type: 'merit',
-      previousSalary: 7500000,
-      newSalary: 8500000,
-      status: 'approved',
-      reason: 'Promocion a Senior Designer',
-    },
-    {
-      userId: extraUsers['daniel.vargas@tims.co']!.id,
-      type: 'adjustment',
-      previousSalary: 5000000,
-      newSalary: 5500000,
-      status: 'approved',
-      reason: 'Ajuste por equidad salarial',
-    },
-    {
-      userId: extraUsers['gabriela.luna@tims.co']!.id,
-      type: 'merit',
-      previousSalary: 5000000,
-      newSalary: 5800000,
-      status: 'pending',
-      reason: 'Propuesta de aumento por desempeno Q2',
-    },
-    {
-      userId: recruiter.id,
-      type: 'promotion',
-      previousSalary: 5500000,
-      newSalary: 6000000,
-      status: 'pending',
-      reason: 'Promocion a Senior Recruiter',
-    },
+    { userId: employee.id, type: 'merit', previousSalary: 6500000, newSalary: 7000000, status: 'approved', reason: 'Aumento por desempeno Q1 2026' },
+    { userId: extraUsers['valentina.herrera@tims.co']!.id, type: 'merit', previousSalary: 7500000, newSalary: 8500000, status: 'approved', reason: 'Promocion a Senior Designer' },
+    { userId: extraUsers['daniel.vargas@tims.co']!.id, type: 'adjustment', previousSalary: 5000000, newSalary: 5500000, status: 'approved', reason: 'Ajuste por equidad salarial' },
+    { userId: extraUsers['gabriela.luna@tims.co']!.id, type: 'merit', previousSalary: 5000000, newSalary: 5800000, status: 'pending', reason: 'Propuesta de aumento por desempeno Q2' },
+    { userId: recruiter.id, type: 'promotion', previousSalary: 5500000, newSalary: 6000000, status: 'pending', reason: 'Promocion a Senior Recruiter' },
   ];
 
   const existingAdjustments = await db.salaryAdjustment.count({ where: { organizationId: org.id } });
@@ -1993,11 +1048,7 @@ async function main() {
     { name: 'Plan Dental', type: 'dental', description: 'Cobertura odontologica completa' },
     { name: 'Fondo de Empleados', type: 'savings', description: 'Ahorro cooperativo con aportes de la empresa' },
     { name: 'Seguro de Vida', type: 'life_insurance', description: 'Cobertura de seguro de vida grupal' },
-    {
-      name: 'Gimnasio & Bienestar',
-      type: 'wellness',
-      description: 'Subsidio para gimnasio y actividades de bienestar',
-    },
+    { name: 'Gimnasio & Bienestar', type: 'wellness', description: 'Subsidio para gimnasio y actividades de bienestar' },
   ];
 
   const benefitPlans: Record<string, { id: string }> = {};
@@ -2035,49 +1086,13 @@ async function main() {
   // 13. Learning — Courses + Enrollments
   // ===========================
   const courseDefs = [
-    {
-      title: 'Fundamentos de TypeScript',
-      type: 'technical',
-      category: 'Development',
-      duration: 480,
-      isRequired: false,
-    },
-    {
-      title: 'Liderazgo para Nuevos Managers',
-      type: 'leadership',
-      category: 'Management',
-      duration: 720,
-      isRequired: false,
-    },
+    { title: 'Fundamentos de TypeScript', type: 'technical', category: 'Development', duration: 480, isRequired: false },
+    { title: 'Liderazgo para Nuevos Managers', type: 'leadership', category: 'Management', duration: 720, isRequired: false },
     { title: 'Seguridad de la Informacion', type: 'compliance', category: 'Security', duration: 120, isRequired: true },
-    {
-      title: 'Diversidad e Inclusion en el Trabajo',
-      type: 'compliance',
-      category: 'DEI',
-      duration: 90,
-      isRequired: true,
-    },
-    {
-      title: 'Introduccion a Machine Learning',
-      type: 'technical',
-      category: 'Data Science',
-      duration: 600,
-      isRequired: false,
-    },
-    {
-      title: 'Comunicacion Efectiva',
-      type: 'soft_skills',
-      category: 'Communication',
-      duration: 180,
-      isRequired: false,
-    },
-    {
-      title: 'Gestion Agil de Proyectos',
-      type: 'methodology',
-      category: 'Project Management',
-      duration: 360,
-      isRequired: false,
-    },
+    { title: 'Diversidad e Inclusion en el Trabajo', type: 'compliance', category: 'DEI', duration: 90, isRequired: true },
+    { title: 'Introduccion a Machine Learning', type: 'technical', category: 'Data Science', duration: 600, isRequired: false },
+    { title: 'Comunicacion Efectiva', type: 'soft_skills', category: 'Communication', duration: 180, isRequired: false },
+    { title: 'Gestion Agil de Proyectos', type: 'methodology', category: 'Project Management', duration: 360, isRequired: false },
     { title: 'AWS Cloud Practitioner', type: 'technical', category: 'Cloud', duration: 900, isRequired: false },
   ];
 
@@ -2106,24 +1121,9 @@ async function main() {
     { userId: employee.id, courseTitle: 'AWS Cloud Practitioner', status: 'in_progress', progress: 45 },
     { userId: leader.id, courseTitle: 'Liderazgo para Nuevos Managers', status: 'completed', progress: 100 },
     { userId: leader.id, courseTitle: 'Seguridad de la Informacion', status: 'completed', progress: 100 },
-    {
-      userId: extraUsers['santiago.ospina@tims.co']!.id,
-      courseTitle: 'AWS Cloud Practitioner',
-      status: 'in_progress',
-      progress: 70,
-    },
-    {
-      userId: extraUsers['valentina.herrera@tims.co']!.id,
-      courseTitle: 'Diversidad e Inclusion en el Trabajo',
-      status: 'completed',
-      progress: 100,
-    },
-    {
-      userId: extraUsers['camila.restrepo@tims.co']!.id,
-      courseTitle: 'Introduccion a Machine Learning',
-      status: 'in_progress',
-      progress: 55,
-    },
+    { userId: extraUsers['santiago.ospina@tims.co']!.id, courseTitle: 'AWS Cloud Practitioner', status: 'in_progress', progress: 70 },
+    { userId: extraUsers['valentina.herrera@tims.co']!.id, courseTitle: 'Diversidad e Inclusion en el Trabajo', status: 'completed', progress: 100 },
+    { userId: extraUsers['camila.restrepo@tims.co']!.id, courseTitle: 'Introduccion a Machine Learning', status: 'in_progress', progress: 55 },
     { userId: hr.id, courseTitle: 'Comunicacion Efectiva', status: 'completed', progress: 100 },
     { userId: hr.id, courseTitle: 'Gestion Agil de Proyectos', status: 'in_progress', progress: 30 },
     { userId: recruiter.id, courseTitle: 'Diversidad e Inclusion en el Trabajo', status: 'completed', progress: 100 },
@@ -2189,12 +1189,7 @@ async function main() {
       type: 'pulse',
       status: 'draft',
       questions: [
-        {
-          id: 'q1',
-          text: 'Como te sientes esta semana?',
-          type: 'emoji',
-          options: ['great', 'good', 'ok', 'bad', 'terrible'],
-        },
+        { id: 'q1', text: 'Como te sientes esta semana?', type: 'emoji', options: ['great', 'good', 'ok', 'bad', 'terrible'] },
         { id: 'q2', text: 'Tienes algun bloqueo?', type: 'yes_no' },
       ],
       startsAt: daysFromNow(3),
@@ -2252,54 +1247,14 @@ async function main() {
   // 15. Monitoring — Alert Rules + Alerts
   // ===========================
   const alertDefs = [
-    {
-      module: 'recruitment',
-      severity: 'warning',
-      title: 'SLA de screening excedido',
-      message: 'La vacante "Senior Full Stack Developer" tiene 3 candidatos que exceden el SLA de screening (48h).',
-    },
-    {
-      module: 'recruitment',
-      severity: 'info',
-      title: 'Nuevo candidato aplicado',
-      message: 'Oscar Castillo aplico a la vacante "Senior Full Stack Developer" via LinkedIn.',
-    },
-    {
-      module: 'performance',
-      severity: 'warning',
-      title: 'OKR en riesgo',
-      message: 'El OKR "Reducir time-to-hire" de Andres Tafur tiene 2 key results en riesgo.',
-    },
-    {
-      module: 'compensation',
-      severity: 'critical',
-      title: 'Ajuste salarial pendiente de aprobacion',
-      message: '2 ajustes salariales llevan mas de 7 dias pendientes de aprobacion.',
-    },
-    {
-      module: 'onboarding',
-      severity: 'info',
-      title: 'Onboarding completado',
-      message: 'Daniel Vargas completo exitosamente su plan de onboarding de 90 dias.',
-    },
-    {
-      module: 'engagement',
-      severity: 'warning',
-      title: 'eNPS por debajo del objetivo',
-      message: 'El eNPS actual es 38, por debajo del objetivo de 40.',
-    },
-    {
-      module: 'succession',
-      severity: 'critical',
-      title: 'Riesgo de fuga alto',
-      message: 'Mateo Rios (Sales Director) tiene un flight risk del 45%. Solo tiene 1 sucesor identificado.',
-    },
-    {
-      module: 'learning',
-      severity: 'info',
-      title: 'Certificacion obtenida',
-      message: 'Sofia Perez completo la certificacion de TypeScript Fundamentals.',
-    },
+    { module: 'recruitment', severity: 'warning', title: 'SLA de screening excedido', message: 'La vacante "Senior Full Stack Developer" tiene 3 candidatos que exceden el SLA de screening (48h).' },
+    { module: 'recruitment', severity: 'info', title: 'Nuevo candidato aplicado', message: 'Oscar Castillo aplico a la vacante "Senior Full Stack Developer" via LinkedIn.' },
+    { module: 'performance', severity: 'warning', title: 'OKR en riesgo', message: 'El OKR "Reducir time-to-hire" de Andres Tafur tiene 2 key results en riesgo.' },
+    { module: 'compensation', severity: 'critical', title: 'Ajuste salarial pendiente de aprobacion', message: '2 ajustes salariales llevan mas de 7 dias pendientes de aprobacion.' },
+    { module: 'onboarding', severity: 'info', title: 'Onboarding completado', message: 'Daniel Vargas completo exitosamente su plan de onboarding de 90 dias.' },
+    { module: 'engagement', severity: 'warning', title: 'eNPS por debajo del objetivo', message: 'El eNPS actual es 38, por debajo del objetivo de 40.' },
+    { module: 'succession', severity: 'critical', title: 'Riesgo de fuga alto', message: 'Mateo Rios (Sales Director) tiene un flight risk del 45%. Solo tiene 1 sucesor identificado.' },
+    { module: 'learning', severity: 'info', title: 'Certificacion obtenida', message: 'Sofia Perez completo la certificacion de TypeScript Fundamentals.' },
   ];
 
   const existingAlerts = await db.alert.count({ where: { organizationId: org.id } });
@@ -2331,12 +1286,7 @@ async function main() {
     { email: 'ana.martinez@gmail.com', type: 'cover_letter', fileName: 'Carta_Ana_Martinez.pdf', fileSize: 120000 },
     { email: 'pedro.gutierrez@hotmail.com', type: 'cv', fileName: 'CV_Pedro_Gutierrez.pdf', fileSize: 310000 },
     { email: 'luisa.morales@outlook.com', type: 'cv', fileName: 'CV_Luisa_Morales.pdf', fileSize: 280000 },
-    {
-      email: 'luisa.morales@outlook.com',
-      type: 'portfolio',
-      fileName: 'Portfolio_Luisa_Morales.pdf',
-      fileSize: 4500000,
-    },
+    { email: 'luisa.morales@outlook.com', type: 'portfolio', fileName: 'Portfolio_Luisa_Morales.pdf', fileSize: 4500000 },
     { email: 'diego.ramirez@gmail.com', type: 'cv', fileName: 'CV_Diego_Ramirez.pdf', fileSize: 190000 },
     { email: 'alejandro.sanchez@yahoo.com', type: 'cv', fileName: 'CV_Alejandro_Sanchez.pdf', fileSize: 220000 },
     { email: 'carolina.jimenez@gmail.com', type: 'cv', fileName: 'CV_Carolina_Jimenez.pdf', fileSize: 275000 },

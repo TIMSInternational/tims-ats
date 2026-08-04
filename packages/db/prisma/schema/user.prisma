@@ -97,10 +97,10 @@ model User {
   completedValidations         PreemploymentValidation[] @relation("ValidationCompletedBy")
   completedLegalChecks         LegalCheck[]            @relation("LegalCheckCompletedBy")
 
-  // Succession — back-relations REMOVED by the ownership flip (#69, 2026-08-04).
-  // critical_roles + successors are now `efcore` (C# is the sole writer); their Prisma models are
-  // deleted, so criticalRolesHeld / successorEntries / addedSuccessors cannot exist here. A surviving
-  // back-relation to a deleted model is a hard P1012 that the ledger check does NOT catch.
+  // Succession
+  criticalRolesHeld            CriticalRole[]          @relation("CriticalRoleHolder")
+  successorEntries             Successor[]             @relation("SuccessorUser")
+  addedSuccessors              Successor[]             @relation("SuccessorAddedBy")
 
   // Engagement
   createdSurveys               Survey[]                @relation("SurveyCreator")
