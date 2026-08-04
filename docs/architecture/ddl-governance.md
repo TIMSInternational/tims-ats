@@ -163,6 +163,84 @@ belong in 14; only 14 can carry them.
 baseline, and a client older than the server. Given #38, a gate whose did-not-run path is untested is
 not a gate. Exit 0 is not covered there (it needs live credentials); `/gate` check 16 covers it.
 
+### Check 17 — `app_tenant` least privilege (#126, added 2026-08-04)
+
+`scripts/security/verify-tenant-grants.ts`. Asserts that `app_tenant` holds `INSERT`/`UPDATE`/`DELETE`
+**only** on tables the Prisma schema declares. Exit 0 clean · 1 violation · 1 could-not-run (fail closed,
+same contract as 14 and 16 — an unrunnable privilege check is not a pass).
+
+It exists because production carries this default privilege, verified via `pg_default_acl`:
+
+```sql
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app_tenant;   -- {app_tenant=arwd/postgres}
+```
+
+so **every** table `postgres` creates in `public` inherits tenant DML whether it needs it or not. Opt-out,
+not opt-in.
+
+**The discriminator is RLS, not ownership — and getting that wrong nearly caused an outage.** The first
+version of this check flagged all 20 non-Prisma tables, and the accompanying REVOKE script would have
+revoked all 20. A cross-model reviewer caught that the C# strangler writes its tables **as `app_tenant`**:
+`TenantScope.cs:46` issues `SET LOCAL ROLE app_tenant`, because that is *how* those writes are
+RLS-enforced. Revoking the 7 RLS-forced EF tables would have broken HRIS sync, access-review attestation
+and succession writes in production, detectable only by the failures themselves.
+
+So the rule is:
+
+| Table shape                | Meaning                                                    | app_tenant DML |
+| -------------------------- | ---------------------------------------------------------- | -------------- |
+| Prisma-owned               | the TS app writes it via `tenantDb`                        | required       |
+| EF-owned, RLS **forced**   | tenant-scoped; C# writes it as `app_tenant` under TenantScope | **required**   |
+| No RLS                     | not tenant-scoped ⇒ nothing writes it under TenantScope    | **dead → revoke** |
+
+That leaves **13 violations**: `fx_rates` (its writer runs on a plain connection as the owner role,
+explicitly not under TenantScope), all **11 `qrtz_*`** (no Quartz source file references TenantScope), and
+`__EFMigrationsHistory` (written by psql-applied scripts as `postgres`). All 13 have RLS disabled, so the
+grant is their only guard. Writer-verified per table, which is the step the first draft skipped.
+
+Two further corrections this check encodes, both wrong in #126's original framing:
+
+- **The grant is applied at `CREATE TABLE`, not at flip time.** An ownership flip does not re-grant, so a
+  `REVOKE` on a flipped table **is** durable. The earlier "every flip re-creates the condition" was wrong.
+- **The exposure is therefore not about flips at all** — it is every non-Prisma table in the schema, which
+  is how the 11 `qrtz_*` and `__EFMigrationsHistory` were sitting there unnoticed.
+
+Severity, stated honestly: `app_tenant` is `NOLOGIN` and `NOBYPASSRLS`, reachable only via
+`SET LOCAL ROLE app_tenant` from the app's own connection inside a transaction. Exploiting it needs
+app-level SQL injection or a compromised app process — **not remotely exploitable**. But containing exactly
+that is what `app_tenant` + RLS exist for.
+
+The default ACL is **deliberately left in place**: narrowing it means explicitly granting ~99 Prisma-owned
+tables, and one missed table breaks tenant writes at runtime. This check is the chosen alternative — it
+catches the next table that inherits the grant, instead of preventing the inheritance. Fix script:
+`packages/db/prisma/manual/2026-08-04-revoke-app-tenant-dml.sql` (+ `.ROLLBACK.sql`).
+
+> **Grants are part of the baseline**, so applying that REVOKE **will** make check 16 report drift. Re-capture
+> in the same change, and read the diff — it should contain nothing but the expected `REVOKE`s.
+
+### Which of the flip/privilege controls are actually enforced, and where
+
+Being explicit, because "documented in the runbook" and "enforced" are not the same thing and this repo has
+been burned by the difference (#38):
+
+| Control                                          | Runs where                               | Enforced?                               |
+| ------------------------------------------------ | ---------------------------------------- | --------------------------------------- |
+| `tests/governance/scope-fixtures.test.ts` (#132) | `npx vitest run` → CI `Security Audit`   | ✅ **yes** — blocks CI                  |
+| `tests/governance/table-ownership.test.ts`       | `npx vitest run` + `dotnet-platform.yml` | ✅ yes                                  |
+| check 14 `verify-rls-isolation.ts`               | `/gate`, local (live DB)                 | ⚠️ ship-time only                       |
+| check 16 `schema-baseline.sh check`              | `/gate`, local (live DB)                 | ⚠️ ship-time only (#124)                |
+| **check 17 `verify-tenant-grants.ts`**           | `/gate`, local (live DB)                 | ⚠️ ship-time only — same credential gap |
+| `scripts/db/pre-flip-scan.ts` (#132)             | by hand, per flip (runbook §5)           | ❌ no — a documented step, not a gate   |
+
+`main` also has **no required status checks** (see the ownership-flip runbook §1), so even the ✅ rows are
+"CI goes red", not "the merge is blocked". `gh pr merge --admin` bypasses all of it.
+
+> **The `/gate` skill's own check list is defined outside this repository**, so adding "check 17" to it is a
+> separate edit that this change cannot make. Until that happens, check 17 must be run explicitly:
+> `npx tsx scripts/security/verify-tenant-grants.ts`. Treating it as automatically part of `/gate` would be
+> the same mistake as assuming the Codex gate ran (#38).
+
 ### CI, and what to do when check 16 cannot run
 
 Check 16 is local-only for now: it needs the direct connection (`:5432`) and a `pg_dump` ≥ 17, and

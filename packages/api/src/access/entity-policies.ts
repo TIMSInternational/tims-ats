@@ -8,43 +8,51 @@ import type { AccessContext } from './types';
 // deploy-safety invariant: pre-seed prod grants are all org-equivalent, so this
 // slice is behavior-neutral until seed-access --apply runs.
 
-export type ScopedEntity =
-  | 'vacancy'
-  | 'candidate'
-  | 'application'
-  | 'interview'
-  | 'offer'
-  | 'assessmentAssignment'
-  | 'okr'
-  | 'coachingSession'
-  | 'feedback'
-  | 'onboardingPlan'
-  | 'enrollment'
-  | 'certificate'
-  | 'nineBoxEvaluation'
-  | 'successor'
-  | 'criticalRole'
-  | 'employeeCompensation'
-  | 'salaryAdjustment'
-  | 'team'
-  | 'actionPlan'
-  | 'leaderCommitment'
-  | 'commitment';
+// ONE source of truth for the entity LIST (#132, 2026-08-04). It previously existed twice — as a
+// hand-written `ScopedEntity` union AND as this runtime `ENTITIES` set — with nothing keeping the two in
+// agreement. The type is now DERIVED from the array, so union/set drift is impossible by construction.
+// Verified behaviour-neutral at the point of the change: union, set and the
+// contracts/access-fixtures/scope-where.json entity set were all exactly these 21 names.
+//
+// Being precise about what enforces what, since "one source of truth" alone would overstate it — the
+// names still appear in the switch below and in the fixture JSON, and those are pinned differently:
+//
+//   union ↔ this array   by CONSTRUCTION (the type is the array's element type)
+//   array ↔ switch below by the COMPILER: omit a case and `scopeWhereFor` has a code path returning
+//                        undefined against a declared `Promise<Fragment>` → TS2366. Verified empirically
+//                        by adding an entity without a case; no `assertNever` needed.
+//   array ↔ fixture JSON by tests/governance/scope-fixtures.test.ts (both directions).
+export const SCOPED_ENTITIES = [
+  'vacancy',
+  'candidate',
+  'application',
+  'interview',
+  'offer',
+  'assessmentAssignment',
+  'okr',
+  'coachingSession',
+  'feedback',
+  'onboardingPlan',
+  'enrollment',
+  'certificate',
+  'nineBoxEvaluation',
+  'successor',
+  'criticalRole',
+  'employeeCompensation',
+  'salaryAdjustment',
+  'team',
+  'actionPlan',
+  'leaderCommitment',
+  'commitment',
+] as const;
+
+export type ScopedEntity = (typeof SCOPED_ENTITIES)[number];
 
 type Fragment = Record<string, unknown>;
 
-const ENTITIES: ReadonlySet<string> = new Set([
-  'vacancy', 'candidate', 'application', 'interview', 'offer', 'assessmentAssignment',
-  'okr', 'coachingSession', 'feedback', 'onboardingPlan', 'enrollment', 'certificate',
-  'nineBoxEvaluation', 'successor', 'criticalRole', 'employeeCompensation',
-  'salaryAdjustment', 'team', 'actionPlan', 'leaderCommitment', 'commitment',
-]);
+const ENTITIES: ReadonlySet<string> = new Set(SCOPED_ENTITIES);
 
-export async function scopeWhereFor(
-  entity: ScopedEntity,
-  access: AccessContext,
-  userId: string,
-): Promise<Fragment> {
+export async function scopeWhereFor(entity: ScopedEntity, access: AccessContext, userId: string): Promise<Fragment> {
   if (!ENTITIES.has(entity)) {
     throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `Entidad sin politica de alcance: ${entity}` });
   }

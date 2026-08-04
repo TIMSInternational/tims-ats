@@ -205,13 +205,64 @@ json.dump({"model": model, "temperature": 0, "stream": False, "messages": [
 ]}, open(out, "w"))
 PY
 
-SYS="$SYS" DIFF="$DIFF" curl -fsS --max-time 300 "$URL/chat/completions" \
-  ${AUTH_HDR[@]+"${AUTH_HDR[@]}"} -H "Content-Type: application/json" \
-  --data-binary @"$REQ" -o "$RESP" 2>/dev/null
-CURL_RC=$?
+# RETRY WITH BACKOFF (#38, added 2026-08-04). A single attempt was the original behaviour and it made
+# tier 2 look far less usable than it is: on 2026-08-03 it served three full review rounds, then on
+# 2026-08-04 four consecutive single-shot attempts failed — twice rc=22 (HTTP >=400) and twice rc=28
+# (timeout) — which is provider/gateway flakiness, not prompt size (a 28k-char retry failed identically
+# to a 60k one). Without retry, a transient blip is indistinguishable from "tier 2 is unavailable" and
+# silently demotes every review to the weaker same-model tier 3.
+#
+# Bounded deliberately: 3 attempts, 5s then 15s backoff. The point is to ride out a blip, not to hang a
+# gate. Total worst case ~15min with --max-time 300 each, and every attempt is reported so a persistent
+# outage is still visible rather than papered over.
+#
+# `-w %{http_code}` is captured so rc=22 becomes actionable: a 401/403 is a key problem, a 404 a wrong
+# model or URL, a 429 quota, a 5xx the upstream. The original script reported only the curl rc, which is
+# why four failures today produced no diagnosis.
+# Bounded to 5 even if an operator sets OMNIROUTE_ATTEMPTS higher: the delay formula grows with the
+# attempt number, so an unbounded value turns a gate into a multi-hour hang.
+OMNI_ATTEMPTS="${OMNIROUTE_ATTEMPTS:-3}"
+[[ "$OMNI_ATTEMPTS" =~ ^[1-9][0-9]*$ ]] || OMNI_ATTEMPTS=3
+(( OMNI_ATTEMPTS > 5 )) && { warn "OMNIROUTE_ATTEMPTS=$OMNI_ATTEMPTS capped to 5."; OMNI_ATTEMPTS=5; }
+CURL_RC=1
+HTTP_CODE=""
+for attempt in $(seq 1 "$OMNI_ATTEMPTS"); do
+  HTTP_CODE="$(SYS="$SYS" DIFF="$DIFF" curl -sS --max-time 300 -w '%{http_code}' \
+    "$URL/chat/completions" \
+    ${AUTH_HDR[@]+"${AUTH_HDR[@]}"} -H "Content-Type: application/json" \
+    --data-binary @"$REQ" -o "$RESP" 2>/dev/null)"
+  CURL_RC=$?
+  if [[ $CURL_RC -eq 0 && -s "$RESP" && "$HTTP_CODE" =~ ^2 ]]; then
+    [[ $attempt -gt 1 ]] && warn "OmniRoute succeeded on attempt $attempt/$OMNI_ATTEMPTS."
+    break
+  fi
+  warn "OmniRoute attempt $attempt/$OMNI_ATTEMPTS failed (curl rc=$CURL_RC, HTTP ${HTTP_CODE:-none})."
+  CURL_RC=${CURL_RC:-1}
+  [[ $CURL_RC -eq 0 ]] && CURL_RC=1 # a non-2xx with rc=0 is still a failure
+
+  # Retrying a PERMANENT error just burns the backoff and delays the diagnosis. 401/403 = key problem,
+  # 404 = wrong model or URL, 400/422 = malformed request. Stop immediately and say which.
+  case "$HTTP_CODE" in
+    400|401|403|404)
+      case "$HTTP_CODE" in
+        401|403) warn "HTTP $HTTP_CODE is an AUTH failure — check OMNIROUTE_KEY. Not retrying." ;;
+        404)     warn "HTTP 404 — OMNIROUTE_MODEL='$MODEL' or OMNIROUTE_URL is wrong. Not retrying." ;;
+        400)     warn "HTTP 400 — the gateway rejected the request body. Not retrying." ;;
+      esac
+      break
+      ;;
+  esac
+  # 422 is deliberately NOT in that list: observed twice on 2026-08-04 as a TRANSIENT gateway response
+  # that succeeded on the very next attempt, which is the whole reason this loop exists.
+
+  if [[ $attempt -lt $OMNI_ATTEMPTS ]]; then
+    delay=$((attempt * 10 - 5)) # 5s, 15s, 25s, 35s
+    sleep "$delay"
+  fi
+done
 
 if [[ $CURL_RC -ne 0 || ! -s "$RESP" ]]; then
-  bad "OmniRoute request failed (curl rc=$CURL_RC) — tier 2 did not produce a review."
+  bad "OmniRoute request failed after $OMNI_ATTEMPTS attempt(s) (last: curl rc=$CURL_RC, HTTP ${HTTP_CODE:-none}) — tier 2 did not produce a review."
   exit 2
 fi
 

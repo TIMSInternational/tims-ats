@@ -22,6 +22,29 @@ exist as DDL nowhere. See **#128**.
 `access_reviews` (flip #1) did not need this — it had a real migration file, which is part of why it was
 the right pilot.
 
+## ⚠ `pnpm push` on an EXISTING local DB will DROP a flipped table
+
+Because the Prisma model is gone, `prisma db push` sees the live table as something not in the schema and
+wants to remove it. On a **fresh** database that is invisible (the table is simply never created — which is
+why these files exist). On an **existing** local database that already has the table, `db push` will
+propose dropping it and, with `--accept-data-loss`, will.
+
+That is expected and is not a production risk: `pnpm push` / `pnpm migrate` route through
+`scripts/db/guard-prod-ddl.sh`, which refuses a non-local host; Prisma Migrate is formally unused against
+prod (no `_prisma_migrations` table there, verified #115); and `/gate` check 16 would catch it if anything
+did reach prod. It IS a local-dev footgun, so after a `pnpm push` that follows an ownership flip:
+
+```bash
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f services/Tims.Platform/db/flip-ddl/<name>.sql
+cd packages/db && npx tsx prisma/seed.ts && npx tsx prisma/seed-users.ts && npx tsx prisma/seed-demo.ts
+```
+
+(That seed order is required — `seed-demo.ts` bails out without the org and users the first two create.)
+
+Raised by the tier-2 cross-model reviewer against #131 as a claimed prod/CI risk. The CI half was wrong —
+nothing runs `prisma migrate deploy`, and `pnpm migrate` is the guarded local-only wrapper — but the
+local-dev half is real, and it applies to every flipped table, including `access_reviews` from flip #1.
+
 ## ⚠ Never apply these to production
 
 The tables already exist in prod. These are **bootstrap / dev-parity** artifacts. Production DDL goes
