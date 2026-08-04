@@ -82,9 +82,9 @@ const DELEGATES: Record<ProbeableEntity, () => unknown> = {
 } as const;
 
 export async function assertScoped(
-  // ProbeableEntity, not ScopedEntity: a by-id probe needs a live Prisma delegate, so passing a
-  // flipped entity ('successor'/'criticalRole') is rejected at compile time instead of blowing up on an
-  // undefined delegate at runtime. Their probes live in C# now — see FlippedEntity above.
+  // ProbeableEntity, not ScopedEntity: a by-id probe needs a live Prisma delegate, so a flipped entity
+  // ('successor'/'criticalRole') is rejected at COMPILE time. Their probes live in C# now — see
+  // FlippedEntity above.
   entity: ProbeableEntity,
   id: string,
   access: AccessContext,
@@ -92,7 +92,22 @@ export async function assertScoped(
   organizationId: string,
 ): Promise<void> {
   const fragment = await scopeWhereFor(entity, access, userId);
-  const delegate = DELEGATES[entity]() as { findFirst: (args: unknown) => Promise<unknown> };
+  // BELT AND BRACES, and deliberately not redundant. The parameter type only constrains call sites TS
+  // can see: a caller holding a `string`, an `any`, or a cast-widened `ScopedEntity` compiles fine, and
+  // would then hit `DELEGATES[entity]()` with `undefined` and throw a bare
+  // `TypeError: ... is not a function` → an opaque 500. Worse, NOT_FOUND_MESSAGES still carries entries
+  // for the flipped entities (on purpose — those strings mirror ScopedNotFoundException.cs), so the code
+  // reads as though it supports them right up to this lookup. Fail with something that names the cause.
+  const factory = DELEGATES[entity as ProbeableEntity] as (() => unknown) | undefined;
+  if (typeof factory !== 'function') {
+    throw new TRPCError({
+      code: 'INTERNAL_SERVER_ERROR',
+      message:
+        `assertScoped('${String(entity)}') has no Prisma delegate: that table was ownership-flipped to ` +
+        `EF Core, so it cannot be probed from TypeScript. Probe it via the C# API instead.`,
+    });
+  }
+  const delegate = factory() as { findFirst: (args: unknown) => Promise<unknown> };
   const conditions: unknown[] = [{ id }, { organizationId }];
   if (SOFT_DELETABLE.has(entity)) conditions.push({ deletedAt: null });
   conditions.push(fragment);

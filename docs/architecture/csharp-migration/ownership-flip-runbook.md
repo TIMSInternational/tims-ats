@@ -779,123 +779,140 @@ one of three drift sources — but only if the baseline is written to match prod
 Run all of these. Step 0 and steps 6-9 need a real DB (0, 6, 7 and 9 against prod, read-only;
 8 against a throwaway).
 
-0. **Schema drift, FIRST (#115).** Everything below compares the flip against an expected schema; this
-   proves the expected schema is still the real one.
-   ```bash
-   bash scripts/db/schema-baseline.sh check   # 0 = matches, 1 = drift, 2 = DID NOT RUN
-   ```
-   A flip PR normally changes **no** DDL, so this must be a clean exit 0 both before and after. If the
-   flip does move DDL (§4 option (a)/(b)), re-capture the baseline and commit it in the flip PR — the
-   baseline diff is then the reviewable record of exactly what the flip did to prod. **Exit 2 is not a
-   pass**; resolve it before continuing rather than proceeding on an unverified schema.
-1. **Ledger check, directly.**
-   ```bash
-   node scripts/table-ownership.mjs        # expect: "table-ownership check passed." exit 0
-   npx vitest run tests/governance/table-ownership.test.ts
-   ```
-2. **Prisma schema still validates and generates.** This is the real gate for missed back-relations.
-   ```bash
-   cd packages/db && npx prisma validate --schema=prisma/schema
-   npx prisma generate --schema=prisma/schema
-   ```
-3. **Both type checks.**
-   ```bash
-   pnpm --filter @tims/api exec tsc --noEmit
-   cd apps/web && npx tsc --noEmit
-   ```
-   This — not the ownership check — is what catches a surviving Prisma reader.
-4. **Full suite + build.** `npx vitest run` at root, then `/gate`. Remember §0 P6: a green suite is not
-   evidence the flip is clean, because the tripwires are static source greps.
-5. **Manual assertion the check cannot make — every `efcore[]` entry maps to a real EF `ToTable`:**
-   ```bash
-   # run from the repo root; the flag MUST precede -e
-   node --input-type=module -e "
-   import {parseLedger,parseEfCoreTables} from './scripts/table-ownership.mjs';
-   import fs from 'node:fs';
-   const l=parseLedger(fs.readFileSync('docs/architecture/table-ownership.md','utf8'));
-   const ef=new Set(parseEfCoreTables('services/Tims.Platform/src'));
-   console.log('ghost efcore[] entries:', l.efcore.filter(t=>!ef.has(t)));"
-   ```
-   Verified 2026-08-02 against the current repo: `ghost efcore[] entries: []` (all six pass). A typo in
-   step 4 of §1 shows up here and nowhere else.
-   _(Consider promoting this to a real rule in `checkOwnership()` — it is a ~3-line addition.)_
-6. **Live DB assertion — the table survived, unchanged.** Run against prod (read-only) before and after
-   the PR merges, and diff:
+0.  **Schema drift, FIRST (#115).** Everything below compares the flip against an expected schema; this
+    proves the expected schema is still the real one.
+    ```bash
+    bash scripts/db/schema-baseline.sh check   # 0 = matches, 1 = drift, 2 = DID NOT RUN
+    ```
+    A flip PR normally changes **no** DDL, so this must be a clean exit 0 both before and after. If the
+    flip does move DDL (§4 option (a)/(b)), re-capture the baseline and commit it in the flip PR — the
+    baseline diff is then the reviewable record of exactly what the flip did to prod. **Exit 2 is not a
+    pass**; resolve it before continuing rather than proceeding on an unverified schema.
+1.  **Ledger check, directly.**
+    ```bash
+    node scripts/table-ownership.mjs        # expect: "table-ownership check passed." exit 0
+    npx vitest run tests/governance/table-ownership.test.ts
+    ```
+2.  **Prisma schema still validates and generates.** This is the real gate for missed back-relations.
+    ```bash
+    cd packages/db && npx prisma validate --schema=prisma/schema
+    npx prisma generate --schema=prisma/schema
+    ```
+3.  **Both type checks.**
+    ```bash
+    pnpm --filter @tims/api exec tsc --noEmit
+    cd apps/web && npx tsc --noEmit
+    ```
+    This — not the ownership check — is what catches a surviving Prisma reader.
+4.  **Full suite + build.** `npx vitest run` at root, then `/gate`. Remember §0 P6: a green suite is not
+    evidence the flip is clean, because the tripwires are static source greps.
+5.  **Manual assertion the check cannot make — every `efcore[]` entry maps to a real EF `ToTable`:**
 
-   ```sql
-   SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity, pg_get_userbyid(c.relowner) AS owner
-   FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-   WHERE n.nspname='public' AND c.relname IN ('<table>');
+    ```bash
+    # run from the repo root; the flag MUST precede -e
+    node --input-type=module -e "
+    import {parseLedger,parseEfCoreTables} from './scripts/table-ownership.mjs';
+    import fs from 'node:fs';
+    const l=parseLedger(fs.readFileSync('docs/architecture/table-ownership.md','utf8'));
+    const ef=new Set(parseEfCoreTables('services/Tims.Platform/src'));
+    console.log('ghost efcore[] entries:', l.efcore.filter(t=>!ef.has(t)));"
+    ```
 
-   SELECT polname, polpermissive, polcmd,
-          pg_get_expr(polqual, polrelid)      AS using_expr,
-          pg_get_expr(polwithcheck, polrelid) AS with_check_expr
-   FROM pg_policy WHERE polrelid = '<table>'::regclass;
+    Verified 2026-08-02 against the current repo: `ghost efcore[] entries: []` (all six pass). A typo in
+    step 4 of §1 shows up here and nowhere else.
+    _(Consider promoting this to a real rule in `checkOwnership()` — it is a ~3-line addition.)_
+    5b. **Database-side dependency scan — SCRIPTED as of #132.** Run this BEFORE deleting the model, not after:
 
-   SELECT grantee, privilege_type FROM information_schema.role_table_grants
-   WHERE table_schema='public' AND table_name='<table>' ORDER BY grantee, privilege_type;
+        ```bash
+        npx tsx scripts/db/pre-flip-scan.ts <table>...     # 0 = no blocker, 1 = blocker or could-not-run
+        ```
 
-   SELECT indexname FROM pg_indexes WHERE schemaname='public' AND tablename='<table>' ORDER BY 1;
+        It replaces four separate hand-run queries and covers what no repo grep can see: **views/matviews**
+        and **functions** referencing the table (both BLOCKERS — they keep working after the Prisma model is
+        deleted, and keep bypassing whatever scoping the TS stack applied), plus the §3(f) policy scan,
+        inbound FKs (flagging any from *outside* the flip set), `app_tenant` grants (#126), and RLS state.
 
-   SELECT to_regclass('public.<table>') IS NOT NULL AS exists,
-          pg_relation_size('public.<table>')        AS bytes;
+        Flip #2 ran these by hand and came back clean; the script exists so the next flip cannot forget one.
+        Its blocker paths are tested against a throwaway cluster with a real view and function.
 
-   -- Liveness / deletion probe. NOT an equality assertion — see below.
-   SELECT n_tup_ins, n_tup_del FROM pg_stat_user_tables WHERE relname='<table>';
-   SELECT max(<created_or_submitted_at>) FROM <table>;
-   ```
+6.  **Live DB assertion — the table survived, unchanged.** Run against prod (read-only) before and after
+    the PR merges, and diff. `pre-flip-scan.ts` above already reports existence, RLS, policies, grants and
+    FKs, so this step is the _before/after diff_ of that plus the row-liveness probes below:
 
-   **Split the invariant — "byte-identical" applies to _shape_, never to _rows_ (corrected 2026-08-02).**
-   - **Strict equality (any diff ⇒ stop and investigate):** `relrowsecurity`, `relforcerowsecurity`,
-     `relowner`, the full `pg_policy` row set, the `role_table_grants` set, the `pg_indexes` list, and
-     `to_regclass(...) IS NOT NULL`. The flip runs no DDL, so a diff here means something ran DDL that
-     should not have. This is a **DROP/DDL tripwire** and that is all it is.
-   - **NOT equality — monotonicity:** the row count. An earlier draft demanded "`SELECT count(*)` … must
-     be identical before and after"; in production that is **guaranteed to be violated**, because the
-     flip's entire premise is that C# is already the live sole writer.
-     `apps/web/lib/platform-api/engagement.ts:511-522` (`useEngagementSubmitSurveyResponse`) POSTs to
-     `/engagement/surveys/{surveyId}/responses` unconditionally, driven by
-     `apps/web/app/(admin)/dashboard/survey-take-modal.tsx:41` — every employee submission inserts a
-     `survey_responses` row while the before/after window is open. Following the old rule produces either
-     a **false rollback of a correct flip**, or an operator trained to ignore the one check that would
-     catch a real DROP. Assert instead: `count_after >= count_before`, the timestamp column advancing, and
-     `pg_stat_user_tables.n_tup_del` **not** jumping. `count(*)` is also a full sequential scan — at real
-     `survey_responses` volume it is the wrong probe to run twice against prod; prefer
-     `pg_relation_size > 0` plus the `n_tup_del` delta.
+    ```sql
+    SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity, pg_get_userbyid(c.relowner) AS owner
+    FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+    WHERE n.nspname='public' AND c.relname IN ('<table>');
 
-7. **The C# writer still works.** `scripts/parity/cli.ts verify-write <surface>` against the live
-   surface. The flip does not change the write path, so this is a regression check, not a new proof.
+    SELECT polname, polpermissive, polcmd,
+           pg_get_expr(polqual, polrelid)      AS using_expr,
+           pg_get_expr(polwithcheck, polrelid) AS with_check_expr
+    FROM pg_policy WHERE polrelid = '<table>'::regclass;
 
-8. **Clean-checkout bootstrap still produces the table (§0 P8).** On a **scratch** DB, from a clean
-   checkout of the flip branch, run the documented bootstrap — `pnpm db:push` (which now routes through
-   `scripts/db/guard-prod-ddl.sh`) followed by the table's extracted DDL:
+    SELECT grantee, privilege_type FROM information_schema.role_table_grants
+    WHERE table_schema='public' AND table_name='<table>' ORDER BY grantee, privilege_type;
 
-   ```bash
-   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f services/Tims.Platform/db/flip-ddl/<name>.sql
-   ```
+    SELECT indexname FROM pg_indexes WHERE schemaname='public' AND tablename='<table>' ORDER BY 1;
 
-   Generate that file with `node scripts/db/extract-table-ddl.mjs` if it does not exist yet (#128 — it is
-   already committed for #64's and #66's tables). Then assert:
+    SELECT to_regclass('public.<table>') IS NOT NULL AS exists,
+           pg_relation_size('public.<table>')        AS bytes;
 
-   ```sql
-   SELECT to_regclass('public.<table>') IS NOT NULL;   -- must be true
-   ```
+    -- Liveness / deletion probe. NOT an equality assertion — see below.
+    SELECT n_tup_ins, n_tup_del FROM pg_stat_user_tables WHERE relname='<table>';
+    SELECT max(<created_or_submitted_at>) FROM <table>;
+    ```
 
-   and confirm `packages/db/prisma/seed-demo.ts` and `scripts/parity/seed.ts` still run green against it.
-   Deleting the Prisma model can remove the repo's **only** DDL definition of the table; this step is the
-   check that it did not.
+    **Split the invariant — "byte-identical" applies to _shape_, never to _rows_ (corrected 2026-08-02).**
+    - **Strict equality (any diff ⇒ stop and investigate):** `relrowsecurity`, `relforcerowsecurity`,
+      `relowner`, the full `pg_policy` row set, the `role_table_grants` set, the `pg_indexes` list, and
+      `to_regclass(...) IS NOT NULL`. The flip runs no DDL, so a diff here means something ran DDL that
+      should not have. This is a **DROP/DDL tripwire** and that is all it is.
+    - **NOT equality — monotonicity:** the row count. An earlier draft demanded "`SELECT count(*)` … must
+      be identical before and after"; in production that is **guaranteed to be violated**, because the
+      flip's entire premise is that C# is already the live sole writer.
+      `apps/web/lib/platform-api/engagement.ts:511-522` (`useEngagementSubmitSurveyResponse`) POSTs to
+      `/engagement/surveys/{surveyId}/responses` unconditionally, driven by
+      `apps/web/app/(admin)/dashboard/survey-take-modal.tsx:41` — every employee submission inserts a
+      `survey_responses` row while the before/after window is open. Following the old rule produces either
+      a **false rollback of a correct flip**, or an operator trained to ignore the one check that would
+      catch a real DROP. Assert instead: `count_after >= count_before`, the timestamp column advancing, and
+      `pg_stat_user_tables.n_tup_del` **not** jumping. `count(*)` is also a full sequential scan — at real
+      `survey_responses` volume it is the wrong probe to run twice against prod; prefer
+      `pg_relation_size > 0` plus the `n_tup_del` delta.
 
-9. **EF write-value compatibility against the live column types (§0 P10).** For the flipped table, diff
-   the EF property mappings against `information_schema.columns` on prod:
+7.  **The C# writer still works.** `scripts/parity/cli.ts verify-write <surface>` against the live
+    surface. The flip does not change the write path, so this is a regression check, not a new proof.
 
-   ```sql
-   SELECT column_name, data_type, datetime_precision, is_nullable, column_default
-   FROM information_schema.columns
-   WHERE table_schema='public' AND table_name='<table>' ORDER BY ordinal_position;
-   ```
+8.  **Clean-checkout bootstrap still produces the table (§0 P8).** On a **scratch** DB, from a clean
+    checkout of the flip branch, run the documented bootstrap — `pnpm db:push` (which now routes through
+    `scripts/db/guard-prod-ddl.sh`) followed by the table's extracted DDL:
 
-   Every EF property must pin a matching `HasColumnType(...)` or be `ValueGeneratedOnAdd`. This is what
-   makes §6's "same column shape" claim true — the absence of an EF migration does not.
+    ```bash
+    psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f services/Tims.Platform/db/flip-ddl/<name>.sql
+    ```
+
+    Generate that file with `node scripts/db/extract-table-ddl.mjs` if it does not exist yet (#128 — it is
+    already committed for #64's and #66's tables). Then assert:
+
+    ```sql
+    SELECT to_regclass('public.<table>') IS NOT NULL;   -- must be true
+    ```
+
+    and confirm `packages/db/prisma/seed-demo.ts` and `scripts/parity/seed.ts` still run green against it.
+    Deleting the Prisma model can remove the repo's **only** DDL definition of the table; this step is the
+    check that it did not.
+
+9.  **EF write-value compatibility against the live column types (§0 P10).** For the flipped table, diff
+    the EF property mappings against `information_schema.columns` on prod:
+
+    ```sql
+    SELECT column_name, data_type, datetime_precision, is_nullable, column_default
+    FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='<table>' ORDER BY ordinal_position;
+    ```
+
+    Every EF property must pin a matching `HasColumnType(...)` or be `ValueGeneratedOnAdd`. This is what
+    makes §6's "same column shape" claim true — the absence of an EF migration does not.
 
 ---
 

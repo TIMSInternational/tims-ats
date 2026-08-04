@@ -205,13 +205,44 @@ json.dump({"model": model, "temperature": 0, "stream": False, "messages": [
 ]}, open(out, "w"))
 PY
 
-SYS="$SYS" DIFF="$DIFF" curl -fsS --max-time 300 "$URL/chat/completions" \
-  ${AUTH_HDR[@]+"${AUTH_HDR[@]}"} -H "Content-Type: application/json" \
-  --data-binary @"$REQ" -o "$RESP" 2>/dev/null
-CURL_RC=$?
+# RETRY WITH BACKOFF (#38, added 2026-08-04). A single attempt was the original behaviour and it made
+# tier 2 look far less usable than it is: on 2026-08-03 it served three full review rounds, then on
+# 2026-08-04 four consecutive single-shot attempts failed — twice rc=22 (HTTP >=400) and twice rc=28
+# (timeout) — which is provider/gateway flakiness, not prompt size (a 28k-char retry failed identically
+# to a 60k one). Without retry, a transient blip is indistinguishable from "tier 2 is unavailable" and
+# silently demotes every review to the weaker same-model tier 3.
+#
+# Bounded deliberately: 3 attempts, 5s then 15s backoff. The point is to ride out a blip, not to hang a
+# gate. Total worst case ~15min with --max-time 300 each, and every attempt is reported so a persistent
+# outage is still visible rather than papered over.
+#
+# `-w %{http_code}` is captured so rc=22 becomes actionable: a 401/403 is a key problem, a 404 a wrong
+# model or URL, a 429 quota, a 5xx the upstream. The original script reported only the curl rc, which is
+# why four failures today produced no diagnosis.
+OMNI_ATTEMPTS="${OMNIROUTE_ATTEMPTS:-3}"
+CURL_RC=1
+HTTP_CODE=""
+for attempt in $(seq 1 "$OMNI_ATTEMPTS"); do
+  HTTP_CODE="$(SYS="$SYS" DIFF="$DIFF" curl -sS --max-time 300 -w '%{http_code}' \
+    "$URL/chat/completions" \
+    ${AUTH_HDR[@]+"${AUTH_HDR[@]}"} -H "Content-Type: application/json" \
+    --data-binary @"$REQ" -o "$RESP" 2>/dev/null)"
+  CURL_RC=$?
+  if [[ $CURL_RC -eq 0 && -s "$RESP" && "$HTTP_CODE" =~ ^2 ]]; then
+    [[ $attempt -gt 1 ]] && warn "OmniRoute succeeded on attempt $attempt/$OMNI_ATTEMPTS."
+    break
+  fi
+  warn "OmniRoute attempt $attempt/$OMNI_ATTEMPTS failed (curl rc=$CURL_RC, HTTP ${HTTP_CODE:-none})."
+  CURL_RC=${CURL_RC:-1}
+  [[ $CURL_RC -eq 0 ]] && CURL_RC=1 # a non-2xx with rc=0 is still a failure
+  if [[ $attempt -lt $OMNI_ATTEMPTS ]]; then
+    delay=$((attempt * 10 - 5)) # 5s, 15s
+    sleep "$delay"
+  fi
+done
 
 if [[ $CURL_RC -ne 0 || ! -s "$RESP" ]]; then
-  bad "OmniRoute request failed (curl rc=$CURL_RC) — tier 2 did not produce a review."
+  bad "OmniRoute request failed after $OMNI_ATTEMPTS attempt(s) (last: curl rc=$CURL_RC, HTTP ${HTTP_CODE:-none}) — tier 2 did not produce a review."
   exit 2
 fi
 
