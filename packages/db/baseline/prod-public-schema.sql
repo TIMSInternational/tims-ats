@@ -1,6 +1,6 @@
 -- TIMS ATS — production schema baseline (issue #115)
 --
--- Captured:        2026-08-03T18:13:55Z
+-- Captured:        2026-08-04T17:30:30Z
 -- Server version:  17.6
 -- Schemas:         public, supabase_migrations
 -- Command:         bash scripts/db/schema-baseline.sh capture
@@ -8045,7 +8045,7 @@ GRANT USAGE ON SCHEMA public TO app_tenant;
 -- Name: TABLE "__EFMigrationsHistory"; Type: ACL; Schema: public; Owner: postgres
 --
 
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public."__EFMigrationsHistory" TO app_tenant;
+GRANT SELECT ON TABLE public."__EFMigrationsHistory" TO app_tenant;
 
 --
 -- Name: TABLE access_reviews; Type: ACL; Schema: public; Owner: postgres
@@ -8309,7 +8309,7 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.fit_scores TO app_tenant;
 -- Name: TABLE fx_rates; Type: ACL; Schema: public; Owner: postgres
 --
 
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.fx_rates TO app_tenant;
+GRANT SELECT ON TABLE public.fx_rates TO app_tenant;
 
 --
 -- Name: TABLE hire_predictions; Type: ACL; Schema: public; Owner: postgres
@@ -8549,67 +8549,67 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.publication_channels TO app_te
 -- Name: TABLE qrtz_blob_triggers; Type: ACL; Schema: public; Owner: postgres
 --
 
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.qrtz_blob_triggers TO app_tenant;
+GRANT SELECT ON TABLE public.qrtz_blob_triggers TO app_tenant;
 
 --
 -- Name: TABLE qrtz_calendars; Type: ACL; Schema: public; Owner: postgres
 --
 
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.qrtz_calendars TO app_tenant;
+GRANT SELECT ON TABLE public.qrtz_calendars TO app_tenant;
 
 --
 -- Name: TABLE qrtz_cron_triggers; Type: ACL; Schema: public; Owner: postgres
 --
 
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.qrtz_cron_triggers TO app_tenant;
+GRANT SELECT ON TABLE public.qrtz_cron_triggers TO app_tenant;
 
 --
 -- Name: TABLE qrtz_fired_triggers; Type: ACL; Schema: public; Owner: postgres
 --
 
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.qrtz_fired_triggers TO app_tenant;
+GRANT SELECT ON TABLE public.qrtz_fired_triggers TO app_tenant;
 
 --
 -- Name: TABLE qrtz_job_details; Type: ACL; Schema: public; Owner: postgres
 --
 
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.qrtz_job_details TO app_tenant;
+GRANT SELECT ON TABLE public.qrtz_job_details TO app_tenant;
 
 --
 -- Name: TABLE qrtz_locks; Type: ACL; Schema: public; Owner: postgres
 --
 
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.qrtz_locks TO app_tenant;
+GRANT SELECT ON TABLE public.qrtz_locks TO app_tenant;
 
 --
 -- Name: TABLE qrtz_paused_trigger_grps; Type: ACL; Schema: public; Owner: postgres
 --
 
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.qrtz_paused_trigger_grps TO app_tenant;
+GRANT SELECT ON TABLE public.qrtz_paused_trigger_grps TO app_tenant;
 
 --
 -- Name: TABLE qrtz_scheduler_state; Type: ACL; Schema: public; Owner: postgres
 --
 
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.qrtz_scheduler_state TO app_tenant;
+GRANT SELECT ON TABLE public.qrtz_scheduler_state TO app_tenant;
 
 --
 -- Name: TABLE qrtz_simple_triggers; Type: ACL; Schema: public; Owner: postgres
 --
 
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.qrtz_simple_triggers TO app_tenant;
+GRANT SELECT ON TABLE public.qrtz_simple_triggers TO app_tenant;
 
 --
 -- Name: TABLE qrtz_simprop_triggers; Type: ACL; Schema: public; Owner: postgres
 --
 
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.qrtz_simprop_triggers TO app_tenant;
+GRANT SELECT ON TABLE public.qrtz_simprop_triggers TO app_tenant;
 
 --
 -- Name: TABLE qrtz_triggers; Type: ACL; Schema: public; Owner: postgres
 --
 
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.qrtz_triggers TO app_tenant;
+GRANT SELECT ON TABLE public.qrtz_triggers TO app_tenant;
 
 --
 -- Name: TABLE rater_assignments; Type: ACL; Schema: public; Owner: postgres
