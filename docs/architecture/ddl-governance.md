@@ -163,6 +163,41 @@ belong in 14; only 14 can carry them.
 baseline, and a client older than the server. Given #38, a gate whose did-not-run path is untested is
 not a gate. Exit 0 is not covered there (it needs live credentials); `/gate` check 16 covers it.
 
+### The vacuous pass — a defect all three live checks shared (#124, 2026-08-05)
+
+Worth stating once, separately from any individual check, because it recurred in every one of them and
+will recur in the next live check somebody writes.
+
+**A query that returns nothing looks identical to a system with nothing wrong.** Each of these checks
+concluded "verified" from an empty result set, and each was therefore capable of certifying a database it
+had never meaningfully examined:
+
+| Check                     | Vacuous input                                          | What it printed                           |
+| ------------------------- | ------------------------------------------------------ | ----------------------------------------- |
+| 17 `verify-tenant-grants` | database with no `app_tenant` grants — a restored copy | `✓ least privilege intact`, exit 0        |
+| 14 `verify-rls-isolation` | every RLS table empty, or no RLS tables at all         | `✓ RLS tenant isolation verified`, exit 0 |
+
+Both were **reproduced against a throwaway PostgreSQL 17 cluster before being fixed**, not argued from
+first principles — and in check 17's case the first fix was itself insufficient, because `pg_roles` is a
+CLUSTER-WIDE catalog (`pg_authid.relisshared = true`), so "the role exists" says nothing about which
+database you are attached to.
+
+The fix in each case is a **positive signal that the check looked at the right thing**, not merely an
+absence of complaints:
+
+- 17 requires `app_tenant` to hold SELECT on a majority of Prisma-declared tables — grants are per-database
+  and the default ACL confers SELECT at CREATE TABLE, so this is true wherever the app really runs.
+- 14 requires at least one RLS table to exist AND at least one to be non-empty, since an empty table cannot
+  demonstrate anything about fail-closed behaviour.
+
+> **Why this matters more now than it did last month:** while these checks were local-only, a human ran them
+> against a connection string they had just typed. #124 puts that connection string in a CI secret. A
+> mistyped, rotated or wrong-environment secret produces exactly the vacuous input above — and a nightly job
+> that reports green forever is worse than no job, because it manufactures confidence.
+
+**When adding a live check, ask what it prints when pointed at an empty database.** If the answer is a tick,
+it is not finished.
+
 ### Check 17 — `app_tenant` least privilege (#126, added 2026-08-04)
 
 `scripts/security/verify-tenant-grants.ts`, wired as **`/gate` check 17**. Asserts that `app_tenant` holds
@@ -268,7 +303,7 @@ been burned by the difference (#38):
 | ------------------------------------------------ | ---------------------------------------- | --------------------------------------- |
 | `tests/governance/scope-fixtures.test.ts` (#132) | `npx vitest run` → CI `Security Audit`   | ✅ **yes** — blocks CI                  |
 | `tests/governance/table-ownership.test.ts`       | `npx vitest run` + `dotnet-platform.yml` | ✅ yes                                  |
-| check 14 `verify-rls-isolation.ts`               | `/gate`, local (live DB)                 | ⚠️ ship-time only                       |
+| check 14 `verify-rls-isolation.ts`               | `/gate` **check 14**, local (live DB)    | ⚠️ ship-time only                       |
 | check 16 `schema-baseline.sh check`              | `/gate`, local (live DB)                 | ⚠️ ship-time only (#124)                |
 | **check 17 `verify-tenant-grants.ts`**           | `/gate` **check 17**, local (live DB)    | ⚠️ ship-time only — same credential gap |
 | `scripts/db/pre-flip-scan.ts` (#132)             | by hand, per flip (runbook §5)           | ❌ no — a documented step, not a gate   |

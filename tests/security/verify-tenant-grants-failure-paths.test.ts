@@ -44,7 +44,7 @@
  * stripped from the child environment, and the one URL supplied points at a closed loopback port.
  */
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -95,6 +95,14 @@ function run(cwd: string, env: Record<string, string | undefined>): Run {
 }
 
 beforeAll(() => {
+  // Fail with a sentence someone can act on. Without this the spawn dies as `exit -1` with empty output,
+  // which reads like a bug in the script under test — it cost real time once, after a branch switch to a
+  // commit predating the tsx dependency pruned the binary.
+  expect(
+    existsSync(TSX),
+    `${TSX} is missing. tsx is a declared devDependency (#124) — run \`pnpm install --frozen-lockfile\`. ` +
+      'This is an environment problem, not a failure of the script under test.',
+  ).toBe(true);
   sandbox = mkdtempSync(join(tmpdir(), 'tenant-grants-test-'));
 });
 
