@@ -61,8 +61,17 @@ last one to hold it: `NEXT_PUBLIC_ENGAGEMENT_READ_VIA_CSHARP` is now confirmed l
 registered read procedures were deleted (myPendingSurveys/getSurveyForResponse/getEnps/
 getClimateHeatmap/getLowClimateAlerts/listActionPlans/listLeaderCommitments/getDashboardKpis); the
 other 6 (listSurveys/getSurveyResults/getResultsByArea/getWordCloud/getSentiment/getRotationRisk)
-are zero-FE-consumer exceptions, deliberately untouched. `verify engagement` still runs a real,
-smaller 6-endpoint check against those survivors — see cutover.sh's `engagement` row. The steps
+were zero-FE-consumer exceptions, deliberately untouched. **UPDATE 2026-08-05 (#56):** two of those
+six (`getWordCloud`/`getSentiment`) have since been deleted as well, and so have engagement-write's
+last two TS mutations (`createActionPlan`/`updateActionPlan`) — four survivors remain
+(`listSurveys`/`getSurveyResults`/`getResultsByArea`/`getRotationRisk`), each kept for a reason
+written out in `packages/api/src/routers/engagement.ts`'s header block.
+**And `verify engagement` runs a TWO-endpoint check, not six.** The "6-endpoint" figure above was
+wrong when written: `scripts/parity/surfaces.ts` registers exactly two engagement endpoints
+(`surveys` → `engagement.listSurveys`, `rotation-risk` → `engagement.getRotationRisk`), and
+`scripts/parity/surfaces.test.ts:53-58` asserts that exact pair. The other four survivors are by-id
+Tier-2 deferrals with no registered endpoint (surfaces.ts's own comment says so). It is still a REAL
+check, just a smaller one than this paragraph claimed — see cutover.sh's `engagement` row. The steps
 above remain the correct recipe for any FUTURE domain that starts a fresh cutover (Phase 6/7 work,
 or a re-opened surface); there just isn't a live example to run today. One DEI caveat, also printed
 by `--list`: `dei.getPayEquity` is gated by the separate `Platform:FxReadsEnabled` flag and is NOT

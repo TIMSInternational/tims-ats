@@ -1339,10 +1339,10 @@ It is believed safe only because its two datetime columns are `ValueGeneratedOnA
 
 | Site                                                                 | Read                                                                                                                          | FE consumer                                                                                                                                                                                                                        | Disposition                                                                                    |
 | -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `packages/api/src/routers/engagement.ts:36`                          | `survey.findMany` (`listSurveys`)                                                                                             | **1 invalidate-only call** (`engagement/climate/launch-survey-modal.tsx:58`) **+ 1 static tripwire** (`tests/tier1/s2-engagement-wiring.test.ts:33`)                                                                               | Delete procedure — **but see edits 1b/3/4**; it is not consumer-free                           |
-| `…/engagement.ts:53`                                                 | `survey.count`                                                                                                                | none                                                                                                                                                                                                                               | Delete with the same procedure                                                                 |
-| `…/engagement.ts:74` + `:83`                                         | `survey.findFirst` with nested `responses: { select: { answers: true } }` (`getSurveyResults`)                                | none                                                                                                                                                                                                                               | Delete, **or** repoint — needs a C# by-id read (see below)                                     |
-| `…/engagement.ts:122` + `:126`                                       | `survey.findFirst` with nested `responses: { select: { answers, user: { companyId, businessUnitId } } }` (`getResultsByArea`) | none                                                                                                                                                                                                                               | Same; **note the join into `users`** (Prisma-owned)                                            |
+| `packages/api/src/routers/engagement.ts:79`                          | `survey.findMany` (`listSurveys`)                                                                                             | **1 invalidate-only call** (`engagement/climate/launch-survey-modal.tsx:58`) **+ 1 static tripwire** (`tests/tier1/s2-engagement-wiring.test.ts:33`)                                                                               | Delete procedure — **but see edits 1b/3/4**; it is not consumer-free                           |
+| `…/engagement.ts:96`                                                 | `survey.count`                                                                                                                | none                                                                                                                                                                                                                               | Delete with the same procedure                                                                 |
+| `…/engagement.ts:117` + `:126`                                       | `survey.findFirst` with nested `responses: { select: { answers: true } }` (`getSurveyResults`)                                | none                                                                                                                                                                                                                               | Delete, **or** repoint — needs a C# by-id read (see below)                                     |
+| `…/engagement.ts:166` + `:170`                                       | `survey.findFirst` with nested `responses: { select: { answers, user: { companyId, businessUnitId } } }` (`getResultsByArea`) | none                                                                                                                                                                                                                               | Same; **note the join into `users`** (Prisma-owned)                                            |
 | `packages/api/src/routers/monitoring.ts:23`                          | `survey.count` (`getExecutiveKpis`)                                                                                           | **5**: 4 `useQuery` (`dashboard/hr-exec-dashboard.tsx:34`, `dashboard/org-command-center.tsx:28`, `monitoring/monitoring-bottom.tsx:41`, `monitoring/page.tsx:16`) **+ 1 `.invalidate()`** (`monitoring/alert-rules-modal.tsx:82`) | **Blocker** — must be repointed                                                                |
 | `packages/api/src/routers/monitoring.ts:232`                         | `surveyResponse.count` (`getCrossModuleTrend`, `metric==='engagement'` branch only)                                           | reachable by any `monitoring:read` holder; the only FE caller hardcodes `metric:'headcount'`                                                                                                                                       | **Repoint, or drop the metric from the Zod enum — NEVER "just delete the branch"** (see below) |
 | `packages/api/src/repositories/alert-evaluation.repository.ts:120`   | `survey.count`, metric `active_surveys`                                                                                       | cron                                                                                                                                                                                                                               | **Blocker** — privileged cross-org, see below                                                  |
@@ -1394,7 +1394,7 @@ Two of these are genuinely hard:
   `tests/monitoring/monitoring-suppression.test.ts` (which mocks `surveyResponse.count` at `:20,34` and
   asserts the monthly-differencing guard at `:99-198`) rather than deleting it alongside the branch.
 
-`survey_responses` reads at `engagement.ts:83` and `:126` are **relation traversals nested inside
+`survey_responses` reads at `engagement.ts:126` and `:170` are **relation traversals nested inside
 `db.survey.findFirst`** — they never appear in a `.surveyResponse.` grep. They are also why the two
 tables cannot flip independently: the surviving readers join them in one query.
 
@@ -1403,8 +1403,15 @@ tables cannot flip independently: the surviving readers join them in one query.
 **1. Prisma schema — two files.**
 
 - Delete `packages/db/prisma/schema/engagement.prisma:1-39` (`model Survey`, `model SurveyResponse`).
-  Keep `model ActionPlan` (`:41+`) — `action_plans` is **not** flipping; it is still written by the TS
-  engagement router's two zero-FE-consumer mutations.
+  Keep `model ActionPlan` (`:41+`) — `action_plans` is **not** flipping in #64.
+  > **Corrected 2026-08-05 (#56).** The reason given here used to be "it is still written by the TS
+  > engagement router's two zero-FE-consumer mutations." That is now **false**: `createActionPlan` and
+  > `updateActionPlan` have been deleted and `action_plans` has **zero** TS writers
+  > (`tests/access/scope-wiring-engagement-write.test.ts` pins it). The model must still be kept for
+  > #64, but for a different reason — `action_plans` is a **different flip** (#68), and #68 is still
+  > blocked by READERS: `packages/api/src/routers/monitoring.ts:158` (`db.actionPlan.findMany` in
+  > `getCrossModuleTrend`) plus the Prisma-delegate registrations at
+  > `packages/api/src/access/scoped-probe.ts:79` and `entity-policies.ts:44,145`.
 - Delete `packages/db/prisma/schema/user.prisma:105-106`:
   ```prisma
   createdSurveys               Survey[]                @relation("SurveyCreator")
@@ -1453,12 +1460,21 @@ hit. As of 2026-08-02 that is at minimum:
 - **`:176-190`** — _missing from an earlier draft of this list._
   `it('the router DELEGATES its surviving aggregates to the golden-fixtured shared kernels…')` runs
   `for (const kernel of ['summarizeSurveyResults','buildResultsByArea']) expect(src, …).toMatch(new RegExp(\`\\b${kernel}\\(\`))`against`packages/api/src/routers/engagement.ts`. This flip deletes `getSurveyResults`
-(`engagement.ts:64-97`, the **only** `summarizeSurveyResults(`caller, at`:93`) and `getResultsByArea`
-(`:105-152`, the only `buildResultsByArea(`caller) — so **both** regexes fail and`Security Audit (56 tests)` goes red.
+(`engagement.ts:107-141`, the **only** `summarizeSurveyResults(`caller, at`:136`) and `getResultsByArea`
+(`:150-197`, the only `buildResultsByArea(`caller) — so **both** regexes fail and`Security Audit (56 tests)` goes red.
 - **`:228`** (the runbook previously cited `:220`; the line has drifted) —
   `expect(matches.length).toBeGreaterThanOrEqual(5)` on `requireOrgScope(ctx.access)` occurrences. With
   both procedures gone the count drops from **5 to 3**, so this fails outright. It must be **re-anchored**,
   not merely "re-checked."
+  > **DONE 2026-08-05 (#56) — this bullet is discharged, do not redo it.** The count assertion is gone
+  > from BOTH files that carried it (`scope-wiring-sensitive-data.test.ts` and
+  > `scope-wiring-learning.test.ts`, which had the same `>= 5` grep). They now iterate the router's
+  > procedure blocks via the shared helper `tests/access/engagement-procedures.ts` and assert
+  > **per-procedure** that each one calls `requireOrgScope`, with `listSurveys` as the single
+  > documented grant-only exception (mirroring `scripts/parity/surfaces.ts`'s gating note and the C#
+  > `/engagement/surveys` route). Deleting procedures no longer breaks it; dropping a gate still does.
+  > The same pass also deleted `getWordCloud`/`getSentiment`, so a count-based version of this
+  > tripwire would already have needed a _third_ re-pin.
 
 Retire or re-anchor each, exactly as the file's existing `UPDATE 2026-07-29/2026-07-31` amendments did
 (the C#-side equivalent guarantees live in

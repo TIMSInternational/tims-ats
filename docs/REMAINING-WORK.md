@@ -272,7 +272,30 @@ describe-service`; only the frontend Vercel flag was missing.)
   precedent. The remaining 6 — `listSurveys`, `getSurveyResults`, `getResultsByArea`,
   `getWordCloud`, `getSentiment`, `getRotationRisk` — have zero FE wrapper/query consumers and stay
   untouched, unrelated dead-or-live code, same category as compensation's 4 zero-consumer reads
-  above.)_). **This closes
+  above.)_ **UPDATE 2026-08-05 (#56) — the 8 residuals are now dispositioned individually, none left
+  undecided.** `packages/api/src/routers/engagement.ts` is down from 8 procedures / 336 LOC to 4
+  procedures, and its header block records the reason for each decision. **Deleted (4):**
+  `createActionPlan` + `updateActionPlan` — the last TS writers of `action_plans`, zero call sites
+  anywhere (full-repo grep), C# owns both endpoints INCLUDING the H1 cross-tenant `responsibleId`
+  backstop (`EngagementWriteRepository.cs:175,:230-231,:291-293`, verified before deleting) plus a
+  `FOR UPDATE` scope re-check the TS `updateMany` only approximated; and `getWordCloud` +
+  `getSentiment` — deleted rather than converted to a 501, because each returned **HTTP 200 with an
+  empty payload**, indistinguishable from a survey with no text answers (the *dishonest* variant of
+  unavailable), while C# already maps both routes with the identical stub behind the identical gate
+  (`EngagementReadEndpoints.cs:277,:297`) and the FE renders a static placeholder that never called
+  them. **Kept, with written reasons (4):** `listSurveys` + `getRotationRisk` are the TS half of the
+  only two LIVE parity endpoints on this surface (`scripts/parity/surfaces.ts:261,:269`, where
+  `tsProcedure` is a REQUIRED field) and `listSurveys` also backs the invalidate-only FE consumer at
+  `launch-survey-modal.tsx:58`; `getSurveyResults` + `getResultsByArea` are the only TS callers of
+  the golden-fixtured min-5 kernels and the only surviving relation reads into `survey_responses` —
+  all four are runbook §7b edits belonging to **flip #64**, not to this task. **Flip #68 is NOT
+  unblocked by this**: `action_plans` has zero TS *writers* now, but `monitoring.ts:158` still READS
+  `db.actionPlan.findMany` and `access/scoped-probe.ts:79` + `entity-policies.ts:44,145` still
+  register the Prisma delegate. The zero-writer invariant is pinned by
+  `tests/access/scope-wiring-engagement-write.test.ts` (with a positive-control + non-empty-corpus
+  guard, so an all-clear cannot be vacuous), and the ledger note is in
+  `docs/architecture/table-ownership.md` (`notes.action_plans_ts_writers_removed`) — **no table was
+  moved between `efcoreStranglerWrite` and `efcore`; that is the flip.**). **This closes
   the S5 item-4 TS-deletion sequence: all 12 live surfaces (across all 8 domains) have had their dead
   TS code deleted, and ZERO live surfaces are left with undeleted TS fallback code sitting behind an
   always-true flag.** **UPDATE 2026-07-31: a 9th domain joined this sequence** — access-review

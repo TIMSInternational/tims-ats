@@ -1,15 +1,18 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { engagementProcedureBlocks, ENGAGEMENT_GRANT_ONLY } from './engagement-procedures';
 
 // Wave 2.5 slice 4 — static tripwires for learning + engagement modules.
 // learning.ts: enrollments/certificates are user-anchored (people scope);
 //   Course/LearningPath is an ORG-LEVEL catalog — deliberately not scoped.
 // engagement.ts: aggregate reads get requireOrgScope (interim until slice-6
-//   min-5 scope-aware aggregation); action plans are row-level (responsibleId
-//   people anchor added to registry + scoped via assertSubjectInScope /
-//   assertScoped); listSurveys UNTOUCHED — createSurvey/submitSurveyResponse were later DELETED
-//   (2026-07-29; C# is the sole implementation, live in prod).
+//   min-5 scope-aware aggregation); listSurveys is the documented grant-only
+//   exception. createSurvey/submitSurveyResponse were DELETED 2026-07-29 and
+//   createActionPlan/updateActionPlan 2026-08-05 (#56) — C# is the sole writer
+//   of action_plans now, so the router holds NO row-level write scoping at all;
+//   that guarantee moved to services/Tims.Platform (see
+//   tests/access/scope-wiring-engagement-write.test.ts's header).
 // Fragment behavior covered by tests/access/entity-policies.test.ts;
 // write-rules by tests/access/write-rules.test.ts.
 
@@ -43,14 +46,20 @@ describe('learning module scope wiring', () => {
 });
 
 describe('engagement module scope wiring', () => {
-  it('engagement.ts gates the surviving aggregate reads via requireOrgScope (≥5 calls)', () => {
-    const src = readRouter('engagement.ts');
-    const matches = src.match(/requireOrgScope/g) ?? [];
-    // UPDATE 2026-07-31 (NEXT_PUBLIC_ENGAGEMENT_READ_VIA_CSHARP confirmed live in prod): getEnps,
-    // getClimateHeatmap, getLowClimateAlerts, getDashboardKpis were deleted (C#-only now), each of
-    // which also called requireOrgScope — the floor dropped from 9 to 5. Survivors: getSurveyResults,
-    // getResultsByArea, getWordCloud, getSentiment, getRotationRisk — all must still be gated.
-    expect(matches.length).toBeGreaterThanOrEqual(5);
+  it('engagement.ts gates every aggregate read via requireOrgScope (per-procedure, not a count)', () => {
+    // RE-ANCHORED 2026-08-05 (#56) — see tests/access/engagement-procedures.ts for why the old
+    // `>= 5` count assertion was replaced. It had already been re-pinned twice (9 → 5) to whichever
+    // procedures happened to survive the last deletion pass; #56 deleted getWordCloud/getSentiment
+    // and would have forced a third re-pin to 3. The invariant, not the era, is asserted now.
+    const blocks = engagementProcedureBlocks();
+    expect(Object.keys(blocks).length).toBeGreaterThan(0); // never vacuous
+    for (const [name, body] of Object.entries(blocks)) {
+      if (ENGAGEMENT_GRANT_ONLY.has(name)) continue;
+      expect(body, `${name} must call requireOrgScope`).toMatch(/requireOrgScope\(/);
+    }
+    for (const name of ENGAGEMENT_GRANT_ONLY) {
+      expect(Object.keys(blocks), `${name} is allow-listed but no longer exists`).toContain(name);
+    }
   });
 
   it('no spread of scope fragment in engagement.ts (AND-composition, CI check 13)', () => {
