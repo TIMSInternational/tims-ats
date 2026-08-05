@@ -303,10 +303,16 @@ been burned by the difference (#38):
 | ------------------------------------------------ | ---------------------------------------- | --------------------------------------- |
 | `tests/governance/scope-fixtures.test.ts` (#132) | `npx vitest run` → CI `Security Audit`   | ✅ **yes** — blocks CI                  |
 | `tests/governance/table-ownership.test.ts`       | `npx vitest run` + `dotnet-platform.yml` | ✅ yes                                  |
-| check 14 `verify-rls-isolation.ts`               | `/gate` **check 14**, local (live DB)    | ⚠️ ship-time only                       |
-| check 16 `schema-baseline.sh check`              | `/gate`, local (live DB)                 | ⚠️ ship-time only (#124)                |
-| **check 17 `verify-tenant-grants.ts`**           | `/gate` **check 17**, local (live DB)    | ⚠️ ship-time only — same credential gap |
+| check 14 `verify-rls-isolation.ts`               | `/gate` check 14 + **nightly CI** (#124) | ⚠️ ship-time + nightly sweep            |
+| check 16 `schema-baseline.sh check`              | `/gate` check 16 + **nightly CI** (#124) | ⚠️ ship-time + nightly sweep            |
+| **check 17 `verify-tenant-grants.ts`**           | `/gate` check 17 + **nightly CI** (#124) | ⚠️ ship-time + nightly sweep            |
 | `scripts/db/pre-flip-scan.ts` (#132)             | by hand, per flip (runbook §5)           | ❌ no — a documented step, not a gate   |
+
+> **The nightly job is inert until the `PROD_DIRECT_URL` secret exists**, and fails loudly rather than
+> skipping while it is absent — so "not yet configured" is visible in the Actions tab instead of silently
+> reading as "nothing to report". It is **additive**: it answers *did production drift since yesterday*,
+> never *did this change break something*. `/gate` remains the pre-merge control and the nightly sweep must
+> not be treated as having replaced it.
 
 `main` also has **no required status checks** (see the ownership-flip runbook §1), so even the ✅ rows are
 "CI goes red", not "the merge is blocked". `gh pr merge --admin` bypasses all of it.
