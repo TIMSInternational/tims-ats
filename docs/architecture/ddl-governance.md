@@ -165,9 +165,27 @@ not a gate. Exit 0 is not covered there (it needs live credentials); `/gate` che
 
 ### Check 17 — `app_tenant` least privilege (#126, added 2026-08-04)
 
-`scripts/security/verify-tenant-grants.ts`. Asserts that `app_tenant` holds `INSERT`/`UPDATE`/`DELETE`
-**only** on tables the Prisma schema declares. Exit 0 clean · 1 violation · 1 could-not-run (fail closed,
-same contract as 14 and 16 — an unrunnable privilege check is not a pass).
+`scripts/security/verify-tenant-grants.ts`, wired as **`/gate` check 17**. Asserts that `app_tenant` holds
+`INSERT`/`UPDATE`/`DELETE` only on tables that are **either** declared by the Prisma schema **or** protected
+by RLS. Exit 0 clean · 1 violation · **1 could-not-run** — the same fail-closed _doctrine_ as 14 and 16 (an
+unrunnable privilege check is not a pass), but deliberately **not** the same exit codes.
+
+> **The distinction matters, so do not compress it back into a claim that 17 shares 16's exit codes.**
+> (An earlier revision here did exactly that, in one phrase asserting an identical contract across 14/16/17;
+> it is described rather than reproduced, because a verbatim quote of stale text still matches every grep and
+> every governance test written to catch it.) Check 16 signals
+> could-not-run with **exit 2**; check 17 returns **1 for both** violation and could-not-run — its three
+> could-not-run paths being the missing-connection-URL guard (`:110`), the zero-Prisma-tables refusal
+> (`:118`) and the top-level `catch` (`:220`) — distinguishable only by reading the message. (Cited by name as
+> well as line, because line numbers rot: `:214` here was correct when written and stale six commits later,
+> caught by the tier-2 reviewer on #135.) Both fail closed, so neither can read green when it
+> did not run — but **a caller cannot branch on 17's exit code**, which is why #124's acceptance criterion
+> ("distinguish exit 1 from exit 2") is unsatisfiable for 17 as written. Aligning 17 onto exit 2 is the
+> better fix and belongs with #124, since changing a security check's exit contract wants its own review and
+> a failure-path test.
+
+Read the invariant precisely — the "or" is load-bearing, and the next section explains why stating it as
+"Prisma-owned only" nearly caused a production outage.
 
 It exists because production carries this default privilege, verified via `pg_default_acl`:
 
@@ -182,17 +200,32 @@ not opt-in.
 **The discriminator is RLS, not ownership — and getting that wrong nearly caused an outage.** The first
 version of this check flagged all 20 non-Prisma tables, and the accompanying REVOKE script would have
 revoked all 20. A cross-model reviewer caught that the C# strangler writes its tables **as `app_tenant`**:
-`TenantScope.cs:46` issues `SET LOCAL ROLE app_tenant`, because that is *how* those writes are
-RLS-enforced. Revoking the 7 RLS-forced EF tables would have broken HRIS sync, access-review attestation
+`TenantScope.cs:46` issues `SET LOCAL ROLE app_tenant`, because that is _how_ those writes are
+RLS-enforced. Revoking the 7 RLS-protected EF tables would have broken HRIS sync, access-review attestation
 and succession writes in production, detectable only by the failures themselves.
 
 So the rule is:
 
-| Table shape                | Meaning                                                    | app_tenant DML |
-| -------------------------- | ---------------------------------------------------------- | -------------- |
-| Prisma-owned               | the TS app writes it via `tenantDb`                        | required       |
-| EF-owned, RLS **forced**   | tenant-scoped; C# writes it as `app_tenant` under TenantScope | **required**   |
-| No RLS                     | not tenant-scoped ⇒ nothing writes it under TenantScope    | **dead → revoke** |
+| Table shape                 | Meaning                                                       | app_tenant DML    |
+| --------------------------- | ------------------------------------------------------------- | ----------------- |
+| Prisma-owned                | the TS app writes it via `tenantDb`                           | required          |
+| EF-owned, **RLS protected** | tenant-scoped; C# writes it as `app_tenant` under TenantScope | **required**      |
+| No RLS                      | not tenant-scoped ⇒ nothing writes it under TenantScope       | **dead → revoke** |
+
+**"RLS protected" means `relrowsecurity` + at least one `pg_policy` row** — that is literally what
+`verify-tenant-grants.ts:169` tests, and it is the right predicate rather than a loose approximation of one:
+
+- **FORCE (`relforcerowsecurity`) is deliberately NOT part of it.** Forcing changes behaviour only for the
+  table's _owner_; these tables are owned by `postgres`, while `app_tenant` is a non-owner `NOBYPASSRLS`
+  role, so plain `relrowsecurity` already constrains every `app_tenant` statement. Tightening the check to
+  require FORCE would report an RLS-enabled-but-unforced EF table as a violation — and acting on that reading
+  is the same revoke-and-break-production mistake in a new disguise. **Do not "fix" the check toward FORCE.**
+- **The `≥ 1 policy` half is load-bearing, not redundant.** RLS enabled with zero policies is default-deny
+  for a non-owner, so `app_tenant` cannot write the table at all and the grant really is dead — correctly
+  flagged.
+
+Earlier revisions of this section, and of the surrounding prose, said "RLS **forced**". That was imprecise
+about a check whose entire value is precision; corrected 2026-08-05.
 
 That leaves **13 violations**: `fx_rates` (its writer runs on a plain connection as the owner role,
 explicitly not under TenantScope), all **11 `qrtz_*`** (no Quartz source file references TenantScope), and
@@ -230,16 +263,26 @@ been burned by the difference (#38):
 | `tests/governance/table-ownership.test.ts`       | `npx vitest run` + `dotnet-platform.yml` | ✅ yes                                  |
 | check 14 `verify-rls-isolation.ts`               | `/gate`, local (live DB)                 | ⚠️ ship-time only                       |
 | check 16 `schema-baseline.sh check`              | `/gate`, local (live DB)                 | ⚠️ ship-time only (#124)                |
-| **check 17 `verify-tenant-grants.ts`**           | `/gate`, local (live DB)                 | ⚠️ ship-time only — same credential gap |
+| **check 17 `verify-tenant-grants.ts`**           | `/gate` **check 17**, local (live DB)    | ⚠️ ship-time only — same credential gap |
 | `scripts/db/pre-flip-scan.ts` (#132)             | by hand, per flip (runbook §5)           | ❌ no — a documented step, not a gate   |
 
 `main` also has **no required status checks** (see the ownership-flip runbook §1), so even the ✅ rows are
 "CI goes red", not "the merge is blocked". `gh pr merge --admin` bypasses all of it.
 
-> **The `/gate` skill's own check list is defined outside this repository**, so adding "check 17" to it is a
-> separate edit that this change cannot make. Until that happens, check 17 must be run explicitly:
-> `npx tsx scripts/security/verify-tenant-grants.ts`. Treating it as automatically part of `/gate` would be
-> the same mistake as assuming the Codex gate ran (#38).
+> **CORRECTED 2026-08-05.** The paragraph here previously said "the `/gate` skill's own check list is
+> defined outside this repository", so check 17 could not be added to it. **That was false.** The check list
+> is `.claude/commands/gate.md`, committed to this repo — and PRs #114, #117 and #125 had each already edited
+> that exact file. The claim was never verified against `git ls-files`, and the effect was that a mandated
+> control sat unwired for a day while the reason given for not wiring it did not exist.
+>
+> **Check 17 is now in `/gate` as check 17.** The residual gap is CI only (#124), which it shares with 14
+> and 16.
+>
+> The instructive part is the failure mode, not the fix: this is the #38 shape with the polarity reversed.
+> #38 was a gate everyone believed ran and did not. This was a gate everyone knew did not run, kept out by a
+> blocker that a single `ls` would have dissolved. **An unverified claim about why a control cannot be
+> enforced is itself a governance defect** — hold it to the same standard as a claim about the schema
+> (§"The repository is not evidence about production"), and grep before believing it.
 
 ### CI, and what to do when check 16 cannot run
 

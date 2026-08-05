@@ -184,7 +184,13 @@ async function main(): Promise<void> {
   }
 
   if (violations.length === 0) {
-    console.log('✓ app_tenant holds write privileges only on Prisma-owned tables (least privilege intact).');
+    // State the real invariant, not the narrow one. "only on Prisma-owned tables" is the exact framing
+    // that produced the near-outage this check was rewritten to prevent (#126) — a passing message that
+    // misstates what passed teaches the wrong rule to whoever reads it next.
+    console.log(
+      '✓ app_tenant holds write privileges only on tables that are Prisma-owned or RLS-protected' +
+        ' (least privilege intact).',
+    );
     process.exit(0);
   }
 
