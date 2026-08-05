@@ -58,13 +58,38 @@ locally-run [OmniRoute](https://github.com/diegosouzapw/OmniRoute) gateway (MIT,
 
 ```bash
 npm i -g omniroute && omniroute      # Dashboard → Providers: add an upstream
-export OMNIROUTE_KEY=...             # Dashboard → Endpoints
-export OMNIROUTE_MODEL=openai/gpt-4.1
+export OMNIROUTE_KEY=...             # Dashboard → Endpoints (optional; a fresh install serves unauthenticated)
+export OMNIROUTE_MODEL=oc/deepseek-v4-flash-free   # REQUIRED — see below. List yours:
+                                     #   curl -s http://localhost:20128/v1/models | jq -r '.data[].id'
 bash scripts/verification/crossmodel-review.sh
 ```
 
 The script **refuses an Anthropic `OMNIROUTE_MODEL`** and exits 2 rather than quietly downgrading —
 silently weakening a control is the exact failure this issue was about.
+
+### `OMNIROUTE_MODEL` is required, and has no default (2026-08-05)
+
+It used to default to **`auto/best-coding`**, and that quietly voided the guarantee above.
+
+`auto/best-coding` is not a model, it is a **router**: the gateway chooses an upstream per request. So the
+Anthropic check was validating a string that names no vendor. Probed on 2026-08-05, it resolved to
+`"model":"big-pickle"` — an opaque codename attributable to nobody — while the same gateway's catalogue
+included `aug/opus4.8`, `tllm/CLAUDE_4_6_SONNET` and friends, any of which the router could legitimately
+have picked.
+
+**Consequence for the record:** reviews run under that default — including **PR #130** and **#135** — were
+performed by _a different reviewer_, but cannot be shown to have been _a different vendor_. They still found
+real defects. Do not restate them as cross-model-verified.
+
+Two further holes closed at the same time:
+
+- **`fable` was missing from the Anthropic pattern.** Fable 5 is an Anthropic model (`claude-fable-5`) and
+  its alias contains none of `claude|anthropic|sonnet|opus|haiku`. The gateway serves `aug/fable-5`, which
+  the old pattern accepted as a valid cross-model reviewer.
+- **The response's `model` field was never read.** The script reported the _requested_ string as the
+  reviewer's identity. It now reports what actually served the request, and **hard-fails if that is
+  positively Anthropic**. An unattributable codename is surfaced but not failed — rejecting those would
+  reject most of this gateway's catalogue, and that is a judgement for whoever sets the variable.
 
 Two caveats before enabling it:
 

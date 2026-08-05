@@ -25,8 +25,10 @@
 #                            processor for this repo, so it adds no new subprocessor)
 #   Dashboard -> Endpoints : copy the local key
 #
-#   export OMNIROUTE_KEY=...                 # required
-#   export OMNIROUTE_MODEL=openai/gpt-4.1    # optional; MUST NOT be an Anthropic model (enforced)
+#   export OMNIROUTE_KEY=...                 # optional (a fresh install serves without auth)
+#   export OMNIROUTE_MODEL=oc/deepseek-v4-flash-free   # REQUIRED. A concrete non-Anthropic upstream:
+#                                            #   no `auto/*` routers, no Anthropic families. Enforced.
+#                                            #   List yours: curl -s $OMNIROUTE_URL/models | jq -r '.data[].id'
 #   export OMNIROUTE_URL=...                 # optional, defaults to http://localhost:20128/v1
 #
 # ⚠️  OmniRoute sees the full diff. Whichever upstream you enable receives it — that is a
@@ -37,7 +39,7 @@ cd "$(git rev-parse --show-toplevel)"
 
 BASE="${1:-origin/main}"
 URL="${OMNIROUTE_URL:-http://localhost:20128/v1}"
-MODEL="${OMNIROUTE_MODEL:-auto/best-coding}"
+MODEL="${OMNIROUTE_MODEL:-}"   # no default on purpose — see the named-upstream guard in tier 2
 
 ok()   { printf '  \033[32m✓\033[0m %s\n' "$*"; }
 warn() { printf '  \033[33m!\033[0m %s\n' "$*"; }
@@ -69,15 +71,55 @@ if [[ -n "${OMNIROUTE_KEY:-}" ]]; then
   AUTH_HDR=(-H "Authorization: Bearer $OMNIROUTE_KEY")
 fi
 
+# REQUIRE A NAMED UPSTREAM — no `auto/*` routers (#38, decided 2026-08-05).
+#
+# The default used to be `auto/best-coding`, which is not a model but a ROUTER: the gateway picks an
+# upstream per request, so the Anthropic-family check below was validating a string that names no vendor at
+# all. Probing it on 2026-08-05 returned `"model":"big-pickle"` — a codename attributable to nobody. Every
+# review
+# recorded as "cross-model" under that default was a DIFFERENT reviewer, but not provably a different
+# VENDOR, and the gateway's list includes Anthropic models the router could legitimately have chosen.
+#
+# So the reviewer's identity is now a deliberate choice rather than a runtime lottery. Deliberately NO
+# default: tier 2 refuses to run until someone names an upstream. That is the point — an unset variable
+# must not silently buy back the guarantee this removes.
+if [[ -z "${OMNIROUTE_MODEL:-}" ]]; then
+  bad "OMNIROUTE_MODEL is not set — refusing to run tier 2 against an unnamed reviewer."
+  warn "The old default (auto/best-coding) is a ROUTER: it resolves per-request to an unattributable"
+  warn "model, so 'cross-model' could not be substantiated. Name a non-Anthropic upstream, e.g.:"
+  warn "  export OMNIROUTE_MODEL=oc/deepseek-v4-flash-free   # verified working 2026-08-05"
+  warn "List what your gateway serves:  curl -s $URL/models | jq -r '.data[].id'"
+  exit 2
+fi
+if [[ "$MODEL" == auto/* ]]; then
+  bad "OMNIROUTE_MODEL='$MODEL' is a ROUTER, not a model — the reviewer's vendor is undetermined."
+  warn "Name a concrete upstream so the review can be attributed. See $URL/models."
+  exit 2
+fi
+
 # A same-model reviewer is NOT cross-model verification. Refuse rather than quietly downgrade —
 # silently weakening a control is the exact class of bug #38 was about.
 #
-# LIMIT (tier-2 finding #5, 2026-08-03): this matches the model ID string only. An OmniRoute alias
-# that names none of these tokens but routes upstream to an Anthropic model would pass. Treat this as
-# a guard against the obvious mistake, not a guarantee — verify the upstream in the dashboard.
-if grep -qiE 'claude|anthropic|sonnet|opus|haiku' <<<"$MODEL"; then
+# `fable` is in the pattern because **Fable 5 is an Anthropic model** (`claude-fable-5`) whose common
+# alias contains none of the other tokens. The gateway really does serve one: `aug/fable-5` was in its
+# model list on 2026-08-05 and the previous pattern accepted it as a valid cross-model reviewer.
+#
+# LIMIT (tier-2 finding #5, 2026-08-03): this matches the model ID string only. An OmniRoute alias that
+# names none of these tokens but routes upstream to an Anthropic model would still pass. The resolved-model
+# report below is the partial answer to that; the dashboard remains the authority.
+# The leading `(^|[^a-z])` is a boundary, and it matters: a bare substring match means `opus` matches
+# `octopus`, so an unrelated vendor's codename gets hard-failed as "Anthropic". Requiring a non-letter
+# before the token fixes that while still catching every real case, because model IDs separate on `/`,
+# `-`, `_` and `.`:  aug/opus4.8 ✓  tllm/CLAUDE_4_6_SONNET ✓  aug/fable-5 ✓  octopus ✗
+# No trailing boundary — real IDs run the version straight on (`opus4.8`, `sonnet4.6`).
+# Residual, stated rather than papered over: a token glued to a preceding letter (`myclaude`) is missed.
+# Over-blocking is the safe direction here, but a guarantee that is wrong in the unsafe direction should
+# be described accurately, so: this catches conventional IDs, not adversarial ones.
+ANTHROPIC_RE='(^|[^a-z])(claude|anthropic|sonnet|opus|haiku|fable)'
+if grep -qiE "$ANTHROPIC_RE" <<<"$MODEL"; then
   bad "OMNIROUTE_MODEL='$MODEL' is an Anthropic model — that is NOT cross-model review."
-  warn "Pick a different vendor's family (e.g. openai/gpt-4.1, meta/llama-4, deepseek/deepseek-chat)."
+  warn "Pick a different vendor (verified working 2026-08-05: oc/deepseek-v4-flash-free,"
+  warn "oc/nemotron-3-ultra-free, oc/mimo-v2.5-free)."
   exit 2
 fi
 
@@ -275,6 +317,60 @@ except Exception as e:
     print('')
 ")"
 
+# WHICH MODEL ACTUALLY ANSWERED. Requesting a named upstream is not the same as being served by it — the
+# gateway may alias, fall back, or substitute, and until 2026-08-05 this script never looked. It reported
+# the REQUESTED string as the reviewer's identity, which is how "auto/best-coding" appeared in PR bodies
+# as though it were a model. Read what came back and say so.
+SERVED="$(python3 -c "
+import json
+try:
+    print(json.load(open('$RESP')).get('model') or '')
+except Exception:
+    print('')
+")"
+# Provider-controlled string: flatten newlines/control characters and cap the length before it is
+# interpolated into any log line. Local-only and low severity, but a `model` field carrying newlines or
+# escape sequences could otherwise inject arbitrary text into this script's output — including something
+# that reads like one of its own status lines.
+SERVED="$(tr -d '\000-\037' <<<"$SERVED" | cut -c1-80)"
+
+SERVED_SUFFIX=""
+if [[ -z "$SERVED" ]]; then
+  # FAIL LOUD RATHER THAN REVERT TO THE OLD BEHAVIOUR. If the response is not JSON, omits `model`, or
+  # the parse throws, the previous version left SERVED empty and silently printed the REQUESTED model as
+  # the reviewer's identity — exactly the misattribution this block was added to remove. Silence here
+  # would make the guarantee conditional on a parse succeeding, which is not a guarantee.
+  SERVED_SUFFIX=" → served-by UNREPORTED"
+  warn "The gateway did not report which model served this request (no 'model' field, or unparseable)."
+  warn "Attribution is therefore UNVERIFIED for this run — say so in the PR body, do not assume '$MODEL'."
+elif [[ "$SERVED" != "$MODEL" ]]; then
+  SERVED_SUFFIX=" → served by $SERVED"
+  warn "Requested '$MODEL' but the gateway reports '$SERVED' served it."
+else
+  SERVED_SUFFIX=" (served by $SERVED)"
+fi
+# THE SERVE SIDE GETS THE SAME RULES AS THE REQUEST SIDE. Enforcing them only on the requested string is
+# a guarantee the gateway can revoke: a reviewer pointed out that with `auto/*` banned at request time but
+# permitted at serve time, an alias mapping oc/deepseek-v4-flash-free → auto/best-coding produced a warning
+# and **exit 0** — the exact unattributable router this change exists to reject, accepted as the reviewer,
+# with the run recorded CLEAN. "Choose your reviewer" is not a control if the choice is overridable.
+if [[ -n "$SERVED" ]]; then
+  if grep -qiE "$ANTHROPIC_RE" <<<"$SERVED"; then
+    bad "The gateway served '$SERVED', an Anthropic model — this was NOT cross-model review."
+    warn "Requested model was '$MODEL'. Check the provider mapping in the OmniRoute dashboard."
+    exit 2
+  fi
+  if [[ "$SERVED" == auto/* ]]; then
+    bad "The gateway served '$SERVED', a ROUTER — the reviewer's vendor is undetermined."
+    warn "Requested model was '$MODEL'. An alias is remapping it to a router; fix it in the dashboard."
+    exit 2
+  fi
+fi
+# NOT failed here: an unattributable CODENAME (e.g. `big-pickle`). Rejecting those would reject most of this
+# gateway's catalogue, and the decision of which upstreams are acceptable belongs to whoever sets
+# OMNIROUTE_MODEL, not to this script. It is reported in every status line instead, so a PR body can be
+# honest about what actually reviewed the diff. That is a deliberate limit, not an oversight.
+
 if [[ "$(tr -d '[:space:]' <<<"$CONTENT" | wc -c)" -lt 200 ]]; then
   bad "OmniRoute returned no meaningful review — treating as NOT RUN."
   head -c 500 "$RESP" | sed 's/^/      /'
@@ -286,20 +382,45 @@ fi
 # so a model quoting the diff could trip the match either way. Tier-2 finding #4, 2026-08-03.
 VERDICT_LINE="$(printf '%s\n' "$CONTENT" | grep -vE '^\s*$' | tail -1)"
 
-if ! grep -qE '^VERDICT: (BLOCKING|CLEAN)$' <<<"$VERDICT_LINE"; then
+# Strip EMPHASIS ONLY — `**`, `__`, backticks, surrounding whitespace, one trailing period — then match
+# the bare token. The LAST-LINE anchor above is preserved; only emphasis is forgiven.
+#
+# WHY: on 2026-08-05 a review of PR #136 returned seven substantive findings and this script exited 2
+# ("Last line is not a VERDICT") because the model wrote **VERDICT: BLOCKING** in bold. A real review,
+# discarded on formatting, and reported as did-not-run. Fail-closed so nothing unsafe shipped — but a
+# gate that cannot recognise its own reviewer's answer wastes the review and trains its readers to treat
+# exit 2 as noise. Exit 2 has to keep meaning "no reviewer ran".
+#
+# The rule, stated precisely, because "emphasis vs quotation" is too vague to implement against:
+#   STRIPPED   — emphasis runs (`**`, `__`, `*`, backticks) ANYWHERE in the line, so both
+#                `**VERDICT: CLEAN**` and `VERDICT: **CLEAN**` are accepted. Both are the model stating a
+#                verdict, merely styled.
+#   NOT STRIPPED — a LEADING `>` or `#`. Those are block-level markers: `> VERDICT: CLEAN` is a markdown
+#                BLOCKQUOTE, i.e. a quotation of this template or of the diff, not the model asserting
+#                anything. Forgiving it would turn a quote into an accepted pass.
+#
+# The first version of this fix stripped `>` and `#` too, and a reviewer correctly called that the very
+# over-forgiveness the last-line anchor exists to prevent. A second reviewer then argued `VERDICT: **CLEAN**`
+# should also be rejected as "the same class". It is not, and it is accepted on purpose: nothing about it
+# marks the line as quoted, and rejecting styled-but-genuine verdicts is precisely the #136 failure this is
+# repairing. Inline styling is presentation; a leading block marker is attribution.
+VERDICT_BARE="$(sed -E 's/^[[:space:]]+//; s/(\*\*|__|\*|`)//g; s/[[:space:]]*\.?[[:space:]]*$//' <<<"$VERDICT_LINE")"
+
+if ! grep -qE '^VERDICT: (BLOCKING|CLEAN)$' <<<"$VERDICT_BARE"; then
   bad "Last line is not a VERDICT — cannot confirm a real review ran."
   printf '   last line was: %s\n' "$VERDICT_LINE" >&2
+  printf '   after stripping markdown: %s\n' "$VERDICT_BARE" >&2
   printf '%s\n' "$CONTENT" | tail -15 | sed 's/^/      /'
   exit 2
 fi
 
 printf '\n%s\n\n' "$CONTENT" | sed 's/^/  /'
 
-if [[ "$VERDICT_LINE" == "VERDICT: BLOCKING" ]]; then
-  bad "Tier-2 review raised BLOCKING findings ($MODEL)."
+if [[ "$VERDICT_BARE" == "VERDICT: BLOCKING" ]]; then
+  bad "Tier-2 review raised BLOCKING findings ($MODEL$SERVED_SUFFIX)."
   exit 1
 fi
 
-ok "Tier-2 cross-model review CLEAN ($MODEL via OmniRoute)."
+ok "Tier-2 cross-model review CLEAN ($MODEL$SERVED_SUFFIX via OmniRoute)."
 warn "Record in the PR body that tier 2 ran, not Codex."
 exit 0
