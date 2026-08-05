@@ -174,8 +174,11 @@ unrunnable privilege check is not a pass), but deliberately **not** the same exi
 > (An earlier revision here did exactly that, in one phrase asserting an identical contract across 14/16/17;
 > it is described rather than reproduced, because a verbatim quote of stale text still matches every grep and
 > every governance test written to catch it.) Check 16 signals
-> could-not-run with **exit 2**; check 17 returns **1 for both** violation and could-not-run (`:110`, `:118`,
-> `:214`), distinguishable only by reading the message. Both fail closed, so neither can read green when it
+> could-not-run with **exit 2**; check 17 returns **1 for both** violation and could-not-run — its three
+> could-not-run paths being the missing-connection-URL guard (`:110`), the zero-Prisma-tables refusal
+> (`:118`) and the top-level `catch` (`:220`) — distinguishable only by reading the message. (Cited by name as
+> well as line, because line numbers rot: `:214` here was correct when written and stale six commits later,
+> caught by the tier-2 reviewer on #135.) Both fail closed, so neither can read green when it
 > did not run — but **a caller cannot branch on 17's exit code**, which is why #124's acceptance criterion
 > ("distinguish exit 1 from exit 2") is unsatisfiable for 17 as written. Aligning 17 onto exit 2 is the
 > better fix and belongs with #124, since changing a security check's exit contract wants its own review and
