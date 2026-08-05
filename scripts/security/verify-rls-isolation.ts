@@ -23,8 +23,19 @@
  *   npx tsx scripts/security/verify-rls-isolation.ts            # uses DIRECT_URL, else DATABASE_URL
  *   DATABASE_URL="postgres://..." npx tsx scripts/security/verify-rls-isolation.ts
  *
- * Exits 0 if isolation holds, 1 if any check fails. Safe to run against production: every
- * statement is a read, and the empirical probe runs inside a transaction that is always rolled back.
+ * EXIT CODES — aligned with checks 16 and 17 as of #124
+ *   0  ran, isolation holds
+ *   1  ran, found a finding
+ *   2  COULD NOT RUN — no connection URL; no RLS-enabled tables (wrong database); every RLS table empty,
+ *      so the fail-closed probe had nothing to prove anything against; or a query threw.
+ *      Exit 2 is NOT a pass. A gate that reports it as one is the #38 failure mode.
+ *
+ * The empty-tables guard matters because this check's core assertion is EMPIRICAL: it can only speak for
+ * a table that has rows. In production it covers 44 of 100 candidates — a fact the success line now
+ * reports, because "verified" was being read as "all of them".
+ *
+ * Safe to run against production: every statement is a read, and the empirical probe runs inside a
+ * transaction that is always rolled back.
  */
 import { readFileSync, writeSync } from 'node:fs';
 import { Client } from 'pg';
@@ -213,12 +224,18 @@ async function main(): Promise<void> {
     try {
       await db.query(`SELECT set_config('app.current_org_id', '', true)`);
       for (const { relname } of candidates) {
-        const total = await db.query<{ n: string }>(`SELECT count(*)::text AS n FROM "${relname}"`);
+        // Quote the identifier properly rather than interpolating it raw. `relname` comes from pg_class
+        // so it is a real table name, not user input — but Postgres permits a double quote inside an
+        // identifier, and a bare `"${relname}"` would let such a name break out of the quoting. Doubling
+        // internal quotes is the standard escape. Pre-existing, flagged by a reviewer of #124; fixed here
+        // because it is one line in a script whose entire job is to be trustworthy.
+        const q = `"${relname.replace(/"/g, '""')}"`;
+        const total = await db.query<{ n: string }>(`SELECT count(*)::text AS n FROM ${q}`);
         if (total.rows[0].n === '0') continue; // empty table proves nothing either way
 
         probed++;
         await db.query('SET LOCAL ROLE app_tenant');
-        const seen = await db.query<{ n: string }>(`SELECT count(*)::text AS n FROM "${relname}"`);
+        const seen = await db.query<{ n: string }>(`SELECT count(*)::text AS n FROM ${q}`);
         await db.query('RESET ROLE');
 
         if (seen.rows[0].n !== '0') {
@@ -237,10 +254,19 @@ async function main(): Promise<void> {
     // — a restored-but-unseeded copy, a fresh database, or the wrong target would all sail through with
     // "verified". Structural checks 1-3 above still ran, but they are not what this check is for.
     if (probed === 0) {
+      // Print any structural findings BEFORE bailing. The first version of this guard called die2
+      // straight away, which threw away real findings from checks 1-3 whenever the probe had nothing to
+      // run against — so pointing this at an unseeded staging database with a genuinely bad policy would
+      // report "did not run" and never mention the bad policy. Incomplete is not the same as empty-handed.
+      if (findings.length > 0) {
+        writeSync(2, `\n✖ ${findings.length} RLS isolation finding(s) from the structural checks:\n\n`);
+        for (const f of findings) writeSync(2, `  [${f.check}] ${f.detail}\n`);
+        writeSync(2, '\n');
+      }
       die2(
         `all ${candidates.length} RLS-enabled tables were EMPTY, so the fail-closed probe ran against ` +
           'nothing. Structure was checked; isolation was not. An unseeded or wrong database cannot be ' +
-          'certified as isolating.',
+          `certified as isolating.${findings.length > 0 ? ' The findings above still stand.' : ''}`,
       );
     }
   } finally {
@@ -248,7 +274,7 @@ async function main(): Promise<void> {
   }
 
   if (findings.length === 0) {
-    // Report the COVERAGE, not just the verdict. In production only 46 of 102 RLS tables hold rows, so
+    // Report the COVERAGE, not just the verdict. In production the probe covers 44 of 100 candidates, so
     // the empirical probe — the part that actually caught #111 — speaks for well under half of them. That
     // was previously invisible: the check said "verified" and a reader reasonably assumed "all of them".
     console.log(
@@ -259,9 +285,12 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  console.error(`\n✖ ${findings.length} RLS isolation finding(s):\n`);
-  for (const f of findings) console.error(`  [${f.check}] ${f.detail}`);
-  console.error('\nSee issue #111 and packages/db/prisma/manual/2026-08-02-fix-rls-*.sql\n');
+  // writeSync, matching die2 and check 17's violation path: process.exit() does not flush an async stderr
+  // pipe, and a CI job that sees exit 1 with the finding list dropped has learned almost nothing.
+  let report = `\n✖ ${findings.length} RLS isolation finding(s):\n\n`;
+  for (const f of findings) report += `  [${f.check}] ${f.detail}\n`;
+  report += '\nSee issue #111 and packages/db/prisma/manual/2026-08-02-fix-rls-*.sql\n';
+  writeSync(2, report);
   process.exit(1);
 }
 
