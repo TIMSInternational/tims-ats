@@ -188,7 +188,8 @@ describe-service`; only the frontend Vercel flag was missing.)
     reporting, team-intel, evaluation360, succession, compensation, nine-box, engagement, DEI, audit-log,
     FX-dependent compensation/DEI reads) have a `useX()` hook per read, originally dark and mirroring the exact
     tRPC output type — though for domains whose flag has since gone live and whose TS procedures were
-    subsequently deleted (reporting, evaluation360, team-intel, billing-usage, succession, nine-box,
+    subsequently deleted (reporting, evaluation360, team-intel, billing-usage, succession, nine-box
+    — the last of which became TS-free on 2026-08-05 (#57) —
     compensation's 5 FX-free reads, and DEI's 9 of 10) the hook is now C#-only with hand-declared types, no
     longer dark and no longer mirroring a tRPC output
     type — **including billing's invoice-read** (`billing.listInvoices`/`billing.getInvoice`,
@@ -212,7 +213,10 @@ describe-service`; only the frontend Vercel flag was missing.)
     (e.g. engagement's `createActionPlan`) have zero consumers and were intentionally left unwrapped (dead code
     otherwise). **Succession's 3 such mutations (`addCriticalRole`, `removeSuccessor`,
     `updateSuccessorReadiness`) were DELETED 2026-08-03 (#58) rather than left as dead code** — they still have
-    no FE wrapper, but the TS side no longer exists to be dead. The
+    no FE wrapper, but the TS side no longer exists to be dead. **Nine-box's 2 such mutations
+(`submitCalibrationVote`, `finalizeCalibration`) were DELETED 2026-08-05 (#57) on the same reasoning**,
+with the whole `ninebox` router — and unlike succession's, that deletion has a hard downstream
+consequence: it clears the last TS writer of the three `calibration_*` tables and unblocks flip #70. The
     billing Stripe-webhook write is a proxy inside `packages/api/src/services/billing-webhook.service.ts`,
     not a browser wrapper — Stripe calls the Next.js route directly, so the flag lives entirely server-side.
     A real bug was found and fixed in this pass (#212): the browser `PlatformApiError` never surfaced the
@@ -247,11 +251,18 @@ describe-service`; only the frontend Vercel flag was missing.)
   residual `getCriticalRole` + 3 zero-consumer write mutations (`addCriticalRole`,
   `removeSuccessor`, `updateSuccessorReadiness`) were deleted and `packages/api/src/routers/succession.ts`
   removed outright, so all 9 reads + all 5 writes are now C#-only; the READ parity surface went
-  no-op and was removed, the WRITE parity surface is unaffected), nine-box (2026-07-29,
-  **partially** deleted — 7 of 11 read procedures +
-  3 of 5 write procedures; `getAxisBreakdown`/`getMovementHistory`/`simulate`/`getQuadrantPlan`
-  (reads) and `submitCalibrationVote`/`finalizeCalibration` (writes) remain untouched, unrelated
-  zero-consumer dead code), and compensation (2026-07-29, **partially** deleted — 5 of 8
+  no-op and was removed, the WRITE parity surface is unaffected), nine-box (2026-07-29
+  **partially** deleted — 7 of 11 read procedures + 3 of 5 write procedures — then **COMPLETED
+  2026-08-05 (#57)**: the residual 4 reads (`getAxisBreakdown`/`getMovementHistory`/`simulate`/
+  `getQuadrantPlan`) + 2 writes (`submitCalibrationVote`/`finalizeCalibration`), all zero-FE-consumer,
+  were deleted and `packages/api/src/routers/ninebox.ts` (+ `.schemas.ts` + `.helpers.ts`) removed
+  outright, so all 11 reads + all 5 writes are now C#-only. Deleting the 2 writes leaves
+  `calibration_sessions`/`calibration_members`/`calibration_votes` with **zero TS Prisma writers**, which
+  is the write-side precondition for ownership flip **#70** — pinned by
+  `tests/governance/calibration-no-ts-writers.test.ts`. As with succession, the READ parity surface went
+  no-op and was removed (`verify ninebox` is now a NO-OP — do not read it as evidence about the C# read
+  surface; that coverage is `NineBoxReadTests.cs`/`NineBoxReadEndpointAuthTests.cs`); the WRITE parity
+  surface is unaffected and still checks all 5 writes), and compensation (2026-07-29, **partially** deleted — 5 of 8
   FE-consumed read procedures + both write procedures; the 3 FX-dependent reads
   `getBandDistribution`/`getTotalCompBreakdown`/`getDashboardKpis` are DELIBERATELY RETAINED because
   `NEXT_PUBLIC_COMPENSATION_FX_READ_VIA_CSHARP` still does not exist in Vercel and TypeScript is

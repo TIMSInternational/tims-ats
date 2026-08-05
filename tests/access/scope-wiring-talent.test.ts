@@ -7,23 +7,36 @@ import { join } from 'path';
 // teamIntel (team-keyed analytics). These three carry leader@team grants in
 // the matrix, so own/team/unit reads must filter rows.
 //
-// ── ninebox taxonomy ──────────────────────────────────────────────────
-// UPDATE 2026-07-29: getGrid, getEmployeeDetail, createCalibration,
-// listCalibrations, getCalibration, myCalibrations, getBenchStrength,
-// getDashboardKpis had their TS side DELETED (7 reads + 3 writes wrapped
-// live in prod) — the taxonomy below now covers only the 6 zero-FE-consumer
-// procedures that remain, unrelated dead code out of scope for that deletion.
-//   getAxisBreakdown / getMovementHistory → row-level reads of
-//     NineBoxEvaluation → AND-compose the nineBoxEvaluation fragment (the
-//     existing teamId/unitId/companyId input branches only INTERSECT).
-//     getAxisBreakdown additionally subjects its target userId via
-//     assertSubjectInScope (point-read).
-//   simulate            → pure math on input scores (no DB read) → untouched.
-//   submitCalibrationVote → THE membership rule (mirrors submitScorecard):
-//     fetch session org-scoped, require the VOTER is a calibrationMember,
-//     FORBIDDEN otherwise. voterId already comes from ctx.user.id (not input).
-//   finalizeCalibration → session lifecycle write → requireOrgScope.
-//   getQuadrantPlan     → static plan lookup (no DB read) → untouched.
+// ── ninebox taxonomy — REMOVED 2026-08-05 (#57) ───────────────────────
+// packages/api/src/routers/ninebox.ts is DELETED (with ninebox.schemas.ts and
+// ninebox.helpers.ts, and unregistered from root.ts). The 2026-07-29 pass removed 7 of
+// 11 reads + 3 of 5 writes; #57 removed the last 6 (getAxisBreakdown, getMovementHistory,
+// simulate, getQuadrantPlan, submitCalibrationVote, finalizeCalibration — all
+// zero-FE-consumer). There is no TS source file left for a static tripwire to grep, so the
+// four ninebox assertions that used to live below are gone rather than skipped.
+//
+// The guarantees they asserted are enforced against the C# owner as REAL HTTP integration
+// tests, which for the LIVE code path is a stronger check than a regex over source
+// (services/Tims.Platform/tests/Tims.IntegrationTests/NineBox/):
+//   assertSubjectInScope on getAxisBreakdown → NineBoxReadEndpointAuthTests.cs (the
+//                                              subject-scope 403 cases)
+//   submitCalibrationVote membership rule    → SubmitVote_org_admin_non_member_cannot_forge_or_overwrite
+//                                              (NineBoxWriteTests.cs) — a behavioural proof that an
+//                                              hr_admin WITH ninebox:update but no membership is denied
+//                                              AND writes nothing, which the source grep never showed
+//   evaluatedUser-in-org hardening           → SubmitVote_cross_org_evaluated_user_is_not_found,
+//                                              SubmitVote_nonexistent_evaluated_user_is_not_found
+//   finalizeCalibration requireOrgScope      → NineBoxWriteEndpointAuthTests.cs + Finalize_cross_org_is_null_and_untouched
+//
+// HONEST LIMIT, same as the succession block below: these are not the same control. The C#
+// tests guard the C# implementation. They would NOT catch a future TS ninebox router
+// reintroduced without assertSubjectInScope/requireOrgScope. Until flip #70 removes the
+// three calibration_* Prisma models, the ledger check has nothing to flag either (the models
+// must remain while the tables sit in efcoreStranglerWrite). What DOES cover the part that
+// matters for #70 is tests/governance/calibration-no-ts-writers.test.ts — a repo-wide
+// tripwire asserting zero Prisma-delegate touches of the three calibration_* models. It
+// would fail the moment a TS writer reappears, which is the specific regression that would
+// silently un-block-then-corrupt the flip.
 //
 // ── succession taxonomy — REMOVED 2026-08-03 (#58) ────────────────────
 // packages/api/src/routers/succession.ts is DELETED. The 2026-07-29 pass removed 8 of 9
@@ -69,30 +82,8 @@ import { join } from 'path';
 const ROOT = join(__dirname, '..', '..');
 const readRouter = (name: string) => readFileSync(join(ROOT, 'packages/api/src/routers', name), 'utf8');
 
-describe('ninebox module scope wiring', () => {
-  const src = () => readRouter('ninebox.ts');
-
-  it('composes the nineBoxEvaluation fragment via AND', () => {
-    expect(src()).toMatch(/scopeWhereFor\('nineBoxEvaluation'/);
-    expect(src()).toMatch(/AND:\s*\[/);
-  });
-
-  it('getAxisBreakdown subjects the target user via assertSubjectInScope', () => {
-    expect(src()).toMatch(/assertSubjectInScope/);
-  });
-
-  it('submitCalibrationVote enforces the committee-membership rule', () => {
-    const s = src();
-    // membership check: a calibrationMember.findFirst keyed on the voter
-    expect(s).toMatch(/calibrationMember\.findFirst|members:\s*\{\s*some/);
-    // FORBIDDEN when the voter is not a member
-    expect(s).toMatch(/FORBIDDEN/);
-  });
-
-  it('finalizeCalibration (lifecycle write) gated via requireOrgScope', () => {
-    expect(src()).toMatch(/requireOrgScope/);
-  });
-});
+// `describe('ninebox module scope wiring')` REMOVED 2026-08-05 (#57) — ninebox.ts no longer
+// exists. See the ninebox-taxonomy block above for the C# tests that now carry its assertions.
 
 // `describe('succession module scope wiring')` REMOVED 2026-08-03 (#58) — succession.ts no
 // longer exists. See the succession-taxonomy block above for the C# tests that now carry both
@@ -107,9 +98,10 @@ describe('teamIntel module scope wiring', () => {
 });
 
 describe('talent modules — no fragment spread (AND-composition invariant, CI check 13)', () => {
-  // 'succession.ts' dropped 2026-08-03 (#58) — file deleted. A deleted router cannot spread a
-  // fragment, so this loses no coverage; the C# owner has no Prisma fragment to spread at all.
-  for (const name of ['ninebox.ts', 'teamIntel.ts']) {
+  // 'succession.ts' dropped 2026-08-03 (#58) and 'ninebox.ts' dropped 2026-08-05 (#57) — both files
+  // deleted. A deleted router cannot spread a fragment, so this loses no coverage; the C# owners
+  // have no Prisma fragment to spread at all.
+  for (const name of ['teamIntel.ts']) {
     it(`${name} does not spread a scope fragment`, () => {
       expect(readRouter(name)).not.toMatch(/\.\.\.(await\s+)?scopeWhere/);
     });
@@ -121,12 +113,10 @@ describe('codex round-1 fixes (talent)', () => {
   // succession.ts deleted. The C# equivalent is a real behavioural test rather than a source
   // grep: TeamScope_ListCriticalRoles_DropsOutOfScopeRole (SuccessionReadTests.cs) asserts an
   // out-of-scope role is actually absent from the response.
-  it('submitCalibrationVote validates the evaluated user belongs to the org', () => {
-    const src = readFileSync(join(ROOT, 'packages/api/src/routers/ninebox.ts'), 'utf8');
-    const block = src.slice(src.indexOf('submitCalibrationVote:'), src.indexOf('finalizeCalibration:'));
-    expect(block).toMatch(/input\.evaluatedUserId,\s*organizationId/);
-    expect(block).toMatch(/Usuario evaluado no encontrado/);
-  });
+  // 'submitCalibrationVote validates the evaluated user belongs to the org' REMOVED 2026-08-05
+  // (#57) — ninebox.ts deleted. The C# equivalents are behavioural rather than source greps:
+  // SubmitVote_cross_org_evaluated_user_is_not_found + SubmitVote_nonexistent_evaluated_user_is_not_found
+  // (NineBoxWriteTests.cs) assert the 404 AND that no vote row was written.
   it('updateActionPlan guards responsibility reassignment', () => {
     const src = readFileSync(join(ROOT, 'packages/api/src/routers/engagement.ts'), 'utf8');
     const block = src.slice(src.indexOf('updateActionPlan'));

@@ -11,7 +11,11 @@ import { offerRouter } from './routers/offer';
 import { onboardingRouter } from './routers/onboarding';
 import { performanceRouter } from './routers/performance';
 import { learningRouter } from './routers/learning';
-import { nineboxRouter } from './routers/ninebox';
+// TS-deletion 2026-08-05 (#57): the ninebox router is GONE (ninebox.ts + .schemas.ts + .helpers.ts).
+// Its last 6 procedures (getAxisBreakdown, getMovementHistory, simulate, getQuadrantPlan,
+// submitCalibrationVote, finalizeCalibration) all had zero FE consumers and live C# equivalents
+// behind Platform__NineBox{Read,Write}Enabled — see NineBoxRead/WriteEndpoints.cs. Deleting the two
+// writes leaves calibration_sessions/_members/_votes with zero TS writers, which is what #70 needs.
 // TS-deletion 2026-08-03 (#58): the succession router is GONE. Its last 4 procedures
 // (getCriticalRole, addCriticalRole, removeSuccessor, updateSuccessorReadiness) all had
 // zero FE consumers and live C# equivalents behind Platform__Succession{Read,Write}Enabled
@@ -66,7 +70,6 @@ export const appRouter = router({
   onboarding: onboardingRouter,
   performance: performanceRouter,
   learning: learningRouter,
-  ninebox: nineboxRouter,
   teamIntel: teamIntelRouter,
   engagement: engagementRouter,
   dei: deiRouter,
