@@ -26,7 +26,7 @@
  * Exits 0 if isolation holds, 1 if any check fails. Safe to run against production: every
  * statement is a read, and the empirical probe runs inside a transaction that is always rolled back.
  */
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeSync } from 'node:fs';
 import { Client } from 'pg';
 
 /**
@@ -90,21 +90,36 @@ const BANNED_POLICY_FUNCTIONS: ReadonlyArray<{ fn: string; why: string }> = [
 
 type Finding = { check: string; detail: string };
 
+/**
+ * Exit 2 — could not run. Aligned with checks 16 and 17 (#124): 0 clean · 1 finding · 2 never looked.
+ *
+ * `writeSync(2, …)` rather than `console.error`: Node's stderr is ASYNC when it is a pipe and
+ * `process.exit()` does not flush pending writes, so the reason a check did not run is exactly what gets
+ * lost for the callers that capture output — a CI job, or the failure-path tests below.
+ */
+function die2(reason: string): never {
+  writeSync(2, `⚠ RLS ISOLATION CHECK DID NOT RUN — ${reason}\n  This is exit 2, not a pass. Nothing was verified.\n`);
+  process.exit(2);
+}
+
 async function main(): Promise<void> {
   loadDbEnv();
   const url = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
   if (!url) {
-    console.error(
-      '✖ No DIRECT_URL or DATABASE_URL found in the environment or packages/db/.env.\n' +
+    die2(
+      'no DIRECT_URL or DATABASE_URL in the environment or packages/db/.env.\n' +
         '  Run: bash scripts/dev/setup-db-env.sh   (see issue #41)\n' +
         '  Use the SESSION pooler (:5432) — :6543 cannot SET LOCAL ROLE.',
     );
-    process.exit(1);
   }
 
   const db = new Client({ connectionString: url });
   await db.connect();
   const findings: Finding[] = [];
+  /** Tables the fail-closed probe actually exercised. Zero means nothing was verified — see below. */
+  let probed = 0;
+  /** RLS-enabled tables found, i.e. the probe's denominator. */
+  let candidateCount = 0;
 
   try {
     // ── 1. No unexpected policy names anywhere in the public schema ────────────────────────────
@@ -183,6 +198,17 @@ async function main(): Promise<void> {
       [[...GLOBAL_CATALOGS]],
     );
 
+    // No RLS-enabled tables at all is not "isolation is perfect", it is "this is not our database".
+    // Same vacuous-pass class as check 17's (#124): the loop below simply never runs, `findings` stays
+    // empty, and the script congratulates itself on a database it never examined.
+    candidateCount = candidates.length;
+    if (candidates.length === 0) {
+      die2(
+        'found ZERO RLS-enabled tables in `public` — this is not the application database. ' +
+          'Check which database DIRECT_URL/DATABASE_URL points at.',
+      );
+    }
+
     await db.query('BEGIN');
     try {
       await db.query(`SELECT set_config('app.current_org_id', '', true)`);
@@ -190,6 +216,7 @@ async function main(): Promise<void> {
         const total = await db.query<{ n: string }>(`SELECT count(*)::text AS n FROM "${relname}"`);
         if (total.rows[0].n === '0') continue; // empty table proves nothing either way
 
+        probed++;
         await db.query('SET LOCAL ROLE app_tenant');
         const seen = await db.query<{ n: string }>(`SELECT count(*)::text AS n FROM "${relname}"`);
         await db.query('RESET ROLE');
@@ -204,12 +231,31 @@ async function main(): Promise<void> {
     } finally {
       await db.query('ROLLBACK');
     }
+
+    // The empirical check is the one that actually caught #111, and it can only prove anything about a
+    // table that HAS ROWS. If every candidate was empty we skipped all of them and proved exactly nothing
+    // — a restored-but-unseeded copy, a fresh database, or the wrong target would all sail through with
+    // "verified". Structural checks 1-3 above still ran, but they are not what this check is for.
+    if (probed === 0) {
+      die2(
+        `all ${candidates.length} RLS-enabled tables were EMPTY, so the fail-closed probe ran against ` +
+          'nothing. Structure was checked; isolation was not. An unseeded or wrong database cannot be ' +
+          'certified as isolating.',
+      );
+    }
   } finally {
     await db.end();
   }
 
   if (findings.length === 0) {
-    console.log('✓ RLS tenant isolation verified: fail-closed on unset GUC, one policy per tenant table.');
+    // Report the COVERAGE, not just the verdict. In production only 46 of 102 RLS tables hold rows, so
+    // the empirical probe — the part that actually caught #111 — speaks for well under half of them. That
+    // was previously invisible: the check said "verified" and a reader reasonably assumed "all of them".
+    console.log(
+      `✓ RLS tenant isolation verified: fail-closed on unset GUC, one policy per tenant table.\n` +
+        `  Empirical probe covered ${probed} of ${candidateCount} RLS-enabled tables ` +
+        `(${candidateCount - probed} were empty, so they prove nothing either way).`,
+    );
     process.exit(0);
   }
 
@@ -220,6 +266,7 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  console.error('✖ verify-rls-isolation failed to run:', err instanceof Error ? err.message : err);
-  process.exit(1);
+  // An unreachable host, bad credentials, a rejected handshake, a thrown query — all mean isolation was
+  // never verified. That is a did-not-run, not a clean bill of health.
+  die2(err instanceof Error ? err.message : String(err));
 });
