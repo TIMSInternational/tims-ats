@@ -223,14 +223,18 @@ describe('ddl-governance.md stays truthful about check 17', () => {
     ).toBe(true);
   });
 
-  it('does not claim check 17 shares check 16 exit codes', () => {
-    // Tier-2 finding 3 on PR #135: "same contract as 14 and 16" read as an exit-code claim, contradicting
-    // the note immediately below it. 16 uses exit 2 for could-not-run; 17 returns 1 for both. Same
-    // fail-closed DOCTRINE, different exit codes — and a CI job can only branch on the latter (#124).
+  it('documents check 17 as exiting 2 on could-not-run', () => {
+    // SUPERSEDED AND INVERTED, deliberately. On PR #135 this asserted the ABSENCE of a "same contract as 14
+    // and 16" claim, because back then 17 returned 1 for both a violation and a could-not-run, so claiming
+    // parity with 16 was false. #124 then ALIGNED 17 onto exit 2, which made the old assertion enforce a
+    // now-false constraint — it would have blocked the accurate statement.
+    //
+    // Worth noting as a pattern: a test pinning a doc against a defect has to be revisited when the defect
+    // is fixed, or it starts defending the defect. Pin the invariant, not the era.
     expect(
-      /same contract as 14 and 16/.test(governance),
-      'ddl-governance.md says check 17 has "the same contract as 14 and 16". It does not: 16 distinguishes ' +
-        'drift (1) from could-not-run (2), while 17 returns 1 for both. Say "same fail-closed doctrine".',
-    ).toBe(false);
+      /Exit 0 clean · 1 violation · 2 could-not-run/.test(governance),
+      'ddl-governance.md must document check 17 as exit 0 clean / 1 violation / 2 could-not-run — the ' +
+        'contract it now shares with check 16, and the one #124 needs in order to branch on it.',
+    ).toBe(true);
   });
 });

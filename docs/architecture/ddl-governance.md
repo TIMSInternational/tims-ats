@@ -167,22 +167,29 @@ not a gate. Exit 0 is not covered there (it needs live credentials); `/gate` che
 
 `scripts/security/verify-tenant-grants.ts`, wired as **`/gate` check 17**. Asserts that `app_tenant` holds
 `INSERT`/`UPDATE`/`DELETE` only on tables that are **either** declared by the Prisma schema **or** protected
-by RLS. Exit 0 clean · 1 violation · **1 could-not-run** — the same fail-closed _doctrine_ as 14 and 16 (an
-unrunnable privilege check is not a pass), but deliberately **not** the same exit codes.
+by RLS. **Exit 0 clean · 1 violation · 2 could-not-run** — the same contract as check 16, in both doctrine
+and exit codes, as of #124.
 
-> **The distinction matters, so do not compress it back into a claim that 17 shares 16's exit codes.**
-> (An earlier revision here did exactly that, in one phrase asserting an identical contract across 14/16/17;
-> it is described rather than reproduced, because a verbatim quote of stale text still matches every grep and
-> every governance test written to catch it.) Check 16 signals
-> could-not-run with **exit 2**; check 17 returns **1 for both** violation and could-not-run — its three
-> could-not-run paths being the missing-connection-URL guard (`:110`), the zero-Prisma-tables refusal
-> (`:118`) and the top-level `catch` (`:220`) — distinguishable only by reading the message. (Cited by name as
-> well as line, because line numbers rot: `:214` here was correct when written and stale six commits later,
-> caught by the tier-2 reviewer on #135.) Both fail closed, so neither can read green when it
-> did not run — but **a caller cannot branch on 17's exit code**, which is why #124's acceptance criterion
-> ("distinguish exit 1 from exit 2") is unsatisfiable for 17 as written. Aligning 17 onto exit 2 is the
-> better fix and belongs with #124, since changing a security check's exit contract wants its own review and
-> a failure-path test.
+Its three could-not-run paths are the missing-connection-URL guard, the zero-Prisma-tables refusal, and the
+top-level `catch` (which covers an unreachable host, bad credentials, a rejected handshake, or a thrown
+parser). All three emit `TENANT GRANT CHECK DID NOT RUN` and exit 2. Pinned offline by
+`tests/security/verify-tenant-grants-failure-paths.test.ts`, which also asserts that no failure path can
+print the success sentence — per #38, a gate whose did-not-run path is untested is not a gate.
+
+> **Resolved 2026-08-05 (was a real defect, recorded because the reasoning generalises).** Until #124 this
+> check returned **1 for both** a violation and a could-not-run. Fail-closed either way, so it could never
+> read green — but the two states were distinguishable only by reading stderr, which is fine for a human at
+> `/gate` and useless to an automated job. That made this issue's own acceptance criterion ("the job must
+> distinguish exit 1 from exit 2 and fail loudly on 2") **literally unsatisfiable** for check 17.
+>
+> The general lesson: **"fails closed" and "reports usefully" are different properties, and a gate needs
+> both.** Collapsing distinct outcomes onto one exit code is invisible while a human reads the output and
+> becomes load-bearing the moment anything automates it. Worth checking for in any new gate.
+
+Zero-Prisma-tables deserves its own note, since "refuses to run" over "reports 99 problems" looks
+counter-intuitive: with an empty schema every non-Prisma table matches, so the check would emit ~99 false
+positives. That is a broken input, not a finding — and a control cries wolf at that volume exactly once
+before someone switches it off.
 
 Read the invariant precisely — the "or" is load-bearing, and the next section explains why stating it as
 "Prisma-owned only" nearly caused a production outage.
