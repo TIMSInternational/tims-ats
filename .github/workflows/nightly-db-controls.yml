@@ -28,10 +28,24 @@
 #       GRANT USAGE ON SCHEMA public, supabase_migrations TO ci_readonly;
 #       GRANT SELECT ON ALL TABLES IN SCHEMA public, supabase_migrations TO ci_readonly;
 #       ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO ci_readonly;
+#       GRANT app_tenant TO ci_readonly;   -- REQUIRED, and NOT obvious: see below
 #
-#     Use the SESSION pooler (:5432). The transaction pooler (:6543) cannot `SET LOCAL ROLE`, which check 14
-#     depends on. `pg_dump --schema-only` needs no table data, but check 14's empirical probe DOES read rows
-#     (count(*) only) — so SELECT is required, not merely catalog access.
+#     THE MEMBERSHIP GRANT IS LOAD-BEARING. Check 14's empirical probe issues `SET LOCAL ROLE app_tenant`,
+#     and in Postgres `SET ROLE` requires membership in the target role (or superuser). Without that last
+#     line the role connects fine, reads fine, and then check 14 dies with
+#     `permission denied to set role "app_tenant"` — i.e. exit 2, every night, forever. Verified on a
+#     throwaway PG17 cluster: without it the probe fails, with it `SET LOCAL ROLE app_tenant` succeeds.
+#
+#     `NOINHERIT` is what keeps that safe: the role can ASSUME app_tenant explicitly (which is all check 14
+#     needs) but does not passively hold its privileges — verified, `current_user` stays `ci_readonly`
+#     until it opts in. Do not drop NOINHERIT to "simplify" this.
+#
+#     Use the SESSION pooler (:5432). The transaction pooler (:6543) cannot `SET LOCAL ROLE` at all, which
+#     check 14 also depends on. `pg_dump --schema-only` needs no table data, but check 14's probe DOES read
+#     rows (`count(*)` only) — so SELECT is required, not merely catalog access.
+#
+#     The whole block above was executed against a throwaway PostgreSQL 17 cluster before being written
+#     here. It is not SQL composed from memory and handed to someone to run against production.
 
 name: Nightly DB Controls
 
