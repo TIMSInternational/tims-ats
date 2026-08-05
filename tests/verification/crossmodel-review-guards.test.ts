@@ -181,6 +181,26 @@ describe('reviewer identity — the gate refuses an unattributable reviewer (#38
     expect(out).toMatch(/served 'aug\/opus4\.8', an Anthropic model/);
   });
 
+  it('exits 2 when the gateway SERVES a router, even though the request named a real model', async () => {
+    // The hole a reviewer found in the first version: `auto/*` was banned on the REQUEST side and allowed
+    // on the SERVE side, so a gateway alias mapping a named model to auto/best-coding warned and exited 0
+    // — the exact unattributable router this feature rejects, accepted as the reviewer, recorded CLEAN.
+    // A choice the gateway can override is not a control.
+    stub = { content: review('VERDICT: CLEAN'), model: 'auto/best-coding' };
+    const { code, out } = await run({ OMNIROUTE_MODEL: 'oc/deepseek-v4-flash-free' });
+    expect(code, out).toBe(2);
+    expect(out).toMatch(/served 'auto\/best-coding', a ROUTER/);
+  });
+
+  it('allows a different NON-Anthropic served model, and names it in the output', async () => {
+    // The benign mismatch — a gateway stripping the provider prefix, which is what really happens with
+    // oc/deepseek-v4-flash-free → deepseek-v4-flash-free. Must not fail, must not go unmentioned.
+    stub = { content: review('VERDICT: CLEAN'), model: 'deepseek-v4-flash-free' };
+    const { code, out } = await run({ OMNIROUTE_MODEL: 'oc/deepseek-v4-flash-free' });
+    expect(code, out).toBe(0);
+    expect(out).toMatch(/reports 'deepseek-v4-flash-free' served it/);
+  });
+
   it('warns loudly — never silently — when the gateway does not report a model', async () => {
     // The regression guarded here: an unparseable/absent `model` used to leave the requested name printed
     // as the reviewer's identity, quietly restoring the misattribution this feature removes.
@@ -198,6 +218,10 @@ describe('verdict parsing — emphasis is decoration, quotation is not (#136)', 
     ['bold — the exact #136 case', '**VERDICT: BLOCKING**'],
     ['backticked', '`VERDICT: BLOCKING`'],
     ['underscore-emphasised', '__VERDICT: BLOCKING__'],
+    // Mid-line emphasis is accepted DELIBERATELY, pinned so the choice is visible rather than incidental.
+    // A reviewer argued this belongs with the rejected blockquote cases; it does not — nothing marks the
+    // line as quoted, and rejecting styled-but-genuine verdicts recreates the very #136 failure this fixes.
+    ['emphasised on the verdict word only', 'VERDICT: **BLOCKING**'],
   ])('accepts a %s verdict and exits 1', async (_label, line) => {
     stub = { content: review(line), model: 'oc/deepseek-v4-flash-free' };
     const { code, out } = await run({ OMNIROUTE_MODEL: 'oc/deepseek-v4-flash-free' });

@@ -349,14 +349,27 @@ elif [[ "$SERVED" != "$MODEL" ]]; then
 else
   SERVED_SUFFIX=" (served by $SERVED)"
 fi
-# Positively identified as Anthropic is a hard stop, whatever was requested: the whole purpose of tier 2
-# is a different vendor's eyes. (An UNATTRIBUTABLE codename is not failed here — that would reject most of
-# this gateway's catalogue. It is surfaced above so the PR body can be honest about it.)
-if [[ -n "$SERVED" ]] && grep -qiE "$ANTHROPIC_RE" <<<"$SERVED"; then
-  bad "The gateway served '$SERVED', an Anthropic model — this was NOT cross-model review."
-  warn "Requested model was '$MODEL'. Check the provider mapping in the OmniRoute dashboard."
-  exit 2
+# THE SERVE SIDE GETS THE SAME RULES AS THE REQUEST SIDE. Enforcing them only on the requested string is
+# a guarantee the gateway can revoke: a reviewer pointed out that with `auto/*` banned at request time but
+# permitted at serve time, an alias mapping oc/deepseek-v4-flash-free → auto/best-coding produced a warning
+# and **exit 0** — the exact unattributable router this change exists to reject, accepted as the reviewer,
+# with the run recorded CLEAN. "Choose your reviewer" is not a control if the choice is overridable.
+if [[ -n "$SERVED" ]]; then
+  if grep -qiE "$ANTHROPIC_RE" <<<"$SERVED"; then
+    bad "The gateway served '$SERVED', an Anthropic model — this was NOT cross-model review."
+    warn "Requested model was '$MODEL'. Check the provider mapping in the OmniRoute dashboard."
+    exit 2
+  fi
+  if [[ "$SERVED" == auto/* ]]; then
+    bad "The gateway served '$SERVED', a ROUTER — the reviewer's vendor is undetermined."
+    warn "Requested model was '$MODEL'. An alias is remapping it to a router; fix it in the dashboard."
+    exit 2
+  fi
 fi
+# NOT failed here: an unattributable CODENAME (e.g. `big-pickle`). Rejecting those would reject most of this
+# gateway's catalogue, and the decision of which upstreams are acceptable belongs to whoever sets
+# OMNIROUTE_MODEL, not to this script. It is reported in every status line instead, so a PR body can be
+# honest about what actually reviewed the diff. That is a deliberate limit, not an oversight.
 
 if [[ "$(tr -d '[:space:]' <<<"$CONTENT" | wc -c)" -lt 200 ]]; then
   bad "OmniRoute returned no meaningful review — treating as NOT RUN."
@@ -378,12 +391,19 @@ VERDICT_LINE="$(printf '%s\n' "$CONTENT" | grep -vE '^\s*$' | tail -1)"
 # gate that cannot recognise its own reviewer's answer wastes the review and trains its readers to treat
 # exit 2 as noise. Exit 2 has to keep meaning "no reviewer ran".
 #
-# DELIBERATELY NOT STRIPPED: `>` and `#`.
-#   `> VERDICT: CLEAN` is a markdown BLOCKQUOTE — a quotation of this template or of the diff, not the
-#   model asserting anything. Forgiving it would turn a quote into an accepted CLEAN verdict, i.e. widen
-#   a fail-closed gate into a silent pass. The first version of this fix did strip `>` and `#`, which a
-#   reviewer correctly called out as the very over-forgiveness the anchor exists to prevent. Emphasis is
-#   decoration; quotation is attribution, and only one of those is safe to ignore.
+# The rule, stated precisely, because "emphasis vs quotation" is too vague to implement against:
+#   STRIPPED   — emphasis runs (`**`, `__`, `*`, backticks) ANYWHERE in the line, so both
+#                `**VERDICT: CLEAN**` and `VERDICT: **CLEAN**` are accepted. Both are the model stating a
+#                verdict, merely styled.
+#   NOT STRIPPED — a LEADING `>` or `#`. Those are block-level markers: `> VERDICT: CLEAN` is a markdown
+#                BLOCKQUOTE, i.e. a quotation of this template or of the diff, not the model asserting
+#                anything. Forgiving it would turn a quote into an accepted pass.
+#
+# The first version of this fix stripped `>` and `#` too, and a reviewer correctly called that the very
+# over-forgiveness the last-line anchor exists to prevent. A second reviewer then argued `VERDICT: **CLEAN**`
+# should also be rejected as "the same class". It is not, and it is accepted on purpose: nothing about it
+# marks the line as quoted, and rejecting styled-but-genuine verdicts is precisely the #136 failure this is
+# repairing. Inline styling is presentation; a leading block marker is attribution.
 VERDICT_BARE="$(sed -E 's/^[[:space:]]+//; s/(\*\*|__|\*|`)//g; s/[[:space:]]*\.?[[:space:]]*$//' <<<"$VERDICT_LINE")"
 
 if ! grep -qE '^VERDICT: (BLOCKING|CLEAN)$' <<<"$VERDICT_BARE"; then
