@@ -103,6 +103,32 @@ afterAll(() => {
 });
 
 describe('verify-tenant-grants.ts — exit 2 means DID NOT RUN, never a pass', () => {
+  it("resolves .env relative to CWD — the property this suite's offline safety depends on", () => {
+    // Tier-2 finding on this PR, and a fair one: the suite is only offline because `loadDbEnv` reads the
+    // BARE relative paths 'packages/db/.env' and '.env', which Node resolves from cwd. Nothing pinned that.
+    // If it were ever changed to resolve from the script's own directory, the "no URL" test below would
+    // silently pick up a developer's real DIRECT_URL and fire a query at PRODUCTION.
+    //
+    // So pin it: drop a .env carrying a DEAD url into the sandbox cwd and assert the script consumed it.
+    // Reaching the connection stage proves cwd-relative resolution; the dead URL keeps it harmless.
+    //
+    // THIS TEST RUNS FIRST ON PURPOSE. Vitest executes in file order, so if someone does switch the
+    // resolution, this fails before the "no URL" test gets a chance to reach a real database. Reordering
+    // it below the others reopens that window — the assertion is the same, the safety is not.
+    const cwd = makeCwd('env-from-cwd', ONE_MODEL);
+    mkdirSync(join(cwd, 'packages/db'), { recursive: true });
+    writeFileSync(join(cwd, 'packages/db/.env'), `DIRECT_URL=${DEAD_URL}\n`);
+
+    const { code, out } = run(cwd, {});
+    expect(code, `expected exit 2, got ${code}. Output:\n${out}`).toBe(2);
+    // If resolution were NOT cwd-relative, the sandbox .env would be invisible and we would instead see
+    // the no-URL message. Seeing a connection failure is the positive signal.
+    expect(out, 'the sandbox .env was not read — .env resolution is no longer cwd-relative').not.toMatch(
+      /no DIRECT_URL or DATABASE_URL/,
+    );
+    expect(out).toMatch(/DID NOT RUN/);
+  });
+
   it('exits 2 when no connection URL is resolvable', () => {
     const { code, out } = run(makeCwd('no-url', ONE_MODEL), {});
     expect(code, `expected exit 2, got ${code}. Output:\n${out}`).toBe(2);
@@ -128,28 +154,6 @@ describe('verify-tenant-grants.ts — exit 2 means DID NOT RUN, never a pass', (
     expect(code, `expected exit 2, got ${code}. Output:\n${out}`).toBe(2);
     expect(out).toMatch(/DID NOT RUN/);
     expect(out).not.toMatch(/least privilege intact/);
-  });
-
-  it("resolves .env relative to CWD — the property this suite's offline safety depends on", () => {
-    // Tier-2 finding 2 on this PR, and a fair one: the suite is only offline because `loadDbEnv` reads
-    // the BARE relative paths 'packages/db/.env' and '.env', which Node resolves from cwd. Nothing pinned
-    // that. If it were ever changed to resolve from the script's own directory instead, the "no URL" test
-    // above would silently pick up a developer's real DIRECT_URL and fire a query at PRODUCTION.
-    //
-    // So pin it: drop a .env carrying a DEAD url into the sandbox cwd and assert the script consumed it.
-    // Reaching the connection stage proves cwd-relative resolution; the dead URL keeps it harmless.
-    const cwd = makeCwd('env-from-cwd', ONE_MODEL);
-    mkdirSync(join(cwd, 'packages/db'), { recursive: true });
-    writeFileSync(join(cwd, 'packages/db/.env'), `DIRECT_URL=${DEAD_URL}\n`);
-
-    const { code, out } = run(cwd, {});
-    expect(code, `expected exit 2, got ${code}. Output:\n${out}`).toBe(2);
-    // If resolution were NOT cwd-relative, the sandbox .env would be invisible and we would instead see
-    // the no-URL message. Seeing a connection failure is the positive signal.
-    expect(out, 'the sandbox .env was not read — .env resolution is no longer cwd-relative').not.toMatch(
-      /no DIRECT_URL or DATABASE_URL/,
-    );
-    expect(out).toMatch(/DID NOT RUN/);
   });
 
   it('emits no success sentence on any could-not-run path', () => {

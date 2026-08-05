@@ -175,32 +175,64 @@ async function main(): Promise<void> {
     // It matters much more now than when this was a local-only check. #124 puts the connection string in
     // a CI secret, and a mistyped or rotated secret pointing somewhere harmless is exactly how a nightly
     // control goes quietly green forever.
+    // (a) Does the role exist at all? `pg_roles` is a CLUSTER-WIDE catalog (`pg_authid.relisshared` is
+    //     true, verified against prod), so this says nothing about WHICH database we are attached to — a
+    //     sibling database in the same cluster passes it. It earns its place only as a precise early
+    //     diagnostic; guard (b) is the one that is actually database-scoped.
     const { rows: roleRows } = await db.query<{ ok: boolean }>(
       `SELECT true AS ok FROM pg_roles WHERE rolname = 'app_tenant'`,
     );
     if (roleRows.length === 0) {
       die2(
-        'the role `app_tenant` does not exist in the target database — this is almost certainly the ' +
-          'wrong connection string, not a database with perfect least privilege.',
+        'the role `app_tenant` does not exist in this cluster — almost certainly the wrong connection ' +
+          'string, not a database with perfect least privilege.',
       );
     }
 
-    // And confirm we are looking at THIS application's schema, not merely some database that happens to
-    // have an app_tenant role. A majority threshold rather than "at least one": prod carries 100% of the
-    // declared tables, a fresh `prisma db push` likewise, so anything below half means wrong or
-    // half-built database — while still tolerating a handful of in-flight renames.
+    // (b) Is THIS database our application's, with app_tenant actually provisioned in it?
+    //
+    //     Table presence alone is not enough, and assuming otherwise was the gap a reviewer found: a
+    //     restored copy in the same cluster carries the tables AND passes (a) via the shared catalog,
+    //     while having no grants at all — so the grant query returns zero rows and we would certify
+    //     "least privilege intact" against a database nobody uses.
+    //
+    //     Requiring app_tenant to hold SELECT on a majority of the declared tables is the positive signal
+    //     that closes it: per-database (grants live in each database's catalog), and true by construction
+    //     wherever the app really runs, because the default ACL confers SELECT at CREATE TABLE. Prod: 119
+    //     tables carry it, against 99 declared.
+    //
+    //     `relkind IN ('r','p')` — ordinary AND partitioned. There are no partitioned tables today, but
+    //     filtering to 'r' alone would make the first one look like a missing table and force a spurious
+    //     exit 2 on a perfectly healthy database.
     const { rows: presentRows } = await db.query<{ n: string }>(
       `SELECT count(*)::text AS n FROM pg_class c
          JOIN pg_namespace n ON n.oid = c.relnamespace
-        WHERE n.nspname = 'public' AND c.relkind = 'r' AND c.relname = ANY($1::text[])`,
+        WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p') AND c.relname = ANY($1::text[])`,
       [[...prismaOwned]],
     );
     const present = Number(presentRows[0]?.n ?? 0);
     if (present * 2 < prismaOwned.size) {
       die2(
-        `only ${present} of the ${prismaOwned.size} tables declared by the Prisma schema exist in the ` +
-          'target database — refusing to certify grants against a schema this different. Check which ' +
-          'database DIRECT_URL/DATABASE_URL points at.',
+        `only ${present} of the ${prismaOwned.size} tables declared by the Prisma schema exist in this ` +
+          'database — refusing to certify grants against a schema this different. Check which database ' +
+          'DIRECT_URL/DATABASE_URL points at.',
+      );
+    }
+
+    const { rows: readableRows } = await db.query<{ n: string }>(
+      `SELECT count(DISTINCT table_name)::text AS n
+         FROM information_schema.role_table_grants
+        WHERE table_schema = 'public' AND grantee = 'app_tenant'
+          AND privilege_type = 'SELECT' AND table_name = ANY($1::text[])`,
+      [[...prismaOwned]],
+    );
+    const readable = Number(readableRows[0]?.n ?? 0);
+    if (readable * 2 < prismaOwned.size) {
+      die2(
+        `app_tenant holds SELECT on only ${readable} of the ${prismaOwned.size} declared tables in this ` +
+          'database. Where the application actually runs it holds SELECT on essentially all of them, so ' +
+          'this is a database the role is not provisioned for — a restored copy or the wrong target. ' +
+          'Reporting "least privilege intact" here would be certifying a database nobody writes to.',
       );
     }
     // `string_agg` + split rather than `array_agg`: the driver's text[] parsing is one more moving part
@@ -277,22 +309,26 @@ async function main(): Promise<void> {
 
   // Every surviving violation is a no-RLS table by definition (the RLS-forced ones are skipped above as
   // legitimately written by C# under TenantScope), so the grant really is the only guard on each of them.
-  console.error(
+  //
+  // Built as one string and written with writeSync for the same reason die2 does: `process.exit()` does
+  // not flush an async stderr pipe. The exit-2 path was fixed for this first and the exit-1 path left on
+  // console.error, which a reviewer rightly called inconsistent — a CI job seeing exit 1 with the table
+  // list dropped knows only that *something* is wrong, which is the least useful moment to lose detail.
+  let report =
     `\n✖ app_tenant has write privileges on ${violations.length} table(s) that have NO RLS and that no` +
-      ` application path writes as app_tenant (#126):\n`,
-  );
+    ` application path writes as app_tenant (#126):\n\n`;
   for (const v of violations) {
-    console.error(`  ${v.table.padEnd(28)} ${v.privs.join(',').padEnd(20)} [no RLS — grant is the only guard]`);
+    report += `  ${v.table.padEnd(28)} ${v.privs.join(',').padEnd(20)} [no RLS — grant is the only guard]\n`;
   }
-  console.error(
+  report +=
     '\nFix: packages/db/prisma/manual/2026-08-04-revoke-app-tenant-dml.sql (+ its .ROLLBACK.sql).' +
-      '\nThe default ACL that causes this is deliberately left in place — see #126 for why — so this' +
-      '\ncheck is what catches the next table that inherits it.\n',
-  );
+    '\nThe default ACL that causes this is deliberately left in place — see #126 for why — so this' +
+    '\ncheck is what catches the next table that inherits it.\n';
   if (process.env.ALLOW_KNOWN_VIOLATIONS === '1') {
-    console.error('ALLOW_KNOWN_VIOLATIONS=1 — reporting only, exiting 0.\n');
+    writeSync(2, `${report}\nALLOW_KNOWN_VIOLATIONS=1 — reporting only, exiting 0.\n`);
     process.exit(0);
   }
+  writeSync(2, report);
   process.exit(1);
 }
 
