@@ -6,7 +6,7 @@ allowed-tools:
 
 # /gate — Local Verify Gate
 
-Run every check the CI pipeline runs — **plus the four live-database checks CI cannot run at all** — locally, from the repo root. Report a pass/fail table at the end. This is the merge gate when GitHub Actions is unavailable, and the pre-push gate when it isn't. For checks 14–17 it is the _only_ gate, in either case.
+Run every check the CI pipeline runs — **plus the four checks (14–17) that CI cannot run at all** — locally, from the repo root. Report a pass/fail table at the end. This is the merge gate when GitHub Actions is unavailable, and the pre-push gate when it isn't. For checks 14–17 it is the _only_ gate, in either case.
 
 ## Execution Contract (non-negotiable)
 
@@ -21,9 +21,15 @@ You MUST run ALL checks below even if an early one fails — the user needs the 
 
 ## Checks
 
-Checks 1–13 mirror `.github/workflows/ci.yml`. **Checks 14–17 have no CI equivalent** — they need live
-database credentials that CI does not have (#124), so `/gate` is the only place they run at all. Skipping
-one of those is not "CI will catch it".
+Checks 1–13 mirror `.github/workflows/ci.yml`. **Checks 14–17 have no CI equivalent**, so `/gate` is the
+only place they run at all — but for two different reasons, and conflating them hides both:
+
+- **14, 16, 17 need live production database credentials** that CI does not have. That is one decision
+  (#124) blocking three controls.
+- **15 needs an external reviewer** (Codex, or OmniRoute as tier 2) — not a database. Its blockers are
+  quota and gateway availability, tracked separately in #38.
+
+Skipping any of the four is not "CI will catch it". CI has no equivalent job for any of them.
 
 Run prisma generate once first (typecheck/tests/build all need the client):
 
@@ -35,7 +41,7 @@ pnpm --filter @tims/db exec prisma generate --schema prisma/schema
 | --- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1   | Type check API                 | `pnpm --filter @tims/api exec tsc --noEmit`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | 2   | Type check Web                 | `cd apps/web && npx tsc --noEmit`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| 3   | Tests (vitest)                 | `npx vitest run` (expect **2691 passing across 287 files** as of 2026-08-05; more is fine, fewer is a failure). Run it with nothing else going — the suite contends badly and produced 12 phantom failures while a `tsc` ran alongside it. **Never pipe it** (`vitest \| tail` reports `tail`'s exit 0 over a 17-test failure, and zsh has no `PIPESTATUS`); redirect to a file and check `$?`. Bump this when you add tests — a stale anchor makes "fewer is a failure" unenforceable, the same defect class as a gate that cannot fail. |
+| 3   | Tests (vitest)                 | `npx vitest run` (expect **2695 passing across 287 files** as of 2026-08-05; more is fine, fewer is a failure). Run it with nothing else going — the suite contends badly and produced 12 phantom failures while a `tsc` ran alongside it. **Never pipe it** (`vitest \| tail` reports `tail`'s exit 0 over a 17-test failure, and zsh has no `PIPESTATUS`); redirect to a file and check `$?`. Bump this when you add tests — a stale anchor makes "fewer is a failure" unenforceable, the same defect class as a gate that cannot fail. |
 | 4   | No `any` in frontend           | `grep -rn ": any\b" apps/web/app/ --include="*.tsx" --include="*.ts" \| grep -v node_modules \| grep -v ".test."` → must be empty                                                                                                                                                                                                                                                                                                                                                                                                         |
 | 5   | No unsafe SQL                  | `grep -rn 'executeRawUnsafe\|queryRawUnsafe' packages/api/src/ --include="*.ts"` → must be empty                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | 6   | No XSS patterns                | `grep -rn 'dangerouslySetInnerHTML' apps/web/ --include="*.tsx" --include="*.ts" \| grep -v node_modules` → must be empty                                                                                                                                                                                                                                                                                                                                                                                                                 |
@@ -91,7 +97,8 @@ Notes:
   need — it would break HRIS sync, access-review attestation and succession writes in production. That
   near-miss is why the check exists in this form (#126); the reasoning is in `ddl-governance.md` §"Check 17".
 - **Checks 14, 16 and 17 are three different controls over the same database, and all three are local-only**
-  (#124 is the single credential gap blocking all of them from CI). 14 asks _does isolation hold_, 16 asks
+  (#124 is the single credential gap blocking all three from CI — check 15 is not part of this; it is not a
+  database check). 14 asks _does isolation hold_, 16 asks
   _has the structure changed_, 17 asks _who can write what_. A GRANT that check 16 would see as drift is
   invisible to it once baselined — which is exactly how 11 `qrtz_*` tables plus `__EFMigrationsHistory`
   carried tenant DML unnoticed until 17 existed. Green on two of the three says nothing about the third.

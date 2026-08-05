@@ -167,12 +167,19 @@ not a gate. Exit 0 is not covered there (it needs live credentials); `/gate` che
 
 `scripts/security/verify-tenant-grants.ts`, wired as **`/gate` check 17**. Asserts that `app_tenant` holds
 `INSERT`/`UPDATE`/`DELETE` only on tables that are **either** declared by the Prisma schema **or** protected
-by RLS. Exit 0 clean · 1 violation · 1 could-not-run (fail closed, same contract as 14 and 16 — an unrunnable
-privilege check is not a pass).
+by RLS. Exit 0 clean · 1 violation · **1 could-not-run** — the same fail-closed _doctrine_ as 14 and 16 (an
+unrunnable privilege check is not a pass), but deliberately **not** the same exit codes.
 
-> Note the exit-code contract differs from 16's on purpose and costs something: 16 distinguishes drift (1)
-> from could-not-run (2), whereas **17 returns 1 for both**, so the two are told apart only by reading the
-> message. Fail-closed either way, but a caller cannot branch on it.
+> **The distinction matters, so do not compress it back into a claim that 17 shares 16's exit codes.**
+> (An earlier revision here did exactly that, in one phrase asserting an identical contract across 14/16/17;
+> it is described rather than reproduced, because a verbatim quote of stale text still matches every grep and
+> every governance test written to catch it.) Check 16 signals
+> could-not-run with **exit 2**; check 17 returns **1 for both** violation and could-not-run (`:110`, `:118`,
+> `:214`), distinguishable only by reading the message. Both fail closed, so neither can read green when it
+> did not run — but **a caller cannot branch on 17's exit code**, which is why #124's acceptance criterion
+> ("distinguish exit 1 from exit 2") is unsatisfiable for 17 as written. Aligning 17 onto exit 2 is the
+> better fix and belongs with #124, since changing a security check's exit contract wants its own review and
+> a failure-path test.
 
 Read the invariant precisely — the "or" is load-bearing, and the next section explains why stating it as
 "Prisma-owned only" nearly caused a production outage.
