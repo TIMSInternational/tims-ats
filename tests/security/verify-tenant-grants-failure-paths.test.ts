@@ -18,8 +18,19 @@
  * which made #124's own acceptance criterion ("the job must distinguish exit 1 from exit 2 and fail
  * loudly on 2") unsatisfiable for it. These tests are what stop that from silently regressing.
  *
- * Exit 0 and exit 1 are deliberately NOT covered: both need live production credentials, which no CI
- * runner has. `/gate` check 17 covers exit 0.
+ * WHAT IS NOT COVERED, stated because a partially-pinned contract invites the wrong confidence
+ * ------------------------------------------------------------------------------------------
+ * Exit 0 and **exit 1 (found a violation)** are not exercised here — both need a live database. `/gate`
+ * check 17 covers exit 0 against prod every ship. **Nothing covers exit 1**, which a tier-2 reviewer
+ * rightly flagged: a refactor turning the violation branch into a `throw` would silently convert
+ * violations into exit 2, re-collapsing the very two states this suite exists to separate, and every test
+ * below would still pass.
+ *
+ * Deliberately not fixed here. Covering it needs a throwaway Postgres cluster (initdb + a real
+ * `app_tenant` role + a granted table), which would make `npx vitest run` — /gate check 3, the suite
+ * everyone runs — depend on a local PostgreSQL 17 install. That trade is worse than the gap: a test
+ * everybody skips protects nothing. Tracked as a follow-up on #124, whose CI job can use a Postgres
+ * service container and is the right home for it.
  *
  * HOW THIS STAYS OFFLINE, AND WHY IT TESTS THE REAL FILE
  * -----------------------------------------------------
@@ -117,6 +128,28 @@ describe('verify-tenant-grants.ts — exit 2 means DID NOT RUN, never a pass', (
     expect(code, `expected exit 2, got ${code}. Output:\n${out}`).toBe(2);
     expect(out).toMatch(/DID NOT RUN/);
     expect(out).not.toMatch(/least privilege intact/);
+  });
+
+  it("resolves .env relative to CWD — the property this suite's offline safety depends on", () => {
+    // Tier-2 finding 2 on this PR, and a fair one: the suite is only offline because `loadDbEnv` reads
+    // the BARE relative paths 'packages/db/.env' and '.env', which Node resolves from cwd. Nothing pinned
+    // that. If it were ever changed to resolve from the script's own directory instead, the "no URL" test
+    // above would silently pick up a developer's real DIRECT_URL and fire a query at PRODUCTION.
+    //
+    // So pin it: drop a .env carrying a DEAD url into the sandbox cwd and assert the script consumed it.
+    // Reaching the connection stage proves cwd-relative resolution; the dead URL keeps it harmless.
+    const cwd = makeCwd('env-from-cwd', ONE_MODEL);
+    mkdirSync(join(cwd, 'packages/db'), { recursive: true });
+    writeFileSync(join(cwd, 'packages/db/.env'), `DIRECT_URL=${DEAD_URL}\n`);
+
+    const { code, out } = run(cwd, {});
+    expect(code, `expected exit 2, got ${code}. Output:\n${out}`).toBe(2);
+    // If resolution were NOT cwd-relative, the sandbox .env would be invisible and we would instead see
+    // the no-URL message. Seeing a connection failure is the positive signal.
+    expect(out, 'the sandbox .env was not read — .env resolution is no longer cwd-relative').not.toMatch(
+      /no DIRECT_URL or DATABASE_URL/,
+    );
+    expect(out).toMatch(/DID NOT RUN/);
   });
 
   it('emits no success sentence on any could-not-run path', () => {

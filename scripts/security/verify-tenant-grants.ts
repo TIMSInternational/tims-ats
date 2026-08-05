@@ -28,8 +28,13 @@
  *
  * The discriminator is RLS, and it follows from the design rather than being a heuristic:
  *
- *   RLS enabled + forced  → tenant-scoped → an app path may write it as app_tenant → grant is LEGITIMATE
- *   no RLS                → not tenant-scoped → nothing writes it under TenantScope → grant is DEAD
+ *   RLS enabled + ≥1 policy → tenant-scoped → an app path may write it as app_tenant → grant is LEGITIMATE
+ *   no RLS                  → not tenant-scoped → nothing writes it under TenantScope → grant is DEAD
+ *
+ * Note "enabled + ≥1 policy", NOT "forced" — that is what the predicate below actually tests, and it is
+ * the correct one: `relforcerowsecurity` changes behaviour only for a table's OWNER, and `app_tenant` is a
+ * non-owner NOBYPASSRLS role, so plain `relrowsecurity` already constrains it. Do NOT "fix" this toward
+ * FORCE; that would flag RLS-enabled-but-unforced EF tables and lead straight back to the outage above.
  *
  * Confirmed per writer for all 13 of the no-RLS tables:
  *   fx_rates   FxRateDbContext / FxRateWriteRepository run on a PLAIN connection as the owner role,
@@ -61,8 +66,14 @@
  * EXIT CODES — aligned with `/gate` check 16 (`schema-baseline.sh`) as of #124
  *   0  ran, and `app_tenant` holds write privileges only where it legitimately may
  *   1  ran, and found a violation
- *   2  COULD NOT RUN — no connection URL, the Prisma schema parsed to zero tables, or the query threw.
+ *   2  COULD NOT RUN — no connection URL; the Prisma schema parsed to zero tables; the target database
+ *      has no `app_tenant` role or barely any of the declared tables (wrong database); or the query threw.
  *      Exit 2 is NOT a pass. A gate that reports it as one is the #38 failure mode.
+ *
+ * The two "wrong database" guards exist because a clean result and a vacuous one are indistinguishable
+ * downstream: the grant query returns zero rows both when `app_tenant` holds no DML anywhere and when we
+ * are pointed somewhere with nothing to hold DML on. Cheap to conflate locally; a nightly job reading a
+ * mistyped or rotated CI secret (#124) would report green forever.
  *
  * WHY 2 AND NOT 1 (changed 2026-08-05; it returned 1 for both before)
  * ------------------------------------------------------------------
@@ -77,7 +88,7 @@
  *
  * Read-only: every statement is a SELECT, safe against production.
  */
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeSync } from 'node:fs';
 import { Client } from 'pg';
 import { parsePrismaTables } from '../table-ownership.mjs';
 
@@ -117,10 +128,19 @@ interface Violation {
   policies: number;
 }
 
-/** Exit 2 — could not run. Phrased so the reason is never mistaken for "found nothing". */
+/**
+ * Exit 2 — could not run. Phrased so the reason is never mistaken for "found nothing".
+ *
+ * Writes with `writeSync(2, …)` rather than `console.error`: Node's stderr is ASYNC when it is a pipe,
+ * and `process.exit()` does not flush pending writes. Since the whole point of exit 2 is that a human or
+ * a CI log learns WHY nothing was verified, losing the message to a race would quietly defeat it — and
+ * every caller that captures output (the failure-path tests, a CI job) pipes stderr.
+ */
 function die2(reason: string): never {
-  console.error(`⚠ TENANT GRANT CHECK DID NOT RUN — ${reason}`);
-  console.error('  This is exit 2, not a pass. No privilege was verified.');
+  writeSync(
+    2,
+    `⚠ TENANT GRANT CHECK DID NOT RUN — ${reason}\n  This is exit 2, not a pass. No privilege was verified.\n`,
+  );
   process.exit(2);
 }
 
@@ -144,6 +164,45 @@ async function main(): Promise<void> {
   const violations: Violation[] = [];
   try {
     await db.connect();
+
+    // ── Guard against a VACUOUS PASS ────────────────────────────────────────────────────────────────
+    // The grant query below returns zero rows when `app_tenant` holds no DML anywhere — which is the
+    // clean result — but ALSO when we are simply pointed at the wrong database: an empty one, a fresh
+    // one, or a project where the role was never created. Both look identical downstream, so without
+    // this the script would print "least privilege intact" and exit 0 having verified nothing. That is
+    // the #38 failure mode one level down: the check ran, and certified grants it never read.
+    //
+    // It matters much more now than when this was a local-only check. #124 puts the connection string in
+    // a CI secret, and a mistyped or rotated secret pointing somewhere harmless is exactly how a nightly
+    // control goes quietly green forever.
+    const { rows: roleRows } = await db.query<{ ok: boolean }>(
+      `SELECT true AS ok FROM pg_roles WHERE rolname = 'app_tenant'`,
+    );
+    if (roleRows.length === 0) {
+      die2(
+        'the role `app_tenant` does not exist in the target database — this is almost certainly the ' +
+          'wrong connection string, not a database with perfect least privilege.',
+      );
+    }
+
+    // And confirm we are looking at THIS application's schema, not merely some database that happens to
+    // have an app_tenant role. A majority threshold rather than "at least one": prod carries 100% of the
+    // declared tables, a fresh `prisma db push` likewise, so anything below half means wrong or
+    // half-built database — while still tolerating a handful of in-flight renames.
+    const { rows: presentRows } = await db.query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM pg_class c
+         JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public' AND c.relkind = 'r' AND c.relname = ANY($1::text[])`,
+      [[...prismaOwned]],
+    );
+    const present = Number(presentRows[0]?.n ?? 0);
+    if (present * 2 < prismaOwned.size) {
+      die2(
+        `only ${present} of the ${prismaOwned.size} tables declared by the Prisma schema exist in the ` +
+          'target database — refusing to certify grants against a schema this different. Check which ' +
+          'database DIRECT_URL/DATABASE_URL points at.',
+      );
+    }
     // `string_agg` + split rather than `array_agg`: the driver's text[] parsing is one more moving part
     // in a check whose whole job is to be trustworthy, and privilege_type values are bare words.
     // The pg_class lookup is scoped to `public` on the JOIN so a same-named table in another schema
@@ -240,10 +299,8 @@ async function main(): Promise<void> {
 main().catch((err) => {
   // Anything reaching here — an unreachable host, bad credentials, a rejected TLS handshake, a thrown
   // parser — means the privileges were never read. That is a did-not-run, not a clean bill of health,
-  // so it exits 2 like the other two. Note this deliberately does NOT distinguish "connection refused"
-  // from a programming bug: both leave the check unperformed, and treating a bug as a pass is the
-  // failure mode being guarded against.
-  console.error(`⚠ TENANT GRANT CHECK DID NOT RUN — ${err instanceof Error ? err.message : String(err)}`);
-  console.error('  This is exit 2, not a pass. No privilege was verified.');
-  process.exit(2);
+  // so it routes through die2 like the other paths. This deliberately does NOT distinguish "connection
+  // refused" from a programming bug: both leave the check unperformed, and treating a bug as a pass is
+  // the failure mode being guarded against.
+  die2(err instanceof Error ? err.message : String(err));
 });

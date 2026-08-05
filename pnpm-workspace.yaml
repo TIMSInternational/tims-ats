@@ -10,11 +10,13 @@ allowBuilds:
   "@swc/core": true
   # New in #124 via `tsx` (esbuild was not in the lockfile before). Set to FALSE deliberately, not left at
   # pnpm's placeholder: esbuild resolves its binary at runtime from the `@esbuild/<platform>` optional
-  # package, so its postinstall is not required — verified by transpiling and running a .ts file, and by
-  # `tests/security/verify-tenant-grants-failure-paths.test.ts` invoking node_modules/.bin/tsx, both with
-  # this set to false. Declining an unnecessary postinstall is the safer supply-chain default, and matches
-  # the existing `@sentry/cli: false`. If a runner ever cannot find the esbuild binary, that surfaces as a
-  # loud test failure rather than a silent one — flip this to true then, with a note saying why.
+  # package, so its postinstall is not required — verified ON THIS PLATFORM (darwin-arm64) by transpiling
+  # and running a .ts file and by the failure-path tests invoking node_modules/.bin/tsx, both with this set
+  # to false. Declining an unnecessary postinstall is the safer supply-chain default, and matches the
+  # existing `@sentry/cli: false`.
+  # NOT verified on linux-x64, where CI runs: the reasoning (runtime resolution via the platform package)
+  # is platform-independent, but the evidence is not. If a runner cannot find the esbuild binary it
+  # surfaces as a loud test failure, never a silent skip — flip this to true then, with a note saying why.
   esbuild: false
   prisma: true
   protobufjs: true
