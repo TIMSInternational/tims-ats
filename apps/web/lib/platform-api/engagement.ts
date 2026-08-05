@@ -16,10 +16,13 @@
 //
 // NOT WRAPPED AT ALL: listSurveys (only ever `.invalidate()`d by launch-survey-modal.tsx, never
 // queried — its TS procedure is still the live path for that invalidate), getSurveyResults,
-// getResultsByArea, getWordCloud, getSentiment (climate-sidebar.tsx explicitly renders a static
-// "unavailable" placeholder instead of calling these two stubs), getRotationRisk — zero real FE
-// call sites, so these get no hook here and their TS procedures stay live/untouched
-// (packages/api/src/routers/engagement.ts).
+// getResultsByArea, getRotationRisk — zero real FE call sites, so these get no hook here and their
+// TS procedures stay live (packages/api/src/routers/engagement.ts, whose header block gives the
+// per-procedure reason each one was kept).
+//   UPDATE 2026-08-05 (#56): getWordCloud + getSentiment used to be in that list. Their TS
+//   procedures have been DELETED — C# serves both routes with the identical stub
+//   (EngagementReadEndpoints.cs:277,:297) and climate-sidebar.tsx renders a static "unavailable"
+//   placeholder rather than calling either, so there is still nothing to wrap here.
 //
 // PARITY NOTES (verified per read against the pre-deletion engagement.ts +
 // EngagementReadEndpoints.cs, retained for the mapping rationale):
@@ -369,8 +372,12 @@ export function useEngagementDashboardKpis() {
 // Of the 5 C# mutations, only these 3 have live FE consumers — createSurvey + activateSurvey
 // (climate/launch-survey-modal.tsx) and submitSurveyResponse (dashboard/survey-take-modal.tsx). A
 // full-repo grep still confirms createActionPlan/updateActionPlan have ZERO call sites anywhere
-// (same situation as succession's addCriticalRole), so they are intentionally NOT wrapped here —
-// and, for the same reason, their TS procedures were deliberately left undeleted.
+// (same situation as succession's addCriticalRole), so they are intentionally NOT wrapped here.
+// UPDATE 2026-08-05 (#56): the second half of that sentence used to read "and, for the same
+// reason, their TS procedures were deliberately left undeleted" — that is now FALSE. Both TS
+// procedures were DELETED; C# is the sole application writer of `action_plans`. Nothing changes
+// here (there was never a hook to add or remove), but do not re-derive "a TS fallback exists" from
+// the absence of a wrapper.
 //
 // Each hook keeps trpc's useMutation option shape ({ onSuccess?, onError?, onSettled? }), so both
 // call sites are unchanged. MutationOptions stays generic over TData (like ninebox's, unlike
