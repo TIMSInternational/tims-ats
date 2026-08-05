@@ -58,8 +58,23 @@
  *   npx tsx scripts/security/verify-tenant-grants.ts            # uses DIRECT_URL, else DATABASE_URL
  *   ALLOW_KNOWN_VIOLATIONS=1 npx tsx scripts/security/verify-tenant-grants.ts   # report, exit 0
  *
- * Exits 0 if every table `app_tenant` can write is either Prisma-owned or RLS-protected, 1 on any
- * violation, and 1 if it cannot run (fail closed — an unrunnable privilege check is not a pass).
+ * EXIT CODES — aligned with `/gate` check 16 (`schema-baseline.sh`) as of #124
+ *   0  ran, and `app_tenant` holds write privileges only where it legitimately may
+ *   1  ran, and found a violation
+ *   2  COULD NOT RUN — no connection URL, the Prisma schema parsed to zero tables, or the query threw.
+ *      Exit 2 is NOT a pass. A gate that reports it as one is the #38 failure mode.
+ *
+ * WHY 2 AND NOT 1 (changed 2026-08-05; it returned 1 for both before)
+ * ------------------------------------------------------------------
+ * Fail-closed was always right, but returning the SAME code for "found a violation" and "never looked"
+ * made the two indistinguishable to any caller — the two states could only be told apart by reading
+ * stderr. That is fine for a human running `/gate` and useless for an automated job, which is why #124's
+ * own acceptance criterion ("the job must distinguish exit 1 from exit 2 and fail loudly on 2") was
+ * literally unsatisfiable for this script. Now it is satisfiable.
+ *
+ * `tests/security/verify-tenant-grants-failure-paths.test.ts` pins this contract offline. Per #38, a gate
+ * whose did-not-run path is untested is not a gate.
+ *
  * Read-only: every statement is a SELECT, safe against production.
  */
 import { readFileSync } from 'node:fs';
@@ -102,20 +117,27 @@ interface Violation {
   policies: number;
 }
 
+/** Exit 2 — could not run. Phrased so the reason is never mistaken for "found nothing". */
+function die2(reason: string): never {
+  console.error(`⚠ TENANT GRANT CHECK DID NOT RUN — ${reason}`);
+  console.error('  This is exit 2, not a pass. No privilege was verified.');
+  process.exit(2);
+}
+
 async function main(): Promise<void> {
   loadDbEnv();
   const url = process.env.DIRECT_URL || process.env.DATABASE_URL;
   if (!url) {
-    console.error('✖ verify-tenant-grants: no DIRECT_URL or DATABASE_URL — check DID NOT RUN (not a pass).');
-    process.exit(1);
+    die2('no DIRECT_URL or DATABASE_URL in the environment or packages/db/.env.');
   }
 
   // The Prisma schema is the definition of "a table the TS app legitimately writes as app_tenant".
   // Reusing the ownership check's own parser keeps the two from drifting.
   const prismaOwned = new Set(parsePrismaTables('packages/db/prisma/schema'));
   if (prismaOwned.size === 0) {
-    console.error('✖ verify-tenant-grants: parsed ZERO Prisma tables — refusing to run (would flag everything).');
-    process.exit(1);
+    // Not a violation — an unusable input. Flagging all ~99 Prisma tables would be a false alarm so
+    // large it would get the check switched off, which is worse than the check not existing.
+    die2('parsed ZERO tables from packages/db/prisma/schema — refusing to run (would flag everything).');
   }
 
   const db = new Client({ connectionString: url });
@@ -216,6 +238,12 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  console.error('✖ verify-tenant-grants failed to run:', err instanceof Error ? err.message : err);
-  process.exit(1);
+  // Anything reaching here — an unreachable host, bad credentials, a rejected TLS handshake, a thrown
+  // parser — means the privileges were never read. That is a did-not-run, not a clean bill of health,
+  // so it exits 2 like the other two. Note this deliberately does NOT distinguish "connection refused"
+  // from a programming bug: both leave the check unperformed, and treating a bug as a pass is the
+  // failure mode being guarded against.
+  console.error(`⚠ TENANT GRANT CHECK DID NOT RUN — ${err instanceof Error ? err.message : String(err)}`);
+  console.error('  This is exit 2, not a pass. No privilege was verified.');
+  process.exit(2);
 });
