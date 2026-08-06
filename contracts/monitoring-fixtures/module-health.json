@@ -1,0 +1,47 @@
+{
+  "description": "Golden parity for monitoring.getModuleHealth's projection kernel: buildModuleHealth(alertCountsByModule) in packages/api/src/services/monitoring.service.ts. Asserted IDENTICALLY by the REAL TS export (tests/monitoring/monitoring-fixtures.test.ts) and the C# Tims.Domain.Monitoring.MonitoringKernels.BuildModuleHealth (Tims.UnitTests). Pins: the FIXED 8-module list and its order; the 0 -> healthy / 1..2 -> warning / 3+ -> critical bands; a module absent from the map reports 0/healthy (so an EMPTY database yields eight honest zero rows, never an empty array); a count key that is not one of the 8 modules is DROPPED, never appended.",
+  "cases": [
+    {
+      "name": "EMPTY database -> all 8 modules 0 / healthy",
+      "input": { "alertCountsByModule": {} },
+      "expected": [
+        { "module": "recruitment", "activeAlerts": 0, "status": "healthy" },
+        { "module": "onboarding", "activeAlerts": 0, "status": "healthy" },
+        { "module": "people", "activeAlerts": 0, "status": "healthy" },
+        { "module": "engagement", "activeAlerts": 0, "status": "healthy" },
+        { "module": "compensation", "activeAlerts": 0, "status": "healthy" },
+        { "module": "dei", "activeAlerts": 0, "status": "healthy" },
+        { "module": "time", "activeAlerts": 0, "status": "healthy" },
+        { "module": "performance", "activeAlerts": 0, "status": "healthy" }
+      ]
+    },
+    {
+      "name": "band edges: 1 and 2 warning, 3 critical, 0 healthy",
+      "input": { "alertCountsByModule": { "recruitment": 1, "onboarding": 2, "people": 3, "engagement": 0 } },
+      "expected": [
+        { "module": "recruitment", "activeAlerts": 1, "status": "warning" },
+        { "module": "onboarding", "activeAlerts": 2, "status": "warning" },
+        { "module": "people", "activeAlerts": 3, "status": "critical" },
+        { "module": "engagement", "activeAlerts": 0, "status": "healthy" },
+        { "module": "compensation", "activeAlerts": 0, "status": "healthy" },
+        { "module": "dei", "activeAlerts": 0, "status": "healthy" },
+        { "module": "time", "activeAlerts": 0, "status": "healthy" },
+        { "module": "performance", "activeAlerts": 0, "status": "healthy" }
+      ]
+    },
+    {
+      "name": "an unknown module key is dropped, never appended to the 8",
+      "input": { "alertCountsByModule": { "dei": 7, "not_a_module": 99 } },
+      "expected": [
+        { "module": "recruitment", "activeAlerts": 0, "status": "healthy" },
+        { "module": "onboarding", "activeAlerts": 0, "status": "healthy" },
+        { "module": "people", "activeAlerts": 0, "status": "healthy" },
+        { "module": "engagement", "activeAlerts": 0, "status": "healthy" },
+        { "module": "compensation", "activeAlerts": 0, "status": "healthy" },
+        { "module": "dei", "activeAlerts": 7, "status": "critical" },
+        { "module": "time", "activeAlerts": 0, "status": "healthy" },
+        { "module": "performance", "activeAlerts": 0, "status": "healthy" }
+      ]
+    }
+  ]
+}

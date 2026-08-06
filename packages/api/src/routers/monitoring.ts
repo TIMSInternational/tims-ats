@@ -4,21 +4,23 @@ import { tenantDb as db } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { ALERT_METRIC_KEYS } from '@tims/shared';
 import { suppressBelowMin5, scopeWhereFor } from '../access';
+import {
+  MONITORING_TREND_MONTHS,
+  applyEngagementTrendFloor,
+  buildModuleHealth,
+  buildMonthWindow,
+} from '../services/monitoring.service';
 
 export const monitoringRouter = router({
   // ── Executive KPIs ─────────────────────────────────────────────────
   getExecutiveKpis: permissionProcedure('monitoring', 'read').query(async ({ ctx }) => {
     const orgId = ctx.user.organizationId;
 
-    const [
-      totalUsers,
-      activeVacancies,
-      pendingAdjustments,
-      activeSurveys,
-      openAlerts,
-    ] = await Promise.all([
+    const [totalUsers, activeVacancies, pendingAdjustments, activeSurveys, openAlerts] = await Promise.all([
       db.user.count({ where: { organizationId: orgId, isActive: true } }),
-      db.vacancy.count({ where: { organizationId: orgId, status: { in: ['approved', 'published'] }, deletedAt: null } }),
+      db.vacancy.count({
+        where: { organizationId: orgId, status: { in: ['approved', 'published'] }, deletedAt: null },
+      }),
       db.salaryAdjustment.count({ where: { organizationId: orgId, status: 'pending' } }),
       db.survey.count({ where: { organizationId: orgId, status: 'active' } }),
       db.alert.count({ where: { organizationId: orgId, status: 'active' } }),
@@ -48,17 +50,6 @@ export const monitoringRouter = router({
   getModuleHealth: permissionProcedure('monitoring', 'read').query(async ({ ctx }) => {
     const orgId = ctx.user.organizationId;
 
-    const modules = [
-      'recruitment',
-      'onboarding',
-      'people',
-      'engagement',
-      'compensation',
-      'dei',
-      'time',
-      'performance',
-    ];
-
     const alertCounts = await db.alert.groupBy({
       by: ['module'],
       where: { organizationId: orgId, status: 'active' },
@@ -70,22 +61,23 @@ export const monitoringRouter = router({
       alertMap[a.module] = a._count.id;
     }
 
-    return modules.map((mod) => ({
-      module: mod,
-      activeAlerts: alertMap[mod] || 0,
-      status: !alertMap[mod] ? 'healthy' : alertMap[mod] <= 2 ? 'warning' : 'critical',
-    }));
+    // Kernel: services/monitoring.service.ts — the module list, the 0/1-2/3+ health bands and
+    // the "absent module ⇒ 0 healthy" projection now live in ONE golden-fixtured export, shared
+    // as the specification for the C# port (issue #100).
+    return buildModuleHealth(alertMap);
   }),
 
   // ── Alerts ─────────────────────────────────────────────────────────
   getActiveAlerts: permissionProcedure('monitoring', 'read')
     .input(
-      z.object({
-        module: z.string().max(100).optional(),
-        severity: z.enum(['info', 'warning', 'critical']).optional(),
-        page: z.number().int().min(1).default(1),
-        limit: z.number().int().min(1).max(100).default(20),
-      }).optional(),
+      z
+        .object({
+          module: z.string().max(100).optional(),
+          severity: z.enum(['info', 'warning', 'critical']).optional(),
+          page: z.number().int().min(1).default(1),
+          limit: z.number().int().min(1).max(100).default(20),
+        })
+        .optional(),
     )
     .query(async ({ ctx, input }) => {
       const { module, severity, page = 1, limit = 20 } = input ?? {};
@@ -192,20 +184,13 @@ export const monitoringRouter = router({
     )
     .query(async ({ ctx, input }) => {
       const orgId = ctx.user.organizationId;
-      const months = input.period === '6m' ? 6 : input.period === '12m' ? 12 : 24;
+      const months = MONITORING_TREND_MONTHS[input.period];
 
-      // Build the month window labels and date boundaries first.
-      const window: { label: string; monthStart: Date; monthEnd: Date }[] = [];
-      for (let i = months - 1; i >= 0; i--) {
-        const date = new Date();
-        date.setMonth(date.getMonth() - i);
-        const label = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-        window.push({
-          label,
-          monthStart: new Date(date.getFullYear(), date.getMonth(), 1),
-          monthEnd: new Date(date.getFullYear(), date.getMonth() + 1, 0),
-        });
-      }
+      // Build the month window labels and date boundaries first. Kernel:
+      // services/monitoring.service.ts#buildMonthWindow — `nowMs` is injected so the window is
+      // deterministic and golden-fixturable on BOTH stacks (issue #100). The day-overflow of
+      // `setMonth` and the monthEnd = "midnight on the last day" bound are preserved verbatim.
+      const window = buildMonthWindow(Date.now(), months);
 
       // Non-sensitive metrics: headcount (User), alerts (Alert). Apply per-point as before.
       // Sensitive metrics: engagement (SurveyResponse) — §21-restricted population.
@@ -239,12 +224,11 @@ export const monitoringRouter = router({
         );
 
         // Phase 2: all-or-nothing gate. If ANY month is sub-floor (1..4), suppress all.
-        const anyMonthSubFloor = rawCounts.some((c) => suppressBelowMin5(c).suppressed);
-        const dataPoints = window.map(({ label }, idx) => ({
-          month: label,
-          value: anyMonthSubFloor ? null : rawCounts[idx] ?? null,
-          suppressed: anyMonthSubFloor,
-        }));
+        // Kernel: services/monitoring.service.ts#applyEngagementTrendFloor.
+        const dataPoints = applyEngagementTrendFloor(
+          window.map((w) => w.label),
+          rawCounts,
+        );
 
         return { metric: input.metric, period: input.period, data: dataPoints };
       }
@@ -299,22 +283,24 @@ export const monitoringRouter = router({
   configureAlertRules: permissionProcedure('monitoring', 'update')
     .input(
       z.object({
-        rules: z.array(
-          z.object({
-            id: z.string().uuid().optional(),
-            module: z.string().max(100),
-            condition: z.object({
-              // Constrained to the shared metric registry so the cron engine can
-              // actually evaluate every rule the UI writes (no free-text metrics).
-              metric: z.enum(ALERT_METRIC_KEYS),
-              operator: z.enum(['gt', 'lt', 'eq', 'gte', 'lte']),
-              threshold: z.number().finite(),
+        rules: z
+          .array(
+            z.object({
+              id: z.string().uuid().optional(),
+              module: z.string().max(100),
+              condition: z.object({
+                // Constrained to the shared metric registry so the cron engine can
+                // actually evaluate every rule the UI writes (no free-text metrics).
+                metric: z.enum(ALERT_METRIC_KEYS),
+                operator: z.enum(['gt', 'lt', 'eq', 'gte', 'lte']),
+                threshold: z.number().finite(),
+              }),
+              severity: z.enum(['info', 'warning', 'critical']),
+              message: z.string().min(1).max(500),
+              isActive: z.boolean().default(true),
             }),
-            severity: z.enum(['info', 'warning', 'critical']),
-            message: z.string().min(1).max(500),
-            isActive: z.boolean().default(true),
-          }),
-        ).max(50),
+          )
+          .max(50),
       }),
     )
     .mutation(async ({ ctx, input }) => {
