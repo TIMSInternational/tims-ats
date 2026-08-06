@@ -1440,18 +1440,18 @@ second revert and the client regenerated. Pure revert is complete **because no D
 ### §5 step 8 — RUN AND PASSED on a throwaway cluster
 
 **Correcting this section's own first draft**, which listed step 8 alongside the prod-credentialed steps
-and called all four "Federico-only". Step 8 is a *clean-checkout bootstrap*: it needs a scratch database,
+and called all four "Federico-only". Step 8 is a _clean-checkout bootstrap_: it needs a scratch database,
 not production. Filing it as Federico-only would have burned a prod session on a check that never needed
 one — and left the artifact that is now the repo's ONLY executable definition of three production tables
 unexecuted. It was run instead (PostgreSQL 17.10, scratch cluster on TCP 55432-range, torn down after):
 
-| Step | Result |
-| ---- | ------ |
-| `prisma db push` on an empty DB | **0** `calibration_*` tables created — §0 P8 was live, confirmed empirically rather than by grep alone |
-| `psql -v ON_ERROR_STOP=1 -f calibration.sql` | exit **0** |
-| Re-apply (idempotency) | exit **0**, catalog state unchanged |
-| Structure | all 3 tables, `relrowsecurity = true`, exactly 1 policy each |
-| Policy text | `USING` and `WITH CHECK` match `prod-public-schema.sql:7480-7499` |
+| Step                                         | Result                                                                                                 |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `prisma db push` on an empty DB              | **0** `calibration_*` tables created — §0 P8 was live, confirmed empirically rather than by grep alone |
+| `psql -v ON_ERROR_STOP=1 -f calibration.sql` | exit **0**                                                                                             |
+| Re-apply (idempotency)                       | exit **0**, catalog state unchanged                                                                    |
+| Structure                                    | all 3 tables, `relrowsecurity = true`, exactly 1 policy each                                           |
+| Policy text                                  | `USING` and `WITH CHECK` match `prod-public-schema.sql:7480-7499`                                      |
 
 A **functional** isolation probe was then run as a `NOBYPASSRLS` `app_tenant` role over two seeded orgs —
 and made non-vacuous first by confirming 2 sessions and 2 members actually existed, because "0 rows
@@ -1459,11 +1459,11 @@ because isolation works" and "0 rows because the seed failed" are indistinguisha
 twice, on `users.supabase_user_id` and `calibration_members.status`, and the first probe run passed
 vacuously as a result):
 
-| Probe | Result |
-| ----- | ------ |
-| OrgA GUC set | sees exactly **1** session + **1** member of the 2 that exist |
-| **GUC unset** | **0** rows — fails closed; the #111 fail-open shape is not present |
-| OrgA inserts a member into OrgB's session | **REFUSED** — `new row violates row-level security policy` |
+| Probe                                     | Result                                                             |
+| ----------------------------------------- | ------------------------------------------------------------------ |
+| OrgA GUC set                              | sees exactly **1** session + **1** member of the 2 that exist      |
+| **GUC unset**                             | **0** rows — fails closed; the #111 fail-open shape is not present |
+| OrgA inserts a member into OrgB's session | **REFUSED** — `new row violates row-level security policy`         |
 
 That last row is the direct evidence for this flip's central claim: for `calibration_members` and
 `calibration_votes`, which have no `organization_id`, the session-linkage `WITH CHECK` **is** the tenant
@@ -1485,10 +1485,10 @@ Federico-only:
   ownership check and to every P2 grep. Flip #2 found zero; that is not evidence about these tables.
 - **§5 step 6 — the live before/after shape diff** (RLS flags, policy set, grants, indexes, `n_tup_del`).
   The DROP-TABLE tripwire.
-Run all three before merging. Steps 0 and 5b are the two that could still turn up a blocker.
+  Run all three before merging. Steps 0 and 5b are the two that could still turn up a blocker.
 
 **Also not covered, and not fixable by any of the above:** §6 prescribes a pre-flip
-`pg_class.relfilenode` / `pg_indexes` / row-count snapshot as the only way to *detect* that a table was
+`pg_class.relfilenode` / `pg_indexes` / row-count snapshot as the only way to _detect_ that a table was
 rebuilt under the §2 `db push` hazard during the watch window. No such snapshot was taken for these three
 tables, so this flip's "pure `git revert` is complete" claim rests on the premise that no DDL runs against
 them before the revert — a premise that is currently **assumed, not detectable**. Take the snapshot if the
@@ -1505,6 +1505,267 @@ branch sits unmerged for any length of time.
   expect to find at least one test written as "not yet" and should invert it, because deleting it
   removes a guard exactly when the guard starts being useful.
 - The first flip to run with **none of §5's live-DB steps**, which is a gap, not a simplification.
+
+---
+
+## 7e. Flip #4 — **EXECUTED**: `review_cycles` + `rater_assignments` + `rater_responses` (#67)
+
+> Executed 2026-08-06 on `feat/flip-evaluation360-ownership`, branched off `chore/delete-orphaned-evaluation360-ts`
+> (#54, head `14a642d6`, **unmerged** — three commits ahead of `origin/main` `ff735f3f`). Code-only, no DDL.
+> This is a transcript, not a procedure. **Read the "not verified here" list at the end before treating
+> it as a completed flip** — three of §5's steps need a live database and did not run.
+
+### Why this one, and the one precondition that was NOT met by `main`
+
+Same shape as flips #2 and #3: the flip becomes possible the moment a _separate_ TS-deletion lands.
+Here that deletion is **#54, and it is not on `main` yet** — this branch is stacked on it. Branching
+from `origin/main` instead would have made the flip's precondition simply false, because
+`packages/api/src/repositories/evaluation360.repository.ts` held **every** TS Prisma writer of the
+three tables (`reviewCycle.create`, three guarded `reviewCycle.updateMany`, `raterAssignment.createMany`,
+`raterAssignment.updateMany`, `raterResponse.createMany`). Verified before starting:
+`git log --oneline origin/main..HEAD` shows the three #54 commits.
+
+Re-grepped at flip time rather than trusted from the issue (§0 preamble), and **all zero**:
+
+| Coupling category                                                    | Count                                                  |
+| -------------------------------------------------------------------- | ------------------------------------------------------ |
+| Prisma delegate use (`.reviewCycle\|raterAssignment\|raterResponse`) | **0** (only the governance test's own quoted patterns) |
+| `Prisma.ReviewCycle*` / `RaterAssignment*` / `RaterResponse*` types  | **0**                                                  |
+| access registry (`packages/api/src/access/`)                         | **0**                                                  |
+| `contracts/access-fixtures/`                                         | **0**                                                  |
+| `vi.mock('@tims/db')` delegate mocks                                 | **0**                                                  |
+| `packages/db/prisma/seed.ts` / `seed-users.ts` / `seed-demo.ts`      | **0**                                                  |
+
+**evaluation360 was never a `ScopedEntity`** — same as calibration (§7d), unlike succession (§7c). The
+`FlippedEntity` / `ProbeableEntity` / `DELEGATES` / `scope-where.json` machinery **did not apply and was
+not touched**. `tests/evaluation360/evaluation360-router-self-service.test.ts:81` asserts
+`raterAssignment` is _deliberately_ not registered, because identity-anchoring
+(`raterUserId`/`subjectUserId === ctx.user.id`) is its only guard by design. That test passes unchanged.
+
+`scripts/parity/seed.ts` and `scripts/parity/write-surfaces.ts` write and read all three tables via raw
+`pg` SQL, so they survive model deletion mechanically — same disposition as §7c and §7d.
+
+### The enums were KEPT, and that is the decision this flip adds
+
+`evaluation360.prisma` is now an **enums-only** schema file: `ReviewCycleStatus`, `RaterRelationship`
+and `RaterAssignmentStatus` stay, the three models are gone. Reasons, recorded in the file itself and in
+the ledger note: `packages/db/src/index.ts:16-18` re-exports all three from `@tims/db`;
+`scripts/parity/seed.ts:799,817,1388` casts to the Postgres types by name; and keeping them narrows the
+§2 hazard (`migrate diff` emits `DROP TABLE` but no `DROP TYPE`).
+
+The **cost is real and is stated rather than discovered later**: `prisma db push` still creates those
+three types on a fresh database, i.e. Prisma still emits a little DDL for an EF-owned domain. Measured
+on the scratch cluster — after `db push`, all three `CREATE TYPE`s had run and **zero** of the three
+tables existed. Both orders are safe because `evaluation360.sql` guards every `CREATE TYPE` on `pg_type`;
+both were exercised. Changing an enum **value** is a genuine schema change to an EF-owned domain and must
+go through `ddl-governance.md`.
+
+### §0 P8 was **NOT live** — the first flip since #1 where that is true
+
+`grep -rniE 'create table[^;]*(review_cycles|rater_assignments|rater_responses)' packages/db/prisma/migrations/ packages/db/prisma/manual/ services/Tims.Platform/db/`
+returns **`packages/db/prisma/migrations/20260713150000_add_evaluation360/migration.sql:8,22,36`** — a
+real migration with all three `CREATE TABLE`s plus enums, indexes, FKs and RLS. That is the
+`access_reviews` situation (§7), not the `calibration_*` one, and by the letter of P8 no artifact was
+required.
+
+**`services/Tims.Platform/db/flip-ddl/evaluation360.sql` was generated anyway, before the models were
+deleted.** The justification is not P8-as-written but the thing P8 is _for_, and it was measured rather
+than argued:
+
+> `prisma db push` — the bootstrap step `CLAUDE.md:32` and `README.md` document — **does not apply
+> `packages/db/prisma/migrations/` at all**. On an empty PostgreSQL 17.10 database from this branch it
+> created **0 of the 3** tables while creating 93 others. So post-flip the migration file is an
+> executable definition that nothing executes, and a freshly bootstrapped dev database has no
+> evaluation360 tables from either source.
+
+The extracted artifact is also the better of the two: read from the committed prod baseline rather than
+from migration source (§0 P0/P4 — #111 proved those differ), and idempotent, atomic, GRANT-complete and
+Supabase-guarded, none of which the migration is.
+
+**Consequence for `REQUIRED_FLIP_DDL` in `tests/db/extract-table-ddl.test.ts`:** `evaluation360.sql` is
+added, but the assertion's message was **corrected in the same commit**, because it claimed every listed
+artifact is "the repository's ONLY executable definition … they have no CREATE TABLE in any migration".
+That is true of the other four and **false of this one**. The message now distinguishes _uniqueness_
+(four files) from _bootstrap reachability_ (all five). Do not let the list's premise drift back.
+
+### Tenancy — STANDARD, unlike flip #3
+
+All three tables **have** an `organization_id`, and their live `tenant_isolation` policy is a plain
+**column predicate** on both `USING` and `WITH CHECK` (baseline `prod-public-schema.sql:7837,7843,7861`).
+So §0 P9's subquery hazard, the §3(e) `EnableTenantRls()` carve-out and the §3(f) parent-policy hazard
+**do not apply here** — checked, not assumed: grepped across every `CREATE POLICY` in the baseline, no
+other table's policy references any of the three.
+
+Also checked and clean: **none of the three carries the fail-open `org_isolation` policy** of §3(a)/#111.
+The committed baseline (captured `2026-08-04T17:30:30Z`) contains **zero** occurrences of `org_isolation`
+repo-wide, and these three have exactly one policy each. Worth flagging for whoever owns §3(a): that
+paragraph still describes 67 tables carrying it, and the current baseline does not support that. Not
+investigated here — it is not this flip's question, and the baseline is not the live database.
+
+### GRANTs — deliberately untouched
+
+§8 **Q7 stays OPEN.** `app_tenant` keeps `SELECT,INSERT,UPDATE,DELETE` on all three (baseline
+`:8618,:8624,:8642`). The discriminator for `app_tenant` DML is **RLS, not ownership** — the C# strangler
+writes as `app_tenant` via `TenantScope`'s `SET LOCAL ROLE`, so revoking DML on an RLS-protected EF-owned
+table breaks production writes (#126). The §3(f) half of §7d's reasoning does **not** apply here (no
+parent-subquery policies), but reason 1 alone is sufficient.
+
+### DDL home
+
+§4 option (c), same as flips #1–#3: all three stay on the hand-applied SQL path; EF holds no migration
+and no snapshot, and none was created. **No DDL ran in this flip.**
+
+**P10 (EF write-value compatibility), read from source:** `Evaluation360WriteDbContext` pins
+`HasColumnType("timestamp")` on the datetime properties it maps, against prod's
+`timestamp(3) without time zone`. `Evaluation360ReadDbContext` maps all three tables
+(`:41`, `:55`, `:72`), so the §5-step-5 ghost check resolves all three.
+
+### The §2 warning, verbatim, for these three tables
+
+> **After this PR, `pnpm db:push` / `npx prisma db push` / `pnpm db:migrate` will DROP `review_cycles`,
+> `rater_assignments` and `rater_responses`, and `prisma migrate diff --from-schema-datasource` will
+> EMIT a `DROP TABLE` for each of them into every migration script authored against a live DB.** Do not
+> run any of them against a database that holds real data — including preview and staging — and do not
+> commit a generated migration script without grepping it for `DROP`/`ALTER` on a flipped table, until
+> these tables' Prisma models are restored or the commands are guarded.
+
+**Side-quests 8 and 9 are still open after four flips.**
+`docs/superpowers/plans/2026-07-08-company-entitlements-slice-1.md:130-137` still prescribes the
+unqualified `migrate diff --from-schema-datasource` recipe, and it now endangers **nine** flipped tables.
+
+### Tests that pinned the pre-flip era — INVERTED, not deleted
+
+Two files did, and the second was **not** named in this flip's brief. Finding it was the point of the
+P6 sweep:
+
+1. **`tests/governance/evaluation360-no-ts-writers.test.ts`** (the #54 tripwire). Its ledger case
+   asserted `efcoreStranglerWrite`, and its schema case asserted the three Prisma models **still exist**.
+   Both inverted per their own docblocks' instructions. Three further "un-flip" cases were **added**,
+   because the file's original scans walk `.ts` only and are blind to step one of an un-flip: the
+   generated client carrying a delegate again, a `.prisma` file re-declaring a model (scanned across
+   **all** schema files, not just this domain's), and `user.prisma` re-declaring a deleted back-relation.
+2. **`tests/db/evaluation360-schema.test.ts`** — six cases asserting the three models' shape against
+   `Prisma.dmmf`. Every one became false. Inverted rather than deleted: the model cases now assert
+   **absence** from the generated client, and the column/constraint/RLS guarantees they encoded are
+   re-pointed at `flip-ddl/evaluation360.sql`, which is a strictly better oracle (the model described
+   what Prisma intended; the artifact describes what production has). The enum case survives unchanged
+   and is now the guard on the keep-the-enums decision.
+
+**Generalising §7d's lesson:** it said "every flip should expect to find at least one test written as
+'not yet'". Make that **at least one, found by sweep**. This flip's brief named one file; the sweep
+found two, and the unnamed one carried six failing assertions.
+
+### Verification actually run
+
+| Check                                                          | Result                                                                                                                                                                                                              |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| §5 step 1 — `node scripts/table-ownership.mjs`                 | ✅ `table-ownership check passed.`                                                                                                                                                                                  |
+| §5 step 1 — `tests/governance/table-ownership.test.ts`         | ✅                                                                                                                                                                                                                  |
+| §5 step 2 — `prisma validate` + `generate`                     | ✅ no `P1012`; all three delegates absent from the generated client, all three enums present                                                                                                                        |
+| §5 step 3 — `tsc` api + web                                    | ✅ both exit 0                                                                                                                                                                                                      |
+| §5 step 4 — `npx vitest run`                                   | ✅ 290 files / **2728** tests, exit 0. Measured baseline on this branch BEFORE the flip: 2723 / 290 — so **+5 net**, all from the inverted/added assertions. `/gate` check 3's anchor bumped to the measured value. |
+| §5 step 5 — ghost `efcore[]` entries                           | ✅ `[]`; all three resolve to real EF `ToTable`s                                                                                                                                                                    |
+| Mutation: restore `raterAssignmentsAsRater` in user.prisma     | ✅ observed `P1012` exit 1 at `user.prisma:129`, then reverted                                                                                                                                                      |
+| Mutation: drop `review_cycles` from `efcore[]`                 | ✅ observed the inverted ledger assertion go red, then reverted                                                                                                                                                     |
+| Mutation: re-add `model RaterResponse` to **ninebox**.prisma   | ✅ observed the new re-declaration case go red (proving the scan is repo-wide, not domain-scoped) **and** `table-ownership.mjs` report a cross-owner collision; reverted                                            |
+| Mutation: restore `reviewCyclesCreated` in user.prisma         | ✅ observed the new back-relation case go red, then reverted                                                                                                                                                        |
+| Mutation: delete `enum RaterAssignmentStatus`                  | ✅ observed both enum guards go red after `prisma generate`, then reverted                                                                                                                                          |
+| Mutation: hand-edit `evaluation360.sql` (`comment … NOT NULL`) | ✅ observed `extract-table-ddl.test.ts` "stale or hand-edited" **and** the re-pointed nullable-`comment` assertion go red; reverted byte-identical                                                                  |
+| Mutation: delete `evaluation360.sql`                           | ✅ observed `REQUIRED_FLIP_DDL` go red — deletion is no longer a green change                                                                                                                                       |
+| Rollback — real `git revert`                                   | ✅ see below                                                                                                                                                                                                        |
+
+### §5 step 8 — RUN AND PASSED on a throwaway cluster
+
+PostgreSQL 17.10, scratch cluster on TCP 55437 (TCP not a unix socket — the scratchpad path exceeds the
+103-byte socket limit), torn down afterwards.
+
+| Step                                           | Result                                                                                                                        |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `prisma db push` on an empty DB                | **0** of the three tables created, **93** other tables created (so the run was not a no-op); all three `CREATE TYPE`s DID run |
+| `psql -v ON_ERROR_STOP=1 -f evaluation360.sql` | exit **0**                                                                                                                    |
+| Re-apply (idempotency)                         | exit **0**, catalog state unchanged                                                                                           |
+| Structure                                      | all 3 tables, `relrowsecurity = t`, `relforcerowsecurity = t`, exactly **1** policy each                                      |
+| Policy text vs `prod-public-schema.sql`        | `diff` exit **0** — byte-identical to production on both `USING` and `WITH CHECK`                                             |
+| Indexes vs baseline                            | **9/9** identical; plus 3/3 PKs and **8/8** FKs                                                                               |
+
+A **functional** isolation probe was then run as a `NOBYPASSRLS` `app_tenant` role over two seeded orgs.
+Non-vacuity was established **first** — 2 rows confirmed in each table as owner, and `pg_roles` confirmed
+`rolbypassrls = f` — because "0 rows because isolation works" and "0 rows because the seed failed" are
+indistinguishable, which is exactly how flip #3's first probe passed vacuously:
+
+| Probe                                               | Result                                                                                                               |
+| --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Org A GUC set                                       | sees exactly **1** cycle, **1** assignment, **1** response of the 2 that exist — and it is the right one (`Cycle A`) |
+| **GUC unset**                                       | **0** rows on all three — fails closed; the #111 fail-open shape is not present                                      |
+| Org A inserts a response onto Org B's assignment    | **REFUSED** — `new row violates row-level security policy`                                                           |
+| Org A inserts a cycle labelled Org B (`WITH CHECK`) | **REFUSED** — same                                                                                                   |
+| Org A updates Org B's cycle                         | `UPDATE 0`; Org B's row verified unchanged                                                                           |
+| **Control:** Org A inserts a cycle labelled Org A   | **SUCCEEDS** (`INSERT 0 1`) — so the refusals above are the policy discriminating, not a blanket denial              |
+
+That control row is the half flip #3's transcript did not have. Without it, a policy that denied
+_everything_ would produce an identical-looking pass.
+
+> A caveat that survives: this proves the DDL reproduces prod's isolation **on a fresh database**. It
+> says nothing about whether prod's live shape still matches the baseline — that is §5 step 0, below.
+
+### Rollback — TESTED
+
+Real `git revert` of the flip commit `a8d29b99`, then the full set on the reverted tree:
+
+| Check on the reverted tree         | Result                                                                   |
+| ---------------------------------- | ------------------------------------------------------------------------ |
+| `prisma validate`                  | ✅ clean — **all three `user.prisma` back-relations return, no `P1012`** |
+| `prisma generate`                  | ✅ all three delegates reappear in the client                            |
+| `node scripts/table-ownership.mjs` | ✅ passed                                                                |
+| `tsc` api + web                    | ✅ both exit 0                                                           |
+| `npx vitest run`                   | ✅ 290 files / **2724** tests, exit 0                                    |
+
+2724, not 2723, is correct and worth stating: the revert targets **only** the flip commit, leaving the
+preceding `evaluation360.sql` commit in place, and that commit's one extra `REQUIRED_FLIP_DDL` case is
+the difference. The artifact surviving a rollback is the desired behaviour — it describes tables that
+exist in production either way.
+
+**One honest note on how that run was read.** The first full-suite run on the reverted tree came back
+`3 failed | 2721 passed`: `tests/security/verify-tenant-grants-failure-paths.test.ts`,
+`tests/vacancy/update-fit-requirements.test.ts` and `tests/vacancy/update-role-family.test.ts`, at
+5025 ms / 5111 ms / 7345 ms — timeouts, none of them touching evaluation360. Re-run in isolation: 3
+files / 10 tests, exit 0. Re-run as a full suite on the **identical commit**: 290 / 2724, exit 0. That
+is the known concurrent-vitest contention on this machine, not a rollback defect — recorded rather than
+quietly re-run until green.
+
+The revert and its reapply were then collapsed (`git reset --hard` back to the flip commit) after
+confirming the reapplied tree hash was **byte-identical** to the flip commit's
+(`648ec6a4…` both sides), so the branch carries no cancelling no-op commits. Pure revert is complete
+**because no DDL moved**.
+
+### NOT verified here — three §5 steps need the LIVE PRODUCTION database
+
+This environment has no prod credentials, so these remain Federico-only and **must be run before merge**:
+
+- **§5 step 0 / `/gate` check 16** — schema-baseline drift, before and after. Every other check compares
+  the flip against an expected schema; this is the one that proves the expected schema is still real.
+  Flips #1 and #2 ran it in both directions; flips #3 and #4 did not.
+- **§5 step 5b — `pre-flip-scan.ts`.** The important gap: **views, matviews and functions** referencing
+  the three tables are raw-SQL readers that survive model deletion and are invisible to `tsc`, to the
+  ownership check and to every P2 grep. The committed baseline contains only two functions
+  (`current_org_id`, `tims_append_only_guard`) and no views at all, neither referencing these tables —
+  suggestive, but that is the baseline, not the live scan.
+- **§5 step 6 — the live before/after shape diff** (RLS flags, policy set, grants, indexes, `n_tup_del`).
+  The DROP-TABLE tripwire.
+
+**Also not covered:** §6's pre-flip `pg_class.relfilenode` / `pg_indexes` / row-count snapshot, the only
+way to _detect_ that a table was rebuilt under the §2 `db push` hazard during the watch window. None was
+taken, so this flip's "pure `git revert` is complete" claim rests on the premise that no DDL runs against
+these three before a revert — **assumed, not detectable**. Take the snapshot if the branch sits unmerged.
+
+### What flip #4 adds over #1–#3
+
+- The first flip where **§0 P8 was not live** but an artifact was generated anyway, on a _measured_
+  bootstrap-reachability argument rather than the letter of the precondition — and the first to correct
+  `REQUIRED_FLIP_DDL`'s premise instead of quietly widening a list whose message no longer fit.
+- The first flip to **keep a domain's enums** after deleting its models, with the cost stated.
+- The first whose era-pinning test was found **by sweep rather than by brief** — and the first to add a
+  functional-probe **control row**, without which a deny-everything policy looks like a pass.
 
 ---
 
