@@ -76,17 +76,38 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f services/Tims.Platform/db/flip-ddl/<n
 
 ## Current contents
 
-| File               | Tables                                                             | For                         |
-| ------------------ | ------------------------------------------------------------------ | --------------------------- |
-| `surveys.sql`      | `surveys`, `survey_responses`                                      | #64 (engagement flip)       |
-| `compensation.sql` | `salary_adjustments`, `employee_compensations`                     | #66 (compensation flip)     |
-| `succession.sql`   | `critical_roles`, `successors`                                     | #69 — **flip #2, EXECUTED** |
-| `calibration.sql`  | `calibration_sessions`, `calibration_members`, `calibration_votes` | #70 — **flip #3, EXECUTED** |
+| File                | Tables                                                             | For                         |
+| ------------------- | ------------------------------------------------------------------ | --------------------------- |
+| `surveys.sql`       | `surveys`, `survey_responses`                                      | #64 (engagement flip)       |
+| `compensation.sql`  | `salary_adjustments`, `employee_compensations`                     | #66 (compensation flip)     |
+| `succession.sql`    | `critical_roles`, `successors`                                     | #69 — **flip #2, EXECUTED** |
+| `calibration.sql`   | `calibration_sessions`, `calibration_members`, `calibration_votes` | #70 — **flip #3, EXECUTED** |
+| `evaluation360.sql` | `review_cycles`, `rater_assignments`, `rater_responses`            | #67 — **flip #4, EXECUTED** |
 
 `surveys.sql` and `compensation.sql` are committed **ahead of** their flips, so P8 stops being a blocker;
 neither flip has happened — both are still gated on their live TS readers (see the readiness comments on
 #64 and #66). `succession.sql` and `calibration.sql` back flips that have executed: their Prisma models are
 gone, so these files are the repo's **only** executable definition of those five tables.
+
+> **`evaluation360.sql` is here on a different footing, and the distinction matters.** Its three tables
+> are the one flipped set that **still has a `CREATE TABLE` in a migration**
+> (`packages/db/prisma/migrations/20260713150000_add_evaluation360/migration.sql:8,22,36`), so runbook
+> §0 P8 was **not** live for flip #4 — the `access_reviews` situation, not the `calibration_*` one. It is
+> committed anyway because the property that actually matters is **bootstrap reachability, not existence**:
+> `prisma db push` does not apply `packages/db/prisma/migrations/` at all. Measured on a scratch
+> PostgreSQL 17.10 cluster from the flip branch, `db push` created **0 of the 3** tables while creating 93
+> others. The extracted artifact is also the better definition — read from the committed prod baseline
+> rather than from migration source (#111 proved those differ), and idempotent, atomic, GRANT-complete and
+> Supabase-guarded, none of which the migration is.
+>
+> So of the five files, **four are the only definition of their tables and all five are the only
+> _reachable_ one.** `REQUIRED_FLIP_DDL` in `tests/db/extract-table-ddl.test.ts` pins all five, and its
+> failure message states that split rather than over-claiming uniqueness for `evaluation360.sql`.
+>
+> Note also that `evaluation360.prisma` still declares the three **enums** (`ReviewCycleStatus`,
+> `RaterRelationship`, `RaterAssignmentStatus`) — a deliberate flip-#4 decision — so `prisma db push`
+> creates those types before this file runs. Every `CREATE TYPE` here is guarded on `pg_type`, so both
+> orders are safe; both were exercised on the scratch cluster.
 
 > **`calibration.sql` carries a policy shape the others do not.** `calibration_members` and
 > `calibration_votes` have no `organization_id` column; their `tenant_isolation` policy is an

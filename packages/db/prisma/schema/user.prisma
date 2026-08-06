@@ -126,9 +126,12 @@ model User {
   demographics                 EmployeeDemographics?
 
   // 360 Evaluation (Sprint 1.7)
-  reviewCyclesCreated           ReviewCycle[]           @relation("ReviewCycleCreatedBy")
-  raterAssignmentsAsSubject     RaterAssignment[]       @relation("RaterAssignmentSubject")
-  raterAssignmentsAsRater       RaterAssignment[]       @relation("RaterAssignmentRater")
+  // The three back-relations (reviewCyclesCreated, raterAssignmentsAsSubject,
+  // raterAssignmentsAsRater) were removed by ownership flip #67 — the three ReviewCycle/Rater*
+  // models are gone and a surviving back-reference is a hard P1012. The FKs
+  // review_cycles.created_by_id / rater_assignments.{subject_user_id,rater_user_id} → users(id)
+  // still exist in the database; they are declared in
+  // services/Tims.Platform/db/flip-ddl/evaluation360.sql, not here.
 
   @@unique([organizationId, email])
   @@index([organizationId])

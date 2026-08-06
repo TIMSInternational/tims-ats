@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync, statSync, existsSync } from 'fs';
 import { join } from 'path';
+import { Prisma } from '@tims/db';
 
 // #54 / #67 — the evaluation360 TS-writer tripwire.
 //
@@ -17,16 +18,19 @@ import { join } from 'path';
 // (flips #57/#70), whose scanning strategy and drive-tests are the reviewed shape for this class of
 // tripwire — this is not a fresh design and should not diverge from it without a reason.
 //
-// ── HOW THIS DIFFERS FROM THE CALIBRATION TRIPWIRE, AND IT MATTERS ──────────────────────────────
-// Flip #70 had already EXECUTED when its tripwire was written, so the Prisma models were gone and a
-// re-added delegate did not compile. Flip #67 has NOT executed. The three Prisma models are still in
-// packages/db/prisma/schema/evaluation360.prisma and MUST stay there — deleting them IS the flip, and
-// the flip is a separate, deliberate, runbook-governed act (docs/architecture/csharp-migration/
-// ownership-flip-runbook.md), not this issue. So:
-//   - there is NO "no .prisma file re-declares the models" assertion here; the opposite is true, and
-//     the models' continued presence is asserted below so #54 cannot be mistaken for #67, and
-//   - `tenantDb.reviewCycle` still COMPILES today. Nothing but this test stands between a re-added
-//     TS writer and a silently false precondition under workflow B.
+// ── UPDATED 2026-08-06: OWNERSHIP FLIP #67 HAS NOW EXECUTED ─────────────────────────────────────
+// This file was written while the flip was still pending, and two of its cases pinned that era: the
+// ledger assertion ("still efcoreStranglerWrite") and the schema assertion ("the three Prisma models
+// still exist"). The flip makes both false. Per their own docblocks they were INVERTED, not deleted —
+// see runbook §7e. What they defend now is that the flip STAYS flipped, which nothing else checks:
+// `scripts/table-ownership.mjs` only greps `@@map`, so a re-added Prisma model reads as a legitimate
+// `efcoreStranglerWrite` table to it.
+//
+// The consequence for the scans below is that `tenantDb.reviewCycle` no longer COMPILES — the models
+// are gone from the generated client, so `tsc` now backstops the delegate scans. They are kept at full
+// strength anyway: `tsc` says nothing about raw DML, and the three "un-flip" cases at the bottom of
+// this file (generated-client delegates, `.prisma` re-declaration, user.prisma back-relations) catch
+// the FIRST step of an un-flip, before any call site exists for `tsc` to reject.
 //
 // ── SCANNING STRATEGY: DENY-LIST, NOT ALLOW-LIST ────────────────────────────────────────────────
 // Walk the WHOLE repository and prune what cannot contain first-party source, per the calibration
@@ -144,9 +148,11 @@ const BRACKET_DELEGATE = new RegExp(`\\[\\s*['"\`](?:${MODELS})['"\`]\\s*\\]`);
  * that a `.model.method` grep cannot see these: `db.user.update({ data: { reviewCyclesCreated:
  * { create: … } } })` is a compile-valid write to review_cycles containing no `db.reviewCycle` token.
  *
- * Names taken from packages/db/prisma/schema/user.prisma:129-131. UNLIKE the calibration tripwire,
- * these back-relations still EXIST — flip #67 has not run — so this list matches the live schema and
- * must be kept in step with it until the flip deletes them.
+ * The three names came from packages/db/prisma/schema/user.prisma:129-131, which flip #67 DELETED.
+ * They are kept verbatim on purpose: this list is now the record of the exact spellings that must
+ * never come back, and a re-added back-relation would use them. Do not "clean up" a list that no
+ * longer matches the schema — the mismatch IS the guard. (Same disposition as the calibration
+ * tripwire's four names after flip #70.)
  */
 const RELATION_FIELDS = ['reviewCyclesCreated', 'raterAssignmentsAsSubject', 'raterAssignmentsAsRater'];
 const NESTED_WRITE_OPS =
@@ -356,9 +362,10 @@ describe('evaluation360 tables have zero TypeScript writers (ownership flip #67 
       found,
       `A TypeScript Prisma delegate touches an evaluation360 model. #54 deleted the orphaned TS\n` +
         `service + repository that held every such writer, and ownership flip #67 depends on that\n` +
-        `staying true. Unlike the calibration tripwire, the Prisma models still EXIST here, so this\n` +
-        `reference compiles — this test is the only thing that catches it. Port the caller to the C#\n` +
-        `endpoints in services/Tims.Platform/src/Tims.Api/Evaluation360/ instead:\n${found.join('\n')}`,
+        `staying true. Since flip #67 the Prisma models are gone, so a delegate like this should not\n` +
+        `compile either — if it reached this test, something re-added the model. Check the un-flip\n` +
+        `cases at the bottom of this file first, then port the caller to the C# endpoints in\n` +
+        `services/Tims.Platform/src/Tims.Api/Evaluation360/ instead:\n${found.join('\n')}`,
     ).toEqual([]);
   });
 
@@ -387,53 +394,137 @@ describe('evaluation360 tables have zero TypeScript writers (ownership flip #67 
   });
 
   /**
-   * #54 IS NOT #67, and this assertion is what keeps the two from being confused.
+   * INVERTED 2026-08-06 when flip #67 executed. It previously asserted the three tables were still
+   * `efcoreStranglerWrite`, with the rider "moving them is flip #67, not #54". That was correct while
+   * it was written and the flip makes it false — the classic case of a test that pinned an ERA
+   * starting to defend it. Its own docblock predicted this and instructed inversion; that instruction
+   * is being followed here, and the same thing happened to the calibration tripwire under flip #70.
    *
-   * Deleting the orphaned TS service/repository clears the flip's PRECONDITION; it does not perform
-   * the flip. The flip is moving these three tables from `efcoreStranglerWrite` to `efcore` AND
-   * deleting their Prisma models in the SAME commit (scripts/table-ownership.mjs:113-117 makes either
-   * half alone a red build), under the ownership-flip runbook, with the prod-credentialed checks that
-   * runbook requires. Doing it as a side effect of a code-deletion PR would skip all of that.
+   * The direction it now points is the one that matters: the ledger is the only place recording that
+   * C# is sole owner, and `scripts/table-ownership.mjs` cannot catch a move BACK on its own
+   * (`efcoreStranglerWrite` merely requires the table be `@@map`'d, which is exactly the state a
+   * re-added Prisma model would restore).
    *
-   * WHEN FLIP #67 EXECUTES, INVERT THIS TEST — do not delete it. It pins an ERA on purpose and will
-   * start defending that era the moment the flip lands; the calibration tripwire's ledger assertion
-   * hit exactly this and was inverted rather than removed (see its docblock). Inverted, it becomes
-   * the guard that the flip STAYS flipped, which `scripts/table-ownership.mjs` cannot check on its
-   * own — `efcoreStranglerWrite` merely requires the table be `@@map`'d, which is the state a
-   * re-added Prisma model would restore.
+   * `not.toContain('efcoreStranglerWrite')` is asserted explicitly, not implied: a table listed in BOTH
+   * lists is a `cross-owner collision` in the ledger script only while the Prisma model exists, so the
+   * two halves genuinely check different things.
    */
-  it('the ledger still classifies all three tables as efcoreStranglerWrite — moving them is flip #67, not #54', () => {
+  it('the ledger classifies all three tables as efcore — flip #67 executed, and must stay executed', () => {
     const doc = readFileSync(join(ROOT, 'docs/architecture/table-ownership.md'), 'utf8');
     const ledger = JSON.parse(doc.match(/```json\n([\s\S]*?)\n```/)![1]) as Record<string, string[]>;
     for (const t of ['review_cycles', 'rater_assignments', 'rater_responses']) {
       expect(
-        ledger['efcoreStranglerWrite'],
-        `${t} left efcoreStranglerWrite[]. If ownership flip #67 has executed, INVERT this test to\n` +
-          `assert efcore[] (see the docblock) — do not delete it. If it has not, this is an\n` +
-          `accidental ledger edit: the flip also requires deleting the Prisma model in the same\n` +
-          `commit and running the runbook's prod-credentialed checks.`,
+        ledger['efcore'],
+        `${t} is not in efcore[]. Ownership flip #67 moved all three evaluation360 tables to EF Core on\n` +
+          `2026-08-06 (runbook §7e). Moving one back means restoring its Prisma model, which re-creates a\n` +
+          `second writer of a table C# solely owns — and reverting a flip is a deliberate, reviewed act\n` +
+          `(runbook §6), never a side effect of editing this ledger.`,
       ).toContain(t);
-      expect(ledger['efcore'], t).not.toContain(t);
+      expect(ledger['efcoreStranglerWrite'], t).not.toContain(t);
     }
   });
 
   /**
-   * The mirror of the calibration tripwire's "no .prisma file re-declares the models" assertion,
-   * pointing the OTHER way. There, the models had been deleted by the flip and must not come back.
-   * Here they must not LEAVE: deleting them is flip #67, and a deletion that landed on a #54-shaped
-   * PR would take the ledger and the schema out of step (a red `table-ownership.mjs` build at best,
-   * a table with no executable definition in the repo at worst — runbook §0 P8).
+   * INVERTED 2026-08-06 by flip #67, and turned from a schema-TEXT check into a GENERATED-CLIENT one.
+   *
+   * It previously asserted the three models still EXISTED in evaluation360.prisma, so that a model
+   * deletion could not ride along on a #54-shaped PR. The flip deletes them deliberately, so the
+   * assertion is inverted rather than removed — and the text-level half of it is now covered more
+   * thoroughly by the "no Prisma schema file re-declares" case below, which scans EVERY `.prisma`
+   * file instead of just this domain's.
+   *
+   * What is asserted here instead is the thing the text scan cannot see: that the generated Prisma
+   * client carries no delegate for these models. `prisma generate` is what turns a re-added model into
+   * a callable `db.reviewCycle`, and flip #3 checked this by hand from a transcript. Automating it
+   * means a re-added model fails here even before anyone writes a call site.
+   *
+   * The ENUMS are asserted to SURVIVE, in the same case, on purpose: keeping them is a decision
+   * (see the block in evaluation360.prisma), `packages/db/src/index.ts:16-18` re-exports all three,
+   * and a silent enum deletion would break that re-export and the parity seed's `::"ReviewCycleStatus"`
+   * casts without any other test noticing.
    */
-  it('the three Prisma models still exist — #54 deletes TS app code, never a Prisma model', () => {
-    const schema = readFileSync(join(ROOT, 'packages/db/prisma/schema/evaluation360.prisma'), 'utf8');
+  it('the generated client has no evaluation360 model delegates, but keeps the three enums', () => {
+    const models = Prisma.dmmf.datamodel.models.map((m) => m.name);
     for (const model of ['ReviewCycle', 'RaterAssignment', 'RaterResponse']) {
-      expect(schema, `model ${model} is gone from evaluation360.prisma`).toMatch(
-        new RegExp(`^\\s*model\\s+${model}\\s*\\{`, 'm'),
-      );
+      expect(
+        models,
+        `model ${model} is back in the generated Prisma client. Ownership flip #67 gave its table to\n` +
+          `EF Core; a delegate here is a second writer of a table C# solely owns.`,
+      ).not.toContain(model);
     }
-    for (const table of ['review_cycles', 'rater_assignments', 'rater_responses']) {
-      expect(schema).toContain(`@@map("${table}")`);
+    const enums = Prisma.dmmf.datamodel.enums.map((e) => e.name);
+    for (const e of ['ReviewCycleStatus', 'RaterRelationship', 'RaterAssignmentStatus']) {
+      expect(
+        enums,
+        `enum ${e} was removed from the Prisma schema. Flip #67 KEPT the evaluation360 enums\n` +
+          `deliberately — packages/db/src/index.ts:16-18 re-exports them from @tims/db and\n` +
+          `scripts/parity/seed.ts casts to the Postgres types by name. Removing one is a breaking\n` +
+          `change to @tims/db, not a cleanup.`,
+      ).toContain(e);
     }
+  });
+
+  /**
+   * Added 2026-08-06 by flip #67, mirroring the calibration tripwire's equivalent case.
+   *
+   * The scans above walk `.ts/.tsx/.mts/.cts` ONLY — they never open a `.prisma` file. So a bare
+   * `model ReviewCycle { … @@map("review_cycles") }` re-added to the schema, with no TypeScript
+   * touching it, passes every other case in this file. The re-added model is the FIRST step of
+   * un-flipping: `prisma generate` then re-creates the delegate, `prisma db push` on a local DB
+   * re-adopts the table, and only THEN would a delegate call appear for the other scans to catch.
+   * Catch it at step one.
+   */
+  it('no Prisma schema file re-declares the three flipped models', () => {
+    const schemaDir = join(ROOT, 'packages/db/prisma/schema');
+    const schemaFiles = readdirSync(schemaDir).filter((f) => f.endsWith('.prisma'));
+    expect(schemaFiles.length, 'no .prisma files found — the scan would pass vacuously').toBeGreaterThan(5);
+
+    const offenders: string[] = [];
+    for (const f of schemaFiles) {
+      const text = readFileSync(join(schemaDir, f), 'utf8');
+      text.split('\n').forEach((line, i) => {
+        // `model ReviewCycle {` — and the @@map form, so a renamed model mapping the same table is
+        // caught too. Comments naming them (there are deliberate ones) must NOT trip it.
+        if (/^\s*model\s+(ReviewCycle|RaterAssignment|RaterResponse)\b/.test(line)) {
+          offenders.push(`${f}:${i + 1}: ${line.trim()}`);
+        }
+        if (/^\s*@@map\(\s*["'](review_cycles|rater_assignments|rater_responses)["']\s*\)/.test(line)) {
+          offenders.push(`${f}:${i + 1}: ${line.trim()}`);
+        }
+      });
+    }
+
+    expect(
+      offenders,
+      `A Prisma model re-declares a table that ownership flip #67 gave to EF Core. This is step ONE of\n` +
+        `un-flipping: \`prisma generate\` re-creates the delegate and \`prisma db push\` re-adopts the table,\n` +
+        `restoring a second writer of a table C# solely owns. Reverting a flip is a deliberate, reviewed\n` +
+        `act (runbook §6), never a side effect of editing a schema file:\n${offenders.join('\n')}`,
+    ).toEqual([]);
+  });
+
+  /**
+   * The three back-relations this flip deleted from user.prisma must not come back either. A
+   * back-reference to a deleted model is a hard `P1012` that `prisma validate` catches — but only if
+   * someone runs it, and `scripts/table-ownership.mjs` does not (it greps `@@map` alone). This is the
+   * cheap always-on half of that guard, and it is the schema-side twin of the RELATION_WRITE scan
+   * above, which covers the call sites.
+   */
+  it('user.prisma re-declares none of the three deleted back-relations', () => {
+    const user = readFileSync(join(ROOT, 'packages/db/prisma/schema/user.prisma'), 'utf8');
+    const offenders: string[] = [];
+    user.split('\n').forEach((line, i) => {
+      // A FIELD declaration, not the comment that records the names: `<name> <Type>[]`.
+      if (/^\s*(reviewCyclesCreated|raterAssignmentsAsSubject|raterAssignmentsAsRater)\s+\w+\[\]/.test(line)) {
+        offenders.push(`user.prisma:${i + 1}: ${line.trim()}`);
+      }
+    });
+    expect(
+      offenders,
+      `A User back-relation to a flipped evaluation360 model is back in user.prisma. It is a hard\n` +
+        `P1012 on the next \`prisma validate\`, and it re-opens the nested-relation write path the\n` +
+        `RELATION_WRITE scan above exists to close:\n${offenders.join('\n')}`,
+    ).toEqual([]);
   });
 
   /**
