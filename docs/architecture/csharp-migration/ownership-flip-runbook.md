@@ -1710,11 +1710,33 @@ _everything_ would produce an identical-looking pass.
 
 ### Rollback — TESTED
 
-Real `git revert` of the flip commit, then the full set on the reverted tree: `prisma validate` clean
-(**all three `user.prisma` back-relations return with no `P1012`**), all three delegates reappear in the
-regenerated client, ledger check passed, api + web `tsc` clean, full vitest green at the pre-flip count.
-Then unwound with a second revert and the client regenerated. Pure revert is complete **because no DDL
-moved**.
+Real `git revert` of the flip commit `a8d29b99`, then the full set on the reverted tree:
+
+| Check on the reverted tree         | Result                                                                   |
+| ---------------------------------- | ------------------------------------------------------------------------ |
+| `prisma validate`                  | ✅ clean — **all three `user.prisma` back-relations return, no `P1012`** |
+| `prisma generate`                  | ✅ all three delegates reappear in the client                            |
+| `node scripts/table-ownership.mjs` | ✅ passed                                                                |
+| `tsc` api + web                    | ✅ both exit 0                                                           |
+| `npx vitest run`                   | ✅ 290 files / **2724** tests, exit 0                                    |
+
+2724, not 2723, is correct and worth stating: the revert targets **only** the flip commit, leaving the
+preceding `evaluation360.sql` commit in place, and that commit's one extra `REQUIRED_FLIP_DDL` case is
+the difference. The artifact surviving a rollback is the desired behaviour — it describes tables that
+exist in production either way.
+
+**One honest note on how that run was read.** The first full-suite run on the reverted tree came back
+`3 failed | 2721 passed`: `tests/security/verify-tenant-grants-failure-paths.test.ts`,
+`tests/vacancy/update-fit-requirements.test.ts` and `tests/vacancy/update-role-family.test.ts`, at
+5025 ms / 5111 ms / 7345 ms — timeouts, none of them touching evaluation360. Re-run in isolation: 3
+files / 10 tests, exit 0. Re-run as a full suite on the **identical commit**: 290 / 2724, exit 0. That
+is the known concurrent-vitest contention on this machine, not a rollback defect — recorded rather than
+quietly re-run until green.
+
+The revert and its reapply were then collapsed (`git reset --hard` back to the flip commit) after
+confirming the reapplied tree hash was **byte-identical** to the flip commit's
+(`648ec6a4…` both sides), so the branch carries no cancelling no-op commits. Pure revert is complete
+**because no DDL moved**.
 
 ### NOT verified here — three §5 steps need the LIVE PRODUCTION database
 
