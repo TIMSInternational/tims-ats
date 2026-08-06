@@ -1437,10 +1437,45 @@ Real `git revert` of the flip commit, then the full set on the reverted tree: `p
 regenerated client, ledger check passed, api + web `tsc` clean, full vitest green. Then unwound with a
 second revert and the client regenerated. Pure revert is complete **because no DDL moved**.
 
-### NOT verified here — four §5 steps need a live database
+### §5 step 8 — RUN AND PASSED on a throwaway cluster
 
-Stated plainly so this transcript is not over-read. This environment has no working DB credentials
-(local Prisma has been P1000 for weeks) and running these against prod is Federico-only:
+**Correcting this section's own first draft**, which listed step 8 alongside the prod-credentialed steps
+and called all four "Federico-only". Step 8 is a *clean-checkout bootstrap*: it needs a scratch database,
+not production. Filing it as Federico-only would have burned a prod session on a check that never needed
+one — and left the artifact that is now the repo's ONLY executable definition of three production tables
+unexecuted. It was run instead (PostgreSQL 17.10, scratch cluster on TCP 55432-range, torn down after):
+
+| Step | Result |
+| ---- | ------ |
+| `prisma db push` on an empty DB | **0** `calibration_*` tables created — §0 P8 was live, confirmed empirically rather than by grep alone |
+| `psql -v ON_ERROR_STOP=1 -f calibration.sql` | exit **0** |
+| Re-apply (idempotency) | exit **0**, catalog state unchanged |
+| Structure | all 3 tables, `relrowsecurity = true`, exactly 1 policy each |
+| Policy text | `USING` and `WITH CHECK` match `prod-public-schema.sql:7480-7499` |
+
+A **functional** isolation probe was then run as a `NOBYPASSRLS` `app_tenant` role over two seeded orgs —
+and made non-vacuous first by confirming 2 sessions and 2 members actually existed, because "0 rows
+because isolation works" and "0 rows because the seed failed" are indistinguishable (the seed DID fail
+twice, on `users.supabase_user_id` and `calibration_members.status`, and the first probe run passed
+vacuously as a result):
+
+| Probe | Result |
+| ----- | ------ |
+| OrgA GUC set | sees exactly **1** session + **1** member of the 2 that exist |
+| **GUC unset** | **0** rows — fails closed; the #111 fail-open shape is not present |
+| OrgA inserts a member into OrgB's session | **REFUSED** — `new row violates row-level security policy` |
+
+That last row is the direct evidence for this flip's central claim: for `calibration_members` and
+`calibration_votes`, which have no `organization_id`, the session-linkage `WITH CHECK` **is** the tenant
+guard. Previously that was reasoning from the policy text; now it has been observed.
+
+> A caveat that survives: this proves the DDL reproduces prod's isolation **on a fresh database**. It says
+> nothing about whether prod's live shape still matches the baseline — that is §5 step 0, below.
+
+### NOT verified here — three §5 steps need the LIVE PRODUCTION database
+
+This environment has no prod credentials (local Prisma has been P1000 for weeks), so these remain
+Federico-only:
 
 - **§5 step 0 / `/gate` check 16** — schema-baseline drift, before and after. Every other check compares
   the flip against an expected schema; this is the one that proves the expected schema is still real.
@@ -1450,11 +1485,14 @@ Stated plainly so this transcript is not over-read. This environment has no work
   ownership check and to every P2 grep. Flip #2 found zero; that is not evidence about these tables.
 - **§5 step 6 — the live before/after shape diff** (RLS flags, policy set, grants, indexes, `n_tup_del`).
   The DROP-TABLE tripwire.
-- **§5 step 8 — clean-checkout bootstrap.** `calibration.sql` has not been applied to a scratch database
-  in this pass, so "the repo still produces these tables" is reasoned from the generator's round-trip
-  proof (#128) and the byte-identity test, **not observed** for this file.
+Run all three before merging. Steps 0 and 5b are the two that could still turn up a blocker.
 
-Run all four before merging. Steps 0 and 5b are the two that could still turn up a blocker.
+**Also not covered, and not fixable by any of the above:** §6 prescribes a pre-flip
+`pg_class.relfilenode` / `pg_indexes` / row-count snapshot as the only way to *detect* that a table was
+rebuilt under the §2 `db push` hazard during the watch window. No such snapshot was taken for these three
+tables, so this flip's "pure `git revert` is complete" claim rests on the premise that no DDL runs against
+them before the revert — a premise that is currently **assumed, not detectable**. Take the snapshot if the
+branch sits unmerged for any length of time.
 
 ### What flip #3 adds over flips #1 and #2
 

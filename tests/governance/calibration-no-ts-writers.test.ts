@@ -395,4 +395,43 @@ describe('calibration_* have zero TypeScript writers (ownership flip #70 precond
       expect(ledger['efcoreStranglerWrite'], t).not.toContain(t);
     }
   });
+
+  /**
+   * The scans above walk `.ts/.tsx/.mts/.cts` ONLY — they never open a `.prisma` file. So a bare
+   * `model CalibrationVote { … @@map("calibration_votes") }` re-added to the schema, with no
+   * TypeScript touching it, passes every other case in this file.
+   *
+   * That gap mattered because the docblock above and runbook §7d both claimed this test was what
+   * catches a re-added Prisma model. It was not. The re-added model is the FIRST step of un-flipping —
+   * `prisma generate` then re-creates the delegate, `prisma db push` on a local DB re-adopts the table,
+   * and only THEN would a delegate call appear for the other scans to catch. Catch it at step one.
+   */
+  it('no Prisma schema file re-declares the three flipped models', () => {
+    const schemaDir = join(ROOT, 'packages/db/prisma/schema');
+    const schemaFiles = readdirSync(schemaDir).filter((f) => f.endsWith('.prisma'));
+    expect(schemaFiles.length, 'no .prisma files found — the scan would pass vacuously').toBeGreaterThan(5);
+
+    const offenders: string[] = [];
+    for (const f of schemaFiles) {
+      const text = readFileSync(join(schemaDir, f), 'utf8');
+      text.split('\n').forEach((line, i) => {
+        // `model CalibrationVote {` — and the @@map form, so a renamed model mapping the same table
+        // is caught too. Comments mentioning the names (there are deliberate ones) must NOT trip it.
+        if (/^\s*model\s+(CalibrationSession|CalibrationMember|CalibrationVote)\b/.test(line)) {
+          offenders.push(`${f}:${i + 1}: ${line.trim()}`);
+        }
+        if (/^\s*@@map\(\s*["'](calibration_sessions|calibration_members|calibration_votes)["']\s*\)/.test(line)) {
+          offenders.push(`${f}:${i + 1}: ${line.trim()}`);
+        }
+      });
+    }
+
+    expect(
+      offenders,
+      `A Prisma model re-declares a table that ownership flip #70 gave to EF Core. This is step ONE of\n` +
+        `un-flipping: \`prisma generate\` re-creates the delegate and \`prisma db push\` re-adopts the table,\n` +
+        `restoring a second writer of a table C# solely owns. Reverting a flip is a deliberate, reviewed\n` +
+        `act (runbook §6), never a side effect of editing a schema file:\n${offenders.join('\n')}`,
+    ).toEqual([]);
+  });
 });

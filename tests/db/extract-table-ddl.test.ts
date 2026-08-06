@@ -7,7 +7,7 @@
  * parser is tested against a hand-built dump whose shape mirrors real pg_dump output, plus against the
  * committed production baseline itself.
  */
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
@@ -288,10 +288,33 @@ describe('against the committed production baseline', () => {
    * artifact added by the next flip, which is precisely when this check matters. The table list is read
    * back out of each file's own `-- Regenerate:` line.
    */
+  /**
+   * Byte-identity is only half the guarantee. Auto-discovery means the suite iterates whatever files
+   * happen to be present, so DELETING one is a fully green change — and each of these is the repo's
+   * ONLY executable definition of tables that exist in production (§0 P8). They look like dead weight:
+   * nothing imports them, no script applies them, no CI job references them.
+   *
+   * So the required set is pinned by name. Adding a flip means adding its entry here, in the same PR.
+   */
+  const REQUIRED_FLIP_DDL = ['surveys.sql', 'compensation.sql', 'succession.sql', 'calibration.sql'];
+
+  it.each(REQUIRED_FLIP_DDL)('flip-DDL artifact %s exists (it is the only definition of its tables)', (name) => {
+    const p = join('services/Tims.Platform/db/flip-ddl', name);
+    expect(
+      existsSync(p),
+      `${p} is missing. It is the repository's ONLY executable definition of the tables it covers — their\n` +
+        `Prisma models were deleted by an ownership flip and they have no CREATE TABLE in any migration.\n` +
+        `Without it a freshly bootstrapped dev database simply does not have those tables. If a flip was\n` +
+        `deliberately reverted, remove the entry from REQUIRED_FLIP_DDL in the same commit and say so.`,
+    ).toBe(true);
+  });
+
   it('keeps every committed flip-DDL artifact byte-identical to generator output', () => {
     const dir = 'services/Tims.Platform/db/flip-ddl';
     const files = readdirSync(dir).filter((f) => f.endsWith('.sql'));
-    expect(files.length).toBeGreaterThan(0);
+    // Discovery still drives the byte-check (a NEW flip is covered without editing this test), but it
+    // can no longer pass on a shrinking set.
+    expect(files.length).toBeGreaterThanOrEqual(REQUIRED_FLIP_DDL.length);
 
     const captured = /^-- Captured:\s*(.+)$/m.exec(dump)?.[1];
     const server = /^-- Server version:\s*(.+)$/m.exec(dump)?.[1];
