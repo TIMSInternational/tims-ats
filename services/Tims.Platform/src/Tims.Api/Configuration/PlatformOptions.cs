@@ -398,4 +398,24 @@ public sealed class PlatformOptions
     /// DEFAULT false (dark) — TS remains the single active writer until Federico flips it at canary.
     /// </summary>
     public bool AccessReviewWriteEnabled { get; init; }
+
+    /// <summary>
+    /// Phase-5 Q0b slice 1 / issue #100 (efcoreReadOnly): when true, the C# monitoring READ surface is
+    /// mapped and live — <c>GET /monitoring/executive-kpis</c>, <c>/monitoring/module-health</c>,
+    /// <c>/monitoring/alerts</c>, <c>/monitoring/action-plan-alerts</c>,
+    /// <c>/monitoring/cross-module-trend</c>, <c>/monitoring/alert-rules</c>. Staff-JWT +
+    /// <c>monitoring:read</c>. Only <c>action-plan-alerts</c> carries a scope mechanic
+    /// (<c>scopeWhereFor('actionPlan')</c> row filter); the other five are org-wide aggregates with NO
+    /// org-gate, faithfully matching the live TS reader, which grants <c>monitoring:read</c> to
+    /// <c>hrbp</c> at UNIT scope. <c>executive-kpis.pendingAdjustments</c> and the
+    /// <c>engagement</c> trend metric are k-anon floored (the latter ALL-OR-NOTHING across the window).
+    ///
+    /// This is the prerequisite read surface the ownership-flip runbook §7b calls "the true gating item
+    /// for #64": monitoring is the last TS Prisma reader of <c>surveys</c>/<c>survey_responses</c> (#64),
+    /// <c>salary_adjustments</c> (#66) and <c>action_plans</c> (#68). The two monitoring WRITES
+    /// (<c>dismissAlert</c>, <c>configureAlertRules</c>) are NOT in this flag — separate write slice.
+    ///
+    /// DEFAULT false (dark) — TS remains the single active reader until Federico flips it at canary.
+    /// </summary>
+    public bool MonitoringReadEnabled { get; init; }
 }
