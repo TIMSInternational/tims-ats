@@ -25,13 +25,24 @@ import { buildPdfReport, buildXlsxReport, type ReportSection } from './dei-repor
 // getLeadershipDiversity were deleted (their sole caller, the router's matching
 // procedure, was deleted after NEXT_PUBLIC_DEI_READ_VIA_CSHARP went live) — see
 // packages/api/src/routers/dei.ts. Only getEthnicityDistribution and
-// getDisabilityDistribution remain: zero-FE-consumer exceptions, out of scope.
+// getDisabilityDistribution remain here.
+//
+// #60 (2026-08-06): those two methods are no longer ROUTER-EXPOSED — their tRPC
+// procedures were deleted once their live C# replacements' authz + min-5 guards
+// were verified at file:line (see the router's TS-DELETION note). They are kept
+// as service methods because generateReport is their sole remaining caller; the
+// C# reads (/dei/ethnicity-distribution, /dei/disability-distribution) serve
+// anything that needs them over HTTP. Do not re-export them from the router
+// without a reason — a second live implementation of a k-anonymity-sensitive
+// read is exactly what the cutover removed.
 //
 // generateReport (real, 2026-07-31): renders getEthnicityDistribution +
 // getDisabilityDistribution — the only two aggregate metrics this service still
-// exposes — into an actual xlsx/pdf document via dei-report-builder.ts. Stays
+// computes — into an actual xlsx/pdf document via dei-report-builder.ts. Stays
 // AGGREGATE-ONLY like everything else here: it never queries EmployeeDemographics
-// itself, only reuses the two suppression-safe distribution methods below.
+// itself, only reuses the two suppression-safe distribution methods below, so a
+// sub-floor group can never reach the exported file as rows. It was NEVER ported
+// to C# (see the router note + closed #1) and is deliberately retained.
 // ---------------------------------------------------------------------------
 
 const REPORT_SECTIONS = {

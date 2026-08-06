@@ -14,8 +14,15 @@ import { tenantDb as db } from '@tims/db';
 // exclusively by a dei.service.ts method deleted in the same cutover (see
 // packages/api/src/services/dei.service.ts), so all were dead code once their
 // callers were gone. Only ethnicityCounts and disabilityCounts remain: both are
-// still used by getEthnicityDistribution/getDisabilityDistribution, the
-// zero-FE-consumer exceptions kept in dei.service.ts.
+// still used by getEthnicityDistribution/getDisabilityDistribution in
+// dei.service.ts.
+//
+// #60 (2026-08-06): those two service methods lost their tRPC procedures, so the
+// ONLY path that still reaches this repository is deiService.generateReport (the
+// aggregate-only xlsx/pdf export, deliberately retained — it was never ported to
+// C#). Everything else on the DEI read surface is served by C#
+// (DeiReadRepository.cs). These queries stay groupBy aggregates — never an
+// individual demographic row.
 // ---------------------------------------------------------------------------
 
 export const deiRepository = {

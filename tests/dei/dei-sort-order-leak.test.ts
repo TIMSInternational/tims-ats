@@ -13,6 +13,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // NEXT_PUBLIC_DEI_READ_VIA_CSHARP went live (see packages/api/src/routers/dei.ts).
 // getEthnicityDistribution survives (zero-FE-consumer exception, out of scope for
 // that cutover), so its coverage stays.
+//
+// #60 (2026-08-06): getEthnicityDistribution's tRPC PROCEDURE has since been deleted too, but the
+// deiService METHOD asserted below is untouched and is NOT dead — it is deiService.generateReport's
+// data source, so the ordering channel this suite closes is still reachable, now through the
+// exported xlsx/pdf rather than a tRPC response. That makes this coverage MORE load-bearing, not
+// less: an exported file is a durable artifact. Do not retire it as "testing a deleted procedure".
 
 vi.mock('../../packages/api/src/repositories/dei.repository', () => ({
   deiRepository: {

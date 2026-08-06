@@ -130,8 +130,31 @@ wrapped in `if (options.<X>Enabled || isOpenApiDocGeneration) { ... }`, defaulti
     `getHiringFunnel`, `getPromotionEquity`, `getInclusionIndex` — 9 counting pay-equity, which
     shares this domain's ONE FE flag despite its own separate `Platform:FxReadsEnabled` backend
     gate); the FE wrapper (`apps/web/lib/platform-api/dei.ts`) now calls the C# service
-    unconditionally for all 9. `getEthnicityDistribution`/`getDisabilityDistribution` are
-    **deliberately retained** as untouched, pre-existing zero-FE-consumer dead code.
+    unconditionally for all 9. `getEthnicityDistribution`/`getDisabilityDistribution` were
+    retained at the time as untouched, pre-existing zero-FE-consumer dead code.
+    **TS deletion 2026-08-06 (#60) — the 3 residual procedures resolved, one decision each:**
+    - `getEthnicityDistribution` + `getDisabilityDistribution` → **DELETED** from the router. Zero
+      TS-path consumers (grep: no wrapper hook in `apps/web/lib/platform-api/dei.ts`, no call site),
+      and BOTH C# replacement guards were verified at `file:line` before deleting, not assumed —
+      the `dei:read` grant (`DeiStaffGate.cs:42`, fail-closed at `:50`, reached from
+      `DeiReadEndpoints.cs:110`/`:131`) and the min-5 k-anonymity floor (`DeiReadUseCase.cs:160`/
+      `:171` → `DeiKernels.cs:80` `KAnonymity.SuppressBelowMin5`, golden-fixtured against
+      `@tims/shared`'s `buildDistribution`). The two `deiService` METHODS are kept but no longer
+      router-exposed — they are `generateReport`'s only data source.
+    - `generateReport` → **KEPT, declared a permanent-for-now TypeScript surface.** It was never
+      ported to C# (`DeiReadEndpoints.cs:14`, `DeiReadUseCase.cs:10`, `PlatformOptions.cs:249` each
+      record the exclusion), so there is no replacement to delete it in favour of — removing it
+      would delete capability, not dead code. Its port stays blocked on closed #1's five
+      legal/compliance questions (jurisdiction taxonomy, pay-equity-by-gender in v1, whether min-5
+      suffices per jurisdiction, post-export retention/re-sharing, legal basis for the underlying
+      self-ID data) plus .NET ExcelJS/PDFKit equivalents. It is now the dei router's ONLY procedure.
+    - **Open gap, not closed by #60:** `generateReport` has no FE consumer either — the "Generate
+      report" button at `apps/web/app/(admin)/engagement/dei/page.tsx:27` fires a `comingSoon` toast
+      and never calls the mutation. Wiring it is pending product work on a working generator.
+    - Tooling follow-through: `scripts/parity/surfaces.ts`'s `dei` entry is **kept, registered
+      C#-only** (both `tsProcedure` fields dropped) so the RBAC + RLS checks survive — the ninebox
+      #57 precedent, per `EndpointDef.tsProcedure`'s own contract; deleting the surface would have
+      retired live coverage. `scripts/deploy/cutover.sh`'s dei row is now `TS_DELETED`.
   - External-vendor — read (#139) + write (#140/#151). **READ FLIPPED AND LIVE IN PROD 2026-07-31** —
     `EXTERNAL_VENDOR_READ_VIA_CSHARP=true` (a plain server env var, not `NEXT_PUBLIC_`, since this
     surface is TS-server-to-C# rather than browser-to-C#). Re-checked for code drift since the
@@ -471,7 +494,7 @@ Honest-hybrid pass: real metric where data exists + cheap; honest `N/D`/`EmptySt
 ### Tier 4 — Infrastructure (deferred by design / scale-gated)
 
 - **Background workers (`workers/`)** — empty one-line stub; no Trigger.dev jobs. Caps batch AI, async scoring, scheduled jobs (billing automation, data-retention purges). Emails/exports run in-process today.
-- **Real export generation** — audit, candidate-pool CSV, DEI report are stubs returning fake statuses; no CSV/XLSX pipeline wired.
+- **Real export generation** — ~~audit, candidate-pool CSV, DEI report are stubs returning fake statuses; no CSV/XLSX pipeline wired.~~ **Stale, corrected 2026-08-06 (#60): the DEI clause has been false since PR #19 (`de6d2a29`).** `dei.generateReport` builds real XLSX (ExcelJS) and PDF (PDFKit) documents via `packages/api/src/services/dei-report-builder.ts`, aggregate-only, with a sub-floor section rendered as a k-anonymity note rather than rows (`tests/dei/report-generation.test.ts:151`). What is actually still missing for DEI is a **consumer**, not a pipeline: `apps/web/app/(admin)/engagement/dei/page.tsx:27`'s "Generate report" button is a `comingSoon` toast and never calls the mutation. The audit and candidate-pool CSV halves of this line were NOT re-verified in #60 — treat them as unaudited, not as confirmed stubs.
 - **AI agents** — ~21 of 36 catalog agents are pure stubs (`assessment-evaluator`, candidate-matcher, interview-question-gen, email-composer, etc.). ~~`interview-fit-score` is dead code~~ — **stale, corrected 2026-07-31**: it's actually wired via `analyzeAiInterview` (`ai-interview-analysis.service.ts`), called from the AI Voice Interview completion flow (`ai-interview.service.ts`) — not dead. Mock stubs to truth-up: pipeline `getNextBestAction`, candidate `getRecommendations`. ~~Catalog `status` is hardcoded `'stub'` for all 32 even though 8 are live~~ — **fixed 2026-07-31**: `seedAiAgents` now derives status from `AGENT_REGISTRY` membership, `resolveAgentId`'s upsert now promotes an existing row to `active` on every real invocation (was a no-op `update: {}` that silently froze status), and 5 real live agents (`candidate-faq`, `interview-guide`, `ai-voice-interview`, `interview-fit-score`, `fit-explainer`) that were missing from the seed catalog entirely have been added (32 → 36 entries).
 - **Automated invoice generation + usage metering** — invoicing is MANUAL via `platform.createInvoice`; the AI add-on bills through it. `getUsage` returns null for storage/apiCalls (no metering source); plan limits not enforced; Stripe `invoice.*` webhooks not handled.
 - **AI gateway microservice** (`services/ai-gateway`, Docker/ECS) — does not exist; in-process `packages/ai` door is the implementation.

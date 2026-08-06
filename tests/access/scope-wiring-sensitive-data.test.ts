@@ -121,6 +121,10 @@ describe('aggregateGroups k-anonymity contract (demographic/engagement groups)',
 // kernels — and getPayEquity's shape/floors — remain live in @tims/shared and are still exercised
 // directly by kernels-fixtures.test.ts / pay-equity-fixtures.test.ts (golden-fixtured against the
 // C# port), so these tripwires now assert on the KERNEL only, not the (smaller) service.
+// #60 (2026-08-06): getEthnicityDistribution/getDisabilityDistribution lost their tRPC PROCEDURES
+// too, but the two SERVICE methods this block tripwires are unchanged and still reachable — they
+// are deiService.generateReport's data source. The delegation assertion below is what keeps the
+// exported xlsx/pdf on the shared min-5 kernel.
 describe('DEI demographic distributions honor min-5', () => {
   it('dei.service DELEGATES its remaining aggregates to the shared buildDistribution kernel (honest-fixture)', () => {
     const src = readDeiService();
