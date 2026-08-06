@@ -79,6 +79,23 @@ describe('renderReport', () => {
     expect(r.text).toContain('no tsProcedure');
     // ...and it is still not a failure — nothing broke, it just was not compared.
     expect(r.allGreen).toBe(true);
+    // The SUMMARY line must not read as "1 passed, 0 failed" — a reader who checks only the last
+    // line would take that as a real verification.
+    expect(r.text).toContain('0 passed, 0 failed, 1 weak');
+    expect(r.text).toContain('NOTHING in this run was actually compared');
+  });
+
+  it('a MIXED run separates weak from passed in the summary', () => {
+    const r = renderReport([
+      { check: 'parity', endpoint: 'a', ok: true },
+      { check: 'parity', endpoint: 'b', ok: true, inconclusive: true, detail: 'no tsProcedure' },
+      { check: 'rls', endpoint: 'c', ok: false, detail: 'leak' },
+    ]);
+    expect(r.text).toContain('1 passed, 1 failed, 1 weak, 3 total');
+    // The blanket "nothing was compared" banner is for the all-weak case only.
+    expect(r.text).not.toContain('NOTHING in this run');
+    expect(r.text).toContain('1 check(s) reported WEAK');
+    expect(r.allGreen).toBe(false);
   });
 
   it('still renders [PASS] (not [WEAK]) for a strong, non-inconclusive rls pass', () => {

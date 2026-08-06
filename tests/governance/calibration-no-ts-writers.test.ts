@@ -108,10 +108,13 @@ const MODELS = 'calibrationSession|calibrationMember|calibrationVote';
  * Any receiver, not a fixed list of five. `prismaClient.calibrationVote` and `_db.calibrationSession`
  * both reach the model and neither matched the previous `\b(?:db|tenantDb|prisma|tx|client)\.` form.
  *
- * No method call is required after the model name, deliberately: `packages/api/src/access/scoped-probe.ts`
- * registers delegates as bare thunks (`() => tenantDb.calibrationSession`), and that IS a live Prisma
- * coupling that must be removed before the flip — it is the form a `.model.method(` grep misses, and
- * the form that was missed when this stream's blocker set was first assembled.
+ * No method call is required after the model name, deliberately. `packages/api/src/access/scoped-probe.ts`
+ * registers Prisma delegates as BARE thunks — `employeeCompensation: () => tenantDb.employeeCompensation`
+ * (:76), `salaryAdjustment` (:77), `actionPlan` (:79). There is no calibration entry there today, and
+ * there cannot be one while this test passes — but that is the point: a `.model.method(` grep does not
+ * see that form at all, and it is exactly the form that was missed when the blocker sets for flips #66
+ * and #68 were first assembled. If a calibration delegate is ever registered the same way, this catches
+ * it; a method-call-anchored pattern would not.
  *
  * SINGULAR ONLY, and that is load-bearing. A Prisma delegate is always the singular camelCase model
  * name; the plural spellings are either User back-relation fields or, more commonly here, fields on a
@@ -146,7 +149,10 @@ const RELATION_WRITE = new RegExp(`(?:${RELATION_FIELDS.join('|')})\\s*:\\s*\\{\
  * identifiers (`INSERT INTO "calibration_votes"`) are the more idiomatic Prisma `$executeRaw` form.
  */
 const RAW_DML = new RegExp(
-  `\\b(?:insert\\s+into|update|delete\\s+from)\\s+["'\`]?(?:public\\.)?["'\`]?(calibration_sessions|calibration_members|calibration_votes)\\b`,
+  // Optional quoting on BOTH the schema and the table, independently: Prisma's own `$executeRaw`
+  // tagged templates and anything derived from pg_dump emit `INSERT INTO "public"."calibration_votes"`,
+  // which a single optional quote on each side of an unquoted `public.` cannot match.
+  `\\b(?:insert\\s+into|update|delete\\s+from)\\s+(?:["'\`]?public["'\`]?\\s*\\.\\s*)?["'\`]?(calibration_sessions|calibration_members|calibration_votes)\\b`,
   'i',
 );
 
@@ -163,13 +169,21 @@ function hits(sources: Source[], re: RegExp): string[] {
   return found;
 }
 
-/** Whole-file scan on collapsed whitespace — catches constructs split across lines. */
+/**
+ * Whole-file scan on collapsed whitespace — catches constructs split across lines.
+ *
+ * This is the DEFAULT for any pattern spanning more than one token, because Prettier (printWidth 120)
+ * breaks nested object literals across lines: every nested relation write in this repo is formatted
+ * `<relation>: {` on one line and `create:` on the next (learning.ts:266, invoices.ts:133,
+ * okrs.ts:129, entitlement.repository.ts:157 — there are zero single-line instances). A line-anchored
+ * scan for such a pattern matches only a spelling the codebase never produces.
+ */
 function hitsAcrossLines(sources: Source[], re: RegExp): string[] {
   const found: string[] = [];
+  const g = new RegExp(re.source, re.flags.includes('g') ? re.flags : `${re.flags}g`);
   for (const { file, text } of sources) {
     const flat = text.replace(/\s+/g, ' ');
-    const m = flat.match(re);
-    if (m) found.push(`${file}: …${m[0]}…`);
+    for (const m of flat.matchAll(g)) found.push(`${file}: …${m[0]}…`);
   }
   return found;
 }
@@ -183,14 +197,22 @@ describe('calibration_* have zero TypeScript writers (ownership flip #70 precond
   // entirely still cleared a >300 floor. These are PER-DIRECTORY existence + floor assertions, so a
   // renamed or moved package fails loudly, by name.
   describe('the scan is not vacuous', () => {
+    // Floors sit just under the real count, not at a round number far below it. A floor of 100
+    // against 187 real files lets the whole packages/api/src/routers subtree — where Prisma delegate
+    // calls are densest — go blind while the assertion still passes. `workers` is listed because it
+    // was a declared runtime root in the previous revision and nothing otherwise pins it.
+    // Measured 2026-08-05 (actual → floor): api/src 184→170, api/src/routers 84→75, apps/web 447→400,
+    // workers 1→1, db/prisma 8→5, shared/src 24→20, ai/src 21→15, tests 277→250, scripts 35→30.
     const MUST_SCAN: [string, number][] = [
-      ['packages/api/src', 100],
-      ['apps/web', 100],
-      ['packages/db/prisma', 3],
-      ['packages/shared/src', 10],
-      ['packages/ai/src', 5],
-      ['tests', 100],
-      ['scripts', 10],
+      ['packages/api/src', 170],
+      ['packages/api/src/routers', 75],
+      ['apps/web', 400],
+      ['workers', 1],
+      ['packages/db/prisma', 5],
+      ['packages/shared/src', 20],
+      ['packages/ai/src', 15],
+      ['tests', 250],
+      ['scripts', 30],
     ];
 
     it.each(MUST_SCAN)('scanned %s (at least %i files)', (dir, floor) => {
@@ -200,6 +222,19 @@ describe('calibration_* have zero TypeScript writers (ownership flip #70 precond
       ).toBe(true);
       const n = ALL_FILES.filter((f) => f.startsWith(`${dir}/`)).length;
       expect(n, `${dir} contributed ${n} files to the scan, expected >= ${floor}`).toBeGreaterThanOrEqual(floor);
+    });
+
+    // The RAW_DML check runs over RUNTIME_SOURCES specifically, so an AGGREGATE floor on that set
+    // reproduces exactly the defect the per-directory floors above exist to fix: apps/web alone
+    // clears any round number, so packages/api/src could fall out of the runtime classification
+    // entirely and the raw-DML tripwire would still report green.
+    it.each([
+      ['packages/api/src', 170],
+      ['apps/web', 400],
+      ['workers', 1],
+    ])('classifies %s as RUNTIME (at least %i files)', (dir, floor) => {
+      const n = RUNTIME_SOURCES.filter((s) => s.file.startsWith(`${dir}/`)).length;
+      expect(n, `${dir} contributed ${n} files to the RUNTIME set, expected >= ${floor}`).toBeGreaterThanOrEqual(floor);
     });
 
     it('classifies runtime vs non-runtime without emptying either side', () => {
@@ -227,7 +262,52 @@ describe('calibration_* have zero TypeScript writers (ownership flip #70 precond
       expect(RAW_DML.test("await db.query('INSERT INTO calibration_votes (id) VALUES ($1)')")).toBe(true);
       expect(RAW_DML.test('UPDATE public.calibration_sessions SET status =')).toBe(true);
       expect(RAW_DML.test('INSERT INTO "calibration_votes" (id) VALUES ($1)')).toBe(true);
-      expect(RAW_DML.test('INSERT INTO calibration_votes (id)'.replace(/\s+/g, ' '))).toBe(true);
+      // Fully schema-qualified AND quoted — what Prisma's $executeRaw and pg_dump emit. An earlier
+      // revision allowed one quote on each side of an unquoted `public.` and missed this.
+      expect(RAW_DML.test('INSERT INTO "public"."calibration_votes" (id) VALUES ($1)')).toBe(true);
+      // Genuinely line-wrapped. (A previous version of this assertion applied .replace(/\s+/g,' ') to
+      // a string with no whitespace run longer than one space — an identity transform, and therefore
+      // a duplicate of the line above rather than coverage of anything.)
+      //
+      // Note WHERE the wrap is actually handled: `\s+`/`\s*` already span newlines, so the pattern
+      // itself is fine on wrapped input. What defeats it is `hits()` splitting the file into lines
+      // BEFORE matching. That is why the scan function, not the regex, is what had to change — and
+      // why the scanner drive-test above is the assertion that really covers this.
+      expect(RAW_DML.test('INSERT INTO\n  "calibration_votes" (id)')).toBe(true);
+    });
+
+    // The regex controls above prove the PATTERNS work. They say nothing about the SCANNERS: with
+    // `hits()` and `hitsAcrossLines()` both stubbed to `return []`, every assertion in this file still
+    // passes. So drive each scanner over a synthetic in-memory source that must be found, and over one
+    // that must not — otherwise the whole tripwire is one `return []` away from certifying nothing.
+    it('the scanners actually scan (a stubbed hits()/hitsAcrossLines() must not pass)', () => {
+      const planted: Source[] = [
+        { file: 'synthetic/writer.ts', text: 'const x = 1;\nawait db.calibrationVote.create({ data });\n' },
+        {
+          file: 'synthetic/relation.ts',
+          // Formatted the way Prettier formats it — across lines — deliberately.
+          text: 'await db.user.update({\n  data: {\n    calibrationVotes: {\n      create: { sessionId },\n    },\n  },\n});\n',
+        },
+        {
+          file: 'synthetic/raw.ts',
+          text: 'await db.$executeRaw`INSERT INTO\n  "public"."calibration_votes" (id)\n  VALUES ($1)`;\n',
+        },
+        { file: 'synthetic/clean.ts', text: 'const total = counts.calibrationSessions ?? 0;\n' },
+      ];
+
+      expect(hits(planted, PRISMA_DELEGATE).map((h) => h.split(':')[0])).toContain('synthetic/writer.ts');
+      expect(hitsAcrossLines(planted, RELATION_WRITE).map((h) => h.split(':')[0])).toContain('synthetic/relation.ts');
+      expect(hitsAcrossLines(planted, RAW_DML).map((h) => h.split(':')[0])).toContain('synthetic/raw.ts');
+
+      // ...and the clean file is in none of them (the scanners discriminate, they do not just return
+      // everything, which would be the other way to fake a pass).
+      for (const h of [
+        ...hits(planted, PRISMA_DELEGATE),
+        ...hitsAcrossLines(planted, RELATION_WRITE),
+        ...hitsAcrossLines(planted, RAW_DML),
+      ]) {
+        expect(h).not.toContain('synthetic/clean.ts');
+      }
     });
 
     it('the patterns do NOT match legitimate neighbouring constructs', () => {
@@ -254,7 +334,11 @@ describe('calibration_* have zero TypeScript writers (ownership flip #70 precond
   });
 
   it('no TypeScript file writes the calibration tables through a User back-relation', () => {
-    const found = hits(SOURCES, RELATION_WRITE);
+    // hitsAcrossLines, NOT hits. An earlier revision of this file used the line-anchored scan here
+    // and was therefore blind to the ONLY spelling this repo actually produces — see the docblock on
+    // hitsAcrossLines. The mutation that "proved" the line-anchored version was a hand-written
+    // single-line literal, which is the shape the regex wanted rather than the shape Prettier emits.
+    const found = hitsAcrossLines(SOURCES, RELATION_WRITE);
     expect(
       found,
       `A nested Prisma relation write reaches a calibration_* table without naming its delegate.\n` +

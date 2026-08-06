@@ -363,8 +363,12 @@ Scopes: `own` | `team` | `unit` | `company` | `organization`
 > **⚠️ THIS SECTION DESCRIBES A SURFACE THAT NO LONGER EXISTS IN TypeScript.**
 > As of 2026-08-05 (#57) `packages/api/src/routers/ninebox.ts` is deleted outright, along with
 > `ninebox.schemas.ts` / `ninebox.helpers.ts` and its `root.ts` registration. **None of the twelve
-> procedures below is a live tRPC endpoint.** Seven had their TS side deleted on 2026-07-29 when
-> `NEXT_PUBLIC_NINEBOX_READ_VIA_CSHARP` went live; the last five went with the router.
+> procedures below is a live tRPC endpoint.** The deletion happened in two passes — most went on
+> 2026-07-29 when `NEXT_PUBLIC_NINEBOX_READ_VIA_CSHARP` was confirmed live in prod, and the six
+> residual zero-FE-consumer procedures went with the router in #57. (No per-row split is given here
+> deliberately: the 2026-07-29 pass is recorded against _parity-surface endpoint_ names, which do not
+> map one-to-one onto the twelve tRPC procedures in this table, and an earlier version of this banner
+> asserted a 7/5 split that its own table contradicts.)
 >
 > The behaviour is served by C# — `services/Tims.Platform/src/Tims.Api/NineBox/NineBoxReadEndpoints.cs`
 > and `NineBoxWriteEndpoints.cs`, behind `Platform:NineBoxReadEnabled` / `Platform:NineBoxWriteEnabled`.

@@ -16,7 +16,7 @@ describe('SURFACES', () => {
   it('every Tier-2 by-id endpoint sets idScopeKey and carries the {id} sentinel in path + input', () => {
     // The by-id Mode-A IDOR endpoints and the resource key each threads.
     // 2026-08-03 (#58): 'succession/critical-role' removed with the surface.
-    // 2026-08-05 (#57): 'ninebox/axis-breakdown' removed with the surface.
+    // 2026-08-05 (#57): 'ninebox/axis-breakdown' RETAINED — its TS side went, the endpoint did not.
     const expected: Record<string, string> = {
       'compensation/employee': 'employee',
       // C#-only after #57 (no tsProcedure), but STILL by-id and still the surface's cross-tenant
@@ -119,8 +119,9 @@ describe('SURFACES', () => {
   // retained, C#-only. Only checks/parity.ts reads `tsProcedure`; checks/rls.ts and checks/rbac.ts
   // take `callCsharp` alone. So deleting the surface would not have retired a stale TS comparison,
   // it would have retired the RLS Mode-A cross-tenant IDOR probe on `axis-breakdown` and the RBAC
-  // deny assertions, against 11 C# endpoints that are still deployed. The C# integration tests do
-  // not cover the cross-org dimension.
+  // deny assertions. Those cover the 4 endpoints registered below, not all 11 deployed C# reads —
+  // see the scope note in surfaces.ts. `axis-breakdown` has no cross-org C# integration test
+  // (NineBoxReadTests.cs:240 covers getGrid, which is not registered here).
   //
   // This asserts the RETENTION, deliberately: the endpoints must stay registered AND must carry no
   // tsProcedure. A future cleanup that deletes the surface "because the TS is gone" fails here with

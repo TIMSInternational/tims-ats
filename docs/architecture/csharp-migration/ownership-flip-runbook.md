@@ -432,8 +432,9 @@ reader. It fails on a surviving **back-relation** (`P1012`) — a distinct conce
      test file is the enforcement layer for the file this step already tells you to edit, and
      `vitest.config.ts:50` includes `'scripts/**/*.test.ts'` in the node project, so `npx vitest run`
      executes it. Editing `surfaces.ts` without it is a guaranteed red `Security Audit`. See §7 item 4
-     for the two legal edits (`tsProcedure` is a **required** field — `surfaces.ts:7` — so "just remove
-     the `tsProcedure` side" is not one of them);
+     for the legal edits — and note that as of 2026-08-05 (#57) `tsProcedure` **is optional**, so
+     "remove the `tsProcedure` side, keep the endpoint" IS now one of them, and is usually the RIGHT
+     one;
    - the seed files;
    - `docs/REMAINING-WORK.md`;
    - **`README.md:80,96-97` and `CLAUDE.md:32`** if the flip ships the §2 `db push` guard — both document
@@ -1466,11 +1467,31 @@ Retire or re-anchor each, exactly as the file's existing `UPDATE 2026-07-29/2026
 §0 P6 warns that tripwires are literal source greps; under-enumerating them is the failure this list has
 already suffered once.
 
-**4. Parity surfaces — the previously prescribed edit is not legal.** An earlier draft said "remove the
-`tsProcedure` side, or the CLI 404s," framing this purely as a runtime concern. `tsProcedure` is a
-**required** field (`scripts/parity/surfaces.ts:7` declares `tsProcedure: string;`, non-optional), and
-`scripts/**` **is** type-checked in CI (§1, the tsconfig finding), so deleting the property from the
-`surveys` endpoint at `:279-281` is a type error → `Type Check (api)` red. Deleting the whole endpoint
+**4. Parity surfaces — CORRECTED 2026-08-05 (#57): dropping `tsProcedure` is now the PREFERRED edit.**
+
+> **This item has been wrong twice, in opposite directions. Read the whole thing before acting.**
+>
+> An early draft said "remove the `tsProcedure` side, or the CLI 404s" — right conclusion, wrong reason.
+> A later draft then declared the property **required** and the edit illegal, which was true of the type
+> at the time and produced a worse outcome: on the nine-box surface it was read as licence to delete the
+> whole surface, which silently retired that surface's RLS Mode-A cross-tenant IDOR probe and its RBAC
+> deny assertions against endpoints that were still deployed. A parity surface is not only a TS-vs-C#
+> diff; it is also where the cross-tenant and permission probes are registered, and those take
+> `callCsharp` alone (`checks/rls.ts`, `checks/rbac.ts` — neither reads `tsProcedure`).
+>
+> **`tsProcedure` is now optional** (`scripts/parity/surfaces.ts`, `tsProcedure?: string`). So when a
+> domain's TS side is deleted:
+>
+> - **Do** drop the `tsProcedure` property and KEEP the endpoint registered. Parity then reports
+>   `[WEAK]` with a stated reason and is counted in a separate `weak` bucket in the summary; RLS and
+>   RBAC keep running for real and still fail the command.
+> - **Do not** delete the endpoint or the surface merely because the TS side is gone. That is a
+>   security-coverage regression, and it will not show up as a failing test — it shows up as one fewer
+>   test.
+> - Deleting is right only when the C# endpoints themselves are gone.
+
+`scripts/**` **is** type-checked in CI (§1, the tsconfig finding), so historically deleting the property from the
+`surveys` endpoint at `:279-281` was a type error → `Type Check (api)` red. That is no longer so. Deleting the whole endpoint
 instead reddens `Security Audit (56 tests)`, because `scripts/parity/surfaces.test.ts:53-58` asserts
 `expect(s.endpoints.map((e) => e.name).sort()).toEqual(['rotation-risk','surveys'])` and `:64-66` asserts
 the `surveys` endpoint's `expectedByRole['hrbp']` is `200` — and `vitest.config.ts:50` includes

@@ -128,13 +128,23 @@ export const SURFACES: Record<string, Surface> = {
   // WHY THIS IS NOT DELETED, unlike succession/team-intel/billing-usage/reporting/evaluation360/audit-log.
   // Deleting the surface was the first instinct here and it was WRONG: only `checks/parity.ts` reads
   // `tsProcedure`. `checks/rls.ts` and `checks/rbac.ts` take `callCsharp` alone, so removing the surface
-  // does not retire a stale TS comparison — it silently retires the RLS Mode-A cross-tenant IDOR probe
-  // and the RBAC deny assertions against ELEVEN still-deployed C# endpoints behind
-  // Platform__NineBoxReadEnabled. `axis-breakdown` in particular fires org-A's token at org-B's employee
-  // id and fails closed; the C# integration tests do NOT cover that dimension
-  // (NineBoxReadTests.cs:155-165 = present/absent period only; NineBoxReadEndpointAuthTests.cs:161 =
-  // subject-scope 403 WITHIN one org). Nothing else in the repo would have caught a regression that
-  // returned org-B's nine-box evaluation PII to an org-A caller.
+  // does not retire a stale TS comparison — it retires the RLS Mode-A cross-tenant IDOR probe and the
+  // RBAC deny assertions.
+  //
+  // SCOPE, stated precisely, because an earlier draft of this comment overstated it: the surface
+  // registers FOUR endpoints and `cli.ts` iterates `surface.endpoints` for rls and rbac, so these
+  // probes cover 4 of the 11 C# read endpoints behind Platform__NineBoxReadEnabled. The other 7 left
+  // this surface on 2026-07-29 and are probed by neither stack — that is a real, separate gap, not
+  // something this entry closes.
+  //
+  // The one that matters is `axis-breakdown`: it fires org-A's token at org-B's employee id and fails
+  // closed. Its C# coverage is NineBoxReadTests.cs:153-165 (present/absent period) and
+  // NineBoxReadEndpointAuthTests.cs:161 (subject-scope 403 WITHIN one org) — neither is cross-org.
+  // (Note the surface does have SOME C# cross-org coverage elsewhere:
+  // NineBoxReadTests.cs:240 `GetGrid_crossOrg_isolatedUnderRls`. That is `getGrid`, not
+  // `axis-breakdown`, and `getGrid` is not one of the 4 endpoints registered here.) So for
+  // axis-breakdown specifically, deleting this surface would leave a regression that returns org-B's
+  // nine-box evaluation PII to an org-A caller caught by nothing.
   //
   // So `verify ninebox` still runs: parity reports [WEAK] per endpoint (documented "no TS side to
   // compare", never a bare tick — see EndpointDef.tsProcedure), while RLS and RBAC run UNCHANGED and
