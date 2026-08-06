@@ -331,9 +331,10 @@ describe('calibration_* have zero TypeScript writers (ownership flip #70 precond
     const found = [...hits(SOURCES, PRISMA_DELEGATE), ...hits(SOURCES, BRACKET_DELEGATE)];
     expect(
       found,
-      `A TypeScript Prisma delegate touches a calibration_* model. Ownership flip #70 moves these\n` +
-        `three tables to EF Core and deletes their Prisma models — a delegate reference here blocks it\n` +
-        `(and will not compile once the flip lands). Port the caller to the C# endpoints in\n` +
+      `A TypeScript Prisma delegate touches a calibration_* model. Ownership flip #70 moved these\n` +
+        `three tables to EF Core and deleted their Prisma models (2026-08-06) — a delegate reference here\n` +
+        `does not compile any more, and re-adding the model to make it compile is the regression this\n` +
+        `guards. Port the caller to the C# endpoints in\n` +
         `services/Tims.Platform/src/Tims.Api/NineBox/NineBoxWriteEndpoints.cs instead:\n${found.join('\n')}`,
     ).toEqual([]);
   });
@@ -349,7 +350,7 @@ describe('calibration_* have zero TypeScript writers (ownership flip #70 precond
       `A nested Prisma relation write reaches a calibration_* table without naming its delegate.\n` +
         `\`db.user.update({ data: { calibrationVotes: { create: … } } })\` is a compile-valid write to\n` +
         `calibration_votes that a \`.model.method\` grep cannot see — the ownership-flip runbook calls\n` +
-        `this out explicitly. It blocks flip #70 exactly as a direct delegate write does:\n${found.join('\n')}`,
+        `this out explicitly. It would undo flip #70 exactly as a direct delegate write does:\n${found.join('\n')}`,
     ).toEqual([]);
   });
 
