@@ -148,7 +148,18 @@ async function runChecks(command: CheckCommand, cfg: HarnessConfig, surface: Sur
     // token, TS via the session cookie (both the SAME identity).
     const csharpCaller = (path: string, _input: unknown) => callCsharp(cfg.csharpBase, path, orgAToken);
     const tsCaller = (proc: string, input: unknown) => callTs(cfg.tsBase, proc, input, orgACookie);
-    for (const ep of surface.endpoints) results.push(await runParityEndpoint(orgAEndpoint(ep), csharpCaller, tsCaller));
+    for (const ep of surface.endpoints) {
+      // An endpoint whose TS procedure was deleted has NOTHING to diff against (EndpointDef.tsProcedure
+      // is optional for exactly that case). Report it as NOT RUN on stderr — never as a pass — and let
+      // the zero-results guard in renderReport decide the exit code if nothing else ran.
+      if (!ep.tsProcedure) {
+        console.error(
+          `parity: endpoint "${surface.key}/${ep.name}" has NO TS side (its tRPC procedure was deleted) — parity NOT RUN for it. rls/rbac still cover the C# route.`,
+        );
+        continue;
+      }
+      results.push(await runParityEndpoint(orgAEndpoint(ep), csharpCaller, tsCaller));
+    }
   }
 
   if (command === 'rls' || command === 'verify') {

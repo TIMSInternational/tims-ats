@@ -13,10 +13,20 @@ export async function runParityEndpoint(
   csharp: (path: string, input: unknown) => Promise<{ status: number; body: unknown }>,
   ts: (proc: string, input: unknown) => Promise<unknown>,
 ): Promise<CheckResult> {
-  const [c, t] = await Promise.all([
-    csharp(ep.csharpPath, ep.input),
-    ts(ep.tsProcedure, ep.input),
-  ]);
+  // FAIL CLOSED: `EndpointDef.tsProcedure` is optional — absent means the TS procedure was deleted and
+  // there is no second implementation to diff against. `cli.ts` skips those endpoints (with a loud
+  // NOT-RUN line on stderr) before reaching here, so this branch only fires for a direct caller that
+  // forgot to. Returning ok:false is deliberate: a parity check with only one side is not a pass.
+  if (!ep.tsProcedure) {
+    return {
+      check: 'parity',
+      endpoint: ep.name,
+      ok: false,
+      detail: 'no tsProcedure — the TS side was deleted, so parity CANNOT run for this endpoint (not a pass)',
+    };
+  }
+
+  const [c, t] = await Promise.all([csharp(ep.csharpPath, ep.input), ts(ep.tsProcedure, ep.input)]);
 
   // FAIL CLOSED: a non-200 C# response has no comparable body — diffing it
   // against the TS side would produce a misleading structural mismatch

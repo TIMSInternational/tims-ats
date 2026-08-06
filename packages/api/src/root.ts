@@ -19,7 +19,16 @@ import { nineboxRouter } from './routers/ninebox';
 import { teamIntelRouter } from './routers/teamIntel';
 import { engagementRouter } from './routers/engagement';
 import { deiRouter } from './routers/dei';
-import { compensationRouter } from './routers/compensation';
+// TS-deletion 2026-08-05 (#59): the compensation router is GONE. Its last 4 procedures
+// (getPayEquity, simulateAdjustment, getMarketComparison, getEmployeeComp) all had zero FE
+// consumers and live C# equivalents — GET /compensation/pay-equity + /compensation/simulate-adjustment
+// (CompensationFxReadEndpoints.cs:50,98, behind Platform__FxReadsEnabled) and GET
+// /compensation/market-comparison + /compensation/employee/{userId} (CompensationReadEndpoints.cs:81,235,
+// behind Platform__CompensationReadEnabled) — both flags confirmed live in prod.
+// `services/compensation.service.ts` (getEmployeeCompForSubject) went with them: getEmployeeComp was its
+// ONLY remaining caller, so the helper was dead code. Its §21 field-auth + FULL+AUDIT guarantees are now
+// enforced solely by the C# implementation (CompensationReadTests.cs:131,144 for the employee read;
+// CompensationFxReadUseCaseTests.cs:72,90 for simulate-adjustment's compa/band block).
 import { monitoringRouter } from './routers/monitoring';
 import { integrationRouter } from './routers/integration';
 import { auditRouter } from './routers/audit';
@@ -70,7 +79,6 @@ export const appRouter = router({
   teamIntel: teamIntelRouter,
   engagement: engagementRouter,
   dei: deiRouter,
-  compensation: compensationRouter,
   monitoring: monitoringRouter,
   integration: integrationRouter,
   audit: auditRouter,

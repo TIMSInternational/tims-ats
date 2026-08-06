@@ -15,7 +15,7 @@ describe('runParityEndpoint', () => {
     const r = await runParityEndpoint(
       ep,
       async () => ({ status: 200, body: { a: 1, b: null } }),
-      async () => ({ a: 1 })
+      async () => ({ a: 1 }),
     );
     expect(r.ok).toBe(true);
   });
@@ -24,7 +24,7 @@ describe('runParityEndpoint', () => {
     const r = await runParityEndpoint(
       ep,
       async () => ({ status: 200, body: { a: 2 } }),
-      async () => ({ a: 1 })
+      async () => ({ a: 1 }),
     );
     expect(r.ok).toBe(false);
     expect(r.detail).toContain('a');
@@ -34,9 +34,29 @@ describe('runParityEndpoint', () => {
     const r = await runParityEndpoint(
       ep,
       async () => ({ status: 500, body: null }),
-      async () => ({ a: 1 })
+      async () => ({ a: 1 }),
     );
     expect(r.ok).toBe(false);
     expect(r.detail).toContain('500');
+  });
+
+  // 2026-08-05 (#59): `tsProcedure` is optional — absent = the TS procedure was deleted, so there is
+  // only ONE implementation and a "parity" verdict is meaningless. cli.ts skips such endpoints with a
+  // loud NOT-RUN line, but a direct caller must not get a green: fail closed, and never call the TS
+  // side with an undefined procedure name.
+  it('ok:false and does NOT call the TS side when the endpoint has no tsProcedure', async () => {
+    const { tsProcedure: _deleted, ...tsLess } = ep;
+    let tsCalled = false;
+    const r = await runParityEndpoint(
+      tsLess,
+      async () => ({ status: 200, body: { a: 1 } }),
+      async () => {
+        tsCalled = true;
+        return { a: 1 };
+      },
+    );
+    expect(r.ok).toBe(false);
+    expect(r.detail).toContain('no tsProcedure');
+    expect(tsCalled).toBe(false);
   });
 });

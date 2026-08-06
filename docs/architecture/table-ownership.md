@@ -139,6 +139,33 @@ Ownership transfers (Phase 5 strangler) move a table from `prisma` to `efcore` i
   Every EF `ToTable(...)` in `Tims.Platform` must appear in one of the four EF lists, or the CI check fails;
   every `quartzInfra` table must be claimed by neither ORM.
 
+## Note — compensation TS deletion, 2026-08-05 (#59). **No ownership move.**
+
+`packages/api/src/routers/compensation.ts` and `packages/api/src/services/compensation.service.ts` were
+deleted outright. The last 4 procedures (`getPayEquity`, `simulateAdjustment`, `getMarketComparison`,
+`getEmployeeComp`) were pre-existing zero-FE-consumer dead code with live C# equivalents; the service was
+orphaned when `getEmployeeComp` went (it was its only remaining caller).
+
+**Nothing moves in the ledger above.** `salary_adjustments` and `employee_compensations` stay in
+`efcoreStranglerWrite`, and `salary_bands` stays in the Prisma list. Consistent with the
+engagement/`surveys` and access-review precedents already recorded in the `efcoreStranglerWrite` note:
+ownership is about the DDL and the whole read/write surface, not about which TS procedures exist. Both
+tables are still Prisma-owned and still read in TypeScript.
+
+What this changes, for whoever picks up flip #66:
+
+- **`employee_compensations`**: 3 of its 5 Prisma readers are gone. The remaining two are
+  `packages/api/src/routers/platform/data-requests.ts:94` (cross-org GDPR/Habeas-Data right-of-access
+  export — **no open issue tracks it**) and, for the sibling table, `routers/monitoring.ts:22` →
+  `repositories/alert-evaluation.repository.ts:115` (`salaryAdjustment.count`). Full blocker set:
+  `csharp-migration/ownership-flip-runbook.md` §7d.
+- **`salary_bands`**: now has **zero** readers anywhere in `packages/api` (the two direct reads and the
+  `band` relation traversal all lived in the deleted files) and **zero application writers** — the only
+  writers are `packages/db/prisma/seed-demo.ts:1863`, `scripts/parity/seed.ts:711,2449` and two C#
+  integration-test fixtures. This resolves runbook §8 **Q10**. It stays Prisma-owned; writer-free is not
+  a licence to revoke `app_tenant` DML (that is Q7, and the flip-#2 rule is that the discriminator is
+  RLS, not ownership).
+
 ## Security follow-up — DB-enforce insert-only on `data_access_logs` / `audit_logs` (RESOLVED 2026-07-31)
 
 **Verified live in prod (2026-07-31):** `app_tenant` holds only `INSERT`/`SELECT` on both `data_access_logs`
