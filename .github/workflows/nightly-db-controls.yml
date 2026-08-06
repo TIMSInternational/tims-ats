@@ -1,0 +1,155 @@
+# Nightly live-database controls — /gate checks 14, 16 and 17 (#124).
+#
+# WHY A SCHEDULED JOB AND NOT A PR CHECK
+# --------------------------------------
+# These three controls are the only things in this repo that assert anything about PRODUCTION rather than
+# about the repository. Until now they ran only when a human ran `/gate`, which is the same
+# "someone must remember" mechanism that let #111 sit in production for ~14 months.
+#
+# A schedule, rather than per-PR, is a deliberate trade recorded on #124:
+#   - it catches the OUT-OF-BAND change — a Supabase dashboard edit, a hand-applied GRANT — which is the
+#     #111 scenario and the one no PR check can ever see, because there is no PR;
+#   - it keeps production credentials off the pull_request path entirely, where a fork PR could reach them.
+# It is weaker at "this PR changed the schema". `/gate` still covers that at ship time, and always will —
+# CI here is additive, never a replacement (#124 acceptance criteria).
+#
+# THE EXIT-CODE CONTRACT IS THE WHOLE POINT
+# -----------------------------------------
+#   0 = ran, clean · 1 = ran, FOUND something · 2 = COULD NOT RUN
+# Exit 2 must fail this job as loudly as exit 1. A control that cannot run and reports green is the #38
+# failure mode, which cost this repo six unreviewed PRs. All three scripts only gained a distinguishable
+# exit 2 in #136 and #138 — before that this job was literally unbuildable to its own acceptance criteria.
+#
+# ⚠️  REQUIRES the `PROD_DIRECT_URL` secret. This is the FIRST GitHub secret in this repository, so the
+#     read-only role behind it is an access-register entry — see #40. Grants it needs, and nothing more:
+#
+#       CREATE ROLE ci_readonly LOGIN PASSWORD '…' NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT;
+#       GRANT CONNECT ON DATABASE postgres TO ci_readonly;
+#       GRANT USAGE ON SCHEMA public, supabase_migrations TO ci_readonly;
+#       GRANT SELECT ON ALL TABLES IN SCHEMA public, supabase_migrations TO ci_readonly;
+#       ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO ci_readonly;
+#       GRANT app_tenant TO ci_readonly;   -- REQUIRED, and NOT obvious: see below
+#
+#     THE MEMBERSHIP GRANT IS LOAD-BEARING. Check 14's empirical probe issues `SET LOCAL ROLE app_tenant`,
+#     and in Postgres `SET ROLE` requires membership in the target role (or superuser). Without that last
+#     line the role connects fine, reads fine, and then check 14 dies with
+#     `permission denied to set role "app_tenant"` — i.e. exit 2, every night, forever. Verified on a
+#     throwaway PG17 cluster: without it the probe fails, with it `SET LOCAL ROLE app_tenant` succeeds.
+#
+#     `NOINHERIT` is what keeps that safe: the role can ASSUME app_tenant explicitly (which is all check 14
+#     needs) but does not passively hold its privileges — verified, `current_user` stays `ci_readonly`
+#     until it opts in. Do not drop NOINHERIT to "simplify" this.
+#
+#     Use the SESSION pooler (:5432). The transaction pooler (:6543) cannot `SET LOCAL ROLE` at all, which
+#     check 14 also depends on. `pg_dump --schema-only` needs no table data, but check 14's probe DOES read
+#     rows (`count(*)` only) — so SELECT is required, not merely catalog access.
+#
+#     The whole block above was executed against a throwaway PostgreSQL 17 cluster before being written
+#     here. It is not SQL composed from memory and handed to someone to run against production.
+
+name: Nightly DB Controls
+
+on:
+  schedule:
+    # 07:00 UTC daily — after any overnight deploy, before European working hours.
+    - cron: '0 7 * * *'
+  workflow_dispatch: {}
+
+# Never let two runs race the same database.
+concurrency:
+  group: nightly-db-controls
+  cancel-in-progress: false
+
+jobs:
+  live-checks:
+    name: Live DB controls (14, 16, 17)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # No `prisma generate`: none of these three need the Prisma CLIENT. Check 17 parses the .prisma
+      # schema files as TEXT (scripts/table-ownership.mjs), and 14/16 talk to Postgres directly. Skipping it
+      # removes a whole failure mode from a job whose job is to be trustworthy.
+
+      - name: Fail fast if the credential is absent
+        env:
+          PROD_DIRECT_URL: ${{ secrets.PROD_DIRECT_URL }}
+        run: |
+          if [ -z "$PROD_DIRECT_URL" ]; then
+            echo "::error title=Nightly DB controls did not run::PROD_DIRECT_URL is not set."
+            echo "This job verifies nothing without it. Failing rather than passing vacuously — see #124." >&2
+            exit 1
+          fi
+
+      - name: Install PostgreSQL 17 client (check 16 needs pg_dump >= server)
+        run: |
+          # Production is PostgreSQL 17.x and pg_dump refuses to dump a server newer than itself. Ubuntu
+          # runners ship an older client, so take it from PGDG.
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] \
+            https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17
+          pg_dump --version
+
+      - name: Run checks 14, 16 and 17
+        id: checks
+        env:
+          # Both names: check 14 prefers DIRECT_URL, check 16's script reads DIRECT_URL, check 17 accepts
+          # either. Setting both avoids a check silently falling back to something unintended.
+          DIRECT_URL: ${{ secrets.PROD_DIRECT_URL }}
+          DATABASE_URL: ${{ secrets.PROD_DIRECT_URL }}
+          PG_DUMP: /usr/lib/postgresql/17/bin/pg_dump
+        run: |
+          # NOT `set -e`. Every check must run even if an earlier one fails — the same contract /gate has,
+          # for the same reason: one failure must not hide the state of the other two.
+          set +e
+          fail=0
+
+          run_check () {
+            local num="$1" name="$2"; shift 2
+            echo "::group::Check $num — $name"
+            "$@"
+            local rc=$?
+            echo "::endgroup::"
+            case $rc in
+              0) echo "✅ check $num ($name): PASS" | tee -a "$GITHUB_STEP_SUMMARY" ;;
+              1) echo "❌ check $num ($name): **FOUND A VIOLATION** (exit 1)" | tee -a "$GITHUB_STEP_SUMMARY"
+                 echo "::error title=check $num found a violation::$name reported a finding — see the log group above."
+                 fail=1 ;;
+              2) echo "⚠️ check $num ($name): **DID NOT RUN** (exit 2) — this is NOT a pass" | tee -a "$GITHUB_STEP_SUMMARY"
+                 echo "::error title=check $num DID NOT RUN::$name could not execute. Nothing was verified. Treating as failure (#38)."
+                 fail=1 ;;
+              *) echo "⚠️ check $num ($name): unexpected exit $rc — treating as DID NOT RUN" | tee -a "$GITHUB_STEP_SUMMARY"
+                 echo "::error title=check $num exited $rc::Unexpected exit code. Treated as did-not-run, never as a pass."
+                 fail=1 ;;
+            esac
+          }
+
+          echo "## Nightly DB controls" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          run_check 14 "RLS tenant isolation"   npx tsx scripts/security/verify-rls-isolation.ts
+          run_check 16 "schema drift vs baseline" bash scripts/db/schema-baseline.sh check
+          run_check 17 "app_tenant least privilege" npx tsx scripts/security/verify-tenant-grants.ts
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "_Exit 1 = found something · exit 2 = could not run. Both fail this job; only 0 is a pass._" \
+            >> "$GITHUB_STEP_SUMMARY"
+
+          exit $fail
+
+# NOT RUN HERE, deliberately:
+#   scripts/db/pre-flip-scan.ts — takes table names as arguments and answers "is THIS table safe to flip".
+#   There is no meaningful nightly form of that question, so folding it in (as #132's residual suggested)
+#   would produce a check with nothing to assert. It stays a documented per-flip step in the runbook.

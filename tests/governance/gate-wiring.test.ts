@@ -163,17 +163,29 @@ describe('/gate check list ↔ the scripts it must run', () => {
     expect(sorted, `check numbers must run 1..${sorted.length} with no gaps`).toEqual(expected);
   });
 
-  it('states in so many words that the live-DB checks have no CI equivalent', () => {
-    // The trap this closes: reading a skipped check 14/16/17 as "CI will catch it". It will not.
+  it('states that no pull request runs the live-DB checks, and that the nightly job is additive', () => {
+    // The trap this closes: reading a skipped check 14/16/17 as "CI will catch it".
     //
-    // Tier-2 finding 2 on PR #135: this was `/no CI equivalent|#124/`, and that alternation defeated it —
-    // `#124` already appears twice in the file for other reasons, so the actual sentence could be deleted
-    // outright and the test still passed. Require the phrase itself. An alternation in a governance
-    // assertion is almost always a hole: it passes on the weakest branch.
+    // REWRITTEN TWICE, and the second rewrite is the interesting one:
+    //   - #135: was `/no CI equivalent|#124/`. The alternation defeated it — `#124` appears elsewhere in
+    //     the file, so the sentence it demanded could be deleted outright and this still passed.
+    //   - #124: "no CI equivalent" became FALSE for 14/16/17 once the nightly job landed. A test pinning a
+    //     doc against yesterday's reality starts enforcing yesterday's reality. Third time this file has
+    //     had to be inverted for that reason — pin the invariant, not the era.
+    //
+    // The durable invariant is not "CI never runs these". It is: **no pull request runs them, and the
+    // nightly sweep does not substitute for running them before you merge.**
     expect(
-      /no CI equivalent/.test(gate),
-      `${GATE_REL} must state that checks ${LIVE_DB_CHECKS.join('/')} have no CI equivalent, so that ` +
-        'skipping one is a visible decision rather than an assumption that CI covers it.',
+      /no CI equivalent on a pull request/.test(gate),
+      `${GATE_REL} must state that checks ${LIVE_DB_CHECKS.join('/')} have no CI equivalent ON A PULL ` +
+        'REQUEST, so skipping one at ship time stays a visible decision.',
+    ).toBe(true);
+
+    expect(
+      /additive, not a replacement/.test(gate),
+      `${GATE_REL} must say the nightly job (#124) is additive. It answers "did production drift since ` +
+        'yesterday", never "did this change break something" — treating it as the latter is how a ' +
+        'ship-time control quietly stops being run.',
     ).toBe(true);
   });
 
@@ -186,8 +198,12 @@ describe('/gate check list ↔ the scripts it must run', () => {
     //
     // Pin the correct statement positively instead. Positive pins fail when the text stops saying the right
     // thing; negative pins fail when someone phrases the right thing an unanticipated way.
+    // Tolerant of surrounding punctuation/emphasis, strict about the CLAIM: these three numbers, and the
+    // credential requirement, in one statement. The first version demanded an exact bolded phrase and
+    // broke when a full stop moved inside the `**` — a pin that fails on innocuous rewording gets deleted
+    // by whoever hits it, which is how a governance assertion dies.
     expect(
-      /\*\*14, 16, 17 need live production database credentials\*\*/.test(gate),
+      /14, 16, 17 need live production database credentials/.test(gate),
       `${GATE_REL} must attribute the live-database credential gap to checks 14, 16 and 17 specifically. ` +
         'Check 15 is the cross-model review — it needs an external reviewer (Codex/OmniRoute), not a ' +
         "database. Lumping 15 in makes #124 look bigger than it is and hides check 15's real blocker (#38).",

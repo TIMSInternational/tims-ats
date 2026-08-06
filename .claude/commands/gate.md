@@ -6,7 +6,7 @@ allowed-tools:
 
 # /gate — Local Verify Gate
 
-Run every check the CI pipeline runs — **plus the four checks (14–17) that CI cannot run at all** — locally, from the repo root. Report a pass/fail table at the end. This is the merge gate when GitHub Actions is unavailable, and the pre-push gate when it isn't. For checks 14–17 it is the _only_ gate, in either case.
+Run every check the CI pipeline runs — **plus the four checks (14–17) that no pull request runs** — locally, from the repo root. Report a pass/fail table at the end. This is the merge gate when GitHub Actions is unavailable, and the pre-push gate when it isn't. For checks 14–17 it is the only **pre-merge** gate; 14/16/17 are additionally swept nightly (#124), which is a different question answered up to a day late.
 
 ## Execution Contract (non-negotiable)
 
@@ -21,15 +21,21 @@ You MUST run ALL checks below even if an early one fails — the user needs the 
 
 ## Checks
 
-Checks 1–13 mirror `.github/workflows/ci.yml`. **Checks 14–17 have no CI equivalent**, so `/gate` is the
-only place they run at all — but for two different reasons, and conflating them hides both:
+Checks 1–13 mirror `.github/workflows/ci.yml`. **Checks 14–17 have no CI equivalent on a pull request**, so
+`/gate` is the only pre-merge gate for them — but for two different reasons, and conflating them hides both:
 
-- **14, 16, 17 need live production database credentials** that CI does not have. That is one decision
-  (#124) blocking three controls.
-- **15 needs an external reviewer** (Codex, or OmniRoute as tier 2) — not a database. Its blockers are
-  quota and gateway availability, tracked separately in #38.
+- **14, 16, 17 need live production database credentials.** `.github/workflows/nightly-db-controls.yml`
+  (#124) now runs these three on a **nightly schedule**, deliberately not per-PR: it catches out-of-band
+  changes nobody opened a PR for (the #111 scenario), and keeps production credentials off the
+  `pull_request` path. **It is additive, not a replacement** — it cannot tell you whether _this_ change
+  broke something, only that production drifted since yesterday.
+  **It is inert until the `PROD_DIRECT_URL` secret exists**, and fails loudly rather than skipping while it
+  is missing, so an absent credential is visible instead of silent.
+- **15 needs an external reviewer** (Codex, or OmniRoute as tier 2) — not a database, and it has **no CI
+  equivalent at all**. Its blockers are quota and gateway availability, tracked in #38.
 
-Skipping any of the four is not "CI will catch it". CI has no equivalent job for any of them.
+Skipping any of the four at ship time is still not "CI will catch it": for 15 nothing else runs, and for
+14/16/17 the nightly job answers a different question, up to a day late.
 
 Run prisma generate once first (typecheck/tests/build all need the client):
 
