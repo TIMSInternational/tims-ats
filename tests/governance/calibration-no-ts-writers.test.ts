@@ -4,18 +4,18 @@ import { join } from 'path';
 
 // #57 / #70 — the calibration_* TS-writer tripwire.
 //
-// WHY THIS EXISTS. Ownership flip #70 moves calibration_sessions / calibration_members /
+// WHY THIS EXISTS. Ownership flip #70 moved calibration_sessions / calibration_members /
 // calibration_votes from `efcoreStranglerWrite` to `efcore` in docs/architecture/table-ownership.md
-// and deletes their three Prisma models. Its precondition is that NOTHING in TypeScript reaches
-// those tables through Prisma. #57 established that (the ninebox router was the last one and is
-// deleted). This test PINS it, so the precondition cannot be silently un-met between now and the
-// flip — and so that after the flip, a re-added Prisma model + writer is caught here as well as by
-// the ledger check.
+// and deleted their three Prisma models (EXECUTED 2026-08-06 — runbook §7d). Its precondition was
+// that NOTHING in TypeScript reaches those tables through Prisma. #57 established that (the ninebox
+// router was the last one and is deleted); this test PINNED it until the flip landed.
 //
-// This pins an INVARIANT (zero Prisma reach into these three models), not an era. It stays correct
-// and stays useful after #70 executes: post-flip the models are gone, so any reintroduced delegate
-// reference would not even compile — and this test would still fail first, with a message that
-// names the flip.
+// It pins an INVARIANT (zero Prisma reach into these three models), not an era, so it survives the
+// flip with its job changed rather than finished. POST-FLIP it guards the other direction: a
+// reintroduced delegate reference no longer compiles (the models are gone), but this test fails
+// FIRST and with a message that names the flip — and, crucially, it is the thing that catches the
+// re-addition of a Prisma MODEL, which on its own compiles fine. The ledger assertion at the bottom
+// of this file was inverted at flip time for the same reason; see its docblock.
 //
 // ── SCANNING STRATEGY: DENY-LIST, NOT ALLOW-LIST ────────────────────────────────────────────────
 // An earlier version of this file listed seven source roots explicitly. That is the wrong shape for
@@ -131,7 +131,12 @@ const BRACKET_DELEGATE = new RegExp(`\\[\\s*['"\`](?:${MODELS})['"\`]\\s*\\]`);
  * Nested relation writes through User's four calibration back-relations. The ownership-flip runbook
  * is explicit that a `.model.method` grep cannot see these: `db.user.update({ data: { calibrationVotes:
  * { create: … } } })` is a compile-valid write to calibration_votes containing no `db.calibrationVote`
- * token. Relation names come from packages/db/prisma/schema/user.prisma:118-121.
+ * token.
+ *
+ * The four names came from packages/db/prisma/schema/user.prisma:118-121, which flip #70 DELETED. They
+ * are kept verbatim on purpose: this list is now the record of the exact spellings that must never
+ * come back, and a re-added back-relation would use them. Do not "clean up" a list that no longer
+ * matches the schema — the mismatch IS the guard.
  */
 const RELATION_FIELDS = [
   'calibrationSessionsCreated',
@@ -359,12 +364,34 @@ describe('calibration_* have zero TypeScript writers (ownership flip #70 precond
     ).toEqual([]);
   });
 
-  it('the ledger still classifies all three tables as efcoreStranglerWrite (moving them is flip #70, not this issue)', () => {
+  /**
+   * INVERTED 2026-08-06 when flip #70 executed. It previously asserted the three tables were still
+   * `efcoreStranglerWrite`, with the rider "(moving them is flip #70, not this issue)". That was
+   * correct while it was written and the flip makes it false — the classic case of a test that pinned
+   * an ERA starting to defend it.
+   *
+   * It is inverted rather than deleted, and the direction it now points is the one that matters: the
+   * ledger is the only place recording that C# is sole owner, and `scripts/table-ownership.mjs` cannot
+   * catch a move BACK on its own (`efcoreStranglerWrite` merely requires the table be `@@map`'d, which
+   * is exactly the state a re-added Prisma model would restore). Together with the delegate/raw-DML
+   * assertions above, this is what makes "the flip stays flipped" checkable.
+   *
+   * `not.toContain('efcoreStranglerWrite')` is asserted explicitly, not implied: a table listed in BOTH
+   * lists is a `cross-owner collision` in the ledger script only while the Prisma model exists, so the
+   * two halves genuinely check different things.
+   */
+  it('the ledger classifies all three tables as efcore — flip #70 executed, and must stay executed', () => {
     const doc = readFileSync(join(ROOT, 'docs/architecture/table-ownership.md'), 'utf8');
     const ledger = JSON.parse(doc.match(/```json\n([\s\S]*?)\n```/)![1]) as Record<string, string[]>;
     for (const t of ['calibration_sessions', 'calibration_members', 'calibration_votes']) {
-      expect(ledger['efcoreStranglerWrite'], t).toContain(t);
-      expect(ledger['efcore'], t).not.toContain(t);
+      expect(
+        ledger['efcore'],
+        `${t} is not in efcore[]. Ownership flip #70 moved all three calibration_* tables to EF Core on\n` +
+          `2026-08-06 (runbook §7d). Moving one back means restoring its Prisma model, which re-creates a\n` +
+          `second writer of a table C# solely owns — and reverting a flip is a deliberate, reviewed act\n` +
+          `(runbook §6), never a side effect of editing this ledger.`,
+      ).toContain(t);
+      expect(ledger['efcoreStranglerWrite'], t).not.toContain(t);
     }
   });
 });

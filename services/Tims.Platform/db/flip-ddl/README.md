@@ -76,10 +76,21 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f services/Tims.Platform/db/flip-ddl/<n
 
 ## Current contents
 
-| File               | Tables                                         | For                     |
-| ------------------ | ---------------------------------------------- | ----------------------- |
-| `surveys.sql`      | `surveys`, `survey_responses`                  | #64 (engagement flip)   |
-| `compensation.sql` | `salary_adjustments`, `employee_compensations` | #66 (compensation flip) |
+| File               | Tables                                                             | For                         |
+| ------------------ | ------------------------------------------------------------------ | --------------------------- |
+| `surveys.sql`      | `surveys`, `survey_responses`                                      | #64 (engagement flip)       |
+| `compensation.sql` | `salary_adjustments`, `employee_compensations`                     | #66 (compensation flip)     |
+| `succession.sql`   | `critical_roles`, `successors`                                     | #69 — **flip #2, EXECUTED** |
+| `calibration.sql`  | `calibration_sessions`, `calibration_members`, `calibration_votes` | #70 — **flip #3, EXECUTED** |
 
-Both are committed **ahead of** their flips, so P8 stops being a blocker. Neither flip has happened —
-both are still gated on their live TS readers (see the readiness comments on #64 and #66).
+`surveys.sql` and `compensation.sql` are committed **ahead of** their flips, so P8 stops being a blocker;
+neither flip has happened — both are still gated on their live TS readers (see the readiness comments on
+#64 and #66). `succession.sql` and `calibration.sql` back flips that have executed: their Prisma models are
+gone, so these files are the repo's **only** executable definition of those five tables.
+
+> **`calibration.sql` carries a policy shape the others do not.** `calibration_members` and
+> `calibration_votes` have no `organization_id` column; their `tenant_isolation` policy is an
+> `EXISTS (SELECT 1 FROM calibration_sessions par …)` subquery on both `USING` and `WITH CHECK`. That is
+> reproduced verbatim from the baseline. Do not replace it with a column predicate, and do not generate it
+> with `EnableTenantRls()` — see the carve-out in `docs/architecture/table-ownership.md` and runbook §3(e).
+> The file also FK-references `users`, which is Prisma-owned, so `prisma db push` must run first.

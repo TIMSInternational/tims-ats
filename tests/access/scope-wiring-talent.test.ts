@@ -30,13 +30,17 @@ import { join } from 'path';
 //
 // HONEST LIMIT, same as the succession block below: these are not the same control. The C#
 // tests guard the C# implementation. They would NOT catch a future TS ninebox router
-// reintroduced without assertSubjectInScope/requireOrgScope. Until flip #70 removes the
-// three calibration_* Prisma models, the ledger check has nothing to flag either (the models
-// must remain while the tables sit in efcoreStranglerWrite). What DOES cover the part that
-// matters for #70 is tests/governance/calibration-no-ts-writers.test.ts — a repo-wide
-// tripwire asserting zero Prisma-delegate touches of the three calibration_* models. It
-// would fail the moment a TS writer reappears, which is the specific regression that would
-// silently un-block-then-corrupt the flip.
+// reintroduced without assertSubjectInScope/requireOrgScope.
+//
+// UPDATED 2026-08-06 — FLIP #70 EXECUTED. This paragraph used to read "Until flip #70 removes
+// the three calibration_* Prisma models, the ledger check has nothing to flag either (the
+// models must remain while the tables sit in efcoreStranglerWrite)." That is now false: the
+// three models are deleted and the tables are `efcore` in docs/architecture/table-ownership.md,
+// so re-adding any of them IS a `cross-owner collision` (table-ownership.mjs:113-117), and a TS
+// Prisma reader of them no longer compiles. tests/governance/calibration-no-ts-writers.test.ts
+// still carries the finer guard — a repo-wide tripwire asserting zero Prisma-delegate touches,
+// zero nested-back-relation writes and zero runtime raw DML, plus (inverted at flip time) that
+// the ledger keeps classifying all three as efcore.
 //
 // ── succession taxonomy — REMOVED 2026-08-03 (#58) ────────────────────
 // packages/api/src/routers/succession.ts is DELETED. The 2026-07-29 pass removed 8 of 9
