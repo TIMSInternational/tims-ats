@@ -398,4 +398,25 @@ public sealed class PlatformOptions
     /// DEFAULT false (dark) — TS remains the single active writer until Federico flips it at canary.
     /// </summary>
     public bool AccessReviewWriteEnabled { get; init; }
+
+    /// <summary>
+    /// Q0b slice 2: when true, the PRIVILEGED CROSS-ORG alert-metric read surface is mapped and live —
+    /// <c>GET /internal/alert-metrics</c>, serving the alert-evaluation cron's two soon-to-flip metrics
+    /// (<c>active_surveys</c> → `surveys`/flip #64, <c>pending_salary_adjustments</c> →
+    /// `salary_adjustments`/flip #66). This reader runs OUTSIDE TenantScope/RLS by construction — the cron
+    /// has no tenant — so its ONLY isolation boundary is <see cref="Tims.Api.AlertMetrics.CronCallerGate"/>
+    /// plus this flag. DEFAULT false (dark): the route is not mapped at all and 404s, and TS remains the
+    /// sole live reader until Federico flips it at canary.
+    /// </summary>
+    public bool AlertMetricsCronReadEnabled { get; init; }
+
+    /// <summary>
+    /// The shared secret the alert-evaluation cron presents in <c>X-Tims-Cron-Secret</c>. NOT
+    /// <c>[Required]</c>, because the surface is dark by default and startup must not depend on a secret for
+    /// a route that is not mapped; instead the gate FAILS CLOSED — unset/empty/whitespace rejects every
+    /// request with 401. Sourced from the platform secret store, never appsettings.
+    /// Should be the SAME value as the Next.js route's <c>CRON_SECRET</c>
+    /// (apps/web/app/api/cron/evaluate-alerts/route.ts:16) so there is one cron credential to rotate.
+    /// </summary>
+    public string? AlertMetricsCronSecret { get; init; }
 }

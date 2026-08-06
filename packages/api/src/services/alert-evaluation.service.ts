@@ -4,11 +4,7 @@ import { alertEvaluationRepository as repo } from '../repositories/alert-evaluat
 
 // Pure breach decision — value vs threshold under an operator. A null value
 // (unknown/uncomputable metric) never fires; an unknown operator fails safe.
-export function evaluateCondition(
-  value: number | null,
-  operator: AlertOperator,
-  threshold: number,
-): boolean {
+export function evaluateCondition(value: number | null, operator: AlertOperator, threshold: number): boolean {
   if (value === null) return false;
   switch (operator) {
     case 'gt':
@@ -67,7 +63,27 @@ export async function evaluateAlertRules(): Promise<AlertEvaluationSummary> {
         skipped++;
         continue;
       }
-      const value = await repo.computeMetric(rule.organizationId, cond.metric);
+      // An uncomputable metric must NEVER be a silent no-op. Before this branch the
+      // engine took `computeMetric`'s `null` and fell straight through
+      // `evaluateCondition(null, …) === false` into a plain `continue` OUTSIDE the
+      // catch below — so a rule whose metric had lost its handler stopped firing
+      // forever while the run still reported `{ fired: 0, skipped: 0 }`, which is
+      // indistinguishable from a healthy platform with no breaches.
+      const outcome = await repo.computeMetricOutcome(rule.organizationId, cond.metric);
+      if (outcome.kind === 'unavailable') {
+        skipped++;
+        logger.error(
+          { ruleId: rule.id, orgId: rule.organizationId, metric: cond.metric, reason: outcome.reason },
+          'alert-evaluation: metric could not be computed — rule NOT evaluated',
+        );
+        continue;
+      }
+      // A §21 min-5 suppression is a DESIGNED outcome, not a failure: it is neither
+      // logged nor counted, because either would disclose that this org holds a
+      // sub-floor count over a restricted model (the oracle the guard closes).
+      if (outcome.kind === 'suppressed') continue;
+
+      const value = outcome.value;
       if (!evaluateCondition(value, cond.operator, cond.threshold)) continue;
 
       // Breach: only create an alert if this rule has no open one already.
@@ -85,10 +101,7 @@ export async function evaluateAlertRules(): Promise<AlertEvaluationSummary> {
       fired++;
     } catch (err) {
       skipped++;
-      logger.error(
-        { err, ruleId: rule.id, orgId: rule.organizationId },
-        'alert-evaluation: rule failed',
-      );
+      logger.error({ err, ruleId: rule.id, orgId: rule.organizationId }, 'alert-evaluation: rule failed');
     }
   }
 

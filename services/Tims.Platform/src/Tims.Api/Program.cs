@@ -13,6 +13,7 @@ using Serilog;
 using Serilog.Formatting.Compact;
 using StackExchange.Redis;
 using Tims.Api.AccessReview;
+using Tims.Api.AlertMetrics;
 using Tims.Api.Audit;
 using Tims.Api.Authentication;
 using Tims.Api.Billing;
@@ -31,6 +32,7 @@ using Tims.Api.TeamIntel;
 using Tims.Api.Validation;
 using Tims.Application.Access;
 using Tims.Application.AccessReview;
+using Tims.Application.AlertMetrics;
 using Tims.Application.Audit;
 using Tims.Application.Billing;
 using Tims.Application.Compensation;
@@ -50,6 +52,7 @@ using Tims.Domain.Billing;
 using Tims.Domain.Identity;
 using Tims.Infrastructure.Access;
 using Tims.Infrastructure.AccessReview;
+using Tims.Infrastructure.AlertMetrics;
 using Tims.Infrastructure.Audit;
 using Tims.Infrastructure.Billing;
 using Tims.Infrastructure.Compensation;
@@ -432,6 +435,14 @@ try
     builder.Services.AddScoped<IAccessReviewRepository, AccessReviewRepository>();
     builder.Services.AddScoped<ISecurityEventWriter, SecurityEventWriter>();
     builder.Services.AddScoped<AccessReviewService>();
+
+    // Q0b slice 2: the PRIVILEGED CROSS-ORG alert-metric reader for the alert-evaluation cron. Two scalar
+    // COUNTs over surveys + salary_adjustments, NEVER wrapped in TenantScope (the cron has no tenant — see
+    // AlertMetricsDbContext for why, and CronCallerGate for what stops a tenant reaching it). Dark unless
+    // AlertMetricsCronReadEnabled.
+    builder.Services.AddDbContext<AlertMetricsDbContext>(options => options.UseNpgsql(databaseConnectionString));
+    builder.Services.AddScoped<IAlertMetricsReadRepository, AlertMetricsReadRepository>();
+    builder.Services.AddScoped<AlertMetricsReadUseCase>();
 
     builder.Services
         .AddOptions<StripeBillingOptions>()
@@ -1042,6 +1053,15 @@ try
     if (externalOptions.AccessReviewWriteEnabled || isOpenApiDocGeneration)
     {
         app.MapAccessReviewWriteEndpoints();
+    }
+
+    // Privileged CROSS-ORG alert-metric READ surface (Q0b slice 2): GET /internal/alert-metrics, serving the
+    // alert-evaluation cron's two soon-to-flip metrics. Authenticated by the CRON SECRET, not a user
+    // identity — no JWT and no tims_ API key authorizes it (CronCallerGate). Runs OUTSIDE TenantScope/RLS by
+    // design; the flag + the gate are the whole isolation boundary. Dark unless the flag is on.
+    if (externalOptions.AlertMetricsCronReadEnabled || isOpenApiDocGeneration)
+    {
+        app.MapAlertMetricsEndpoints();
     }
 
     // Authz probe (WP2.5): the C# equivalent of the tRPC `requirePermission` gate. Resolves the
