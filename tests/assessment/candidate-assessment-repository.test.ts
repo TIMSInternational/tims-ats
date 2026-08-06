@@ -4,8 +4,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // two fixes that the service-level tests can't observe because the service
 // test mocks candidateAssessmentRepo/candidateAssessmentWriteRepo entirely
 // (see tests/assessment/candidate-assessment-service.test.ts). These tests
-// exercise the REAL repository against a mocked tenantDb, mirroring the
-// pattern in tests/evaluation360/evaluation360-repository.test.ts.
+// exercise the REAL repository against a mocked tenantDb. That pattern was
+// borrowed from tests/evaluation360/evaluation360-repository.test.ts, which
+// #54 deleted in 2026-08 along with the orphaned repository it covered (the
+// evaluation360 domain is C#-owned now); see git history if the original
+// shape is ever needed.
 //
 // Finding #1: findQuestionsWithAnswerKeyInTx must filter isActive: true, same
 // as the candidate-facing findQuestionsForType — otherwise a deactivated
