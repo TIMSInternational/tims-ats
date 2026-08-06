@@ -3,7 +3,11 @@
 import React from 'react';
 import { EmptyState } from '../../../../components/empty-state';
 
-// TODO: wire to teamIntel.getMembers when backend aggregation is available
+// TODO: wire to the C# GET /team-intel/teams/{teamId}/members when backend aggregation is available.
+// Retargeted 2026-08-06 (#55): this used to say "wire to teamIntel.getMembers", which no longer
+// exists — the TS router was deleted and C# is the sole owner (TeamIntelReadEndpoints.cs:77-110,
+// staff gate at :89 + team IDOR probe at :96). Wiring it means adding a hook to
+// apps/web/lib/platform-api/team-intel.ts alongside useTeamIntelDashboardKpis, not a tRPC call.
 
 interface TeamMembersTableProps {
   t: {

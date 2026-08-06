@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 
 // Wave 2.5 slice 4 — static tripwires for the TALENT modules:
@@ -77,14 +77,20 @@ import { join } from 'path';
 // between a reintroduced unsafe TS succession writer and prod is code review.
 // If a TS succession router is ever reintroduced, restore these tripwires with it.
 //
-// ── teamIntel taxonomy ────────────────────────────────────────────────
+// ── teamIntel taxonomy — HISTORICAL as of 2026-08-06 (#55) ────────────
+// This is the taxonomy the DELETED TS router implemented. It is kept as the specification the C#
+// owner is held to (and as the checklist to restore from if a TS teamIntel router ever returns):
 //   getTeamProfile / getMembers / getBalanceScore / getBalanceAlerts /
 //     getRecommendedHires → all take teamId → assertScoped('team') first.
 //   compareTeams        → multi-team read → AND-compose the team fragment.
 //   getDashboardKpis    → org-rollup → requireOrgScope.
+// All seven are mapped in C# at TeamIntelReadEndpoints.cs:38-280 with the same shape: the staff
+// gate first, then the team IDOR probe (1-5, incl. the two 501 stubs), ScopeWhereFor for
+// compareTeams (:222), and OrgGate for dashboard-kpis (:267).
 
 const ROOT = join(__dirname, '..', '..');
-const readRouter = (name: string) => readFileSync(join(ROOT, 'packages/api/src/routers', name), 'utf8');
+// The `readRouter` helper was dropped with the teamIntel block (#55): all three talent routers it
+// read (ninebox.ts, succession.ts, teamIntel.ts) are now deleted, so it had no caller left.
 
 // `describe('ninebox module scope wiring')` REMOVED 2026-08-05 (#57) — ninebox.ts no longer
 // exists. See the ninebox-taxonomy block above for the C# tests that now carry its assertions.
@@ -93,23 +99,58 @@ const readRouter = (name: string) => readFileSync(join(ROOT, 'packages/api/src/r
 // longer exists. See the succession-taxonomy block above for the C# tests that now carry both
 // of its assertions.
 
-describe('teamIntel module scope wiring', () => {
-  const src = () => readRouter('teamIntel.ts');
+// ── teamIntel — REMOVED 2026-08-06 (#55), and INVERTED rather than deleted ────────────
+// packages/api/src/routers/teamIntel.ts is DELETED (unregistered from root.ts). #55 removed the
+// last 6 procedures (getTeamProfile, getMembers, getBalanceScore, getBalanceAlerts,
+// getRecommendedHires, compareTeams — all zero-FE-consumer); getDashboardKpis went on 2026-07-28.
+//
+// The assertions that used to live here were `assertScoped('team')` and the no-fragment-spread
+// grep. Their guarantees are enforced against the C# owner as REAL HTTP integration tests
+// (services/Tims.Platform/tests/Tims.IntegrationTests/TeamIntel/):
+//   assertScoped('team') on the 5 id-keyed reads → TeamIntelReadEndpointAuthTests.cs:126-142
+//       TeamScope_OutOfScopeTeam_Is404_IdorProbe, a [Theory] over profile / members /
+//       balance-score / balance-alerts / recommended-hires — a behavioural 404 for an
+//       out-of-scope team, which a source grep never showed. Its control that the 404 is SCOPE
+//       and not RLS is OrgScope_OutOfTeamProfile_Is200 (:145).
+//   scopeWhereFor('team') AND-composition on compareTeams → TeamScope_Compare_DropsOutOfScopeTeam
+//       (:207) asserts the out-of-scope teamId is actually ABSENT from the response, with
+//       OrgScope_Compare_ReturnsBothTeams (:193) as the positive control.
+//   the two 501 stubs probe BEFORE returning → OrgScope_Stubs_Are501 (:183).
+//
+// UNLIKE the ninebox/succession blocks above, this one does NOT simply disappear. Both of those
+// record — in this same file — that removing the tripwire leaves "NO automated control" against a
+// TS router being reintroduced without its scope wiring. So the pin is INVERTED instead of
+// deleted: the router is pinned BY NAME as absent. Reintroducing it turns this suite RED, which
+// forces whoever does it to restore the two assertions above rather than silently shipping an
+// unscoped router. That is strictly more coverage than the ninebox/succession precedent left.
+//
+// The no-fragment-spread loop is NOT re-created: it would now iterate zero times while still
+// reading as a live check (the exact vacuous-pass defect the #57 review caught in
+// surfaces.test.ts). It was already redundant — the AND-composition invariant is enforced
+// repo-wide over packages/api/src by CI check 13 (.github/workflows/ci.yml:153, .claude/commands/gate.md:54),
+// which covers any router added tomorrow, not just a hardcoded list.
+describe('teamIntel router stays deleted (#55) — inverted tripwire', () => {
+  const TEAM_INTEL_ROUTER = join(ROOT, 'packages/api/src/routers', 'teamIntel.ts');
 
-  it('team-keyed endpoints probe via assertScoped(team)', () => {
-    expect(src()).toMatch(/assertScoped\('team'/);
+  it('packages/api/src/routers/teamIntel.ts does not exist; reintroducing it must restore the scope tripwires', () => {
+    expect(existsSync(TEAM_INTEL_ROUTER)).toBe(false);
   });
-});
 
-describe('talent modules — no fragment spread (AND-composition invariant, CI check 13)', () => {
-  // 'succession.ts' dropped 2026-08-03 (#58) and 'ninebox.ts' dropped 2026-08-05 (#57) — both files
-  // deleted. A deleted router cannot spread a fragment, so this loses no coverage; the C# owners
-  // have no Prisma fragment to spread at all.
-  for (const name of ['teamIntel.ts']) {
-    it(`${name} does not spread a scope fragment`, () => {
-      expect(readRouter(name)).not.toMatch(/\.\.\.(await\s+)?scopeWhere/);
-    });
-  }
+  // NON-VACUITY. The assertion above is an existsSync(...)===false, which also passes when ROOT is
+  // wrong and the path resolves to nothing at all. Pin two sibling artifacts BY NAME so a broken
+  // ROOT / moved routers directory fails loudly here instead of certifying an absence it never checked.
+  it('the routers directory it guards is really there (non-vacuity control)', () => {
+    expect(existsSync(join(ROOT, 'packages/api/src/routers'))).toBe(true);
+    expect(existsSync(join(ROOT, 'packages/api/src/routers', 'engagement.ts'))).toBe(true);
+  });
+
+  // And that teamIntel is genuinely unmounted, not merely moved out of routers/ — root.ts is the
+  // file that decides whether the procedures are reachable over tRPC at all.
+  it('root.ts no longer mounts a teamIntel router', () => {
+    const root = readFileSync(join(ROOT, 'packages/api/src/root.ts'), 'utf8');
+    expect(root).not.toMatch(/^\s*teamIntel:/m);
+    expect(root).not.toMatch(/^import .*routers\/teamIntel'/m);
+  });
 });
 
 describe('codex round-1 fixes (talent)', () => {

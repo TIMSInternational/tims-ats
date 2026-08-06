@@ -21,7 +21,16 @@ import { learningRouter } from './routers/learning';
 // (getCriticalRole, addCriticalRole, removeSuccessor, updateSuccessorReadiness) all had
 // zero FE consumers and live C# equivalents behind Platform__Succession{Read,Write}Enabled
 // (both confirmed live in prod) — see SuccessionRead/WriteEndpoints.cs.
-import { teamIntelRouter } from './routers/teamIntel';
+// TS-deletion 2026-08-06 (#55): the teamIntel router is GONE. Its last 6 procedures
+// (getTeamProfile, getMembers, getBalanceScore, getBalanceAlerts, getRecommendedHires,
+// compareTeams) all had zero FE consumers and live C# equivalents behind
+// Platform__TeamIntelReadEnabled (confirmed live in prod 2026-07-27) — see
+// TeamIntelReadEndpoints.cs, where all 7 Slice-6 reads are mapped. getDashboardKpis, the
+// 7th, was deleted on 2026-07-28 (381f0a2b); it was the only one the parity harness ever
+// registered. NOTE: `assertScoped('team')`/`scopeWhereFor('team')` lose their last PRODUCTION
+// caller here, but the 'team' entry in access/entity-policies.ts:43 STAYS — it is a
+// cross-stack contract pinned by contracts/access-fixtures/scope-where.json (3 cases) and
+// Tims.UnitTests/Fixtures/ScopeWhereForFixtureTests.cs.
 import { engagementRouter } from './routers/engagement';
 import { deiRouter } from './routers/dei';
 import { compensationRouter } from './routers/compensation';
@@ -71,7 +80,6 @@ export const appRouter = router({
   onboarding: onboardingRouter,
   performance: performanceRouter,
   learning: learningRouter,
-  teamIntel: teamIntelRouter,
   engagement: engagementRouter,
   dei: deiRouter,
   compensation: compensationRouter,
