@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { router, permissionProcedure } from '../../trpc';
-import { tenantDb as db } from '@tims/db';
+import { tenantDb as db, runTenantTransaction } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { scopeWhereFor, assertScoped } from '../../access';
@@ -13,7 +13,7 @@ export const offerApprovalsRouter = router({
       z.object({
         id: z.string().uuid(),
         approverIds: z.array(z.string().uuid()).max(100).min(1),
-      })
+      }),
     )
     .mutation(async ({ ctx, input }) => {
       const scopeWhere = await scopeWhereFor('offer', ctx.access, ctx.user.id);
@@ -22,10 +22,7 @@ export const offerApprovalsRouter = router({
       // the draft-guard below, so we must preserve that field.
       const offer = await db.offer.findFirst({
         where: {
-          AND: [
-            { id: input.id, organizationId: ctx.user.organizationId },
-            scopeWhere as Prisma.OfferWhereInput,
-          ],
+          AND: [{ id: input.id, organizationId: ctx.user.organizationId }, scopeWhere as Prisma.OfferWhereInput],
         },
       });
 
@@ -40,7 +37,9 @@ export const offerApprovalsRouter = router({
         });
       }
 
-      return db.$transaction(async (tx) => {
+      // runTenantTransaction, not db.$transaction (#45 / prisma#17948) — `db` is
+      // `tenantDb`, so the outer wrapper never made these writes atomic.
+      return runTenantTransaction(ctx.user.organizationId, async (tx) => {
         // Create approval chain
         await tx.offerApproval.createMany({
           data: input.approverIds.map((approverId, index) => ({
@@ -74,7 +73,7 @@ export const offerApprovalsRouter = router({
       z.object({
         id: z.string().uuid(),
         comment: z.string().max(20000).optional(),
-      })
+      }),
     )
     .mutation(async ({ ctx, input }) => {
       // Probe the offer through scope before acting on the approval record.
@@ -96,7 +95,9 @@ export const offerApprovalsRouter = router({
         });
       }
 
-      return db.$transaction(async (tx) => {
+      // runTenantTransaction per #45 (prisma#17948) — the approval flip + the
+      // conditional offer-status flip must commit or roll back together.
+      return runTenantTransaction(ctx.user.organizationId, async (tx) => {
         await tx.offerApproval.update({
           where: { id: approval.id },
           data: {
@@ -132,7 +133,7 @@ export const offerApprovalsRouter = router({
       z.object({
         id: z.string().uuid(),
         comment: z.string().max(20000).min(1),
-      })
+      }),
     )
     .mutation(async ({ ctx, input }) => {
       // Probe the offer through scope before acting on the approval record.
@@ -154,7 +155,8 @@ export const offerApprovalsRouter = router({
         });
       }
 
-      return db.$transaction(async (tx) => {
+      // runTenantTransaction per #45 (prisma#17948).
+      return runTenantTransaction(ctx.user.organizationId, async (tx) => {
         await tx.offerApproval.update({
           where: { id: approval.id },
           data: {

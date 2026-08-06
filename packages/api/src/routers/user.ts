@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { router, protectedProcedure, permissionProcedure } from '../trpc';
-import { tenantDb as db } from '@tims/db';
+import { tenantDb as db, runTenantTransaction } from '@tims/db';
 import { createUserSchema, updateProfileSchema, assignRoleSchema } from '@tims/shared';
 import { invalidatePermissionCache } from '../lib/cache';
 import { logSecurityEvent } from '../access/security-audit';
@@ -162,8 +162,11 @@ export const userRouter = router({
       // before the tx since it's an external call.
       const supabaseUserId = await resolveStaffSupabaseUserId(userData.email);
 
-      // Create user + role assignment in transaction
-      const created = await db.$transaction(async (tx) => {
+      // Create user + role assignment in ONE transaction. runTenantTransaction, not
+      // db.$transaction: `db` is `tenantDb`, whose extension re-wraps every op in its
+      // own mini-transaction, so an outer tenantDb.$transaction does not compose
+      // (prisma/prisma#17948, #45) -- a failure here used to leave a roleless user.
+      const created = await runTenantTransaction(ctx.user.organizationId, async (tx) => {
         const user = await tx.user.create({
           data: {
             ...userData,

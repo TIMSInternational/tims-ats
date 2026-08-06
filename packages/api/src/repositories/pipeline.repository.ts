@@ -1,4 +1,4 @@
-import { tenantDb as db } from '@tims/db';
+import { tenantDb as db, runTenantTransaction } from '@tims/db';
 import type { Prisma } from '@tims/db';
 
 // ---------------------------------------------------------------------------
@@ -122,10 +122,7 @@ export const pipelineRepository = {
   async countApplicationsInScope(orgId: string, applicationIds: string[], scopeWhere: Prisma.ApplicationWhereInput) {
     return db.application.count({
       where: {
-        AND: [
-          { id: { in: applicationIds }, organizationId: orgId },
-          scopeWhere,
-        ],
+        AND: [{ id: { in: applicationIds }, organizationId: orgId }, scopeWhere],
       },
     });
   },
@@ -154,7 +151,10 @@ export const pipelineRepository = {
     toStageId: string,
     reason?: string,
   ) {
-    return db.$transaction(async (tx) => {
+    // runTenantTransaction, not db.$transaction (#45 / prisma#17948): `db` is
+    // `tenantDb`, whose extension re-wraps each op in its own mini-transaction, so
+    // the movement audit row and the stage flip were committing independently.
+    return runTenantTransaction(orgId, async (tx) => {
       await tx.stageMovement.create({
         data: {
           organizationId: orgId,
@@ -182,7 +182,9 @@ export const pipelineRepository = {
     toStageId: string,
     reason?: string,
   ) {
-    return db.$transaction(async (tx) => {
+    // runTenantTransaction per #45 (prisma#17948) — a bulk move must not leave
+    // movement rows written with the applications un-moved (or vice versa).
+    return runTenantTransaction(orgId, async (tx) => {
       await tx.stageMovement.createMany({
         data: applications.map((app) => ({
           organizationId: orgId,
@@ -238,10 +240,17 @@ export const pipelineRepository = {
     });
   },
 
-  async createStage(orgId: string, data: {
-    vacancyId: string; name: string; order: number;
-    slaHours?: number; checklist?: unknown; isDefault: boolean;
-  }) {
+  async createStage(
+    orgId: string,
+    data: {
+      vacancyId: string;
+      name: string;
+      order: number;
+      slaHours?: number;
+      checklist?: unknown;
+      isDefault: boolean;
+    },
+  ) {
     return db.pipelineStage.create({
       data: {
         organizationId: orgId,
@@ -249,7 +258,7 @@ export const pipelineRepository = {
         name: data.name,
         order: data.order,
         slaHours: data.slaHours,
-        checklist: data.checklist as Prisma.InputJsonValue ?? undefined,
+        checklist: (data.checklist as Prisma.InputJsonValue) ?? undefined,
         isDefault: data.isDefault,
       },
       select: stageMutationSelect,

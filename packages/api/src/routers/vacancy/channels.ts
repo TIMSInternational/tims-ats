@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { router, permissionProcedure } from '../../trpc';
-import { tenantDb as db } from '@tims/db';
+import { tenantDb as db, runTenantTransaction } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { scopeWhereFor, assertScoped } from '../../access';
@@ -42,11 +42,13 @@ export const vacancyChannelsRouter = router({
     }),
 
   publish: permissionProcedure('vacancy', 'publish')
-    .input(z.object({
-      vacancyId: z.string().uuid(),
-      channelName: z.string().min(1).max(100),
-      channelType: z.enum(['internal', 'linkedin', 'indeed', 'computrabajo', 'elempleo', 'website', 'other']),
-    }))
+    .input(
+      z.object({
+        vacancyId: z.string().uuid(),
+        channelName: z.string().min(1).max(100),
+        channelType: z.enum(['internal', 'linkedin', 'indeed', 'computrabajo', 'elempleo', 'website', 'other']),
+      }),
+    )
     .mutation(async ({ ctx, input }) => {
       await assertScoped('vacancy', input.vacancyId, ctx.access, ctx.user.id, ctx.user.organizationId);
 
@@ -70,7 +72,9 @@ export const vacancyChannelsRouter = router({
       // status-update were two separate writes -- a failure between them could
       // leave a published channel on a non-published vacancy, or risk a
       // duplicate channel on client retry. Wrap in one transaction.
-      return db.$transaction(async (tx) => {
+      // NOTE (#45): that wrapping was `db.$transaction` where `db` is `tenantDb`,
+      // which does not compose (prisma/prisma#17948) — finding #4 was still open.
+      return runTenantTransaction(ctx.user.organizationId, async (tx) => {
         const channel = await tx.publicationChannel.create({
           data: {
             organizationId: ctx.user.organizationId,
