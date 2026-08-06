@@ -1362,6 +1362,17 @@ Two of these are genuinely hard:
   It cannot be served by a `TenantScope`/RLS-scoped EF read — it needs a privileged cross-org C# read
   surface, or the cron ports to C# wholesale.
 
+  **The privileged cross-org C# read surface now EXISTS — built dark, 2026-08-05 (§8 Q0b slice 2).**
+  `GET /internal/alert-metrics?organizationId=…&metric=…` serves both flip-blocking metrics
+  (`active_surveys` → #64, `pending_salary_adjustments` → #66) from
+  `services/Tims.Platform/src/Tims.Api/AlertMetrics/AlertMetricsEndpoints.cs`, over a deliberately
+  non-`TenantScope` context (`Tims.Infrastructure/AlertMetrics/AlertMetricsDbContext.cs`). Its ONLY
+  isolation boundary is `CronCallerGate` (a cron shared secret — **no** JWT and **no** `tims_` API key
+  authorizes it) plus `Platform:AlertMetricsCronReadEnabled`, which **defaults false**, so the route
+  404s today. Steps 1–4 of the strangler recipe only: **the TS cron has NOT been repointed to it**, so
+  this does not by itself unblock #64 or #66 — the remaining work is the canary repoint plus the
+  `monitoring.getExecutiveKpis` item above, which is still the true gate for #64.
+
   **Its failure mode is worse than "degrades with no error" (corrected 2026-08-02).** An earlier draft
   said "the service catches per-rule failures and counts them `skipped`." **The `skipped` counter never
   moves.** Removing the `case 'active_surveys'` from the switch at
@@ -1378,6 +1389,19 @@ Two of these are genuinely hard:
   **Required if `active_surveys` is not repointed, in the same PR:** remove it from `ALERT_METRIC_KEYS`
   and `ALERT_METRIC_MODULE`, and migrate or deactivate existing `alert_rules` rows using it — so
   `parseCondition` rejects them and `skipped` actually increments.
+
+  **CONFIRMED AND FIXED 2026-08-05.** The claim above was reproduced against the unfixed code before
+  anything was changed: stubbing `computeRawMetric` to `null` (exactly what a removed `case` produces)
+  and running `evaluateAlertRules()` returned `{ rules: 1, fired: 0, skipped: 0 }` with **zero** error
+  log lines — every element of the claim held. The fix is a discriminated
+  `AlertMetricOutcome` (`packages/api/src/repositories/alert-evaluation.repository.ts`) plus a branch in
+  `alert-evaluation.service.ts`: `unavailable` now increments `skipped` **and** logs
+  `{ruleId, orgId, metric, reason}` at error level, while a §21 min-5 `suppressed` stays silent and
+  uncounted on purpose (logging it would itself disclose a sub-floor count). Pinned by
+  `tests/monitoring/alert-evaluation-dead-metric.test.ts`, each assertion proven red by mutation.
+  Note the `default:` arm remains **unreachable today** — `parseCondition` already rejects any metric
+  outside `ALERT_METRIC_KEYS` — so this is protection for the moment a handler is retired, not a live
+  bug being closed. The "required in the same PR" instruction above still stands.
 
 - **`getCrossModuleTrend`'s engagement branch — "delete the branch" is struck as an option.** Deleting
   `packages/api/src/routers/monitoring.ts:228-250` (the `metric === 'engagement'` early-`return`) does

@@ -27,9 +27,30 @@ const SIXTY_DAYS_MS = 60 * 24 * MS_PER_HOUR;
 // (not surveyResponse), `headcount`/`active_alerts`/`vacancies_open_60d`/
 // `sla_active_breaches` are non-sensitive. The set is keyed off the metric, so any
 // future metric added over one of the four models must be listed here.
-const SENSITIVE_ALERT_METRICS: ReadonlySet<AlertMetricKey> = new Set<AlertMetricKey>([
-  'pending_salary_adjustments',
-]);
+const SENSITIVE_ALERT_METRICS: ReadonlySet<AlertMetricKey> = new Set<AlertMetricKey>(['pending_salary_adjustments']);
+
+// ── Metric outcome (Q0b slice 2) ────────────────────────────────────────────
+// `computeMetric` used to collapse THREE different situations into one `null`:
+//   1. the metric was computed and its value is genuinely unusable (never happens —
+//      a count is always a number),
+//   2. the §21 min-5 oracle guard DELIBERATELY floored a sub-floor 1..4 value,
+//   3. the metric has NO handler at all (the `default:` arm) — i.e. the rule can
+//      never be evaluated again.
+// The service could not tell (2) from (3), so (3) was a permanent silent no-op: no
+// exception, no log, no `skipped` increment (proven against the pre-fix code before
+// this change; see tests/monitoring/alert-evaluation-dead-metric.test.ts). This
+// discriminated union is the fix — the CALLER decides what each outcome means.
+export type AlertMetricOutcome =
+  // The metric was computed. `value` is safe to compare against a threshold.
+  | { kind: 'value'; value: number }
+  // Deliberate §21 min-5 suppression. NOT an error and NOT logged: emitting a log
+  // line or a counter for it would itself disclose that this org holds a sub-floor
+  // count over a restricted model — the exact oracle the guard exists to close.
+  | { kind: 'suppressed' }
+  // The metric could not be computed at all. ALWAYS a defect or a mid-flip state
+  // (handler removed, or the data moved to a surface that is currently unreachable).
+  // The caller MUST make this visible — that is the whole point of this union.
+  | { kind: 'unavailable'; reason: 'no_handler' };
 
 export const alertEvaluationRepository = {
   // All active rules across all orgs (the cron evaluates the whole platform).
@@ -88,12 +109,24 @@ export const alertEvaluationRepository = {
   // floored to null so a rule cannot be used as an exact-count oracle (see
   // SENSITIVE_ALERT_METRICS above): a null value never fires and is never persisted.
   async computeMetric(orgId: string, metric: AlertMetricKey): Promise<number | null> {
-    const value = await this.computeRawMetric(orgId, metric);
-    if (value !== null && SENSITIVE_ALERT_METRICS.has(metric)) {
-      // 1..4 → null (no oracle, nothing persisted); 0 and >=5 pass through.
-      return suppressBelowMin5(value).count;
+    const outcome = await this.computeMetricOutcome(orgId, metric);
+    return outcome.kind === 'value' ? outcome.value : null;
+  },
+
+  // The outcome-typed form of `computeMetric` — see AlertMetricOutcome. This is what
+  // the evaluation engine calls, because it is the only form that can distinguish a
+  // deliberate suppression from a metric that has no handler at all.
+  async computeMetricOutcome(orgId: string, metric: AlertMetricKey): Promise<AlertMetricOutcome> {
+    const raw = await this.computeRawMetric(orgId, metric);
+    if (raw === null) {
+      return { kind: 'unavailable', reason: 'no_handler' };
     }
-    return value;
+    if (SENSITIVE_ALERT_METRICS.has(metric)) {
+      // 1..4 → suppressed (no oracle, nothing persisted); 0 and >=5 pass through.
+      const suppressed = suppressBelowMin5(raw).count;
+      return suppressed === null ? { kind: 'suppressed' } : { kind: 'value', value: suppressed };
+    }
+    return { kind: 'value', value: raw };
   },
 
   async computeRawMetric(orgId: string, metric: AlertMetricKey): Promise<number | null> {
