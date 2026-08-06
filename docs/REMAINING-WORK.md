@@ -299,20 +299,34 @@ describe-service`; only the frontend Vercel flag was missing.)
   **CORRECTION 2026-08-06 (#54): the "ZERO live surfaces" claim above was overstated as written, and
   is left in place rather than rewritten so the correction is auditable.** It was true of the
   _routers_ and false of everything behind them. For evaluation360 the deletion stopped at the
-  router: `packages/api/src/services/evaluation360.service.ts` (199 LOC) and
-  `packages/api/src/repositories/evaluation360.repository.ts` (314 LOC) survived, orphaned, with zero
-  importers outside the test suite — and the repository still held **every TS Prisma writer** of
+  router — and it stopped there **on purpose**, which is the part worth recording. The plan that
+  performed it
+  (`docs/superpowers/plans/2026-07-28-ts-dead-code-deletion-reporting-eval360.md:20-31`) lists the
+  service, the repository and their tests under "Do NOT touch", calls it "a deliberate scope boundary
+  (Federico's explicit choice)", and keeps them as "an orphaned-but-harmless rollback safety net".
+  Nobody forgot. What was wrong is the word **harmless**:
+  `packages/api/src/services/evaluation360.service.ts` (199 LOC) and
+  `packages/api/src/repositories/evaluation360.repository.ts` (314 LOC) survived with zero importers
+  outside the test suite — and the repository still held **every TS Prisma writer** of
   `review_cycles` / `rater_assignments` / `rater_responses` (`.create`, three guarded `.updateMany`s,
   `raterAssignment.createMany`, `raterAssignment.updateMany`, `raterResponse.createMany`), which is
-  why a naive "are there TS writers?" grep reported non-zero and blocked ownership flip #67. Both
-  files are now deleted, along with their two test files. What is KEPT, deliberately, is the pure
-  min-3 anonymity kernel `packages/api/src/services/evaluation360-aggregate.ts` — the access-review
-  precedent, where the pure kernel and its pinned fixtures were retained as the contract spec the C#
-  port is golden-tested against (`contracts/access-fixtures/eval360-min3.json` ↔
-  `services/Tims.Platform/src/Tims.Domain/Access/Eval360Aggregate.cs`). The absence is now defended by
-  `tests/evaluation360/evaluation360-ts-writers-absent.test.ts` rather than by anyone remembering it.
-  **The scope of this correction has NOT been established for the other 8 domains** — evaluation360 was
-  found by direct grep; nobody has re-checked whether reporting, team-intel, billing-usage, succession,
+  why an honest "are there TS writers?" grep reported non-zero and blocked ownership flip #67. A
+  rollback safety net for a cutover that was confirmed live and parity-verified is not free; it cost
+  a blocked flip. Both files are now deleted, along with their two test files. What is KEPT,
+  deliberately, is the pure min-3 anonymity kernel
+  `packages/api/src/services/evaluation360-aggregate.ts` — the access-review precedent, where the
+  pure kernel and its pinned fixtures were retained as the contract spec the C# port is golden-tested
+  against (`contracts/access-fixtures/eval360-min3.json` ↔
+  `services/Tims.Platform/src/Tims.Domain/Access/Eval360Aggregate.cs`). The absence is now defended
+  by `tests/governance/evaluation360-no-ts-writers.test.ts` rather than by anyone remembering it.
+  **The same "Do NOT touch" list names a second, still-live orphan pair**:
+  `packages/api/src/services/recruitment-analytics.service.ts` and
+  `packages/api/src/repositories/recruitment-analytics.repository.ts` are orphaned the same way
+  (grep-confirmed 2026-08-06: zero importers, only comment references). They are READ-ONLY — zero
+  `.create/.update/.upsert/.delete` calls — so unlike evaluation360 they block no ownership flip, and
+  they were left alone as out of #54's scope. They still want their own issue.
+  **The scope of this correction has NOT been established for the remaining domains** — evaluation360
+  was found by direct grep; nobody has re-checked whether team-intel, billing-usage, succession,
   nine-box, compensation, engagement or DEI left orphaned services/repositories behind the same way.
   Treat the sentence above as unverified for those until someone greps them. **UPDATE 2026-07-31: a 9th domain joined this sequence** — access-review
   (read), whose flag (`NEXT_PUBLIC_ACCESS_REVIEW_READ_VIA_CSHARP`) flipped live the same day (see the
