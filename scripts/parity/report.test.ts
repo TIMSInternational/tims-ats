@@ -22,7 +22,13 @@ describe('renderReport', () => {
 
   it('includes role in the line for rbac results', () => {
     const r = renderReport([
-      { check: 'rbac', endpoint: 'dashboard-kpis', role: 'hrbp', ok: false, detail: "rbac: role 'hrbp' expected 403 but got 200" },
+      {
+        check: 'rbac',
+        endpoint: 'dashboard-kpis',
+        role: 'hrbp',
+        ok: false,
+        detail: "rbac: role 'hrbp' expected 403 but got 200",
+      },
     ]);
     expect(r.text).toContain('hrbp');
     expect(r.text).toContain('FAIL');
@@ -55,6 +61,24 @@ describe('renderReport', () => {
     expect(r.text).toContain('[WEAK]');
     expect(r.text).not.toContain('[PASS]');
     expect(r.text).toContain('inconclusive: both orgs returned empty payloads');
+  });
+
+  it('renders [WEAK] for an inconclusive PARITY result — a C#-only endpoint has nothing to compare', () => {
+    const r = renderReport([
+      {
+        check: 'parity',
+        endpoint: 'axis-breakdown',
+        ok: true,
+        inconclusive: true,
+        detail: 'no tsProcedure registered — the TypeScript side of this surface was deleted',
+      },
+    ]);
+    expect(r.text).toContain('[WEAK]');
+    expect(r.text).not.toContain('[PASS]');
+    // The reason must reach the operator: a bare WEAK is only marginally better than a bare PASS.
+    expect(r.text).toContain('no tsProcedure');
+    // ...and it is still not a failure — nothing broke, it just was not compared.
+    expect(r.allGreen).toBe(true);
   });
 
   it('still renders [PASS] (not [WEAK]) for a strong, non-inconclusive rls pass', () => {

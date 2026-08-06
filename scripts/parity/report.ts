@@ -19,12 +19,13 @@ function hasRole(r: CheckResult): r is RbacCheckResult | (WriteCheckResult & { r
   return (r.check === 'rbac' || r.check === 'write-rbac') && 'role' in r && r.role !== undefined;
 }
 
-/** True for an RLS result that passed only because there was no cross-tenant
- *  data to compare (see `CheckResult.inconclusive` in checks/rls.ts). Narrowing
- *  on `r.check === 'rls'` first is required — `inconclusive` only exists on
- *  `RlsCheckResult`, not the parity/rbac union members. */
-function isInconclusive(r: CheckResult): r is RlsCheckResult {
-  return r.check === 'rls' && r.ok === true && r.inconclusive === true;
+/** True for a result that passed only because there was nothing to compare:
+ *  an RLS Mode-B both-orgs-empty structural pass (`checks/rls.ts`), or a parity
+ *  check on a C#-only endpoint whose TS procedure has been deleted
+ *  (`checks/parity.ts`). Narrowing on `r.check` first is required — `inconclusive`
+ *  exists only on those two members, not on rbac/write results. */
+function isInconclusive(r: CheckResult): r is RlsCheckResult | ParityCheckResult {
+  return (r.check === 'rls' || r.check === 'parity') && r.ok === true && r.inconclusive === true;
 }
 
 function renderLine(r: CheckResult): string {

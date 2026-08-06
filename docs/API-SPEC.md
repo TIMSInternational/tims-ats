@@ -360,20 +360,35 @@ Scopes: `own` | `team` | `unit` | `company` | `organization`
 > Nine Box grid, calibration, talent review, auto-plans.
 > Screens: #13 Nine Box Predictivo
 
-| #     | Procedure                       | Type     | Input                                            | Output                                                                                         | Permission     | Used By              |
-| ----- | ------------------------------- | -------- | ------------------------------------------------ | ---------------------------------------------------------------------------------------------- | -------------- | -------------------- |
-| 13.1  | `ninebox.getGrid`               | query    | `{ period, companyId?, unitId? }`                | `NineBoxCell[]` with employees, counts                                                         | ninebox:read   | Nine Box grid        |
-| 13.2  | `ninebox.getEmployeeDetail`     | query    | `{ userId, period }`                             | `{ potentialScore, performanceScore, confidence, axisBreakdown, history[] }`                   | ninebox:read   | Employee detail      |
-| 13.3  | `ninebox.getAxisBreakdown`      | query    | `{ period }`                                     | `{ potential: { mil, lnd, learning, evolution }, performance: { pca, 360, okrs, integrity } }` | ninebox:read   | Axis bars            |
-| 13.4  | `ninebox.getMovementHistory`    | query    | `{ userId }`                                     | `Movement[]` (quadrant changes over time)                                                      | ninebox:read   | Movement arrows      |
-| 13.5  | `ninebox.simulate`              | mutation | `{ userId, adjustments }`                        | `NineBoxCell` predicted                                                                        | ninebox:read   | Simulator            |
-| 13.6  | `ninebox.createCalibration`     | mutation | `{ period, committeeIds[], scheduledDate }`      | `CalibrationSession`                                                                           | ninebox:create | Start calibration    |
-| 13.7  | `ninebox.getCalibration`        | query    | `{ id }`                                         | `CalibrationSession` with members, status                                                      | ninebox:read   | Calibration panel    |
-| 13.8  | `ninebox.submitCalibrationVote` | mutation | `{ sessionId, userId, quadrant, justification }` | `Vote`                                                                                         | ninebox:update | Committee vote       |
-| 13.9  | `ninebox.finalizeCalibration`   | mutation | `{ sessionId }`                                  | `CalibrationSession`                                                                           | ninebox:update | Finalize             |
-| 13.10 | `ninebox.getQuadrantPlan`       | query    | `{ quadrant }`                                   | `{ actions[], description }`                                                                   | ninebox:read   | Auto-plan            |
-| 13.11 | `ninebox.getBenchStrength`      | query    | —                                                | `BenchStrength[]` by critical role                                                             | ninebox:read   | Bench strength table |
-| 13.12 | `ninebox.getDashboardKpis`      | query    | `{ period }`                                     | `{ totalEvaluated, highPotential, atRisk, avgConfidence }`                                     | ninebox:read   | Dashboard KPIs       |
+> **⚠️ THIS SECTION DESCRIBES A SURFACE THAT NO LONGER EXISTS IN TypeScript.**
+> As of 2026-08-05 (#57) `packages/api/src/routers/ninebox.ts` is deleted outright, along with
+> `ninebox.schemas.ts` / `ninebox.helpers.ts` and its `root.ts` registration. **None of the twelve
+> procedures below is a live tRPC endpoint.** Seven had their TS side deleted on 2026-07-29 when
+> `NEXT_PUBLIC_NINEBOX_READ_VIA_CSHARP` went live; the last five went with the router.
+>
+> The behaviour is served by C# — `services/Tims.Platform/src/Tims.Api/NineBox/NineBoxReadEndpoints.cs`
+> and `NineBoxWriteEndpoints.cs`, behind `Platform:NineBoxReadEnabled` / `Platform:NineBoxWriteEnabled`.
+> **13.8 `submitCalibrationVote` and 13.9 `finalizeCalibration` matter most here:** their absence from
+> TypeScript is the precondition for ownership flip #70, pinned by
+> `tests/governance/calibration-no-ts-writers.test.ts`. Reading this table as evidence that a TS writer
+> of `calibration_votes` / `calibration_sessions` still exists is exactly backwards.
+>
+> The rows are retained as the historical contract the C# port was built against, not as an API.
+
+| #     | Procedure (all DELETED from TS — served by C#) | Type     | Input                                            | Output                                                                                         | Permission     | Used By              |
+| ----- | ---------------------------------------------- | -------- | ------------------------------------------------ | ---------------------------------------------------------------------------------------------- | -------------- | -------------------- |
+| 13.1  | `ninebox.getGrid`                              | query    | `{ period, companyId?, unitId? }`                | `NineBoxCell[]` with employees, counts                                                         | ninebox:read   | Nine Box grid        |
+| 13.2  | `ninebox.getEmployeeDetail`                    | query    | `{ userId, period }`                             | `{ potentialScore, performanceScore, confidence, axisBreakdown, history[] }`                   | ninebox:read   | Employee detail      |
+| 13.3  | `ninebox.getAxisBreakdown`                     | query    | `{ period }`                                     | `{ potential: { mil, lnd, learning, evolution }, performance: { pca, 360, okrs, integrity } }` | ninebox:read   | Axis bars            |
+| 13.4  | `ninebox.getMovementHistory`                   | query    | `{ userId }`                                     | `Movement[]` (quadrant changes over time)                                                      | ninebox:read   | Movement arrows      |
+| 13.5  | `ninebox.simulate`                             | mutation | `{ userId, adjustments }`                        | `NineBoxCell` predicted                                                                        | ninebox:read   | Simulator            |
+| 13.6  | `ninebox.createCalibration`                    | mutation | `{ period, committeeIds[], scheduledDate }`      | `CalibrationSession`                                                                           | ninebox:create | Start calibration    |
+| 13.7  | `ninebox.getCalibration`                       | query    | `{ id }`                                         | `CalibrationSession` with members, status                                                      | ninebox:read   | Calibration panel    |
+| 13.8  | `ninebox.submitCalibrationVote`                | mutation | `{ sessionId, userId, quadrant, justification }` | `Vote`                                                                                         | ninebox:update | Committee vote       |
+| 13.9  | `ninebox.finalizeCalibration`                  | mutation | `{ sessionId }`                                  | `CalibrationSession`                                                                           | ninebox:update | Finalize             |
+| 13.10 | `ninebox.getQuadrantPlan`                      | query    | `{ quadrant }`                                   | `{ actions[], description }`                                                                   | ninebox:read   | Auto-plan            |
+| 13.11 | `ninebox.getBenchStrength`                     | query    | —                                                | `BenchStrength[]` by critical role                                                             | ninebox:read   | Bench strength table |
+| 13.12 | `ninebox.getDashboardKpis`                     | query    | `{ period }`                                     | `{ totalEvaluated, highPotential, atRisk, avgConfidence }`                                     | ninebox:read   | Dashboard KPIs       |
 
 ---
 
