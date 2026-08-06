@@ -1,7 +1,13 @@
 // Pure nine-box shaping kernels + the shared quadrant maps (Phase-5 nine-box strangler, Slice 10).
-// Moved here from packages/api/src/routers/ninebox.helpers.ts so BOTH the live TS router AND the C#
-// port (Tims.Domain.NineBox) consume ONE definition, golden-fixtured against contracts/ninebox-fixtures/.
+// Moved here from packages/api/src/routers/ninebox.helpers.ts so BOTH stacks consumed ONE definition,
+// golden-fixtured against contracts/ninebox-fixtures/.
 // No DB, no I/O, no clock. Rounding uses JS Math.round (half-up) — mirror with ReportingMath.JsRound in C#.
+//
+// UPDATE 2026-08-05 (#57): the TS nine-box router is DELETED, so no TypeScript runtime code imports
+// these kernels any more — the only remaining importer is tests/ninebox/kernels-fixtures.test.ts.
+// They are NOT dead code and must not be deleted as such: that test is what pins
+// contracts/ninebox-fixtures/ as the golden contract the C# port (Tims.Domain.NineBox) is asserted
+// against. Deleting this module silently drops the C#-side contract with it.
 
 // Map quadrant names to grid keys (potential-performance).
 export const quadrantToGrid: Record<string, string> = {
@@ -26,15 +32,42 @@ export const simulateQuadrantMap: Record<string, Record<string, string>> = {
 
 // Standard development plans per quadrant.
 export const quadrantPlans: Record<string, { title: string; actions: string[] }> = {
-  star: { title: 'Retener y Acelerar', actions: ['Asignar proyectos de alta visibilidad', 'Incluir en plan de sucesion', 'Ofrecer mentoria ejecutiva'] },
-  high_potential: { title: 'Desarrollar Rendimiento', actions: ['Establecer metas desafiantes', 'Asignar coaching de desempeno', 'Rotacion de roles'] },
-  enigma: { title: 'Evaluar y Orientar', actions: ['Asignar mentor', 'Revisar encaje de rol', 'Establecer metas a corto plazo'] },
-  solid_performer: { title: 'Reconocer y Desarrollar', actions: ['Reconocimiento publico', 'Plan de capacitacion en liderazgo', 'Proyectos cross-funcionales'] },
-  core_player: { title: 'Motivar y Crecer', actions: ['Feedback regular', 'Capacitacion tecnica', 'Metas de estiramiento'] },
-  inconsistent: { title: 'Diagnosticar y Apoyar', actions: ['Identificar barreras', 'Plan de mejora con seguimiento', 'Evaluar motivacion'] },
-  workhouse: { title: 'Valorar Consistencia', actions: ['Reconocer contribuciones', 'Evaluar interes en crecimiento', 'Capacitacion selectiva'] },
-  underperformer: { title: 'Plan de Mejora', actions: ['Plan de mejora formal (PIP)', 'Coaching intensivo', 'Revision en 90 dias'] },
-  risk: { title: 'Accion Inmediata', actions: ['Conversacion de retroalimentacion directa', 'PIP con plazos estrictos', 'Evaluar reubicacion o salida'] },
+  star: {
+    title: 'Retener y Acelerar',
+    actions: ['Asignar proyectos de alta visibilidad', 'Incluir en plan de sucesion', 'Ofrecer mentoria ejecutiva'],
+  },
+  high_potential: {
+    title: 'Desarrollar Rendimiento',
+    actions: ['Establecer metas desafiantes', 'Asignar coaching de desempeno', 'Rotacion de roles'],
+  },
+  enigma: {
+    title: 'Evaluar y Orientar',
+    actions: ['Asignar mentor', 'Revisar encaje de rol', 'Establecer metas a corto plazo'],
+  },
+  solid_performer: {
+    title: 'Reconocer y Desarrollar',
+    actions: ['Reconocimiento publico', 'Plan de capacitacion en liderazgo', 'Proyectos cross-funcionales'],
+  },
+  core_player: {
+    title: 'Motivar y Crecer',
+    actions: ['Feedback regular', 'Capacitacion tecnica', 'Metas de estiramiento'],
+  },
+  inconsistent: {
+    title: 'Diagnosticar y Apoyar',
+    actions: ['Identificar barreras', 'Plan de mejora con seguimiento', 'Evaluar motivacion'],
+  },
+  workhouse: {
+    title: 'Valorar Consistencia',
+    actions: ['Reconocer contribuciones', 'Evaluar interes en crecimiento', 'Capacitacion selectiva'],
+  },
+  underperformer: {
+    title: 'Plan de Mejora',
+    actions: ['Plan de mejora formal (PIP)', 'Coaching intensivo', 'Revision en 90 dias'],
+  },
+  risk: {
+    title: 'Accion Inmediata',
+    actions: ['Conversacion de retroalimentacion directa', 'PIP con plazos estrictos', 'Evaluar reubicacion o salida'],
+  },
 };
 
 // ── Pure kernels ────────────────────────────────────────────────────────────

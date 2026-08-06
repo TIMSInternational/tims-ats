@@ -4,7 +4,19 @@ import { ID_SENTINEL } from './ids';
 export interface EndpointDef {
   name: string;
   csharpPath: string;
-  tsProcedure: string;
+  /** The tRPC procedure to diff the C# response against.
+   *
+   *  OPTIONAL, because a surface outlives its TypeScript side. Once a domain's TS procedures are
+   *  deleted (nine-box reads in #57), there is nothing left to diff — but the endpoint is still
+   *  DEPLOYED, and its RLS Mode-A cross-tenant probe and RBAC deny assertions are still the only
+   *  automated things standing between a regression in the live C# read path and a cross-org data
+   *  leak. `checks/rls.ts` and `checks/rbac.ts` never read this field; only `checks/parity.ts` does.
+   *
+   *  So: omit it to keep an endpoint registered as C#-only. The parity check then reports `[WEAK]`
+   *  with a reason rather than a silent pass — a did-not-run must never render as a tick. Deleting
+   *  the endpoint (or the whole surface) instead is what removes the IDOR probe, which is a
+   *  security-coverage regression, not a cleanup. */
+  tsProcedure?: string;
   input: unknown;
   /** Set on a by-id (Tier-2) endpoint — its value is the SeedResources key (seed.ts)
    *  naming which resource id pair to thread: the org-A id is substituted into the
@@ -107,18 +119,46 @@ export const SURFACES: Record<string, Surface> = {
     ],
   },
   // ── nine-box ────────────────────────────────────────────────────────────────────────────────
-  // UPDATE 2026-07-29: 7 of the original 11 registered nine-box reads had their TS procedures
-  // deleted (NEXT_PUBLIC_NINEBOX_READ_VIA_CSHARP confirmed live in prod) — grid, calibrations,
-  // my-calibrations, bench-strength, dashboard-kpis, employee, calibration are REMOVED below (no
-  // TS side left to diff against for any of them). The 4 that survive (movement-history, simulate,
-  // quadrant-plan, axis-breakdown) map to the router's zero-FE-consumer procedures, which stay
-  // live — pre-existing dead code unrelated to this migration — so `verify ninebox` still runs 4
-  // REAL parity/RLS/RBAC checks, not a no-op. One flag Platform:NineBoxReadEnabled still gates the
-  // C# side for all 11 backend endpoints; only these 4 have a TS side left to compare against.
+  // TS side DELETED 2026-08-05 (#57); surface RETAINED as C#-only. `packages/api/src/routers/ninebox.ts`
+  // is gone outright — all 6 residual procedures, plus ninebox.schemas.ts / ninebox.helpers.ts and the
+  // root.ts registration — so none of the four endpoints below has a `tsProcedure` any more. The
+  // 2026-07-29 pass had already removed the other 7 registered reads (grid, calibrations,
+  // my-calibrations, bench-strength, dashboard-kpis, employee, calibration).
+  //
+  // WHY THIS IS NOT DELETED, unlike succession/team-intel/billing-usage/reporting/evaluation360/audit-log.
+  // Deleting the surface was the first instinct here and it was WRONG: only `checks/parity.ts` reads
+  // `tsProcedure`. `checks/rls.ts` and `checks/rbac.ts` take `callCsharp` alone, so removing the surface
+  // does not retire a stale TS comparison — it retires the RLS Mode-A cross-tenant IDOR probe and the
+  // RBAC deny assertions.
+  //
+  // SCOPE, stated precisely, because an earlier draft of this comment overstated it: the surface
+  // registers FOUR endpoints and `cli.ts` iterates `surface.endpoints` for rls and rbac, so these
+  // probes cover 4 of the 11 C# read endpoints behind Platform__NineBoxReadEnabled. The other 7 left
+  // this surface on 2026-07-29 and are probed by neither stack — that is a real, separate gap, not
+  // something this entry closes.
+  //
+  // The one that matters is `axis-breakdown`: it fires org-A's token at org-B's employee id and fails
+  // closed. Its C# coverage is NineBoxReadTests.cs:153-165 (present/absent period) and
+  // NineBoxReadEndpointAuthTests.cs:161 (subject-scope 403 WITHIN one org) — neither is cross-org.
+  // (Note the surface does have SOME C# cross-org coverage elsewhere:
+  // NineBoxReadTests.cs:240 `GetGrid_crossOrg_isolatedUnderRls`. That is `getGrid`, not
+  // `axis-breakdown`, and `getGrid` is not one of the 4 endpoints registered here.) So for
+  // axis-breakdown specifically, deleting this surface would leave a regression that returns org-B's
+  // nine-box evaluation PII to an org-A caller caught by nothing.
+  //
+  // So `verify ninebox` still runs: parity reports [WEAK] per endpoint (documented "no TS side to
+  // compare", never a bare tick — see EndpointDef.tsProcedure), while RLS and RBAC run UNCHANGED and
+  // still fail the command on a real isolation or permission regression.
+  //
   // RBAC (hr_admin ninebox:read@org, hrbp @unit): movement-history uses scopeWhereFor (hrbp →
   // 200-empty, fragile, OMITTED from expectedByRole); axis-breakdown is subject-scoped (hrbp @unit,
   // target ∉ subject set → 403); simulate/quadrant-plan are globalScope pure kernels (org-independent
-  // by design → RLS N/A, parity + RBAC still run). super_admin bypasses.
+  // by design → RLS N/A, RBAC still runs). super_admin bypasses.
+  //
+  // The WRITE surface is UNAFFECTED — write-surfaces.ts's nineboxSurface tests the C# endpoints
+  // directly via raw SQL + HTTP and never had a tsProcedure field. `verify-write ninebox` still runs a
+  // REAL check on all 5 writes, including the membership anchor (hr_admin with ninebox:update but no
+  // membership → 403 'miembro del comite').
   ninebox: {
     key: 'ninebox',
     flag: 'Platform__NineBoxReadEnabled',
@@ -128,7 +168,6 @@ export const SURFACES: Record<string, Surface> = {
       {
         name: 'movement-history',
         csharpPath: '/ninebox/movement-history',
-        tsProcedure: 'ninebox.getMovementHistory',
         input: {},
         expectedByRole: { super_admin: 200, hr_admin: 200 },
         normalize: { dropNullish: true, sortArraysBy: 'userId' },
@@ -137,7 +176,6 @@ export const SURFACES: Record<string, Surface> = {
         name: 'simulate',
         csharpPath:
           '/ninebox/simulate?userId=e0000b0c-0000-4000-8000-000000000001&newPotentialScore=80&newPerformanceScore=40',
-        tsProcedure: 'ninebox.simulate',
         input: { userId: 'e0000b0c-0000-4000-8000-000000000001', newPotentialScore: 80, newPerformanceScore: 40 },
         // pure kernel, userId is echoed (no DB lookup) → org-independent → RLS N/A.
         globalScope: true,
@@ -147,20 +185,18 @@ export const SURFACES: Record<string, Surface> = {
       {
         name: 'quadrant-plan',
         csharpPath: '/ninebox/quadrant-plan?quadrant=star',
-        tsProcedure: 'ninebox.getQuadrantPlan',
         input: { quadrant: 'star' },
         // pure catalog lookup → org-independent → RLS N/A.
         globalScope: true,
         expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 200 },
         normalize: { dropNullish: true },
       },
-      // Tier-2 by-id: getAxisBreakdown = permissionProcedure('ninebox','read') + assertSubjectInScope;
-      // takes ?period=2026-Q1. Org-A target = a:hr_admin (has a 2026-Q1 eval). super/hr_admin (own id)
-      // → 200; hrbp @unit → target ∉ subject set → 403. Mode-A: → org-B b:hr_admin.
+      // Tier-2 by-id — THE reason this surface is retained. Mode-A fires org-A's Bearer token at
+      // org-B's employee id against the live deployment, with a fail-closed positive control.
+      // hrbp @unit → target ∉ subject set → 403.
       {
         name: 'axis-breakdown',
         csharpPath: '/ninebox/employee/{id}/axis-breakdown?period=2026-Q1',
-        tsProcedure: 'ninebox.getAxisBreakdown',
         input: { userId: ID_SENTINEL, period: '2026-Q1' },
         idScopeKey: 'employee',
         expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
@@ -168,6 +204,7 @@ export const SURFACES: Record<string, Surface> = {
       },
     ],
   },
+  //
   // ── succession ──────────────────────────────────────────────────────────────────────────────
   // READ surface REMOVED (TS-deletion, 2026-08-03, #58): this surface's last remaining endpoint
   // (`critical-role`, tsProcedure `succession.getCriticalRole`) was deleted from

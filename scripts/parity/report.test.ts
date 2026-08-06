@@ -22,7 +22,13 @@ describe('renderReport', () => {
 
   it('includes role in the line for rbac results', () => {
     const r = renderReport([
-      { check: 'rbac', endpoint: 'dashboard-kpis', role: 'hrbp', ok: false, detail: "rbac: role 'hrbp' expected 403 but got 200" },
+      {
+        check: 'rbac',
+        endpoint: 'dashboard-kpis',
+        role: 'hrbp',
+        ok: false,
+        detail: "rbac: role 'hrbp' expected 403 but got 200",
+      },
     ]);
     expect(r.text).toContain('hrbp');
     expect(r.text).toContain('FAIL');
@@ -55,6 +61,41 @@ describe('renderReport', () => {
     expect(r.text).toContain('[WEAK]');
     expect(r.text).not.toContain('[PASS]');
     expect(r.text).toContain('inconclusive: both orgs returned empty payloads');
+  });
+
+  it('renders [WEAK] for an inconclusive PARITY result — a C#-only endpoint has nothing to compare', () => {
+    const r = renderReport([
+      {
+        check: 'parity',
+        endpoint: 'axis-breakdown',
+        ok: true,
+        inconclusive: true,
+        detail: 'no tsProcedure registered — the TypeScript side of this surface was deleted',
+      },
+    ]);
+    expect(r.text).toContain('[WEAK]');
+    expect(r.text).not.toContain('[PASS]');
+    // The reason must reach the operator: a bare WEAK is only marginally better than a bare PASS.
+    expect(r.text).toContain('no tsProcedure');
+    // ...and it is still not a failure — nothing broke, it just was not compared.
+    expect(r.allGreen).toBe(true);
+    // The SUMMARY line must not read as "1 passed, 0 failed" — a reader who checks only the last
+    // line would take that as a real verification.
+    expect(r.text).toContain('0 passed, 0 failed, 1 weak');
+    expect(r.text).toContain('NOTHING in this run was actually compared');
+  });
+
+  it('a MIXED run separates weak from passed in the summary', () => {
+    const r = renderReport([
+      { check: 'parity', endpoint: 'a', ok: true },
+      { check: 'parity', endpoint: 'b', ok: true, inconclusive: true, detail: 'no tsProcedure' },
+      { check: 'rls', endpoint: 'c', ok: false, detail: 'leak' },
+    ]);
+    expect(r.text).toContain('1 passed, 1 failed, 1 weak, 3 total');
+    // The blanket "nothing was compared" banner is for the all-weak case only.
+    expect(r.text).not.toContain('NOTHING in this run');
+    expect(r.text).toContain('1 check(s) reported WEAK');
+    expect(r.allGreen).toBe(false);
   });
 
   it('still renders [PASS] (not [WEAK]) for a strong, non-inconclusive rls pass', () => {

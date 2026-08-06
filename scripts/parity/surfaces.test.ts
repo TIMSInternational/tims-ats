@@ -3,23 +3,24 @@ import { SURFACES } from './surfaces';
 
 describe('SURFACES', () => {
   // 2026-08-03 (#58): was "the three read surfaces" — succession dropped out when its last
-  // TS-backed endpoint (getCriticalRole) was deleted. See the dedicated assertion at the bottom.
-  it('the two read surfaces that still have a TS side are registered with their flags + current endpoint sets (Tier-1 + Tier-2 by-id)', () => {
+  // TS-backed endpoint (getCriticalRole) was deleted. 2026-08-05 (#57): ninebox dropped out the same
+  // way (its last 4 TS-backed endpoints deleted with the whole router). See the dedicated assertions
+  // at the bottom. compensation is now the only talent read surface with a TS side left.
+  it('the one read surface that still has a TS side is registered with its flag + current endpoint set (Tier-1 + Tier-2 by-id)', () => {
     expect(SURFACES['compensation'].flag).toBe('Platform__CompensationReadEnabled');
     // 2026-07-29: shrunk from 7 to 2 — the other 5 TS procedures were deleted (C#-only now).
     expect(SURFACES['compensation'].endpoints.map((e) => e.name).sort()).toEqual(['employee', 'market-comparison']);
-    expect(SURFACES['ninebox'].flag).toBe('Platform__NineBoxReadEnabled');
-    expect(SURFACES['ninebox'].endpoints).toHaveLength(4);
-    for (const key of ['compensation', 'ninebox']) {
-      expect(SURFACES[key].probeRole).toBe('super_admin');
-    }
+    expect(SURFACES['compensation'].probeRole).toBe('super_admin');
   });
 
   it('every Tier-2 by-id endpoint sets idScopeKey and carries the {id} sentinel in path + input', () => {
-    // The 2 by-id Mode-A IDOR endpoints and the resource key each threads.
-    // 2026-08-03 (#58): 'succession/critical-role' → 'critical-role' removed with the surface.
+    // The by-id Mode-A IDOR endpoints and the resource key each threads.
+    // 2026-08-03 (#58): 'succession/critical-role' removed with the surface.
+    // 2026-08-05 (#57): 'ninebox/axis-breakdown' RETAINED — its TS side went, the endpoint did not.
     const expected: Record<string, string> = {
       'compensation/employee': 'employee',
+      // C#-only after #57 (no tsProcedure), but STILL by-id and still the surface's cross-tenant
+      // IDOR probe — which is exactly why the nine-box surface was kept rather than deleted.
       'ninebox/axis-breakdown': 'employee',
     };
     let byIdCount = 0;
@@ -38,14 +39,26 @@ describe('SURFACES', () => {
     expect(byIdCount).toBe(2);
   });
 
-  it('nine-box marks only the two pure kernels as globalScope', () => {
-    const nb = SURFACES['ninebox'];
-    expect(nb.endpoints.find((e) => e.name === 'simulate')?.globalScope).toBe(true);
-    expect(nb.endpoints.find((e) => e.name === 'quadrant-plan')?.globalScope).toBe(true);
-    expect(nb.endpoints.find((e) => e.name === 'movement-history')?.globalScope).toBeUndefined();
-    // movement-history omits hrbp (scopeWhereFor fragile); axis-breakdown (subject-scoped) denies hrbp.
-    expect(nb.endpoints.find((e) => e.name === 'movement-history')?.expectedByRole['hrbp']).toBeUndefined();
-    expect(nb.endpoints.find((e) => e.name === 'axis-breakdown')?.expectedByRole['hrbp']).toBe(403);
+  // Kept surface-agnostic (rather than nine-box-specific) so it keeps applying as surfaces come and
+  // go. NOTE: for a few hours on 2026-08-05 the nine-box surface was deleted and this loop iterated
+  // ZERO times while still reading as a live guard — an assertion that cannot run is not a guard.
+  // The count pin at the bottom is what makes that visible.
+  it('every globalScope endpoint is a pure kernel — no by-id endpoint may claim org-independence', () => {
+    let seen = 0;
+    for (const [key, surface] of Object.entries(SURFACES)) {
+      for (const ep of surface.endpoints) {
+        if (!ep.globalScope) continue;
+        seen++;
+        // globalScope INVERTS the RLS Mode-B heuristic, so it must never be set on an endpoint that
+        // reads per-org rows by id — that would silently disable the leak check for it.
+        expect(ep.idScopeKey, `${key}/${ep.name} is globalScope AND by-id`).toBeUndefined();
+      }
+    }
+    // Documented state: nine-box's simulate + quadrant-plan are the only globalScope endpoints, and
+    // both are pure kernels. The loop above is the invariant; this pins the count so a NEW
+    // globalScope endpoint has to be looked at deliberately — and so that the loop going empty
+    // (which would make the invariant unenforced while still reading as enforced) fails here.
+    expect(seen).toBe(2);
   });
 
   // ── Coverage-audit additions (2026-07-27) ────────────────────────────────────────────────────
@@ -100,5 +113,34 @@ describe('SURFACES', () => {
   // ('registers the 5 succession writes under the single write flag') — not duplicated here.
   it('succession read is no longer registered (TS side deleted)', () => {
     expect(SURFACES['succession']).toBeUndefined();
+  });
+
+  // nine-box's TS side was deleted 2026-08-05 (#57) — but unlike succession above, the SURFACE is
+  // retained, C#-only. Only checks/parity.ts reads `tsProcedure`; checks/rls.ts and checks/rbac.ts
+  // take `callCsharp` alone. So deleting the surface would not have retired a stale TS comparison,
+  // it would have retired the RLS Mode-A cross-tenant IDOR probe on `axis-breakdown` and the RBAC
+  // deny assertions. Those cover the 4 endpoints registered below, not all 11 deployed C# reads —
+  // see the scope note in surfaces.ts. `axis-breakdown` has no cross-org C# integration test
+  // (NineBoxReadTests.cs:240 covers getGrid, which is not registered here).
+  //
+  // This asserts the RETENTION, deliberately: the endpoints must stay registered AND must carry no
+  // tsProcedure. A future cleanup that deletes the surface "because the TS is gone" fails here with
+  // the reason attached.
+  it('nine-box read stays registered as a C#-only surface (RLS/RBAC coverage survives TS deletion)', () => {
+    const s = SURFACES['ninebox'];
+    expect(s, 'nine-box read surface was deleted — that removes the cross-tenant IDOR probe').toBeDefined();
+    expect(s!.endpoints.map((e) => e.name).sort()).toEqual([
+      'axis-breakdown',
+      'movement-history',
+      'quadrant-plan',
+      'simulate',
+    ]);
+    for (const ep of s!.endpoints) {
+      expect(ep.tsProcedure, `${ep.name} must be C#-only — the TS router is deleted`).toBeUndefined();
+    }
+    // The IDOR probe specifically.
+    const byId = s!.endpoints.find((e) => e.name === 'axis-breakdown')!;
+    expect(byId.idScopeKey).toBe('employee');
+    expect(byId.expectedByRole.hrbp).toBe(403);
   });
 });

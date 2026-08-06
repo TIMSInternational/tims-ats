@@ -11,10 +11,11 @@
 // CalibrationSession.status, CalibrationMember.status, CalibrationVote.quadrant — are plain String
 // with no enum, unlike succession's criticality/readiness).
 //
-// The router itself SURVIVES for its 6 zero-FE-consumer procedures (getAxisBreakdown,
-// getMovementHistory, simulate, submitCalibrationVote, finalizeCalibration, getQuadrantPlan) —
-// pre-existing dead code unrelated to this migration. None of those six ever had a wrapper here,
-// so nothing below references them.
+// UPDATE 2026-08-05 (#57): the router itself is now GONE too. Its 6 remaining zero-FE-consumer
+// procedures (getAxisBreakdown, getMovementHistory, simulate, getQuadrantPlan,
+// submitCalibrationVote, finalizeCalibration) were deleted, and packages/api/src/routers/ninebox.ts
+// + ninebox.schemas.ts + ninebox.helpers.ts with them. None of those six ever had a wrapper here,
+// so nothing in this file changed — this hook module was already C#-only.
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { platformDelete, platformGet, platformPost, PlatformApiError } from './client';
@@ -464,8 +465,10 @@ export function invalidateNineboxPlatformReads(queryClient: ReturnType<typeof us
 // ---------------------------------------------------------------------------
 // Writes — createCalibration (talent/nine-box/page.tsx) and addCalibrationMember/
 // removeCalibrationMember (committee-members-panel.tsx) are the 3 mutations with live FE
-// consumers. submitCalibrationVote/finalizeCalibration have zero call sites and stay untouched,
-// unrelated dead code in the TS router (see ninebox.ts).
+// consumers. submitCalibrationVote/finalizeCalibration have zero call sites here; their TS
+// implementations were DELETED 2026-08-05 (#57), so C# is the only writer of the three
+// calibration_* tables. If a UI for voting/finalizing is ever built, wrap the C# endpoints
+// (POST /ninebox/calibrations/{sessionId}/votes, .../finalize) here — there is no TS fallback.
 // ---------------------------------------------------------------------------
 
 interface MutationOptions<TData = void> {

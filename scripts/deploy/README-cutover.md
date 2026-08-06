@@ -53,9 +53,9 @@ flag, and CONFIRMED LIVE / FLIP-READY / COEXISTENCE / TS DELETED status per
 **Why `engagement` was the last worked example, and what to use now.** As of 2026-07-31, every
 standard surface this script covers has either had its TS side fully deleted (`team-intel`,
 `reporting`, `billing-read`, `billing-usage`, `evaluation360` read, `audit-log`, `access-review`
-read+write — all TS DELETED) or is CONFIRMED LIVE with partial TS deletion (`succession`,
-`compensation`, `nine-box`, `dei`, `engagement` read — a live-traffic surface whose router still
-holds zero-FE-consumer dead code). None is "genuinely still un-flipped with a fully live TS side"
+read+write — all TS DELETED, joined by `nine-box` read on 2026-08-05 per #57) or is CONFIRMED LIVE
+with partial TS deletion (`succession`, `compensation`, `dei`, `engagement` read — a live-traffic
+surface whose router still holds zero-FE-consumer dead code). None is "genuinely still un-flipped with a fully live TS side"
 anymore, so no surface can honestly fill this worked example's original role. `engagement` was the
 last one to hold it: `NEXT_PUBLIC_ENGAGEMENT_READ_VIA_CSHARP` is now confirmed live and 8 of its 14
 registered read procedures were deleted (myPendingSurveys/getSurveyForResponse/getEnps/
@@ -127,7 +127,7 @@ number) and independently corroborated by the `flag:` field in `scripts/parity/s
 | `evaluation360`       | read  | `Evaluation360ReadEnabled`  | `NONE` (TS router deleted)     | `NEXT_PUBLIC_EVALUATION360_READ_VIA_CSHARP`  | TS DELETED                                                                  |
 | `succession`          | read  | `SuccessionReadEnabled`     | `verify succession`            | `NEXT_PUBLIC_SUCCESSION_READ_VIA_CSHARP`     | CONFIRMED LIVE (partial TS deletion — 8/9 procedures, see cutover.sh)       |
 | `compensation`        | read  | `CompensationReadEnabled`   | `verify compensation`          | `NEXT_PUBLIC_COMPENSATION_READ_VIA_CSHARP`   | CONFIRMED LIVE (partial TS deletion — 5/7 read procedures, see cutover.sh)  |
-| `nine-box`            | read  | `NineBoxReadEnabled`        | `verify ninebox`               | `NEXT_PUBLIC_NINEBOX_READ_VIA_CSHARP`        | CONFIRMED LIVE (partial TS deletion — 7/11 read procedures, see cutover.sh) |
+| `nine-box`            | read  | `NineBoxReadEnabled`        | `verify ninebox`               | `NEXT_PUBLIC_NINEBOX_READ_VIA_CSHARP`        | TS DELETED (all 11 read procedures; surface kept C#-only — see cutover.sh)  |
 | `engagement`          | read  | `EngagementReadEnabled`     | `verify engagement`            | `NEXT_PUBLIC_ENGAGEMENT_READ_VIA_CSHARP`     | CONFIRMED LIVE (partial TS deletion — 8/14 read procedures, see cutover.sh) |
 | `dei`                 | read  | `DeiReadEnabled`            | `verify dei`                   | `NEXT_PUBLIC_DEI_READ_VIA_CSHARP`            | CONFIRMED LIVE (partial TS deletion — 9/11 read procedures, see cutover.sh) |
 | `audit-log`           | read  | `AuditLogReadEnabled`       | `NONE` (TS procedures deleted) | `NEXT_PUBLIC_AUDIT_LOG_READ_VIA_CSHARP`      | TS DELETED                                                                  |
