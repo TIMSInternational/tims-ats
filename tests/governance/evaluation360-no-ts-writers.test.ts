@@ -281,21 +281,42 @@ describe('evaluation360 tables have zero TypeScript writers (ownership flip #67 
           file: 'synthetic/raw.ts',
           text: 'await db.$executeRaw`INSERT INTO\n  "public"."rater_assignments" (id)\n  VALUES ($1)`;\n',
         },
+        {
+          // A delegate chain broken across lines the way Prettier breaks it. This is the case the
+          // old line-anchored scan could NOT see, and whose "proof" tested the regex directly on a
+          // JS string with an embedded \n instead of driving the scanner.
+          file: 'synthetic/wrapped.ts',
+          text: 'const rows = await tenantDb\n  .reviewCycle.findMany({ where: { organizationId } });\n',
+        },
         { file: 'synthetic/clean.ts', text: 'const total = counts.raterAssignments ?? 0;\n' },
+        {
+          // Prose that parses as receiver-dot-model if whitespace AFTER the dot is tolerated. Live at
+          // tests/evaluation360/evaluation360-router-self-service.test.ts:77.
+          file: 'synthetic/prose.ts',
+          text: '// not an RBAC grant. raterAssignment must stay OUT of scope\n',
+        },
       ];
 
-      expect(hits(planted, PRISMA_DELEGATE).map((h) => h.split(':')[0])).toContain('synthetic/writer.ts');
+      expect(hitsAcrossLines(planted, PRISMA_DELEGATE).map((h) => h.split(':')[0])).toContain('synthetic/writer.ts');
+      expect(
+        hitsAcrossLines(planted, PRISMA_DELEGATE).map((h) => h.split(':')[0]),
+        'a Prettier-wrapped delegate chain must be caught by the SCAN PATH, not merely by the regex',
+      ).toContain('synthetic/wrapped.ts');
       expect(hitsAcrossLines(planted, RELATION_WRITE).map((h) => h.split(':')[0])).toContain('synthetic/relation.ts');
       expect(hitsAcrossLines(planted, RAW_DML).map((h) => h.split(':')[0])).toContain('synthetic/raw.ts');
 
       // ...and the clean file is in none of them (the scanners discriminate, they do not just return
       // everything, which would be the other way to fake a pass).
       for (const h of [
-        ...hits(planted, PRISMA_DELEGATE),
+        ...hitsAcrossLines(planted, PRISMA_DELEGATE),
         ...hitsAcrossLines(planted, RELATION_WRITE),
         ...hitsAcrossLines(planted, RAW_DML),
       ]) {
         expect(h).not.toContain('synthetic/clean.ts');
+        // Prose must not trip it even under whitespace collapsing — that is what the
+        // no-whitespace-after-the-dot rule in PRISMA_DELEGATE buys, and it is why moving to a
+        // whole-file scan is safe here.
+        expect(h).not.toContain('synthetic/prose.ts');
       }
     });
 
@@ -319,7 +340,18 @@ describe('evaluation360 tables have zero TypeScript writers (ownership flip #67 
   });
 
   it('no TypeScript file reaches the three evaluation360 models through a Prisma delegate', () => {
-    const found = [...hits(SOURCES, PRISMA_DELEGATE), ...hits(SOURCES, BRACKET_DELEGATE)];
+    // hitsAcrossLines, NOT hits. The docblock on PRISMA_DELEGATE says a chain broken across lines
+    // (`tenantDb\n  .reviewCycle`) is a real formatting of a real delegate and must be caught — but
+    // `hits()` splits the file into lines BEFORE matching, so that form can never reach the regex
+    // intact. The control assertion "proving" it worked fed the regex a single JS string containing
+    // an embedded \n, which the scan path never produces: it certified a capability the tripwire did
+    // not have. Same defect, same week, as the calibration tripwire's relation-write scan.
+    //
+    // Safe under whitespace collapsing precisely because of this regex's design: it tolerates
+    // whitespace BEFORE the dot and never after, so collapsing `tenantDb\n  .reviewCycle` to
+    // `tenantDb .reviewCycle` still matches, while prose ("…RBAC grant. raterAssignment must…")
+    // still does not.
+    const found = [...hitsAcrossLines(SOURCES, PRISMA_DELEGATE), ...hitsAcrossLines(SOURCES, BRACKET_DELEGATE)];
     expect(
       found,
       `A TypeScript Prisma delegate touches an evaluation360 model. #54 deleted the orphaned TS\n` +
