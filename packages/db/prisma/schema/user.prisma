@@ -115,10 +115,12 @@ model User {
 
   // Nine Box
   nineBoxEvaluations           NineBoxEvaluation[]     @relation("NineBoxUser")
-  calibrationSessionsCreated   CalibrationSession[]    @relation("CalibrationCreator")
-  calibrationMemberships       CalibrationMember[]     @relation("CalibrationMemberUser")
-  calibrationEvaluated         CalibrationVote[]       @relation("CalibrationEvaluated")
-  calibrationVotes             CalibrationVote[]       @relation("CalibrationVoter")
+  // The four calibration back-relations (calibrationSessionsCreated, calibrationMemberships,
+  // calibrationEvaluated, calibrationVotes) were removed by ownership flip #70 — the three
+  // Calibration* models are gone and a surviving back-reference is a hard P1012. The FKs
+  // calibration_sessions.created_by_id / calibration_members.user_id /
+  // calibration_votes.{evaluated_user_id,voter_id} → users(id) still exist in the database; they are
+  // declared in services/Tims.Platform/db/flip-ddl/calibration.sql, not here.
 
   // Demographics (1:1, sensitive self-ID — see employee.prisma)
   demographics                 EmployeeDemographics?

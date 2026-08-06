@@ -18,56 +18,28 @@ model NineBoxEvaluation {
   @@map("nine_box_evaluations")
 }
 
-model CalibrationSession {
-  id          String    @id @default(uuid()) @db.Uuid
-  organizationId String @map("organization_id") @db.Uuid
-  period      String
-  status      String
-  scheduledAt DateTime? @map("scheduled_at")
-  completedAt DateTime? @map("completed_at")
-  createdById String    @map("created_by_id") @db.Uuid
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
-
-  creator User               @relation("CalibrationCreator", fields: [createdById], references: [id])
-  members CalibrationMember[]
-  votes   CalibrationVote[]
-
-  @@index([organizationId])
-  @@index([createdById])
-  @@map("calibration_sessions")
-}
-
-model CalibrationMember {
-  id        String   @id @default(uuid()) @db.Uuid
-  sessionId String   @map("session_id") @db.Uuid
-  userId    String   @map("user_id") @db.Uuid
-  status    String
-  createdAt DateTime @default(now()) @map("created_at")
-
-  session CalibrationSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  user    User               @relation("CalibrationMemberUser", fields: [userId], references: [id])
-
-  @@unique([sessionId, userId])
-  @@index([userId])
-  @@map("calibration_members")
-}
-
-model CalibrationVote {
-  id              String   @id @default(uuid()) @db.Uuid
-  sessionId       String   @map("session_id") @db.Uuid
-  evaluatedUserId String   @map("evaluated_user_id") @db.Uuid
-  voterId         String   @map("voter_id") @db.Uuid
-  quadrant        String
-  justification   String?
-  createdAt       DateTime @default(now()) @map("created_at")
-
-  session       CalibrationSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  evaluatedUser User               @relation("CalibrationEvaluated", fields: [evaluatedUserId], references: [id])
-  voter         User               @relation("CalibrationVoter", fields: [voterId], references: [id])
-
-  @@unique([sessionId, evaluatedUserId, voterId])
-  @@index([evaluatedUserId])
-  @@index([voterId])
-  @@map("calibration_votes")
-}
+// ── OWNERSHIP FLIP #70 (2026-08-06) — DO NOT RE-ADD THESE MODELS ───────────────────────────────
+//
+// `CalibrationSession` / `CalibrationMember` / `CalibrationVote` used to live here. The tables
+// `calibration_sessions`, `calibration_members` and `calibration_votes` STILL EXIST IN PRODUCTION
+// and still hold data — they are now owned by EF Core (`NineBoxWriteDbContext` /
+// `NineBoxReadDbContext` in services/Tims.Platform/src/Tims.Infrastructure/NineBox/), which is the
+// sole writer, sole reader and sole schema authority. See `efcore[]` in
+// docs/architecture/table-ownership.md and the §7d transcript in
+// docs/architecture/csharp-migration/ownership-flip-runbook.md.
+//
+// Re-adding a model here is a `cross-owner collision` in `scripts/table-ownership.mjs` (red build),
+// and it re-arms the §2 DROP TABLE hazard from the other direction.
+//
+// The repo's executable definition of the three tables now lives at
+// services/Tims.Platform/db/flip-ddl/calibration.sql (runbook §0 P8) — apply it after
+// `prisma db push` when bootstrapping a dev database.
+//
+// TENANCY, because it is non-standard and a "fix" would be a security regression:
+// `calibration_members` and `calibration_votes` have NO `organization_id` column. Their RLS is a
+// session-subquery policy (`EXISTS (SELECT 1 FROM calibration_sessions par WHERE par.id = session_id
+// AND par.organization_id = <GUC>)`) on BOTH `USING` and `WITH CHECK`. That `WITH CHECK` on the
+// session linkage IS the tenant guard, and the C# write entities deliberately carry no
+// `OrganizationId`. Do not normalise these tables.
+//
+// `NineBoxEvaluation` above is NOT part of this flip — `nine_box_evaluations` stays Prisma-owned.

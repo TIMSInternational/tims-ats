@@ -284,12 +284,20 @@ reason it was the better pilot; see §7.)_
 **column predicate** (`organization_id = …`) or a **subquery** (`EXISTS (SELECT 1 FROM parent …)`).
 `services/Tims.Platform/src/Tims.Domain/Rls/TenantRls.cs:18,31-32` hardcodes
 `OrgColumn = "organization_id"` and can only emit the column-predicate form, so
-**`EnableTenantRls()` structurally cannot serve a subquery-policy table.** Two tables in
-`efcoreStranglerWrite[]` are exactly that: `calibration_members` and `calibration_votes` have **no
-`organization_id` column at all** (`packages/db/prisma/schema/ninebox.prisma:41-77`) and their live
-policies are parent subqueries (`…/20260604100000_enable_rls_tenant_isolation/migration.sql:326,330`).
+**`EnableTenantRls()` structurally cannot serve a subquery-policy table.** `calibration_members` and
+`calibration_votes` are exactly that: they have **no `organization_id` column at all** and their live
+policies are parent subqueries over `calibration_sessions`
+(`packages/db/baseline/prod-public-schema.sql:7480-7499`; also
+`…/20260604100000_enable_rls_tenant_isolation/migration.sql:326,330`).
 See §3(e) for what goes wrong if the ledger's standing "ships its RLS block via `EnableTenantRls()`" rule
 is followed literally on those two.
+
+> **Updated 2026-08-06 by flip #3 (§7d).** These two were `efcoreStranglerWrite[]` when this paragraph
+> was written; they are now **`efcore[]`**, so the ledger rule applies to them for real rather than
+> prospectively. The carve-out has been written into `table-ownership.md` "The rule". The Prisma models
+> cited by the original text (`ninebox.prisma:41-77`) are deleted — the shape is now read from the
+> baseline or from `services/Tims.Platform/db/flip-ddl/calibration.sql`. `TenantRls.cs:10-13`'s docstring
+> still needs the same carve-out and did not get it (flip #3 touched no C# file).
 
 **P10 — EF write-value column-type compatibility, verified against `information_schema`.** For the table
 being flipped, **every** EF property must either pin `HasColumnType(...)` matching the live column type or
@@ -632,14 +640,21 @@ nothing trivially passes; and it is exercised against exactly one hardcoded file
 (`HrisMigrationRlsTests.cs:79-82` pins `20260716000000_hris_domain.cs`). The §5 live-DB assertion is the
 only real check the flip gets.
 
-**(e) `EnableTenantRls()` structurally cannot serve two of the sixteen `efcoreStranglerWrite[]` tables,
-and the ledger's standing rule tells you to use it anyway.** `docs/architecture/table-ownership.md:18`
+**(e) `EnableTenantRls()` structurally cannot serve two of the EF-owned tables, and the ledger's standing
+rule tells you to use it anyway.** `docs/architecture/table-ownership.md`
 ("The rule") says every EF-owned table "ships its RLS block via `EnableTenantRls()` (org-scoped tables
 only)" — and `TenantRls.cs`'s own docstring (`:10-13`) asserts "The emitted block matches the live Prisma
 policy (migration 20260604100000…)". **Both are untrue for `calibration_members` and `calibration_votes`:**
 
-- Neither table has an `organization_id` column at all — `packages/db/prisma/schema/ninebox.prisma:41-77`
-  gives them only `sessionId`/`userId`.
+> **HALF-CLOSED 2026-08-06 by flip #3 (§7d).** Both tables were `efcoreStranglerWrite[]` when this was
+> written; they are now `efcore[]`, so this stopped being prospective. `table-ownership.md`'s rule now
+> carries an explicit subquery-policy carve-out. **`TenantRls.cs:10-13` still does not** — flip #3
+> touched no C# file, so that half of side-quest 6 remains open. The reasoning below is unchanged.
+
+- Neither table has an `organization_id` column at all — read it from
+  `packages/db/baseline/prod-public-schema.sql` or `services/Tims.Platform/db/flip-ddl/calibration.sql`;
+  their Prisma models (formerly `packages/db/prisma/schema/ninebox.prisma:41-77`, which gave them only
+  `sessionId`/`userId`) were deleted by flip #3.
 - Their live policies are parent subqueries, not column predicates:
   `…/20260604100000_enable_rls_tenant_isolation/migration.sql:326` and `:330` —
   `USING (EXISTS (SELECT 1 FROM "calibration_sessions" par WHERE par.id = …session_id AND par.organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid))`.
@@ -656,11 +671,18 @@ the carve-out (side-quest list).
 **(f) A `REVOKE` decision must consider policies that _reference_ the flipped table, not only policies
 _on_ it.** Postgres evaluates an RLS policy expression **as the querying role**, and
 `packages/db/src/tenant-client.ts:41,74` drops every tenant operation to `SET LOCAL ROLE app_tenant`. So
-if `calibration_sessions` (also in `efcoreStranglerWrite[]`, and a plausible flip candidate **ahead of its
-children**) were flipped and then had `app_tenant`'s privileges revoked, the subquery policies on the
-still-Prisma-owned `calibration_members`/`calibration_votes` (`migration.sql:326,330`) could no longer
-evaluate — **breaking every Prisma read and write of those two tables**, neither of which is a reader of
-the flipped table.
+if `calibration_sessions` had `app_tenant`'s privileges revoked, the subquery policies on
+`calibration_members`/`calibration_votes` (`migration.sql:326,330`) could no longer
+evaluate — **breaking every read and write of those two tables**, neither of which is a reader of
+the parent.
+
+> **Still live after flip #3 (2026-08-06, §7d), and the reason its GRANTs were left alone.** This
+> paragraph was written as a hypothetical about flipping the parent ahead of its children. All three
+> flipped **together**, which removes the _Prisma-owned children_ half of the hazard but **not** the
+> hazard itself: the children's policies still subquery the parent, Postgres still evaluates them as the
+> querying role, and the C# strangler still queries as `app_tenant` via `TenantScope`'s
+> `SET LOCAL ROLE`. A `REVOKE` on `calibration_sessions` would therefore still break the children — now
+> for the C# stack instead of the TS one. §8 Q7 stays open for this trio deliberately.
 
 Standing rules, therefore:
 
@@ -1289,6 +1311,203 @@ open and still untouched; both flips deliberately avoided it.
 
 ---
 
+## 7d. Flip #3 — **EXECUTED**: `calibration_sessions` + `calibration_members` + `calibration_votes` (#70)
+
+> Executed 2026-08-06 on `feat/flip-calibration-ownership`, off `main` `efb7553f`. Code-only, no DDL.
+> This is a transcript, not a procedure. **Read the "not verified here" list at the end before treating
+> it as a completed flip** — four of §5's steps need a live database and did not run.
+
+### Why calibration, and what was different about it
+
+#57 (PR #144, merged minutes before this flip started) deleted `packages/api/src/routers/ninebox.ts`
+outright, taking `submitCalibrationVote` and `finalizeCalibration` — the last two TS writers — with it.
+That is the merge that unblocked #70, and it is the same shape as flip #2: the flip becomes possible the
+moment a _separate_ TS-deletion PR lands, not because anything in the flip itself removes a writer.
+
+Re-grepped at flip time rather than trusted from the issue (§0 preamble), and **all zero**:
+
+| Coupling category                                         | Count                                                  |
+| --------------------------------------------------------- | ------------------------------------------------------ |
+| Prisma delegate use (`.calibrationSession\|Member\|Vote`) | **0** (only the governance test's own quoted patterns) |
+| `Prisma.Calibration*` generated types                     | **0**                                                  |
+| access registry (`entity-policies` / `scoped-probe`)      | **0**                                                  |
+| `contracts/access-fixtures/scope-where.json`              | **0**                                                  |
+| `packages/db/src` enum re-exports                         | **0**                                                  |
+| `vi.mock('@tims/db')` delegate mocks                      | **0**                                                  |
+| `packages/db/prisma/seed-demo.ts`                         | **0**                                                  |
+
+**The single biggest difference from flip #2: calibration was never a `ScopedEntity`.** There is no
+`calibration` anywhere in `packages/api/src/access/` or `contracts/access-fixtures/`, so the
+`FlippedEntity` / `ProbeableEntity` / `DELEGATES` / `scope-where.json` machinery that dominated §7c
+**did not apply at all** and was deliberately not touched. A flip is not automatically the previous
+flip; re-derive the coupling table rather than porting it.
+
+`scripts/parity/seed.ts` and `scripts/parity/write-surfaces.ts` write and read all three tables, but via
+raw `pg` SQL, so they survive model deletion mechanically — the same disposition §7c gave them.
+`seed-demo.ts` needed **no** port because it never referenced calibration (contrast §7c, where it did):
+§8 **Q9's post-flip seed hazard simply does not arise for this domain.**
+
+### The non-standard tenancy, which is the real hazard here
+
+`calibration_members` and `calibration_votes` have **no `organization_id` column**. Their live
+`tenant_isolation` policy is a parent subquery over `calibration_sessions` on **both** `USING` and
+`WITH CHECK` (baseline `packages/db/baseline/prod-public-schema.sql:7480-7499`), and the C# write
+entities deliberately carry no `OrganizationId`. **That `WITH CHECK` on the session linkage IS the
+tenant guard.** Normalising these tables — adding `organization_id` to "fix" the asymmetry — would
+silently replace a working guard with an unenforced column. It was not done.
+
+This is the case §0 P9 and §3(e) were written for, and this flip is the one that makes them live:
+two `efcore[]` tables now exist that `EnableTenantRls()` **structurally cannot serve**. The ledger's
+standing rule (`table-ownership.md` "The rule") has been amended with an explicit carve-out in this PR —
+side-quest 6, closed for the ledger half. **Still open:** the same carve-out in `TenantRls.cs:10-13`'s
+docstring, which still claims "the emitted block matches the live Prisma policy". Not done here because
+this flip deliberately touched no C# file.
+
+### GRANTs — deliberately untouched, and why that is not laziness
+
+§8 **Q7 stays OPEN.** `app_tenant` keeps `SELECT,INSERT,UPDATE,DELETE` on all three tables. Revoking is
+**not** the safe default here, for two independent reasons:
+
+1. **The discriminator for `app_tenant` DML is RLS, not ownership.** The C# strangler writes _as_
+   `app_tenant` (`TenantScope.cs` → `SET LOCAL ROLE app_tenant`), so revoking DML on an RLS-protected
+   EF-owned table breaks production writes. That mistake was made once already (#126).
+2. **§3(f) applies literally and by name here.** `calibration_sessions` is _referenced by_ the subquery
+   policies on `calibration_members` and `calibration_votes`, and Postgres evaluates a policy expression
+   **as the querying role**. Revoking `app_tenant`'s `SELECT` on the parent breaks the children's
+   policies — the exact scenario §3(f) uses this table trio to illustrate.
+
+So the standing post-flip "expect dead privilege, consider a REVOKE" advice from §7/§7c **does not
+generalise to this trio**, and the ledger note says so.
+
+### DDL home + P8
+
+§4 option (c), same as flips #1 and #2: all three stay on the hand-applied SQL path; EF holds no
+migration and no snapshot. **P8 was live**, as it was for flip #2:
+`grep -rniE 'create table[^;]*calibration_' packages/db/prisma/migrations/ packages/db/prisma/manual/ services/Tims.Platform/db/`
+returned **nothing** — the only `CREATE TABLE`s were C# integration-test fixtures
+(`NineBoxReadFixture.cs`, `NineBoxWriteFixture.cs`), which no bootstrap path applies. So
+`services/Tims.Platform/db/flip-ddl/calibration.sql` was generated from the committed baseline
+**before** the models were deleted, and appears before them in the diff.
+
+**P10 (EF write-value compatibility), read from source:** `NineBoxWriteDbContext.cs:39-43,54` pins
+`HasColumnType("timestamp")` on `scheduled_at`, `completed_at`, `created_at`, `updated_at` and members'
+`created_at`, against prod's `timestamp(3) without time zone`. `calibration_votes` has **no EF write
+mapping at all** — `NineBoxWriteRepository.cs:187` upserts it with a parameterised raw
+`INSERT … ON CONFLICT`, binding `ToTimestamp()` (`:382-386`), which returns
+`DateTimeKind.Unspecified` truncated to whole milliseconds, so Npgsql sends `timestamp` at matching
+precision. Note this means the §5-step-5 ghost check resolves `calibration_votes` through
+`NineBoxReadDbContext.cs:116`, not through a write context.
+
+### The §2 warning, verbatim, for these three tables
+
+> **After this PR, `pnpm db:push` / `npx prisma db push` / `pnpm db:migrate` will DROP
+> `calibration_sessions`, `calibration_members` and `calibration_votes`, and
+> `prisma migrate diff --from-schema-datasource` will EMIT a `DROP TABLE` for each of them into every
+> migration script authored against a live DB.** Do not run any of them against a database that holds
+> real data — including preview and staging — and do not commit a generated migration script without
+> grepping it for `DROP`/`ALTER` on a flipped table, until these tables' Prisma models are restored or
+> the commands are guarded.
+
+`pnpm db:push` / `pnpm db:migrate` route through `scripts/db/guard-prod-ddl.sh`, which refuses a
+non-local host — but that guard covers neither the raw `npx prisma db push` form documented in
+`CLAUDE.md:32` nor the `migrate diff --from-schema-datasource` path at all. **Side-quests 8 and 9 are
+still open after three flips**: `docs/superpowers/plans/2026-07-08-company-entitlements-slice-1.md:130-137`
+still prescribes the unqualified `migrate diff --from-schema-datasource` recipe with no `--exclude-tables`
+and no mandatory `DROP` grep, and it now endangers **six** flipped tables instead of one.
+
+### Verification actually run
+
+| Check                                                  | Result                                                                   |
+| ------------------------------------------------------ | ------------------------------------------------------------------------ |
+| §5 step 1 — `node scripts/table-ownership.mjs`         | ✅ `table-ownership check passed.`                                       |
+| §5 step 1 — `tests/governance/table-ownership.test.ts` | ✅                                                                       |
+| §5 step 2 — `prisma validate` + `generate`             | ✅ no `P1012`; all three delegates absent from the generated client      |
+| §5 step 3 — `tsc` api + web                            | ✅ both exit 0                                                           |
+| §5 step 4 — `npx vitest run`                           | ✅ 291 files / 2746 tests, unchanged from `main`                         |
+| §5 step 5 — ghost `efcore[]` entries                   | ✅ `[]`; all three resolve to real EF `ToTable`s                         |
+| Mutation: restore one `user.prisma` back-relation      | ✅ observed `P1012` exit 1, then reverted                                |
+| Mutation: drop `calibration_votes` from `efcore[]`     | ✅ observed the inverted ledger assertion go red, then reverted          |
+| Mutation: hand-edit `calibration.sql`                  | ✅ observed `extract-table-ddl.test.ts` "stale or hand-edited", reverted |
+| Rollback — real `git revert`                           | ✅ see below                                                             |
+
+### Rollback — TESTED
+
+Real `git revert` of the flip commit, then the full set on the reverted tree: `prisma validate` clean
+(**all four `user.prisma` back-relations return with no `P1012`**), all three delegates reappear in the
+regenerated client, ledger check passed, api + web `tsc` clean, full vitest green. Then unwound with a
+second revert and the client regenerated. Pure revert is complete **because no DDL moved**.
+
+### §5 step 8 — RUN AND PASSED on a throwaway cluster
+
+**Correcting this section's own first draft**, which listed step 8 alongside the prod-credentialed steps
+and called all four "Federico-only". Step 8 is a *clean-checkout bootstrap*: it needs a scratch database,
+not production. Filing it as Federico-only would have burned a prod session on a check that never needed
+one — and left the artifact that is now the repo's ONLY executable definition of three production tables
+unexecuted. It was run instead (PostgreSQL 17.10, scratch cluster on TCP 55432-range, torn down after):
+
+| Step | Result |
+| ---- | ------ |
+| `prisma db push` on an empty DB | **0** `calibration_*` tables created — §0 P8 was live, confirmed empirically rather than by grep alone |
+| `psql -v ON_ERROR_STOP=1 -f calibration.sql` | exit **0** |
+| Re-apply (idempotency) | exit **0**, catalog state unchanged |
+| Structure | all 3 tables, `relrowsecurity = true`, exactly 1 policy each |
+| Policy text | `USING` and `WITH CHECK` match `prod-public-schema.sql:7480-7499` |
+
+A **functional** isolation probe was then run as a `NOBYPASSRLS` `app_tenant` role over two seeded orgs —
+and made non-vacuous first by confirming 2 sessions and 2 members actually existed, because "0 rows
+because isolation works" and "0 rows because the seed failed" are indistinguishable (the seed DID fail
+twice, on `users.supabase_user_id` and `calibration_members.status`, and the first probe run passed
+vacuously as a result):
+
+| Probe | Result |
+| ----- | ------ |
+| OrgA GUC set | sees exactly **1** session + **1** member of the 2 that exist |
+| **GUC unset** | **0** rows — fails closed; the #111 fail-open shape is not present |
+| OrgA inserts a member into OrgB's session | **REFUSED** — `new row violates row-level security policy` |
+
+That last row is the direct evidence for this flip's central claim: for `calibration_members` and
+`calibration_votes`, which have no `organization_id`, the session-linkage `WITH CHECK` **is** the tenant
+guard. Previously that was reasoning from the policy text; now it has been observed.
+
+> A caveat that survives: this proves the DDL reproduces prod's isolation **on a fresh database**. It says
+> nothing about whether prod's live shape still matches the baseline — that is §5 step 0, below.
+
+### NOT verified here — three §5 steps need the LIVE PRODUCTION database
+
+This environment has no prod credentials (local Prisma has been P1000 for weeks), so these remain
+Federico-only:
+
+- **§5 step 0 / `/gate` check 16** — schema-baseline drift, before and after. Every other check compares
+  the flip against an expected schema; this is the one that proves the expected schema is still real.
+  Flips #1 and #2 both ran it in both directions. **This flip did not.**
+- **§5 step 5b — `pre-flip-scan.ts`.** The important gap: **views, matviews and functions** referencing
+  the three tables are raw-SQL readers that survive model deletion and are invisible to `tsc`, to the
+  ownership check and to every P2 grep. Flip #2 found zero; that is not evidence about these tables.
+- **§5 step 6 — the live before/after shape diff** (RLS flags, policy set, grants, indexes, `n_tup_del`).
+  The DROP-TABLE tripwire.
+Run all three before merging. Steps 0 and 5b are the two that could still turn up a blocker.
+
+**Also not covered, and not fixable by any of the above:** §6 prescribes a pre-flip
+`pg_class.relfilenode` / `pg_indexes` / row-count snapshot as the only way to *detect* that a table was
+rebuilt under the §2 `db push` hazard during the watch window. No such snapshot was taken for these three
+tables, so this flip's "pure `git revert` is complete" claim rests on the premise that no DDL runs against
+them before the revert — a premise that is currently **assumed, not detectable**. Take the snapshot if the
+branch sits unmerged for any length of time.
+
+### What flip #3 adds over flips #1 and #2
+
+- The first flip whose tables' **RLS is a parent subquery**, which is what turns §3(e)/§3(f) and §0 P9
+  from warnings into the ledger's carve-out and the Q7 decision recorded above.
+- The first flip where a **test that pinned the pre-flip era had to be inverted** rather than left alone:
+  `tests/governance/calibration-no-ts-writers.test.ts`'s last case asserted the tables were _still_
+  `efcoreStranglerWrite`. Inverted, not deleted — post-flip it is the thing that catches a Prisma model
+  being quietly re-added, which nothing else does on its own. **Generalise this:** every flip should
+  expect to find at least one test written as "not yet" and should invert it, because deleting it
+  removes a guard exactly when the guard starts being useful.
+- The first flip to run with **none of §5's live-DB steps**, which is a gap, not a simplification.
+
+---
+
 ## 7b. The second flip — `surveys` + `survey_responses` (#64), still BLOCKED
 
 > Retained from the pre-execution draft. This is analysis for a _future_ flip, not a transcript.
@@ -1655,9 +1874,19 @@ No decision exists anywhere in the repo. Keeping it means "one writer" stays cod
 hardens the flip but breaks any residual Prisma read path and needs its own verification.
 **Scope correction (2026-08-02):** an earlier draft scoped the blast radius to direct **readers of** the
 flipped table. It must also cover tables whose **RLS policy references** the flipped table in a subquery —
-revoking `app_tenant`'s SELECT on a flipped `calibration_sessions` would break every Prisma read _and_
-write of the still-Prisma-owned `calibration_members`/`calibration_votes` (§3f). _Resolve:_ explicit
+revoking `app_tenant`'s SELECT on a flipped `calibration_sessions` would break every read _and_
+write of `calibration_members`/`calibration_votes` (§3f). _Resolve:_ explicit
 decision, recorded in the ledger, before flip #2 — preceded by the `pg_policy` reference scan in §3(f).
+
+> **Answered for ONE trio, still open in general — flip #3, 2026-08-06 (§7d).** For
+> `calibration_sessions` / `calibration_members` / `calibration_votes` the decision is recorded in the
+> ledger as **KEEP the grant**, and it is not a deferral: (1) the C# strangler writes _as_ `app_tenant`
+> (`TenantScope` → `SET LOCAL ROLE`), so ownership is not the discriminator for DML — RLS is, and
+> revoking here breaks production writes exactly as #126 did; (2) §3(f) applies by name, since the
+> children's policies subquery the parent and are evaluated as the querying role. **Do not generalise
+> §7/§7c's "expect dead privilege, consider a REVOKE" to this trio.** The general question — for tables
+> whose C# owner uses the _privileged_ connection, like `access_reviews` — is unchanged and still open
+> as #126.
 
 **Q8 — Is the `efcoreStranglerWrite` → `efcore` move supposed to be gated on a runtime flag being live
 first?** Every ledger list change is a pure text edit with no link to `Platform:*Enabled` config, and no
@@ -1668,6 +1897,12 @@ the flip PR opens**, which is exactly the P1 precondition.
 **Q9 — Is `packages/db/prisma/seed-demo.ts` ever run against a live environment?** Its writes to four
 strangler tables are a post-flip hazard only if so. Invocation wiring not found. _Resolve:_ grep CI/ops
 scripts; ask Federico.
+
+> **Not applicable to flip #3 (2026-08-06, §7d) — checked, not assumed.** `seed-demo.ts` has **zero**
+> occurrences of `calibration`, so none of the three flipped tables was ever seeded there and nothing
+> needed porting. Contrast flip #2, where `seed-demo.ts:913-945` did write the flipped tables and was
+> ported to raw SQL. The question itself stays open for `surveys`/`survey_responses` and the
+> compensation pair.
 
 **Q10 — Is `salary_bands` writer-free?** It is joined from `employee_compensations`
 (`compensation.service.ts:71`) and read at `compensation.ts:129`, but it is not in the flip-ready set and
@@ -1700,12 +1935,14 @@ Cheap, in-scope, and each one prevents a future reader from being misled:
    "grep-confirmed nothing outside `packages/api/src/routers/succession.ts` touches
    critical_roles/successors", but `packages/db/prisma/seed-demo.ts:914,919,932` also uses those
    delegates.
-6. **Carve out the subquery-policy tables from the `EnableTenantRls()` rule.**
-   `docs/architecture/table-ownership.md:18` ("ships its RLS block via `EnableTenantRls()`") and
-   `services/Tims.Platform/src/Tims.Domain/Rls/TenantRls.cs:10-13` ("The emitted block matches the live
-   Prisma policy") are both **false for `calibration_members` / `calibration_votes`**, which have no
-   `organization_id` column (§3e). Amend both, and state that following the rule literally on those two
-   leaves a FORCE-RLS table with zero policies.
+6. **Carve out the subquery-policy tables from the `EnableTenantRls()` rule.** — **HALF DONE 2026-08-06
+   (flip #3, §7d).** `docs/architecture/table-ownership.md` ("ships its RLS block via
+   `EnableTenantRls()`") now carries the carve-out, with the FORCE-RLS-with-zero-policies failure mode
+   spelled out. **Still open:** `services/Tims.Platform/src/Tims.Domain/Rls/TenantRls.cs:10-13` ("The
+   emitted block matches the live Prisma policy") is still false for `calibration_members` /
+   `calibration_votes`, which have no `organization_id` column (§3e). Flip #3 touched no C# file, so it
+   was left. This is now more urgent than when it was written, because both tables are `efcore[]` and
+   the rule applies to them for real.
 7. **Guard `cutover.sh --rollback`.** Make it refuse for surfaces whose status is TS_DELETED or flipped
    — on those it unmaps endpoints the FE calls unconditionally, i.e. it is an outage button, not a rewind
    (§6). Surface that status in `--list` too.

@@ -373,7 +373,8 @@ Scopes: `own` | `team` | `unit` | `company` | `organization`
 > The behaviour is served by C# — `services/Tims.Platform/src/Tims.Api/NineBox/NineBoxReadEndpoints.cs`
 > and `NineBoxWriteEndpoints.cs`, behind `Platform:NineBoxReadEnabled` / `Platform:NineBoxWriteEnabled`.
 > **13.8 `submitCalibrationVote` and 13.9 `finalizeCalibration` matter most here:** their absence from
-> TypeScript is the precondition for ownership flip #70, pinned by
+> TypeScript was the precondition for ownership flip #70, which **EXECUTED 2026-08-06** — the three
+> `calibration_*` tables are now `efcore`-owned and their Prisma models are deleted. Still pinned by
 > `tests/governance/calibration-no-ts-writers.test.ts`. Reading this table as evidence that a TS writer
 > of `calibration_votes` / `calibration_sessions` still exists is exactly backwards.
 >

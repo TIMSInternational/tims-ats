@@ -15,7 +15,8 @@ import { learningRouter } from './routers/learning';
 // Its last 6 procedures (getAxisBreakdown, getMovementHistory, simulate, getQuadrantPlan,
 // submitCalibrationVote, finalizeCalibration) all had zero FE consumers and live C# equivalents
 // behind Platform__NineBox{Read,Write}Enabled — see NineBoxRead/WriteEndpoints.cs. Deleting the two
-// writes leaves calibration_sessions/_members/_votes with zero TS writers, which is what #70 needs.
+// writes left calibration_sessions/_members/_votes with zero TS writers, which is what #70 needed —
+// flip #70 EXECUTED 2026-08-06, so those three tables are now efcore-owned with no Prisma model.
 // TS-deletion 2026-08-03 (#58): the succession router is GONE. Its last 4 procedures
 // (getCriticalRole, addCriticalRole, removeSuccessor, updateSuccessorReadiness) all had
 // zero FE consumers and live C# equivalents behind Platform__Succession{Read,Write}Enabled
