@@ -14,15 +14,26 @@ describe('renderReport', () => {
     expect(r.text).toContain('cross-tenant leak');
   });
 
-  it('empty results: allGreen true (vacuous pass), text still renders', () => {
+  // 2026-08-05 (#59): this used to assert `allGreen === true` and called it a "vacuous pass" in its
+  // own name. `allGreen` IS the process exit code (cli.ts cmdCheck/cmdVerifyWrite), so a surface that
+  // produced no checks exited 0 with a clean summary — "nothing ran" was indistinguishable from
+  // "everything passed". Zero results is now a FAILURE that says so.
+  it('empty results: allGreen FALSE and the text says no checks ran', () => {
     const r = renderReport([]);
-    expect(r.allGreen).toBe(true);
-    expect(typeof r.text).toBe('string');
+    expect(r.allGreen).toBe(false);
+    expect(r.text).toContain('NO CHECKS RAN');
+    expect(r.text).toContain('NOT a pass');
   });
 
   it('includes role in the line for rbac results', () => {
     const r = renderReport([
-      { check: 'rbac', endpoint: 'dashboard-kpis', role: 'hrbp', ok: false, detail: "rbac: role 'hrbp' expected 403 but got 200" },
+      {
+        check: 'rbac',
+        endpoint: 'dashboard-kpis',
+        role: 'hrbp',
+        ok: false,
+        detail: "rbac: role 'hrbp' expected 403 but got 200",
+      },
     ]);
     expect(r.text).toContain('hrbp');
     expect(r.text).toContain('FAIL');

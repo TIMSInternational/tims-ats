@@ -4,7 +4,22 @@ import { ID_SENTINEL } from './ids';
 export interface EndpointDef {
   name: string;
   csharpPath: string;
-  tsProcedure: string;
+  /** The tRPC procedure to diff the C# response against.
+   *
+   *  OPTIONAL (2026-08-05, #59). Absent ⇒ **the TS side of this endpoint has been deleted**, so a
+   *  parity diff is impossible — there is nothing left to compare against. The endpoint stays
+   *  registered anyway because the OTHER two checks do not need a TS side at all: `rls` and `rbac`
+   *  call C# only (`cli.ts` `runChecks`), so keeping the entry preserves real cross-tenant IDOR and
+   *  permission-gate coverage of a live C# route.
+   *
+   *  The previous house pattern was to DELETE the whole surface once its last TS procedure went
+   *  (billing-invoices 2026-07-31, succession-read 2026-08-03 — see surfaces.test.ts). That silently
+   *  dropped those surfaces' RLS + RBAC coverage too, which was never the intent; this field exists
+   *  so a TS deletion costs exactly the parity check and nothing else.
+   *
+   *  `cli.ts` prints a loud NOT-RUN line to stderr for every skipped endpoint, and a check command
+   *  that ends up producing ZERO results fails (renderReport) rather than reporting green. */
+  tsProcedure?: string;
   input: unknown;
   /** Set on a by-id (Tier-2) endpoint — its value is the SeedResources key (seed.ts)
    *  naming which resource id pair to thread: the org-A id is substituted into the
@@ -62,7 +77,7 @@ export const SURFACES: Record<string, Surface> = {
   // DELETED (NEXT_PUBLIC_COMPENSATION_READ_VIA_CSHARP confirmed live in prod) — salary-bands,
   // benefits-utilization, compa-ratio-distribution, pending-adjustments and my-compensation are
   // REMOVED below (no TS side left to diff against for any of them). The 2 that survive
-  // (market-comparison, employee) map to the router's zero-FE-consumer procedures, which stay live
+  // (market-comparison, employee) mapped to the router's zero-FE-consumer procedures, which stayed live
   // — pre-existing dead code unrelated to this migration — so `verify compensation` still runs 2
   // REAL parity/RLS/RBAC checks, not a no-op. One flag Platform:CompensationReadEnabled still gates
   // the C# side for all 7 backend endpoints; only these 2 have a TS side left to compare against.
@@ -78,6 +93,17 @@ export const SURFACES: Record<string, Surface> = {
   //
   // RBAC (seed grants hr_admin compensation:read@org, hrbp @unit): market-comparison is a grant-only
   // org-catalog read → hrbp 200; employee is subject-scoped → hrbp 403 (target ∉ its subject set).
+  //
+  // UPDATE 2026-08-05 (#59): the LAST 2 TS-backed compensation procedures — getMarketComparison and
+  // getEmployeeComp — were deleted along with the whole router (all 4 survivors were zero-FE-consumer
+  // dead code). Both endpoints therefore drop `tsProcedure` and their PARITY check no longer runs.
+  //
+  // The surface is deliberately KEPT rather than removed (the billing-invoices / succession-read
+  // precedent). `rls` and `rbac` never touch the TS side — removing the surface would have thrown away
+  // a live Mode-A cross-tenant IDOR probe on /compensation/employee/{id} plus 6 RBAC assertions on two
+  // live C# routes, for no reason connected to the TS deletion. `verify compensation` still runs 2 RLS
+  // + 6 RBAC checks; `parity compensation` now produces zero results and FAILS loudly (see
+  // renderReport) instead of reporting a vacuous green.
   compensation: {
     key: 'compensation',
     flag: 'Platform__CompensationReadEnabled',
@@ -87,18 +113,19 @@ export const SURFACES: Record<string, Surface> = {
       {
         name: 'market-comparison',
         csharpPath: '/compensation/market-comparison',
-        tsProcedure: 'compensation.getMarketComparison',
+        // tsProcedure: DELETED 2026-08-05 (#59) — was 'compensation.getMarketComparison'.
         input: {},
         expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 200 },
         normalize: { dropNullish: true, sortArraysBy: 'level' },
       },
-      // Tier-2 by-id: getEmployeeComp = permissionProcedure('compensation','read') + assertSubjectInScope.
-      // Org-A target = a:hr_admin (has a comp row). super_admin bypass → 200; hr_admin reads its own id →
-      // 200; hrbp @unit → the target ∉ its subject set → 403. Mode-A IDOR: org-A token → org-B b:hr_admin id.
+      // Tier-2 by-id: was getEmployeeComp = permissionProcedure('compensation','read') +
+      // assertSubjectInScope. Org-A target = a:hr_admin (has a comp row). super_admin bypass → 200;
+      // hr_admin reads its own id → 200; hrbp @unit → the target ∉ its subject set → 403. Mode-A IDOR:
+      // org-A token → org-B b:hr_admin id. All of that is C#-side and still runs.
       {
         name: 'employee',
         csharpPath: '/compensation/employee/{id}',
-        tsProcedure: 'compensation.getEmployeeComp',
+        // tsProcedure: DELETED 2026-08-05 (#59) — was 'compensation.getEmployeeComp'.
         input: { userId: ID_SENTINEL },
         idScopeKey: 'employee',
         expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },

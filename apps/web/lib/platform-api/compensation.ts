@@ -23,10 +23,14 @@
 // re-sourced from the @tims/shared kernels the C# port is golden-fixtured against (same as the
 // first 7), because no tRPC procedure remains to infer them from.
 //
-// NOT WRAPPED AT ALL: getPayEquity (compensation's own — distinct from the DEI domain's
+// NEVER WRAPPED, NOW DELETED: getPayEquity (compensation's own — distinct from the DEI domain's
 // `dei.getPayEquity`, wrapped in platform-api/dei.ts), simulateAdjustment, getMarketComparison and
-// getEmployeeComp have zero FE call sites and get no hook here; their TS procedures stay live and
-// untouched.
+// getEmployeeComp had zero FE call sites and never got a hook here. Their TS procedures — and the
+// whole `packages/api/src/routers/compensation.ts` router plus `services/compensation.service.ts` —
+// were DELETED on 2026-08-05 (#59). Nothing in this file changes: it never called them. The C#
+// equivalents (GET /compensation/pay-equity, /compensation/simulate-adjustment,
+// /compensation/market-comparison, /compensation/employee/{userId}) remain mounted and are still
+// covered by the parity harness's RLS + RBAC checks.
 //
 // FIELD-AUTH NUANCE (my-compensation + pending-adjustments): the C# OpenAPI types these 200 bodies as
 // free-form `object` (JsonObject / oneOf[null,object]) — the field-authed shape is dynamic (restricted
@@ -100,10 +104,14 @@ interface PendingAdjustmentRow {
 }
 type PendingAdjustmentsOutput = PendingAdjustmentRow[];
 
-// Mirrors EmployeeCompDto (packages/api/src/services/compensation.service.ts:33-40), which is NOT
-// re-exported from @tims/api's entrypoint (package.json main/types = ./src/root.ts, which exports
-// only the router + AppRouter) — so it is hand-declared here rather than imported. Same field-auth
-// key-absence semantics as PendingAdjustmentRow above.
+// Mirrors the shape the deleted `EmployeeCompDto` described (was
+// packages/api/src/services/compensation.service.ts — the whole service went with the router on
+// 2026-08-05, #59). It was already hand-declared here rather than imported (the type was never
+// re-exported from @tims/api's entrypoint: package.json main/types = ./src/root.ts, which exports only
+// the router + AppRouter), so the deletion does not change this file's contract. The authoritative
+// shape is now the C# GET /compensation/employee/{userId} response
+// (CompensationReadEndpoints.cs:235). Same field-auth key-absence semantics as PendingAdjustmentRow
+// above: an unentitled key is ABSENT, not null.
 interface MyCompensationDto {
   userId: string;
   currency?: string;

@@ -37,10 +37,25 @@ function renderLine(r: CheckResult): string {
 }
 
 /**
- * Pure report renderer: no I/O, no process access. `allGreen` is true iff every
- * result is `ok` (vacuously true for an empty result set — nothing failed).
+ * Pure report renderer: no I/O, no process access. `allGreen` is true iff at least one check ran AND
+ * every result is `ok`.
+ *
+ * The zero-results case is a FAILURE, not a pass (changed 2026-08-05, #59). It used to return
+ * `allGreen: true` — `[].every(...)` is vacuously true — and `cmdCheck`/`cmdVerifyWrite` turn
+ * `allGreen` straight into the process exit code, so a surface that produced no checks at all exited
+ * 0 and printed a clean summary. That is indistinguishable from "everything passed" for the caller,
+ * and it is reachable: an endpoint list that is empty, or (since #59) a `parity` run where every
+ * endpoint had its TS side deleted and was skipped. A control that cannot run must report that it did
+ * not run — it must never render as green.
  */
 export function renderReport(results: CheckResult[]): { text: string; allGreen: boolean } {
+  if (results.length === 0) {
+    return {
+      text: 'NO CHECKS RAN — 0 results. This is NOT a pass: every endpoint was skipped or the surface has no endpoints.',
+      allGreen: false,
+    };
+  }
+
   const allGreen = results.every((r) => r.ok);
   const passCount = results.filter((r) => r.ok).length;
   const failCount = results.length - passCount;

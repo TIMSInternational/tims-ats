@@ -185,9 +185,27 @@ authorization and the **same** fail-closed `logDataAccess` policy (`packages/api
 and must **re-anchor** the corresponding tripwire rather than delete it. The repo-side guard for these is
 a source-**count** tripwire (e.g. `tests/access/scope-wiring-sensitive-data.test.ts` asserting
 `entity: 'employeeCompensation'` occurrences `>= 2`), so removing readers removes the guarantee _and_ its
-alarm with a green suite. Note also that `employee_compensations` has **four** Prisma read sites, not the
-one P3 cites: `routers/compensation.ts:30`, `routers/compensation.ts:80`,
-`services/compensation.service.ts:62`, and `routers/platform/data-requests.ts:94`.
+alarm with a green suite.
+
+> **UPDATE 2026-08-05 (#59) — three of the four `employee_compensations` read sites are gone, and the
+> count tripwire has been re-anchored.** The list used to read: `routers/compensation.ts:30`,
+> `routers/compensation.ts:80`, `services/compensation.service.ts:62`, and
+> `routers/platform/data-requests.ts:94`. The first three were deleted with the whole compensation
+> router + service (all 4 surviving procedures were zero-FE-consumer dead code with live C#
+> equivalents). **`routers/platform/data-requests.ts:94` is the ONLY Prisma reader left.**
+>
+> This is exactly the failure this paragraph predicts, so it was handled the way this paragraph
+> demands. The `>= 2` occurrence count could not survive (there is no longer a second occurrence to
+> count) and was NOT quietly lowered to `>= 0`, nor rewritten to read the deleted files with a
+> `?? ''` fallback — either would have been a tick against an empty input. It was replaced with the
+> **era-independent** form of the same §21 rule, in the same file: _every_ `packages/api/src` file
+> that reads `employeeCompensation` must also write an audit record in that same file
+> (`logDataAccess(` or `db.auditLog.create(`), and the reader count must be `>= 1` so a zero-reader
+> repo FAILS instead of passing vacuously. That invariant keeps working no matter which file the
+> next reader lives in — including a C#-era reader that has not been written yet.
+>
+> `data-requests.ts:94` audits via `db.auditLog.create` with `action: 'data_subject_export'`, not via
+> `logDataAccess`, which is why the invariant accepts both forms.
 
 **Do not** convert a Prisma read to `$queryRaw` to make `tsc` pass. `scripts/table-ownership.mjs` is
 blind to raw SQL (§1, discovery), so this silently reintroduces a second reader of an EF-owned table
@@ -195,10 +213,19 @@ with zero CI signal. It is the single easiest way to make this runbook worthless
 
 **P3 — Cross-stack relation joins identified.** A flipped table joined to a Prisma-owned table in one
 query cannot stay one query. `survey_responses ⋈ users` (§7) and `employee_compensations ⋈ salary_bands`
-(`packages/api/src/services/compensation.service.ts:71` — **one of four** `employeeCompensation` read
-sites; see the P2 note) are both real. Either flip both tables together
-or denormalize into the C# read model. Tables that are joined and _both_ flip-ready must flip in the
-same PR.
+(was `packages/api/src/services/compensation.service.ts:71`) are both real. Either flip both tables
+together or denormalize into the C# read model. Tables that are joined and _both_ flip-ready must flip in
+the same PR.
+
+> **UPDATE 2026-08-05 (#59): the `employee_compensations ⋈ salary_bands` join no longer exists in TS.**
+> `compensation.service.ts` was deleted, and with it the `band: { select: … }` relation traversal at
+> :71. The two direct `db.salaryBand` reads (`routers/compensation.ts:128` `findUnique` and :175
+> `findMany`) went with the same deletion. **No `packages/api` source reads `salaryBand` at all any
+> more** (grep `salaryBand\.` over `packages apps tests scripts workers services`, 2026-08-05 — the
+> only remaining TS hit is `packages/db/prisma/seed-demo.ts:1856,1863`). The surviving
+> `employee_compensations` reader, `routers/platform/data-requests.ts:94`, does NOT traverse `band`.
+> So this specific cross-stack join is no longer a #66 blocker — the `survey_responses ⋈ users` one
+> (#64) is unaffected.
 
 **P4 — Live RLS/GRANT inventory taken** for each table (§3). Not read from the migration source — read
 from `pg_policy` / `pg_class` / `information_schema.role_table_grants` on prod.
@@ -1530,6 +1557,47 @@ Then, functionally:
 
 ---
 
+## 7d. Flip #66 (`employee_compensations` + `salary_adjustments`) — remaining blocker set
+
+Recorded 2026-08-05 while closing #59. **#66 is NOT ready today**, and issue #59's body says the
+opposite ("this does not block an ownership flip … #66 is ready today"). That claim is true about
+_writers_ and misleading about the _flip_: `salary_adjustments` and `employee_compensations` do have
+zero TS writers outside `packages/db/prisma/seed-demo.ts`, but P2 requires every surviving Prisma
+**reader** to be dispositioned before the Prisma models can be deleted, and readers are what remain.
+
+**Dispositioned by #59 (2026-08-05) — 3 of the original 5 `employeeCompensation` readers:**
+
+| Was                                                    | Disposition                                                                                                            |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| `packages/api/src/routers/compensation.ts:30`          | DELETED (`getPayEquity`) → C# `GET /compensation/pay-equity`                                                           |
+| `packages/api/src/routers/compensation.ts:80`          | DELETED (`simulateAdjustment`) → C# `GET /compensation/simulate-adjustment`                                            |
+| `packages/api/src/services/compensation.service.ts:62` | DELETED (`getEmployeeCompForSubject`, orphaned when `getEmployeeComp` went) → C# `GET /compensation/employee/{userId}` |
+
+**Still blocking — 2 readers, in 2 different domains, neither in #59's scope:**
+
+1. **`packages/api/src/routers/platform/data-requests.ts:94`** — `employeeCompensation.findMany`, inside
+   the platform-owner GDPR / Colombian Habeas-Data **right-of-access export**. It bundles salary +
+   currency + effective date alongside `employeeDemographics` (gender, ethnicity, nationality,
+   disability status, DOB) for a subject matched **by email across every organization** — the query is
+   deliberately NOT `organizationId`-filtered, which is precisely why it cannot be served by a
+   `TenantScope`/RLS-scoped EF read. It is audited via `db.auditLog.create` with
+   `action: 'data_subject_export'` (not `logDataAccess`).
+   **No open GitHub issue tracks this reader.** It is the same shape of prerequisite as Q0b's
+   "privileged cross-org read" for the alert cron, and it needs its own slice before #66 can land.
+
+2. **`packages/api/src/routers/monitoring.ts:22` → `packages/api/src/repositories/alert-evaluation.repository.ts:115`**
+   — `salaryAdjustment.count`, the alert-metric evaluation path. Same table family, different domain;
+   tracked under the monitoring work in Q0b, not here.
+
+**No longer blocking (was P3):** the `employee_compensations ⋈ salary_bands` cross-stack join is gone —
+see the P3 update in §0. And `salary_bands` itself is application-writer-free (Q10, resolved).
+
+**Not a blocker but part of the flip PR:** the §21 field-auth + FULL+AUDIT tripwire for
+`employeeCompensation` was re-anchored, not deleted — see the P2 update in §0 for what it now asserts
+and why.
+
+---
+
 ## 8. Open questions
 
 Ordered by how much they block the first flip.
@@ -1648,10 +1716,36 @@ the flip PR opens**, which is exactly the P1 precondition.
 strangler tables are a post-flip hazard only if so. Invocation wiring not found. _Resolve:_ grep CI/ops
 scripts; ask Federico.
 
-**Q10 — Is `salary_bands` writer-free?** It is joined from `employee_compensations`
-(`compensation.service.ts:71`) and read at `compensation.ts:129`, but it is not in the flip-ready set and
-its writers were never audited. If it is not flip-ready, `employee_compensations` cannot flip cleanly
-(§0 P3). _Resolve:_ run the P1 grep against it.
+**Q10 — ~~Is `salary_bands` writer-free?~~ → RESOLVED: YES, in application code (#59, 2026-08-05).**
+The P1 grep was run over `packages apps tests scripts workers services` for both the Prisma delegate
+(`salaryBand.`) and raw SQL (`salary_bands` + INSERT/UPDATE/DELETE). **Zero application writers.** The
+four writers that exist are all non-production:
+
+| Writer                                                                                  | What it is                                 |
+| --------------------------------------------------------------------------------------- | ------------------------------------------ |
+| `packages/db/prisma/seed-demo.ts:1863` (`db.salaryBand.create`)                         | demo seed (see Q9 — invocation unverified) |
+| `scripts/parity/seed.ts:711` (`INSERT INTO salary_bands`) and `:2449` (`DELETE FROM …`) | parity-harness fixture seed/teardown       |
+| `services/…/IntegrationTests/Compensation/CompensationReadFixture.cs:267`               | C# integration-test fixture                |
+| `services/…/IntegrationTests/Succession/SuccessionReadFixture.cs:295`                   | C# integration-test fixture                |
+
+Two corrections to how this was previously scoped:
+
+- **A `salaryBand.` delegate grep alone is not sufficient** — it misses `scripts/parity/seed.ts`, which
+  writes `salary_bands` in raw SQL. That is the same blind spot §1 warns about for
+  `scripts/table-ownership.mjs`. Grep the **table name** as well as the delegate.
+- **The premise of the question has also changed.** `salary_bands` is no longer joined from
+  `employee_compensations` anywhere in TS, and is no longer read anywhere in `packages/api`:
+  `compensation.service.ts:71` (the `band` relation traversal), `compensation.ts:129`
+  (`salaryBand.findUnique`) and `compensation.ts:175` (`salaryBand.findMany`) were ALL deleted with the
+  compensation router + service on 2026-08-05 (#59). So `salary_bands` no longer constrains
+  `employee_compensations`' flip via §0 P3 at all.
+
+**Writer-free is not the same as flip-ready, and this answer is not a licence to REVOKE.** Per the
+2026-08-04 flip-#2 finding, the discriminator is **RLS, not ownership**: the C# strangler writes AS
+`app_tenant` via `TenantScope.cs:46`, so DML must never be revoked on an RLS-protected EF table.
+`packages/db/baseline/prod-public-schema.sql:8672` shows prod currently grants
+`SELECT,INSERT,DELETE,UPDATE ON public.salary_bands TO app_tenant`. Whether that stays is Q7's decision,
+not Q10's.
 
 **Q11 — Does the repo's Prisma migration for `assessment_norm_scoring` byte-match what the Supabase
 migration `20260801041056_assessment_norm_scoring` actually applied?** If those two paths can diverge,

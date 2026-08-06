@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'fs';
+import { readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { suppressBelowMin5, aggregateGroups } from '../../packages/api/src/access/aggregate';
 
@@ -12,7 +12,10 @@ import { suppressBelowMin5, aggregateGroups } from '../../packages/api/src/acces
 // follow-on; this slice only suppresses small (1..4) buckets.
 
 const ROOT = join(__dirname, '..', '..');
-const readComp = () => readFileSync(join(ROOT, 'packages/api/src/routers/compensation.ts'), 'utf8');
+// TS-DELETION 2026-08-05 (#59): `readComp` (packages/api/src/routers/compensation.ts) and
+// `readCompAudited` (+ services/compensation.service.ts) are GONE — both files were deleted with the
+// last 4 zero-FE-consumer compensation procedures. The guarantees they guarded now live in the shared
+// kernels below (still read here) and in the C# implementation + its tests.
 // Phase-5 Slice 9 (compensation strangler): the compa-ratio min-5 distribution + benefits utilization are
 // pure @tims/shared kernels golden-fixtured against the C# port (contracts/compensation-fixtures). Their TS
 // router procedures were DELETED on 2026-07-29 (C#-only now), so the router no longer calls either kernel —
@@ -23,14 +26,6 @@ const readComp = () => readFileSync(join(ROOT, 'packages/api/src/routers/compens
 // buildBandDistribution/buildTotalCompBreakdown/buildCompDashboardKpis either — same kernel-only tripwire
 // pattern applies to all five now.
 const readCompKernel = () => readFileSync(join(ROOT, 'packages/shared/src/compensation.ts'), 'utf8');
-// The per-person employeeCompensation read (selectFor + FULL+AUDIT logDataAccess)
-// lives in the shared compensation.service.ts helper (getEmployeeCompForSubject),
-// used by compensation.getEmployeeComp (its second caller, compensation.myCompensation,
-// was deleted 2026-07-29). Audit-guarantee tripwires that count the employeeCompensation
-// audit path read the router + service together so the guarantee is enforced wherever
-// the code physically lives.
-const readCompAudited = () =>
-  readComp() + readFileSync(join(ROOT, 'packages/api/src/services/compensation.service.ts'), 'utf8');
 const readDeiService = () => readFileSync(join(ROOT, 'packages/api/src/services/dei.service.ts'), 'utf8');
 // Slice-11b: the demographic-distribution / dashboard-KPI / leadership / inclusion min-5 suppression was extracted
 // VERBATIM into the shared @tims/shared dei kernel (golden-fixtured both stacks); the service now DELEGATES to it.
@@ -64,14 +59,21 @@ describe('compensation aggregate buckets honor min-5', () => {
   it('a bucket exactly at the floor (5) is not suppressed', () => {
     expect(suppressBelowMin5(5)).toEqual({ suppressed: false, count: 5 });
   });
-  // The router's own suppressBelowMin5 import was dropped once getBandDistribution/
-  // getTotalCompBreakdown/getDashboardKpis — its only callers — were TS-deleted 2026-07-31 (the FX
-  // flag went permanently live); getPayEquity delegates to buildCompPayEquity, which imports the
-  // helper itself. The guarantee now lives entirely in packages/shared/src/compensation.ts, guarded
-  // by the kernel-level tripwires below + tests/compensation/comp-fx-shaping-fixtures.test.ts.
-  it('compensation keeps requireOrgScope on aggregates (defense in depth)', () => {
-    const src = readComp();
-    expect(src).toMatch(/requireOrgScope\(ctx\.access\)/);
+  // TS-DELETION 2026-08-05 (#59): the "compensation keeps requireOrgScope on aggregates" source
+  // tripwire read packages/api/src/routers/compensation.ts, which no longer exists — getPayEquity was
+  // its last requireOrgScope caller and was deleted with the rest of the router. The org-gate for the
+  // C# pay-equity read is asserted server-side (Platform__FxReadsEnabled surface) and by the parity
+  // harness's RBAC check, not by a TS grep.
+  //
+  // The min-5 floor itself is unaffected and BETTER covered than the grep ever was: the
+  // buildCompPayEquity kernel is asserted behaviourally against the shared golden fixture
+  // contracts/compensation-fixtures/pay-equity.json (case "1..4 suppresses count+avg+median") by
+  // tests/compensation/comp-fx-shaping-fixtures.test.ts:51 on the TS side and by the C# port's
+  // CompensationKernels tests on the other.
+  it('buildCompPayEquity nulls count + both salary stats for a 1..4 population (kernel, min-5)', () => {
+    const k = readCompKernel();
+    expect(k).toMatch(/suppressBelowMin5\(convertedSalaries\.length\)/);
+    expect(k).toMatch(/averageSalary:\s*null,\s*medianSalary:\s*null/);
   });
 });
 
@@ -457,26 +459,55 @@ describe('surveyResponse reads use explicit minimal selects (FIX 3)', () => {
   });
 });
 
-describe('restricted compensation reads are audited fail-closed (fix 4)', () => {
-  it('compensation router imports logDataAccess from the access barrel', () => {
-    expect(readComp()).toMatch(/import\s*\{[^}]*\blogDataAccess\b[^}]*\}\s*from '\.\.\/access'/);
+// ── §21 FULL+AUDIT invariant for employeeCompensation ───────────────────────
+// TS-DELETION 2026-08-05 (#59): the four tripwires that used to live here read
+// packages/api/src/routers/compensation.ts + services/compensation.service.ts and asserted
+// that getEmployeeComp/simulateAdjustment audited their employeeCompensation reads. BOTH
+// files were deleted (all 4 procedures were zero-FE-consumer dead code with live C#
+// equivalents), so those tripwires had no source left to read.
+//
+// They are NOT simply dropped: re-reading a deleted file would throw, and rewriting them to
+// tolerate absence (`?? ''`) would have turned them into vacuous passes — a tick against an
+// empty input. They are replaced by the ERA-INDEPENDENT form of the same §21 guarantee, which
+// keeps working no matter which file the next employeeCompensation reader lives in:
+//
+//   every packages/api source file that READS employeeCompensation must also write an audit
+//   record in that same file (logDataAccess(...) — the §21 helper — or a direct
+//   db.auditLog.create(...), which is what the platform DSAR export uses).
+//
+// Today the only surviving reader is routers/platform/data-requests.ts (the cross-org
+// GDPR/Habeas-Data right-of-access export), which audits via `db.auditLog.create` with
+// action 'data_subject_export'. The reader count is asserted >= 1 so that a repo with NO
+// reader FAILS this test instead of passing it vacuously.
+describe('every TS reader of employeeCompensation audits in-file (§21 FULL+AUDIT)', () => {
+  const API_SRC = join(ROOT, 'packages/api/src');
+
+  function walkTs(dir: string): string[] {
+    const out: string[] = [];
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) out.push(...walkTs(full));
+      else if (entry.name.endsWith('.ts')) out.push(full);
+    }
+    return out;
+  }
+
+  const readers = walkTs(API_SRC)
+    .map((f) => ({ file: f, src: readFileSync(f, 'utf8') }))
+    .filter(({ src }) =>
+      /\bemployeeCompensation\.(findMany|findFirst|findUnique|findUniqueOrThrow|findFirstOrThrow|aggregate|groupBy|count)\(/.test(
+        src,
+      ),
+    );
+
+  it('at least one reader exists (a zero-reader repo must FAIL, not pass vacuously)', () => {
+    expect(readers.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('getEmployeeComp (via service) + simulateAdjustment audit on employeeCompensation', () => {
-    // getEmployeeComp's audit now lives in the shared service helper; count across
-    // router + service so the relocated guarantee is still enforced.
-    const calls = readCompAudited().match(/entity:\s*'employeeCompensation'/g) ?? [];
-    expect(calls.length).toBeGreaterThanOrEqual(2);
-  });
-
-  it('audits actorId via impersonatorId fallback and reads ip/ua from headers', () => {
-    const src = readComp();
-    expect(src).toMatch(/ctx\.user\.impersonatorId \?\? ctx\.user\.id/);
-    expect(src).toMatch(/ctx\.headers\.get\('x-forwarded-for'\) \|\| ctx\.headers\.get\('x-real-ip'\)/);
-  });
-
-  it('the surviving restricted reader calls logDataAccess in the router (simulateAdjustment; getEmployeeComp audits inside the shared service)', () => {
-    const calls = readComp().match(/logDataAccess\(/g) ?? [];
-    expect(calls.length).toBeGreaterThanOrEqual(1);
+  it('no reader reads employeeCompensation without writing an audit record in the same file', () => {
+    const unaudited = readers
+      .filter(({ src }) => !/logDataAccess\(/.test(src) && !/auditLog\.create\(/.test(src))
+      .map(({ file }) => file.slice(ROOT.length + 1));
+    expect(unaudited).toEqual([]);
   });
 });

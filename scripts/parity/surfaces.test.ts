@@ -4,7 +4,7 @@ import { SURFACES } from './surfaces';
 describe('SURFACES', () => {
   // 2026-08-03 (#58): was "the three read surfaces" — succession dropped out when its last
   // TS-backed endpoint (getCriticalRole) was deleted. See the dedicated assertion at the bottom.
-  it('the two read surfaces that still have a TS side are registered with their flags + current endpoint sets (Tier-1 + Tier-2 by-id)', () => {
+  it('compensation + ninebox are registered with their flags + current endpoint sets (Tier-1 + Tier-2 by-id)', () => {
     expect(SURFACES['compensation'].flag).toBe('Platform__CompensationReadEnabled');
     // 2026-07-29: shrunk from 7 to 2 — the other 5 TS procedures were deleted (C#-only now).
     expect(SURFACES['compensation'].endpoints.map((e) => e.name).sort()).toEqual(['employee', 'market-comparison']);
@@ -13,6 +13,32 @@ describe('SURFACES', () => {
     for (const key of ['compensation', 'ninebox']) {
       expect(SURFACES[key].probeRole).toBe('super_admin');
     }
+  });
+
+  // 2026-08-05 (#59): compensation's last 2 TS procedures (getMarketComparison / getEmployeeComp) were
+  // deleted with the whole router, so both endpoints lose `tsProcedure` — parity cannot run for them.
+  // The surface is KEPT so `rls` + `rbac` (C#-only checks) keep covering the two live C# routes,
+  // including the Mode-A cross-tenant IDOR probe on /compensation/employee/{id}. Removing it — the
+  // billing-invoices / succession-read precedent — would have thrown that coverage away silently.
+  it('compensation has NO TS side left (parity cannot run) but keeps its RLS + RBAC coverage', () => {
+    const s = SURFACES['compensation'];
+    for (const e of s.endpoints) expect(e.tsProcedure, e.name).toBeUndefined();
+    // the by-id IDOR probe survives...
+    expect(s.endpoints.find((e) => e.name === 'employee')?.idScopeKey).toBe('employee');
+    // ...as does every RBAC expectation, so `verify compensation` is not a no-op.
+    for (const e of s.endpoints) expect(Object.keys(e.expectedByRole).length, e.name).toBeGreaterThan(0);
+  });
+
+  // Every OTHER registered endpoint must still carry a tsProcedure — `tsProcedure` being optional is
+  // an escape hatch for a deleted TS side, not a licence to register a C#-only endpoint and call the
+  // resulting one-sided run "parity".
+  it('no surface other than compensation has a tsProcedure-less endpoint', () => {
+    const missing: string[] = [];
+    for (const [key, surface] of Object.entries(SURFACES)) {
+      if (key === 'compensation') continue;
+      for (const ep of surface.endpoints) if (!ep.tsProcedure) missing.push(`${key}/${ep.name}`);
+    }
+    expect(missing).toEqual([]);
   });
 
   it('every Tier-2 by-id endpoint sets idScopeKey and carries the {id} sentinel in path + input', () => {
