@@ -306,10 +306,22 @@ been burned by the difference (#38):
 | check 14 `verify-rls-isolation.ts`               | `/gate` **check 14**, local (live DB)    | ⚠️ ship-time only                       |
 | check 16 `schema-baseline.sh check`              | `/gate`, local (live DB)                 | ⚠️ ship-time only (#124)                |
 | **check 17 `verify-tenant-grants.ts`**           | `/gate` **check 17**, local (live DB)    | ⚠️ ship-time only — same credential gap |
-| `scripts/db/pre-flip-scan.ts` (#132)             | by hand, per flip (runbook §5)           | ❌ no — a documented step, not a gate   |
+| `scripts/db/pre-flip-scan.ts` (#132)             | `/gate` **check 18**, local              | ⚠️ ship-time only — see below           |
 
 `main` also has **no required status checks** (see the ownership-flip runbook §1), so even the ✅ rows are
 "CI goes red", not "the merge is blocked". `gh pr merge --admin` bypasses all of it.
+
+> **Check 18 (`pre-flip-scan.ts`) — wired 2026-08-06 (#132).** It was previously "by hand, per flip", which
+> in practice meant it had **never run**: flip #3 shipped with §5 step 5b unexecuted. It now derives its
+> table list from the ownership ledger's `efcore[]` diff (`--flip-diff`), so `/gate` can run it on every
+> branch without anyone typing table names, and it is a no-op that still states what it compared when the
+> branch flips nothing. Contract: **0 clean · 1 blocker · 2 could-not-run**, the same as 14/16/17.
+>
+> Its residual gap is NOT #124's. It needs a database only on a branch that actually flips a table, and a
+> nightly job (#139) is the wrong home for it — run from `main`, the ledger diff is empty by construction,
+> so it would report "nothing to scan" every night and prove nothing. What is genuinely unenforced is the
+> case where a flip PR is merged without `/gate` having been run at all, which is the same gap every ⚠️ row
+> in this table has.
 
 > **CORRECTED 2026-08-05.** The paragraph here previously said "the `/gate` skill's own check list is
 > defined outside this repository", so check 17 could not be added to it. **That was false.** The check list

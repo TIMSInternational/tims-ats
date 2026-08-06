@@ -6,7 +6,7 @@ allowed-tools:
 
 # /gate — Local Verify Gate
 
-Run every check the CI pipeline runs — **plus the four checks (14–17) that CI cannot run at all** — locally, from the repo root. Report a pass/fail table at the end. This is the merge gate when GitHub Actions is unavailable, and the pre-push gate when it isn't. For checks 14–17 it is the _only_ gate, in either case.
+Run every check the CI pipeline runs — **plus the five checks (14–18) that CI cannot run at all** — locally, from the repo root. Report a pass/fail table at the end. This is the merge gate when GitHub Actions is unavailable, and the pre-push gate when it isn't. For checks 14–18 it is the _only_ gate, in either case.
 
 ## Execution Contract (non-negotiable)
 
@@ -21,15 +21,19 @@ You MUST run ALL checks below even if an early one fails — the user needs the 
 
 ## Checks
 
-Checks 1–13 mirror `.github/workflows/ci.yml`. **Checks 14–17 have no CI equivalent**, so `/gate` is the
-only place they run at all — but for two different reasons, and conflating them hides both:
+Checks 1–13 mirror `.github/workflows/ci.yml`. **Checks 14–18 have no CI equivalent**, so `/gate` is the
+only place they run at all — but for three different reasons, and conflating them hides all three:
 
 - **14, 16, 17 need live production database credentials** that CI does not have. That is one decision
   (#124) blocking three controls.
 - **15 needs an external reviewer** (Codex, or OmniRoute as tier 2) — not a database. Its blockers are
   quota and gateway availability, tracked separately in #38.
+- **18 needs a database only on a branch that actually flips a table's owner.** It derives its table list
+  from the ownership ledger's `efcore[]` diff, so on every other branch it is a no-op that still states
+  what it compared. A nightly job is the wrong home for it (#139 covers 14/16/17): run from `main` the
+  ledger diff is empty by construction, so it would report "nothing to scan" every night forever.
 
-Skipping any of the four is not "CI will catch it". CI has no equivalent job for any of them.
+Skipping any of the five is not "CI will catch it". CI has no equivalent job for any of them.
 
 Run prisma generate once first (typecheck/tests/build all need the client):
 
@@ -56,6 +60,7 @@ pnpm --filter @tims/db exec prisma generate --schema prisma/schema
 | 15  | Cross-model review             | `bash scripts/verification/crossmodel-review.sh` → exit 0. Tries Codex, then OmniRoute (tier 2). **Exit 2 = NO reviewer ran** — report ⚠️ NOT RUN, never PASS, then use the same-model 3-lens panel in `.claude/rules/verification.md`. Codex is quota-blocked until 2026-08-15; set `OMNIROUTE_KEY` to make tier 2 live.                                                                                                                                                                                                                                                                           |
 | 16  | Schema drift (live DB)         | `bash scripts/db/schema-baseline.sh check` → exit 0. Diffs the live schema against `packages/db/baseline/prod-public-schema.sql`. Needs the direct connection (:5432) and `pg_dump` ≥ 17 (`brew install postgresql@17`). **Exit 1 = drift, exit 2 = COULD NOT RUN** — report ⚠️ NOT RUN, never PASS. If the PR intentionally changes the schema, re-run `capture` and commit the new baseline **in that PR**.                                                                                                                                                                                       |
 | 17  | `app_tenant` grants (live DB)  | `npx tsx scripts/security/verify-tenant-grants.ts` → exit 0. Asserts `app_tenant` holds INSERT/UPDATE/DELETE only where the table is Prisma-owned **or** has RLS enabled with ≥1 policy. Needs the direct connection (:5432). **Exit 1 = violation, exit 2 = COULD NOT RUN** — report ⚠️ NOT RUN, never PASS. (Aligned with check 16's contract in #124; it previously returned 1 for both.)                                                                                                                                                                                                        |
+| 18  | Pre-flip dependency scan       | `npx tsx scripts/db/pre-flip-scan.ts --flip-diff` → exit 0. Derives its table list from the ownership ledger's `efcore[]` diff vs `origin/main`: on a branch that flips nothing it scans nothing, **states what it compared**, and needs no database. On a flip PR it needs the direct connection (:5432) and covers what no repo grep can — views/matviews (by text **and** by `pg_depend`), functions, triggers, other `pg_depend` dependents, §3(f) policies, inbound FKs, `app_tenant` grants — plus the data-file readers `tsc` cannot see. Needs `origin/main` to exist locally (`git fetch origin` first, or pass `--base <ref>`) — an unresolvable base is exit 2, deliberately, because guessing "nothing flipped" would be a silent pass on exactly the PR this exists for. **Exit 1 = blocker, exit 2 = COULD NOT RUN** — report ⚠️ NOT RUN, never PASS (#132). |
 
 Notes:
 
@@ -100,6 +105,16 @@ Notes:
   "the checks could not run" — npx would fetch and run them. An earlier draft of this note said that and
   overstated it.) If `npx tsx` ever resolves to something unexpected, prefer `node_modules/.bin/tsx` — which
   is what the failure-path tests invoke, deliberately.
+- **Check 18 reports the POPULATION each of its arms searched, and a "0" without a population is not a
+  result.** It was rewritten under #132 because the equivalent hand-run queries came back empty against
+  production for the calibration flip and one arm had, on inspection, examined nothing worth the name:
+  the view/matview arm returned 0 across the whole `public` schema, which proves nothing on its own,
+  because `public` holds 119 ordinary tables and **zero** views, matviews or foreign tables. Each
+  text-matching arm now re-runs its own query against a row it MUST match before its result is believed
+  (exit 2 if that fails), and the run as a whole is fingerprinted against the Prisma schema, so an empty
+  or wrong database exits 2 rather than printing a tick. If a summary line says an arm was **NOT
+  EXERCISED**, that is a statement about the database, not a clean bill of health for the tables — put it
+  in the PR body verbatim.
 - **Check 17's invariant is "Prisma-owned OR RLS-protected" — do not "simplify" it to "Prisma-owned only".**
   The C# strangler writes its own tables **as `app_tenant`** (`TenantScope.cs:46` issues
   `SET LOCAL ROLE app_tenant`), because that is _how_ those writes get RLS-enforced. A narrower check
