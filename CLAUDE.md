@@ -30,6 +30,14 @@ npx vitest run
 
 # Schema (dev only)
 cd packages/db && npx prisma db push --schema=prisma/schema
+
+# THEN, and this step is NOT optional on a fresh database:
+# `db push` builds the schema from the Prisma models, and ownership-flipped tables no longer HAVE
+# Prisma models — so it creates every other table and silently omits those. Apply their committed
+# DDL or the seeds fail on missing tables:
+for f in services/Tims.Platform/db/flip-ddl/*.sql; do psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$f"; done
+# Safe to re-run (idempotent), and each file refuses to run against a Supabase-managed database.
+# See services/Tims.Platform/db/flip-ddl/README.md.
 # Generate client
 cd packages/db && npx prisma generate
 # Seed
