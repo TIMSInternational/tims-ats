@@ -57,7 +57,33 @@ describe('360 Evaluation schema — post-flip #67 (tables owned by EF Core)', ()
     }
   });
 
+  /**
+   * Slice ONE table's `CREATE TABLE` block out of the artifact.
+   *
+   * Load-bearing. An earlier revision matched each column with `new RegExp('^\\s+' + col + '\\s','m')`
+   * against the WHOLE 287-line file, which contains three CREATE TABLE blocks. `id`,
+   * `organization_id`, `status`, `created_at` and `updated_at` are declared on the sibling tables
+   * too, so five of the ten pinned columns were satisfied no matter what happened to `review_cycles`
+   * — the assertion read far stronger than it was. Scope the match to the block or it proves little.
+   */
+  function tableBlock(ddl: string, table: string): string {
+    const m = new RegExp(`CREATE TABLE IF NOT EXISTS public\\.${table}\\s*\\(([\\s\\S]*?)\\n\\);`, 'm').exec(ddl);
+    if (!m) throw new Error(`no CREATE TABLE block for ${table} in the flip DDL — the artifact changed shape`);
+    return m[1];
+  }
+
   it('review_cycles keeps its lifecycle + FK columns in the EF-owned definition', () => {
+    const block = tableBlock(FLIP_DDL, 'review_cycles');
+    // Non-vacuity: prove the slice is a real, plausible block before asserting absence-shaped things
+    // against it, and prove it is NOT the whole file.
+    expect(block.length, 'review_cycles block looks empty').toBeGreaterThan(100);
+    expect(block.length, 'the slice returned the whole artifact — the regex is not scoping').toBeLessThan(
+      FLIP_DDL.length / 2,
+    );
+    // ...and prove the scoping actually discriminates: a column unique to a SIBLING table must not
+    // appear in this block. Without this, a broken slicer that returned everything still passes.
+    expect(block, 'sibling column leaked into the review_cycles block').not.toMatch(/^\s+competency_key\s/m);
+
     for (const col of [
       'id',
       'organization_id',
@@ -70,9 +96,9 @@ describe('360 Evaluation schema — post-flip #67 (tables owned by EF Core)', ()
       'created_at',
       'updated_at',
     ]) {
-      expect(FLIP_DDL, `review_cycles.${col}`).toMatch(new RegExp(`^\\s+${col}\\s`, 'm'));
+      expect(block, `review_cycles.${col}`).toMatch(new RegExp(`^\\s+${col}\\s`, 'm'));
     }
-    expect(FLIP_DDL).toMatch(/status public\."ReviewCycleStatus"/);
+    expect(block).toMatch(/status public\."ReviewCycleStatus"/);
   });
 
   it('rater_assignments keeps its relationship + status columns and the 3-column uniqueness', () => {
