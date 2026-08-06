@@ -468,6 +468,102 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/monitoring/executive-kpis": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["MonitoringGetExecutiveKpis"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/monitoring/module-health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["MonitoringGetModuleHealth"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/monitoring/alerts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["MonitoringGetActiveAlerts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/monitoring/action-plan-alerts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["MonitoringGetActionPlanAlerts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/monitoring/cross-module-trend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["MonitoringGetCrossModuleTrend"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/monitoring/alert-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["MonitoringGetAlertRules"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/evaluation360/cycles": {
         parameters: {
             query?: never;
@@ -1880,6 +1976,26 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        ActionPlanAlertResponsible: {
+            id: string;
+            firstName: string;
+            lastName: string;
+            avatar: null | string;
+        };
+        ActionPlanAlertsView: {
+            items: components["schemas"]["ActionPlanAlertView"][];
+            /** Format: int32 */
+            total: number | string;
+        };
+        ActionPlanAlertView: {
+            id: string;
+            title: string;
+            area: null | string;
+            status: string;
+            /** Format: date-time */
+            dueDate: null | string;
+            responsible: components["schemas"]["ActionPlanAlertResponsible"];
+        };
         ActionPlanResponsible: {
             id: string;
             firstName: string;
@@ -1922,6 +2038,24 @@ export interface components {
         ActivateSurveyResult: {
             id: string;
             status: string;
+        };
+        ActiveAlertsPage: {
+            items: components["schemas"]["ActiveAlertView"][];
+            /** Format: int32 */
+            total: number | string;
+            /** Format: int32 */
+            page: number | string;
+            /** Format: int32 */
+            limit: number | string;
+        };
+        ActiveAlertView: {
+            id: string;
+            severity: string;
+            module: string;
+            title: string;
+            message: string;
+            /** Format: date-time */
+            createdAt: string;
         };
         AddCalibrationMemberBody: {
             userId: string;
@@ -1973,6 +2107,14 @@ export interface components {
             dismissedAt: unknown;
             /** Format: date-time */
             createdAt: unknown;
+        };
+        AlertRuleView: {
+            id: string;
+            module: string;
+            condition: null | components["schemas"]["JsonNode"];
+            severity: string;
+            message: string;
+            isActive: boolean;
         };
         ApproveAdjustmentBody: {
             approved: boolean;
@@ -2386,6 +2528,11 @@ export interface components {
             /** Format: date-time */
             updatedAt: unknown;
         };
+        CrossModuleTrendView: {
+            metric: string;
+            period: string;
+            data: components["schemas"]["TrendPoint"][];
+        };
         CycleProgressRow: {
             relationship: string;
             /** Format: int32 */
@@ -2562,6 +2709,23 @@ export interface components {
             percentage: null | number | string;
             suppressed: boolean;
         };
+        ExecutiveKpiView: {
+            /** Format: int32 */
+            totalEmployees: number | string;
+            /** Format: int32 */
+            activeVacancies: number | string;
+            /** Format: int32 */
+            pendingAdjustments: null | number | string;
+            pendingAdjustmentsSuppressed: boolean;
+            /** Format: int32 */
+            activeSurveys: number | string;
+            /** Format: int32 */
+            openAlerts: number | string;
+            /** Format: double */
+            turnoverRate: number | string;
+            /** Format: int32 */
+            terminationsLast12m: number | string;
+        };
         ExitHolder: {
             id: string;
             firstName: string;
@@ -2627,6 +2791,9 @@ export interface components {
             normalizedScore: null | number | string;
             /** Format: double */
             percentile: null | number | string;
+            band: null | string;
+            /** Format: int32 */
+            normSampleSize: null | number | string;
             interpretation: null | components["schemas"]["JsonNode"];
             breakdown: null | components["schemas"]["JsonNode"];
             modelVersion: null | string;
@@ -2909,6 +3076,12 @@ export interface components {
             /** Format: double */
             internalMax: number | string;
             currency: string;
+        };
+        ModuleHealthPoint: {
+            module: string;
+            /** Format: int32 */
+            activeAlerts: number | string;
+            status: string;
         };
         MovementEndpoint: {
             period: string;
@@ -3481,6 +3654,12 @@ export interface components {
             month: number | string;
             /** Format: int32 */
             count: number | string;
+        };
+        TrendPoint: {
+            month: string;
+            /** Format: int32 */
+            value: null | number | string;
+            suppressed: boolean;
         };
         UpdateActionPlanBody: {
             title?: null | string;
@@ -4704,6 +4883,232 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DashboardKpiView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    MonitoringGetExecutiveKpis: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExecutiveKpiView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    MonitoringGetModuleHealth: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModuleHealthPoint"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    MonitoringGetActiveAlerts: {
+        parameters: {
+            query?: {
+                module?: string;
+                severity?: string;
+                page?: number | string;
+                limit?: number | string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActiveAlertsPage"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    MonitoringGetActionPlanAlerts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionPlanAlertsView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    MonitoringGetCrossModuleTrend: {
+        parameters: {
+            query?: {
+                metric?: string;
+                period?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CrossModuleTrendView"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    MonitoringGetAlertRules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertRuleView"][];
                 };
             };
             /** @description Unauthorized */
