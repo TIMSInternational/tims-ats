@@ -127,9 +127,15 @@ describe('codex round-1 fixes (talent)', () => {
     expect(block).toMatch(/input\.evaluatedUserId,\s*organizationId/);
     expect(block).toMatch(/Usuario evaluado no encontrado/);
   });
-  it('updateActionPlan guards responsibility reassignment', () => {
-    const src = readFileSync(join(ROOT, 'packages/api/src/routers/engagement.ts'), 'utf8');
-    const block = src.slice(src.indexOf('updateActionPlan'));
-    expect(block).toMatch(/assertSubjectInScope/);
-  });
+  // 'updateActionPlan guards responsibility reassignment' REMOVED 2026-08-05 (#56) —
+  // packages/api/src/routers/engagement.ts no longer declares updateActionPlan (nor
+  // createActionPlan); C# is the sole writer of action_plans. Note this tripwire was ALREADY
+  // partly hollow: it sliced from `src.indexOf('updateActionPlan')` to end-of-file, so it only
+  // ever proved that SOME assertSubjectInScope call appeared after that point, not that the
+  // reassignment path carried one. The reassignment guarantee is now behavioural rather than a
+  // source grep — EngagementWriteEndpoints.cs:259-262 (assertSubjectInScope on a provided
+  // responsibleId) + EngagementWriteRepository.cs:230-231 (the H1 in-org backstop), asserted by
+  // services/Tims.Platform/tests/Tims.IntegrationTests/Engagement/EngagementWriteTests.cs and
+  // .../EngagementWriteEndpointAuthTests.cs. The zero-TS-writer invariant that replaces the whole
+  // TS-side family lives in tests/access/scope-wiring-engagement-write.test.ts.
 });

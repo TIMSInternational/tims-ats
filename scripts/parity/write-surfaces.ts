@@ -901,8 +901,13 @@ const surveyBody = () => ({
 // readbacks below are now the ONLY automated assertion of provenance stamping (created_by_id = caller),
 // identity anchoring (user_id = caller, never an input) and the duplicate-response 409 CONFLICT, outside
 // the C# integration tests. Treat them as security-load-bearing; do not weaken them.
-// createActionPlan / updateActionPlan still have live TS twins (zero-FE-consumer dead code, deliberately
-// retained), so those two rows continue to describe a genuine two-stack surface.
+// UPDATE 2026-08-05 (#56): this note used to end "createActionPlan / updateActionPlan still have live TS
+// twins (zero-FE-consumer dead code, deliberately retained), so those two rows continue to describe a
+// genuine two-stack surface." Both TS twins are now DELETED — `action_plans` has ZERO TS writers — so the
+// action-plan rows below describe a SINGLE-stack surface like the other three. The rows themselves need no
+// change (they always drove the C# endpoints and asserted with raw SQL), but they are now the only
+// automated assertion of the H1 cross-org `responsibleId` denial and the assertScoped by-id 404 outside
+// the C# integration tests. Same warning as above: security-load-bearing, do not weaken.
 const engagementSurface: WriteSurface<EngagementWriteResolved> = {
   key: 'engagement',
   flag: 'Platform__EngagementWriteEnabled',

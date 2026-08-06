@@ -1,11 +1,54 @@
 import { z } from 'zod';
-import { TRPCError } from '@trpc/server';
 import { router, permissionProcedure } from '../trpc';
 import { tenantDb as db } from '@tims/db';
-import type { Prisma } from '@tims/db';
-import { scopeWhereFor, assertScoped, assertSubjectInScope, requireOrgScope, suppressBelowMin5 } from '../access';
+import { requireOrgScope, suppressBelowMin5 } from '../access';
 import { summarizeSurveyResults, buildResultsByArea } from '@tims/shared';
 
+// ── #56 disposition of the 8 residual TS procedures (2026-08-05) ──────────────────────────────
+// Both engagement flags (NEXT_PUBLIC_ENGAGEMENT_READ_VIA_CSHARP / _WRITE_VIA_CSHARP) are live in
+// prod and C# implements all 14 reads + all 5 writes. Each residual procedure was dispositioned
+// individually; nothing here is "left over because nobody looked."
+//
+//   DELETED this pass (4):
+//     createActionPlan / updateActionPlan — the ONLY remaining TS writers of `action_plans`, and
+//       therefore the sole TS-side blocker on the #68 ownership flip. Zero call sites anywhere in
+//       apps/web, workers or packages (verified by full-repo grep). C# owns both endpoints
+//       (POST /engagement/action-plans, PATCH /engagement/action-plans/{id}) INCLUDING the H1
+//       cross-tenant `responsibleId` hardening — EngagementWriteRepository.cs:175 (create),
+//       :230-231 (reassign), the shared check at :291-293 — plus the FOR UPDATE scope re-check
+//       that the TS updateMany was only approximating. Parity coverage does NOT regress: the
+//       write parity harness (scripts/parity/write-surfaces.ts:1039-1120) drives the C# HTTP
+//       endpoints and asserts side effects with raw SQL read-backs — it never had a `tsProcedure`
+//       field (write-surfaces.ts:642), so it never depended on these procedures.
+//     getWordCloud / getSentiment — deleted rather than converted to a 501. They were never
+//       "honest-unavailable": each returned HTTP 200 with an EMPTY payload, which a caller cannot
+//       distinguish from a survey that genuinely has no text answers — the dishonest variant of
+//       unavailable. C# already serves both routes with the identical stub behind the identical
+//       org-rollup gate (EngagementReadEndpoints.cs:277 and :297), so the domain stays covered and
+//       a TS 501 would only add a second, weaker answer to a question C# already answers. Neither
+//       is registered in the parity surface (they are Tier-2 by-id deferrals — surfaces.ts:238),
+//       so deleting them costs zero verification coverage. climate-sidebar.tsx renders a static
+//       unavailable placeholder and never called either.
+//
+//   KEPT, with reasons (4) — each is load-bearing TODAY, not inertia:
+//     listSurveys / getRotationRisk — the TS half of the only two LIVE parity endpoints left on
+//       the engagement read surface (scripts/parity/surfaces.ts:261 and :269 pin them as
+//       `tsProcedure`, a REQUIRED field — surfaces.ts:7). Deleting either turns `verify engagement`
+//       into a partial or total no-op right before the flip that most needs it. listSurveys also
+//       still backs a live invalidate-only FE consumer
+//       (engagement/climate/launch-survey-modal.tsx:58) and a static tripwire
+//       (tests/tier1/s2-engagement-wiring.test.ts:33). Their removal is runbook §7b edits 1b + 4,
+//       which belong to flip #64, not here.
+//     getSurveyResults / getResultsByArea — the ONLY remaining TS callers of the golden-fixtured
+//       min-5 kernels `summarizeSurveyResults` / `buildResultsByArea`, and the only surviving
+//       relation reads into `survey_responses` (the nested `responses: { select: ... }` at :126 and
+//       :170 below — they never show up in a `.surveyResponse.` grep). They are the TS side of a
+//       CROSS-STACK golden-fixture contract; retiring them is runbook §7b edit 3, i.e. flip #64.
+//
+// Flip #68 (`action_plans`) is NOT unblocked by this alone: `packages/api/src/routers/
+// monitoring.ts:158` still READS `db.actionPlan.findMany`, and `packages/api/src/access/
+// scoped-probe.ts:79` / `entity-policies.ts:44,145` still register the Prisma delegate. Only the
+// TS WRITER blocker is cleared here.
 export const engagementRouter = router({
   // ── Surveys ────────────────────────────────────────────────────────
   listSurveys: permissionProcedure('engagement', 'read')
@@ -100,9 +143,10 @@ export const engagementRouter = router({
   // TS-deletion (2026-07-31, NEXT_PUBLIC_ENGAGEMENT_READ_VIA_CSHARP confirmed live in prod): the 8
   // reads with a live FE wrapper — the exact list is enumerated in
   // apps/web/lib/platform-api/engagement.ts's file header — were deleted here; the wrapper now
-  // routes to the C# service unconditionally for all 8. getSurveyResults above and
-  // getResultsByArea/getWordCloud/getSentiment/getRotationRisk below (plus listSurveys further
-  // above) are untouched, pre-existing zero-wrapper procedures, unrelated to this deletion.
+  // routes to the C# service unconditionally for all 8. (UPDATE 2026-08-05, #56: of the 6
+  // zero-wrapper reads that survived that pass, getWordCloud + getSentiment have since been
+  // deleted too; the survivors are listSurveys above, getSurveyResults above, getResultsByArea
+  // here, and getRotationRisk below — see the disposition block at the top of this file.)
   getResultsByArea: permissionProcedure('engagement', 'read')
     .input(
       z.object({
@@ -152,151 +196,21 @@ export const engagementRouter = router({
       return { surveyId: survey.id, groupBy: input.groupBy, ...byArea };
     }),
 
-  // ── Stubs ──────────────────────────────────────────────────────────
-  getWordCloud: permissionProcedure('engagement', 'read')
-    .input(z.object({ surveyId: z.string().uuid() }))
-    .query(async ({ ctx }) => {
-      // min-5 (slice 6): stub — returns no data yet. When the NLP service lands, word
-      // frequencies must be suppressed for surveys with <5 respondents (a word said by
-      // one person re-identifies). requireOrgScope stays as defense-in-depth.
-      requireOrgScope(ctx.access);
-
-      // TODO: integrate NLP service for word frequency extraction
-      return { words: [] as { text: string; weight: number }[] };
-    }),
-
-  getSentiment: permissionProcedure('engagement', 'read')
-    .input(z.object({ surveyId: z.string().uuid() }))
-    .query(async ({ ctx }) => {
-      // min-5 (slice 6): stub — returns no data yet. When sentiment analysis lands it
-      // returns a single org-wide split over all respondents (no per-segment partition),
-      // but `highlights` (verbatim quotes) must be suppressed for surveys with <5
-      // respondents. requireOrgScope stays as defense-in-depth.
-      requireOrgScope(ctx.access);
-
-      // TODO: integrate NLP/AI service for sentiment analysis
-      return { positive: 0, neutral: 0, negative: 0, highlights: [] as string[] };
-    }),
+  // ── Stubs (getWordCloud + getSentiment) — DELETED 2026-08-05 (#56) ─────────────────────────
+  // Both returned a 200 with an empty payload while awaiting an NLP service that does not exist.
+  // C# serves both routes with the identical stub behind the identical org-rollup gate
+  // (EngagementReadEndpoints.cs:277, :297); the FE renders a static unavailable placeholder
+  // (engagement/climate/climate-sidebar.tsx) and never called either. See the header block.
 
   // ── Alerts & Action Plans ──────────────────────────────────────────
   // getLowClimateAlerts + listActionPlans (the two reads) were deleted in the 2026-07-31
-  // TS-deletion pass — see the note above getResultsByArea. The two action-plan write
-  // mutations below are unaffected (write-side, unrelated to the read flag).
-  createActionPlan: permissionProcedure('engagement', 'create')
-    .input(
-      z.object({
-        title: z.string().min(1).max(200),
-        responsibleId: z.string().uuid(),
-        area: z.string().max(200).optional(),
-        notes: z.string().max(2000).optional(),
-        dueDate: z.string().datetime().optional(),
-      }),
-    )
-    .mutation(async ({ ctx, input }) => {
-      // Write-rule: the responsible person must be within the caller's subject set.
-      await assertSubjectInScope(
-        ctx.access,
-        ctx.user.id,
-        input.responsibleId,
-        'No puedes asignar este plan a ese usuario',
-      );
-
-      // H1 (both-stacks hardening — succession #171 / 11c precedent): assertSubjectInScope no-ops for
-      // organization/company scope (write-rules.ts:20), and the pre-seed engagement:create grants are org-wide, so the
-      // common caller path skips the subject check entirely. responsibleId is a bare FK to `users` — the FK only
-      // checks the user EXISTS in ANY org, and the action_plans RLS WITH CHECK guards only organization_id — so an
-      // org-scoped admin could otherwise persist a CROSS-ORG responsibleId. Prove the target is in the caller's org
-      // (an RLS-scoped tenantDb read) and FORBID otherwise. Mirrors the C# EngagementWriteRepository backstop.
-      const inOrg = await db.user.findFirst({
-        where: { id: input.responsibleId, organizationId: ctx.user.organizationId },
-        select: { id: true },
-      });
-      if (!inOrg) throw new TRPCError({ code: 'FORBIDDEN', message: 'No puedes asignar este plan a ese usuario' });
-
-      return db.actionPlan.create({
-        data: {
-          title: input.title,
-          responsibleId: input.responsibleId,
-          area: input.area,
-          notes: input.notes,
-          dueDate: input.dueDate ? new Date(input.dueDate) : undefined,
-          organizationId: ctx.user.organizationId,
-          status: 'pending',
-        },
-      });
-    }),
-
-  updateActionPlan: permissionProcedure('engagement', 'update')
-    .input(
-      z.object({
-        id: z.string().uuid(),
-        title: z.string().min(1).max(200).optional(),
-        notes: z.string().max(2000).optional(),
-        status: z.enum(['pending', 'in_progress', 'completed']).optional(),
-        responsibleId: z.string().uuid().optional(),
-        dueDate: z.string().datetime().optional(),
-      }),
-    )
-    .mutation(async ({ ctx, input }) => {
-      // Probe the action plan so narrow-scoped callers cannot update out-of-scope plans.
-      await assertScoped('actionPlan', input.id, ctx.access, ctx.user.id, ctx.user.organizationId);
-      // Codex: reassigning responsibility must also target the caller's
-      // subject set — otherwise an in-scope plan can be pushed out of scope.
-      if (input.responsibleId) {
-        await assertSubjectInScope(
-          ctx.access,
-          ctx.user.id,
-          input.responsibleId,
-          'No puedes asignar este plan a ese usuario',
-        );
-        // H1 (both-stacks): a reassignment must target a user in the caller's org. assertSubjectInScope no-ops for
-        // org/company scope, so back it with an in-org existence check (RLS-scoped) — a cross-org responsibleId is a
-        // cross-tenant integrity/enumeration hole. Mirrors createActionPlan + the C# EngagementWriteRepository backstop.
-        const inOrg = await db.user.findFirst({
-          where: { id: input.responsibleId, organizationId: ctx.user.organizationId },
-          select: { id: true },
-        });
-        if (!inOrg) throw new TRPCError({ code: 'FORBIDDEN', message: 'No puedes asignar este plan a ese usuario' });
-      }
-
-      const { id, dueDate, ...data } = input;
-      const updateData = {
-        ...data,
-        ...(dueDate !== undefined ? { dueDate: dueDate ? new Date(dueDate) : null } : {}),
-      };
-      // Codex HIGH (both stacks): assertScoped above and the UPDATE are separate statements — a concurrent
-      // reassignment could move the plan out of the caller's narrow scope BETWEEN them, and a bare
-      // update-by-{id,org} would still apply. Re-apply the caller's scope predicate ATOMICALLY in the WHERE:
-      // updateMany (unlike update) admits a non-unique where, so count 0 ⇒ the plan left scope (or vanished) ⇒ 404.
-      // Mirrors the C# EngagementWriteRepository FOR UPDATE scope re-check.
-      const scopeWhere = (await scopeWhereFor('actionPlan', ctx.access, ctx.user.id)) as Prisma.ActionPlanWhereInput;
-      const { count } = await db.actionPlan.updateMany({
-        where: { AND: [{ id }, { organizationId: ctx.user.organizationId }, scopeWhere] },
-        data: updateData,
-      });
-      if (count === 0) throw new TRPCError({ code: 'NOT_FOUND', message: 'Plan de accion no encontrado' });
-      // Codex recheck: `tenantDb` wraps each call in its own txn, so this read-back is a SEPARATE txn from the
-      // guarded updateMany — a concurrent reassignment between them could otherwise echo an out-of-scope row in the
-      // response. Re-apply `scopeWhere` here too: if the plan left the caller's scope post-write, this returns null
-      // (leak-free) rather than a row the caller may no longer see. (The C# path is race-free — it mutates + returns
-      // the FOR UPDATE-locked row in one txn.)
-      return db.actionPlan.findFirst({
-        where: { AND: [{ id }, { organizationId: ctx.user.organizationId }, scopeWhere] },
-        select: {
-          id: true,
-          organizationId: true,
-          title: true,
-          responsibleId: true,
-          area: true,
-          status: true,
-          dueDate: true,
-          actions: true,
-          notes: true,
-          createdAt: true,
-          updatedAt: true,
-        },
-      });
-    }),
+  // TS-deletion pass — see the note above getResultsByArea.
+  //
+  // createActionPlan + updateActionPlan — DELETED 2026-08-05 (#56). They were the LAST TS writers
+  // of `action_plans`; C# is now the sole application writer (EngagementWriteEndpoints.cs:171,
+  // :221 → EngagementWriteRepository.cs:175, :230-231, :291-293 for the H1 in-org `responsibleId`
+  // backstop). The invariant is pinned by tests/access/scope-wiring-engagement-write.test.ts,
+  // which now asserts ZERO TS writers rather than grepping this file for the guards.
 
   // ── Rotation Risk ──────────────────────────────────────────────────
   // (listLeaderCommitments, formerly here, was deleted in the 2026-07-31 TS-deletion pass — see
