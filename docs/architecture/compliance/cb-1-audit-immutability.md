@@ -23,8 +23,19 @@ Engine-level append-only that survives privilege changes (`AuditImmutability.Bui
 Append (INSERT) is unaffected — the table stays append-only, not read-only.
 
 **Pre-prod finding (over-grant):** migration `20260612000000_access_control_models` granted `app_tenant`
-`SELECT, INSERT, UPDATE, DELETE` on `data_access_logs` — but the only writer is `db.dataAccessLog.create`
-(`packages/api/src/access/audit.ts`, INSERT-only). So prod currently lets the tenant role DELETE audit rows.
+`SELECT, INSERT, UPDATE, DELETE` on `data_access_logs` — but every writer is INSERT-only. So prod
+currently lets the tenant role DELETE audit rows.
+
+> **Updated 2026-08-07.** There are now **two** writers, not one. `logDataAccess`
+> (`packages/api/src/access/audit.ts`) writes through `tenantDb` and is the writer this grant
+> concerns. `auditSensitiveRead` (`packages/api/src/routers/platform/data-requests.ts`) writes the
+> §21 rows for the cross-org DSAR right-of-access export through the **privileged BYPASSRLS `db`**
+> with an explicit `organizationId`, because the tenant path cannot insert a row carrying a
+> *different* org than the operator's GUC (the fail-closed `tenant_isolation` WITH CHECK rejects it).
+> It does not touch the `app_tenant` grant either way, and it is also INSERT-only
+> (`createMany`) — so the least-privilege argument and the append-only trigger below are both
+> unchanged. Any third writer must be added here.
+
 CB-1 additionally `REVOKE UPDATE, DELETE ON data_access_logs FROM app_tenant` (least-privilege, SOC 2 CC6.3 /
 ISO A.8.2) so grants match intent; the trigger is the hard control that blocks it regardless of grants.
 Verified INSERT-only across the codebase (no `dataAccessLog.update/delete/deleteMany`, no raw DELETE/TRUNCATE).
