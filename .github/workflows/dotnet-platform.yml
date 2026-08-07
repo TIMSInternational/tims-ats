@@ -16,8 +16,12 @@ on:
       - "packages/db/**"
       - "scripts/**"
       - ".github/workflows/dotnet-platform.yml"
+  # NO `branches:` filter, deliberately. Restricting to [main] meant a PR whose BASE IS A
+  # BRANCH — every stacked PR — ran NO checks at all: no type check, no vitest, no security
+  # audit, no verification-gate. Only Vercel reported, so the PR looked green while nothing
+  # had verified it. That is a gate that silently does not run, which is the exact failure
+  # class this repo keeps getting bitten by. Pinned by tests/governance/ci-triggers.test.ts.
   pull_request:
-    branches: [main]
     paths:
       - "services/Tims.Platform/**"
       - "contracts/**"
