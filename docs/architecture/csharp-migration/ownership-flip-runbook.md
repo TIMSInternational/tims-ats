@@ -860,23 +860,53 @@ Run all of these. Step 0 and steps 6-9 need a real DB (0, 6, 7 and 9 against pro
     Verified 2026-08-02 against the current repo: `ghost efcore[] entries: []` (all six pass). A typo in
     step 4 of §1 shows up here and nowhere else.
     _(Consider promoting this to a real rule in `checkOwnership()` — it is a ~3-line addition.)_
-    5b. **Database-side dependency scan — SCRIPTED as of #132.** Run this BEFORE deleting the model, not after:
+    5b. **Pre-flip dependency scan — SCRIPTED as of #132, and WIRED as `/gate` check 18.** Run this
+    BEFORE deleting the model, not after:
 
         ```bash
-        npx tsx scripts/db/pre-flip-scan.ts <table>...     # 0 = no blocker, 1 = blocker or could-not-run
+        npx tsx scripts/db/pre-flip-scan.ts <table>...   # 0 = no blocker · 1 = blocker · 2 = DID NOT RUN
+        npx tsx scripts/db/pre-flip-scan.ts --flip-diff  # same, tables derived from the ledger diff
         ```
 
-        It replaces four separate hand-run queries and covers what no repo grep can see: **views/matviews**
-        and **functions** referencing the table (both BLOCKERS — they keep working after the Prisma model is
-        deleted, and keep bypassing whatever scoping the TS stack applied), plus the §3(f) policy scan,
-        inbound FKs (flagging any from *outside* the flip set), `app_tenant` grants (#126), and RLS state.
+        **Exit 2 is not a pass** — same contract as checks 14, 16 and 17. `--flip-diff` is the form
+        `/gate` runs: it takes the tables from the ownership ledger's `efcore[]` diff against
+        `origin/main`, so nobody has to remember to type the names, and on a branch that flips nothing it
+        scans nothing and says what it compared.
 
-        Flip #2 ran these by hand and came back clean; the script exists so the next flip cannot forget one.
-        Its blocker paths were exercised against a throwaway PG17 cluster carrying a deliberate view
-        and function over a target table (both correctly reported, exit 1). That run is not
-        committable — vitest has no database — so `tests/db/pre-flip-scan.test.ts` pins the
-        exit-code contract and the query-correctness properties offline instead, the same split as
-        `tests/db/schema-baseline-failure-paths.test.ts`.
+        It replaces four separate hand-run queries and covers what no repo grep can see:
+
+        - **views/matviews** referencing the table, found BOTH by text over `pg_get_viewdef` AND through
+          `pg_depend`. Neither method subsumes the other — measured on PG 17.10, a `plpgsql` function body
+          (and equally a dollar-quoted `LANGUAGE sql` body) produces **no `pg_depend` row at all**, so
+          those can only ever be a text match, while `pg_depend` catches relations the text arm cannot see.
+          **The converse also holds, and it bit us:** a SQL-standard body (`BEGIN ATOMIC … END` or the
+          `RETURN` form, PG14+) is stored PARSED in `pg_proc.prosqlbody` with `prosrc = ''`, so it is
+          invisible to the text arm and visible ONLY through `pg_depend`. The text arm therefore searches
+          `prosrc || pg_get_function_sqlbody(oid)`, not `prosrc` alone. Do not "simplify" that back.
+        - **functions**, **triggers**, and any other `pg_depend` dependent (`deptype = 'n'`) — a default
+          expression or a generated column can depend on a table too. All BLOCKERS: they keep working
+          after the Prisma model is deleted, and keep bypassing whatever scoping the TS stack applied.
+        - the §3(f) policy scan, inbound FKs (flagging any from *outside* the flip set, resolved by OID so
+          a same-named constraint in another schema cannot become a phantom), `app_tenant` grants (#126),
+          and RLS state.
+        - **data-file readers** — the class flip #2 actually hit. `contracts/access-fixtures/scope-where.json`
+          named `'successor'` / `'criticalRole'`, `tsc` stayed green, and all six P2 greps are `.ts`-scoped.
+          Hits there and in `packages/db/prisma/seed*.ts` are BLOCKERS; DDL and parity references are INFO.
+
+        **Every arm reports the population it searched, and a hit count without one is not a result.**
+        Flip #3's hand-run queries came back empty for the calibration tables, and the view arm had in fact
+        examined nothing worth the name — 0 across a `public` schema that contains 119 tables and **zero**
+        views. Each text arm now re-runs its own query against a row it MUST match before its result is
+        believed (exit 2 if that fails), and the whole run is fingerprinted against the Prisma schema, so
+        an empty or wrong database exits 2 rather than printing a tick. An arm reported **NOT EXERCISED**
+        is a statement about the database — copy it into the PR body rather than writing "clean scan".
+
+        Coverage split, stated plainly: the could-not-run paths are EXECUTED in
+        `tests/db/pre-flip-scan.test.ts` and the data-file arm is unit-tested for real in
+        `tests/db/pre-flip-repo-scan.test.ts`. Exit 0 and exit 1 need a database, so they were proved on a
+        throwaway PostgreSQL 17.10 cluster (transcript in the test header, including the mutation that
+        turns the functions arm blind and the exit 2 that catches it) and are pinned offline as properties
+        — the same split, and the same reason, as `tests/db/schema-baseline-failure-paths.test.ts`.
 
 6.  **Live DB assertion — the table survived, unchanged.** Run against prod (read-only) before and after
     the PR merges, and diff. `pre-flip-scan.ts` above already reports existence, RLS, policies, grants and
@@ -1499,6 +1529,13 @@ Federico-only:
 - **§5 step 5b — `pre-flip-scan.ts`.** The important gap: **views, matviews and functions** referencing
   the three tables are raw-SQL readers that survive model deletion and are invisible to `tsc`, to the
   ownership check and to every P2 grep. Flip #2 found zero; that is not evidence about these tables.
+  > **Since #132 this step is `/gate` check 18** (`npx tsx scripts/db/pre-flip-scan.ts --flip-diff`), and
+  > the note above understates what running it would have to show. The hand-run version of these queries
+  > returned empty for the calibration tables, but the view/matview arm searched a `public` schema
+  > containing **zero** views — a correct answer that no control had established. The script now reports
+  > every arm's population, proves each text matcher against a row it must match, and exits **2** rather
+  > than 0 when it cannot. Re-running it for these three tables is therefore still outstanding, and a
+  > result that says an arm was NOT EXERCISED must be recorded as such, not as "clean".
 - **§5 step 6 — the live before/after shape diff** (RLS flags, policy set, grants, indexes, `n_tup_del`).
   The DROP-TABLE tripwire.
   Run all three before merging. Steps 0 and 5b are the two that could still turn up a blocker.

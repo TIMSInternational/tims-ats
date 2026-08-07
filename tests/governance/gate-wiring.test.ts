@@ -63,6 +63,12 @@ const WIRED_CHECKS: ReadonlyArray<{ check: number; script: string; runner: strin
     runner: 'npx tsx',
     what: 'app_tenant least privilege (#126)',
   },
+  {
+    check: 18,
+    script: 'scripts/db/pre-flip-scan.ts',
+    runner: 'npx tsx',
+    what: 'pre-flip dependency scan (#132)',
+  },
 ];
 
 /** The checks that need live production database credentials — the three #124 blocks from CI. */
@@ -196,6 +202,27 @@ describe('/gate check list ↔ the scripts it must run', () => {
     expect(
       /\*\*15 needs an external reviewer\*\*/.test(gate),
       `${GATE_REL} must say check 15 needs an external reviewer, so its blocker is not confused with #124's.`,
+    ).toBe(true);
+  });
+
+  it("states check 18's blocker separately again, and why a nightly job is the wrong home for it", () => {
+    // Positive pin, same reasoning as the two above: 18 is NOT part of #124's credential gap. It needs a
+    // database only when the branch actually flips a table, which is why it can sit in `/gate` and be
+    // green on ordinary PRs — and why putting it in #139's nightly sweep would produce "nothing to scan"
+    // every night forever, since a run from `main` has an empty ledger diff by construction.
+    expect(
+      /\*\*18 needs a database only on a branch that actually flips a table's owner\.\*\*/.test(gate),
+      `${GATE_REL} must state check 18's condition for needing a database. Lumping it into #124 would ` +
+        'make the credential gap look bigger than it is and would suggest a nightly job that can never ' +
+        'have anything to scan.',
+    ).toBe(true);
+
+    const row = GATE_ROWS.find((r) => r.check === 18);
+    expect(row, `${GATE_REL} has no row 18`).toBeDefined();
+    expect(
+      /Exit 1 = blocker, exit 2 = COULD NOT RUN/.test(row!.row),
+      `${GATE_REL} row 18 must spell out the 0/1/2 contract. A reader who treats exit 2 as a pass is the ` +
+        'exact failure #38, #124 and #132 all share.',
     ).toBe(true);
   });
 });
