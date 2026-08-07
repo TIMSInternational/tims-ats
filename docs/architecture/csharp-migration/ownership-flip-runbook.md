@@ -167,8 +167,20 @@ Each reader gets exactly one disposition, decided before the PR:
 - **Repoint** — the whole procedure moves to the C# read endpoint through the
   `apps/web/lib/platform-api/*` wrapper pattern.
 - **Extract** — the read site sits **inside a procedure that must survive**. Neither "Delete" nor
-  "Repoint" applies: the surrounding procedure stays on tRPC and the one read must be served
-  server-to-server from the C# read surface. Worked counterexample the taxonomy previously had no slot
+  "Repoint" applies: the surrounding procedure stays on tRPC and the one read must be served from the
+  C# read surface.
+
+  > ⚠️ **Corrected 2026-08-07.** This bullet used to say "server-to-server". **No such credential path
+  > is wired**, so every Extract taught from it would be mis-designed. `packages/api/src/lib/platform-api-client.ts:9-11`
+  > forwards the CALLER's own `Authorization` header verbatim and never holds or issues a credential of
+  > its own — it works for the external-vendor surface only because a third-party server calls tRPC
+  > directly with its own `Bearer tims_...` key. A staff/platform-owner tRPC request carries no such
+  > header: the tRPC link (`apps/web/lib/trpc-provider.tsx:38-43`) sends none. The mechanism that
+  > **does** work is **browser-direct** via `apps/web/lib/platform-api/client.ts:73-80`, which reads the
+  > live Supabase session client-side — the pattern audit-log and access-review already use. Do not
+  > record this as "Extract is unimplementable"; that is equally wrong.
+
+  Worked counterexample the taxonomy previously had no slot
   for: `packages/api/src/routers/platform/data-requests.ts:93-97` reads
   `db.employeeCompensation.findMany({ … })` inside `exportSubjectData`, the GDPR / Ley 1581/2012
   right-of-access bundle (`:8-16`). The procedure has a live FE consumer
@@ -185,9 +197,13 @@ authorization and the **same** fail-closed `logDataAccess` policy (`packages/api
 and must **re-anchor** the corresponding tripwire rather than delete it. The repo-side guard for these is
 a source-**count** tripwire (e.g. `tests/access/scope-wiring-sensitive-data.test.ts` asserting
 `entity: 'employeeCompensation'` occurrences `>= 2`), so removing readers removes the guarantee _and_ its
-alarm with a green suite. Note also that `employee_compensations` has **four** Prisma read sites, not the
+alarm with a green suite. Note also that `employee_compensations` has **five** Prisma read sites, not the
 one P3 cites: `routers/compensation.ts:30`, `routers/compensation.ts:80`,
-`services/compensation.service.ts:62`, and `routers/platform/data-requests.ts:94`.
+`services/compensation.service.ts:62`, `routers/platform/data-requests.ts:94`, and
+`access/scoped-probe.ts:76` — a bare delegate thunk (`() => tenantDb.employeeCompensation`),
+which is invisible to a `.model.method` grep and is why it kept being missed. Its sibling
+`access/scoped-probe.ts:77` is the identical construct for `salaryAdjustment`; both must be
+dispositioned via the `FlippedEntity` union, never by deleting the entity from `ScopedEntity`.
 
 **Do not** convert a Prisma read to `$queryRaw` to make `tsc` pass. `scripts/table-ownership.mjs` is
 blind to raw SQL (§1, discovery), so this silently reintroduces a second reader of an EF-owned table
@@ -195,7 +211,7 @@ with zero CI signal. It is the single easiest way to make this runbook worthless
 
 **P3 — Cross-stack relation joins identified.** A flipped table joined to a Prisma-owned table in one
 query cannot stay one query. `survey_responses ⋈ users` (§7) and `employee_compensations ⋈ salary_bands`
-(`packages/api/src/services/compensation.service.ts:71` — **one of four** `employeeCompensation` read
+(`packages/api/src/services/compensation.service.ts:71` — **one of five** `employeeCompensation` read
 sites; see the P2 note) are both real. Either flip both tables together
 or denormalize into the C# read model. Tables that are joined and _both_ flip-ready must flip in the
 same PR.
