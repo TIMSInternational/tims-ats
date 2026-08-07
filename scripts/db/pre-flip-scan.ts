@@ -368,24 +368,41 @@ async function main(): Promise<void> {
       ),
     );
 
+    // A function's body is NOT always in `prosrc`. Since PG14 a SQL-standard body — `LANGUAGE sql
+    // BEGIN ATOMIC ... END`, and equally the `RETURN <expr>` form — is stored PARSED in
+    // `pg_proc.prosqlbody`, leaving `prosrc = ''` (empty string, not null). Matching `prosrc` alone
+    // therefore cannot see such a function at all, and this is the ONLY blocking path for a routine:
+    // the general pg_depend query does find the edge, but `pg_proc` is in NAMED, so it is routed to
+    // `namedDependents` — printed as INFO and never pushed onto `blockers`. Net effect before this fix:
+    // a SQL-standard-body function reading the flipped table is discovered, printed, and the scan still
+    // exits 0. That is a false negative in a fail-closed control.
+    //
+    // `pg_get_function_sqlbody(oid)` returns NULL (not an error) for every non-SQL-body function,
+    // including aggregates and window functions, so the concatenation is always safe. Do NOT reach for
+    // `pg_get_functiondef(oid)` instead — it THROWS on aggregates, which would turn this arm into a
+    // permanent exit 2.
+    const routineBody = `(coalesce(p.prosrc,'') || coalesce(pg_get_function_sqlbody(p.oid)::text,''))`;
     const routinesQuery = async (re: string): Promise<string[]> => {
       const r = await db.query<{ name: string }>(
         `SELECT n.nspname||'.'||p.proname AS name
            FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-          WHERE ${scopedSchemas} AND p.prosrc ~* $1
+          WHERE ${scopedSchemas} AND ${routineBody} ~* $1
           ORDER BY 1`,
         [re],
       );
       return r.rows.map((x) => x.name);
     };
+    // The population must count what the matcher can actually search, or a database whose relevant
+    // routines are all SQL-standard-bodied reports population 0 — which proveArm reads as "arm not
+    // exercised", so the unproven gate cannot fire and the scan exits 0 on a second, independent path.
     const routinePop = await db.query<{ n: string }>(
       `SELECT count(*)::text AS n FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-        WHERE ${scopedSchemas} AND p.prosrc IS NOT NULL AND p.prosrc <> ''`,
+        WHERE ${scopedSchemas} AND (p.prosrc IS NOT NULL AND p.prosrc <> '' OR p.prosqlbody IS NOT NULL)`,
     );
     const routineSamples = await db.query<{ name: string; text: string }>(
-      `SELECT n.nspname||'.'||p.proname AS name, p.prosrc AS text
+      `SELECT n.nspname||'.'||p.proname AS name, ${routineBody} AS text
          FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-        WHERE ${scopedSchemas} AND length(p.prosrc) > 3
+        WHERE ${scopedSchemas} AND length(${routineBody}) > 3
         ORDER BY p.oid LIMIT 8`,
     );
     arms.push(
@@ -632,6 +649,15 @@ async function main(): Promise<void> {
   const blockers: string[] = [];
   for (const r of reports) {
     if (!r.exists) blockers.push(`${r.table}: does not exist in public`);
+    // The existence probe deliberately does NOT filter on relkind (the census at :304 and the Prisma
+    // fingerprint at :320 both do). Keep it broad so a name that resolves to the WRONG KIND of object is
+    // distinguishable from one that is absent — but then say so, because otherwise `exists` is true, the
+    // blocker above does not fire, and every OID-keyed arm below happily scans an object that is itself a
+    // reader. Assert the kind here rather than narrowing the query, which would make this branch
+    // unreachable and would break the `__EFMigrationsHistory` case-folding pin in the test.
+    if (r.exists && r.relkind !== 'r' && r.relkind !== 'p') {
+      blockers.push(`${r.table}: exists in public but is relkind ${r.relkind ?? '?'}, not an ordinary table`);
+    }
     // The UNION of the two view oracles, so a miss by either one still blocks.
     for (const v of [...new Set([...r.dependentViews, ...r.dependentViewsByDepend])].sort()) {
       blockers.push(`${r.table}: view/matview ${v} references it`);

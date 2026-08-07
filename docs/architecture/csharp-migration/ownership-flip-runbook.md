@@ -877,8 +877,12 @@ Run all of these. Step 0 and steps 6-9 need a real DB (0, 6, 7 and 9 against pro
 
         - **views/matviews** referencing the table, found BOTH by text over `pg_get_viewdef` AND through
           `pg_depend`. Neither method subsumes the other — measured on PG 17.10, a `plpgsql` function body
-          produces **no `pg_depend` row at all**, so functions can only ever be a text match, while
-          `pg_depend` catches relations the text arm cannot see.
+          (and equally a dollar-quoted `LANGUAGE sql` body) produces **no `pg_depend` row at all**, so
+          those can only ever be a text match, while `pg_depend` catches relations the text arm cannot see.
+          **The converse also holds, and it bit us:** a SQL-standard body (`BEGIN ATOMIC … END` or the
+          `RETURN` form, PG14+) is stored PARSED in `pg_proc.prosqlbody` with `prosrc = ''`, so it is
+          invisible to the text arm and visible ONLY through `pg_depend`. The text arm therefore searches
+          `prosrc || pg_get_function_sqlbody(oid)`, not `prosrc` alone. Do not "simplify" that back.
         - **functions**, **triggers**, and any other `pg_depend` dependent (`deptype = 'n'`) — a default
           expression or a generated column can depend on a table too. All BLOCKERS: they keep working
           after the Prisma model is deleted, and keep bypassing whatever scoping the TS stack applied.

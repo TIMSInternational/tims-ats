@@ -33,6 +33,23 @@
  *                                          exited 1 with five blockers instead of six — i.e. it silently
  *                                          lost a real reader. That pair is the whole argument for the
  *                                          matcher proofs.
+ *   - SQL-STANDARD-BODY function
+ *     (`LANGUAGE sql BEGIN ATOMIC
+ *      SELECT count(*) FROM critical_roles;
+ *      END`)                             → measured on a throwaway PG 17.10 cluster alongside a `plpgsql`
+ *                                          and a dollar-quoted `LANGUAGE sql` control: its `prosrc` is
+ *                                          `''`, so the pre-fix `p.prosrc ~* $1` arm returned NOTHING for
+ *                                          it, while `pg_depend` DID carry the edge — and because
+ *                                          `pg_proc` is in NAMED, that edge printed as INFO under
+ *                                          "pg_depend (named classes)" and never reached `blockers`. The
+ *                                          scan therefore printed the reader and exited 0. Fixed by
+ *                                          searching `prosrc || pg_get_function_sqlbody(oid)`; the
+ *                                          population and sample queries had to move with it, or the arm
+ *                                          reports population 0 and `proveArm` reads it as NOT EXERCISED,
+ *                                          which is a second independent path to a green exit.
+ *                                          (`pg_get_function_sqlbody` returns NULL rather than throwing
+ *                                          for non-SQL bodies; `pg_get_functiondef` THROWS on aggregates
+ *                                          and must not be substituted.)
  *   - `__EFMigrationsHistory`            → found, not a false "does not exist": the existence probe
  *                                          matches `relname` exactly and never folds case.
  *   - a same-named FK constraint in
@@ -82,6 +99,20 @@ let sandbox: string;
 type Run = { code: number; out: string };
 
 function run(args: string[], cwd: string, env: Record<string, string | undefined> = {}): Run {
+  // Recurrence guard for the live-production-connection defect. Stripping the inherited env (below) is
+  // NOT sufficient on its own: loadDbEnv() falls back to the BARE RELATIVE path `packages/db/.env`,
+  // resolved against `cwd`. From a sandbox that file does not exist, but from REPO_ROOT it is the real
+  // one, holding the production Supabase URL. So REPO_ROOT runs must always pin a URL explicitly.
+  // Deliberately NOT a default value for `env` — defaulting it would break the `no DIRECT_URL or
+  // DATABASE_URL` assertions (:168, :204) and silently vacate the cwd-resolution pin at :156, which can
+  // only observe loadDbEnv() reading a .env when no URL is preset. Sandbox cwds are exempt by design:
+  // there is no packages/db/.env under a mkdtemp root, which is what those tests rely on.
+  if (cwd === REPO_ROOT && env.DIRECT_URL === undefined && env.DATABASE_URL === undefined) {
+    throw new Error(
+      'run() from REPO_ROOT without DIRECT_URL/DATABASE_URL: loadDbEnv() would resolve the real ' +
+        'packages/db/.env and could open a LIVE PRODUCTION connection. Pass { DIRECT_URL: DEAD_URL }.',
+    );
+  }
   try {
     const out = execFileSync(TSX, [SCRIPT, ...args], {
       cwd,
@@ -248,13 +279,23 @@ describe('pre-flip-scan — --flip-diff derives the table list from the ledger',
   it('exits 0 without a database when the branch flips nothing, and states what it compared', () => {
     // A gate row has to be runnable on every PR, and most PRs flip nothing. The result must still be a
     // STATEMENT — "12 efcore[] tables there, 12 here, 0 newly efcore-owned" — rather than an empty result
-    // dressed up as a pass. No DIRECT_URL is supplied on purpose: with nothing to scan the check must not
-    // need a database at all, or it would be permanently ⚠️ NOT RUN for everyone and enforce nothing.
+    // dressed up as a pass. With nothing to scan the check must not need a database at all, or it would
+    // be permanently ⚠️ NOT RUN for everyone and enforce nothing.
+    //
+    // DEAD_URL is supplied even though this path must never reach a database, and that is the point: it
+    // makes "needs no database" PROVEN rather than assumed. This is the one run() call site that combines
+    // cwd = REPO_ROOT with the real repo layout, and run() (:84) builds the child env from scratch — so
+    // omitting a URL does not mean "no credentials", it means loadDbEnv() falls through to reading the
+    // BARE RELATIVE path `packages/db/.env`, resolved against this cwd. That file holds the production
+    // Supabase direct URL. It passes today only because `--base HEAD` on a clean tree exits at the empty
+    // -diff branch before loadDbEnv(); one uncommitted efcore[] entry — the exact working-tree state of a
+    // developer authoring a flip PR — makes a plain `npx vitest run` open a LIVE PRODUCTION connection.
+    // With DEAD_URL set, loadDbEnv() returns at its first line and any regression dies at 127.0.0.1:1.
     //
     // `--base HEAD` rather than the default `origin/main`: CI checks out at fetch-depth 1, where
     // `origin/main` is not a resolvable ref, and a test that only passes on a full clone is a test that
     // goes red for a reason unrelated to its subject. The DEFAULT is pinned as a property below.
-    const { code, out } = run(['--flip-diff', '--base', 'HEAD'], REPO_ROOT);
+    const { code, out } = run(['--flip-diff', '--base', 'HEAD'], REPO_ROOT, { DIRECT_URL: DEAD_URL });
     expect(code, `expected exit 0, got ${code}. Output:\n${out}`).toBe(0);
     expect(out).toMatch(/no ownership flip in this diff/);
     expect(out).toMatch(/efcore\[\] tables there/);
@@ -360,6 +401,22 @@ describe('pre-flip-scan — database-arm properties', () => {
     // Measured on PG 17.10: `\b` is a BACKSPACE in a Postgres advanced RE, so a `\b` matcher returns
     // false for every input — every arm would report clean forever.
     expect(SRC).toMatch(/const wordRe = \(t: string\): string => `\\\\y\$\{t/);
+  });
+
+  it('searches SQL-standard function bodies, which live in prosqlbody with prosrc = emptystring', () => {
+    // Measured on PG 17.10: `LANGUAGE sql BEGIN ATOMIC ... END` (and the `RETURN` form) store the body
+    // PARSED in pg_proc.prosqlbody and leave prosrc = ''. A `prosrc`-only matcher cannot see such a
+    // function, and because 'pg_proc' is in NAMED, the pg_depend edge that DOES exist is printed as INFO
+    // rather than pushed onto blockers — so the scan named the reader and still exited 0.
+    //
+    // Pinned as three separate properties because each one alone can be defeated: the MATCHER must
+    // search the concatenation, the POPULATION must count what the matcher can search (otherwise the arm
+    // reports 0 and proveArm reads it as NOT EXERCISED — a second path to a green exit), and
+    // pg_get_functiondef must never be substituted, as it THROWS on aggregates and would convert this
+    // arm into a permanent exit 2.
+    expect(SRC).toMatch(/coalesce\(p\.prosrc,''\) \|\| coalesce\(pg_get_function_sqlbody\(p\.oid\)::text,''\)/);
+    expect(SRC).toMatch(/p\.prosrc IS NOT NULL AND p\.prosrc <> '' OR p\.prosqlbody IS NOT NULL/);
+    expect(CODE).not.toMatch(/pg_get_functiondef/);
   });
 
   it('matches the table name exactly, so a mixed-case table is not a false "does not exist"', () => {

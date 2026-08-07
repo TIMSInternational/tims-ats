@@ -60,7 +60,13 @@ describe('scanDataFiles — against the real repository', () => {
         'smaller population and still reports "no hits" — the vacuous pass this control exists to prevent.',
     ).toEqual([]);
     expect(filesScanned).toBeGreaterThan(50);
-    for (const r of perRoot) expect(r.present, `${r.path} missing`).toBe(true);
+    // `present` is not enough, and the test's own name is the reason: an existing-but-EMPTY root yields
+    // { files: 0, present: true }, contributes nothing to `missingRoots`, and the CLI's gate only fires on
+    // a repo-wide filesScanned === 0. Three of the four roots happen to be pinned non-empty by the
+    // positive-control tests below, but `scripts/parity` is not — and it is the root whose whole rationale
+    // is that the parity harness reads through RAW SQL and so survives model deletion. Converting it to
+    // .mjs (the house pattern for scripts) would silently drop it to zero and every gate would stay green.
+    for (const r of perRoot) expect(r.files, `${r.path} contributed 0 files`).toBeGreaterThan(0);
     expect(perRoot.map((r) => r.path).sort()).toEqual(DATA_ROOTS.map((r) => r.path).sort());
   });
 
