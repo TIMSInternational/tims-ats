@@ -143,13 +143,18 @@ for (const file of ALL_FILES) {
 
 /**
  * Named artifacts. Auto-discovery alone would make DELETING a fixed file a green
- * change; these three are the sites #45 was filed against, and each must keep
+ * change; these are the sites #45 was filed against, and each must keep
  * using runTenantTransaction. If a file is legitimately removed, delete its entry
  * DELIBERATELY rather than letting the scan silently stop covering it.
+ *
+ * `packages/api/src/repositories/evaluation360.repository.ts` was pinned here and is
+ * removed under exactly that rule, not to make a red test green: #148 deleted the
+ * orphaned evaluation360 TS outright, and main now asserts its ABSENCE at
+ * tests/governance/evaluation360-no-ts-writers.test.ts:546-547. Its 2 sites are why
+ * this branch fixes 16 rather than the 18 it was written against.
  */
 const PINNED = [
   'packages/api/src/routers/vacancy/approvals.ts',
-  'packages/api/src/repositories/evaluation360.repository.ts',
   'packages/api/src/repositories/pipeline.repository.ts',
 ];
 
