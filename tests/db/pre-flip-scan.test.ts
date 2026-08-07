@@ -104,7 +104,7 @@ function run(args: string[], cwd: string, env: Record<string, string | undefined
   // resolved against `cwd`. From a sandbox that file does not exist, but from REPO_ROOT it is the real
   // one, holding the production Supabase URL. So REPO_ROOT runs must always pin a URL explicitly.
   // Deliberately NOT a default value for `env` — defaulting it would break the `no DIRECT_URL or
-  // DATABASE_URL` assertions (:168, :204) and silently vacate the cwd-resolution pin at :156, which can
+  // DATABASE_URL` assertions (:186, :222) and silently vacate the cwd-resolution pin at :174, which can
   // only observe loadDbEnv() reading a .env when no URL is preset. Sandbox cwds are exempt by design:
   // there is no packages/db/.env under a mkdtemp root, which is what those tests rely on.
   if (cwd === REPO_ROOT && env.DIRECT_URL === undefined && env.DATABASE_URL === undefined) {
@@ -283,8 +283,9 @@ describe('pre-flip-scan — --flip-diff derives the table list from the ledger',
     // be permanently ⚠️ NOT RUN for everyone and enforce nothing.
     //
     // DEAD_URL is supplied even though this path must never reach a database, and that is the point: it
-    // makes "needs no database" PROVEN rather than assumed. This is the one run() call site that combines
-    // cwd = REPO_ROOT with the real repo layout, and run() (:84) builds the child env from scratch — so
+    // makes "needs no database" PROVEN rather than assumed. This was the only REPO_ROOT call site that
+    // had not pinned a URL — the other four (:242, :249, :257, :268) already did — and run() (:101)
+    // builds the child env from scratch, so
     // omitting a URL does not mean "no credentials", it means loadDbEnv() falls through to reading the
     // BARE RELATIVE path `packages/db/.env`, resolved against this cwd. That file holds the production
     // Supabase direct URL. It passes today only because `--base HEAD` on a clean tree exits at the empty
@@ -414,8 +415,21 @@ describe('pre-flip-scan — database-arm properties', () => {
     // reports 0 and proveArm reads it as NOT EXERCISED — a second path to a green exit), and
     // pg_get_functiondef must never be substituted, as it THROWS on aggregates and would convert this
     // arm into a permanent exit 2.
-    expect(SRC).toMatch(/coalesce\(p\.prosrc,''\) \|\| coalesce\(pg_get_function_sqlbody\(p\.oid\)::text,''\)/);
-    expect(SRC).toMatch(/p\.prosrc IS NOT NULL AND p\.prosrc <> '' OR p\.prosqlbody IS NOT NULL/);
+    // Pin the USE, not just the definition. An earlier version of this test asserted only that the
+    // `routineBody` const EXISTS — which `routineSamples` keeps alive, so reverting the matcher alone to
+    // `AND p.prosrc ~* $1` reintroduced B2 with every pin in this file still green. Assert against CODE
+    // (comment-stripped, :87) so a citation of the old spelling in a comment cannot satisfy or break it.
+    expect(CODE).toMatch(
+      /const routineBody = .*coalesce\(p\.prosrc,''\) \|\| coalesce\(pg_get_function_sqlbody\(p\.oid\)::text,''\)/,
+    );
+    expect(CODE).toMatch(/AND \$\{routineBody\} ~\* \$1/);
+    // The matcher must not fall back to prosrc alone anywhere.
+    expect(CODE).not.toMatch(/p\.prosrc ~\*/);
+    // The population must count what the matcher can search, or an all-SQL-standard-body database
+    // reports 0 and proveArm reads it as NOT EXERCISED — a second, independent path to a green exit.
+    expect(CODE).toMatch(/p\.prosrc IS NOT NULL AND p\.prosrc <> '' OR p\.prosqlbody IS NOT NULL/);
+    // …and the samples must be drawn from the same concatenation the matcher searches.
+    expect(CODE).toMatch(/length\(\$\{routineBody\}\) > 3/);
     expect(CODE).not.toMatch(/pg_get_functiondef/);
   });
 
@@ -457,6 +471,19 @@ describe('pre-flip-scan — database-arm properties', () => {
     expect(SRC).toMatch(/if \(!r\.exists\) blockers\.push/);
     expect(SRC).toMatch(/for \(const f of r\.dependentRoutines\) blockers\.push/);
     expect(SRC).toMatch(/for \(const t of r\.triggers\) blockers\.push/);
+  });
+
+  it('blocks when the name resolves to something other than an ordinary table', () => {
+    // The existence probe deliberately carries no relkind filter, so that a name resolving to a
+    // view/matview/sequence is distinguishable from one that is absent. That only helps if the KIND is
+    // then asserted: otherwise `exists` is true, the !exists blocker does not fire, and every OID-keyed
+    // arm scans an object that is itself a reader. Matched against CODE — "ordinary table" also occurs
+    // in prose comments, so an SRC match here would pass on the comment alone.
+    expect(CODE).toMatch(/r\.relkind !== 'r' && r\.relkind !== 'p'/);
+    expect(CODE).toMatch(/blockers\.push\([\s\S]{0,120}not an ordinary table/);
+    // And the query must STAY broad — narrowing it makes the branch above unreachable and collapses the
+    // case into the "does not exist" message it exists to distinguish.
+    expect(CODE).toMatch(/WHERE n\.nspname = 'public' AND c\.relname = \$1/);
   });
 
   it('excludes the scanned table itself from the "policies elsewhere referencing it" query', () => {
