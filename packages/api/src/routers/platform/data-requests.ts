@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { logger } from '@tims/shared';
 import { router } from '../../trpc';
+import { clientIpFrom } from '../../lib/client-ip';
 import { db } from '@tims/db';
 import { dataClassOf } from '../../access';
 import { platformProcedure } from './_common';
@@ -63,7 +64,9 @@ async function auditSensitiveRead(
       });
     }
     logger.warn(
-      { err, entity, rows: rows.length, actorId: actor.actorId },
+      // err.message only — a PrismaClientValidationError serializes the whole
+      // argument object, which carries the actor's ipAddress (personal data).
+      { err: err instanceof Error ? err.message : String(err), entity, rows: rows.length, actorId: actor.actorId },
       'data_access_logs write failed for DSAR export — continuing (fail-soft)',
     );
   }
@@ -206,13 +209,23 @@ export const dataRequestsRouter = router({
       // audit_logs row below.
       const auditActor = {
         actorId: ctx.user.impersonatorId ?? ctx.user.id,
-        ipAddress: ctx.headers.get('x-forwarded-for') || ctx.headers.get('x-real-ip'),
+        // clientIpFrom, not the raw left-most x-forwarded-for: this is the one
+        // forensic field §21 exists to produce, and the first XFF hop is
+        // attacker-chosen. See the derivation note in trpc.ts.
+        ipAddress: clientIpFrom(ctx.headers),
         userAgent: ctx.headers.get('user-agent'),
       };
       const exposedResults = assessments.map((a) => a.result).filter((r): r is NonNullable<typeof r> => r !== null);
+
+      // Compensation FIRST and on its own, deliberately not inside the Promise.all
+      // below. It is the only fail-CLOSED entity, and data_access_logs is append-only
+      // (a BEFORE DELETE OR UPDATE trigger, baseline:5547). If it ran concurrently
+      // and failed, the two fail-soft writes would already have COMMITTED — leaving
+      // permanent, uncorrectable rows asserting that this operator exported that
+      // subject's demographics, for an export that threw and returned nothing.
+      // Sequencing it first means a fail-closed abort leaves no residue at all.
+      await auditSensitiveRead(auditActor, 'employeeCompensation', compensation);
       await Promise.all([
-        // restricted → fail-CLOSED (derived, not hardcoded).
-        auditSensitiveRead(auditActor, 'employeeCompensation', compensation),
         // confidential → fail-SOFT.
         auditSensitiveRead(auditActor, 'employeeDemographics', demographics),
         // assessmentResult is restricted HEADLINE (raw psychometrics), but this
@@ -252,11 +265,19 @@ export const dataRequestsRouter = router({
               .create({
                 data: {
                   organizationId,
-                  actorId: ctx.user.id,
+                  // Same actor derivation as the §21 rows above. It used to be a bare
+                  // ctx.user.id, so under impersonation ONE export produced two audit
+                  // rows naming two different actors — data_access_logs blaming the
+                  // real operator and audit_logs blaming the impersonated user for an
+                  // export they did not perform.
+                  actorId: auditActor.actorId,
                   action: 'data_subject_export',
                   entity: 'data_subject',
                   entityId: email,
                   metadata: auditMeta,
+                  // Columns exist on AuditLog and were simply never populated here.
+                  ipAddress: auditActor.ipAddress,
+                  userAgent: auditActor.userAgent,
                 },
               })
               .catch(() => {}),
@@ -266,8 +287,18 @@ export const dataRequestsRouter = router({
         // Doubly org-less (org-less operator exporting an org-less subject): no valid
         // AuditLog.organizationId exists, so record the access in the structured log
         // rather than let a PII export go completely unaudited.
+        //
+        // `auditMeta` is deliberately NOT spread in: it carries the data subject's
+        // plaintext email, and CLAUDE.md bans PII in logs. The counts are the part
+        // that has forensic value; the subject is identifiable from the audit_logs
+        // row whenever one exists, and this branch is precisely the case where it
+        // does not — so the subject stays out of the log rather than being written
+        // to a sink with different retention and access controls than the audit
+        // tables. (tests/security/pii-protection.test.ts only greps the console
+        // logging idiom, so it does not catch the pino `logger.*` calls this
+        // codebase actually uses — see the follow-up issue.)
         logger.warn(
-          { action: 'data_subject_export', actorId: ctx.user.id, ...auditMeta },
+          { action: 'data_subject_export', actorId: auditActor.actorId, matched: auditMeta.matched },
           'PII data-subject export had no org context for auditLog — logged here instead',
         );
       }
