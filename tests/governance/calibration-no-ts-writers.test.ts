@@ -122,8 +122,18 @@ const MODELS = 'calibrationSession|calibrationMember|calibrationVote';
  * count off the JSON, which has nothing to do with Prisma. A trailing `s?` matched it and made this
  * test fail against correct code. Nested relation WRITES are covered by RELATION_WRITE below, which
  * is the precise construct that actually reaches the tables.
+ *
+ * NO WHITESPACE AFTER THE DOT, and this is a fix rather than a preference. This pattern used to spell
+ * it `\\.\\s*`, which also matches ENGLISH PROSE: a comment ending a sentence with "…not an RBAC
+ * grant. calibrationVote must stay…" parses as receiver `grant`, dot, model — a spurious BLOCKER
+ * against correct code. It is not hypothetical: the identical defect fired on the evaluation360
+ * tripwire at `tests/evaluation360/evaluation360-router-self-service.test.ts:77`, which is why that
+ * file (:142) already carries the corrected shape. Calibration was green only because no comment
+ * happened to end a sentence immediately before one of these three model names. Whitespace BEFORE the
+ * dot is still tolerated, because `db\n  .calibrationVote` is a real formatting of a real delegate
+ * chain; whitespace AFTER it never is — Prettier does not emit `db. calibrationVote`.
  */
-const PRISMA_DELEGATE = new RegExp(`[A-Za-z_$][\\w$]*\\s*\\.\\s*(?:${MODELS})\\b`);
+const PRISMA_DELEGATE = new RegExp(`[A-Za-z_$][\\w$]*\\s*\\.(?:${MODELS})\\b`);
 /** `db['calibrationVote']` — the same reach, spelled to defeat a dotted-access grep. */
 const BRACKET_DELEGATE = new RegExp(`\\[\\s*['"\`](?:${MODELS})['"\`]\\s*\\]`);
 
@@ -297,21 +307,42 @@ describe('calibration_* have zero TypeScript writers (ownership flip #70 precond
           file: 'synthetic/raw.ts',
           text: 'await db.$executeRaw`INSERT INTO\n  "public"."calibration_votes" (id)\n  VALUES ($1)`;\n',
         },
+        {
+          // A delegate chain broken across lines the way Prettier breaks it. This is the case the
+          // line-anchored scan could NOT see, and whose "proof" was previously a `.test()` call on a
+          // JS string with an embedded \n — which exercises the REGEX, never the SCANNER.
+          file: 'synthetic/wrapped.ts',
+          text: 'const rows = await tenantDb\n  .calibrationVote.findMany({ where: { organizationId } });\n',
+        },
         { file: 'synthetic/clean.ts', text: 'const total = counts.calibrationSessions ?? 0;\n' },
+        {
+          // Prose that parses as receiver-dot-model if whitespace AFTER the dot is tolerated. The
+          // identical shape is live for the evaluation360 tripwire at
+          // tests/evaluation360/evaluation360-router-self-service.test.ts:77; calibration has no such
+          // line TODAY, which is the only reason the old `\.\s*` spelling stayed green here.
+          file: 'synthetic/prose.ts',
+          text: '// not an RBAC grant. calibrationVote must stay OUT of scope\n',
+        },
       ];
 
-      expect(hits(planted, PRISMA_DELEGATE).map((h) => h.split(':')[0])).toContain('synthetic/writer.ts');
+      expect(hitsAcrossLines(planted, PRISMA_DELEGATE).map((h) => h.split(':')[0])).toContain('synthetic/writer.ts');
+      expect(
+        hitsAcrossLines(planted, PRISMA_DELEGATE).map((h) => h.split(':')[0]),
+        'a Prettier-wrapped delegate chain must be caught by the SCAN PATH, not merely by the regex',
+      ).toContain('synthetic/wrapped.ts');
       expect(hitsAcrossLines(planted, RELATION_WRITE).map((h) => h.split(':')[0])).toContain('synthetic/relation.ts');
       expect(hitsAcrossLines(planted, RAW_DML).map((h) => h.split(':')[0])).toContain('synthetic/raw.ts');
 
       // ...and the clean file is in none of them (the scanners discriminate, they do not just return
       // everything, which would be the other way to fake a pass).
       for (const h of [
-        ...hits(planted, PRISMA_DELEGATE),
+        ...hitsAcrossLines(planted, PRISMA_DELEGATE),
         ...hitsAcrossLines(planted, RELATION_WRITE),
         ...hitsAcrossLines(planted, RAW_DML),
       ]) {
         expect(h).not.toContain('synthetic/clean.ts');
+        // Prose must not trip it either — that is what the no-whitespace-after-the-dot rule buys.
+        expect(h).not.toContain('synthetic/prose.ts');
       }
     });
 
@@ -321,6 +352,17 @@ describe('calibration_* have zero TypeScript writers (ownership flip #70 precond
       // A PLURAL field read off a C# JSON response is not a Prisma delegate. This exact line is live
       // at apps/web/lib/platform-api/ninebox.ts:336 and an earlier draft of this regex failed on it.
       expect(PRISMA_DELEGATE.test('    calibrationSessions: num(raw.calibrationSessions),')).toBe(false);
+      // English prose is not a delegate. The `\.\s*` spelling this pattern used to carry parsed
+      // "grant. calibrationVote" as receiver-dot-model; the same defect fired for real on the
+      // evaluation360 tripwire at tests/evaluation360/evaluation360-router-self-service.test.ts:77.
+      expect(PRISMA_DELEGATE.test('  // not an RBAC grant. calibrationVote must stay OUT of scope')).toBe(false);
+      // ...but a genuine chain broken across lines by Prettier still matches (whitespace BEFORE the
+      // dot is tolerated, only whitespace AFTER it is not). NOTE THE LIMIT OF THIS ASSERTION: it
+      // exercises the REGEX against a JS string containing \n, which says nothing about the scan path.
+      // The scanner drive-test above is what actually covers it, via the `synthetic/wrapped.ts` fixture
+      // — and that only became true once the live scan moved to hitsAcrossLines. Keep both: this one
+      // localises a regex regression, that one localises a scanner regression.
+      expect(PRISMA_DELEGATE.test('  const rows = await tenantDb\n    .calibrationVote.findMany({')).toBe(true);
       // A read-shaped relation include is not a write:
       expect(RELATION_WRITE.test('include: { calibrationVotes: true }')).toBe(false);
       expect(RELATION_WRITE.test('select: { calibrationVotes: { select: { id: true } } }')).toBe(false);
@@ -328,7 +370,16 @@ describe('calibration_* have zero TypeScript writers (ownership flip #70 precond
   });
 
   it('no TypeScript file reaches the three calibration models through a Prisma delegate', () => {
-    const found = [...hits(SOURCES, PRISMA_DELEGATE), ...hits(SOURCES, BRACKET_DELEGATE)];
+    // hitsAcrossLines, NOT hits: `hits()` splits the file into lines BEFORE matching, so a delegate
+    // chain Prettier broke across lines (`await tenantDb\n  .calibrationVote.findMany(`) is invisible
+    // to it — the same line-anchoring defect this file already documents for RAW_DML above.
+    //
+    // Safe under whitespace collapsing precisely because of the no-whitespace-after-the-dot fix above:
+    // collapsing `tenantDb\n  .calibrationVote` to `tenantDb .calibrationVote` still matches, while
+    // prose ("…RBAC grant. calibrationVote must…") still does not. The two changes compose — collapsing
+    // whitespace under the OLD `\.\s*` spelling would have made every such comment a false blocker.
+    // This mirrors evaluation360-no-ts-writers.test.ts:360, which already scans this way.
+    const found = [...hitsAcrossLines(SOURCES, PRISMA_DELEGATE), ...hitsAcrossLines(SOURCES, BRACKET_DELEGATE)];
     expect(
       found,
       `A TypeScript Prisma delegate touches a calibration_* model. Ownership flip #70 moved these\n` +
