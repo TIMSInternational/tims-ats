@@ -252,7 +252,7 @@ export const candidateService = {
       throw new TRPCError({ code: 'NOT_FOUND', message: 'Uno o ambos candidatos no encontrados' });
     }
 
-    await candidateRepository.merge(primaryId, duplicateId);
+    await candidateRepository.merge(orgId, primaryId, duplicateId);
     return candidateRepository.getAfterMerge(primaryId);
   },
 

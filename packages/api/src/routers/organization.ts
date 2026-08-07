@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { router, protectedProcedure, permissionProcedure } from '../trpc';
-import { tenantDb as db } from '@tims/db';
+import { tenantDb as db, runTenantTransaction } from '@tims/db';
 import {
   createOrganizationSchema,
   updateOrganizationSchema,
@@ -187,7 +187,9 @@ export const organizationRouter = router({
     .input(z.object({ userId: z.string().uuid(), businessUnitId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       try {
-        return await db.$transaction(async (tx) => {
+        // runTenantTransaction, not db.$transaction (#45 / prisma#17948) — the
+        // tenantDb extension makes an outer $transaction a no-op wrapper.
+        return await runTenantTransaction(ctx.user.organizationId, async (tx) => {
           const [unit, user] = await Promise.all([
             tx.businessUnit.findFirst({
               where: { id: input.businessUnitId, organizationId: ctx.user.organizationId },
@@ -250,14 +252,12 @@ export const organizationRouter = router({
     // Auto re-show after 7 days if the checklist is still incomplete — a
     // read-time projection only, never mutates the stored dismissal.
     const isStale =
-      dismissedAt !== null &&
-      !allComplete &&
-      Date.now() - dismissedAt.getTime() > SETUP_STATUS_REOPEN_AFTER_MS;
+      dismissedAt !== null && !allComplete && Date.now() - dismissedAt.getTime() > SETUP_STATUS_REOPEN_AFTER_MS;
 
     return {
       items,
       allComplete,
-      dismissedAt: isStale ? null : dismissedAt?.toISOString() ?? null,
+      dismissedAt: isStale ? null : (dismissedAt?.toISOString() ?? null),
     };
   }),
 

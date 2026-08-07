@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { router, permissionProcedure } from '../../trpc';
-import { tenantDb as db } from '@tims/db';
+import { tenantDb as db, runTenantTransaction } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { emailService } from '../../services/email.service';
@@ -19,7 +19,7 @@ export const interviewCrudRouter = router({
         to: z.date().optional(),
         page: z.number().int().min(1).default(1),
         pageSize: z.number().int().min(1).max(100).default(20),
-      })
+      }),
     )
     .query(async ({ ctx, input }) => {
       const { page, pageSize, ...filters } = input;
@@ -124,7 +124,7 @@ export const interviewCrudRouter = router({
         meetingUrl: z.string().url().max(2048).optional(),
         notes: z.string().max(5000).optional(),
         evaluatorIds: z.array(z.string().uuid()).min(1).max(100),
-      })
+      }),
     )
     .mutation(async ({ ctx, input }) => {
       const { evaluatorIds, ...data } = input;
@@ -150,11 +150,19 @@ export const interviewCrudRouter = router({
         await assertScoped('application', input.applicationId, ctx.access, ctx.user.id, orgId);
         // Integrity: the application must bind the SAME candidate and vacancy.
         const bound = await db.application.findFirst({
-          where: { id: input.applicationId, organizationId: orgId, candidateId: input.candidateId, vacancyId: input.vacancyId },
+          where: {
+            id: input.applicationId,
+            organizationId: orgId,
+            candidateId: input.candidateId,
+            vacancyId: input.vacancyId,
+          },
           select: { id: true },
         });
         if (!bound) {
-          throw new TRPCError({ code: 'BAD_REQUEST', message: 'La aplicacion no corresponde al candidato y la vacante indicados' });
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'La aplicacion no corresponde al candidato y la vacante indicados',
+          });
         }
       } else {
         // Codex round-3: an omitted applicationId must not bypass the
@@ -233,7 +241,7 @@ export const interviewCrudRouter = router({
         location: z.string().max(500).optional(),
         meetingUrl: z.string().url().max(2048).optional(),
         notes: z.string().max(5000).optional(),
-      })
+      }),
     )
     .mutation(async ({ ctx, input }) => {
       const { id, ...data } = input;
@@ -244,10 +252,7 @@ export const interviewCrudRouter = router({
       // it with a bare assertScoped (would lose those fields).
       const existing = await db.interview.findFirst({
         where: {
-          AND: [
-            { id, organizationId: ctx.user.organizationId },
-            scopeWhere as Prisma.InterviewWhereInput,
-          ],
+          AND: [{ id, organizationId: ctx.user.organizationId }, scopeWhere as Prisma.InterviewWhereInput],
         },
       });
 
@@ -303,11 +308,13 @@ export const interviewCrudRouter = router({
   // ── Evaluator (committee panel) management on an EXISTING interview ───
   // Populates InterviewEvaluator, the anchor panelInterviewIds() reads.
   addEvaluator: permissionProcedure('interview', 'update')
-    .input(z.object({
-      interviewId: z.string().uuid(),
-      userId: z.string().uuid(),
-      role: z.string().max(50).default('evaluator'),
-    }))
+    .input(
+      z.object({
+        interviewId: z.string().uuid(),
+        userId: z.string().uuid(),
+        role: z.string().max(50).default('evaluator'),
+      }),
+    )
     .mutation(async ({ ctx, input }) => {
       // SCOPED probe — replaces the prior org-only parent existence check. The
       // InterviewEvaluator row is a committee-arm anchor (grants future read
@@ -316,7 +323,10 @@ export const interviewCrudRouter = router({
       // throws NOT_FOUND unless the interview is already in the caller's scope.
       await assertScoped('interview', input.interviewId, ctx.access, ctx.user.id, ctx.user.organizationId);
       try {
-        return await db.$transaction(async (tx) => {
+        // runTenantTransaction, not db.$transaction (#45 / prisma#17948) — the
+        // org-membership check and the evaluator insert must share one tx, or the
+        // check is a TOCTOU read on a different connection.
+        return await runTenantTransaction(ctx.user.organizationId, async (tx) => {
           const user = await tx.user.findFirst({
             where: { id: input.userId, organizationId: ctx.user.organizationId },
             select: { id: true },
@@ -353,7 +363,7 @@ export const interviewCrudRouter = router({
       z.object({
         id: z.string().uuid(),
         cancelReason: z.string().min(1).max(1000),
-      })
+      }),
     )
     .mutation(async ({ ctx, input }) => {
       // assertScoped replaces the bare org-check findFirst — cancel only uses

@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+// #45: vacancy.create's autoPublish path now opens ONE runTenantTransaction, not
+// tenantDb.$transaction (which does not compose — prisma/prisma#17948). The
+// $transaction mock is kept so the "never called" assertions below are real
+// assertions rather than missing-method crashes.
+const runTenantTransactionMock = vi.hoisted(() => vi.fn());
+
 vi.mock('@tims/db', () => ({
   tenantDb: {
     vacancy: {
@@ -10,17 +16,34 @@ vi.mock('@tims/db', () => ({
       create: vi.fn(),
     },
     $transaction: vi.fn(async (arg: unknown) =>
-      typeof arg === 'function' ? (arg as (tx: unknown) => Promise<unknown>)(mockTx()) : Promise.all(arg as Promise<unknown>[])
+      typeof arg === 'function'
+        ? (arg as (tx: unknown) => Promise<unknown>)(mockTx())
+        : Promise.all(arg as Promise<unknown>[]),
     ),
   },
   runWithTenant: (_o: string, f: () => unknown) => f(),
+  runTenantTransaction: runTenantTransactionMock,
 }));
 
 function mockTx() {
   return {
     vacancy: {
-      create: vi.fn().mockResolvedValue({ id: 'vac-1', title: 'Sales Rep', status: 'approved', priority: 'medium', positions: 1, createdAt: new Date() }),
-      update: vi.fn().mockResolvedValue({ id: 'vac-1', title: 'Sales Rep', status: 'published', priority: 'medium', positions: 1, createdAt: new Date() }),
+      create: vi.fn().mockResolvedValue({
+        id: 'vac-1',
+        title: 'Sales Rep',
+        status: 'approved',
+        priority: 'medium',
+        positions: 1,
+        createdAt: new Date(),
+      }),
+      update: vi.fn().mockResolvedValue({
+        id: 'vac-1',
+        title: 'Sales Rep',
+        status: 'published',
+        priority: 'medium',
+        positions: 1,
+        createdAt: new Date(),
+      }),
     },
     publicationChannel: { create: vi.fn().mockResolvedValue({ id: 'ch-1' }) },
   };
@@ -58,6 +81,9 @@ vi.mock('../../packages/api/src/access', () => ({
 beforeEach(() => {
   vi.clearAllMocks();
   setPublishAllowed(true);
+  runTenantTransactionMock.mockImplementation(async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) =>
+    fn(mockTx()),
+  );
 });
 
 async function makeCaller() {
@@ -67,8 +93,13 @@ async function makeCaller() {
   const callerFactory = createCallerFactory(testRouter);
   return callerFactory({
     user: {
-      id: 'user-1', organizationId: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', roles: ['recruiter'],
-      isPlatformOwner: false, impersonatorId: null, email: 'r@tims.co', isActive: true,
+      id: 'user-1',
+      organizationId: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+      roles: ['recruiter'],
+      isPlatformOwner: false,
+      impersonatorId: null,
+      email: 'r@tims.co',
+      isActive: true,
     },
     headers: new Headers(),
     supabaseAuth: null,
@@ -88,13 +119,22 @@ describe('vacancy.create — autoPublish', () => {
       settings: { autoPublish: true },
     });
 
-    expect(tenantDb.$transaction).toHaveBeenCalledTimes(1);
+    // #45: ONE real transaction (runTenantTransaction), and never the tenantDb
+    // wrapper that does not roll back.
+    expect(runTenantTransactionMock).toHaveBeenCalledTimes(1);
+    expect(runTenantTransactionMock).toHaveBeenCalledWith('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', expect.any(Function));
+    expect(tenantDb.$transaction).not.toHaveBeenCalled();
   });
 
   it('leaves the vacancy in draft when requireApproval is true (no behavior change)', async () => {
     const { tenantDb } = await import('@tims/db');
     vi.mocked(tenantDb.vacancy.create).mockResolvedValue({
-      id: 'vac-2', title: 'Ops Lead', status: 'draft', priority: 'medium', positions: 1, createdAt: new Date(),
+      id: 'vac-2',
+      title: 'Ops Lead',
+      status: 'draft',
+      priority: 'medium',
+      positions: 1,
+      createdAt: new Date(),
     } as never);
     const caller = await makeCaller();
 
@@ -114,7 +154,12 @@ describe('vacancy.create — autoPublish', () => {
   it('creates directly as approved when requireApproval is false/absent and autoPublish is off (no more draft dead end)', async () => {
     const { tenantDb } = await import('@tims/db');
     vi.mocked(tenantDb.vacancy.create).mockResolvedValue({
-      id: 'vac-3', title: 'Support Analyst', status: 'approved', priority: 'medium', positions: 1, createdAt: new Date(),
+      id: 'vac-3',
+      title: 'Support Analyst',
+      status: 'approved',
+      priority: 'medium',
+      positions: 1,
+      createdAt: new Date(),
     } as never);
     const caller = await makeCaller();
 
@@ -127,6 +172,7 @@ describe('vacancy.create — autoPublish', () => {
     expect(tenantDb.vacancy.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ status: 'approved' }) }),
     );
+    expect(runTenantTransactionMock).not.toHaveBeenCalled();
     expect(tenantDb.$transaction).not.toHaveBeenCalled();
     expect(result.status).toBe('approved');
   });
@@ -145,6 +191,7 @@ describe('vacancy.create — autoPublish', () => {
       }),
     ).rejects.toMatchObject({ code: 'FORBIDDEN' });
 
+    expect(runTenantTransactionMock).not.toHaveBeenCalled();
     expect(tenantDb.$transaction).not.toHaveBeenCalled();
     expect(tenantDb.vacancy.create).not.toHaveBeenCalled();
   });
@@ -162,6 +209,7 @@ describe('vacancy.create — autoPublish', () => {
       }),
     ).rejects.toMatchObject({ code: 'BAD_REQUEST' });
 
+    expect(runTenantTransactionMock).not.toHaveBeenCalled();
     expect(tenantDb.$transaction).not.toHaveBeenCalled();
     expect(tenantDb.vacancy.create).not.toHaveBeenCalled();
   });
