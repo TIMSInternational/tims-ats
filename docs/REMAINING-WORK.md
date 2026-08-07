@@ -83,6 +83,30 @@ wrapped in `if (options.<X>Enabled || isOpenApiDocGeneration) { ... }`, defaulti
   - Team-intel — read (#153). **CONFIRMED FLIPPED AND LIVE in prod** (2026-07-27) —
     `NEXT_PUBLIC_TEAMINTEL_READ_VIA_CSHARP=true` in Vercel prod and `Platform:TeamIntelReadEnabled=true`
     on App Runner. `dashboard-kpis` and the rest of the team-intel reads are served by C# today.
+    **COMPLETED 2026-08-06 (#55): the TS side is now fully gone.** `getDashboardKpis` was deleted
+    2026-07-28; the six residual procedures (`getTeamProfile`, `getMembers`, `getBalanceScore`,
+    `getBalanceAlerts`, `getRecommendedHires`, `compareTeams`) were deleted in #55 along with
+    `packages/api/src/routers/teamIntel.ts` itself, unregistered from `root.ts`. All six had **zero FE
+    consumers** — `apps/web/lib/platform-api/team-intel.ts` exposes exactly one hook
+    (`useTeamIntelDashboardKpis`, C#-only) and the Team-Intelligence page is its only caller; no
+    `apps/web` file referenced any of the six. Each has a live C# equivalent in
+    `TeamIntelReadEndpoints.cs` covered by real HTTP integration tests
+    (`TeamScope_OutOfScopeTeam_Is404_IdorProbe` over all 5 id-keyed reads,
+    `TeamScope_Compare_DropsOutOfScopeTeam` for `compareTeams`). Note `getBalanceAlerts` /
+    `getRecommendedHires` are honest **501s on both stacks** (Wave-3 DISC model pending), so deleting
+    the TS side removed no behaviour at all.
+    **Corrects an issue-body claim, recorded so it is not restated:** #55 said the six each had a
+    "live, parity-verified C# equivalent". The C# equivalents are live and integration-tested, but they
+    were **never parity-verified** — the `team-intel` parity surface registered exactly ONE endpoint,
+    `dashboard-kpis` (see the entry removed in 381f0a2b), so the other six were never TS-vs-C# diffed.
+    `scripts/deploy/cutover.sh`'s record was the accurate one on this point.
+    **KNOWN GAP, not closed here:** the `team-intel` parity surface was removed on 2026-07-28, before
+    `EndpointDef.tsProcedure` became optional (#57). So the six deployed C# endpoints currently get no
+    RLS Mode-A IDOR probe and no RBAC deny assertion from the harness — the same coverage regression
+    #57 caught for nine-box and fixed by retaining a C#-only surface. Restoring a C#-only `team-intel`
+    surface is a separate task; #55 did not do it. Partial mitigation exists at the repository level:
+    `TeamIntelReadTests.cs:42` `Profile_crossOrgTeam_isNull_underRls` covers cross-org for `profile`
+    only, not for `members` / `balance-score` / `compare`.
   - Evaluation360 — read (#158) + write (#170). **Both flipped and live in prod** (2026-07-28) —
     `NEXT_PUBLIC_EVALUATION360_READ_VIA_CSHARP` and `_WRITE_VIA_CSHARP` both confirmed `true` via
     `vercel env pull`, real prod redeploys reached `● Ready`. Its TS router/wrapper-fallback has
@@ -189,7 +213,7 @@ describe-service`; only the frontend Vercel flag was missing.)
     FX-dependent compensation/DEI reads) have a `useX()` hook per read, originally dark and mirroring the exact
     tRPC output type — though for domains whose flag has since gone live and whose TS procedures were
     subsequently deleted (reporting, evaluation360, team-intel, billing-usage, succession, nine-box
-    — the last of which became TS-free on 2026-08-05 (#57) —
+    — nine-box became TS-free on 2026-08-05 (#57) and team-intel on 2026-08-06 (#55) —
     compensation's 5 FX-free reads, and DEI's 9 of 10) the hook is now C#-only with hand-declared types, no
     longer dark and no longer mirroring a tRPC output
     type — **including billing's invoice-read** (`billing.listInvoices`/`billing.getInvoice`,

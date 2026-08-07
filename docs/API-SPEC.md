@@ -433,8 +433,32 @@ Scopes: `own` | `team` | `unit` | `company` | `organization`
 > Team composition, PCA profiles, balance, recommendations.
 > Screens: #15 Team Intelligence
 
-| #    | Procedure                       | Type  | Input           | Output                                                                 | Permission | Used By              |
-| ---- | ------------------------------- | ----- | --------------- | ---------------------------------------------------------------------- | ---------- | -------------------- |
+> **⚠️ THIS SECTION DESCRIBES A SURFACE THAT NO LONGER EXISTS IN TypeScript.**
+> As of 2026-08-06 (#55) `packages/api/src/routers/teamIntel.ts` is deleted outright, along with its
+> `root.ts` registration. **None of the seven procedures below is a live tRPC endpoint.** The deletion
+> happened in two passes: 15.7 `getDashboardKpis` went on 2026-07-28 (381f0a2b) when
+> `NEXT_PUBLIC_TEAMINTEL_READ_VIA_CSHARP` was confirmed live in prod, and the six residual
+> zero-FE-consumer procedures (15.1–15.6) went with the router in #55.
+>
+> The behaviour is served by C# — `services/Tims.Platform/src/Tims.Api/TeamIntel/TeamIntelReadEndpoints.cs`
+> maps all seven behind `Platform:TeamIntelReadEnabled`, each gated by `TeamIntelStaffGate` and then by
+> the team IDOR probe (15.1–15.5), `ScopeWhereFor('team')` (15.6), or `OrgGate` (15.7).
+>
+> **Do not read the Output column as the contract.** It is the ORIGINAL Wave-1 spec, and for several
+> rows it never matched the TS implementation that was actually built — 15.1 returned a Prisma team
+> (leader / businessUnit / members / `_count`), not `{ pcaProfile, discDistribution, genderSplit,
+> seniorityDistribution }`; 15.3 returned the `buildBalanceScore` kernel shape with no `alerts[]`.
+> The executable contract is `contracts/team-intel-fixtures/*`, asserted identically by
+> `packages/shared/src/team-intel.ts` and `Tims.Domain.TeamIntel`.
+>
+> **15.4 `getBalanceAlerts` and 15.5 `getRecommendedHires` were never implemented on either stack.**
+> Both are honest 501s awaiting the Wave-3 DISC competency model (C# stubs at
+> `TeamIntelReadEndpoints.cs:150-189`, which run the scope probe *before* returning 501).
+>
+> The rows are retained as the historical contract the C# port was built against, not as an API.
+
+| #    | Procedure (all DELETED from TS — served by C#) | Type  | Input           | Output                                                                 | Permission | Used By              |
+| ---- | ---------------------------------------------- | ----- | --------------- | ---------------------------------------------------------------------- | ---------- | -------------------- |
 | 15.1 | `teamIntel.getTeamProfile`      | query | `{ teamId }`    | `{ pcaProfile, discDistribution, genderSplit, seniorityDistribution }` | team:read  | Team profile         |
 | 15.2 | `teamIntel.getMembers`          | query | `{ teamId }`    | `Member[]` with PCA type, tenure, performance                          | team:read  | Member table         |
 | 15.3 | `teamIntel.getBalanceScore`     | query | `{ teamId }`    | `{ score, alerts[] }`                                                  | team:read  | Balance analysis     |

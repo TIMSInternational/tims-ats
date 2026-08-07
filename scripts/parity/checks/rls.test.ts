@@ -69,6 +69,14 @@ describe('assertIsolated', () => {
 });
 
 describe('runRlsEndpoint', () => {
+  // SYNTHETIC fixtures — these drive runRlsEndpoint over a fake fetch; they are not the live registry
+  // (that is scripts/parity/surfaces.ts, which has no 'team-intel' entry since 2026-07-28).
+  // Both `tsProcedure` strings below name TypeScript procedures that NO LONGER EXIST:
+  // teamIntel.getDashboardKpis was deleted 2026-07-28 (381f0a2b) and teamIntel.getTeamProfile with the
+  // whole router on 2026-08-06 (#55). They are kept verbatim rather than renamed because runRlsEndpoint
+  // never reads `tsProcedure` — only checks/parity.ts does — so these tests assert exclusively on
+  // `csharpPath`, and the C# routes they name ARE live (TeamIntelReadEndpoints.cs:41, :251). Do not
+  // read either string as evidence that a TS side still exists.
   const idScopedEp: EndpointDef = {
     name: 'team-profile',
     csharpPath: '/team-intel/teams/{teamId}/profile',
