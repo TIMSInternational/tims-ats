@@ -41,6 +41,26 @@ export default defineConfig({
     },
   },
   test: {
+    // Vitest's default is 5 000 ms. That is too tight for THIS suite on a developer machine,
+    // and the failure mode is corrosive rather than obvious: a slow-but-correct run reports
+    // the same red as a real regression, so every local result becomes untrustworthy exactly
+    // when you most need to trust it.
+    //
+    // Two independent reasons the default does not fit here:
+    //   - several suites SPAWN subprocesses (tsx/bash) — ~1.5 s of interpreter startup each,
+    //     and `verify-tenant-grants-failure-paths` spawns three in one `it`, so it is
+    //     marginal by construction before any load at all;
+    //   - the machine is routinely shared. Measured 2026-08-07 with an unrelated desktop app
+    //     at 479 % CPU: the same tree that CI passes green went red locally on 5 000 ms
+    //     timeouts, in DIFFERENT tests run to run — first `verify-tenant-grants`, then
+    //     `update-role-family` and `update-fit-requirements`, which spawn nothing.
+    //
+    // Raised, not removed: a genuinely hung test still fails, just not a slow correct one.
+    // If you are tempted to lower this, read the "never claim a result from a stale run"
+    // history first — phantom failures from contention have repeatedly cost more than the
+    // extra seconds this buys.
+    testTimeout: 30_000,
+    hookTimeout: 30_000,
     projects: [
       {
         extends: true,
