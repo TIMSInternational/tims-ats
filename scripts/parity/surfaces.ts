@@ -333,14 +333,28 @@ export const SURFACES: Record<string, Surface> = {
   // "FX-reads cutover" precedent) — a documented deferral, not an oversight.
   //
   // UPDATE 2026-07-31: `Platform__DeiReadEnabled` / NEXT_PUBLIC_DEI_READ_VIA_CSHARP were confirmed
-  // live in prod, and 8 of the 10 registered TS procedures (getDashboardKpis,
-  // getGenderRepresentation, getAgeDistribution, getNationalityDiversity, getLeadershipDiversity,
-  // getHiringFunnel, getPromotionEquity, getInclusionIndex) have since been DELETED from
-  // packages/api/src/routers/dei.ts — see the TS-deletion note there. This entry now registers
-  // only getEthnicityDistribution's and getDisabilityDistribution's endpoints, the two
-  // zero-FE-consumer procedures that were deliberately retained. `verify dei` still runs a REAL
-  // (smaller) check against those two — do not treat this surface as fully TS_DELETED (mirrors
-  // the succession/nine-box/compensation precedent).
+  // live in prod, and 8 of the 10 registered TS procedures were DELETED, leaving this entry
+  // registering only getEthnicityDistribution's and getDisabilityDistribution's endpoints.
+  //
+  // UPDATE 2026-08-06 (#60): those last two TS procedures are now deleted too
+  // (packages/api/src/routers/dei.ts — see the TS-deletion note there), so BOTH endpoints drop
+  // their `tsProcedure` and this surface has NO TS side left to diff against.
+  // The SURFACE ITSELF IS DELIBERATELY KEPT REGISTERED, per `EndpointDef.tsProcedure`'s own
+  // contract at the top of this file: omitting the field keeps the endpoint C#-only, so
+  // `checks/parity.ts:24` reports an explicit `[WEAK]` did-not-run instead of a silent pass, while
+  // `checks/rbac.ts` (hrbp 403 / hr_admin 200 against the LIVE C# route) and `checks/rls.ts`
+  // (Mode B cross-org payload comparison) keep running. Deleting the whole surface — the treatment
+  // the team-intel / reporting / billing-read / billing-usage / evaluation360 / audit-log /
+  // access-review / succession entries got — would silently retire that RBAC + RLS coverage, which
+  // for org-wide demographic rollups is a security-coverage regression, not a cleanup.
+  // So: `verify dei` still runs REAL RBAC + RLS checks; only the parity diff is gone. Its parity
+  // coverage now lives in services/Tims.Platform/tests/Tims.IntegrationTests/Dei/
+  // DeiReadEndpointTests.cs (403 gate at :333-334, real bodies at :139-140) plus the golden kernel
+  // fixtures (contracts/dei-fixtures/*.json).
+  //
+  // The dei router's ONLY surviving TS procedure — `generateReport` — is a MUTATION that was never
+  // ported to C#, so it has no C# counterpart to diff against and belongs in neither this
+  // read-parity registry nor write-surfaces.ts (which diffs PORTED writes).
   dei: {
     key: 'dei',
     flag: 'Platform__DeiReadEnabled',
@@ -350,7 +364,7 @@ export const SURFACES: Record<string, Surface> = {
       {
         name: 'ethnicity-distribution',
         csharpPath: '/dei/ethnicity-distribution',
-        tsProcedure: 'dei.getEthnicityDistribution',
+        // tsProcedure omitted 2026-08-06 (#60) — dei.getEthnicityDistribution is deleted.
         input: {},
         expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
         normalize: { dropNullish: true },
@@ -358,7 +372,7 @@ export const SURFACES: Record<string, Surface> = {
       {
         name: 'disability-distribution',
         csharpPath: '/dei/disability-distribution',
-        tsProcedure: 'dei.getDisabilityDistribution',
+        // tsProcedure omitted 2026-08-06 (#60) — dei.getDisabilityDistribution is deleted.
         input: {},
         expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
         normalize: { dropNullish: true },

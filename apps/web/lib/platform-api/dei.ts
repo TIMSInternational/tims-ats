@@ -15,12 +15,18 @@
 // inferRouterOutputs). Every call site is unchanged — same hook names, same shapes.
 //
 // SCOPE — the dei router exposed TEN ported reads (services/Tims.Platform/src/Tims.Api/Dei/
-// DeiReadEndpoints.cs; generateReport is a mutation stub and was never ported); only NINE were
+// DeiReadEndpoints.cs; the generateReport mutation was never ported); only NINE were
 // ever consumed by the FE (dei-kpis.tsx, dei-left-column.tsx, dei-right-column.tsx,
 // dei-bottom-row.tsx, hr-exec-dashboard.tsx, comp-left-column.tsx) — those nine are wrapped here.
-// getEthnicityDistribution and getDisabilityDistribution have NO call site — they get no wrapper
-// here and their TS procedures are DELIBERATELY RETAINED (zero-FE-consumer exceptions, out of
-// scope for this cutover). Every wrapped call site invokes its hook with NO arguments (no
+// getEthnicityDistribution and getDisabilityDistribution have NO call site, so they get no wrapper
+// here; their TS procedures were DELETED 2026-08-06 (#60) after their C# replacements' authz +
+// min-5 guards were verified (this paragraph previously called them "deliberately retained" — that
+// is now stale). Their C# routes /dei/ethnicity-distribution + /dei/disability-distribution are
+// live and unwrapped: add a hook here if a page ever needs them.
+// The "generateReport is a mutation stub" clause that used to sit above was ALSO stale — PR #19
+// (de6d2a29) made it produce real ExcelJS/PDFKit documents. It is still unported and still has no
+// consumer here: apps/web/app/(admin)/engagement/dei/page.tsx:27's button fires a `comingSoon`
+// toast instead of calling it. Every wrapped call site invokes its hook with NO arguments (no
 // dateFrom/dateTo/year/surveyId filter is ever passed), so every hook here is zero-arg, matching
 // current usage exactly.
 //

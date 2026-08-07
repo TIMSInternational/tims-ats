@@ -84,17 +84,41 @@ describe('SURFACES', () => {
     }
   });
 
-  it('dei is registered with its flag + the 2 zero-FE-consumer reads, ALL grant-only (hrbp denied everywhere — no dei grant at all)', () => {
+  // dei's READ surface was registered 2026-07-27 and shrunk 10 → 2 on 2026-07-31. On 2026-08-06
+  // (#60) its last two TS procedures (dei.getEthnicityDistribution / dei.getDisabilityDistribution)
+  // were deleted from packages/api/src/routers/dei.ts. This is the INVERSION of the previous
+  // 'dei is registered with its flag + the 2 zero-FE-consumer reads' test — the endpoint set and
+  // RBAC expectations are still pinned BY NAME (a deletion must not be a green change), but the
+  // TS-side assertion flips from "registered" to "must be absent".
+  //
+  // The surface is deliberately NOT removed: per EndpointDef.tsProcedure's contract, omitting the
+  // field keeps the endpoint C#-only so parity reports [WEAK] rather than silently passing, while
+  // the RBAC (hrbp 403) and RLS cross-org checks keep running against the live C# demographic
+  // reads. This test is what stops a future cleanup from deleting the surface and taking that
+  // coverage with it.
+  it('dei stays registered as C#-only after the #60 TS deletion — endpoints pinned, tsProcedure gone', () => {
     const s = SURFACES['dei'];
+    expect(s, 'the dei surface must NOT be deleted — removing it retires the C# RBAC + RLS checks').toBeDefined();
     expect(s.flag).toBe('Platform__DeiReadEnabled');
     expect(s.probeRole).toBe('super_admin');
-    // 2026-07-31: shrunk from 10 to 2 — the other 8 TS procedures were deleted (C#-only now),
-    // leaving only the two zero-FE-consumer procedures that were deliberately retained.
+    // Pinned by name, not auto-discovered: dropping an endpoint must turn this red.
     expect(s.endpoints.map((e) => e.name).sort()).toEqual(['disability-distribution', 'ethnicity-distribution']);
     // pay-equity is deliberately excluded (separate Platform__FxReadsEnabled flag).
     expect(s.endpoints.find((e) => e.name === 'pay-equity')).toBeUndefined();
     for (const e of s.endpoints) {
       expect(e.expectedByRole, e.name).toEqual({ super_admin: 200, hr_admin: 200, hrbp: 403 });
+      // #60: no TS side left to diff against — a re-added tsProcedure would mean a second live
+      // implementation of a k-anonymity-sensitive aggregate.
+      expect(e.tsProcedure, `${e.name} must have no tsProcedure after the #60 TS deletion`).toBeUndefined();
+    }
+  });
+
+  // No OTHER surface may smuggle a dei TS read back in under a different key.
+  it('no surface anywhere registers a dei tsProcedure (#60)', () => {
+    for (const [key, surface] of Object.entries(SURFACES)) {
+      for (const ep of surface.endpoints) {
+        expect(ep.tsProcedure?.startsWith('dei.') ?? false, `${key}/${ep.name} re-registers a TS dei read`).toBe(false);
+      }
     }
   });
 

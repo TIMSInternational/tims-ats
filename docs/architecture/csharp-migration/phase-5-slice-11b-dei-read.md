@@ -3,22 +3,27 @@
 **Flag:** `Platform:DeiReadEnabled` (default false) · **Ledger:** `efcoreReadOnly` · No flip, no new tables.
 **Spec:** live TS `packages/api/src/routers/dei.ts` (171) + `services/dei.service.ts` (401) + `repositories/dei.repository.ts` (115) — HAS a service/repo layer (cleaner port than engagement).
 **Branch OFF main AFTER engagement (Slice 11) merged** (`5a120b7`) — engagement already registered surveys/survey_responses + `EngagementReadEnabled`; branching after avoids Program.cs / PlatformOptions / table-ownership.md merge conflicts.
-GROUP 2 of people-dashboards. `dei.getPayEquity` is EXCLUDED → Slice 11c (FX gateway). The `generateReport` mutation is EXCLUDED (write/stub).
+GROUP 2 of people-dashboards. `dei.getPayEquity` is EXCLUDED → Slice 11c (FX gateway). The `generateReport` mutation is EXCLUDED (a write, and at the time of this slice a `{status:'pending'}` stub).
+
+> **UPDATE 2026-08-06 (#60).** Two corrections to this doc, which describes the state as of Slice 11b:
+>
+> 1. The "(write/stub)" exclusion reason above is **half stale**. `generateReport` stopped being a stub in PR #19 (`de6d2a29`) — it now renders real XLSX (ExcelJS) / PDF (PDFKit) documents via `packages/api/src/services/dei-report-builder.ts`. It is still correctly excluded from this slice (it is a write, and still unported), but do not cite "it's a stub" as the reason. #60 decided it explicitly: **retained as a permanent-for-now TypeScript surface**, because there is no C# replacement to delete it in favour of and its port is blocked on closed #1's five legal/compliance questions plus .NET ExcelJS/PDFKit equivalents.
+> 2. Reads #5 `getEthnicityDistribution` and #6 `getDisabilityDistribution` in the table below **no longer have a TS side** — their tRPC procedures were deleted in #60 once the C# authz + min-5 guards were verified at `file:line` (`DeiStaffGate.cs:42`/`:50`; `DeiReadUseCase.cs:160`/`:171` → `DeiKernels.cs:80`). The C# routes are the sole implementation for all TEN ported reads. Their `deiService` methods survive as `generateReport`'s data source only. `scripts/parity/surfaces.ts`'s `dei` entry is kept but registered C#-only (no `tsProcedure`), so RBAC/RLS coverage survives while parity reports `[WEAK]`.
 
 ## Reads ported (10; NOT getPayEquity #7, NOT the generateReport mutation)
 
-| # | Read | Auth | Tables | k-anon | Notes |
-|---|------|------|--------|--------|-------|
-| 1 | getDashboardKpis | perm('dei','read') | employee_demographics(enum grp), users | yes (each metric nullable) | totalEmployees, demographicsCoverage, genderParityIndex, womenPct, leadershipWomenPct, totalNationalities |
-| 2 | getGenderRepresentation | perm | employee_demographics groupBy gender(ENUM) | min-5 | {groups[],suppressed} |
-| 3 | getAgeDistribution | perm | employee_demographics (dateOfBirth raw + null-DOB count) | min-5 | fixed age-band groups |
-| 4 | getNationalityDiversity | perm | employee_demographics groupBy nationality(String) + null | min-5 | totalNationalities, distribution (desc) |
-| 5 | getEthnicityDistribution | perm | employee_demographics groupBy ethnicity(ENUM) | min-5 | groups (desc) |
-| 6 | getDisabilityDistribution | perm | employee_demographics groupBy disabilityStatus(ENUM) | min-5 | groups |
-| 8 | getLeadershipDiversity | perm | employee_demographics + user_roles/roles (slug ∈ LEADERSHIP_SLUGS) | min-5 | totalLeaders, byGender |
-| 9 | getHiringFunnel({dateFrom?,dateTo?}) | perm | candidates count | — (no suppression) | {total} |
-| 10 | getPromotionEquity({year?}) | perm | salary_adjustments count (type='promotion') | min-5 (floored count) | {year,totalPromotions,suppressed} |
-| 11 | getInclusionIndex({surveyId?}) | perm | surveys + survey_responses (answers-only minimal select; TS over-fetches include:{responses:true}) | multi-tier (survey/contributor/skip) | {index,totalResponses,suppressed,questionsEvaluated} |
+| #   | Read                                 | Auth               | Tables                                                                                             | k-anon                               | Notes                                                                                                     |
+| --- | ------------------------------------ | ------------------ | -------------------------------------------------------------------------------------------------- | ------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| 1   | getDashboardKpis                     | perm('dei','read') | employee_demographics(enum grp), users                                                             | yes (each metric nullable)           | totalEmployees, demographicsCoverage, genderParityIndex, womenPct, leadershipWomenPct, totalNationalities |
+| 2   | getGenderRepresentation              | perm               | employee_demographics groupBy gender(ENUM)                                                         | min-5                                | {groups[],suppressed}                                                                                     |
+| 3   | getAgeDistribution                   | perm               | employee_demographics (dateOfBirth raw + null-DOB count)                                           | min-5                                | fixed age-band groups                                                                                     |
+| 4   | getNationalityDiversity              | perm               | employee_demographics groupBy nationality(String) + null                                           | min-5                                | totalNationalities, distribution (desc)                                                                   |
+| 5   | getEthnicityDistribution             | perm               | employee_demographics groupBy ethnicity(ENUM)                                                      | min-5                                | groups (desc)                                                                                             |
+| 6   | getDisabilityDistribution            | perm               | employee_demographics groupBy disabilityStatus(ENUM)                                               | min-5                                | groups                                                                                                    |
+| 8   | getLeadershipDiversity               | perm               | employee_demographics + user_roles/roles (slug ∈ LEADERSHIP_SLUGS)                                 | min-5                                | totalLeaders, byGender                                                                                    |
+| 9   | getHiringFunnel({dateFrom?,dateTo?}) | perm               | candidates count                                                                                   | — (no suppression)                   | {total}                                                                                                   |
+| 10  | getPromotionEquity({year?})          | perm               | salary_adjustments count (type='promotion')                                                        | min-5 (floored count)                | {year,totalPromotions,suppressed}                                                                         |
+| 11  | getInclusionIndex({surveyId?})       | perm               | surveys + survey_responses (answers-only minimal select; TS over-fetches include:{responses:true}) | multi-tier (survey/contributor/skip) | {index,totalResponses,suppressed,questionsEvaluated}                                                      |
 
 ## Auth — grant-only (VERIFIED)
 
@@ -27,6 +32,7 @@ The live `dei.*` reads are `permissionProcedure('dei','read')` with NO `requireO
 ## ⚠️ NATIVE PG ENUM (eval360 #158 MapEnum lesson — THE key mechanic this slice)
 
 `employee_demographics` (employee.prisma:41-58) carries THREE native Prisma enum types the DEI reads GROUP BY:
+
 - **Gender** (`female`/`male`/`non_binary`/`undisclosed`), **Ethnicity** (`mestizo`/`afrodescendiente`/`indigena`/`raizal`/`rom`/`palenquero`/`blanco`/`otro`/`undisclosed`), **DisabilityStatus** (`none`/`has_disability`/`undisclosed`). DB type names are exactly `"Gender"`/`"Ethnicity"`/`"DisabilityStatus"` (migration `20260605000000_employee_demographics`).
 
 → `DeiReadDbContext` MUST build an `NpgsqlDataSource` with `MapEnum<GenderPg>("Gender")` / `MapEnum<EthnicityPg>("Ethnicity")` / `MapEnum<DisabilityStatusPg>("DisabilityStatus")` and apply the SAME `MapEnum`s at the EF options level (`DeiReadDataSource.MapEnums`, at BOTH the Program.cs DI site AND the Testcontainers fixture). `HasPostgresEnum` alone does NOT type-map → EF materializes the columns as `int` (`GetInt32` → InvalidCastException) and emits `= <integer>` GROUP BY / WHERE (error 42883). The real-RLS integration catches it (the enum-materialization bite).
@@ -45,6 +51,7 @@ The live `dei.*` reads are `permissionProcedure('dei','read')` with NO `requireO
 ## Kernels → `@tims/shared/dei.ts` (HONEST-fixture: refactor `dei.service.ts` + `dei.ts` router to CALL them), golden BOTH stacks
 
 Extracted from the inline logic of `dei.service.ts` / `dei.ts`:
+
 - `pct(count,total)` — half-up % to 1 decimal (`Math.round(count/total*1000)/10`).
 - `median(values)` — used by getPayEquity (stays TS this slice; exported + golden-fixtured for Slice 11c reuse; the C# `DeiKernels.Median` is fixture-exercised, ready for 11c).
 - `AGE_BANDS` + `ageBand(dob,now)` — server-side age-band bucketing.
