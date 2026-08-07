@@ -141,9 +141,23 @@ function ledger(efcore: string[]): string {
 }
 
 /** A throwaway cwd with the pinned data roots, optionally populated. */
-function makeCwd(name: string, opts: { roots?: string[]; files?: Record<string, string> } = {}): string {
+function makeCwd(
+  name: string,
+  opts: { roots?: string[]; files?: Record<string, string>; placeholders?: boolean } = {},
+): string {
   const root = join(sandbox, name);
-  for (const r of opts.roots ?? ROOTS) mkdirSync(join(root, r), { recursive: true });
+  for (const r of opts.roots ?? ROOTS) {
+    mkdirSync(join(root, r), { recursive: true });
+    // Every root gets at least one matching file. The CLI now die2s on a root that EXISTS but is EMPTY
+    // (an existing-but-empty root used to trip neither `missingRoots` nor the repo-wide
+    // `filesScanned === 0`, so it silently shrank the search population). A sandbox that creates bare
+    // directories therefore no longer models a healthy repo — it models the very defect that guard
+    // exists to catch, and would make every downstream test exit 2 for the wrong reason.
+    // `.gitkeep`-style placeholders would not do: the file must match the scanner's pinned extensions.
+    // `.json` because it is the one extension ALL four DATA_ROOTS accept (contracts also takes
+    // yaml/csv, Tims.Platform/db takes sql, the two TS roots take ts — json is the intersection).
+    if (opts.placeholders !== false) writeFileSync(join(root, r, '__placeholder.json'), '{}');
+  }
   for (const [rel, body] of Object.entries(opts.files ?? {})) {
     mkdirSync(join(root, rel.split('/').slice(0, -1).join('/')), { recursive: true });
     writeFileSync(join(root, rel), body);
@@ -210,9 +224,29 @@ describe('pre-flip-scan — exit 2 means DID NOT RUN, never a pass', { timeout: 
   });
 
   it('exits 2 when the roots exist but contain nothing to search', () => {
-    const { code, out } = run(['successors'], makeCwd('empty-roots'), { DIRECT_URL: DEAD_URL });
+    // placeholders:false — this test's whole subject is the repo-WIDE zero, and makeCwd now seeds every
+    // root by default (see its comment). With all four roots bare, the repo-wide guard fires first and
+    // owns this case; the per-root guard below covers the PARTIAL zero it cannot see.
+    const { code, out } = run(['successors'], makeCwd('empty-roots', { placeholders: false }), {
+      DIRECT_URL: DEAD_URL,
+    });
     expect(code, `expected exit 2, got ${code}. Output:\n${out}`).toBe(2);
     expect(out).toMatch(/ZERO matching files/);
+  });
+
+  it('exits 2 when ONE root is present but empty — the partial zero the repo-wide guard cannot see', () => {
+    // The regression this guards: scripts/parity converting its .ts files to .mjs (the house pattern for
+    // scripts). The directory survives, so `missingRoots` stays empty; the other roots keep filesScanned
+    // comfortably non-zero, so the repo-wide guard stays quiet — and the scan silently stops searching
+    // the reader class whose entire rationale is that the parity harness reads and WRITES through raw
+    // SQL, surviving model deletion mechanically.
+    const cwd = makeCwd('one-empty-root', { placeholders: false, files: { 'contracts/a.json': '{}\n' } });
+    for (const r of ROOTS) if (r !== 'scripts/parity') writeFileSync(join(cwd, r, '__placeholder.json'), '{}');
+    const { code, out } = run(['successors'], cwd, { DIRECT_URL: DEAD_URL });
+    expect(code, `expected exit 2, got ${code}. Output:\n${out}`).toBe(2);
+    expect(out).toMatch(/present but EMPTY/);
+    expect(out).toMatch(/scripts\/parity/);
+    expect(out).toMatch(/not a pass/);
   });
 
   it('exits 2 when no connection URL is resolvable', () => {
@@ -459,6 +493,37 @@ describe('pre-flip-scan — database-arm properties', () => {
       /const NAMED = new Set\(\['pg_rewrite', 'pg_proc', 'pg_trigger', 'pg_constraint', 'pg_policy'\]\)/,
     );
     expect(SRC).toMatch(/for \(const d of r\.otherDependents\) blockers\.push/);
+  });
+
+  it('gives routines a SECOND blocking oracle, so an empty prosrc is no longer the only defence', () => {
+    // B2's residue. `pg_proc` is in NAMED, so its pg_depend edge used to route to `namedDependents` —
+    // printed under "pg_depend (named classes)" and never pushed onto `blockers`. The text arm was the
+    // ONLY blocking path for a routine, so a SQL-standard-bodied function (empty prosrc) was NAMED by
+    // the scan and then exited 0. Matched against CODE, not SRC: "pg_depend" appears in comments.
+    expect(CODE).toMatch(/const routinesByDepend = deps\.rows/);
+    expect(CODE).toMatch(/\.filter\(\(d\) => d\.cls === 'pg_proc'\)/);
+    expect(CODE).toMatch(/for \(const f of r\.dependentRoutinesByDepend\) \{/);
+    expect(CODE).toMatch(/blockers\.push\(`\$\{r\.table\}: function \$\{f\} references it \(pg_depend\)`\)/);
+  });
+
+  it('writes stdout SYNCHRONOUSLY, so a piped run cannot truncate the report', () => {
+    // Node's stdout is async when it is a pipe and process.exit() discards pending writes — the same
+    // property die2 already defends against on fd 2. Every stdout path here is immediately followed by
+    // an exit, so console.log truncates at the ~64KB pipe buffer (reproduced on darwin/node v25:
+    // 400KB console.log piped -> 65536 bytes; redirected to a file -> 400014). Matched against CODE so
+    // the explanatory comments that NAME console.log do not satisfy the pin.
+    expect(CODE).not.toMatch(/console\.log\(/);
+    expect(CODE).toMatch(/function out\(line = ''\): void \{/);
+    expect(CODE).toMatch(/writeSync\(1, `\$\{line\}\\n`\)/);
+  });
+
+  it('does NOT feed routines to oracleSplits — they are disjoint by construction, so it would cry wolf', () => {
+    // Deliberate asymmetry with views, and the reason is measured: a plpgsql or dollar-quoted
+    // `LANGUAGE sql` body records no pg_depend edge at all, while a SQL-standard body records one. The
+    // two routine oracles therefore DISAGREE for almost every function that exists, so a split line
+    // would fire forever in both directions — and a check that cries wolf gets switched off.
+    const splitBlock = CODE.slice(CODE.indexOf('const oracleSplits'), CODE.indexOf('for (const h of repo.hits'));
+    expect(splitBlock).not.toMatch(/dependentRoutines/);
   });
 
   it('blocks on views found by EITHER oracle, and reports where they disagree', () => {

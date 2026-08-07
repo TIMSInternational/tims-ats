@@ -104,6 +104,23 @@ function die2(reason: string): never {
   process.exit(2);
 }
 
+/**
+ * stdout, written SYNCHRONOUSLY — the same reason die2 uses writeSync(2, …).
+ *
+ * Node's stdout is ASYNC when it is a pipe, and `process.exit()` discards pending writes. Every stdout
+ * path in this file is immediately followed by an exit, so `console.log` truncates at the ~64KB pipe
+ * buffer. Reproduced on darwin/node v25: `out(400KB); process.exit(0)` piped yields 65536
+ * bytes; redirected to a file it yields all 400014. On Linux pipes are synchronous, so this is a local
+ * `/gate` exposure rather than a CI one — but a control whose output silently truncates is exactly the
+ * class of defect this script exists to eliminate.
+ *
+ * NOT fixed by dropping the explicit `process.exit()` in favour of `process.exitCode`: a lingering
+ * handle would then turn a fail-closed control into a HANG, which is worse than the defect.
+ */
+function out(line = ''): void {
+  writeSync(1, `${line}\n`);
+}
+
 function loadDbEnv(): void {
   if (process.env.DIRECT_URL || process.env.DATABASE_URL) return;
   for (const path of ['packages/db/.env', '.env']) {
@@ -156,6 +173,7 @@ interface TableReport {
   dependentViews: string[];
   /** Views found through `pg_depend` — text-free, authoritative, and an independent oracle. */
   dependentViewsByDepend: string[];
+  dependentRoutinesByDepend: string[];
   dependentRoutines: string[];
   triggers: string[];
   otherDependents: string[];
@@ -245,13 +263,13 @@ async function main(): Promise<void> {
     if (tables.length === 0) {
       // A real, stated finding — with its population — not an empty result dressed up as a pass.
       const line = `✓ pre-flip scan: no ownership flip in this diff (${diffNote}). Nothing to scan.`;
-      console.log(asJson ? JSON.stringify({ flipDiff: true, tables: [], note: diffNote }, null, 2) : line);
+      out(asJson ? JSON.stringify({ flipDiff: true, tables: [], note: diffNote }, null, 2) : line);
       process.exit(0);
     }
     // Say what was derived BEFORE anything can fail. If this only printed in the final report, then a
     // credentials problem — the most likely failure — would leave nobody able to tell "the diff found
     // nothing" from "the diff found something and we never got to it". They are opposite situations.
-    if (!asJson) console.log(`\n${diffNote}: ${tables.join(', ')}`);
+    if (!asJson) out(`\n${diffNote}: ${tables.join(', ')}`);
   } else if (tables.length === 0) {
     die2(
       'no tables given. usage: npx tsx scripts/db/pre-flip-scan.ts [--json] [--flip-diff [--base <ref>]] <table>...',
@@ -271,6 +289,28 @@ async function main(): Promise<void> {
   }
   if (repo.filesScanned === 0) {
     die2(`the ${DATA_ROOTS.length} pinned data roots exist but contain ZERO matching files — nothing was searched.`);
+  }
+  // Per-ROOT, not just repo-wide. `scanDataFiles` pushes to missingRoots only when statSync().isDirectory()
+  // fails, so an existing-but-EMPTY root yields {present: true, files: 0} and trips neither guard above:
+  // the directory is there, and the other roots keep filesScanned comfortably non-zero. The reachable
+  // drift is scripts/parity converting its .ts files to .mjs (the house pattern for scripts) — the
+  // directory survives, that root drops to 0 files, and the scan silently stops searching the reader
+  // class whose entire rationale is that the parity harness reads and WRITES through raw SQL and so
+  // survives model deletion mechanically. Same vacuity as filesScanned === 0, one root at a time.
+  // KNOWN future trigger, called out so it is a one-line fix and not a mystery mid-runbook:
+  // `services/Tims.Platform/db` holds only ~7 consumable flip-DDL artifacts and is expected to be
+  // ARCHIVED once the flips finish. When that happens this guard fires, and exit 2 would block a
+  // production flip for a non-safety reason. The remedy is to DROP that root from DATA_ROOTS in the same
+  // PR that archives it — deliberately, so a shrinking search population is a reviewed decision rather
+  // than a silent one. That is the point of failing closed here instead of printing a warning nobody reads.
+  const emptyRoots = repo.perRoot.filter((r) => r.files === 0);
+  if (emptyRoots.length > 0) {
+    die2(
+      `pinned data root(s) present but EMPTY: ${emptyRoots.map((r) => r.path).join(', ')}. ` +
+        'That root contributed nothing to the search, so a "no hits" result does not cover it. ' +
+        'Fix the root, or update DATA_ROOTS/EXTS in scripts/db/pre-flip-repo-scan.mjs if the harness ' +
+        'legitimately changed shape.',
+    );
   }
 
   loadDbEnv();
@@ -611,6 +651,27 @@ async function main(): Promise<void> {
         .map((d) => d.what.replace(/^view\/rule /, ''))
         .filter((v) => v !== '?');
 
+      // Routines get a SECOND blocking oracle, for the same reason views do. The text arm reads
+      // prosrc || pg_get_function_sqlbody; this reads pg_depend. `pg_proc` stays in NAMED (so the print
+      // is unchanged) but its edge is no longer blocker-suppressed — see the blocker loop below.
+      //
+      // The two are DISJOINT by construction, not overlapping: a plpgsql or dollar-quoted `LANGUAGE sql`
+      // body records no pg_depend edge and is found only by text, while a SQL-standard body (BEGIN
+      // ATOMIC / RETURN) is found by both. That is exactly why they are unioned into `blockers` but
+      // deliberately NOT fed to `oracleSplits`: a routine split line would fire for every function ever
+      // found, in both directions, forever — and a check that cries wolf gets switched off.
+      //
+      // This also covers `proveArm`'s short-circuit: it returns proven on the FIRST re-findable sample,
+      // so only one of the two routine text sources is ever exercised, and a matcher regression that
+      // dropped pg_get_function_sqlbody would still report `population > 0, proven, 0 hits`. The naive
+      // fix (require one sample of each) is wrong — prod plausibly has zero prosqlbody routines, which
+      // would make the arm a permanent NOT EXERCISED, i.e. the vacuity this control exists to kill.
+      // A second independent oracle is the guard that does not have that failure mode.
+      const routinesByDepend = deps.rows
+        .filter((d) => d.cls === 'pg_proc')
+        .map((d) => d.what.replace(/^function /, ''))
+        .filter((f) => f !== '?');
+
       reports.push({
         table,
         exists: Boolean(row),
@@ -622,6 +683,7 @@ async function main(): Promise<void> {
         dependentViews: viewsByText,
         dependentViewsByDepend: [...new Set(viewsByDepend)].sort(),
         dependentRoutines: await routinesQuery(re),
+        dependentRoutinesByDepend: [...new Set(routinesByDepend)].sort(),
         triggers: trigs.rows.map((r) => r.name),
         namedDependents: deps.rows.filter((d) => NAMED.has(d.cls)).map((d) => d.what),
         otherDependents: deps.rows.filter((d) => !NAMED.has(d.cls)).map((d) => d.what),
@@ -663,6 +725,15 @@ async function main(): Promise<void> {
       blockers.push(`${r.table}: view/matview ${v} references it`);
     }
     for (const f of r.dependentRoutines) blockers.push(`${r.table}: function ${f} references it`);
+    // pg_proc's pg_depend edge, as a BLOCKER rather than the INFO line it used to be. Before this, the
+    // text arm was the ONLY blocking path for a routine: a SQL-standard-bodied function was found by
+    // pg_depend, printed under "pg_depend (named classes)", and the scan then exited 0 having NAMED the
+    // reader. The two oracles spell names differently on purpose — `public.foo` from the text arm,
+    // `foo(uuid)` (argument-typed) from regprocedure — so one function can produce two blocker lines.
+    // That is accepted: over-reporting a blocker is safe, under-reporting is the defect being fixed.
+    for (const f of r.dependentRoutinesByDepend) {
+      blockers.push(`${r.table}: function ${f} references it (pg_depend)`);
+    }
     for (const t of r.triggers) blockers.push(`${r.table}: trigger ${t}`);
     for (const d of r.otherDependents) blockers.push(`${r.table}: pg_depend dependent ${d}`);
   }
@@ -685,7 +756,7 @@ async function main(): Promise<void> {
   }
 
   if (asJson) {
-    console.log(
+    out(
       JSON.stringify(
         {
           tables,
@@ -708,16 +779,16 @@ async function main(): Promise<void> {
   if (blockers.length === 0) {
     if (!asJson) {
       const unexercised = arms.filter((a) => a.population === 0);
-      console.log(`\n✓ No blocker for ${tables.join(', ')}.`);
+      out(`\n✓ No blocker for ${tables.join(', ')}.`);
       if (unexercised.length > 0) {
-        console.log(
+        out(
           `  ⚠ ${unexercised.length} arm(s) searched an EMPTY population and therefore proved nothing on ` +
             `their own: ${unexercised.map((a) => `${a.key} (0 ${a.populationLabel})`).join('; ')}.\n` +
             `    That is a statement about the database, not about these tables — say so in the PR body ` +
             'rather than reporting a clean scan.',
         );
       }
-      console.log(
+      out(
         '  Reported INFO items still belong in the flip PR body — notably app_tenant grants (#126, dead\n' +
           '  DML after the flip), any inbound FK from outside the flip set, and every data-file reference.\n',
       );
@@ -781,56 +852,57 @@ function printHuman(
   flipSet: Set<string>,
   oracleSplits: string[],
 ): void {
-  console.log(
+  out(
     `\nschema census (public): ${census.tables} tables, ${census.views} views, ${census.matviews} matviews, ` +
       `${census.foreignTables} foreign tables`,
   );
-  console.log('\npopulation each arm searched — a hit count is meaningless without it:');
+  out('\npopulation each arm searched — a hit count is meaningless without it:');
   for (const a of arms) {
-    console.log(`  ${a.key.padEnd(10)} ${String(a.population).padStart(5)} ${a.populationLabel.padEnd(58)} ${a.note}`);
+    out(`  ${a.key.padEnd(10)} ${String(a.population).padStart(5)} ${a.populationLabel.padEnd(58)} ${a.note}`);
   }
-  console.log(
+  out(
     `  ${'datafiles'.padEnd(10)} ${String(repo.filesScanned).padStart(5)} files across ${repo.perRoot.length} pinned roots` +
       `${' '.repeat(30)}${repo.perRoot.map((r) => `${r.path}=${r.files}`).join(' ')}`,
   );
 
   for (const r of reports) {
-    console.log(`\n── ${r.table} ──────────────────────────────────────────────`);
+    out(`\n── ${r.table} ──────────────────────────────────────────────`);
     if (!r.exists) {
-      console.log('  ⚠ DOES NOT EXIST in public — check the name before flipping.');
+      out('  ⚠ DOES NOT EXIST in public — check the name before flipping.');
     } else {
-      console.log(
+      out(
         `  exists   yes (relkind ${r.relkind})   RLS ${r.rlsEnabled ? 'enabled' : 'DISABLED'}` +
           `${r.rlsForced ? ' + forced' : ''}, ${r.policies.length} policy(ies)` +
           `${r.policies.length ? ' [' + r.policies.join(', ') + ']' : ''}, ${r.bytes ?? '?'} bytes`,
       );
-      console.log(`  app_tenant                      ${r.appTenantPrivs.join(',') || '(none)'}`);
+      out(`  app_tenant                      ${r.appTenantPrivs.join(',') || '(none)'}`);
     }
-    console.log(`  views/matviews (text matcher)   ${r.dependentViews.join(', ') || 'none'}`);
-    console.log(`  views/matviews (pg_depend)      ${r.dependentViewsByDepend.join(', ') || 'none'}`);
-    console.log(`  functions referencing it        ${r.dependentRoutines.join(', ') || 'none'}`);
-    console.log(`  triggers on it                  ${r.triggers.join(', ') || 'none'}`);
-    console.log(`  policies elsewhere referencing  ${r.policiesReferencing.join(', ') || 'none'}`);
+    out(`  views/matviews (text matcher)   ${r.dependentViews.join(', ') || 'none'}`);
+    out(`  views/matviews (pg_depend)      ${r.dependentViewsByDepend.join(', ') || 'none'}`);
+    out(`  functions (text matcher)        ${r.dependentRoutines.join(', ') || 'none'}`);
+    out(`  functions (pg_depend)           ${r.dependentRoutinesByDepend.join(', ') || 'none'}`);
+    out(`  triggers on it                  ${r.triggers.join(', ') || 'none'}`);
+    out(`  policies elsewhere referencing  ${r.policiesReferencing.join(', ') || 'none'}`);
     const foreignFks = r.inboundFks.filter((f) => !flipSet.has(f.split('.')[0]));
-    console.log(
+    out(
       `  inbound FKs                     ${r.inboundFks.join(', ') || 'none'}` +
         (foreignFks.length ? `  ← ${foreignFks.length} from OUTSIDE the flip set` : ''),
     );
-    console.log(`  pg_depend (named classes)       ${r.namedDependents.join(', ') || 'none'}`);
-    console.log(`  pg_depend (OTHER)               ${r.otherDependents.join(', ') || 'none'}`);
+    out(`  pg_depend (named classes)       ${r.namedDependents.join(', ') || 'none'}`);
+    out(`  pg_depend (OTHER)               ${r.otherDependents.join(', ') || 'none'}`);
   }
 
   if (oracleSplits.length > 0) {
-    console.log('\n⚠ the two view oracles do not agree — read each one before believing either:');
-    for (const s of oracleSplits) console.log(`    ${s}`);
+    out('\n⚠ the two view oracles do not agree — read each one before believing either:');
+    for (const s of oracleSplits) out(`    ${s}`);
   }
 
-  console.log('\n── data files ──────────────────────────────────────────────');
+  out('\n── data files ──────────────────────────────────────────────');
   if (repo.hits.length === 0) {
-    console.log(`  no reference to ${tables.join(', ')} in ${repo.filesScanned} files across the pinned roots`);
+    out(`  no reference to ${tables.join(', ')} in ${repo.filesScanned} files across the pinned roots`);
   }
   for (const h of repo.hits) {
-    console.log(`  ${h.kind === 'blocker' ? 'BLOCK' : 'info '} ${h.file}:${h.line}  ${h.variant}  ${h.text}`);
+    out(`  ${h.kind === 'blocker' ? 'BLOCK' : 'info '} ${h.file}:${h.line}  ${h.variant}  ${h.text}`);
   }
 }
 
