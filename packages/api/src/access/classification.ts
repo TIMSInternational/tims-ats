@@ -14,6 +14,33 @@
 // Matrix rows without a model (Health/Medical, Interview Recordings, Background
 // Check, Integrity Test, free-text Coaching Notes) are tracked as follow-ons in
 // docs/REMAINING-WORK.md — deliberately NOT faked as registry entries.
+//
+// The converse also holds, and the rule above does NOT imply it, which is why it is
+// spelled out: a table can have a model AND an active reader AND a salary column and
+// still not belong here.
+//
+// `Offer.salary` is the worked case. It looks like the matrix's "Compensation /
+// Salary" row (§21, Architecture.md:2491, FULL+AUDIT) and it is NOT governed by it.
+// That row gives **recruiter = NONE** — while the same product spec grants recruiters
+// `offer: ['read','create']` at organization scope (seed-access-matrix.ts:84) and
+// `offer.create` takes `salary: z.number().positive()` as a REQUIRED input
+// (routers/offer/crud.ts:116). A recruiter cannot author an offer without setting its
+// salary, so registering Offer under that row would make `selectFor` strip the field
+// from the very role that must supply it, and offer creation would break.
+//
+// The row governs an EMPLOYEE's standing pay (`employee_compensations`,
+// `salary_adjustments`). An offer's salary is a proposed figure on a recruiting
+// artifact its author owns. The recruiter=NONE column is the proof they are different
+// data, not evidence of a gap. Investigated and closed as not-a-defect (#156); do not
+// re-open it from the shape of the column name alone.
+//
+// If a future product decision DOES bring offer salary under field-authorization, it
+// needs its own matrix row with its own role list — not a copy of this one — plus the
+// `select-for.ts` anchors, the `field-classification.json` fixture and the C#
+// `DataClassification.cs` mirror. Registering it here alone would immediately redden
+// `tests/governance/sensitive-read-audit.test.ts`, which would then demand a §21 audit
+// row from all 11 row-level Offer readers across 8 files. That is the intended alarm,
+// not an obstacle to route around.
 
 export type DataClass = 'public' | 'internal' | 'confidential' | 'restricted';
 
