@@ -10,6 +10,24 @@ model NineBoxEvaluation {
   axisBreakdown    Json     @map("axis_breakdown")
   evaluatedAt      DateTime @default(now()) @map("evaluated_at")
   createdAt        DateTime @default(now()) @map("created_at")
+  // ADOPTED, not introduced (#120, #115 §3a). This column exists in production and has
+  // ZERO PROVENANCE: nothing in the repo creates it, and it appears in none of the three
+  // migration-history tables — not `packages/db/prisma/migrations/**`, not
+  // `supabase_migrations.schema_migrations` (all 5 rows' SQL inspected), not
+  // `__EFMigrationsHistory`. The tell is the default: `created_at` above defaults to
+  // CURRENT_TIMESTAMP (what Prisma emits for `@default(now())`) while this one defaults to
+  // `now()` — different tools wrote them. Most probable origin is the Supabase dashboard
+  // TABLE EDITOR, which (unlike its SQL editor) records no migration row at all, i.e. a
+  // write path invisible to every provenance audit. That is the evidence base for #115's
+  // detection-over-provenance design, so it is preserved here rather than in a commit
+  // message alone.
+  //
+  // ADOPTED rather than dropped because: the table stays PRISMA-owned (flip #70 kept
+  // NineBoxEvaluation deliberately — see the note below), the column is NOT NULL DEFAULT
+  // now() so it is already populated on every insert, and prod holds 5 rows of which ZERO
+  // have ever been updated — so `@updatedAt` changes no existing behaviour. Dropping would
+  // have required prod DDL plus a baseline re-capture for no gain.
+  updatedAt        DateTime @updatedAt      @map("updated_at")
 
   user User @relation("NineBoxUser", fields: [userId], references: [id])
 

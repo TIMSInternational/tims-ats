@@ -160,7 +160,9 @@ public sealed class SuccessionReadFixture : IAsyncLifetime
         CREATE TABLE nine_box_evaluations (
             id uuid PRIMARY KEY, organization_id uuid NOT NULL, user_id uuid NOT NULL, quadrant text NOT NULL,
             potential_score double precision NOT NULL, performance_score double precision NOT NULL,
-            evaluated_at timestamp(3) NOT NULL, created_at timestamp(3) NOT NULL);
+            evaluated_at timestamp(3) NOT NULL, created_at timestamp(3) NOT NULL,
+            -- adopted 2026-08-09 (#120): prod carries this NOT NULL DEFAULT now(); the fixture omitted it
+            updated_at timestamp(3) NOT NULL DEFAULT now());
         CREATE TABLE data_access_logs (
             id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
             organization_id uuid NOT NULL, actor_id uuid NOT NULL, data_type text NOT NULL, record_id uuid NOT NULL,
