@@ -19,7 +19,7 @@ public sealed record TrendPoint(string Month, int? Value, bool Suppressed);
 /// The pure monitoring kernels — the C# port of <c>packages/api/src/services/monitoring.service.ts</c>
 /// (Phase-5 Q0b slice 1, issue #100). Infra-free, deterministic, and golden-fixtured against the SAME
 /// literals as the TS side (<c>tests/monitoring/monitoring-kernels.test.ts</c> ↔
-/// <c>tests/Tims.UnitTests/Monitoring/MonitoringKernelsTests.cs</c>).
+/// <c>tests/Tims.UnitTests/Monitoring/MonitoringKernelsFixtureTests.cs</c>).
 ///
 /// Two quirks of the live TS reader are reproduced deliberately rather than "fixed": the month upper
 /// bound is MIDNIGHT on the final day of the month (not end-of-day), and the month shift keeps the

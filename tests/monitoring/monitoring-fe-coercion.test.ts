@@ -11,7 +11,13 @@ import { describe, it, expect } from 'vitest';
  * fabricated **0**: a disclosure-shaped bug that also hides the fact that suppression happened.
  * This pins the null-preserving helper the wrapper actually uses.
  */
-import { numberOrNull, mapActiveAlert, mapActionPlanAlert } from '../../apps/web/lib/platform-api/monitoring';
+import {
+  numberOrNull,
+  mapActiveAlert,
+  mapActionPlanAlert,
+  mapExecutiveKpis,
+  mapTrendPoint,
+} from '../../apps/web/lib/platform-api/monitoring';
 
 describe('numberOrNull — suppression must survive the OpenAPI number-as-string coercion', () => {
   it('preserves null (a SUPPRESSED value must never render as 0)', () => {
@@ -37,6 +43,70 @@ describe('numberOrNull — suppression must survive the OpenAPI number-as-string
     // The bug this guards against, stated explicitly.
     expect(Number(null)).toBe(0);
     expect(numberOrNull(null)).not.toBe(0);
+  });
+});
+
+// ── The REAL numeric mappers ──────────────────────────────────────────────────────────────────
+//
+// Everything above tests the HELPER. That proves `numberOrNull` preserves null; it does NOT prove
+// the wrapper calls it, and only the second fact protects the dashboard. Proven by mutation
+// 2026-08-09: swapping both suppression call sites to a bare `Number()` left `apps/web` tsc at
+// exit 0 and all 85 monitoring tests green while shipping a fabricated 0 for every suppressed
+// value — because `number` widens silently into `number | null`, unlike the Date fields where
+// `Date` vs `string` makes the compiler the enforcer. These exercise the mappers the hooks
+// actually call, which is what closes that hole.
+
+describe('mapExecutiveKpis — the wrapper must ROUTE pendingAdjustments through numberOrNull', () => {
+  const base = {
+    totalEmployees: '10',
+    activeVacancies: '2',
+    pendingAdjustments: null as number | string | null,
+    pendingAdjustmentsSuppressed: true,
+    activeSurveys: '1',
+    openAlerts: '3',
+    turnoverRate: '0',
+    terminationsLast12m: '0',
+  };
+
+  it('a SUPPRESSED pendingAdjustments stays null — never a fabricated 0', () => {
+    const out = mapExecutiveKpis(base);
+    expect(out.pendingAdjustments).toBeNull();
+    expect(out.pendingAdjustments).not.toBe(0);
+    expect(out.pendingAdjustmentsSuppressed).toBe(true);
+  });
+
+  it('a real count still coerces off the contract string form', () => {
+    const out = mapExecutiveKpis({ ...base, pendingAdjustments: '7', pendingAdjustmentsSuppressed: false });
+    expect(out.pendingAdjustments).toBe(7);
+  });
+
+  it('a genuine 0 is preserved as 0, not confused with suppression', () => {
+    // An empty bucket identifies nobody — 0 is a real answer and must not be masked.
+    const out = mapExecutiveKpis({ ...base, pendingAdjustments: 0, pendingAdjustmentsSuppressed: false });
+    expect(out.pendingAdjustments).toBe(0);
+  });
+
+  it('the non-suppressed numerics still coerce to numbers', () => {
+    const out = mapExecutiveKpis(base);
+    expect(out.totalEmployees).toBe(10);
+    expect(out.openAlerts).toBe(3);
+  });
+});
+
+describe('mapTrendPoint — a suppressed trend point must stay null', () => {
+  it('null value survives (the all-or-nothing engagement floor)', () => {
+    const out = mapTrendPoint({ month: '2026-08', value: null, suppressed: true });
+    expect(out.value).toBeNull();
+    expect(out.value).not.toBe(0);
+    expect(out.suppressed).toBe(true);
+  });
+
+  it('an unsuppressed point coerces the contract string form', () => {
+    expect(mapTrendPoint({ month: '2026-08', value: '12', suppressed: false }).value).toBe(12);
+  });
+
+  it('a real zero month stays 0', () => {
+    expect(mapTrendPoint({ month: '2026-08', value: 0, suppressed: false }).value).toBe(0);
   });
 });
 

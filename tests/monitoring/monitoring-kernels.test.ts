@@ -7,7 +7,7 @@ import { describe, it, expect } from 'vitest';
 // rule) — NOT a hand-rolled mirror — so a drift in either direction reddens here first.
 //
 // Every golden below is duplicated verbatim in
-// services/Tims.Platform/tests/Tims.UnitTests/Monitoring/MonitoringKernelsTests.cs.
+// services/Tims.Platform/tests/Tims.UnitTests/Monitoring/MonitoringKernelsFixtureTests.cs.
 // If you change one side you MUST change the other; that is the point of the pairing.
 //
 // These pin INVARIANTS, not an era: each case states the security/product rule it encodes,
@@ -31,7 +31,7 @@ import {
 // `toISOString()`, which would be green only on a UTC runner and would silently drift into a
 // timezone assertion nobody intended. `wallClockIso` reads the local components back and
 // re-renders them as the equivalent UTC instant, so every expectation below is the LITERAL
-// golden the C# `MonitoringKernelsTests` asserts, on any host.
+// golden the C# `MonitoringKernelsFixtureTests` asserts, on any host.
 function wallClockIso(d: Date): string {
   return new Date(
     Date.UTC(

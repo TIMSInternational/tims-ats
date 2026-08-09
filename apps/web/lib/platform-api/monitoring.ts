@@ -148,6 +148,47 @@ export function mapActionPlanAlert(i: {
 }
 
 /**
+ * Numeric row mappers, extracted for exactly the reason the date mappers above were: an invariant
+ * argued only in a comment is not enforced.
+ *
+ * Testing `numberOrNull` in isolation proves the HELPER preserves null; it does not prove the
+ * wrapper CALLS it. Those are different facts, and only the second one protects the dashboard.
+ * Proven by mutation 2026-08-09: swapping both call sites to a bare `Number()` left `apps/web`
+ * tsc at exit 0 (both `number` and `number | null` accept a `number`) and all 85 monitoring tests
+ * green, while shipping a fabricated `0` for every k-anon-suppressed value. The date fields had a
+ * backstop the numeric ones did not — `Date` vs `string` makes the compiler the enforcer, whereas
+ * `number` vs `number | null` widens silently.
+ */
+export function mapExecutiveKpis(raw: {
+  totalEmployees: number | string;
+  activeVacancies: number | string;
+  pendingAdjustments: number | string | null;
+  pendingAdjustmentsSuppressed: boolean;
+  activeSurveys: number | string;
+  openAlerts: number | string;
+  turnoverRate: number | string;
+  terminationsLast12m: number | string;
+}): ExecutiveKpis {
+  return {
+    totalEmployees: Number(raw.totalEmployees),
+    activeVacancies: Number(raw.activeVacancies),
+    // numberOrNull, NOT Number: null here means K-ANON SUPPRESSED, and Number(null) === 0 would
+    // render a fabricated count that also hides that suppression occurred.
+    pendingAdjustments: numberOrNull(raw.pendingAdjustments),
+    pendingAdjustmentsSuppressed: raw.pendingAdjustmentsSuppressed,
+    activeSurveys: Number(raw.activeSurveys),
+    openAlerts: Number(raw.openAlerts),
+    turnoverRate: Number(raw.turnoverRate),
+    terminationsLast12m: Number(raw.terminationsLast12m),
+  };
+}
+
+/** Same argument as `mapExecutiveKpis`: a suppressed point's `value` must stay null, never 0. */
+export function mapTrendPoint(p: { month: string; value: number | string | null; suppressed: boolean }): TrendPoint {
+  return { month: p.month, value: numberOrNull(p.value), suppressed: p.suppressed };
+}
+
+/**
  * `value` is null exactly when `suppressed` is true — and for the `engagement` metric the flag is
  * ALL-OR-NOTHING across the whole series, never per point (nulling only the sub-floor months would
  * leave a monthly-differencing oracle open). Renderers must treat a suppressed point as "hidden",
@@ -189,16 +230,7 @@ export function useMonitoringExecutiveKpis() {
     queryKey: ['platform-api', 'monitoring', 'executive-kpis'],
     queryFn: async () => {
       const raw = await platformGet('/monitoring/executive-kpis');
-      return {
-        totalEmployees: Number(raw.totalEmployees),
-        activeVacancies: Number(raw.activeVacancies),
-        pendingAdjustments: numberOrNull(raw.pendingAdjustments),
-        pendingAdjustmentsSuppressed: raw.pendingAdjustmentsSuppressed,
-        activeSurveys: Number(raw.activeSurveys),
-        openAlerts: Number(raw.openAlerts),
-        turnoverRate: Number(raw.turnoverRate),
-        terminationsLast12m: Number(raw.terminationsLast12m),
-      };
+      return mapExecutiveKpis(raw);
     },
     enabled,
   });
@@ -286,8 +318,8 @@ export function useMonitoringCrossModuleTrend(input: { metric: TrendMetric; peri
       return {
         metric: raw.metric,
         period: raw.period,
-        // numberOrNull, NOT Number: a suppressed point must stay null, never become 0.
-        data: raw.data.map((p) => ({ month: p.month, value: numberOrNull(p.value), suppressed: p.suppressed })),
+        // mapTrendPoint, NOT an inline Number(): a suppressed point must stay null, never become 0.
+        data: raw.data.map(mapTrendPoint),
       };
     },
     enabled,
