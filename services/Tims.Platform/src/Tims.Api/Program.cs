@@ -755,6 +755,13 @@ try
     // `sub` — matching the TS `ctx.user.id` surface, and the authz probes reuse it (dedupe).
     app.UseMiddleware<PrincipalResolutionMiddleware>();
 
+    // #173 — authz_denied observer, the port of TS's OUTERMOST `withSecurityAudit`. Registered
+    // immediately AFTER principal resolution and BEFORE everything that can deny, so on the way
+    // back out it sees both the resolved tenant (to attribute the row) and the final 401/403 from
+    // any gate below — including the rate limiter's own rejections and every *StaffGate. It writes
+    // nothing on success and never alters the response.
+    app.UseMiddleware<SecurityDenialAuditMiddleware>();
+
     // Rate limiting runs AFTER principal resolution (so the resolved TIMS principal is available to
     // key the bucket) but BEFORE authorization/handlers. Infra + auth-probe paths are exempt inside
     // the middleware; the API-key per-key quota is enforced by ApiKeyRateLimitFilter post-auth.

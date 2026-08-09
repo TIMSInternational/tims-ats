@@ -190,6 +190,24 @@ public sealed class MonitoringReadFixture : IAsyncLifetime
         CREATE TABLE survey_responses (
             id uuid PRIMARY KEY, organization_id uuid NOT NULL, survey_id uuid NOT NULL, user_id uuid NULL,
             answers jsonb NOT NULL, submitted_at timestamp(3) NOT NULL);
+
+        -- #173: `audit_logs`, so SecurityDenialAuditMiddleware's authz_denied write can be asserted
+        -- end-to-end through the REAL pipeline (a 403 from MonitoringStaffGate must land a row).
+        -- FKs point at this fixture's real `organizations`/`users` — more faithful than the isolated
+        -- AuditWriterFixture's `users_audit` stand-in, and it means a bad actor_id fails loudly here.
+        CREATE TABLE audit_logs (
+            id uuid PRIMARY KEY,
+            organization_id uuid NOT NULL REFERENCES organizations (id) ON DELETE CASCADE,
+            user_id uuid NULL REFERENCES users (id) ON DELETE SET NULL,
+            actor_id uuid NULL REFERENCES users (id) ON DELETE SET NULL,
+            action text NOT NULL,
+            entity text NOT NULL,
+            entity_id text NULL,
+            changes jsonb NULL,
+            metadata jsonb NULL,
+            ip_address text NULL,
+            user_agent text NULL,
+            created_at timestamp NOT NULL DEFAULT now());
         """;
 
     private const string RlsSql =
