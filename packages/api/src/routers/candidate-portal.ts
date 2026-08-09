@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { router, candidateProcedure } from '../trpc';
+import { clientIpFrom } from '../lib/client-ip';
 import { candidatePortalService } from '../services/candidate-portal.service';
 import { candidateAssessmentService } from '../services/candidate-assessment.service';
 import { candidateAssessmentLifecycleService } from '../services/candidate-assessment-lifecycle.service';
@@ -65,7 +66,7 @@ export const candidatePortalRouter = router({
         input.orgSlug,
         input.assignmentId,
         input.consentAccepted,
-        ctx.headers.get('x-forwarded-for') || ctx.headers.get('x-real-ip'),
+        clientIpFrom(ctx.headers),
         ctx.headers.get('user-agent'),
       ),
     ),

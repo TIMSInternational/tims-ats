@@ -11,6 +11,7 @@ import {
   type ScoreBand,
 } from '@tims/shared';
 import { assessmentQuestionService } from '../services/assessment-question.service';
+import { clientIpFrom } from '../lib/client-ip';
 import { scopeWhereFor, assertScoped, selectFor, logDataAccess } from '../access';
 
 // ---------------------------------------------------------------------------
@@ -50,7 +51,7 @@ async function auditResults(
 ): Promise<void> {
   if (results.length === 0) return;
   const actorId = ctx.user.impersonatorId ?? ctx.user.id;
-  const ipAddress = ctx.headers.get('x-forwarded-for') || ctx.headers.get('x-real-ip');
+  const ipAddress = clientIpFrom(ctx.headers);
   const userAgent = ctx.headers.get('user-agent');
   await Promise.all(
     results.map((r) =>
