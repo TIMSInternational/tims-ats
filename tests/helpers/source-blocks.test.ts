@@ -91,29 +91,31 @@ describe('blockAt — anchor resolution', () => {
   });
 
   it('selects a later occurrence when asked', () => {
-    // Occurrence counting is over the whole file, so the IMPORT of a builder counts
-    // as occurrence 1 — the two procedure declarations are 2 and 3. Anchoring on a
-    // builder name rather than a declaration name is therefore fragile; prefer
-    // `'schedule:'` over `{ occurrence: 2 }`. Kept here because that off-by-one is
-    // exactly what a call site would get wrong.
-    expect(blockAt(ROUTER, 'permissionProcedure', { occurrence: 1 })).toMatch(/from '\.\.\/\.\.\/trpc'/);
-    expect(blockAt(ROUTER, 'permissionProcedure', { occurrence: 2 })).toMatch(/'create'/);
-    expect(blockAt(ROUTER, 'permissionProcedure', { occurrence: 3 })).toMatch(/'update'/);
+    // IMPORT lines are skipped, not counted, so occurrence 1 is the first real
+    // declaration rather than `import { permissionProcedure } from '../../trpc'`.
+    expect(blockAt(ROUTER, 'permissionProcedure', { occurrence: 1 })).toMatch(/'create'/);
+    expect(blockAt(ROUTER, 'permissionProcedure', { occurrence: 2 })).toMatch(/'update'/);
   });
 });
 
 describe('blockAt — shapes other than tRPC procedures', () => {
   it('bounds an async class method at the next method', () => {
-    const repo = `export class CandidateRepository {
+    // OBJECT LITERAL, not `class` — packages/api/src has only two `class`
+    // declarations and neither is a tripwire target. Every "method" anchor in the
+    // converted set is an object-literal method, e.g.
+    // packages/api/src/repositories/candidate.repository.ts:167 `export const
+    // candidateRepository = {`. An earlier fixture here used `export class`, a shape
+    // the codebase never produces.
+    const repo = `export const candidateRepository = {
   async getById(id: string) {
     return db.candidate.findUnique({ where: { id }, select: detailSelect });
-  }
+  },
 
   async create(input: CreateInput) {
     await assertQuota(input.organizationId);
     return db.candidate.create({ data: input });
-  }
-}
+  },
+};
 `;
     expect(blockAt(repo, 'async getById')).not.toMatch(/assertQuota/);
     expect(blockAt(repo, 'async create')).toMatch(/assertQuota/);
@@ -162,30 +164,58 @@ function requireExternalPermission(resource: string) {
     expect(blockAt(mw, 'function requireExternalPermission')).toMatch(/logSecurityEvent/);
   });
 
-  it('bounds an inner block at its own closing brace', () => {
-    const svc = `  async submitAssessment(input: SubmitInput) {
-    for (const question of questions) {
-      if (question.type === 'free_text') {
-        scored.push({ questionId: question.id, requiresManualReview: true });
+  it('bounds an if-branch at its own `} else {` — not at the end of the else', () => {
+    // The real site is if/ELSE (packages/api/src/services/candidate-assessment.service.ts:107),
+    // not two sibling ifs. An earlier fixture modelled siblings and so proved a bound
+    // the helper did not actually deliver: because every `}`-leading line counted as a
+    // continuation, `} else {` was skipped and the extracted "free_text branch"
+    // swallowed the whole else — 3.5x LOOSER than the `.slice(0, 400)` it replaced.
+    // A review lens caught it. `} else {` now terminates: closers are a continuation
+    // only when nothing follows them.
+    const svc = `      for (const question of questions) {
+        if (question.type === 'free_text') {
+          await repo.upsertResponseInTx(tx, { isCorrect: null, pointsAwarded: null });
+          pendingManual.push(question.id);
+        } else {
+          const { isCorrect, pointsAwarded } = scoreChoice(selected, question);
+          graded.push({ isCorrect, pointsAwarded });
+        }
       }
-      if (question.type === 'single_choice') {
-        scored.push({ questionId: question.id, isCorrect: matches(question) });
-      }
-    }
-  }
 `;
     const freeText = blockAt(svc, "if (question.type === 'free_text') {");
-    expect(freeText).toMatch(/requiresManualReview/);
-    expect(freeText).not.toMatch(/isCorrect/);
+    expect(freeText).toMatch(/pendingManual/);
+    expect(freeText).not.toMatch(/scoreChoice/);
+  });
+
+  it('does NOT treat a spread sibling as a continuation', () => {
+    // `...(cond ? {…} : {})` starts with `.`, and an earlier `isContinuationLine`
+    // matched any leading `.` — so a block ran straight past spread siblings. 119 such
+    // sites exist in packages/api/src, and it is the shape used for field-level
+    // authorization (compensation.service.ts:66-76). Chained builder calls (`.input(`)
+    // must still count as continuations, hence `.` but not `...`.
+    const sel = `  const dto = {
+    userId: true,
+    ...(canSeeVariablePay ? { variablePay: true } : {}),
+    ...(canSeeBand ? { bandId: true } : {}),
+  };
+`;
+    expect(blockAt(sel, 'userId: true')).not.toMatch(/variablePay|bandId/);
   });
 
   it('returns to end-of-file only when the anchor is genuinely last', () => {
+    // Asserts on text BELOW the anchor line. The earlier version matched
+    // `db.thing.findMany` on the anchor's OWN line, so it held for any non-empty block
+    // and survived deleting the bound entirely — it tested nothing about EOF.
     const tail = `export const r = router({
-  onlyOne: protectedProcedure.query(() => db.thing.findMany()),
+  first: protectedProcedure.query(() => db.a.findMany()),
+
+  last: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .query(() => db.tail.findMany()),
 });
 `;
-    // Nothing later can satisfy the assertion, so an unbounded tail is correct here.
-    expect(blockAt(tail, 'onlyOne:')).toMatch(/db\.thing\.findMany/);
+    expect(blockAt(tail, 'last:')).toMatch(/db\.tail\.findMany/);
+    expect(blockAt(tail, 'first:')).not.toMatch(/db\.tail\.findMany/);
   });
 });
 
@@ -210,8 +240,64 @@ const p = permissionProcedure('interview', 'create');
   });
 
   it('does not treat a division operator or a regex as a comment', () => {
-    const src = `const half = total / 2;\nconst re = /https:\\/\\/x/;\nconst after = 'kept';\n`;
+    // The regex literal must contain a LITERAL `//` pair, unescaped, or this test
+    // survives deleting regex detection outright — which the earlier fixture did,
+    // because its slashes were separated by backslashes. Caught by a review lens
+    // mutating the feature the test names and watching it stay green.
+    const src = ['const half = total / 2;', 'const proto = /[a-z]+:\\/\\//;', "const after = 'kept';", ''].join('\n');
     const out = stripComments(src);
     expect(out).toMatch(/const after = 'kept'/);
+    expect(out).toMatch(/const half = total \/ 2;/);
+  });
+
+  it('terminates a string at a newline so a bare apostrophe cannot swallow later comments', () => {
+    // JS string literals cannot span a raw newline, so ending them there is correct —
+    // and without it, `don't` in JSX text opens a phantom string that stays open until
+    // the next quote anywhere later, leaving every `//` comment in between un-blanked.
+    // That resurrects prose-satisfies-a-gate, the class this helper exists to prevent.
+    const src = ["return <p>don't</p>;", "// assertScoped('candidate') was removed", 'const x = 1;', ''].join('\n');
+    expect(stripComments(src)).not.toMatch(/assertScoped/);
+  });
+
+  it('strips comments from the RETURNED block, not only during anchor resolution', () => {
+    // Zero coverage before: mutating the return to slice the RAW source left every
+    // helper test and all converted tests green, because only the anchor-resolution
+    // half was asserted.
+    const src = `export const r = router({
+  target: protectedProcedure
+    // assertScoped('candidate') is deliberately NOT called here
+    .query(() => db.a.findMany()),
+
+  next: protectedProcedure.query(() => db.b.findMany()),
+});
+`;
+    expect(blockAt(src, 'target:')).not.toMatch(/assertScoped/);
+  });
+
+  it('minLines rejects a block too small for a negative assertion to mean anything', () => {
+    const src = `export const r = router({
+  tiny: protectedProcedure.query(() => db.a.findMany()),
+
+  next: protectedProcedure.query(() => db.b.findMany()),
+});
+`;
+    expect(() => blockAt(src, 'tiny:', { minLines: 5 })).toThrow(/minLines/);
+    expect(blockAt(src, 'tiny:')).toMatch(/db\.a\.findMany/);
+  });
+
+  it('skips an import specifier so a moved declaration cannot resolve vacuously', () => {
+    // The realistic refactor "extract candidateQuestionSelect to a shared module"
+    // makes the first textual occurrence an import specifier. Anchoring there returns
+    // `candidateQuestionSelect } from './selects';` and every `.not.toContain(...)`
+    // over it passes vacuously, green, forever.
+    const src = `import { candidateQuestionSelect } from './selects';
+
+export const candidateQuestionSelectLocal = {
+  id: true,
+  correctOptionIds: true,
+};
+`;
+    expect(() => blockAt(src, 'candidateQuestionSelect')).not.toThrow();
+    expect(blockAt(src, 'candidateQuestionSelect')).toMatch(/correctOptionIds/);
   });
 });

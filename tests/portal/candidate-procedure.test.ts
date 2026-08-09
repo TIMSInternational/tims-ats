@@ -192,28 +192,32 @@ describe('candidate FAQ rate limiting', () => {
 });
 
 describe('candidate assessment take-flow — security invariants (Wave 1.5a slice 2)', () => {
+  // Shared by both assertions below so they cannot drift apart — one of them is the
+  // IDOR guard, and it previously covered whichever endpoints happened to fall inside
+  // one unbounded slice.
+  const ASSESSMENT_ENDPOINTS = ['getMyAssessments', 'startAssessment', 'getAssessmentQuestions', 'submitAssessment'];
+
   it('every new candidate-portal assessment endpoint uses candidateProcedure', () => {
-    // Bound each endpoint's slice to end at the START of the NEXT endpoint (in
-    // real router order) so each slice contains ONLY that one endpoint's own
-    // procedure definition — a plain end-of-file slice would let earlier
-    // endpoints "pass" merely because a LATER endpoint still uses
-    // candidateProcedure, even if the earlier one were changed to publicProcedure.
-    const ASSESSMENT_ENDPOINTS = ['getMyAssessments', 'startAssessment', 'getAssessmentQuestions', 'submitAssessment'];
-    for (let i = 0; i < ASSESSMENT_ENDPOINTS.length; i++) {
-      const name = ASSESSMENT_ENDPOINTS[i];
-      const start = ROUTER.indexOf(`${name}:`);
-      expect(start).toBeGreaterThan(-1);
-      const nextName = ASSESSMENT_ENDPOINTS[i + 1];
-      const end = nextName ? ROUTER.indexOf(`${nextName}:`) : ROUTER.length;
-      const slice = ROUTER.slice(start, end);
-      expect(slice).toMatch(/candidateProcedure/);
+    // Each endpoint is bounded at its own next sibling, so an endpoint cannot "pass"
+    // because a LATER one still uses candidateProcedure.
+    for (const name of ASSESSMENT_ENDPOINTS) {
+      expect(blockAt(ROUTER, `${name}:`)).toMatch(/candidateProcedure/);
     }
   });
 
   it('never accepts a client-supplied candidateId or email on the assessment endpoints', () => {
-    const slice = blockAt(ROUTER, 'getMyAssessments:');
-    expect(slice).not.toMatch(/candidateId:\s*z\./);
-    expect(slice).not.toMatch(/email:\s*z\./);
+    // EVERY assessment endpoint, not just the first. This previously ran as one
+    // unbounded slice from `getMyAssessments:` to end-of-file, which happened to span
+    // all four; bounding it to a single procedure left `startAssessment`,
+    // `getAssessmentQuestions` and `submitAssessment` unguarded, and no whole-file
+    // assertion covers `candidateId` (the one at the top of this file covers `email`
+    // only). A client-supplied candidateId on submitAssessment is precisely the IDOR
+    // this block exists to prevent.
+    for (const name of ASSESSMENT_ENDPOINTS) {
+      const slice = blockAt(ROUTER, `${name}:`, { minLines: 3 });
+      expect(slice, name).not.toMatch(/candidateId:\s*z\./);
+      expect(slice, name).not.toMatch(/email:\s*z\./);
+    }
   });
 
   it('getAssessmentQuestions repo select never includes correctOptionIds', () => {

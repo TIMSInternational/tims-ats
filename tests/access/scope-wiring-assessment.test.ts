@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { blockAt } from '../helpers/source-blocks';
 
 const ROOT = join(__dirname, '..', '..');
 const src = () => readFileSync(join(ROOT, 'packages/api/src/routers/assessment.ts'), 'utf8');
@@ -20,11 +21,14 @@ describe('assessment module scope wiring', () => {
   });
 
   it('question bank stays org-level (deliberately unscoped)', () => {
-    // Slice from the question-bank comment block (last section); using the
-    // comment marker avoids matching the `listQuestionsSchema` import alias.
-    const marker = '// Question authoring';
-    const qb = src().slice(src().indexOf(marker));
-    expect(qb).not.toMatch(/scopeWhereFor|assertScoped/);
+    // Enumerated by procedure name rather than anchored on a COMMENT marker.
+    // The old form sliced from '// Question authoring' to end-of-file: reword that
+    // comment and indexOf returns -1, so slice(-1) yields the file's LAST CHARACTER
+    // and this negative assertion passes over one character — a silent, total false
+    // pass. Naming the four procedures also states the scope the title only implied.
+    for (const proc of ['listQuestions:', 'createQuestion:', 'updateQuestion:', 'deleteQuestion:']) {
+      expect(blockAt(src(), proc, { minLines: 3 }), proc).not.toMatch(/scopeWhereFor|assertScoped/);
+    }
   });
 
   it('no scope-fragment spreads', () => {
