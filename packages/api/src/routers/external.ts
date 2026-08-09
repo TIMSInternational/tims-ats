@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { router, externalPermissionProcedure } from '../trpc';
+import { clientIpFrom } from '../lib/client-ip';
 import { externalAssessmentService, type ExternalAuditMeta } from '../services/external-assessment.service';
 import { externalValidationService } from '../services/external-validation.service';
 import { ExternalValidationSubmitInput } from '../dto/external-validation';
@@ -18,7 +19,7 @@ function auditMeta(ctx: {
   return {
     organizationId: ctx.externalAuth!.organizationId,
     apiKeyId: ctx.externalAuth!.apiKeyId,
-    ipAddress: ctx.headers.get('x-forwarded-for') ?? ctx.headers.get('x-real-ip'),
+    ipAddress: clientIpFrom(ctx.headers),
     userAgent: ctx.headers.get('user-agent'),
   };
 }

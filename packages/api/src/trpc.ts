@@ -165,7 +165,7 @@ const withAudit = t.middleware(async ({ ctx, next, path }) => {
           action: 'access',
           entity: path,
           ...(ctx.user.impersonatorId ? { metadata: { impersonatedUserId: ctx.user.id } } : {}),
-          ipAddress: ctx.headers.get('x-forwarded-for') || ctx.headers.get('x-real-ip'),
+          ipAddress: clientIpFrom(ctx.headers),
           userAgent: ctx.headers.get('user-agent'),
         },
       })
@@ -223,7 +223,7 @@ const withMfaEnforcement = t.middleware(({ ctx, next }) => {
       action: 'mfa_step_up_required',
       entity: 'mfa',
       metadata: { currentLevel: ctx.aal ?? null },
-      ipAddress: ctx.headers.get('x-forwarded-for') || ctx.headers.get('x-real-ip'),
+      ipAddress: clientIpFrom(ctx.headers),
       userAgent: ctx.headers.get('user-agent'),
     });
     throw new TRPCError({ code: 'FORBIDDEN', message: MFA_REQUIRED });

@@ -476,7 +476,16 @@ describe('restricted compensation reads are audited fail-closed (fix 4)', () => 
   it('audits actorId via impersonatorId fallback and reads ip/ua from headers', () => {
     const src = readComp();
     expect(src).toMatch(/ctx\.user\.impersonatorId \?\? ctx\.user\.id/);
-    expect(src).toMatch(/ctx\.headers\.get\('x-forwarded-for'\) \|\| ctx\.headers\.get\('x-real-ip'\)/);
+    // #158: this used to pin the RAW `x-forwarded-for || x-real-ip` form. That form takes the
+    // client-controlled LEFT-MOST hop, so the one forensic field the §21 obligation produces was
+    // attacker-chosen — and it stored a comma-joined hop list verbatim rather than an address.
+    // Both audit sites in this router now go through clientIpFrom (x-real-ip first, else the LAST
+    // xff hop). Pinning the helper CALL rather than the header expression is also what keeps this
+    // assertion honest: the derivation itself is unit-tested in tests/platform/, so re-inlining a
+    // raw header read here fails both here and there.
+    expect(src).toMatch(/clientIpFrom\(ctx\.headers\)/);
+    expect(src).not.toMatch(/headers\.get\('x-forwarded-for'\)/);
+    expect(src).toMatch(/ctx\.headers\.get\('user-agent'\)/);
   });
 
   it('the surviving restricted reader calls logDataAccess in the router (simulateAdjustment; getEmployeeComp audits inside the shared service)', () => {

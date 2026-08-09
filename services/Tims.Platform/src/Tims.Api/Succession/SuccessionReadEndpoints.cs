@@ -543,7 +543,15 @@ public static class SuccessionReadEndpoints
             string.IsNullOrEmpty(search) ? null : search);
     }
 
-    // getCompGapAlerts audit IP: x-forwarded-for || x-real-ip (matches the TS header order).
+    // Audit IP. NOTE (#158, 2026-08-09): this takes the RAW whole `x-forwarded-for` header, i.e. the
+    // client-controlled left-most hop, and returns the comma-joined hop list verbatim. The TS side
+    // used to do the same; it no longer does — every TS audit writer now goes through
+    // `packages/api/src/lib/client-ip.ts` (`x-real-ip` first, else the LAST xff hop). So this is a
+    // KNOWN CROSS-STACK DIVERGENCE, not parity, and the previous "matches the TS header order"
+    // claim on this comment was made false by that change rather than being wrong when written.
+    // C# already has the correct derivation in Tims.Domain/RateLimiting/RateLimitIdentity.cs
+    // (`AnonymousIdentifier`); this helper should adopt it. Tracked separately — see the issue
+    // as #174.
     private static string? ClientIp(HttpContext httpContext)
     {
         var forwarded = httpContext.Request.Headers["x-forwarded-for"].ToString();
