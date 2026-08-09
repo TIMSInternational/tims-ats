@@ -1,3 +1,5 @@
+using Tims.Domain.Http;
+
 namespace Tims.Domain.RateLimiting;
 
 /// <summary>
@@ -68,25 +70,10 @@ public static class RateLimitIdentity
     /// </summary>
     public static string AnonymousIdentifier(string? xRealIp, string? xForwardedFor)
     {
-        var realIp = xRealIp?.Trim();
-        if (!string.IsNullOrEmpty(realIp))
-        {
-            return $"ip:{realIp}";
-        }
-
-        if (!string.IsNullOrEmpty(xForwardedFor))
-        {
-            var hops = xForwardedFor
-                .Split(',')
-                .Select(hop => hop.Trim())
-                .Where(hop => hop.Length > 0)
-                .ToArray();
-            if (hops.Length > 0)
-            {
-                return $"ip:{hops[^1]}";
-            }
-        }
-
-        return "anonymous";
+        // #174: the derivation itself now lives in Tims.Domain.Http.ClientIp, shared with the audit
+        // writers, so the two consumers cannot drift. This method keeps only the identity SHAPE
+        // (`ip:<addr>` / `anonymous`) that the limiter's key layout depends on.
+        var ip = ClientIp.From(xRealIp, xForwardedFor);
+        return ip is null ? "anonymous" : $"ip:{ip}";
     }
 }

@@ -3,6 +3,8 @@ import { readFileSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
 import { clientIpFrom } from '../../packages/api/src/lib/client-ip';
 
+const ROOT_FIXTURES = join(__dirname, '..', '..', 'contracts');
+
 // #158 — the audit IP must not be attacker-chosen.
 //
 // `packages/api/src/trpc.ts` has documented the rule in prose since the rate limiter was written:
@@ -21,6 +23,36 @@ import { clientIpFrom } from '../../packages/api/src/lib/client-ip';
 // file cannot match itself: `tests/` is never a walk root. That is not incidental — a governance
 // tripwire in this repo has previously matched its own title string, so the banned literal below
 // is confined to the regex and never appears in an `it(...)` name.
+
+// #174 — the SAME goldens the C# `Tims.UnitTests/Http/ClientIpFixtureTests.cs` asserts against
+// `Tims.Domain.Http.ClientIp.From`. One JSON, two stacks. Seven C# audit writers used to re-derive
+// this rule by hand and get it wrong; three even claimed parity with TS in a comment. A shared
+// fixture is what makes that claim checkable rather than aspirational.
+interface IpCase {
+  name: string;
+  input: { xRealIp: string | null; xForwardedFor: string | null };
+  expected: string | null;
+}
+const GOLDENS: IpCase[] = JSON.parse(
+  readFileSync(join(ROOT_FIXTURES, 'client-ip-fixtures', 'cases.json'), 'utf8'),
+).cases;
+
+describe('clientIpFrom — pinned to the cross-stack goldens', () => {
+  it('the fixture is not empty', () => {
+    // Floor guard: the per-case loop below is a quantifier, so an emptied fixture would pass
+    // vacuously — the same silent-stop failure the C# side guards.
+    expect(GOLDENS.length).toBeGreaterThanOrEqual(10);
+  });
+
+  for (const c of GOLDENS) {
+    it(`golden: ${c.name}`, () => {
+      const init: Record<string, string> = {};
+      if (c.input.xRealIp !== null) init['x-real-ip'] = c.input.xRealIp;
+      if (c.input.xForwardedFor !== null) init['x-forwarded-for'] = c.input.xForwardedFor;
+      expect(clientIpFrom(new Headers(init))).toBe(c.expected);
+    });
+  }
+});
 
 describe('clientIpFrom — the derivation itself', () => {
   const h = (init: Record<string, string>) => new Headers(init);

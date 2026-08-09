@@ -1,3 +1,4 @@
+using Tims.Api.Http;
 using System.Security.Claims;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Options;
@@ -89,7 +90,7 @@ public static class AccessReviewEndpoints
 
                 await securityEventWriter.WriteAsync(
                     new SecurityEvent(organizationId, Guid.Parse(gate.Context!.UserId), "platform_export", "export:access_review", null,
-                        metadata, IpAddress: ClientIp(httpContext), UserAgent: UserAgentOf(httpContext)),
+                        metadata, IpAddress: httpContext.ClientIpFor(), UserAgent: UserAgentOf(httpContext)),
                     cancellationToken);
 
                 return Results.Ok(new { format = "csv", data = BuildCsv(report), count = report.Rows.Count, truncated = report.Truncated });
@@ -213,27 +214,6 @@ public static class AccessReviewEndpoints
         }
 
         return string.Join('\n', new[] { header }.Concat(lines));
-    }
-
-    // Audit IP. NOTE (#158, 2026-08-09): this takes the RAW whole `x-forwarded-for` header, i.e. the
-    // client-controlled left-most hop, and returns the comma-joined hop list verbatim. The TS side
-    // used to do the same; it no longer does — every TS audit writer now goes through
-    // `packages/api/src/lib/client-ip.ts` (`x-real-ip` first, else the LAST xff hop). So this is a
-    // KNOWN CROSS-STACK DIVERGENCE, not parity, and the previous "matches the TS header order"
-    // claim on this comment was made false by that change rather than being wrong when written.
-    // C# already has the correct derivation in Tims.Domain/RateLimiting/RateLimitIdentity.cs
-    // (`AnonymousIdentifier`); this helper should adopt it. Tracked separately — see the issue
-    // as #174.
-    private static string? ClientIp(HttpContext httpContext)
-    {
-        var forwarded = httpContext.Request.Headers["x-forwarded-for"].ToString();
-        if (!string.IsNullOrEmpty(forwarded))
-        {
-            return forwarded;
-        }
-
-        var realIp = httpContext.Request.Headers["x-real-ip"].ToString();
-        return string.IsNullOrEmpty(realIp) ? null : realIp;
     }
 
     private static string? UserAgentOf(HttpContext httpContext)

@@ -1,3 +1,4 @@
+using Tims.Api.Http;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
@@ -301,7 +302,7 @@ public static class SuccessionReadEndpoints
                 // §21 audit: one data_access_logs row per EXPOSED employeeCompensation record, fail-closed
                 // (restricted) BEFORE serializing the alerts — a failed audit-write aborts pre-response.
                 var actorId = AuditActor.ActorFor(gate.Context!);
-                var ipAddress = ClientIp(httpContext);
+                var ipAddress = httpContext.ClientIpFor();
                 var userAgent = httpContext.Request.Headers.UserAgent.ToString();
                 foreach (var recordId in result.AuditedCompIds)
                 {
@@ -541,27 +542,6 @@ public static class SuccessionReadEndpoints
             unit,
             string.IsNullOrEmpty(criticality) ? null : criticality,
             string.IsNullOrEmpty(search) ? null : search);
-    }
-
-    // Audit IP. NOTE (#158, 2026-08-09): this takes the RAW whole `x-forwarded-for` header, i.e. the
-    // client-controlled left-most hop, and returns the comma-joined hop list verbatim. The TS side
-    // used to do the same; it no longer does — every TS audit writer now goes through
-    // `packages/api/src/lib/client-ip.ts` (`x-real-ip` first, else the LAST xff hop). So this is a
-    // KNOWN CROSS-STACK DIVERGENCE, not parity, and the previous "matches the TS header order"
-    // claim on this comment was made false by that change rather than being wrong when written.
-    // C# already has the correct derivation in Tims.Domain/RateLimiting/RateLimitIdentity.cs
-    // (`AnonymousIdentifier`); this helper should adopt it. Tracked separately — see the issue
-    // as #174.
-    private static string? ClientIp(HttpContext httpContext)
-    {
-        var forwarded = httpContext.Request.Headers["x-forwarded-for"].ToString();
-        if (!string.IsNullOrEmpty(forwarded))
-        {
-            return forwarded;
-        }
-
-        var realIp = httpContext.Request.Headers["x-real-ip"].ToString();
-        return string.IsNullOrEmpty(realIp) ? null : realIp;
     }
 
     private static async Task DisposeAnchorsAsync(IAnchorLoader anchors)

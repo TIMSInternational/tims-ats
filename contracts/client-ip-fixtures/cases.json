@@ -1,0 +1,65 @@
+{
+  "description": "Trusted client-IP derivation (#158 / #174). ONE golden, TWO stacks: TS `clientIpFrom` (packages/api/src/lib/client-ip.ts, asserted by tests/governance/audit-ip-derivation.test.ts) and C# `Tims.Domain.Http.ClientIp.From` (asserted by Tims.UnitTests/Http/ClientIpFixtureTests.cs). The rule: NEVER the client-controlled left-most x-forwarded-for hop; prefer x-real-ip (platform-edge, unspoofable), else the LAST xff hop. `expected: null` means no trusted address could be derived. A behaviour change edits this file once and must face both suites.",
+  "cases": [
+    {
+      "name": "x-real-ip wins outright over x-forwarded-for",
+      "input": { "xRealIp": "10.0.0.9", "xForwardedFor": "1.2.3.4" },
+      "expected": "10.0.0.9"
+    },
+    {
+      "name": "takes the LAST hop, never the attacker-chosen first",
+      "input": { "xRealIp": null, "xForwardedFor": "1.2.3.4, 10.0.0.9" },
+      "expected": "10.0.0.9"
+    },
+    {
+      "name": "many hops still resolves to the last",
+      "input": { "xRealIp": null, "xForwardedFor": "evil, a, b, 10.0.0.9" },
+      "expected": "10.0.0.9"
+    },
+    {
+      "name": "single hop",
+      "input": { "xRealIp": null, "xForwardedFor": "10.0.0.9" },
+      "expected": "10.0.0.9"
+    },
+    {
+      "name": "whitespace around hops is trimmed",
+      "input": { "xRealIp": null, "xForwardedFor": "1.2.3.4,   10.0.0.9  " },
+      "expected": "10.0.0.9"
+    },
+    {
+      "name": "a blank x-real-ip falls through rather than winning as empty",
+      "input": { "xRealIp": "   ", "xForwardedFor": "10.0.0.9" },
+      "expected": "10.0.0.9"
+    },
+    {
+      "name": "a trailing comma does not produce an empty last hop",
+      "input": { "xRealIp": null, "xForwardedFor": "1.2.3.4, 10.0.0.9, " },
+      "expected": "10.0.0.9"
+    },
+    {
+      "name": "x-real-ip is trimmed when it does win",
+      "input": { "xRealIp": "  10.0.0.9 ", "xForwardedFor": null },
+      "expected": "10.0.0.9"
+    },
+    {
+      "name": "neither header present yields no address",
+      "input": { "xRealIp": null, "xForwardedFor": null },
+      "expected": null
+    },
+    {
+      "name": "empty x-forwarded-for yields no address",
+      "input": { "xRealIp": null, "xForwardedFor": "" },
+      "expected": null
+    },
+    {
+      "name": "an all-separator x-forwarded-for yields no address, not an empty string",
+      "input": { "xRealIp": null, "xForwardedFor": " , " },
+      "expected": null
+    },
+    {
+      "name": "IPv6 loopback (what local dev writes) survives verbatim",
+      "input": { "xRealIp": "::1", "xForwardedFor": null },
+      "expected": "::1"
+    }
+  ]
+}
