@@ -133,6 +133,8 @@ model User {
   // still exist in the database; they are declared in
   // services/Tims.Platform/db/flip-ddl/evaluation360.sql, not here.
 
+  hirePredictions      HirePrediction[] @relation("HirePredictionSubject")
+  hirePredictionsHired HirePrediction[] @relation("HirePredictionHiredBy")
   @@unique([organizationId, email])
   @@index([organizationId])
   @@index([supabaseUserId])

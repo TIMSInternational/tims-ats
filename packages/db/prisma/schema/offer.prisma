@@ -29,6 +29,7 @@ model Offer {
   validations PreemploymentValidation[]
   legalChecks LegalCheck[]
 
+  hirePrediction HirePrediction?
   @@index([organizationId])
   @@index([candidateId])
   @@index([vacancyId])

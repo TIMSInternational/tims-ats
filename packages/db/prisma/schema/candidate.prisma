@@ -32,6 +32,7 @@ model Candidate {
   interviews             Interview[]     @relation("CandidateInterviews")
   offers                 Offer[]         @relation("CandidateOffers")
 
+  hirePredictions HirePrediction[]
   @@unique([organizationId, email])
   @@index([organizationId])
   @@index([organizationId, poolType])

@@ -50,6 +50,7 @@ model Application {
   interviews     Interview[]     @relation("ApplicationInterviews")
   offers         Offer[]         @relation("ApplicationOffers")
 
+  hirePredictions HirePrediction[]
   @@unique([candidateId, vacancyId])
   @@index([organizationId])
   @@index([organizationId, status])

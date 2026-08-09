@@ -50,6 +50,7 @@ model Organization {
   // back-relation to a deleted model is a hard P1012. Read it via the C# API.
   vacancies              Vacancy[]
   roleFamilyWeightProfiles RoleFamilyWeightProfile[]
+  hirePredictions          HirePrediction[]
   subscription           Subscription?
   invoices               Invoice[]
   billingProfile         BillingProfile?
