@@ -152,7 +152,7 @@ The **fifth is new (added 2026-08-02 after a review caught two misses)** and is 
 bitten twice. A procedure with zero `useQuery` consumers can still be a live FE dependency purely through
 its **cache key**: `apps/web/app/(admin)/engagement/climate/launch-survey-modal.tsx:58` calls
 `utils.engagement.listSurveys.invalidate()` and
-`apps/web/app/(admin)/monitoring/alert-rules-modal.tsx:82` calls
+`apps/web/app/(admin)/monitoring/alert-rules-modal.tsx:98` calls
 `utils.monitoring.getExecutiveKpis.invalidate()`. Neither is a `useQuery` and neither appears in any of
 the first four greps — yet deleting the procedure breaks `Type Check (web)` (the property vanishes from
 the typed utils object) **and** a static tripwire (`tests/tier1/s2-engagement-wiring.test.ts:33`).
@@ -187,6 +187,7 @@ Each reader gets exactly one disposition, decided before the PR:
   (`apps/web/app/(admin)/platform/support/data-requests.tsx:20`) so it is not deletable, and it uses the
   privileged cross-org `db`, not `tenantDb`, so it is not repointable through a tenant-scoped read.
   Deleting just the read site yields a **200 export silently missing a legally mandated section**.
+
 - **Blocked** — no C# read surface exists yet ⇒ the flip does not start.
 
 **Field-authorization / audit parity is part of the disposition, not a follow-up.** For any table
@@ -1858,6 +1859,24 @@ and reddens `tests/monitoring/executive-kpis-vacancy-status.test.ts`.
 > **#64 is BLOCKED under P2** until (a) a C# monitoring read surface exists and (b) a **privileged
 > cross-org** C# read exists for the alert cron. Both are prerequisite slices — see §8 Q0b, ranked above Q1.
 
+> **UPDATE 2026-08-09 (#100 / PR #140) — exactly ONE of the two prerequisites has landed.**
+> Condition **(a) is DONE**: a C# monitoring read surface now exists
+> (`services/Tims.Platform/src/Tims.Api/Monitoring/MonitoringReadEndpoints.cs`, six reads), so does
+> `apps/web/lib/platform-api/monitoring.ts`, and both `Platform:MonitoringReadEnabled` and
+> `NEXT_PUBLIC_MONITORING_READ_VIA_CSHARP` are wired. **The "has no C# counterpart at all" sentence
+> above is superseded**, as is the same claim where it recurs below and in §8 Q0b.
+> Condition **(b) is NOT done**: the alert cron still needs its privileged cross-org read (Q0b slice
+> 2 — now tracked as **#172**; WIP in PR #141), and `alert-evaluation.repository.ts:120` is still a
+> **Blocker** row in the inventory below. **#64 therefore stays BLOCKED under P2.**
+>
+> Two caveats that keep this from being read as more than it is. The surface ships **DARK** — the
+> flag is unset in every environment, so the TS `monitoring.*` procedures are still the only active
+> reader and runtime behaviour is unchanged. And "a C# read exists" is not the same as "`model Survey`
+> can be deleted": the TS procedures at `monitoring.ts:23`/`:232` still call `survey.count` /
+> `surveyResponse.count`, because the wrapper keeps the tRPC path as its fallback branch by design.
+> Deleting the Prisma models still fails `Type Check (api)` today. What changed is that the repointing
+> work is now _possible_, not that it is _done_.
+
 **`access_reviews` is flip #1.** It has **zero** TS Prisma readers (`grep -rn accessReview packages/api/src`
 → one comment in `packages/api/src/access/access-review-kernel.ts:4`), no seed writes, one prod row, only
 two back-relation lines (`user.prisma:31`, `organization.prisma:49`) — **and, unlike `surveys`, it has a
@@ -1871,18 +1890,18 @@ It is believed safe only because its two datetime columns are `ValueGeneratedOnA
 
 ### Cross-reader inventory (must all be dispositioned before the PR)
 
-| Site                                                                 | Read                                                                                                                          | FE consumer                                                                                                                                                                                                                        | Disposition                                                                                    |
-| -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `packages/api/src/routers/engagement.ts:36`                          | `survey.findMany` (`listSurveys`)                                                                                             | **1 invalidate-only call** (`engagement/climate/launch-survey-modal.tsx:58`) **+ 1 static tripwire** (`tests/tier1/s2-engagement-wiring.test.ts:33`)                                                                               | Delete procedure — **but see edits 1b/3/4**; it is not consumer-free                           |
-| `…/engagement.ts:53`                                                 | `survey.count`                                                                                                                | none                                                                                                                                                                                                                               | Delete with the same procedure                                                                 |
-| `…/engagement.ts:74` + `:83`                                         | `survey.findFirst` with nested `responses: { select: { answers: true } }` (`getSurveyResults`)                                | none                                                                                                                                                                                                                               | Delete, **or** repoint — needs a C# by-id read (see below)                                     |
-| `…/engagement.ts:122` + `:126`                                       | `survey.findFirst` with nested `responses: { select: { answers, user: { companyId, businessUnitId } } }` (`getResultsByArea`) | none                                                                                                                                                                                                                               | Same; **note the join into `users`** (Prisma-owned)                                            |
-| `packages/api/src/routers/monitoring.ts:23`                          | `survey.count` (`getExecutiveKpis`)                                                                                           | **5**: 4 `useQuery` (`dashboard/hr-exec-dashboard.tsx:34`, `dashboard/org-command-center.tsx:28`, `monitoring/monitoring-bottom.tsx:41`, `monitoring/page.tsx:16`) **+ 1 `.invalidate()`** (`monitoring/alert-rules-modal.tsx:82`) | **Blocker** — must be repointed                                                                |
-| `packages/api/src/routers/monitoring.ts:232`                         | `surveyResponse.count` (`getCrossModuleTrend`, `metric==='engagement'` branch only)                                           | reachable by any `monitoring:read` holder; the only FE caller hardcodes `metric:'headcount'`                                                                                                                                       | **Repoint, or drop the metric from the Zod enum — NEVER "just delete the branch"** (see below) |
-| `packages/api/src/repositories/alert-evaluation.repository.ts:120`   | `survey.count`, metric `active_surveys`                                                                                       | cron                                                                                                                                                                                                                               | **Blocker** — privileged cross-org, see below                                                  |
-| `packages/api/src/access/select-for.ts:13` · `classification.ts:120` | `surveyResponse` registry entries                                                                                             | —                                                                                                                                                                                                                                  | Hand-clean — `Record<string, …>`, will **not** fail `tsc` (§1 step 6)                          |
-| `packages/db/prisma/seed-demo.ts:1202,1207,1226`                     | `survey.findFirst` / `.create` / `surveyResponse.create`                                                                      | —                                                                                                                                                                                                                                  | Port to raw SQL or drop from the demo seed                                                     |
-| `scripts/parity/seed.ts:1111,1118,1127,1766,1773,1790,1896`          | raw SQL via `pg`                                                                                                              | —                                                                                                                                                                                                                                  | Survives mechanically; no change needed                                                        |
+| Site                                                                 | Read                                                                                                                          | FE consumer                                                                                                                                                                                                                                                                                                                            | Disposition                                                                                                                                                                    |
+| -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `packages/api/src/routers/engagement.ts:36`                          | `survey.findMany` (`listSurveys`)                                                                                             | **1 invalidate-only call** (`engagement/climate/launch-survey-modal.tsx:58`) **+ 1 static tripwire** (`tests/tier1/s2-engagement-wiring.test.ts:33`)                                                                                                                                                                                   | Delete procedure — **but see edits 1b/3/4**; it is not consumer-free                                                                                                           |
+| `…/engagement.ts:53`                                                 | `survey.count`                                                                                                                | none                                                                                                                                                                                                                                                                                                                                   | Delete with the same procedure                                                                                                                                                 |
+| `…/engagement.ts:74` + `:83`                                         | `survey.findFirst` with nested `responses: { select: { answers: true } }` (`getSurveyResults`)                                | none                                                                                                                                                                                                                                                                                                                                   | Delete, **or** repoint — needs a C# by-id read (see below)                                                                                                                     |
+| `…/engagement.ts:122` + `:126`                                       | `survey.findFirst` with nested `responses: { select: { answers, user: { companyId, businessUnitId } } }` (`getResultsByArea`) | none                                                                                                                                                                                                                                                                                                                                   | Same; **note the join into `users`** (Prisma-owned)                                                                                                                            |
+| `packages/api/src/routers/monitoring.ts:23`                          | `survey.count` (`getExecutiveKpis`)                                                                                           | **5**: 4 `useQuery` (`dashboard/hr-exec-dashboard.tsx:35`, `dashboard/org-command-center.tsx:29`, `monitoring/monitoring-bottom.tsx:44`, `monitoring/page.tsx:16`) **+ 1 `.invalidate()`** (`monitoring/alert-rules-modal.tsx:98`) — all five now go through `lib/platform-api/monitoring.ts` rather than `trpc.monitoring.*` directly | **Blocker — REPOINTED 2026-08-09 (#100 / PR #140)**, but see the caveat above: the wrapper keeps tRPC as its fallback branch, so `monitoring.ts:23` still calls `survey.count` |
+| `packages/api/src/routers/monitoring.ts:232`                         | `surveyResponse.count` (`getCrossModuleTrend`, `metric==='engagement'` branch only)                                           | reachable by any `monitoring:read` holder; the only FE caller hardcodes `metric:'headcount'`                                                                                                                                                                                                                                           | **Repoint, or drop the metric from the Zod enum — NEVER "just delete the branch"** (see below)                                                                                 |
+| `packages/api/src/repositories/alert-evaluation.repository.ts:120`   | `survey.count`, metric `active_surveys`                                                                                       | cron                                                                                                                                                                                                                                                                                                                                   | **Blocker** — privileged cross-org, see below                                                                                                                                  |
+| `packages/api/src/access/select-for.ts:13` · `classification.ts:120` | `surveyResponse` registry entries                                                                                             | —                                                                                                                                                                                                                                                                                                                                      | Hand-clean — `Record<string, …>`, will **not** fail `tsc` (§1 step 6)                                                                                                          |
+| `packages/db/prisma/seed-demo.ts:1202,1207,1226`                     | `survey.findFirst` / `.create` / `surveyResponse.create`                                                                      | —                                                                                                                                                                                                                                                                                                                                      | Port to raw SQL or drop from the demo seed                                                                                                                                     |
+| `scripts/parity/seed.ts:1111,1118,1127,1766,1773,1790,1896`          | raw SQL via `pg`                                                                                                              | —                                                                                                                                                                                                                                                                                                                                      | Survives mechanically; no change needed                                                                                                                                        |
 
 Two of these are genuinely hard:
 
@@ -1890,6 +1909,10 @@ Two of these are genuinely hard:
   all** — no `apps/web/lib/platform-api/monitoring.ts`, no `Platform:Monitoring*` flag. Repointing it
   means either building a C# read (a slice of its own) or having monitoring call the engagement C# read
   surface. **This is the true gating item for #64.**
+  **RESOLVED 2026-08-09 (#100 / PR #140).** The first option was taken: a C# read surface of its own
+  (six reads), a `lib/platform-api/monitoring.ts` wrapper, and `Platform:MonitoringReadEnabled` +
+  `NEXT_PUBLIC_MONITORING_READ_VIA_CSHARP`. All five consumers repointed. Still DARK. This bullet is
+  no longer the gating item — the one below is.
 - **The alert-evaluation cron** uses the privileged `db` client, not `tenantDb`, and iterates every org
   (`alert-evaluation.repository.ts:1`, header `:5-7`; driven by `alert-evaluation.service.ts:59-71`;
   entrypoint `apps/web/app/api/cron/evaluate-alerts/route.ts:23`, daily 06:00 per `apps/web/vercel.json`).
@@ -2067,7 +2090,10 @@ SELECT max(submitted_at) FROM survey_responses;   -- must advance, never regress
 Then, functionally:
 
 - **Smoke-test the five `getExecutiveKpis` consumers** — the four dashboards **and** the alert-rules modal
-  whose `.invalidate()` (`monitoring/alert-rules-modal.tsx:82`) refreshes them after a rule change.
+  whose `.invalidate()` (`monitoring/alert-rules-modal.tsx:98`) refreshes them after a rule change.
+  Since #100 that modal ALSO calls `invalidateMonitoringPlatformReads(queryClient)` (`:100`), which is
+  the half that matters once `NEXT_PUBLIC_MONITORING_READ_VIA_CSHARP` is on — the two cache families
+  are disjoint, so smoke-test the refresh with the flag in whichever state you are cutting over to.
 - **Verify the alert cron with an observable check, not "the same numbers."** An earlier draft asked the
   operator to "confirm the 06:00 alert cron's next run produces the same `active_surveys` numbers." **The
   cron emits no metric values anywhere** — it only writes dedup'd `alerts` rows, and
@@ -2111,6 +2137,15 @@ their own slices, or accept `access_reviews` as flip #1 and defer #64 behind the
 > blocks _making progress on flips_; it blocks **#64 and #66 specifically**, and it is still entirely
 > unbuilt. Both prerequisite slices remain open work: there is still no C# monitoring read surface and no
 > privileged cross-org read for the alert cron. This question stays OPEN — only its urgency changed.
+
+> **HALF-RESOLVED 2026-08-09 (#100 / PR #140).** "Still entirely unbuilt" and "there is still no C#
+> monitoring read surface" are both **superseded**. Slice 1 is built: six C# reads, the
+> `lib/platform-api/monitoring.ts` wrapper, `Platform:MonitoringReadEnabled` +
+> `NEXT_PUBLIC_MONITORING_READ_VIA_CSHARP`, and all nine FE read call sites repointed onto it. It ships
+> DARK. **Slice 2 — the privileged cross-org read for the alert cron — is still open (#172; WIP in PR
+> #141)**, so this question stays OPEN and both #64 and #66 stay blocked on it. Do not read slice 1
+> landing as Q0b being resolved; it is one of two. Slice 2 had no tracking issue at all until
+> 2026-08-09 — it was a prerequisite for two flips carried solely by a conflicting, do-not-merge PR.
 
 **Q1 — What does `prisma migrate dev` do against a DB with no `_prisma_migrations` and heavy drift?**
 Still unverified — it may offer a full reset rather than a targeted `DROP`. _Resolve:_ the throwaway-DB
