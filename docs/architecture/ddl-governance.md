@@ -365,8 +365,9 @@ Never resolve an exit 2 by re-capturing the baseline: `capture` and `check` use 
    `packages/db/prisma/{migrations,manual}/`. Every new org-scoped table carries its RLS block
    (`tenant_isolation`, fail-closed, `FORCE ROW LEVEL SECURITY`) — see `.claude/rules/db.md`.
 2. **Never hand-write EF SQL** — generate it: `dotnet ef migrations script`. Note it emits a **UTF-8
-   BOM that psql rejects**; strip it. `services/Tims.Platform/db/manual/20260723032952_fx_rates.sql`
-   still carries one.
+   BOM that psql rejects**; strip it (`tail -c +4`, or `sed -i '1s/^\xEF\xBB\xBF//'`). Every committed
+   file under `db/manual/` is BOM-free as of 2026-08-09 (#122) and
+   `tests/governance/no-bom-in-sql.test.ts` keeps it that way.
 3. **Apply via psql** on the direct connection (`:5432`, not the `:6543` transaction pooler).
 4. **Re-capture the baseline** — `bash scripts/db/schema-baseline.sh capture` — and commit it **in the
    same PR** as the DDL. The baseline diff is the reviewable record of what changed in prod.

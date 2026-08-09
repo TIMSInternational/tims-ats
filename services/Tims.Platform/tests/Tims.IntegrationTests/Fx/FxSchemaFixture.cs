@@ -8,7 +8,7 @@ namespace Tims.IntegrationTests.Fx;
 /// <summary>
 /// Slice 11c real-schema proof for the efcore-OWNED, RLS-EXEMPT <c>fx_rates</c> table. Spins ONE Postgres,
 /// creates the NOLOGIN/NOBYPASSRLS <c>app_tenant</c> role (granted to the superuser login so
-/// <c>SET LOCAL ROLE app_tenant</c> can assume it), then applies the ACTUAL <c>20260722000000_fx_rates</c> EF
+/// <c>SET LOCAL ROLE app_tenant</c> can assume it), then applies the ACTUAL <c>20260723032952_fx_rates</c> EF
 /// migration via <see cref="Microsoft.EntityFrameworkCore.Infrastructure.DatabaseFacade.MigrateAsync"/> — so the
 /// table, the <c>GRANT SELECT … TO app_tenant</c>, and the DELIBERATE ABSENCE of any RLS policy are exactly what
 /// ships. Mirrors <see cref="Tims.IntegrationTests.HrisSchemaFixture"/> but proves the RLS-EXEMPT posture.
