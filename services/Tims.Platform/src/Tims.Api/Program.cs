@@ -27,6 +27,7 @@ using Tims.Api.Dei;
 using Tims.Api.NineBox;
 using Tims.Api.Reporting;
 using Tims.Api.Succession;
+using Tims.Api.Monitoring;
 using Tims.Api.TeamIntel;
 using Tims.Api.Validation;
 using Tims.Application.Access;
@@ -43,6 +44,7 @@ using Tims.Application.Fx;
 using Tims.Application.NineBox;
 using Tims.Application.Reporting;
 using Tims.Application.Succession;
+using Tims.Application.Monitoring;
 using Tims.Application.TeamIntel;
 using Tims.Application.Validation;
 using Tims.Domain.Access;
@@ -64,6 +66,7 @@ using Tims.Infrastructure.Identity;
 using Tims.Infrastructure.RateLimiting;
 using Tims.Infrastructure.Reporting;
 using Tims.Infrastructure.Succession;
+using Tims.Infrastructure.Monitoring;
 using Tims.Infrastructure.TeamIntel;
 using Tims.Infrastructure.Validation;
 
@@ -255,6 +258,16 @@ try
     builder.Services.AddDbContext<TeamIntelReadDbContext>(options => options.UseNpgsql(databaseConnectionString));
     builder.Services.AddScoped<ITeamIntelReadRepository, TeamIntelReadRepository>();
     builder.Services.AddScoped<TeamIntelReadUseCase>();
+
+    // Phase-5 Q0b slice 1 / issue #100 (efcoreReadOnly): the monitoring READ surface — the prerequisite
+    // the ownership-flip runbook §7b names as the gating item for flips #64/#66/#68. Plain read-only
+    // context over the Prisma-OWNED alerts/alert_rules/action_plans/users/vacancies/salary_adjustments/
+    // surveys/survey_responses (every status column is plain text → no NpgsqlDataSource needed). Reads
+    // run UNDER TenantScope/RLS; getActionPlanAlerts additionally composes scopeWhereFor('actionPlan').
+    // Dark unless MonitoringReadEnabled (deploy-gated cutover).
+    builder.Services.AddDbContext<MonitoringReadDbContext>(options => options.UseNpgsql(databaseConnectionString));
+    builder.Services.AddScoped<IMonitoringReadRepository, MonitoringReadRepository>();
+    builder.Services.AddScoped<MonitoringReadUseCase>();
 
     // Phase-5 Slice 7 (efcoreReadOnly): the evaluation360 READ surface. Unlike the reporting/team-intel reads,
     // the review_cycles.status / rater_assignments.relationship / rater_assignments.status columns are NATIVE
@@ -881,6 +894,16 @@ try
     if (externalOptions.TeamIntelReadEnabled || isOpenApiDocGeneration)
     {
         app.MapTeamIntelReadEndpoints();
+    }
+
+    // Monitoring READ surface (Phase-5 Q0b slice 1, issue #100): GET /monitoring/{executive-kpis|
+    // module-health|alerts|action-plan-alerts|cross-module-trend|alert-rules}. Staff-JWT +
+    // monitoring:read; action-plan-alerts composes scopeWhereFor('actionPlan') as a row filter, the
+    // other five are org-wide (TS parity — the live reader applies no org-gate here). Dark unless the
+    // flag is on (deploy-gated cutover; TS stays the sole active reader until Federico flips it).
+    if (externalOptions.MonitoringReadEnabled || isOpenApiDocGeneration)
+    {
+        app.MapMonitoringReadEndpoints();
     }
 
     // Evaluation360 READ surface (Phase-5 Slice 7): GET /evaluation360/cycles + /cycles/{id}/progress (STAFF:

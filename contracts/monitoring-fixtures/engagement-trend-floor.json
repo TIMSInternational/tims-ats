@@ -1,0 +1,66 @@
+{
+  "description": "Golden parity for monitoring.getCrossModuleTrend's engagement k-anonymity floor: applyEngagementTrendFloor(labels, rawCounts) in packages/api/src/services/monitoring.service.ts. Asserted IDENTICALLY by the REAL TS export (tests/monitoring/monitoring-fixtures.test.ts) and the C# Tims.Domain.Monitoring.MonitoringKernels.ApplyEngagementTrendFloor (Tims.UnitTests). Pins the ALL-OR-NOTHING guard: if ANY month is sub-floor (1..4) EVERY month is nulled and flagged suppressed, because per-point suppression leaves a monthly-differencing oracle (a caller who knows the window total subtracts the visible months to recover the hidden one — slice 6 round 11). A 0 passes through: an empty bucket identifies nobody, so an EMPTY database returns honest zeroes rather than a privacy tick. The floor is MIN_AGGREGATE_SIZE = 5, so 4 suppresses and 5 does not. A label with no matching count yields null, never undefined.",
+  "cases": [
+    {
+      "name": "EMPTY database (all zero) -> real zeroes, NOT suppressed",
+      "input": { "labels": ["2026-03", "2026-04", "2026-05"], "rawCounts": [0, 0, 0] },
+      "expected": [
+        { "month": "2026-03", "value": 0, "suppressed": false },
+        { "month": "2026-04", "value": 0, "suppressed": false },
+        { "month": "2026-05", "value": 0, "suppressed": false }
+      ]
+    },
+    {
+      "name": "all months >= 5 -> exact values pass through",
+      "input": { "labels": ["2026-03", "2026-04", "2026-05"], "rawCounts": [5, 40, 9] },
+      "expected": [
+        { "month": "2026-03", "value": 5, "suppressed": false },
+        { "month": "2026-04", "value": 40, "suppressed": false },
+        { "month": "2026-05", "value": 9, "suppressed": false }
+      ]
+    },
+    {
+      "name": "monthly-differencing oracle: one sub-floor month nulls the WHOLE series",
+      "input": { "labels": ["2026-01", "2026-02", "2026-03", "2026-04"], "rawCounts": [0, 0, 5, 3] },
+      "expected": [
+        { "month": "2026-01", "value": null, "suppressed": true },
+        { "month": "2026-02", "value": null, "suppressed": true },
+        { "month": "2026-03", "value": null, "suppressed": true },
+        { "month": "2026-04", "value": null, "suppressed": true }
+      ]
+    },
+    {
+      "name": "floor boundary: a 4 suppresses the series",
+      "input": { "labels": ["a", "b"], "rawCounts": [4, 9] },
+      "expected": [
+        { "month": "a", "value": null, "suppressed": true },
+        { "month": "b", "value": null, "suppressed": true }
+      ]
+    },
+    {
+      "name": "floor boundary: a 5 does NOT suppress",
+      "input": { "labels": ["a", "b"], "rawCounts": [5, 9] },
+      "expected": [
+        { "month": "a", "value": 5, "suppressed": false },
+        { "month": "b", "value": 9, "suppressed": false }
+      ]
+    },
+    {
+      "name": "a zero is not a free pass: 0s alongside a 1 still suppress everything",
+      "input": { "labels": ["a", "b", "c"], "rawCounts": [0, 0, 1] },
+      "expected": [
+        { "month": "a", "value": null, "suppressed": true },
+        { "month": "b", "value": null, "suppressed": true },
+        { "month": "c", "value": null, "suppressed": true }
+      ]
+    },
+    {
+      "name": "a label with no matching count yields null, not undefined",
+      "input": { "labels": ["a", "b"], "rawCounts": [7] },
+      "expected": [
+        { "month": "a", "value": 7, "suppressed": false },
+        { "month": "b", "value": null, "suppressed": false }
+      ]
+    }
+  ]
+}

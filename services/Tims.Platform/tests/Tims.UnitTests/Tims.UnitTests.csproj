@@ -97,6 +97,11 @@
       <Link>dei-fixtures\%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <!-- Phase-5 Q0b slice 1 monitoring kernel golden fixtures (shared with the TS vitest suite, issue #100). -->
+    <Content Include="..\..\..\..\contracts\monitoring-fixtures\*.json">
+      <Link>monitoring-fixtures\%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <!-- WP3.6-map HRIS mapper golden fixtures (C#-only characterization; greenfield, no TS counterpart). -->
     <Content Include="..\..\..\..\contracts\hris-fixtures\*.json">
       <Link>hris-fixtures\%(Filename)%(Extension)</Link>
