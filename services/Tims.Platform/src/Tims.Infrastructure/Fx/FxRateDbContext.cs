@@ -4,7 +4,7 @@ namespace Tims.Infrastructure.Fx;
 
 /// <summary>
 /// The GLOBAL EF context for the efcore-OWNED, RLS-EXEMPT <c>fx_rates</c> table (Phase-5 Slice 11c) — it OWNS
-/// the DDL (migration <c>20260722000000_fx_rates</c>) and is the ONLY context that maps <c>fx_rates</c>. UNLIKE
+/// the DDL (migration <c>20260723032952_fx_rates</c>) and is the ONLY context that maps <c>fx_rates</c>. UNLIKE
 /// the tenant read contexts it runs on a PLAIN connection with NO <see cref="TenantScope"/> (no SET LOCAL ROLE,
 /// no org GUC): fx_rates is org-agnostic shared data with no RLS policy, so a tenant GUC would be meaningless
 /// (and would hide every row). The daily <c>FxRefreshJob</c> WRITES through this context (idempotent upsert on
