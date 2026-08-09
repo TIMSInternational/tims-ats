@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
+import { blockAt } from '../helpers/source-blocks';
 
 const ROUTERS_DIR = join(__dirname, '../../packages/api/src/routers');
 const TRPC_FILE = join(__dirname, '../../packages/api/src/trpc.ts');
@@ -78,10 +79,7 @@ describe('Authentication & Authorization', () => {
   it('should verify organizationId in user mutation WHERE clauses', () => {
     const userRouter = readFileSync(join(ROUTERS_DIR, 'user.ts'), 'utf8');
     // The deactivate mutation must check organizationId
-    const deactivateSection = userRouter.slice(
-      userRouter.indexOf('deactivate:'),
-      userRouter.indexOf('deactivate:') + 500,
-    );
+    const deactivateSection = blockAt(userRouter, 'deactivate:');
     expect(deactivateSection).toContain('organizationId');
   });
 

@@ -22,6 +22,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { initTRPC, TRPCError } from '@trpc/server';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { blockAt } from '../helpers/source-blocks';
 
 const createMock = vi.fn();
 vi.mock('@tims/db', () => ({
@@ -308,21 +309,21 @@ describe('wiring — security events are instrumented at their sites', () => {
     // outermost = applied before withRateLimit on the base procedure
     expect(src).toMatch(/t\.procedure\.use\(withSecurityAudit\)\.use\(withRateLimit\)/);
     // the wrapper must observe on failure and return the result UNCHANGED (transparent)
-    const block = src.slice(src.indexOf('const withSecurityAudit'));
+    const block = blockAt(src, 'const withSecurityAudit');
     expect(block).toMatch(/if \(!result\.ok\) observeDenial/);
     expect(block).toMatch(/return result/);
   });
 
   it('trpc.ts: external API-key denials are observed at both requireExternalPermission throw sites', () => {
     const src = read('packages/api/src/trpc.ts');
-    const block = src.slice(src.indexOf('function requireExternalPermission'));
+    const block = blockAt(src, 'function requireExternalPermission');
     expect(block).toMatch(/observeExternalDenial\(\{[^}]*reason: 'scope'/);
     expect(block).toMatch(/observeExternalDenial\(\{[^}]*reason: 'grant'/);
   });
 
   it('system.ts: single-org feature-flag deletion logs feature_flag_changed', () => {
     const src = read('packages/api/src/routers/platform/system.ts');
-    const block = src.slice(src.indexOf('deleteFeatureFlag:'));
+    const block = blockAt(src, 'deleteFeatureFlag:');
     expect(block).toMatch(/logSecurityEvent/);
     expect(block).toMatch(/feature_flag_changed/);
   });

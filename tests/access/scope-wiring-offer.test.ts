@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { blockAt } from '../helpers/source-blocks';
 
 const ROOT = join(__dirname, '..', '..');
 const read = (p: string) => readFileSync(join(ROOT, 'packages/api/src/routers/offer', p), 'utf8');
@@ -20,10 +21,10 @@ describe('offer module scope wiring', () => {
 
   it('signing.ts: generateSigningLink is scope-guarded; PUBLIC token flows untouched', () => {
     const src = read('signing.ts');
-    const staffBlock = src.slice(src.indexOf('generateSigningLink'), src.indexOf('getBySigningToken'));
+    const staffBlock = blockAt(src, 'generateSigningLink:');
     expect(staffBlock).toMatch(/assertScoped\('offer'|scopeWhereFor\('offer'/);
     // the three public token procedures stay publicProcedure and probe-free
-    const publicBlock = src.slice(src.indexOf('getBySigningToken'));
+    const publicBlock = blockAt(src, 'getBySigningToken:');
     expect(src).toMatch(/getBySigningToken:\s*publicProcedure/);
     expect(publicBlock).not.toMatch(/assertScoped|scopeWhereFor/);
   });
