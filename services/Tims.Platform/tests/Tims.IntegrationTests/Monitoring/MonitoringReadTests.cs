@@ -297,6 +297,26 @@ public sealed class MonitoringReadTests(MonitoringReadFixture fixture)
     }
 
     [Fact]
+    public async Task CrossModuleTrend_engagement_useCase_ACTUALLY_appliesTheFloor()
+    {
+        // #140 major finding 2. The kernel's all-or-nothing behaviour was golden-fixtured, and the
+        // sibling test below asserts self-consistency (value null exactly when suppressed) and
+        // uniformity — but BOTH of those hold vacuously when nothing is suppressed at all. Deleting
+        // `MonitoringKernels.ApplyEngagementTrendFloor(...)` from MonitoringReadUseCase therefore left
+        // every monitoring test green: the floor was proven to WORK, never proven to be CALLED.
+        //
+        // The fixture seeds 3 survey responses (0 < 3 < 5, sub-floor) in the CURRENT month, so the
+        // runtime-anchored 6m window always contains them. Suppression is then mandatory, and this
+        // assertion goes red the moment the use case stops applying the floor.
+        var trend = await NewUseCase().GetCrossModuleTrendAsync(
+            MonitoringReadFixture.OrgA.ToString(), "engagement", "6m", CancellationToken.None);
+
+        Assert.All(trend.Data, p => Assert.True(p.Suppressed,
+            "engagement trend must be suppressed: a sub-floor month is inside the window"));
+        Assert.All(trend.Data, p => Assert.Null(p.Value));
+    }
+
+    [Fact]
     public async Task CrossModuleTrend_engagement_isAllOrNothingSuppressed_whenAnyMonthIsSubFloor()
     {
         // The live window is anchored on the runtime `now`, so WHICH seeded months it covers drifts
