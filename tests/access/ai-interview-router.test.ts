@@ -11,14 +11,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { blockAt } from '../helpers/source-blocks';
 
 // ---------------------------------------------------------------------------
 // Static source-level guards (pattern from scope-wiring-offer.test.ts)
 // ---------------------------------------------------------------------------
 
 const ROOT = join(__dirname, '..', '..');
-const readRouter = () =>
-  readFileSync(join(ROOT, 'packages/api/src/routers/ai-interview.ts'), 'utf8');
+const readRouter = () => readFileSync(join(ROOT, 'packages/api/src/routers/ai-interview.ts'), 'utf8');
 
 describe('aiInterview router — static source guards', () => {
   it('create: uses permissionProcedure("interview", "create")', () => {
@@ -31,13 +31,13 @@ describe('aiInterview router — static source guards', () => {
 
   it('recordConsent: uses publicProcedure (no login required)', () => {
     const src = readRouter();
-    const consentBlock = src.slice(src.indexOf('recordConsent:'));
+    const consentBlock = blockAt(src, 'recordConsent:');
     expect(consentBlock).toMatch(/publicProcedure/);
   });
 
   it('start: uses publicProcedure (token-authorised, no login)', () => {
     const src = readRouter();
-    const startBlock = src.slice(src.indexOf('start:'));
+    const startBlock = blockAt(src, 'start:');
     expect(startBlock).toMatch(/publicProcedure/);
   });
 
@@ -126,10 +126,7 @@ describe('aiInterview router — static source guards', () => {
   });
 
   it('findSessionByCandidateToken repository method uses systemDb (not tenantDb)', () => {
-    const repoSrc = readFileSync(
-      join(ROOT, 'packages/api/src/repositories/ai-interview.repository.ts'),
-      'utf8',
-    );
+    const repoSrc = readFileSync(join(ROOT, 'packages/api/src/repositories/ai-interview.repository.ts'), 'utf8');
     const methodStart = repoSrc.indexOf('findSessionByCandidateToken');
     const methodEnd = repoSrc.indexOf('},', methodStart);
     const methodBody = repoSrc.slice(methodStart, methodEnd);
@@ -398,16 +395,16 @@ describe('aiInterview.start', () => {
       organizationId: 'org-uuid-1',
       candidateId: 'cand-1',
       status: 'pending' as never,
-      consentedAt: null,           // <-- no consent
+      consentedAt: null, // <-- no consent
       elevenlabsAgentId: 'agent-1',
       guideQuestions: { questions: [] },
       maxDurationSeconds: null,
     });
 
     const caller = await makeCaller({ user: undefined });
-    await expect(
-      caller.aiInterview.start({ candidateToken: 'valid-token' }),
-    ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    await expect(caller.aiInterview.start({ candidateToken: 'valid-token' })).rejects.toMatchObject({
+      code: 'FORBIDDEN',
+    });
   });
 
   it('meter-and-bill: proceeds (never throws) when voice budget is exhausted', async () => {
@@ -416,25 +413,28 @@ describe('aiInterview.start', () => {
       organizationId: 'org-uuid-1',
       candidateId: 'cand-1',
       status: 'pending' as never,
-      consentedAt: new Date(),     // consent OK
+      consentedAt: new Date(), // consent OK
       elevenlabsAgentId: 'agent-1',
       guideQuestions: { questions: [] },
       maxDurationSeconds: null,
     });
 
     // Budget config exists with limit — uses tenantDb (staff-path budget reads)
-    vi.mocked(tenantDb.aiAgentOrgConfig.findFirst as unknown as (a: unknown) => Promise<unknown>)
-      .mockResolvedValue({ monthlyBudget: 50 });
+    vi.mocked(tenantDb.aiAgentOrgConfig.findFirst as unknown as (a: unknown) => Promise<unknown>).mockResolvedValue({
+      monthlyBudget: 50,
+    });
     // Current month spend is over budget
-    vi.mocked(tenantDb.aiAgentUsageLog.aggregate as unknown as (a: unknown) => Promise<unknown>)
-      .mockResolvedValue({ _sum: { costUsd: 55 } });
+    vi.mocked(tenantDb.aiAgentUsageLog.aggregate as unknown as (a: unknown) => Promise<unknown>).mockResolvedValue({
+      _sum: { costUsd: 55 },
+    });
 
     vi.mocked(getSignedUrl).mockResolvedValue({
       signedUrl: 'wss://api.elevenlabs.io/signed-over-budget',
       conversationId: 'conv-over-budget',
     });
-    vi.mocked(candidateDb.aiInterviewSession.update as unknown as (a: unknown) => Promise<unknown>)
-      .mockResolvedValue({});
+    vi.mocked(candidateDb.aiInterviewSession.update as unknown as (a: unknown) => Promise<unknown>).mockResolvedValue(
+      {},
+    );
 
     // Per the owner decision, entitlement enforcement is meter-and-bill and NEVER
     // hard-blocks — an over-budget org must still get a signed URL, not FORBIDDEN.
@@ -457,10 +457,12 @@ describe('aiInterview.start', () => {
 
     // No budget config → default $25 cap applies; spend is 0 so gate passes
     // Budget reads use tenantDb (staff context path inside start procedure).
-    vi.mocked(tenantDb.aiAgentOrgConfig.findFirst as unknown as (a: unknown) => Promise<unknown>)
-      .mockResolvedValue(null);
-    vi.mocked(tenantDb.aiAgentUsageLog.aggregate as unknown as (a: unknown) => Promise<unknown>)
-      .mockResolvedValue({ _sum: { costUsd: 0 } });
+    vi.mocked(tenantDb.aiAgentOrgConfig.findFirst as unknown as (a: unknown) => Promise<unknown>).mockResolvedValue(
+      null,
+    );
+    vi.mocked(tenantDb.aiAgentUsageLog.aggregate as unknown as (a: unknown) => Promise<unknown>).mockResolvedValue({
+      _sum: { costUsd: 0 },
+    });
 
     vi.mocked(getSignedUrl).mockResolvedValue({
       signedUrl: 'wss://api.elevenlabs.io/signed-url-xyz',
@@ -468,8 +470,9 @@ describe('aiInterview.start', () => {
     });
 
     // Mock session update — uses candidateDb (systemDb) on the candidate path.
-    vi.mocked(candidateDb.aiInterviewSession.update as unknown as (a: unknown) => Promise<unknown>)
-      .mockResolvedValue({});
+    vi.mocked(candidateDb.aiInterviewSession.update as unknown as (a: unknown) => Promise<unknown>).mockResolvedValue(
+      {},
+    );
 
     const caller = await makeCaller({ user: undefined });
     const result = await caller.aiInterview.start({ candidateToken: 'valid-token' });
@@ -489,9 +492,9 @@ describe('aiInterview.start', () => {
     vi.mocked(aiInterviewRepository.findSessionByCandidateToken).mockResolvedValue(null);
 
     const caller = await makeCaller({ user: undefined });
-    await expect(
-      caller.aiInterview.start({ candidateToken: 'nonexistent-token' }),
-    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(caller.aiInterview.start({ candidateToken: 'nonexistent-token' })).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+    });
   });
 
   it('meter-and-bill: proceeds when NO config row exists and spend >= $25 (default cap)', async () => {
@@ -507,18 +510,21 @@ describe('aiInterview.start', () => {
     });
 
     // No config row → default cap of $25 applies — budget reads use tenantDb.
-    vi.mocked(tenantDb.aiAgentOrgConfig.findFirst as unknown as (a: unknown) => Promise<unknown>)
-      .mockResolvedValue(null);
+    vi.mocked(tenantDb.aiAgentOrgConfig.findFirst as unknown as (a: unknown) => Promise<unknown>).mockResolvedValue(
+      null,
+    );
     // Spend exactly at the default cap — must NOT block (meter-and-bill only).
-    vi.mocked(tenantDb.aiAgentUsageLog.aggregate as unknown as (a: unknown) => Promise<unknown>)
-      .mockResolvedValue({ _sum: { costUsd: 25 } });
+    vi.mocked(tenantDb.aiAgentUsageLog.aggregate as unknown as (a: unknown) => Promise<unknown>).mockResolvedValue({
+      _sum: { costUsd: 25 },
+    });
 
     vi.mocked(getSignedUrl).mockResolvedValue({
       signedUrl: 'wss://api.elevenlabs.io/signed-default-cap',
       conversationId: 'conv-default-cap',
     });
-    vi.mocked(candidateDb.aiInterviewSession.update as unknown as (a: unknown) => Promise<unknown>)
-      .mockResolvedValue({});
+    vi.mocked(candidateDb.aiInterviewSession.update as unknown as (a: unknown) => Promise<unknown>).mockResolvedValue(
+      {},
+    );
 
     const caller = await makeCaller({ user: undefined });
     const result = await caller.aiInterview.start({ candidateToken: 'valid-token' });
@@ -538,19 +544,22 @@ describe('aiInterview.start', () => {
     });
 
     // No config row → default cap of $25 applies — budget reads use tenantDb.
-    vi.mocked(tenantDb.aiAgentOrgConfig.findFirst as unknown as (a: unknown) => Promise<unknown>)
-      .mockResolvedValue(null);
+    vi.mocked(tenantDb.aiAgentOrgConfig.findFirst as unknown as (a: unknown) => Promise<unknown>).mockResolvedValue(
+      null,
+    );
     // Spend well under the default cap
-    vi.mocked(tenantDb.aiAgentUsageLog.aggregate as unknown as (a: unknown) => Promise<unknown>)
-      .mockResolvedValue({ _sum: { costUsd: 10 } });
+    vi.mocked(tenantDb.aiAgentUsageLog.aggregate as unknown as (a: unknown) => Promise<unknown>).mockResolvedValue({
+      _sum: { costUsd: 10 },
+    });
 
     vi.mocked(getSignedUrl).mockResolvedValue({
       signedUrl: 'wss://api.elevenlabs.io/signed',
       conversationId: 'conv-def',
     });
     // Session update uses candidateDb (systemDb) on the candidate path.
-    vi.mocked(candidateDb.aiInterviewSession.update as unknown as (a: unknown) => Promise<unknown>)
-      .mockResolvedValue({});
+    vi.mocked(candidateDb.aiInterviewSession.update as unknown as (a: unknown) => Promise<unknown>).mockResolvedValue(
+      {},
+    );
 
     const caller = await makeCaller({ user: undefined });
     const result = await caller.aiInterview.start({ candidateToken: 'valid-token' });
@@ -572,10 +581,12 @@ describe('aiInterview.start', () => {
       maxDurationSeconds: null,
     });
 
-    vi.mocked(tenantDb.aiAgentOrgConfig.findFirst as unknown as (a: unknown) => Promise<unknown>)
-      .mockResolvedValue(null);
-    vi.mocked(tenantDb.aiAgentUsageLog.aggregate as unknown as (a: unknown) => Promise<unknown>)
-      .mockResolvedValue({ _sum: { costUsd: 0 } });
+    vi.mocked(tenantDb.aiAgentOrgConfig.findFirst as unknown as (a: unknown) => Promise<unknown>).mockResolvedValue(
+      null,
+    );
+    vi.mocked(tenantDb.aiAgentUsageLog.aggregate as unknown as (a: unknown) => Promise<unknown>).mockResolvedValue({
+      _sum: { costUsd: 0 },
+    });
 
     // ElevenLabs omits conversation_id → getSignedUrl resolves with null.
     vi.mocked(getSignedUrl).mockResolvedValue({
@@ -583,9 +594,7 @@ describe('aiInterview.start', () => {
       conversationId: null,
     });
 
-    const mockUpdate = vi.mocked(
-      candidateDb.aiInterviewSession.update as unknown as (a: unknown) => Promise<unknown>,
-    );
+    const mockUpdate = vi.mocked(candidateDb.aiInterviewSession.update as unknown as (a: unknown) => Promise<unknown>);
     mockUpdate.mockResolvedValue({});
 
     const caller = await makeCaller({ user: undefined });

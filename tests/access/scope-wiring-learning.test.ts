@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { blockAt } from '../helpers/source-blocks';
 
 // Wave 2.5 slice 4 — static tripwires for learning + engagement modules.
 // learning.ts: enrollments/certificates are user-anchored (people scope);
@@ -67,7 +68,7 @@ describe('engagement module scope wiring', () => {
 describe('course detail enrollment scoping (codex)', () => {
   it('getCourseById scopes the embedded enrollments', () => {
     const src = readFileSync(join(ROOT, 'packages/api/src/routers/learning.ts'), 'utf8');
-    const block = src.slice(src.indexOf('getCourseById'), src.indexOf('createCourse'));
+    const block = blockAt(src, 'getCourseById:');
     expect(block).toMatch(/enrollments:\s*\{\s*where:\s*enrollScope/);
   });
 });

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
+import { blockAt } from '../helpers/source-blocks';
 
 // Wave 2.5 slice 4 — static tripwires for the TALENT modules:
 // ninebox (9-box + calibration), succession (critical roles / successors),
@@ -164,7 +165,7 @@ describe('codex round-1 fixes (talent)', () => {
   // (NineBoxWriteTests.cs) assert the 404 AND that no vote row was written.
   it('updateActionPlan guards responsibility reassignment', () => {
     const src = readFileSync(join(ROOT, 'packages/api/src/routers/engagement.ts'), 'utf8');
-    const block = src.slice(src.indexOf('updateActionPlan'));
+    const block = blockAt(src, 'updateActionPlan:');
     expect(block).toMatch(/assertSubjectInScope/);
   });
 });

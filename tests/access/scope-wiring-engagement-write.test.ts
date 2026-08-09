@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { blockAt } from '../helpers/source-blocks';
 
 // Phase-5 Slice 16 — static tripwires for the engagement WRITE surface + the H1 both-stacks
 // hardening. Engagement's router calls the tenant `db` inline (no service layer), so — like the compensation /
@@ -28,7 +29,7 @@ describe('engagement write scope wiring', () => {
     expect(matches.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('updateActionPlan probes the plan by id via assertScoped(\'actionPlan\')', () => {
+  it("updateActionPlan probes the plan by id via assertScoped('actionPlan')", () => {
     expect(read()).toMatch(/assertScoped\('actionPlan'/);
   });
 
@@ -38,7 +39,7 @@ describe('engagement write scope wiring', () => {
   //    update-by-{id,org}. Reverting to `db.actionPlan.update({ where: { id, organizationId } })` makes this RED. ──
   it('updateActionPlan applies the scope predicate ATOMICALLY (updateMany guarded by scopeWhereFor, count 0 → 404)', () => {
     const src = read();
-    const updateBody = src.slice(src.indexOf('updateActionPlan'), src.indexOf('listLeaderCommitments'));
+    const updateBody = blockAt(src, 'updateActionPlan:');
     // The final write is scoped updateMany, not a bare update by {id, organizationId}.
     expect(updateBody).toMatch(/scopeWhereFor\('actionPlan'/);
     expect(updateBody).toMatch(/actionPlan\.updateMany\(/);

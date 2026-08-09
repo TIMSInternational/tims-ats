@@ -69,6 +69,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { blockAt } from '../helpers/source-blocks';
 
 const REPO_ROOT = process.cwd();
 const SCRIPT_REL = 'scripts/db/pre-flip-scan.ts';
@@ -522,7 +523,7 @@ describe('pre-flip-scan — database-arm properties', () => {
     // `LANGUAGE sql` body records no pg_depend edge at all, while a SQL-standard body records one. The
     // two routine oracles therefore DISAGREE for almost every function that exists, so a split line
     // would fire forever in both directions — and a check that cries wolf gets switched off.
-    const splitBlock = CODE.slice(CODE.indexOf('const oracleSplits'), CODE.indexOf('for (const h of repo.hits'));
+    const splitBlock = blockAt(CODE, 'const oracleSplits');
     expect(splitBlock).not.toMatch(/dependentRoutines/);
   });
 

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { blockAt } from '../helpers/source-blocks';
 
 const ROOT = join(__dirname, '..', '..');
 const read = (p: string) => readFileSync(join(ROOT, p), 'utf8');
@@ -32,15 +33,15 @@ describe('candidate module scope wiring', () => {
     const src = read('packages/api/src/routers/candidate/documents.ts');
     // both documentId entry points must resolve the org-scoped document and
     // assertScoped its candidateId (same hop pattern as vacancy channels.unpublish)
-    const deleteBlock = src.slice(src.indexOf('deleteDocument'), src.indexOf('parseCV'));
-    const parseBlock = src.slice(src.indexOf('parseCV'));
+    const deleteBlock = blockAt(src, 'deleteDocument:');
+    const parseBlock = blockAt(src, 'parseCV:');
     expect(deleteBlock).toMatch(/assertScoped\('candidate'/);
     expect(parseBlock).toMatch(/assertScoped\('candidate'/);
   });
 
   it('bulkTag dedupes candidateIds before the scoped count-check', () => {
     const src = read('packages/api/src/services/candidate-tags.service.ts');
-    const block = src.slice(src.indexOf('bulkTag'));
+    const block = blockAt(src, 'async bulkTag');
     expect(block).toMatch(/new Set\(/);
   });
 
@@ -56,16 +57,16 @@ describe('candidate module scope wiring', () => {
     const src = read('packages/api/src/repositories/candidate.repository.ts');
     // The scoped child relations live in the module-level builder consumed by
     // getById; the behavior test below verifies the wiring end-to-end.
-    const builder = src.slice(src.indexOf('buildCandidateDetailSelect'), src.indexOf('candidateMutationSelect'));
+    const builder = blockAt(src, 'const buildCandidateDetailSelect');
     expect((builder.match(/where:\s*appScopeWhere/g) ?? []).length).toBeGreaterThanOrEqual(3);
-    const getByIdBlock = src.slice(src.indexOf('async getById'), src.indexOf('async create'));
+    const getByIdBlock = blockAt(src, 'async getById');
     expect(getByIdBlock).toMatch(/buildCandidateDetailSelect\(appScopeWhere\)/);
   });
 
   // Codex F1 — timeline child loads must be scope-filtered too.
   it('candidate.repository.getTimelineData scopes its application/assessment child loads by the fragment', () => {
     const src = read('packages/api/src/repositories/candidate.repository.ts');
-    const block = src.slice(src.indexOf('async getTimelineData'), src.indexOf('async findFirstStage'));
+    const block = blockAt(src, 'async getTimelineData');
     expect(block).toMatch(/appScopeWhere/);
   });
 
@@ -86,16 +87,16 @@ describe('candidate module scope wiring', () => {
   // carry the application fragment too.
   it('repository.list threads appScopeWhere (children + fit filter scoped)', () => {
     const src = read('packages/api/src/repositories/candidate.repository.ts');
-    const builder = src.slice(src.indexOf('buildCandidateListSelect'), src.indexOf('const candidateDetailSelect'));
+    const builder = blockAt(src, 'const buildCandidateListSelect');
     expect(builder).toMatch(/where:\s*appScopeWhere/);
     expect(builder).toMatch(/_count:\s*\{\s*select:\s*\{\s*applications:\s*\{\s*where:\s*appScopeWhere/);
-    const listBlock = src.slice(src.indexOf('async list'), src.indexOf('async getById'));
+    const listBlock = blockAt(src, 'async list');
     expect(listBlock).toMatch(/appScopeWhere/);
   });
 
   it('repository.getCandidateForRisks scopes applications and fitScores', () => {
     const src = read('packages/api/src/repositories/candidate.repository.ts');
-    const block = src.slice(src.indexOf('async getCandidateForRisks'), src.indexOf('// KPIs'));
+    const block = blockAt(src, 'async getCandidateForRisks');
     expect((block.match(/where:\s*appScopeWhere/g) ?? []).length).toBeGreaterThanOrEqual(2);
   });
 
@@ -103,13 +104,13 @@ describe('candidate module scope wiring', () => {
   // scope fragment, like the sibling candidate counts.
   it('crud.getDashboardKpis computes the application fragment and threads it', () => {
     const src = read('packages/api/src/routers/candidate/crud.ts');
-    const block = src.slice(src.indexOf('getDashboardKpis'));
+    const block = blockAt(src, 'getDashboardKpis:');
     expect(block).toMatch(/scopeWhereFor\('application'/);
   });
 
   it('candidate.repository.getDashboardKpis composes the appScopeWhere into the active-application count', () => {
     const src = read('packages/api/src/repositories/candidate.repository.ts');
-    const block = src.slice(src.indexOf('async getDashboardKpis'));
+    const block = blockAt(src, 'async getDashboardKpis');
     expect(block).toMatch(/appScopeWhere/);
     // the active-application count must AND the org filter with the app fragment
     expect(block).toMatch(/status:\s*'active'[\s\S]*appScopeWhere|appScopeWhere[\s\S]*status:\s*'active'/);

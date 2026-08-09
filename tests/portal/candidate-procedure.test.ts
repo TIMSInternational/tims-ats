@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { blockAt } from '../helpers/source-blocks';
 
 // Wave 1 Slice 2 introduces a NEW procedure type — `candidateProcedure` — for the
 // authenticated candidate portal. Candidates are NOT staff: they have a Supabase
@@ -67,7 +68,7 @@ describe('candidate-portal router', () => {
   });
 
   it('askFaq accepts only orgSlug/question/optional application focus (never candidateId/email)', () => {
-    const askFaq = ROUTER.slice(ROUTER.indexOf('askFaq:'));
+    const askFaq = blockAt(ROUTER, 'askFaq:');
     expect(askFaq).toMatch(/candidateProcedure/);
     expect(askFaq).toMatch(/question:\s*faqQuestion/);
     expect(askFaq).toMatch(/applicationId:\s*z\.string\(\)\.uuid\(\)\.optional\(\)/);
@@ -144,7 +145,7 @@ describe('candidate-portal repository — scoping', () => {
   });
 
   it('FAQ profile lookup uses explicit select and avoids internal candidate fields', () => {
-    const method = REPO.slice(REPO.indexOf('findActiveCandidateProfile'));
+    const method = blockAt(REPO, 'findActiveCandidateProfile');
     expect(method).toMatch(/select:\s*\{\s*id:\s*true,\s*firstName:\s*true,\s*lastName:\s*true/s);
     expect(method).not.toMatch(/notes:\s*true|tags:\s*true|fitScores|assessmentAssignments|documents/);
   });
@@ -191,43 +192,44 @@ describe('candidate FAQ rate limiting', () => {
 });
 
 describe('candidate assessment take-flow — security invariants (Wave 1.5a slice 2)', () => {
+  // Shared by both assertions below so they cannot drift apart — one of them is the
+  // IDOR guard, and it previously covered whichever endpoints happened to fall inside
+  // one unbounded slice.
+  const ASSESSMENT_ENDPOINTS = ['getMyAssessments', 'startAssessment', 'getAssessmentQuestions', 'submitAssessment'];
+
   it('every new candidate-portal assessment endpoint uses candidateProcedure', () => {
-    // Bound each endpoint's slice to end at the START of the NEXT endpoint (in
-    // real router order) so each slice contains ONLY that one endpoint's own
-    // procedure definition — a plain end-of-file slice would let earlier
-    // endpoints "pass" merely because a LATER endpoint still uses
-    // candidateProcedure, even if the earlier one were changed to publicProcedure.
-    const ASSESSMENT_ENDPOINTS = ['getMyAssessments', 'startAssessment', 'getAssessmentQuestions', 'submitAssessment'];
-    for (let i = 0; i < ASSESSMENT_ENDPOINTS.length; i++) {
-      const name = ASSESSMENT_ENDPOINTS[i];
-      const start = ROUTER.indexOf(`${name}:`);
-      expect(start).toBeGreaterThan(-1);
-      const nextName = ASSESSMENT_ENDPOINTS[i + 1];
-      const end = nextName ? ROUTER.indexOf(`${nextName}:`) : ROUTER.length;
-      const slice = ROUTER.slice(start, end);
-      expect(slice).toMatch(/candidateProcedure/);
+    // Each endpoint is bounded at its own next sibling, so an endpoint cannot "pass"
+    // because a LATER one still uses candidateProcedure.
+    for (const name of ASSESSMENT_ENDPOINTS) {
+      expect(blockAt(ROUTER, `${name}:`)).toMatch(/candidateProcedure/);
     }
   });
 
   it('never accepts a client-supplied candidateId or email on the assessment endpoints', () => {
-    const slice = ROUTER.slice(ROUTER.indexOf('getMyAssessments:'));
-    expect(slice).not.toMatch(/candidateId:\s*z\./);
-    expect(slice).not.toMatch(/email:\s*z\./);
+    // EVERY assessment endpoint, not just the first. This previously ran as one
+    // unbounded slice from `getMyAssessments:` to end-of-file, which happened to span
+    // all four; bounding it to a single procedure left `startAssessment`,
+    // `getAssessmentQuestions` and `submitAssessment` unguarded, and no whole-file
+    // assertion covers `candidateId` (the one at the top of this file covers `email`
+    // only). A client-supplied candidateId on submitAssessment is precisely the IDOR
+    // this block exists to prevent.
+    for (const name of ASSESSMENT_ENDPOINTS) {
+      const slice = blockAt(ROUTER, `${name}:`, { minLines: 3 });
+      expect(slice, name).not.toMatch(/candidateId:\s*z\./);
+      expect(slice, name).not.toMatch(/email:\s*z\./);
+    }
   });
 
   it('getAssessmentQuestions repo select never includes correctOptionIds', () => {
-    const candidateSelect = ASSESSMENT_REPO.slice(
-      ASSESSMENT_REPO.indexOf('candidateQuestionSelect'),
-      ASSESSMENT_REPO.indexOf('assignmentSummarySelect'),
-    );
+    const candidateSelect = blockAt(ASSESSMENT_REPO, 'candidateQuestionSelect');
     expect(candidateSelect).not.toContain('correctOptionIds');
   });
 
   it('the answer-key select is confined to the *InTx helpers (never returned to the candidate)', () => {
     expect(ASSESSMENT_REPO).toContain('findQuestionsWithAnswerKeyInTx');
     // Only the tx-bound (write-path) function may select correctOptionIds.
-    const answerKeySlice = ASSESSMENT_REPO.slice(ASSESSMENT_REPO.indexOf('findQuestionsWithAnswerKeyInTx'));
-    expect(answerKeySlice.slice(0, 300)).toContain('correctOptionIds');
+    const answerKeySlice = blockAt(ASSESSMENT_REPO, 'findQuestionsWithAnswerKeyInTx');
+    expect(answerKeySlice).toContain('correctOptionIds');
   });
 
   it('correctOptionIds never appears anywhere in the read-only candidateAssessmentRepo section', () => {
@@ -267,7 +269,7 @@ describe('candidate assessment take-flow — security invariants (Wave 1.5a slic
     // This confirms ownership/status is re-verified early in the tx, before any
     // write happens — a real, still-valid property. It does NOT by itself close
     // the double-submit race (see the next test for the mechanism that does).
-    const submitSlice = ASSESSMENT_SERVICE.slice(ASSESSMENT_SERVICE.indexOf('async submitAssessment'));
+    const submitSlice = blockAt(ASSESSMENT_SERVICE, 'async submitAssessment');
     expect(submitSlice).toContain('findAssignmentInTx');
     expect(submitSlice).toMatch(/assignment_already_completed/);
   });
@@ -279,7 +281,7 @@ describe('candidate assessment take-flow — security invariants (Wave 1.5a slic
     expect(ASSESSMENT_REPO).toMatch(
       /completeAssignmentInTx\([^)]*\)\s*\{\s*return\s+tx\.assessmentAssignment\.updateMany\(\{\s*where:\s*\{[^}]*status:\s*'in_progress'/s,
     );
-    const submitSlice = ASSESSMENT_SERVICE.slice(ASSESSMENT_SERVICE.indexOf('async submitAssessment'));
+    const submitSlice = blockAt(ASSESSMENT_SERVICE, 'async submitAssessment');
     // Search for 'completeAssignmentInTx(' rather than 'completeAssignmentInTx(tx'
     // — prettier may wrap the call's argument list (tx, org.id, candidate.id,
     // assignmentId) across multiple lines, so the arguments don't necessarily
@@ -292,7 +294,7 @@ describe('candidate assessment take-flow — security invariants (Wave 1.5a slic
   });
 
   it('completeAssignmentInTx is called with both org.id AND candidate.id (final review finding #3 — independently IDOR-safe, not merely correct-by-surrounding-context)', () => {
-    const submitSlice = ASSESSMENT_SERVICE.slice(ASSESSMENT_SERVICE.indexOf('async submitAssessment'));
+    const submitSlice = blockAt(ASSESSMENT_SERVICE, 'async submitAssessment');
     const completionIdx = submitSlice.indexOf('completeAssignmentInTx(');
     expect(completionIdx).toBeGreaterThan(0);
     const callSite = submitSlice.slice(completionIdx, completionIdx + 150);
@@ -306,7 +308,7 @@ describe('candidate assessment take-flow — security invariants (Wave 1.5a slic
   });
 
   it("submitAssessment validates every questionId belongs to the assignment's assessmentTypeId before writing", () => {
-    const submitSlice = ASSESSMENT_SERVICE.slice(ASSESSMENT_SERVICE.indexOf('async submitAssessment'));
+    const submitSlice = blockAt(ASSESSMENT_SERVICE, 'async submitAssessment');
     const validateIdx = submitSlice.indexOf('question_not_in_assessment');
     const firstWriteIdx = submitSlice.indexOf('upsertResponseInTx(tx');
     expect(validateIdx).toBeGreaterThan(0);
@@ -314,10 +316,10 @@ describe('candidate assessment take-flow — security invariants (Wave 1.5a slic
   });
 
   it('free_text answers are never auto-graded (no fabricated AI/auto score — rule #4)', () => {
-    const submitSlice = ASSESSMENT_SERVICE.slice(ASSESSMENT_SERVICE.indexOf('async submitAssessment'));
-    const freeTextBranch = submitSlice.slice(submitSlice.indexOf("if (question.type === 'free_text') {"));
-    expect(freeTextBranch.slice(0, 400)).toMatch(/isCorrect:\s*null/);
-    expect(freeTextBranch.slice(0, 400)).toMatch(/pointsAwarded:\s*null/);
+    const submitSlice = blockAt(ASSESSMENT_SERVICE, 'async submitAssessment');
+    const freeTextBranch = blockAt(submitSlice, "if (question.type === 'free_text') {");
+    expect(freeTextBranch).toMatch(/isCorrect:\s*null/);
+    expect(freeTextBranch).toMatch(/pointsAwarded:\s*null/);
   });
 
   it('all submitAssessment inputs are bounded (answers array + freeText + selectedOptionIds)', () => {
