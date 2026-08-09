@@ -4,6 +4,7 @@ import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
 import { useReportingFunnel } from '../../../lib/platform-api/reporting';
 import { useEngagementEnps, useEngagementDashboardKpis } from '../../../lib/platform-api/engagement';
+import { useMonitoringExecutiveKpis } from '../../../lib/platform-api/monitoring';
 import { KpiCard, KpiCardSkeleton } from '../../../components';
 import { suppressedValue } from '../../../lib/dashboard/suppress';
 import { LoadError } from './load-error';
@@ -25,7 +26,7 @@ export function OrgCommandCenter() {
   const { t } = useI18n();
   const occ = t.orgCommandCenter;
 
-  const exec = trpc.monitoring.getExecutiveKpis.useQuery();
+  const exec = useMonitoringExecutiveKpis();
   const perf = trpc.performance.getDashboardKpis.useQuery();
   const funnel = useReportingFunnel();
   const enps = useEngagementEnps();

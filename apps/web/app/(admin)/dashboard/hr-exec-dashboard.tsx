@@ -6,6 +6,7 @@ import { useReportingFunnel } from '../../../lib/platform-api/reporting';
 import { useEngagementEnps, useEngagementDashboardKpis } from '../../../lib/platform-api/engagement';
 import { useDeiDashboardKpis } from '../../../lib/platform-api/dei';
 import { useCompensationDashboardKpis } from '../../../lib/platform-api/compensation';
+import { useMonitoringExecutiveKpis } from '../../../lib/platform-api/monitoring';
 import { KpiCard, KpiCardSkeleton } from '../../../components';
 import { suppressedValue, PLACEHOLDER } from '../../../lib/dashboard/suppress';
 import { LoadError } from './load-error';
@@ -31,7 +32,7 @@ export function HrExecDashboard() {
 
   // hr_admin is ORGANIZATION-scoped, so every org-rollup aggregate (incl. the
   // requireOrgScope comp/DEI endpoints) is callable.
-  const exec = trpc.monitoring.getExecutiveKpis.useQuery();
+  const exec = useMonitoringExecutiveKpis();
   const perf = trpc.performance.getDashboardKpis.useQuery();
   const enps = useEngagementEnps();
   const culture = useEngagementDashboardKpis();

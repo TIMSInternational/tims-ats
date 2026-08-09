@@ -19,7 +19,7 @@
 // turn "suppressed" into a fabricated **0** on the dashboard: not just wrong, but wrong in the
 // direction that hides the suppression. They go through `numberOrNull`, which preserves null.
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { trpc } from '../trpc';
 import { isPlatformApiEnabled, platformGet } from './client';
 
@@ -293,6 +293,23 @@ export function useMonitoringCrossModuleTrend(input: { metric: TrendMetric; peri
     enabled,
   });
   return enabled ? csharpQuery : trpcQuery;
+}
+
+/**
+ * Invalidate every C#-routed monitoring read (the `['platform-api','monitoring']` query-key
+ * prefix) after a monitoring mutation. Call from a mutation `onSuccess`; pass the
+ * `useQueryClient()` instance. Shape copied from ninebox.ts:461.
+ *
+ * WHY THIS EXISTS: `configureAlertRules` is a WRITE and was NOT ported — it is still a tRPC
+ * mutation, so its `onSuccess` invalidates tRPC cache keys via `utils.monitoring.*.invalidate()`.
+ * Those keys are a DIFFERENT cache from the `['platform-api','monitoring']` keys the six hooks
+ * above use when the flag is on, so with the flag on a rule save would refresh nothing and the
+ * dashboard would serve stale rules/alerts/KPIs/module-health indefinitely. The call site keeps
+ * BOTH: the tRPC invalidates (live path today) and this one (live path after cutover). Each is a
+ * no-op against the path that is not active, because the inactive path's queries never populate.
+ */
+export function invalidateMonitoringPlatformReads(queryClient: ReturnType<typeof useQueryClient>): void {
+  queryClient.invalidateQueries({ queryKey: ['platform-api', 'monitoring'] });
 }
 
 /** Alert-rule list, INCLUDING inactive rules (the read has no isActive filter). */

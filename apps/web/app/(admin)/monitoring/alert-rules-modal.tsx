@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   ALERT_METRIC_KEYS,
   ALERT_METRIC_MODULE,
@@ -9,6 +10,7 @@ import {
   type AlertOperator,
 } from '@tims/shared';
 import { trpc } from '../../../lib/trpc';
+import { useMonitoringAlertRules, invalidateMonitoringPlatformReads } from '../../../lib/platform-api/monitoring';
 import { toast } from '../../../lib/toast';
 import { useI18n } from '../../../lib/i18n';
 import { Modal } from '../../../components/modal';
@@ -35,7 +37,14 @@ const OPERATOR_SYMBOL: Record<AlertOperator, string> = {
 };
 
 function newRule(): EditableRule {
-  return { metric: ALERT_METRIC_KEYS[0], operator: 'gt', threshold: 0, severity: 'warning', message: '', isActive: true };
+  return {
+    metric: ALERT_METRIC_KEYS[0],
+    operator: 'gt',
+    threshold: 0,
+    severity: 'warning',
+    message: '',
+    isActive: true,
+  };
 }
 
 // Narrow a persisted rule (condition is Json) into an editable row.
@@ -68,7 +77,8 @@ export function AlertRulesModal({ onClose }: { onClose: () => void }) {
   const { t } = useI18n();
   const ar = t.alertRules as Record<string, string>;
   const utils = trpc.useUtils();
-  const rulesQuery = trpc.monitoring.getAlertRules.useQuery();
+  const queryClient = useQueryClient();
+  const rulesQuery = useMonitoringAlertRules();
   const [rules, setRules] = useState<EditableRule[]>([]);
 
   useEffect(() => {
@@ -77,10 +87,17 @@ export function AlertRulesModal({ onClose }: { onClose: () => void }) {
 
   const save = trpc.monitoring.configureAlertRules.useMutation({
     onSuccess: () => {
+      // configureAlertRules is a WRITE and was NOT ported (#100 is read-only), so it stays a tRPC
+      // mutation. Both cache families must be refreshed: the tRPC keys below are the live reads
+      // while NEXT_PUBLIC_MONITORING_READ_VIA_CSHARP is off, and the ['platform-api','monitoring']
+      // keys are the live reads once it is on. Invalidating only the tRPC four would leave the
+      // whole dashboard stale after cutover — the reads are served from a different cache.
+      // Each call is a no-op against the path that is not active (its queries never populate).
       utils.monitoring.getAlertRules.invalidate();
       utils.monitoring.getActiveAlerts.invalidate();
       utils.monitoring.getExecutiveKpis.invalidate();
       utils.monitoring.getModuleHealth.invalidate();
+      invalidateMonitoringPlatformReads(queryClient);
       toast(ar.rulesSaved, { type: 'success' });
       onClose();
     },
@@ -119,9 +136,7 @@ export function AlertRulesModal({ onClose }: { onClose: () => void }) {
       ) : (
         <>
           <div className="space-y-3 max-h-[55vh] overflow-y-auto pr-1">
-            {rules.length === 0 && (
-              <p className="text-[13px] text-[#8B8B8B] py-6 text-center">{ar.noRules}</p>
-            )}
+            {rules.length === 0 && <p className="text-[13px] text-[#8B8B8B] py-6 text-center">{ar.noRules}</p>}
             {rules.map((r, i) => (
               <div key={r.id ?? `new-${i}`} className="rounded-xl border border-[#EDEDED] p-3 space-y-2.5">
                 <div className="flex flex-wrap items-end gap-2">
@@ -133,7 +148,9 @@ export function AlertRulesModal({ onClose }: { onClose: () => void }) {
                       className="h-9 px-2.5 rounded-lg border border-[#EDEDED] text-[13px] bg-white focus:outline-none focus:border-[#1F114C]"
                     >
                       {ALERT_METRIC_KEYS.map((k) => (
-                        <option key={k} value={k}>{ar[`metric_${k}`] ?? k}</option>
+                        <option key={k} value={k}>
+                          {ar[`metric_${k}`] ?? k}
+                        </option>
                       ))}
                     </select>
                   </label>
@@ -145,7 +162,9 @@ export function AlertRulesModal({ onClose }: { onClose: () => void }) {
                       className="h-9 px-2.5 rounded-lg border border-[#EDEDED] text-[13px] bg-white focus:outline-none focus:border-[#1F114C]"
                     >
                       {ALERT_OPERATORS.map((op) => (
-                        <option key={op} value={op}>{OPERATOR_SYMBOL[op]}</option>
+                        <option key={op} value={op}>
+                          {OPERATOR_SYMBOL[op]}
+                        </option>
                       ))}
                     </select>
                   </label>
@@ -196,7 +215,9 @@ export function AlertRulesModal({ onClose }: { onClose: () => void }) {
             onClick={() => setRules((rs) => [...rs, newRule()])}
             className="mt-3 flex items-center gap-1.5 text-[13px] text-[#1F114C] font-medium hover:underline"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 4.5v15m7.5-7.5h-15" /></svg>
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <path d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
             {ar.addRule}
           </button>
 
