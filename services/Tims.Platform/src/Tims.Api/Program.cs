@@ -762,6 +762,12 @@ try
     // nothing on success and never alters the response.
     app.UseMiddleware<SecurityDenialAuditMiddleware>();
 
+    // #173 — MFA step-up, the port of TS's `withMfaEnforcement`. Registered AFTER the denial
+    // observer so that observer sees this 403 and correctly SKIPS it: an MFA refusal is audited
+    // distinctly as `mfa_step_up_required`, never as a generic `authz_denied` (observeDenial's
+    // same carve-out). Fails OPEN on an unset/garbled Platform:MfaEnforced.
+    app.UseMiddleware<MfaStepUpMiddleware>();
+
     // Rate limiting runs AFTER principal resolution (so the resolved TIMS principal is available to
     // key the bucket) but BEFORE authorization/handlers. Infra + auth-probe paths are exempt inside
     // the middleware; the API-key per-key quota is enforced by ApiKeyRateLimitFilter post-auth.

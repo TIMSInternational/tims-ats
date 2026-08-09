@@ -52,6 +52,8 @@ public sealed class MonitoringReadFixture : IAsyncLifetime
     public static readonly Guid OrgReaderId = Guid.Parse("a0000000-0000-0000-0000-000000000001");
     public static readonly Guid UnitReaderId = Guid.Parse("a0000000-0000-0000-0000-000000000002");
     public static readonly Guid NoGrantId = Guid.Parse("a0000000-0000-0000-0000-000000000003");
+    /// <summary>#173: super_admin WITH monitoring:read — privileged, so the MFA gate applies to it.</summary>
+    public static readonly Guid SuperAdminId = Guid.Parse("a0000000-0000-0000-0000-000000000004");
 
     public static readonly Guid M1 = Guid.Parse("d0000000-0000-0000-0000-000000000001"); // BU1 — in the hrbp's unit
     public static readonly Guid M4 = Guid.Parse("d0000000-0000-0000-0000-000000000004"); // BU2 — OUTSIDE it
@@ -62,11 +64,12 @@ public sealed class MonitoringReadFixture : IAsyncLifetime
     public const string OrgReaderSub = "sub-mon-org";
     public const string UnitReaderSub = "sub-mon-unit";
     public const string NoGrantSub = "sub-mon-none";
+    public const string SuperAdminSub = "sub-mon-super";
     public const string OrgBReaderSub = "sub-mon-org-b";
     public const string OrgCReaderSub = "sub-mon-org-c";
 
     // Deterministic OrgA expectations (independent of the runtime `now`).
-    public const int OrgATotalEmployees = 7;      // 3 staff readers + M1..M4, the inactive user excluded
+    public const int OrgATotalEmployees = 8;      // 4 staff readers (incl. #173's super_admin) + M1..M4, the inactive user excluded
     public const int OrgAActiveVacancies = 2;     // approved + published; draft and soft-deleted excluded
     public const int OrgAPendingAdjustments = 3;  // SUB-FLOOR → suppressed at the use case
     public const int OrgAActiveSurveys = 2;       // 2 active + 1 draft
@@ -256,7 +259,11 @@ public sealed class MonitoringReadFixture : IAsyncLifetime
           ('c0000000-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'hrbp', 'HRBP'),
           ('c0000000-0000-0000-0000-000000000003', '11111111-1111-1111-1111-111111111111', 'employee', 'Employee'),
           ('c0000000-0000-0000-0000-0000000000b1', '22222222-2222-2222-2222-222222222222', 'hr_admin', 'HR Admin'),
-          ('c0000000-0000-0000-0000-0000000000c1', '33333333-3333-3333-3333-333333333333', 'hr_admin', 'HR Admin');
+          ('c0000000-0000-0000-0000-0000000000c1', '33333333-3333-3333-3333-333333333333', 'hr_admin', 'HR Admin'),
+          -- #173: a PRIVILEGED slug, so the MFA step-up gate has a subject. super_admin is in
+          -- RoleSlugs.AssignableStaffRoles, so the resolver keeps it (an invalid slug is dropped
+          -- and the test would pass for the wrong reason — the #150 false-green).
+          ('c0000000-0000-0000-0000-000000000004', '11111111-1111-1111-1111-111111111111', 'super_admin', 'Super Admin');
 
         INSERT INTO permissions (id, module, action) VALUES
           ('b0000000-0000-0000-0000-000000000001', 'monitoring', 'read');
@@ -266,7 +273,8 @@ public sealed class MonitoringReadFixture : IAsyncLifetime
           ('90000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000001', 'organization'),
           ('90000000-0000-0000-0000-000000000002', 'c0000000-0000-0000-0000-000000000002', 'b0000000-0000-0000-0000-000000000001', 'unit'),
           ('90000000-0000-0000-0000-0000000000b1', 'c0000000-0000-0000-0000-0000000000b1', 'b0000000-0000-0000-0000-000000000001', 'organization'),
-          ('90000000-0000-0000-0000-0000000000c1', 'c0000000-0000-0000-0000-0000000000c1', 'b0000000-0000-0000-0000-000000000001', 'organization');
+          ('90000000-0000-0000-0000-0000000000c1', 'c0000000-0000-0000-0000-0000000000c1', 'b0000000-0000-0000-0000-000000000001', 'organization'),
+          ('90000000-0000-0000-0000-000000000004', 'c0000000-0000-0000-0000-000000000004', 'b0000000-0000-0000-0000-000000000001', 'organization');
 
         INSERT INTO users (id, organization_id, supabase_user_id, email, first_name, last_name, avatar, job_title, company_id, business_unit_id, created_at, is_platform_owner, is_active) VALUES
           ('a0000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'sub-mon-org',   'org@t.test',  'Ana',  'Admin', NULL,     'HR',  NULL, NULL, '2024-01-01 00:00:00', false, true),
@@ -279,14 +287,16 @@ public sealed class MonitoringReadFixture : IAsyncLifetime
           ('d0000000-0000-0000-0000-000000000009', '11111111-1111-1111-1111-111111111111', 'sub-mon-m9',    'm9@t.test',   'Mo',   'Gone',  NULL,     'Eng', NULL, 'b0b00000-0000-0000-0000-000000000001', '2024-01-01 00:00:00', false, false),
           ('a0000000-0000-0000-0000-0000000000b1', '22222222-2222-2222-2222-222222222222', 'sub-mon-org-b', 'orgb@t.test', 'Bea',  'AdminB', NULL,    'HR',  NULL, NULL, '2024-01-01 00:00:00', false, true),
           ('d0000000-0000-0000-0000-0000000000b2', '22222222-2222-2222-2222-222222222222', 'sub-mon-mb',    'mb@t.test',   'Bob',  'OrgB',  NULL,     'X',   NULL, NULL, '2024-01-01 00:00:00', false, true),
-          ('a0000000-0000-0000-0000-0000000000c1', '33333333-3333-3333-3333-333333333333', 'sub-mon-org-c', 'orgc@t.test', 'Cid',  'AdminC', NULL,    'HR',  NULL, NULL, '2024-01-01 00:00:00', false, true);
+          ('a0000000-0000-0000-0000-0000000000c1', '33333333-3333-3333-3333-333333333333', 'sub-mon-org-c', 'orgc@t.test', 'Cid',  'AdminC', NULL,    'HR',  NULL, NULL, '2024-01-01 00:00:00', false, true),
+          ('a0000000-0000-0000-0000-000000000004', '11111111-1111-1111-1111-111111111111', 'sub-mon-super', 'super@t.test', 'Sam', 'Super', NULL,   'SA',  NULL, NULL, '2024-01-01 00:00:00', false, true);
 
         INSERT INTO user_roles (id, user_id, role_id) VALUES
           ('e0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000001'),
           ('e0000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000002', 'c0000000-0000-0000-0000-000000000002'),
           ('e0000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000003', 'c0000000-0000-0000-0000-000000000003'),
           ('e0000000-0000-0000-0000-0000000000b1', 'a0000000-0000-0000-0000-0000000000b1', 'c0000000-0000-0000-0000-0000000000b1'),
-          ('e0000000-0000-0000-0000-0000000000c1', 'a0000000-0000-0000-0000-0000000000c1', 'c0000000-0000-0000-0000-0000000000c1');
+          ('e0000000-0000-0000-0000-0000000000c1', 'a0000000-0000-0000-0000-0000000000c1', 'c0000000-0000-0000-0000-0000000000c1'),
+          ('e0000000-0000-0000-0000-000000000004', 'a0000000-0000-0000-0000-000000000004', 'c0000000-0000-0000-0000-000000000004');
         """;
 
     // OrgC is intentionally ABSENT from every statement below — it is the empty-database org.

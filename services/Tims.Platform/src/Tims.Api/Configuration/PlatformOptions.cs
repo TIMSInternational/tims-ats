@@ -418,4 +418,20 @@ public sealed class PlatformOptions
     /// DEFAULT false (dark) — TS remains the single active reader until Federico flips it at canary.
     /// </summary>
     public bool MonitoringReadEnabled { get; init; }
+
+    /// <summary>
+    /// MFA step-up enforcement (#173) — the platform-service counterpart of the web app's
+    /// <c>MFA_ENFORCED</c>. When exactly "true", a PRIVILEGED principal (platform owner or
+    /// super_admin) on an <c>aal1</c> session is refused with 403 + <c>{"message":"MFA_REQUIRED"}</c>
+    /// by <see cref="Tims.Api.Authentication.MfaStepUpMiddleware"/>.
+    ///
+    /// A STRING, not a bool, on purpose: <see cref="Tims.Domain.Identity.MfaGate.IsEnforced"/> ports
+    /// the TS rule that ONLY the exact "true" enables the gate, so a garbled value fails OPEN and can
+    /// never lock privileged operators out of production. Binding it as bool would let the
+    /// configuration layer coerce "TRUE"/"1"/"yes" and quietly widen that contract.
+    ///
+    /// Set it to the SAME value as the web app's MFA_ENFORCED — a session refused by one stack and
+    /// served by the other is the exact hole this closes.
+    /// </summary>
+    public string? MfaEnforced { get; init; }
 }
