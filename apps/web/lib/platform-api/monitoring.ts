@@ -37,6 +37,18 @@ export function numberOrNull(value: number | string | null | undefined): number 
   return value === null || value === undefined ? null : Number(value);
 }
 
+/**
+ * Date reconstruction. The C# contract types every timestamp as an ISO STRING, while the tRPC path
+ * returns a real `Date` — `packages/api/src/trpc.ts` sets `transformer: superjson`, so a Prisma
+ * `DateTime` survives serialization as a Date on the client. Without this, flipping
+ * NEXT_PUBLIC_MONITORING_READ_VIA_CSHARP would silently change `createdAt`/`dueDate` from `Date` to
+ * `string`, breaking this file's own stated invariant ("shape-identical to the tRPC output") and any
+ * consumer calling a Date method. Every other platform-api wrapper already does this — the shape is
+ * copied verbatim from access-review.ts:97, evaluation360.ts:71 and billing.ts:123.
+ */
+export const toDate = (v: unknown): Date => new Date(v as string);
+export const toDateOrNull = (v: unknown): Date | null => (v == null ? null : new Date(v as string));
+
 // ── Wire shapes ───────────────────────────────────────────────────────────────────────────────
 // Field-for-field identical to the tRPC outputs AND to the C# view records.
 
@@ -64,7 +76,7 @@ export interface ActiveAlert {
   module: string;
   title: string;
   message: string;
-  createdAt: string;
+  createdAt: Date;
 }
 
 export interface ActiveAlertsPage {
@@ -79,13 +91,60 @@ export interface ActionPlanAlert {
   title: string;
   area: string | null;
   status: string;
-  dueDate: string | null;
+  dueDate: Date | null;
   responsible: { id: string; firstName: string; lastName: string; avatar: string | null };
 }
 
 export interface ActionPlanAlerts {
   items: ActionPlanAlert[];
   total: number;
+}
+
+/**
+ * Row mappers, exported for the same reason `numberOrNull` is: an invariant that is only argued in
+ * a comment is not enforced. Testing `toDate` alone would prove the helper works, not that the
+ * wrapper USES it — the hooks' mapping is inline inside `useQuery` and unreachable from a unit
+ * test. Extracting them makes the actual reconstruction directly exercisable.
+ */
+export function mapActiveAlert(a: {
+  id: string;
+  severity: string;
+  module: string;
+  title: string;
+  message: string;
+  createdAt: unknown;
+}): ActiveAlert {
+  return {
+    id: a.id,
+    severity: a.severity,
+    module: a.module,
+    title: a.title,
+    message: a.message,
+    createdAt: toDate(a.createdAt),
+  };
+}
+
+export function mapActionPlanAlert(i: {
+  id: string;
+  title: string;
+  area?: string | null;
+  status: string;
+  dueDate?: unknown;
+  responsible: { id: string; firstName: string; lastName: string; avatar?: string | null };
+}): ActionPlanAlert {
+  return {
+    id: i.id,
+    title: i.title,
+    area: i.area ?? null,
+    status: i.status,
+    dueDate: toDateOrNull(i.dueDate),
+    responsible: {
+      id: i.responsible.id,
+      firstName: i.responsible.firstName,
+      lastName: i.responsible.lastName,
+      avatar: i.responsible.avatar ?? null,
+    },
+  };
 }
 
 /**
@@ -184,14 +243,7 @@ export function useMonitoringActiveAlerts(input?: {
         limit: input?.limit,
       });
       return {
-        items: raw.items.map((a) => ({
-          id: a.id,
-          severity: a.severity,
-          module: a.module,
-          title: a.title,
-          message: a.message,
-          createdAt: a.createdAt,
-        })),
+        items: raw.items.map(mapActiveAlert),
         total: Number(raw.total),
         page: Number(raw.page),
         limit: Number(raw.limit),
@@ -211,19 +263,7 @@ export function useMonitoringActionPlanAlerts() {
     queryFn: async () => {
       const raw = await platformGet('/monitoring/action-plan-alerts');
       return {
-        items: raw.items.map((i) => ({
-          id: i.id,
-          title: i.title,
-          area: i.area ?? null,
-          status: i.status,
-          dueDate: i.dueDate ?? null,
-          responsible: {
-            id: i.responsible.id,
-            firstName: i.responsible.firstName,
-            lastName: i.responsible.lastName,
-            avatar: i.responsible.avatar ?? null,
-          },
-        })),
+        items: raw.items.map(mapActionPlanAlert),
         total: Number(raw.total),
       };
     },
