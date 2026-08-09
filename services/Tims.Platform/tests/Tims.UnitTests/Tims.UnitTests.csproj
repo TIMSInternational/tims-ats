@@ -102,6 +102,11 @@
       <Link>monitoring-fixtures\%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <!-- #173 MFA step-up gate parity fixtures (shared with the TS vitest suite). -->
+    <Content Include="..\..\..\..\contracts\mfa-fixtures\*.json">
+      <Link>mfa-fixtures\%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <!-- #174 trusted client-IP derivation, shared by the rate limiter and every audit writer
          (shared with the TS vitest suite: tests/governance/audit-ip-derivation.test.ts). -->
     <Content Include="..\..\..\..\contracts\client-ip-fixtures\*.json">
