@@ -2203,45 +2203,67 @@ async function main() {
     },
   ];
 
+  // RAW SQL, not Prisma delegates — `surveys` + `survey_responses` are the subject of ownership flip
+  // #64, after which their Prisma models are deleted and `db.survey` / `db.surveyResponse` no longer
+  // exist on the client. Ported AHEAD of that flip because the runbook's §0 P1 counts a seed write as
+  // a TS WRITER, and a surviving writer blocks the flip outright — this file was in fact the whole of
+  // #64's P1 blocker set. Same disposition, and same shape, as the `critical_roles` / `successors`
+  // block above (#69, 2026-08-04).
+  //
+  // This is a DEV DEMO SEEDER, not an application read/write path. §0 P2 forbids converting an
+  // *application* Prisma reader to raw SQL to make `tsc` pass — that would hide a cross-owner read
+  // from both the ownership check and the compiler. That prohibition does not apply to this file.
+  //
+  // Explicit `id` and `updated_at`: production has NO default on `surveys.id`, `surveys.updated_at`
+  // or `survey_responses.id` — Prisma supplied them client-side via `@default(uuid())` / `@updatedAt`.
+  // Verified against `packages/db/baseline/prod-public-schema.sql:2587-2618`, not inferred from the
+  // Prisma models. `created_at` and `submitted_at` DO default to CURRENT_TIMESTAMP there, so both are
+  // omitted and keep their previous values.
+  //
+  // Dates are bound as ISO strings cast to `timestamp(3)` — the columns are `timestamp WITHOUT time
+  // zone`, and an explicit cast avoids depending on how a JS `Date` parameter gets typed. The UTC
+  // wall-clock this yields is what Prisma wrote before.
   for (const sd of surveyDefs) {
-    const existing = await db.survey.findFirst({
-      where: { organizationId: org.id, title: sd.title },
-      select: { id: true },
-    });
-    if (!existing) {
-      const survey = await db.survey.create({
-        data: {
-          organizationId: org.id,
-          title: sd.title,
-          type: sd.type,
-          status: sd.status,
-          questions: sd.questions,
-          startsAt: sd.startsAt,
-          endsAt: sd.endsAt,
-          responseCount: sd.responseCount,
-          createdById: hr.id,
-        },
-        select: { id: true },
-      });
+    const existing = await db.$queryRaw<{ id: string }[]>`
+      SELECT id FROM surveys
+      WHERE organization_id = ${org.id}::uuid AND title = ${sd.title}
+      LIMIT 1
+    `;
+    if (existing.length === 0) {
+      const inserted = await db.$queryRaw<{ id: string }[]>`
+        INSERT INTO surveys
+          (id, organization_id, title, type, status, questions, starts_at, ends_at,
+           response_count, created_by_id, updated_at)
+        VALUES
+          (gen_random_uuid(), ${org.id}::uuid, ${sd.title}, ${sd.type}, ${sd.status},
+           ${JSON.stringify(sd.questions)}::jsonb,
+           ${sd.startsAt.toISOString()}::timestamp(3),
+           ${sd.endsAt.toISOString()}::timestamp(3),
+           ${sd.responseCount}, ${hr.id}::uuid, now())
+        RETURNING id
+      `;
+      const surveyId = inserted[0]!.id;
 
       // Add responses for closed survey
       if (sd.status === 'closed') {
         const respondents = allUserIds.slice(0, 12);
         for (const uid of respondents) {
-          await db.surveyResponse.create({
-            data: {
-              organizationId: org.id,
-              surveyId: survey.id,
-              userId: uid,
-              answers: {
-                q1: Math.floor(Math.random() * 2) + 3,
-                q2: Math.floor(Math.random() * 2) + 3,
-                q3: Math.floor(Math.random() * 2) + 3,
-                q4: Math.floor(Math.random() * 4) + 6,
-                q5: null,
-              },
-            },
-          });
+          const answers = {
+            q1: Math.floor(Math.random() * 2) + 3,
+            q2: Math.floor(Math.random() * 2) + 3,
+            q3: Math.floor(Math.random() * 2) + 3,
+            q4: Math.floor(Math.random() * 4) + 6,
+            q5: null,
+          };
+          // @@unique([survey_id, user_id]) in prod → ON CONFLICT keeps this idempotent.
+          await db.$executeRaw`
+            INSERT INTO survey_responses
+              (id, organization_id, survey_id, user_id, answers)
+            VALUES
+              (gen_random_uuid(), ${org.id}::uuid, ${surveyId}::uuid, ${uid}::uuid,
+               ${JSON.stringify(answers)}::jsonb)
+            ON CONFLICT (survey_id, user_id) DO NOTHING
+          `;
         }
       }
     }
