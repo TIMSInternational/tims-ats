@@ -81,6 +81,36 @@ describe('aiInterview router — static source guards', () => {
     expect(configCheckIdx).toBeLessThan(sessionLookupIdx);
   });
 
+  // #46 regression guard. The router used to hand-roll its own config check testing only
+  // ELEVENLABS_API_KEY and ELEVENLABS_AGENT_ID, while the correct 3-var helper in lib/elevenlabs
+  // shipped dead (imported by tests only). The missing var is ELEVENLABS_WEBHOOK_SECRET, and it fails
+  // LATE: `start` admitted the interview, the candidate completed it, and verifyWebhookSignature then
+  // returned false, silently dropping the result — no analysis, no billing, no error.
+  //
+  // The test above this one does NOT catch that: its regex is /ELEVENLABS_API_KEY|isElevenLabsConfigured/,
+  // which matches the broken 2-var form just as happily as the fixed one. Hence a separate assertion.
+  it('start: uses the shared 3-var config gate and does not read ElevenLabs env vars directly', () => {
+    const src = readRouter();
+
+    // It must import the shared helper — the helper is the only place all three vars are checked.
+    expect(src).toMatch(/import\s*\{[^}]*isElevenLabsConfigured[^}]*\}\s*from\s*['"]\.\.\/lib\/elevenlabs['"]/);
+
+    // And it must not re-declare a local copy, which is how the 2-var version got there.
+    expect(src).not.toMatch(/function\s+isElevenLabsConfigured\s*\(/);
+
+    // Scanned over the WHOLE file, deliberately: bounding this to the `start` block would let a
+    // partial env check reappear anywhere else in the router and still pass.
+    //
+    // ELEVENLABS_API_KEY specifically, not `ELEVENLABS_` broadly. The key is the var the deleted
+    // 2-var gate keyed on and it has NO legitimate use in this router — the secret belongs to
+    // integrations/elevenlabs, and the test above already asserts it never reaches a response body.
+    // ELEVENLABS_AGENT_ID is deliberately NOT forbidden: `:276` uses it as a real per-session
+    // fallback (`session.elevenlabsAgentId ?? process.env.ELEVENLABS_AGENT_ID`). A blanket
+    // /process\.env\.ELEVENLABS_/ ban was tried first and failed on that correct line — the
+    // assertion was wrong, not the code.
+    expect(src).not.toMatch(/process\.env\.ELEVENLABS_API_KEY/);
+  });
+
   it('start: gates on consentedAt before calling getSignedUrl', () => {
     const src = readRouter();
     const startIdx = src.indexOf('start:');
@@ -166,7 +196,15 @@ vi.mock('../../packages/api/src/repositories/ai-interview.repository', () => ({
 
 vi.mock('../../packages/api/src/integrations/elevenlabs', () => ({
   getSignedUrl: vi.fn(),
-  // If isElevenLabsConfigured is exported by the real module it gets mocked here.
+}));
+
+// The config gate lives in lib/elevenlabs, NOT in integrations/elevenlabs. This mock used to sit on
+// the integrations module with the comment "if isElevenLabsConfigured is exported by the real module
+// it gets mocked here" — it never was exported there, so the mock was inert and the router's own
+// 2-var copy is what actually ran. #46 replaced that copy with the shared 3-var helper, which made
+// the misplacement visible: 7 tests began failing because the REAL gate ran and correctly returned
+// false with no env vars set.
+vi.mock('../../packages/api/src/lib/elevenlabs', () => ({
   isElevenLabsConfigured: vi.fn().mockReturnValue(true),
 }));
 
