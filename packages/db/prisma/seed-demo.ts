@@ -2239,7 +2239,7 @@ async function main() {
            ${JSON.stringify(sd.questions)}::jsonb,
            ${sd.startsAt.toISOString()}::timestamp(3),
            ${sd.endsAt.toISOString()}::timestamp(3),
-           ${sd.responseCount}, ${hr.id}::uuid, now())
+           ${sd.responseCount}::int, ${hr.id}::uuid, now() AT TIME ZONE 'UTC')
         RETURNING id
       `;
       const surveyId = inserted[0]!.id;
@@ -2255,7 +2255,13 @@ async function main() {
             q4: Math.floor(Math.random() * 4) + 6,
             q5: null,
           };
-          // @@unique([survey_id, user_id]) in prod → ON CONFLICT keeps this idempotent.
+          // Idempotency here comes from the `existing.length === 0` guard above, NOT from this
+          // clause: the loop only runs for a survey just inserted with a fresh id, and `allUserIds`
+          // is de-duplicated by email (:105), so no (survey_id, user_id) row can pre-exist and
+          // ON CONFLICT is UNREACHABLE on this path. It is kept as defence-in-depth against a future
+          // edit that reuses a survey id or a duplicated respondent list, matching
+          // @@unique([survey_id, user_id]) in prod. (An earlier version of this comment credited the
+          // clause with the idempotency, which a review panel correctly refuted.)
           await db.$executeRaw`
             INSERT INTO survey_responses
               (id, organization_id, survey_id, user_id, answers)
