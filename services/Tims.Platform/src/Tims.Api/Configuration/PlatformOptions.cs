@@ -420,6 +420,24 @@ public sealed class PlatformOptions
     public bool MonitoringReadEnabled { get; init; }
 
     /// <summary>
+    /// Phase-5 slice 19 (issue #76) — the platform-owner ORGANIZATIONS READ surface: the C# port of
+    /// <c>getOrganizationKpis</c>, <c>listOrganizations</c> and <c>getOrganization</c> from
+    /// <c>routers/platform/organizations.ts</c>.
+    ///
+    /// Gated by <c>PlatformOwnerGate</c> and deliberately CROSS-ORG — never wrapped in TenantScope, so
+    /// the gate is the entire authorization boundary (RLS restricts nothing on this path, and the prod
+    /// role is BYPASSRLS regardless).
+    ///
+    /// The three organization WRITES (<c>createOrganization</c>, <c>updateOrganization</c>,
+    /// <c>suspendOrganization</c>) are NOT in this flag — they are a separate write slice, because they
+    /// would move <c>organizations</c>/<c>subscriptions</c> into <c>efcoreStranglerWrite</c> and need
+    /// their own one-active-writer discipline rather than riding a read flag.
+    ///
+    /// DEFAULT false (dark) — TS remains the single active reader until Federico flips it at canary.
+    /// </summary>
+    public bool PlatformOrganizationsReadEnabled { get; init; }
+
+    /// <summary>
     /// MFA step-up enforcement (#173) — the platform-service counterpart of the web app's
     /// <c>MFA_ENFORCED</c>. When exactly "true", a PRIVILEGED principal (platform owner or
     /// super_admin) on an <c>aal1</c> session is refused with 403 + <c>{"message":"MFA_REQUIRED"}</c>
