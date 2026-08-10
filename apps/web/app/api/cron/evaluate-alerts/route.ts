@@ -21,6 +21,20 @@ export async function GET(req: Request): Promise<Response> {
 
   try {
     const summary = await evaluateAlertRules();
+
+    // A run where rules were SKIPPED is not a healthy run, and until now it looked like one: skipped
+    // failures are per-rule `logger.error` calls and the route still returned `ok: true`. That is the
+    // shape a broken cutover takes (#172) — flag on while the C# surface is dark ⇒ 404, wrong secret ⇒
+    // 401, platform outage ⇒ 500 — where EVERY routed metric throws, every rule is skipped, and the
+    // cron reports success. Fail-loud inside the process is worth nothing if it is silent to operators.
+    if (summary.skipped > 0) {
+      Sentry.captureMessage('cron/evaluate-alerts: rules skipped', {
+        level: summary.skipped === summary.rules ? 'error' : 'warning',
+        tags: { cron: 'evaluate-alerts' },
+        extra: { rules: summary.rules, fired: summary.fired, skipped: summary.skipped },
+      });
+    }
+
     return Response.json({ ok: true, ...summary });
   } catch (err) {
     logger.error({ err }, 'cron/evaluate-alerts failed');

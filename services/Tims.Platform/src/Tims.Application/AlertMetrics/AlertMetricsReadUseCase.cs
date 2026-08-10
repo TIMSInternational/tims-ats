@@ -1,0 +1,145 @@
+using System.Text.Json.Nodes;
+using Tims.Application.Audit;
+using Tims.Domain.Access;
+using Tims.Domain.AlertMetrics;
+
+namespace Tims.Application.AlertMetrics;
+
+/// <summary>
+/// Computes ONE metric for ONE org, applies the §21 min-5 floor, and audits the cross-org read
+/// (§8 Q0b slice 2, issue #172).
+///
+/// <para><b>The floor is applied HERE, server-side</b> — the same <c>SENSITIVE_ALERT_METRICS</c> →
+/// <c>suppressBelowMin5</c> composition the TS repository applies. Applying it in the caller only would
+/// mean the C# surface could be used to route around the TS oracle guard: a 1..4 sensitive count leaves
+/// this process as <c>Suppressed</c> with no number attached, so there is nothing on the wire to recover.
+/// The TS caller floors again on receipt; the operation is idempotent (0 and >=5 pass through unchanged,
+/// and a null never re-enters the floor), so belt-and-braces costs nothing.</para>
+///
+/// <para><b>Every read is audited.</b> A privileged cross-org read that leaves no trace is the gap the
+/// platform-owner read precedent (<c>logSecurityEvent</c> / <see cref="ISecurityEventWriter"/>) exists to
+/// close, and its absence was a finding against the previous attempt at this slice (PR #141). The row is
+/// attributed to the org being read with a NULL actor — the caller is a machine with no user identity,
+/// and inventing a sentinel user id would make a cron read indistinguishable from a human one in
+/// incident review. The write is fail-SOFT by the writer's own contract: a lost audit row must not stop
+/// the alert engine from evaluating a breach.</para>
+/// </summary>
+public sealed class AlertMetricsReadUseCase(
+    IAlertMetricsReadRepository repository,
+    ISecurityEventWriter securityEventWriter)
+{
+    /// <summary>
+    /// The <c>audit_logs.action</c> literal for a cron-driven cross-org metric read. Distinct from the
+    /// platform-owner read actions so the two callers are separable in an incident review.
+    /// </summary>
+    public const string AuditAction = "alert_metric_cron_read";
+
+    /// <summary>The <c>audit_logs.entity</c> literal — the surface, not the underlying table.</summary>
+    public const string AuditEntity = "alert_metric";
+
+    private readonly IAlertMetricsReadRepository _repository = repository;
+    private readonly ISecurityEventWriter _securityEventWriter = securityEventWriter;
+
+    public async Task<AlertMetricOutcome> ComputeAsync(
+        Guid organizationId,
+        AlertMetric metric,
+        CancellationToken cancellationToken,
+        string? ipAddress = null,
+        string? userAgent = null)
+    {
+        AlertMetricOutcome? outcome = null;
+        try
+        {
+            outcome = await ComputeOutcomeAsync(organizationId, metric, cancellationToken).ConfigureAwait(false);
+            return outcome;
+        }
+        finally
+        {
+            // Audit in a FINALLY, not on the success path. A review panel found the earlier version wrote
+            // nothing when the repository threw — DB down, statement timeout, or a SET LOCAL ROLE refused
+            // — so a secret-holder enumerating orgs left no trace for any request that errored, while the
+            // PR claimed "every cross-org read writes an audit row". A failed privileged read is exactly
+            // the event an auditor most wants; `outcome is null` is recorded as its own outcome kind.
+            //
+            // The catch is NOT redundant with ISecurityEventWriter's fail-soft contract. This call sits in
+            // a `finally`, so an implementation that broke that contract and threw would REPLACE the
+            // original exception on the failing path — turning "the database is down" into "the audit sink
+            // is down" and destroying the real diagnosis. Depending on a collaborator to be well-behaved
+            // is the assumption class this whole slice exists to remove, so it is enforced locally.
+            try
+            {
+                await _securityEventWriter.WriteAsync(
+                    new SecurityEvent(
+                        OrganizationId: organizationId,
+                        ActorId: null,
+                        Action: AuditAction,
+                        Entity: AuditEntity,
+                        EntityId: AlertMetricKeys.ToKey(metric),
+                        Metadata: BuildMetadata(metric, outcome),
+                        // The caller is a machine with no user identity, so IP + user-agent are the ONLY
+                        // fields that could ever distinguish the real cron from someone who obtained the
+                        // secret. Omitting them on a surface whose whole boundary is a shared secret
+                        // defeats the point of auditing it.
+                        IpAddress: ipAddress,
+                        UserAgent: userAgent),
+                    cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception)
+            {
+                // Swallowed deliberately — see above. The read's own result (or its exception) stands.
+            }
+        }
+    }
+
+    private async Task<AlertMetricOutcome> ComputeOutcomeAsync(
+        Guid organizationId, AlertMetric metric, CancellationToken cancellationToken)
+    {
+        var raw = metric switch
+        {
+            AlertMetric.ActiveSurveys =>
+                await _repository.CountActiveSurveysAsync(organizationId, cancellationToken).ConfigureAwait(false),
+            AlertMetric.PendingSalaryAdjustments =>
+                await _repository.CountPendingSalaryAdjustmentsAsync(organizationId, cancellationToken).ConfigureAwait(false),
+            // Unreachable while AlertMetricKeys.TryParse is the only producer of an AlertMetric, but a NEW
+            // enum member added without a handler must surface as Unavailable — never as a silent 0, which
+            // the cron would read as "no breach" forever.
+            _ => (int?)null,
+        };
+
+        if (raw is null)
+        {
+            return new AlertMetricOutcome.Unavailable("no_handler");
+        }
+
+        if (!AlertMetricKeys.IsSensitive(metric))
+        {
+            return new AlertMetricOutcome.Value(raw.Value);
+        }
+
+        var floored = KAnonymity.SuppressBelowMin5(raw.Value);
+        return floored.Count is null
+            ? new AlertMetricOutcome.Suppressed()
+            : new AlertMetricOutcome.Value(floored.Count.Value);
+    }
+
+    /// <summary>
+    /// The audit row's metadata. Records the OUTCOME KIND and whether the metric is sensitive — never the
+    /// count itself. Putting the value here would recreate the exact sub-floor disclosure the min-5 floor
+    /// just prevented, in a table built to be read by auditors.
+    /// </summary>
+    private static JsonObject BuildMetadata(AlertMetric metric, AlertMetricOutcome? outcome) => new()
+    {
+        ["metric"] = AlertMetricKeys.ToKey(metric),
+        ["sensitive"] = AlertMetricKeys.IsSensitive(metric),
+        ["outcome"] = outcome switch
+        {
+            AlertMetricOutcome.Value => "value",
+            AlertMetricOutcome.Suppressed => "suppressed",
+            AlertMetricOutcome.Unavailable => "unavailable",
+            // null == the read threw and is propagating. A distinct literal, not "unknown": an auditor
+            // must be able to tell a failed privileged read from an unmapped outcome kind.
+            null => "failed",
+            _ => "unknown",
+        },
+    };
+}

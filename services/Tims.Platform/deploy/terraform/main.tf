@@ -40,6 +40,12 @@ locals {
     db            = "Platform__DatabaseConnectionString"
     redis         = "Platform__RedisConnectionString"
     impersonation = "Platform__ImpersonationSecret"
+    # #172: the alert-evaluation cron's credential for the CROSS-ORG metric surface. It is the entire
+    # authorization boundary for a caller that may name any organization, so it lives here rather than in
+    # a flag. Unset => that surface refuses every request (CronCallerGate fails closed), so creating the
+    # container before populating it is safe. Must match the web app's ALERT_METRICS_CRON_SECRET, which is
+    # a DIFFERENT value from Vercel's CRON_SECRET (that one authenticates Vercel to the Next.js route).
+    alert_metrics_cron = "Platform__AlertMetricsCronSecret"
   }
   stripe_secrets = var.manage_stripe_secrets ? {
     stripe_key   = "Stripe__SecretKey"
@@ -83,6 +89,17 @@ locals {
     Platform__EngagementWriteEnabled      = tostring(var.feature_flags.engagement_write)
     Platform__AccessReviewReadEnabled     = tostring(var.feature_flags.access_review_read)
     Platform__AccessReviewWriteEnabled    = tostring(var.feature_flags.access_review_write)
+    # Q0b slice 1 (#100). NOTE: this flag shipped with the surface but was never wired here, so the
+    # monitoring read surface could not be enabled in production at all — and it gates flips #64/#66/#68.
+    Platform__MonitoringReadEnabled = tostring(var.feature_flags.monitoring_read)
+    # Q0b slice 2 (#172): the cross-org alert-metric surface. Enabling it WITHOUT populating the
+    # alert_metrics_cron secret above is inert, not open — the gate refuses everything.
+    Platform__AlertMetricsCronReadEnabled = tostring(var.feature_flags.alert_metrics_cron_read)
+    # #173. A STRING, not a bool: Tims.Domain.Identity.MfaGate.IsEnforced treats ONLY the exact "true" as
+    # enabling, so a garbled value fails OPEN and cannot lock privileged operators out. Also never wired
+    # when it shipped. Set it to the SAME value as the web app's MFA_ENFORCED — a session refused by one
+    # stack and served by the other is the hole #173 closes.
+    Platform__MfaEnforced = var.mfa_enforced
   }
   env = merge(local.base_env, var.otlp_endpoint == "" ? {} : { Platform__OtlpEndpoint = var.otlp_endpoint })
 }

@@ -55,6 +55,11 @@ terraform output secret_arns
 aws secretsmanager put-secret-value --secret-id <db-arn>            --secret-string '<dual-role conn string>'
 aws secretsmanager put-secret-value --secret-id <redis-arn>         --secret-string '<upstash url>'
 aws secretsmanager put-secret-value --secret-id <impersonation-arn> --secret-string '<= the TS impersonation secret>'
+#    #172 — ONLY needed before enabling alert_metrics_cron_read. Generate, do not invent:
+aws secretsmanager put-secret-value --secret-id <alert_metrics_cron-arn> --secret-string "$(openssl rand -base64 48)"
+#    ...then set the SAME value as ALERT_METRICS_CRON_SECRET in Vercel. It must be >= 32 chars and must
+#    not be the REPLACE_ME_OUT_OF_BAND placeholder — CronCallerGate rejects both as unconfigured, so the
+#    surface stays 401 rather than trusting a credential that is committed to this repo.
 #    App Runner picks up the latest secret version on its next deployment/restart.
 
 # 5) Smoke gate (runbook §5, still dark): /health 200, /ready 200, /openapi 200, a staff-JWT /whoami

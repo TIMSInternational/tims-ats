@@ -25,8 +25,19 @@ public sealed class RateLimitMiddleware(RequestDelegate next)
     // /billing/webhooks/stripe is ANONYMOUS + authenticated by the Stripe signature; Stripe delivers from a
     // small shared-IP pool, so the anonymous IP-keyed limiter could 429 a delivery burst (a divergence from
     // the un-throttled TS/Vercel route). Exempt it — the apply is idempotent, but a 429 forces needless retries.
+    //
+    // AlertMetricsEndpoints.RoutePath (#172) is exempt for the same reason, and more sharply: it is an
+    // ANONYMOUS route (the cron secret is its credential), so the limiter would key it by IP — and its ONLY
+    // intended caller is a single machine issuing one request per (org, metric) across the whole platform in
+    // one nightly run. Under the anonymous quota that caller throttles ITSELF partway through, and a metric
+    // that 429s is a metric that never evaluates: alerts silently stop firing for every org after the cutoff.
+    // The TS/Vercel route it replaces is un-throttled, so exempting it is parity, not a relaxation. Referenced
+    // as a constant, never re-typed — a literal here could drift from the route registration silently.
     private static readonly string[] ExemptExactPaths =
-        ["/", "/health", "/ready", "/whoami", "/external-whoami", "/billing/webhooks/stripe"];
+    [
+        "/", "/health", "/ready", "/whoami", "/external-whoami", "/billing/webhooks/stripe",
+        Tims.Api.AlertMetrics.AlertMetricsEndpoints.RoutePath,
+    ];
     private static readonly string[] ExemptPrefixes = ["/openapi", "/require-permission", "/require-org-scope"];
 
     public async Task InvokeAsync(HttpContext context, RateLimitGuard guard)

@@ -434,4 +434,35 @@ public sealed class PlatformOptions
     /// served by the other is the exact hole this closes.
     /// </summary>
     public string? MfaEnforced { get; init; }
+
+    /// <summary>
+    /// §8 Q0b slice 2 / issue #172: when true, the cross-org alert-metric read surface is mapped and live
+    /// — <c>GET /internal/alert-metrics?organizationId=…&amp;metric=…</c>, serving <c>active_surveys</c>
+    /// (`surveys`, flip #64) and <c>pending_salary_adjustments</c> (`salary_adjustments`, flip #66) to the
+    /// alert-evaluation cron. Authenticated by <see cref="AlertMetricsCronSecret"/>, NOT by any user
+    /// identity.
+    ///
+    /// This is the last prerequisite on flips #64 and #66: the alert cron is the final TS Prisma reader of
+    /// both tables once the monitoring surface (<see cref="MonitoringReadEnabled"/>) is live.
+    ///
+    /// DEFAULT false (dark) — the route is not mapped at all and 404s; TS remains the single active reader
+    /// until Federico flips it at canary. Flipping this WITHOUT setting the secret leaves the surface
+    /// reachable but permanently 401 (the gate fails closed), which is the safe ordering.
+    /// </summary>
+    public bool AlertMetricsCronReadEnabled { get; init; }
+
+    /// <summary>
+    /// The shared secret the alert-evaluation cron presents in <c>X-Tims-Cron-Secret</c> to authenticate
+    /// against the cross-org alert-metric surface (#172). This is the ENTIRE authorization boundary for a
+    /// caller that may name any organization, so it must be a high-entropy value from Secrets Manager,
+    /// never a literal in configuration.
+    ///
+    /// Unset/empty/whitespace ⇒ every request to that surface is refused
+    /// (<see cref="Tims.Api.AlertMetrics.CronCallerGate"/> fails closed). It must match the web app's
+    /// <c>ALERT_METRICS_CRON_SECRET</c>, which is a DIFFERENT secret from the Vercel <c>CRON_SECRET</c>
+    /// that authenticates Vercel to the Next.js route: one authenticates the scheduler to the web app,
+    /// this one authenticates the web app to the platform service. Reusing a single value across both
+    /// hops would mean a leak at either end grants both.
+    /// </summary>
+    public string? AlertMetricsCronSecret { get; init; }
 }

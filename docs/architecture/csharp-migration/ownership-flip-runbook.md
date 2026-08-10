@@ -1868,6 +1868,35 @@ and reddens `tests/monitoring/executive-kpis-vacancy-status.test.ts`.
 > Condition **(b) is NOT done**: the alert cron still needs its privileged cross-org read (Q0b slice
 > 2 — now tracked as **#172**; WIP in PR #141), and `alert-evaluation.repository.ts:120` is still a
 > **Blocker** row in the inventory below. **#64 therefore stays BLOCKED under P2.**
+
+> **UPDATE 2026-08-10 (#172) — condition (b) has now landed too; PR #141 was abandoned, not merged.**
+> `GET /internal/alert-metrics` serves `active_surveys` and `pending_salary_adjustments` cross-org,
+> authenticated by a cron secret (`CronCallerGate`), with each read `TenantScope`-scoped to the org it
+> names — see the CORRECTION below for why that differs from #141's approach and why it matters. The
+> §21 min-5 floor is applied server-side AND re-applied by the caller, pinned across both stacks by
+> `contracts/alert-metrics-fixtures/cases.json`. Cross-org reads write an `audit_logs` row
+> (`alert_metric_cron_read`) on success, suppression AND failure — the write is fail-SOFT, so a lost row
+> does not block the read and completeness is not guaranteed.
+>
+> **Same two caveats as (a).** It ships **DARK** — `Platform:AlertMetricsCronReadEnabled` and
+> `ALERT_METRICS_READ_VIA_CSHARP` are both unset, so Prisma is still the only active reader and runtime
+> behaviour is unchanged. And a C# read existing is still not "`model Survey` can be deleted": the TS
+> `monitoring.*` procedures at `monitoring.ts:25`/`:217` remain, and the Prisma branch in
+> `computeRawMetric` is deliberately retained as the flag's OFF path.
+>
+> **SCOPE CORRECTION — do NOT read this as "#64 and #66 are unblocked."** An earlier draft of this note
+> said they were "blocked only on the flip mechanics themselves". A claim-auditor review pass falsified
+> that, and the falsification is worth keeping on the record because it is the same overstatement this
+> backlog keeps producing. **#66's own blocker table lists ELEVEN sites; this slice closes exactly ONE
+> (row 10).** Still open there: `access/scoped-probe.ts:76,77` (row 2 tracked by nothing),
+> `seed-demo.ts:1908,:1971,:1968` (two of them WRITERS, which §0 P1 makes blocking),
+> `routers/compensation.ts:30,:80` + `services/compensation.service.ts:62` (#59, branch not merged),
+> `routers/monitoring.ts:24` (still live Prisma), and `routers/platform/data-requests.ts:94` (#146, the
+> longest pole). For #64, this file's own inventory still carries `routers/monitoring.ts:25` as a
+> Blocker for two independent reasons, one of them a frontend `.invalidate()` coupling.
+>
+> The defensible claim is narrow: **the alert cron is no longer a missing C# reader for these two
+> metrics.** That is one row of one table.
 >
 > Two caveats that keep this from being read as more than it is. The surface ships **DARK** — the
 > flag is unset in every environment, so the TS `monitoring.*` procedures are still the only active
@@ -1898,7 +1927,7 @@ It is believed safe only because its two datetime columns are `ValueGeneratedOnA
 | `…/engagement.ts:122` + `:126`                                       | `survey.findFirst` with nested `responses: { select: { answers, user: { companyId, businessUnitId } } }` (`getResultsByArea`) | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | Same; **note the join into `users`** (Prisma-owned)                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `packages/api/src/routers/monitoring.ts:25`                          | `survey.count` (`getExecutiveKpis`)                                                                                           | **5**: 4 `useQuery` (`dashboard/hr-exec-dashboard.tsx:35`, `dashboard/org-command-center.tsx:29`, `monitoring/monitoring-bottom.tsx:44`, `monitoring/page.tsx:16`) — **these four now go through `lib/platform-api/monitoring.ts`**; **+ 1 `.invalidate()`** (`monitoring/alert-rules-modal.tsx:98`) which is **UNCHANGED and still `utils.monitoring.getExecutiveKpis.invalidate()`** (a 6th call, `invalidateMonitoringPlatformReads`, was ADDED beside it at `:100`, not substituted for it) | **Blocker — 4 of 5 REPOINTED 2026-08-09 (#100 / PR #140). STILL NOT DELETABLE, for two independent reasons:** (a) the wrapper keeps tRPC as its fallback branch, so `monitoring.ts:25` still calls `survey.count`; (b) the surviving `.invalidate()` is exactly the cache-key coupling §7's fifth grep strategy exists to catch (`:152-156`) — deleting the procedure would redden `Type Check (web)` as the property vanishes from the typed utils object |
 | `packages/api/src/routers/monitoring.ts:217`                         | `surveyResponse.count` (`getCrossModuleTrend`, `metric==='engagement'` branch only)                                           | reachable by any `monitoring:read` holder; the only FE caller hardcodes `metric:'headcount'`                                                                                                                                                                                                                                                                                                                                                                                                    | **Repoint, or drop the metric from the Zod enum — NEVER "just delete the branch"** (see below)                                                                                                                                                                                                                                                                                                                                                             |
-| `packages/api/src/repositories/alert-evaluation.repository.ts:120`   | `survey.count`, metric `active_surveys`                                                                                       | cron                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | **Blocker** — privileged cross-org, see below                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `packages/api/src/repositories/alert-evaluation.repository.ts:223` (was `:120`) | `survey.count`, metric `active_surveys`                                                                                       | cron                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | **REPOINTED 2026-08-10 (#172)** — behind `ALERT_METRICS_READ_VIA_CSHARP`, C# serves it; the Prisma branch remains as the flag's OFF path. See the UPDATE below                                                                                                                                                                                                                                                                                                                              |
 | `packages/api/src/access/select-for.ts:13` · `classification.ts:120` | `surveyResponse` registry entries                                                                                             | —                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Hand-clean — `Record<string, …>`, will **not** fail `tsc` (§1 step 6)                                                                                                                                                                                                                                                                                                                                                                                      |
 | `packages/db/prisma/seed-demo.ts:1202,1207,1226`                     | `survey.findFirst` / `.create` / `surveyResponse.create`                                                                      | —                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Port to raw SQL or drop from the demo seed                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `scripts/parity/seed.ts:1111,1118,1127,1766,1773,1790,1896`          | raw SQL via `pg`                                                                                                              | —                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Survives mechanically; no change needed                                                                                                                                                                                                                                                                                                                                                                                                                    |
@@ -1914,15 +1943,31 @@ Two of these are genuinely hard:
   `NEXT_PUBLIC_MONITORING_READ_VIA_CSHARP`. All five consumers repointed. Still DARK. This bullet is
   no longer the gating item — the one below is.
 - **The alert-evaluation cron** uses the privileged `db` client, not `tenantDb`, and iterates every org
-  (`alert-evaluation.repository.ts:1`, header `:5-7`; driven by `alert-evaluation.service.ts:59-71`;
+  (`alert-evaluation.repository.ts:1`, header `:6-9`; driven by `alert-evaluation.service.ts:59-71`;
   entrypoint `apps/web/app/api/cron/evaluate-alerts/route.ts:23`, daily 06:00 per `apps/web/vercel.json`).
   It cannot be served by a `TenantScope`/RLS-scoped EF read — it needs a privileged cross-org C# read
   surface, or the cron ports to C# wholesale.
 
+  > **CORRECTION 2026-08-10 (#172). The sentence immediately above is WRONG, and it shaped the design
+  > of the abandoned PR #141.** It conflates *the caller is cross-org* with *the query must be
+  > cross-org*. The cron already iterates one `(org, metric)` pair at a time
+  > (`alert-evaluation.service.ts:63-70` loops rules, each carrying its own `organizationId`), so every
+  > individual read CAN be `TenantScope`-scoped to one explicitly named org — and that is how #172
+  > implements it (`AlertMetricsReadRepository`). What the cron actually needs is the authority to NAME
+  > any org, which is an API-edge authorization question (`CronCallerGate`'s shared secret), not a
+  > database-privilege one.
+  >
+  > This matters because the "must be cross-org" reading led PR #141 to run the query unscoped and
+  > depend on the deployed login role being `BYPASSRLS` — a property asserted nowhere. Had that
+  > assumption been false, `surveys` and `salary_adjustments` both carry `FORCE ROW LEVEL SECURITY`
+  > with a fail-closed policy, so every metric would have returned **0 for every org, forever**, and a
+  > metric pinned at 0 is indistinguishable from "no breach". The scoped design has no such dependency
+  > and its RLS test is a real proof rather than a demonstration that superusers bypass RLS.
+
   **Its failure mode is worse than "degrades with no error" (corrected 2026-08-02).** An earlier draft
   said "the service catches per-rule failures and counts them `skipped`." **The `skipped` counter never
   moves.** Removing the `case 'active_surveys'` from the switch at
-  `alert-evaluation.repository.ts:119-130` does not throw — it falls to `default: return null`; then
+  `alert-evaluation.repository.ts:203-233` does not throw — it falls to `default: return null`; then
   `alert-evaluation.service.ts:12` (`if (value === null) return false;`) and `:71`
   (`if (!evaluateCondition(...)) continue;`) skip the rule with a **plain `continue`, outside** the
   `catch` that increments `skipped` at `:84-89`. So: **no exception, no `skipped` increment, no log

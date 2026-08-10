@@ -1227,6 +1227,48 @@
         }
       }
     },
+    "/internal/alert-metrics": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "GetAlertMetric",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "metric",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertMetricResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/evaluation360/cycles": {
       "get": {
         "tags": [
@@ -5441,6 +5483,43 @@
           },
           "suppressed": {
             "type": "boolean"
+          }
+        }
+      },
+      "AlertMetricResponse": {
+        "required": [
+          "metric",
+          "organizationId",
+          "status",
+          "value",
+          "reason"
+        ],
+        "type": "object",
+        "properties": {
+          "metric": {
+            "type": "string"
+          },
+          "organizationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string"
+          },
+          "value": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "reason": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
