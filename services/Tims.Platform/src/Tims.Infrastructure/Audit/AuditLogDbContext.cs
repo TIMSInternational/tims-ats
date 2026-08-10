@@ -14,33 +14,9 @@ public sealed class AuditLogDbContext(DbContextOptions<AuditLogDbContext> option
 {
     public DbSet<AuditLogEntity> AuditLogs => Set<AuditLogEntity>();
 
-    protected override void OnModelCreating(ModelBuilder modelBuilder)
-    {
-        modelBuilder.Entity<AuditLogEntity>(entity =>
-        {
-            entity.ToTable("audit_logs");
-            entity.HasKey(a => a.Id);
-            entity.Property(a => a.Id).HasColumnName("id");
-            entity.Property(a => a.OrganizationId).HasColumnName("organization_id");
-            entity.Property(a => a.UserId).HasColumnName("user_id");
-            entity.Property(a => a.ActorId).HasColumnName("actor_id");
-            entity.Property(a => a.Action).HasColumnName("action");
-            entity.Property(a => a.Entity).HasColumnName("entity");
-            entity.Property(a => a.EntityId).HasColumnName("entity_id");
-            // Prisma `Json?` columns are jsonb; write the pre-serialized JSON text (like the vendor result path).
-            entity.Property(a => a.Changes).HasColumnName("changes").HasColumnType("jsonb");
-            entity.Property(a => a.Metadata).HasColumnName("metadata").HasColumnType("jsonb");
-            entity.Property(a => a.IpAddress).HasColumnName("ip_address");
-            entity.Property(a => a.UserAgent).HasColumnName("user_agent");
-            // created_at is left to the Postgres DEFAULT now() (Prisma @default(now())): DB-generated on add,
-            // never sent by the append-only writer (matching the data_access_logs writer).
-            entity.Property(a => a.CreatedAt)
-                .HasColumnName("created_at")
-                .HasColumnType("timestamp")
-                .HasDefaultValueSql("now()")
-                .ValueGeneratedOnAdd();
-        });
-    }
+    // The column map lives in AuditLogModelConfiguration because a SECOND context
+    // (PlatformOrganizationsWriteDbContext, slice 20) now maps the same table and the two must not drift.
+    protected override void OnModelCreating(ModelBuilder modelBuilder) => modelBuilder.ConfigureAuditLogs();
 }
 
 /// <summary>

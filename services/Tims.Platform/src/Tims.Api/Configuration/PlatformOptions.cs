@@ -428,14 +428,36 @@ public sealed class PlatformOptions
     /// the gate is the entire authorization boundary (RLS restricts nothing on this path, and the prod
     /// role is BYPASSRLS regardless).
     ///
-    /// The three organization WRITES (<c>createOrganization</c>, <c>updateOrganization</c>,
-    /// <c>suspendOrganization</c>) are NOT in this flag — they are a separate write slice, because they
-    /// would move <c>organizations</c>/<c>subscriptions</c> into <c>efcoreStranglerWrite</c> and need
-    /// their own one-active-writer discipline rather than riding a read flag.
+    /// The organization WRITES are NOT in this flag — they need their own one-active-writer discipline
+    /// rather than riding a read flag. <c>updateOrganization</c>/<c>suspendOrganization</c> ship behind
+    /// <see cref="PlatformOrganizationsWriteEnabled"/> (slice 20); <c>createOrganization</c> is slice 21.
     ///
     /// DEFAULT false (dark) — TS remains the single active reader until Federico flips it at canary.
     /// </summary>
     public bool PlatformOrganizationsReadEnabled { get; init; }
+
+    /// <summary>
+    /// Phase-5 slice 20 (issue #76) — the platform-owner ORGANIZATIONS WRITE surface: the C# port of
+    /// <c>updateOrganization</c> and <c>suspendOrganization</c> from
+    /// <c>routers/platform/organizations.ts</c>.
+    ///
+    /// <c>createOrganization</c> is NOT here. It is a 7-table provisioning transaction that must first port
+    /// the shared <c>org-provisioning</c> service, and #75 depends on that service's C# shape — slice 21.
+    ///
+    /// THIS FLAG IS THE ONE-ACTIVE-WRITER CONTROL. It moves <c>organizations</c> into
+    /// <c>efcoreStranglerWrite</c> in docs/architecture/table-ownership.md: Prisma still owns the DDL and
+    /// the TS procedures are still present, so exactly one runtime writer is guaranteed only because the
+    /// routes are not mapped while this is false. Turning it on WITHOUT retiring the TS path leaves two
+    /// active writers of the same rows.
+    ///
+    /// Unlike the read flag, this surface DOES run under <c>TenantScope</c>: the target organization id is
+    /// known, so RLS stays engaged instead of resting on the prod role being BYPASSRLS. The audit write is
+    /// FAIL-CLOSED inside that same transaction — a deliberate divergence from the TS
+    /// <c>.catch(() =&gt; {})</c>, decided on #76.
+    ///
+    /// DEFAULT false (dark) — TS remains the single active writer until Federico flips it at canary.
+    /// </summary>
+    public bool PlatformOrganizationsWriteEnabled { get; init; }
 
     /// <summary>
     /// MFA step-up enforcement (#173) — the platform-service counterpart of the web app's
