@@ -235,9 +235,12 @@ describe-service`; only the frontend Vercel flag was missing.)
     **fail-CLOSED and transactional**, a divergence from the TS `.catch(() => {})` decided by Federico on
     #76 and mutation-proved. `createOrganization` is **slice 21** — a 7-table provisioning transaction
     that must first port the shared `org-provisioning` service, which is what **#75** actually depends on.
-    Slice 20 also fixed a defect slice 19 shipped: the read context mapped four native Postgres enum
-    columns to C# strings on a plain connection string, so all three read endpoints would have 500'd the
-    moment the flag was flipped. See `docs/architecture/csharp-migration/phase-5-slice-19-platform-organizations-read.md`
+    Slice 20 also fixed a defect slice 19 shipped: the read context mapped five columns across four native
+    Postgres enum types to C# strings on a plain connection string, so `listOrganizations` and
+    `getOrganization` would have thrown the moment the flag was flipped (`getOrganizationKpis` is
+    COUNT-only and would not). Slice 20's tier-3 panel also filed **#199** (the ownership check is blind to
+    raw-SQL writers), **#200** (the SQL-injection scan does not cover C#) and **#201** (narrow the
+    over-fetch and the destructive `settings` replace). See `docs/architecture/csharp-migration/phase-5-slice-19-platform-organizations-read.md`
     and `…-slice-20-platform-organizations-write.md`.
   - **Cutover-verification harness** (`scripts/parity/`, PRs #177–#194): a TypeScript CLI proving
     parity/RLS/RBAC for each surface against the real Supabase prod DB before any flag flips.

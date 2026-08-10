@@ -82,6 +82,7 @@ public sealed class PlatformOrganizationsWriteRepositoryTests(PlatformOrganizati
 
         // Prisma REPLACES a Json column; the pre-existing timezone is gone. Destructive and surprising, and
         // reproduced deliberately — narrowing it during a port makes a step-5 parity diff uninterpretable.
+        // Tracked as #201; THIS ASSERTION INVERTS when that lands.
         var stored = await fixture.ReadOrganizationAsync(org);
         Assert.Equal("""{"locale": "en"}""", stored!.Settings);
     }
@@ -126,7 +127,7 @@ public sealed class PlatformOrganizationsWriteRepositoryTests(PlatformOrganizati
 
         var audit = Assert.Single(await fixture.ReadAuditRowsAsync(org));
         Assert.Equal(expectedAction, audit.Action);
-        // organizations.ts:233 sets NO `changes` key for this audit — the action carries the direction.
+        // organizations.ts:230-237 sets NO `changes` key for this audit — the action carries the direction.
         Assert.Null(audit.ChangesType);
     }
 
@@ -180,8 +181,10 @@ public sealed class PlatformOrganizationsWriteRepositoryTests(PlatformOrganizati
     [Fact]
     public async Task The_control_for_the_mutation_proof_commits_on_the_healthy_database()
     {
-        // Same call, same inputs, the ONLY difference being that audit_logs exists. Without this control the
-        // two tests above would also pass if UpdateAsync/SuspendAsync never wrote anything at all.
+        // The same UpdateAsync call SHAPE against a database that DOES have audit_logs. Not literally the
+        // same row — the fail-closed tests use the seeded OrgA/OrgB on the no-audit database, this one a
+        // fresh org on the healthy one. What it establishes is that those two are not vacuous: without it
+        // they would also be green if UpdateAsync/SuspendAsync never wrote anything at all.
         var org = await SeedOrganizationAsync("Control", "trial", "{}");
         await using var db = fixture.NewContext(fixture.ConnectionString);
         var repository = new PlatformOrganizationsWriteRepository(db);
@@ -228,6 +231,35 @@ public sealed class PlatformOrganizationsWriteRepositoryTests(PlatformOrganizati
             Assert.Equal("platform", n.Module);
             Assert.Equal("/platform/organizations", n.ActionUrl);
         });
+    }
+
+    [Fact]
+    public async Task UpdateAsync_with_no_fields_at_all_still_updates_and_audits()
+    {
+        // The `{}`-body case. Every other test binds at least one non-null value, so this is the only one
+        // that sends four untyped NULLs through the COALESCE / ::"OrgPlan" / ::jsonb casts and makes
+        // Postgres infer each parameter type from context alone.
+        var org = await SeedOrganizationAsync("Empty Update", "starter", "{\"locale\":\"es\"}");
+        var before = await fixture.ReadOrganizationAsync(org);
+        await using var db = fixture.NewContext(fixture.ConnectionString);
+        var repository = new PlatformOrganizationsWriteRepository(db);
+
+        var input = new PlatformOrganizationUpdateInput(null, null, null, null);
+        var row = await repository.UpdateAsync(
+            org, input, PlatformOrganizationsWriteUseCase.BuildUpdateChangesJson(input),
+            PlatformOrganizationsWriteFixture.Actor, Now, CancellationToken.None);
+
+        Assert.NotNull(row);
+        var after = await fixture.ReadOrganizationAsync(org);
+        Assert.Equal(before!.Name, after!.Name);
+        Assert.Equal(before.Plan, after.Plan);
+        Assert.Equal(before.Settings, after.Settings);
+        Assert.Equal(before.IsActive, after.IsActive);
+        // ...but updated_at still moves, because Prisma's @updatedAt would have moved it.
+        Assert.Equal(Now, after.UpdatedAt);
+
+        var audit = Assert.Single(await fixture.ReadAuditRowsAsync(org));
+        Assert.Equal("{}", audit.ChangesText);
     }
 
     /// <summary>A fresh organization per test, so the shared container cannot make one test depend on another.</summary>

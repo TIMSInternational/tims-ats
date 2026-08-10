@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -21,8 +22,13 @@ namespace Tims.Api.PlatformOrganizations;
 /// <para><b>One deliberate divergence, decided by Federico on #76: the audit write is FAIL-CLOSED.</b> The
 /// TS swallows its audit failure (<c>.catch(() =&gt; {})</c>) and returns 200 with no audit row; this port
 /// fails the operation and leaves the organization unmodified, because the audit INSERT shares the org
-/// UPDATE's transaction. The divergence is pinned by a parity fixture and recorded in the slice doc — it
-/// is intended, and step 5 must not "fix" it back.</para>
+/// UPDATE's transaction. It is intended and recorded in the slice doc; step 5 must not "fix" it back.</para>
+///
+/// <para><b>It is NOT pinned by a parity fixture, contrary to what #76's decision comment required.</b>
+/// That was an obligation, not a fact, and this slice does not discharge it: the surface has no
+/// <c>scripts/parity/surfaces.ts</c> entry at all (#195 — the registry covers 4 of ~15 C# domains), so
+/// nothing will diff it against TS at step 5. What DOES pin the behaviour is
+/// <c>PlatformOrganizationsWriteRepositoryTests</c>, which proves it by mutation against a real Postgres.</para>
 ///
 /// <para><b>A second, smaller divergence: a missing organization is 404, not 500.</b> Prisma's
 /// <c>update()</c> throws P2025 on a nonexistent id, which tRPC surfaces as INTERNAL_SERVER_ERROR — an
@@ -71,7 +77,8 @@ public static class PlatformOrganizationsWriteEndpoints
                     return row is null ? Results.NotFound() : Results.Ok(row);
                 })
             .AllowAnonymous()
-            .Accepts<UpdateOrganizationBody>("application/json")
+            // isOptional: true — an absent body is the id-only update, which is a 200. See TryReadJsonAsync.
+            .Accepts<UpdateOrganizationBody>(isOptional: true, "application/json")
             .Produces<PlatformOrganizationRow>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status401Unauthorized)
@@ -129,7 +136,8 @@ public static class PlatformOrganizationsWriteEndpoints
     /// Reads the Zod-shaped body, distinguishing ABSENT from present.
     ///
     /// <para>Hand-parsed rather than bound to a DTO because <c>null</c> and "not sent" mean different
-    /// things here and a bound DTO collapses them: every field is <c>.optional()</c>, which Zod satisfies
+    /// things here and a bound DTO collapses them: every UPDATABLE field is <c>.optional()</c> (<c>id</c> is
+    /// required, but it is the route segment here), which Zod satisfies
     /// only by omission — an explicit <c>null</c> is a validation error, not a request to clear the column.
     /// A DTO would turn <c>{"name": null}</c> into a silent no-op instead of the 400 TS returns.</para>
     ///
@@ -243,29 +251,104 @@ public static class PlatformOrganizationsWriteEndpoints
         return true;
     }
 
+    /// <summary>
+    /// Reads the body as a <see cref="JsonNode"/>, or reports a malformed one.
+    ///
+    /// <para><b>An EMPTY body is not an error.</b> The tRPC input carries <c>id</c> and nothing else is
+    /// required, so <c>updateOrganization({ id })</c> is a valid 200 that still UPDATEs (bumping
+    /// <c>updated_at</c> via Prisma's <c>@updatedAt</c>) and still writes the audit row. Here <c>id</c> is
+    /// the route segment, so the REST equivalent is a request with no body at all — which
+    /// <c>ReadFromJsonAsync</c> would reject as malformed JSON. The body is therefore buffered and an
+    /// empty/whitespace one is treated as <c>{}</c>. Anything non-empty must still be valid JSON.</para>
+    ///
+    /// <para><b>The <see cref="ArgumentException"/> catch is not defensive padding.</b>
+    /// <see cref="JsonObject"/> materialises its backing dictionary lazily — on the first
+    /// <c>TryGetPropertyValue</c>, not at parse time — so a body with DUPLICATE keys
+    /// (<c>{"name":"a","name":"b"}</c>) throws "An item with the same key has already been added" from
+    /// inside the property reads rather than from the parse. Parsing eagerly here keeps that failure in
+    /// one place. It is a 400 rather than the 500 it would otherwise be, which is also the closer parity:
+    /// <c>JSON.parse</c> is last-wins, so TS returns 200. Rejecting an ambiguous body is the safer of the
+    /// two divergences and is recorded in the slice doc.</para>
+    /// </summary>
     private static async Task<(bool Ok, JsonNode? Node)> TryReadJsonAsync(HttpContext httpContext, CancellationToken cancellationToken)
     {
+        using var reader = new StreamReader(httpContext.Request.Body);
+        var raw = await reader.ReadToEndAsync(cancellationToken);
+
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return (true, null);
+        }
+
         try
         {
-            var node = await httpContext.Request.ReadFromJsonAsync<JsonNode>(cancellationToken);
+            var node = JsonNode.Parse(raw);
+
+            // Force the dictionary to materialise now, so a duplicate-key body fails HERE (400) instead of
+            // escaping as an unhandled ArgumentException from a later property read (500).
+            if (node is JsonObject obj)
+            {
+                _ = obj.Count;
+            }
+
             return (true, node);
         }
         catch (JsonException)
         {
             return (false, null);
         }
-        catch (InvalidOperationException)
+        catch (ArgumentException)
         {
             return (false, null);
         }
     }
 
-    /// <summary>OpenAPI request shape for <c>updateOrganization</c>. Never bound — see
+    /// <summary>
+    /// OpenAPI request shape for <c>updateOrganization</c>. Never bound — see
     /// <see cref="TryBuildUpdateInput"/> on why the body is hand-parsed — it exists so the generated
-    /// contract documents the accepted fields.</summary>
-    public sealed record UpdateOrganizationBody(string? Name, string? Plan, bool? IsActive, UpdateOrganizationSettingsBody? Settings);
+    /// contract documents the accepted fields.
+    ///
+    /// <para><b>Init-only properties, not constructor parameters, and non-nullable.</b> Both choices are
+    /// load-bearing for the generated schema rather than style. A positional record's parameters are
+    /// emitted as <c>required</c>, which would tell every generated client it MUST send all four fields —
+    /// the exact opposite of a partial update. And a nullable property is emitted as
+    /// <c>"type": ["null","string"]</c>, advertising <c>null</c> as the way to say "leave this alone",
+    /// when an explicit null is in fact a 400 (Zod <c>.optional()</c> rejects it). Optionality here is
+    /// expressed the way JSON Schema expresses it — by the field being absent — so these are plain
+    /// non-nullable optional properties. Verified against the emitted
+    /// <c>contracts/openapi/Tims.Api.json</c>, not assumed.</para>
+    /// </summary>
+    public sealed class UpdateOrganizationBody
+    {
+        [MaxLength(PlatformOrganizationsWriteUseCase.MaxNameLength)]
+        public string Name { get; init; } = string.Empty;
 
-    public sealed record UpdateOrganizationSettingsBody(string? Locale, string? Timezone, string? Currency);
+        /// <summary>One of <c>trial</c>, <c>starter</c>, <c>professional</c>, <c>enterprise</c>.</summary>
+        public string Plan { get; init; } = string.Empty;
 
-    public sealed record SuspendOrganizationBody(bool Suspend);
+        public bool IsActive { get; init; }
+
+        /// <summary>REPLACES the stored settings object; it is not merged into it.</summary>
+        public UpdateOrganizationSettingsBody Settings { get; init; } = new();
+    }
+
+    public sealed class UpdateOrganizationSettingsBody
+    {
+        [MaxLength(PlatformOrganizationsWriteUseCase.MaxLocaleLength)]
+        public string Locale { get; init; } = string.Empty;
+
+        [MaxLength(PlatformOrganizationsWriteUseCase.MaxTimezoneLength)]
+        public string Timezone { get; init; } = string.Empty;
+
+        [MaxLength(PlatformOrganizationsWriteUseCase.MaxCurrencyLength)]
+        public string Currency { get; init; } = string.Empty;
+    }
+
+    /// <summary><c>suspend</c> genuinely IS required (<c>organizations.ts:213</c>) — absent is a 400, which
+    /// is why this one carries <see cref="RequiredAttribute"/> while none of the update fields does.</summary>
+    public sealed class SuspendOrganizationBody
+    {
+        [Required]
+        public bool Suspend { get; init; }
+    }
 }

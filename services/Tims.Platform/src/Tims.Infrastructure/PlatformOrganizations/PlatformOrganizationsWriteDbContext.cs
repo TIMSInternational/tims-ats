@@ -10,9 +10,11 @@ namespace Tims.Infrastructure.PlatformOrganizations;
 /// decision on #76 is that the C# audit write ships FAIL-CLOSED, diverging from the TS
 /// <c>.catch(() =&gt; {})</c>. A fail-closed audit only means something if the audit INSERT and the org
 /// UPDATE commit or roll back together — throwing after the UPDATE has committed leaves exactly the state
-/// the decision forbids (an organization modified with no audit row). EF Core cannot span two contexts in
-/// one transaction, so reusing <see cref="AuditLogDbContext"/> here would silently give up the guarantee
-/// while looking like reuse. The audit COLUMN MAP is still shared —
+/// the decision forbids (an organization modified with no audit row). EF Core CAN span two contexts in one
+/// transaction, but only by sharing a <c>DbConnection</c> and calling <c>Database.UseTransaction</c> — and
+/// nothing in this service's DI wiring does that; every context is registered with its own connection. So
+/// in practice reusing <see cref="AuditLogDbContext"/> here would have put the two writes in two
+/// transactions and silently given up the guarantee while looking like reuse. The audit COLUMN MAP is still shared —
 /// <see cref="AuditLogModelConfiguration.ConfigureAuditLogs"/> — so only the transaction boundary
 /// differs.</para>
 ///

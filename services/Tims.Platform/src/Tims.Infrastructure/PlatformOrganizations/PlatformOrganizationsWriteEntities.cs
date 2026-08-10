@@ -54,7 +54,7 @@ public sealed class PlatformOrganizationWriteEntity
 }
 
 /// <summary>
-/// The <c>users</c> projection the notification fan-out needs — <c>lib/notify.ts:22-25</c> selects
+/// The <c>users</c> projection the notification fan-out needs — <c>lib/notify.ts:21-24</c> selects
 /// <c>{ id }</c> where <c>isPlatformOwner</c>. Read-only (<c>efcoreReadOnly</c>); this slice never writes
 /// <c>users</c>.
 /// </summary>

@@ -27,7 +27,7 @@ public sealed class PlatformOrganizationsWriteUseCase(
     /// <summary>The four <c>OrgPlan</c> enum members (<c>organization.prisma:23-28</c>).</summary>
     public static readonly string[] Plans = ["trial", "starter", "professional", "enterprise"];
 
-    // Notification copy, verbatim from organizations.ts:219-225 — including the unaccented "Organizacion",
+    // Notification copy, verbatim from organizations.ts:221-227 — including the unaccented "Organizacion",
     // which is what the TS actually writes. "Fixing" the spelling here would be a silent content divergence
     // in a user-visible string.
     private const string SuspendedTitlePrefix = "Organizacion suspendida: ";
@@ -37,8 +37,8 @@ public sealed class PlatformOrganizationsWriteUseCase(
 
     /// <summary>
     /// <c>JSON.stringify</c>-equivalent encoding. The .NET DEFAULT encoder escapes <c>&amp;</c>,
-    /// <c>&lt;</c>, <c>+</c> and every non-ASCII character as <c>\uXXXX</c>; <c>JSON.stringify</c> escapes
-    /// none of them. Organization names on this platform are Spanish, so the default encoder would turn
+    /// <c>&lt;</c>, <c>&gt;</c>, <c>'</c>, <c>+</c> and every non-ASCII character as <c>\uXXXX</c>;
+    /// <c>JSON.stringify</c> escapes none of them. Organization names on this platform are Spanish, so the default encoder would turn
     /// <c>"Fundación"</c> into <c>"Fundación"</c> and every audit row would differ from the TS bytes.
     /// This matters more than it looks — see <see cref="BuildUpdateChangesJson"/> on why the bytes survive
     /// into the column verbatim instead of being normalized away by jsonb.
@@ -46,29 +46,50 @@ public sealed class PlatformOrganizationsWriteUseCase(
     private static readonly System.Text.Json.JsonSerializerOptions ChangesEncoding =
         new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
+    /// <summary>
+    /// <c>updateOrganization</c>. Re-checks <see cref="IsValidUpdateInput"/> rather than trusting the
+    /// caller: the endpoint validates so it can return the 400 tRPC would, but leaving the bound as the
+    /// ENDPOINT's private business would make this class's own docblock ("the Zod bounds live here") false
+    /// the moment a second caller appears — slice 21 provisioning, or a worker. Throwing is right for that
+    /// caller and unreachable for the endpoint, which has already returned 400.
+    /// </summary>
+    /// <exception cref="ArgumentException">The input violates a Zod bound.</exception>
     public async Task<PlatformOrganizationRow?> UpdateAsync(
         Guid id,
         PlatformOrganizationUpdateInput input,
         Guid actorId,
-        CancellationToken cancellationToken) =>
-        await repository.UpdateAsync(
+        CancellationToken cancellationToken)
+    {
+        if (!IsValidUpdateInput(input))
+        {
+            throw new ArgumentException("update input violates the organizations.ts Zod bounds", nameof(input));
+        }
+
+        return await repository.UpdateAsync(
             id,
             input,
             BuildUpdateChangesJson(input),
             actorId,
             timeProvider.GetUtcNow().UtcDateTime,
             cancellationToken);
+    }
 
     /// <summary>
     /// <c>suspendOrganization</c>. The notification fan-out runs only when SUSPENDING
-    /// (<c>organizations.ts:219</c>) and only AFTER the update+audit transaction has committed — see
+    /// (<c>organizations.ts:220</c>) and only AFTER the update+audit transaction has committed — see
     /// <see cref="IPlatformOrganizationsWriteRepository.NotifyPlatformOwnersAsync"/> for why it must not
     /// join that transaction.
     ///
     /// <para><b>One ordering divergence, forced by the fail-closed decision.</b> TS runs
     /// update → notify → audit; here it is update+audit → notify, because the audit row can only be
-    /// transactional if it is written before the commit. Nothing observable depends on the order of two
-    /// independent inserts, but it is recorded rather than left to be discovered.</para>
+    /// transactional if it is written before the commit.
+    ///
+    /// <b>It IS observable, on exactly one path.</b> An earlier draft of this comment claimed the two
+    /// inserts were independent so the order could not matter. They are not independent, because the
+    /// middle step can throw: when <c>notify</c> fails, TS never reaches its audit write and leaves NO
+    /// audit row, while this port has already committed one. Both still fail the request. That is a
+    /// second divergence created by making the audit transactional — benign, but real, and recorded
+    /// here rather than left to surface as a parity surprise.</para>
     /// </summary>
     public async Task<PlatformOrganizationRow?> SuspendAsync(
         Guid id,
@@ -90,7 +111,7 @@ public sealed class PlatformOrganizationsWriteUseCase(
         return row;
     }
 
-    /// <summary>The <c>notify()</c> payload for a suspension (<c>organizations.ts:220-225</c>).</summary>
+    /// <summary>The <c>notify()</c> payload for a suspension (<c>organizations.ts:222-227</c>).</summary>
     public static PlatformOwnerNotification BuildSuspensionNotification(PlatformOrganizationRow row) =>
         new(
             Guid.Parse(row.Id),
@@ -160,7 +181,8 @@ public sealed class PlatformOrganizationsWriteUseCase(
     /// otherwise the object of present members. Prisma REPLACES a <c>Json</c> column, it does not merge, so
     /// sending <c>settings: { locale }</c> drops any <c>timezone</c>/<c>currency</c> the org already had.
     /// That is destructive and surprising, and it is faithfully reproduced: narrowing it here would make a
-    /// step-5 parity diff unreadable. Filed as a follow-up instead.
+    /// step-5 parity diff unreadable. Filed as <b>#201</b> instead — to be done after step 5, together with
+    /// the FE.
     /// </summary>
     public static string? BuildSettingsColumnJson(PlatformOrganizationSettingsInput? settings) =>
         settings is null ? null : BuildSettingsJson(settings).ToJsonString(ChangesEncoding);
@@ -206,7 +228,7 @@ public sealed class PlatformOrganizationsWriteUseCase(
         return input.Settings is null || IsValidSettings(input.Settings);
     }
 
-    /// <summary>Per-member bounds of the <c>settings</c> sub-object (<c>organizations.ts:176-180</c>).</summary>
+    /// <summary>Per-member bounds of the <c>settings</c> sub-object (<c>organizations.ts:177-181</c>).</summary>
     public static bool IsValidSettings(PlatformOrganizationSettingsInput settings) =>
         settings.Locale is not { Length: > MaxLocaleLength }
         && settings.Timezone is not { Length: > MaxTimezoneLength }

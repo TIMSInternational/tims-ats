@@ -37,7 +37,7 @@ public sealed record PlatformOrganizationRow(
 /// <summary>
 /// Validated input for <c>updateOrganization</c> (<c>organizations.ts:171-181</c>).
 ///
-/// <para><b>null means ABSENT, not "clear it".</b> Every field on the Zod schema is
+/// <para><b>null means ABSENT, not "clear it".</b> Every UPDATABLE field on the Zod schema is
 /// <c>.optional()</c> — which rejects an explicit <c>null</c> — and the TS body only copies a field into
 /// <c>updateData</c> when <c>rest.x !== undefined</c>. So omitting <c>name</c> must leave the stored name
 /// untouched; there is no input that can null a column here, and adding one would be a divergence.</para>
@@ -54,7 +54,7 @@ public sealed record PlatformOrganizationUpdateInput(
     PlatformOrganizationSettingsInput? Settings);
 
 /// <summary>
-/// The <c>settings</c> sub-object (<c>organizations.ts:176-180</c>). Each member is
+/// The <c>settings</c> sub-object (<c>organizations.ts:177-181</c>). Each member is
 /// <c>.optional()</c> with a max length, so <c>null</c> = absent here too and an absent member is omitted
 /// from the written JSON entirely (Zod strips unknown keys; <c>JSON.stringify</c> drops <c>undefined</c>).
 /// </summary>

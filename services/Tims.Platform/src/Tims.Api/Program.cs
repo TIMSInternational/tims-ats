@@ -297,8 +297,9 @@ try
 
     // Phase-5 slice 20 (#76): platform-owner ORGANIZATIONS WRITE (updateOrganization/suspendOrganization).
     // Its OWN context, mapping organizations AND audit_logs, because the fail-closed audit decided on #76
-    // only holds if the audit INSERT shares the org UPDATE's transaction — reusing AuditLogDbContext would
-    // put them in two transactions and quietly lose the guarantee. Runs UNDER TenantScope (the org id is
+    // only holds if the audit INSERT shares the org UPDATE's transaction — and since every context here is
+    // registered with its own connection (nothing shares a DbConnection + UseTransaction), reusing
+    // AuditLogDbContext would put them in two transactions and quietly lose the guarantee. Runs UNDER TenantScope (the org id is
     // known, so RLS stays engaged); the notification fan-out is the one unscoped part, by necessity.
     // Dark unless PlatformOrganizationsWriteEnabled (deploy-gated cutover; TS stays the sole active writer).
     builder.Services.AddDbContext<PlatformOrganizationsWriteDbContext>((sp, options) =>

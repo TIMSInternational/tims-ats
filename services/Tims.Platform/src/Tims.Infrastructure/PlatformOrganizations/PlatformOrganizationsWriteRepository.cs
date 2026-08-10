@@ -91,7 +91,7 @@ public sealed class PlatformOrganizationsWriteRepository(PlatformOrganizationsWr
         DateTime now,
         CancellationToken cancellationToken)
     {
-        // organizations.ts:216 — `isActive: !suspend`. Suspending deactivates; unsuspending reactivates.
+        // organizations.ts:217 — `isActive: !suspend`. Suspending deactivates; unsuspending reactivates.
         var isActive = !suspend;
         var updatedAt = ToTimestampText(now);
 
@@ -122,7 +122,7 @@ public sealed class PlatformOrganizationsWriteRepository(PlatformOrganizationsWr
 
     public async Task NotifyPlatformOwnersAsync(PlatformOwnerNotification notification, CancellationToken cancellationToken)
     {
-        // lib/notify.ts:22-25 — every platform owner, across every organization. Unscoped by necessity:
+        // lib/notify.ts:21-24 — every platform owner, across every organization. Unscoped by necessity:
         // owners belong to their own orgs, so this cannot run inside the suspended org's TenantScope.
         var ownerIds = await _db.Users
             .AsNoTracking()

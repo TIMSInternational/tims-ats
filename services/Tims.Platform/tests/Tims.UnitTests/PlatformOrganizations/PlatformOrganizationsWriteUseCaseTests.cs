@@ -41,12 +41,15 @@ public class PlatformOrganizationsWriteUseCaseTests
     }
 
     [Fact]
-    public void BuildUpdateChangesJson_follows_the_Zod_shape_order_not_the_callers()
+    public void BuildUpdateChangesJson_emits_the_schema_declaration_order()
     {
-        // ZodObject rebuilds the parsed object by iterating its own `shape`, so the order is always the
-        // schema's declaration order regardless of the order the client sent. Verified against the real
-        // schema: parsing {"settings":{"currency":..,"locale":..},"isActive":..} yields
-        // {"isActive":true,"settings":{"locale":..,"currency":..}}.
+        // NOTE ON WHAT THIS CAN AND CANNOT PROVE. It pins the C# EMIT order. It cannot prove that order
+        // equals Zod's, because no Zod runs here and the input record is positional — there is no
+        // "caller's order" a C# test can vary. The cross-stack half was verified MANUALLY, by parsing
+        // {"settings":{"currency":..,"locale":..},"isActive":..} against the real schema, which yields
+        // {"isActive":true,"settings":{"locale":..,"currency":..}} — i.e. ZodObject rebuilds by iterating
+        // its own `shape`. Nothing in the repo asserts the two orders agree; a parity fixture would, and
+        // this surface has no parity-registry entry at all (#195).
         var json = PlatformOrganizationsWriteUseCase.BuildUpdateChangesJson(Input(
             name: "Acme",
             plan: "starter",
@@ -59,7 +62,7 @@ public class PlatformOrganizationsWriteUseCaseTests
     }
 
     [Fact]
-    public void BuildUpdateChangesJson_orders_settings_members_by_the_schema_too()
+    public void BuildUpdateChangesJson_emits_the_settings_members_in_declaration_order_too()
     {
         var json = PlatformOrganizationsWriteUseCase.BuildUpdateChangesJson(Input(
             settings: new PlatformOrganizationSettingsInput(Locale: "es", Timezone: null, Currency: "COP")));
@@ -180,7 +183,7 @@ public class PlatformOrganizationsWriteUseCaseTests
         Assert.True(PlatformOrganizationsWriteUseCase.IsValidUpdateInput(Input(name: string.Empty)));
     }
 
-    // ── the notification payload (organizations.ts:219-226) ──────────────────────────────────────
+    // ── the notification payload (organizations.ts:221-227) ──────────────────────────────────────
 
     [Fact]
     public void BuildSuspensionNotification_reproduces_the_TS_copy_verbatim()
@@ -212,7 +215,7 @@ public class PlatformOrganizationsWriteUseCaseTests
         Assert.Single(repository.Notifications);
 
         await useCase.SuspendAsync(Guid.NewGuid(), suspend: false, Guid.NewGuid(), CancellationToken.None);
-        // organizations.ts:219 — `if (input.suspend)`. Un-suspending notifies nobody.
+        // organizations.ts:220 — `if (input.suspend)`. Un-suspending notifies nobody.
         Assert.Single(repository.Notifications);
     }
 

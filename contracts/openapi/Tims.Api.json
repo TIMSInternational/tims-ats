@@ -1370,8 +1370,7 @@
                 "$ref": "#/components/schemas/UpdateOrganizationBody"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -12440,69 +12439,37 @@
         }
       },
       "UpdateOrganizationBody": {
-        "required": [
-          "name",
-          "plan",
-          "isActive",
-          "settings"
-        ],
         "type": "object",
         "properties": {
           "name": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "maxLength": 100,
+            "type": "string"
           },
           "plan": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "isActive": {
-            "type": [
-              "null",
-              "boolean"
-            ]
+            "type": "boolean"
           },
           "settings": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/UpdateOrganizationSettingsBody"
-              }
-            ]
+            "$ref": "#/components/schemas/UpdateOrganizationSettingsBody"
           }
         }
       },
       "UpdateOrganizationSettingsBody": {
-        "required": [
-          "locale",
-          "timezone",
-          "currency"
-        ],
         "type": "object",
         "properties": {
           "locale": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "maxLength": 10,
+            "type": "string"
           },
           "timezone": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "maxLength": 50,
+            "type": "string"
           },
           "currency": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "maxLength": 10,
+            "type": "string"
           }
         }
       },

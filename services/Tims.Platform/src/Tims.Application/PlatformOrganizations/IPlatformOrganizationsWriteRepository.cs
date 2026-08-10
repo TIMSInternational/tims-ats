@@ -56,6 +56,16 @@ public interface IPlatformOrganizationsWriteRepository
     /// <para><b>Cross-org by construction, so never under <c>TenantScope</c>.</b> Platform owners belong to
     /// their own organizations, so the owner lookup cannot run under the suspended org's RLS scope. The TS
     /// side is identical (unscoped <c>db</c>).</para>
+    ///
+    /// <para><b>Consequence, stated plainly: this ONE call rests on the connecting role being BYPASSRLS.</b>
+    /// Production has FORCE RLS with a <c>tenant_isolation</c> policy on BOTH <c>users</c> and
+    /// <c>notifications</c>. With no org GUC set, the owner SELECT would return zero rows and the INSERT
+    /// would be refused by the WITH CHECK. It works today only because the app connects as <c>postgres</c>.
+    /// The failure mode if that ever changes is silent: zero owners found, the method returns early at the
+    /// empty-set guard, and suspensions stop notifying with no error. The rest of this slice deliberately
+    /// stops depending on BYPASSRLS; this call cannot, because the query is genuinely cross-org. Not covered
+    /// by the fixture either — it creates <c>users</c>/<c>notifications</c> without RLS, so the test would
+    /// pass either way.</para>
     /// </summary>
     Task NotifyPlatformOwnersAsync(PlatformOwnerNotification notification, CancellationToken cancellationToken);
 }
