@@ -119,6 +119,65 @@ public sealed class AlertMetricsReadUseCaseTests
         Assert.DoesNotContain("3", metadata, StringComparison.Ordinal);
     }
 
+    private sealed class ThrowingRepository : IAlertMetricsReadRepository
+    {
+        public Task<int> CountActiveSurveysAsync(Guid organizationId, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("db down");
+
+        public Task<int> CountPendingSalaryAdjustmentsAsync(Guid organizationId, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("db down");
+    }
+
+    [Fact]
+    public async Task A_FAILED_cross_org_read_is_still_audited_and_the_exception_still_propagates()
+    {
+        // The finding a review panel raised: the first version audited only on the success path, so a
+        // read that reached the database and then threw left NO trace — while the PR claimed "every
+        // cross-org read writes an audit row". A secret-holder enumerating orgs against a degraded DB
+        // was invisible. The failure is also the event an auditor most wants to see.
+        var audit = new RecordingSecurityEventWriter();
+        var useCase = new AlertMetricsReadUseCase(new ThrowingRepository(), audit);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => useCase.ComputeAsync(Org, AlertMetric.ActiveSurveys, default));
+
+        var row = Assert.Single(audit.Events);
+        Assert.Equal(Org, row.OrganizationId);
+        Assert.Contains("\"outcome\":\"failed\"", row.Metadata!.ToJsonString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_failing_audit_write_never_masks_the_read_or_its_exception()
+    {
+        // The audit is fail-SOFT by contract. Assert it here too: a writer that throws must not convert a
+        // good read into an error, nor replace the original exception on the failing path.
+        var useCase = new AlertMetricsReadUseCase(new FakeRepository(7, 0), new ThrowingSecurityEventWriter());
+
+        var outcome = await useCase.ComputeAsync(Org, AlertMetric.ActiveSurveys, default);
+
+        Assert.Equal(7, Assert.IsType<AlertMetricOutcome.Value>(outcome).Count);
+    }
+
+    private sealed class ThrowingSecurityEventWriter : ISecurityEventWriter
+    {
+        public Task WriteAsync(SecurityEvent securityEvent, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("audit sink down");
+    }
+
+    [Fact]
+    public async Task The_audit_row_carries_the_callers_ip_and_user_agent_when_supplied()
+    {
+        // On a surface whose entire authorization boundary is a shared secret, these are the only fields
+        // that could distinguish the real cron from someone who obtained that secret.
+        var (useCase, audit) = Build(surveys: 2);
+
+        await useCase.ComputeAsync(Org, AlertMetric.ActiveSurveys, default, "203.0.113.7", "tims-cron/1.0");
+
+        var row = Assert.Single(audit.Events);
+        Assert.Equal("203.0.113.7", row.IpAddress);
+        Assert.Equal("tims-cron/1.0", row.UserAgent);
+    }
+
     [Fact]
     public async Task Audit_records_the_org_that_was_read_not_a_fixed_one()
     {

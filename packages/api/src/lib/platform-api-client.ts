@@ -108,15 +108,32 @@ export async function platformGetWithHeaders(
   path: string,
   headers: Record<string, string>,
   query?: QueryParams,
+  timeoutMs = 10_000,
 ): Promise<PlatformApiResponse> {
   if (!isPlatformApiEnabled()) {
     throw new Error('Platform API is disabled: NEXT_PUBLIC_TIMS_PLATFORM_API_URL is unset.');
   }
 
   const base = PLATFORM_API_URL!.replace(/\/+$/, '');
+
+  // HTTPS only. The credential here is a bare header, so an `http://` base URL would put a machine
+  // secret on the wire in plaintext — and the base comes from a NEXT_PUBLIC_* var, which this project
+  // has already had drift silently between deployment scopes for nine days.
+  if (!base.startsWith('https://') && !base.startsWith('http://localhost')) {
+    throw new Error('Platform API base URL must be https (or localhost) to carry a machine credential.');
+  }
+
   const response = await fetch(`${base}${path}${buildQueryString(query)}`, {
     method: 'GET',
     headers: { Accept: 'application/json', ...headers },
+    // Do NOT follow redirects. The Fetch spec strips `Authorization` on a cross-origin redirect but
+    // leaves arbitrary custom headers intact — so following a 30x from a misconfigured ingress would
+    // forward the caller's secret header to the redirect target. This helper exists precisely to send
+    // credentials OUTSIDE `Authorization`, so it must opt out of redirects explicitly.
+    redirect: 'error',
+    // A cron with a 60s total budget cannot afford an unbounded hang: one stuck upstream would burn the
+    // whole run and silently skip every remaining rule, including the ones that never left Prisma.
+    signal: AbortSignal.timeout(timeoutMs),
   });
 
   const body = response.status === 204 ? null : await response.json().catch(() => null);

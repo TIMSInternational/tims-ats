@@ -3,10 +3,8 @@ import { z } from 'zod';
 
 // Optional secret that treats an empty string (a common Vercel / .env placeholder)
 // the same as absent — so an unset-but-present-empty var never fails validation.
-const optionalSecret = () =>
-  z.preprocess((v) => (v === '' ? undefined : v), z.string().min(1).optional());
-const optionalUrl = () =>
-  z.preprocess((v) => (v === '' ? undefined : v), z.string().url().optional());
+const optionalSecret = () => z.preprocess((v) => (v === '' ? undefined : v), z.string().min(1).optional());
+const optionalUrl = () => z.preprocess((v) => (v === '' ? undefined : v), z.string().url().optional());
 
 const envSchema = z.object({
   // Supabase
@@ -67,6 +65,20 @@ const envSchema = z.object({
   // step up to a verified TOTP factor (Supabase Auth MFA, aal2) before reaching
   // any admin route. Default off so a fresh deploy can never lock admins out.
   MFA_ENFORCED: z.enum(['true', 'false']).optional(),
+
+  // §8 Q0b slice 2 (#172). Route the alert cron's `active_surveys` and
+  // `pending_salary_adjustments` reads to the C# platform service instead of Prisma —
+  // required once ownership flips #64/#66 delete those Prisma models. Exact 'true' only;
+  // unset ⇒ Prisma, which is the reversal path (no code change, no deploy).
+  ALERT_METRICS_READ_VIA_CSHARP: z.enum(['true', 'false']).optional(),
+
+  // The credential that cron path presents to the platform service as `X-Tims-Cron-Secret`.
+  // DISTINCT from CRON_SECRET above: that one authenticates Vercel to this Next.js route,
+  // this one authenticates this app to the platform service. Reusing one value across both
+  // hops would mean a leak at either end grants both. Must match Platform:AlertMetricsCronSecret.
+  // Min 32: the platform gate rejects anything shorter as unconfigured, because that route is
+  // rate-limit exempt and the secret's own entropy is the only brute-force control.
+  ALERT_METRICS_CRON_SECRET: z.string().min(32).optional(),
 
   // Node
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),

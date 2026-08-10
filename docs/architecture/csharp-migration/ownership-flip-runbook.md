@@ -1874,15 +1874,29 @@ and reddens `tests/monitoring/executive-kpis-vacancy-status.test.ts`.
 > authenticated by a cron secret (`CronCallerGate`), with each read `TenantScope`-scoped to the org it
 > names — see the CORRECTION below for why that differs from #141's approach and why it matters. The
 > §21 min-5 floor is applied server-side AND re-applied by the caller, pinned across both stacks by
-> `contracts/alert-metrics-fixtures/cases.json`. Every cross-org read writes an `audit_logs` row
-> (`alert_metric_cron_read`).
+> `contracts/alert-metrics-fixtures/cases.json`. Cross-org reads write an `audit_logs` row
+> (`alert_metric_cron_read`) on success, suppression AND failure — the write is fail-SOFT, so a lost row
+> does not block the read and completeness is not guaranteed.
 >
 > **Same two caveats as (a).** It ships **DARK** — `Platform:AlertMetricsCronReadEnabled` and
 > `ALERT_METRICS_READ_VIA_CSHARP` are both unset, so Prisma is still the only active reader and runtime
 > behaviour is unchanged. And a C# read existing is still not "`model Survey` can be deleted": the TS
 > `monitoring.*` procedures at `monitoring.ts:25`/`:217` remain, and the Prisma branch in
-> `computeRawMetric` is deliberately retained as the flag's OFF path. **#64 and #66 are now blocked only
-> on the flip mechanics themselves, not on a missing C# reader.**
+> `computeRawMetric` is deliberately retained as the flag's OFF path.
+>
+> **SCOPE CORRECTION — do NOT read this as "#64 and #66 are unblocked."** An earlier draft of this note
+> said they were "blocked only on the flip mechanics themselves". A claim-auditor review pass falsified
+> that, and the falsification is worth keeping on the record because it is the same overstatement this
+> backlog keeps producing. **#66's own blocker table lists ELEVEN sites; this slice closes exactly ONE
+> (row 10).** Still open there: `access/scoped-probe.ts:76,77` (row 2 tracked by nothing),
+> `seed-demo.ts:1908,:1971,:1968` (two of them WRITERS, which §0 P1 makes blocking),
+> `routers/compensation.ts:30,:80` + `services/compensation.service.ts:62` (#59, branch not merged),
+> `routers/monitoring.ts:24` (still live Prisma), and `routers/platform/data-requests.ts:94` (#146, the
+> longest pole). For #64, this file's own inventory still carries `routers/monitoring.ts:25` as a
+> Blocker for two independent reasons, one of them a frontend `.invalidate()` coupling.
+>
+> The defensible claim is narrow: **the alert cron is no longer a missing C# reader for these two
+> metrics.** That is one row of one table.
 >
 > Two caveats that keep this from being read as more than it is. The surface ships **DARK** — the
 > flag is unset in every environment, so the TS `monitoring.*` procedures are still the only active
@@ -1929,7 +1943,7 @@ Two of these are genuinely hard:
   `NEXT_PUBLIC_MONITORING_READ_VIA_CSHARP`. All five consumers repointed. Still DARK. This bullet is
   no longer the gating item — the one below is.
 - **The alert-evaluation cron** uses the privileged `db` client, not `tenantDb`, and iterates every org
-  (`alert-evaluation.repository.ts:1`, header `:5-7`; driven by `alert-evaluation.service.ts:59-71`;
+  (`alert-evaluation.repository.ts:1`, header `:6-9`; driven by `alert-evaluation.service.ts:59-71`;
   entrypoint `apps/web/app/api/cron/evaluate-alerts/route.ts:23`, daily 06:00 per `apps/web/vercel.json`).
   It cannot be served by a `TenantScope`/RLS-scoped EF read — it needs a privileged cross-org C# read
   surface, or the cron ports to C# wholesale.
@@ -1953,7 +1967,7 @@ Two of these are genuinely hard:
   **Its failure mode is worse than "degrades with no error" (corrected 2026-08-02).** An earlier draft
   said "the service catches per-rule failures and counts them `skipped`." **The `skipped` counter never
   moves.** Removing the `case 'active_surveys'` from the switch at
-  `alert-evaluation.repository.ts:119-130` does not throw — it falls to `default: return null`; then
+  `alert-evaluation.repository.ts:203-233` does not throw — it falls to `default: return null`; then
   `alert-evaluation.service.ts:12` (`if (value === null) return false;`) and `:71`
   (`if (!evaluateCondition(...)) continue;`) skip the rule with a **plain `continue`, outside** the
   `catch` that increments `skipped` at `:84-89`. So: **no exception, no `skipped` increment, no log

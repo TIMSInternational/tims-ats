@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
-using Tims.Domain.Access;
+using Tims.Application.AlertMetrics;
+using Tims.Application.Audit;
 using Tims.Domain.AlertMetrics;
 
 namespace Tims.UnitTests.AlertMetrics;
@@ -41,34 +42,54 @@ public sealed class AlertMetricsFixtureTests
     }
 
     /// <summary>
-    /// The floor, end to end: parse the wire key, apply the sensitivity rule, apply the k-anon floor —
-    /// exactly the composition <see cref="Tims.Application.AlertMetrics.AlertMetricsReadUseCase"/> runs.
-    /// Reproduced here rather than invoking the use case so the assertion needs no repository/audit
-    /// doubles; the composition itself is three lines and is asserted against the real domain code.
+    /// The floor, end to end, through the REAL <see cref="AlertMetricsReadUseCase"/> — the code the
+    /// endpoint runs — with only the repository and the audit writer stubbed.
+    ///
+    /// <para>An earlier version of this test reproduced the composition inline
+    /// (<c>IsSensitive(metric) ? SuppressBelowMin5(raw).Count : raw</c>). A review panel pointed out that
+    /// this made the shared golden non-binding on one of the two stacks it exists to bind: mutating the
+    /// use case to floor everything, or nothing, left this file GREEN. The TS twin explicitly asserts its
+    /// live exports, so the C# side must too — otherwise the anti-divergence control only watches one
+    /// side of the divergence. Same lesson as deriving a guard's scope from the artifact under test.</para>
     /// </summary>
     [Theory]
     [MemberData(nameof(FloorRows))]
-    public void Floor_matches_golden(int index, string name)
+    public async Task Floor_matches_golden(int index, string name)
     {
         var c = Section("floor")[index]!;
         Assert.True(AlertMetricKeys.TryParse(c["metric"]!.GetValue<string>(), out var metric));
 
         var raw = c["raw"]!.GetValue<int>();
-        var floored = AlertMetricKeys.IsSensitive(metric)
-            ? KAnonymity.SuppressBelowMin5(raw).Count
-            : raw;
+        var useCase = new AlertMetricsReadUseCase(new FixedCountRepository(raw), new NullSecurityEventWriter());
 
-        var expectedStatus = c["expectedStatus"]!.GetValue<string>();
-        if (expectedStatus == "suppressed")
+        var outcome = await useCase.ComputeAsync(Guid.NewGuid(), metric, default);
+
+        if (c["expectedStatus"]!.GetValue<string>() == "suppressed")
         {
-            Assert.Null(floored);
+            Assert.IsType<AlertMetricOutcome.Suppressed>(outcome);
         }
         else
         {
-            Assert.Equal(c["expectedValue"]!.GetValue<int>(), floored);
+            Assert.Equal(c["expectedValue"]!.GetValue<int>(), Assert.IsType<AlertMetricOutcome.Value>(outcome).Count);
         }
 
         _ = name;
+    }
+
+    /// <summary>Returns the same count for either metric, so one fixture row drives whichever is named.</summary>
+    private sealed class FixedCountRepository(int count) : IAlertMetricsReadRepository
+    {
+        public Task<int> CountActiveSurveysAsync(Guid organizationId, CancellationToken cancellationToken) =>
+            Task.FromResult(count);
+
+        public Task<int> CountPendingSalaryAdjustmentsAsync(Guid organizationId, CancellationToken cancellationToken) =>
+            Task.FromResult(count);
+    }
+
+    private sealed class NullSecurityEventWriter : ISecurityEventWriter
+    {
+        public Task WriteAsync(SecurityEvent securityEvent, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
     }
 
     [Theory]

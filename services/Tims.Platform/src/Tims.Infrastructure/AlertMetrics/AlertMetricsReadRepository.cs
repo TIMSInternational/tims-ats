@@ -6,7 +6,8 @@ namespace Tims.Infrastructure.AlertMetrics;
 
 /// <summary>
 /// The two COUNT queries behind the cross-org alert-metric surface (§8 Q0b slice 2, issue #172), ported
-/// 1:1 from packages/api/src/repositories/alert-evaluation.repository.ts:115,120 — the SAME status
+/// 1:1 from packages/api/src/repositories/alert-evaluation.repository.ts:217,223 (they were :115,:120 on main —
+/// this branch added ~100 lines above them) — the SAME status
 /// literals, the SAME org filter. Scalar counts only: nothing this repository can return identifies a row.
 ///
 /// <para><b>Why this runs UNDER <see cref="TenantScope"/>, and why that is the whole point.</b> The

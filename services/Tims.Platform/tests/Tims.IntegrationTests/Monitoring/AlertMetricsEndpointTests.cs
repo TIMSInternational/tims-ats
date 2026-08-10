@@ -27,7 +27,9 @@ namespace Tims.IntegrationTests.Monitoring;
 public sealed class AlertMetricsEndpointTests(MonitoringReadFixture fixture)
 {
     private const string Path = "/internal/alert-metrics";
-    private const string Secret = "test-cron-secret-value";
+    // >= CronCallerGate.MinimumSecretLength (32). A shorter value would now be rejected as
+    // "not really configured", so every test here would 401 for the wrong reason.
+    private const string Secret = "test-cron-secret-value-0123456789ab";
 
     private readonly MonitoringReadFixture _fixture = fixture;
 
@@ -98,12 +100,42 @@ public sealed class AlertMetricsEndpointTests(MonitoringReadFixture fixture)
     [Theory]
     [InlineData("wrong-secret")]
     [InlineData("")]
-    [InlineData("test-cron-secret-valu")]   // one char short — the length must not be a timing oracle
-    [InlineData("test-cron-secret-valueX")] // one char long
+    [InlineData("test-cron-secret-value-0123456789a")]   // one char short — length must not be a timing oracle
+    [InlineData("test-cron-secret-value-0123456789abX")] // one char long
     public async Task A_wrong_secret_is_401(string presented)
     {
         using var factory = EnabledFactory();
         using var client = WithSecret(factory, presented);
+
+        var response = await client.GetAsync(Url(MonitoringReadFixture.OrgA, AlertMetricKeys.ActiveSurveys));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task The_terraform_placeholder_is_NOT_a_usable_secret()
+    {
+        // THE finding a review panel raised against the first version of this PR. deploy/terraform
+        // provisions `REPLACE_ME_OUT_OF_BAND` for every managed secret so the ARN resolves before the
+        // real value is set out-of-band. A plain null/whitespace check ACCEPTS that string — so a
+        // `terraform apply` with the read flag on would have left a cross-org reader open to anyone who
+        // read this repository. Both the PR body and PlatformOptions claimed the opposite.
+        using var factory = EnabledFactory(secret: CronCallerGate.TerraformPlaceholder);
+        using var client = WithSecret(factory, CronCallerGate.TerraformPlaceholder);
+
+        var response = await client.GetAsync(Url(MonitoringReadFixture.OrgA, AlertMetricKeys.ActiveSurveys));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task A_short_secret_is_treated_as_unconfigured()
+    {
+        // The route is rate-limit exempt and the gate has no attempt counter, so the secret's own entropy
+        // IS the brute-force control. A short one removes it silently.
+        var shortSecret = new string('a', CronCallerGate.MinimumSecretLength - 1);
+        using var factory = EnabledFactory(secret: shortSecret);
+        using var client = WithSecret(factory, shortSecret);
 
         var response = await client.GetAsync(Url(MonitoringReadFixture.OrgA, AlertMetricKeys.ActiveSurveys));
 
@@ -210,13 +242,18 @@ public sealed class AlertMetricsEndpointTests(MonitoringReadFixture fixture)
         Assert.Equal(MonitoringReadFixture.OrgAActiveSurveys, a.Value);
         Assert.Equal(MonitoringReadFixture.OrgA, a.OrganizationId);
 
-        // OrgB and the EMPTY OrgC both have no active surveys — an honest 0, never a null or an error.
+        // THREE DISTINCT VALUES: OrgA 2, OrgB 1, OrgC 0. That is what makes this a real cross-org test —
+        // a reader that leaked would return the same number (or a sum) for all three, and a reader whose
+        // org GUC never got set would return 0 for all three.
         Assert.Equal("value", b.Status);
+        Assert.Equal(1, b.Value);
         Assert.Equal("value", c.Status);
         Assert.Equal(0, c.Value);
+        Assert.Equal(3, new[] { a.Value, b.Value, c.Value }.Distinct().Count());
 
-        // And the sub-floor org's count did not bleed into the org that is at the floor.
-        Assert.NotEqual(a.Value, c.Value);
+        // OrgB's 1 doubles as proof that active_surveys is NOT k-anon floored: a sub-floor count on a
+        // NON-sensitive metric must come back as a value, not a suppression.
+        Assert.Equal(MonitoringReadFixture.OrgAActiveSurveys, a.Value);
     }
 
     [Fact]
@@ -248,6 +285,96 @@ public sealed class AlertMetricsEndpointTests(MonitoringReadFixture fixture)
 
         Assert.Equal(AlertMetricKeys.PendingSalaryAdjustments, body.Metric);
         Assert.Equal(MonitoringReadFixture.OrgB, body.OrganizationId);
+    }
+
+    // ── The audit row must actually reach the database ───────────────────────
+
+    private async Task<List<(string Action, string Entity, string? EntityId, Guid? Org, string? Metadata)>>
+        ReadAuditRowsAsync()
+    {
+        var rows = new List<(string, string, string?, Guid?, string?)>();
+        await using var connection = new Npgsql.NpgsqlConnection(_fixture.ConnectionString);
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText =
+            "SELECT action, entity, entity_id, organization_id, metadata::text FROM audit_logs ORDER BY created_at";
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            rows.Add((
+                reader.GetString(0),
+                reader.GetString(1),
+                reader.IsDBNull(2) ? null : reader.GetString(2),
+                reader.IsDBNull(3) ? null : reader.GetGuid(3),
+                reader.IsDBNull(4) ? null : reader.GetString(4)));
+        }
+
+        return rows;
+    }
+
+    private async Task ClearAuditAsync()
+    {
+        await using var connection = new Npgsql.NpgsqlConnection(_fixture.ConnectionString);
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM audit_logs";
+        await command.ExecuteNonQueryAsync();
+    }
+
+    [Fact]
+    public async Task A_successful_cross_org_read_writes_a_real_audit_row()
+    {
+        // The unit tests prove the audit CONTRACT against a fake writer. This proves the row actually
+        // lands in Postgres through the real SecurityEventWriter — a review panel noted the audit claim
+        // rested entirely on a fake, which cannot catch a writer that silently swallows its own failure.
+        await ClearAuditAsync();
+
+        using var factory = EnabledFactory();
+        using var client = WithSecret(factory, Secret);
+        await client.GetAsync(Url(MonitoringReadFixture.OrgB, AlertMetricKeys.PendingSalaryAdjustments));
+
+        var row = Assert.Single(await ReadAuditRowsAsync());
+        Assert.Equal("alert_metric_cron_read", row.Action);
+        Assert.Equal("alert_metric", row.Entity);
+        Assert.Equal(AlertMetricKeys.PendingSalaryAdjustments, row.EntityId);
+        Assert.Equal(MonitoringReadFixture.OrgB, row.Org);
+        // Parse rather than substring-match: Postgres normalises jsonb (a space after each colon), so a
+        // literal `"outcome":"value"` never matches what comes back out.
+        Assert.Equal("value", JsonDocument.Parse(row.Metadata!).RootElement.GetProperty("outcome").GetString());
+    }
+
+    [Fact]
+    public async Task A_suppressed_read_is_audited_and_the_row_never_carries_the_sub_floor_count()
+    {
+        // OrgA has 3 pending adjustments. The floor hides it from the RESPONSE; this asserts it is also
+        // absent from the durable audit row, which auditors read.
+        await ClearAuditAsync();
+
+        using var factory = EnabledFactory();
+        using var client = WithSecret(factory, Secret);
+        await client.GetAsync(Url(MonitoringReadFixture.OrgA, AlertMetricKeys.PendingSalaryAdjustments));
+
+        var row = Assert.Single(await ReadAuditRowsAsync());
+        Assert.Equal("suppressed", JsonDocument.Parse(row.Metadata!).RootElement.GetProperty("outcome").GetString());
+        Assert.DoesNotContain("3", row.Metadata!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_refused_request_writes_no_audit_row_at_all()
+    {
+        // The gate rejects before the use case runs, so an unauthenticated prober cannot use this surface
+        // to write unbounded rows into an append-only table. (The route is also exempt from principal
+        // resolution, so the #177 denial auditor writes nothing for it either.)
+        await ClearAuditAsync();
+
+        using var factory = EnabledFactory();
+        using var client = WithSecret(factory, "wrong-secret");
+        for (var i = 0; i < 5; i++)
+        {
+            await client.GetAsync(Url(MonitoringReadFixture.OrgA, AlertMetricKeys.ActiveSurveys));
+        }
+
+        Assert.Empty(await ReadAuditRowsAsync());
     }
 
     // ── The rate limiter must not throttle the surface's only caller ─────────

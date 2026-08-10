@@ -41,23 +41,54 @@ public sealed class AlertMetricsReadUseCase(
     private readonly ISecurityEventWriter _securityEventWriter = securityEventWriter;
 
     public async Task<AlertMetricOutcome> ComputeAsync(
-        Guid organizationId, AlertMetric metric, CancellationToken cancellationToken)
+        Guid organizationId,
+        AlertMetric metric,
+        CancellationToken cancellationToken,
+        string? ipAddress = null,
+        string? userAgent = null)
     {
-        var outcome = await ComputeOutcomeAsync(organizationId, metric, cancellationToken).ConfigureAwait(false);
-
-        // Audit AFTER the read resolves so the row records what actually happened (including a
-        // suppression), but BEFORE returning, so an unaudited cross-org read cannot be observed.
-        await _securityEventWriter.WriteAsync(
-            new SecurityEvent(
-                OrganizationId: organizationId,
-                ActorId: null,
-                Action: AuditAction,
-                Entity: AuditEntity,
-                EntityId: AlertMetricKeys.ToKey(metric),
-                Metadata: BuildMetadata(metric, outcome)),
-            cancellationToken).ConfigureAwait(false);
-
-        return outcome;
+        AlertMetricOutcome? outcome = null;
+        try
+        {
+            outcome = await ComputeOutcomeAsync(organizationId, metric, cancellationToken).ConfigureAwait(false);
+            return outcome;
+        }
+        finally
+        {
+            // Audit in a FINALLY, not on the success path. A review panel found the earlier version wrote
+            // nothing when the repository threw — DB down, statement timeout, or a SET LOCAL ROLE refused
+            // — so a secret-holder enumerating orgs left no trace for any request that errored, while the
+            // PR claimed "every cross-org read writes an audit row". A failed privileged read is exactly
+            // the event an auditor most wants; `outcome is null` is recorded as its own outcome kind.
+            //
+            // The catch is NOT redundant with ISecurityEventWriter's fail-soft contract. This call sits in
+            // a `finally`, so an implementation that broke that contract and threw would REPLACE the
+            // original exception on the failing path — turning "the database is down" into "the audit sink
+            // is down" and destroying the real diagnosis. Depending on a collaborator to be well-behaved
+            // is the assumption class this whole slice exists to remove, so it is enforced locally.
+            try
+            {
+                await _securityEventWriter.WriteAsync(
+                    new SecurityEvent(
+                        OrganizationId: organizationId,
+                        ActorId: null,
+                        Action: AuditAction,
+                        Entity: AuditEntity,
+                        EntityId: AlertMetricKeys.ToKey(metric),
+                        Metadata: BuildMetadata(metric, outcome),
+                        // The caller is a machine with no user identity, so IP + user-agent are the ONLY
+                        // fields that could ever distinguish the real cron from someone who obtained the
+                        // secret. Omitting them on a surface whose whole boundary is a shared secret
+                        // defeats the point of auditing it.
+                        IpAddress: ipAddress,
+                        UserAgent: userAgent),
+                    cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception)
+            {
+                // Swallowed deliberately — see above. The read's own result (or its exception) stands.
+            }
+        }
     }
 
     private async Task<AlertMetricOutcome> ComputeOutcomeAsync(
@@ -96,7 +127,7 @@ public sealed class AlertMetricsReadUseCase(
     /// count itself. Putting the value here would recreate the exact sub-floor disclosure the min-5 floor
     /// just prevented, in a table built to be read by auditors.
     /// </summary>
-    private static JsonObject BuildMetadata(AlertMetric metric, AlertMetricOutcome outcome) => new()
+    private static JsonObject BuildMetadata(AlertMetric metric, AlertMetricOutcome? outcome) => new()
     {
         ["metric"] = AlertMetricKeys.ToKey(metric),
         ["sensitive"] = AlertMetricKeys.IsSensitive(metric),
@@ -105,6 +136,9 @@ public sealed class AlertMetricsReadUseCase(
             AlertMetricOutcome.Value => "value",
             AlertMetricOutcome.Suppressed => "suppressed",
             AlertMetricOutcome.Unavailable => "unavailable",
+            // null == the read threw and is propagating. A distinct literal, not "unknown": an auditor
+            // must be able to tell a failed privileged read from an unmapped outcome kind.
+            null => "failed",
             _ => "unknown",
         },
     };

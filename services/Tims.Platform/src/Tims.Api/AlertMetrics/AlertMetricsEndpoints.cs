@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using Tims.Api.Http;
 using Tims.Api.Configuration;
 using Tims.Application.AlertMetrics;
 using Tims.Domain.AlertMetrics;
@@ -79,7 +80,16 @@ public static class AlertMetricsEndpoints
                     return Results.BadRequest(new { error = "unknown metric" });
                 }
 
-                var outcome = await useCase.ComputeAsync(orgId, parsed, cancellationToken);
+                // IP + user-agent come from the SHARED derivation (#174), not from a local header read —
+                // one client-IP rule for both stacks. On a surface whose entire authorization boundary is
+                // a shared secret, these are the only fields in the audit row that could distinguish the
+                // real cron from someone who obtained that secret.
+                var outcome = await useCase.ComputeAsync(
+                    orgId,
+                    parsed,
+                    cancellationToken,
+                    httpContext.ClientIpFor(),
+                    httpContext.Request.Headers.UserAgent.ToString() is { Length: > 0 } ua ? ua : null);
                 var key = AlertMetricKeys.ToKey(parsed);
 
                 return outcome switch
