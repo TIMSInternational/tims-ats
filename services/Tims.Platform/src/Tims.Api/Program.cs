@@ -774,16 +774,22 @@ try
     // nothing on success and never alters the response.
     app.UseMiddleware<SecurityDenialAuditMiddleware>();
 
-    // #173 — MFA step-up, the port of TS's `withMfaEnforcement`. Registered AFTER the denial
-    // observer so that observer sees this 403 and correctly SKIPS it: an MFA refusal is audited
-    // distinctly as `mfa_step_up_required`, never as a generic `authz_denied` (observeDenial's
-    // same carve-out). Fails OPEN on an unset/garbled Platform:MfaEnforced.
-    app.UseMiddleware<MfaStepUpMiddleware>();
-
     // Rate limiting runs AFTER principal resolution (so the resolved TIMS principal is available to
     // key the bucket) but BEFORE authorization/handlers. Infra + auth-probe paths are exempt inside
     // the middleware; the API-key per-key quota is enforced by ApiKeyRateLimitFilter post-auth.
     app.UseMiddleware<RateLimitMiddleware>();
+
+    // #173 — MFA step-up, the port of TS's `withMfaEnforcement`. Registered AFTER the denial
+    // observer so that observer sees this 403 and correctly SKIPS it: an MFA refusal is audited
+    // distinctly as `mfa_step_up_required`, never as a generic `authz_denied` (observeDenial's
+    // same carve-out). Fails OPEN on an unset/garbled Platform:MfaEnforced.
+    //
+    // #181 — moved to AFTER the rate limiter. It short-circuits on refusal, so registering it first
+    // meant a refused caller never reached the limiter at all: a stolen aal1 super_admin token — the
+    // exact thing this gate exists to neutralise — became an unmetered amplifier, one audit_logs
+    // INSERT plus a principal-resolution DB read per request, at whatever rate the caller chose.
+    // Still inside SecurityDenialAuditMiddleware, so the carve-out above is unaffected.
+    app.UseMiddleware<MfaStepUpMiddleware>();
 
     app.UseAuthorization();
 

@@ -89,7 +89,13 @@ public sealed class MfaStepUpMiddleware(RequestDelegate next)
                         Metadata: new JsonObject { ["currentLevel"] = context.User.FindFirstValue("aal") },
                         IpAddress: context.ClientIpFor(),
                         UserAgent: NullIfEmpty(context.Request.Headers.UserAgent.ToString())),
-                    context.RequestAborted).ConfigureAwait(false);
+                    // #181: CancellationToken.None, NOT context.RequestAborted. The write happens AFTER the
+                    // response has gone back to the caller, so binding it to the request's token let a client
+                    // that closed the socket cancel its own audit row — and SecurityEventWriter's fail-soft
+                    // catch swallowed the cancellation silently. A prober that disconnects on each 403 could
+                    // therefore enumerate the surface leaving no trace, which is the exact behaviour this row
+                    // exists to make visible. TS is fire-and-forget and bound to no signal; this matches it.
+                    CancellationToken.None).ConfigureAwait(false);
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

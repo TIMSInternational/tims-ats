@@ -62,18 +62,50 @@ public sealed class SecurityDenialAuditMiddleware(RequestDelegate next)
                 return;
             }
 
-            if (context.Items[ResolvedPrincipal.HttpContextKey] is not ResolvedPrincipal
-                { Context: { } tenant })
-            {
-                return; // resolve-or-skip: unauthenticated/unresolved has no org to attribute to
-            }
+            var code = status == StatusCodes.Status401Unauthorized ? "UNAUTHORIZED" : "FORBIDDEN";
+            Guid organizationId;
+            Guid? actor;
+            JsonObject metadata;
 
-            if (!Guid.TryParse(tenant.OrganizationId, out var organizationId))
+            if (context.Items[ResolvedPrincipal.HttpContextKey] is ResolvedPrincipal { Context: { } tenant })
             {
-                return; // org-less platform owner ("") — no FK to write against
-            }
+                if (!Guid.TryParse(tenant.OrganizationId, out organizationId))
+                {
+                    return; // org-less platform owner ("") — no FK to write against
+                }
 
-            _ = Guid.TryParse(AuditActor.ActorFor(tenant), out var actorId);
+                _ = Guid.TryParse(AuditActor.ActorFor(tenant), out var actorId);
+                actor = actorId == Guid.Empty ? null : actorId;
+                metadata = new JsonObject { ["code"] = code };
+            }
+            else if (TryApiKeyAttribution(context, out organizationId, out var apiKeyId))
+            {
+                // #180 — the API-KEY surface. PrincipalResolutionMiddleware stashes a ResolvedPrincipal
+                // only for a JWT `sub`, and ApiKeyAuthenticationHandler issues org_id/api_key_id/scope and
+                // never a `sub`. So without this branch EVERY denial on /external/* wrote nothing at all,
+                // while #177 claimed coverage of "every 401/403". TS closes the same hole with a second
+                // observer (`observeExternalDenial`); doing it here instead means an API-key endpoint added
+                // later is covered without being told to opt in — the derived-not-listed reasoning the rest
+                // of this middleware already relies on.
+                //
+                // actor is NULL by construction: the principal is a KEY, not a person. Inventing a sentinel
+                // user id would make a machine denial indistinguishable from a human one in review, and
+                // `api_key_id` is not a `users.id` so it would also break the FK.
+                actor = null;
+                metadata = new JsonObject
+                {
+                    ["code"] = code,
+                    ["principal"] = "api_key",
+                    ["apiKeyId"] = apiKeyId,
+                };
+            }
+            else
+            {
+                // Resolve-or-skip. An unauthenticated 401 has no tenant to attribute to, and
+                // `audit_logs.organization_id` is a real FK — auditing it would also hand any anonymous
+                // caller an unbounded writer into an append-only table. TS draws the same line.
+                return;
+            }
 
             var route = context.GetEndpoint() is Microsoft.AspNetCore.Routing.RouteEndpoint routeEndpoint
                 ? $"/{routeEndpoint.RoutePattern.RawText?.TrimStart('/')}"
@@ -82,20 +114,47 @@ public sealed class SecurityDenialAuditMiddleware(RequestDelegate next)
             await securityEventWriter.WriteAsync(
                 new SecurityEvent(
                     organizationId,
-                    actorId == Guid.Empty ? null : actorId,
+                    actor,
                     Action: "authz_denied",
                     Entity: $"platform:{context.Request.Method} {route}",
                     EntityId: null,
-                    Metadata: new JsonObject { ["code"] = status == StatusCodes.Status401Unauthorized ? "UNAUTHORIZED" : "FORBIDDEN" },
+                    Metadata: metadata,
                     IpAddress: context.ClientIpFor(),
                     UserAgent: NullIfEmpty(context.Request.Headers.UserAgent.ToString())),
-                context.RequestAborted).ConfigureAwait(false);
+                // #181: CancellationToken.None, NOT context.RequestAborted. The write happens AFTER the
+                // response has gone back to the caller, so binding it to the request's token let a client
+                // that closed the socket cancel its own audit row — and SecurityEventWriter's fail-soft
+                // catch swallowed the cancellation silently. A prober that disconnects on each 403 could
+                // therefore enumerate the surface leaving no trace, which is the exact behaviour this row
+                // exists to make visible. TS is fire-and-forget and bound to no signal; this matches it.
+                CancellationToken.None).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             // Fail-soft, exactly like TS's `safe()` wrapper: an audit-write problem must never
             // change the response the caller already received.
         }
+    }
+
+    /// <summary>
+    /// Attribute a denial to the API-KEY principal (#180), from the claims
+    /// <see cref="ApiKeyAuthenticationHandler"/> issued.
+    ///
+    /// <para>Reading <c>context.User</c> works here — and only here — because this middleware does its
+    /// work on the way OUT, after <c>UseAuthorization()</c> has run the endpoint's
+    /// <c>.RequireAuthorization(ApiKey)</c> policy and swapped the authenticated principal onto the
+    /// context. On the way IN the ApiKey scheme has not run at all (JwtBearer is the default), which is
+    /// exactly why the inbound <c>PrincipalResolutionMiddleware</c> never sees these requests.</para>
+    ///
+    /// <para>Returns false for an invalid/revoked/expired key: authentication itself failed, so there are
+    /// no claims and no authenticated org — that 401 stays unaudited, deliberately.</para>
+    /// </summary>
+    private static bool TryApiKeyAttribution(HttpContext context, out Guid organizationId, out string? apiKeyId)
+    {
+        organizationId = Guid.Empty;
+        apiKeyId = context.User.FindFirst(ApiKeyAuthenticationHandler.ApiKeyIdClaimType)?.Value;
+        var org = context.User.FindFirst(ApiKeyAuthenticationHandler.OrganizationIdClaimType)?.Value;
+        return org is not null && Guid.TryParse(org, out organizationId);
     }
 
     private static string? NullIfEmpty(string? value) => string.IsNullOrEmpty(value) ? null : value;
