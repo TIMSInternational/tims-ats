@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { suppressBelowMin5, aggregateGroups } from '../../packages/api/src/access/aggregate';
+import { engagementProcedureBlocks, ENGAGEMENT_GRANT_ONLY } from './engagement-procedures';
 
 // Wave 2.5 slice 6 — min-5 k-anonymity suppression wired into compensation
 // aggregate endpoints. Helper-contract tests pin suppressBelowMin5 semantics;
@@ -225,11 +226,22 @@ describe('engagement aggregates honor min-5', () => {
   });
 
   it('keeps requireOrgScope on the surviving engagement aggregates (defense in depth)', () => {
-    const matches = readEngagement().match(/requireOrgScope\(ctx\.access\)/g) ?? [];
-    // UPDATE 2026-07-31: getEnps, getClimateHeatmap, getLowClimateAlerts, getDashboardKpis were deleted
-    // (C#-only now) — each of those 4 also called requireOrgScope, so the floor dropped from 8 to 5. The
-    // survivors: getSurveyResults, getResultsByArea, getWordCloud, getSentiment, getRotationRisk.
-    expect(matches.length).toBeGreaterThanOrEqual(5);
+    // RE-ANCHORED 2026-08-05 (#56). This used to assert `matches.length >= 5` — a COUNT, i.e. a
+    // snapshot of which procedures happened to exist on 2026-07-31. Every engagement TS-deletion
+    // pass broke it (9 → 5 → 3), and each repair re-pinned the NEW era rather than the rule. The
+    // rule is: an engagement read that aggregates over respondents must carry the org-scope gate.
+    // Assert that per-procedure, so the test survives deletions and still goes red if a gate is
+    // dropped or a new ungated aggregate is added.
+    const blocks = engagementProcedureBlocks();
+    expect(Object.keys(blocks).length).toBeGreaterThan(0); // never vacuous
+    for (const [name, body] of Object.entries(blocks)) {
+      if (ENGAGEMENT_GRANT_ONLY.has(name)) continue;
+      expect(body, `${name} must call requireOrgScope(ctx.access)`).toMatch(/requireOrgScope\(ctx\.access\)/);
+    }
+    // And the documented exception must still BE the exception, not a silently-growing allowlist.
+    for (const name of ENGAGEMENT_GRANT_ONLY) {
+      expect(Object.keys(blocks), `${name} is allow-listed but no longer exists`).toContain(name);
+    }
   });
 });
 

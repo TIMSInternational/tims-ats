@@ -154,18 +154,27 @@ describe('teamIntel router stays deleted (#55) — inverted tripwire', () => {
   });
 });
 
-describe('codex round-1 fixes (talent)', () => {
-  // 'succession nested successors carry the successor fragment' REMOVED 2026-08-03 (#58) —
-  // succession.ts deleted. The C# equivalent is a real behavioural test rather than a source
-  // grep: TeamScope_ListCriticalRoles_DropsOutOfScopeRole (SuccessionReadTests.cs) asserts an
-  // out-of-scope role is actually absent from the response.
-  // 'submitCalibrationVote validates the evaluated user belongs to the org' REMOVED 2026-08-05
-  // (#57) — ninebox.ts deleted. The C# equivalents are behavioural rather than source greps:
-  // SubmitVote_cross_org_evaluated_user_is_not_found + SubmitVote_nonexistent_evaluated_user_is_not_found
-  // (NineBoxWriteTests.cs) assert the 404 AND that no vote row was written.
-  it('updateActionPlan guards responsibility reassignment', () => {
-    const src = readFileSync(join(ROOT, 'packages/api/src/routers/engagement.ts'), 'utf8');
-    const block = blockAt(src, 'updateActionPlan:');
-    expect(block).toMatch(/assertSubjectInScope/);
-  });
-});
+// ── 'codex round-1 fixes (talent)' SUITE REMOVED — every test in it has been retired by a TS
+//    deletion, and vitest fails an empty describe. Retained as a record of WHERE each guarantee
+//    moved, because "the test vanished" and "the guarantee vanished" must not look alike:
+//
+//    'succession nested successors carry the successor fragment' — REMOVED 2026-08-03 (#58),
+//      succession.ts deleted. C# equivalent is behavioural, not a source grep:
+//      TeamScope_ListCriticalRoles_DropsOutOfScopeRole (SuccessionReadTests.cs) asserts an
+//      out-of-scope role is actually absent from the response.
+//
+//    'submitCalibrationVote validates the evaluated user belongs to the org' — REMOVED 2026-08-05
+//      (#57), ninebox.ts deleted. C# equivalents assert the 404 AND that no vote row was written:
+//      SubmitVote_cross_org_evaluated_user_is_not_found +
+//      SubmitVote_nonexistent_evaluated_user_is_not_found (NineBoxWriteTests.cs).
+//
+//    'updateActionPlan guards responsibility reassignment' — REMOVED 2026-08-05 (#56),
+//      engagement.ts no longer declares updateActionPlan or createActionPlan; C# is the sole
+//      writer of action_plans. This tripwire was ALREADY partly hollow: it sliced from
+//      `src.indexOf('updateActionPlan')` to end-of-file, so it only ever proved that SOME
+//      assertSubjectInScope call appeared after that point, not that the reassignment path
+//      carried one. The guarantee is now behavioural — EngagementWriteEndpoints.cs:259-262
+//      (assertSubjectInScope on a provided responsibleId) + EngagementWriteRepository.cs:230-231
+//      (the H1 in-org backstop) — asserted by EngagementWriteTests.cs and
+//      EngagementWriteEndpointAuthTests.cs. The zero-TS-writer invariant that replaces the whole
+//      TS-side family lives in tests/access/scope-wiring-engagement-write.test.ts.

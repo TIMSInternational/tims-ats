@@ -474,6 +474,17 @@ Scopes: `own` | `team` | `unit` | `company` | `organization`
 > Surveys, eNPS, climate heatmap, sentiment, action plans.
 > Screens: #16 Engagement, Climate & Culture
 
+> **STALE for this domain — read `packages/api/src/routers/engagement.ts` for the live tRPC surface
+> (2026-08-05, #56).** This table describes the pre-C#-migration tRPC surface. Only **4** of the 14
+> rows below still exist as TypeScript procedures: `listSurveys` (16.1), `getSurveyResults` (16.3),
+> `getResultsByArea` (16.6) and `getRotationRisk` (16.15). The other 10 were deleted across three
+> passes — 2026-07-29 (`createSurvey`/`activateSurvey`/`submitSurveyResponse`), 2026-07-31 (the 8
+> reads with a live FE wrapper) and 2026-08-05/#56 (`getWordCloud`, `getSentiment`,
+> `createActionPlan`, `updateActionPlan`) — because C# now serves them. The C# routes are enumerated
+> in `services/Tims.Platform/src/Tims.Api/Engagement/Engagement{Read,Write}Endpoints.cs`.
+> The rest of this document has the same class of drift and has **not** been re-verified in this
+> pass; `docs/REMAINING-WORK.md` and `docs/architecture/table-ownership.md` are canonical for status.
+
 | #     | Procedure                          | Type     | Input                                              | Output                                                                | Permission          | Used By            |
 | ----- | ---------------------------------- | -------- | -------------------------------------------------- | --------------------------------------------------------------------- | ------------------- | ------------------ |
 | 16.1  | `engagement.listSurveys`           | query    | `{ status? }`                                      | `Survey[]` with participation                                         | engagement:read     | Survey list        |
