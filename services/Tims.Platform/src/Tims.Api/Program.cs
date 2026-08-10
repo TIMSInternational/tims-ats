@@ -30,6 +30,7 @@ using Tims.Api.NineBox;
 using Tims.Api.Reporting;
 using Tims.Api.Succession;
 using Tims.Api.Monitoring;
+using Tims.Api.PlatformOrganizations;
 using Tims.Api.TeamIntel;
 using Tims.Api.Validation;
 using Tims.Application.Access;
@@ -48,6 +49,7 @@ using Tims.Application.NineBox;
 using Tims.Application.Reporting;
 using Tims.Application.Succession;
 using Tims.Application.Monitoring;
+using Tims.Application.PlatformOrganizations;
 using Tims.Application.TeamIntel;
 using Tims.Application.Validation;
 using Tims.Domain.Access;
@@ -71,6 +73,7 @@ using Tims.Infrastructure.RateLimiting;
 using Tims.Infrastructure.Reporting;
 using Tims.Infrastructure.Succession;
 using Tims.Infrastructure.Monitoring;
+using Tims.Infrastructure.PlatformOrganizations;
 using Tims.Infrastructure.TeamIntel;
 using Tims.Infrastructure.Validation;
 
@@ -272,6 +275,14 @@ try
     builder.Services.AddDbContext<MonitoringReadDbContext>(options => options.UseNpgsql(databaseConnectionString));
     builder.Services.AddScoped<IMonitoringReadRepository, MonitoringReadRepository>();
     builder.Services.AddScoped<MonitoringReadUseCase>();
+
+    // Phase-5 slice 19 (#76): platform-owner ORGANIZATIONS READ. Cross-org by design and NEVER wrapped
+    // in TenantScope — PlatformOwnerGate is the entire authorization boundary. Read-only over
+    // Prisma-owned tables (efcoreReadOnly): this slice adds no writer and moves nothing in the ledger.
+    // Dark unless PlatformOrganizationsReadEnabled (deploy-gated cutover).
+    builder.Services.AddDbContext<PlatformOrganizationsReadDbContext>(options => options.UseNpgsql(databaseConnectionString));
+    builder.Services.AddScoped<IPlatformOrganizationsReadRepository, PlatformOrganizationsReadRepository>();
+    builder.Services.AddScoped<PlatformOrganizationsReadUseCase>();
 
     // §8 Q0b slice 2 / issue #172: the CROSS-ORG alert-metric read for the alert-evaluation cron — the last
     // blocker on flips #64 and #66. Deliberately REUSES MonitoringReadDbContext above rather than adding a
@@ -964,6 +975,11 @@ try
     if (externalOptions.MonitoringReadEnabled || isOpenApiDocGeneration)
     {
         app.MapMonitoringReadEndpoints();
+    }
+
+    if (externalOptions.PlatformOrganizationsReadEnabled || isOpenApiDocGeneration)
+    {
+        app.MapPlatformOrganizationsReadEndpoints();
     }
 
     // §8 Q0b slice 2 / issue #172: GET /internal/alert-metrics — the cross-org metric read for the
