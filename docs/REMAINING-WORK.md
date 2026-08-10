@@ -225,6 +225,20 @@ describe-service`; only the frontend Vercel flag was missing.)
     `engagement:read` grants or eNPS fixtures for the test orgs; see commit `7fd23a7`). Backend flag
     was rolled back immediately, harness fixed + 782/782 unit + 1012/1012 integration tests still
     passing, re-verified 43/43 PASS, then re-flipped for real.
+  - Platform organizations (Phase-5 Slice-19 read, Slice-20 write) — #76. Platform-owner-only and
+    deliberately CROSS-ORG. **BOTH DARK**, no FE flag, no parity-registry entry (`surfaces.ts` covers 4
+    domains — #195), so step 5 is currently unrunnable by anyone rather than merely Federico-gated.
+    Slice 19 (PR #198) ported `getOrganizationKpis`/`listOrganizations`/`getOrganization` behind
+    `Platform:PlatformOrganizationsReadEnabled`. Slice 20 ported `updateOrganization`/
+    `suspendOrganization` behind `Platform:PlatformOrganizationsWriteEnabled`, which is the
+    one-active-writer control for `organizations` (now `efcoreStranglerWrite`). The write's audit row is
+    **fail-CLOSED and transactional**, a divergence from the TS `.catch(() => {})` decided by Federico on
+    #76 and mutation-proved. `createOrganization` is **slice 21** — a 7-table provisioning transaction
+    that must first port the shared `org-provisioning` service, which is what **#75** actually depends on.
+    Slice 20 also fixed a defect slice 19 shipped: the read context mapped four native Postgres enum
+    columns to C# strings on a plain connection string, so all three read endpoints would have 500'd the
+    moment the flag was flipped. See `docs/architecture/csharp-migration/phase-5-slice-19-platform-organizations-read.md`
+    and `…-slice-20-platform-organizations-write.md`.
   - **Cutover-verification harness** (`scripts/parity/`, PRs #177–#194): a TypeScript CLI proving
     parity/RLS/RBAC for each surface against the real Supabase prod DB before any flag flips.
   - **FE/TS dark-cutover wrapper layer (2026-07-27, PRs #197–#212) — now fully COMPLETE, both reads and

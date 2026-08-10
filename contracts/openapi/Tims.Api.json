@@ -1346,6 +1346,110 @@
             "description": "OK"
           }
         }
+      },
+      "patch": {
+        "tags": [
+          "PlatformOrganizations"
+        ],
+        "operationId": "UpdatePlatformOrganization",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateOrganizationBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformOrganizationRow"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/platform/organizations/{id}/suspend": {
+      "post": {
+        "tags": [
+          "PlatformOrganizations"
+        ],
+        "operationId": "SuspendPlatformOrganization",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SuspendOrganizationBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformOrganizationRow"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
       }
     },
     "/internal/alert-metrics": {
@@ -10086,6 +10190,83 @@
           }
         }
       },
+      "PlatformOrganizationRow": {
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "domain",
+          "logo",
+          "plan",
+          "settings",
+          "billingEmail",
+          "isActive",
+          "createdAt",
+          "updatedAt",
+          "deletedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "domain": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "logo": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "plan": {
+            "type": "string"
+          },
+          "settings": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JsonNode"
+              }
+            ]
+          },
+          "billingEmail": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "deletedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
       "PromotionEquityView": {
         "required": [
           "year",
@@ -11682,6 +11863,17 @@
           }
         }
       },
+      "SuspendOrganizationBody": {
+        "required": [
+          "suspend"
+        ],
+        "type": "object",
+        "properties": {
+          "suspend": {
+            "type": "boolean"
+          }
+        }
+      },
       "TeamBusinessUnitView": {
         "required": [
           "id",
@@ -12240,6 +12432,73 @@
         "type": "object",
         "properties": {
           "targetBandLevel": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "UpdateOrganizationBody": {
+        "required": [
+          "name",
+          "plan",
+          "isActive",
+          "settings"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "plan": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "isActive": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "settings": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/UpdateOrganizationSettingsBody"
+              }
+            ]
+          }
+        }
+      },
+      "UpdateOrganizationSettingsBody": {
+        "required": [
+          "locale",
+          "timezone",
+          "currency"
+        ],
+        "type": "object",
+        "properties": {
+          "locale": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "timezone": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "currency": {
             "type": [
               "null",
               "string"

@@ -280,9 +280,31 @@ try
     // in TenantScope — PlatformOwnerGate is the entire authorization boundary. Read-only over
     // Prisma-owned tables (efcoreReadOnly): this slice adds no writer and moves nothing in the ledger.
     // Dark unless PlatformOrganizationsReadEnabled (deploy-gated cutover).
-    builder.Services.AddDbContext<PlatformOrganizationsReadDbContext>(options => options.UseNpgsql(databaseConnectionString));
+    // A dedicated data source with EnableUnmappedTypes, shared by the read and write contexts of this
+    // domain: organizations.plan / subscriptions.plan+status / invoices.status / platform_invitations.status
+    // are NATIVE Prisma enum columns mapped to C# strings, and EFCore.PG throws on those without it. Slice 19
+    // shipped WITHOUT this and would have 500'd on every read once flipped on — the fault is invisible to
+    // unit tests and only appears against a real Postgres (found by the slice-20 integration tests; guarded
+    // by PlatformOrganizationsReadDbContextTests). Registered as a WRAPPER, not the open NpgsqlDataSource
+    // service type, so EnableUnmappedTypes cannot bleed into every other string-based context. Built lazily,
+    // so a dark-flag boot on a placeholder DB never opens it.
+    builder.Services.AddSingleton(_ =>
+        new PlatformOrganizationsDataSourceHolder(PlatformOrganizationsDataSource.Build(databaseConnectionString ?? string.Empty)));
+    builder.Services.AddDbContext<PlatformOrganizationsReadDbContext>((sp, options) =>
+        options.UseNpgsql(sp.GetRequiredService<PlatformOrganizationsDataSourceHolder>().DataSource));
     builder.Services.AddScoped<IPlatformOrganizationsReadRepository, PlatformOrganizationsReadRepository>();
     builder.Services.AddScoped<PlatformOrganizationsReadUseCase>();
+
+    // Phase-5 slice 20 (#76): platform-owner ORGANIZATIONS WRITE (updateOrganization/suspendOrganization).
+    // Its OWN context, mapping organizations AND audit_logs, because the fail-closed audit decided on #76
+    // only holds if the audit INSERT shares the org UPDATE's transaction — reusing AuditLogDbContext would
+    // put them in two transactions and quietly lose the guarantee. Runs UNDER TenantScope (the org id is
+    // known, so RLS stays engaged); the notification fan-out is the one unscoped part, by necessity.
+    // Dark unless PlatformOrganizationsWriteEnabled (deploy-gated cutover; TS stays the sole active writer).
+    builder.Services.AddDbContext<PlatformOrganizationsWriteDbContext>((sp, options) =>
+        options.UseNpgsql(sp.GetRequiredService<PlatformOrganizationsDataSourceHolder>().DataSource));
+    builder.Services.AddScoped<IPlatformOrganizationsWriteRepository, PlatformOrganizationsWriteRepository>();
+    builder.Services.AddScoped<PlatformOrganizationsWriteUseCase>();
 
     // §8 Q0b slice 2 / issue #172: the CROSS-ORG alert-metric read for the alert-evaluation cron — the last
     // blocker on flips #64 and #66. Deliberately REUSES MonitoringReadDbContext above rather than adding a
@@ -980,6 +1002,14 @@ try
     if (externalOptions.PlatformOrganizationsReadEnabled || isOpenApiDocGeneration)
     {
         app.MapPlatformOrganizationsReadEndpoints();
+    }
+
+    // Phase-5 slice 20 (#76): PATCH /platform/organizations/{id} + POST /platform/organizations/{id}/suspend.
+    // This flag IS the one-active-writer control for `organizations` (efcoreStranglerWrite) — with it off the
+    // routes are never mapped and TS is the sole writer.
+    if (externalOptions.PlatformOrganizationsWriteEnabled || isOpenApiDocGeneration)
+    {
+        app.MapPlatformOrganizationsWriteEndpoints();
     }
 
     // §8 Q0b slice 2 / issue #172: GET /internal/alert-metrics — the cross-org metric read for the
