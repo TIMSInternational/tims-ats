@@ -109,10 +109,20 @@ jobs:
             exit 1
           fi
 
+      # Scope widened from `packages/api/src/` to every first-party package (#189). The
+      # ownership-flip runbook's §0 P1 directs seed writers to be ported to RAW SQL, which lands in
+      # packages/db/prisma/ — the one directory this check could not see. Tests are excluded because
+      # a test asserting about the pattern has to name it (tests/perf/s2-no-loop.test.ts:33).
+      # Mirrors tests/security/sql-injection.test.ts; change both together.
       - name: No unsafe SQL patterns
         run: |
-          if grep -rn 'executeRawUnsafe\|queryRawUnsafe' packages/api/src/ --include="*.ts" 2>/dev/null; then
+          hits=$(grep -rn 'executeRawUnsafe\|queryRawUnsafe' packages/ apps/web/ workers/ scripts/ \
+            --include="*.ts" --include="*.tsx" 2>/dev/null \
+            | grep -v node_modules \
+            | grep -vE '\.(test|spec)\.(ts|tsx):' || true)
+          if [ -n "$hits" ]; then
             echo "::error::Found executeRawUnsafe or queryRawUnsafe — SQL injection risk"
+            printf '%s\n' "$hits"
             exit 1
           fi
 
