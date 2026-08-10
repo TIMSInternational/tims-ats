@@ -37,7 +37,7 @@ public sealed class SecurityDenialAuditTests(MonitoringReadFixture fixture)
 
     private readonly MonitoringReadFixture _fixture = fixture;
 
-    private WebApplicationFactory<Program> EnabledFactory(bool trustXRealIp = false) =>
+    private WebApplicationFactory<Program> EnabledFactory(bool trustXRealIp = false, string? auditDisabled = null) =>
         new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
             builder.UseSetting("Platform:DatabaseConnectionString", _fixture.ConnectionString);
@@ -45,6 +45,11 @@ public sealed class SecurityDenialAuditTests(MonitoringReadFixture fixture)
             if (trustXRealIp)
             {
                 builder.UseSetting("Platform:TrustXRealIpHeader", "true");
+            }
+
+            if (auditDisabled is not null)
+            {
+                builder.UseSetting("Platform:SecurityDenialAuditDisabled", auditDisabled);
             }
             builder.UseSetting("Platform:SupabaseJwtIssuer", Issuer);
             builder.UseSetting("Platform:SupabaseJwtAudience", Audience);
@@ -187,6 +192,42 @@ public sealed class SecurityDenialAuditTests(MonitoringReadFixture fixture)
 
         var row = Assert.Single(await DenialRowsAsync());
         Assert.Equal("203.0.113.66", row.IpAddress);
+    }
+
+    [Fact]
+    public async Task The_kill_switch_removes_the_middleware_but_leaves_the_denial_intact()
+    {
+        // #181. A global middleware on the auth path that writes to the DB on every 401/403 needs a way
+        // OFF that is not a rebuild-and-redeploy (the image ships by immutable tag, auto-deploy off).
+        // The denial itself must be untouched — this disables the OBSERVER, never the control.
+        await ClearDenialsAsync();
+        await using var factory = EnabledFactory(auditDisabled: "true");
+        using var client = factory.CreateClient();
+
+        var response = await Get(client, ExecutiveKpis, Mint(MonitoringReadFixture.NoGrantSub));
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Empty(await DenialRowsAsync());
+    }
+
+    [Theory]
+    [InlineData("false")]
+    [InlineData("TRUE")]
+    [InlineData("1")]
+    [InlineData("yes")]
+    [InlineData("")]
+    public async Task A_garbled_kill_switch_value_leaves_the_audit_ON(string flag)
+    {
+        // The polarity that matters. This flag is DISABLED-phrased precisely because the middleware is
+        // already live: anything other than the exact string "true" must keep the control running, so a
+        // typo in configuration can never silently stop a live security control from recording denials.
+        await ClearDenialsAsync();
+        await using var factory = EnabledFactory(auditDisabled: flag);
+        using var client = factory.CreateClient();
+
+        await Get(client, ExecutiveKpis, Mint(MonitoringReadFixture.NoGrantSub));
+
+        Assert.Single(await DenialRowsAsync());
     }
 
     [Fact]

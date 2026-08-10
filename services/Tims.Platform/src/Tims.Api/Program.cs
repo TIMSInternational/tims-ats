@@ -781,7 +781,22 @@ try
     // back out it sees both the resolved tenant (to attribute the row) and the final 401/403 from
     // any gate below — including the rate limiter's own rejections and every *StaffGate. It writes
     // nothing on success and never alters the response.
-    app.UseMiddleware<SecurityDenialAuditMiddleware>();
+    // #181 — the one kill switch. DISABLED-phrased, not Enabled-phrased: this middleware is already
+    // live, so a default-false `Enabled` flag would have silently switched off a live security control on
+    // the next deploy. Absent or garbled ⇒ the control stays ON.
+    // Resolved here rather than reusing the `externalOptions` local below — that one is declared further
+    // down, after the middleware pipeline is built.
+    var pipelineOptions = app.Services.GetRequiredService<IOptions<PlatformOptions>>().Value;
+    if (SecurityDenialAuditMiddleware.IsDisabled(pipelineOptions.SecurityDenialAuditDisabled))
+    {
+        app.Logger.LogWarning(
+            "SECURITY: Platform:SecurityDenialAuditDisabled is set — authz_denied audit rows are NOT being "
+            + "written. This is an incident-response escape hatch, not a steady state.");
+    }
+    else
+    {
+        app.UseMiddleware<SecurityDenialAuditMiddleware>();
+    }
 
     // Rate limiting runs AFTER principal resolution (so the resolved TIMS principal is available to
     // key the bucket) but BEFORE authorization/handlers. Infra + auth-probe paths are exempt inside

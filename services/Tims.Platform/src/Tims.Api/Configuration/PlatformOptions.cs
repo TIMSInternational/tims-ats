@@ -482,4 +482,25 @@ public sealed class PlatformOptions
     /// the opposite of MfaEnforced — a garbled value here fails to the SAFE (stripping) side.
     /// </summary>
     public string? TrustXRealIpHeader { get; init; }
+
+    /// <summary>
+    /// #181 — the KILL SWITCH for <see cref="Tims.Api.Authentication.SecurityDenialAuditMiddleware"/>.
+    /// Exact "true" removes it from the pipeline entirely.
+    ///
+    /// <para><b>Note the polarity, and why it is not <c>…Enabled</c> like every other surface here.</b>
+    /// Those flags gate NEW surfaces that ship dark, so `Enabled = false` is the safe default. This
+    /// middleware is ALREADY LIVE in production — it went in with #177 and is unconditional. Expressing
+    /// it as `SecurityDenialAuditEnabled` with the house default of `false` would mean the next deploy
+    /// silently switched OFF a live security control, which is exactly the class of accident the flag is
+    /// meant to protect against. So it is phrased as a disable, and the absent/garbled value keeps the
+    /// control ON.</para>
+    ///
+    /// <para><b>Why a switch at all.</b> It is a global middleware on the auth path that adds a DB write
+    /// to every 401/403. The image is deployed by immutable tag with auto-deployments off, so without
+    /// this the only way to stop it misbehaving in production is a rebuild, push, tag change and
+    /// redeploy. Turning off an audit control is itself a risk, so flipping it logs a startup WARNING
+    /// rather than passing silently — an operator who forgets to flip it back should have to explain a
+    /// log line.</para>
+    /// </summary>
+    public string? SecurityDenialAuditDisabled { get; init; }
 }

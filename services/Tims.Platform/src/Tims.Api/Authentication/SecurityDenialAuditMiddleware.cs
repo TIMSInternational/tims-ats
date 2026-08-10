@@ -43,7 +43,24 @@ public sealed class SecurityDenialAuditMiddleware(RequestDelegate next)
     /// <summary>Mirrors observeDenial's MFA carve-out: those are audited distinctly, not as generic denials.</summary>
     internal const string MfaStepUpHeader = "x-tims-mfa-required";
 
-    public async Task InvokeAsync(HttpContext context, ISecurityEventWriter securityEventWriter)
+    /// <summary>
+    /// #181 kill switch — exact "true" only. DISABLED-phrased on purpose: this middleware is already live,
+    /// so an `Enabled`-phrased flag with the house default of false would have silently switched off a
+    /// live security control on the next deploy. An absent or garbled value keeps the control ON, which is
+    /// the safe direction for an audit control (the opposite polarity to a feature flag like MfaEnforced,
+    /// which fails OPEN so it cannot lock operators out).
+    /// </summary>
+    public static bool IsDisabled(string? flag) => string.Equals(flag, "true", StringComparison.Ordinal);
+
+    /// <remarks>
+    /// #181: <c>ISecurityEventWriter</c> is resolved from <see cref="HttpContext.RequestServices"/> at the
+    /// point of use, NOT as an <c>InvokeAsync</c> parameter. <c>UseMiddleware</c> resolves those
+    /// parameters on EVERY request, and this one is scoped over a scoped <c>AuditLogDbContext</c> — so
+    /// taking it as a parameter constructed a DbContext for 100% of traffic (every 200, /health, /ready,
+    /// OpenAPI) purely to be discarded, on a service whose stated target is thousands of concurrent
+    /// users. Denials are the rare path; pay for the writer only on that path.
+    /// </remarks>
+    public async Task InvokeAsync(HttpContext context)
     {
         await _next(context).ConfigureAwait(false);
 
@@ -111,6 +128,7 @@ public sealed class SecurityDenialAuditMiddleware(RequestDelegate next)
                 ? $"/{routeEndpoint.RoutePattern.RawText?.TrimStart('/')}"
                 : context.Request.Path.Value ?? "/";
 
+            var securityEventWriter = context.RequestServices.GetRequiredService<ISecurityEventWriter>();
             await securityEventWriter.WriteAsync(
                 new SecurityEvent(
                     organizationId,
