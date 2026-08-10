@@ -40,10 +40,15 @@ public sealed class MfaStepUpMiddleware(RequestDelegate next)
 {
     private readonly RequestDelegate _next = next;
 
+    /// <remarks>
+    /// #181: the writer is resolved lazily (see SecurityDenialAuditMiddleware's note). This middleware
+    /// early-returns for the overwhelming majority of requests — the flag is off, or the principal is not
+    /// staff — and constructing a scoped AuditLogDbContext per request to reach that return was pure cost.
+    /// <c>IOptions</c> stays a parameter: it is a singleton, so resolving it is free.
+    /// </remarks>
     public async Task InvokeAsync(
         HttpContext context,
-        IOptions<PlatformOptions> platformOptions,
-        ISecurityEventWriter securityEventWriter)
+        IOptions<PlatformOptions> platformOptions)
     {
         // STAFF only. `Candidate` is a portal session with no staff row, and `ExternalApiKey` has no
         // Supabase session and therefore no `aal` at all — TS gates on protectedProcedure, which
@@ -79,6 +84,7 @@ public sealed class MfaStepUpMiddleware(RequestDelegate next)
             if (Guid.TryParse(tenant.OrganizationId, out var organizationId))
             {
                 _ = Guid.TryParse(AuditActor.ActorFor(tenant), out var actorId);
+                var securityEventWriter = context.RequestServices.GetRequiredService<ISecurityEventWriter>();
                 await securityEventWriter.WriteAsync(
                     new SecurityEvent(
                         organizationId,
