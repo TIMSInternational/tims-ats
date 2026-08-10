@@ -37,11 +37,15 @@ public sealed class SecurityDenialAuditTests(MonitoringReadFixture fixture)
 
     private readonly MonitoringReadFixture _fixture = fixture;
 
-    private WebApplicationFactory<Program> EnabledFactory() =>
+    private WebApplicationFactory<Program> EnabledFactory(bool trustXRealIp = false) =>
         new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
             builder.UseSetting("Platform:DatabaseConnectionString", _fixture.ConnectionString);
             builder.UseSetting("Platform:MonitoringReadEnabled", "true");
+            if (trustXRealIp)
+            {
+                builder.UseSetting("Platform:TrustXRealIpHeader", "true");
+            }
             builder.UseSetting("Platform:SupabaseJwtIssuer", Issuer);
             builder.UseSetting("Platform:SupabaseJwtAudience", Audience);
 
@@ -141,22 +145,48 @@ public sealed class SecurityDenialAuditTests(MonitoringReadFixture fixture)
         Assert.Contains("FORBIDDEN", row.Metadata);
         // The ROUTE PATTERN, not the raw URL — so a path id cannot smuggle caller-controlled text in.
         Assert.Equal("platform:GET /monitoring/executive-kpis", row.Entity);
-        // #174's derivation: the LAST xff hop, never the attacker-chosen first.
+        // #174's derivation: the LAST xff hop, never the attacker-chosen first. (#181: `x-real-ip` is
+        // stripped by default on this deployment, so XFF is the only surviving source.)
         Assert.Equal("10.0.0.9", row.IpAddress);
     }
 
     [Fact]
-    public async Task The_audit_ip_prefers_the_platform_edge_header()
+    public async Task A_client_supplied_x_real_ip_is_IGNORED_by_default()
     {
+        // #181. This test previously asserted the OPPOSITE — that a caller-supplied `x-real-ip` becomes
+        // the audit row's address — under the name `The_audit_ip_prefers_the_platform_edge_header`. That
+        // name encoded an assumption from the TS deployment (Vercel does set the header) which is FALSE
+        // for this service: it runs on App Runner with no ALB/CloudFront, and App Runner neither sets nor
+        // strips `x-real-ip`. So the "platform edge header" was in fact the client, and the one forensic
+        // field a §21 obligation produces was attacker-chosen. TrustedProxyHeaderMiddleware now strips it
+        // and the derivation falls through to the last XFF hop, which an appending proxy controls.
         await ClearDenialsAsync();
         await using var factory = EnabledFactory();
         using var client = factory.CreateClient();
 
         await Get(client, ExecutiveKpis, Mint(MonitoringReadFixture.NoGrantSub),
-            xff: "1.2.3.4", realIp: "10.0.0.9");
+            xff: "1.2.3.4, 10.0.0.9", realIp: "203.0.113.66");
 
         var row = Assert.Single(await DenialRowsAsync());
-        Assert.Equal("10.0.0.9", row.IpAddress);
+        Assert.Equal("10.0.0.9", row.IpAddress);          // last XFF hop
+        Assert.NotEqual("203.0.113.66", row.IpAddress);   // the spoofed value never lands
+    }
+
+    [Fact]
+    public async Task An_explicitly_TRUSTED_x_real_ip_is_honoured()
+    {
+        // The escape hatch, so putting a real edge in front later does not require a code change. Pinned
+        // so the flag is proven to do something — an inert opt-in would be worse than none, since the
+        // operator would believe the header is being honoured when it is silently dropped.
+        await ClearDenialsAsync();
+        await using var factory = EnabledFactory(trustXRealIp: true);
+        using var client = factory.CreateClient();
+
+        await Get(client, ExecutiveKpis, Mint(MonitoringReadFixture.NoGrantSub),
+            xff: "1.2.3.4, 10.0.0.9", realIp: "203.0.113.66");
+
+        var row = Assert.Single(await DenialRowsAsync());
+        Assert.Equal("203.0.113.66", row.IpAddress);
     }
 
     [Fact]

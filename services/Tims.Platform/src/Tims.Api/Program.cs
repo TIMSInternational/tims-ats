@@ -20,6 +20,7 @@ using Tims.Api.Billing;
 using Tims.Api.Compensation;
 using Tims.Api.Configuration;
 using Tims.Api.HealthChecks;
+using Tims.Api.Http;
 using Tims.Api.RateLimiting;
 using Tims.Api.Evaluation360;
 using Tims.Api.ExternalVendor;
@@ -755,8 +756,16 @@ try
 
     var app = builder.Build();
 
-    // CORS runs FIRST — an unauthenticated preflight (OPTIONS) is answered by this
-    // middleware before it can reach authentication or the fail-closed rate limiter.
+    // #181 — strip the client-controlled `x-real-ip` before ANYTHING can read it. This is deliberately
+    // the first middleware in the pipeline: both consumers of the trusted-IP rule (the rate limiter's
+    // anonymous key and every audit writer) read the raw header, so the untrusted value has to be gone
+    // before either runs. App Runner does not set or strip this header, so on this deployment it was
+    // caller-supplied. See TrustedProxyHeaderMiddleware for why the fix is here and not in the shared
+    // ClientIp kernel, which is pinned cross-stack.
+    app.UseMiddleware<TrustedProxyHeaderMiddleware>();
+
+    // CORS runs FIRST among the request-handling middlewares — an unauthenticated preflight (OPTIONS) is
+    // answered by this middleware before it can reach authentication or the fail-closed rate limiter.
     app.UseCors(BrowserCorsPolicyName);
 
     app.UseAuthentication();

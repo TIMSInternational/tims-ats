@@ -43,7 +43,10 @@ public sealed class ExternalDenialAuditTests(ExternalAssessmentFixture fixture)
             request.Headers.Add("Authorization", $"Bearer {token}");
         }
 
-        request.Headers.Add("x-real-ip", "203.0.113.42");
+        // #181: `x-real-ip` is stripped as untrusted on this deployment, so the address must come from
+        // the LAST X-Forwarded-For hop — the entry an appending proxy writes. The leading hop is the
+        // caller-controlled one and must never be picked.
+        request.Headers.Add("x-forwarded-for", "198.51.100.1, 203.0.113.42");
         request.Headers.UserAgent.ParseAdd("vendor-integration/2.1");
         return await client.SendAsync(request);
     }

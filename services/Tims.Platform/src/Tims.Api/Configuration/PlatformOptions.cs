@@ -465,4 +465,21 @@ public sealed class PlatformOptions
     /// hops would mean a leak at either end grants both.
     /// </summary>
     public string? AlertMetricsCronSecret { get; init; }
+
+    /// <summary>
+    /// #181: may the inbound <c>x-real-ip</c> header be trusted as the client address? DEFAULT (unset) is
+    /// NO — <see cref="Tims.Api.Http.TrustedProxyHeaderMiddleware"/> strips it, and
+    /// <see cref="Tims.Domain.Http.ClientIp"/> falls through to the last <c>X-Forwarded-For</c> hop, the
+    /// entry an appending proxy controls.
+    ///
+    /// This service runs on App Runner with no ALB or CloudFront in front, and App Runner does not set or
+    /// strip <c>x-real-ip</c> — so trusting it made the forensic IP on every audit row caller-chosen, and
+    /// let a caller rotate the anonymous rate-limit key. Set this to the exact string "true" ONLY if an
+    /// edge that genuinely writes AND overwrites the header is placed in front of the service.
+    ///
+    /// A STRING, not a bool, for the same reason as <see cref="MfaEnforced"/>: the configuration layer
+    /// must not be able to coerce "1"/"yes"/"TRUE" into widening a trust decision. Note the polarity is
+    /// the opposite of MfaEnforced — a garbled value here fails to the SAFE (stripping) side.
+    /// </summary>
+    public string? TrustXRealIpHeader { get; init; }
 }
