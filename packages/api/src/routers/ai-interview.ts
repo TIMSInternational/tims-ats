@@ -22,7 +22,11 @@ import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import type { Prisma } from '@tims/db';
 import { logger } from '@tims/shared';
-import { assertAiInterviewEnabled, isAiInterviewEnabled, AI_INTERVIEW_DEFAULT_MAX_MINUTES } from '../services/ai-interview-access.service';
+import {
+  assertAiInterviewEnabled,
+  isAiInterviewEnabled,
+  AI_INTERVIEW_DEFAULT_MAX_MINUTES,
+} from '../services/ai-interview-access.service';
 // tenantDb is used by staff-path queries (budget check reads) that run inside a
 // tenant-scoped request context. systemDb (aliased as candidateDb here) is used for
 // all candidate token-path writes — the public candidate flow sets no org RLS GUC.
@@ -32,6 +36,7 @@ import { assertScoped, scopeWhereFor } from '../access';
 import { aiInterviewService } from '../services/ai-interview.service';
 import { aiInterviewRepository } from '../repositories/ai-interview.repository';
 import { getSignedUrl } from '../integrations/elevenlabs';
+import { isElevenLabsConfigured } from '../lib/elevenlabs';
 
 // ---------------------------------------------------------------------------
 // Input schemas
@@ -50,13 +55,20 @@ const DEFAULT_VOICE_BUDGET_USD = 25;
 // ---------------------------------------------------------------------------
 
 /**
- * Fail-closed ElevenLabs configuration check.
- * The integration module's getSignedUrl already throws SERVICE_UNAVAILABLE if the
- * key is absent, but we check here first so the gate fires before any DB work.
+ * The fail-closed ElevenLabs configuration check now comes from `../lib/elevenlabs`.
+ *
+ * This file used to carry its own copy that tested only ELEVENLABS_API_KEY and
+ * ELEVENLABS_AGENT_ID. That is TWO of the three vars the integration needs, and the missing
+ * one — ELEVENLABS_WEBHOOK_SECRET — is the one that matters AFTER the call: with the key and
+ * agent set but no secret, `start` admitted the interview, the candidate completed it, and then
+ * `verifyWebhookSignature` (integrations/elevenlabs.ts:177) returned false because the secret was
+ * absent. The webhook fails closed by design, so the result was never ingested: no analysis, no
+ * billing, no error surfaced to anyone. A partially-configured integration looked healthy right up
+ * to the point where the data was silently dropped.
+ *
+ * The shared helper checks all three and already existed — it was imported by nothing but tests,
+ * so the correct gate shipped dead while the incomplete duplicate was the live one.
  */
-function isElevenLabsConfigured(): boolean {
-  return !!process.env.ELEVENLABS_API_KEY && !!process.env.ELEVENLABS_AGENT_ID;
-}
 
 /**
  * Build dynamic variables for the ElevenLabs conversation from the guide questions
@@ -184,131 +196,129 @@ export const aiInterviewRouter = router({
    *
    * PUBLIC — token-authorised; no Supabase login required.
    */
-  start: publicProcedure
-    .input(candidateTokenInput)
-    .mutation(async ({ input }) => {
-      // Gate 1: ElevenLabs must be configured before any DB work.
-      if (!isElevenLabsConfigured()) {
-        throw new TRPCError({
-          code: 'SERVICE_UNAVAILABLE',
-          message: 'El servicio de entrevista de voz no esta disponible en este momento',
-        });
-      }
-
-      // Gate 2: Token must resolve to a session.
-      const session = await aiInterviewRepository.findSessionByCandidateToken(input.candidateToken);
-      if (!session) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Enlace de entrevista invalido' });
-      }
-
-      // Feature gate: AI Voice Interview must be enabled for this org (paid add-on).
-      await assertAiInterviewEnabled(session.organizationId);
-
-      // Gate 3: Session must still be pending.
-      if (session.status !== AiInterviewStatus.pending) {
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: 'Esta sesion de entrevista ya fue iniciada o ha finalizado',
-        });
-      }
-
-      // Gate 4: Candidate must have consented first.
-      if (!session.consentedAt) {
-        throw new TRPCError({
-          code: 'FORBIDDEN',
-          message: 'Debe otorgar consentimiento primero',
-        });
-      }
-
-      // Gate 5 (meter-and-bill, non-blocking): monthly voice spend vs soft cap.
-      // Entitlement enforcement NEVER hard-blocks (owner decision, 2026-07-08) — the
-      // interview always proceeds regardless of budget/usage. We still compute the
-      // month-to-date spend and, when it is over the soft cap, emit a structured
-      // non-blocking log so ops/billing has visibility; per-session cost continues to
-      // be recorded in aiAgentUsageLog downstream by the webhook path.
-      // Effective cap = per-org config.monthlyBudget if set, otherwise
-      // DEFAULT_VOICE_BUDGET_USD (soft threshold for the metering log only).
-      // NOTE: EffectiveEntitlement.limit for `ai_voice_interview` is denominated in
-      // MINUTES (and may be null = unlimited), while this aggregate is in USD spend —
-      // they are not directly comparable. Precise minute-based entitlement metering
-      // and invoice line-item generation from this signal is Slice 2.
-      const now = new Date();
-      const config = await db.aiAgentOrgConfig.findFirst({
-        where: { organizationId: session.organizationId, agent: { slug: 'ai-voice-interview' } },
-        select: { monthlyBudget: true },
+  start: publicProcedure.input(candidateTokenInput).mutation(async ({ input }) => {
+    // Gate 1: ElevenLabs must be configured before any DB work.
+    if (!isElevenLabsConfigured()) {
+      throw new TRPCError({
+        code: 'SERVICE_UNAVAILABLE',
+        message: 'El servicio de entrevista de voz no esta disponible en este momento',
       });
+    }
 
-      const effectiveCap = config?.monthlyBudget ?? DEFAULT_VOICE_BUDGET_USD;
-      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-      const usageAgg = await db.aiAgentUsageLog.aggregate({
-        where: {
+    // Gate 2: Token must resolve to a session.
+    const session = await aiInterviewRepository.findSessionByCandidateToken(input.candidateToken);
+    if (!session) {
+      throw new TRPCError({ code: 'NOT_FOUND', message: 'Enlace de entrevista invalido' });
+    }
+
+    // Feature gate: AI Voice Interview must be enabled for this org (paid add-on).
+    await assertAiInterviewEnabled(session.organizationId);
+
+    // Gate 3: Session must still be pending.
+    if (session.status !== AiInterviewStatus.pending) {
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message: 'Esta sesion de entrevista ya fue iniciada o ha finalizado',
+      });
+    }
+
+    // Gate 4: Candidate must have consented first.
+    if (!session.consentedAt) {
+      throw new TRPCError({
+        code: 'FORBIDDEN',
+        message: 'Debe otorgar consentimiento primero',
+      });
+    }
+
+    // Gate 5 (meter-and-bill, non-blocking): monthly voice spend vs soft cap.
+    // Entitlement enforcement NEVER hard-blocks (owner decision, 2026-07-08) — the
+    // interview always proceeds regardless of budget/usage. We still compute the
+    // month-to-date spend and, when it is over the soft cap, emit a structured
+    // non-blocking log so ops/billing has visibility; per-session cost continues to
+    // be recorded in aiAgentUsageLog downstream by the webhook path.
+    // Effective cap = per-org config.monthlyBudget if set, otherwise
+    // DEFAULT_VOICE_BUDGET_USD (soft threshold for the metering log only).
+    // NOTE: EffectiveEntitlement.limit for `ai_voice_interview` is denominated in
+    // MINUTES (and may be null = unlimited), while this aggregate is in USD spend —
+    // they are not directly comparable. Precise minute-based entitlement metering
+    // and invoice line-item generation from this signal is Slice 2.
+    const now = new Date();
+    const config = await db.aiAgentOrgConfig.findFirst({
+      where: { organizationId: session.organizationId, agent: { slug: 'ai-voice-interview' } },
+      select: { monthlyBudget: true },
+    });
+
+    const effectiveCap = config?.monthlyBudget ?? DEFAULT_VOICE_BUDGET_USD;
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const usageAgg = await db.aiAgentUsageLog.aggregate({
+      where: {
+        organizationId: session.organizationId,
+        agent: { slug: 'ai-voice-interview' },
+        createdAt: { gte: startOfMonth },
+      },
+      _sum: { costUsd: true },
+    });
+    const totalSpend = usageAgg._sum.costUsd ?? 0;
+    if (totalSpend >= effectiveCap) {
+      logger.warn(
+        {
           organizationId: session.organizationId,
-          agent: { slug: 'ai-voice-interview' },
-          createdAt: { gte: startOfMonth },
+          module: 'ai_voice_interview',
+          monthlyCapUsd: effectiveCap,
+          monthToDateSpendUsd: totalSpend,
+          overageUsd: totalSpend - effectiveCap,
         },
-        _sum: { costUsd: true },
+        'ai-interview: monthly voice spend over soft cap — meter-and-bill, interview proceeds',
+      );
+    }
+
+    // Gate 6: Resolve the ElevenLabs agent id (session-specific → env fallback).
+    const agentId = session.elevenlabsAgentId ?? process.env.ELEVENLABS_AGENT_ID ?? '';
+    if (!agentId) {
+      throw new TRPCError({
+        code: 'SERVICE_UNAVAILABLE',
+        message: 'El agente de voz no esta configurado',
       });
-      const totalSpend = usageAgg._sum.costUsd ?? 0;
-      if (totalSpend >= effectiveCap) {
-        logger.warn(
-          {
-            organizationId: session.organizationId,
-            module: 'ai_voice_interview',
-            monthlyCapUsd: effectiveCap,
-            monthToDateSpendUsd: totalSpend,
-            overageUsd: totalSpend - effectiveCap,
-          },
-          'ai-interview: monthly voice spend over soft cap — meter-and-bill, interview proceeds',
-        );
-      }
+    }
 
-      // Gate 6: Resolve the ElevenLabs agent id (session-specific → env fallback).
-      const agentId = session.elevenlabsAgentId ?? process.env.ELEVENLABS_AGENT_ID ?? '';
-      if (!agentId) {
-        throw new TRPCError({
-          code: 'SERVICE_UNAVAILABLE',
-          message: 'El agente de voz no esta configurado',
-        });
-      }
+    // Build dynamic variables from guide questions for client-side forwarding.
+    // ElevenLabs' get-signed-url does NOT support server-side dynamic_variables
+    // injection — the client SDK must send them via conversation_initiation_client_data.
+    // We pass an empty object to getSignedUrl and return the variables separately.
+    const dynamicVariables = buildDynamicVariables(session.guideQuestions);
 
-      // Build dynamic variables from guide questions for client-side forwarding.
-      // ElevenLabs' get-signed-url does NOT support server-side dynamic_variables
-      // injection — the client SDK must send them via conversation_initiation_client_data.
-      // We pass an empty object to getSignedUrl and return the variables separately.
-      const dynamicVariables = buildDynamicVariables(session.guideQuestions);
+    // Exchange the server-side API key for a short-lived signed WebSocket URL.
+    // SECURITY INVARIANT: ELEVENLABS_API_KEY is ONLY placed in the xi-api-key
+    // request header inside getSignedUrl; it is never included in return values.
+    const result = await getSignedUrl({
+      agentId,
+      dynamicVariables: {}, // client-side only — see module doc above
+      maxDurationSeconds: session.maxDurationSeconds ?? AI_INTERVIEW_DEFAULT_MAX_MINUTES * 60,
+    });
 
-      // Exchange the server-side API key for a short-lived signed WebSocket URL.
-      // SECURITY INVARIANT: ELEVENLABS_API_KEY is ONLY placed in the xi-api-key
-      // request header inside getSignedUrl; it is never included in return values.
-      const result = await getSignedUrl({
-        agentId,
-        dynamicVariables: {},   // client-side only — see module doc above
-        maxDurationSeconds: session.maxDurationSeconds ?? AI_INTERVIEW_DEFAULT_MAX_MINUTES * 60,
-      });
+    // Mark session as in_progress and record the conversation id for webhook correlation.
+    // Uses candidateDb (systemDb) — the public candidate path has no org RLS GUC set.
+    // Persist null (not '') when ElevenLabs omits conversation_id: the column is
+    // @unique String? and Postgres exempts NULL from uniqueness, so multiple sessions
+    // without a conversation id are safe. An empty string would cause a P2002 on the
+    // second session.
+    await candidateDb.aiInterviewSession.update({
+      where: { id: session.id },
+      data: {
+        status: 'in_progress',
+        elevenlabsConversationId: result.conversationId || null,
+      },
+      select: { id: true },
+    });
 
-      // Mark session as in_progress and record the conversation id for webhook correlation.
-      // Uses candidateDb (systemDb) — the public candidate path has no org RLS GUC set.
-      // Persist null (not '') when ElevenLabs omits conversation_id: the column is
-      // @unique String? and Postgres exempts NULL from uniqueness, so multiple sessions
-      // without a conversation id are safe. An empty string would cause a P2002 on the
-      // second session.
-      await candidateDb.aiInterviewSession.update({
-        where: { id: session.id },
-        data: {
-          status: 'in_progress',
-          elevenlabsConversationId: result.conversationId || null,
-        },
-        select: { id: true },
-      });
-
-      // Return the signed URL + dynamic variables for the client to forward.
-      // NEVER include any API key or secret in this response.
-      return {
-        signedUrl: result.signedUrl,
-        dynamicVariables,
-        maxDurationSeconds: session.maxDurationSeconds ?? AI_INTERVIEW_DEFAULT_MAX_MINUTES * 60,
-      };
-    }),
+    // Return the signed URL + dynamic variables for the client to forward.
+    // NEVER include any API key or secret in this response.
+    return {
+      signedUrl: result.signedUrl,
+      dynamicVariables,
+      maxDurationSeconds: session.maxDurationSeconds ?? AI_INTERVIEW_DEFAULT_MAX_MINUTES * 60,
+    };
+  }),
 
   /**
    * Read the AI-analysed result for a session.
