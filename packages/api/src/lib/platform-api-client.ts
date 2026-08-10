@@ -90,6 +90,39 @@ export async function platformPostWithAuth(
   return { status: response.status, body };
 }
 
+/**
+ * GETs the C# Platform service presenting a MACHINE credential in an explicit header, with NO
+ * `Authorization` header at all (#172).
+ *
+ * The other GET helper forwards a CALLER's `Authorization` verbatim, which presumes there is a caller
+ * with an identity. The alert-evaluation cron has none: it runs on a schedule, iterates every
+ * organization, and its credential is a shared secret held by the server. Sending that secret as
+ * `Authorization: Bearer …` would make a machine credential indistinguishable from a user token in logs
+ * and proxies, and it would collide with the platform service's JWT/ApiKey schemes — so it goes in the
+ * dedicated header the C# `CronCallerGate` reads.
+ *
+ * Returns the raw status + parsed JSON body; like the sibling helpers it deliberately does NOT throw on
+ * a non-2xx, because the caller maps statuses to its own semantics.
+ */
+export async function platformGetWithHeaders(
+  path: string,
+  headers: Record<string, string>,
+  query?: QueryParams,
+): Promise<PlatformApiResponse> {
+  if (!isPlatformApiEnabled()) {
+    throw new Error('Platform API is disabled: NEXT_PUBLIC_TIMS_PLATFORM_API_URL is unset.');
+  }
+
+  const base = PLATFORM_API_URL!.replace(/\/+$/, '');
+  const response = await fetch(`${base}${path}${buildQueryString(query)}`, {
+    method: 'GET',
+    headers: { Accept: 'application/json', ...headers },
+  });
+
+  const body = response.status === 204 ? null : await response.json().catch(() => null);
+  return { status: response.status, body };
+}
+
 /** A raw platform-API response carrying unparsed response text (see {@link platformPostRaw}). */
 export interface PlatformApiRawResponse {
   status: number;

@@ -13,6 +13,7 @@ using Serilog;
 using Serilog.Formatting.Compact;
 using StackExchange.Redis;
 using Tims.Api.AccessReview;
+using Tims.Api.AlertMetrics;
 using Tims.Api.Audit;
 using Tims.Api.Authentication;
 using Tims.Api.Billing;
@@ -31,6 +32,7 @@ using Tims.Api.Monitoring;
 using Tims.Api.TeamIntel;
 using Tims.Api.Validation;
 using Tims.Application.Access;
+using Tims.Application.AlertMetrics;
 using Tims.Application.AccessReview;
 using Tims.Application.Audit;
 using Tims.Application.Billing;
@@ -51,6 +53,7 @@ using Tims.Domain.Access;
 using Tims.Domain.Billing;
 using Tims.Domain.Identity;
 using Tims.Infrastructure.Access;
+using Tims.Infrastructure.AlertMetrics;
 using Tims.Infrastructure.AccessReview;
 using Tims.Infrastructure.Audit;
 using Tims.Infrastructure.Billing;
@@ -268,6 +271,15 @@ try
     builder.Services.AddDbContext<MonitoringReadDbContext>(options => options.UseNpgsql(databaseConnectionString));
     builder.Services.AddScoped<IMonitoringReadRepository, MonitoringReadRepository>();
     builder.Services.AddScoped<MonitoringReadUseCase>();
+
+    // §8 Q0b slice 2 / issue #172: the CROSS-ORG alert-metric read for the alert-evaluation cron — the last
+    // blocker on flips #64 and #66. Deliberately REUSES MonitoringReadDbContext above rather than adding a
+    // second context over the same two tables: the identical counts already ship in
+    // MonitoringReadRepository.GetExecutiveKpiCountsAsync, and each read here still runs under TenantScope
+    // scoped to ONE explicitly-named org, so this surface bypasses no RLS. What makes it "privileged" is the
+    // right to NAME any org, enforced at the edge by CronCallerGate's secret — not a BYPASSRLS login role.
+    builder.Services.AddScoped<IAlertMetricsReadRepository, AlertMetricsReadRepository>();
+    builder.Services.AddScoped<AlertMetricsReadUseCase>();
 
     // Phase-5 Slice 7 (efcoreReadOnly): the evaluation360 READ surface. Unlike the reporting/team-intel reads,
     // the review_cycles.status / rater_assignments.relationship / rater_assignments.status columns are NATIVE
@@ -917,6 +929,16 @@ try
     if (externalOptions.MonitoringReadEnabled || isOpenApiDocGeneration)
     {
         app.MapMonitoringReadEndpoints();
+    }
+
+    // §8 Q0b slice 2 / issue #172: GET /internal/alert-metrics — the cross-org metric read for the
+    // alert-evaluation cron (active_surveys → flip #64, pending_salary_adjustments → flip #66). NOT a staff
+    // surface: it is anonymous to the auth schemes and authenticated by the cron secret in the handler, so
+    // no tenant JWT reaches it. Dark unless the flag is on (deploy-gated cutover; TS stays the sole active
+    // reader until Federico flips it). With the flag off the route is never mapped and 404s.
+    if (externalOptions.AlertMetricsCronReadEnabled || isOpenApiDocGeneration)
+    {
+        app.MapAlertMetricsEndpoints();
     }
 
     // Evaluation360 READ surface (Phase-5 Slice 7): GET /evaluation360/cycles + /cycles/{id}/progress (STAFF:

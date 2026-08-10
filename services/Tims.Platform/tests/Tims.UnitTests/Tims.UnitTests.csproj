@@ -113,6 +113,12 @@
       <Link>client-ip-fixtures\%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <!-- #172 cross-org alert-metric floor + served-key parity fixtures (shared with the TS vitest suite:
+         tests/monitoring/alert-metrics-fixtures.test.ts). -->
+    <Content Include="..\..\..\..\contracts\alert-metrics-fixtures\*.json">
+      <Link>alert-metrics-fixtures\%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <!-- WP3.6-map HRIS mapper golden fixtures (C#-only characterization; greenfield, no TS counterpart). -->
     <Content Include="..\..\..\..\contracts\hris-fixtures\*.json">
       <Link>hris-fixtures\%(Filename)%(Extension)</Link>
