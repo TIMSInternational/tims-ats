@@ -32,9 +32,22 @@ import { summarizeSurveyResults, buildResultsByArea } from '@tims/shared';
 //
 //   KEPT, with reasons (4) — each is load-bearing TODAY, not inertia:
 //     listSurveys / getRotationRisk — the TS half of the only two LIVE parity endpoints left on
-//       the engagement read surface (scripts/parity/surfaces.ts:261 and :269 pin them as
-//       `tsProcedure`, a REQUIRED field — surfaces.ts:7). Deleting either turns `verify engagement`
-//       into a partial or total no-op right before the flip that most needs it. listSurveys also
+//       the engagement read surface (scripts/parity/surfaces.ts:261 and :269 register them as
+//       `tsProcedure`).
+//
+//       CORRECTED 2026-08-10: this comment used to call `tsProcedure` "a REQUIRED field —
+//       surfaces.ts:7" and conclude that deleting either procedure "turns `verify engagement` into a
+//       partial or total no-op". BOTH halves are now false. `tsProcedure` was made OPTIONAL by
+//       `efb7553f` (PR #144, 2026-08-06) and is declared `tsProcedure?: string` at surfaces.ts:19.
+//       When it is absent, checks/parity.ts:24-40 reports `[WEAK]` with an explicit
+//       "no tsProcedure registered … NO cross-stack comparison ran" reason, and the RLS Mode-A
+//       cross-tenant probe and the RBAC deny assertions still run — a did-not-run never renders as a
+//       tick. So these procedures CAN be deleted by flip #64, provided each endpoint is converted to
+//       C#-only by OMITTING `tsProcedure`. What must not happen is deleting the ENDPOINT or the
+//       SURFACE: that is what removes the IDOR probe, and surfaces.ts:8-18 calls it a
+//       security-coverage regression rather than a cleanup.
+//
+//       listSurveys also
 //       still backs a live invalidate-only FE consumer
 //       (engagement/climate/launch-survey-modal.tsx:58) and a static tripwire
 //       (tests/tier1/s2-engagement-wiring.test.ts:33). Their removal is runbook §7b edits 1b + 4,

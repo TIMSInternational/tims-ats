@@ -351,11 +351,18 @@ describe-service`; only the frontend Vercel flag was missing.)
   unavailable), while C# already maps both routes with the identical stub behind the identical gate
   (`EngagementReadEndpoints.cs:277,:297`) and the FE renders a static placeholder that never called
   them. **Kept, with written reasons (4):** `listSurveys` + `getRotationRisk` are the TS half of the
-  only two LIVE parity endpoints on this surface (`scripts/parity/surfaces.ts:261,:269`, where
-  `tsProcedure` is a REQUIRED field) and `listSurveys` also backs the invalidate-only FE consumer at
+  only two LIVE parity endpoints on this surface (`scripts/parity/surfaces.ts:261,:269`) and
+  `listSurveys` also backs the invalidate-only FE consumer at
   `launch-survey-modal.tsx:58`; `getSurveyResults` + `getResultsByArea` are the only TS callers of
   the golden-fixtured min-5 kernels and the only surviving relation reads into `survey_responses` —
-  all four are runbook §7b edits belonging to **flip #64**, not to this task. **Flip #68 is NOT
+  all four are runbook §7b edits belonging to **flip #64**, not to this task.
+  > **CORRECTED 2026-08-10.** This paragraph used to add "where `tsProcedure` is a REQUIRED field".
+  > It is not, and has not been since `efb7553f` (PR #144, 2026-08-06) made it
+  > `tsProcedure?: string` (`surfaces.ts:19`). An absent `tsProcedure` makes `checks/parity.ts:24-40`
+  > report `[WEAK]` with an explicit reason while the RLS and RBAC probes still run — deleting a TS
+  > procedure does NOT blind `verify engagement`. Flip #64 may therefore delete all four, provided it
+  > converts each endpoint to C#-only by omitting `tsProcedure`; deleting the ENDPOINT or SURFACE is
+  > the security-coverage regression (`surfaces.ts:8-18`), not deleting the procedure. **Flip #68 is NOT
   unblocked by this**: `action_plans` has zero TS *writers* now, but `monitoring.ts:158` still READS
   `db.actionPlan.findMany` and `access/scoped-probe.ts:79` + `entity-policies.ts:44,145` still
   register the Prisma delegate. The zero-writer invariant is pinned by
