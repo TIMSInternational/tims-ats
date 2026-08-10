@@ -49,7 +49,7 @@ Federico execution.
       (`packages/db/prisma/manual/2026-07-17-data-access-logs-immutable.sql`), CB-1b
       (`2026-07-17-audit-logs-immutable.sql`), CB-2b (`2026-07-17-add-access-reviews.sql`). Verify UPDATE/DELETE/
       TRUNCATE raise "…is append-only". These are part of "everything to prod" but do NOT block the C# service.
-- [ ] **0.3 — decide `MFA_ENFORCED` timing** (flip in Vercel after privileged users enroll a factor — TS-side, dark today).
+- [ ] **0.3 — decide MFA enforcement timing.** Since #178 this is **TWO flags that must move together**: `MFA_ENFORCED` in Vercel (web) and `Platform:MfaEnforced` on this service (terraform `mfa_enforced`, wired #179). Both dark today; both fail OPEN when unset. Flipping only the web one re-creates the #173 split-brain — the C# service would keep serving a privileged `aal1` session that tRPC refuses.
 
 ---
 

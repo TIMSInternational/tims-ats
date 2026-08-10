@@ -779,8 +779,13 @@ try
     // #173 — authz_denied observer, the port of TS's OUTERMOST `withSecurityAudit`. Registered
     // immediately AFTER principal resolution and BEFORE everything that can deny, so on the way
     // back out it sees both the resolved tenant (to attribute the row) and the final 401/403 from
-    // any gate below — including the rate limiter's own rejections and every *StaffGate. It writes
-    // nothing on success and never alters the response.
+    // any gate below — every *StaffGate, every endpoint-written 403, and UseAuthorization's own
+    // challenges. It writes nothing on success and never alters the response.
+    //
+    // CORRECTION (#182): an earlier version of this comment claimed it also sees "the rate limiter's
+    // own rejections". It does not — RateLimitMiddleware returns 429, and this observer filters to
+    // 401/403 only. TS records throttling under a distinct `rate_limit` action; there is no C#
+    // counterpart, which is a real coverage gap rather than something this middleware already covers.
     // #181 — the one kill switch. DISABLED-phrased, not Enabled-phrased: this middleware is already
     // live, so a default-false `Enabled` flag would have silently switched off a live security control on
     // the next deploy. Absent or garbled ⇒ the control stays ON.

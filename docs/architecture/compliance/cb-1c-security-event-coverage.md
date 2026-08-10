@@ -130,10 +130,33 @@ ships in TS now because auth is still TS.
 | # | Event | Site (file:line) | action / entity | fail policy |
 |---|---|---|---|---|
 | 4 | **authN failure** | server side of login — `apps/web/app/auth/callback/route.ts` (client `login/page.tsx:42` can't be trusted). Health dashboard already QUERIES `action:'login_failed'` (`platform/system.ts:41,45`). | `login_failed` / `auth`, metadata `{ emailMasked, reason, provider }` | fail-soft, non-blocking (never delay/deny login) |
-| 5 | **authZ denial** (the big one) | `trpc.ts` FORBIDDEN/UNAUTHORIZED throws: `:57,78,110,117,133,138,201,233,235,239`. Hot = `:138` (permission-grant denial). | `authz_denied` (or `authn_failed` for the UNAUTHORIZED set) / `trpc:{path}`, metadata `{ module, action, code, userId, reason }` | **fail-soft, MUST NOT convert 403→500 or grant access** |
+| 5 | **authZ denial** (the big one) | `trpc.ts` FORBIDDEN/UNAUTHORIZED throws: `:57,78,110,117,133,138,201,233,235,239`. Hot = `:138` (permission-grant denial). **C# counterpart since #177: `SecurityDenialAuditMiddleware` — see the shortfall note below.** | `authz_denied` (or `authn_failed` for the UNAUTHORIZED set) / `trpc:{path}`, metadata `{ module, action, code, userId, reason }` | **fail-soft, MUST NOT convert 403→500 or grant access** |
 | 6 | **role assignment** | `routers/user.ts:175 assignRole` (userRole upsert), `:107 create` | `role_assigned`/`role_revoked` / `user_role`, entityId=userId, `{ targetUserId, roleSlug, previousRole }` | fail-soft inline |
 | 7 | **feature-flag change** | `routers/featureFlag.ts:24 update` (:34) | `feature_flag_changed` / `feature_flag`, entityId=flag, `{ flag, enabled, previous }` | fail-soft inline |
 | 8 | **platform cross-org read/export** | platform routers' list/export queries (mutations already audited; reads/exports not): `platform/organizations.ts`, `data-requests.ts`, `usage-billing.ts`, `invoices.ts`, `ai-agents.ts` | `platform_cross_org_read`/`export` / per-resource, `{ targetOrgId, recordCount, exportFormat }` | fail-soft inline |
+
+### What #5 actually DELIVERS on the C# stack (recorded 2026-08-10, #182)
+
+The row this spec describes and the row `SecurityDenialAuditMiddleware` writes are not the same shape.
+Stating the delta rather than letting the spec imply coverage it does not have:
+
+- **`entity` is the matched ROUTE PATTERN**, `platform:{METHOD} {route}` — not `trpc:{path}`. That is
+  deliberate (an id in the URL must not smuggle unbounded caller-controlled text into the column, and
+  rows should aggregate per endpoint), but it means every `/require-permission/{module}/{action}`
+  denial collapses to one identical entity string.
+- **`metadata` carries `{ code }` only** — not `{ module, action, code, userId, reason }`. Combined with
+  the point above, **the row cannot answer "denied what?"** for the authz-probe endpoints. The module and
+  action are erased rather than recovered into metadata. A consumer of these rows will need that fixed.
+  (The API-key rows added by #180 carry `{ code, principal, apiKeyId }`.)
+- **`actorId`** is populated from the resolved principal (the real operator under impersonation), and is
+  NULL for API-key callers by construction — a key is not a person.
+- **Not covered at all:** unauthenticated 401s (no resolved principal ⇒ no org to attribute, and
+  `organization_id` is a real FK), org-less platform owners, and MFA refusals (audited distinctly as
+  `mfa_step_up_required`). Throttling is 429 and is not observed here; TS's `rate_limit` action has no
+  C# counterpart.
+- ⚠️ **Nothing in the repo READS these rows.** This spec's premise is an access-review/attestation
+  consumer; as of 2026-08-10 it does not exist (`platform/system.ts` filters a fixed action list that
+  includes neither `authz_denied` nor `mfa_step_up_required`). Tracked on #181.
 
 ## The authZ-denial approach (#5) — the delicate one
 Denials happen INSIDE middlewares that `throw`, so "log after next()" won't see them. Cleanest: a **top-level
