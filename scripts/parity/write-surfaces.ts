@@ -1415,8 +1415,10 @@ export interface AccessReviewWriteResolved extends WriteResolvedBase {
 const ACCESS_REVIEW_NOTES_MARKER = 'parity';
 
 // Coverage-audit addition (2026-07-27): 1 write under Platform__AccessReviewWriteEnabled.
-// `attest` = PlatformOwnerGate (the SAME gate as the access-review READ surface in surfaces.ts —
-// see that entry's comment) + an unconditional insert into `access_reviews`. UNLIKE every other
+// `attest` = PlatformOwnerGate + an unconditional insert into `access_reviews`. (This comment used to
+// point at "the access-review READ surface in surfaces.ts" for the gate rationale; that surface was
+// REMOVED on 2026-07-31 (18282f96) and the pointer dangled until #195. The same gate is now described
+// by the `organization` read surface in surfaces.ts.) UNLIKE every other
 // write surface here, this one has NO cross-org IDOR concept: a platform owner is INTENTIONALLY
 // cross-org (they attest ANY org's access review by design — the same reason the read surface's
 // RLS check is `globalScope` rather than a leak signal), so `buildIdor` is correctly omitted —

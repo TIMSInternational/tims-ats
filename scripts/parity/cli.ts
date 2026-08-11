@@ -111,9 +111,16 @@ async function mintTokens(
   if (!orgAToken) throw new Error(`mintTokens: failed to mint org-A token for role "${primaryRole}"`);
   // platform_owner is deliberately seeded ONLY under org A (see planSeed's comment: it's an
   // org-less identity, seeded once purely to hang the token cache off of) — an org-B counterpart
-  // structurally does not exist, so don't require one. Every surface that uses platform_owner as
-  // probeRole (access-review, audit-log) has globalScope:true on every endpoint, so orgBToken is
-  // never actually read by the RLS check for them; leaving it '' is safe.
+  // structurally does not exist, so don't require one.
+  //
+  // CORRECTED 2026-08-10 (#195): this comment used to say "every surface that uses platform_owner as
+  // probeRole (access-review, audit-log) has globalScope:true", which is stale twice over. Both of
+  // those READ surfaces were REMOVED from surfaces.ts on 2026-07-31 (18282f96) and neither has
+  // existed since; and no surface in surfaces.ts uses platform_owner as probeRole at all — the
+  // platform-owner surfaces deliberately probe with an ORG-SCOPED role (org_admin), because an
+  // org-less identity has no org-B counterpart to probe with. This branch is therefore currently
+  // unreachable from surfaces.ts and is reached only via write-surfaces.ts's access-review surface,
+  // which does set probeRole: 'platform_owner'. Kept, because that is a real caller.
   if (!orgBToken && primaryRole !== 'platform_owner') {
     throw new Error(`mintTokens: failed to mint org-B token for role "${primaryRole}"`);
   }

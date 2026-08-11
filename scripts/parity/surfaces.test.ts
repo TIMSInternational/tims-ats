@@ -54,11 +54,55 @@ describe('SURFACES', () => {
         expect(ep.idScopeKey, `${key}/${ep.name} is globalScope AND by-id`).toBeUndefined();
       }
     }
-    // Documented state: nine-box's simulate + quadrant-plan are the only globalScope endpoints, and
-    // both are pure kernels. The loop above is the invariant; this pins the count so a NEW
-    // globalScope endpoint has to be looked at deliberately — and so that the loop going empty
-    // (which would make the invariant unenforced while still reading as enforced) fails here.
-    expect(seen).toBe(2);
+    // Documented state, 4 endpoints across 2 surfaces. The loop above is the invariant; this pins the
+    // count so a NEW globalScope endpoint has to be looked at deliberately — and so that the loop
+    // going empty (which would make the invariant unenforced while still reading as enforced) fails
+    // here.
+    //
+    //   nine-box simulate + quadrant-plan — PURE KERNELS. Org-independent computation; the original
+    //     and still the paradigm case for this flag.
+    //   organization kpis + list — PLATFORM-OWNER CROSS-ORG READS (#195, added 2026-08-10). A
+    //     different justification for the same flag, and worth stating so it is not read as
+    //     precedent for the kernel case: these DO read org data, but the surface is
+    //     platformProcedure/PlatformOwnerGate over the unscoped `db`, so there is no per-caller
+    //     tenant boundary and Mode B's identical-payload heuristic would fire on the correct
+    //     behaviour. `list` enumerates every tenant by definition. RBAC (org_admin 403 on both) is
+    //     what proves the boundary here, not RLS.
+    //
+    // Neither of the two new ones is by-id, so the invariant above still bites for them unchanged —
+    // `getOrganization` was left unregistered rather than weaken it (see surfaces.ts).
+    expect(seen).toBe(4);
+  });
+
+  // ── #195: the platform-organizations read surface (2026-08-10) ───────────────────────────────
+  it('organization is registered with its flag + the 3 reads, minus the by-id detail', () => {
+    const s = SURFACES['organization'];
+    expect(s.flag).toBe('Platform__PlatformOrganizationsReadEnabled');
+    expect(s.roles).toEqual(['platform_owner', 'org_admin']);
+    // org-scoped probe role: a platform owner is org-less and has no org-B counterpart to probe with.
+    expect(s.probeRole).toBe('org_admin');
+
+    expect(s.endpoints.map((e) => e.name)).toEqual(['kpis', 'list']);
+
+    for (const ep of s.endpoints) {
+      // Both flags still dark, TS still the live path — so every endpoint MUST keep a tsProcedure and
+      // produce a real byte diff. A [WEAK] here would mean the pre-flip readiness check proves nothing.
+      expect(ep.tsProcedure, ep.name).toBeTruthy();
+      // RBAC is the boundary proof on a platform-owner surface, since RLS is N/A.
+      expect(ep.expectedByRole, ep.name).toEqual({ platform_owner: 200, org_admin: 403 });
+      expect(ep.globalScope, ep.name).toBe(true);
+    }
+  });
+
+  it('getOrganization stays UNregistered until a by-id platform-owner endpoint can be expressed', () => {
+    // Pins a DELIBERATE omission so it reads as a decision, not an oversight. Registering it needs a
+    // real org id in `{id}` AND no Mode-A IDOR probe; the only way to express the second today is
+    // `globalScope`, which the invariant above forbids combining with `idScopeKey` — correctly, since
+    // that flag means "pure kernel", not "no tenant boundary for this caller". Overloading it would
+    // silently disable a genuine IDOR probe on some future surface.
+    const names = SURFACES['organization'].endpoints.map((e) => e.name);
+    expect(names).not.toContain('detail');
+    expect(SURFACES['organization'].endpoints.some((e) => e.idScopeKey)).toBe(false);
   });
 
   // ── Coverage-audit additions (2026-07-27) ────────────────────────────────────────────────────
