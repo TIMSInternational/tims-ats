@@ -25,6 +25,41 @@ export interface EndpointDef {
    *  target (`rls.ts`). Absent ⇒ a static-path (Tier-1) endpoint. When set,
    *  `csharpPath` and any id-carrying `input` value MUST use the `{id}` sentinel. */
   idScopeKey?: string;
+  /** Mode-A suppression for a BY-ID endpoint whose gate is PRINCIPAL TYPE, not tenancy.
+   *  Set ONLY together with `idScopeKey`, and only on an endpoint served by a
+   *  platform-owner gate (TS `platformProcedure` / C# `PlatformOwnerGate`) over the
+   *  UNSCOPED client: reaching another org's row IS the product requirement there, so a
+   *  Mode-A IDOR probe would assert the exact opposite of it — org-A's (platform-owner)
+   *  token SHOULD get a 200 carrying org-B's body, which `assertIsolated` correctly reads
+   *  as a breach. It could not run anyway: `mintTokens` deliberately mints no org-B token
+   *  for an org-less platform owner (cli.ts's `mintTokens`), so Mode A's positive control
+   *  fails closed (checks/rls.ts). `checks/rls.ts` therefore short-circuits to a documented
+   *  N/A (`inconclusive` → `[WEAK]`) at :224 with its OWN reason string, distinct from the
+   *  globalScope one at :205, so a report reader can tell the two dispositions apart.
+   *  Parity and RBAC still run UNCHANGED against the org-A id — and on a surface like this
+   *  RBAC is the ENTIRE boundary proof (the denied ordinary role's 403), which is why
+   *  surfaces.test.ts requires EVERY non-platform-owner role on an endpoint carrying this
+   *  flag to be 403 — not merely that some 403 exists somewhere in the map. A role this
+   *  endpoint answers 200 to would be a live tenant boundary that Mode A is being told to
+   *  skip.
+   *
+   *  THIS IS NOT `globalScope`, and the two must never be merged. `globalScope` asserts
+   *  the PAYLOAD is org-independent — a pure kernel or per-deploy config returning the
+   *  same bytes for every org — which is why Mode B's "identical payloads ⇒ leak"
+   *  heuristic is inverted for it and why surfaces.test.ts's "every globalScope endpoint
+   *  is a pure kernel" test forbids it on a by-id endpoint. (Deliberately named rather
+   *  than cited by line: this docblock's previous two line citations into that file were
+   *  both stale on the day they were written, because the same commit inserted lines above
+   *  the target.) This flag asserts nothing about the payload: the response IS org-specific
+   *  and a different id returns different data. It says only that THIS CALLER has no
+   *  tenant boundary to cross. Overloading `globalScope` to mean both is precisely what
+   *  would silently retire a genuine IDOR probe on a future org-scoped by-id endpoint.
+   *
+   *  The read-side analogue of write-surfaces.ts's documented omission of `buildIdor` on
+   *  access-review `attest`, reported the same way — except that the write side expresses
+   *  it by OMITTING a builder, which the read side cannot: absence of `idScopeKey` already
+   *  means "Tier-1 static path". Hence a POSITIVE marker. */
+  noTenantBoundaryForCaller?: boolean;
   /** Mode-A only. By default a by-id endpoint's CORRECT cross-tenant response is a
    *  denial STATUS (403/404) — so a 200 with an empty body is itself an anomaly (the
    *  route processed a cross-org id instead of 404ing = a possible missing-404 /
@@ -182,46 +217,59 @@ export const SURFACES: Record<string, Surface> = {
   // RLS IS N/A ON EVERY ENDPOINT, AND THAT IS THE CORRECT ANSWER, NOT A GAP. This surface is
   // `platformProcedure` on the TS side and `PlatformOwnerGate` on the C# side, over the UNSCOPED `db`
   // — it is cross-org BY DESIGN. A platform owner reading org B is the feature, so a Mode-A IDOR
-  // probe would assert the opposite of the requirement. `globalScope: true` makes `checks/rls.ts`
-  // report a documented N/A (it short-circuits at rls.ts:189, BEFORE the `idScopeKey` branch at :199)
-  // rather than a spurious FAIL. The authorization boundary here is the GATE, and it is RBAC — not
-  // RLS — that proves it, via the org_admin 403 on every endpoint. Same disposition and same reason
-  // as the access-review / audit-log read surfaces below.
+  // probe would assert the opposite of the requirement. The authorization boundary here is the GATE,
+  // and it is RBAC — not RLS — that proves it, via the org_admin 403 on every endpoint.
+  //
+  // N/A VIA TWO DIFFERENT FLAGS, AND THE DIFFERENCE IS THE WHOLE POINT (see `detail` below).
+  //   kpis + list  → `globalScope: true`. checks/rls.ts short-circuits at :205 with the
+  //                  "non-tenant endpoint" reason. Correct because the PAYLOAD really is
+  //                  org-independent: `list` enumerates every tenant by construction.
+  //   detail       → `noTenantBoundaryForCaller: true`. checks/rls.ts short-circuits at :224, BEFORE
+  //                  the `idScopeKey` branch at :235, with a DISTINCT reason. Its payload is
+  //                  emphatically org-SPECIFIC — a different `{id}` returns different data — so
+  //                  claiming globalScope for it would be a false statement about the endpoint that
+  //                  happens to produce the right verdict, which is how a flag gets overloaded until
+  //                  it silently retires a real IDOR probe somewhere else.
+  // The access-review / audit-log read surfaces below are the globalScope disposition, not this one.
   //
   // probeRole is `platform_owner`. It was `org_admin` from #203 (2026-08-10) until 2026-08-11, and
   // THAT WAS A BUG THAT MADE `verify organization` UNRUNNABLE — caught by the review panel on this
   // change, which found the comment here justifying it as deliberate.
   //
   // Why it could not work: the probe identity's token is what the parity leg calls BOTH stacks with
-  // (cli.ts:161-163), and `org_admin` expects 403 on every endpoint of this surface. On the C# side
-  // `checks/parity.ts:47-55` fails closed on any non-200, so both endpoints report
+  // (`csharpCaller`/`tsCaller` in cli.ts's `runChecks`), and `org_admin` expects 403 on every
+  // endpoint of this surface. On the C# side `checks/parity.ts:49-56` fails closed on any non-200,
+  // so both endpoints report
   // "C# returned HTTP 403 (expected 200)". On the TS side it is worse than a FAIL: `stripTrpcJson`
   // (trpc.ts:11) THROWS on a tRPC error response, so the run crashes rather than reporting. That is
   // exactly the hazard the removed access-review entry documented in 2026-07-31 ("pointing probeRole
   // at a denied role takes down the whole verify run") — the note was deleted with the surface and
   // the lesson went with it, which is its own argument for keeping surfaces registered.
   //
-  // The original rationale — "a platform owner is org-less and seeded only under org A (seed.ts:86),
+  // The original rationale — "a platform owner is org-less and seeded only under org A (seed.ts:83-88),
   // so it has no org-B counterpart to probe with" — is a true fact that does not imply the
-  // conclusion. `mintTokens` skips the org-B requirement for exactly this role (cli.ts:129), and
-  // both endpoints here are `globalScope`, so no org-B token is ever needed. `probeRole` must simply
-  // be a role the surface grants 200; that invariant is now asserted for EVERY surface in
+  // conclusion. `mintTokens` skips the org-B requirement for exactly this role (cli.ts), and no
+  // endpoint here runs an RLS mode that needs an org-B token, so none is ever required. `probeRole`
+  // must simply be a role the surface grants 200; that invariant is now asserted for EVERY surface in
   // surfaces.test.ts, so this class of defect cannot ship again unnoticed.
   //
-  // `getOrganization` (the by-id detail read) is DELIBERATELY NOT REGISTERED HERE, and that is the
-  // honest answer rather than a shortcut. It needs two things at once — a real org id bound into
-  // `{id}`, and no Mode-A IDOR probe — and the only existing way to express the second is
-  // `globalScope`, which surfaces.test.ts:46 explicitly forbids combining with `idScopeKey`
-  // ("no by-id endpoint may claim org-independence"). That guard is CORRECT: `globalScope` means
-  // "pure kernel, org-independent computation" (nine-box simulate/quadrant-plan), whereas this
-  // endpoint reads org-specific rows and merely has no tenant boundary FOR THIS CALLER. Those are
-  // different properties, and overloading one flag for both is precisely what would silently
-  // disable a real IDOR probe on some future surface. The access-review entry below sidesteps it
-  // with a fixed non-existent org id, which cannot work here — `getOrganization` 404s on an
-  // unknown org (organizations.ts:100), so the platform_owner case would assert 404, not 200.
-  // Registering it needs a distinct, explicit concept (a platform-owner "no IDOR by design" marker,
-  // the read-side analogue of write-surfaces.ts's documented omission of `buildIdor` on
-  // access-review `attest`). Filed rather than smuggled in under an existing flag.
+  // `getOrganization` IS NOW REGISTERED (2026-08-11, #195) — see the `detail` endpoint below. It was
+  // deliberately omitted until then, and the reason it was omitted is the reason the new flag exists
+  // rather than a reuse of an old one. It needs two things at once: a real org id bound into `{id}`,
+  // and no Mode-A IDOR probe. The only way to express the second used to be `globalScope`, which
+  // surfaces.test.ts's "every globalScope endpoint is a pure kernel" test forbids combining with
+  // `idScopeKey` — and that guard is
+  // CORRECT, so it was NOT weakened: `globalScope` means "pure kernel, org-independent computation"
+  // (nine-box simulate/quadrant-plan), whereas this endpoint reads org-specific rows and merely has
+  // no tenant boundary FOR THIS CALLER. Those are different properties; overloading one flag for both
+  // is what would silently disable a real IDOR probe on some future surface. The access-review entry
+  // below sidesteps the problem with a fixed NON-EXISTENT org id, which cannot work here —
+  // `getOrganization` 404s on an unknown org (organizations.ts:100 / the C# repository returns null at
+  // PlatformOrganizationsReadRepository.cs:151-156, mapped to Results.NotFound() at
+  // PlatformOrganizationsReadEndpoints.cs:133), so the platform_owner case would assert 404, not 200.
+  // The answer was a distinct, explicitly-named marker — `noTenantBoundaryForCaller`, the read-side
+  // analogue of write-surfaces.ts's documented omission of `buildIdor` on access-review `attest`
+  // (write-surfaces.ts:1447-1448) — not a smuggled reuse of an existing one.
   organization: {
     key: 'organization',
     flag: 'Platform__PlatformOrganizationsReadEnabled',
@@ -246,6 +294,61 @@ export const SURFACES: Record<string, Surface> = {
         expectedByRole: { platform_owner: 200, org_admin: 403 },
         normalize: { dropNullish: true },
         globalScope: true,
+      },
+      // getOrganization — REGISTERED 2026-08-11 (#195) via `noTenantBoundaryForCaller`, the distinct
+      // marker the old note above said this needed. NOT globalScope: this payload IS org-specific.
+      //
+      // The `{id}` sentinel is the harness's canonical placeholder, NOT the deployed route's spelling
+      // — the deployed template is `/platform/organizations/{id:guid}`
+      // (PlatformOrganizationsReadEndpoints.cs:114). That is not a mismatch: the harness never calls a
+      // route by template, it substitutes a concrete id and builds a real URL (ids.ts:5-11).
+      //
+      // KNOWN, PREDICTED PARITY FAIL — derived from source, not discovered at run time. C#
+      // `PlatformOrganizationDetail.Counts` (PlatformOrganizationsReadModels.cs:125) serialises to
+      // `counts` (JsonSerializerDefaults.Web camelCase; that file contains zero [JsonPropertyName] and
+      // Program.cs never calls ConfigureHttpJsonOptions), while TS returns Prisma's `_count`
+      // (organizations.ts:97). normalize.ts offers only dropNullish + sortArraysBy — no key rename —
+      // so this WILL report a real FAIL until the C# record is corrected. The `list` endpoint above
+      // has the SAME class of divergence three times over (`counts`/`_count`,
+      // `lastLoginAt`/`users[].lastLoginAt`, `pendingInvoices`/`invoices` —
+      // PlatformOrganizationsReadModels.cs:47-51 vs organizations.ts:64-77) and has simply never been
+      // observed, because `verify organization` has never successfully run (the #205 probeRole bug).
+      // All FOUR are filed as issue #211 (verified to exist, not asserted — the previous version of
+      // this sentence said "filed as their own issue" in the past tense when no such issue existed).
+      // Fixing them is NOT this change, and dropping `tsProcedure` here to dodge a known-red would be
+      // exactly the "make the gate unable to fail" move this harness exists to prevent.
+      //
+      // OPERATIONAL CONSEQUENCE 1 — THIS SURFACE IS NO LONGER DB-FREE, AND THE DEPENDENCY IS WIDER
+      // THAN THIS ENDPOINT. `cli.ts`'s `needsResources` now fires for `organization`, which calls
+      // `resolveResources` (seed.ts) — and that function resolves EVERY SeedResources key
+      // unconditionally and throws on the first missing one. So `verify organization` now requires
+      // DATABASE_URL plus the seeded employee users, the 2026-Q1 calibration sessions in BOTH orgs
+      // and the "Parity Critical Role A1"/"B1" rows in both orgs. An environment whose ninebox /
+      // succession fixtures were never seeded fails with e.g. `resolveResources: no seeded critical
+      // role "Parity Critical Role A1" in org <uuid>` — a failure with no relationship to the surface
+      // under test, and one that could not occur while this surface was Tier-1 only. Run
+      // `cli.ts seed` first. (The org ids themselves cost zero extra queries: `orgA`/`orgB` are
+      // already resolved for the calibration and critical-role lookups.)
+      //
+      // OPERATIONAL CONSEQUENCE 2 — a parity FAIL PRINTS DIFF VALUES (checks/parity.ts → normalize.ts
+      // `DiffEntry {path, a, b}` → report.ts → console.log), and this is the first registered read
+      // whose payload carries user records: `users[].email`, `firstName`, `lastName`, `jobTitle`,
+      // `lastLoginAt` (organizations.ts:93). Against the seeded `__parity_a` org that data is
+      // synthetic, so this is not a leak — but the harness now has a stdout/CI-log path for
+      // user-shaped records that it did not have before, and the predicted-red above GUARANTEES the
+      // diff branch executes. Do not point this endpoint at a real tenant's org id in a logged CI job.
+      {
+        name: 'detail',
+        csharpPath: '/platform/organizations/{id}',
+        tsProcedure: 'platform.getOrganization',
+        input: { id: ID_SENTINEL },
+        idScopeKey: 'organization',
+        noTenantBoundaryForCaller: true,
+        expectedByRole: { platform_owner: 200, org_admin: 403 },
+        // sortArraysBy is NOT cosmetic: both stacks order `users` by createdAt desc
+        // (organizations.ts:93; PlatformOrganizationsReadRepository.cs:175-177) and seeded users can
+        // share a created_at, making tie order nondeterministic across the two stacks.
+        normalize: { dropNullish: true, sortArraysBy: 'id' },
       },
     ],
   },
@@ -409,15 +512,24 @@ export const SURFACES: Record<string, Surface> = {
   // anything (the #166 false-FAIL failure mode). Tracked in #195, not fixed here.
   //
   // AND THAT IS THE SMALLER HALF OF THE GAP. Those six are merely the surfaces that were once
-  // registered and then removed. Counting deployed ROUTES instead of surfaces, measured 2026-08-11:
-  // `services/Tims.Platform/src/Tims.Api/**/*.cs` contains 132 `.MapGet/Post/Patch/Put/Delete(`
-  // registrations and zero `MapGroup`, while SURFACES + WRITE_SURFACES hold 49 endpoints (23 + 26).
-  // The difference is not exactly the uncovered count — nothing here proves a 1:1 route-to-endpoint
-  // correspondence, and some Map calls are infra rather than domain routes — but the order of the gap
-  // is unambiguous, and it includes whole domains that were NEVER registered (external-vendor,
-  // billing self-serve/webhook writes, `/internal/alert-metrics`) plus most routes inside surfaces
-  // that ARE registered (engagement registers 2 endpoints against 14 deployed reads; dei 2 of 11).
-  // Do not read "the surface is registered" as "the domain is covered". #195 is the tracking issue.
+  // registered and then removed. Counting deployed ROUTES instead of surfaces, MEASURED EXACTLY
+  // (2026-08-11) rather than estimated: `contracts/openapi/Tims.Api.json` declares 135
+  // GET/POST/PATCH/PUT/DELETE operations across 128 paths, while SURFACES + WRITE_SURFACES hold 50
+  // endpoints (24 + 26) resolving to 50 distinct VERB+path keys — leaving 85 deployed routes with no
+  // registry entry. That subtraction is now a real one, not an order-of-magnitude gesture: an earlier
+  // version of this note counted 132 `.MapGet/Post/Patch/Put/Delete(` call sites in
+  // `services/Tims.Platform/src/Tims.Api/**/*.cs` and correctly refused to subtract, because a call
+  // site is not a route (one `Evaluation360WriteEndpoints` site is invoked three times, one
+  // `AlertMetrics` site maps a `const`, and six `PlatformOrganizations*` sites put the literal on the
+  // next line). The 85 are enumerated with a reason per group in
+  // tests/governance/parity-registry-covers-deployed-routes.test.ts, which fails if a NEW deployed
+  // route appears in neither the registry nor that list.
+  //
+  // The gap includes whole domains that were NEVER registered (external-vendor, billing
+  // self-serve/webhook writes, `/internal/alert-metrics`) plus most routes inside surfaces that ARE
+  // registered (engagement registers 2 endpoints against 14 deployed GETs; dei 2 of 11; compensation
+  // 2 of 12; ninebox 4 of 11). Do not read "the surface is registered" as "the domain is covered".
+  // #195 is the tracking issue.
   //
   // `verify succession` is therefore now a NO-OP. That is a genuine reduction in this harness's
   // coverage and is recorded as such in scripts/deploy/cutover.sh's `succession` row — do NOT
@@ -520,7 +632,9 @@ export const SURFACES: Record<string, Surface> = {
   // org-exists precondition (only `AttestAsync` does, AccessReviewService.cs:35), so an unknown org
   // yields zero rows and a zero summary, not a 404. Verified against the source, not assumed: this
   // is exactly the property `getOrganization` lacks (it 404s on an unknown org), which is why THAT
-  // read is still unregistered ~200 lines above.
+  // read could not use this trick and needed a real seeded id plus the `noTenantBoundaryForCaller`
+  // marker instead. (This sentence read "...which is why THAT read is still unregistered ~200 lines
+  // above" until 2026-08-11; it was registered in the same change that added the marker.)
   //
   // THE PINNED ID COLLIDES WITH A SENTINEL IN THIS DOMAIN'S OWN CODE, and that is worth knowing
   // rather than discovering. `AccessReviewService.cs:65` coalesces a NULL `users.organization_id` to
@@ -551,8 +665,9 @@ export const SURFACES: Record<string, Surface> = {
   // because the pinned id resolves to no org at all, so there is no per-org payload to compare and
   // Mode B would be comparing two empty bodies. It does NOT collide with the `idScopeKey` guard —
   // the id is a fixed literal, never the `{id}` sentinel, so no Mode-A probe is being suppressed.
-  // A version of this surface bound to a REAL org id would need the by-id platform-owner marker that
-  // `getOrganization` is still waiting on; it must not simply inherit `globalScope` from here.
+  // A version of this surface bound to a REAL org id would need the by-id platform-owner marker
+  // `noTenantBoundaryForCaller` (which now exists — `getOrganization` uses it); it must not simply
+  // inherit `globalScope` from here.
   //
   // The WRITE surface (attestAccessReview) was never affected by any of this — write-surfaces.ts's
   // WRITE_SURFACES['access-review'] hits the C# endpoint directly via raw SQL + HTTP and has no

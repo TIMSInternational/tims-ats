@@ -19,7 +19,11 @@
  * (scripts/parity/supabase.ts) and `callTs` sends it as a `Cookie:` header.
  * LIVE-VERIFIED against prod (super_admin→200, hrbp→403, no-cookie→401 on
  * teamIntel.getDashboardKpis). `rls`/`rbac` only ever call the C# REST side
- * (`callCsharp`, Bearer) and are unaffected.
+ * (`callCsharp`, Bearer) and are unaffected — INCLUDING their probe-viability
+ * preflight, which is why `preflightSurface` takes a `checkTs` flag rather than
+ * probing TS unconditionally. See that function for the reasoning; the short
+ * version is that a Vercel outage must not be able to abort a pure-C# `rls` run
+ * with zero checks executed.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 import { fileURLToPath } from 'node:url';
@@ -28,11 +32,16 @@ import { getToken, getSessionCookie, type TokenCache, type CookieCache } from '.
 import { planSeed, seed, teardown, resolveResources, openReadback, type SeedResources } from './seed';
 import { callCsharp, callCsharpWrite, callTs } from './callers';
 import { SURFACES, type Surface, type EndpointDef } from './surfaces';
-import { WRITE_SURFACES, type WriteResolvedBase } from './write-surfaces';
+import { WRITE_SURFACES, type WriteResolvedBase, type AnyWriteSurface } from './write-surfaces';
 import { substituteEndpointId } from './ids';
 import { runParityEndpoint } from './checks/parity';
 import { runRlsEndpoint, type RlsContext } from './checks/rls';
 import { runRbacEndpoint, type RbacContext } from './checks/rbac';
+import {
+  runProbePreflight,
+  type ProbePreflightRun,
+  type CheckResult as PreflightCheckResult,
+} from './checks/preflight';
 import { runWriteParity, runWriteIdor, runWriteRbac, runWriteExtraProbe } from './checks/writes';
 import { renderReport, type CheckResult } from './report';
 
@@ -119,8 +128,8 @@ async function mintTokens(
   // (2950a06c / 18282f96), and was corrected on 2026-08-10 (#195) to say the branch was reachable
   // only from write-surfaces.ts's access-review surface.
   //
-  // CURRENT STATE, 2026-08-11. `mintTokens` has exactly ONE call site — `runChecks` at :140, the
-  // READ path. `cmdVerifyWrite` mints its own tokens inline (:263-269) and never reaches here, so no
+  // CURRENT STATE, 2026-08-11. `mintTokens` has exactly ONE call site — `runChecks` at :145, the
+  // READ path. `cmdVerifyWrite` mints its own tokens inline (:312-314) and never reaches here, so no
   // WRITE_SURFACES entry is a caller of this branch, whatever its probeRole. THREE read surfaces now
   // set probeRole 'platform_owner' and are the only callers: SURFACES['audit-log'],
   // SURFACES['access-review'] (both re-registered C#-only today) and SURFACES['organization'].
@@ -135,6 +144,81 @@ async function mintTokens(
   }
   if (!orgACookie) throw new Error(`mintTokens: failed to mint org-A session cookie for role "${primaryRole}"`);
   return { orgAToken, orgBToken, orgACookie, tokensByRole };
+}
+
+/** The live `runProbePreflight`, as an injectable shape so `preflightSurface` can be unit-tested
+ *  BEHAVIOURALLY (it is the reachability of the call that matters, and a source-text assertion
+ *  cannot prove that — see cli.test.ts). */
+export type ProbePreflightRunner = (r: ProbePreflightRun) => Promise<PreflightCheckResult>;
+
+/**
+ * PROBE-VIABILITY PREFLIGHT (#206). Returns the failing `CheckResult` when the probe identity is
+ * NOT viable, and `null` when it is (or when there is nothing to probe). Extracted from `runChecks`
+ * ON PURPOSE: while it was an inline `if (probeCandidate) { … }` block, the ONLY automated coverage
+ * of it was a source-text substring check in cli.test.ts, and that check could not tell reachable
+ * code from unreachable code — mutating the condition to `if (probeCandidate && cfg.csharpBase
+ * .startsWith('zzz'))` disabled the entire deliverable with 408/408 tests and tsc green
+ * (live-verified 2026-08-11). As a function with an injected runner, "it is actually called" is a
+ * behavioural assertion.
+ *
+ * WHY IT RUNS BEFORE ANY CHECK. The probe identity's token is what parity calls BOTH stacks with
+ * (see `csharpCaller`/`tsCaller` below) and what rls/rbac call C# with. A denied probeRole does not
+ * degrade those checks, it destroys them: parity fails closed on the C# side (checks/parity.ts:49-56)
+ * and THROWS on the TS side (stripTrpcJson, trpc.ts:11), taking the whole run down; and RLS Mode A
+ * silently degrades, because org-A's 403 is read as "isolation held" by `assertIsolated`
+ * (checks/rls.ts:92-93) for the WRONG reason, and the run then FAILs at the positive control
+ * (checks/rls.ts:270-277) with a message pointing the operator at the org-B seed rather than the
+ * registry.
+ *
+ * WHY `checkTs` IS COMMAND-DEPENDENT. `rls` and `rbac` have never called the TS stack. Probing it
+ * for them would make a Next.js outage, a 502 HTML body (callers.ts:104 `res.json()` throws
+ * SyntaxError) or a mid-deploy redirect abort a pure-C# run with zero checks executed — a new
+ * coupling, introduced by the guard rather than by the thing it guards. So the TS leg runs for
+ * `parity`/`verify` only, which are the commands whose crash it exists to pre-empt.
+ *
+ * ENDPOINT CHOICE. Prefer a Tier-1 endpoint (no extra id semantics); fall back to `endpoints[0]`
+ * bound through `bind`, which is why the caller resolves resources first — a surface whose every
+ * endpoint is by-id must still probe with a REAL id, not the `{id}` sentinel.
+ *
+ * WHAT THIS DOES NOT COVER, stated so a green preflight is not over-read:
+ *   - ONE endpoint per surface. A registry that is right about `kpis` and wrong about `detail`
+ *     still crashes on `detail` in exactly the #205 shape. Probing every endpoint would double the
+ *     call count of every run for a defect class the per-surface probeRole invariant already makes
+ *     hard; the residual is accepted and written down rather than implied.
+ *   - RESOURCE IDS. `organization/detail` and `compensation/employee` resolve their id from
+ *     DATABASE_URL, and the TS app reads its OWN database. Point the harness at a locally-seeded DB
+ *     and `tsBase` at prod and `platform.getOrganization` will 404 an id it has never seen, which
+ *     stripTrpcJson turns back into a throw. That is a config mismatch the preflight cannot see,
+ *     because the probe endpoint (`kpis`) takes no id.
+ *   - `verify-write`. It does not reach here at all — see `cmdVerifyWrite`, which carries its own
+ *     (different, route-mounted-ness) preflight and its own registry-level probe-role guard.
+ */
+export async function preflightSurface(
+  command: CheckCommand,
+  surface: Surface,
+  bind: (ep: EndpointDef) => EndpointDef,
+  creds: { csharpBase: string; tsBase: string; orgAToken: string; orgACookie: string },
+  runner: ProbePreflightRunner = runProbePreflight,
+): Promise<PreflightCheckResult | null> {
+  // A surface with ZERO endpoints has nothing to probe. That is a pre-existing vacuity (every loop
+  // in `runChecks` iterates zero times and `renderReport` reports an empty run), and it belongs to
+  // whatever guard owns it — not to this one, which must not crash on it.
+  const probeCandidate = surface.endpoints.find((e) => !e.idScopeKey) ?? surface.endpoints[0];
+  if (!probeCandidate) return null;
+  const pf = await runner({
+    ep: bind(probeCandidate),
+    surfaceKey: surface.key,
+    surfaceFlag: surface.flag,
+    probeRole: resolveProbeRole(surface).role,
+    checkTs: command === 'parity' || command === 'verify',
+    csharpBase: creds.csharpBase,
+    tsBase: creds.tsBase,
+    orgAToken: creds.orgAToken,
+    orgACookie: creds.orgACookie,
+    csharp: callCsharp,
+    ts: callTs,
+  });
+  return pf.ok ? null : pf;
 }
 
 /** Runs the requested check(s) over every endpoint of `surface`, returning the
@@ -157,6 +241,30 @@ async function runChecks(command: CheckCommand, cfg: HarnessConfig, surface: Sur
     return pair;
   };
   const orgAEndpoint = (ep: EndpointDef): EndpointDef => (ep.idScopeKey ? substituteEndpointId(ep, pairFor(ep).a) : ep);
+
+  // PROBE-VIABILITY PREFLIGHT (#206), BEFORE any check. Sits AFTER resource resolution so an
+  // all-by-id surface probes with a REAL id. The rationale, the command-dependent TS leg and the
+  // residual exposures are all documented on `preflightSurface` above.
+  //
+  // The FAIL is returned as the SOLE result rather than thrown or dropped. `[]` would exit 0 —
+  // renderReport's allGreen is vacuously true on an empty list. A PASSING preflight is deliberately
+  // NOT pushed onto `results`: it is a precondition, not a check, and counting it would inflate the
+  // pass count of every run.
+  //
+  // EXIT CODE. This bail returns 1, like every other could-not-run path in this file
+  // (`cmdVerifyWrite`'s mounted-route preflight, and `main`'s catch-all which collapses every throw
+  // to 1). `.claude/rules/verification.md` establishes a 0/1/2 contract where 2 means "could not
+  // run", and this bail is exactly that shape — but adopting 2 HERE ONLY would make one
+  // could-not-run path distinguishable while `mintTokens`/`resolveResources`/`loadConfig` failures
+  // stay indistinguishable, which misleads more than no contract at all. Adopting it across every
+  // such path in this file at once is tracked as its own change: issue #210.
+  const pf = await preflightSurface(command, surface, orgAEndpoint, {
+    csharpBase: cfg.csharpBase,
+    tsBase: cfg.tsBase,
+    orgAToken,
+    orgACookie,
+  });
+  if (pf) return [pf];
 
   if (command === 'parity' || command === 'verify') {
     // Bind base + the org-A probe identity's credentials into the (path,input)/
@@ -241,6 +349,32 @@ async function cmdCheck(command: CheckCommand, surfaceKey: string | undefined): 
 }
 
 /**
+ * PURE. Returns one `name=expectation` string per endpoint on which the write surface's own
+ * `probeRole` is NOT declared `'allow'` — empty when the probe identity is viable per the registry.
+ *
+ * THE GAP THIS CLOSES. `runProbePreflight` (#206) covers `verify`/`parity`/`rls`/`rbac`. It does NOT
+ * cover `verify-write`, and cannot: a write's success probe is a MUTATION, so there is no
+ * non-mutating way to ask the LIVE gate whether the probe identity is allowed. That left all 26
+ * write endpoints across 7 write surfaces exposed to the #205 defect class, with a WORSE disposition
+ * than the read side rather than a better one:
+ *   - `cmdVerifyWrite` only ever checked that the probe token MINTED, never that it is granted.
+ *   - `runWriteIdor` (checks/writes.ts) counts any status in `idorDeniedStatuses` (default
+ *     [403, 404]) as isolation-held. A probeRole the product denies returns 403 to EVERY call, so
+ *     the write-IDOR line reports `[PASS]` for a FIXTURE reason, not a product one.
+ *   - Only `runWriteParity` fails closed on the non-200, and it runs LAST per endpoint. The run does
+ *     go red overall, but the report still carries greens that prove nothing — the exact shape this
+ *     harness exists to stop.
+ * The registry's own claim needs no network, so it is checked before anything runs. Kept PURE and
+ * exported for the same reason `preflightSurface` was extracted: a guard buried inside a function
+ * that needs live Supabase credentials has no behavioural coverage at all.
+ */
+export function writeProbeRoleDenials(surface: AnyWriteSurface): string[] {
+  return surface.endpoints
+    .filter((ep) => ep.expectedByRole[surface.probeRole] !== 'allow')
+    .map((ep) => `${ep.name}=${ep.expectedByRole[surface.probeRole] ?? 'undeclared'}`);
+}
+
+/**
  * Live write-verification for a WRITE surface (checks/writes.ts). Per endpoint runs
  * the two NON-mutating checks first (write-IDOR, write-RBAC-deny) then the single
  * mutating light-parity, so the precondition is intact when the non-mutating checks
@@ -271,6 +405,35 @@ async function cmdVerifyWrite(surfaceKey: string | undefined): Promise<number> {
   }
   const probeToken = tokensByRole[surface.probeRole];
   if (!probeToken) throw new Error(`verify-write: no probe token for role "${surface.probeRole}"`);
+
+  // PROBE-ROLE VIABILITY, WRITE SIDE — see `writeProbeRoleDenials`. `verify-write` deliberately
+  // does NOT run `runProbePreflight`,
+  // and cannot: a write's success probe is a MUTATION, so there is no non-mutating way to ask the
+  // LIVE gate whether this identity is allowed. What can be checked with no call at all is the
+  // registry's own claim — the write-side analogue of surfaces.test.ts's probeRole-expects-200
+  // invariant, closing the same #205 defect class on the 26 write endpoints the read preflight
+  // never sees.
+  //
+  // The write side's disposition on a denied probeRole is WORSE than the read side's, which is why
+  // this is fail-closed rather than a warning: `runWriteIdor` (checks/writes.ts) counts any status
+  // in `idorDeniedStatuses` (default [403, 404]) as isolation-held, so an identity the product
+  // refuses returns 403 to EVERY call and the IDOR line reports `[PASS]` for a FIXTURE reason
+  // rather than a product one. The run does still go red overall — `runWriteParity` fails closed on
+  // the non-200 — but a green that proves nothing is exactly what this harness exists to prevent.
+  // Above the token check, not below it, would be pointless: minting proves the user exists, never
+  // that it is granted.
+  const probeDenied = writeProbeRoleDenials(surface);
+  if (probeDenied.length > 0) {
+    console.error(
+      `verify-write ${surface.key}: PROBE IDENTITY NOT VIABLE — no check ran. The registry says probeRole ` +
+        `"${surface.probeRole}" is NOT 'allow' on ${probeDenied.length} of ${surface.endpoints.length} ` +
+        `endpoints (${probeDenied.join(', ')}). ` +
+        `Fix the registry or the seeded grant — do NOT pick another role the product also denies. ` +
+        `(Running anyway makes runWriteIdor report [PASS] for a fixture reason: a denied identity 403s ` +
+        `every call, and 403 is a documented isolation-held status.)`,
+    );
+    return 1;
+  }
 
   // Seed the surface's write-verify-only preconditions (kept out of the shared read seed so they
   // can't degrade the read RLS checks — see seed(). Each surface owns its hook). Idempotent.

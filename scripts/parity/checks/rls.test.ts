@@ -407,4 +407,48 @@ describe('runRlsEndpoint', () => {
       expect(fake).not.toHaveBeenCalled();
     });
   });
+
+  // ── Mode C (#195, 2026-08-11) ────────────────────────────────────────────────────────────────
+  describe('noTenantBoundaryForCaller — by-id endpoint behind a principal-type gate', () => {
+    const ep: EndpointDef = {
+      name: 'detail',
+      csharpPath: '/platform/organizations/{id}',
+      tsProcedure: 'platform.getOrganization',
+      input: { id: '{id}' },
+      idScopeKey: 'organization',
+      noTenantBoundaryForCaller: true,
+      expectedByRole: { platform_owner: 200, org_admin: 403 },
+    };
+
+    it('short-circuits to a documented N/A WITHOUT probing — Mode A would assert the opposite of the requirement', async () => {
+      // A platform owner reading org B is the FEATURE. Mode A would fire org-A's token at org-B's id
+      // and read the (correct) 200-with-body as a breach. `orgBResourceId` is supplied here precisely
+      // so the test proves the short-circuit, not the absence of an id.
+      const fake = vi.fn();
+      const r = await runRlsEndpoint(
+        ep,
+        { base: 'http://csharp.local', orgAToken: 'org-a-token', orgBResourceId: 'org-b-id' },
+        fake,
+      );
+      expect(r.ok).toBe(true);
+      expect(r.inconclusive).toBe(true);
+      expect(fake).not.toHaveBeenCalled();
+    });
+
+    it('reports a reason DISTINCT from globalScope — the two dispositions must be tellable apart', async () => {
+      // The globalScope N/A claims the PAYLOAD is org-independent. This one claims only that the
+      // CALLER crosses no boundary; the payload IS org-specific. A report reader who cannot tell them
+      // apart cannot tell "no per-org data here" from "per-org data that this caller may all see".
+      const r = await runRlsEndpoint(ep, { base: 'http://csharp.local', orgAToken: 'org-a-token' }, vi.fn());
+      expect(r.detail).not.toContain('globalScope');
+      expect(r.detail).toContain('principal-type gate');
+    });
+
+    it('globalScope still wins when both are set (the registry forbids it; the runtime must be deterministic)', async () => {
+      // surfaces.test.ts forbids the combination, so this is unreachable from the registry — but the
+      // runtime ordering is pinned anyway, the same way the globalScope-over-idScopeKey precedence is.
+      const r = await runRlsEndpoint({ ...ep, globalScope: true }, { base: 'http://c', orgAToken: 'a' }, vi.fn());
+      expect(r.detail).toContain('globalScope');
+    });
+  });
 });
