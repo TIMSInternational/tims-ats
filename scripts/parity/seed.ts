@@ -93,10 +93,20 @@ const ORG_KEYS: readonly ('a' | 'b')[] = ['a', 'b'];
  * platform_owner as its probeRole". Both statements are now stale: audit-log and access-review were
  * RE-REGISTERED C#-only on 2026-08-11 and both DO use platform_owner as probeRole, which is exactly
  * the case the `orgKey === 'b'` skip below has to keep supporting — as does `organization`, whose
- * probeRole was corrected to platform_owner the same day. Census of everything that lists the role,
- * because `planSeed` is called from BOTH the read path (cli.ts:140) and the write path (cli.ts:265):
- * three READ surfaces (audit-log, access-review, organization) and two WRITE surfaces
- * (write-surfaces.ts's access-review and organization).) */
+ * probeRole was corrected to platform_owner the same day.
+ *
+ * CENSUS, re-derived 2026-08-11 with `grep -rn 'planSeed(' scripts/` because the previous version of
+ * this comment — itself written to correct a stale census — got BOTH halves wrong. It said THREE
+ * call sites and named `cmdAuth` as "the only one that passes `allRoles()`". There are FOUR
+ * production call sites, named by SYMBOL rather than line because every previous line citation in
+ * this comment went stale within a commit or two:
+ *   - cli.ts `mintTokens`      — the read-check path: one surface's `roles`.
+ *   - cli.ts `cmdAuth`         — `allRoles()`.
+ *   - cli.ts `cmdVerifyWrite`  — the write path: one surface's `roles`.
+ *   - seed.ts `seed()` itself  — which cli.ts `cmdSeed` calls with `allRoles()`.
+ * So TWO of the four receive `allRoles()`, not one — `cmdAuth` and `seed()` — and between them they
+ * cover every role in the registry: three READ surfaces (audit-log, access-review, organization) and
+ * two WRITE surfaces (write-surfaces.ts's access-review and organization) list platform_owner.) */
 export function planSeed(roles: string[]): SeedPlan {
   const users: SeededUser[] = [];
   for (const orgKey of ORG_KEYS)
@@ -2273,6 +2283,15 @@ export interface SeedResources {
    *  it is harmless and stays for now — the succession read fixtures come out wholesale with the
    *  ownership flip (#69), which is where removing this belongs. */
   'critical-role': ResourcePair;
+  /** The parity harness's own orgs (`__parity_a` / `__parity_b`, ORG_SLUGS at :78), threaded into
+   *  `/platform/organizations/{id}` by SURFACES['organization'].detail.
+   *
+   *  The `b` id is RESOLVED BUT NEVER PROBED: that endpoint carries `noTenantBoundaryForCaller`, so
+   *  checks/rls.ts short-circuits (:224) before Mode A ever reads `orgBResourceId`. It is kept so the
+   *  ResourcePair shape stays uniform across every key — a one-sided variant would be a second shape
+   *  for `pairFor` (cli.ts) to handle for no gain. Costs zero extra queries: `orgA`/`orgB` are already
+   *  resolved below for the calibration and critical-role lookups. */
+  organization: ResourcePair;
 }
 
 async function orgIdBySlug(db: Client, slug: string): Promise<string> {
@@ -2323,6 +2342,7 @@ export async function resolveResources(cfg: HarnessConfig): Promise<SeedResource
         a: await criticalRoleIdByOrgTitle(db, orgA, 'Parity Critical Role A1'),
         b: await criticalRoleIdByOrgTitle(db, orgB, 'Parity Critical Role B1'),
       },
+      organization: { a: orgA, b: orgB },
     };
   } finally {
     await db.end();

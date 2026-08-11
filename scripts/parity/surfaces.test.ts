@@ -40,10 +40,14 @@ describe('SURFACES', () => {
   });
 
   it('every surface probes with a role it actually grants 200 — the #203 defect class', () => {
-    // THE invariant. `cli.ts:161-163` calls BOTH stacks with the probeRole's token and expects
-    // success: checks/parity.ts:47-55 fails closed on a non-200 C# response, and on the TS side
-    // stripTrpcJson (trpc.ts:11) THROWS on an error response, taking the whole run down rather than
-    // reporting a FAIL. So a probeRole the surface denies does not degrade the check — it destroys it.
+    // THE invariant. `runChecks` (cli.ts) calls BOTH stacks with the probeRole's token and expects
+    // success — the `csharpCaller`/`tsCaller` pair it builds for the parity loop. checks/parity.ts:
+    // 49-56 fails closed on a non-200 C# response, and on the TS side stripTrpcJson (trpc.ts:11)
+    // THROWS on an error response, taking the whole run down rather than reporting a FAIL. So a
+    // probeRole the surface denies does not degrade the check — it destroys it.
+    //
+    // This checks the REGISTRY AGAINST ITSELF and cannot see a registry that is internally
+    // consistent and wrong about the PRODUCT. checks/preflight.ts (#206) covers that at run time.
     for (const [key, surface] of Object.entries(SURFACES)) {
       const probe = surface.probeRole;
       expect(probe, `${key} has no explicit probeRole`).toBeDefined();
@@ -92,6 +96,11 @@ describe('SURFACES', () => {
       // C#-only after #57 (no tsProcedure), but STILL by-id and still the surface's cross-tenant
       // IDOR probe — which is exactly why the nine-box surface was kept rather than deleted.
       'ninebox/axis-breakdown': 'employee',
+      // #195, 2026-08-11. By-id like the two above, but it runs NO Mode-A probe: it carries
+      // `noTenantBoundaryForCaller`, so checks/rls.ts short-circuits to a documented N/A. The
+      // sentinel/idScopeKey requirements asserted below still apply to it unchanged — it still has to
+      // bind a REAL seeded org id for parity and RBAC.
+      'organization/detail': 'organization',
     };
     let byIdCount = 0;
     for (const [surfaceKey, surface] of Object.entries(SURFACES)) {
@@ -106,7 +115,9 @@ describe('SURFACES', () => {
         expect(JSON.stringify(ep.input), k).toContain('{id}');
       }
     }
-    expect(byIdCount).toBe(2);
+    // 2 → 3 on 2026-08-11 (#195): + organization/detail, the first by-id endpoint whose RLS mode is
+    // neither A nor B. Pinned so a by-id endpoint cannot appear without a line in `expected` above.
+    expect(byIdCount).toBe(3);
   });
 
   // Kept surface-agnostic (rather than nine-box-specific) so it keeps applying as surfaces come and
@@ -145,8 +156,15 @@ describe('SURFACES', () => {
     //     three routes pin a FIXED non-existent org id in the query string rather than a seeded id —
     //     a literal, not the `{id}` sentinel — so the by-id invariant above is not being sidestepped.
     //
-    // None of the seven is by-id, so the invariant above still bites for them unchanged —
-    // `getOrganization` was left unregistered rather than weaken it (see surfaces.ts).
+    // None of the NINE is by-id, so the invariant above still bites for them unchanged. (This line
+    // read "None of the seven" until 2026-08-11; the count was never re-derived when access-review's
+    // three routes were re-added, and the enumeration immediately above already listed 2+2+2+3 = 9.
+    // A superlative is a quantifier — count the set.)
+    //
+    // `getOrganization` is now registered (#195) under `noTenantBoundaryForCaller`, which is a
+    // DIFFERENT flag: it does not appear in this loop, `seen` stays 9, and this invariant is
+    // untouched. Setting `globalScope` on it instead would push `seen` to 10 AND trip the by-id
+    // assertion above — which is the proof that the guard was worked with rather than weakened.
     expect(seen).toBe(9);
   });
 
@@ -195,7 +213,7 @@ describe('SURFACES', () => {
   });
 
   // ── #195: the platform-organizations read surface (2026-08-10) ───────────────────────────────
-  it('organization is registered with its flag + the 3 reads, minus the by-id detail', () => {
+  it('organization is registered with its flag + ALL 3 deployed reads', () => {
     const s = SURFACES['organization'];
     expect(s.flag).toBe('Platform__PlatformOrganizationsReadEnabled');
     expect(s.roles).toEqual(['platform_owner', 'org_admin']);
@@ -205,27 +223,111 @@ describe('SURFACES', () => {
     // makes this class of mistake unshippable; this line now just records the corrected value.
     expect(s.probeRole).toBe('platform_owner');
 
-    expect(s.endpoints.map((e) => e.name)).toEqual(['kpis', 'list']);
+    // 2026-08-11 (#195): 'detail' added. PlatformOrganizationsReadEndpoints.cs maps exactly three
+    // GETs (:43 kpis, :65 list, :113 by-id), so this is now the whole deployed read surface.
+    expect(s.endpoints.map((e) => e.name)).toEqual(['kpis', 'list', 'detail']);
 
     for (const ep of s.endpoints) {
       // Both flags still dark, TS still the live path — so every endpoint MUST keep a tsProcedure and
       // produce a real byte diff. A [WEAK] here would mean the pre-flip readiness check proves nothing.
+      // (`detail` carries a KNOWN, source-derived divergence — C# `counts` vs Prisma `_count`. It
+      // keeps its tsProcedure anyway: dropping it to dodge a predicted red is how a gate is made
+      // unable to fail. See the endpoint comment in surfaces.ts.)
       expect(ep.tsProcedure, ep.name).toBeTruthy();
-      // RBAC is the boundary proof on a platform-owner surface, since RLS is N/A.
+      // RBAC is the boundary proof on a platform-owner surface, since RLS is N/A on all three.
       expect(ep.expectedByRole, ep.name).toEqual({ platform_owner: 200, org_admin: 403 });
-      expect(ep.globalScope, ep.name).toBe(true);
     }
+
+    // The RLS N/A is reached by TWO DIFFERENT flags, and conflating them is the mistake this
+    // asserts against. kpis/list are genuinely org-independent payloads; detail's payload is
+    // org-SPECIFIC and only its CALLER is boundary-free.
+    const byName = (n: string) => s.endpoints.find((e) => e.name === n)!;
+    for (const n of ['kpis', 'list']) {
+      expect(byName(n).globalScope, n).toBe(true);
+      expect(byName(n).noTenantBoundaryForCaller, n).toBeUndefined();
+      expect(byName(n).idScopeKey, n).toBeUndefined();
+    }
+    expect(byName('detail').globalScope, 'detail must NOT claim org-independence').toBeUndefined();
+    expect(byName('detail').noTenantBoundaryForCaller).toBe(true);
   });
 
-  it('getOrganization stays UNregistered until a by-id platform-owner endpoint can be expressed', () => {
-    // Pins a DELIBERATE omission so it reads as a decision, not an oversight. Registering it needs a
-    // real org id in `{id}` AND no Mode-A IDOR probe; the only way to express the second today is
-    // `globalScope`, which the invariant above forbids combining with `idScopeKey` — correctly, since
-    // that flag means "pure kernel", not "no tenant boundary for this caller". Overloading it would
-    // silently disable a genuine IDOR probe on some future surface.
-    const names = SURFACES['organization'].endpoints.map((e) => e.name);
-    expect(names).not.toContain('detail');
-    expect(SURFACES['organization'].endpoints.some((e) => e.idScopeKey)).toBe(false);
+  it('getOrganization is registered under the by-id platform-owner marker, NOT globalScope', () => {
+    // Replaces the pin on a DELIBERATE omission (which read: "stays UNregistered until a by-id
+    // platform-owner endpoint can be expressed"). It can now be expressed — by a NEW, explicitly-named
+    // field, not by overloading `globalScope`. The globalScope+idScopeKey guard above was left exactly
+    // as it was; this endpoint satisfies it rather than sidestepping it.
+    const s = SURFACES['organization'];
+    const names = s.endpoints.map((e) => e.name);
+    expect(names).toContain('detail');
+    const detail = s.endpoints.find((e) => e.name === 'detail')!;
+    expect(detail.idScopeKey, 'detail must bind a REAL seeded org id — the endpoint 404s on an unknown org').toBe(
+      'organization',
+    );
+    expect(detail.noTenantBoundaryForCaller).toBe(true);
+    expect(detail.globalScope, 'detail is NOT a pure kernel — its payload is org-specific').toBeUndefined();
+    // The deployed route is `/platform/organizations/{id:guid}`; the registry writes the harness's
+    // canonical sentinel, because ids.ts substitutes a concrete id rather than calling by template.
+    expect(detail.csharpPath).toBe('/platform/organizations/{id}');
+  });
+
+  it('noTenantBoundaryForCaller is by-id only, never globalScope, and denies EVERY non-platform-owner role', () => {
+    let seen = 0;
+    for (const [key, surface] of Object.entries(SURFACES)) {
+      for (const ep of surface.endpoints) {
+        if (!ep.noTenantBoundaryForCaller) continue;
+        seen++;
+        // (i) Only meaningful on a by-id endpoint — it suppresses RLS Mode A and nothing else. A
+        //     Tier-1 endpoint claiming it is a category error, and would read as a general Mode-B
+        //     suppressor, which is what globalScope is for.
+        expect(ep.idScopeKey, `${key}/${ep.name}: marker set without idScopeKey`).toBeDefined();
+        // (ii) Never both. They assert different things (payload vs caller); combining them is the
+        //      overload the globalScope guard above exists to prevent.
+        expect(ep.globalScope, `${key}/${ep.name}: marker AND globalScope`).toBeUndefined();
+        // (iii) RBAC is the ENTIRE boundary proof once RLS is N/A, so EVERY non-platform-owner role
+        //       must be denied — not merely "some role somewhere is denied".
+        //
+        //       An earlier version asserted `Object.values(...).toContain(403)`, which is the weaker
+        //       claim and survives the case that matters: a later slice makes an org's own admin able
+        //       to read its own org detail (`{platform_owner:200, org_admin:200, hrbp:403}`). A real
+        //       cross-tenant boundary would then exist again — org-A's admin reaching org-B's id —
+        //       while this marker keeps RLS Mode A suppressed, and the RBAC leg could not see it
+        //       either, since it only ever probes org A's OWN id. (On today's registry that specific
+        //       edit is caught by the organization-surface pin below, which pins the whole
+        //       expectedByRole map — but that pin is surface-specific and this invariant is the one a
+        //       FUTURE endpoint inherits, so it must carry the constraint itself.)
+        for (const [role, expectation] of Object.entries(ep.expectedByRole)) {
+          if (role === 'platform_owner') continue;
+          expect(
+            expectation,
+            `${key}/${ep.name}: role "${role}" is ${expectation}, but every non-platform-owner role must be 403 — ` +
+              'a role this endpoint answers 200 to is a tenant boundary that RLS Mode A is being told to skip',
+          ).toBe(403);
+        }
+        // ...and at least one such role must EXIST, or the loop above is vacuous.
+        expect(
+          Object.keys(ep.expectedByRole).filter((r) => r !== 'platform_owner'),
+          `${key}/${ep.name} declares no non-platform-owner role at all`,
+        ).not.toEqual([]);
+        // (iv) Only a platform-owner-gated surface qualifies — a constraint no org-scoped surface can
+        //      satisfy by accident. This is a PROXY, and worth naming as one: it reads a registry
+        //      field, not the deployed gate. Nothing in this repo verifies the marker's actual stated
+        //      precondition (served by a platform-owner gate over the UNSCOPED client) — and two
+        //      other registered surfaces (audit-log, access-review) already satisfy the proxy, so a
+        //      future by-id read added to either could carry the marker while in fact being served
+        //      through a tenant-scoped repository. THE COUNT PIN BELOW IS THE REAL BACKSTOP for that
+        //      case: it forces the edit to be deliberate and reviewed, which (iv) alone does not.
+        expect(surface.probeRole, `${key}: marker on a non-platform-owner surface`).toBe('platform_owner');
+      }
+    }
+    // Count pin with a reason PER ENDPOINT, so the loop going empty fails HERE instead of reading as
+    // an enforced invariant (the 2026-08-05 nine-box lesson recorded above). It is ALSO the only
+    // forcing function on the marker's unverifiable precondition — see (iv). Adding a second marked
+    // endpoint must be a deliberate edit here, with its own line, naming the gate it is served by.
+    //   organization/detail — GET /platform/organizations/{id}. platformProcedure / PlatformOwnerGate
+    //     over the unscoped db; a platform owner reading org B is the FEATURE, and it 404s on an
+    //     unknown org (organizations.ts:100), so the access-review fixed-non-existent-id trick cannot
+    //     apply and a real seeded id is required.
+    expect(seen).toBe(1);
   });
 
   // ── The two platform-owner READ surfaces re-registered C#-only on 2026-08-11 ──────────────────
@@ -274,7 +376,10 @@ describe('SURFACES', () => {
     // lookup; the 200 is an EMPTY report, because AccessReviewService.BuildReportAsync has no
     // org-exists precondition (only AttestAsync does, AccessReviewService.cs:35). Using a real
     // seeded org id instead would turn these into by-id endpoints and collide with the globalScope
-    // invariant above — which is precisely why getOrganization is still unregistered.
+    // invariant above — which is why this surface must NOT be rewritten to use a seeded id without
+    // moving to `noTenantBoundaryForCaller`, the marker `getOrganization` needed. (This sentence
+    // used to end "...which is precisely why getOrganization is still unregistered". It IS
+    // registered, as of 2026-08-11 (#195) — under that marker, not by weakening this invariant.)
     const s = SURFACES['access-review'];
     // Paths pinned EXACTLY, not by substring. An earlier revision asserted only
     // `.toContain('organizationId=...')`, which left the route itself unpinned — a mutation to

@@ -2,6 +2,7 @@ import type { CheckResult as ParityCheckResult } from './checks/parity';
 import type { CheckResult as RlsCheckResult } from './checks/rls';
 import type { CheckResult as RbacCheckResult } from './checks/rbac';
 import type { WriteCheckResult } from './checks/writes';
+import type { CheckResult as PreflightCheckResult } from './checks/preflight';
 
 /**
  * Union of every check runner's result shape (Tasks 8/9/10). `report.ts` is the only
@@ -14,8 +15,18 @@ import type { WriteCheckResult } from './checks/writes';
  * a C#-only endpoint whose TS procedure has been deleted. `renderLine` renders
  * those as `[WEAK]` instead of `[PASS]`, and `renderReport` counts them in a
  * separate `weak` bucket so the summary line cannot read as "N compared, N agreed".
+ *
+ * `PreflightCheckResult` (#206) deliberately has NO `inconclusive` member: a probe-viability
+ * preflight that could not run is a FAIL, never a `[WEAK]`. It is the precondition of every other
+ * check, so "could not establish the probe identity" and "there was nothing to compare" are not the
+ * same disposition — the first means no check ran at all.
  */
-export type CheckResult = ParityCheckResult | RlsCheckResult | RbacCheckResult | WriteCheckResult;
+export type CheckResult =
+  | ParityCheckResult
+  | RlsCheckResult
+  | RbacCheckResult
+  | WriteCheckResult
+  | PreflightCheckResult;
 
 function hasRole(r: CheckResult): r is RbacCheckResult | (WriteCheckResult & { role: string }) {
   return (r.check === 'rbac' || r.check === 'write-rbac') && 'role' in r && r.role !== undefined;
