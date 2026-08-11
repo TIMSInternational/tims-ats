@@ -26,6 +26,12 @@ public sealed class AccessReviewEndpointAuthTests(AccessReviewFixture fixture)
     private const string AttestPath = "/access-review/attest";
     private const string HistoryPath = "/access-review/attestations";
 
+    // The fixed, deliberately NON-EXISTENT organization id that scripts/parity/surfaces.ts's
+    // `access-review` surface pins into all three read paths. Not kept in sync by tooling — if the
+    // registry ever changes the value, PlatformOwner_Reads_Are200_ForNonExistentOrg below still
+    // proves the PROPERTY the registration depends on, just for a different id.
+    private const string ParityHarnessOrgId = "00000000-0000-0000-0000-000000000000";
+
     private static readonly RSA SigningRsa = RSA.Create(2048);
     private static readonly RsaSecurityKey PrivateKey = new(SigningRsa) { KeyId = "access-review-test-key" };
 
@@ -180,6 +186,54 @@ public sealed class AccessReviewEndpointAuthTests(AccessReviewFixture fixture)
         var response = await Get(client, $"{HistoryPath}?organizationId={AccessReviewFixture.OrgA}", Mint(AccessReviewFixture.PlatformOwnerSub));
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    /// <summary>
+    /// Pins the assumption the parity harness's `access-review` surface registration rests on
+    /// (scripts/parity/surfaces.ts, re-registered C#-only 2026-08-11): all three READ routes answer
+    /// 200 with an EMPTY report for a non-existent organization, so the harness can pin a fixed
+    /// all-zeros org id and assert `platform_owner: 200` without seeding or resolving a real org.
+    ///
+    /// Two behaviours make that true and both are load-bearing, so both are asserted here rather
+    /// than inferred from the source: (1) <see cref="Tims.Application.AccessReview.AccessReviewService.BuildReportAsync"/>
+    /// has NO org-exists precondition — only <c>AttestAsync</c> does, which is why
+    /// <see cref="Attest_Is404_WhenOrgDoesNotExist"/> above expects 404 while these expect 200;
+    /// (2) the security-event write that <c>report</c>/<c>export</c> perform with that bogus org id
+    /// cannot fail the request, because <c>SecurityEventWriter.WriteAsync</c> is fail-soft.
+    ///
+    /// The literal below is the SAME id the registry pins. If a future change makes an unknown org
+    /// 404 here — the behaviour <c>getOrganization</c> already has, which is exactly why THAT read
+    /// is still unregistered — this test fails instead of the parity run failing in Federico's hands.
+    /// </summary>
+    [Theory]
+    [InlineData(ReportPath)]
+    [InlineData(ExportPath)]
+    [InlineData(HistoryPath)]
+    public async Task PlatformOwner_Reads_Are200_ForNonExistentOrg(string path)
+    {
+        await using var factory = EnabledFactory();
+        using var client = factory.CreateClient();
+
+        var response = await Get(client, $"{path}?organizationId={ParityHarnessOrgId}", Mint(AccessReviewFixture.PlatformOwnerSub));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    /// <summary>
+    /// The other half of the registry's expectation matrix on the same fixed id: `org_admin` (any
+    /// ordinary org user) is refused by <c>PlatformOwnerGate</c> BEFORE any org lookup, so the 403
+    /// does not depend on the org existing either. Without this, a green RBAC run on the harness
+    /// could not distinguish "the gate denied" from "the unknown org happened to error".
+    /// </summary>
+    [Fact]
+    public async Task OrdinaryOrgUser_Report_Is403_ForNonExistentOrg()
+    {
+        await using var factory = EnabledFactory();
+        using var client = factory.CreateClient();
+
+        var response = await Get(client, $"{ReportPath}?organizationId={ParityHarnessOrgId}", Mint(AccessReviewFixture.OrgUserSub));
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
     /// <summary>

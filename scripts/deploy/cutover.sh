@@ -92,10 +92,10 @@ surface_row() {
       echo "read|DeiReadEnabled|verify|dei|NEXT_PUBLIC_DEI_READ_VIA_CSHARP|TS_DELETED|Runbook §6 Phase A #4. UPDATE 2026-07-31: flag confirmed live in prod; 9 of 11 registered read procedures had their TS side deleted, leaving getEthnicityDistribution/getDisabilityDistribution (both zero-FE-consumer). UPDATE 2026-08-06 (#60): those last 2 are now deleted too — packages/api/src/routers/dei.ts serves ONLY the generateReport mutation, which was NEVER ported to C# and is deliberately retained (see the TS-DELETION note in that file). Status flips CONFIRMED_LIVE -> TS_DELETED: the previous note said 'do not treat this as TS_DELETED', which is no longer true. As with ninebox (#57), verify stays 'verify dei' and the surface stays REGISTERED as C#-only in scripts/parity/surfaces.ts with both tsProcedure fields dropped: only checks/parity.ts reads tsProcedure, so deleting the surface would have retired the RBAC deny assertions (hrbp 403) and the RLS cross-org check against still-deployed C# demographic endpoints — a security-coverage regression, not a cleanup. A run now reports [WEAK] for parity (no TS side to compare, stated explicitly) while RBAC + RLS run for real and still fail the command. Read a green run as evidence about PERMISSIONS and ISOLATION on the C# read surface, NOT as cross-stack parity — cross-stack parity for these two now lives in DeiReadEndpointTests.cs (:139-140 bodies, :333-334 gate) + contracts/dei-fixtures/*.json. getPayEquity (FX) was gated by the separate Platform:FxReadsEnabled backend flag but shared this ONE FE flag, so its TS side was deleted in the 2026-07-31 pass despite that backend split."
       ;;
     audit-log)
-      echo "read|AuditLogReadEnabled|NONE|NONE|NEXT_PUBLIC_AUDIT_LOG_READ_VIA_CSHARP|TS_DELETED|Phase-5 Slice-17. UPDATE 2026-07-31: flag confirmed live in prod, and this surface's only registered read procedure (platform.getCrossOrgAuditLogs, plus platform.exportAuditLogsCsv which shared the same TS router) has been deleted (packages/api/src/routers/platform/system.ts) — the C# read path is the sole implementation now, so scripts/parity/surfaces.ts's 'audit-log' entry was removed too and there is no TS side left to diff against. The FE wrapper (apps/web/lib/platform-api/audit-log.ts) now calls the C# service unconditionally rather than gating on the flag. --verify-only for this surface is now a no-op (see run_verify) rather than a real parity check."
+      echo "read|AuditLogReadEnabled|verify|audit-log|NEXT_PUBLIC_AUDIT_LOG_READ_VIA_CSHARP|TS_DELETED|Phase-5 Slice-17. UPDATE 2026-07-31: flag confirmed live in prod, and this surface's only registered read procedure (platform.getCrossOrgAuditLogs, plus platform.exportAuditLogsCsv which shared the same TS router) has been deleted (packages/api/src/routers/platform/system.ts) — the C# read path is the sole implementation now. The FE wrapper (apps/web/lib/platform-api/audit-log.ts) now calls the C# service unconditionally rather than gating on the flag. UPDATE 2026-08-11: this row's parity_command was NONE from 2026-07-31 until now, because scripts/parity/surfaces.ts's 'audit-log' entry was removed at the same time as the TS procedures. That removal is REVERSED — the surface is re-registered C#-only (tsProcedure became optional on 2026-08-06, efb7553f, six days AFTER the deletion), so --verify-only runs a REAL check again. Read the result precisely: parity reports [WEAK] on both endpoints (no TS side to diff), while the RBAC platform_owner-200/org_admin-403 assertions and the C#-returns-200 liveness check are real and are the point. RLS is a documented N/A (globalScope) — it was N/A before the deletion too, so no cross-tenant probe was lost or regained. Both deployed routes are now registered, including /audit/logs/export, which the original entry never covered."
       ;;
     access-review)
-      echo "read|AccessReviewReadEnabled|NONE|NONE|NEXT_PUBLIC_ACCESS_REVIEW_READ_VIA_CSHARP|TS_DELETED|Phase-5 Slice-18. UPDATE 2026-07-31: flag confirmed live in prod; all 3 registered TS read procedures (getAccessReview/exportAccessReviewCsv/listAccessReviewAttestations) have been deleted — the C# read path is the sole implementation now, so scripts/parity/surfaces.ts's 'access-review' entry was removed too and there is no TS side left to diff against. --verify-only for this surface is now a no-op (see run_verify) rather than a real parity check. UPDATE (same day, continued): the write flag (access-review-write) was ALSO confirmed live and its TS side deleted the same session — with BOTH sides gone, the whole TS router (packages/api/src/routers/platform/access-review.ts + its schemas/service/repository) was removed outright, matching the team-intel/reporting precedent, unlike this entry's original note. Read side is efcoreReadOnly over Phase-2 identity tables (users/roles/user_roles/role_permissions/permissions/organizations); access_reviews itself stays Prisma-owned (the C# write is a coexistence write, not an ownership flip — see table-ownership.md)."
+      echo "read|AccessReviewReadEnabled|verify|access-review|NEXT_PUBLIC_ACCESS_REVIEW_READ_VIA_CSHARP|TS_DELETED|Phase-5 Slice-18. UPDATE 2026-07-31: flag confirmed live in prod; all 3 registered TS read procedures (getAccessReview/exportAccessReviewCsv/listAccessReviewAttestations) have been deleted — the C# read path is the sole implementation now. UPDATE 2026-08-11: scripts/parity/surfaces.ts's 'access-review' entry was removed on 2026-07-31 and that removal is REVERSED — re-registered C#-only, so --verify-only runs a REAL check again. Same reading as the audit-log row above: [WEAK] parity (no TS side), REAL RBAC platform_owner-200/org_admin-403, RLS a documented N/A (globalScope, unchanged before and after). All 3 routes pin a fixed non-existent org id in organizationId; neither expectation depends on that org existing (the 403 precedes any org lookup, and BuildReportAsync has no org-exists precondition — only AttestAsync does). UPDATE 2026-07-31 (same day, continued): the write flag (access-review-write) was ALSO confirmed live and its TS side deleted the same session — with BOTH sides gone, the whole TS router (packages/api/src/routers/platform/access-review.ts + its schemas/service/repository) was removed outright, matching the team-intel/reporting precedent, unlike this entry's original note. Read side is efcoreReadOnly over Phase-2 identity tables (users/roles/user_roles/role_permissions/permissions/organizations); access_reviews itself stays Prisma-owned (the C# write is a coexistence write, not an ownership flip — see table-ownership.md)."
       ;;
     evaluation360-write)
       echo "write|Evaluation360WriteEnabled|verify-write|evaluation360|NEXT_PUBLIC_EVALUATION360_WRITE_VIA_CSHARP|FLIPPED_AHEAD_OF_FLAG|Runbook §6 Phase B #8 — FLIP-READY. UPDATE 2026-07-28: this note used to say 'once verified, drop the TS eval360 router' as a pending future step — that's now DONE (packages/api/src/routers/evaluation360.ts + its FE fallback in apps/web/lib/platform-api/evaluation360.ts were deleted outright), independent of this flag's flip state. verify-write itself is UNAFFECTED by that deletion (scripts/parity/write-surfaces.ts's 'evaluation360' entry hits the C# API directly for RBAC/IDOR checks — it never depended on the TS router). Flipping Platform:Evaluation360WriteEnabled is still the pending step to move review_cycles/rater_assignments/rater_responses to efcore table-ownership. ⚠️ UPDATE 2026-08-06 (#67, runbook §7e): THE OWNERSHIP FLIP HAS BEEN EXECUTED WHILE THIS FLAG IS STILL DARK. review_cycles/rater_assignments/rater_responses are now efcore[] in docs/architecture/table-ownership.md. This DEVIATES from runbook §8 Q8 / precondition P1, which require the write flag confirmed live in prod before the flip PR opens — all three prior flips (access_reviews, critical_roles+successors, calibration_*) had CONFIRMED_LIVE write flags. Federico authorised the deviation explicitly on 2026-08-06 after it was raised. CONSEQUENCE, stated plainly: the TS router was deleted 2026-07-28 and its orphaned repository by #54, so with this flag dark these three tables currently have NO ACTIVE WRITER ON EITHER STACK. The ledger's efcore[] entry means C# is the sole IMPLEMENTATION and sole authority for future schema changes; it does not currently mean C# is writing. Flip this flag to make the ledger operationally true, then change this status to CONFIRMED_LIVE."
@@ -134,7 +134,11 @@ status_label() {
     FLIP_READY) echo "FLIP-READY" ;;
     COEXISTENCE) echo "COEXISTENCE" ;;
     BLOCKED) echo "BLOCKED" ;;
-    TS_DELETED) echo "TS DELETED (no parity)" ;;
+    # 2026-08-11: was "TS DELETED (no parity)". That conflated two independent facts and is now
+    # false for audit-log/access-review, whose surfaces were re-registered C#-only — a deleted TS
+    # side means no cross-stack DIFF, but the RBAC/RLS checks still run. Whether parity runs at all
+    # is already printed in its own column (parity_command), so this label just states the TS fact.
+    TS_DELETED) echo "TS DELETED" ;;
     *) echo "$1" ;;
   esac
 }
@@ -178,11 +182,16 @@ EXAMPLES
   scripts/deploy/cutover.sh access-review-write --flip-backend --skip-verify-confirm-i-know-what-im-doing
   scripts/deploy/cutover.sh dei --rollback --yes
   scripts/deploy/cutover.sh --list
-  # NOTE: "reporting", "evaluation360" (read), "team-intel", "billing-usage", and "audit-log" no
-  # longer have a real --verify-only check — their TS procedures were deleted (2026-07-28 for the
-  # first two, 2026-07-29 for the next two, 2026-07-31 for audit-log), so there's nothing left to
-  # diff against. --verify-only for any of these five still runs (prints a no-op notice and exits
-  # 0) rather than erroring.
+  # NOTE: "reporting", "evaluation360" (read), "team-intel", "billing-usage", "billing-read" and
+  # "succession" have no real --verify-only check — their TS procedures were deleted AND their
+  # surfaces were removed from scripts/parity/surfaces.ts, so --verify-only prints a no-op notice
+  # and exits 0 rather than erroring. Do not read that 0 as a pass.
+  #
+  # 2026-08-11: "audit-log" and "access-review" (read) used to be on that list and are NOT any more.
+  # Their TS procedures are still deleted, but their surfaces were re-registered C#-only, so
+  # --verify-only runs a real check whose parity leg reports [WEAK] while its RBAC leg is real.
+  # A deleted TS side does not by itself make a surface unverifiable — that conflation is what put
+  # these two rows here for eleven days.
 
 See scripts/deploy/README-cutover.md for the full worked flow.
 EOF
@@ -539,8 +548,9 @@ fi
 # Exit code contract: a bare `--verify-only` (the default mode) must propagate the parity CLI's
 # own pass/fail so this script is usable as a CI/scripting gate, e.g.
 # `./cutover.sh engagement --verify-only && ./cutover.sh engagement --flip-backend --yes`
-# (for "reporting"/"evaluation360" read/"team-intel"/"billing-usage", whose TS routers are
-# deleted, run_verify's NONE branch above returns 0 unconditionally instead of a real pass/fail). Once a
+# (for "reporting"/"evaluation360" read/"team-intel"/"billing-usage"/"billing-read"/"succession",
+# whose surfaces are unregistered, run_verify's NONE branch above returns 0 unconditionally instead
+# of a real pass/fail — "audit-log"/"access-review" left that group on 2026-08-11). Once a
 # mutating mode (--flip-backend/--rollback) also ran, THEIR success is what the exit code reports
 # (they already refuse to run on a verify failure, so reaching this point means they printed/ran
 # fine even if the earlier bundled verify had failed and was overridden via the escape hatch).

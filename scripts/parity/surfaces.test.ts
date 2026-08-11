@@ -54,7 +54,7 @@ describe('SURFACES', () => {
         expect(ep.idScopeKey, `${key}/${ep.name} is globalScope AND by-id`).toBeUndefined();
       }
     }
-    // Documented state, 4 endpoints across 2 surfaces. The loop above is the invariant; this pins the
+    // Documented state, 9 endpoints across 4 surfaces. The loop above is the invariant; this pins the
     // count so a NEW globalScope endpoint has to be looked at deliberately — and so that the loop
     // going empty (which would make the invariant unenforced while still reading as enforced) fails
     // here.
@@ -68,10 +68,16 @@ describe('SURFACES', () => {
     //     tenant boundary and Mode B's identical-payload heuristic would fire on the correct
     //     behaviour. `list` enumerates every tenant by definition. RBAC (org_admin 403 on both) is
     //     what proves the boundary here, not RLS.
+    //   audit-log logs + export and access-review report + export + attestations — SAME
+    //     platform-owner justification as organization (2026-08-11, re-registered C#-only). Both
+    //     surfaces carried `globalScope: true` before they were deleted on 2026-07-31, so this is
+    //     the pre-existing disposition restored, not a new claim of org-independence. access-review's
+    //     three routes pin a FIXED non-existent org id in the query string rather than a seeded id —
+    //     a literal, not the `{id}` sentinel — so the by-id invariant above is not being sidestepped.
     //
-    // Neither of the two new ones is by-id, so the invariant above still bites for them unchanged —
+    // None of the seven is by-id, so the invariant above still bites for them unchanged —
     // `getOrganization` was left unregistered rather than weaken it (see surfaces.ts).
-    expect(seen).toBe(4);
+    expect(seen).toBe(9);
   });
 
   // ── #195 AC1: the monitoring read surface (2026-08-10) ───────────────────────────────────────
@@ -102,7 +108,10 @@ describe('SURFACES', () => {
     const s = SURFACES['monitoring'];
     for (const ep of s.endpoints) {
       const denied = Object.entries(ep.expectedByRole).filter(([, v]) => v === 403);
-      expect(denied.map(([r]) => r), `${ep.name} has no denied role`).toEqual(['org_admin']);
+      expect(
+        denied.map(([r]) => r),
+        `${ep.name} has no denied role`,
+      ).toEqual(['org_admin']);
     }
   });
 
@@ -144,6 +153,69 @@ describe('SURFACES', () => {
     const names = SURFACES['organization'].endpoints.map((e) => e.name);
     expect(names).not.toContain('detail');
     expect(SURFACES['organization'].endpoints.some((e) => e.idScopeKey)).toBe(false);
+  });
+
+  // ── The two platform-owner READ surfaces re-registered C#-only on 2026-08-11 ──────────────────
+  // Both were REMOVED on 2026-07-31 (audit-log in 2950a06c, access-review in 18282f96) on the
+  // reasoning "the TS procedures are deleted, so there is nothing left to diff". `tsProcedure`
+  // became optional on 2026-08-06 (efb7553f) — SIX DAYS LATER — which is what makes that reasoning
+  // obsolete rather than merely debatable. These tests pin the RESTORATION the same way the nine-box
+  // and dei tests pin theirs: a future cleanup that deletes either surface "because the TS is gone"
+  // fails here, with the reason attached.
+  //
+  // What the restoration buys, stated narrowly on purpose: the RBAC deny assertion and the
+  // C#-returns-200 liveness check against a flag that is LIVE in prod. It does NOT buy a cross-tenant
+  // probe — every endpoint on both surfaces is globalScope, and was before deletion too, so the RLS
+  // check is a documented N/A now exactly as it was then.
+  it.each([
+    ['audit-log', 'Platform__AuditLogReadEnabled', ['logs', 'export']],
+    ['access-review', 'Platform__AccessReviewReadEnabled', ['report', 'export', 'attestations']],
+  ])('%s stays registered as a C#-only platform-owner surface', (key, flag, endpointNames) => {
+    const s = SURFACES[key];
+    expect(
+      s,
+      `the ${key} read surface was deleted — that retires its RBAC deny assertion on a LIVE flag`,
+    ).toBeDefined();
+    expect(s.flag).toBe(flag);
+    expect(s.roles).toEqual(['platform_owner', 'org_admin']);
+    // MUST be the allowed role: checks/parity.ts:25 fails a C#-only endpoint on any non-200, and
+    // cli.ts's mintTokens skips the org-B token requirement only for platform_owner.
+    expect(s.probeRole).toBe('platform_owner');
+    // Pinned by name and counted from the endpoints file, not auto-discovered: dropping a route
+    // must turn this red.
+    expect(s.endpoints.map((e) => e.name)).toEqual(endpointNames);
+
+    for (const ep of s.endpoints) {
+      // The TS routers are deleted. A re-added tsProcedure would mean a second live implementation.
+      expect(ep.tsProcedure, `${key}/${ep.name} must be C#-only — the TS router is deleted`).toBeUndefined();
+      // RBAC is the ENTIRE boundary proof on a principal-type gate, so the deny must be present.
+      expect(ep.expectedByRole, `${key}/${ep.name}`).toEqual({ platform_owner: 200, org_admin: 403 });
+      expect(ep.globalScope, `${key}/${ep.name}`).toBe(true);
+      expect(ep.idScopeKey, `${key}/${ep.name}`).toBeUndefined();
+    }
+  });
+
+  it('access-review pins a FIXED non-existent org id — not the {id} sentinel, and not a real org', () => {
+    // The three routes take a REQUIRED organizationId. The all-zeros UUID is deliberate: neither
+    // expectation depends on the org existing. The 403 comes from PlatformOwnerGate before any org
+    // lookup; the 200 is an EMPTY report, because AccessReviewService.BuildReportAsync has no
+    // org-exists precondition (only AttestAsync does, AccessReviewService.cs:35). Using a real
+    // seeded org id instead would turn these into by-id endpoints and collide with the globalScope
+    // invariant above — which is precisely why getOrganization is still unregistered.
+    const s = SURFACES['access-review'];
+    for (const ep of s.endpoints) {
+      expect(ep.csharpPath, ep.name).toContain('organizationId=00000000-0000-0000-0000-000000000000');
+      expect(ep.csharpPath, `${ep.name} must not use the by-id sentinel`).not.toContain('{id}');
+      expect(ep.input, ep.name).toEqual({ organizationId: '00000000-0000-0000-0000-000000000000' });
+    }
+  });
+
+  it('audit-log registers BOTH deployed routes, including the export the original entry missed', () => {
+    // Counted from AuditReadEndpoints.cs (MapGet at :32 and :63), not carried over from the deleted
+    // entry, which registered only `logs`. /audit/logs/export sits behind the same live flag and the
+    // same gate and had never had an RBAC assertion at all.
+    const paths = SURFACES['audit-log'].endpoints.map((e) => e.csharpPath);
+    expect(paths).toEqual(['/audit/logs', '/audit/logs/export']);
   });
 
   // ── Coverage-audit additions (2026-07-27) ────────────────────────────────────────────────────

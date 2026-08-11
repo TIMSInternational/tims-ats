@@ -1419,8 +1419,9 @@ const ACCESS_REVIEW_NOTES_MARKER = 'parity';
 // Coverage-audit addition (2026-07-27): 1 write under Platform__AccessReviewWriteEnabled.
 // `attest` = PlatformOwnerGate + an unconditional insert into `access_reviews`. (This comment used to
 // point at "the access-review READ surface in surfaces.ts" for the gate rationale; that surface was
-// REMOVED on 2026-07-31 (18282f96) and the pointer dangled until #195. The same gate is now described
-// by the `organization` read surface in surfaces.ts.) UNLIKE every other
+// REMOVED on 2026-07-31 (18282f96) and the pointer dangled until #195, which repointed it at the
+// `organization` read surface. As of 2026-08-11 the access-review READ surface is back, C#-only, so
+// the original pointer is valid again — see SURFACES['access-review'] in surfaces.ts.) UNLIKE every other
 // write surface here, this one has NO cross-org IDOR concept: a platform owner is INTENTIONALLY
 // cross-org (they attest ANY org's access review by design — the same reason the read surface's
 // RLS check is `globalScope` rather than a leak signal), so `buildIdor` is correctly omitted —
@@ -1538,7 +1539,8 @@ const platformOrganizationsSurface: WriteSurface<PlatformOrganizationsWriteResol
         const o = asObj(b);
         if (!o) return 'response is not an object';
         if (typeof o.id !== 'string' || !UUID_RE.test(o.id)) return `expected a uuid id, got ${JSON.stringify(o.id)}`;
-        if (o.name !== ORG_WRITE_NAME_MARKER) return `expected name ${ORG_WRITE_NAME_MARKER}, got ${JSON.stringify(o.name)}`;
+        if (o.name !== ORG_WRITE_NAME_MARKER)
+          return `expected name ${ORG_WRITE_NAME_MARKER}, got ${JSON.stringify(o.name)}`;
         return null;
       },
       // The column write AND the fail-closed audit row, together — the audit is the half a

@@ -186,11 +186,14 @@ export const SURFACES: Record<string, Surface> = {
   // report a documented N/A (it short-circuits at rls.ts:189, BEFORE the `idScopeKey` branch at :199)
   // rather than a spurious FAIL. The authorization boundary here is the GATE, and it is RBAC — not
   // RLS — that proves it, via the org_admin 403 on every endpoint. Same disposition and same reason
-  // as the access-review read surface that used to live here.
+  // as the access-review / audit-log read surfaces below.
   //
   // probeRole is `org_admin`, not `platform_owner`: a platform owner is org-less and seeded only
-  // under org A (seed.ts:84), so it has no org-B counterpart to probe with. Precedent verbatim from
-  // the removed access-review entry.
+  // under org A (seed.ts:84), so it has no org-B counterpart to probe with. NOTE this DIVERGES from
+  // access-review/audit-log below, which probe with `platform_owner` — they can, because they have
+  // no TS side left, so `mintTokens` never needs an org-B token for them (cli.ts skips that
+  // requirement for `platform_owner`). This surface still has live TS procedures and must produce a
+  // real byte diff, so it needs the org-scoped identity that exists in both orgs.
   //
   // `getOrganization` (the by-id detail read) is DELIBERATELY NOT REGISTERED HERE, and that is the
   // honest answer rather than a shortcut. It needs two things at once — a real org id bound into
@@ -200,8 +203,8 @@ export const SURFACES: Record<string, Surface> = {
   // "pure kernel, org-independent computation" (nine-box simulate/quadrant-plan), whereas this
   // endpoint reads org-specific rows and merely has no tenant boundary FOR THIS CALLER. Those are
   // different properties, and overloading one flag for both is precisely what would silently
-  // disable a real IDOR probe on some future surface. The removed access-review entry sidestepped
-  // it with a fixed non-existent org id, which cannot work here — `getOrganization` 404s on an
+  // disable a real IDOR probe on some future surface. The access-review entry below sidesteps it
+  // with a fixed non-existent org id, which cannot work here — `getOrganization` 404s on an
   // unknown org (organizations.ts:100), so the platform_owner case would assert 404, not 200.
   // Registering it needs a distinct, explicit concept (a platform-owner "no IDOR by design" marker,
   // the read-side analogue of write-surfaces.ts's documented omission of `buildIdor` on
@@ -289,7 +292,9 @@ export const SURFACES: Record<string, Surface> = {
   // 2026-07-29 pass had already removed the other 7 registered reads (grid, calibrations,
   // my-calibrations, bench-strength, dashboard-kpis, employee, calibration).
   //
-  // WHY THIS IS NOT DELETED, unlike succession/team-intel/billing-usage/reporting/evaluation360/audit-log.
+  // WHY THIS IS NOT DELETED, unlike succession/team-intel/billing-usage/reporting/evaluation360.
+  // (audit-log and access-review used to be on that list; both were RE-REGISTERED C#-only on
+  // 2026-08-11 on exactly the reasoning below — see their entries.)
   // Deleting the surface was the first instinct here and it was WRONG: only `checks/parity.ts` reads
   // `tsProcedure`. `checks/rls.ts` and `checks/rbac.ts` take `callCsharp` alone, so removing the surface
   // does not retire a stale TS comparison — it retires the RLS Mode-A cross-tenant IDOR probe and the
@@ -378,7 +383,15 @@ export const SURFACES: Record<string, Surface> = {
   // dashboard-kpis, suggested-successors, simulate-exit); `getCriticalRole` was kept then ONLY
   // because its TS implementation was still live, which is what made `verify succession` a real
   // check. It no longer is, so this surface follows team-intel/billing-usage/reporting/
-  // evaluation360/audit-log and is removed rather than left registered-but-no-op.
+  // evaluation360 and is removed rather than left registered-but-no-op.
+  //
+  // STANDING DEBT, 2026-08-11: that reasoning is the same one that removed audit-log and
+  // access-review, and both were re-registered C#-only on 2026-08-11 because it does not survive
+  // `tsProcedure` becoming optional (efb7553f). The 5 surfaces still deleted on it — succession,
+  // team-intel, reporting, billing-read/billing-usage, evaluation360 — are deployed C# reads with
+  // no RBAC assertion in this harness. They were NOT restored in the same change because, unlike
+  // the two platform-owner surfaces, each is org-scoped RBAC and needs its own seeded grant fixture
+  // to prove anything (the #166 false-FAIL failure mode). Tracked in #195, not fixed here.
   //
   // `verify succession` is therefore now a NO-OP. That is a genuine reduction in this harness's
   // coverage and is recorded as such in scripts/deploy/cutover.sh's `succession` row — do NOT
@@ -393,30 +406,132 @@ export const SURFACES: Record<string, Surface> = {
   // all 5 writes.
   //
   // ── audit-log ────────────────────────────────────────────────────────────────────────────
-  // REMOVED (TS-deletion, 2026-07-31): this surface's only endpoint (`logs`,
-  // tsProcedure `platform.getCrossOrgAuditLogs`) was deleted from
-  // packages/api/src/routers/platform/system.ts once NEXT_PUBLIC_AUDIT_LOG_READ_VIA_CSHARP was
-  // confirmed live in prod and the FE wrapper (apps/web/lib/platform-api/audit-log.ts) moved to
-  // calling the C# service unconditionally — there is no TS side left to diff against. See
-  // scripts/deploy/cutover.sh's `audit-log` row (status TS_DELETED) for the cutover-tooling
-  // side of this change.
+  // RE-REGISTERED 2026-08-11, C#-only. Removed on 2026-07-31 (2950a06c) with the reason "no TS side
+  // left to diff against"; the endpoints were never removed from the deployed service.
   //
+  // WHY THE REMOVAL WAS WRONG UNDER TODAY'S RULES, stated precisely so this is not undone again:
+  // `tsProcedure` became OPTIONAL on 2026-08-06 (efb7553f) — SIX DAYS AFTER this surface was
+  // deleted (`git merge-base --is-ancestor 2950a06c efb7553f` confirms the order). At deletion time
+  // the field was mandatory and a dangling procedure ref really would have crashed `verify` at
+  // runtime, so removal was the only option available THEN. It is not the only option now: omitting
+  // the field keeps the endpoint registered, parity reports `[WEAK]` with a reason, and — the part
+  // that actually matters — the RBAC deny assertions keep running against the live C# path. That is
+  // exactly the disposition nine-box got in #57 and dei got in #60.
+  //
+  // WHAT THIS RESTORES, AND WHAT IT DOES NOT. It restores the RBAC platform-owner-vs-org_admin
+  // assertions and the C#-returns-200 liveness check. It does NOT restore an RLS Mode-A IDOR probe:
+  // every endpoint here is `globalScope`, so `checks/rls.ts` reports a documented N/A — that was
+  // true of the deleted entry too (it set `globalScope: true` on `logs`), so no cross-tenant probe
+  // was lost in 2026-07-31 and none is regained here. On a surface whose gate is PRINCIPAL TYPE
+  // rather than tenancy, RBAC is the entire boundary proof, which is what makes the deny assertion
+  // the whole point rather than a nice-to-have.
+  //
+  // URGENCY: `Platform__AuditLogReadEnabled=true` is LIVE on the App Runner service (measured
+  // 2026-08-10), so this is a surface serving production traffic that has had no automated
+  // permission assertion since 2026-07-31.
+  //
+  // Gate shape: PRINCIPAL TYPE (platform owner vs everyone else — `users.is_platform_owner`, see
+  // PlatformOwnerGate.cs + TS `platformProcedure`), independent of any org. Rather than add a new
+  // harness concept it reuses `roles`/`expectedByRole` with two role keys seed.ts already seeds:
+  // `platform_owner` (a real, org-less platform-owner identity — planSeed's comment) and `org_admin`
+  // (an ordinary seeded role) as the denied probe. org_admin needs no grant fixture here: the gate
+  // rejects it on the `is_platform_owner` bit BEFORE any permission lookup.
+  'audit-log': {
+    key: 'audit-log',
+    flag: 'Platform__AuditLogReadEnabled',
+    roles: ['platform_owner', 'org_admin'],
+    // MUST be the ALLOWED role (200), not the denied one: the parity check always calls probeRole's
+    // token expecting success — including on the C#-only path, which fails the endpoint outright on
+    // any non-200 (checks/parity.ts:25) — so pointing probeRole at a denied role would fail every
+    // endpoint. org_admin (403) is still fully covered by the separate RBAC check via `tokensByRole`.
+    // cli.ts's mintTokens deliberately skips the org-B token requirement for this role.
+    probeRole: 'platform_owner',
+    endpoints: [
+      {
+        name: 'logs',
+        csharpPath: '/audit/logs',
+        // tsProcedure omitted: `platform.getCrossOrgAuditLogs` was deleted 2026-07-31 (2950a06c).
+        input: {},
+        expectedByRole: { platform_owner: 200, org_admin: 403 },
+        // Intentionally cross-org (a platform owner sees every org's rows) — Mode B's "identical
+        // payload across orgs ⇒ leak" heuristic asserts the opposite of the requirement here. The
+        // RLS check is a documented N/A, not a leak signal.
+        globalScope: true,
+      },
+      // NEW COVERAGE, not a restoration: `/audit/logs/export` (AuditReadEndpoints.cs:63) was NEVER
+      // registered, in the original entry or since, so it has never had an RBAC deny assertion
+      // despite being deployed behind the same live flag and the same gate. Counted from the
+      // endpoints file (2 routes), not carried over from the deleted entry (1).
+      {
+        name: 'export',
+        csharpPath: '/audit/logs/export',
+        // tsProcedure omitted: `platform.exportAuditLogsCsv` was deleted in the same commit.
+        input: {},
+        expectedByRole: { platform_owner: 200, org_admin: 403 },
+        globalScope: true,
+      },
+    ],
+  },
   // ── access-review ────────────────────────────────────────────────────────────────────────
-  // READ surface REMOVED (TS-deletion, 2026-07-31): report/export/attestations
-  // (getAccessReview/exportAccessReviewCsv/listAccessReviewAttestations) were deleted from
-  // packages/api/src/routers/platform/access-review.ts once NEXT_PUBLIC_ACCESS_REVIEW_READ_VIA_CSHARP
-  // was confirmed live — there is no TS side left to diff against, so `verify access-review` is
-  // now a no-op (see cutover.sh's `access-review` row, status TS_DELETED). Its former
-  // principal-type-gate pattern (platform owner vs everyone else — see `PlatformOwnerGate.cs` +
-  // TS `platformProcedure`, independent of any org) is gone from this harness too.
+  // RE-REGISTERED 2026-08-11, C#-only. Removed on 2026-07-31 (18282f96) for the same reason, on the
+  // same day, and reinstated on the same rationale as `audit-log` above — see that entry's
+  // "WHY THE REMOVAL WAS WRONG" and "WHAT THIS RESTORES" notes rather than restating them.
+  // `Platform__AccessReviewReadEnabled=true` is likewise LIVE on App Runner (measured 2026-08-10).
   //
-  // The WRITE surface (attestAccessReview) is UNAFFECTED here even though its own TS procedure
-  // was ALSO deleted the same day (NEXT_PUBLIC_ACCESS_REVIEW_WRITE_VIA_CSHARP confirmed live) —
-  // write-surfaces.ts's WRITE_SURFACES['access-review'] tests the C# endpoint directly via raw
-  // SQL + HTTP (no TS comparison, no tsProcedure field), so it has zero dependency on the TS
-  // procedure's existence and stays fully valid/registered forever. `verify-write access-review`
-  // still runs a real check (see cutover.sh's `access-review-write` row, status TS DELETED but
-  // parity CLI invocation still `verify-write access-review`, not `NONE`).
+  // THE FIXED ORG ID IS DELIBERATE AND IS NOT A BY-ID ENDPOINT. All three routes take a REQUIRED
+  // `organizationId` query param, and the all-zeros UUID below is a non-existent org, carried over
+  // verbatim from the deleted entry. Neither expectation depends on that org existing: the 403
+  // (org_admin) is produced by PlatformOwnerGate before any org lookup, and the 200
+  // (platform_owner) is an empty report — `AccessReviewService.BuildReportAsync` has no
+  // org-exists precondition (only `AttestAsync` does, AccessReviewService.cs:35), so an unknown org
+  // yields zero rows and a zero summary, not a 404. Verified against the source, not assumed: this
+  // is exactly the property `getOrganization` lacks (it 404s on an unknown org), which is why THAT
+  // read is still unregistered ~200 lines above.
+  //
+  // The two report routes also write a security event with the bogus org id. That cannot 500 the
+  // read: SecurityEventWriter.WriteAsync wraps the insert in a fail-soft try/catch
+  // (SecurityEventWriter.cs:36) precisely so a lost audit row never blocks the caller.
+  //
+  // `globalScope` is therefore correct here for the same reason as `audit-log`, and it does NOT
+  // collide with the `idScopeKey` guard in surfaces.test.ts — the org id is a fixed literal, not a
+  // seeded resource id threaded through the `{id}` sentinel, so there is no Mode-A probe being
+  // suppressed.
+  //
+  // The WRITE surface (attestAccessReview) was never affected by any of this — write-surfaces.ts's
+  // WRITE_SURFACES['access-review'] hits the C# endpoint directly via raw SQL + HTTP and has no
+  // `tsProcedure` concept at all, so `verify-write access-review` has run a real check throughout.
+  'access-review': {
+    key: 'access-review',
+    flag: 'Platform__AccessReviewReadEnabled',
+    roles: ['platform_owner', 'org_admin'],
+    probeRole: 'platform_owner', // see the audit-log entry's probeRole comment — same fix, same reason.
+    endpoints: [
+      {
+        name: 'report',
+        csharpPath: '/access-review?organizationId=00000000-0000-0000-0000-000000000000',
+        // tsProcedure omitted: `platform.getAccessReview` was deleted 2026-07-31 (18282f96).
+        input: { organizationId: '00000000-0000-0000-0000-000000000000' },
+        expectedByRole: { platform_owner: 200, org_admin: 403 },
+        globalScope: true,
+      },
+      {
+        name: 'export',
+        csharpPath: '/access-review/export?organizationId=00000000-0000-0000-0000-000000000000',
+        // tsProcedure omitted: `platform.exportAccessReviewCsv` was deleted in the same commit.
+        input: { organizationId: '00000000-0000-0000-0000-000000000000' },
+        expectedByRole: { platform_owner: 200, org_admin: 403 },
+        globalScope: true,
+      },
+      {
+        name: 'attestations',
+        csharpPath: '/access-review/attestations?organizationId=00000000-0000-0000-0000-000000000000',
+        // tsProcedure omitted: `platform.listAccessReviewAttestations` was deleted in the same commit.
+        input: { organizationId: '00000000-0000-0000-0000-000000000000' },
+        expectedByRole: { platform_owner: 200, org_admin: 403 },
+        globalScope: true,
+      },
+    ],
+  },
   // ── engagement ──────────────────────────────────────────────────────────────────────────────
   // Coverage-audit addition (2026-07-27): the C# `EngagementReadEndpoints` (Phase-5 Slice 11, 14
   // read routes) has been mapped/dark since PR history predating this audit, and the `engagement`
@@ -508,8 +623,9 @@ export const SURFACES: Record<string, Surface> = {
   // `checks/parity.ts:24` reports an explicit `[WEAK]` did-not-run instead of a silent pass, while
   // `checks/rbac.ts` (hrbp 403 / hr_admin 200 against the LIVE C# route) and `checks/rls.ts`
   // (Mode B cross-org payload comparison) keep running. Deleting the whole surface — the treatment
-  // the team-intel / reporting / billing-read / billing-usage / evaluation360 / audit-log /
-  // access-review / succession entries got — would silently retire that RBAC + RLS coverage, which
+  // the team-intel / reporting / billing-read / billing-usage / evaluation360 / succession entries
+  // got, and that audit-log / access-review got before being re-registered C#-only on 2026-08-11 —
+  // would silently retire that RBAC + RLS coverage, which
   // for org-wide demographic rollups is a security-coverage regression, not a cleanup.
   // So: `verify dei` still runs REAL RBAC + RLS checks; only the parity diff is gone. Its parity
   // coverage now lives in services/Tims.Platform/tests/Tims.IntegrationTests/Dei/
