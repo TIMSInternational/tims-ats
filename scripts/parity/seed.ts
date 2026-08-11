@@ -92,8 +92,11 @@ const ORG_KEYS: readonly ('a' | 'b')[] = ['a', 'b'];
  * (2950a06c / 18282f96) — at "`organization`, which probes with org_admin, so no read surface uses
  * platform_owner as its probeRole". Both statements are now stale: audit-log and access-review were
  * RE-REGISTERED C#-only on 2026-08-11 and both DO use platform_owner as probeRole, which is exactly
- * the case the `orgKey === 'b'` skip below has to keep supporting. Three READ surfaces list the role
- * today — audit-log, access-review, organization — plus write-surfaces.ts's access-review.) */
+ * the case the `orgKey === 'b'` skip below has to keep supporting — as does `organization`, whose
+ * probeRole was corrected to platform_owner the same day. Census of everything that lists the role,
+ * because `planSeed` is called from BOTH the read path (cli.ts:140) and the write path (cli.ts:265):
+ * three READ surfaces (audit-log, access-review, organization) and two WRITE surfaces
+ * (write-surfaces.ts's access-review and organization).) */
 export function planSeed(roles: string[]): SeedPlan {
   const users: SeededUser[] = [];
   for (const orgKey of ORG_KEYS)

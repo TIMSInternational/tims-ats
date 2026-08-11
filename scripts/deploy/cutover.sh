@@ -12,7 +12,8 @@
 # SAFETY MODEL (mirrors the runbook's "Federico-run" rule — nothing here touches AWS/prod unless
 # a human explicitly opts in):
 #   --verify-only   (DEFAULT) runs the real parity CLI (`scripts/parity/cli.ts verify[-write]`).
-#                   Safe, non-mutating, genuinely runnable today given creds + a live C# service.
+#                   Genuinely runnable today given creds + a live C# service. READ-ONLY IN EFFECT,
+#                   with two documented caveats — see "what --verify-only actually touches" below.
 #   --flip-backend  prints the exact `aws apprunner update-service` recipe that would flip the
 #                   `Platform:<Surface>Enabled` flag to true. DRY-RUN (print only) unless --yes.
 #   --rollback      same shape, flips the flag back to `false` + prints the FE Vercel revert
@@ -153,7 +154,8 @@ MODES (default: --verify-only)
   --verify-only              Run the real parity CLI (`verify`/`verify-write`) for <surface> and
                               report pass/fail. Non-mutating. Needs scripts/parity/.env populated
                               (Supabase creds) + a live, reachable C# service — see
-                              scripts/parity/README.md. Safe to run today with zero risk.
+                              scripts/parity/README.md. Read-only in effect; see the caveats block
+                              above run_verify before treating it as literally side-effect-free.
 
   --flip-backend              Print (default) or run (--yes) the exact `aws apprunner
                               update-service` recipe that flips Platform:<Surface>Enabled to
@@ -225,7 +227,32 @@ print_list() {
 # ---------------------------------------------------------------------------------------------
 # --verify-only: shells out to the real parity CLI. Read surfaces use `verify <key>`; write
 # surfaces use `verify-write <key>` (scripts/parity/cli.ts dispatch — see cli.ts:296-311). This
-# is the ONLY mode that talks to a live C#/Supabase endpoint, and it is entirely non-mutating.
+# is the ONLY mode that talks to a live C#/Supabase endpoint.
+#
+# WHAT --verify-only ACTUALLY TOUCHES (corrected 2026-08-11; this block used to say "entirely
+# non-mutating", which was false for one row before today and is now false for two more).
+#
+#  1. `verify-write <key>` IS MUTATING BY DESIGN. It performs real writes and reads them back —
+#     cli.ts:241-244 says so. That has always been true and the old blanket claim never covered it.
+#
+#  2. `verify access-review` TRIGGERS A SECURITY-AUDIT INSERT, which is then rejected. GET
+#     /access-review and /access-review/export each call ISecurityEventWriter
+#     (AccessReviewEndpoints.cs:50, :91), so a run attempts 4 INSERTs into `audit_logs`. Every one
+#     FAILS and nothing is persisted, for a specific and verified reason: the surface pins the
+#     non-existent org id 00000000-0000-0000-0000-000000000000, and `audit_logs.organization_id`
+#     carries an enforced FK to `organizations(id)` — constraint `audit_logs_organization_id_fkey`,
+#     measured against the live database on 2026-08-11, with no organizations row holding that id.
+#     SecurityEventWriter.WriteAsync then swallows the violation fail-soft (SecurityEventWriter.cs:36).
+#     Net effect: no rows, but a warning per call in the service log. Pinned by
+#     AccessReviewEndpointAuthTests.PlatformOwner_Reads_Are200_ForNonExistentOrg, which asserts zero
+#     audit_logs rows for that org id — so if the FK is ever dropped, that test fails before a run does.
+#
+#  3. `verify audit-log` EGRESSES CROSS-TENANT DATA TO WHOEVER RUNS IT. /audit/logs returns the 20
+#     most recent audit rows across EVERY org and /audit/logs/export up to 1000, each carrying actor
+#     email, IP address and metadata. Both are fetched twice per run (parity probe + RBAC allow).
+#     Nothing is printed — report.ts renders only check/endpoint/role/detail, never a body — but the
+#     payload does reach the operator's machine. Run it somewhere you would be willing to hold
+#     production audit data, and do not pipe its output anywhere it would be retained.
 # ---------------------------------------------------------------------------------------------
 run_verify() {
   local surface="$1" row kind pcmd pkey
@@ -236,9 +263,13 @@ run_verify() {
 
   echo "==> verify-only: ${surface} (kind=${kind})"
   if [ "$pcmd" = "NONE" ]; then
-    echo "    No parity command registered for \"${surface}\" — its TS router was deleted outright,"
-    echo "    so there is no TS side left to diff against (see --list for detail). Treating this as"
-    echo "    trivially passed: nothing to verify."
+    echo "    No parity SURFACE is registered for \"${surface}\" — its entry was removed from"
+    echo "    scripts/parity/surfaces.ts (see --list for detail). Treating this as trivially passed:"
+    echo "    nothing to verify. DO NOT read this as a pass — it is a did-not-run."
+    echo "    NOTE: a deleted TS side is NOT by itself a reason for this state. tsProcedure is"
+    echo "    optional, so a surface with no TS side can still be registered C#-only and still"
+    echo "    assert RBAC against the live C# route — audit-log and access-review were restored"
+    echo "    that way on 2026-08-11. If you are here, the fix is to re-register, not to accept 0."
     return 0
   fi
   echo "    npx tsx ${PARITY_CLI} ${pcmd} ${pkey}"

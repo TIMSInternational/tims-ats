@@ -194,12 +194,20 @@ public sealed class AccessReviewEndpointAuthTests(AccessReviewFixture fixture)
     /// 200 with an EMPTY report for a non-existent organization, so the harness can pin a fixed
     /// all-zeros org id and assert `platform_owner: 200` without seeding or resolving a real org.
     ///
-    /// Two behaviours make that true and both are load-bearing, so both are asserted here rather
-    /// than inferred from the source: (1) <see cref="Tims.Application.AccessReview.AccessReviewService.BuildReportAsync"/>
-    /// has NO org-exists precondition — only <c>AttestAsync</c> does, which is why
+    /// Two behaviours make that true and both are load-bearing:
+    /// (1) <see cref="Tims.Application.AccessReview.AccessReviewService.BuildReportAsync"/> has NO
+    /// org-exists precondition — only <c>AttestAsync</c> does, which is why
     /// <see cref="Attest_Is404_WhenOrgDoesNotExist"/> above expects 404 while these expect 200;
     /// (2) the security-event write that <c>report</c>/<c>export</c> perform with that bogus org id
-    /// cannot fail the request, because <c>SecurityEventWriter.WriteAsync</c> is fail-soft.
+    /// cannot fail the request, because <c>SecurityEventWriter.WriteAsync</c> is fail-soft — and, in
+    /// turn, cannot LEAVE A ROW either, because <c>audit_logs.organization_id</c> carries an enforced
+    /// FK to <c>organizations(id)</c> (verified against production 2026-08-11; see the fixture's own
+    /// note). That second half is what keeps <c>cutover.sh --verify-only</c> genuinely side-effect-free.
+    ///
+    /// All three are asserted below, not inferred — an earlier revision of this comment claimed the
+    /// fail-soft property was asserted when the fixture had no <c>audit_logs</c> table at all, so the
+    /// write threw on every path and the test could not tell fail-soft from success. The table (with
+    /// its FK) was added to the fixture for exactly this reason.
     ///
     /// The literal below is the SAME id the registry pins. If a future change makes an unknown org
     /// 404 here — the behaviour <c>getOrganization</c> already has, which is exactly why THAT read
@@ -217,6 +225,64 @@ public sealed class AccessReviewEndpointAuthTests(AccessReviewFixture fixture)
         var response = await Get(client, $"{path}?organizationId={ParityHarnessOrgId}", Mint(AccessReviewFixture.PlatformOwnerSub));
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        // The report is EMPTY, not merely a 200 — the specific claim the registry comment makes.
+        // (attestations returns a bare array; report/export carry the row set.)
+        var body = await response.Content.ReadAsStringAsync();
+        using var json = JsonDocument.Parse(body);
+        if (path == ReportPath)
+        {
+            Assert.Empty(json.RootElement.GetProperty("rows").EnumerateArray());
+            Assert.Equal(0, json.RootElement.GetProperty("summary").GetProperty("userCount").GetInt32());
+        }
+        else if (path == ExportPath)
+        {
+            Assert.Equal(0, json.RootElement.GetProperty("count").GetInt32());
+        }
+        else
+        {
+            Assert.Empty(json.RootElement.EnumerateArray());
+        }
+
+        // Fail-soft did not merely avoid throwing — it left NOTHING behind. The FK rejects the insert,
+        // so a `--verify-only` run against a live service writes no audit row. Asserting zero rows for
+        // the bogus org is the whole point; asserting "no exception" would have been vacuous.
+        Assert.Equal(0, await CountAuditLogsForOrg(ParityHarnessOrgId));
+    }
+
+    /// <summary>
+    /// The other side of the same control, and a genuine gap before 2026-08-11: nothing anywhere
+    /// proved that "a platform owner viewed org X's access review" is actually RECORDED. With no
+    /// <c>audit_logs</c> table in the fixture, <c>SecurityEventWriter</c>'s fail-soft catch swallowed
+    /// every write and the suite passed identically whether the control worked or not — a hollow
+    /// tripwire on a SOX-relevant trail. This asserts the row lands for a REAL org, which is also what
+    /// makes the zero-row assertion above meaningful rather than trivially true.
+    /// </summary>
+    [Fact]
+    public async Task PlatformOwner_Report_WritesTheAccessReviewViewedSecurityEvent()
+    {
+        await using var factory = EnabledFactory();
+        using var client = factory.CreateClient();
+
+        var before = await CountAuditLogsForOrg(AccessReviewFixture.OrgA.ToString(), "access_review_viewed");
+
+        var response = await Get(client, $"{ReportPath}?organizationId={AccessReviewFixture.OrgA}", Mint(AccessReviewFixture.PlatformOwnerSub));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        Assert.Equal(before + 1, await CountAuditLogsForOrg(AccessReviewFixture.OrgA.ToString(), "access_review_viewed"));
+    }
+
+    private async Task<int> CountAuditLogsForOrg(string organizationId, string? action = null)
+    {
+        await using var connection = new Npgsql.NpgsqlConnection(_fixture.ConnectionString);
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = action is null
+            ? "SELECT count(*) FROM audit_logs WHERE organization_id = @org"
+            : "SELECT count(*) FROM audit_logs WHERE organization_id = @org AND action = @action";
+        command.Parameters.AddWithValue("org", Guid.Parse(organizationId));
+        if (action is not null) command.Parameters.AddWithValue("action", action);
+        return Convert.ToInt32(await command.ExecuteScalarAsync());
     }
 
     /// <summary>

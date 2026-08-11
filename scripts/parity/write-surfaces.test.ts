@@ -506,8 +506,12 @@ describe('WRITE_SURFACES ninebox', () => {
 
 // Registry-level pin. There was none before #195: adding or DELETING an entire write surface tripped
 // nothing, so the per-surface describes below could silently stop covering a live surface — the exact
-// "an assertion that cannot run is not a guard" failure surfaces.test.ts already guards against on the
-// read side. Changing this list must be deliberate.
+// "an assertion that cannot run is not a guard" failure. CORRECTED 2026-08-11: this comment used to
+// end "...surfaces.test.ts already guards against on the read side". It did not — there was no
+// `Object.keys(SURFACES)` assertion there at all, which is part of why the access-review and
+// audit-log read surfaces could be deleted in 2026-07-31 and stay gone unnoticed. The read side has
+// its own key-set pin now, plus a probeRole-expects-200 invariant that caught a real defect.
+// Changing this list must be deliberate.
 describe('WRITE_SURFACES registry', () => {
   it('pins the registered write surfaces', () => {
     expect(Object.keys(WRITE_SURFACES).sort()).toEqual(
@@ -552,14 +556,24 @@ describe('WRITE_SURFACES organization', () => {
     // turning one write check into a cross-surface outage. This pins the safety choice so it cannot be
     // "fixed" into a real suspension by someone who reads suspend:false as a typo.
     const suspend = s.endpoints.find((e) => e.name === 'suspend')!;
-    const built = suspend.buildParity({ base: '', orgA: 'ORG_A', orgAdminUserId: 'X', platformOwnerUserId: 'Y' } as never);
+    const built = suspend.buildParity({
+      base: '',
+      orgA: 'ORG_A',
+      orgAdminUserId: 'X',
+      platformOwnerUserId: 'Y',
+    } as never);
     expect(built.body).toEqual({ suspend: false });
     expect(built.path).toBe('/platform/organizations/ORG_A/suspend');
   });
 
   it('update writes only name — never slug, which every other surface resolves org A by', () => {
     const update = s.endpoints.find((e) => e.name === 'update')!;
-    const built = update.buildParity({ base: '', orgA: 'ORG_A', orgAdminUserId: 'X', platformOwnerUserId: 'Y' } as never);
+    const built = update.buildParity({
+      base: '',
+      orgA: 'ORG_A',
+      orgAdminUserId: 'X',
+      platformOwnerUserId: 'Y',
+    } as never);
     expect(Object.keys(built.body as object)).toEqual(['name']);
   });
 });

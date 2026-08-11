@@ -99,5 +99,5 @@ soft-deleting organizations, both stacks list them as live. Recorded so the abse
   assertions red, with a green control either side
 
 Parity fixtures and the `scripts/parity/surfaces.ts` registration are **not** in this slice — see #195,
-which tracks that the registry covers 4 of ~15 C# domains and that `verify` is unrunnable for most of
+which tracked that the registry covered 4 of ~15 C# domains and that `verify` was unrunnable for most of
 them. Registering this surface belongs with that work.

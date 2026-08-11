@@ -188,12 +188,25 @@ export const SURFACES: Record<string, Surface> = {
   // RLS — that proves it, via the org_admin 403 on every endpoint. Same disposition and same reason
   // as the access-review / audit-log read surfaces below.
   //
-  // probeRole is `org_admin`, not `platform_owner`: a platform owner is org-less and seeded only
-  // under org A (seed.ts:84), so it has no org-B counterpart to probe with. NOTE this DIVERGES from
-  // access-review/audit-log below, which probe with `platform_owner` — they can, because they have
-  // no TS side left, so `mintTokens` never needs an org-B token for them (cli.ts skips that
-  // requirement for `platform_owner`). This surface still has live TS procedures and must produce a
-  // real byte diff, so it needs the org-scoped identity that exists in both orgs.
+  // probeRole is `platform_owner`. It was `org_admin` from #203 (2026-08-10) until 2026-08-11, and
+  // THAT WAS A BUG THAT MADE `verify organization` UNRUNNABLE — caught by the review panel on this
+  // change, which found the comment here justifying it as deliberate.
+  //
+  // Why it could not work: the probe identity's token is what the parity leg calls BOTH stacks with
+  // (cli.ts:161-163), and `org_admin` expects 403 on every endpoint of this surface. On the C# side
+  // `checks/parity.ts:47-55` fails closed on any non-200, so both endpoints report
+  // "C# returned HTTP 403 (expected 200)". On the TS side it is worse than a FAIL: `stripTrpcJson`
+  // (trpc.ts:11) THROWS on a tRPC error response, so the run crashes rather than reporting. That is
+  // exactly the hazard the removed access-review entry documented in 2026-07-31 ("pointing probeRole
+  // at a denied role takes down the whole verify run") — the note was deleted with the surface and
+  // the lesson went with it, which is its own argument for keeping surfaces registered.
+  //
+  // The original rationale — "a platform owner is org-less and seeded only under org A (seed.ts:86),
+  // so it has no org-B counterpart to probe with" — is a true fact that does not imply the
+  // conclusion. `mintTokens` skips the org-B requirement for exactly this role (cli.ts:129), and
+  // both endpoints here are `globalScope`, so no org-B token is ever needed. `probeRole` must simply
+  // be a role the surface grants 200; that invariant is now asserted for EVERY surface in
+  // surfaces.test.ts, so this class of defect cannot ship again unnoticed.
   //
   // `getOrganization` (the by-id detail read) is DELIBERATELY NOT REGISTERED HERE, and that is the
   // honest answer rather than a shortcut. It needs two things at once — a real org id bound into
@@ -213,7 +226,7 @@ export const SURFACES: Record<string, Surface> = {
     key: 'organization',
     flag: 'Platform__PlatformOrganizationsReadEnabled',
     roles: ['platform_owner', 'org_admin'],
-    probeRole: 'org_admin', // org-scoped role — RLS/cross-tenant probing is N/A here; see globalScope.
+    probeRole: 'platform_owner', // the only role this surface answers 200 to — see the note above.
     endpoints: [
       {
         name: 'kpis',
@@ -387,11 +400,24 @@ export const SURFACES: Record<string, Surface> = {
   //
   // STANDING DEBT, 2026-08-11: that reasoning is the same one that removed audit-log and
   // access-review, and both were re-registered C#-only on 2026-08-11 because it does not survive
-  // `tsProcedure` becoming optional (efb7553f). The 5 surfaces still deleted on it — succession,
-  // team-intel, reporting, billing-read/billing-usage, evaluation360 — are deployed C# reads with
-  // no RBAC assertion in this harness. They were NOT restored in the same change because, unlike
-  // the two platform-owner surfaces, each is org-scoped RBAC and needs its own seeded grant fixture
-  // to prove anything (the #166 false-FAIL failure mode). Tracked in #195, not fixed here.
+  // `tsProcedure` becoming optional (efb7553f). SIX surfaces are still deleted on it — succession,
+  // team-intel, reporting, billing-read, billing-usage, evaluation360 (enumerated from
+  // `cutover.sh --list`, which shows exactly those six with parity_command NONE; counted, because an
+  // earlier draft of this comment wrote "5" and then listed six). They are deployed C# reads with no
+  // RBAC assertion in this harness. They were NOT restored in the same change because, unlike the two
+  // platform-owner surfaces, each is org-scoped RBAC and needs its own seeded grant fixture to prove
+  // anything (the #166 false-FAIL failure mode). Tracked in #195, not fixed here.
+  //
+  // AND THAT IS THE SMALLER HALF OF THE GAP. Those six are merely the surfaces that were once
+  // registered and then removed. Counting deployed ROUTES instead of surfaces, measured 2026-08-11:
+  // `services/Tims.Platform/src/Tims.Api/**/*.cs` contains 132 `.MapGet/Post/Patch/Put/Delete(`
+  // registrations and zero `MapGroup`, while SURFACES + WRITE_SURFACES hold 49 endpoints (23 + 26).
+  // The difference is not exactly the uncovered count — nothing here proves a 1:1 route-to-endpoint
+  // correspondence, and some Map calls are infra rather than domain routes — but the order of the gap
+  // is unambiguous, and it includes whole domains that were NEVER registered (external-vendor,
+  // billing self-serve/webhook writes, `/internal/alert-metrics`) plus most routes inside surfaces
+  // that ARE registered (engagement registers 2 endpoints against 14 deployed reads; dei 2 of 11).
+  // Do not read "the surface is registered" as "the domain is covered". #195 is the tracking issue.
   //
   // `verify succession` is therefore now a NO-OP. That is a genuine reduction in this harness's
   // coverage and is recorded as such in scripts/deploy/cutover.sh's `succession` row — do NOT
@@ -442,7 +468,7 @@ export const SURFACES: Record<string, Surface> = {
     roles: ['platform_owner', 'org_admin'],
     // MUST be the ALLOWED role (200), not the denied one: the parity check always calls probeRole's
     // token expecting success — including on the C#-only path, which fails the endpoint outright on
-    // any non-200 (checks/parity.ts:25) — so pointing probeRole at a denied role would fail every
+    // any non-200 (checks/parity.ts:26-33) — so pointing probeRole at a denied role would fail every
     // endpoint. org_admin (403) is still fully covered by the separate RBAC check via `tokensByRole`.
     // cli.ts's mintTokens deliberately skips the org-B token requirement for this role.
     probeRole: 'platform_owner',
@@ -472,6 +498,14 @@ export const SURFACES: Record<string, Surface> = {
       },
     ],
   },
+  // OPERATIONAL WARNING for whoever runs `verify audit-log` — it EGRESSES CROSS-TENANT DATA to the
+  // machine it runs on. `/audit/logs` returns the 20 most recent audit rows across EVERY org and
+  // `/audit/logs/export` up to 1000 (AuditReadRepository's ExportCap), each carrying actor email, IP
+  // address and metadata; both are fetched twice per run (parity probe + RBAC allow). Nothing is
+  // PRINTED — report.ts renders only check/endpoint/role/detail and never a response body — but the
+  // payload is still pulled over the wire. Run it somewhere you would be willing to hold production
+  // audit data. This is a property of the endpoints, not of the registration, and it was equally true
+  // before 2026-07-31; it is written down here because nobody had written it down.
   // ── access-review ────────────────────────────────────────────────────────────────────────
   // RE-REGISTERED 2026-08-11, C#-only. Removed on 2026-07-31 (18282f96) for the same reason, on the
   // same day, and reinstated on the same rationale as `audit-log` above — see that entry's
@@ -488,14 +522,37 @@ export const SURFACES: Record<string, Surface> = {
   // is exactly the property `getOrganization` lacks (it 404s on an unknown org), which is why THAT
   // read is still unregistered ~200 lines above.
   //
-  // The two report routes also write a security event with the bogus org id. That cannot 500 the
-  // read: SecurityEventWriter.WriteAsync wraps the insert in a fail-soft try/catch
-  // (SecurityEventWriter.cs:36) precisely so a lost audit row never blocks the caller.
+  // THE PINNED ID COLLIDES WITH A SENTINEL IN THIS DOMAIN'S OWN CODE, and that is worth knowing
+  // rather than discovering. `AccessReviewService.cs:65` coalesces a NULL `users.organization_id` to
+  // `Guid.Empty` — the SAME all-zeros value — and the rows with a NULL org are exactly the
+  // platform-owner accounts. Today that is harmless: the repository filters with a plain
+  // `u.OrganizationId == organizationId`, and in SQL `NULL = '000…'` is never true, so the report is
+  // empty. But a future refactor to a coalescing or left-joined form would make this id select the
+  // platform-owner roster, and every assertion in the registry would stay green. That outcome is
+  // therefore PINNED, not assumed: AccessReviewEndpointAuthTests asserts zero rows and a zero
+  // summary for this exact id.
   //
-  // `globalScope` is therefore correct here for the same reason as `audit-log`, and it does NOT
-  // collide with the `idScopeKey` guard in surfaces.test.ts — the org id is a fixed literal, not a
-  // seeded resource id threaded through the `{id}` sentinel, so there is no Mode-A probe being
-  // suppressed.
+  // THE TWO REPORT ROUTES WRITE A SECURITY EVENT, so `verify access-review` is not literally
+  // side-effect-free — it ATTEMPTS 4 INSERTs into `audit_logs` per run. None lands, and the reason is
+  // measured rather than hoped: `audit_logs.organization_id` carries an enforced FK to
+  // `organizations(id)` (`audit_logs_organization_id_fkey`, checked against the live database on
+  // 2026-08-11, with no organizations row holding the all-zeros id), so every insert is rejected and
+  // SecurityEventWriter.WriteAsync swallows it fail-soft (SecurityEventWriter.cs:36) rather than
+  // 500ing the read. Two consequences, both now guarded: the integration test asserts ZERO
+  // audit_logs rows for this org id, so dropping that FK fails CI instead of quietly making
+  // `--verify-only` mutating; and cutover.sh's safety block documents the attempt, because a command
+  // advertised as non-mutating must not have an undocumented write path.
+  //
+  // `globalScope` is correct here, but NOT for identical reasons to `audit-log`, and collapsing the
+  // two would set the wrong precedent. `/audit/logs` takes no org parameter and is cross-org by
+  // construction — the paradigm case. These three take a REQUIRED, CALLER-SUPPLIED `organizationId`
+  // and read that org's rows, which is the "no tenant boundary for THIS CALLER" category the
+  // `organization` entry above warns must never be confused with "pure kernel". They qualify only
+  // because the pinned id resolves to no org at all, so there is no per-org payload to compare and
+  // Mode B would be comparing two empty bodies. It does NOT collide with the `idScopeKey` guard —
+  // the id is a fixed literal, never the `{id}` sentinel, so no Mode-A probe is being suppressed.
+  // A version of this surface bound to a REAL org id would need the by-id platform-owner marker that
+  // `getOrganization` is still waiting on; it must not simply inherit `globalScope` from here.
   //
   // The WRITE surface (attestAccessReview) was never affected by any of this — write-surfaces.ts's
   // WRITE_SURFACES['access-review'] hits the C# endpoint directly via raw SQL + HTTP and has no

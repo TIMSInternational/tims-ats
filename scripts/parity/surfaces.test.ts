@@ -13,6 +13,76 @@ describe('SURFACES', () => {
     expect(SURFACES['compensation'].probeRole).toBe('super_admin');
   });
 
+  // ── Registry-level invariants (added 2026-08-11) ─────────────────────────────────────────────
+  // These three did not exist before, and their absence let a real defect ship: #203 registered
+  // `organization` with probeRole 'org_admin', a role the surface answers 403 to, which makes
+  // `verify organization` fail both parity legs and CRASH the TS one (trpc.ts:11 throws on a tRPC
+  // error). Nothing caught it because every guard here was per-surface and hand-written.
+  //
+  // write-surfaces.test.ts's registry pin carried a comment claiming this file "already guards
+  // against [that] on the read side". It did not — there was no Object.keys(SURFACES) assertion at
+  // all. That comment is corrected there; these are the guards it was describing.
+
+  it('pins the registered read surfaces — adding or DELETING one must be deliberate', () => {
+    // The read-side analogue of write-surfaces.test.ts's key-set pin. Deleting a surface is how the
+    // access-review and audit-log coverage silently vanished for eleven days in 2026; the per-surface
+    // describes below could not catch it, because a deleted surface takes its own test with it.
+    expect(Object.keys(SURFACES).sort()).toEqual([
+      'access-review',
+      'audit-log',
+      'compensation',
+      'dei',
+      'engagement',
+      'monitoring',
+      'ninebox',
+      'organization',
+    ]);
+  });
+
+  it('every surface probes with a role it actually grants 200 — the #203 defect class', () => {
+    // THE invariant. `cli.ts:161-163` calls BOTH stacks with the probeRole's token and expects
+    // success: checks/parity.ts:47-55 fails closed on a non-200 C# response, and on the TS side
+    // stripTrpcJson (trpc.ts:11) THROWS on an error response, taking the whole run down rather than
+    // reporting a FAIL. So a probeRole the surface denies does not degrade the check — it destroys it.
+    for (const [key, surface] of Object.entries(SURFACES)) {
+      const probe = surface.probeRole;
+      expect(probe, `${key} has no explicit probeRole`).toBeDefined();
+      expect(surface.roles, `${key}: probeRole "${probe}" is not in roles`).toContain(probe);
+      for (const ep of surface.endpoints) {
+        expect(
+          ep.expectedByRole[probe!],
+          `${key}/${ep.name}: probeRole "${probe}" expects ${ep.expectedByRole[probe!]}, but the parity probe requires 200`,
+        ).toBe(200);
+      }
+    }
+  });
+
+  it('an endpoint with no DENIED role is on a documented list — its RBAC check proves nothing', () => {
+    // Generalised from the monitoring-specific version below. An all-200 matrix cannot distinguish
+    // "the permission check ran and allowed" from "no permission check ran" — every assertion reads
+    // "200 means allowed".
+    //
+    // Five endpoints are in that state TODAY. That is pre-existing and NOT fixed here: inventing a
+    // denial without checking what the product actually returns would assert a behaviour rather than
+    // observe one, and a wrong 403 expectation fails a real verify run in Federico's hands. So this
+    // is an allowlist, not a pass — a NEW all-200 endpoint has to be added here deliberately, and
+    // adding one is the signal to go find its denied role.
+    const knownNoDenial = [
+      'compensation/market-comparison', // grant-only org catalogue read; all three seeded roles hold it
+      'ninebox/movement-history', // only two roles registered at all
+      'ninebox/simulate', // pure kernel
+      'ninebox/quadrant-plan', // pure kernel
+      'engagement/surveys', // grant-only list; hrbp@unit passes deliberately (see the surface note)
+    ];
+    const actual: string[] = [];
+    for (const [key, surface] of Object.entries(SURFACES)) {
+      for (const ep of surface.endpoints) {
+        if (Object.values(ep.expectedByRole).every((v) => v !== 403)) actual.push(`${key}/${ep.name}`);
+      }
+    }
+    expect(actual.sort()).toEqual(knownNoDenial.sort());
+  });
+
   it('every Tier-2 by-id endpoint sets idScopeKey and carries the {id} sentinel in path + input', () => {
     // The by-id Mode-A IDOR endpoints and the resource key each threads.
     // 2026-08-03 (#58): 'succession/critical-role' removed with the surface.
@@ -129,8 +199,11 @@ describe('SURFACES', () => {
     const s = SURFACES['organization'];
     expect(s.flag).toBe('Platform__PlatformOrganizationsReadEnabled');
     expect(s.roles).toEqual(['platform_owner', 'org_admin']);
-    // org-scoped probe role: a platform owner is org-less and has no org-B counterpart to probe with.
-    expect(s.probeRole).toBe('org_admin');
+    // CORRECTED 2026-08-11: this asserted 'org_admin' from #203, pinning a defect rather than a
+    // decision — org_admin is 403 on both endpoints, so the parity probe could never succeed and the
+    // TS leg would throw (trpc.ts:11). The generalised probeRole-expects-200 invariant above is what
+    // makes this class of mistake unshippable; this line now just records the corrected value.
+    expect(s.probeRole).toBe('platform_owner');
 
     expect(s.endpoints.map((e) => e.name)).toEqual(['kpis', 'list']);
 
@@ -178,7 +251,7 @@ describe('SURFACES', () => {
     ).toBeDefined();
     expect(s.flag).toBe(flag);
     expect(s.roles).toEqual(['platform_owner', 'org_admin']);
-    // MUST be the allowed role: checks/parity.ts:25 fails a C#-only endpoint on any non-200, and
+    // MUST be the allowed role: checks/parity.ts:26-33 fails a C#-only endpoint on any non-200, and
     // cli.ts's mintTokens skips the org-B token requirement only for platform_owner.
     expect(s.probeRole).toBe('platform_owner');
     // Pinned by name and counted from the endpoints file, not auto-discovered: dropping a route
@@ -203,8 +276,17 @@ describe('SURFACES', () => {
     // seeded org id instead would turn these into by-id endpoints and collide with the globalScope
     // invariant above — which is precisely why getOrganization is still unregistered.
     const s = SURFACES['access-review'];
+    // Paths pinned EXACTLY, not by substring. An earlier revision asserted only
+    // `.toContain('organizationId=...')`, which left the route itself unpinned — a mutation to
+    // `/access-review/EXPORT-TYPO?organizationId=...` kept the whole file green. Nothing else in this
+    // repo compares a registry csharpPath to a real deployed route, so this assertion is the only
+    // thing standing between a C# route rename and a verify run that 404s in Federico's hands.
+    expect(s.endpoints.map((e) => e.csharpPath)).toEqual([
+      '/access-review?organizationId=00000000-0000-0000-0000-000000000000',
+      '/access-review/export?organizationId=00000000-0000-0000-0000-000000000000',
+      '/access-review/attestations?organizationId=00000000-0000-0000-0000-000000000000',
+    ]);
     for (const ep of s.endpoints) {
-      expect(ep.csharpPath, ep.name).toContain('organizationId=00000000-0000-0000-0000-000000000000');
       expect(ep.csharpPath, `${ep.name} must not use the by-id sentinel`).not.toContain('{id}');
       expect(ep.input, ep.name).toEqual({ organizationId: '00000000-0000-0000-0000-000000000000' });
     }

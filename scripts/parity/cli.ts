@@ -119,13 +119,17 @@ async function mintTokens(
   // (2950a06c / 18282f96), and was corrected on 2026-08-10 (#195) to say the branch was reachable
   // only from write-surfaces.ts's access-review surface.
   //
-  // CURRENT STATE, 2026-08-11: both READ surfaces were RE-REGISTERED C#-only, and both set
-  // probeRole: 'platform_owner' — so this branch is reachable from surfaces.ts again, from three
-  // callers now (SURFACES['audit-log'], SURFACES['access-review'], WRITE_SURFACES['access-review']).
-  // They CAN probe with the org-less identity precisely because they have no TS side left: a
-  // C#-only parity check never mints the org-B token this branch would otherwise demand. The
-  // `organization` read surface, which still has live TS procedures, deliberately probes with the
-  // org-scoped `org_admin` instead — see its comment in surfaces.ts.
+  // CURRENT STATE, 2026-08-11. `mintTokens` has exactly ONE call site — `runChecks` at :140, the
+  // READ path. `cmdVerifyWrite` mints its own tokens inline (:263-269) and never reaches here, so no
+  // WRITE_SURFACES entry is a caller of this branch, whatever its probeRole. THREE read surfaces now
+  // set probeRole 'platform_owner' and are the only callers: SURFACES['audit-log'],
+  // SURFACES['access-review'] (both re-registered C#-only today) and SURFACES['organization'].
+  //
+  // Do not restate the reason as "because they have no TS side left". The guard below keys on the
+  // ROLE and nothing else — a C#-only surface with an org-scoped probeRole would still be required
+  // to have an org-B token, and a TS-having surface with `platform_owner` still skips it, which is
+  // precisely why `organization` (live TS procedures) can and does use it. The real reason is
+  // narrower: a platform owner is org-less, so no org-B counterpart exists to demand.
   if (!orgBToken && primaryRole !== 'platform_owner') {
     throw new Error(`mintTokens: failed to mint org-B token for role "${primaryRole}"`);
   }
