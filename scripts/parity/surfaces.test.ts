@@ -74,6 +74,47 @@ describe('SURFACES', () => {
     expect(seen).toBe(4);
   });
 
+  // ── #195 AC1: the monitoring read surface (2026-08-10) ───────────────────────────────────────
+  it('monitoring registers all 6 deployed routes', () => {
+    const s = SURFACES['monitoring'];
+    expect(s.flag).toBe('Platform__MonitoringReadEnabled');
+    // Counted from MonitoringReadEndpoints.cs, not taken from #195's text. If a 7th route ships, this
+    // is where the omission surfaces.
+    expect(s.endpoints.map((e) => e.name)).toEqual([
+      'executive-kpis',
+      'module-health',
+      'alerts',
+      'action-plan-alerts',
+      'cross-module-trend',
+      'alert-rules',
+    ]);
+    // probeRole must be a role with a REAL org-wide grant, not super_admin — super_admin bypasses the
+    // permission kernel, so probing with it would never exercise a grant.
+    expect(s.probeRole).toBe('hr_admin');
+    expect(s.roles).toContain(s.probeRole);
+  });
+
+  it('monitoring keeps a DENIED role, or its RBAC check proves nothing', () => {
+    // All three normally-granted roles expect 200 here (MonitoringStaffGate deliberately does not
+    // force the org gate, so hrbp@unit is 200 too). Without org_admin — which is absent from MATRIX
+    // and holds no grants — every RBAC assertion on this surface would be "200 means allowed", with
+    // nothing proving the permission check can say no.
+    const s = SURFACES['monitoring'];
+    for (const ep of s.endpoints) {
+      const denied = Object.entries(ep.expectedByRole).filter(([, v]) => v === 403);
+      expect(denied.map(([r]) => r), `${ep.name} has no denied role`).toEqual(['org_admin']);
+    }
+  });
+
+  it('monitoring runs REAL RLS — nothing globalScope, nothing by-id', () => {
+    // These are org-scoped aggregates, so Mode B is the meaningful check. globalScope or idScopeKey
+    // here would silently downgrade it to N/A or to an IDOR probe that does not apply.
+    for (const ep of SURFACES['monitoring'].endpoints) {
+      expect(ep.globalScope, ep.name).toBeUndefined();
+      expect(ep.idScopeKey, ep.name).toBeUndefined();
+    }
+  });
+
   // ── #195: the platform-organizations read surface (2026-08-10) ───────────────────────────────
   it('organization is registered with its flag + the 3 reads, minus the by-id detail', () => {
     const s = SURFACES['organization'];
