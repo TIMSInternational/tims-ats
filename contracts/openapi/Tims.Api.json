@@ -1322,6 +1322,46 @@
             "description": "OK"
           }
         }
+      },
+      "post": {
+        "tags": [
+          "PlatformOrganizations"
+        ],
+        "operationId": "CreatePlatformOrganization",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateOrganizationBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformOrganizationRow"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "409": {
+            "description": "Conflict"
+          }
+        }
       }
     },
     "/platform/organizations/{id}": {
@@ -7292,6 +7332,37 @@
           },
           "createdAt": {
             "format": "date-time"
+          }
+        }
+      },
+      "CreateOrganizationBody": {
+        "required": [
+          "name",
+          "slug",
+          "plan",
+          "adminEmail"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "maxLength": 100,
+            "minLength": 2,
+            "type": "string"
+          },
+          "slug": {
+            "maxLength": 50,
+            "minLength": 2,
+            "pattern": "^[a-z0-9-]+$",
+            "type": "string"
+          },
+          "plan": {
+            "type": "string"
+          },
+          "adminEmail": {
+            "type": "string"
+          },
+          "billingEmail": {
+            "type": "string"
           }
         }
       },
