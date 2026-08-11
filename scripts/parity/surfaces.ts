@@ -69,6 +69,76 @@ export interface Surface {
  * Task 9 RLS, Task 10 RBAC) iterate this map; they never hardcode a surface's routes/roles.
  */
 export const SURFACES: Record<string, Surface> = {
+  // ── platform organizations (READ) ───────────────────────────────────────────────────────────
+  // Registered 2026-08-10 (#195), immediately after Phase-5 slices 19 (PR #198) and 20 (PR #202)
+  // shipped the C# port. #195's own body says `organization` is NOT a gap "because they have no C#
+  // endpoints at all" — that was TRUE when it was written and is now stale: PlatformOrganizationsRead
+  // Endpoints ships 3 routes and PlatformOrganizationsWriteEndpoints 2.
+  //
+  // WHY THIS MATTERS MORE THAN A TYPICAL REGISTRATION: without it, step 5 (verify in prod) for the
+  // whole organizations domain was not "Federico-gated" but UNRUNNABLE BY ANYONE, and #76's decision
+  // comment requires the fail-closed audit divergence to be "pinned by a parity fixture" — an
+  // obligation that could not be discharged while the surface was unregistered.
+  //
+  // BOTH FLAGS ARE STILL DARK, so `verify organization` is a PRE-flip readiness check: it proves the
+  // C# responses match TS before Federico flips anything, which is exactly the order the strangler
+  // recipe wants. Every endpoint keeps its `tsProcedure` — the TS side is still the live production
+  // path — so these are REAL byte diffs, not `[WEAK]`.
+  //
+  // RLS IS N/A ON EVERY ENDPOINT, AND THAT IS THE CORRECT ANSWER, NOT A GAP. This surface is
+  // `platformProcedure` on the TS side and `PlatformOwnerGate` on the C# side, over the UNSCOPED `db`
+  // — it is cross-org BY DESIGN. A platform owner reading org B is the feature, so a Mode-A IDOR
+  // probe would assert the opposite of the requirement. `globalScope: true` makes `checks/rls.ts`
+  // report a documented N/A (it short-circuits at rls.ts:189, BEFORE the `idScopeKey` branch at :199)
+  // rather than a spurious FAIL. The authorization boundary here is the GATE, and it is RBAC — not
+  // RLS — that proves it, via the org_admin 403 on every endpoint. Same disposition and same reason
+  // as the access-review read surface that used to live here.
+  //
+  // probeRole is `org_admin`, not `platform_owner`: a platform owner is org-less and seeded only
+  // under org A (seed.ts:84), so it has no org-B counterpart to probe with. Precedent verbatim from
+  // the removed access-review entry.
+  //
+  // `getOrganization` (the by-id detail read) is DELIBERATELY NOT REGISTERED HERE, and that is the
+  // honest answer rather than a shortcut. It needs two things at once — a real org id bound into
+  // `{id}`, and no Mode-A IDOR probe — and the only existing way to express the second is
+  // `globalScope`, which surfaces.test.ts:46 explicitly forbids combining with `idScopeKey`
+  // ("no by-id endpoint may claim org-independence"). That guard is CORRECT: `globalScope` means
+  // "pure kernel, org-independent computation" (nine-box simulate/quadrant-plan), whereas this
+  // endpoint reads org-specific rows and merely has no tenant boundary FOR THIS CALLER. Those are
+  // different properties, and overloading one flag for both is precisely what would silently
+  // disable a real IDOR probe on some future surface. The removed access-review entry sidestepped
+  // it with a fixed non-existent org id, which cannot work here — `getOrganization` 404s on an
+  // unknown org (organizations.ts:100), so the platform_owner case would assert 404, not 200.
+  // Registering it needs a distinct, explicit concept (a platform-owner "no IDOR by design" marker,
+  // the read-side analogue of write-surfaces.ts's documented omission of `buildIdor` on
+  // access-review `attest`). Filed rather than smuggled in under an existing flag.
+  organization: {
+    key: 'organization',
+    flag: 'Platform__PlatformOrganizationsReadEnabled',
+    roles: ['platform_owner', 'org_admin'],
+    probeRole: 'org_admin', // org-scoped role — RLS/cross-tenant probing is N/A here; see globalScope.
+    endpoints: [
+      {
+        name: 'kpis',
+        csharpPath: '/platform/organizations/kpis',
+        tsProcedure: 'platform.getOrganizationKpis',
+        input: {},
+        expectedByRole: { platform_owner: 200, org_admin: 403 },
+        globalScope: true,
+      },
+      // The list is cross-org by definition (it enumerates EVERY tenant), so there is no per-org
+      // payload to compare — the clearest case in the registry for globalScope.
+      {
+        name: 'list',
+        csharpPath: '/platform/organizations',
+        tsProcedure: 'platform.listOrganizations',
+        input: {},
+        expectedByRole: { platform_owner: 200, org_admin: 403 },
+        normalize: { dropNullish: true },
+        globalScope: true,
+      },
+    ],
+  },
   // ── compensation ────────────────────────────────────────────────────────────────────────────
   // UPDATE 2026-07-29: 5 of the original 7 registered compensation reads had their TS procedures
   // DELETED (NEXT_PUBLIC_COMPENSATION_READ_VIA_CSHARP confirmed live in prod) — salary-bands,

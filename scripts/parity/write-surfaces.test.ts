@@ -504,6 +504,66 @@ describe('WRITE_SURFACES ninebox', () => {
   });
 });
 
+// Registry-level pin. There was none before #195: adding or DELETING an entire write surface tripped
+// nothing, so the per-surface describes below could silently stop covering a live surface — the exact
+// "an assertion that cannot run is not a guard" failure surfaces.test.ts already guards against on the
+// read side. Changing this list must be deliberate.
+describe('WRITE_SURFACES registry', () => {
+  it('pins the registered write surfaces', () => {
+    expect(Object.keys(WRITE_SURFACES).sort()).toEqual(
+      ['access-review', 'compensation', 'engagement', 'evaluation360', 'ninebox', 'organization', 'succession'].sort(),
+    );
+  });
+
+  it('every surface has a probeRole that appears in its own roles list', () => {
+    // A probeRole outside roles[] mints a token for an identity the surface never declares, so the
+    // light-parity and IDOR probes would run as somebody the RBAC matrix says nothing about.
+    for (const [key, s] of Object.entries(WRITE_SURFACES)) {
+      expect(s.roles, key).toContain(s.probeRole);
+    }
+  });
+});
+
+describe('WRITE_SURFACES organization', () => {
+  const s = WRITE_SURFACES['organization'];
+
+  it('is registered with its flag, the platform-owner probe, and both writes', () => {
+    expect(s.flag).toBe('Platform__PlatformOrganizationsWriteEnabled');
+    expect(s.probeRole).toBe('platform_owner');
+    expect(s.roles).toEqual(['platform_owner', 'org_admin']);
+    expect(s.endpoints.map((e) => e.name)).toEqual(['update', 'suspend']);
+  });
+
+  it('omits buildIdor on both writes — a platform owner is cross-org by design', () => {
+    // Same disposition as access-review attest. If a future edit adds an IDOR probe here it would
+    // assert that a platform owner CANNOT reach another org, which is the opposite of the requirement.
+    for (const e of s.endpoints) expect(e.buildIdor, e.name).toBeUndefined();
+  });
+
+  it('denies org_admin at the gate on both writes', () => {
+    for (const e of s.endpoints) {
+      expect(e.expectedByRole, e.name).toEqual({ platform_owner: 'allow', org_admin: 'deny' });
+      expect(e.rbacDenyStatus ?? 403, e.name).toBe(403);
+    }
+  });
+
+  it('never suspends the parity org — the flag is always false (activate)', () => {
+    // Suspending org A would set is_active=false on the tenant every OTHER surface authenticates into,
+    // turning one write check into a cross-surface outage. This pins the safety choice so it cannot be
+    // "fixed" into a real suspension by someone who reads suspend:false as a typo.
+    const suspend = s.endpoints.find((e) => e.name === 'suspend')!;
+    const built = suspend.buildParity({ base: '', orgA: 'ORG_A', orgAdminUserId: 'X', platformOwnerUserId: 'Y' } as never);
+    expect(built.body).toEqual({ suspend: false });
+    expect(built.path).toBe('/platform/organizations/ORG_A/suspend');
+  });
+
+  it('update writes only name — never slug, which every other surface resolves org A by', () => {
+    const update = s.endpoints.find((e) => e.name === 'update')!;
+    const built = update.buildParity({ base: '', orgA: 'ORG_A', orgAdminUserId: 'X', platformOwnerUserId: 'Y' } as never);
+    expect(Object.keys(built.body as object)).toEqual(['name']);
+  });
+});
+
 describe('WRITE_SURFACES access-review', () => {
   const s = WRITE_SURFACES['access-review'];
   const ar: AccessReviewWriteResolved = { base: 'http://c', orgA: 'orgA', orgAdminUserId: 'orgAdmin' };

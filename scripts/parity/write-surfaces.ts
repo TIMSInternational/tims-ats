@@ -31,6 +31,8 @@ import {
   resolveNineBoxWriteResources,
   ensureAccessReviewWritePreconditions,
   resolveAccessReviewWriteResources,
+  ensurePlatformOrganizationsWritePreconditions,
+  resolvePlatformOrganizationsWriteResources,
   WRITE_EVAL_CYCLES,
   WRITE_CYCLE_MARKER,
   WRITE_SUCCESSION_ROLES,
@@ -1415,8 +1417,10 @@ export interface AccessReviewWriteResolved extends WriteResolvedBase {
 const ACCESS_REVIEW_NOTES_MARKER = 'parity';
 
 // Coverage-audit addition (2026-07-27): 1 write under Platform__AccessReviewWriteEnabled.
-// `attest` = PlatformOwnerGate (the SAME gate as the access-review READ surface in surfaces.ts —
-// see that entry's comment) + an unconditional insert into `access_reviews`. UNLIKE every other
+// `attest` = PlatformOwnerGate + an unconditional insert into `access_reviews`. (This comment used to
+// point at "the access-review READ surface in surfaces.ts" for the gate rationale; that surface was
+// REMOVED on 2026-07-31 (18282f96) and the pointer dangled until #195. The same gate is now described
+// by the `organization` read surface in surfaces.ts.) UNLIKE every other
 // write surface here, this one has NO cross-org IDOR concept: a platform owner is INTENTIONALLY
 // cross-org (they attest ANY org's access review by design — the same reason the read surface's
 // RLS check is `globalScope` rather than a leak signal), so `buildIdor` is correctly omitted —
@@ -1481,6 +1485,130 @@ const accessReviewSurface: WriteSurface<AccessReviewWriteResolved> = {
   ],
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// platform organizations — Platform__PlatformOrganizationsWriteEnabled (2 writes)
+// ─────────────────────────────────────────────────────────────────────────────
+/** Concrete ids for the platform-organizations write surface (seed.ts). */
+export interface PlatformOrganizationsWriteResolved extends WriteResolvedBase {
+  /** org-A id — the update/suspend target. */
+  orgA: string;
+  /** org-A `org_admin` user id — the denied role, for the no-mutation read-back. */
+  orgAdminUserId: string;
+  /** the seeded platform owner — the actor every ALLOWED write must be attributed to. */
+  platformOwnerUserId: string;
+}
+
+const ORG_WRITE_NAME_MARKER = 'Parity Org Write Marker';
+
+// Registered 2026-08-10 (#195) for Phase-5 slice 20 (PR #202). Like access-review above, this surface
+// has NO cross-org IDOR concept — a platform owner updates ANY org by design — so `buildIdor` is
+// correctly omitted. `org_admin` is refused by PlatformOwnerGate BEFORE any body parse, so its 403 is
+// gate-level.
+//
+// TWO DELIBERATE SAFETY CHOICES, because this surface mutates the org every OTHER surface runs on:
+//
+//  1. `suspend` sends `{ suspend: false }` (ACTIVATE), never `true`. Suspending org A would set
+//     is_active=false on the tenant that every other parity surface authenticates into, turning one
+//     surface's write check into a cross-surface outage. Activating an already-active org still
+//     exercises the whole path — gate, TenantScope transaction, the fail-closed audit INSERT, the
+//     response shape — and still writes an `org_activated` audit row, which is what the read-back
+//     asserts. The only thing it does not cover is the notify fan-out, which fires solely on
+//     suspend=true (organizations.ts:220); that stays uncovered here on purpose.
+//  2. `update` writes only `name`, never `slug`. Every other surface resolves org A BY SLUG
+//     (seed.ts orgIdBySlug), so renaming is inert for them while still being a real, readable-back
+//     column write.
+//
+// Both writes are idempotent, so re-running `verify-write organization` needs no teardown.
+const platformOrganizationsSurface: WriteSurface<PlatformOrganizationsWriteResolved> = {
+  key: 'organization',
+  flag: 'Platform__PlatformOrganizationsWriteEnabled',
+  probeRole: 'platform_owner',
+  roles: ['platform_owner', 'org_admin'],
+  ensurePreconditions: ensurePlatformOrganizationsWritePreconditions,
+  resolveResources: resolvePlatformOrganizationsWriteResources,
+  endpoints: [
+    {
+      name: 'update',
+      method: 'PATCH',
+      buildParity: (r) => ({ path: `/platform/organizations/${r.orgA}`, body: { name: ORG_WRITE_NAME_MARKER } }),
+      // no buildIdor: platform-owner update has no cross-tenant boundary to probe (see above).
+      expectedByRole: { platform_owner: 'allow', org_admin: 'deny' },
+      rbacDenyStatus: 403,
+      expectResponse: (b) => {
+        const o = asObj(b);
+        if (!o) return 'response is not an object';
+        if (typeof o.id !== 'string' || !UUID_RE.test(o.id)) return `expected a uuid id, got ${JSON.stringify(o.id)}`;
+        if (o.name !== ORG_WRITE_NAME_MARKER) return `expected name ${ORG_WRITE_NAME_MARKER}, got ${JSON.stringify(o.name)}`;
+        return null;
+      },
+      // The column write AND the fail-closed audit row, together — the audit is the half a
+      // response-shape assertion cannot see, and #76's whole divergence lives in it.
+      readbackMutated: (r) => ({
+        sql: `SELECT o.name,
+                     (SELECT count(*)::int FROM audit_logs a
+                       WHERE a.organization_id = o.id AND a.action = 'org_updated' AND a.actor_id = $2) AS audits
+                FROM organizations o WHERE o.id = $1`,
+        params: [r.orgA, r.platformOwnerUserId],
+        expect: (rows) => {
+          const row = rows[0];
+          if (!row) return 'org A not found on read-back';
+          if (row.name !== ORG_WRITE_NAME_MARKER) return `name is ${JSON.stringify(row.name)}, expected the marker`;
+          if (Number(row.audits) < 1) return 'no org_updated audit row attributed to the platform owner';
+          return null;
+        },
+      }),
+      // rbac-deny (org_admin): the gate must refuse BEFORE the transaction, so no audit row may carry
+      // the denied user as actor. Asserting on the audit rather than the name is deliberate — the name
+      // is already the marker from the allow case, so it could not distinguish a leak.
+      readbackNoMutation: (r) => ({
+        sql: `SELECT count(*)::int AS n FROM audit_logs WHERE organization_id = $1 AND actor_id = $2`,
+        params: [r.orgA, r.orgAdminUserId],
+        expect: (rows) =>
+          Number(rows[0]?.n) === 0 ? null : `a forbidden update by org_admin still wrote ${rows[0]?.n} audit row(s)`,
+      }),
+    },
+    {
+      name: 'suspend',
+      method: 'POST',
+      // `suspend: false` — ACTIVATE. See the surface comment: suspending org A would break every
+      // other surface's authentication.
+      buildParity: (r) => ({ path: `/platform/organizations/${r.orgA}/suspend`, body: { suspend: false } }),
+      expectedByRole: { platform_owner: 'allow', org_admin: 'deny' },
+      rbacDenyStatus: 403,
+      expectResponse: (b) => {
+        const o = asObj(b);
+        if (!o) return 'response is not an object';
+        if (typeof o.id !== 'string' || !UUID_RE.test(o.id)) return `expected a uuid id, got ${JSON.stringify(o.id)}`;
+        if (o.isActive !== true) return `expected isActive true after activate, got ${JSON.stringify(o.isActive)}`;
+        return null;
+      },
+      readbackMutated: (r) => ({
+        sql: `SELECT o.is_active,
+                     (SELECT count(*)::int FROM audit_logs a
+                       WHERE a.organization_id = o.id AND a.action = 'org_activated' AND a.actor_id = $2) AS audits
+                FROM organizations o WHERE o.id = $1`,
+        params: [r.orgA, r.platformOwnerUserId],
+        expect: (rows) => {
+          const row = rows[0];
+          if (!row) return 'org A not found on read-back';
+          if (row.is_active !== true) return `is_active is ${JSON.stringify(row.is_active)}, expected true`;
+          // The action name is the ONLY thing distinguishing activate from suspend — TS picks it from
+          // the flag (organizations.ts:233) and so must C#.
+          if (Number(row.audits) < 1) return 'no org_activated audit row attributed to the platform owner';
+          return null;
+        },
+      }),
+      readbackNoMutation: (r) => ({
+        sql: `SELECT count(*)::int AS n FROM audit_logs
+               WHERE organization_id = $1 AND actor_id = $2 AND action IN ('org_suspended', 'org_activated')`,
+        params: [r.orgA, r.orgAdminUserId],
+        expect: (rows) =>
+          Number(rows[0]?.n) === 0 ? null : `a forbidden suspend by org_admin still wrote ${rows[0]?.n} audit row(s)`,
+      }),
+    },
+  ],
+};
+
 export const WRITE_SURFACES: Record<string, AnyWriteSurface> = {
   compensation: defineWriteSurface(compensationSurface),
   evaluation360: defineWriteSurface(evaluation360Surface),
@@ -1488,4 +1616,5 @@ export const WRITE_SURFACES: Record<string, AnyWriteSurface> = {
   engagement: defineWriteSurface(engagementSurface),
   ninebox: defineWriteSurface(nineboxSurface),
   'access-review': defineWriteSurface(accessReviewSurface),
+  organization: defineWriteSurface(platformOrganizationsSurface),
 };

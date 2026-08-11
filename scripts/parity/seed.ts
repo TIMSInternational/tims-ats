@@ -2169,6 +2169,36 @@ export async function ensureAccessReviewWritePreconditions(_cfg: HarnessConfig):
   // Intentionally a no-op — see the block comment above.
 }
 
+/** The platform-organizations write surface's ids (#195). */
+export interface PlatformOrganizationsWriteResources {
+  orgA: string;
+  orgAdminUserId: string;
+  platformOwnerUserId: string;
+}
+
+/** No-op, like access-review: both writes are unconditional updates on an org that the base seed
+ *  already creates, so there is no fixture to build and nothing to reset between runs. */
+export async function ensurePlatformOrganizationsWritePreconditions(_cfg: HarnessConfig): Promise<void> {
+  // Intentionally a no-op — see the doc comment above.
+}
+
+/** Read-only resolution of the platform-organizations write surface's ids from the seeded DB. */
+export async function resolvePlatformOrganizationsWriteResources(
+  cfg: HarnessConfig,
+): Promise<PlatformOrganizationsWriteResources> {
+  const db = makeDbClient(cfg);
+  await db.connect();
+  try {
+    return {
+      orgA: await orgIdBySlug(db, ORG_SLUGS.a),
+      orgAdminUserId: await userIdByEmail(db, 'parity+a-org_admin@tims.test'),
+      platformOwnerUserId: await userIdByEmail(db, 'parity+a-platform_owner@tims.test'),
+    };
+  } finally {
+    await db.end();
+  }
+}
+
 /** Read-only resolution of the access-review write surface's ids from the seeded DB. */
 export async function resolveAccessReviewWriteResources(cfg: HarnessConfig): Promise<AccessReviewWriteResources> {
   const db = makeDbClient(cfg);
