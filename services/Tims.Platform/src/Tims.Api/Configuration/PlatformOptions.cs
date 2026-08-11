@@ -430,7 +430,8 @@ public sealed class PlatformOptions
     ///
     /// The organization WRITES are NOT in this flag — they need their own one-active-writer discipline
     /// rather than riding a read flag. <c>updateOrganization</c>/<c>suspendOrganization</c> ship behind
-    /// <see cref="PlatformOrganizationsWriteEnabled"/> (slice 20); <c>createOrganization</c> is slice 21.
+    /// <see cref="PlatformOrganizationsWriteEnabled"/> (slice 20) and <c>createOrganization</c> behind
+    /// <see cref="PlatformOrganizationsCreateEnabled"/> (slice 21).
     ///
     /// DEFAULT false (dark) — TS remains the single active reader until Federico flips it at canary.
     /// </summary>
@@ -441,8 +442,9 @@ public sealed class PlatformOptions
     /// <c>updateOrganization</c> and <c>suspendOrganization</c> from
     /// <c>routers/platform/organizations.ts</c>.
     ///
-    /// <c>createOrganization</c> is NOT here. It is a 7-table provisioning transaction that must first port
-    /// the shared <c>org-provisioning</c> service, and #75 depends on that service's C# shape — slice 21.
+    /// <c>createOrganization</c> is NOT here. It is a 7-table provisioning transaction with its own
+    /// blast radius, so it ships behind its own flag — <see cref="PlatformOrganizationsCreateEnabled"/>
+    /// (slice 21), which also carries the shared <c>org-provisioning</c> service #75 depends on.
     ///
     /// THIS FLAG IS THE ONE-ACTIVE-WRITER CONTROL. It moves <c>organizations</c> into
     /// <c>efcoreStranglerWrite</c> in docs/architecture/table-ownership.md: Prisma still owns the DDL and
@@ -458,6 +460,34 @@ public sealed class PlatformOptions
     /// DEFAULT false (dark) — TS remains the single active writer until Federico flips it at canary.
     /// </summary>
     public bool PlatformOrganizationsWriteEnabled { get; init; }
+
+    /// <summary>
+    /// Phase-5 slice 21 (issue #76) — the platform-owner ORGANIZATION CREATE surface: the C# port of
+    /// <c>createOrganization</c> from <c>routers/platform/organizations.ts:104-169</c>, together with the
+    /// shared <c>org-provisioning</c> service (<c>OrgProvisioningWriter</c>) that #75 also depends on.
+    ///
+    /// SEPARATE from <see cref="PlatformOrganizationsWriteEnabled"/> on purpose. That flag governs
+    /// single-row UPDATEs of one table; this one governs a SEVEN-table provisioning transaction
+    /// (organizations + companies + business_units + teams + org_entitlements + roles + subscriptions).
+    /// Riding the update flag would make one canary decision cover two wildly different blast radii.
+    ///
+    /// THIS FLAG IS THE ONE-ACTIVE-WRITER CONTROL, and unlike slice 20 it can NEVER become an ownership
+    /// flip: apps/web/app/auth/callback/route.ts (self-serve signup) creates the same seven tables in its
+    /// own transaction — FOUR of them (companies, business_units, teams, org_entitlements) through the same
+    /// shared helpers at :92-93, and organizations/roles/subscriptions INLINE at :80, :96 and :122 — so the
+    /// TS writer cannot be retired by this surface.
+    ///
+    /// Runs UNDER <c>TenantScope</c> opened on the NEW organization id, generated client-side before the
+    /// transaction: <c>organizations</c>' policy is <c>id = current_org_id</c> and the other six are
+    /// <c>organization_id = current_org_id</c>, so every WITH CHECK passes for the rows being inserted.
+    /// The audit write is FAIL-CLOSED inside that transaction — a deliberate divergence from the TS
+    /// <c>.catch(() =&gt; {})</c>, decided on #76. The notification fan-out is outside it, and its failure
+    /// PROPAGATES (a 500 after a committed create), which is TS parity: <c>organizations.ts:149</c> awaits
+    /// <c>notify</c> with no catch.
+    ///
+    /// DEFAULT false (dark) — TS remains the single active writer until Federico flips it at canary.
+    /// </summary>
+    public bool PlatformOrganizationsCreateEnabled { get; init; }
 
     /// <summary>
     /// MFA step-up enforcement (#173) — the platform-service counterpart of the web app's

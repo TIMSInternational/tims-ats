@@ -307,6 +307,32 @@ try
     builder.Services.AddScoped<IPlatformOrganizationsWriteRepository, PlatformOrganizationsWriteRepository>();
     builder.Services.AddScoped<PlatformOrganizationsWriteUseCase>();
 
+    // Phase-5 slice 21 (#76): platform-owner ORGANIZATION CREATE + the shared org-provisioning service.
+    // Its OWN context, mapping organizations + roles + companies + business_units + teams +
+    // org_entitlements + plan_modules (read-only) + audit_logs + users/notifications (the fan-out),
+    // for the same reason slice 20's does: the fail-closed audit only holds if the audit INSERT shares the
+    // creation transaction, and every context here is registered with its own connection (nothing shares a
+    // DbConnection + UseTransaction), so reusing AuditLogDbContext would split them. Reuses the SAME
+    // PlatformOrganizationsDataSourceHolder registered above (one per domain) — EnableUnmappedTypes is
+    // mandatory here, since the create path reads the organization row back and organizations.plan is a
+    // native PG enum. Runs UNDER TenantScope opened on the client-generated new org id.
+    // NOT mapped, deliberately: `subscriptions` is written ONLY by raw ExecuteSqlInterpolatedAsync
+    // (PlatformOrganizationsCreateRepository), because plan/status are native PG enums EF has no store
+    // mapping to write through. It is therefore INVISIBLE to scripts/table-ownership.mjs, which greps for
+    // table names in EF ToTable calls and nothing else (#199) — as is `organizations`, written the same way
+    // for the same reason. Those two are the slice's governance blind spot; every OTHER table here goes
+    // through EF precisely so its ledger entry is actually enforced.
+    //
+    // Do NOT write that grep's pattern out literally in a comment: the checker cannot tell code from prose,
+    // so an illustrative snippet registers as a real mapping and fails the governance test with a table name
+    // of "...". Which is, itself, the sharpest available demonstration of #199.
+    // Dark unless PlatformOrganizationsCreateEnabled (deploy-gated; TS stays the sole active writer, and
+    // stays a writer permanently — self-serve signup shares the same helpers).
+    builder.Services.AddDbContext<PlatformOrganizationsCreateDbContext>((sp, options) =>
+        options.UseNpgsql(sp.GetRequiredService<PlatformOrganizationsDataSourceHolder>().DataSource));
+    builder.Services.AddScoped<IPlatformOrganizationsCreateRepository, PlatformOrganizationsCreateRepository>();
+    builder.Services.AddScoped<PlatformOrganizationsCreateUseCase>();
+
     // §8 Q0b slice 2 / issue #172: the CROSS-ORG alert-metric read for the alert-evaluation cron — the last
     // blocker on flips #64 and #66. Deliberately REUSES MonitoringReadDbContext above rather than adding a
     // second context over the same two tables: the identical counts already ship in
@@ -1011,6 +1037,14 @@ try
     if (externalOptions.PlatformOrganizationsWriteEnabled || isOpenApiDocGeneration)
     {
         app.MapPlatformOrganizationsWriteEndpoints();
+    }
+
+    // Phase-5 slice 21 (#76): POST /platform/organizations — the 7-table provisioning create.
+    // This flag IS the one-active-writer control for the six provisioned tables; with it off the route is
+    // never mapped and TS is the sole writer.
+    if (externalOptions.PlatformOrganizationsCreateEnabled || isOpenApiDocGeneration)
+    {
+        app.MapPlatformOrganizationsCreateEndpoints();
     }
 
     // §8 Q0b slice 2 / issue #172: GET /internal/alert-metrics — the cross-org metric read for the

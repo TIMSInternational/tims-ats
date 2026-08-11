@@ -23,12 +23,15 @@ namespace Tims.Api.PlatformOrganizations;
 /// regardless). The gate IS the authorization boundary — which is why it runs first on every endpoint,
 /// before input validation, mirroring tRPC's middleware-before-Zod order.</para>
 ///
-/// <para><b>The three WRITES are deliberately not here.</b> <c>createOrganization</c>,
-/// <c>updateOrganization</c> and <c>suspendOrganization</c> belong to a separate write slice: the
-/// Phase-5 recipe routes reads first, and the writes would move <c>organizations</c> and
-/// <c>subscriptions</c> into <c>efcoreStranglerWrite</c>, which needs its own one-active-writer flag
-/// discipline rather than riding a read flag. Every domain in this repo is split the same way
-/// (external-vendor 1/2, billing 3/4, engagement 11/16).</para>
+/// <para><b>The three WRITES are deliberately not here — they shipped as their own slices.</b> The Phase-5
+/// recipe routes reads first, and the writes move <c>organizations</c> and <c>subscriptions</c> into
+/// <c>efcoreStranglerWrite</c>, which needs its own one-active-writer flag discipline rather than riding a
+/// read flag. Every domain in this repo is split the same way (external-vendor 1/2, billing 3/4,
+/// engagement 11/16). <c>updateOrganization</c> and <c>suspendOrganization</c> are
+/// <see cref="PlatformOrganizationsWriteEndpoints"/> (slice 20, behind
+/// <c>Platform:PlatformOrganizationsWriteEnabled</c>); <c>createOrganization</c> is
+/// <see cref="PlatformOrganizationsCreateEndpoints"/> (slice 21, behind
+/// <c>Platform:PlatformOrganizationsCreateEnabled</c>).</para>
 ///
 /// INTERNAL staff read ⇒ RAW procedure shape, NO <c>schemaVersion</c> envelope. Dark-by-default behind
 /// <see cref="PlatformOptions.PlatformOrganizationsReadEnabled"/>.

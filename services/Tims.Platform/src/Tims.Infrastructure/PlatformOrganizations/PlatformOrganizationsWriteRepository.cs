@@ -120,44 +120,13 @@ public sealed class PlatformOrganizationsWriteRepository(PlatformOrganizationsWr
         return row;
     }
 
-    public async Task NotifyPlatformOwnersAsync(PlatformOwnerNotification notification, CancellationToken cancellationToken)
-    {
-        // lib/notify.ts:21-24 — every platform owner, across every organization. Unscoped by necessity:
-        // owners belong to their own orgs, so this cannot run inside the suspended org's TenantScope.
-        var ownerIds = await _db.Users
-            .AsNoTracking()
-            .Where(u => u.IsPlatformOwner)
-            .Select(u => u.Id)
-            .ToListAsync(cancellationToken)
-            .ConfigureAwait(false);
-
-        // lib/notify.ts:28 — `if (targets.length === 0) return;` (no empty createMany).
-        if (ownerIds.Count == 0)
-        {
-            return;
-        }
-
-        foreach (var ownerId in ownerIds)
-        {
-            _db.Notifications.Add(new PlatformOrganizationNotificationEntity
-            {
-                Id = Guid.NewGuid(),
-                OrganizationId = notification.OrganizationId,
-                UserId = ownerId,
-                Type = notification.Type,
-                Title = notification.Title,
-                Message = notification.Message,
-                Module = notification.Module,
-                EntityType = notification.EntityType,
-                EntityId = notification.EntityId,
-                ActionUrl = notification.ActionUrl,
-            });
-        }
-
-        // Its own unit of work, outside the update transaction: a failed fan-out must not undo a completed
-        // suspension. Deliberately asymmetric with the audit write — see the port interface's remarks.
-        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
-    }
+    // The body moved to PlatformOwnerNotifier in slice 21 (#76), when the create repository became a second
+    // caller of the same fan-out. The per-owner copy and the empty-set early return are user-visible
+    // behaviour; two hand-maintained copies would drift into notifications that differ depending on which
+    // mutation produced them. Its own unit of work, outside the update transaction — a failed fan-out must
+    // not undo a completed suspension, deliberately asymmetric with the audit write.
+    public Task NotifyPlatformOwnersAsync(PlatformOwnerNotification notification, CancellationToken cancellationToken) =>
+        PlatformOwnerNotifier.SendAsync(_db, _db.Users, _db.Notifications, notification, cancellationToken);
 
     private void AddAuditRow(Guid organizationId, Guid actorId, string action, string? changes) =>
         _db.AuditLogs.Add(new AuditLogEntity

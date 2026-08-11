@@ -6,10 +6,12 @@ namespace Tims.Application.PlatformOrganizations;
 /// Write models for the platform-owner organizations surface (Phase-5 slice 20, issue #76) — the C# port
 /// of <c>updateOrganization</c> and <c>suspendOrganization</c> in <c>routers/platform/organizations.ts</c>.
 ///
-/// <para><b><c>createOrganization</c> is deliberately NOT here.</b> It is a 7-table provisioning
-/// transaction (organizations + companies + business_units + teams + org_entitlements + roles +
-/// subscriptions) that must first port the shared <c>org-provisioning</c> service, and #75 depends on THAT
-/// service's C# shape. Slice 21. Splitting it out keeps this slice to single-row updates, which is what
+/// <para><b><c>createOrganization</c> is deliberately NOT here — it SHIPPED as slice 21.</b> It is a
+/// 7-table provisioning transaction (organizations + companies + business_units + teams + org_entitlements
+/// + roles + subscriptions) that had to first port the shared <c>org-provisioning</c> service, and #75
+/// depends on THAT service's C# shape. See <see cref="PlatformOrganizationCreateInput"/> /
+/// <see cref="CreateOrganizationResult"/> in <c>PlatformOrganizationsCreateModels.cs</c> and
+/// <c>OrgProvisioningWriter</c>. Splitting it out kept THIS slice to single-row updates, which is what
 /// makes the transactional fail-closed audit reviewable.</para>
 /// </summary>
 /// <remarks>

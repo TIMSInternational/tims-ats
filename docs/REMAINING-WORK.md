@@ -225,27 +225,40 @@ describe-service`; only the frontend Vercel flag was missing.)
     `engagement:read` grants or eNPS fixtures for the test orgs; see commit `7fd23a7`). Backend flag
     was rolled back immediately, harness fixed + 782/782 unit + 1012/1012 integration tests still
     passing, re-verified 43/43 PASS, then re-flipped for real.
-  - Platform organizations (Phase-5 Slice-19 read, Slice-20 write) — #76. Platform-owner-only and
-    deliberately CROSS-ORG. **BOTH DARK**, no FE flag. This used to add "no parity-registry entry
-    (`surfaces.ts` covers 4 domains — #195), so step 5 is unrunnable by anyone"; that is STALE as of
-    2026-08-11 — #203 registered the read and write surfaces, #204 added monitoring, and the
-    access-review/audit-log reads were restored, so SURFACES now holds 8 keys and `verify
-    organization` / `verify-write organization` are runnable. Step 5 is Federico-gated again, not
-    blocked. (`getOrganization` alone stays unregistered — it needs a by-id platform-owner marker.)
+  - Platform organizations (Phase-5 Slice-19 read, Slice-20 write, Slice-21 create) — #76.
+    Platform-owner-only and deliberately CROSS-ORG. **ALL THREE DARK**, no FE flag. This used to add "no
+    parity-registry entry (`surfaces.ts` covers 4 domains — #195), so step 5 is unrunnable by anyone";
+    that is STALE for the READ and UPDATE/SUSPEND surfaces as of 2026-08-11 — #203 registered them, #204
+    added monitoring, and the access-review/audit-log reads were restored, so SURFACES now holds 8 keys
+    and `verify organization` / `verify-write organization` are runnable. Step 5 is Federico-gated again
+    for those two, not blocked. (`getOrganization` alone stays unregistered — it needs a by-id
+    platform-owner marker.) **It is NOT stale for the CREATE: `verify-write organization` covers `update`
+    and `suspend` ONLY.** There is no `organization-create` surface, so slice 21 has no cross-stack probe
+    at all — tracked as **#208**, with the reasoning in the slice-21 doc (a create INSERTs into seven
+    production tables per run with no teardown, unlike every other registered write, which is idempotent
+    by construction).
     Slice 19 (PR #198) ported `getOrganizationKpis`/`listOrganizations`/`getOrganization` behind
     `Platform:PlatformOrganizationsReadEnabled`. Slice 20 ported `updateOrganization`/
     `suspendOrganization` behind `Platform:PlatformOrganizationsWriteEnabled`, which is the
     one-active-writer control for `organizations` (now `efcoreStranglerWrite`). The write's audit row is
     **fail-CLOSED and transactional**, a divergence from the TS `.catch(() => {})` decided by Federico on
-    #76 and mutation-proved. `createOrganization` is **slice 21** — a 7-table provisioning transaction
-    that must first port the shared `org-provisioning` service, which is what **#75** actually depends on.
+    #76 and mutation-proved. **Slice 21 SHIPPED `createOrganization`** behind
+    `Platform:PlatformOrganizationsCreateEnabled` — a 7-table provisioning transaction plus the shared
+    `org-provisioning` service (`OrgProvisioningWriter`), moving `companies`/`business_units`/`teams`/
+    `roles` into `efcoreStranglerWrite` and adding `org_entitlements` + read-only `plan_modules`. It can
+    **never** become an ownership flip: self-serve signup writes the same seven tables and is out of scope
+    for every C# slice. **#75 depends on slice 21's service shape and is only HALF unblocked** — the
+    helper pair and the `roles` map were extracted, but the `organizations`/`subscriptions` INSERTs (and
+    with them the enum-cast and timestamp-kind traps) are still private to the create repository. Slice
+    21's panel filed **#207** (neither email is length-bounded, in EITHER stack — an
+    `api-security.md` violation ported as-is) and **#208** (the missing parity surface).
     Slice 20 also fixed a defect slice 19 shipped: the read context mapped five columns across four native
     Postgres enum types to C# strings on a plain connection string, so `listOrganizations` and
     `getOrganization` would have thrown the moment the flag was flipped (`getOrganizationKpis` is
     COUNT-only and would not). Slice 20's tier-3 panel also filed **#199** (the ownership check is blind to
     raw-SQL writers), **#200** (the SQL-injection scan does not cover C#) and **#201** (narrow the
-    over-fetch and the destructive `settings` replace). See `docs/architecture/csharp-migration/phase-5-slice-19-platform-organizations-read.md`
-    and `…-slice-20-platform-organizations-write.md`.
+    over-fetch and the destructive `settings` replace). See `docs/architecture/csharp-migration/phase-5-slice-19-platform-organizations-read.md`,
+    `…-slice-20-platform-organizations-write.md` and `…-slice-21-platform-organizations-create.md`.
   - **Cutover-verification harness** (`scripts/parity/`, PRs #177–#194): a TypeScript CLI proving
     parity/RLS/RBAC for each surface against the real Supabase prod DB before any flag flips.
   - **FE/TS dark-cutover wrapper layer (2026-07-27, PRs #197–#212) — now fully COMPLETE, both reads and
@@ -368,7 +381,7 @@ describe-service`; only the frontend Vercel flag was missing.)
   backstop (`EngagementWriteRepository.cs:175,:230-231,:291-293`, verified before deleting) plus a
   `FOR UPDATE` scope re-check the TS `updateMany` only approximated; and `getWordCloud` +
   `getSentiment` — deleted rather than converted to a 501, because each returned **HTTP 200 with an
-  empty payload**, indistinguishable from a survey with no text answers (the *dishonest* variant of
+  empty payload**, indistinguishable from a survey with no text answers (the _dishonest_ variant of
   unavailable), while C# already maps both routes with the identical stub behind the identical gate
   (`EngagementReadEndpoints.cs:277,:297`) and the FE renders a static placeholder that never called
   them. **Kept, with written reasons (4):** `listSurveys` + `getRotationRisk` are the TS half of the
@@ -384,71 +397,71 @@ describe-service`; only the frontend Vercel flag was missing.)
   > procedure does NOT blind `verify engagement`. Flip #64 may therefore delete all four, provided it
   > converts each endpoint to C#-only by omitting `tsProcedure`; deleting the ENDPOINT or SURFACE is
   > the security-coverage regression (`surfaces.ts:8-18`), not deleting the procedure. **Flip #68 is NOT
-  unblocked by this**: `action_plans` has zero TS *writers* now, but `monitoring.ts:158` still READS
-  `db.actionPlan.findMany` and `access/scoped-probe.ts:79` + `entity-policies.ts:44,145` still
-  register the Prisma delegate. The zero-writer invariant is pinned by
-  `tests/access/scope-wiring-engagement-write.test.ts` (with a positive-control + non-empty-corpus
-  guard, so an all-clear cannot be vacuous), and the ledger note is in
-  `docs/architecture/table-ownership.md` (`notes.action_plans_ts_writers_removed`) — **no table was
-  moved between `efcoreStranglerWrite` and `efcore`; that is the flip.**). **This closes
-  the S5 item-4 TS-deletion sequence: all 12 live surfaces (across all 8 domains) have had their dead
-  TS code deleted, and ZERO live surfaces are left with undeleted TS fallback code sitting behind an
-  always-true flag.**
-  **CORRECTION 2026-08-06 (#54): the "ZERO live surfaces" claim above was overstated as written, and
-  is left in place rather than rewritten so the correction is auditable.** It was true of the
-  _routers_ and false of everything behind them. For evaluation360 the deletion stopped at the
-  router — and it stopped there **on purpose**, which is the part worth recording. The plan that
-  performed it
-  (`docs/superpowers/plans/2026-07-28-ts-dead-code-deletion-reporting-eval360.md:20-31`) lists the
-  service, the repository and their tests under "Do NOT touch", calls it "a deliberate scope boundary
-  (Federico's explicit choice)", and keeps them as "an orphaned-but-harmless rollback safety net".
-  Nobody forgot. What was wrong is the word **harmless**:
-  `packages/api/src/services/evaluation360.service.ts` (199 LOC) and
-  `packages/api/src/repositories/evaluation360.repository.ts` (314 LOC) survived with zero importers
-  outside the test suite — and the repository still held **every TS Prisma writer** of
-  `review_cycles` / `rater_assignments` / `rater_responses` (`.create`, three guarded `.updateMany`s,
-  `raterAssignment.createMany`, `raterAssignment.updateMany`, `raterResponse.createMany`), which is
-  why an honest "are there TS writers?" grep reported non-zero and blocked ownership flip #67. A
-  rollback safety net for a cutover that was confirmed live and parity-verified is not free; it cost
-  a blocked flip. Both files are now deleted, along with their two test files. What is KEPT,
-  deliberately, is the pure min-3 anonymity kernel
-  `packages/api/src/services/evaluation360-aggregate.ts` — the access-review precedent, where the
-  pure kernel and its pinned fixtures were retained as the contract spec the C# port is golden-tested
-  against (`contracts/access-fixtures/eval360-min3.json` ↔
-  `services/Tims.Platform/src/Tims.Domain/Access/Eval360Aggregate.cs`). The absence is now defended
-  by `tests/governance/evaluation360-no-ts-writers.test.ts` rather than by anyone remembering it.
-  **The same "Do NOT touch" list names a second, still-live orphan pair**:
-  `packages/api/src/services/recruitment-analytics.service.ts` and
-  `packages/api/src/repositories/recruitment-analytics.repository.ts` are orphaned the same way
-  (grep-confirmed 2026-08-06: zero importers, only comment references). They are READ-ONLY — zero
-  `.create/.update/.upsert/.delete` calls — so unlike evaluation360 they block no ownership flip, and
-  they were left alone as out of #54's scope. They still want their own issue.
-  **The scope of this correction has NOT been established for the remaining domains** — evaluation360
-  was found by direct grep; nobody has re-checked whether team-intel, billing-usage, succession,
-  nine-box, compensation, engagement or DEI left orphaned services/repositories behind the same way.
-  Treat the sentence above as unverified for those until someone greps them. **UPDATE 2026-07-31: a 9th domain joined this sequence** — access-review
-  (read), whose flag (`NEXT_PUBLIC_ACCESS_REVIEW_READ_VIA_CSHARP`) flipped live the same day (see the
-  Access-review entry above). All 3 registered TS read procedures
-  (getAccessReview/exportAccessReviewCsv/listAccessReviewAttestations,
-  `packages/api/src/routers/platform/access-review.ts`) were deleted — unlike succession/nine-box/
-  compensation, no zero-consumer procedure survived, so this domain follows the
-  reporting/evaluation360/team-intel/billing-usage "fully deleted read surface" pattern instead of
-  the "partial" one. The TS router itself was NOT deleted outright, though — attestAccessReview (the
-  write) still lives there; its own flag (`NEXT_PUBLIC_ACCESS_REVIEW_WRITE_VIA_CSHARP`) is ALSO now
-  confirmed live in prod (2026-07-31, see the Access-review entry above), but its TS-deletion is a
-  separate, not-yet-done follow-up task. Two known, deliberately-deferred follow-ups from this sequence, recorded here so
-  they aren't lost with no successor TS-deletion branch to carry them: (1) once any domain's dark READ
-  flag is eventually flipped, that domain's FE modal `invalidate()` calls that target now-C#-routed
-  reads will invalidate a dead tRPC cache key instead of the real `['platform-api', <domain>, …]` key
-  — a latent bug common to every dual-path wrapper in this migration, not introduced by any single
-  domain's deletion, and only surfaces at the next flag flip; (2) several C# XML doc-comments across
-  `services/Tims.Platform/src/**/Engagement/*.cs` still cite `engagement.ts` line numbers from before
-  this domain's TS deletion (some now point at unrelated surviving code rather than failing loudly) —
-  C# source was explicitly out of scope for this migration's TS-deletion sweeps, so this drift was
-  never going to be caught in-branch; worth a dedicated cleanup pass, not urgent. Flipping a
-  domain's flag in prod is explicitly **Federico-only, at canary**
-  (`docs/superpowers/plans/2026-07-24-cutover-verification-harness.md`); TS-code deletion is AI-doable
-  per-domain once a flag is confirmed live, per the reporting/evaluation360 precedent.
+  > unblocked by this**: `action_plans` has zero TS _writers_ now, but `monitoring.ts:158` still READS
+  > `db.actionPlan.findMany` and `access/scoped-probe.ts:79` + `entity-policies.ts:44,145` still
+  > register the Prisma delegate. The zero-writer invariant is pinned by
+  > `tests/access/scope-wiring-engagement-write.test.ts` (with a positive-control + non-empty-corpus
+  > guard, so an all-clear cannot be vacuous), and the ledger note is in
+  > `docs/architecture/table-ownership.md` (`notes.action_plans_ts_writers_removed`) — **no table was
+  > moved between `efcoreStranglerWrite` and `efcore`; that is the flip.**). **This closes
+  > the S5 item-4 TS-deletion sequence: all 12 live surfaces (across all 8 domains) have had their dead
+  > TS code deleted, and ZERO live surfaces are left with undeleted TS fallback code sitting behind an
+  > always-true flag.**
+  > **CORRECTION 2026-08-06 (#54): the "ZERO live surfaces" claim above was overstated as written, and
+  > is left in place rather than rewritten so the correction is auditable.** It was true of the
+  > _routers_ and false of everything behind them. For evaluation360 the deletion stopped at the
+  > router — and it stopped there **on purpose**, which is the part worth recording. The plan that
+  > performed it
+  > (`docs/superpowers/plans/2026-07-28-ts-dead-code-deletion-reporting-eval360.md:20-31`) lists the
+  > service, the repository and their tests under "Do NOT touch", calls it "a deliberate scope boundary
+  > (Federico's explicit choice)", and keeps them as "an orphaned-but-harmless rollback safety net".
+  > Nobody forgot. What was wrong is the word **harmless**:
+  > `packages/api/src/services/evaluation360.service.ts` (199 LOC) and
+  > `packages/api/src/repositories/evaluation360.repository.ts` (314 LOC) survived with zero importers
+  > outside the test suite — and the repository still held **every TS Prisma writer** of
+  > `review_cycles` / `rater_assignments` / `rater_responses` (`.create`, three guarded `.updateMany`s,
+  > `raterAssignment.createMany`, `raterAssignment.updateMany`, `raterResponse.createMany`), which is
+  > why an honest "are there TS writers?" grep reported non-zero and blocked ownership flip #67. A
+  > rollback safety net for a cutover that was confirmed live and parity-verified is not free; it cost
+  > a blocked flip. Both files are now deleted, along with their two test files. What is KEPT,
+  > deliberately, is the pure min-3 anonymity kernel
+  > `packages/api/src/services/evaluation360-aggregate.ts` — the access-review precedent, where the
+  > pure kernel and its pinned fixtures were retained as the contract spec the C# port is golden-tested
+  > against (`contracts/access-fixtures/eval360-min3.json` ↔
+  > `services/Tims.Platform/src/Tims.Domain/Access/Eval360Aggregate.cs`). The absence is now defended
+  > by `tests/governance/evaluation360-no-ts-writers.test.ts` rather than by anyone remembering it.
+  > **The same "Do NOT touch" list names a second, still-live orphan pair**:
+  > `packages/api/src/services/recruitment-analytics.service.ts` and
+  > `packages/api/src/repositories/recruitment-analytics.repository.ts` are orphaned the same way
+  > (grep-confirmed 2026-08-06: zero importers, only comment references). They are READ-ONLY — zero
+  > `.create/.update/.upsert/.delete` calls — so unlike evaluation360 they block no ownership flip, and
+  > they were left alone as out of #54's scope. They still want their own issue.
+  > **The scope of this correction has NOT been established for the remaining domains** — evaluation360
+  > was found by direct grep; nobody has re-checked whether team-intel, billing-usage, succession,
+  > nine-box, compensation, engagement or DEI left orphaned services/repositories behind the same way.
+  > Treat the sentence above as unverified for those until someone greps them. **UPDATE 2026-07-31: a 9th domain joined this sequence** — access-review
+  > (read), whose flag (`NEXT_PUBLIC_ACCESS_REVIEW_READ_VIA_CSHARP`) flipped live the same day (see the
+  > Access-review entry above). All 3 registered TS read procedures
+  > (getAccessReview/exportAccessReviewCsv/listAccessReviewAttestations,
+  > `packages/api/src/routers/platform/access-review.ts`) were deleted — unlike succession/nine-box/
+  > compensation, no zero-consumer procedure survived, so this domain follows the
+  > reporting/evaluation360/team-intel/billing-usage "fully deleted read surface" pattern instead of
+  > the "partial" one. The TS router itself was NOT deleted outright, though — attestAccessReview (the
+  > write) still lives there; its own flag (`NEXT_PUBLIC_ACCESS_REVIEW_WRITE_VIA_CSHARP`) is ALSO now
+  > confirmed live in prod (2026-07-31, see the Access-review entry above), but its TS-deletion is a
+  > separate, not-yet-done follow-up task. Two known, deliberately-deferred follow-ups from this sequence, recorded here so
+  > they aren't lost with no successor TS-deletion branch to carry them: (1) once any domain's dark READ
+  > flag is eventually flipped, that domain's FE modal `invalidate()` calls that target now-C#-routed
+  > reads will invalidate a dead tRPC cache key instead of the real `['platform-api', <domain>, …]` key
+  > — a latent bug common to every dual-path wrapper in this migration, not introduced by any single
+  > domain's deletion, and only surfaces at the next flag flip; (2) several C# XML doc-comments across
+  > `services/Tims.Platform/src/**/Engagement/*.cs` still cite `engagement.ts` line numbers from before
+  > this domain's TS deletion (some now point at unrelated surviving code rather than failing loudly) —
+  > C# source was explicitly out of scope for this migration's TS-deletion sweeps, so this drift was
+  > never going to be caught in-branch; worth a dedicated cleanup pass, not urgent. Flipping a
+  > domain's flag in prod is explicitly **Federico-only, at canary**
+  > (`docs/superpowers/plans/2026-07-24-cutover-verification-harness.md`); TS-code deletion is AI-doable
+  > per-domain once a flag is confirmed live, per the reporting/evaluation360 precedent.
 
 ### Compliance-by-design — CB-1/1b/1c/2a/2b — **SHIPPED** (`docs/architecture/compliance/00-compliance-by-design-roadmap.md`)
 
@@ -510,16 +523,16 @@ First slices of the SOC 1 Type II / SOC 2 Type II / ISO 27001 engineering contro
 
 ### Tier 0 — Operational flips & config (cheap, high-leverage; mostly owner-action)
 
-| Owner        | Item                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Federico     | **Stripe go-live** — set `STRIPE_SECRET_KEY` + `STRIPE_PRICE_STARTER` + `STRIPE_PRICE_PROFESSIONAL` (latter two missing from `.env.example`), register webhook, configure Billing Portal. Code is complete + verified in test mode (`docs/WAVE-2-STRIPE-BILLING.md`); dormant until keys set.                                                                                                                                                                                                                           |
-| Federico     | **`DAILY_API_KEY`** — human video interviews (`interview.createVideoRoom`) now fail closed with a clear provider-config error and `.env.example` documents the required Daily.co vars. The prod/local Daily key checked on 2026-07-14 reached Daily but returned `authentication-error`, so it must be replaced with a valid key. The AI voice interview uses ElevenLabs and is unaffected.                                                                                                                             |
-| Federico     | **Fix Bedrock payment instrument (AWS acct 747814092517)** — Sonnet 4.5 Marketplace subscription can't activate; 5 analysis agents (interview-summarizer/guide, bias-detector, interview-fit-score, candidate-screener) are downgraded to Haiku 4.5 as a stopgap. Restore to Sonnet in `registry.ts` once billing clears.                                                                                                                                                                                               |
-| Federico     | **MFA enforce** — enroll TOTP at `/mfa`, then set **BOTH** `MFA_ENFORCED=true` in Vercel prod **AND** `Platform:MfaEnforced=true` on the C# platform service (terraform `mfa_enforced`, wired in #179). ⚠️ **Setting only the web flag re-creates the exact gap #173 closed**: a privileged `aal1` session would be refused by tRPC and served by the platform service. Both stacks share one golden (`contracts/mfa-fixtures/cases.json`) and both fail OPEN on an unset/garbled value, so a half-flip is silent. _(CB-2a, PR #148, closed the tRPC + impersonation enforcement-path bypass; #178 added the C# half. This is a two-flag go-live flip, not a code gap.)_                                                                                                                                                                                                                                                      |
-| —            | ~~**GitHub Actions billing**~~ — **stale, corrected 2026-08-01**: this session observed full CI runs (real build/test durations, all jobs executing) on PRs #8–#11, not the described 0-steps-in-3-11s failure. Whatever billing issue caused #195–#212's admin-overrides appears resolved (or was scoped to a window that's since passed) — not re-verified against github.com/settings/billing directly, but the symptom is gone. Branch protection (1 approval required) is what's now gating normal merges, not CI. |
-| Federico     | Branch protection on `main` (6 required checks ready); `SENTRY_AUTH_TOKEN` for readable stack traces.                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| TIMS/product | **Per-org `AiAgentOrgConfig` budgets** — a fail-closed $25/mo cap applies until set (AI silently stops at the cap).                                                                                                                                                                                                                                                                                                                                                                                                     |
-| TIMS/product | **ai-voice-interview activation** per org (platform admin → AI Agents → Orgs: enable + `billableUsdPerMinute`/`addonMonthlyFeeUsd`/caps).                                                                                                                                                                                                                                                                                                                                                                               |
+| Owner        | Item                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Federico     | **Stripe go-live** — set `STRIPE_SECRET_KEY` + `STRIPE_PRICE_STARTER` + `STRIPE_PRICE_PROFESSIONAL` (latter two missing from `.env.example`), register webhook, configure Billing Portal. Code is complete + verified in test mode (`docs/WAVE-2-STRIPE-BILLING.md`); dormant until keys set.                                                                                                                                                                                                                                                                                                                                                                            |
+| Federico     | **`DAILY_API_KEY`** — human video interviews (`interview.createVideoRoom`) now fail closed with a clear provider-config error and `.env.example` documents the required Daily.co vars. The prod/local Daily key checked on 2026-07-14 reached Daily but returned `authentication-error`, so it must be replaced with a valid key. The AI voice interview uses ElevenLabs and is unaffected.                                                                                                                                                                                                                                                                              |
+| Federico     | **Fix Bedrock payment instrument (AWS acct 747814092517)** — Sonnet 4.5 Marketplace subscription can't activate; 5 analysis agents (interview-summarizer/guide, bias-detector, interview-fit-score, candidate-screener) are downgraded to Haiku 4.5 as a stopgap. Restore to Sonnet in `registry.ts` once billing clears.                                                                                                                                                                                                                                                                                                                                                |
+| Federico     | **MFA enforce** — enroll TOTP at `/mfa`, then set **BOTH** `MFA_ENFORCED=true` in Vercel prod **AND** `Platform:MfaEnforced=true` on the C# platform service (terraform `mfa_enforced`, wired in #179). ⚠️ **Setting only the web flag re-creates the exact gap #173 closed**: a privileged `aal1` session would be refused by tRPC and served by the platform service. Both stacks share one golden (`contracts/mfa-fixtures/cases.json`) and both fail OPEN on an unset/garbled value, so a half-flip is silent. _(CB-2a, PR #148, closed the tRPC + impersonation enforcement-path bypass; #178 added the C# half. This is a two-flag go-live flip, not a code gap.)_ |
+| —            | ~~**GitHub Actions billing**~~ — **stale, corrected 2026-08-01**: this session observed full CI runs (real build/test durations, all jobs executing) on PRs #8–#11, not the described 0-steps-in-3-11s failure. Whatever billing issue caused #195–#212's admin-overrides appears resolved (or was scoped to a window that's since passed) — not re-verified against github.com/settings/billing directly, but the symptom is gone. Branch protection (1 approval required) is what's now gating normal merges, not CI.                                                                                                                                                  |
+| Federico     | Branch protection on `main` (6 required checks ready); `SENTRY_AUTH_TOKEN` for readable stack traces.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| TIMS/product | **Per-org `AiAgentOrgConfig` budgets** — a fail-closed $25/mo cap applies until set (AI silently stops at the cap).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| TIMS/product | **ai-voice-interview activation** per org (platform admin → AI Agents → Orgs: enable + `billableUsdPerMinute`/`addonMonthlyFeeUsd`/caps).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 
 ### C# Backend Migration — remaining work (see DONE section above for what's built)
 
