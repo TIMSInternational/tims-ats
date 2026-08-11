@@ -85,8 +85,12 @@ const ORG_KEYS: readonly ('a' | 'b')[] = ['a', 'b'];
  * not by any per-org role/RLS), so seeding one per org would fabricate a nonexistent second
  * identity. It's seeded exactly ONCE, under orgKey 'a', purely because the harness's
  * per-(org,role) token-cache keying needs *some* orgKey to hang the cached token off of —
- * `organizationId` is otherwise irrelevant to this identity (see the `audit-log` surface in
- * surfaces.ts, the only surface that uses this role). */
+ * `organizationId` is otherwise irrelevant to this identity.
+ *
+ * (This used to point at "the `audit-log` surface in surfaces.ts, the only surface that uses this
+ * role". Stale since 2026-07-31: audit-log and access-review were both REMOVED from surfaces.ts in
+ * 18282f96. Today the only READ surface listing `platform_owner` in its roles is `organization`, and
+ * it probes with org_admin — no read surface uses platform_owner as its probeRole.) */
 export function planSeed(roles: string[]): SeedPlan {
   const users: SeededUser[] = [];
   for (const orgKey of ORG_KEYS)
@@ -1863,6 +1867,32 @@ async function seedEngagementGrants(db: Client, roleIds: Map<string, string>): P
   }
 }
 
+/** Grants the `monitoring:read` permission the six monitoring READ endpoints check (#195).
+ *
+ *  Scopes come from `packages/db/prisma/seed-access-matrix.ts` and are NOT invented here:
+ *  hr_admin holds `monitoring` read+update @organization (:54), hrbp holds read @unit (:70).
+ *  Only `read` is seeded — the two monitoring WRITES (dismissAlert / configureAlertRules) have no C#
+ *  port yet, so an update grant would assert nothing.
+ *
+ *  WITHOUT THIS, EVERY MONITORING READ 403s AND IT LOOKS LIKE A C# BUG. `MonitoringStaffGate` runs the
+ *  same `PermissionService` kernel as TS, which legitimately finds zero `role_permissions` rows on a
+ *  freshly-seeded org. That is exactly what happened on the engagement read flip (#166): 12/43 FAIL,
+ *  root-caused to this same missing-grant fixture gap rather than to the product.
+ *
+ *  `org_admin` is DELIBERATELY left ungranted — it is absent from MATRIX entirely, so it holds no
+ *  grants at all, which makes it the surface's deny role. Its 403 is therefore a GRANT-level denial
+ *  (PermissionService says no) rather than a gate-level one, which is the stronger assertion: it
+ *  proves the permission check runs, not merely that some gate rejected an unknown principal. */
+async function seedMonitoringGrants(db: Client, roleIds: Map<string, string>): Promise<void> {
+  const readPerm = await upsertPermission(db, 'monitoring', 'read');
+  for (const key of ORG_KEYS) {
+    const hrAdmin = roleIds.get(`${key}:hr_admin`);
+    if (hrAdmin) await upsertRolePermission(db, hrAdmin, readPerm, 'organization');
+    const hrbp = roleIds.get(`${key}:hrbp`);
+    if (hrbp) await upsertRolePermission(db, hrbp, readPerm, 'unit');
+  }
+}
+
 /** Write-verify-only survey + action-plan fixtures (fixed UUIDs). */
 export const WRITE_ENGAGEMENT = {
   activateSurveyA: 'e0000364-0000-4000-8000-000000000001', // activateSurvey from-state (draft, org A)
@@ -2378,6 +2408,7 @@ export async function seed(cfg: HarnessConfig, roles: string[]): Promise<SeedRes
     // data seed here — write fixtures are seeded in ensureEngagementWritePreconditions (write path
     // only); read fixtures (surveys/survey_responses for enps etc.) are seeded separately below.
     if (roles.includes('hr_admin') || roles.includes('hrbp')) await seedEngagementGrants(db, roleIds);
+    if (roles.includes('hr_admin') || roles.includes('hrbp')) await seedMonitoringGrants(db, roleIds);
     // eNPS read data (both orgs, DIFFERENTIATED — see the fixture-rationale comment above
     // seedEngagementEnpsData). Org-independent of `roles`; only needs each org's super_admin id.
     await seedEngagementEnpsData(db, orgIds.a, orgIds.b, userIds);

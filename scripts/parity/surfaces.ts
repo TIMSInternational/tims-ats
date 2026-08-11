@@ -69,6 +69,100 @@ export interface Surface {
  * Task 9 RLS, Task 10 RBAC) iterate this map; they never hardcode a surface's routes/roles.
  */
 export const SURFACES: Record<string, Surface> = {
+  // ── monitoring (READ) ───────────────────────────────────────────────────────────────────────
+  // Registered 2026-08-10 (#195, AC 1). Six routes, matching the six TS reads 1:1 — counted from
+  // MonitoringReadEndpoints.cs, not taken from the issue text.
+  //
+  // WHY THIS ONE MATTERS MOST OF THE ~11 UNREGISTERED SURFACES: MonitoringReadEndpoints is DEPLOYED
+  // and its RLS/RBAC probes have never run, and `Platform__MonitoringReadEnabled` is the single env
+  // var gating ownership flips #64 and #68 (measured absent from the live App Runner service on
+  // 2026-08-10). Registering it first means the flip can be parity-verified BEFORE it is flipped,
+  // instead of flipped blind — the ordering that caught the real engagement-read failure in #166.
+  //
+  // UNLIKE the `organization` surface below, RLS HERE IS REAL AND RUNS. These are org-scoped reads
+  // (`permissionProcedure('monitoring','read')` / `MonitoringStaffGate`, org id from the caller's
+  // context), so no endpoint is `globalScope` and none is by-id: every one gets a Mode-B check, which
+  // is the meaningful shape for a tenant-scoped aggregate.
+  //
+  // RBAC — the grants are seeded by seed.ts's seedMonitoringGrants, copied from
+  // seed-access-matrix.ts rather than invented: hr_admin read@organization (:54), hrbp read@unit
+  // (:70). ALL THREE granted roles expect 200, including hrbp: MonitoringStaffGate deliberately does
+  // NOT force the org gate (its docblock:17-22 — the TS reader applies no `requireOrgScope` to any of
+  // the six, so forcing it would 403 a role that reads these dashboards today). The only scope
+  // mechanic is a `scopeWhereFor('actionPlan')` ROW filter on action-plan-alerts, which changes the
+  // rows, not the status.
+  //
+  // That leaves no denial among the usual three roles, which would make the RBAC check vacuous — so
+  // `org_admin` is added as the DENY role. It is absent from MATRIX entirely, holds no grants, and is
+  // therefore refused by PermissionService itself: a GRANT-level 403, which proves the permission
+  // check ran, not merely that some gate rejected an unknown principal.
+  //
+  // KNOWN RISK, stated rather than discovered at run time: these payloads are time-dependent
+  // (KPI windows, a 6/12/24-month trend window, alert timestamps). Both stacks compute their window
+  // independently, so a run that straddles a month boundary can diff spuriously. If that shows up,
+  // the fix is a normalize rule here — not a code change.
+  monitoring: {
+    key: 'monitoring',
+    flag: 'Platform__MonitoringReadEnabled',
+    roles: ['super_admin', 'hr_admin', 'hrbp', 'org_admin'],
+    probeRole: 'hr_admin', // org-scoped, org-wide grant — a real 200, not a super_admin bypass.
+    endpoints: [
+      {
+        name: 'executive-kpis',
+        csharpPath: '/monitoring/executive-kpis',
+        tsProcedure: 'monitoring.getExecutiveKpis',
+        input: {},
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 200, org_admin: 403 },
+        normalize: { dropNullish: true },
+      },
+      {
+        name: 'module-health',
+        csharpPath: '/monitoring/module-health',
+        tsProcedure: 'monitoring.getModuleHealth',
+        input: {},
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 200, org_admin: 403 },
+        normalize: { dropNullish: true },
+      },
+      // The Zod input is `.optional()` as a whole, with page/limit defaulting to 1/20 — send them
+      // explicitly so the C# query string and the tRPC input describe the same page.
+      {
+        name: 'alerts',
+        csharpPath: '/monitoring/alerts?page=1&limit=20',
+        tsProcedure: 'monitoring.getActiveAlerts',
+        input: { page: 1, limit: 20 },
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 200, org_admin: 403 },
+        normalize: { dropNullish: true },
+      },
+      // hrbp reaches this one but sees scopeWhereFor('actionPlan')-filtered ROWS. Status is still
+      // 200, which is all the RBAC check asserts; the row filter is a parity concern, not an RBAC one.
+      {
+        name: 'action-plan-alerts',
+        csharpPath: '/monitoring/action-plan-alerts',
+        tsProcedure: 'monitoring.getActionPlanAlerts',
+        input: {},
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 200, org_admin: 403 },
+        normalize: { dropNullish: true },
+      },
+      // `metric` has NO default on the TS side (period defaults to 12m) — it must be supplied or Zod
+      // rejects the call before any of this is exercised.
+      {
+        name: 'cross-module-trend',
+        csharpPath: '/monitoring/cross-module-trend?metric=headcount&period=12m',
+        tsProcedure: 'monitoring.getCrossModuleTrend',
+        input: { metric: 'headcount', period: '12m' },
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 200, org_admin: 403 },
+        normalize: { dropNullish: true },
+      },
+      {
+        name: 'alert-rules',
+        csharpPath: '/monitoring/alert-rules',
+        tsProcedure: 'monitoring.getAlertRules',
+        input: {},
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 200, org_admin: 403 },
+        normalize: { dropNullish: true },
+      },
+    ],
+  },
   // ── platform organizations (READ) ───────────────────────────────────────────────────────────
   // Registered 2026-08-10 (#195), immediately after Phase-5 slices 19 (PR #198) and 20 (PR #202)
   // shipped the C# port. #195's own body says `organization` is NOT a gap "because they have no C#
