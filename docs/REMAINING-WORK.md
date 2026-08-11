@@ -226,8 +226,12 @@ describe-service`; only the frontend Vercel flag was missing.)
     was rolled back immediately, harness fixed + 782/782 unit + 1012/1012 integration tests still
     passing, re-verified 43/43 PASS, then re-flipped for real.
   - Platform organizations (Phase-5 Slice-19 read, Slice-20 write) — #76. Platform-owner-only and
-    deliberately CROSS-ORG. **BOTH DARK**, no FE flag, no parity-registry entry (`surfaces.ts` covers 4
-    domains — #195), so step 5 is currently unrunnable by anyone rather than merely Federico-gated.
+    deliberately CROSS-ORG. **BOTH DARK**, no FE flag. This used to add "no parity-registry entry
+    (`surfaces.ts` covers 4 domains — #195), so step 5 is unrunnable by anyone"; that is STALE as of
+    2026-08-11 — #203 registered the read and write surfaces, #204 added monitoring, and the
+    access-review/audit-log reads were restored, so SURFACES now holds 8 keys and `verify
+    organization` / `verify-write organization` are runnable. Step 5 is Federico-gated again, not
+    blocked. (`getOrganization` alone stays unregistered — it needs a by-id platform-owner marker.)
     Slice 19 (PR #198) ported `getOrganizationKpis`/`listOrganizations`/`getOrganization` behind
     `Platform:PlatformOrganizationsReadEnabled`. Slice 20 ported `updateOrganization`/
     `suspendOrganization` behind `Platform:PlatformOrganizationsWriteEnabled`, which is the

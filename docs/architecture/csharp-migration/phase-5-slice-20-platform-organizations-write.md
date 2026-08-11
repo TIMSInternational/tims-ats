@@ -31,7 +31,8 @@ row returns an error here — so it is recorded rather than left to be discovere
 
 > **#76's decision comment required this to be "pinned by a parity fixture". That obligation is NOT
 > discharged here, and an earlier draft of this doc claimed otherwise.** The surface has no
-> `scripts/parity/surfaces.ts` entry at all (#195 — the registry covers 4 of ~15 C# domains), so there is
+> `scripts/parity/surfaces.ts` entry at all (#195 — at the time, the registry covered 4 of ~15 C# domains;
+> #203/#204 and the 2026-08-11 access-review/audit-log restoration took it to 8), so there was
 > nothing to hang a fixture on and nothing will diff C# against TS at step 5. What _does_ pin the
 > behaviour is the mutation proof below, against a real Postgres. Closing the parity-fixture gap needs
 > #195 first.

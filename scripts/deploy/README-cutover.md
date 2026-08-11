@@ -10,8 +10,12 @@ runbooks.
 different auth mechanism (API keys / Stripe webhooks, not staff-JWT) and are handled by a separate
 workstream — they are deliberately absent from this script's surface table.
 
-**Who runs what.** Same rule as the runbook: `--verify-only` is genuinely safe for anyone to run
-(it only reads, via the parity harness). `--flip-backend`/`--rollback` with `--yes` touches real
+**Who runs what.** Same rule as the runbook: `--verify-only` is safe for anyone to run — with two
+caveats that `cutover.sh`'s own safety block spells out and that were undocumented until 2026-08-11.
+`verify-write <key>` is **mutating by design** (it writes and reads back). And `verify access-review`
+attempts four `audit_logs` inserts that the org-id FK rejects, while `verify audit-log` pulls up to
+~2000 cross-tenant audit rows — including actor emails and IP addresses — onto the machine running
+it. Neither prints anything sensitive, but neither is literally "read-only" either. `--flip-backend`/`--rollback` with `--yes` touches real
 AWS infrastructure — that is **Federico-run only** (`I never touch prod`, applies to whoever is at
 the keyboard, human or agent). Without `--yes` both modes only print the commands; nothing is
 executed.
@@ -20,7 +24,7 @@ executed.
 
 | Mode             | Mutates anything? | What it does                                                                                                 |
 | ---------------- | ----------------- | ------------------------------------------------------------------------------------------------------------ |
-| `--verify-only`  | No (default)      | Runs `scripts/parity/cli.ts verify[-write] <key>` for real and reports pass/fail.                            |
+| `--verify-only`  | Read-only\*       | Runs `scripts/parity/cli.ts verify[-write] <key>` for real and reports pass/fail. \*See the caveats above.   |
 | `--flip-backend` | Only with `--yes` | Prints (or runs) the `aws apprunner update-service` recipe that flips `Platform:<Surface>Enabled` to `true`. |
 | `--rollback`     | Only with `--yes` | Same recipe, flips the flag back to `false`, plus prints the FE Vercel-revert steps.                         |
 
@@ -31,8 +35,8 @@ flag, and CONFIRMED LIVE / FLIP-READY / COEXISTENCE / TS DELETED status per
 ## Worked example: cutting over `engagement`
 
 ```bash
-# 1) Verify — safe, non-mutating, needs scripts/parity/.env populated (see scripts/parity/README.md)
-#    and a live, reachable C# service.
+# 1) Verify — read-only (see the caveats above), needs scripts/parity/.env populated
+#    (see scripts/parity/README.md) and a live, reachable C# service.
 ./scripts/deploy/cutover.sh engagement --verify-only
 
 # 2) Once that's green, flip the backend flag AND re-verify in the same breath — the script
@@ -127,26 +131,26 @@ Cross-checked directly against `services/Tims.Platform/src/Tims.Api/Configuratio
 number) and independently corroborated by the `flag:` field in `scripts/parity/surfaces.ts` /
 `scripts/parity/write-surfaces.ts`.
 
-| Surface (this script) | Kind  | Backend flag                | Parity CLI invocation          | FE flag (`apps/web`)                         | Status                                                                      |
-| --------------------- | ----- | --------------------------- | ------------------------------ | -------------------------------------------- | --------------------------------------------------------------------------- |
-| `team-intel`          | read  | `TeamIntelReadEnabled`      | `NONE` (TS router deleted)     | `NEXT_PUBLIC_TEAMINTEL_READ_VIA_CSHARP`      | TS DELETED                                                                  |
-| `reporting`           | read  | `ReportingReadEnabled`      | `NONE` (TS router deleted)     | `NEXT_PUBLIC_REPORTING_READ_VIA_CSHARP`      | TS DELETED                                                                  |
-| `billing-read`        | read  | `BillingReadEnabled`        | `NONE` (TS router deleted)     | `NEXT_PUBLIC_BILLING_INVOICES_VIA_CSHARP`    | TS DELETED                                                                  |
-| `billing-usage`       | read  | `BillingUsageEnabled`       | `NONE` (TS router deleted)     | `NEXT_PUBLIC_BILLING_USAGE_VIA_CSHARP`       | TS DELETED                                                                  |
-| `evaluation360`       | read  | `Evaluation360ReadEnabled`  | `NONE` (TS router deleted)     | `NEXT_PUBLIC_EVALUATION360_READ_VIA_CSHARP`  | TS DELETED                                                                  |
-| `succession`          | read  | `SuccessionReadEnabled`     | `verify succession`            | `NEXT_PUBLIC_SUCCESSION_READ_VIA_CSHARP`     | CONFIRMED LIVE (partial TS deletion — 8/9 procedures, see cutover.sh)       |
-| `compensation`        | read  | `CompensationReadEnabled`   | `verify compensation`          | `NEXT_PUBLIC_COMPENSATION_READ_VIA_CSHARP`   | CONFIRMED LIVE (partial TS deletion — 5/7 read procedures, see cutover.sh)  |
-| `nine-box`            | read  | `NineBoxReadEnabled`        | `verify ninebox`               | `NEXT_PUBLIC_NINEBOX_READ_VIA_CSHARP`        | TS DELETED (all 11 read procedures; surface kept C#-only — see cutover.sh)  |
-| `engagement`          | read  | `EngagementReadEnabled`     | `verify engagement`            | `NEXT_PUBLIC_ENGAGEMENT_READ_VIA_CSHARP`     | CONFIRMED LIVE (partial TS deletion — 8/14 read procedures, see cutover.sh) |
-| `dei`                 | read  | `DeiReadEnabled`            | `verify dei`                   | `NEXT_PUBLIC_DEI_READ_VIA_CSHARP`            | CONFIRMED LIVE (partial TS deletion — 9/11 read procedures, see cutover.sh) |
-| `audit-log`           | read  | `AuditLogReadEnabled`       | `NONE` (TS procedures deleted) | `NEXT_PUBLIC_AUDIT_LOG_READ_VIA_CSHARP`      | TS DELETED                                                                  |
-| `access-review`       | read  | `AccessReviewReadEnabled`   | `NONE` (TS procedures deleted) | `NEXT_PUBLIC_ACCESS_REVIEW_READ_VIA_CSHARP`  | TS DELETED                                                                  |
-| `evaluation360-write` | write | `Evaluation360WriteEnabled` | `verify-write evaluation360`   | `NEXT_PUBLIC_EVALUATION360_WRITE_VIA_CSHARP` | FLIP-READY                                                                  |
-| `succession-write`    | write | `SuccessionWriteEnabled`    | `verify-write succession`      | `NEXT_PUBLIC_SUCCESSION_WRITE_VIA_CSHARP`    | CONFIRMED LIVE                                                              |
-| `nine-box-write`      | write | `NineBoxWriteEnabled`       | `verify-write ninebox`         | `NEXT_PUBLIC_NINEBOX_WRITE_VIA_CSHARP`       | CONFIRMED LIVE                                                              |
-| `compensation-write`  | write | `CompensationWriteEnabled`  | `verify-write compensation`    | `NEXT_PUBLIC_COMPENSATION_WRITE_VIA_CSHARP`  | COEXISTENCE (flag live; both TS mutations deleted — see cutover.sh)         |
-| `engagement-write`    | write | `EngagementWriteEnabled`    | `verify-write engagement`      | `NEXT_PUBLIC_ENGAGEMENT_WRITE_VIA_CSHARP`    | COEXISTENCE (flag live; 3 of 5 TS mutations deleted — see cutover.sh)       |
-| `access-review-write` | write | `AccessReviewWriteEnabled`  | `verify-write access-review`   | `NEXT_PUBLIC_ACCESS_REVIEW_WRITE_VIA_CSHARP` | TS DELETED (write-surface tests C# directly via SQL/HTTP, no TS dependency) |
+| Surface (this script) | Kind  | Backend flag                | Parity CLI invocation         | FE flag (`apps/web`)                         | Status                                                                      |
+| --------------------- | ----- | --------------------------- | ----------------------------- | -------------------------------------------- | --------------------------------------------------------------------------- |
+| `team-intel`          | read  | `TeamIntelReadEnabled`      | `NONE` (TS router deleted)    | `NEXT_PUBLIC_TEAMINTEL_READ_VIA_CSHARP`      | TS DELETED                                                                  |
+| `reporting`           | read  | `ReportingReadEnabled`      | `NONE` (TS router deleted)    | `NEXT_PUBLIC_REPORTING_READ_VIA_CSHARP`      | TS DELETED                                                                  |
+| `billing-read`        | read  | `BillingReadEnabled`        | `NONE` (TS router deleted)    | `NEXT_PUBLIC_BILLING_INVOICES_VIA_CSHARP`    | TS DELETED                                                                  |
+| `billing-usage`       | read  | `BillingUsageEnabled`       | `NONE` (TS router deleted)    | `NEXT_PUBLIC_BILLING_USAGE_VIA_CSHARP`       | TS DELETED                                                                  |
+| `evaluation360`       | read  | `Evaluation360ReadEnabled`  | `NONE` (TS router deleted)    | `NEXT_PUBLIC_EVALUATION360_READ_VIA_CSHARP`  | TS DELETED                                                                  |
+| `succession`          | read  | `SuccessionReadEnabled`     | `NONE` (surface unregistered) | `NEXT_PUBLIC_SUCCESSION_READ_VIA_CSHARP`     | TS DELETED (surface unregistered #58 — verify is a no-op)                   |
+| `compensation`        | read  | `CompensationReadEnabled`   | `verify compensation`         | `NEXT_PUBLIC_COMPENSATION_READ_VIA_CSHARP`   | CONFIRMED LIVE (partial TS deletion — 5/7 read procedures, see cutover.sh)  |
+| `nine-box`            | read  | `NineBoxReadEnabled`        | `verify ninebox`              | `NEXT_PUBLIC_NINEBOX_READ_VIA_CSHARP`        | TS DELETED (all 11 read procedures; surface kept C#-only — see cutover.sh)  |
+| `engagement`          | read  | `EngagementReadEnabled`     | `verify engagement`           | `NEXT_PUBLIC_ENGAGEMENT_READ_VIA_CSHARP`     | CONFIRMED LIVE (partial TS deletion — 8/14 read procedures, see cutover.sh) |
+| `dei`                 | read  | `DeiReadEnabled`            | `verify dei`                  | `NEXT_PUBLIC_DEI_READ_VIA_CSHARP`            | TS DELETED (all 11; surface kept C#-only — see cutover.sh)                  |
+| `audit-log`           | read  | `AuditLogReadEnabled`       | `verify audit-log`            | `NEXT_PUBLIC_AUDIT_LOG_READ_VIA_CSHARP`      | TS DELETED (surface re-registered C#-only 2026-08-11 — see below)           |
+| `access-review`       | read  | `AccessReviewReadEnabled`   | `verify access-review`        | `NEXT_PUBLIC_ACCESS_REVIEW_READ_VIA_CSHARP`  | TS DELETED (surface re-registered C#-only 2026-08-11 — see below)           |
+| `evaluation360-write` | write | `Evaluation360WriteEnabled` | `verify-write evaluation360`  | `NEXT_PUBLIC_EVALUATION360_WRITE_VIA_CSHARP` | FLIPPED_AHEAD_OF_FLAG (ownership flipped while dark — see cutover.sh)       |
+| `succession-write`    | write | `SuccessionWriteEnabled`    | `verify-write succession`     | `NEXT_PUBLIC_SUCCESSION_WRITE_VIA_CSHARP`    | CONFIRMED LIVE                                                              |
+| `nine-box-write`      | write | `NineBoxWriteEnabled`       | `verify-write ninebox`        | `NEXT_PUBLIC_NINEBOX_WRITE_VIA_CSHARP`       | CONFIRMED LIVE                                                              |
+| `compensation-write`  | write | `CompensationWriteEnabled`  | `verify-write compensation`   | `NEXT_PUBLIC_COMPENSATION_WRITE_VIA_CSHARP`  | COEXISTENCE (flag live; both TS mutations deleted — see cutover.sh)         |
+| `engagement-write`    | write | `EngagementWriteEnabled`    | `verify-write engagement`     | `NEXT_PUBLIC_ENGAGEMENT_WRITE_VIA_CSHARP`    | COEXISTENCE (flag live; 3 of 5 TS mutations deleted — see cutover.sh)       |
+| `access-review-write` | write | `AccessReviewWriteEnabled`  | `verify-write access-review`  | `NEXT_PUBLIC_ACCESS_REVIEW_WRITE_VIA_CSHARP` | CONFIRMED LIVE (TS deleted; write surface tests C# directly, no TS dep)     |
 
 Run `./scripts/deploy/cutover.sh --list` for the per-surface long-form notes (why each is
 classified the way it is, and every naming quirk below).
@@ -219,17 +223,32 @@ classified the way it is, and every naming quirk below).
   the write procedure (`attestAccessReview`) were deleted; with zero procedures left, the whole
   router file (`packages/api/src/routers/platform/access-review.ts` + its schemas/service/
   repository) was removed outright, matching the `reporting` precedent, unlike `team-intel`'s
-  partial survival. `scripts/parity/surfaces.ts`'s `access-review` entry and
-  `scripts/parity/write-surfaces.ts`'s `access-review` write entry were both removed the same way,
-  so `--verify-only`/`--verify-only --flip-backend` for either access-review row is now a no-op.
-  **`audit-log` (read) also joined this group on 2026-07-31** — its flag was confirmed live in prod
-  and its only registered read procedure (`platform.getCrossOrgAuditLogs`, plus
-  `platform.exportAuditLogsCsv` which shared the same TS router) was deleted from
+  partial survival. **`audit-log` (read) also joined this group on 2026-07-31** — its flag was
+  confirmed live in prod and its only registered read procedure (`platform.getCrossOrgAuditLogs`,
+  plus `platform.exportAuditLogsCsv` which shared the same TS router) was deleted from
   `packages/api/src/routers/platform/system.ts`. Unlike `team-intel`, the FE wrapper
   (`apps/web/lib/platform-api/audit-log.ts`) also lost its flag-gating entirely — it now calls the
   C# service unconditionally, the same shape as `reporting`/`evaluation360`/`team-intel`'s
-  wrappers. `scripts/parity/surfaces.ts`'s `audit-log` entry was removed the same way, so its
-  `parity_command` is likewise `NONE` and `--verify-only` for it is the same no-op.
+  wrappers.
+- **CORRECTION + UPDATE 2026-08-11 — the two access-review/audit-log rows are NOT no-ops any more,
+  and one claim above was never true.** The paragraph above used to end by saying that
+  `scripts/parity/surfaces.ts`'s `access-review` entry _and_
+  `scripts/parity/write-surfaces.ts`'s `access-review` **write** entry "were both removed the same
+  way, so `--verify-only` for either access-review row is now a no-op". The write half of that was
+  false when written: `WRITE_SURFACES['access-review']` has never been removed (it is still in
+  `write-surfaces.ts`, still asserted by `write-surfaces.test.ts`, and `--list` has shown
+  `verify-write access-review` for that row throughout). It tests the C# endpoint directly via raw
+  SQL + HTTP and has no `tsProcedure` concept at all, so a TS deletion could not have affected it.
+  The READ half was true — and is now reversed. Both READ surfaces were **re-registered C#-only on
+  2026-08-11**, because `tsProcedure` became optional on 2026-08-06 (`efb7553f`), six days after
+  they were deleted. So `--verify-only` for `audit-log` and `access-review` runs a real check again.
+  **Read its output precisely:** the parity leg reports `[WEAK]` on every endpoint (no TS side to
+  diff against — that part of the 2026-07-31 note still holds), while the RBAC leg
+  (`platform_owner` 200 / `org_admin` 403 at `PlatformOwnerGate`) and the C#-returns-200 liveness
+  check are real, and on a principal-type gate the RBAC leg is the entire authorization proof. The
+  RLS leg is a documented N/A on both surfaces (`globalScope`) — it was N/A before the deletion too,
+  so no cross-tenant probe was lost then or regained now. `/audit/logs/export` is registered for the
+  first time; the pre-deletion entry covered only `/audit/logs`.
 - **Write-surface names use an explicit `-write` suffix** (`access-review-write`,
   `evaluation360-write`, etc.) to keep them addressable independently from their read counterpart
   — a domain's read and write flags cut over at different points in the runbook's Phase A / Phase B

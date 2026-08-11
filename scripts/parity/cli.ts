@@ -113,14 +113,23 @@ async function mintTokens(
   // org-less identity, seeded once purely to hang the token cache off of) — an org-B counterpart
   // structurally does not exist, so don't require one.
   //
-  // CORRECTED 2026-08-10 (#195): this comment used to say "every surface that uses platform_owner as
-  // probeRole (access-review, audit-log) has globalScope:true", which is stale twice over. Both of
-  // those READ surfaces were REMOVED from surfaces.ts on 2026-07-31 (18282f96) and neither has
-  // existed since; and no surface in surfaces.ts uses platform_owner as probeRole at all — the
-  // platform-owner surfaces deliberately probe with an ORG-SCOPED role (org_admin), because an
-  // org-less identity has no org-B counterpart to probe with. This branch is therefore currently
-  // unreachable from surfaces.ts and is reached only via write-surfaces.ts's access-review surface,
-  // which does set probeRole: 'platform_owner'. Kept, because that is a real caller.
+  // History, because this comment has been wrong twice and the reason matters. It once said "every
+  // surface that uses platform_owner as probeRole (access-review, audit-log) has globalScope:true";
+  // that went stale on 2026-07-31 when both of those READ surfaces were REMOVED from surfaces.ts
+  // (2950a06c / 18282f96), and was corrected on 2026-08-10 (#195) to say the branch was reachable
+  // only from write-surfaces.ts's access-review surface.
+  //
+  // CURRENT STATE, 2026-08-11. `mintTokens` has exactly ONE call site — `runChecks` at :140, the
+  // READ path. `cmdVerifyWrite` mints its own tokens inline (:263-269) and never reaches here, so no
+  // WRITE_SURFACES entry is a caller of this branch, whatever its probeRole. THREE read surfaces now
+  // set probeRole 'platform_owner' and are the only callers: SURFACES['audit-log'],
+  // SURFACES['access-review'] (both re-registered C#-only today) and SURFACES['organization'].
+  //
+  // Do not restate the reason as "because they have no TS side left". The guard below keys on the
+  // ROLE and nothing else — a C#-only surface with an org-scoped probeRole would still be required
+  // to have an org-B token, and a TS-having surface with `platform_owner` still skips it, which is
+  // precisely why `organization` (live TS procedures) can and does use it. The real reason is
+  // narrower: a platform owner is org-less, so no org-B counterpart exists to demand.
   if (!orgBToken && primaryRole !== 'platform_owner') {
     throw new Error(`mintTokens: failed to mint org-B token for role "${primaryRole}"`);
   }
