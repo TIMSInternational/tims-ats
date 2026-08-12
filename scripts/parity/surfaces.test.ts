@@ -325,7 +325,7 @@ describe('SURFACES', () => {
     // endpoint must be a deliberate edit here, with its own line, naming the gate it is served by.
     //   organization/detail — GET /platform/organizations/{id}. platformProcedure / PlatformOwnerGate
     //     over the unscoped db; a platform owner reading org B is the FEATURE, and it 404s on an
-    //     unknown org (organizations.ts:100), so the access-review fixed-non-existent-id trick cannot
+    //     unknown org (organizations.ts:145), so the access-review fixed-non-existent-id trick cannot
     //     apply and a real seeded id is required.
     expect(seen).toBe(1);
   });
@@ -510,5 +510,23 @@ describe('SURFACES', () => {
     const byId = s!.endpoints.find((e) => e.name === 'axis-breakdown')!;
     expect(byId.idScopeKey).toBe('employee');
     expect(byId.expectedByRole.hrbp).toBe(403);
+  });
+
+  // #211. `sortArraysBy` is applied by normalize.ts at EVERY array depth, not just the one the author
+  // had in mind. On `organization` `list` the outermost array IS `organizations[]`, whose order is the
+  // createdAt-desc / pagination behaviour this surface exists to compare — so adding `sortArraysBy`
+  // here to silence a nested-array flake would silently retire that comparison and the surface would
+  // stay green while proving strictly less.
+  //
+  // The nested pending-invoice array was the real flake risk, and it is fixed at the SOURCE instead:
+  // both stacks now order it by id (organizations.ts `invoices` include; the ordinal-string OrderBy in
+  // PlatformOrganizationsReadRepository.cs). This test exists so a future "make the flake go away"
+  // edit has to argue with a failing assertion rather than land unnoticed.
+  it('organization list does NOT use sortArraysBy (it would also sort organizations[] and retire the ordering check)', () => {
+    const list = SURFACES['organization']!.endpoints.find((e) => e.name === 'list')!;
+    expect(list.normalize?.sortArraysBy).toBeUndefined();
+    // dropNullish is expected and unrelated — asserted so this test cannot be satisfied by deleting
+    // `normalize` wholesale.
+    expect(list.normalize?.dropNullish).toBe(true);
   });
 });

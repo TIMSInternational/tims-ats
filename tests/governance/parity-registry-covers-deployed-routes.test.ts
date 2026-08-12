@@ -265,8 +265,11 @@ const UNREGISTERED_ALLOWLIST: AllowGroup[] = [
       'edit: each needs a seeded grant fixture and a PROBED cross-org status before an expectation can be written ' +
       'down rather than guessed. Measured coverage of DEPLOYED GETs, 2026-08-11 — engagement 2 of 14, dei 2 of 11, ' +
       'compensation 2 of 12, ninebox 4 of 11. Do not read "the surface is registered" as "the domain is covered". ' +
-      'The platform-organizations WRITE surface is the same shape in the other direction: it registers 2 of the 3 ' +
-      'deployed writes (PATCH /{id}, POST /{id}/suspend), and the third is the POST below.',
+      'The platform-organizations WRITES are NO LONGER an instance of this: all three deployed writes are now ' +
+      'registered — PATCH /{id} and POST /{id}/suspend under `organization`, and POST /platform/organizations ' +
+      'under its own `organization-create` surface (#208, resolved 2026-08-11 with a prior-run cleanup in ' +
+      'seed.ts). That route was the worked example in this group; it was removed from the list when registered, ' +
+      'which is what shrinking this gap is supposed to look like.',
     routes: [
       'GET /engagement/action-plans',
       'GET /engagement/alerts',
@@ -300,10 +303,10 @@ const UNREGISTERED_ALLOWLIST: AllowGroup[] = [
       'GET /ninebox/employee/{userId}',
       'GET /ninebox/grid',
       'GET /ninebox/my-calibrations',
-      // POST /platform/organizations (createOrganization) shipped DARK in 87a02ef1 — Phase-5 slice 21,
-      // PR #209 — and was never registered. It is the newest instance of exactly the drift this file
-      // stops, kept here as the worked example rather than quietly excused.
-      'POST /platform/organizations',
+      // POST /platform/organizations was allowlisted here when it shipped DARK in 87a02ef1 (Phase-5
+      // slice 21, PR #209). REGISTERED 2026-08-11 as WRITE_SURFACES['organization-create'] (#208), so
+      // the line is DELETED rather than left as a stale excuse — the "no stale entries" assertion below
+      // would fail it anyway, which is the guard working.
     ],
   },
   {
@@ -384,14 +387,15 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //         so this counts domain operations, not "every routable path". A new route bumps this,
     //         deliberately — that is the point.
     expect(deployed.size).toBe(135);
-    //   50 = 24 read endpoints (surfaces.ts, 8 surfaces) + 26 write (write-surfaces.ts, 7 surfaces:
-    //        23 written literally + 3 produced by the shared `transitionEndpoint` helper).
-    expect(registryEndpointCount).toBe(50);
-    //   ...resolving to 50 DISTINCT VERB+path keys. A drop here means two registry entries normalise
+    //   51 = 24 read endpoints (surfaces.ts, 8 surfaces) + 27 write (write-surfaces.ts, 8 surfaces:
+    //        24 written literally + 3 produced by the shared `transitionEndpoint` helper). 26 → 27 on
+    //        2026-08-11: `organization-create` registered POST /platform/organizations (#208).
+    expect(registryEndpointCount).toBe(51);
+    //   ...resolving to 51 DISTINCT VERB+path keys. A drop here means two registry entries normalise
     //   to the same route, which would make one of them invisible to the coverage assertion below.
-    expect(registry.size, 'two registry entries normalise to the same VERB+path key').toBe(50);
-    //   26 write paths resolved through the Proxy stub, none degenerate.
-    expect(writePaths.length).toBe(26);
+    expect(registry.size, 'two registry entries normalise to the same VERB+path key').toBe(51);
+    //   27 write paths resolved through the Proxy stub, none degenerate.
+    expect(writePaths.length).toBe(27);
   });
 
   it('every registry entry points at a route that is actually deployed', () => {
@@ -422,10 +426,12 @@ describe('parity registry covers every deployed route (or documents why not)', (
       [...allowed].filter((k) => registry.has(k)),
       'route is BOTH registered and allowlisted — remove the allowlist line, it now excuses nothing',
     ).toEqual([]);
-    //   85 = the measured gap at 87a02ef1 (86) minus GET /platform/organizations/{id}, registered the
-    //   same day as `organization/detail` under `noTenantBoundaryForCaller` (#195). Pinned so SHRINKING
-    //   the gap is visible as progress and GROWING it is visible as drift; neither can happen silently.
-    expect(allowlistNormalised.length).toBe(85);
+    //   84 = the measured gap at 87a02ef1 (86) minus GET /platform/organizations/{id}, registered the
+    //   same day as `organization/detail` under `noTenantBoundaryForCaller` (#195), minus
+    //   POST /platform/organizations, registered 2026-08-11 as `organization-create` (#208). Pinned so
+    //   SHRINKING the gap is visible as progress and GROWING it is visible as drift; neither can happen
+    //   silently.
+    expect(allowlistNormalised.length).toBe(84);
     // Every group must actually carry a reason and actually cover something — an empty group, or one
     // whose "reason" is a word, is a rubber stamp.
     for (const g of UNREGISTERED_ALLOWLIST) {

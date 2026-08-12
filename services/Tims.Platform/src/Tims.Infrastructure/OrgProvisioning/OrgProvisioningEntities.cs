@@ -75,7 +75,7 @@ public sealed class TeamWriteEntity
 
 /// <summary>
 /// The single <c>roles</c> row created by <c>createOrganization</c> itself
-/// (<c>organizations.ts:133-135</c>) — NOT by the shared helper. It lives in this file because the EF map
+/// (<c>organizations.ts:204-206</c>) — NOT by the shared helper. It lives in this file because the EF map
 /// is shared: #75's invitation flow creates the same row.
 ///
 /// <para><b>The role gets no permissions and no members</b> — zero <c>role_permissions</c>, zero

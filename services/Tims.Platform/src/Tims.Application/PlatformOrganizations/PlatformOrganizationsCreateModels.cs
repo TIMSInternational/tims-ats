@@ -1,7 +1,7 @@
 namespace Tims.Application.PlatformOrganizations;
 
 /// <summary>
-/// Validated input for <c>createOrganization</c> (<c>routers/platform/organizations.ts:104-169</c>),
+/// Validated input for <c>createOrganization</c> (<c>routers/platform/organizations.ts:149-242</c>),
 /// Phase-5 slice 21 / issue #76.
 ///
 /// <para>Four fields are REQUIRED in Zod (<c>:106-109</c>) and therefore non-nullable here.

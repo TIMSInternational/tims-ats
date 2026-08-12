@@ -737,6 +737,33 @@ try
                 }
             }
 
+            // PlatformOrganizationRow (#211, 2026-08-11) — RESTORE the `type` its date properties lost.
+            //
+            // Those three properties gained [JsonConverter(NodeIso…DateTimeConverter)] so the emitted
+            // instants actually carry the trailing `Z` that `format: date-time` (RFC 3339) promises and
+            // that the TS `Date.prototype.toISOString()` contract requires. The generator, however,
+            // cannot infer a schema type through a custom converter: it kept `format: date-time` and
+            // DROPPED `"type": "string"` (and `deletedAt`'s `["null","string"]` union). That is a
+            // contract REGRESSION — a typeless schema is weaker for a generated client than the wrong
+            // serialization was — so the fix is both halves, not one. Same shape as the two body
+            // transformers above: state the schema the wire actually carries.
+            if (context.JsonTypeInfo.Type == typeof(PlatformOrganizationRow) && schema.Properties is not null)
+            {
+                foreach (var (name, nullable) in new[]
+                         {
+                             ("createdAt", false), ("updatedAt", false), ("deletedAt", true),
+                         })
+                {
+                    if (schema.Properties.TryGetValue(name, out var dateSchema)
+                        && dateSchema is Microsoft.OpenApi.OpenApiSchema concreteDate)
+                    {
+                        concreteDate.Type = nullable
+                            ? Microsoft.OpenApi.JsonSchemaType.String | Microsoft.OpenApi.JsonSchemaType.Null
+                            : Microsoft.OpenApi.JsonSchemaType.String;
+                    }
+                }
+            }
+
             return Task.CompletedTask;
         });
 

@@ -127,7 +127,7 @@ public sealed class PlatformOrganizationsWriteRepositoryTests(PlatformOrganizati
 
         var audit = Assert.Single(await fixture.ReadAuditRowsAsync(org));
         Assert.Equal(expectedAction, audit.Action);
-        // organizations.ts:230-237 sets NO `changes` key for this audit — the action carries the direction.
+        // organizations.ts:309-319 sets NO `changes` key for this audit — the action carries the direction.
         Assert.Null(audit.ChangesType);
     }
 

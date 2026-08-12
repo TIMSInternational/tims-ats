@@ -10,7 +10,7 @@ namespace Tims.Application.PlatformOrganizations;
 /// </summary>
 public sealed class PlatformOrganizationsReadUseCase(IPlatformOrganizationsReadRepository repository, TimeProvider timeProvider)
 {
-    /// <summary>Zod bounds from <c>organizations.ts:32-41</c>, reproduced exactly.</summary>
+    /// <summary>Zod bounds from <c>organizations.ts:46-57</c>, reproduced exactly.</summary>
     public const int DefaultPage = 0;
 
     public const int DefaultLimit = 20;

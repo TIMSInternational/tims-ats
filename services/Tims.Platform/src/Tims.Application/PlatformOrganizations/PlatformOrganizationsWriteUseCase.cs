@@ -17,7 +17,7 @@ public sealed class PlatformOrganizationsWriteUseCase(
     IPlatformOrganizationsWriteRepository repository,
     TimeProvider timeProvider)
 {
-    /// <summary>Zod bounds from <c>organizations.ts:171-181</c>, reproduced exactly.</summary>
+    /// <summary>Zod bounds from <c>organizations.ts:244-258</c>, reproduced exactly.</summary>
     public const int MaxNameLength = 100;
 
     public const int MaxLocaleLength = 10;
@@ -27,7 +27,7 @@ public sealed class PlatformOrganizationsWriteUseCase(
     /// <summary>The four <c>OrgPlan</c> enum members (<c>organization.prisma:23-28</c>).</summary>
     public static readonly string[] Plans = ["trial", "starter", "professional", "enterprise"];
 
-    // Notification copy, verbatim from organizations.ts:221-227 — including the unaccented "Organizacion",
+    // Notification copy, verbatim from organizations.ts:300-306 — including the unaccented "Organizacion",
     // which is what the TS actually writes. "Fixing" the spelling here would be a silent content divergence
     // in a user-visible string.
     private const string SuspendedTitlePrefix = "Organizacion suspendida: ";
@@ -76,7 +76,7 @@ public sealed class PlatformOrganizationsWriteUseCase(
 
     /// <summary>
     /// <c>suspendOrganization</c>. The notification fan-out runs only when SUSPENDING
-    /// (<c>organizations.ts:220</c>) and only AFTER the update+audit transaction has committed — see
+    /// (<c>organizations.ts:299</c>) and only AFTER the update+audit transaction has committed — see
     /// <see cref="IPlatformOrganizationsWriteRepository.NotifyPlatformOwnersAsync"/> for why it must not
     /// join that transaction.
     ///
@@ -111,7 +111,7 @@ public sealed class PlatformOrganizationsWriteUseCase(
         return row;
     }
 
-    /// <summary>The <c>notify()</c> payload for a suspension (<c>organizations.ts:222-227</c>).</summary>
+    /// <summary>The <c>notify()</c> payload for a suspension (<c>organizations.ts:301-306</c>).</summary>
     public static PlatformOwnerNotification BuildSuspensionNotification(PlatformOrganizationRow row) =>
         new(
             Guid.Parse(row.Id),
@@ -126,7 +126,7 @@ public sealed class PlatformOrganizationsWriteUseCase(
     /// <summary>
     /// Builds the exact value TS writes to <c>audit_logs.changes</c>:
     /// <c>JSON.stringify(rest)</c>, where <c>rest</c> is the Zod-parsed input MINUS <c>id</c>
-    /// (<c>organizations.ts:205</c>).
+    /// (<c>organizations.ts:283</c>).
     ///
     /// <para><b>Why the bytes matter, and are not normalized away.</b> <c>changes</c> is a Prisma
     /// <c>Json?</c> field being handed a STRING, so the stored jsonb is a string SCALAR whose content is
@@ -228,7 +228,7 @@ public sealed class PlatformOrganizationsWriteUseCase(
         return input.Settings is null || IsValidSettings(input.Settings);
     }
 
-    /// <summary>Per-member bounds of the <c>settings</c> sub-object (<c>organizations.ts:177-181</c>).</summary>
+    /// <summary>Per-member bounds of the <c>settings</c> sub-object (<c>organizations.ts:251-257</c>).</summary>
     public static bool IsValidSettings(PlatformOrganizationSettingsInput settings) =>
         settings.Locale is not { Length: > MaxLocaleLength }
         && settings.Timezone is not { Length: > MaxTimezoneLength }

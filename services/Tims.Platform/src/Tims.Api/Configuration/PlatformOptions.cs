@@ -463,7 +463,7 @@ public sealed class PlatformOptions
 
     /// <summary>
     /// Phase-5 slice 21 (issue #76) — the platform-owner ORGANIZATION CREATE surface: the C# port of
-    /// <c>createOrganization</c> from <c>routers/platform/organizations.ts:104-169</c>, together with the
+    /// <c>createOrganization</c> from <c>routers/platform/organizations.ts:149-242</c>, together with the
     /// shared <c>org-provisioning</c> service (<c>OrgProvisioningWriter</c>) that #75 also depends on.
     ///
     /// SEPARATE from <see cref="PlatformOrganizationsWriteEnabled"/> on purpose. That flag governs
@@ -482,7 +482,7 @@ public sealed class PlatformOptions
     /// <c>organization_id = current_org_id</c>, so every WITH CHECK passes for the rows being inserted.
     /// The audit write is FAIL-CLOSED inside that transaction — a deliberate divergence from the TS
     /// <c>.catch(() =&gt; {})</c>, decided on #76. The notification fan-out is outside it, and its failure
-    /// PROPAGATES (a 500 after a committed create), which is TS parity: <c>organizations.ts:149</c> awaits
+    /// PROPAGATES (a 500 after a committed create), which is TS parity: <c>organizations.ts:220</c> awaits
     /// <c>notify</c> with no catch.
     ///
     /// DEFAULT false (dark) — TS remains the single active writer until Federico flips it at canary.

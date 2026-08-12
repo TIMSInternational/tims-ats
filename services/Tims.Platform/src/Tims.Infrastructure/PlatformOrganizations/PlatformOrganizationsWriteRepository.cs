@@ -9,8 +9,8 @@ namespace Tims.Infrastructure.PlatformOrganizations;
 
 /// <summary>
 /// The platform-owner organizations WRITE repository (Phase-5 slice 20, issue #76) — the C# port of
-/// <c>updateOrganization</c> (<c>organizations.ts:171-210</c>) and <c>suspendOrganization</c>
-/// (<c>organizations.ts:212-241</c>).
+/// <c>updateOrganization</c> (<c>organizations.ts:244-289</c>) and <c>suspendOrganization</c>
+/// (<c>organizations.ts:291-322</c>).
 ///
 /// <para><b>The org UPDATE and the audit INSERT are ONE transaction.</b> Both mutations open a
 /// <see cref="TenantScope"/>, issue the UPDATE, add the <c>audit_logs</c> row, <c>SaveChanges</c> and only
@@ -91,7 +91,7 @@ public sealed class PlatformOrganizationsWriteRepository(PlatformOrganizationsWr
         DateTime now,
         CancellationToken cancellationToken)
     {
-        // organizations.ts:217 — `isActive: !suspend`. Suspending deactivates; unsuspending reactivates.
+        // organizations.ts:296 — `isActive: !suspend`. Suspending deactivates; unsuspending reactivates.
         var isActive = !suspend;
         var updatedAt = ToTimestampText(now);
 
@@ -109,7 +109,7 @@ public sealed class PlatformOrganizationsWriteRepository(PlatformOrganizationsWr
             return null;
         }
 
-        // organizations.ts:233 — the action, not a `changes` payload, carries the direction. The TS write
+        // organizations.ts:313 — the action, not a `changes` payload, carries the direction. The TS write
         // sets no `changes` key at all for this audit, so neither does this one.
         AddAuditRow(id, actorId, suspend ? SuspendedAction : ActivatedAction, changes: null);
 

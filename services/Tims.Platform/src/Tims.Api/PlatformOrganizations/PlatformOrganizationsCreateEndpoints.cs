@@ -12,7 +12,7 @@ namespace Tims.Api.PlatformOrganizations;
 
 /// <summary>
 /// The platform-owner organization CREATE endpoint (Phase-5 slice 21, issue #76) — the C# port of
-/// <c>createOrganization</c> (<c>routers/platform/organizations.ts:104-169</c>).
+/// <c>createOrganization</c> (<c>routers/platform/organizations.ts:149-242</c>).
 ///
 /// <para><b>Gate: <see cref="PlatformOwnerGate"/>, reused not re-implemented</b> — identical disposition to
 /// slices 19 and 20, including the impersonation case (an impersonated owner resolves to
@@ -41,7 +41,7 @@ namespace Tims.Api.PlatformOrganizations;
 /// that way.</para>
 ///
 /// <para><b>What is NOT a divergence and must not be "fixed" at step 5: a notify failure is a 500 after a
-/// committed create.</b> <c>organizations.ts:149</c> awaits <c>notify</c> with no <c>try</c> and no
+/// committed create.</b> <c>organizations.ts:220</c> awaits <c>notify</c> with no <c>try</c> and no
 /// <c>.catch</c>, so the TS behaves identically. See
 /// <see cref="PlatformOrganizationsCreateUseCase.CreateAsync"/>.</para>
 ///
@@ -112,7 +112,7 @@ public static class PlatformOrganizationsCreateEndpoints
     }
 
     /// <summary>
-    /// Reads the Zod-shaped body (<c>organizations.ts:105-111</c>), distinguishing ABSENT from present.
+    /// Reads the Zod-shaped body (<c>organizations.ts:150-182</c>), distinguishing ABSENT from present.
     ///
     /// <para>Hand-parsed for the same reason the update body is: <c>billingEmail</c> is
     /// <c>.optional()</c>, which REJECTS an explicit <c>null</c>, and a bound DTO collapses absent and null
@@ -247,12 +247,13 @@ public static class PlatformOrganizationsCreateEndpoints
     /// genuinely ARE required. Verified against the emitted <c>contracts/openapi/Tims.Api.json</c>, not
     /// assumed.</para>
     ///
-    /// <para><b>No <c>[MaxLength]</c> on either email, deliberately.</b> Zod bounds neither
-    /// (<c>organizations.ts:109-110</c> is <c>.email()</c> with no <c>.max()</c>). That violates
-    /// <c>.claude/rules/api-security.md</c> and is ported as-is: advertising a bound the API does not
-    /// enforce is worse than the missing bound, and narrowing during a port makes a step-5 parity diff
-    /// uninterpretable. Filed as <b>#207</b> instead, and pinned by an endpoint test so a future silent
-    /// tightening shows up as a failure.</para>
+    /// <para><b>Both emails now carry <c>[MaxLength(254)]</c> (#207, 2026-08-11).</b> They deliberately did
+    /// not before, because Zod bounded neither. Zod now does (<c>organizations.ts:179-180</c>), so the
+    /// contract may advertise it — but note that this attribute is DOCUMENTATION ONLY, like every other
+    /// attribute on this type. What actually rejects a 255-character address is
+    /// <see cref="PlatformOrganizationsCreateUseCase.IsValidEmail"/>; adding the attribute alone would have
+    /// changed the published contract and NOTHING else. Both edits were required and neither substitutes
+    /// for the other.</para>
     ///
     /// <para><b>Every OTHER attribute here is DESCRIPTIVE, never enforcement.</b> This type is never bound,
     /// so no <c>DataAnnotations</c> validator ever runs on it — the 400s come from
@@ -298,13 +299,15 @@ public static class PlatformOrganizationsCreateEndpoints
         public string Plan { get; init; } = string.Empty;
 
         /// <summary>Validated as an email and then used ONLY as the <c>billingEmail</c> fallback — no user
-        /// is created or invited from it. Reproduced from the TS, which does the same. No
-        /// <c>[MaxLength]</c> (#207) and no emitted <c>format</c> — see the type remarks.</summary>
+        /// is created or invited from it. Reproduced from the TS, which does the same. Bounded at 254 by
+        /// RFC 5321 (#207); still no emitted <c>format</c> — see the type remarks.</summary>
         [Required]
+        [MaxLength(PlatformOrganizationsCreateUseCase.MaxEmailLength)]
         public string AdminEmail { get; init; } = string.Empty;
 
         /// <summary>Optional. When absent or empty, <see cref="AdminEmail"/> is stored instead
-        /// (<c>input.billingEmail || input.adminEmail</c>). No <c>[MaxLength]</c> — see #207.</summary>
+        /// (<c>input.billingEmail || input.adminEmail</c>). Bounded at 254 (#207).</summary>
+        [MaxLength(PlatformOrganizationsCreateUseCase.MaxEmailLength)]
         public string BillingEmail { get; init; } = string.Empty;
     }
 }

@@ -70,7 +70,7 @@ better". The C# projections are explicit, so the exposure is recorded in the typ
 the ORM. Narrowing is a separate follow-up against the FE and the read contract together.
 
 **`status` is a tri-state that ignores unknown values.** Only the literals `active` and `suspended`
-filter (`organizations.ts:48-49`); anything else is silently ignored. Reproduced, not tightened.
+filter (`organizations.ts:68-69`); anything else is silently ignored. Reproduced, not tightened.
 
 **Validation rejects rather than clamps.** Out-of-range `page`/`limit`/`sortBy`/`sortDir` return 400,
 because tRPC would throw `BAD_REQUEST`. Clamping would silently accept input the TS refuses, and no

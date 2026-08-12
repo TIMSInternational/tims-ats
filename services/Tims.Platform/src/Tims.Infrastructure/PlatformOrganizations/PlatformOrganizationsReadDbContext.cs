@@ -56,6 +56,7 @@ public sealed class PlatformOrganizationsReadDbContext(DbContextOptions<Platform
             entity.Property(o => o.Domain).HasColumnName("domain");
             entity.Property(o => o.Logo).HasColumnName("logo");
             entity.Property(o => o.Plan).HasColumnName("plan");
+            entity.Property(o => o.Settings).HasColumnName("settings").HasColumnType("jsonb");
             entity.Property(o => o.BillingEmail).HasColumnName("billing_email");
             entity.Property(o => o.IsActive).HasColumnName("is_active");
             entity.Property(o => o.CreatedAt).HasColumnName("created_at");
@@ -69,10 +70,15 @@ public sealed class PlatformOrganizationsReadDbContext(DbContextOptions<Platform
             entity.HasKey(s => s.Id);
             entity.Property(s => s.Id).HasColumnName("id");
             entity.Property(s => s.OrganizationId).HasColumnName("organization_id");
+            entity.Property(s => s.StripeCustomerId).HasColumnName("stripe_customer_id");
+            entity.Property(s => s.StripeSubscriptionId).HasColumnName("stripe_subscription_id");
             entity.Property(s => s.Plan).HasColumnName("plan");
             entity.Property(s => s.Status).HasColumnName("status");
-            entity.Property(s => s.TrialEndsAt).HasColumnName("trial_ends_at");
+            entity.Property(s => s.CurrentPeriodStart).HasColumnName("current_period_start");
             entity.Property(s => s.CurrentPeriodEnd).HasColumnName("current_period_end");
+            entity.Property(s => s.TrialEndsAt).HasColumnName("trial_ends_at");
+            entity.Property(s => s.CancelledAt).HasColumnName("cancelled_at");
+            entity.Property(s => s.LastStripeEventAt).HasColumnName("last_stripe_event_at");
             entity.Property(s => s.CreatedAt).HasColumnName("created_at");
             entity.Property(s => s.UpdatedAt).HasColumnName("updated_at");
         });
@@ -119,6 +125,15 @@ public sealed class PlatformOrganizationsReadDbContext(DbContextOptions<Platform
             entity.Property(c => c.OrganizationId).HasColumnName("organization_id");
             entity.Property(c => c.Name).HasColumnName("name");
             entity.Property(c => c.Country).HasColumnName("country");
+            entity.Property(c => c.Currency).HasColumnName("currency");
+            entity.Property(c => c.Timezone).HasColumnName("timezone");
+            entity.Property(c => c.Language).HasColumnName("language");
+            entity.Property(c => c.LegalName).HasColumnName("legal_name");
+            entity.Property(c => c.TaxId).HasColumnName("tax_id");
+            entity.Property(c => c.Settings).HasColumnName("settings").HasColumnType("jsonb");
+            entity.Property(c => c.IsActive).HasColumnName("is_active");
+            entity.Property(c => c.CreatedAt).HasColumnName("created_at");
+            entity.Property(c => c.UpdatedAt).HasColumnName("updated_at");
         });
 
         modelBuilder.Entity<PlatformOrganizationBusinessUnitEntity>(entity =>
@@ -129,6 +144,12 @@ public sealed class PlatformOrganizationsReadDbContext(DbContextOptions<Platform
             entity.Property(b => b.OrganizationId).HasColumnName("organization_id");
             entity.Property(b => b.CompanyId).HasColumnName("company_id");
             entity.Property(b => b.Name).HasColumnName("name");
+            entity.Property(b => b.Code).HasColumnName("code");
+            entity.Property(b => b.ParentId).HasColumnName("parent_id");
+            entity.Property(b => b.Settings).HasColumnName("settings").HasColumnType("jsonb");
+            entity.Property(b => b.IsActive).HasColumnName("is_active");
+            entity.Property(b => b.CreatedAt).HasColumnName("created_at");
+            entity.Property(b => b.UpdatedAt).HasColumnName("updated_at");
         });
 
         modelBuilder.Entity<PlatformOrganizationTeamEntity>(entity =>
@@ -139,6 +160,11 @@ public sealed class PlatformOrganizationsReadDbContext(DbContextOptions<Platform
             entity.Property(t => t.OrganizationId).HasColumnName("organization_id");
             entity.Property(t => t.BusinessUnitId).HasColumnName("business_unit_id");
             entity.Property(t => t.Name).HasColumnName("name");
+            entity.Property(t => t.LeaderId).HasColumnName("leader_id");
+            entity.Property(t => t.Settings).HasColumnName("settings").HasColumnType("jsonb");
+            entity.Property(t => t.IsActive).HasColumnName("is_active");
+            entity.Property(t => t.CreatedAt).HasColumnName("created_at");
+            entity.Property(t => t.UpdatedAt).HasColumnName("updated_at");
         });
 
         modelBuilder.Entity<PlatformOrganizationFeatureFlagEntity>(entity =>
@@ -149,6 +175,9 @@ public sealed class PlatformOrganizationsReadDbContext(DbContextOptions<Platform
             entity.Property(f => f.OrganizationId).HasColumnName("organization_id");
             entity.Property(f => f.Key).HasColumnName("key");
             entity.Property(f => f.Enabled).HasColumnName("enabled");
+            entity.Property(f => f.Payload).HasColumnName("payload").HasColumnType("jsonb");
+            entity.Property(f => f.CreatedAt).HasColumnName("created_at");
+            entity.Property(f => f.UpdatedAt).HasColumnName("updated_at");
         });
 
         modelBuilder.Entity<PlatformOrganizationBillingProfileEntity>(entity =>
@@ -166,6 +195,8 @@ public sealed class PlatformOrganizationsReadDbContext(DbContextOptions<Platform
             entity.Property(b => b.ZipCode).HasColumnName("zip_code");
             entity.Property(b => b.BillingEmail).HasColumnName("billing_email");
             entity.Property(b => b.BillingPhone).HasColumnName("billing_phone");
+            entity.Property(b => b.CreatedAt).HasColumnName("created_at");
+            entity.Property(b => b.UpdatedAt).HasColumnName("updated_at");
         });
 
         modelBuilder.Entity<PlatformOrganizationInvitationEntity>(entity =>

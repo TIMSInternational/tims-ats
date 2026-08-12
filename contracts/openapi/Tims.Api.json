@@ -7359,9 +7359,11 @@
             "type": "string"
           },
           "adminEmail": {
+            "maxLength": 254,
             "type": "string"
           },
           "billingEmail": {
+            "maxLength": 254,
             "type": "string"
           }
         }
