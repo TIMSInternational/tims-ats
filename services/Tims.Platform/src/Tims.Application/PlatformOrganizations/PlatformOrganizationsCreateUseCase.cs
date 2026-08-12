@@ -6,7 +6,7 @@ namespace Tims.Application.PlatformOrganizations;
 
 /// <summary>
 /// Application layer for the platform-owner organization CREATE surface (Phase-5 slice 21, issue #76) —
-/// <c>createOrganization</c> (<c>routers/platform/organizations.ts:104-169</c>).
+/// <c>createOrganization</c> (<c>routers/platform/organizations.ts:149-242</c>).
 ///
 /// <para>Thin, like slices 19 and 20: the TS side has no service and no domain kernel, just an inline
 /// <c>db.$transaction</c>. What lives here is everything PURE and therefore unit-testable without a
@@ -25,7 +25,7 @@ public sealed class PlatformOrganizationsCreateUseCase(
     IPlatformOrganizationsCreateRepository repository,
     TimeProvider timeProvider)
 {
-    /// <summary>Zod bounds from <c>organizations.ts:106-110</c>, reproduced exactly.</summary>
+    /// <summary>Zod bounds from <c>organizations.ts:152-180</c>, reproduced exactly.</summary>
     public const int MinNameLength = 2;
 
     public const int MaxNameLength = 100;
@@ -33,11 +33,25 @@ public sealed class PlatformOrganizationsCreateUseCase(
     public const int MaxSlugLength = 50;
 
     /// <summary>
+    /// <c>.max(254)</c> on both emails (<c>organizations.ts:179-180</c>), added with #207.
+    ///
+    /// <para><b>254 comes from RFC 5321 §4.5.3.1.3</b>, which caps the Path (<c>&lt;address&gt;</c>) at 256
+    /// octets INCLUDING the angle brackets — so a deliverable address itself is at most 254. Not 320: that
+    /// is the sum of the local-part (64) and domain (255) component maxima plus the <c>@</c>, and no
+    /// standard guarantees an address of that length is deliverable.</para>
+    ///
+    /// <para><b>Zod's <c>.max()</c> counts UTF-16 code units and <c>string.Length</c> does the same</b>, so
+    /// <c>&gt; 254</c> is exact parity rather than approximate. Moot in practice: <see cref="IsValidEmail"/>
+    /// rejects every character above <c>0x7F</c> before the regex runs.</para>
+    /// </summary>
+    public const int MaxEmailLength = 254;
+
+    /// <summary>
     /// The four accepted plan values.
     ///
     /// <para><b>Shared with slice 20 deliberately — one list, one drift surface — but the two TS schemas are
     /// NOT the same construct.</b> <c>updateOrganization</c> uses <c>z.nativeEnum(OrgPlan)</c>
-    /// (<c>organizations.ts:175</c>), which derives its members from the Prisma enum; <c>createOrganization</c>
+    /// (<c>organizations.ts:249</c>), which derives its members from the Prisma enum; <c>createOrganization</c>
     /// uses a hand-written string-literal <c>z.enum(['trial','starter','professional','enterprise'])</c>
     /// (<c>:108</c>). They coincide today, so sharing is correct. What would silently desynchronise them is a
     /// rename or an addition to <c>OrgPlan</c> (<c>organization.prisma:23-28</c>): update would follow it,
@@ -45,14 +59,14 @@ public sealed class PlatformOrganizationsCreateUseCase(
     /// </summary>
     public static readonly string[] Plans = PlatformOrganizationsWriteUseCase.Plans;
 
-    /// <summary><c>trialEndsAt = Date.now() + 14 * 24 * 60 * 60 * 1000</c> (<c>organizations.ts:142</c>).</summary>
+    /// <summary><c>trialEndsAt = Date.now() + 14 * 24 * 60 * 60 * 1000</c> (<c>organizations.ts:213</c>).</summary>
     private const int TrialDays = 14;
 
     private const string TrialPlan = "trial";
     private const string TrialingStatus = "trialing";
     private const string ActiveStatus = "active";
 
-    // Notification copy, verbatim from organizations.ts:149-155 — including the unaccented "organizacion",
+    // Notification copy, verbatim from organizations.ts:220-226 — including the unaccented "organizacion",
     // which is what the TS actually writes. "Fixing" the spelling here would be a silent content divergence
     // in a user-visible string, exactly as recorded for the suspension copy in slice 20.
     private const string CreatedTitlePrefix = "Nueva organizacion creada: ";
@@ -61,7 +75,7 @@ public sealed class PlatformOrganizationsCreateUseCase(
     private const string OrganizationsActionUrl = "/platform/organizations";
 
     /// <summary>
-    /// The slug pattern as the TS writes it (<c>organizations.ts:107</c>), for the OpenAPI contract ONLY —
+    /// The slug pattern as the TS writes it (<c>organizations.ts:153-157</c>), for the OpenAPI contract ONLY —
     /// <see cref="PlatformOrganizationsCreateEndpoints.CreateOrganizationBody.Slug"/> emits it as the
     /// schema's <c>pattern</c>, and OpenAPI patterns are ECMA-262, so the JS anchors are the correct form
     /// there. <see cref="SlugRegex"/> below is what actually VALIDATES, with .NET anchors. The two are kept
@@ -70,7 +84,7 @@ public sealed class PlatformOrganizationsCreateUseCase(
     public const string SlugPattern = "^[a-z0-9-]+$";
 
     /// <summary>
-    /// <c>^[a-z0-9-]+$</c> (<c>organizations.ts:107</c>), anchored with <c>\A</c>/<c>\z</c> rather than
+    /// <c>^[a-z0-9-]+$</c> (<c>organizations.ts:153-157</c>), anchored with <c>\A</c>/<c>\z</c> rather than
     /// <c>^</c>/<c>$</c>. That is not a stylistic choice: .NET's <c>$</c> also matches BEFORE a trailing
     /// newline, so <c>"acme\n"</c> would pass here and fail in JS, where <c>$</c> without the <c>m</c> flag
     /// matches only at end of input. Same reasoning applies to the email pattern below.
@@ -119,7 +133,7 @@ public sealed class PlatformOrganizationsCreateUseCase(
     /// which has already returned 400.
     ///
     /// <para><b>The notification await is UNCAUGHT, and that is the point.</b>
-    /// <c>organizations.ts:149</c> is <c>await notify({ ... })</c> with no <c>try</c> and no <c>.catch</c>,
+    /// <c>organizations.ts:220</c> is <c>await notify({ ... })</c> with no <c>try</c> and no <c>.catch</c>,
     /// so a fan-out failure returns 500 to the operator AFTER the whole seven-table transaction has
     /// committed. Issue #76's correction is confirmed against source: it is NOT best-effort. Do NOT wrap
     /// this in try/catch — the 500-after-commit is parity, and an operator who retries will then hit the
@@ -154,7 +168,7 @@ public sealed class PlatformOrganizationsCreateUseCase(
             return result;
         }
 
-        // organizations.ts:149 — awaited, UNCAUGHT. Unconditional, unlike suspendOrganization's
+        // organizations.ts:220 — awaited, UNCAUGHT. Unconditional, unlike suspendOrganization's
         // `if (suspend)` branch. Interpolates the DB-returned name (`org.name`, :151), not the input.
         await repository.NotifyPlatformOwnersAsync(BuildCreatedNotification(result.Row!), cancellationToken)
             .ConfigureAwait(false);
@@ -163,7 +177,7 @@ public sealed class PlatformOrganizationsCreateUseCase(
     }
 
     /// <summary>
-    /// Builds the exact value TS writes to <c>audit_logs.changes</c> (<c>organizations.ts:164</c>):
+    /// Builds the exact value TS writes to <c>audit_logs.changes</c> (<c>organizations.ts:236</c>):
     /// <c>JSON.stringify({ name: input.name, slug: input.slug, plan: input.plan })</c>.
     ///
     /// <para><b>It is a hard-coded object literal, not the Zod parse output</b> — which is why the "key
@@ -194,7 +208,7 @@ public sealed class PlatformOrganizationsCreateUseCase(
         return changes.ToJsonString(ChangesEncoding);
     }
 
-    /// <summary>The <c>notify()</c> payload for a creation (<c>organizations.ts:149-155</c>).</summary>
+    /// <summary>The <c>notify()</c> payload for a creation (<c>organizations.ts:220-226</c>).</summary>
     public static PlatformOwnerNotification BuildCreatedNotification(PlatformOrganizationRow row) =>
         new(
             Guid.Parse(row.Id),
@@ -207,15 +221,15 @@ public sealed class PlatformOrganizationsCreateUseCase(
             ActionUrl: OrganizationsActionUrl);
 
     /// <summary>
-    /// The Zod bounds of <c>createOrganization</c> (<c>organizations.ts:105-111</c>). The ENDPOINT calls this
+    /// The Zod bounds of <c>createOrganization</c> (<c>organizations.ts:150-182</c>). The ENDPOINT calls this
     /// and returns 400 on false — tRPC throws BAD_REQUEST rather than clamping, so rejecting is the parity
     /// behaviour.
     ///
-    /// <para>Note what is deliberately NOT bounded: neither email carries a <c>.max()</c> in Zod
-    /// (<c>:109-110</c>), so neither is length-limited here. That violates
-    /// <c>.claude/rules/api-security.md</c> and is ported as-is on purpose — adding a bound the TS does not
-    /// have would make a step-5 parity diff uninterpretable. Filed as <b>#207</b> instead, and pinned by an
-    /// endpoint test so a future silent tightening shows up as a test failure.</para>
+    /// <para><b>Both emails ARE bounded, as of #207 (2026-08-11).</b> They previously were not — Zod bounded
+    /// neither, and this port reproduced that faithfully rather than tightening during a migration. The fix
+    /// landed in BOTH stacks in one change (<c>organizations.ts:179-180</c> gained <c>.max(254)</c>) so the
+    /// two stay in parity; see <see cref="MaxEmailLength"/> for the RFC 5321 derivation. An earlier version
+    /// of this paragraph described the absence of the bound as deliberate, and is now false.</para>
     /// </summary>
     public static bool IsValidCreateInput(PlatformOrganizationCreateInput input)
     {
@@ -245,11 +259,24 @@ public sealed class PlatformOrganizationsCreateUseCase(
     }
 
     /// <summary>
-    /// <c>z.string().email()</c> as Zod 3.25.76 actually implements it. See <see cref="EmailRegex"/> for the
-    /// provenance of the pattern and for why non-ASCII is rejected before it runs.
+    /// <c>z.string().email().max(254)</c> as Zod 3.25.76 actually implements it. See
+    /// <see cref="EmailRegex"/> for the provenance of the pattern and for why non-ASCII is rejected before
+    /// it runs, and <see cref="MaxEmailLength"/> for where 254 comes from.
+    ///
+    /// <para><b>The bound lives HERE rather than at the two call sites in
+    /// <see cref="IsValidCreateInput"/></b> so it cannot be half-applied — <c>adminEmail</c> and
+    /// <c>billingEmail</c> are bounded identically in Zod, and one edit covers both. It is also the layer
+    /// that actually RUNS: <c>CreateOrganizationBody</c>'s <c>[MaxLength]</c> is never bound and never
+    /// validates anything (see that type's remarks); it only fixes the published contract.</para>
     /// </summary>
     public static bool IsValidEmail(string value)
     {
+        // `.max()` counts UTF-16 code units, which is exactly what string.Length returns.
+        if (value.Length > MaxEmailLength)
+        {
+            return false;
+        }
+
         foreach (var c in value)
         {
             if (c > 0x7F)
@@ -262,7 +289,7 @@ public sealed class PlatformOrganizationsCreateUseCase(
     }
 
     /// <summary>
-    /// <c>billingEmail: input.billingEmail || input.adminEmail</c> (<c>organizations.ts:119</c>).
+    /// <c>billingEmail: input.billingEmail || input.adminEmail</c> (<c>organizations.ts:190</c>).
     ///
     /// <para>JS <c>||</c>, not <c>??</c>: an EMPTY STRING also falls through to <c>adminEmail</c>. Zod's
     /// <c>.email()</c> already rejects <c>''</c> so the two are behaviourally equivalent behind the
@@ -272,12 +299,12 @@ public sealed class PlatformOrganizationsCreateUseCase(
     public static string ResolveBillingEmail(PlatformOrganizationCreateInput input) =>
         string.IsNullOrEmpty(input.BillingEmail) ? input.AdminEmail : input.BillingEmail;
 
-    /// <summary><c>status: input.plan === 'trial' ? 'trialing' : 'active'</c> (<c>organizations.ts:141</c>).</summary>
+    /// <summary><c>status: input.plan === 'trial' ? 'trialing' : 'active'</c> (<c>organizations.ts:212</c>).</summary>
     public static string ResolveSubscriptionStatus(string plan) => plan == TrialPlan ? TrialingStatus : ActiveStatus;
 
     /// <summary>
     /// <c>trialEndsAt: input.plan === 'trial' ? new Date(Date.now() + 14d) : null</c>
-    /// (<c>organizations.ts:142</c>).
+    /// (<c>organizations.ts:213</c>).
     ///
     /// <para>Uses the transaction's single <paramref name="now"/> rather than a second clock read. TS reads
     /// <c>Date.now()</c> here, a few statements after the row timestamps it derives elsewhere; collapsing

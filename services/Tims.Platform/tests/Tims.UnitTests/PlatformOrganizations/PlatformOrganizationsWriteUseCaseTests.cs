@@ -4,7 +4,7 @@ namespace Tims.UnitTests.PlatformOrganizations;
 
 /// <summary>
 /// Phase-5 slice 20 (issue #76) — the pure rules of the platform organizations WRITE surface, pinned
-/// against the TS they port (<c>routers/platform/organizations.ts:171-241</c>).
+/// against the TS they port (<c>routers/platform/organizations.ts:244-322</c>).
 ///
 /// <para>The centre of gravity here is <c>audit_logs.changes</c>. TS writes
 /// <c>JSON.stringify(rest)</c> into a Prisma <c>Json?</c> field, which stores a jsonb STRING SCALAR whose
@@ -133,7 +133,7 @@ public class PlatformOrganizationsWriteUseCaseTests
             PlatformOrganizationsWriteUseCase.BuildSettingsColumnJson(new PlatformOrganizationSettingsInput("es", null, null)));
     }
 
-    // ── Zod bounds (organizations.ts:171-181) ────────────────────────────────────────────────────
+    // ── Zod bounds (organizations.ts:244-258) ────────────────────────────────────────────────────
 
     [Fact]
     public void IsValidUpdateInput_accepts_a_name_at_the_limit_and_rejects_one_past_it()
@@ -183,7 +183,7 @@ public class PlatformOrganizationsWriteUseCaseTests
         Assert.True(PlatformOrganizationsWriteUseCase.IsValidUpdateInput(Input(name: string.Empty)));
     }
 
-    // ── the notification payload (organizations.ts:221-227) ──────────────────────────────────────
+    // ── the notification payload (organizations.ts:300-306) ──────────────────────────────────────
 
     [Fact]
     public void BuildSuspensionNotification_reproduces_the_TS_copy_verbatim()
@@ -215,7 +215,7 @@ public class PlatformOrganizationsWriteUseCaseTests
         Assert.Single(repository.Notifications);
 
         await useCase.SuspendAsync(Guid.NewGuid(), suspend: false, Guid.NewGuid(), CancellationToken.None);
-        // organizations.ts:220 — `if (input.suspend)`. Un-suspending notifies nobody.
+        // organizations.ts:299 — `if (input.suspend)`. Un-suspending notifies nobody.
         Assert.Single(repository.Notifications);
     }
 

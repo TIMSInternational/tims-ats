@@ -11,7 +11,7 @@ namespace Tims.Application.PlatformOrganizations;
 /// </summary>
 public interface IPlatformOrganizationsReadRepository
 {
-    /// <summary>The five counts behind <c>getOrganizationKpis</c> (<c>organizations.ts:11-26</c>).</summary>
+    /// <summary>The five counts behind <c>getOrganizationKpis</c> (<c>organizations.ts:25-40</c>).</summary>
     /// <param name="now">
     /// Injected rather than read from the clock inside the repository so the 7-day trial window is
     /// deterministic under test — <c>expiringThisWeek</c> is <c>trialEndsAt BETWEEN now AND now+7d</c>.
@@ -26,7 +26,7 @@ public interface IPlatformOrganizationsReadRepository
 
     /// <summary>
     /// <c>getOrganization</c>. Null when the id does not exist — the endpoint turns that into 404, matching
-    /// the TS <c>TRPCError({ code: 'NOT_FOUND' })</c> at <c>organizations.ts:100</c>.
+    /// the TS <c>TRPCError({ code: 'NOT_FOUND' })</c> at <c>organizations.ts:145</c>.
     /// </summary>
     Task<PlatformOrganizationDetail?> GetByIdAsync(Guid id, CancellationToken cancellationToken);
 }

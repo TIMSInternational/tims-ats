@@ -1,4 +1,6 @@
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
+using Tims.Domain.Json;
 
 namespace Tims.Application.PlatformOrganizations;
 
@@ -21,6 +23,18 @@ namespace Tims.Application.PlatformOrganizations;
 /// <c>Settings</c> is the raw <c>settings</c> jsonb re-emitted as JSON, not a typed record: the column is
 /// <c>Json @default("{}")</c> and nothing constrains its shape, so typing it here would silently drop keys
 /// a tenant already has.
+///
+/// <para><b>Date converters added 2026-08-11 (#211).</b> #211's original scope was the READ models, and the
+/// fix stopped there — but this record is the response body of <c>POST /platform/organizations</c>,
+/// <c>PATCH /platform/organizations/{id}</c> and <c>POST /platform/organizations/{id}/suspend</c>, and it
+/// had the identical defect. <c>organizations.created_at</c>/<c>updated_at</c>/<c>deleted_at</c> are
+/// <c>timestamp(3) without time zone</c>, so Npgsql materialises <see cref="DateTimeKind.Unspecified"/> and
+/// STJ emits <c>"2026-08-11T12:00:00.123"</c> — no offset, therefore NOT RFC 3339, while the same contract
+/// publishes these three properties as <c>{"type":"string","format":"date-time"}</c>. A generated client
+/// parsing that per RFC 3339 either throws or (JS <c>new Date(...)</c>) reads it as LOCAL time, shifting
+/// every timestamp by the client's UTC offset. The TS side goes through
+/// <c>Date.prototype.toISOString()</c>, which is what <see cref="NodeIsoDateTimeConverter"/> reproduces
+/// byte-for-byte.</para>
 /// </remarks>
 public sealed record PlatformOrganizationRow(
     string Id,
@@ -32,12 +46,12 @@ public sealed record PlatformOrganizationRow(
     JsonNode? Settings,
     string? BillingEmail,
     bool IsActive,
-    DateTime CreatedAt,
-    DateTime UpdatedAt,
-    DateTime? DeletedAt);
+    [property: JsonConverter(typeof(NodeIsoDateTimeConverter))] DateTime CreatedAt,
+    [property: JsonConverter(typeof(NodeIsoDateTimeConverter))] DateTime UpdatedAt,
+    [property: JsonConverter(typeof(NodeIsoNullableDateTimeConverter))] DateTime? DeletedAt);
 
 /// <summary>
-/// Validated input for <c>updateOrganization</c> (<c>organizations.ts:171-181</c>).
+/// Validated input for <c>updateOrganization</c> (<c>organizations.ts:244-258</c>).
 ///
 /// <para><b>null means ABSENT, not "clear it".</b> Every UPDATABLE field on the Zod schema is
 /// <c>.optional()</c> — which rejects an explicit <c>null</c> — and the TS body only copies a field into
@@ -56,7 +70,7 @@ public sealed record PlatformOrganizationUpdateInput(
     PlatformOrganizationSettingsInput? Settings);
 
 /// <summary>
-/// The <c>settings</c> sub-object (<c>organizations.ts:177-181</c>). Each member is
+/// The <c>settings</c> sub-object (<c>organizations.ts:251-257</c>). Each member is
 /// <c>.optional()</c> with a max length, so <c>null</c> = absent here too and an absent member is omitted
 /// from the written JSON entirely (Zod strips unknown keys; <c>JSON.stringify</c> drops <c>undefined</c>).
 /// </summary>

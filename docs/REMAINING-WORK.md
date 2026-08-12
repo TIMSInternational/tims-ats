@@ -251,7 +251,24 @@ describe-service`; only the frontend Vercel flag was missing.)
     helper pair and the `roles` map were extracted, but the `organizations`/`subscriptions` INSERTs (and
     with them the enum-cast and timestamp-kind traps) are still private to the create repository. Slice
     21's panel filed **#207** (neither email is length-bounded, in EITHER stack — an
-    `api-security.md` violation ported as-is) and **#208** (the missing parity surface).
+    `api-security.md` violation ported as-is; **FIXED 2026-08-11**, both stacks bounded at 254 per
+    RFC 5321 §4.5.3.1.3, a TS behaviour change) and **#208** (the missing parity surface).
+    Note #207's threat description was **understated**, and the first version of this note understated it
+    again by naming one further writer. `organizations.billing_email` has **four** writers and #207 bounded
+    **two**: `platform/organizations.ts` and `platform/invitations.ts` are at 254; `organization.update`
+    (`packages/api/src/routers/organization.ts`, via `updateOrganizationSchema` — whose `billingEmail` AND
+    `domain` are unbounded, `domain` on a `@unique` column, behind `permissionProcedure('organization',
+'update')`, a **lower** privilege bar than the platform-owner path) and the self-serve signup in
+    `apps/web/app/auth/callback/route.ts` (no Zod schema in the request path at all) are still unbounded.
+    Filed as **#213**; #207 did **not** close the column. Two further follow-ups from the same review:
+    **#214** (`sortBy: 'name'` compares under the process culture in C# and the DB collation in Postgres,
+    unfixable until the prod collation is recorded in the baseline) and **#215** (the `detail` surface's
+    `sortArraysBy: 'id'` masks `getOrganization`'s createdAt-desc users ordering).
+    A **fifth #211 divergence** was found and fixed in the same pass, unlisted by the issue and unreachable
+    by the harness: `sortBy: 'plan'` returned the _reverse_ order in C#, because `organizations.plan` is the
+    native `"OrgPlan"` enum (Postgres sorts by declaration order: trial, starter, professional, enterprise)
+    while C# sorted the mapped string with `Comparer<string>.Default` (measured: enterprise, professional,
+    starter, trial). The `list` surface is registered with `input: {}`, so `sortBy` is never sent.
     Slice 20 also fixed a defect slice 19 shipped: the read context mapped five columns across four native
     Postgres enum types to C# strings on a plain connection string, so `listOrganizations` and
     `getOrganization` would have thrown the moment the flag was flipped (`getOrganizationKpis` is

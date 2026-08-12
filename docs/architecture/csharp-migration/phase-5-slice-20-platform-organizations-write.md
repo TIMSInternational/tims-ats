@@ -76,7 +76,7 @@ exists.
   (unscoped `db`).
 
 **Correction to the executable spec on #76**, which called `notify` "best-effort in TS": it is not.
-`organizations.ts:220` awaits it with no `.catch`, so a notify failure propagates and fails the request
+`organizations.ts:299` awaits it with no `.catch`, so a notify failure propagates and fails the request
 (after the update has already committed). This port reproduces that — exceptions propagate — rather than
 adding a swallow that TS does not have. Only the audit divergence was authorized; inventing a second one
 would make step 5 harder to read, not easier.

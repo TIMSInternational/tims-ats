@@ -11,7 +11,7 @@ namespace Tims.Infrastructure.PlatformOrganizations;
 
 /// <summary>
 /// The platform-owner organization CREATE repository (Phase-5 slice 21, issue #76) — the C# port of
-/// <c>createOrganization</c> (<c>routers/platform/organizations.ts:104-169</c>).
+/// <c>createOrganization</c> (<c>routers/platform/organizations.ts:149-242</c>).
 ///
 /// <para><b>SEVEN tables and the audit row are ONE transaction.</b> The TS wraps seven writes in
 /// <c>db.$transaction</c> (<c>:113-147</c>); this port opens a <see cref="TenantScope"/> on the NEW
@@ -21,7 +21,7 @@ namespace Tims.Infrastructure.PlatformOrganizations;
 /// what distinguishes this port from the TS <c>.catch(() =&gt; {})</c> at <c>:166</c>. Proved by mutation in
 /// <c>PlatformOrganizationsCreateRepositoryTests</c>, in both directions.</para>
 ///
-/// <para><b>Statement order reproduces the TS exactly</b> (<c>organizations.ts:113-147</c> +
+/// <para><b>Statement order reproduces the TS exactly</b> (<c>organizations.ts:184-218</c> +
 /// <c>org-provisioning.ts:18-31</c>): organizations → companies → business_units → teams →
 /// plan_modules SELECT → org_entitlements → roles → subscriptions → audit_logs. Only the chain
 /// organizations → companies → business_units → teams is FK-forced; <c>roles</c> and <c>subscriptions</c>
@@ -45,7 +45,7 @@ public sealed class PlatformOrganizationsCreateRepository(PlatformOrganizationsC
     /// <summary>The Prisma unique index on <c>organizations.slug</c>. Matched by NAME — see <see cref="IsSlugConflict"/>.</summary>
     private const string SlugConstraintName = "organizations_slug_key";
 
-    // organizations.ts:134 — `{ name: 'Super Administrador', slug: 'super_admin', isSystem: true }`.
+    // organizations.ts:205 — `{ name: 'Super Administrador', slug: 'super_admin', isSystem: true }`.
     private const string SuperAdminRoleName = "Super Administrador";
     private const string SuperAdminRoleSlug = "super_admin";
 
@@ -115,7 +115,7 @@ public sealed class PlatformOrganizationsCreateRepository(PlatformOrganizationsC
             await OrgProvisioningWriter.ProvisionEntitlementsAsync(_db, organizationId, now, cancellationToken)
                 .ConfigureAwait(false);
 
-            // 7. roles (organizations.ts:133-135). `description` stays NULL and `is_active` keeps its DB
+            // 7. roles (organizations.ts:204-206). `description` stays NULL and `is_active` keeps its DB
             // default; no role_permissions and no user_roles rows are created, matching the TS exactly.
             _db.Roles.Add(new RoleWriteEntity
             {
@@ -128,7 +128,7 @@ public sealed class PlatformOrganizationsCreateRepository(PlatformOrganizationsC
             });
             await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
-            // 8. subscriptions (organizations.ts:137-144). TWO native enums this time: OrgPlan and
+            // 8. subscriptions (organizations.ts:208-215). TWO native enums this time: OrgPlan and
             // SubscriptionStatus. `trial_ends_at` binds as nullable text through the same ::timestamp cast.
             // Stripe columns and the period columns are never sent.
             var status = PlatformOrganizationsCreateUseCase.ResolveSubscriptionStatus(plan);
@@ -145,7 +145,7 @@ public sealed class PlatformOrganizationsCreateRepository(PlatformOrganizationsC
                 cancellationToken).ConfigureAwait(false);
 
             // 9. The FAIL-CLOSED audit row, INSIDE the scope's transaction. TS writes this AFTER the
-            // transaction with `.catch(() => {})` (organizations.ts:157-166); here a failure rolls the whole
+            // transaction with `.catch(() => {})` (organizations.ts:228-239); here a failure rolls the whole
             // seven-table creation back. Federico's decision on #76, already shipped for update/suspend.
             AddAuditRow(organizationId, actorId, changesJson);
             await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
@@ -208,7 +208,7 @@ public sealed class PlatformOrganizationsCreateRepository(PlatformOrganizationsC
         {
             Id = Guid.NewGuid(),
             OrganizationId = organizationId,
-            // organizations.ts:160 — `ctx.user.id`, the `users.id` uuid, NOT supabaseUserId.
+            // organizations.ts:232 — `ctx.user.id`, the `users.id` uuid, NOT supabaseUserId.
             ActorId = actorId,
             Action = CreatedAction,
             Entity = OrganizationEntity,
@@ -230,7 +230,7 @@ public sealed class PlatformOrganizationsCreateRepository(PlatformOrganizationsC
 
     /// <summary>
     /// The TS <c>return org</c> is the full row <c>db.organization.create()</c> resolves to (no
-    /// <c>select:</c> at <c>organizations.ts:114-121</c>). Field order follows the Prisma model declaration
+    /// <c>select:</c> at <c>organizations.ts:185-192</c>). Field order follows the Prisma model declaration
     /// order so the JSON shape matches — identical to slice 20's <c>Map</c>, on the same record type.
     /// </summary>
     private static PlatformOrganizationRow Map(PlatformOrganizationWriteEntity entity) =>

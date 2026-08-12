@@ -1,6 +1,11 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, it, expect } from 'vitest';
 import {
   WRITE_SURFACES,
+  WRITE_ORG_CREATE_SLUG,
+  WRITE_ORG_CREATE_NAME,
+  type PlatformOrganizationsCreateResolved,
   WRITE_EVAL_CYCLES,
   WRITE_CYCLE_MARKER,
   WRITE_SUCCESSION_ROLES,
@@ -515,7 +520,17 @@ describe('WRITE_SURFACES ninebox', () => {
 describe('WRITE_SURFACES registry', () => {
   it('pins the registered write surfaces', () => {
     expect(Object.keys(WRITE_SURFACES).sort()).toEqual(
-      ['access-review', 'compensation', 'engagement', 'evaluation360', 'ninebox', 'organization', 'succession'].sort(),
+      [
+        'access-review',
+        'compensation',
+        'engagement',
+        'evaluation360',
+        'ninebox',
+        'organization',
+        // #208, resolved 2026-08-11: REGISTERED with a documented prior-run cleanup, not omitted.
+        'organization-create',
+        'succession',
+      ].sort(),
     );
   });
 
@@ -620,5 +635,210 @@ describe('WRITE_SURFACES access-review', () => {
     expect(nm.params).toEqual(['orgA', 'orgAdmin']);
     expect(nm.expect([{ n: 0 }])).toBeNull();
     expect(nm.expect([{ n: 1 }])).toContain('forbidden attest');
+  });
+});
+
+// #208 — "should the CREATE parity surface be registered?" — RESOLVED: yes, with a documented
+// prior-run cleanup. These assertions exist so the decision cannot be silently reversed OR silently
+// hollowed out: registering the surface without the cleanup is strictly WORSE than not registering it
+// (run N+1 would 409 on the unique slug, and every run's tenant would survive every teardown), so the
+// cleanup is pinned here alongside the registration rather than left to a comment.
+describe('WRITE_SURFACES organization-create (#208)', () => {
+  const s = WRITE_SURFACES['organization-create'];
+  const cr: PlatformOrganizationsCreateResolved = {
+    base: 'http://c',
+    orgAdminUserId: 'orgAdmin',
+    platformOwnerUserId: 'owner',
+  };
+
+  it('is a SEPARATE surface behind the create-only flag — not a third endpoint on `organization`', () => {
+    // Two independently sufficient reasons, either of which alone forbids appending it to
+    // WRITE_SURFACES['organization']: `flag` is a single string and create ships behind its own flag
+    // (PlatformOptions.cs:469-472), and the mounted-route preflight probes endpoints[0] ONLY
+    // (cli.ts:452-459), so an appended endpoint would preflight `update`'s flag and never check this one.
+    expect(s.flag).toBe('Platform__PlatformOrganizationsCreateEnabled');
+    expect(WRITE_SURFACES['organization'].flag).toBe('Platform__PlatformOrganizationsWriteEnabled');
+    expect(s.flag).not.toBe(WRITE_SURFACES['organization'].flag);
+    expect(WRITE_SURFACES['organization'].endpoints.map((e) => e.name)).toEqual(['update', 'suspend']);
+    expect(s.probeRole).toBe('platform_owner');
+    expect(s.roles).toEqual(['platform_owner', 'org_admin']);
+    expect(s.endpoints.map((e) => e.name)).toEqual(['create']);
+  });
+
+  it('posts the FIXED marker slug — a random slug would defeat the cleanup and 409 the next run', () => {
+    const e = s.endpoints[0];
+    expect(e.method).toBe('POST');
+    expect(e.buildParity(cr)).toEqual({
+      path: '/platform/organizations',
+      body: {
+        name: WRITE_ORG_CREATE_NAME,
+        slug: WRITE_ORG_CREATE_SLUG,
+        plan: 'trial',
+        adminEmail: 'parity+create@tims.test',
+      },
+    });
+    // `organizations.slug` is @unique: the posted slug and the slug the cleanup deletes MUST be the
+    // same constant, or the surface is single-use.
+    expect(WRITE_ORG_CREATE_SLUG).toBe('__parity_create');
+  });
+
+  it('omits buildIdor — a create has no cross-org target to aim at', () => {
+    const e = s.endpoints[0];
+    expect(e.buildIdor).toBeUndefined();
+    expect(e.expectedByRole).toEqual({ platform_owner: 'allow', org_admin: 'deny' });
+    expect(e.rbacDenyStatus).toBe(403);
+  });
+
+  it('never live-tests a second allow role — exactly ONE organization is created per run', () => {
+    // This is the property that bounds the blast radius. `allowRolesLiveTestable` would multiply the
+    // seven-table transaction (and the platform-owner notification fan-out) by every allow role.
+    const e = s.endpoints[0];
+    expect(e.allowRolesLiveTestable).toBeFalsy();
+    expect(e.readbackAllow).toBeUndefined();
+    expect(Object.values(e.expectedByRole).filter((v) => v === 'allow')).toHaveLength(1);
+  });
+
+  it('asserts the whole seven-table transaction, not just the organizations row', () => {
+    const e = s.endpoints[0];
+    const rb = e.readbackMutated(cr, { id: 'x' });
+    expect(rb.params).toEqual([WRITE_ORG_CREATE_SLUG, 'owner']);
+    const ok = {
+      is_active: true,
+      companies: 1,
+      units: 1,
+      teams: 1,
+      entitlements: 7,
+      roles: 1,
+      subs: 1,
+      audits: 1,
+      ats_base_modules: 7,
+    };
+    expect(rb.expect([ok])).toBeNull();
+    expect(rb.expect([])).toContain('no organization with slug');
+    expect(rb.expect([{ ...ok, is_active: false }])).toContain('is_active');
+    expect(rb.expect([{ ...ok, entitlements: 11 }])).toContain('entitlements');
+    expect(rb.expect([{ ...ok, teams: 0 }])).toContain('teams');
+    expect(rb.expect([{ ...ok, subs: 0 }])).toContain('subs');
+    expect(rb.expect([{ ...ok, audits: 0 }])).toContain('audit');
+  });
+
+  it('DERIVES the entitlement count from plan_modules — it is DB state, not a code constant', () => {
+    // The golden was hard-coded `entitlements: 7`, attributed in-comment to ATS_BASE_MODULES. Neither
+    // stack reads that constant at runtime: `provisionOrgEntitlements` (and its C# counterpart) does
+    // `planModule.findMany({ where: { planCode: 'ats-base' } })` and inserts one row per RESULT, and
+    // PlatformOrganizationsCreateRepository documents N = 0 as a valid outcome that commits. So against
+    // a catalogue that gained or lost an ats-base module, a CORRECT create would have produced a red
+    // write-parity line reading "expected 7 entitlements" — a fixture failure a reader would attribute
+    // to a port divergence.
+    const rb = s.endpoints[0].readbackMutated(cr, { id: 'x' });
+    const base = { is_active: true, companies: 1, units: 1, teams: 1, roles: 1, subs: 1, audits: 1 };
+
+    // A 9-module catalogue with 9 granted entitlements is CORRECT and must pass.
+    expect(rb.expect([{ ...base, entitlements: 9, ats_base_modules: 9 }])).toBeNull();
+    // …and 7 granted against a 9-module catalogue is the real divergence, which must still fail.
+    expect(rb.expect([{ ...base, entitlements: 7, ats_base_modules: 9 }])).toContain('entitlements');
+  });
+
+  it('refuses to pass VACUOUSLY when the entitlement catalogue is unseeded', () => {
+    // A derived expectation of 0 would tick green against a create that granted nothing — exactly the
+    // silence the read-back exists to break. An unseeded catalogue is an environment fault, so it must
+    // be named as one rather than absorbed.
+    const rb = s.endpoints[0].readbackMutated(cr, { id: 'x' });
+    const unseeded = {
+      is_active: true,
+      companies: 1,
+      units: 1,
+      teams: 1,
+      entitlements: 0,
+      roles: 1,
+      subs: 1,
+      audits: 1,
+      ats_base_modules: 0,
+    };
+    expect(rb.expect([unseeded])).toContain('plan_modules');
+  });
+
+  it('deny read-back keys on the ABSENCE of the row — organizations has no caller-stamped column', () => {
+    const e = s.endpoints[0];
+    const nm = e.readbackNoMutation(cr, 'a', 'org_admin');
+    expect(nm.params).toEqual([WRITE_ORG_CREATE_SLUG]);
+    expect(nm.expect([{ n: 0 }])).toBeNull();
+    expect(nm.expect([{ n: 1 }])).toContain('forbidden create');
+  });
+
+  it('response check pins BOTH name and slug — an echoed id alone proves nothing was provisioned', () => {
+    const e = s.endpoints[0];
+    const good = {
+      id: '11111111-1111-1111-1111-111111111111',
+      name: WRITE_ORG_CREATE_NAME,
+      slug: WRITE_ORG_CREATE_SLUG,
+    };
+    expect(e.expectResponse(good)).toBeNull();
+    expect(e.expectResponse({ ...good, id: 'nope' })).toContain('uuid');
+    expect(e.expectResponse({ ...good, name: 'other' })).toContain('name');
+    expect(e.expectResponse({ ...good, slug: 'other' })).toContain('slug');
+  });
+});
+
+// The cleanup half of the #208 decision. Source-text, because `ensurePreconditions` and `teardown` both
+// need a live DB to execute — but a registered create surface WITHOUT this cleanup is worse than no
+// surface at all, so "cannot be run in a unit test" must not mean "unguarded".
+describe('organization-create cleanup wiring (seed.ts source-order check)', () => {
+  const src = readFileSync(join(__dirname, 'seed.ts'), 'utf8');
+
+  it('ensurePreconditions is the create-specific hook, not the no-op the other org surface uses', () => {
+    expect(WRITE_SURFACES['organization-create'].ensurePreconditions.name).toBe(
+      'ensurePlatformOrganizationsCreatePreconditions',
+    );
+    // The `organization` (update/suspend) surface legitimately uses a no-op — pinned so a copy-paste
+    // of that hook into the create surface is visible as the regression it would be.
+    expect(WRITE_SURFACES['organization'].ensurePreconditions.name).toBe(
+      'ensurePlatformOrganizationsWritePreconditions',
+    );
+  });
+
+  it('the cleanup deletes notifications BEFORE the organization, because they do not cascade', () => {
+    // notifications.organization_id has an INDEX but NO FK (baseline:4739 / :6201). Deleting the org
+    // first would leave them permanently orphaned and unfindable by slug.
+    const body = src.slice(src.indexOf('export async function ensurePlatformOrganizationsCreatePreconditions'));
+    const notif = body.indexOf('DELETE FROM notifications');
+    const org = body.indexOf('DELETE FROM organizations WHERE slug = $1');
+    expect(notif, 'the create cleanup no longer deletes notifications').toBeGreaterThan(-1);
+    expect(org, 'the create cleanup no longer deletes the prior run organization').toBeGreaterThan(-1);
+    expect(notif).toBeLessThan(org);
+  });
+
+  it('teardown sweeps the marker slug — a created tenant is outside every org-scoped DELETE otherwise', () => {
+    // This is the ONE respect in which create differs in KIND from the other write surfaces: teardown
+    // resolves its whole scope from `organizations WHERE slug = ANY($1)`, so an org not in that list is
+    // unreachable by it forever.
+    expect(src).toContain('const slugs = [...ORG_KEYS.map((k) => ORG_SLUGS[k]), WRITE_ORG_CREATE_SLUG];');
+    const td = src.slice(src.indexOf('export async function teardown'));
+    expect(td, 'teardown no longer sweeps notifications, which never cascade with the org').toContain(
+      'DELETE FROM notifications WHERE organization_id = ANY($1)',
+    );
+    expect(td.indexOf('DELETE FROM notifications WHERE organization_id = ANY($1)')).toBeLessThan(
+      td.indexOf('DELETE FROM organizations WHERE id = ANY($1)'),
+    );
+  });
+
+  it('teardown deletes access_reviews BEFORE users — reviewer_id is ON DELETE RESTRICT, not CASCADE', () => {
+    // #208's "the residue is bounded" argument names `seed --teardown` as the escape hatch for the
+    // marker org. That escape hatch THREW: teardown never deleted `access_reviews`, whose
+    // `access_reviews_reviewer_id_fkey` is ON DELETE RESTRICT (baseline:5571) and points at
+    // `parity+a-platform_owner@tims.test` — the reviewer of every row `verify-write access-review`
+    // inserts, and a member of the `userIds` teardown deletes. So after any access-review run, teardown
+    // aborted at the users delete having already swept the team/business-unit/company rows, and never
+    // reached the organizations delete at all. A mitigation that throws is not one.
+    const td = src.slice(src.indexOf('export async function teardown'));
+    const reviews = td.indexOf('DELETE FROM access_reviews WHERE organization_id = ANY($1)');
+    const users = td.indexOf('DELETE FROM users WHERE id = ANY($1)');
+    const orgs = td.indexOf('DELETE FROM organizations WHERE id = ANY($1)');
+    expect(reviews, 'teardown no longer deletes access_reviews — the users delete will FK-violate').toBeGreaterThan(-1);
+    // Non-vacuity: the two anchors must themselves still be present, or `-1 < anything` passes trivially.
+    expect(users).toBeGreaterThan(-1);
+    expect(orgs).toBeGreaterThan(-1);
+    expect(reviews).toBeLessThan(users);
+    expect(users).toBeLessThan(orgs);
   });
 });

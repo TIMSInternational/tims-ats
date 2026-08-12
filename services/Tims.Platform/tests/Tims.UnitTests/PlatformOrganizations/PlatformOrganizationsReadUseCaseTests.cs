@@ -4,7 +4,7 @@ namespace Tims.UnitTests.PlatformOrganizations;
 
 /// <summary>
 /// Phase-5 slice 19 (issue #76) — the pure input-handling rules of the platform organizations READ
-/// surface, pinned against the Zod schema they port (<c>routers/platform/organizations.ts:32-41</c>).
+/// surface, pinned against the Zod schema they port (<c>routers/platform/organizations.ts:46-57</c>).
 ///
 /// <para>These assert the boundary that is easy to get subtly wrong in a port: which inputs are
 /// DEFAULTED and which are REJECTED. tRPC validates with Zod and throws BAD_REQUEST on an out-of-range
@@ -94,7 +94,7 @@ public class PlatformOrganizationsReadUseCaseTests
     [Fact]
     public void The_Zod_bounds_are_reproduced_exactly()
     {
-        // If any of these drift from routers/platform/organizations.ts:32-41 the port silently accepts
+        // If any of these drift from routers/platform/organizations.ts:46-57 the port silently accepts
         // or refuses input the TS side does not. Pinned here so a change is a deliberate edit.
         Assert.Equal(0, PlatformOrganizationsReadUseCase.DefaultPage);
         Assert.Equal(20, PlatformOrganizationsReadUseCase.DefaultLimit);

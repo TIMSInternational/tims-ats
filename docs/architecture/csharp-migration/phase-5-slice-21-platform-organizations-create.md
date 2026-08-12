@@ -47,7 +47,7 @@ Numbered, because five code comments refer to them by number.
 
 ### (1) The audit write is FAIL-CLOSED and inside the transaction
 
-TS writes it **after** the transaction and swallows the failure (`organizations.ts:157-166`,
+TS writes it **after** the transaction and swallows the failure (`organizations.ts:228-239`,
 `.catch(() => {})`). Federico's decision on #76 is that the C# port does not reproduce that: if the audit
 INSERT fails, the whole seven-table creation rolls back. Same decision already shipped for
 update/suspend in slice 20.
@@ -74,7 +74,7 @@ real `org_entitlements_organization_id_module_code_key` violation through the sa
 
 ### (3) A notify failure leaves an audit row behind where TS leaves none
 
-The **500-after-commit is parity, not a bug.** `organizations.ts:149` is `await notify({ … })` with no
+The **500-after-commit is parity, not a bug.** `organizations.ts:220` is `await notify({ … })` with no
 `try` and no `.catch`, so a fan-out failure returns 500 to the operator after the transaction has
 committed. Do **not** wrap it in try/catch at step 5.
 
@@ -187,10 +187,16 @@ surface as a 500 on first use: fail-closed, but undetected until then.
   `enum`, no `format: email`. `[AllowedValues]` and `[EmailAddress]` were both applied and both **ignored**
   by this project's OpenAPI emitter (verified by reading the regenerated file; `minLength`/`maxLength`/
   `pattern` did land). They were removed rather than left as no-ops that read like enforcement.
-- **Neither email is length-bounded**, in either stack — `organizations.ts:109-110` is `.email()` with no
-  `.max()`. A `.claude/rules/api-security.md` violation, ported as-is so the step-5 diff stays readable,
-  and tracked as **#207**. Two tests pin the current acceptance so a silent tightening surfaces as a
-  failure; **both invert when #207 lands.**
+- ~~**Neither email is length-bounded**, in either stack.~~ **RESOLVED 2026-08-11 by #207.** Both stacks
+  now bound `adminEmail` and `billingEmail` at **254**, from RFC 5321 §4.5.3.1.3 (a Path is ≤ 256 octets
+  _including_ the angle brackets, so the address itself is ≤ 254). Changed together in one PR so they stay
+  in parity: `organizations.ts:179-180` gained `.max(254)`, and `IsValidEmail` enforces the same length.
+  The two tests that pinned the old acceptance **inverted as they said they would**. Note the C# bound had
+  to go in the _use case_ — `CreateOrganizationBody`'s `[MaxLength]` is never bound and validates nothing,
+  so it only fixes the published contract. **This is a TS BEHAVIOUR CHANGE**: an address longer than 254
+  was previously accepted by `platform.createOrganization` and is now a 400.
+  `createOrgInvitation` — the other writer of `organizations.billing_email` — was lowered 255 → 254 in the
+  same change so one column does not carry two bounds.
 - **The `Guid.TryParse(gate.Context.UserId)` → 401 branch is unreachable** through the fixture and
   therefore untested. `PrincipalResolver` only ever yields a `users.id` uuid. Kept as an assertion.
 

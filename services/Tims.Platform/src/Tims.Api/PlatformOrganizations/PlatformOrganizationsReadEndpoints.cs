@@ -89,7 +89,7 @@ public static class PlatformOrganizationsReadEndpoints
                         return gate.Failure;
                     }
 
-                    // Zod bounds from organizations.ts:32-41. Rejecting (not clamping) is the parity
+                    // Zod bounds from organizations.ts:46-57. Rejecting (not clamping) is the parity
                     // behaviour: tRPC would throw BAD_REQUEST.
                     if (page < 0
                         || limit < PlatformOrganizationsReadUseCase.MinLimit
@@ -129,7 +129,7 @@ public static class PlatformOrganizationsReadEndpoints
 
                     var detail = await useCase.GetByIdAsync(id, cancellationToken);
 
-                    // TS throws TRPCError NOT_FOUND (organizations.ts:100).
+                    // TS throws TRPCError NOT_FOUND (organizations.ts:145).
                     return detail is null ? Results.NotFound() : Results.Ok(detail);
                 })
             .AllowAnonymous()

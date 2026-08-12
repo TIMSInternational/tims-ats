@@ -331,7 +331,7 @@ public sealed class PlatformOrganizationsWriteEndpointAuthTests(PlatformOrganiza
     [InlineData("""{"suspend":null}""")]
     public async Task SuspendWithoutAValidFlag_is_400(string body)
     {
-        // `suspend` is REQUIRED (organizations.ts:213). Defaulting it either way would silently pick a
+        // `suspend` is REQUIRED (organizations.ts:292). Defaulting it either way would silently pick a
         // destructive direction.
         var org = await SeedOrganizationAsync();
         using var factory = EnabledFactory();

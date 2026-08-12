@@ -86,13 +86,33 @@ public sealed class PlatformOrganizationsCreateEndpointAuthTests(PlatformOrganiz
 
     /// <summary>A valid body with a fresh slug — <c>organizations_slug_key</c> is global and nothing is torn
     /// down between tests, so every 200-producing case must mint its own.</summary>
-    private static object ValidBody(string? slug = null, string? name = null, string? adminEmail = null) => new
+    /// <remarks>
+    /// A DICTIONARY rather than an anonymous object so <c>billingEmail</c> can be genuinely ABSENT.
+    /// Emitting it as an explicit JSON <c>null</c> would not be equivalent: Zod's <c>.optional()</c>
+    /// accepts absent and REJECTS null, so a null would 400 for the wrong reason and a bound test would
+    /// pass without exercising the bound.
+    /// </remarks>
+    private static object ValidBody(
+        string? slug = null,
+        string? name = null,
+        string? adminEmail = null,
+        string? billingEmail = null)
     {
-        name = name ?? "Endpoint Org",
-        slug = slug ?? Guid.NewGuid().ToString(),
-        plan = "trial",
-        adminEmail = adminEmail ?? "admin@tims.test",
-    };
+        var body = new Dictionary<string, object?>
+        {
+            ["name"] = name ?? "Endpoint Org",
+            ["slug"] = slug ?? Guid.NewGuid().ToString(),
+            ["plan"] = "trial",
+            ["adminEmail"] = adminEmail ?? "admin@tims.test",
+        };
+
+        if (billingEmail is not null)
+        {
+            body["billingEmail"] = billingEmail;
+        }
+
+        return body;
+    }
 
     private static async Task<HttpResponseMessage> Send(HttpClient client, object? body, string? token)
     {
@@ -327,15 +347,17 @@ public sealed class PlatformOrganizationsCreateEndpointAuthTests(PlatformOrganiz
         Assert.NotNull(await ReadIdBySlugAsync(slug));
     }
 
-    // ── A10: the UNBOUNDED email, ported as-is ───────────────────────────────────────────────────
+    // ── A10: the email bound (#207) ──────────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task AVeryLongButWellFormedAdminEmail_is_accepted_because_Zod_bounds_neither_email()
+    public async Task AVeryLongAdminEmail_is_400_and_creates_nothing()
     {
-        // organizations.ts:109-110 is `.email()` with no `.max()`. That violates
-        // .claude/rules/api-security.md and is reproduced deliberately — narrowing during a port makes a
-        // step-5 parity diff uninterpretable, so the bound is issue #207 instead. THIS ASSERTION
-        // INVERTS when #207 lands; if it fails before then, the port silently added a bound TS does not have.
+        // #207 LANDED, and this assertion INVERTED as its predecessor said it would: it used to assert
+        // 200, pinning the ported-as-is absence of a bound. Zod now carries `.max(254)`
+        // (organizations.ts:179-180) and IsValidEmail enforces the same 254 here.
+        //
+        // The ReadIdBySlugAsync assertion is the load-bearing half: a 400 that STILL INSERTED would
+        // satisfy a status-code-only test, and that is the failure mode worth catching.
         var slug = Guid.NewGuid().ToString();
         var email = new string('a', 5000) + "@example.com";
         using var factory = EnabledFactory();
@@ -343,7 +365,43 @@ public sealed class PlatformOrganizationsCreateEndpointAuthTests(PlatformOrganiz
 
         var response = await Send(client, ValidBody(slug, adminEmail: email), Mint(PlatformOrganizationsCreateFixture.PlatformOwnerSub));
 
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Null(await ReadIdBySlugAsync(slug));
+    }
+
+    [Fact]
+    public async Task AVeryLongBillingEmail_is_400_and_creates_nothing()
+    {
+        // The original pair only ever exercised adminEmail, so billingEmail's bound was untested on the
+        // endpoint. Both are bounded by the SAME IsValidEmail call, but "same code path" is an
+        // implementation claim — this asserts the behaviour instead.
+        var slug = Guid.NewGuid().ToString();
+        var email = new string('a', 5000) + "@example.com";
+        using var factory = EnabledFactory();
+        using var client = factory.CreateClient();
+
+        var response = await Send(client, ValidBody(slug, billingEmail: email), Mint(PlatformOrganizationsCreateFixture.PlatformOwnerSub));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Null(await ReadIdBySlugAsync(slug));
+    }
+
+    [Fact]
+    public async Task AnAdminEmailOfExactly254Chars_is_accepted()
+    {
+        // The inclusive boundary. Without this, `.max(253)` or an off-by-one `>=` would pass every
+        // other test in this file.
+        var slug = Guid.NewGuid().ToString();
+        var email = new string('a', 242) + "@example.com";
+        Assert.Equal(254, email.Length);
+
+        using var factory = EnabledFactory();
+        using var client = factory.CreateClient();
+
+        var response = await Send(client, ValidBody(slug, adminEmail: email), Mint(PlatformOrganizationsCreateFixture.PlatformOwnerSub));
+
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.NotNull(await ReadIdBySlugAsync(slug));
     }
 
     // ── A11: an IMPERSONATING platform owner is denied, and mints nothing ────────────────────────

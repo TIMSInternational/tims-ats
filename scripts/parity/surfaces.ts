@@ -264,7 +264,7 @@ export const SURFACES: Record<string, Surface> = {
   // no tenant boundary FOR THIS CALLER. Those are different properties; overloading one flag for both
   // is what would silently disable a real IDOR probe on some future surface. The access-review entry
   // below sidesteps the problem with a fixed NON-EXISTENT org id, which cannot work here —
-  // `getOrganization` 404s on an unknown org (organizations.ts:100 / the C# repository returns null at
+  // `getOrganization` 404s on an unknown org (organizations.ts:145 / the C# repository returns null at
   // PlatformOrganizationsReadRepository.cs:151-156, mapped to Results.NotFound() at
   // PlatformOrganizationsReadEndpoints.cs:133), so the platform_owner case would assert 404, not 200.
   // The answer was a distinct, explicitly-named marker — `noTenantBoundaryForCaller`, the read-side
@@ -303,20 +303,44 @@ export const SURFACES: Record<string, Surface> = {
       // (PlatformOrganizationsReadEndpoints.cs:114). That is not a mismatch: the harness never calls a
       // route by template, it substitutes a concrete id and builds a real URL (ids.ts:5-11).
       //
-      // KNOWN, PREDICTED PARITY FAIL — derived from source, not discovered at run time. C#
-      // `PlatformOrganizationDetail.Counts` (PlatformOrganizationsReadModels.cs:125) serialises to
-      // `counts` (JsonSerializerDefaults.Web camelCase; that file contains zero [JsonPropertyName] and
-      // Program.cs never calls ConfigureHttpJsonOptions), while TS returns Prisma's `_count`
-      // (organizations.ts:97). normalize.ts offers only dropNullish + sortArraysBy — no key rename —
-      // so this WILL report a real FAIL until the C# record is corrected. The `list` endpoint above
-      // has the SAME class of divergence three times over (`counts`/`_count`,
-      // `lastLoginAt`/`users[].lastLoginAt`, `pendingInvoices`/`invoices` —
-      // PlatformOrganizationsReadModels.cs:47-51 vs organizations.ts:64-77) and has simply never been
-      // observed, because `verify organization` has never successfully run (the #205 probeRole bug).
-      // All FOUR are filed as issue #211 (verified to exist, not asserted — the previous version of
-      // this sentence said "filed as their own issue" in the past tense when no such issue existed).
-      // Fixing them is NOT this change, and dropping `tsProcedure` here to dodge a known-red would be
-      // exactly the "make the gate unable to fail" move this harness exists to prevent.
+      // #211 RESOLVED 2026-08-11 — the four predicted divergences this comment used to describe
+      // (`counts`/`_count` on BOTH endpoints, `lastLoginAt` vs `users[].lastLoginAt`,
+      // `pendingInvoices` vs `invoices`) are fixed in the C# read models, TS-side unchanged: TS is the
+      // live path, both C# flags are dark, so TS is the contract and C# moved.
+      //
+      // WHAT THE RUN ACTUALLY SHOWED: NOTHING YET. `verify organization` still has not been run
+      // against production, because both `Platform__PlatformOrganizations{Read,Write}Enabled` are dark
+      // and the harness is fail-closed against a dark backend by design. So these shapes remain
+      // DERIVED FROM SOURCE and never observed at run time — exactly the epistemic status they had
+      // before, and the reason the fix is pinned by serialization unit tests
+      // (PlatformOrganizationsReadModelsSerializationTests.cs) rather than by a green parity report.
+      // Do not restate this as "verified in prod".
+      //
+      // Fixing #211 also surfaced SIX divergences the issue never listed. Counted, then enumerated —
+      // an earlier version of this sentence said "five" and then listed four:
+      //   1. `settings` dropped from every organization object (TS uses `include`, not `select`, so
+      //      every scalar is on the wire, and `settings` is NOT NULL — `dropNullish` cannot mask it).
+      //   2. `deletedAt` dropped from the same objects.
+      //   3. Every DateTime serialised without the trailing `Z` (Npgsql returns `timestamp without time
+      //      zone` as DateTimeKind.Unspecified and STJ then omits the Z, while TS goes through
+      //      `Date.prototype.toISOString()`).
+      //   4. 27 guaranteed-non-null scalars (plus 11 nullable) dropped across the six nested records the
+      //      TS pulls with bare `include`. COUNTED, not estimated: companies 8 + business units 6 +
+      //      teams 6 + subscription 1 + feature flags 3 + billing profile 3. This read "29" until
+      //      2026-08-11, inherited from prose whose own table summed to 27.
+      //   5. The pending-invoice array was UNORDERED in both stacks, so any org with 2+ pending invoices
+      //      could diff on row order alone (fixed on both sides: `orderBy: { id: 'asc' }` in TS, an
+      //      ordinal-string OrderBy in C#).
+      //   6. `sortBy: 'plan'` returned a COMPLETELY DIFFERENT ORDER. `organizations.plan` is the native
+      //      `"OrgPlan"` enum, which Postgres sorts by DECLARATION order (trial, starter, professional,
+      //      enterprise); C# mapped it to a string and sorted with `Comparer<string>.Default`, measured
+      //      as enterprise, professional, starter, trial — the exact reverse. Fixed in
+      //      PlatformOrganizationsReadRepository's `PlanRank`. NOTE THAT THIS SURFACE COULD NEVER HAVE
+      //      CAUGHT IT: `list` is registered with `input: {}`, so `sortBy` is never sent. `sortBy:
+      //      'name'` remains an OPEN residual — Postgres uses the DB collation, C# the process culture,
+      //      and the repo does not record which collation prod uses. Filed as #214.
+      // Any ONE of these was a guaranteed FAIL or a wrong page, so the four named in #211 were an
+      // undercount, not the whole set.
       //
       // OPERATIONAL CONSEQUENCE 1 — THIS SURFACE IS NO LONGER DB-FREE, AND THE DEPENDENCY IS WIDER
       // THAN THIS ENDPOINT. `cli.ts`'s `needsResources` now fires for `organization`, which calls
@@ -333,10 +357,14 @@ export const SURFACES: Record<string, Surface> = {
       // OPERATIONAL CONSEQUENCE 2 — a parity FAIL PRINTS DIFF VALUES (checks/parity.ts → normalize.ts
       // `DiffEntry {path, a, b}` → report.ts → console.log), and this is the first registered read
       // whose payload carries user records: `users[].email`, `firstName`, `lastName`, `jobTitle`,
-      // `lastLoginAt` (organizations.ts:93). Against the seeded `__parity_a` org that data is
+      // `lastLoginAt` (organizations.ts:150-187). Against the seeded `__parity_a` org that data is
       // synthetic, so this is not a leak — but the harness now has a stdout/CI-log path for
-      // user-shaped records that it did not have before, and the predicted-red above GUARANTEES the
-      // diff branch executes. Do not point this endpoint at a real tenant's org id in a logged CI job.
+      // user-shaped records that it did not have before. This argument USED TO REST on a
+      // predicted-red block that guaranteed the diff branch would execute; that block was removed when
+      // #211 was fixed, so the guarantee is gone and the hazard is not. It is now CONDITIONAL and still
+      // real: these shapes have never been observed at run time (both flags are dark), so a FAIL on
+      // first run is entirely possible, and a FAIL on this surface prints user-shaped records.
+      // Do not point this endpoint at a real tenant's org id in a logged CI job.
       {
         name: 'detail',
         csharpPath: '/platform/organizations/{id}',
@@ -346,8 +374,17 @@ export const SURFACES: Record<string, Surface> = {
         noTenantBoundaryForCaller: true,
         expectedByRole: { platform_owner: 200, org_admin: 403 },
         // sortArraysBy is NOT cosmetic: both stacks order `users` by createdAt desc
-        // (organizations.ts:93; PlatformOrganizationsReadRepository.cs:175-177) and seeded users can
+        // (organizations.ts:119-131; PlatformOrganizationsReadRepository.cs) and seeded users can
         // share a created_at, making tie order nondeterministic across the two stacks.
+        //
+        // WHAT IT COSTS, stated because it is not free: `sortArraysBy` re-sorts EVERY array at EVERY
+        // depth before the diff, so the users ordering this comment justifies is no longer COMPARED —
+        // a C# side that dropped or reversed its OrderByDescending(u => u.CreatedAt) would still be
+        // green here. Same for `companies[]`/`businessUnits[]`/`teams[]`, which neither stack orders.
+        // The list endpoint's equivalent problem was solved the better way instead (a deterministic
+        // `orderBy: { id: 'asc' }` in BOTH stacks, so no normalization is needed). Filed as #215; the
+        // C#-side ordering is pinned meanwhile by PlatformOrganizationsReadRepositoryDetailTests, which
+        // is a C#-only pin and not a cross-stack comparison.
         normalize: { dropNullish: true, sortArraysBy: 'id' },
       },
     ],

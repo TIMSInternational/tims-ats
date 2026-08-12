@@ -4,7 +4,7 @@ namespace Tims.UnitTests.PlatformOrganizations;
 
 /// <summary>
 /// Phase-5 slice 21 (issue #76) — the pure rules of the platform organization CREATE surface, pinned
-/// against the TS they port (<c>routers/platform/organizations.ts:104-169</c>).
+/// against the TS they port (<c>routers/platform/organizations.ts:149-242</c>).
 ///
 /// <para>Two centres of gravity. The first is <c>audit_logs.changes</c>: TS writes
 /// <c>JSON.stringify({ name, slug, plan })</c> into a Prisma <c>Json?</c> field, which stores a jsonb STRING
@@ -12,14 +12,14 @@ namespace Tims.UnitTests.PlatformOrganizations;
 /// string scalar verbatim. Key order, spacing and escaping are therefore all part of the stored value, and
 /// each is a way this port could drift while every other test stays green.</para>
 ///
-/// <para>The second is <c>notify</c>. <c>organizations.ts:149</c> awaits it with no <c>try</c> and no
+/// <para>The second is <c>notify</c>. <c>organizations.ts:220</c> awaits it with no <c>try</c> and no
 /// <c>.catch</c>, so a fan-out failure is a 500 AFTER the seven-table transaction has committed. That is the
 /// correction issue #76 makes, re-read from source, and the propagation test below is its unit-level pin —
 /// a port that "helpfully" swallowed the exception would be greener and wrong.</para>
 ///
 /// <para><b>Honest limitation, carried across from slice 20.</b> These tests pin the C# EMIT order. They
 /// cannot prove it equals the TS literal's order, because no Zod runs here. That half was verified by
-/// reading <c>organizations.ts:164</c>, where the payload is a hard-coded object literal — so unlike the
+/// reading <c>organizations.ts:236</c>, where the payload is a hard-coded object literal — so unlike the
 /// update payload, the order does not depend on Zod's schema iteration at all.</para>
 /// </summary>
 public class PlatformOrganizationsCreateUseCaseTests
@@ -37,7 +37,7 @@ public class PlatformOrganizationsCreateUseCaseTests
     [Fact]
     public void BuildCreateChangesJson_emits_name_then_slug_then_plan_and_nothing_else()
     {
-        // The order is fixed by the object LITERAL at organizations.ts:164, not by Zod's declaration order.
+        // The order is fixed by the object LITERAL at organizations.ts:236, not by Zod's declaration order.
         // adminEmail and billingEmail are absent — the payload is not the parse output.
         Assert.Equal(
             """{"name":"Acme","slug":"acme","plan":"trial"}""",
@@ -95,7 +95,7 @@ public class PlatformOrganizationsCreateUseCaseTests
             PlatformOrganizationsCreateUseCase.BuildCreateChangesJson(Input(name: "say \"hi\"\n\\done")));
     }
 
-    // ── Zod bounds (organizations.ts:105-111). Reject, never clamp ───────────────────────────────
+    // ── Zod bounds (organizations.ts:150-182). Reject, never clamp ───────────────────────────────
 
     [Theory]
     [InlineData(2, true)]
@@ -168,12 +168,32 @@ public class PlatformOrganizationsCreateUseCaseTests
     }
 
     [Fact]
-    public void IsValidCreateInput_bounds_neither_email_because_Zod_does_not()
+    public void IsValidCreateInput_rejects_an_email_longer_than_254_chars_RFC5321()
     {
-        // organizations.ts:109-110 has no .max(). Ported as-is; the missing bound is issue #207, not
-        // something to fix inside a port. THIS ASSERTION INVERTS when that lands.
+        // #207 LANDED, and this assertion INVERTED as its predecessor said it would: it used to be
+        // `Assert.True`, pinning the ported-as-is absence of a bound. Zod now carries `.max(254)` on
+        // both emails (organizations.ts:179-180) and this is the C# half of that same change.
         var long_ = new string('a', 5000) + "@example.com";
-        Assert.True(PlatformOrganizationsCreateUseCase.IsValidCreateInput(Input(adminEmail: long_)));
+        Assert.False(PlatformOrganizationsCreateUseCase.IsValidCreateInput(Input(adminEmail: long_)));
+        Assert.False(PlatformOrganizationsCreateUseCase.IsValidCreateInput(Input(billingEmail: long_)));
+    }
+
+    [Fact]
+    public void IsValidCreateInput_bounds_both_emails_at_exactly_254_inclusive()
+    {
+        // The BOUNDARY, not just a wildly-long string: an off-by-one (`>=` instead of `>`, or 255) is
+        // the realistic way this bound goes wrong, and a 5000-char probe cannot see it.
+        // "@example.com" is 12 chars, so 242 + 12 == 254 and 243 + 12 == 255.
+        var at254 = new string('a', 242) + "@example.com";
+        var at255 = new string('a', 243) + "@example.com";
+
+        Assert.Equal(254, at254.Length);
+        Assert.Equal(255, at255.Length);
+
+        Assert.True(PlatformOrganizationsCreateUseCase.IsValidCreateInput(Input(adminEmail: at254)));
+        Assert.False(PlatformOrganizationsCreateUseCase.IsValidCreateInput(Input(adminEmail: at255)));
+        Assert.True(PlatformOrganizationsCreateUseCase.IsValidCreateInput(Input(billingEmail: at254)));
+        Assert.False(PlatformOrganizationsCreateUseCase.IsValidCreateInput(Input(billingEmail: at255)));
     }
 
     // ── z.string().email(), as Zod 3.25.76 actually implements it ────────────────────────────────
@@ -209,7 +229,7 @@ public class PlatformOrganizationsCreateUseCaseTests
         Assert.Equal(expected, PlatformOrganizationsCreateUseCase.IsValidEmail(value));
     }
 
-    // ── derived values (organizations.ts:119, :141-142) ──────────────────────────────────────────
+    // ── derived values (organizations.ts:190, :141-142) ──────────────────────────────────────────
 
     [Fact]
     public void ResolveBillingEmail_reproduces_the_JS_or_operator_not_the_nullish_one()
@@ -241,7 +261,7 @@ public class PlatformOrganizationsCreateUseCaseTests
         Assert.Null(PlatformOrganizationsCreateUseCase.ResolveTrialEndsAt("enterprise", now));
     }
 
-    // ── the notification payload (organizations.ts:149-155) ──────────────────────────────────────
+    // ── the notification payload (organizations.ts:220-226) ──────────────────────────────────────
 
     [Fact]
     public void BuildCreatedNotification_reproduces_the_TS_copy_verbatim()
@@ -263,7 +283,7 @@ public class PlatformOrganizationsCreateUseCaseTests
     [Fact]
     public void BuildCreatedNotification_interpolates_the_DB_returned_name_not_the_input()
     {
-        // organizations.ts:151 uses `org.name` — the value the row came back with.
+        // organizations.ts:222 uses `org.name` — the value the row came back with.
         var notification = PlatformOrganizationsCreateUseCase.BuildCreatedNotification(Row(Guid.NewGuid(), "Stored Name"));
 
         Assert.Equal("Nueva organizacion creada: Stored Name", notification.Title);
@@ -324,7 +344,7 @@ public class PlatformOrganizationsCreateUseCaseTests
     [Fact]
     public async Task A_notify_failure_PROPAGATES_because_the_TS_awaits_it_uncaught()
     {
-        // THE pin on issue #76's correction, re-read from source: organizations.ts:149 is
+        // THE pin on issue #76's correction, re-read from source: organizations.ts:220 is
         // `await notify({ ... })` with no try and no .catch. It is NOT best-effort. A port that wrapped this
         // in try/catch would be greener and wrong — the operator must see the 500 the TS gives them, after a
         // create that has already committed.

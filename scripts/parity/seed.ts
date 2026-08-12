@@ -2245,6 +2245,82 @@ export async function resolvePlatformOrganizationsWriteResources(
   }
 }
 
+// ── platform organizations CREATE (#208) ─────────────────────────────────────
+/**
+ * The create-surface marker slug. FIXED, not random, and that is load-bearing rather than cosmetic:
+ * `organizations.slug` is `@unique` (packages/db/prisma/schema/organization.prisma:33), so without a
+ * deterministic slug the cleanup below could not find last run's org, and run N+1 would be a
+ * `409 slug_taken` instead of a create. The cleanup is what makes this surface RE-RUNNABLE AT ALL.
+ *
+ * Prefixed `__parity` so `teardown`'s sweep finds it under the same convention as ORG_SLUGS (:78).
+ */
+export const WRITE_ORG_CREATE_SLUG = '__parity_create';
+/** The created org's name — asserted in both the response check and the DB read-back. */
+export const WRITE_ORG_CREATE_NAME = 'Parity Write Org Create';
+
+/** The create surface's resolved ids. No `orgA`: the organization this surface writes is
+ *  MANUFACTURED by the call, not addressed by it, so there is no pre-existing target to resolve. */
+export interface PlatformOrganizationsCreateResources {
+  /** org-A `org_admin` — the denied role (kept for symmetry with the other platform-owner surfaces
+   *  and so a future deny read-back can key on it without re-plumbing the resolver). */
+  orgAdminUserId: string;
+  /** the seeded platform owner — the actor the `org_created` audit row must be attributed to. */
+  platformOwnerUserId: string;
+}
+
+/**
+ * PRIOR-RUN CLEANUP — the whole reason #208 could be answered "register it" rather than "too risky".
+ *
+ * `createOrganization` is the only registered write that provisions a NEW TENANT: one run inserts into
+ * NINE tables (organizations, companies, business_units, teams, org_entitlements ×7, roles,
+ * subscriptions, audit_logs, notifications). Unlike every other write surface's artefacts, those rows
+ * land OUTSIDE the two orgs `teardown` resolves by slug, so nothing pre-existing would ever remove
+ * them. Deleting last run's org here (the 4-precedent marker pattern — WRITE_CYCLE_MARKER :1439,
+ * succession :1604, engagement :1987, ninebox :2128) plus adding the slug to `teardown`'s sweep is
+ * what bounds the residue at exactly one organization.
+ *
+ * Deliberately BEFORE the run, not after: a post-run hook would delete the very rows a human needs to
+ * inspect when a run goes red. The harness also has no post-run hook today (cli.ts cmdVerifyWrite ends
+ * at `close()`), so cleanup-before is both the supported shape and the better one.
+ */
+export async function ensurePlatformOrganizationsCreatePreconditions(cfg: HarnessConfig): Promise<void> {
+  const db = makeDbClient(cfg);
+  await db.connect();
+  try {
+    // notifications FIRST. `notifications.organization_id` carries an INDEX but NO FK CONSTRAINT
+    // (baseline/prod-public-schema.sql:4739 index, :6201 declares user_id as the ONLY FK), so unlike
+    // every other child it does NOT cascade with the organization delete below. The fan-out targets
+    // every REAL platform owner (PlatformOwnerNotifier: unfiltered `WHERE is_platform_owner`), whose
+    // rows no user-scoped cascade in `teardown` reaches either.
+    await db.query(
+      `DELETE FROM notifications WHERE organization_id IN (SELECT id FROM organizations WHERE slug = $1)`,
+      [WRITE_ORG_CREATE_SLUG],
+    );
+    // One statement cascades the other eight tables: companies, org_entitlements, roles,
+    // subscriptions and audit_logs are `organization_id ... ON DELETE CASCADE`; business_units and
+    // teams follow transitively via company_id/business_unit_id.
+    await db.query('DELETE FROM organizations WHERE slug = $1', [WRITE_ORG_CREATE_SLUG]);
+  } finally {
+    await db.end();
+  }
+}
+
+/** Read-only resolution of the create surface's ids from the seeded DB. */
+export async function resolvePlatformOrganizationsCreateResources(
+  cfg: HarnessConfig,
+): Promise<PlatformOrganizationsCreateResources> {
+  const db = makeDbClient(cfg);
+  await db.connect();
+  try {
+    return {
+      orgAdminUserId: await userIdByEmail(db, 'parity+a-org_admin@tims.test'),
+      platformOwnerUserId: await userIdByEmail(db, 'parity+a-platform_owner@tims.test'),
+    };
+  } finally {
+    await db.end();
+  }
+}
+
 /** Read-only resolution of the access-review write surface's ids from the seeded DB. */
 export async function resolveAccessReviewWriteResources(cfg: HarnessConfig): Promise<AccessReviewWriteResources> {
   const db = makeDbClient(cfg);
@@ -2476,7 +2552,12 @@ export async function seed(cfg: HarnessConfig, roles: string[]): Promise<SeedRes
 export async function teardown(cfg: HarnessConfig): Promise<void> {
   const admin = makeAdminClient(cfg);
   const db = makeDbClient(cfg);
-  const slugs = ORG_KEYS.map((k) => ORG_SLUGS[k]);
+  // The two seeded orgs PLUS the create surface's marker org (#208). Every DELETE below is keyed
+  // `organization_id = ANY(orgIds)`, so an org outside this list is unreachable by teardown — which is
+  // precisely how `createOrganization` differs IN KIND from the other write surfaces, whose artefacts
+  // all land inside a tenant this list already owns. Including the marker slug closes that gap; without
+  // it a created org and its eight child tables would survive every teardown forever.
+  const slugs = [...ORG_KEYS.map((k) => ORG_SLUGS[k]), WRITE_ORG_CREATE_SLUG];
 
   await db.connect();
   try {
@@ -2500,6 +2581,12 @@ export async function teardown(cfg: HarnessConfig): Promise<void> {
     //    team chain MUST go before the users delete (step 4) or that delete could hit a
     //    leader FK. role_permissions → roles (Cascade), swept here explicitly for clarity.
     if (orgIds.length) {
+      // notifications — swept EXPLICITLY because nothing else here reaches them. `organization_id`
+      // has an index but NO FK (baseline:4739 / :6201), so it neither cascades on the organizations
+      // delete at step 5 nor is covered by the users delete at step 3 for the rows belonging to REAL
+      // platform owners (the create surface's notify fan-out targets every `is_platform_owner` user,
+      // not just the seeded parity one). Must precede step 5 regardless of ordering elsewhere.
+      await db.query('DELETE FROM notifications WHERE organization_id = ANY($1)', [orgIds]);
       const teamRows = await db.query<IdRow>('SELECT id FROM teams WHERE organization_id = ANY($1)', [orgIds]);
       const teamIds = teamRows.rows.map((r) => r.id);
       if (teamIds.length) await db.query('DELETE FROM user_teams WHERE team_id = ANY($1)', [teamIds]);
@@ -2562,6 +2649,17 @@ export async function teardown(cfg: HarnessConfig): Promise<void> {
       // dei fixture (org A). user_id FK is ON DELETE CASCADE (would be swept by the users delete
       // below regardless), but swept explicitly here for clarity, matching this file's convention.
       await db.query('DELETE FROM employee_demographics WHERE organization_id = ANY($1)', [orgIds]);
+      // access-review write fixture (org A). ADDED 2026-08-11: teardown NEVER deleted these, and
+      // `access_reviews_reviewer_id_fkey` is ON DELETE **RESTRICT**
+      // (baseline/prod-public-schema.sql:5571), not CASCADE like almost everything else here. The
+      // reviewer of every row `verify-write access-review` inserts is
+      // `parity+a-platform_owner@tims.test`, which is in `userIds` — so the users delete below threw an
+      // FK violation and teardown aborted BEFORE the organizations delete, having already swept the
+      // team/business-unit/company rows. That left a half-swept database and, since #208 registered the
+      // create surface, a surviving marker org that `seed --teardown` is documented as the escape hatch
+      // for. The organization_id FK IS cascade, so this is belt-and-braces for that path and load-bearing
+      // for the users path.
+      await db.query('DELETE FROM access_reviews WHERE organization_id = ANY($1)', [orgIds]);
     }
     // role_permissions grant rows (permissions themselves are a global catalog — never deleted).
     if (roleIds.length) await db.query('DELETE FROM role_permissions WHERE role_id = ANY($1)', [roleIds]);

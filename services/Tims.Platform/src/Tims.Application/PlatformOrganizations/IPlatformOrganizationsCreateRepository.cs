@@ -2,7 +2,7 @@ namespace Tims.Application.PlatformOrganizations;
 
 /// <summary>
 /// The persistence port for the platform-owner organization CREATE surface (Phase-5 slice 21, issue #76) —
-/// the C# port of <c>createOrganization</c> (<c>routers/platform/organizations.ts:104-169</c>).
+/// the C# port of <c>createOrganization</c> (<c>routers/platform/organizations.ts:149-242</c>).
 ///
 /// <para><b>ONE method for SEVEN tables plus the audit row, on purpose.</b> The TS side wraps
 /// <c>organizations</c> + <c>companies</c> + <c>business_units</c> + <c>teams</c> + <c>org_entitlements</c>
@@ -65,7 +65,7 @@ public interface IPlatformOrganizationsCreateRepository
     /// not undo a completed creation — the deliberate asymmetry with the audit write, which IS evidence the
     /// action occurred.</para>
     ///
-    /// <para><b>The third is a parity requirement, re-read from source.</b> <c>organizations.ts:149</c> is
+    /// <para><b>The third is a parity requirement, re-read from source.</b> <c>organizations.ts:220</c> is
     /// <c>await notify({ ... })</c> with no <c>try</c> and no <c>.catch</c>. It is NOT best-effort: a
     /// notify failure returns 500 to the operator AFTER the seven-table transaction has committed, and —
     /// because the TS audit write is the NEXT statement — leaves the organization committed with no

@@ -86,7 +86,7 @@ Everything routes through the Prisma `auditLog.create` delegate; there is no raw
 | 8–9   | `packages/api/src/routers/platform/entitlements.ts:57,79`        | `entitlement_set`, `entitlement_plan_assigned`                                                            | `.catch`                        | `ctx.user.id`          |
 | 10    | `packages/api/src/routers/platform/invoices.ts:205`              | `invoice_status_*`                                                                                        | **uncaught**                    | **missing**            |
 | 11    | `packages/api/src/routers/platform/invoices.ts:264`              | `payment_reminder_sent`                                                                                   | **uncaught**                    | **missing**            |
-| 12–14 | `packages/api/src/routers/platform/organizations.ts:157,198,230` | `org_created/updated/suspended/activated`                                                                 | `.catch`                        | `ctx.user.id`          |
+| 12–14 | `packages/api/src/routers/platform/organizations.ts:228,275,309` | `org_created/updated/suspended/activated`                                                                 | `.catch`                        | `ctx.user.id`          |
 | 15    | `packages/api/src/routers/platform/subscriptions.ts:291`         | `dunning_reminder_sent`                                                                                   | **uncaught**                    | **missing**            |
 | 16    | `packages/api/src/routers/platform/system.ts:103`                | `bulk_notification_sent`                                                                                  | `.catch`                        | `ctx.user.id`          |
 | 17    | `packages/api/src/routers/platform/system.ts:312`                | `feature_flag_enabled/disabled`                                                                           | `.catch`                        | `ctx.user.id`          |
@@ -133,7 +133,7 @@ document that needs a live query before it is stated as fact.
 
 **Impersonation attribution.** **13** of the 23 sites use bare `ctx.user.id`, not the `impersonatorId ?? id`
 form that CB-1c introduced at `data-requests.ts:273`. The 13 are exactly the rows the table above marks
-`ctx.user.id`: `entitlements.ts:57,79` · `organizations.ts:157,198,230` · `system.ts:103,312` ·
+`ctx.user.id`: `entitlements.ts:57,79` · `organizations.ts:228,275,309` · `system.ts:103,312` ·
 `usage-billing.ts:76` · `users.ts:157,183,232,281,326`. The other 10 split as 4 `actorId`-missing (#6, #10,
 #11, #15) and 6 already-correct forms (`trpc.ts` and `data-requests.ts` use `impersonatorId ?? id`,
 `security-audit.ts` and `billing.repository.ts` take a caller-supplied actor, the two impersonate routes use

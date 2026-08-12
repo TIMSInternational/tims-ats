@@ -110,7 +110,7 @@ public static class PlatformOrganizationsWriteEndpoints
                         return Results.StatusCode(StatusCodes.Status401Unauthorized);
                     }
 
-                    // `suspend` is a REQUIRED boolean (organizations.ts:213) — absent is a 400, not a default.
+                    // `suspend` is a REQUIRED boolean (organizations.ts:292) — absent is a 400, not a default.
                     // Defaulting it either way would silently pick a destructive direction.
                     var (readOk, node) = await TryReadJsonAsync(httpContext, cancellationToken);
                     if (!readOk || !TryReadSuspendFlag(node, out var suspend))
@@ -344,7 +344,7 @@ public static class PlatformOrganizationsWriteEndpoints
         public string Currency { get; init; } = string.Empty;
     }
 
-    /// <summary><c>suspend</c> genuinely IS required (<c>organizations.ts:213</c>) — absent is a 400, which
+    /// <summary><c>suspend</c> genuinely IS required (<c>organizations.ts:292</c>) — absent is a 400, which
     /// is why this one carries <see cref="RequiredAttribute"/> while none of the update fields does.</summary>
     public sealed class SuspendOrganizationBody
     {

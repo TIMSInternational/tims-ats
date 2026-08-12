@@ -162,7 +162,7 @@ public sealed class PlatformOrganizationsCreateRepositoryTests(PlatformOrganizat
             entitlements, e => e.ModuleCode == PlatformOrganizationsCreateFixture.OtherPlanOnlyModule);
     }
 
-    // ── R4: the role (organizations.ts:133-135) ──────────────────────────────────────────────────
+    // ── R4: the role (organizations.ts:204-206) ──────────────────────────────────────────────────
 
     [Fact]
     public async Task CreateAsync_creates_one_system_role_with_no_permissions_and_no_members()
@@ -194,7 +194,7 @@ public sealed class PlatformOrganizationsCreateRepositoryTests(PlatformOrganizat
         Assert.Equal(0, await fixture.CountRolePermissionsAsync());
     }
 
-    // ── R5 / R6: the subscription (organizations.ts:137-144) ─────────────────────────────────────
+    // ── R5 / R6: the subscription (organizations.ts:208-215) ─────────────────────────────────────
 
     [Fact]
     public async Task CreateAsync_opens_a_trialing_subscription_ending_in_fourteen_days_for_the_trial_plan()
@@ -272,7 +272,7 @@ public sealed class PlatformOrganizationsCreateRepositoryTests(PlatformOrganizat
         Assert.Equal(
             $$"""{"name":"Auditada","slug":"{{input.Slug}}","plan":"starter"}""",
             audit.ChangesText);
-        // adminEmail and billingEmail are ABSENT from the payload — organizations.ts:164 is a hard-coded
+        // adminEmail and billingEmail are ABSENT from the payload — organizations.ts:236 is a hard-coded
         // object literal, not the Zod parse output.
         Assert.DoesNotContain("adminEmail", audit.ChangesText!, StringComparison.Ordinal);
         Assert.DoesNotContain("billingEmail", audit.ChangesText, StringComparison.Ordinal);
@@ -328,7 +328,7 @@ public sealed class PlatformOrganizationsCreateRepositoryTests(PlatformOrganizat
         Assert.Contains("row-level security", thrown.ToString(), StringComparison.OrdinalIgnoreCase);
     }
 
-    // ── R10: the billingEmail fallback (organizations.ts:119, JS `||` not `??`) ──────────────────
+    // ── R10: the billingEmail fallback (organizations.ts:190, JS `||` not `??`) ──────────────────
 
     [Theory]
     [InlineData(null, "admin@tims.test")]
@@ -354,7 +354,7 @@ public sealed class PlatformOrganizationsCreateRepositoryTests(PlatformOrganizat
     [Fact]
     public async Task A_notify_failure_propagates_but_leaves_the_whole_creation_committed()
     {
-        // organizations.ts:149 awaits notify with NO try and NO .catch, so a fan-out failure is a 500 to the
+        // organizations.ts:220 awaits notify with NO try and NO .catch, so a fan-out failure is a 500 to the
         // operator AFTER the transaction has committed. That half is parity.
         //
         // The other half is the recorded DIVERGENCE, and it is asserted here rather than merely commented:
