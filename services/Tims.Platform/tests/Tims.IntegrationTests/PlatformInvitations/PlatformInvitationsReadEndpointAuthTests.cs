@@ -479,17 +479,17 @@ public sealed class PlatformInvitationsReadEndpointAuthTests(PlatformInvitations
     /// <summary>
     /// The exact header and the exact hostile row, byte for byte.
     ///
-    /// <para><b>The row asserts a DELIBERATELY REPRODUCED VULNERABILITY, and that is why it is spelled out
-    /// rather than loosely matched.</b> <c>exportInvitationsCsv</c> hand-rolls its CSV and quotes only
-    /// <c>organizationName</c>; it does NOT use <c>csvCell</c>/<c>CsvCell</c>, so a leading <c>=</c> is
-    /// emitted RAW and executes when the file is opened in Excel or Sheets (CWE-1236). Reproducing it is the
-    /// parity requirement — a C#-only hardening is invisible while the flag is dark and turns the parity
-    /// diff from "is the port right" into "which stack is right". If someone hardens the C# side, THIS
-    /// assertion fails, which is the intended forcing function: the fix belongs in both stacks in one
-    /// change, and it is filed as its own issue.</para>
+    /// <para><b>This assertion was the inverse of itself until 2026-08-12.</b> It used to pin a DELIBERATELY
+    /// REPRODUCED vulnerability: <c>exportInvitationsCsv</c> hand-rolled its CSV and quoted only
+    /// <c>organizationName</c>, so a leading <c>=</c> was emitted RAW and executed when the file was opened
+    /// in Excel or Sheets (CWE-1236). Reproducing it was the parity requirement, and this test was the
+    /// forcing function that made a C#-only hardening fail. The fix then landed in BOTH stacks in one commit
+    /// (<c>invitations.ts</c> imports <c>csvRow</c>; <c>BuildCsv</c> calls <c>CsvCell.Row</c>), so the
+    /// assertion now pins the HARDENED output. Byte-parity is preserved because both sides changed
+    /// together.</para>
     /// </summary>
     [Fact]
-    public async Task Export_CsvMatchesTsByteForByte_IncludingTheUnhardenedCells()
+    public async Task Export_CsvMatchesTsByteForByte_WithEveryCellHardened()
     {
         await using var factory = EnabledFactory();
         using var client = factory.CreateClient();
@@ -501,20 +501,29 @@ public sealed class PlatformInvitationsReadEndpointAuthTests(PlatformInvitations
 
         var lines = csv!.Split('\n');
         Assert.Equal(6, lines.Length); // header + 5 rows
-        Assert.Equal("Email,Tipo,Organizacion,Rol,Estado,Enviada,Expira,Aceptada", lines[0]);
+        Assert.Equal(
+            "\"Email\",\"Tipo\",\"Organizacion\",\"Rol\",\"Estado\",\"Enviada\",\"Expira\",\"Aceptada\"",
+            lines[0]);
 
         // created_at DESC ⇒ the revoked row is first. Every cell of it is load-bearing:
-        //   organizationName `=1+1", Inc` → quoted, inner quote doubled, leading `=` NOT neutralised
-        //   role_slug ''                  → "-", because TS uses `|| '-'` (falsy), not `?? '-'`
-        //   sent_at / accepted_at NULL    → "-"
+        //   organizationName `=1+1", Inc` → quoted, inner quote doubled, leading `=` NEUTRALISED with `'`
+        //   role_slug ''                  → `-`, because TS uses `|| '-'` (falsy), not `?? '-'`
+        //   sent_at / accepted_at NULL    → `-`
         //   expires_at                    → the UTC date part only
-        Assert.Equal("revoked@acme.test,user,\"=1+1\"\", Inc\",-,revoked,-,2026-08-01,-", lines[1]);
+        // …and every `-` placeholder then emits as `'-`, because `-` is ITSELF one of csvCell's
+        // formula-trigger characters. Verified against the real TS module rather than inferred:
+        // `csvRow(['-'])` returns `"'-"`. Both stacks agree, and it is a visible change to the file.
+        Assert.Equal(
+            "\"revoked@acme.test\",\"user\",\"'=1+1\"\", Inc\",\"'-\",\"revoked\",\"'-\",\"2026-08-01\",\"'-\"",
+            lines[1]);
 
-        // The neutralising apostrophe CsvCell would have prepended must be absent. A wide region on purpose:
-        // asserting over the whole CSV rather than one cell, so hardening ANY cell trips this.
-        Assert.DoesNotContain("'=", csv, StringComparison.Ordinal);
-        // ...and no cell other than Organizacion is quoted.
-        Assert.Equal("orgless@new.test,org_admin,\"Newco Pending\",-,expired,2026-07-04,2026-07-11,-", lines[2]);
+        // No formula trigger may survive unneutralised anywhere in the payload. A wide region on purpose:
+        // asserting over the whole CSV rather than one cell, so un-hardening ANY cell trips this.
+        Assert.DoesNotContain(",=", csv, StringComparison.Ordinal);
+        // ...and EVERY cell is quoted now, not just Organizacion.
+        Assert.Equal(
+            "\"orgless@new.test\",\"org_admin\",\"Newco Pending\",\"'-\",\"expired\",\"2026-07-04\",\"2026-07-11\",\"'-\"",
+            lines[2]);
     }
 
     /// <summary>

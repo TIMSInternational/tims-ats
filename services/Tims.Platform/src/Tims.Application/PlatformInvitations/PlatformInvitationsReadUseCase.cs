@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using Tims.Domain.Csv;
 
 namespace Tims.Application.PlatformInvitations;
 
@@ -43,7 +44,15 @@ public sealed class PlatformInvitationsReadUseCase(IPlatformInvitationsReadRepos
         new(StringComparer.Ordinal) { "pending", "sent", "accepted", "expired", "revoked" };
 
     /// <summary>The <c>exportInvitationsCsv</c> header, byte-for-byte. Unaccented, as the TS is.</summary>
-    public const string CsvHeader = "Email,Tipo,Organizacion,Rol,Estado,Enviada,Expira,Aceptada";
+    /// <summary>
+    /// The header row, DERIVED from <see cref="CsvCell.Row"/> rather than written as a literal, so it can
+    /// never drift from the escaping the data rows use. It was a plain <c>const</c> literal until the
+    /// 2026-08-12 both-stacks CSV hardening; a literal would now have to be hand-kept in sync with the
+    /// helper, which is exactly how a header/row quoting mismatch gets reintroduced. TS builds it the same
+    /// way — <c>csvRow([...])</c> over the same eight labels.
+    /// </summary>
+    public static readonly string CsvHeader =
+        CsvCell.Row(["Email", "Tipo", "Organizacion", "Rol", "Estado", "Enviada", "Expira", "Aceptada"]);
 
     /// <summary>
     /// A <c>page</c>/<c>limit</c> pair whose OFFSET cannot be expressed as an <see cref="int"/>.
@@ -114,56 +123,48 @@ public sealed class PlatformInvitationsReadUseCase(IPlatformInvitationsReadRepos
     }
 
     /// <summary>
-    /// Builds the CSV EXACTLY as <c>exportInvitationsCsv</c> does, which means deliberately NOT using
-    /// <c>Tims.Domain.Csv.CsvCell</c>.
+    /// Builds the CSV EXACTLY as <c>exportInvitationsCsv</c> does — every cell through
+    /// <see cref="Tims.Domain.Csv.CsvCell"/>, the port of <c>packages/shared/src/csv.ts</c>.
     ///
-    /// <para><b>This is the single most counter-intuitive line of the slice, so it is spelled out.</b>
-    /// <c>CsvCell.Row</c> is the port of <c>packages/shared/src/csv.ts</c> and it quotes EVERY cell plus
-    /// neutralises a leading <c>=+-@</c> (CWE-1236 formula injection). The audit-log export uses it because
-    /// its TS side uses <c>csvRow</c>. <c>exportInvitationsCsv</c> does NOT: it hand-rolls the row and
-    /// quotes exactly ONE field, <c>organizationName</c>. <c>invitations.ts</c> imports only
-    /// <c>getAppUrl</c> from <c>@tims/shared</c> — never <c>csvCell</c>. Using the shared helper here would
-    /// emit <c>"a@b.com","user",…</c> where TS emits <c>a@b.com,user,…</c>: byte-different on every row of
-    /// every export, i.e. a guaranteed parity FAIL.</para>
+    /// <para><b>Both stacks were changed together, and the history matters.</b> Until 2026-08-12 the TS
+    /// export hand-rolled its row and quoted exactly ONE field (<c>organizationName</c>), so it had no
+    /// formula-injection defence (CWE-1236) and a comma in any other field silently shifted that row's
+    /// later columns. This port originally REPRODUCED both defects, because a C#-only fix emits
+    /// <c>"a@b.com","user",…</c> where TS emitted <c>a@b.com,user,…</c> — byte-different on every row, i.e.
+    /// a parity FAIL that reads as "the port is wrong" rather than "the port is deliberately better".</para>
     ///
-    /// <para><b>So this port reproduces two real TS defects, on purpose.</b> (1) No formula-injection
-    /// defence on any field — a <c>roleSlug</c> or <c>email</c> beginning <c>=</c> executes when the file
-    /// is opened in Excel or Sheets, which is exactly the CWE the shared helper exists to prevent, and this
-    /// surface's data is attacker-influenced (<c>email</c> arrives from an unauthenticated-adjacent invite
-    /// flow). (2) Only <c>organizationName</c> is quoted, so a comma in <c>email</c>, <c>roleSlug</c>,
-    /// <c>type</c> or <c>status</c> silently shifts every later column of that row. Both are reproduced
-    /// because a C#-only fix is invisible to users while the flag is dark and merely makes the parity diff
-    /// uninterpretable — "the port is wrong" and "the port is deliberately better" become the same
-    /// signal. Both are filed as their own issue; the fix belongs in BOTH stacks in one change, and it is
-    /// the kind of divergence the strangler doc requires Federico to decide.</para>
+    /// <para>The defect was then fixed in BOTH stacks in one commit (Federico's call, 2026-08-12), which is
+    /// the only way this kind of divergence can be closed: <c>invitations.ts</c> now imports <c>csvRow</c>
+    /// and this method now calls <see cref="Tims.Domain.Csv.CsvCell.Row"/>. Byte-parity is preserved
+    /// because BOTH sides changed, and the two tests that used to pin the vulnerable output now assert the
+    /// hardened output instead. The FE consumer only wraps the string in a <c>Blob</c> for download and
+    /// never parses it (<c>platform/invitations/page.tsx</c>), so the added quoting broke no caller.</para>
+    ///
+    /// <para><b>The header goes through <c>Row</c> too</b>, matching <c>audit.service.ts</c>, which is the
+    /// established precedent for this helper. Quoting the header but not the rows (or vice versa) is the
+    /// easy way to reintroduce a one-sided diff.</para>
     /// </summary>
     public static string BuildCsv(IReadOnlyList<PlatformInvitationExportRow> rows)
     {
         var builder = new StringBuilder(CsvHeader);
         foreach (var row in rows)
         {
-            // TS `[...].join(',')` over the eight cells, then `[header, ...rows].join('\n')`.
-            builder.Append('\n')
-                .Append(row.Email)
-                .Append(',')
-                .Append(row.Type)
-                // The ONE quoted field: `"${(inv.organizationName || '').replace(/"/g, '""')}"`. The `||`
-                // is a FALSY check, so an empty string takes the fallback too — same emitted result (`""`)
-                // as null, which is why this reads as a plain null-or-empty coalesce.
-                .Append(",\"")
-                .Append((row.OrganizationName ?? string.Empty).Replace("\"", "\"\"", StringComparison.Ordinal))
-                .Append("\",")
-                // `inv.roleSlug || '-'` — again FALSY, so an empty-string role_slug becomes "-" and not an
-                // empty cell. `?? "-"` alone would be wrong for that row.
-                .Append(string.IsNullOrEmpty(row.RoleSlug) ? "-" : row.RoleSlug)
-                .Append(',')
-                .Append(row.Status)
-                .Append(',')
-                .Append(FormatCsvDate(row.SentAt))
-                .Append(',')
-                .Append(FormatCsvDate(row.ExpiresAt))
-                .Append(',')
-                .Append(FormatCsvDate(row.AcceptedAt));
+            // TS `csvRow([...])` over the eight cells, then `[header, ...rows].join('\n')`.
+            builder.Append('\n').Append(CsvCell.Row(
+            [
+                row.Email,
+                row.Type,
+                // TS passes `inv.organizationName` straight through; csvCell maps null -> "" itself,
+                // and CsvCell.Escape(null) does the same, so no coalesce is needed on either side.
+                row.OrganizationName,
+                // `inv.roleSlug || '-'` is a FALSY check, so an empty-string role_slug becomes "-" and
+                // not an empty cell. `?? "-"` alone would be wrong for that row.
+                string.IsNullOrEmpty(row.RoleSlug) ? "-" : row.RoleSlug,
+                row.Status,
+                FormatCsvDate(row.SentAt),
+                FormatCsvDate(row.ExpiresAt),
+                FormatCsvDate(row.AcceptedAt),
+            ]));
         }
 
         return builder.ToString();

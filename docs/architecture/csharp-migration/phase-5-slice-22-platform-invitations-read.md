@@ -50,7 +50,8 @@ resolved.**
 1. **`bulkInviteUsers` sends no email at all.** There are exactly three `await sendEmail` call sites and
    none is in `bulkInviteUsers`, which nonetheless writes `status: sent` for up to 200 rows. Every one of
    those invitees is recorded as invited and never contacted.
-2. **The CSV export has no formula-injection defence.** See "Reproduced defects" below.
+2. **The CSV export had no formula-injection defence.** FIXED in both stacks on 2026-08-12 — see
+   divergence (1) below for what changed and what is still outstanding in the four sibling exports.
 
 ## Threat characterization for the two `publicProcedure` endpoints (slice 23 groundwork)
 
@@ -103,26 +104,48 @@ force is not a practical concern at that entropy; the practical concerns are all
 
 ## Recorded divergences and deliberately reproduced defects
 
-### (1) The CSV is hand-rolled and unhardened — reproduced on purpose
+### (1) The CSV was hand-rolled and unhardened — FIXED IN BOTH STACKS, 2026-08-12
 
-`exportInvitationsCsv` does **not** use `csvCell`/`csvRow` from `packages/shared/src/csv.ts`; it hand-rolls
-the row and quotes exactly one field, `organizationName`. `invitations.ts` imports only `getAppUrl` from
-`@tims/shared`. Consequences, both reproduced:
+**Status: resolved.** The history is kept because it explains why the pinning tests exist and why they read
+the way they do.
 
-- **No formula-injection defence (CWE-1236).** A leading `=`/`+`/`-`/`@` is emitted raw and executes when
-  the file is opened in Excel or Sheets. This is reachable: `organizationName` is validated by
-  `z.string().min(2).max(100)` with no character restriction. The audit-log export, which _does_ use the
-  shared helper, is not vulnerable — so this is an inconsistency within the codebase, not a policy.
-- **Only `organizationName` is quoted**, so a comma in `email`, `roleSlug`, `type` or `status` shifts every
+Until 2026-08-12 `exportInvitationsCsv` did **not** use `csvCell`/`csvRow` from `packages/shared/src/csv.ts`;
+it hand-rolled the row and quoted exactly one field, `organizationName`. Two consequences:
+
+- **No formula-injection defence (CWE-1236).** A leading `=`/`+`/`-`/`@` was emitted raw and executes when
+  the file is opened in Excel or Sheets. Reachable: `organizationName` is validated by
+  `z.string().min(2).max(100)` with no character restriction.
+- **Only `organizationName` was quoted**, so a comma in `email`, `roleSlug`, `type` or `status` shifted every
   later column of that row.
 
-Using `CsvCell.Row` would have been one line and would have emitted `"a@b.com","user",…` where TS emits
+The port **originally reproduced both**, because `CsvCell.Row` emits `"a@b.com","user",…` where TS emitted
 `a@b.com,user,…` — byte-different on every row, i.e. a guaranteed parity FAIL that reads as "the port is
-wrong". Both defects are **pinned by tests that assert the vulnerable output**
-(`Export_CsvMatchesTsByteForByte_IncludingTheUnhardenedCells`,
-`BuildCsv_does_NOT_neutralise_a_formula_injection_because_TS_does_not`), so a C#-only hardening fails CI
-and forces the both-stacks conversation. Filed as its own issue; the fix belongs in both stacks in one
-change and is Federico's call per the strangler doc.
+wrong" rather than "the port is deliberately better". The two tests that pinned the vulnerable output were
+the forcing function, and they worked: the fix then landed in **both stacks in one commit** (Federico's
+call). `invitations.ts` now imports `csvRow`; `PlatformInvitationsReadUseCase.BuildCsv` now calls
+`CsvCell.Row`. The pinning assertions were **inverted in the same commit** and renamed
+(`Export_CsvMatchesTsByteForByte_WithEveryCellHardened`, `BuildCsv_neutralises_a_formula_injection`), and a
+new `BuildCsv_neutralises_every_formula_trigger_character` Theory covers `=`/`+`/`-`/`@` — the old test only
+ever exercised `=`, so a partial hardening would have looked complete.
+
+Three things worth knowing about the fix:
+
+- **The header goes through the helper too**, matching `audit.service.ts`, the established precedent.
+  `CsvHeader` is now `static readonly` derived from `CsvCell.Row` rather than a `const` literal, so it cannot
+  drift from the escaping the data rows use — a header/row quoting mismatch is the obvious way to
+  reintroduce a one-sided diff.
+- **The `-` placeholders now emit as `'-`**, because `-` is itself one of `csvCell`'s trigger characters.
+  This was **verified against the real TS module, not inferred** — `csvRow(['-'])` returns `"'-"`. Both
+  stacks agree, so parity holds, but it is a visible change to the downloaded file.
+- **No caller broke.** The only consumer is `apps/web/app/(admin)/platform/invitations/page.tsx`, which
+  wraps the string in a `Blob` and triggers a download; nothing parses it.
+
+**Not fixed here, and not claimed as safe:** the same omission appears in the other four platform exports —
+`users.ts`, `invoices.ts`, `subscriptions.ts`, `ai-agents.ts` all build CSV inline with zero `csvCell`/
+`csvRow` references. The helper is used only in the **service layer** (`audit.service.ts`,
+`candidate-pool.service.ts`), so the defect tracks the service-layer bypass that issue #39 covers. Those four
+are out of scope for this slice and some have their own parity fixtures that a change would move; they are
+listed here so the omission is on the record rather than implied to be absent.
 
 ### (2) An inexpressible OFFSET answers with an empty page
 

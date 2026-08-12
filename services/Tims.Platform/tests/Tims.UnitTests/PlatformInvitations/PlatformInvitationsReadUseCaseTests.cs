@@ -79,36 +79,68 @@ public sealed class PlatformInvitationsReadUseCaseTests
         Assert.Equal(PlatformInvitationsReadUseCase.CsvHeader, PlatformInvitationsReadUseCase.BuildCsv([]));
     }
 
+    /// <summary>
+    /// The header is now the <c>csvRow</c>-quoted form, matching TS after the 2026-08-12 both-stacks
+    /// hardening. It was the bare literal <c>Email,Tipo,…</c> before that.
+    /// </summary>
     [Fact]
     public void CsvHeader_is_byte_identical_to_the_TS_literal() =>
-        Assert.Equal("Email,Tipo,Organizacion,Rol,Estado,Enviada,Expira,Aceptada", PlatformInvitationsReadUseCase.CsvHeader);
+        Assert.Equal(
+            "\"Email\",\"Tipo\",\"Organizacion\",\"Rol\",\"Estado\",\"Enviada\",\"Expira\",\"Aceptada\"",
+            PlatformInvitationsReadUseCase.CsvHeader);
 
     [Fact]
-    public void BuildCsv_quotes_only_the_organization_name_and_doubles_inner_quotes()
+    public void BuildCsv_quotes_every_cell_and_doubles_inner_quotes()
     {
         var row = Row(organizationName: "Ac\"me, Inc");
 
         var line = PlatformInvitationsReadUseCase.BuildCsv([row]).Split('\n')[1];
 
-        // Only cell 3 is quoted. email/type/status are raw, exactly as the TS hand-rolled row builder emits.
-        Assert.Equal("a@b.test,user,\"Ac\"\"me, Inc\",hr_admin,sent,2026-07-01,2026-08-01,-", line);
+        // ALL EIGHT cells are quoted now. Before the both-stacks fix only cell 3 was, so a comma in email /
+        // roleSlug / type / status silently shifted that row's later columns; the embedded comma in
+        // "Ac\"me, Inc" is the case that used to depend entirely on that one field being the quoted one.
+        // NOTE the trailing "'-": the `-` placeholder is ITSELF a formula-trigger character, so csvCell
+        // neutralises it too. Verified against the real TS module, not inferred —
+        // `csvRow(['-'])` returns `"'-"`. Both stacks agree; it is a visible cosmetic change to the export.
+        Assert.Equal(
+            "\"a@b.test\",\"user\",\"Ac\"\"me, Inc\",\"hr_admin\",\"sent\",\"2026-07-01\",\"2026-08-01\",\"'-\"",
+            line);
     }
 
     /// <summary>
-    /// <b>Pins a reproduced vulnerability on purpose.</b> The TS export does not use <c>csvCell</c>, so a
-    /// leading <c>=</c> is emitted raw and executes in Excel/Sheets (CWE-1236). The port must match. If
-    /// someone hardens the C# side alone, this fails — which is the intended forcing function, because the
-    /// fix belongs in both stacks in one change and is filed as its own issue.
+    /// <b>Was the inverse of this assertion until 2026-08-12.</b> This test used to pin the REPRODUCED
+    /// vulnerability — TS hand-rolled its CSV, so a leading <c>=</c> was emitted raw and executed in
+    /// Excel/Sheets (CWE-1236), and the port matched it deliberately. Both stacks were then hardened in one
+    /// commit, so the assertion is inverted: the leading <c>=</c> must now be neutralised with the
+    /// apostrophe <see cref="CsvCell.Escape"/> prepends. Kept pointing at <c>organizationName</c> because
+    /// that is the reachable field — <c>z.string().min(2).max(100)</c>, no character restriction.
     /// </summary>
     [Fact]
-    public void BuildCsv_does_NOT_neutralise_a_formula_injection_because_TS_does_not()
+    public void BuildCsv_neutralises_a_formula_injection()
     {
         var csv = PlatformInvitationsReadUseCase.BuildCsv([Row(organizationName: "=HYPERLINK(\"http://evil\")")]);
 
-        Assert.Contains("\"=HYPERLINK(", csv, StringComparison.Ordinal);
-        // The apostrophe CsvCell.Escape would have prepended. Asserted over the WHOLE csv, not one cell, so
-        // hardening any field trips it.
-        Assert.DoesNotContain("'=", csv, StringComparison.Ordinal);
+        // The apostrophe CsvCell.Escape prepends, plus the doubled inner quotes.
+        Assert.Contains("\"'=HYPERLINK(\"\"http://evil\"\")\"", csv, StringComparison.Ordinal);
+        // Asserted over the WHOLE csv, not one cell, so un-hardening ANY field trips it.
+        Assert.DoesNotContain(",=", csv, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Every one of <see cref="CsvCell"/>'s formula-trigger characters must be neutralised, not just
+    /// <c>=</c>. The old reproduced-defect test only ever exercised <c>=</c>, so a partial hardening would
+    /// have looked complete.
+    /// </summary>
+    [Theory]
+    [InlineData("=cmd")]
+    [InlineData("+cmd")]
+    [InlineData("-cmd")]
+    [InlineData("@cmd")]
+    public void BuildCsv_neutralises_every_formula_trigger_character(string organizationName)
+    {
+        var line = PlatformInvitationsReadUseCase.BuildCsv([Row(organizationName: organizationName)]).Split('\n')[1];
+
+        Assert.Contains($"\"'{organizationName}\"", line, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -117,21 +149,23 @@ public sealed class PlatformInvitationsReadUseCaseTests
     /// nothing — it is a one-character difference that only a value-level test catches.
     /// </summary>
     [Theory]
-    [InlineData(null, "-")]
-    [InlineData("", "-")]
-    [InlineData("hr_admin", "hr_admin")]
+    [InlineData(null, "\"'-\"")]
+    [InlineData("", "\"'-\"")]
+    [InlineData("hr_admin", "\"hr_admin\"")]
     public void BuildCsv_treats_a_falsy_role_slug_as_a_dash(string? roleSlug, string expectedCell)
     {
         var line = PlatformInvitationsReadUseCase.BuildCsv([Row(roleSlug: roleSlug)]).Split('\n')[1];
 
-        // Rol is the 4th cell (index 3): email, Tipo, "Organizacion", Rol, … . Safe to split naively here
-        // only because Row()'s default organization name contains no comma — which is exactly the TS defect
-        // this port reproduces, and why the byte-for-byte assertions above use a full-line comparison.
+        // Rol is the 4th cell (index 3): Email, Tipo, Organizacion, Rol, … . Safe to split naively only
+        // because Row()'s default organization name ("Acme") contains no comma. Every cell is quoted since
+        // the both-stacks hardening, so the expectation carries its quotes.
         Assert.Equal(expectedCell, line.Split(',')[3]);
     }
 
-    /// <summary>A null / empty organization name both emit an EMPTY QUOTED cell (<c>""</c>), because the TS
-    /// falls back to <c>''</c> and then quotes it — not <c>-</c>, and not an unquoted empty.</summary>
+    /// <summary>A null / empty organization name both emit an EMPTY QUOTED cell (<c>""</c>) — not <c>-</c>,
+    /// and not an unquoted empty. TS passes <c>inv.organizationName</c> straight into <c>csvCell</c>, which
+    /// maps <c>null</c> to <c>''</c> itself; <c>CsvCell.Escape(null)</c> does the same, so the two stacks
+    /// agree without either side needing a coalesce.</summary>
     [Theory]
     [InlineData(null)]
     [InlineData("")]
@@ -139,7 +173,9 @@ public sealed class PlatformInvitationsReadUseCaseTests
     {
         var line = PlatformInvitationsReadUseCase.BuildCsv([Row(organizationName: organizationName)]).Split('\n')[1];
 
-        Assert.Equal("a@b.test,user,\"\",hr_admin,sent,2026-07-01,2026-08-01,-", line);
+        Assert.Equal(
+            "\"a@b.test\",\"user\",\"\",\"hr_admin\",\"sent\",\"2026-07-01\",\"2026-08-01\",\"'-\"",
+            line);
     }
 
     [Theory]
