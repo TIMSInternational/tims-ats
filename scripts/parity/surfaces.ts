@@ -389,6 +389,101 @@ export const SURFACES: Record<string, Surface> = {
       },
     ],
   },
+  // ── invitation ──────────────────────────────────────────────────────────────────────────────
+  // NEW 2026-08-12 (Phase-5 slice 22, issue #75). Registered in the SAME PR that deploys the routes, so
+  // the #195 gap does not grow: the route-coverage guard would otherwise demand three new allowlist
+  // entries, and an allowlist entry is a documented absence of a probe, not a probe.
+  //
+  // THIS ONE GETS A REAL PARITY DIFF, unlike audit-log/access-review. Those two are C#-only because their
+  // TS procedures were deleted; these three are the LIVE production path (the flag is dark), so
+  // `tsProcedure` is populated and `checks/parity.ts` compares actual payloads instead of reporting
+  // [WEAK]. That makes this surface the strongest available check on the slice — and the only automated
+  // one that can catch the two defect classes that cost #211/#216 nine divergences: a mis-serialised
+  // DateTime and a dropped/renamed key.
+  //
+  // No grant fixture is needed, which is why this could be registered immediately while the six
+  // org-scoped surfaces in the allowlist still cannot. PlatformOwnerGate decides on
+  // `users.is_platform_owner` BEFORE any permission lookup, so `org_admin` is refused without holding any
+  // `role_permissions` row — the same reasoning the audit-log entry sets out. No seed change accompanies
+  // this registration.
+  invitation: {
+    key: 'invitation',
+    flag: 'Platform__PlatformInvitationsReadEnabled',
+    roles: ['platform_owner', 'org_admin'],
+    // MUST be the role the surface answers 200 to. `org_admin` here would fail every endpoint outright —
+    // checks/parity.ts calls probeRole's token expecting success and fails closed on any non-200, and the
+    // TS leg THROWS in stripTrpcJson rather than reporting a FAIL. That is exactly how `organization`
+    // shipped broken in #203 and was fixed in #205; the invariant is now asserted for EVERY surface by
+    // surfaces.test.ts, so this cannot regress silently.
+    probeRole: 'platform_owner',
+    endpoints: [
+      {
+        name: 'kpis',
+        csharpPath: '/platform/invitations/kpis',
+        tsProcedure: 'platform.getInvitationKpis',
+        input: {},
+        expectedByRole: { platform_owner: 200, org_admin: 403 },
+        // Four unfiltered cross-org COUNTs — no org-specific payload exists to compare, so Mode B's
+        // "identical payload across orgs ⇒ leak" heuristic would assert the opposite of the requirement.
+        globalScope: true,
+      },
+      {
+        name: 'list',
+        csharpPath: '/platform/invitations',
+        tsProcedure: 'platform.listInvitations',
+        input: {},
+        expectedByRole: { platform_owner: 200, org_admin: 403 },
+        globalScope: true,
+        // WHY sortArraysBy IS NEEDED HERE, and WHAT IT COSTS — both stated, because it is not free.
+        //
+        // NEEDED: both stacks order by `created_at DESC` with NO tiebreaker, and ties are not theoretical
+        // on this table — `bulkInviteUsers` inserts up to 200 rows in a tight loop, and `created_at` is
+        // `timestamp(3)`, so collisions at millisecond precision are expected rather than unlucky. Tie
+        // order is then unspecified in each stack independently and can differ between them, producing a
+        // spurious FAIL.
+        //
+        // COSTS: it re-sorts EVERY array at EVERY depth before the diff, so the DESC ordering is no longer
+        // compared at all — a C# side that reversed or dropped its OrderByDescending would stay green
+        // here. That ordering is pinned instead by the C#-only integration test titled
+        // `List_IsCrossOrg_ResolvesRelations_AndOmitsTheToken`, which asserts all five rows in order
+        // against five distinct timestamps. A C#-only pin is weaker than a cross-stack comparison; it is
+        // what is available without changing live TS behaviour.
+        //
+        // The better fix is the one #215 tracks and the organizations LIST already took: a deterministic
+        // tiebreaker in BOTH stacks, after which no normalization is needed. That is deliberately NOT done
+        // here — it would change the row order real users see today, and this slice ships dark with zero
+        // live behaviour change. Doing both at once would make a parity FAIL uninterpretable.
+        //
+        // dropNullish is separate and also load-bearing: `organization` is null on any invitation whose
+        // organization_id is null (a platform invitation can precede the org it creates), and
+        // roleSlug/sentAt/acceptedAt are nullable too. Note it MASKS a nullable omission until the first
+        // row that has a value, so those keys are asserted directly in the integration tests rather than
+        // trusted to this diff.
+        normalize: { dropNullish: true, sortArraysBy: 'id' },
+      },
+      {
+        name: 'export',
+        csharpPath: '/platform/invitations/export',
+        tsProcedure: 'platform.exportInvitationsCsv',
+        input: {},
+        expectedByRole: { platform_owner: 200, org_admin: 403 },
+        globalScope: true,
+        // The payload is ONE string plus a count, so there is no array to sort and no null to drop —
+        // and a byte-for-byte string comparison is the strictest diff in this registry. It is also the
+        // one place a CSV-shaping divergence shows up, which matters because this export deliberately
+        // reproduces TS's unhardened hand-rolled CSV rather than using csvCell (see the slice doc).
+      },
+    ],
+  },
+  // OPERATIONAL WARNING for whoever runs `verify invitation` — like `verify audit-log`, it EGRESSES
+  // CROSS-TENANT PII to the machine it runs on. `/platform/invitations` returns up to 20 invitations
+  // across EVERY org and `/platform/invitations/export` returns EVERY row with no cap at all (the TS
+  // procedure passes no take/skip), each carrying an invitee EMAIL ADDRESS. Both are fetched twice per run
+  // (parity probe + RBAC allow) and, with tsProcedure set, twice again on the TS leg. Nothing is printed —
+  // report.ts renders only check/endpoint/role/detail, never a response body — but the payload crosses the
+  // wire. Run it somewhere you would be willing to hold production invitee lists. This is a property of
+  // the endpoints, not of the registration; it is written here because the unbounded export makes it
+  // sharper than the audit-log case, which at least has an ExportCap.
   // ── compensation ────────────────────────────────────────────────────────────────────────────
   // UPDATE 2026-07-29: 5 of the original 7 registered compensation reads had their TS procedures
   // DELETED (NEXT_PUBLIC_COMPENSATION_READ_VIA_CSHARP confirmed live in prod) — salary-bands,

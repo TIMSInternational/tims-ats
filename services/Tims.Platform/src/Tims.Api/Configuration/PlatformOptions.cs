@@ -490,6 +490,35 @@ public sealed class PlatformOptions
     public bool PlatformOrganizationsCreateEnabled { get; init; }
 
     /// <summary>
+    /// Phase-5 slice 22 (issue #75) — the platform-owner INVITATIONS READ surface: the C# port of
+    /// <c>getInvitationKpis</c>, <c>listInvitations</c> and <c>exportInvitationsCsv</c> from
+    /// <c>routers/platform/invitations.ts</c>.
+    ///
+    /// Gated by <c>PlatformOwnerGate</c> and deliberately CROSS-ORG — never wrapped in TenantScope, so the
+    /// gate is the entire authorization boundary (RLS restricts nothing on this path, and the prod role is
+    /// BYPASSRLS regardless). Read-only over Prisma-owned tables: this slice adds no writer and moves
+    /// nothing between the ownership ledger's arrays.
+    ///
+    /// THIS FLAG COVERS THREE OF THAT ROUTER'S TEN PROCEDURES. The remaining seven are deliberately out,
+    /// in three groups, because they are three different problems:
+    ///   • <c>revokeInvitation</c> + <c>bulkInviteUsers</c> — writes, needing their own one-active-writer
+    ///     flag rather than riding a read flag.
+    ///   • <c>getInvitationByToken</c> + <c>acceptInvitation</c> — <c>publicProcedure</c>: UNAUTHENTICATED
+    ///     and token-credentialed. Every surface ported to this service so far has been authenticated, so
+    ///     this is a NEW auth shape that gets its own slice, its own flag and its own threat model. It must
+    ///     NOT ride this flag: a reviewer reading "invitations read is on" would have no reason to expect
+    ///     two anonymous endpoints to come on with it.
+    ///   • <c>createOrgInvitation</c> + <c>createUserInvitation</c> + <c>resendInvitation</c> — all three
+    ///     send email via <c>packages/api/src/lib/ses.ts</c>, and this service has NO email capability
+    ///     (measured: no AWS SDK, no SMTP, no MailKit, no sender abstraction anywhere in
+    ///     <c>services/Tims.Platform</c>). Porting them now would yield endpoints that write the invitation
+    ///     row and silently never deliver it — a failure that only becomes visible after a flip.
+    ///
+    /// DEFAULT false (dark) — TS remains the single active reader until Federico flips it at canary.
+    /// </summary>
+    public bool PlatformInvitationsReadEnabled { get; init; }
+
+    /// <summary>
     /// MFA step-up enforcement (#173) — the platform-service counterpart of the web app's
     /// <c>MFA_ENFORCED</c>. When exactly "true", a PRIVILEGED principal (platform owner or
     /// super_admin) on an <c>aal1</c> session is refused with 403 + <c>{"message":"MFA_REQUIRED"}</c>

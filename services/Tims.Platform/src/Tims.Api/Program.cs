@@ -30,6 +30,7 @@ using Tims.Api.NineBox;
 using Tims.Api.Reporting;
 using Tims.Api.Succession;
 using Tims.Api.Monitoring;
+using Tims.Api.PlatformInvitations;
 using Tims.Api.PlatformOrganizations;
 using Tims.Api.TeamIntel;
 using Tims.Api.Validation;
@@ -49,6 +50,7 @@ using Tims.Application.NineBox;
 using Tims.Application.Reporting;
 using Tims.Application.Succession;
 using Tims.Application.Monitoring;
+using Tims.Application.PlatformInvitations;
 using Tims.Application.PlatformOrganizations;
 using Tims.Application.TeamIntel;
 using Tims.Application.Validation;
@@ -73,6 +75,7 @@ using Tims.Infrastructure.RateLimiting;
 using Tims.Infrastructure.Reporting;
 using Tims.Infrastructure.Succession;
 using Tims.Infrastructure.Monitoring;
+using Tims.Infrastructure.PlatformInvitations;
 using Tims.Infrastructure.PlatformOrganizations;
 using Tims.Infrastructure.TeamIntel;
 using Tims.Infrastructure.Validation;
@@ -294,6 +297,23 @@ try
         options.UseNpgsql(sp.GetRequiredService<PlatformOrganizationsDataSourceHolder>().DataSource));
     builder.Services.AddScoped<IPlatformOrganizationsReadRepository, PlatformOrganizationsReadRepository>();
     builder.Services.AddScoped<PlatformOrganizationsReadUseCase>();
+
+    // Phase-5 slice 22 (#75): platform-owner INVITATIONS READ (getInvitationKpis / listInvitations /
+    // exportInvitationsCsv). Cross-org by design and NEVER wrapped in TenantScope — PlatformOwnerGate is the
+    // entire authorization boundary. Read-only over Prisma-owned tables (efcoreReadOnly): no writer added,
+    // nothing moved in the ledger. Dark unless PlatformInvitationsReadEnabled.
+    // Its OWN data-source holder rather than PlatformOrganizations', because EnableUnmappedTypes is per-domain
+    // by convention (one holder per domain, so a domain's type handling cannot bleed into another's) — and it
+    // is MANDATORY here: platform_invitations.type AND .status are native Prisma enums read as C# strings, so
+    // listInvitations and exportInvitationsCsv would both throw InvalidCastException on the first materialised
+    // row against a real Postgres, with every unit test green. Built lazily, so a dark-flag boot on a
+    // placeholder DB never opens it.
+    builder.Services.AddSingleton(_ =>
+        new PlatformInvitationsDataSourceHolder(PlatformInvitationsDataSource.Build(databaseConnectionString ?? string.Empty)));
+    builder.Services.AddDbContext<PlatformInvitationsReadDbContext>((sp, options) =>
+        options.UseNpgsql(sp.GetRequiredService<PlatformInvitationsDataSourceHolder>().DataSource));
+    builder.Services.AddScoped<IPlatformInvitationsReadRepository, PlatformInvitationsReadRepository>();
+    builder.Services.AddScoped<PlatformInvitationsReadUseCase>();
 
     // Phase-5 slice 20 (#76): platform-owner ORGANIZATIONS WRITE (updateOrganization/suspendOrganization).
     // Its OWN context, mapping organizations AND audit_logs, because the fail-closed audit decided on #76
@@ -1056,6 +1076,15 @@ try
     if (externalOptions.PlatformOrganizationsReadEnabled || isOpenApiDocGeneration)
     {
         app.MapPlatformOrganizationsReadEndpoints();
+    }
+
+    // Phase-5 slice 22 (#75): GET /platform/invitations{,/kpis,/export} — the platform-owner invitations
+    // READ surface. Three of that router's ten procedures; the other seven are out for three distinct
+    // reasons (writes / unauthenticated token endpoints / no email capability in this service) — see
+    // PlatformOptions.PlatformInvitationsReadEnabled. Dark unless the flag is on.
+    if (externalOptions.PlatformInvitationsReadEnabled || isOpenApiDocGeneration)
+    {
+        app.MapPlatformInvitationsReadEndpoints();
     }
 
     // Phase-5 slice 20 (#76): PATCH /platform/organizations/{id} + POST /platform/organizations/{id}/suspend.
