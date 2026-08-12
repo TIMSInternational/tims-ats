@@ -81,14 +81,25 @@ force is not a practical concern at that entropy; the practical concerns are all
    the gate. That makes the contrast load-bearing: when slice 23 writes `.AllowAnonymous()`, it will mean
    something, and a reviewer can see it. Slice 23 should additionally add an explicit inventory test of
    intentionally-unauthenticated routes, since the compiler cannot express this.
-2. **Do NOT copy the rate-limit exemption from the existing anonymous routes.** The only two anonymous
-   routes in the service today — `POST /billing/webhooks/stripe` and `GET /internal/alert-metrics` — are
-   both on `RateLimitMiddleware.ExemptExactPaths`, each for a documented reason (a shared-IP delivery pool;
-   a single nightly cron caller that would throttle itself). Neither reason applies to a browser-facing
-   token endpoint, and copying the precedent would strip the _only_ throttle in front of an unauthenticated
-   surface. Left alone, the middleware is a denylist and does the right thing automatically: `CategoryFor`
-   maps GET → `query` (100/min) and POST → `mutation` (30/min), keyed on the trusted IP for an anonymous
-   caller — the same categories TS derives from `path`+`type`, so it is parity by default.
+2. **Do NOT copy the rate-limit exemption from the existing anonymous routes.** There are **two**
+   genuinely-unauthenticated PRODUCT routes today — `POST /billing/webhooks/stripe` (authenticated by the
+   Stripe signature) and `GET /internal/alert-metrics` (authenticated by a cron secret) — and **both** sit on
+   `RateLimitMiddleware.ExemptExactPaths`, each for a documented reason: a shared-IP delivery pool, and a
+   single nightly caller that would otherwise throttle itself partway through. Neither reason applies to a
+   browser-facing token endpoint, and copying the precedent would strip the _only_ throttle in front of an
+   unauthenticated surface.
+
+   Stated precisely, because the loose version of this sentence was wrong when first written: that exempt
+   list holds **seven exact paths and three prefixes** — the other five exact entries are infra and
+   auth-probe routes (`/`, `/health`, `/ready`, `/whoami`, `/external-whoami`), plus the `/openapi`,
+   `/require-permission` and `/require-org-scope` prefixes. Separately, `.AllowAnonymous()` appears on
+   **nine** route registrations, of which **six** are `PlatformOrganizations*` endpoints that are not
+   unauthenticated at all — they gate inside the handler. That six-versus-two split is trap (1) again, seen
+   from the rate limiter's side: counting `.AllowAnonymous()` does NOT count public endpoints.
+
+   Left alone the middleware is a denylist and does the right thing automatically: `CategoryFor` maps
+   GET → `query` (100/min) and POST → `mutation` (30/min), keyed on the trusted IP for an anonymous caller —
+   the same categories TS derives from `path`+`type`, so it is parity by default.
 
 ## Recorded divergences and deliberately reproduced defects
 
@@ -170,6 +181,18 @@ was not a mutation at all: it was the original code, and the tests caught it bef
 | Replace the flag guard in `Program.cs` with `if (true)`         | FAIL — all three `Route_Is404_WhenFlagDefaultsOff` cases            |
 | Remove `NodeIsoNullableDateTimeConverter` from `SentAt` only    | FAIL — `List_SerialisesDatesAsNodeIso`                              |
 | Use the captured variable instead of `EF.Constant` (as written) | FAIL — `List_FiltersByTypeAndStatus`, `Export_AppliesFilters` (500) |
+| Remove the export's audit call site                             | FAIL — `Export_ByOwnerWithAnOrg_WritesOneAuditRow`                  |
+
+The last one needed two attempts, and the first attempt is worth recording. Mutating the resolve-or-skip
+guard to `if (true)` produced **2 compiler errors** (unreachable code), so `dotnet test --no-build` ran the
+PREVIOUS binary and reported all 54 tests passing — a green that meant nothing. Always read the build's
+error count before believing a `--no-build` result; a mutation that does not compile is not a mutation.
+Removing the call site instead compiles cleanly and fails the test.
+
+That test exists because of the coverage lens: the first version of this slice tested only the SKIP branch.
+`ISecurityEventWriter` is deliberately fail-soft, so a throwing `Guid.Parse`, a wrong `entity` string or
+malformed metadata would all have shipped green — **fail-soft code needs a positive test precisely because
+it cannot fail loudly.**
 
 The first is why the deny assertion is a per-route `[Theory]` rather than one test for the surface: the
 gate is copied into each handler, deleting it from **one** is the realistic mistake, and a

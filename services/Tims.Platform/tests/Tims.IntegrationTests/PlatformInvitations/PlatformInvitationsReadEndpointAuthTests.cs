@@ -549,11 +549,52 @@ public sealed class PlatformInvitationsReadEndpointAuthTests(PlatformInvitations
         await using var factory = EnabledFactory();
         using var client = factory.CreateClient();
 
-        Assert.Equal(0, await _fixture.CountAuditRowsAsync());
+        // A DELTA, not an absolute count: this container is shared across the collection and xUnit does not
+        // order tests within a class, so `Assert.Equal(0, total)` would pass or fail depending on whether
+        // Export_ByOwnerWithAnOrg_WritesOneAuditRow happened to run first.
+        var before = await _fixture.CountAuditRowsAsync();
 
         var response = await Get(client, ExportPath, Mint(PlatformInvitationsReadFixture.PlatformOwnerSub));
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        Assert.Equal(0, await _fixture.CountAuditRowsAsync());
+        Assert.Equal(before, await _fixture.CountAuditRowsAsync());
+        Assert.Empty(await _fixture.GetExportAuditRowsForActorAsync(PlatformInvitationsReadFixture.PlatformOwnerId));
+    }
+
+    /// <summary>
+    /// The OTHER branch of the resolve-or-skip — the one that actually writes. A platform owner who has an
+    /// org row of their own resolves an <c>organizationId</c>, so TS's <c>logPlatformExport</c> writes, and
+    /// so must this port.
+    ///
+    /// <para>Added after a coverage review noted that only the SKIP branch was tested. Without this, a
+    /// throwing <c>Guid.Parse</c>, a wrong <c>entity</c> string or a malformed metadata object would ship
+    /// green — the export would still 200, because <c>ISecurityEventWriter</c> is fail-soft and swallows
+    /// exactly these faults. Fail-soft code needs a positive test precisely because it cannot fail loudly.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task Export_ByOwnerWithAnOrg_WritesOneAuditRow()
+    {
+        await using var factory = EnabledFactory();
+        using var client = factory.CreateClient();
+
+        var response = await Get(client, ExportPath, Mint(PlatformInvitationsReadFixture.PlatformOwnerWithOrgSub));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var rows = await _fixture.GetExportAuditRowsForActorAsync(PlatformInvitationsReadFixture.PlatformOwnerWithOrgId);
+        var row = Assert.Single(rows);
+
+        // The caller's OWN org, since exportInvitationsCsv passes no targetOrgId.
+        Assert.Equal(PlatformInvitationsReadFixture.OrgA, row.OrganizationId);
+        // TS: `entity: \`export:${info.resource}\`` — the prefix matters, it is what distinguishes an export
+        // event from any other platform_export subject.
+        Assert.Equal("export:invitations", row.Entity);
+        Assert.NotNull(row.Metadata);
+        // TS metadata is { resource, count, format } with format present only when supplied — it is here.
+        // Postgres normalises jsonb with a space after the colon, so match on the pieces rather than a
+        // hand-built substring of the whole object.
+        Assert.Contains("\"resource\": \"invitations\"", row.Metadata, StringComparison.Ordinal);
+        Assert.Contains("\"format\": \"csv\"", row.Metadata, StringComparison.Ordinal);
+        Assert.Contains("\"count\": 5", row.Metadata, StringComparison.Ordinal);
     }
 }

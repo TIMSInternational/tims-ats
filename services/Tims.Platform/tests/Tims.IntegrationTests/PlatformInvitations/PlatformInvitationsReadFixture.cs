@@ -41,8 +41,19 @@ public sealed class PlatformInvitationsReadFixture : IAsyncLifetime
     public const string PlatformOwnerSub = "sub-inv-platform-owner";
     public const string OrgUserSub = "sub-inv-org-user";
 
+    /// <summary>
+    /// A platform owner who ALSO has an <c>organization_id</c>. Rarer than the org-less shape but real
+    /// (<c>trpc.ts</c>'s tenant middleware has a dedicated branch for "platform owners WITH an org row of
+    /// their own"), and it is the ONLY caller shape for which the export's audit write actually happens —
+    /// so without this principal the write branch of <c>logPlatformExport</c>'s resolve-or-skip is
+    /// unreachable and therefore untested.
+    /// </summary>
+    public const string PlatformOwnerWithOrgSub = "sub-inv-platform-owner-with-org";
+
     /// <summary>The org-less platform owner — the caller shape that makes the export write NO audit row.</summary>
     public static readonly Guid PlatformOwnerId = Guid.Parse("c0000000-0000-0000-0000-000000000001");
+
+    public static readonly Guid PlatformOwnerWithOrgId = Guid.Parse("c0000000-0000-0000-0000-000000000003");
 
     /// <summary>The ordinary OrgA staff user. Also the <c>invited_by_id</c> on every seeded invitation, so
     /// the nested <c>invitedBy</c> join has a real row to resolve.</summary>
@@ -124,6 +135,12 @@ public sealed class PlatformInvitationsReadFixture : IAsyncLifetime
             .UseNpgsql(ConnectionString)
             .Options);
 
+    /// <summary>
+    /// Total <c>platform_export</c> audit rows. Callers assert on the DELTA across a request, never on an
+    /// absolute value: this container is shared by every test in the collection and xUnit does not order
+    /// tests within a class, so an absolute assertion here would make the two export-audit tests depend on
+    /// which of them ran first.
+    /// </summary>
     public async Task<int> CountAuditRowsAsync()
     {
         await using var connection = new NpgsqlConnection(ConnectionString);
@@ -131,6 +148,30 @@ public sealed class PlatformInvitationsReadFixture : IAsyncLifetime
         await using var command = connection.CreateCommand();
         command.CommandText = "SELECT COUNT(*) FROM audit_logs WHERE action = 'platform_export';";
         return Convert.ToInt32(await command.ExecuteScalarAsync(), System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>
+    /// The <c>platform_export</c> rows attributable to one actor, as
+    /// <c>(organization_id, entity, metadata)</c> — keyed on the actor so the assertion is independent of
+    /// anything other tests in this collection wrote.
+    /// </summary>
+    public async Task<List<(Guid OrganizationId, string Entity, string? Metadata)>> GetExportAuditRowsForActorAsync(Guid actorId)
+    {
+        await using var connection = new NpgsqlConnection(ConnectionString);
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText =
+            "SELECT organization_id, entity, metadata::text FROM audit_logs WHERE action = 'platform_export' AND actor_id = @actor;";
+        command.Parameters.AddWithValue("actor", actorId);
+
+        var rows = new List<(Guid, string, string?)>();
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            rows.Add((reader.GetGuid(0), reader.GetString(1), reader.IsDBNull(2) ? null : reader.GetString(2)));
+        }
+
+        return rows;
     }
 
     private const string IdentitySchemaSql =
@@ -186,9 +227,12 @@ public sealed class PlatformInvitationsReadFixture : IAsyncLifetime
         -- One real ORG-LESS platform owner (organization_id NULL — the shape seed.ts creates, and the shape
         -- that makes logPlatformExport's resolve-or-skip SKIP) + one ordinary org-scoped staff user with no
         -- grants, since PlatformOwnerGate never consults a grant.
+        -- ...plus a platform owner who DOES have an org row, which is the only shape that reaches the audit
+        -- write branch of the export's resolve-or-skip.
         INSERT INTO users (id, organization_id, supabase_user_id, email, first_name, last_name, avatar, is_platform_owner, is_active) VALUES
           ('c0000000-0000-0000-0000-000000000001', NULL, 'sub-inv-platform-owner', 'owner@tims.test', 'Olivia', 'Owner', NULL, true, true),
-          ('c0000000-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'sub-inv-org-user', 'orguser@tims.test', 'Rick', 'Recruiter', NULL, false, true);
+          ('c0000000-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'sub-inv-org-user', 'orguser@tims.test', 'Rick', 'Recruiter', NULL, false, true),
+          ('c0000000-0000-0000-0000-000000000003', '11111111-1111-1111-1111-111111111111', 'sub-inv-platform-owner-with-org', 'owner-with-org@tims.test', 'Omar', 'Ownerson', NULL, true, true);
         """;
 
     // The NATIVE enum types and the timestamp(3) columns are the two things that must match prod exactly —
