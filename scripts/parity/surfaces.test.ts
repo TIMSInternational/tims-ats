@@ -33,6 +33,9 @@ describe('SURFACES', () => {
       'compensation',
       'dei',
       'engagement',
+      // NEW 2026-08-12 (Phase-5 slice 22, #75) — the platform-owner invitations read surface, registered
+      // in the same PR that deployed its three routes.
+      'invitation',
       'monitoring',
       'ninebox',
       'organization',
@@ -156,16 +159,26 @@ describe('SURFACES', () => {
     //     three routes pin a FIXED non-existent org id in the query string rather than a seeded id —
     //     a literal, not the `{id}` sentinel — so the by-id invariant above is not being sidestepped.
     //
-    // None of the NINE is by-id, so the invariant above still bites for them unchanged. (This line
-    // read "None of the seven" until 2026-08-11; the count was never re-derived when access-review's
-    // three routes were re-added, and the enumeration immediately above already listed 2+2+2+3 = 9.
-    // A superlative is a quantifier — count the set.)
+    //   invitation kpis + list + export — SAME platform-owner justification again (2026-08-12, Phase-5
+    //     slice 22 / #75). All three are PlatformOwnerGate over the unscoped read context with no
+    //     organizationId predicate anywhere; `kpis` is four unfiltered cross-org COUNTs, `list`
+    //     enumerates every tenant's invitations, and `export` is the same read with no cap at all.
+    //     org_admin 403 on all three is again what proves the boundary.
     //
-    // `getOrganization` is now registered (#195) under `noTenantBoundaryForCaller`, which is a
-    // DIFFERENT flag: it does not appear in this loop, `seen` stays 9, and this invariant is
-    // untouched. Setting `globalScope` on it instead would push `seen` to 10 AND trip the by-id
+    // None of these is by-id, so the invariant above still bites for them unchanged. (This line read
+    // "None of the seven" until 2026-08-11; the count was never re-derived when access-review's three
+    // routes were re-added. A superlative is a quantifier — count the set.)
+    //
+    // `getOrganization` is registered (#195) under `noTenantBoundaryForCaller`, which is a DIFFERENT
+    // flag: it does not appear in this loop, it does not move this count, and this invariant is
+    // untouched. Setting `globalScope` on it instead would push the count up AND trip the by-id
     // assertion above — which is the proof that the guard was worked with rather than weakened.
-    expect(seen).toBe(9);
+    //
+    // The count sits NEXT TO its enumeration on purpose: 2 (ninebox) + 2 (organization) + 2 (audit-log)
+    // + 3 (access-review) + 3 (invitation) = 12. Every past drift here was a number written in prose
+    // while the list lived elsewhere.
+    expect(seen).toBe(2 + 2 + 2 + 3 + 3);
+    expect(seen).toBe(12);
   });
 
   // ── #195 AC1: the monitoring read surface (2026-08-10) ───────────────────────────────────────
@@ -249,6 +262,32 @@ describe('SURFACES', () => {
     }
     expect(byName('detail').globalScope, 'detail must NOT claim org-independence').toBeUndefined();
     expect(byName('detail').noTenantBoundaryForCaller).toBe(true);
+  });
+
+  it('invitation is registered with its flag and all THREE deployed reads, each keeping a tsProcedure', () => {
+    // Every other surface here has a per-surface pin; `invitation` shipped in slice 22 with only the
+    // key-set entry and the globalScope count, which a coverage review flagged. Without this block,
+    // dropping a `tsProcedure` silently degrades all three endpoints to [WEAK] — the pre-flip readiness
+    // check then proves nothing — and the suite stays green. Same rationale as the organization pin above.
+    const s = SURFACES.invitation;
+
+    // The flag string is what `checks/preflight.ts` and `cli.ts` PRINT to say which env var to flip.
+    // A typo here is otherwise undetectable until someone flips the wrong one in prod.
+    expect(s.flag).toBe('Platform__PlatformInvitationsReadEnabled');
+    expect(s.probeRole).toBe('platform_owner');
+    expect(s.endpoints.map((e) => e.name)).toEqual(['kpis', 'list', 'export']);
+
+    for (const ep of s.endpoints) {
+      // The TS side of this surface is still LIVE (unlike audit-log/access-review, whose TS was deleted),
+      // so a real payload diff is available and must not be given up.
+      expect(ep.tsProcedure, ep.name).toBeTruthy();
+      expect(ep.expectedByRole, ep.name).toEqual({ platform_owner: 200, org_admin: 403 });
+      // Platform-owner-only and deliberately cross-org: no endpoint here is by-id, so none may carry
+      // idScopeKey, and the RLS N/A is reached via globalScope rather than the by-id marker.
+      expect(ep.idScopeKey, ep.name).toBeUndefined();
+      expect(ep.noTenantBoundaryForCaller, ep.name).toBeUndefined();
+      expect(ep.globalScope, ep.name).toBe(true);
+    }
   });
 
   it('getOrganization is registered under the by-id platform-owner marker, NOT globalScope', () => {

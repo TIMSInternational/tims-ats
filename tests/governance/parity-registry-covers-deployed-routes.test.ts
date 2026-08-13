@@ -10,8 +10,9 @@ import { WRITE_SURFACES, type WriteResolvedBase } from '../../scripts/parity/wri
  * The parity harness (scripts/parity/) is the only automated thing that probes the LIVE C# service
  * for cross-tenant isolation (checks/rls.ts) and permission denials (checks/rbac.ts). It can probe
  * nothing that SURFACES + WRITE_SURFACES do not register — and nothing measured how much of the
- * deployed service that is. Measured 2026-08-11: 50 registered endpoints against 135 deployed
- * operations, leaving a gap of 85.
+ * deployed service that is. Re-measured 2026-08-13: 54 registered endpoints against 138 deployed
+ * operations, leaving a gap of 84. (The numeric PINS below were updated when slice 22 landed; this
+ * prose was not, and read 50/135/gap-85 for a commit. Update both, or neither is trustworthy.)
  *
  * THIS GUARD MEASURES REGISTRATION, NOT PROBE COVERAGE, and the two are not the same number. Of the
  * 24 READ registrations, TEN issue no cross-tenant probe at all: 9 carry `globalScope` and 1 carries
@@ -381,19 +382,27 @@ describe('parity registry covers every deployed route (or documents why not)', (
     // COUNT PINS. Each carries its reason, because a pin without one is unmaintainable — the next
     // person cannot tell a deliberate change from a regression.
     //
-    //   135 = every GET/POST/PATCH/PUT/DELETE operation in contracts/openapi/Tims.Api.json across 128
-    //         paths (GET 102, POST 26, PATCH 5, DELETE 2), measured 2026-08-11 at 87a02ef1.
+    //   138 = every GET/POST/PATCH/PUT/DELETE operation in contracts/openapi/Tims.Api.json across 131
+    //         paths (GET 105, POST 26, PATCH 5, DELETE 2), measured 2026-08-12.
+    //         135 → 138 (and 128 → 131 paths): Phase-5 slice 22 (#75) deployed three GETs —
+    //         /platform/invitations{,/kpis,/export}. Re-derive with:
+    //           python3 -c "import json;d=json.load(open('contracts/openapi/Tims.Api.json'));\
+    //           v={'get','post','patch','put','delete'};\
+    //           print(len(d['paths']),sum(1 for p,i in d['paths'].items() for m in i if m.lower() in v))"
     //         /health + /ready are NOT in the document (MapHealthChecks emits no endpoint metadata),
     //         so this counts domain operations, not "every routable path". A new route bumps this,
     //         deliberately — that is the point.
-    expect(deployed.size).toBe(135);
-    //   51 = 24 read endpoints (surfaces.ts, 8 surfaces) + 27 write (write-surfaces.ts, 8 surfaces:
-    //        24 written literally + 3 produced by the shared `transitionEndpoint` helper). 26 → 27 on
-    //        2026-08-11: `organization-create` registered POST /platform/organizations (#208).
-    expect(registryEndpointCount).toBe(51);
-    //   ...resolving to 51 DISTINCT VERB+path keys. A drop here means two registry entries normalise
+    expect(deployed.size).toBe(138);
+    //   54 = 27 read endpoints (surfaces.ts, 9 surfaces) + 27 write (write-surfaces.ts, 8 surfaces:
+    //        24 written literally + 3 produced by the shared `transitionEndpoint` helper). The READ side
+    //        went 24 → 27 on 2026-08-12: the new `invitation` surface registered all THREE of slice 22's
+    //        deployed routes, so the allowlist below is unchanged — the gap did not grow. (26 → 27 on the
+    //        write side was 2026-08-11: `organization-create` registered POST /platform/organizations,
+    //        #208.)
+    expect(registryEndpointCount).toBe(54);
+    //   ...resolving to 54 DISTINCT VERB+path keys. A drop here means two registry entries normalise
     //   to the same route, which would make one of them invisible to the coverage assertion below.
-    expect(registry.size, 'two registry entries normalise to the same VERB+path key').toBe(51);
+    expect(registry.size, 'two registry entries normalise to the same VERB+path key').toBe(54);
     //   27 write paths resolved through the Proxy stub, none degenerate.
     expect(writePaths.length).toBe(27);
   });

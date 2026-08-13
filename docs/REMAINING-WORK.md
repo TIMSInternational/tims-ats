@@ -276,6 +276,38 @@ describe-service`; only the frontend Vercel flag was missing.)
     raw-SQL writers), **#200** (the SQL-injection scan does not cover C#) and **#201** (narrow the
     over-fetch and the destructive `settings` replace). See `docs/architecture/csharp-migration/phase-5-slice-19-platform-organizations-read.md`,
     `…-slice-20-platform-organizations-write.md` and `…-slice-21-platform-organizations-create.md`.
+  - **Slice 22 SHIPPED the platform invitations READ surface** (#75) behind
+    `Platform:PlatformInvitationsReadEnabled` — `getInvitationKpis`, `listInvitations` and
+    `exportInvitationsCsv`, dark, no table moved (all three mapped tables were already `efcoreReadOnly`).
+    Registered as `SURFACES['invitation']` in the same PR, with real `tsProcedure` refs — so unlike
+    `audit-log`/`access-review` it yields an actual payload diff rather than `[WEAK]`, and the #195 gap did
+    not grow (84 allowlist entries unchanged; deployed operations 135 → 138, read registrations 24 → 27).
+    **#75 stays OPEN, and 7 of its 10 procedures are NOT ported**, in three groups:
+    `revokeInvitation`/`bulkInviteUsers` are writes needing their own one-active-writer flag;
+    `getInvitationByToken`/`acceptInvitation` are `publicProcedure` — UNAUTHENTICATED, token-credentialed,
+    a shape no prior slice has, so they get their own slice, flag and threat model (written up in the slice
+    doc); and `createOrgInvitation`/`createUserInvitation`/`resendInvitation` **cannot be ported at all
+    yet** because `services/Tims.Platform` has no email capability of any kind — no AWS SDK, no SMTP, no
+    sender abstraction (measured, not assumed). That last one needs an infra decision (an SES dependency,
+    an IAM grant on the App Runner instance role, `PLATFORM_EMAIL_FROM`) and is **not AI-doable**; filed
+    separately, and **#75 cannot close until it is resolved.**
+    The slice found a trap no prior slice had hit: **a native Postgres enum column cannot be compared
+    against a query PARAMETER** — EF parameterises a captured variable, Npgsql types it `text`, and there is
+    no `"InvitationStatus" = text` operator, so both filter-bearing endpoints returned 500.
+    `EnableUnmappedTypes` does not help (it governs reading, not binding) and neither does declaring the
+    store type; the fix is `EF.Constant(value)`. A KPI-only suite would have missed it, because a literal
+    comparison works — exactly the open question slice 19/20's data-source docblock had left untested.
+    Two TS defects were characterized. `bulkInviteUsers` writes `status: sent` for up to 200 rows while
+    sending **no email at all** (3 `sendEmail` call sites in that file, none of them there) — filed, NOT
+    fixed. `exportInvitationsCsv` hand-rolled its CSV instead of using `csvCell`, so it had **no
+    formula-injection defence** (CWE-1236, reachable via `organizationName`) and quoted only one field —
+    **FIXED in both stacks in one commit**, which is the only way to close a parity-pinned divergence: the
+    two tests that pinned the vulnerable output were inverted in the same change. Still outstanding, and NOT
+    claimed safe: the same hand-rolled shape remains in four sibling platform routers (`users`, `invoices`,
+    `subscriptions`, `ai-agents`) and in two frontend builders
+    (`platform/organizations/page.tsx`, `org-bulk-bar.tsx`) — the helper is used only in the service layer,
+    so this tracks #39's service-layer bypass for the routers but not for the two FE ones. See
+    `docs/architecture/csharp-migration/phase-5-slice-22-platform-invitations-read.md`.
   - **Cutover-verification harness** (`scripts/parity/`, PRs #177–#194): a TypeScript CLI proving
     parity/RLS/RBAC for each surface against the real Supabase prod DB before any flag flips.
   - **FE/TS dark-cutover wrapper layer (2026-07-27, PRs #197–#212) — now fully COMPLETE, both reads and

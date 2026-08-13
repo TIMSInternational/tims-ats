@@ -130,7 +130,9 @@ async function mintTokens(
   //
   // CURRENT STATE, 2026-08-11. `mintTokens` has exactly ONE call site — `runChecks` at :145, the
   // READ path. `cmdVerifyWrite` mints its own tokens inline (:312-314) and never reaches here, so no
-  // WRITE_SURFACES entry is a caller of this branch, whatever its probeRole. THREE read surfaces now
+  // WRITE_SURFACES entry is a caller of this branch, whatever its probeRole. FOUR read surfaces now (three until `invitation` was registered in slice 22 — this comment has now been
+  // wrong three times, so re-derive it with `grep -c "probeRole: 'platform_owner'" surfaces.ts` rather
+  // than editing the numeral)
   // set probeRole 'platform_owner' and are the only callers: SURFACES['audit-log'],
   // SURFACES['access-review'] (both re-registered C#-only today) and SURFACES['organization'].
   //

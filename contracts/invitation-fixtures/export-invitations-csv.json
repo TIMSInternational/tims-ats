@@ -1,0 +1,24 @@
+{
+  "header": "\"Email\",\"Tipo\",\"Organizacion\",\"Rol\",\"Estado\",\"Enviada\",\"Expira\",\"Aceptada\"",
+  "headerLabels": [
+    "Email",
+    "Tipo",
+    "Organizacion",
+    "Rol",
+    "Estado",
+    "Enviada",
+    "Expira",
+    "Aceptada"
+  ],
+  "sample": {
+    "email": "revoked@acme.test",
+    "type": "user",
+    "organizationName": "=1+1\", Inc",
+    "roleSlug": "-",
+    "status": "revoked",
+    "sentAt": "-",
+    "expiresAt": "2026-08-01",
+    "acceptedAt": "-"
+  },
+  "expectedCsvRow": "\"revoked@acme.test\",\"user\",\"'=1+1\"\", Inc\",\"'-\",\"revoked\",\"'-\",\"2026-08-01\",\"'-\""
+}

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { getAppUrl } from '@tims/shared';
+import { csvRow, getAppUrl } from '@tims/shared';
 import { router, publicProcedure } from '../../trpc';
 import { db, InvitationType, InvitationStatus } from '@tims/db';
 import type { Prisma } from '@tims/db';
@@ -305,19 +305,26 @@ export const invitationsRouter = router({
         },
       });
 
-      const header = 'Email,Tipo,Organizacion,Rol,Estado,Enviada,Expira,Aceptada';
+      // Every cell goes through csvRow (packages/shared/src/csv.ts), matching audit.service.ts.
+      // This export previously hand-rolled its CSV and quoted ONLY organizationName, so it had no
+      // formula-injection defence (CWE-1236) and a comma in any other field shifted the row's later
+      // columns. organizationName is z.string().min(2).max(100) with no character restriction, so a
+      // leading =/+/-/@ was reachable through the ordinary invite flow. The C# port
+      // (PlatformInvitationsReadUseCase.BuildCsv) is changed in the SAME commit to keep the two
+      // stacks byte-identical — a one-sided fix would fail `verify invitation` on every row.
+      const header = csvRow(['Email', 'Tipo', 'Organizacion', 'Rol', 'Estado', 'Enviada', 'Expira', 'Aceptada']);
       const fmt = (d: Date | null | undefined) => (d ? d.toISOString().split('T')[0] : '-');
       const rows = invitations.map((inv) =>
-        [
+        csvRow([
           inv.email,
           inv.type,
-          `"${(inv.organizationName || '').replace(/"/g, '""')}"`,
+          inv.organizationName,
           inv.roleSlug || '-',
           inv.status,
           fmt(inv.sentAt),
           fmt(inv.expiresAt),
           fmt(inv.acceptedAt),
-        ].join(','),
+        ]),
       );
 
       logPlatformExport(ctx, { resource: 'invitations', count: invitations.length, format: 'csv' });
