@@ -78,6 +78,32 @@ force is not a practical concern at that entropy; the practical concerns are all
 | Acceptance grants nothing | It flips the status and returns `{accepted, organizationId, type}`. It creates **no user** and grants **no role** — account creation happens in the web auth callback. A port must not "helpfully" provision anything                        |
 | No audit trail            | Neither procedure writes a security event. An unauthenticated state transition with no audit row; worth filing, out of scope for a port                                                                                                      |
 
+### Three parity constraints found when reading the two procedures in full (2026-08-13)
+
+Recorded here rather than rediscovered in slice 23. Each is a place a reasonable port would diverge.
+
+1. **The Spanish error strings are USER-FACING and must be reproduced byte-for-byte.**
+   `apps/web/app/accept-invitation/page.tsx:171` renders `accept.error.message` directly, so
+   `Invitacion no encontrada` / `Esta invitacion ya fue aceptada` / `Esta invitacion fue revocada` /
+   `Esta invitacion ha expirado` are product copy, not diagnostics. This is a real difference from slice
+   22, whose endpoints return a bare `Results.BadRequest()` with no body — that was correct there because
+   nothing rendered it. Slice 23 must carry the message in a shape the FE wrapper surfaces identically, or
+   a flip silently changes what an invitee reads.
+
+2. **`organizationSlug` comes from the DENORMALIZED column, not from the joined organization.**
+   `getInvitationByToken` selects `organization: { id, name, slug }` but returns
+   `organizationName: invitation.organization?.name || invitation.organizationName` and
+   `organizationSlug: invitation.organizationSlug`. So the NAME prefers the join and the SLUG never does.
+   A port that "tidies" this by using `organization.slug` for both is a silent divergence on every
+   invitation whose org has since been renamed. Note also the `||` is falsy, so an empty-string
+   `organization.name` falls back to the denormalized column.
+
+3. **`acceptInvitation` accepts from `expired` STATUS, if `expires_at` is still in the future.**
+   The guards reject only `accepted`, `revoked`, and `expires_at < now`. A row whose status was flipped to
+   `expired` by a previous `getInvitationByToken` call but whose `expires_at` is future — reachable after a
+   clock change or an `expires_at` extension — passes all three and becomes `accepted`. Faithful
+   reproduction means porting the guard list exactly, not re-deriving it as "must be pending or sent".
+
 ### Two mapping traps slice 23 will hit, both concrete
 
 1. **In this service a public endpoint and a platform-owner endpoint are SYNTACTICALLY IDENTICAL at the
@@ -323,6 +349,19 @@ invitations across every org and the export returns **every** row with no cap, e
 email address. Recorded in the registry beside the entry.
 
 ## Known gaps NOT closed here, stated rather than implied absent
+
+**All four are tracked as PRIVATE DRAFT GitHub security advisories**, created 2026-08-13 — the right home
+for unpatched findings on a public repo, and Federico's call over public issues. They are visible to
+maintainers only, and each carries the full reachability analysis and a suggested both-stacks fix:
+
+| Advisory              | Sev    | Subject                                                            |
+| --------------------- | ------ | ------------------------------------------------------------------ |
+| `GHSA-6759-h69h-m739` | MEDIUM | the uncapped export (gap 1 below)                                   |
+| `GHSA-h5cw-pc57-hh95` | MEDIUM | that export completing with no audit row (gap 2)                    |
+| `GHSA-34xq-536f-9wm2` | LOW    | `EF.Constant` + endpoint-level validation (gap 3)                   |
+| `GHSA-qx7g-8q3x-hx36` | LOW    | `StaffGateResult`'s `default` reading as authorized (gap 4)         |
+| `GHSA-w6h5-g5gv-7g95` | MEDIUM | the six remaining hand-rolled CSV builders (not a gap in this slice) |
+
 
 All four are faithful ports of live TS behaviour, so closing any of them means changing both stacks — the
 same shape as the CSV fix, and the same reason it needs a deliberate decision rather than a drive-by.
