@@ -144,16 +144,67 @@ public sealed class PlatformInvitationsReadEndpointAuthTests(PlatformInvitations
     /// AUTH RUNS BEFORE VALIDATION. A non-owner sending input that is ALSO invalid must get 403, not 400 —
     /// tRPC runs middleware before Zod, and the reverse order tells a caller who may not know the endpoint
     /// exists that it has a `limit` bound.
+    ///
+    /// <para><b>The two InlineData cases are NOT redundant — they exercise different machinery, and only
+    /// the second one ever failed.</b> `?limit=9999` BINDS successfully and is rejected by the handler's
+    /// validation, so it passed even when the ordering was broken. `?page=abc` cannot bind to an `int` at
+    /// all, and Minimal-API binding runs BEFORE the handler delegate — so while `page`/`limit` were declared
+    /// as `int`, this returned 400 for a caller who is not allowed to know the endpoint exists. An
+    /// adversarial review proved that against the real host. The fix was to bind both as `string?` and parse
+    /// after the gate; this case is the regression test for it, and a test using only bind-able values reads
+    /// as covering the invariant while leaving it untested.</para>
     /// </summary>
-    [Fact]
-    public async Task OrdinaryOrgUser_WithInvalidInput_Is403_Not400()
+    [Theory]
+    [InlineData("?limit=9999")]      // binds, fails validation — passed even when the ordering was broken
+    [InlineData("?page=abc")]        // cannot bind — this is the case that was returning 400
+    [InlineData("?limit=abc")]
+    [InlineData("?page=99999999999999999999")] // overflows int — also a bind failure
+    public async Task OrdinaryOrgUser_WithInvalidInput_Is403_Not400(string queryString)
     {
         await using var factory = EnabledFactory();
         using var client = factory.CreateClient();
 
-        var response = await Get(client, $"{ListPath}?limit=9999", Mint(PlatformInvitationsReadFixture.OrgUserSub));
+        var response = await Get(client, $"{ListPath}{queryString}", Mint(PlatformInvitationsReadFixture.OrgUserSub));
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    /// <summary>
+    /// The same unbindable inputs, ANONYMOUS, must still be 401 — the authorization middleware precedes
+    /// binding, so this half was already correct and must stay correct after the string-binding change.
+    /// </summary>
+    [Theory]
+    [InlineData("?page=abc")]
+    [InlineData("?limit=abc")]
+    public async Task Anonymous_WithUnbindableInput_Is401(string queryString)
+    {
+        await using var factory = EnabledFactory();
+        using var client = factory.CreateClient();
+
+        var response = await client.GetAsync($"{ListPath}{queryString}");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    /// <summary>
+    /// As an OWNER the same unbindable values must still be 400 — the fix moved WHEN the rejection happens,
+    /// not WHETHER it happens. Without this, binding them as `string?` could have silently started accepting
+    /// garbage (e.g. falling back to the default page) and no test would have noticed.
+    /// </summary>
+    [Theory]
+    [InlineData("?page=abc")]
+    [InlineData("?limit=abc")]
+    [InlineData("?page=1.5")]
+    [InlineData("?page=%20")]
+    [InlineData("?page=99999999999999999999")]
+    public async Task Owner_WithUnbindableInput_Is400(string queryString)
+    {
+        await using var factory = EnabledFactory();
+        using var client = factory.CreateClient();
+
+        var response = await Get(client, $"{ListPath}{queryString}", Mint(PlatformInvitationsReadFixture.PlatformOwnerSub));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     /// <summary>The same ordering property on the export, whose only validated inputs are the two enums.</summary>
@@ -455,6 +506,75 @@ public sealed class PlatformInvitationsReadEndpointAuthTests(PlatformInvitations
         Assert.Equal(1, byStatus.RootElement.GetProperty("total").GetInt32());
     }
 
+    /// <summary>
+    /// The OFFSET is <c>page * limit</c>, and nothing above proves the MULTIPLIER.
+    /// <c>List_TotalIsUnpaged_WhilePageIsLimited</c> uses <c>page=0</c> (offset 0 either way) and
+    /// <c>List_PageBeyondData_IsEmptyWithRealTotal</c> uses <c>page=99</c> over 5 rows (both
+    /// <c>Skip(1980)</c> and a buggy <c>Skip(99)</c> return nothing). So the classic
+    /// <c>Skip((int)query.Page)</c> off-by-multiplier shipped green. This is the case that catches it:
+    /// created_at DESC is revoked / orgless / pending / accepted / sent, so page 1 at limit 2 must be the
+    /// THIRD and FOURTH rows.
+    /// </summary>
+    [Fact]
+    public async Task List_PaginationOffsetIsPageTimesLimit()
+    {
+        await using var factory = EnabledFactory();
+        using var client = factory.CreateClient();
+
+        var response = await Get(client, $"{ListPath}?page=1&limit=2", Mint(PlatformInvitationsReadFixture.PlatformOwnerSub));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(5, json.RootElement.GetProperty("total").GetInt32());
+        var rows = json.RootElement.GetProperty("invitations");
+        Assert.Equal(2, rows.GetArrayLength());
+        Assert.Equal("pending@globex.test", rows[0].GetProperty("email").GetString());
+        Assert.Equal("accepted@acme.test", rows[1].GetProperty("email").GetString());
+    }
+
+    /// <summary>
+    /// Two filters at once must AND, not OR, and must not discard one another. Every filter test above sends
+    /// exactly ONE filter per request — including <c>List_FiltersByTypeAndStatus</c>, whose name suggests
+    /// otherwise — so a composition bug (a <c>source.Where(...)</c> whose result is dropped, or predicates
+    /// OR'd) satisfied all of them. <c>search</c> is email-only, matching TS's
+    /// <c>email: { contains, mode: 'insensitive' }</c>.
+    /// </summary>
+    [Theory]
+    [InlineData("?type=user&status=revoked", 1)]     // only revoked@acme.test is both
+    [InlineData("?type=org_admin&status=revoked", 0)] // AND ⇒ empty; OR would give 3
+    [InlineData("?search=acme&type=user", 2)]         // accepted@acme.test + revoked@acme.test
+    [InlineData("?search=acme&status=sent", 1)]       // sent@acme.test
+    public async Task List_CombinedFilters_AreAnded(string queryString, int expectedTotal)
+    {
+        await using var factory = EnabledFactory();
+        using var client = factory.CreateClient();
+
+        var response = await Get(client, $"{ListPath}{queryString}", Mint(PlatformInvitationsReadFixture.PlatformOwnerSub));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(expectedTotal, json.RootElement.GetProperty("total").GetInt32());
+        Assert.Equal(expectedTotal, json.RootElement.GetProperty("invitations").GetArrayLength());
+    }
+
+    /// <summary>
+    /// A filter that matches nothing must answer <c>total: 0</c> with an EMPTY array — not a 404, not a
+    /// null. Nothing else drives the list to zero rows: the page-beyond-data cases keep a non-zero total.
+    /// </summary>
+    [Fact]
+    public async Task List_NoMatches_IsEmptyArrayWithZeroTotal()
+    {
+        await using var factory = EnabledFactory();
+        using var client = factory.CreateClient();
+
+        var response = await Get(client, $"{ListPath}?search=zzzznomatch", Mint(PlatformInvitationsReadFixture.PlatformOwnerSub));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(0, json.RootElement.GetProperty("total").GetInt32());
+        Assert.Equal(0, json.RootElement.GetProperty("invitations").GetArrayLength());
+    }
+
     // ── the export ──────────────────────────────────────────────────────────────────────────────────
     /// <summary>
     /// The CSV envelope is <c>{ csv, count }</c> — NOT the audit-log export's <c>{ format, data, count }</c>.
@@ -587,7 +707,15 @@ public sealed class PlatformInvitationsReadEndpointAuthTests(PlatformInvitations
         await using var factory = EnabledFactory();
         using var client = factory.CreateClient();
 
-        var response = await Get(client, ExportPath, Mint(PlatformInvitationsReadFixture.PlatformOwnerWithOrgSub));
+        var request = new HttpRequestMessage(HttpMethod.Get, ExportPath);
+        request.Headers.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", Mint(PlatformInvitationsReadFixture.PlatformOwnerWithOrgSub));
+        request.Headers.TryAddWithoutValidation("User-Agent", "slice22-audit-probe/1.0");
+        // ClientIpFor derives ONLY from x-real-ip / x-forwarded-for (HttpContextClientIp.cs:23-25) — it never
+        // reads RemoteIpAddress — so under TestServer a request without these headers stores a NULL ip, which
+        // is correct behaviour rather than a defect. Sending the header is what exercises the real path.
+        request.Headers.TryAddWithoutValidation("x-forwarded-for", "203.0.113.7");
+        var response = await client.SendAsync(request);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         var rows = await _fixture.GetExportAuditRowsForActorAsync(PlatformInvitationsReadFixture.PlatformOwnerWithOrgId);
@@ -605,5 +733,31 @@ public sealed class PlatformInvitationsReadEndpointAuthTests(PlatformInvitations
         Assert.Contains("\"resource\": \"invitations\"", row.Metadata, StringComparison.Ordinal);
         Assert.Contains("\"format\": \"csv\"", row.Metadata, StringComparison.Ordinal);
         Assert.Contains("\"count\": 5", row.Metadata, StringComparison.Ordinal);
+        // TS writes ipAddress AND userAgent too (security-audit.ts:180-181). Unasserted, a null-returning
+        // ClientIpFor() or a mis-read header is swallowed by the fail-soft writer and ships green.
+        Assert.Equal("slice22-audit-probe/1.0", row.UserAgent);
+        Assert.Equal("203.0.113.7", row.IpAddress);
+    }
+
+    /// <summary>
+    /// An export matching nothing must still be a 200 whose csv is the header ALONE — no trailing newline,
+    /// no empty body, no "no rows" line. TS builds it as <c>[header, ...[]].join('\n')</c>.
+    /// <c>BuildCsv_emits_only_the_header_for_no_rows</c> covers the pure function; nothing covered the
+    /// endpoint, where the count and the envelope are also at stake.
+    /// </summary>
+    [Fact]
+    public async Task Export_NoMatches_IsHeaderOnlyWithZeroCount()
+    {
+        await using var factory = EnabledFactory();
+        using var client = factory.CreateClient();
+
+        var response = await Get(client, $"{ExportPath}?status=accepted&type=org_admin", Mint(PlatformInvitationsReadFixture.PlatformOwnerSub));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(0, json.RootElement.GetProperty("count").GetInt32());
+        Assert.Equal(
+            "\"Email\",\"Tipo\",\"Organizacion\",\"Rol\",\"Estado\",\"Enviada\",\"Expira\",\"Aceptada\"",
+            json.RootElement.GetProperty("csv").GetString());
     }
 }

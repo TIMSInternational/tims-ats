@@ -10,8 +10,9 @@ import { WRITE_SURFACES, type WriteResolvedBase } from '../../scripts/parity/wri
  * The parity harness (scripts/parity/) is the only automated thing that probes the LIVE C# service
  * for cross-tenant isolation (checks/rls.ts) and permission denials (checks/rbac.ts). It can probe
  * nothing that SURFACES + WRITE_SURFACES do not register — and nothing measured how much of the
- * deployed service that is. Measured 2026-08-11: 50 registered endpoints against 135 deployed
- * operations, leaving a gap of 85.
+ * deployed service that is. Re-measured 2026-08-13: 54 registered endpoints against 138 deployed
+ * operations, leaving a gap of 84. (The numeric PINS below were updated when slice 22 landed; this
+ * prose was not, and read 50/135/gap-85 for a commit. Update both, or neither is trustworthy.)
  *
  * THIS GUARD MEASURES REGISTRATION, NOT PROBE COVERAGE, and the two are not the same number. Of the
  * 24 READ registrations, TEN issue no cross-tenant probe at all: 9 carry `globalScope` and 1 carries

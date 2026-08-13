@@ -71,6 +71,39 @@ public sealed class PlatformInvitationsReadUseCaseTests
         Assert.True(PlatformInvitationsReadUseCase.IsValidSearch(null));
     }
 
+    // ── page/limit parsing: exists so the GATE can run before validation ─────────────────────────────
+    /// <summary>
+    /// <c>page</c>/<c>limit</c> are bound as <c>string?</c> and parsed here rather than bound as
+    /// <c>int</c>, because Minimal-API binding runs BEFORE the handler delegate — an <c>int</c> parameter
+    /// turned <c>?page=abc</c> into a 400 that never reached <c>PlatformOwnerGate</c>, leaking the
+    /// endpoint's existence to a non-owner. The observable answer for an OWNER is unchanged (still 400);
+    /// only its order relative to the gate moved. The endpoint-level proof is
+    /// <c>OrdinaryOrgUser_WithInvalidInput_Is403_Not400</c>.
+    /// </summary>
+    [Theory]
+    [InlineData(null, true, 7)]        // absent ⇒ the caller's default, matching an omitted Zod optional
+    [InlineData("0", true, 0)]
+    [InlineData("42", true, 42)]
+    [InlineData("abc", false, 0)]
+    [InlineData("", false, 0)]
+    [InlineData("1.5", false, 0)]      // NumberStyles.None ⇒ no decimal point
+    [InlineData(" 3 ", false, 0)]      // ...and no surrounding whitespace
+    [InlineData("+3", false, 0)]       // ...and no sign
+    [InlineData("1,000", false, 0)]    // ...and no thousands separator
+    [InlineData("-1", false, 0)]       // a negative fails the PARSE, not the range — same 400 either way
+    [InlineData("99999999999999999999", false, 0)] // overflows int
+    [InlineData("101", false, 0)]      // in range for the parse, out of range for max=100
+    public void TryParseBoundedInt_acceptsOnlyPlainDigitsInRange(string? raw, bool expectedOk, int expectedValue)
+    {
+        var ok = PlatformInvitationsReadUseCase.TryParseBoundedInt(raw, fallback: 7, min: 0, max: 100, out var value);
+
+        Assert.Equal(expectedOk, ok);
+        if (expectedOk)
+        {
+            Assert.Equal(expectedValue, value);
+        }
+    }
+
     // ── the CSV ──────────────────────────────────────────────────────────────────────────────────────
     [Fact]
     public void BuildCsv_emits_only_the_header_for_no_rows()
@@ -84,7 +117,7 @@ public sealed class PlatformInvitationsReadUseCaseTests
     /// hardening. It was the bare literal <c>Email,Tipo,…</c> before that.
     /// </summary>
     [Fact]
-    public void CsvHeader_is_byte_identical_to_the_TS_literal() =>
+    public void CsvHeader_is_byte_identical_to_the_TS_csvRow_output() =>
         Assert.Equal(
             "\"Email\",\"Tipo\",\"Organizacion\",\"Rol\",\"Estado\",\"Enviada\",\"Expira\",\"Aceptada\"",
             PlatformInvitationsReadUseCase.CsvHeader);

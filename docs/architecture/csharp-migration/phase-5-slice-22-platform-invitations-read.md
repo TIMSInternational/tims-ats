@@ -8,7 +8,7 @@ Federico's.
 
 ## #75 is TEN procedures and this slice is THREE. The other seven, and why.
 
-The issue title says "10 procedures, 421 LOC". The file is **456 LOC** (`wc -l`), and the ten procedures
+The issue title says "10 procedures, 421 LOC". The file is **463 LOC** (`wc -l` on this branch; it was 456 at `origin/main` — the CSV fix below adds 7), and the ten procedures
 split into four groups that are four genuinely different problems. Splitting them is not scope
 reduction — three of the seven **cannot be ported at all today**, for a reason the issue does not
 mention.
@@ -29,7 +29,10 @@ dependency:
 
 ```bash
 grep -rh "PackageReference" services/Tims.Platform/src/*/*.csproj | grep -iE "aws|mail|smtp|sendgrid|email"   # no output
-grep -rn "interface I.*Email|class .*EmailSender|SendEmailAsync" services/Tims.Platform/src --include="*.cs"   # no output
+grep -rnE "interface I.*Email|class .*EmailSender|SendEmailAsync" services/Tims.Platform/src --include="*.cs"  # no output
+# NOTE the -E. Without it `|` is a LITERAL and the command can never match, whatever the tree contains —
+# an adversarial review caught that this evidence command was vacuous as first written. The CONCLUSION
+# held on re-run: no match with -E, and no AWS/mail/SMTP/SendGrid/MailKit PackageReference in any csproj.
 ```
 
 Three procedures call `sendEmail` (`invitations.ts:156`, `:209`, `:242` — three call sites, confirmed by
@@ -47,11 +50,14 @@ resolved.**
 
 ### Two TS defects found while characterizing, both filed, neither fixed here
 
-1. **`bulkInviteUsers` sends no email at all.** There are exactly three `await sendEmail` call sites and
+1. **`bulkInviteUsers` sends no email at all.** There are exactly three `await sendEmail` call sites
+   **in `invitations.ts`** (repo-wide there are five — `platform/invoices.ts` has two) and
    none is in `bulkInviteUsers`, which nonetheless writes `status: sent` for up to 200 rows. Every one of
    those invitees is recorded as invited and never contacted.
 2. **The CSV export had no formula-injection defence.** FIXED in both stacks on 2026-08-12 — see
-   divergence (1) below for what changed and what is still outstanding in the four sibling exports.
+   divergence (1) below for what changed, and for the SIX other hand-rolled CSV builders that are still
+   outstanding (four platform routers plus two frontend ones — an adversarial review found the two FE
+   builders, which the "tracks #39's service-layer bypass" framing had missed entirely).
 
 ## Threat characterization for the two `publicProcedure` endpoints (slice 23 groundwork)
 
@@ -94,13 +100,25 @@ force is not a practical concern at that entropy; the practical concerns are all
    list holds **seven exact paths and three prefixes** — the other five exact entries are infra and
    auth-probe routes (`/`, `/health`, `/ready`, `/whoami`, `/external-whoami`), plus the `/openapi`,
    `/require-permission` and `/require-org-scope` prefixes. Separately, `.AllowAnonymous()` appears on
-   **nine** route registrations, of which **six** are `PlatformOrganizations*` endpoints that are not
-   unauthenticated at all — they gate inside the handler. That six-versus-two split is trap (1) again, seen
-   from the rate limiter's side: counting `.AllowAnonymous()` does NOT count public endpoints.
+   **eight** route registrations: **six** `PlatformOrganizations*` endpoints that are not unauthenticated
+   at all (they gate inside the handler), plus `AlertMetricsEndpoints` and `BillingWebhookEndpoints`.
+   That six-versus-two split is trap (1) again, seen from the rate limiter's side: counting
+   `.AllowAnonymous()` does NOT count public endpoints. (This line said **nine** until an adversarial
+   review counted them; the ninth grep hit is a doc comment in `AlertMetrics/CronCallerGate.cs`. Note
+   the arithmetic was self-refuting — 6 + 2 is not 9 — and it appeared in the very commit that existed
+   to correct a different miscounted superlative. Count the set, then check the sum.)
 
-   Left alone the middleware is a denylist and does the right thing automatically: `CategoryFor` maps
-   GET → `query` (100/min) and POST → `mutation` (30/min), keyed on the trusted IP for an anonymous caller —
-   the same categories TS derives from `path`+`type`, so it is parity by default.
+   Left alone the middleware is a denylist and does the right thing automatically: `CategoryFor` keyed on
+   the trusted IP for an anonymous caller, deriving the same categories TS derives from `path`+`type`, so
+   it is parity by default. The mapping is ordered and this line used to state only its last step:
+   `auth.` prefix → Auth, then `portal.applytovacancy` → Ai, then the AI keyword list → Ai, then an
+   `export` substring → **Export**, and only then the GET → `query` (100/min) / POST → `mutation`
+   (30/min) default. Worth knowing for THIS slice too: `/platform/invitations/export` normalises to
+   `platform.invitations.export` and therefore lands in the **Export** tier — `RateLimits.cs` gives that
+   5 tokens per 300_000 ms window, i.e. **5 requests / 5 minutes**, the strictest tier there is and an
+   exact match for the TS `export: { requests: 5, window: '5m' }`. (An adversarial review read the
+   300_000 as a rate and reported the export as effectively unthrottled; it is the WINDOW in
+   milliseconds. Verified in `RateLimits.cs` — `Tokens()` and `WindowMs()` are separate switches.)
 
 ## Recorded divergences and deliberately reproduced defects
 
@@ -205,6 +223,9 @@ was not a mutation at all: it was the original code, and the tests caught it bef
 | Remove `NodeIsoNullableDateTimeConverter` from `SentAt` only    | FAIL — `List_SerialisesDatesAsNodeIso`                              |
 | Use the captured variable instead of `EF.Constant` (as written) | FAIL — `List_FiltersByTypeAndStatus`, `Export_AppliesFilters` (500) |
 | Remove the export's audit call site                             | FAIL — `Export_ByOwnerWithAnOrg_WritesOneAuditRow`                  |
+| `CsvCell.Row` → raw `string.Join` (C#-only un-hardening)        | FAIL — 11 unit cases, plus the integration byte-for-byte pin        |
+| Bind `page`/`limit` as `int` again (binding precedes the gate)  | FAIL — 3 `OrdinaryOrgUser_WithInvalidInput_Is403_Not400` cases      |
+| Revert the TS CSV hunk only (both stacks must move together)    | FAIL — 2 `exportInvitationsCsv is wired through…` source guards     |
 
 The last one needed two attempts, and the first attempt is worth recording. Mutating the resolve-or-skip
 guard to `if (true)` produced **2 compiler errors** (unreachable code), so `dotnet test --no-build` ran the
@@ -223,11 +244,51 @@ surface-level test passes through it. Note also that the 401 cases survive that 
 `.RequireAuthorization()`, not the gate — so the gate's unique contribution is the **403**, and that is the
 assertion that must exist per route.
 
+## Tier-3 adversarial panel — what it found, and what it got wrong
+
+Cross-model verification (`scripts/verification/codex-review.sh`) exited **2** for the 26th consecutive
+time — Codex quota, now reading "Sep 9th, 2026", not the `2026-08-15` still written in
+`.claude/rules/verification.md`. Per the rule, exit 2 is not a pass, so the declared tier-3 substitute ran:
+three independent same-model lenses (security/tenant-isolation, claim auditor, coverage), each prompted to
+**refute** and to re-read the source rather than trust this document.
+
+It was worth running. Two findings were real defects in code, not prose:
+
+1. **Binding ran before the gate.** `page`/`limit` were `int`, and Minimal-API binding precedes the handler
+   delegate — so `?page=abc` from an ordinary org user returned **400 where it should return 403**, leaking
+   that the endpoint exists and takes an integer `page`. The class docblock claimed the opposite invariant.
+   Proved by running the real host. Fixed by binding both as `string?` and parsing after the gate; the
+   existing guard test used `?limit=9999`, which BINDS, so it read as covering this and did not.
+2. **The TS half of the CSV fix had no test at all.** The C# side pinned the hardened bytes; a `git revert`
+   of the TS hunk left vitest, dotnet and tsc green while reopening CWE-1236 on the live path. Closed with a
+   shared golden (`contracts/invitation-fixtures/`) plus **source guards** on the router — the golden alone
+   only exercises `csvRow`, which is exactly the weakness that let this ship.
+
+Plus `Guid.Parse` → `TryParse` outside the fail-soft boundary, the audit write bound to `RequestAborted`
+against the #181 precedent, and untested pagination-multiplier / combined-filter / empty-result paths.
+
+**Claims it falsified in this document and the commit messages** — the highest-value class, again:
+`organizations` is in `efcoreStranglerWrite[]` not `efcoreReadOnly[]` (asserted in four places);
+`.AllowAnonymous()` is on **8** registrations not 9 (in the very commit written to correct a different
+miscount, and self-refuting — 6 + 2 ≠ 9); "unlike every other `efcoreReadOnly` context" is wrong (at least
+four are); the mutation table said 7 failures where the re-run gives 11; `seed.ts` seeds the platform owner
+**with** an org, so the "normally org-less" rationale was inverted; the `#217` evidence grep lacked `-E` and
+could never have matched (**the conclusion survived a corrected re-run; the cited command did not**).
+
+**And one the panel itself got wrong, kept as the standing lesson.** It reported the export as landing in a
+300,000-per-minute rate-limit tier, i.e. effectively unthrottled. `RateLimits.cs` has two separate switches:
+`Tokens()` gives Export **5**, `WindowMs()` gives Export **300_000 ms**. It is 5 requests / 5 minutes — the
+strictest tier, and an exact match for TS. **Agent output is evidence, not verdict; the same
+read-it-yourself rule that caught these claims applies to the review that caught them.**
+
 ## Ownership ledger — nothing moved
 
-All three mapped tables (`platform_invitations`, `organizations`, `users`) were **already** in
-`efcoreReadOnly[]`; `platform_invitations` arrived there in slice 19, which mapped it for a three-column
-COUNT. So unlike slice 19 this slice was not caught by the ownership check on its first full-suite run —
+All three mapped tables were **already** registered, so nothing moved — but not all three in the same
+array, and an earlier version of this line said they were. **`platform_invitations` and `users` are in
+`efcoreReadOnly[]`** (32 entries); **`organizations` is in `efcoreStranglerWrite[]`** (13 entries), where
+slice 21 put it when C# took write ownership. `platform_invitations` arrived in slice 19, which mapped it
+for a three-column COUNT. The conclusion is unchanged — this slice adds no writer and moves nothing —
+but "all three were already in `efcoreReadOnly[]`" was simply false, and it was asserted in four places. So unlike slice 19 this slice was not caught by the ownership check on its first full-suite run —
 registration was verified present rather than discovered missing. A rationale note is added anyway
 (`platform_invitations_read_slice22`), because "already listed" and "listed for this reason" are different
 records.
@@ -244,8 +305,10 @@ is a documented _absence_ of a probe.
 
 Unlike `audit-log`/`access-review` (C#-only, `[WEAK]`, because their TS was deleted), all three endpoints
 carry a real `tsProcedure` — the TS side is the live path — so `verify invitation` produces an actual
-payload diff. That makes it the only automated check capable of catching the two defect classes that cost
-#211/#216 nine divergences: a mis-serialised `DateTime` and a dropped or renamed key.
+payload diff. Among the checks that cover THIS surface it is the only automated one capable of catching
+the two defect classes that cost #211/#216 nine divergences — a mis-serialised `DateTime` and a dropped
+or renamed key. (Scoped deliberately: repo-wide it is not unique. `surfaces.ts` carries 16 `tsProcedure`
+refs across five surfaces, and every one of those yields a real payload diff.)
 
 No grant fixture and no seed change was needed: `PlatformOwnerGate` decides on `users.is_platform_owner`
 _before_ any permission lookup, so `org_admin` is refused holding no `role_permissions` row.
@@ -259,6 +322,32 @@ flips it; and `scripts/parity/.env` does not exist in the agent environment. Eve
 invitations across every org and the export returns **every** row with no cap, each carrying an invitee
 email address. Recorded in the registry beside the entry.
 
+## Known gaps NOT closed here, stated rather than implied absent
+
+All four are faithful ports of live TS behaviour, so closing any of them means changing both stacks — the
+same shape as the CSV fix, and the same reason it needs a deliberate decision rather than a drive-by.
+
+1. **The export is uncapped, in both stacks.** No `take`, no cap, no `truncated` flag
+   (`invitations.ts:293-306`; `PlatformInvitationsReadRepository.cs:135-155`). One platform-owner call
+   returns every invitee email address across every tenant, and the whole set is materialised into a `List`
+   and then a `StringBuilder`. The sibling `audit.service.ts` enforces `EXPORT_LIMIT` and reports
+   `truncated` — that is the pattern to adopt, in both stacks at once.
+2. **That export can leave NO audit trail.** `logPlatformExport` resolve-or-skips, and `platformProcedure`
+   is built from `protectedProcedure`, not `auditedProcedure` — so for an org-less owner TS writes no row
+   either, and C#'s `SecurityDenialAuditMiddleware` records only denials. The highest-privilege, widest-
+   scope, uncapped read on the platform is the one that can go unlogged.
+3. **`IsValidType`/`IsValidStatus` are available to callers, not enforced by the layer that owns the
+   invariant.** `EF.Constant` inlines its value as a SQL literal, and the repository's safety comment rests
+   on validation that happens in the endpoint. The panel could not construct a reaching path (the three
+   handlers are the only production callers, and `EF.Constant` escapes anyway — a hostile value comes back
+   as `22P02 invalid input value for enum`, one escaped literal, not injected SQL), so this is
+   defence-in-depth, not a live hole. Re-checking inside `ListAsync`/`ExportAsync`, or making the query
+   records validate in their constructors, would make the guarantee structural.
+4. **`StaffGateResult` is a struct whose `default` reads as "authorized, no context".** `Failure == null`
+   is treated as allow by every call site including this slice's three. Only `Ok`/`Fail` are constructed
+   today so it is unreachable, but the fail-open shape lives in shared code. Pre-existing; noted because
+   this slice depends on it.
+
 ## Verification
 
 | Check                                           | Result                                                         |
@@ -266,7 +355,7 @@ email address. Recorded in the registry beside the entry.
 | `pnpm --filter @tims/api exec tsc --noEmit`     | pass                                                           |
 | `cd apps/web && npx tsc --noEmit`               | pass                                                           |
 | `npx vitest run`                                | pass — see the PR body for the anchor                          |
-| `dotnet test` (unit + integration)              | pass — 37 new unit, 53 new integration                         |
+| `dotnet test` (unit + integration)              | pass — 44 new unit, 71 new integration                         |
 | `dotnet build -c Release` → `contracts/openapi` | regenerated; **131 insertions, 0 deletions** (purely additive) |
 | gitleaks                                        | clean                                                          |
 | Cross-model verification                        | ⚠️ **NOT RUN** — Codex quota-blocked (see the PR body)         |

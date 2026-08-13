@@ -76,6 +76,43 @@ public sealed class PlatformInvitationsReadUseCase(IPlatformInvitationsReadRepos
     public static bool IsValidStatus(string? status) => status is null || ValidStatuses.Contains(status);
 
     /// <summary>
+    /// Parses the RAW <c>page</c>/<c>limit</c> query strings, because the endpoint may not bind them as
+    /// <see cref="int"/>.
+    ///
+    /// <para><b>This exists for an authorization reason, not a parsing one.</b> Minimal-API parameter
+    /// binding runs BEFORE the handler delegate, so an <c>int</c> parameter turns <c>?page=abc</c> into a
+    /// 400 that never reaches <see cref="Tims.Api.Audit.PlatformOwnerGate"/>. An ordinary org user could
+    /// then tell the endpoint exists and takes an integer <c>page</c> by comparing the 403 for
+    /// <c>?page=1</c> against the 400 for <c>?page=abc</c> — exactly the leak the endpoint's
+    /// gate-before-validation ordering exists to prevent, and exactly what tRPC avoids by running
+    /// <c>platformProcedure</c>'s middleware before Zod. Binding these two as <c>string?</c> and parsing
+    /// here, after the gate, restores the invariant. Proved by an adversarial review that ran the real
+    /// host: <c>?page=abc</c> as a non-owner returned 400 where <c>?page=1</c> returned 403.</para>
+    ///
+    /// <para><see cref="NumberStyles.None"/> is deliberate: digits only. A sign, a decimal point, a
+    /// thousands separator, surrounding whitespace and an overflowing literal all fail the parse and become
+    /// the same 400 the range check would have produced — so the observable answer is unchanged, only its
+    /// ORDER relative to the gate is. Absent (<c>null</c>) keeps the caller's default, matching an omitted
+    /// optional in the Zod object.</para>
+    /// </summary>
+    public static bool TryParseBoundedInt(string? raw, int fallback, int min, int max, out int value)
+    {
+        if (raw is null)
+        {
+            value = fallback;
+            return true;
+        }
+
+        if (!int.TryParse(raw, NumberStyles.None, CultureInfo.InvariantCulture, out value))
+        {
+            value = 0;
+            return false;
+        }
+
+        return value >= min && value <= max;
+    }
+
+    /// <summary>
     /// Reproduces <c>if (search?.trim())</c> — TRIM FIRST, then test for emptiness, and treat a
     /// whitespace-only search as no filter at all rather than as a filter on the empty string.
     ///

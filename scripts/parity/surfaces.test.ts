@@ -264,6 +264,32 @@ describe('SURFACES', () => {
     expect(byName('detail').noTenantBoundaryForCaller).toBe(true);
   });
 
+  it('invitation is registered with its flag and all THREE deployed reads, each keeping a tsProcedure', () => {
+    // Every other surface here has a per-surface pin; `invitation` shipped in slice 22 with only the
+    // key-set entry and the globalScope count, which a coverage review flagged. Without this block,
+    // dropping a `tsProcedure` silently degrades all three endpoints to [WEAK] — the pre-flip readiness
+    // check then proves nothing — and the suite stays green. Same rationale as the organization pin above.
+    const s = SURFACES.invitation;
+
+    // The flag string is what `checks/preflight.ts` and `cli.ts` PRINT to say which env var to flip.
+    // A typo here is otherwise undetectable until someone flips the wrong one in prod.
+    expect(s.flag).toBe('Platform__PlatformInvitationsReadEnabled');
+    expect(s.probeRole).toBe('platform_owner');
+    expect(s.endpoints.map((e) => e.name)).toEqual(['kpis', 'list', 'export']);
+
+    for (const ep of s.endpoints) {
+      // The TS side of this surface is still LIVE (unlike audit-log/access-review, whose TS was deleted),
+      // so a real payload diff is available and must not be given up.
+      expect(ep.tsProcedure, ep.name).toBeTruthy();
+      expect(ep.expectedByRole, ep.name).toEqual({ platform_owner: 200, org_admin: 403 });
+      // Platform-owner-only and deliberately cross-org: no endpoint here is by-id, so none may carry
+      // idScopeKey, and the RLS N/A is reached via globalScope rather than the by-id marker.
+      expect(ep.idScopeKey, ep.name).toBeUndefined();
+      expect(ep.noTenantBoundaryForCaller, ep.name).toBeUndefined();
+      expect(ep.globalScope, ep.name).toBe(true);
+    }
+  });
+
   it('getOrganization is registered under the by-id platform-owner marker, NOT globalScope', () => {
     // Replaces the pin on a DELIBERATE omission (which read: "stays UNregistered until a by-id
     // platform-owner endpoint can be expressed"). It can now be expressed — by a NEW, explicitly-named

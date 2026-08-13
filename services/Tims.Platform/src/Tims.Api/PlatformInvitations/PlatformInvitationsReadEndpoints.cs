@@ -20,8 +20,12 @@ namespace Tims.Api.PlatformInvitations;
 /// <para><b>Gate: <see cref="PlatformOwnerGate"/>, reused not re-implemented.</b> It is the documented C#
 /// analog of TS <c>platformProcedure</c> and already handles the case a fresh gate gets wrong — an
 /// impersonated platform-owner session resolves to <c>PrincipalType.OrgUser</c>, so it is denied with no
-/// special-case code, matching TS's <c>ctx.user.isPlatformOwner</c> check against the real, non-impersonated
-/// row.</para>
+/// special-case code. <b>The OUTCOME matches TS; the mechanism is not the one an earlier version of this
+/// comment described.</b> It claimed TS checks "the real, non-impersonated row" — it does not. TS checks the
+/// TARGET's row, and <c>apps/web/lib/auth/staff-context.ts:163</c> hard-codes <c>isPlatformOwner: false</c>
+/// while impersonating. Both stacks therefore deny an impersonated owner, by different routes. Recorded
+/// precisely because a reader acting on the old rationale could "fix" this gate to allow impersonated
+/// owners, believing TS does.</para>
 ///
 /// <para><b>There is no second line of defence, and that is deliberate.</b> This surface is cross-org by
 /// design and is never wrapped in <c>TenantScope</c>, so RLS restricts nothing here (and the prod login role
@@ -29,6 +33,15 @@ namespace Tims.Api.PlatformInvitations;
 /// endpoint, before any input validation, mirroring tRPC's middleware-before-Zod order. A non-owner sending
 /// malformed input must get 403, not 400; the reverse leaks the existence of validation rules to callers who
 /// are not allowed to know the endpoint exists.</para>
+///
+/// <para><b>That invariant was FALSE for <c>page</c>/<c>limit</c> until they were bound as
+/// <c>string?</c>.</b> Minimal-API parameter binding runs before the handler delegate, so declaring them as
+/// <c>int</c> meant <c>?page=abc</c> short-circuited to a 400 that never reached the gate — an ordinary org
+/// user could compare that against the 403 for <c>?page=1</c> and learn the endpoint exists. An adversarial
+/// review proved it against the real host. They are now parsed inside the handler, after the gate, by
+/// <c>PlatformInvitationsReadUseCase.TryParseBoundedInt</c>. The guard tests cover BOTH shapes of invalid
+/// input — values that bind but fail validation (<c>?limit=9999</c>) and values that cannot bind at all
+/// (<c>?page=abc</c>) — because only the second kind exercises the ordering.</para>
 ///
 /// <para><b>The other SEVEN procedures in that router are NOT here, and four of them cannot be yet.</b>
 /// <c>revokeInvitation</c> and <c>bulkInviteUsers</c> are writes that need their own one-active-writer flag
@@ -81,8 +94,11 @@ public static class PlatformInvitationsReadEndpoints
                     IOptions<PlatformOptions> options,
                     PlatformInvitationsReadUseCase useCase,
                     CancellationToken cancellationToken,
-                    [FromQuery] int page = PlatformInvitationsReadUseCase.DefaultPage,
-                    [FromQuery] int limit = PlatformInvitationsReadUseCase.DefaultLimit,
+                    // page/limit are bound as string?, NOT int, so that an unparseable value cannot become a
+                    // 400 from the BINDER before the gate has run. See TryParseBoundedInt — this is an
+                    // authorization ordering fix, not a parsing preference.
+                    [FromQuery] string? page = null,
+                    [FromQuery] string? limit = null,
                     [FromQuery] string? type = null,
                     [FromQuery] string? status = null,
                     [FromQuery] string? search = null) =>
@@ -97,10 +113,16 @@ public static class PlatformInvitationsReadEndpoints
                     // The Zod bounds from `listInvitations`' input object. REJECTING rather than clamping is
                     // the parity behaviour: tRPC would throw BAD_REQUEST. Note `limit` maxes at 50 here, not
                     // the 100 that listOrganizations allows, and an unknown `type`/`status` is a 400 rather
-                    // than an ignored filter (z.enum().optional(), not a tri-state).
-                    if (page < 0
-                        || limit < PlatformInvitationsReadUseCase.MinLimit
-                        || limit > PlatformInvitationsReadUseCase.MaxLimit
+                    // than an ignored filter (z.enum().optional(), not a tri-state). `page` has NO Zod upper
+                    // bound, so it is capped at the largest offset EF can express — see MaxExpressibleOffset.
+                    if (!PlatformInvitationsReadUseCase.TryParseBoundedInt(
+                            page, PlatformInvitationsReadUseCase.DefaultPage, 0, int.MaxValue, out var pageValue)
+                        || !PlatformInvitationsReadUseCase.TryParseBoundedInt(
+                            limit,
+                            PlatformInvitationsReadUseCase.DefaultLimit,
+                            PlatformInvitationsReadUseCase.MinLimit,
+                            PlatformInvitationsReadUseCase.MaxLimit,
+                            out var limitValue)
                         || !PlatformInvitationsReadUseCase.IsValidSearch(search)
                         || !PlatformInvitationsReadUseCase.IsValidType(type)
                         || !PlatformInvitationsReadUseCase.IsValidStatus(status))
@@ -111,8 +133,8 @@ public static class PlatformInvitationsReadEndpoints
                     // NormalizeSearch reproduces `if (search?.trim())` — trim first, then treat
                     // whitespace-only as no filter, and query with the TRIMMED value.
                     var query = new PlatformInvitationListQuery(
-                        page,
-                        limit,
+                        pageValue,
+                        limitValue,
                         type,
                         status,
                         PlatformInvitationsReadUseCase.NormalizeSearch(search));
@@ -171,16 +193,29 @@ public static class PlatformInvitationsReadEndpoints
     /// <summary>
     /// The C# analog of <c>logPlatformExport(ctx, { resource: 'invitations', count, format: 'csv' })</c>.
     ///
-    /// <para><b>RESOLVE-OR-SKIP, and the skip is the COMMON case — this is the whole reason the method
-    /// exists instead of an inline write.</b> TS resolves the audit row's org as
-    /// <c>info.targetOrgId || ctx.user?.organizationId</c> and then <c>if (!organizationId) return;</c>.
-    /// <c>exportInvitationsCsv</c> passes NO <c>targetOrgId</c> (unlike the invoices, users and
-    /// access-review exports, which all do), so the org can only come from the caller's own row — and a
-    /// platform owner is normally ORG-LESS (<c>seed.ts</c> seeds exactly such an identity). So for the
-    /// typical caller TS writes NO audit row at all, and this port must write none either. An unconditional
-    /// write here would be a C#-only audit row: invisible while the flag is dark, then a permanent
-    /// divergence in the audit trail after a flip, and it would 500 on <c>Guid.Parse("")</c> for the
-    /// org-less owner it was supposed to record.</para>
+    /// <para><b>RESOLVE-OR-SKIP — this is the whole reason the method exists instead of an inline write.</b>
+    /// TS resolves the audit row's org as <c>info.targetOrgId || ctx.user?.organizationId</c> and then
+    /// <c>if (!organizationId) return;</c>. <c>exportInvitationsCsv</c> passes NO <c>targetOrgId</c> (unlike
+    /// the invoices, users and access-review exports, which all do), so the org can only come from the
+    /// caller's own row. When that row has no org, TS writes NO audit row at all and this port must write
+    /// none either. An unconditional write here would be a C#-only audit row: invisible while the flag is
+    /// dark, then a permanent divergence in the audit trail after a flip.</para>
+    ///
+    /// <para><b>How common the skip is, stated accurately.</b> An earlier version of this comment claimed a
+    /// platform owner is "normally ORG-LESS" and that <c>seed.ts</c> "seeds exactly such an identity". Both
+    /// are FALSE: <c>packages/db/prisma/seed.ts:91</c> creates the platform owner WITH
+    /// <c>organizationId: org.id</c>, and it is the only platform owner seeded. The org-less shape is
+    /// reachable (<c>users.organization_id</c> is nullable and <c>PermissionService</c> has a branch for it)
+    /// but nothing in this repo establishes it as typical. Both branches are covered by tests
+    /// (<c>Export_ByOrglessOwner_WritesNoAuditRow</c>, <c>Export_ByOwnerWithAnOrg_WritesOneAuditRow</c>), so
+    /// correctness never depended on which one is common — only this comment did.</para>
+    ///
+    /// <para><b>KNOWN GAP, faithful to TS and filed rather than silently fixed.</b> When the skip branch is
+    /// taken, an uncapped cross-tenant PII export leaves NO audit trail at all: <c>platformProcedure</c> is
+    /// built from <c>protectedProcedure</c>, not <c>auditedProcedure</c>, so TS writes no <c>access</c> row
+    /// either, and the C# side's <c>SecurityDenialAuditMiddleware</c> records only denials. Fixing it means
+    /// changing both stacks together (a sentinel org id, or an org-independent audit sink), which is outside
+    /// this read-port slice.</para>
     ///
     /// <para>An empty-string <c>OrganizationId</c> is how this codebase represents "org-less" on a resolved
     /// principal — <c>PermissionService</c> coalesces exactly that to <c>null</c> before a permission
@@ -205,6 +240,17 @@ public static class PlatformInvitationsReadEndpoints
             return;
         }
 
+        // TryParse, not Parse. ISecurityEventWriter is fail-soft, but these parses run BEFORE it and are
+        // awaited in the handler, so a FormatException here would surface as a 500 AFTER the data was
+        // already read — where TS's `safe()` wrapper returns the CSV regardless. Both values come from uuid
+        // columns so this is unreachable today; MfaStepUpMiddleware chose the same defensive spelling on the
+        // identical two fields, and this was the inconsistent branch.
+        if (!Guid.TryParse(organizationId, out var organizationGuid)
+            || !Guid.TryParse(gate.Context!.UserId, out var actorGuid))
+        {
+            return;
+        }
+
         var metadata = new JsonObject
         {
             ["resource"] = "invitations",
@@ -214,15 +260,20 @@ public static class PlatformInvitationsReadEndpoints
 
         await securityEventWriter.WriteAsync(
             new SecurityEvent(
-                Guid.Parse(organizationId),
-                Guid.Parse(gate.Context!.UserId),
+                organizationGuid,
+                actorGuid,
                 "platform_export",
                 "export:invitations",
                 null,
                 metadata,
                 IpAddress: httpContext.ClientIpFor(),
                 UserAgent: UserAgentOf(httpContext)),
-            cancellationToken);
+            // CancellationToken.None, NOT the request token — the #181 precedent (MfaStepUpMiddleware:99-105):
+            // binding an audit write to the request lets a client cancel its own audit row while the
+            // fail-soft catch swallows the OperationCanceledException silently. Lower impact here than in the
+            // MFA case, since this write precedes the response, but it is the same anti-pattern the repo
+            // already ruled on.
+            CancellationToken.None);
     }
 
     private static string? UserAgentOf(HttpContext httpContext)

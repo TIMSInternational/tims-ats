@@ -42,7 +42,10 @@ public sealed class PlatformInvitationsReadFixture : IAsyncLifetime
     public const string OrgUserSub = "sub-inv-org-user";
 
     /// <summary>
-    /// A platform owner who ALSO has an <c>organization_id</c>. Rarer than the org-less shape but real
+    /// A platform owner who ALSO has an <c>organization_id</c>. An earlier comment called this "rarer than
+    /// the org-less shape"; nothing in the repo supports that and <c>packages/db/prisma/seed.ts:91</c>
+    /// points the other way — it seeds the only platform owner WITH <c>organizationId: org.id</c>. Real
+    /// either way
     /// (<c>trpc.ts</c>'s tenant middleware has a dedicated branch for "platform owners WITH an org row of
     /// their own"), and it is the ONLY caller shape for which the export's audit write actually happens —
     /// so without this principal the write branch of <c>logPlatformExport</c>'s resolve-or-skip is
@@ -77,7 +80,8 @@ public sealed class PlatformInvitationsReadFixture : IAsyncLifetime
     /// <summary>
     /// <c>revoked</c>, with a hostile <c>organization_name</c> and an EMPTY-STRING <c>role_slug</c>. Backs
     /// the CSV assertions: quote-doubling, the embedded comma, the <c>|| '-'</c> falsy fallback, and the
-    /// DELIBERATELY ABSENT formula-injection neutralisation. Also the only row in no KPI bucket.
+    /// formula-injection neutralisation, which is now APPLIED in both stacks (it was deliberately absent, and
+    /// pinned as absent, until 7ad7b683). Also the only row in no KPI bucket.
     /// </summary>
     public static readonly Guid InvitationRevoked = Guid.Parse("e0000000-0000-0000-0000-000000000005");
 
@@ -155,20 +159,28 @@ public sealed class PlatformInvitationsReadFixture : IAsyncLifetime
     /// <c>(organization_id, entity, metadata)</c> — keyed on the actor so the assertion is independent of
     /// anything other tests in this collection wrote.
     /// </summary>
-    public async Task<List<(Guid OrganizationId, string Entity, string? Metadata)>> GetExportAuditRowsForActorAsync(Guid actorId)
+    public async Task<List<(Guid OrganizationId, string Entity, string? Metadata, string? IpAddress, string? UserAgent)>> GetExportAuditRowsForActorAsync(Guid actorId)
     {
         await using var connection = new NpgsqlConnection(ConnectionString);
         await connection.OpenAsync();
         await using var command = connection.CreateCommand();
+        // ip_address / user_agent are selected because TS writes BOTH (security-audit.ts:180-181) and
+        // ISecurityEventWriter swallows any fault, so a null-returning ClientIpFor() or a mis-read
+        // User-Agent header is invisible without asserting the stored columns.
         command.CommandText =
-            "SELECT organization_id, entity, metadata::text FROM audit_logs WHERE action = 'platform_export' AND actor_id = @actor;";
+            "SELECT organization_id, entity, metadata::text, ip_address, user_agent FROM audit_logs WHERE action = 'platform_export' AND actor_id = @actor;";
         command.Parameters.AddWithValue("actor", actorId);
 
-        var rows = new List<(Guid, string, string?)>();
+        var rows = new List<(Guid, string, string?, string?, string?)>();
         await using var reader = await command.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
-            rows.Add((reader.GetGuid(0), reader.GetString(1), reader.IsDBNull(2) ? null : reader.GetString(2)));
+            rows.Add((
+                reader.GetGuid(0),
+                reader.GetString(1),
+                reader.IsDBNull(2) ? null : reader.GetString(2),
+                reader.IsDBNull(3) ? null : reader.GetString(3),
+                reader.IsDBNull(4) ? null : reader.GetString(4)));
         }
 
         return rows;

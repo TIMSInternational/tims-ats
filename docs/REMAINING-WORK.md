@@ -297,12 +297,16 @@ describe-service`; only the frontend Vercel flag was missing.)
     `EnableUnmappedTypes` does not help (it governs reading, not binding) and neither does declaring the
     store type; the fix is `EF.Constant(value)`. A KPI-only suite would have missed it, because a literal
     comparison works — exactly the open question slice 19/20's data-source docblock had left untested.
-    Two TS defects were characterized and filed rather than fixed: `bulkInviteUsers` writes `status: sent`
-    for up to 200 rows while sending **no email at all** (3 `sendEmail` call sites, none of them there), and
-    `exportInvitationsCsv` hand-rolls its CSV instead of using `csvCell`, so it has **no formula-injection
-    defence** (CWE-1236, reachable via `organizationName`) and quotes only one field. Both are reproduced
-    byte-for-byte and pinned by tests that assert the vulnerable output, so a C#-only hardening fails CI —
-    the fix belongs in both stacks in one change. See
+    Two TS defects were characterized. `bulkInviteUsers` writes `status: sent` for up to 200 rows while
+    sending **no email at all** (3 `sendEmail` call sites in that file, none of them there) — filed, NOT
+    fixed. `exportInvitationsCsv` hand-rolled its CSV instead of using `csvCell`, so it had **no
+    formula-injection defence** (CWE-1236, reachable via `organizationName`) and quoted only one field —
+    **FIXED in both stacks in one commit**, which is the only way to close a parity-pinned divergence: the
+    two tests that pinned the vulnerable output were inverted in the same change. Still outstanding, and NOT
+    claimed safe: the same hand-rolled shape remains in four sibling platform routers (`users`, `invoices`,
+    `subscriptions`, `ai-agents`) and in two frontend builders
+    (`platform/organizations/page.tsx`, `org-bulk-bar.tsx`) — the helper is used only in the service layer,
+    so this tracks #39's service-layer bypass for the routers but not for the two FE ones. See
     `docs/architecture/csharp-migration/phase-5-slice-22-platform-invitations-read.md`.
   - **Cutover-verification harness** (`scripts/parity/`, PRs #177–#194): a TypeScript CLI proving
     parity/RLS/RBAC for each surface against the real Supabase prod DB before any flag flips.

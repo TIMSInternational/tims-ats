@@ -53,6 +53,11 @@
       <Link>audit-fixtures\%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <!-- Phase-5 slice 22 invitations CSV golden (shared with tests/parity/invitation-fixtures.test.ts). -->
+    <Content Include="..\..\..\..\contracts\invitation-fixtures\*.json">
+      <Link>invitation-fixtures\%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <!-- Phase-5 Slice 1 external-vendor v1 mapper golden fixtures (shared with the TS vitest suite). -->
     <Content Include="..\..\..\..\contracts\external-fixtures\*.json">
       <Link>external-fixtures\%(Filename)%(Extension)</Link>

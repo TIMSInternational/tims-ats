@@ -406,6 +406,21 @@ export const SURFACES: Record<string, Surface> = {
   // `users.is_platform_owner` BEFORE any permission lookup, so `org_admin` is refused without holding any
   // `role_permissions` row — the same reasoning the audit-log entry sets out. No seed change accompanies
   // this registration.
+  //
+  // ⚠️ TWO OPERATIONAL CAVEATS FOR WHOEVER RUNS `verify invitation`. Both were found by an adversarial
+  // review of this registration, and neither is visible from a PASS.
+  //
+  //   1. A PASS IS VACUOUS IF `platform_invitations` IS EMPTY. With no rows, `list` returns
+  //      `{invitations: [], total: 0}` on BOTH stacks, diff() compares nothing, and every key name and
+  //      date converter goes unexercised — i.e. the exact two defect classes this registration exists to
+  //      catch (a mis-serialised DateTime, a dropped/renamed key) are the ones a vacuous PASS misses.
+  //      Since no seed accompanies this entry, check the row count before believing a green result.
+  //   2. THE EXPORT CAN FLAKE ON A created_at TIE. `list` carries `sortArraysBy: 'id'` precisely because
+  //      ties are EXPECTED here, not unlucky — `bulkInviteUsers` inserts up to 200 rows in a loop at
+  //      timestamp(3) precision and neither stack has a tiebreaker. The export's payload is a single CSV
+  //      STRING, so no normalize rule can absorb the same tie: it will report a spurious FAIL in exactly
+  //      the situation the list's mitigation exists for. The real fix is #215's both-stacks deterministic
+  //      tiebreaker; until then, prefer a tie-free filter when running the export leg.
   invitation: {
     key: 'invitation',
     flag: 'Platform__PlatformInvitationsReadEnabled',
@@ -469,9 +484,13 @@ export const SURFACES: Record<string, Surface> = {
         expectedByRole: { platform_owner: 200, org_admin: 403 },
         globalScope: true,
         // The payload is ONE string plus a count, so there is no array to sort and no null to drop —
-        // and a byte-for-byte string comparison is the strictest diff in this registry. It is also the
+        // and a byte-for-byte string comparison is the strictest diff in this registry. STRICTEST IS NOT
+        // SAFEST: it is also the one endpoint here that cannot absorb a created_at tie, so see caveat (2)
+        // in the surface header before treating a FAIL on this leg as a real divergence. It is also the
         // one place a CSV-shaping divergence shows up, which matters because this export deliberately
-        // reproduces TS's unhardened hand-rolled CSV rather than using csvCell (see the slice doc).
+        // routes every cell through csvCell/CsvCell in BOTH stacks. This comment used to say the export
+        // deliberately reproduced TS's unhardened hand-rolled CSV; that was true only between commits
+        // 700807c9 and 7ad7b683, which fixed it on both sides at once (see the slice doc).
       },
     ],
   },
