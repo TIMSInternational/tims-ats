@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { csvRow } from '@tims/shared';
 import { router } from '../../trpc';
 import { db, OrgPlan, SubscriptionStatus } from '@tims/db';
 import { TRPCError } from '@trpc/server';
@@ -252,14 +253,16 @@ export const subscriptionsRouter = router({
         select: subscriptionSelect,
       });
 
-      const header = 'Organizacion,Plan,Estado,MRR,Periodo,Trial Vence,Creada';
+      // Every cell through csvRow. Previously nothing was quoted and the org name had its commas
+      // REPLACED with spaces — data mutation standing in for escaping, so "Acme, Inc" exported as
+      // "Acme  Inc". No formula-injection defence either. Tracked as GHSA-w6h5-g5gv-7g95.
+      const header = csvRow(['Organizacion', 'Plan', 'Estado', 'MRR', 'Periodo', 'Trial Vence', 'Creada']);
       const rows = subs.map((sub) => {
         const mrr = sub.status === SubscriptionStatus.active ? (PLAN_PRICES[sub.plan] || 0) : 0;
         const period = computeBillingPeriod(sub.currentPeriodStart, sub.currentPeriodEnd) || '—';
         const trialEnd = sub.trialEndsAt ? sub.trialEndsAt.toISOString().split('T')[0] : '—';
         const created = sub.createdAt.toISOString().split('T')[0];
-        const orgName = sub.organization.name.replace(/,/g, ' ');
-        return `${orgName},${sub.plan},${sub.status},$${mrr},${period},${trialEnd},${created}`;
+        return csvRow([sub.organization.name, sub.plan, sub.status, `$${mrr}`, period, trialEnd, created]);
       });
 
       logPlatformExport(ctx, { resource: 'subscriptions', count: subs.length, format: 'csv' });
