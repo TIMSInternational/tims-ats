@@ -151,12 +151,23 @@ public sealed class PlatformInvitationsReadUseCase(IPlatformInvitationsReadRepos
         CancellationToken cancellationToken) =>
         repository.ListAsync(query, cancellationToken);
 
+    /// <summary>
+    /// The CSV export row cap, matching the TS <c>EXPORT_LIMIT</c> in <c>invitations.ts</c> (itself copied
+    /// from <c>audit.service.ts</c>). The export was UNBOUNDED until 2026-08-13
+    /// (<c>GHSA-6759-h69h-m739</c>): one platform-owner call returned every invitation across every tenant,
+    /// materialised into a single string. The repository fetches <c>ExportLimit + 1</c> so truncation can be
+    /// reported without a second COUNT query.
+    /// </summary>
+    public const int ExportLimit = 10_000;
+
     public async Task<PlatformInvitationExportResult> ExportAsync(
         PlatformInvitationExportQuery query,
         CancellationToken cancellationToken)
     {
         var rows = await repository.ExportAsync(query, cancellationToken).ConfigureAwait(false);
-        return new PlatformInvitationExportResult(BuildCsv(rows), rows.Count);
+        var truncated = rows.Count > ExportLimit;
+        var page = truncated ? rows.Take(ExportLimit).ToList() : rows;
+        return new PlatformInvitationExportResult(BuildCsv(page), page.Count, truncated);
     }
 
     /// <summary>
