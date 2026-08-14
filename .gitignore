@@ -20,6 +20,9 @@ dist/
 # sdd scratch (subagent-driven-development working files)
 .superpowers/
 
+# session working notes (decision memos, tier-3 verification records) — local only
+.claude/session-briefs/
+
 # ide
 .vscode/
 .idea/
