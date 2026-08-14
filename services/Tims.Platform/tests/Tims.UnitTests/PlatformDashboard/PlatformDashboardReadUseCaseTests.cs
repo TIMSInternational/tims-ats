@@ -125,6 +125,31 @@ public sealed class PlatformDashboardReadUseCaseTests
         Assert.Equal("platform_owner", activity[1].Type); // the platform-owner user is second
     }
 
+    [Fact]
+    public void BuildRecentActivity_onEmpty_is_an_empty_list_not_a_throw()
+    {
+        // The one endpoint whose parity PASS is vacuous on empty tables (surfaces.ts caveat 3) — so the
+        // empty path is pinned HERE instead. TS returns [] from the sort+slice of an empty array.
+        Assert.Empty(PlatformDashboardReadUseCase.BuildRecentActivity([], []));
+    }
+
+    [Fact]
+    public void BuildRecentActivity_with_fewer_than_ten_returns_all_of_them_sorted()
+    {
+        var t = new DateTime(2026, 8, 1, 12, 0, 0, DateTimeKind.Utc);
+        var orgs = new List<RecentOrgRow> { new("o1", "Acme", "starter", t.AddMinutes(1)) };
+        var users = new List<RecentUserRow>
+        {
+            new("u1", "Jane", "Doe", "jane@b.test", t.AddMinutes(2), false),
+            new("u2", "Sam", "Lee", "sam@b.test", t, false),
+        };
+
+        var activity = PlatformDashboardReadUseCase.BuildRecentActivity(orgs, users);
+
+        // Take(10) over 3 items returns all 3 — no padding, no minimum.
+        Assert.Equal(["u1", "o1", "u2"], activity.Select(a => a.Id));
+    }
+
     // ── fixture DTOs ─────────────────────────────────────────────────────────────────────────────────
     internal sealed record Kernels(string[] SpanishShortMonths, MonthSeriesCase[] MonthSeriesCases);
     internal sealed record MonthSeriesCase(string Name, MonthRow[] Rows, int Months, string EndNowIso, MonthRow[] Series);

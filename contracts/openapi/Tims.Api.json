@@ -1554,6 +1554,63 @@
         }
       }
     },
+    "/platform/dashboard/plan-distribution": {
+      "get": {
+        "tags": [
+          "PlatformDashboard"
+        ],
+        "operationId": "GetPlatformDashboardPlanDistribution",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/platform/dashboard/user-growth": {
+      "get": {
+        "tags": [
+          "PlatformDashboard"
+        ],
+        "operationId": "GetPlatformDashboardUserGrowth",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/platform/dashboard/recent-activity": {
+      "get": {
+        "tags": [
+          "PlatformDashboard"
+        ],
+        "operationId": "GetPlatformDashboardRecentActivity",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
     "/platform/organizations/{id}/suspend": {
       "post": {
         "tags": [
@@ -12858,6 +12915,9 @@
     },
     {
       "name": "PlatformInvitations"
+    },
+    {
+      "name": "PlatformDashboard"
     }
   ]
 }

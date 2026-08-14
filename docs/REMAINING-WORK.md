@@ -308,7 +308,24 @@ describe-service`; only the frontend Vercel flag was missing.)
     (`platform/organizations/page.tsx`, `org-bulk-bar.tsx`) — the helper is used only in the service layer,
     so this tracks #39's service-layer bypass for the routers but not for the two FE ones. See
     `docs/architecture/csharp-migration/phase-5-slice-22-platform-invitations-read.md`.
-  - **Cutover-verification harness** (`scripts/parity/`, PRs #177–#194): a TypeScript CLI proving
+  - **Slice 23 (PR 1 of 3 for #81) SHIPPED the FX-free platform dashboard READ tier** behind
+    `Platform:PlatformDashboardReadEnabled` — `getPlanDistribution`, `getUserGrowth` and
+    `getRecentActivity`, dark, no table moved (users `efcoreReadOnly`; organizations/subscriptions
+    `efcoreStranglerWrite` via slices 20/21 — read-only maps here). Registered as `SURFACES['dashboard']`
+    in the same PR with real `tsProcedure` refs; the #195 gap did not grow (allowlist unchanged at 84;
+    deployed operations 138 → 141, read registrations 27 → 30). **#81 stays OPEN, and 10 of its 13 reads
+    are NOT ported**, in three groups: `getDashboardKpis`/`getRevenueByCustomer`/`getChurnRisk` call
+    `sumMoney` → live Frankfurter FX and port LAST (the tier-3 panel corrected this list — an earlier
+    draft had `getCustomerHealth` here and `getChurnRisk` in the FX-free group; counting the call sites
+    says otherwise); `getAiCostAnomalies` needs EF maps + ledger entries for THREE unmapped tables
+    (`ai_agent_org_configs`, `ai_agent_usage_logs`, `ai_agents`); and six more FX-free reads
+    (`getAttentionItems`, `getMrrTrend` — which needs its own golden for its `month:'short',
+year:'2-digit'` label format — `getMrrForecast`, `getCustomerHealth`, `getUpsellOpportunities`,
+    `search`) follow under this same flag. The slice found a trap no prior slice had hit (the first raw
+    SQL in a read slice): **a `DateTime` hole in EF `SqlQuery` maps to `timestamptz`**, so a UTC-kind
+    bound would compare the naive column at the session TZ and an Unspecified-kind value is rejected
+    outright by Npgsql; the fix is an explicit `NpgsqlParameter(..., NpgsqlDbType.Timestamp)`. See
+    `docs/architecture/csharp-migration/phase-5-slice-23-platform-dashboard-read.md`.
     parity/RLS/RBAC for each surface against the real Supabase prod DB before any flag flips.
   - **FE/TS dark-cutover wrapper layer (2026-07-27, PRs #197–#212) — now fully COMPLETE, both reads and
     writes** (net of the documented zero-consumer exceptions below — parity-verified backend surfaces with

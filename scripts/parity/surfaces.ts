@@ -503,6 +503,79 @@ export const SURFACES: Record<string, Surface> = {
   // wire. Run it somewhere you would be willing to hold production invitee lists. This is a property of
   // the endpoints, not of the registration; it is written here because the unbounded export makes it
   // sharper than the audit-log case, which at least has an ExportCap.
+  // ── dashboard ───────────────────────────────────────────────────────────────────────────────
+  // NEW 2026-08-14 (Phase-5 slice 23, issue #81, PR 1 of 3). Registered in the SAME PR that deploys the
+  // routes, so the #195 gap does not grow. Same platform-owner shape as `invitation`: TS procedures are
+  // the LIVE path (flag dark), so all three keep a `tsProcedure` and yield a REAL payload diff; no grant
+  // fixture is needed because PlatformOwnerGate decides on `users.is_platform_owner` before any
+  // permission lookup, so org_admin is refused holding no grants at all.
+  //
+  // ⚠️ THREE OPERATIONAL CAVEATS FOR WHOEVER RUNS `verify dashboard`, none visible from a PASS:
+  //
+  //   1. `user-growth` IS DOUBLY TIME-DEPENDENT. Each stack computes its own six-month window from its
+  //      own wall clock at request time, so a run straddling a MONTH boundary between the C# call and
+  //      the TS call shifts every bucket by one and diffs spuriously. No normalize rule can absorb a
+  //      whole-array shift; re-run away from the boundary. (Within a month the two clocks agree on
+  //      every bucket, so this is a minutes-per-month exposure, same class as monitoring's trends.)
+  //   2. `recent-activity` CAN FLAKE ON A created_at TIE — and worse than the invitations list: the
+  //      per-source `take: 5` runs BEFORE the merge, so a tie AT THE FIFTH ROW can select DIFFERENT row
+  //      SETS in the two stacks, which no sort-normalization can reconcile. Ties between an org and a
+  //      user are handled (both stacks keep orgs first — pinned by C# unit + integration tie tests;
+  //      the golden does NOT carry a tiebreak case, and the TS side's pin is the live implementation
+  //      itself); ties WITHIN a source at the take boundary are not handleable. Deliberately NO
+  //      `sortArraysBy` here: the merged DESC order (and its tiebreak) IS the kernel this surface
+  //      exists to compare, and sorting it away would gut the diff.
+  //   3. A PASS IS PARTLY VACUOUS ON EMPTY TABLES, but less than usual: with zero rows,
+  //      `plan-distribution` still emits its four seeded buckets (order + keys + `|| 1` denominator all
+  //      exercised) and `user-growth` still emits six labelled zero buckets (the Spanish month labels —
+  //      THE known ICU divergence — are exercised on every run). Only `recent-activity` degenerates to
+  //      `[]` and compares nothing; check `organizations`/`users` have rows before believing its green.
+  dashboard: {
+    key: 'dashboard',
+    flag: 'Platform__PlatformDashboardReadEnabled',
+    roles: ['platform_owner', 'org_admin'],
+    // MUST be the role the surface answers 200 to — the #203 defect class; the probeRole-expects-200
+    // invariant in surfaces.test.ts asserts it for every surface.
+    probeRole: 'platform_owner',
+    endpoints: [
+      {
+        name: 'plan-distribution',
+        csharpPath: '/platform/dashboard/plan-distribution',
+        tsProcedure: 'platform.getPlanDistribution',
+        input: {},
+        expectedByRole: { platform_owner: 200, org_admin: 403 },
+        // One unfiltered cross-org read over subscriptions.plan — no org-specific payload exists, so
+        // Mode B's identical-payload heuristic would assert the opposite of the requirement.
+        globalScope: true,
+        // No normalize: the output order is the TS seed order (trial/starter/professional/enterprise)
+        // in BOTH stacks, deterministic regardless of row order, and nothing is nullable. The one real
+        // divergence risk on this leg is ROUNDING (JS Math.round vs banker's), and a normalize rule
+        // absorbing numbers would hide exactly that.
+      },
+      {
+        name: 'user-growth',
+        csharpPath: '/platform/dashboard/user-growth',
+        tsProcedure: 'platform.getUserGrowth',
+        input: {},
+        expectedByRole: { platform_owner: 200, org_admin: 403 },
+        globalScope: true,
+        // No normalize: six buckets, fixed order, keys `month`/`count`, nothing nullable. The
+        // month-boundary straddle (caveat 1) is a re-run situation, not a normalize one.
+      },
+      {
+        name: 'recent-activity',
+        csharpPath: '/platform/dashboard/recent-activity',
+        tsProcedure: 'platform.getRecentActivity',
+        input: {},
+        expectedByRole: { platform_owner: 200, org_admin: 403 },
+        globalScope: true,
+        // No normalize, DELIBERATELY — see caveat 2. The merged DESC order and the orgs-before-users
+        // tiebreak are the ported kernel; `sortArraysBy` would stop comparing them. `meta` is always
+        // present in practice (org plan / user email, both NOT NULL), and `dropNullish` would mask a
+        // C# side that started emitting `meta: null` where TS omits the key — so no dropNullish either.
+      },
+    ],
+  },
   // ── compensation ────────────────────────────────────────────────────────────────────────────
   // UPDATE 2026-07-29: 5 of the original 7 registered compensation reads had their TS procedures
   // DELETED (NEXT_PUBLIC_COMPENSATION_READ_VIA_CSHARP confirmed live in prod) — salary-bands,

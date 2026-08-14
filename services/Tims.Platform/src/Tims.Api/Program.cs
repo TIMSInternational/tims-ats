@@ -30,6 +30,7 @@ using Tims.Api.NineBox;
 using Tims.Api.Reporting;
 using Tims.Api.Succession;
 using Tims.Api.Monitoring;
+using Tims.Api.PlatformDashboard;
 using Tims.Api.PlatformInvitations;
 using Tims.Api.PlatformOrganizations;
 using Tims.Api.TeamIntel;
@@ -50,6 +51,7 @@ using Tims.Application.NineBox;
 using Tims.Application.Reporting;
 using Tims.Application.Succession;
 using Tims.Application.Monitoring;
+using Tims.Application.PlatformDashboard;
 using Tims.Application.PlatformInvitations;
 using Tims.Application.PlatformOrganizations;
 using Tims.Application.TeamIntel;
@@ -75,6 +77,7 @@ using Tims.Infrastructure.RateLimiting;
 using Tims.Infrastructure.Reporting;
 using Tims.Infrastructure.Succession;
 using Tims.Infrastructure.Monitoring;
+using Tims.Infrastructure.PlatformDashboard;
 using Tims.Infrastructure.PlatformInvitations;
 using Tims.Infrastructure.PlatformOrganizations;
 using Tims.Infrastructure.TeamIntel;
@@ -314,6 +317,23 @@ try
         options.UseNpgsql(sp.GetRequiredService<PlatformInvitationsDataSourceHolder>().DataSource));
     builder.Services.AddScoped<IPlatformInvitationsReadRepository, PlatformInvitationsReadRepository>();
     builder.Services.AddScoped<PlatformInvitationsReadUseCase>();
+
+    // Phase-5 slice 23 (#81, PR 1 of 3): platform-owner DASHBOARD READ, the three FX-free procedures
+    // (getPlanDistribution / getUserGrowth / getRecentActivity). Cross-org by design and NEVER wrapped in
+    // TenantScope — PlatformOwnerGate is the entire authorization boundary. Read-only over Prisma-owned
+    // tables (users efcoreReadOnly; organizations/subscriptions efcoreStranglerWrite via slices 20/21):
+    // no writer added, nothing moved in the ledger. Dark unless PlatformDashboardReadEnabled.
+    // Its OWN data-source holder (EnableUnmappedTypes is per-domain by convention), and MANDATORY here:
+    // subscriptions.plan and organizations.plan are native OrgPlan enums read as C# strings, so
+    // getPlanDistribution and getRecentActivity would both throw InvalidCastException on the first
+    // materialised row against a real Postgres, with every unit test green. getUserGrowth is raw SQL
+    // projecting text + bigint and alone would survive.
+    builder.Services.AddSingleton(_ =>
+        new PlatformDashboardDataSourceHolder(PlatformDashboardDataSource.Build(databaseConnectionString ?? string.Empty)));
+    builder.Services.AddDbContext<PlatformDashboardReadDbContext>((sp, options) =>
+        options.UseNpgsql(sp.GetRequiredService<PlatformDashboardDataSourceHolder>().DataSource));
+    builder.Services.AddScoped<IPlatformDashboardReadRepository, PlatformDashboardReadRepository>();
+    builder.Services.AddScoped<PlatformDashboardReadUseCase>();
 
     // Phase-5 slice 20 (#76): platform-owner ORGANIZATIONS WRITE (updateOrganization/suspendOrganization).
     // Its OWN context, mapping organizations AND audit_logs, because the fail-closed audit decided on #76
@@ -1085,6 +1105,16 @@ try
     if (externalOptions.PlatformInvitationsReadEnabled || isOpenApiDocGeneration)
     {
         app.MapPlatformInvitationsReadEndpoints();
+    }
+
+    // Phase-5 slice 23 (#81, PR 1 of 3): GET /platform/dashboard/{plan-distribution,user-growth,
+    // recent-activity} — the FX-free tier of the platform dashboard. Three of the cluster's thirteen
+    // reads; the other ten are out for three distinct reasons (three live-FX sumMoney callers / three
+    // unmapped ai-agent tables behind getAiCostAnomalies / six more FX-free reads deferred to keep the
+    // PR reviewable) — see PlatformOptions.PlatformDashboardReadEnabled. Dark unless the flag is on.
+    if (externalOptions.PlatformDashboardReadEnabled || isOpenApiDocGeneration)
+    {
+        app.MapPlatformDashboardReadEndpoints();
     }
 
     // Phase-5 slice 20 (#76): PATCH /platform/organizations/{id} + POST /platform/organizations/{id}/suspend.

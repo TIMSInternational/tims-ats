@@ -519,6 +519,39 @@ public sealed class PlatformOptions
     public bool PlatformInvitationsReadEnabled { get; init; }
 
     /// <summary>
+    /// Phase-5 slice 23 (issue #81, PR 1 of 3) — the platform-owner DASHBOARD READ surface: the C# port of
+    /// the three FX-free procedures <c>getPlanDistribution</c>, <c>getUserGrowth</c> and
+    /// <c>getRecentActivity</c> from <c>routers/platform/dashboard.ts</c>.
+    ///
+    /// Gated by <c>PlatformOwnerGate</c> and deliberately CROSS-ORG — never wrapped in TenantScope, so the
+    /// gate is the entire authorization boundary (RLS restricts nothing on this path, and the prod role is
+    /// BYPASSRLS regardless). Read-only over Prisma-owned tables: this slice adds no writer and moves
+    /// nothing between the ownership ledger's arrays.
+    ///
+    /// THIS FLAG COVERS THREE OF THE CLUSTER'S THIRTEEN READS (nine live in <c>dashboard.ts</c>, four in
+    /// its churn/forecast/upsell siblings, all merged flat into the platform router). The remaining ten
+    /// are deliberately out, in three groups, because they are three different problems:
+    ///   • <c>getDashboardKpis</c> + <c>getRevenueByCustomer</c> + <c>getChurnRisk</c> — call
+    ///     <c>sumMoney</c> → LIVE Frankfurter FX rates (the churn one from <c>dashboard-churn.ts:55</c>);
+    ///     they need fx conversion machinery and a live-rate parity strategy, and port LAST.
+    ///   • <c>getAiCostAnomalies</c> — needs EF maps and ledger entries for THREE genuinely unmapped
+    ///     tables: <c>ai_agent_org_configs</c>, <c>ai_agent_usage_logs</c>, and <c>ai_agents</c> (its
+    ///     <c>agent</c> join). An earlier version counted two and grouped <c>getUpsellOpportunities</c>
+    ///     here too; that procedure reads only already-mapped tables and belongs below.
+    ///   • <c>getAttentionItems</c>, <c>getMrrTrend</c>, <c>getMrrForecast</c>, <c>getCustomerHealth</c>,
+    ///     <c>getUpsellOpportunities</c>, <c>search</c> — FX-free (MRR derives from <c>PLAN_PRICES</c> USD
+    ///     constants; customer-health is counts and login rates, no currency math) and portable under
+    ///     THIS flag in follow-up sub-slices; they are absent only to keep the first dashboard PR small
+    ///     enough to review properly. NOTE for that sub-slice: <c>getMrrTrend</c>'s labels use
+    ///     <c>toLocaleDateString('es', { month: 'short', year: '2-digit' })</c> — a DIFFERENT format from
+    ///     the bare short months the shared golden covers, and the same ICU-divergence trap class; it
+    ///     needs its own golden array before porting.
+    ///
+    /// DEFAULT false (dark) — TS remains the single active reader until Federico flips it at canary.
+    /// </summary>
+    public bool PlatformDashboardReadEnabled { get; init; }
+
+    /// <summary>
     /// MFA step-up enforcement (#173) — the platform-service counterpart of the web app's
     /// <c>MFA_ENFORCED</c>. When exactly "true", a PRIVILEGED principal (platform owner or
     /// super_admin) on an <c>aal1</c> session is refused with 403 + <c>{"message":"MFA_REQUIRED"}</c>
