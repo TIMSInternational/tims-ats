@@ -138,9 +138,12 @@ public sealed class PlatformInvitationsReadRepository(PlatformInvitationsReadDbC
     {
         return await ApplyFilters(db.Invitations.AsNoTracking(), query.Type, query.Status, null)
             .OrderByDescending(i => i.CreatedAt)
+            // Bounded at ExportLimit + 1 (the +1 lets the use case report `truncated` without a second
+            // COUNT). Before 2026-08-13 this query had NO limit — GHSA-6759-h69h-m739. Matches the TS
+            // `take: EXPORT_LIMIT + 1`.
+            .Take(PlatformInvitationsReadUseCase.ExportLimit + 1)
             // The projection is the TS export `select`, which is NARROWER than the list's: no id, no
-            // organizationId, no createdAt, no joins. Projecting in SQL keeps the unbounded read as small as
-            // it can be, since this query has no LIMIT at all.
+            // organizationId, no createdAt, no joins. Projecting in SQL keeps the read small.
             .Select(i => new PlatformInvitationExportRow(
                 i.Email,
                 i.Type,

@@ -247,6 +247,42 @@ public sealed class PlatformInvitationsReadUseCaseTests
         Assert.False(csv.EndsWith('\n'));
     }
 
+    // ── the export cap (GHSA-6759-h69h-m739) ─────────────────────────────────────────────────────────
+    /// <summary>
+    /// The export is capped at <see cref="PlatformInvitationsReadUseCase.ExportLimit"/>. The repository
+    /// fetches <c>ExportLimit + 1</c> rows so the use case can report <c>Truncated</c> without a second
+    /// COUNT; when more than the cap exist it returns EXACTLY the cap with <c>Truncated == true</c>, and the
+    /// CSV has the header plus that many rows and no more. Boundary: exactly <c>ExportLimit</c> is NOT
+    /// truncated (<c>&gt;</c>, not <c>&gt;=</c>), matching the TS <c>rows.length &gt; EXPORT_LIMIT</c>.
+    /// </summary>
+    [Theory]
+    [InlineData(0, false, 0)]
+    [InlineData(9_999, false, 9_999)]
+    [InlineData(10_000, false, 10_000)]        // the repo returned exactly the cap ⇒ not truncated
+    [InlineData(10_001, true, 10_000)]         // the repo's LIMIT+1 fetch hit ⇒ truncated, trimmed to cap
+    public async Task ExportAsync_capsAtExportLimit_andReportsTruncated(int rowsFromRepo, bool expectedTruncated, int expectedCount)
+    {
+        var useCase = new PlatformInvitationsReadUseCase(new StubRepo(rowsFromRepo));
+
+        var result = await useCase.ExportAsync(new PlatformInvitationExportQuery(null, null), CancellationToken.None);
+
+        Assert.Equal(expectedTruncated, result.Truncated);
+        Assert.Equal(expectedCount, result.Count);
+        // header + expectedCount data rows (no trailing newline), so the CSV line count is the proof the
+        // slice actually happened rather than just the reported Count.
+        Assert.Equal(expectedCount + 1, result.Csv.Split('\n').Length);
+    }
+
+    private sealed class StubRepo(int rows) : IPlatformInvitationsReadRepository
+    {
+        public Task<IReadOnlyList<PlatformInvitationExportRow>> ExportAsync(PlatformInvitationExportQuery query, CancellationToken ct) =>
+            Task.FromResult<IReadOnlyList<PlatformInvitationExportRow>>(
+                Enumerable.Range(0, rows).Select(i => Row(email: $"u{i}@b.test")).ToList());
+
+        public Task<PlatformInvitationKpis> GetKpisAsync(CancellationToken ct) => throw new NotSupportedException();
+        public Task<PlatformInvitationListResult> ListAsync(PlatformInvitationListQuery query, CancellationToken ct) => throw new NotSupportedException();
+    }
+
     private static PlatformInvitationExportRow Row(
         string email = "a@b.test",
         string type = "user",

@@ -13,6 +13,11 @@ import { provisionOrgDefaults, provisionOrgEntitlements } from '../../services/o
 const INVITATION_TYPE = z.enum(['org_admin', 'user']);
 const INVITATION_STATUS = z.enum(['pending', 'sent', 'accepted', 'expired', 'revoked']);
 
+// The CSV export row cap, matching audit.service.ts:13 so the two platform exports bound egress the
+// same way. exportInvitationsCsv was unbounded until 2026-08-13 (GHSA-6759-h69h-m739): one call
+// returned every invitation across every tenant, and the whole set was materialised into a string.
+const EXPORT_LIMIT = 10_000;
+
 const invitationListSelect = {
   id: true,
   email: true,
@@ -290,9 +295,15 @@ export const invitationsRouter = router({
       if (input.type) where.type = input.type as InvitationType;
       if (input.status) where.status = input.status as InvitationStatus;
 
-      const invitations = await db.platformInvitation.findMany({
+      // Capped, mirroring audit.service.ts (EXPORT_LIMIT / take LIMIT+1 / truncated). Before this, the
+      // export was unbounded: one platform-owner call returned EVERY invitation across EVERY tenant in a
+      // single response (GHSA-6759-h69h-m739). Fetch one MORE than the cap so `truncated` can be reported
+      // without a second count query, then trim to the cap. The C# port applies the identical cap in the
+      // same change — a one-sided cap would fail `verify invitation`.
+      const rawInvitations = await db.platformInvitation.findMany({
         where,
         orderBy: { createdAt: 'desc' },
+        take: EXPORT_LIMIT + 1,
         select: {
           email: true,
           type: true,
@@ -304,6 +315,8 @@ export const invitationsRouter = router({
           acceptedAt: true,
         },
       });
+      const truncated = rawInvitations.length > EXPORT_LIMIT;
+      const invitations = truncated ? rawInvitations.slice(0, EXPORT_LIMIT) : rawInvitations;
 
       // Every cell goes through csvRow (packages/shared/src/csv.ts), matching audit.service.ts.
       // This export previously hand-rolled its CSV and quoted ONLY organizationName, so it had no
@@ -327,8 +340,8 @@ export const invitationsRouter = router({
         ]),
       );
 
-      logPlatformExport(ctx, { resource: 'invitations', count: invitations.length, format: 'csv' });
-      return { csv: [header, ...rows].join('\n'), count: invitations.length };
+      logPlatformExport(ctx, { resource: 'invitations', count: invitations.length, format: 'csv', truncated });
+      return { csv: [header, ...rows].join('\n'), count: invitations.length, truncated };
     }),
 
   // ============ PUBLIC INVITATION ENDPOINTS ============

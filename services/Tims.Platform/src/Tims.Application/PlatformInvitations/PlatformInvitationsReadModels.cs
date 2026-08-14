@@ -95,7 +95,7 @@ public sealed record PlatformInvitationListResult(
 /// <c>exportInvitationsCsv</c> has no format param and returns <c>csv</c>. Copying the audit envelope here
 /// would be the natural mistake and a guaranteed parity FAIL on all three keys.</para>
 /// </summary>
-public sealed record PlatformInvitationExportResult(string Csv, int Count);
+public sealed record PlatformInvitationExportResult(string Csv, int Count, bool Truncated);
 
 /// <summary>
 /// One export row — the <c>exportInvitationsCsv</c> <c>select</c>, which is a DIFFERENT and narrower set
