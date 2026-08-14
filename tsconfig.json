@@ -14,15 +14,18 @@
     "isolatedModules": true,
     "jsx": "preserve",
     "incremental": true,
-    "baseUrl": ".",
+    // No "baseUrl": it is deprecated (TS 5.x deprecation notice; slated for removal in a future major).
+    // Since TS 5.0 `paths` entries resolve relative to the tsconfig that
+    // declares them, so the "./"-prefixed values below are repo-root-relative
+    // exactly as they were under `baseUrl: "."`.
     "paths": {
-      "@tims/db": ["packages/db/src/index.ts"],
-      "@tims/api": ["packages/api/src/root.ts"],
-      "@tims/shared": ["packages/shared/src/index.ts"],
-      "@tims/ai": ["packages/ai/src/index.ts"],
-      "@trpc/server": ["packages/api/node_modules/@trpc/server"],
-      "@prisma/client": ["packages/api/node_modules/@prisma/client"],
-      "exceljs": ["packages/api/node_modules/exceljs"]
+      "@tims/db": ["./packages/db/src/index.ts"],
+      "@tims/api": ["./packages/api/src/root.ts"],
+      "@tims/shared": ["./packages/shared/src/index.ts"],
+      "@tims/ai": ["./packages/ai/src/index.ts"],
+      "@trpc/server": ["./packages/api/node_modules/@trpc/server"],
+      "@prisma/client": ["./packages/api/node_modules/@prisma/client"],
+      "exceljs": ["./packages/api/node_modules/exceljs"]
     }
   },
   "exclude": ["node_modules"]
