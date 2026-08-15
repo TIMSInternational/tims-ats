@@ -31,6 +31,9 @@ describe('SURFACES', () => {
       'access-review',
       'audit-log',
       'compensation',
+      // NEW 2026-08-14 (Phase-5 slice 23, #81 PR 1) — the platform-owner dashboard read surface (the
+      // three FX-free reads), registered in the same PR that deployed its three routes.
+      'dashboard',
       'dei',
       'engagement',
       // NEW 2026-08-12 (Phase-5 slice 22, #75) — the platform-owner invitations read surface, registered
@@ -138,7 +141,9 @@ describe('SURFACES', () => {
         expect(ep.idScopeKey, `${key}/${ep.name} is globalScope AND by-id`).toBeUndefined();
       }
     }
-    // Documented state, 9 endpoints across 4 surfaces. The loop above is the invariant; this pins the
+    // Documented state, 15 endpoints across 6 surfaces (this sentence read "9 across 4" for two
+    // slices while the arithmetic below it was edited twice — the enumeration and count are the
+    // record; this line just has to agree with them). The loop above is the invariant; this pins the
     // count so a NEW globalScope endpoint has to be looked at deliberately — and so that the loop
     // going empty (which would make the invariant unenforced while still reading as enforced) fails
     // here.
@@ -165,6 +170,11 @@ describe('SURFACES', () => {
     //     enumerates every tenant's invitations, and `export` is the same read with no cap at all.
     //     org_admin 403 on all three is again what proves the boundary.
     //
+    //   dashboard plan-distribution + user-growth + recent-activity — SAME platform-owner justification
+    //     (2026-08-14, Phase-5 slice 23 / #81 PR 1). All three read cross-org aggregates over the
+    //     unscoped dashboard context (every tenant's subscriptions, users and orgs) with no
+    //     organizationId predicate; org_admin 403 is the boundary proof.
+    //
     // None of these is by-id, so the invariant above still bites for them unchanged. (This line read
     // "None of the seven" until 2026-08-11; the count was never re-derived when access-review's three
     // routes were re-added. A superlative is a quantifier — count the set.)
@@ -175,10 +185,10 @@ describe('SURFACES', () => {
     // assertion above — which is the proof that the guard was worked with rather than weakened.
     //
     // The count sits NEXT TO its enumeration on purpose: 2 (ninebox) + 2 (organization) + 2 (audit-log)
-    // + 3 (access-review) + 3 (invitation) = 12. Every past drift here was a number written in prose
-    // while the list lived elsewhere.
-    expect(seen).toBe(2 + 2 + 2 + 3 + 3);
-    expect(seen).toBe(12);
+    // + 3 (access-review) + 3 (invitation) + 3 (dashboard) = 15. Every past drift here was a number
+    // written in prose while the list lived elsewhere.
+    expect(seen).toBe(2 + 2 + 2 + 3 + 3 + 3);
+    expect(seen).toBe(15);
   });
 
   // ── #195 AC1: the monitoring read surface (2026-08-10) ───────────────────────────────────────
@@ -287,6 +297,32 @@ describe('SURFACES', () => {
       expect(ep.idScopeKey, ep.name).toBeUndefined();
       expect(ep.noTenantBoundaryForCaller, ep.name).toBeUndefined();
       expect(ep.globalScope, ep.name).toBe(true);
+    }
+  });
+
+  it('dashboard is registered with its flag and all THREE deployed reads, each keeping a tsProcedure', () => {
+    // Same shape and same rationale as the invitation pin above: the TS side is LIVE (flag dark), so a
+    // real payload diff is available on every endpoint and dropping a `tsProcedure` would silently
+    // degrade the pre-flip readiness check to [WEAK].
+    const s = SURFACES.dashboard;
+
+    // The flag string is what `checks/preflight.ts` and `cli.ts` PRINT to say which env var to flip.
+    expect(s.flag).toBe('Platform__PlatformDashboardReadEnabled');
+    expect(s.probeRole).toBe('platform_owner');
+    expect(s.endpoints.map((e) => e.name)).toEqual(['plan-distribution', 'user-growth', 'recent-activity']);
+
+    for (const ep of s.endpoints) {
+      expect(ep.tsProcedure, ep.name).toBeTruthy();
+      expect(ep.expectedByRole, ep.name).toEqual({ platform_owner: 200, org_admin: 403 });
+      // Platform-owner-only and deliberately cross-org: nothing here is by-id, so the RLS N/A is
+      // reached via globalScope rather than idScopeKey or the by-id caller marker.
+      expect(ep.idScopeKey, ep.name).toBeUndefined();
+      expect(ep.noTenantBoundaryForCaller, ep.name).toBeUndefined();
+      expect(ep.globalScope, ep.name).toBe(true);
+      // NO normalize on any endpoint, asserted because each absence is a decision (see surfaces.ts):
+      // sorting recent-activity away would stop comparing the merge kernel, and dropNullish would mask
+      // a C# `meta: null` where TS omits the key.
+      expect(ep.normalize, ep.name).toBeUndefined();
     }
   });
 

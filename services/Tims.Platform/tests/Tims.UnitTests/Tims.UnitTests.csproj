@@ -53,6 +53,11 @@
       <Link>audit-fixtures\%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <!-- Phase-5 slice 23 dashboard kernels golden (shared with tests/parity/dashboard-fixtures.test.ts). -->
+    <Content Include="..\\..\\..\\..\\contracts\\dashboard-fixtures\\*.json">
+      <Link>dashboard-fixtures\\%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <!-- Phase-5 slice 22 invitations CSV golden (shared with tests/parity/invitation-fixtures.test.ts). -->
     <Content Include="..\..\..\..\contracts\invitation-fixtures\*.json">
       <Link>invitation-fixtures\%(Filename)%(Extension)</Link>
