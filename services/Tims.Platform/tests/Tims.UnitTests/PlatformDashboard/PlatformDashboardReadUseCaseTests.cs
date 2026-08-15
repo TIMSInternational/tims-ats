@@ -47,7 +47,53 @@ public sealed class PlatformDashboardReadUseCaseTests
         }
     }
 
-    // ── JS Math.round (half toward +∞, NOT banker's) ─────────────────────────────────────────────────
+    // ── the "sept 26" label (a SECOND, different ICU format — PR 2) ───────────────────────────────────
+    [Fact]
+    public void SpanishShortMonthYear2_matches_the_golden_on_every_case()
+    {
+        foreach (var c in Golden.SpanishShortMonthYear2Cases)
+        {
+            Assert.Equal(c.Label, PlatformDashboardReadUseCase.SpanishShortMonthYear2(c.Year, c.MonthIndex));
+        }
+
+        // The two shapes the composition rule exists for, called out so a golden regenerated without them
+        // cannot quietly weaken this test: the four-character month, and a zero-PADDED year.
+        Assert.Equal("sept 26", PlatformDashboardReadUseCase.SpanishShortMonthYear2(2026, 8));
+        Assert.Equal("ene 00", PlatformDashboardReadUseCase.SpanishShortMonthYear2(2000, 0));
+    }
+
+    // ── Number.prototype.toLocaleString() under the ICU default locale (PR 2) ────────────────────────
+    [Fact]
+    public void JsToLocaleString_matches_the_golden_on_every_case()
+    {
+        foreach (var c in Golden.NumberToLocaleStringCases)
+        {
+            Assert.Equal(c.Text, PlatformDashboardReadUseCase.JsToLocaleString(c.Value));
+        }
+
+        // Grouping ON, decimal point, no minimum fraction digits, maximum three — the four properties the
+        // format string encodes, each on a value that isolates it.
+        Assert.Equal("1,000", PlatformDashboardReadUseCase.JsToLocaleString(1000));
+        Assert.Equal("1,234.5", PlatformDashboardReadUseCase.JsToLocaleString(1234.5));
+        Assert.Equal("0", PlatformDashboardReadUseCase.JsToLocaleString(0));
+        Assert.Equal("1,234.568", PlatformDashboardReadUseCase.JsToLocaleString(1234.5678));
+    }
+
+    // ── PLAN_PRICES, pinned to the same golden the TS suite pins the real constant to (PR 2) ─────────
+    [Fact]
+    public void PlanPrices_match_the_golden()
+    {
+        Assert.Equal(Golden.PlanPrices.Count, PlanPrices.Table.Count);
+        foreach (var (plan, price) in Golden.PlanPrices)
+        {
+            Assert.Equal(price, PlanPrices.For(plan));
+        }
+
+        // `PLAN_PRICES[plan] || 0` — an unknown plan contributes nothing rather than throwing.
+        Assert.Equal(0, PlanPrices.For("legacy"));
+    }
+
+    // ── JS Math.round (half toward +∞, NOT banker's and NOT away-from-zero) ──────────────────────────
     [Theory]
     [InlineData(0.5, 1)]      // .NET Math.Round default would give 0 (to-even)
     [InlineData(2.5, 3)]      // ...and 2 here
@@ -56,6 +102,64 @@ public sealed class PlatformDashboardReadUseCaseTests
     [InlineData(0.0, 0)]
     public void JsRound_rounds_half_up_for_nonNegative(double input, int expected) =>
         Assert.Equal(expected, PlatformDashboardReadUseCase.JsRound(input));
+
+    /// <summary>
+    /// The negatives. JS rounds half toward +∞, so <c>Math.round(-125.5) === -125</c>; the original
+    /// implementation used <see cref="MidpointRounding.AwayFromZero"/> and would answer -126.
+    ///
+    /// <para><b>No caller reaches this today</b> — <c>getMrrForecast</c>'s growth rate looked like the
+    /// counter-example, but its historical series is monotone non-decreasing (pinned by
+    /// <c>PlatformDashboardMrrUseCaseTests</c>), so the <c>-0.2</c> floor and this branch are both dead
+    /// in TS as well. These rows pin JS's ACTUAL rule anyway, because the argument for why it cannot be
+    /// reached lives in a different file and could stop holding without anything here changing.</para>
+    /// </summary>
+    [Theory]
+    [InlineData(-125.5, -125)]  // AwayFromZero would give -126
+    [InlineData(-0.5, 0)]       // JS gives -0; JSON-identical to 0, and an int cannot hold the sign
+    [InlineData(-1.5, -1)]
+    [InlineData(-2.5, -2)]
+    [InlineData(-1.6, -2)]
+    [InlineData(-1.4, -1)]
+    public void JsRound_rounds_half_toward_positive_infinity_for_negatives(double input, int expected) =>
+        Assert.Equal(expected, PlatformDashboardReadUseCase.JsRound(input));
+
+    [Fact]
+    public void JsNow_is_truncated_to_whole_milliseconds_like_a_JS_Date()
+    {
+        // A JS Date carries integer milliseconds; DateTime.UtcNow carries 100-nanosecond ticks, and the
+        // remainder would leak into every floor(msDiff / 86400000) day count.
+        Assert.Equal(0, PlatformDashboardReadUseCase.JsNow().Ticks % TimeSpan.TicksPerMillisecond);
+        Assert.Equal(DateTimeKind.Utc, PlatformDashboardReadUseCase.JsNow().Kind);
+
+        var ragged = new DateTime(2026, 8, 14, 12, 0, 0, DateTimeKind.Utc).AddTicks(9_999);
+        Assert.Equal(
+            new DateTime(2026, 8, 14, 12, 0, 0, DateTimeKind.Utc).AddMilliseconds(0),
+            PlatformDashboardReadUseCase.TruncateToMilliseconds(ragged));
+    }
+
+    // ── the shared month-bucket key walk (PR 2 extracted it from MonthSeries) ────────────────────────
+    [Fact]
+    public void MonthBucketKeys_walks_backwards_across_the_year_boundary()
+    {
+        var keys = PlatformDashboardReadUseCase.MonthBucketKeys(12, new DateTime(2026, 2, 10, 0, 0, 0, DateTimeKind.Utc));
+
+        Assert.Equal(12, keys.Count);
+        Assert.Equal("2025-03", keys[0]);
+        Assert.Equal("2026-02", keys[^1]);
+        Assert.Equal("2025-12", keys[9]);
+
+        // Zero-padded month, and ordinal string comparison therefore matches chronological order — which
+        // getMrrForecast's `<=` cumulative filter depends on.
+        Assert.True(string.CompareOrdinal(keys[0], keys[^1]) < 0);
+        Assert.Empty(PlatformDashboardReadUseCase.MonthBucketKeys(0, DateTime.UtcNow));
+    }
+
+    [Fact]
+    public void ParseMonthBucketKey_returns_a_zero_based_month()
+    {
+        Assert.Equal((2026, 8), PlatformDashboardReadUseCase.ParseMonthBucketKey("2026-09"));
+        Assert.Equal((2025, 0), PlatformDashboardReadUseCase.ParseMonthBucketKey("2025-01"));
+    }
 
     // ── getPlanDistribution bucketing ────────────────────────────────────────────────────────────────
     [Fact]
@@ -150,8 +254,31 @@ public sealed class PlatformDashboardReadUseCaseTests
         Assert.Equal(["u1", "o1", "u2"], activity.Select(a => a.Id));
     }
 
+    // ── the static SEARCH_PAGES list, pinned to the same golden as the TS constant (PR 2) ────────────
+    [Fact]
+    public void SearchPages_match_the_golden_exactly()
+    {
+        Assert.Equal(Golden.SearchPages.Length, PlatformDashboardSearchUseCase.SearchPages.Count);
+
+        for (var i = 0; i < Golden.SearchPages.Length; i++)
+        {
+            Assert.Equal(Golden.SearchPages[i].Name, PlatformDashboardSearchUseCase.SearchPages[i].Name);
+            Assert.Equal(Golden.SearchPages[i].Href, PlatformDashboardSearchUseCase.SearchPages[i].Href);
+            Assert.Equal(Golden.SearchPages[i].Keywords, PlatformDashboardSearchUseCase.SearchPages[i].Keywords);
+        }
+    }
+
     // ── fixture DTOs ─────────────────────────────────────────────────────────────────────────────────
-    internal sealed record Kernels(string[] SpanishShortMonths, MonthSeriesCase[] MonthSeriesCases);
+    internal sealed record Kernels(
+        Dictionary<string, int> PlanPrices,
+        string[] SpanishShortMonths,
+        MonthYearCase[] SpanishShortMonthYear2Cases,
+        NumberCase[] NumberToLocaleStringCases,
+        SearchPageCase[] SearchPages,
+        MonthSeriesCase[] MonthSeriesCases);
     internal sealed record MonthSeriesCase(string Name, MonthRow[] Rows, int Months, string EndNowIso, MonthRow[] Series);
     internal sealed record MonthRow(string Month, int Count);
+    internal sealed record MonthYearCase(int Year, int MonthIndex, string Label);
+    internal sealed record NumberCase(double Value, string Text);
+    internal sealed record SearchPageCase(string Name, string Href, string Keywords);
 }

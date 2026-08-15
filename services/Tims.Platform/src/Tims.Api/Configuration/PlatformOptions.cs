@@ -519,33 +519,39 @@ public sealed class PlatformOptions
     public bool PlatformInvitationsReadEnabled { get; init; }
 
     /// <summary>
-    /// Phase-5 slice 23 (issue #81, PR 1 of 3) — the platform-owner DASHBOARD READ surface: the C# port of
-    /// the three FX-free procedures <c>getPlanDistribution</c>, <c>getUserGrowth</c> and
-    /// <c>getRecentActivity</c> from <c>routers/platform/dashboard.ts</c>.
+    /// Phase-5 slice 23 (issue #81, PRs 1 and 2 of 3) — the platform-owner DASHBOARD READ surface: the C#
+    /// port of the NINE FX-free procedures of <c>routers/platform/dashboard*.ts</c>.
+    ///   • PR 1: <c>getPlanDistribution</c>, <c>getUserGrowth</c>, <c>getRecentActivity</c>.
+    ///   • PR 2: <c>getAttentionItems</c>, <c>getMrrTrend</c>, <c>getMrrForecast</c>,
+    ///     <c>getCustomerHealth</c>, <c>getUpsellOpportunities</c>, <c>search</c>.
     ///
     /// Gated by <c>PlatformOwnerGate</c> and deliberately CROSS-ORG — never wrapped in TenantScope, so the
     /// gate is the entire authorization boundary (RLS restricts nothing on this path, and the prod role is
     /// BYPASSRLS regardless). Read-only over Prisma-owned tables: this slice adds no writer and moves
     /// nothing between the ownership ledger's arrays.
     ///
-    /// THIS FLAG COVERS THREE OF THE CLUSTER'S THIRTEEN READS (nine live in <c>dashboard.ts</c>, four in
-    /// its churn/forecast/upsell siblings, all merged flat into the platform router). The remaining ten
-    /// are deliberately out, in three groups, because they are three different problems:
+    /// ONE FLAG FOR ALL NINE, deliberately: they are the same surface, the same gate and the same console
+    /// page, and a canary that lit up three of nine dashboard panels would be harder to judge than one
+    /// that lights the whole FX-free tier. The cost is that the flip is all-or-nothing across nine reads.
+    ///
+    /// THAT LEAVES FOUR OF THE CLUSTER'S THIRTEEN READS (nine live in <c>dashboard.ts</c>, four in its
+    /// churn/forecast/upsell siblings, all merged flat into the platform router), out for two reasons:
     ///   • <c>getDashboardKpis</c> + <c>getRevenueByCustomer</c> + <c>getChurnRisk</c> — call
     ///     <c>sumMoney</c> → LIVE Frankfurter FX rates (the churn one from <c>dashboard-churn.ts:55</c>);
-    ///     they need fx conversion machinery and a live-rate parity strategy, and port LAST.
+    ///     they need fx conversion machinery and a live-rate parity strategy, and port LAST in PR 3.
     ///   • <c>getAiCostAnomalies</c> — needs EF maps and ledger entries for THREE genuinely unmapped
     ///     tables: <c>ai_agent_org_configs</c>, <c>ai_agent_usage_logs</c>, and <c>ai_agents</c> (its
     ///     <c>agent</c> join). An earlier version counted two and grouped <c>getUpsellOpportunities</c>
-    ///     here too; that procedure reads only already-mapped tables and belongs below.
-    ///   • <c>getAttentionItems</c>, <c>getMrrTrend</c>, <c>getMrrForecast</c>, <c>getCustomerHealth</c>,
-    ///     <c>getUpsellOpportunities</c>, <c>search</c> — FX-free (MRR derives from <c>PLAN_PRICES</c> USD
-    ///     constants; customer-health is counts and login rates, no currency math) and portable under
-    ///     THIS flag in follow-up sub-slices; they are absent only to keep the first dashboard PR small
-    ///     enough to review properly. NOTE for that sub-slice: <c>getMrrTrend</c>'s labels use
-    ///     <c>toLocaleDateString('es', { month: 'short', year: '2-digit' })</c> — a DIFFERENT format from
-    ///     the bare short months the shared golden covers, and the same ICU-divergence trap class; it
-    ///     needs its own golden array before porting.
+    ///     here too; that procedure reads only already-mapped tables and shipped in PR 2.
+    ///
+    /// THREE ICU / LOCALE HAZARDS ARE LIVE ON THIS SURFACE, all pinned in
+    /// <c>contracts/dashboard-fixtures/dashboard-kernels.json</c> rather than trusted:
+    /// <c>toLocaleDateString('es', { month: 'short' })</c> emits "sept"; the MRR pair's
+    /// <c>{ month: 'short', year: '2-digit' }</c> is a separate format ("sept 26"); and
+    /// <c>getAttentionItems</c> bakes <c>Number.toLocaleString()</c> — with NO locale argument, so the
+    /// PROCESS DEFAULT — into an invoice description that ships on the wire. The C# port hardcodes the
+    /// en-US rule ICU resolves to; a Node process with a different default locale would diverge on every
+    /// overdue-invoice description, and the golden test says so out loud.
     ///
     /// DEFAULT false (dark) — TS remains the single active reader until Federico flips it at canary.
     /// </summary>

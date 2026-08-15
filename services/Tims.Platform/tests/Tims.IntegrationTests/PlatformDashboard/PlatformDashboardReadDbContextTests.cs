@@ -77,9 +77,76 @@ public sealed class PlatformDashboardReadDbContextTests(PlatformDashboardReadFix
         Assert.Equal(5, byMonth[$"{m0:yyyy-MM}"]);                // the five current-month users
     }
 
+    /// <summary>
+    /// PR 2's regression pin for <see cref="Tims.Infrastructure.PlatformDashboard.PlatformDashboardTimestamps"/>:
+    /// a <see cref="DateTimeKind.Utc"/> bound against a mapped <c>timestamp without time zone</c> column
+    /// is REJECTED by Npgsql, so the Unspecified re-kinding at the repository boundary is load-bearing.
+    ///
+    /// <para>Without this test, "simplifying" <c>ToNaive(nowUtc)</c> back to <c>nowUtc</c> would compile,
+    /// pass every unit test, and 500 four endpoints the moment the flag was flipped — the same shape as
+    /// slice 22's <c>EF.Constant</c> pin, and the mapped-column sibling of slice 23's TRAP 10.</para>
+    ///
+    /// <para>Both directions are asserted: the naive bound WORKS and returns the expected row, and the
+    /// UTC-kind bound THROWS. A one-sided test would pass against a provider that silently coerced.</para>
+    /// </summary>
+    [Fact]
+    public async Task A_UtcKind_bound_against_a_timestamp_column_is_rejected_which_is_why_the_repository_re_kinds()
+    {
+        await using var db = _fixture.NewReadContext();
+
+        var utcKind = DateTime.SpecifyKind(_fixture.SeedNowUtc, DateTimeKind.Utc);
+        var naive = DateTime.SpecifyKind(_fixture.SeedNowUtc, DateTimeKind.Unspecified);
+
+        // The form the repositories actually use: naive, and it answers.
+        var overdue = await db.Invoices
+            .AsNoTracking()
+            .Where(i => i.Status == "pending" && i.DueDate < naive)
+            .CountAsync();
+        Assert.Equal(2, overdue);
+
+        // The form a "simplification" would produce: UTC-kind, and Npgsql refuses to write it.
+        var failure = await Assert.ThrowsAnyAsync<Exception>(() => db.Invoices
+            .AsNoTracking()
+            .Where(i => i.Status == "pending" && i.DueDate < utcKind)
+            .CountAsync());
+
+        // Npgsql's wording, verbatim: "Cannot write DateTime with Kind=UTC to PostgreSQL type 'timestamp
+        // without time zone'". Note the UPPERCASE "UTC" — it is not the DateTimeKind member name.
+        var message = failure.InnerException?.Message ?? failure.Message;
+        Assert.Contains("Kind=UTC", message, StringComparison.Ordinal);
+        Assert.Contains("timestamp without time zone", message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The enum predicates in these repositories are LITERALS, which Postgres coerces to the column's
+    /// enum type. A captured VARIABLE would be parameterised as <c>text</c> and fail with
+    /// <c>operator does not exist</c> — slice 22's TRAP 8, pinned here on a different enum column so the
+    /// hazard stays visible in this slice too.
+    /// </summary>
+    [Fact]
+    public async Task A_parameterised_enum_comparison_fails_which_is_why_the_repositories_use_literals()
+    {
+        await using var db = _fixture.NewReadContext();
+
+        // Literal in the expression tree — works. THREE invoices are pending: the two overdue ones and
+        // the decoy that is still in date (only the due_date predicate separates them).
+        Assert.Equal(3, await db.Invoices.AsNoTracking().CountAsync(i => i.Status == "pending"));
+
+        // Captured variable — parameterised as text, and Postgres has no "InvoiceStatus" = text operator.
+        var status = "pending";
+        var failure = await Assert.ThrowsAnyAsync<Exception>(() =>
+            db.Invoices.AsNoTracking().CountAsync(i => i.Status == status));
+
+        var message = failure.InnerException?.Message ?? failure.Message;
+        Assert.Contains("operator does not exist", message, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Theory]
     [InlineData("subscriptions", "plan", "OrgPlan")]
     [InlineData("organizations", "plan", "OrgPlan")]
+    [InlineData("subscriptions", "status", "SubscriptionStatus")]
+    [InlineData("invoices", "status", "InvoiceStatus")]
+    [InlineData("platform_invitations", "status", "InvitationStatus")]
     public async Task The_plan_columns_really_are_native_enums_not_text(string table, string column, string expectedUdt)
     {
         await using var connection = new NpgsqlConnection(_fixture.ConnectionString);

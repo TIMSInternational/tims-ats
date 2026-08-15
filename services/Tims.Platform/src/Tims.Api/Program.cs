@@ -335,6 +335,21 @@ try
     builder.Services.AddScoped<IPlatformDashboardReadRepository, PlatformDashboardReadRepository>();
     builder.Services.AddScoped<PlatformDashboardReadUseCase>();
 
+    // PR 2 of 3, same flag and the SAME context/data source: the six remaining FX-free reads
+    // (getAttentionItems / getMrrTrend / getMrrForecast / getCustomerHealth / getUpsellOpportunities /
+    // search). Split into four repository+use-case pairs rather than one of each, because the four
+    // groups share no query and merging them would put five unrelated kernels in one 600-line file.
+    // The context widens to invoices, platform_invitations, feature_flags and vacancies — all four
+    // already in efcoreReadOnly[], so still no ledger move and still no writer.
+    builder.Services.AddScoped<IPlatformDashboardAttentionRepository, PlatformDashboardAttentionRepository>();
+    builder.Services.AddScoped<PlatformDashboardAttentionUseCase>();
+    builder.Services.AddScoped<IPlatformDashboardMrrRepository, PlatformDashboardMrrRepository>();
+    builder.Services.AddScoped<PlatformDashboardMrrUseCase>();
+    builder.Services.AddScoped<IPlatformDashboardAccountsRepository, PlatformDashboardAccountsRepository>();
+    builder.Services.AddScoped<PlatformDashboardAccountsUseCase>();
+    builder.Services.AddScoped<IPlatformDashboardSearchRepository, PlatformDashboardSearchRepository>();
+    builder.Services.AddScoped<PlatformDashboardSearchUseCase>();
+
     // Phase-5 slice 20 (#76): platform-owner ORGANIZATIONS WRITE (updateOrganization/suspendOrganization).
     // Its OWN context, mapping organizations AND audit_logs, because the fail-closed audit decided on #76
     // only holds if the audit INSERT shares the org UPDATE's transaction — and since every context here is
@@ -807,6 +822,44 @@ try
             return Task.CompletedTask;
         });
 
+        // GET /platform/dashboard/search (#81 PR 2) — `query` is REQUIRED, and the emitted contract said
+        // otherwise.
+        //
+        // The handler binds it as `string?` on purpose (TRAP 9: a non-nullable parameter makes minimal-API
+        // model binding 400 a missing query string BEFORE PlatformOwnerGate runs, handing an anonymous
+        // caller a 400 where tRPC gives 401). The generator reads that nullable annotation and emits the
+        // parameter without `required: true` — so the contract advertised an optional parameter that the
+        // handler answers 400 for. Same defect class as the SubmitValidationBody transformer above, in the
+        // opposite direction: state what the endpoint actually enforces, which is Zod's
+        // `z.object({ query: z.string().min(1).max(100) })`. The bounds are carried too, so a generated
+        // client sees the same limits the handler rejects on.
+        options.AddOperationTransformer((operation, context, _) =>
+        {
+            if (context.Description.RelativePath == "platform/dashboard/search"
+                && operation.Parameters is not null)
+            {
+                foreach (var parameter in operation.Parameters)
+                {
+                    // The collection is typed as the read-only IOpenApiParameter interface; the concrete
+                    // type is what carries settable members, exactly as the schema transformers above
+                    // cast to OpenApiSchema.
+                    if (parameter.Name != "query" || parameter is not Microsoft.OpenApi.OpenApiParameter concrete)
+                    {
+                        continue;
+                    }
+
+                    concrete.Required = true;
+                    if (concrete.Schema is Microsoft.OpenApi.OpenApiSchema schema)
+                    {
+                        schema.MinLength = PlatformDashboardSearchUseCase.MinQueryLength;
+                        schema.MaxLength = PlatformDashboardSearchUseCase.MaxQueryLength;
+                    }
+                }
+            }
+
+            return Task.CompletedTask;
+        });
+
         // GET /billing/plan (getCurrentPlan) is a faithful port of `db.subscription.findUnique`, which
         // returns the subscription OR top-level `null` when the org has none — so its 200 body is NULLABLE.
         // Produces<SubscriptionV1> emits a bare `$ref` (non-null); rewrite it to the SAME nullable-ref form
@@ -1107,11 +1160,12 @@ try
         app.MapPlatformInvitationsReadEndpoints();
     }
 
-    // Phase-5 slice 23 (#81, PR 1 of 3): GET /platform/dashboard/{plan-distribution,user-growth,
-    // recent-activity} — the FX-free tier of the platform dashboard. Three of the cluster's thirteen
-    // reads; the other ten are out for three distinct reasons (three live-FX sumMoney callers / three
-    // unmapped ai-agent tables behind getAiCostAnomalies / six more FX-free reads deferred to keep the
-    // PR reviewable) — see PlatformOptions.PlatformDashboardReadEnabled. Dark unless the flag is on.
+    // Phase-5 slice 23 (#81, PRs 1 and 2 of 3): GET /platform/dashboard/{plan-distribution,user-growth,
+    // recent-activity,attention-items,mrr-trend,mrr-forecast,customer-health,upsell-opportunities,search}
+    // — the FX-free tier of the platform dashboard. NINE of the cluster's thirteen reads; the other four
+    // are out for two distinct reasons (three live-FX sumMoney callers → PR 3 / three unmapped ai-agent
+    // tables behind getAiCostAnomalies) — see PlatformOptions.PlatformDashboardReadEnabled. ONE flag
+    // covers all nine, so a canary flip exposes the whole FX-free tier at once. Dark unless it is on.
     if (externalOptions.PlatformDashboardReadEnabled || isOpenApiDocGeneration)
     {
         app.MapPlatformDashboardReadEndpoints();

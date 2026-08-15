@@ -383,27 +383,32 @@ describe('parity registry covers every deployed route (or documents why not)', (
     // COUNT PINS. Each carries its reason, because a pin without one is unmaintainable — the next
     // person cannot tell a deliberate change from a regression.
     //
-    //   141 = every GET/POST/PATCH/PUT/DELETE operation in contracts/openapi/Tims.Api.json across 134
-    //         paths (GET 108, POST 26, PATCH 5, DELETE 2), measured 2026-08-14.
-    //         138 → 141 (and 131 → 134 paths): Phase-5 slice 23 (#81 PR 1) deployed three GETs —
-    //         /platform/dashboard/{plan-distribution,user-growth,recent-activity}. Re-derive with:
+    //   147 = every GET/POST/PATCH/PUT/DELETE operation in contracts/openapi/Tims.Api.json across 140
+    //         paths (GET 114, POST 26, PATCH 5, DELETE 2), measured 2026-08-14.
+    //         141 → 147 (and 134 → 140 paths): Phase-5 slice 23 (#81 PR 2) deployed six more GETs —
+    //         /platform/dashboard/{attention-items,mrr-trend,mrr-forecast,customer-health,
+    //         upsell-opportunities,search}. All six are registered, so the allowlist is unchanged.
+    //         (138 → 141 was the same slice's PR 1: plan-distribution, user-growth, recent-activity.)
+    //         Re-derive with:
     //           python3 -c "import json;d=json.load(open('contracts/openapi/Tims.Api.json'));\
     //           v={'get','post','patch','put','delete'};\
     //           print(len(d['paths']),sum(1 for p,i in d['paths'].items() for m in i if m.lower() in v))"
     //         /health + /ready are NOT in the document (MapHealthChecks emits no endpoint metadata),
     //         so this counts domain operations, not "every routable path". A new route bumps this,
     //         deliberately — that is the point.
-    expect(deployed.size).toBe(141);
-    //   57 = 30 read endpoints (surfaces.ts, 10 surfaces) + 27 write (write-surfaces.ts, 8 surfaces:
+    expect(deployed.size).toBe(147);
+    //   63 = 36 read endpoints (surfaces.ts, 10 surfaces) + 27 write (write-surfaces.ts, 8 surfaces:
     //        24 written literally + 3 produced by the shared `transitionEndpoint` helper). The READ side
-    //        went 27 → 30 on 2026-08-14: the new `dashboard` surface registered all THREE of slice 23's
-    //        deployed routes, so the allowlist below is unchanged — the gap did not grow. (24 → 27 was
-    //        slice 22's `invitation` surface, 2026-08-12; 26 → 27 on the write side was 2026-08-11:
-    //        `organization-create` registered POST /platform/organizations, #208.)
-    expect(registryEndpointCount).toBe(57);
-    //   ...resolving to 57 DISTINCT VERB+path keys. A drop here means two registry entries normalise
+    //        went 30 → 36 on 2026-08-14: slice 23's PR 2 registered all SIX of its newly deployed
+    //        routes on the EXISTING `dashboard` surface, so the surface count stays at 10 and the
+    //        allowlist below is unchanged — the gap did not grow. (27 → 30 was the same slice's PR 1,
+    //        which created that surface; 24 → 27 was slice 22's `invitation` surface, 2026-08-12;
+    //        26 → 27 on the write side was 2026-08-11: `organization-create` registered
+    //        POST /platform/organizations, #208.)
+    expect(registryEndpointCount).toBe(63);
+    //   ...resolving to 63 DISTINCT VERB+path keys. A drop here means two registry entries normalise
     //   to the same route, which would make one of them invisible to the coverage assertion below.
-    expect(registry.size, 'two registry entries normalise to the same VERB+path key').toBe(57);
+    expect(registry.size, 'two registry entries normalise to the same VERB+path key').toBe(63);
     //   27 write paths resolved through the Proxy stub, none degenerate.
     expect(writePaths.length).toBe(27);
   });
