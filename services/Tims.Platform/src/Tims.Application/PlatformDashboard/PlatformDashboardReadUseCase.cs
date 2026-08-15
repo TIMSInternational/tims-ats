@@ -36,13 +36,91 @@ public sealed class PlatformDashboardReadUseCase(IPlatformDashboardReadRepositor
     public static string SpanishShortMonth(int monthIndexZeroBased) => SpanishShortMonths[monthIndexZeroBased];
 
     /// <summary>
-    /// JS <c>Math.round</c>, which rounds a <c>.5</c> toward +∞ — NOT .NET's <c>Math.Round</c> default,
-    /// which is banker's rounding (to-even) and would make <c>Math.Round(2.5) == 2</c> where JS gives 3.
-    /// Percentages here are non-negative, so <see cref="MidpointRounding.AwayFromZero"/> matches JS exactly
-    /// (away-from-zero and toward-+∞ coincide for non-negative inputs). Spelled out because the silent
-    /// banker's default is the natural mistake and a guaranteed divergence on any exact <c>.5</c>.
+    /// The <c>getMrrTrend</c> / <c>getMrrForecast</c> label —
+    /// <c>toLocaleDateString('es', { month: 'short', year: '2-digit' })</c>. A DIFFERENT format from
+    /// <see cref="SpanishShortMonth"/> and a separate ICU trap: Node composes it as the short month, one
+    /// ASCII space, then the year modulo 100 ZERO-PADDED to two digits (<c>"ene 00"</c> for the year 2000,
+    /// not <c>"ene 0"</c>). Pinned case-by-case against real Node output via
+    /// <c>spanishShortMonthYear2Cases</c> in <c>contracts/dashboard-fixtures/dashboard-kernels.json</c>.
+    ///
+    /// <para>The <c>((y % 100) + 100) % 100</c> dance is for years before AD 1 only; it costs nothing and
+    /// keeps the expression total rather than silently emitting <c>"-5"</c>.</para>
     /// </summary>
-    public static int JsRound(double value) => (int)Math.Round(value, MidpointRounding.AwayFromZero);
+    public static string SpanishShortMonthYear2(int year, int monthIndexZeroBased) =>
+        SpanishShortMonth(monthIndexZeroBased)
+        + " "
+        + (((year % 100) + 100) % 100).ToString("D2", CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// JS <c>Math.round</c>: round half toward <b>+∞</b>. NOT .NET's <c>Math.Round</c> default, which is
+    /// banker's rounding (to-even) and would make <c>Math.Round(2.5) == 2</c> where JS gives 3.
+    ///
+    /// <para><b>Implemented as <c>floor(value + 0.5)</c> rather than
+    /// <see cref="MidpointRounding.AwayFromZero"/>.</b> The two disagree on negative midpoints: JS
+    /// <c>Math.round(-125.5)</c> is <c>-125</c>, away-from-zero gives <c>-126</c>. This is also the
+    /// pre-existing repo convention (<c>Tims.Domain/Reporting/ReportingMath.cs</c>), not a new idea.</para>
+    ///
+    /// <para><b><c>floor(x + 0.5)</c> is an APPROXIMATION of the spec, not the spec.</b> ECMA-262 defines
+    /// <c>Math.round</c> as the nearest integer with ties toward +∞, and explicitly notes it is not
+    /// always <c>floor(x + 0.5)</c>. Measured, the two differ at exactly one double below 2^52:
+    /// <c>x = 0.49999999999999994</c>, where <c>x + 0.5 == 1</c> exactly, so this returns 1 and JS
+    /// returns 0. Brute force over every shape a caller here can produce — <c>(double)c / t * 100</c>
+    /// for all <c>t ≤ 20000</c>, and ~16M integer ratios bracketing the 0.5 crossing — found zero
+    /// divergences, so the gap is unreachable on this surface.</para>
+    ///
+    /// <para><b><see cref="MidpointRounding.ToPositiveInfinity"/> is NOT the fix</b>, despite its name.
+    /// It is DIRECTED rounding, applied to every value and not only to midpoints: measured on .NET
+    /// 10.0.302, <c>Math.Round(33.33333333333333, ToPositiveInfinity)</c> is <c>34</c>. Substituting it
+    /// would corrupt every percentage this method computes.</para>
+    ///
+    /// <para><b>No caller can currently reach a negative, and the honest reason to change it anyway is
+    /// that the argument for why not is subtle.</b> <c>getMrrForecast</c> looked like the counter-example
+    /// — its growth rate is capped at <c>-0.2</c> and feeds <c>Math.round(avgGrowthRate * 100 * 10)</c> —
+    /// but its historical series is a cumulative count over a filter that only widens month by month, so
+    /// it is monotone NON-DECREASING, every month-over-month rate is ≥ 0, and both the lower cap and the
+    /// negative rounding are dead code in the TS procedure too. That reachability argument depends on a
+    /// property of a query somewhere else; encoding JS's actual rule costs nothing and does not.</para>
+    /// </summary>
+    public static int JsRound(double value) => (int)Math.Floor(value + 0.5);
+
+    /// <summary><see cref="JsRound"/> for money totals, which <c>getMrrForecast</c> compounds twelve
+    /// months forward before rounding. A JS number carries every integer below 2^53 exactly; narrowing to
+    /// <see cref="int"/> would wrap silently at a value this expression can in principle reach, and a
+    /// wrapped MRR forecast is worse than a large one.</summary>
+    public static long JsRoundToInt64(double value) => (long)Math.Floor(value + 0.5);
+
+    /// <summary>
+    /// <c>Number.prototype.toLocaleString()</c> called with NO locale argument, as
+    /// <c>dashboard.helpers.ts</c> does when it formats an overdue invoice amount INTO a description
+    /// string. ICU resolves the default locale to <c>en-US</c> in the Node runtime this platform ships
+    /// (verified, and asserted out loud by <c>tests/parity/dashboard-fixtures.test.ts</c>), giving
+    /// comma group separators, a dot decimal separator, no minimum fraction digits and a maximum of three.
+    /// <c>"#,##0.###"</c> under <see cref="CultureInfo.InvariantCulture"/> is that exact rule.
+    ///
+    /// <para><b>This is an ENVIRONMENT dependency, not just a format.</b> Under an <c>es</c> default the
+    /// same number renders <c>1234,5</c> and every overdue-invoice description would differ between the
+    /// stacks. It cannot be defended against from this side — the TS call takes no locale — so the golden
+    /// pins it instead, and the parity surface header records it as an operational caveat.</para>
+    /// </summary>
+    public static string JsToLocaleString(double value) =>
+        value.ToString("#,##0.###", CultureInfo.InvariantCulture);
+
+    /// <summary>Milliseconds in a day — the literal <c>1000 * 60 * 60 * 24</c> the TS day math divides by.
+    /// </summary>
+    public const double MillisecondsPerDay = 86_400_000d;
+
+    /// <summary>
+    /// JS <c>new Date()</c>: the current instant at INTEGER-MILLISECOND precision.
+    /// <see cref="DateTime.UtcNow"/> carries 100-nanosecond ticks, and the sub-millisecond remainder would
+    /// leak into every <c>Math.floor(msDiff / 86400000)</c> day count and into every timestamp comparison
+    /// bound. Truncating reproduces the JS clock's resolution exactly; it is fidelity, not rounding.
+    /// </summary>
+    public static DateTime JsNow() => TruncateToMilliseconds(DateTime.UtcNow);
+
+    /// <summary>Drops the sub-millisecond tick remainder, preserving <see cref="DateTime.Kind"/>. The same
+    /// expression the write repositories use before binding a <c>timestamp(3)</c> column.</summary>
+    public static DateTime TruncateToMilliseconds(DateTime value) =>
+        value.AddTicks(-(value.Ticks % TimeSpan.TicksPerMillisecond));
 
     // ── getPlanDistribution ──────────────────────────────────────────────────────────────────────────
     public async Task<IReadOnlyList<PlanDistributionItem>> GetPlanDistributionAsync(CancellationToken cancellationToken)
@@ -103,8 +181,7 @@ public sealed class PlatformDashboardReadUseCase(IPlatformDashboardReadRepositor
             .Select(bucket =>
             {
                 // bucket.Month is "YYYY-MM"; the TS builds a UTC Date from it and formats the month.
-                var parts = bucket.Month.Split('-');
-                var monthZeroBased = int.Parse(parts[1], CultureInfo.InvariantCulture) - 1;
+                var (_, monthZeroBased) = ParseMonthBucketKey(bucket.Month);
                 return new UserGrowthPoint(SpanishShortMonth(monthZeroBased), bucket.Count);
             })
             .ToList();
@@ -128,7 +205,48 @@ public sealed class PlatformDashboardReadUseCase(IPlatformDashboardReadRepositor
             lookup[r.Month] = r.Count; // last-write-wins, matching JS `new Map(rows.map(...))`
         }
 
-        var result = new List<MonthCountRow>(months);
+        return MonthBucketKeys(months, endNowUtc)
+            .Select(key => new MonthCountRow(key, lookup.TryGetValue(key, out var c) ? c : 0))
+            .ToList();
+    }
+
+    /// <summary>
+    /// The <c>YYYY-MM</c> bucket keys for a window of <paramref name="months"/> ending at
+    /// <paramref name="endNowUtc"/>'s calendar month, OLDEST FIRST.
+    ///
+    /// <para>Three procedures build this same list from three different pieces of JS —
+    /// <c>getUserGrowth</c> via <c>buildMonthSeries</c>, <c>getMrrTrend</c> with an inline
+    /// <c>while (mon &lt; 0) { mon += 12; year -= 1 }</c> loop, and <c>getMrrForecast</c> with
+    /// <c>start.setMonth(start.getMonth() - i, 1)</c>. All three are the same arithmetic; keeping one
+    /// implementation here means a boundary bug cannot be fixed in one procedure and left in another.</para>
+    ///
+    /// <para><b>UTC months, and for <c>getMrrForecast</c> that is a real assumption about the deployed
+    /// Node process.</b> <c>getUserGrowth</c> and <c>getMrrTrend</c> say UTC explicitly
+    /// (<c>getUTCFullYear</c>/<c>getUTCMonth</c>, and <c>timeZone: 'UTC'</c> on the label).
+    /// <c>getMrrForecast</c> does NOT: it builds each bucket with <c>new Date()</c> →
+    /// <c>setMonth(...)</c> → <c>setHours(0,0,0,0)</c> and labels it with <c>toLocaleDateString</c>
+    /// carrying no <c>timeZone</c>, so both its twelve <c>createdAt &lt; end</c> bounds and all 24 of its
+    /// labels are in the HOST's zone. It agrees with this UTC arithmetic only while that host runs UTC.
+    /// Under <c>TZ=America/Bogota</c> the labels shift by a month near a month boundary and every bound
+    /// moves five hours. Mirroring TS's local arithmetic is not an option — it would import the C#
+    /// host's zone instead, which is strictly worse.</para>
+    ///
+    /// <para>This is a DIFFERENT assumption from the one slice 23's raw SQL recorded (that was the
+    /// Postgres SESSION <c>TimeZone</c> for <c>date_trunc</c>, and it was ELIMINATED rather than
+    /// accepted). It is recorded as its own divergence in
+    /// <c>docs/architecture/csharp-migration/phase-5-slice-23-pr2-dashboard-insights.md</c> §Recorded
+    /// divergences, and as an exemption to caveat 1 in <c>scripts/parity/surfaces.ts</c>. An earlier
+    /// version of this paragraph cited the slice doc before that entry existed — the citation was
+    /// circular, and this sentence was the assumption's only occurrence in the repo.</para>
+    /// </summary>
+    public static IReadOnlyList<string> MonthBucketKeys(int months, DateTime endNowUtc)
+    {
+        if (months <= 0)
+        {
+            return [];
+        }
+
+        var result = new List<string>(months);
         var endYear = endNowUtc.Year;
         var endMonthZeroBased = endNowUtc.Month - 1;
 
@@ -142,11 +260,20 @@ public sealed class PlatformDashboardReadUseCase(IPlatformDashboardReadRepositor
                 year -= 1;
             }
 
-            var key = $"{year}-{(month + 1).ToString("D2", CultureInfo.InvariantCulture)}";
-            result.Add(new MonthCountRow(key, lookup.TryGetValue(key, out var c) ? c : 0));
+            result.Add($"{year}-{(month + 1).ToString("D2", CultureInfo.InvariantCulture)}");
         }
 
         return result;
+    }
+
+    /// <summary>Splits a <c>YYYY-MM</c> bucket key back into its year and ZERO-BASED month index — the
+    /// form <see cref="SpanishShortMonth"/> and <see cref="SpanishShortMonthYear2"/> take.</summary>
+    public static (int Year, int MonthIndexZeroBased) ParseMonthBucketKey(string key)
+    {
+        var parts = key.Split('-');
+        return (
+            int.Parse(parts[0], CultureInfo.InvariantCulture),
+            int.Parse(parts[1], CultureInfo.InvariantCulture) - 1);
     }
 
     // ── getRecentActivity ────────────────────────────────────────────────────────────────────────────

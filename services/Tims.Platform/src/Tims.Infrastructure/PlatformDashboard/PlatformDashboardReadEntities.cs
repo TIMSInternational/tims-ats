@@ -19,10 +19,26 @@ public sealed class DashboardSubscriptionEntity
 {
     public Guid Id { get; set; }
 
+    /// <summary>One subscription per organization (<c>organization_id</c> is UNIQUE in prod), which is why
+    /// the accounts roll-ups can key a dictionary on it rather than grouping.</summary>
+    public Guid OrganizationId { get; set; }
+
     /// <summary><c>OrgPlan</c> native enum, read as text. <c>getPlanDistribution</c>'s only projected
     /// column (<c>select: { plan: true }</c>, no <c>where</c> — the distribution counts EVERY subscription
     /// row whatever its status, reproduced exactly).</summary>
     public string Plan { get; set; } = string.Empty;
+
+    /// <summary><c>SubscriptionStatus</c> native enum, read as text (PR 2). Filtered by LITERALS only —
+    /// <c>"active"</c>, <c>"trialing"</c>, <c>"past_due"</c> — never by a captured variable, so TRAP 8
+    /// (<c>EF.Constant</c>) does not arise; see the data source docblock.</summary>
+    public string Status { get; set; } = string.Empty;
+
+    /// <summary>Nullable: only a trialing subscription normally carries one, and
+    /// <c>getCustomerHealth</c> guards on it explicitly.</summary>
+    public DateTime? TrialEndsAt { get; set; }
+
+    /// <summary>The creation month is what both MRR procedures bucket on (PR 2).</summary>
+    public DateTime CreatedAt { get; set; }
 }
 
 /// <summary>Backs <c>getRecentActivity</c>'s <c>recentOrgs</c> query —
@@ -33,10 +49,22 @@ public sealed class DashboardOrganizationEntity
 
     public string Name { get; set; } = string.Empty;
 
-    /// <summary><c>OrgPlan</c> native enum, read as text — becomes the activity item's <c>meta</c>.</summary>
+    /// <summary><c>OrgPlan</c> native enum, read as text — becomes the activity item's <c>meta</c>, the
+    /// <c>search</c> result's <c>plan</c>, and the upsell fallback plan.</summary>
     public string Plan { get; set; } = string.Empty;
 
     public DateTime CreatedAt { get; set; }
+
+    /// <summary>NOT NULL and UNIQUE; one of <c>search</c>'s three ILIKE targets (PR 2).</summary>
+    public string Slug { get; set; } = string.Empty;
+
+    /// <summary>Nullable — an <c>ILIKE</c> against NULL yields NULL, so a domain-less org simply fails
+    /// that leg of the OR in both stacks (PR 2).</summary>
+    public string? Domain { get; set; }
+
+    /// <summary>Drives <c>getAttentionItems</c>' suspended-org list (<c>false</c>) and
+    /// <c>getUpsellOpportunities</c>' population (<c>true</c>) — PR 2.</summary>
+    public bool IsActive { get; set; }
 }
 
 /// <summary>
@@ -58,6 +86,89 @@ public sealed class DashboardUserEntity
     public DateTime CreatedAt { get; set; }
 
     public bool IsPlatformOwner { get; set; }
+
+    /// <summary>Nullable — a platform owner has no organization, and <c>search</c> returns
+    /// <c>organization: null</c> for one (PR 2).</summary>
+    public Guid? OrganizationId { get; set; }
+
+    /// <summary>PR 2. Note the ASYMMETRY across procedures this column creates:
+    /// <c>getCustomerHealth</c> counts only ACTIVE users, while <c>getUpsellOpportunities</c>'
+    /// <c>_count.users</c> counts every row and only its separate active-user selection filters. Both are
+    /// reproduced.</summary>
+    public bool IsActive { get; set; }
+
+    /// <summary>Nullable — "no login ever" is the 999-day sentinel branch in <c>getCustomerHealth</c>
+    /// (PR 2).</summary>
+    public DateTime? LastLoginAt { get; set; }
+
+    /// <summary>Nullable, returned verbatim by <c>search</c> (PR 2).</summary>
+    public string? Avatar { get; set; }
+}
+
+/// <summary>
+/// Backs <c>getAttentionItems</c>' overdue-invoice list and <c>getCustomerHealth</c>'s overdue count
+/// (PR 2). <c>amount</c> is a Prisma <c>Float</c> — <c>double precision</c> — so it stays a
+/// <see cref="double"/> here; rounding it to a decimal would change the number
+/// <c>toLocaleString</c> formats into the description.
+/// </summary>
+public sealed class DashboardInvoiceEntity
+{
+    public Guid Id { get; set; }
+
+    /// <summary>NOT NULL — <c>invoices.organization</c> is a REQUIRED Prisma relation, which is why the
+    /// attention query inner-joins rather than left-joins.</summary>
+    public Guid OrganizationId { get; set; }
+
+    public double Amount { get; set; }
+
+    /// <summary>Plain <c>text</c> with a <c>'USD'</c> default, NOT an enum.</summary>
+    public string Currency { get; set; } = string.Empty;
+
+    /// <summary><c>InvoiceStatus</c> native enum, read as text; filtered by the literal
+    /// <c>"pending"</c>.</summary>
+    public string Status { get; set; } = string.Empty;
+
+    /// <summary>Nullable even though both consumers filter <c>due_date &lt; now</c> — the kernel's
+    /// <c>inv.dueDate ? … : 0</c> guard is reproduced rather than assumed away.</summary>
+    public DateTime? DueDate { get; set; }
+}
+
+/// <summary>Backs <c>getAttentionItems</c>' stale-invitation list (PR 2). The ONLY attention source whose
+/// organization is optional. <c>platform_invitations</c> was mapped independently by the slice-22
+/// invitations context with a wider column set; narrow per-slice mappings of a shared table are the
+/// convention here, not a conflict.</summary>
+public sealed class DashboardInvitationEntity
+{
+    public Guid Id { get; set; }
+
+    public string Email { get; set; } = string.Empty;
+
+    /// <summary><c>InvitationStatus</c> native enum, read as text; filtered by the literals
+    /// <c>"pending"</c> and <c>"sent"</c>.</summary>
+    public string Status { get; set; } = string.Empty;
+
+    public Guid? OrganizationId { get; set; }
+
+    public DateTime CreatedAt { get; set; }
+}
+
+/// <summary>Backs <c>getUpsellOpportunities</c>' <c>_count.featureFlags</c> (PR 2) — a COUNT of EVERY
+/// flag row for the organization, enabled or not. Only the FK is mapped: nothing else is read.</summary>
+public sealed class DashboardFeatureFlagEntity
+{
+    public Guid Id { get; set; }
+
+    public Guid OrganizationId { get; set; }
+}
+
+/// <summary>Backs <c>getUpsellOpportunities</c>' <c>_count.vacancies</c> (PR 2) — a COUNT of EVERY vacancy
+/// row, whatever its status, despite the reason string calling them "active vacancies". Only the FK is
+/// mapped.</summary>
+public sealed class DashboardVacancyEntity
+{
+    public Guid Id { get; set; }
+
+    public Guid OrganizationId { get; set; }
 }
 
 /// <summary>
@@ -72,6 +183,22 @@ public sealed class DashboardUserEntity
 public sealed class UserGrowthCountRow
 {
     public string Month { get; set; } = string.Empty;
+
+    public long Count { get; set; }
+}
+
+/// <summary>
+/// The unmapped result row for the MRR aggregate (PR 2) — <c>(creation month, plan, count)</c> over
+/// ACTIVE subscriptions, materialised by <c>Database.SqlQuery&lt;T&gt;</c> exactly like
+/// <see cref="UserGrowthCountRow"/>, with the same EXACT-alias requirement and the same deliberate
+/// absence from the model. <c>Plan</c> arrives already cast to <c>text</c> by the SQL, so no enum ever
+/// reaches the reader on this path.
+/// </summary>
+public sealed class ActivePlanMonthCountRow
+{
+    public string Month { get; set; } = string.Empty;
+
+    public string Plan { get; set; } = string.Empty;
 
     public long Count { get; set; }
 }

@@ -1,4 +1,10 @@
 {
+  "planPrices": {
+    "trial": 0,
+    "starter": 499,
+    "professional": 999,
+    "enterprise": 2499
+  },
   "spanishShortMonths": [
     "ene",
     "feb",
@@ -12,6 +18,217 @@
     "oct",
     "nov",
     "dic"
+  ],
+  "spanishShortMonthYear2Cases": [
+    {
+      "year": 2026,
+      "monthIndex": 0,
+      "label": "ene 26"
+    },
+    {
+      "year": 2026,
+      "monthIndex": 1,
+      "label": "feb 26"
+    },
+    {
+      "year": 2026,
+      "monthIndex": 2,
+      "label": "mar 26"
+    },
+    {
+      "year": 2026,
+      "monthIndex": 3,
+      "label": "abr 26"
+    },
+    {
+      "year": 2026,
+      "monthIndex": 4,
+      "label": "may 26"
+    },
+    {
+      "year": 2026,
+      "monthIndex": 5,
+      "label": "jun 26"
+    },
+    {
+      "year": 2026,
+      "monthIndex": 6,
+      "label": "jul 26"
+    },
+    {
+      "year": 2026,
+      "monthIndex": 7,
+      "label": "ago 26"
+    },
+    {
+      "year": 2026,
+      "monthIndex": 8,
+      "label": "sept 26"
+    },
+    {
+      "year": 2026,
+      "monthIndex": 9,
+      "label": "oct 26"
+    },
+    {
+      "year": 2026,
+      "monthIndex": 10,
+      "label": "nov 26"
+    },
+    {
+      "year": 2026,
+      "monthIndex": 11,
+      "label": "dic 26"
+    },
+    {
+      "year": 2025,
+      "monthIndex": 11,
+      "label": "dic 25"
+    },
+    {
+      "year": 2005,
+      "monthIndex": 8,
+      "label": "sept 05"
+    },
+    {
+      "year": 2000,
+      "monthIndex": 0,
+      "label": "ene 00"
+    },
+    {
+      "year": 1999,
+      "monthIndex": 6,
+      "label": "jul 99"
+    },
+    {
+      "year": 2100,
+      "monthIndex": 4,
+      "label": "may 00"
+    }
+  ],
+  "numberToLocaleStringCases": [
+    {
+      "value": 0,
+      "text": "0"
+    },
+    {
+      "value": 1,
+      "text": "1"
+    },
+    {
+      "value": 499,
+      "text": "499"
+    },
+    {
+      "value": 1000,
+      "text": "1,000"
+    },
+    {
+      "value": 1500.25,
+      "text": "1,500.25"
+    },
+    {
+      "value": 1234.5,
+      "text": "1,234.5"
+    },
+    {
+      "value": 1234.56,
+      "text": "1,234.56"
+    },
+    {
+      "value": 1234.5678,
+      "text": "1,234.568"
+    },
+    {
+      "value": 49.99,
+      "text": "49.99"
+    },
+    {
+      "value": 100,
+      "text": "100"
+    },
+    {
+      "value": 999999.999,
+      "text": "999,999.999"
+    },
+    {
+      "value": 1000000,
+      "text": "1,000,000"
+    },
+    {
+      "value": 12345678.9,
+      "text": "12,345,678.9"
+    },
+    {
+      "value": 2499,
+      "text": "2,499"
+    },
+    {
+      "value": 0.5,
+      "text": "0.5"
+    }
+  ],
+  "searchPages": [
+    {
+      "name": "Dashboard",
+      "href": "/dashboard",
+      "keywords": "inicio home panel"
+    },
+    {
+      "name": "Organizaciones",
+      "href": "/platform/organizations",
+      "keywords": "orgs empresas clients"
+    },
+    {
+      "name": "Suscripciones",
+      "href": "/platform/subscriptions",
+      "keywords": "billing planes pagos facturacion stripe"
+    },
+    {
+      "name": "Usuarios",
+      "href": "/platform/users",
+      "keywords": "users personas cuentas"
+    },
+    {
+      "name": "Salud del Sistema",
+      "href": "/platform/health",
+      "keywords": "health status uptime monitoreo"
+    },
+    {
+      "name": "Feature Flags",
+      "href": "/platform/feature-flags",
+      "keywords": "flags toggles features modulos"
+    },
+    {
+      "name": "Agentes IA",
+      "href": "/platform/ai-agents",
+      "keywords": "ai agents bedrock claude haiku sonnet inteligencia artificial agentes"
+    },
+    {
+      "name": "Analytics",
+      "href": "/platform/analytics",
+      "keywords": "metricas estadisticas growth crecimiento"
+    },
+    {
+      "name": "Auditoria",
+      "href": "/platform/audit",
+      "keywords": "audit logs registro actividad"
+    },
+    {
+      "name": "Soporte",
+      "href": "/platform/support",
+      "keywords": "support ayuda impersonar reset"
+    },
+    {
+      "name": "Facturas",
+      "href": "/platform/invoices",
+      "keywords": "invoices facturas pagos billing cobros"
+    },
+    {
+      "name": "Invitaciones",
+      "href": "/platform/invitations",
+      "keywords": "invitations invitaciones onboarding invite"
+    }
   ],
   "monthSeriesCases": [
     {

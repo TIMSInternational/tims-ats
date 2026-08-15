@@ -517,6 +517,14 @@ export const SURFACES: Record<string, Surface> = {
   //      the TS call shifts every bucket by one and diffs spuriously. No normalize rule can absorb a
   //      whole-array shift; re-run away from the boundary. (Within a month the two clocks agree on
   //      every bucket, so this is a minutes-per-month exposure, same class as monitoring's trends.)
+  //      ⚠️ THAT PARENTHETICAL DOES NOT HOLD FOR `mrr-forecast`, which shares this caveat as of PR 2.
+  //      Alone among the nine, its TS side builds buckets and labels in the HOST's timezone rather than
+  //      UTC: `dashboard-forecast.ts` uses `new Date()` + `setHours(0,0,0,0)` and a `toLocaleDateString`
+  //      with NO `timeZone` — contrast `getMrrTrend`, which passes `timeZone: 'UTC'`, so the two TS
+  //      procedures disagree with EACH OTHER off UTC. Off a UTC host the divergence is systematic, not
+  //      minutes-per-month: every bucket bound moves by the host's offset, and near a month boundary all
+  //      24 labels shift a month. Caveat 6 tells you to check LANG/LC_ALL; for this one check **TZ** on
+  //      whatever runs the TS leg before reading an `mrr-forecast` diff as a port bug.
   //   2. `recent-activity` CAN FLAKE ON A created_at TIE — and worse than the invitations list: the
   //      per-source `take: 5` runs BEFORE the merge, so a tie AT THE FIFTH ROW can select DIFFERENT row
   //      SETS in the two stacks, which no sort-normalization can reconcile. Ties between an org and a
@@ -530,6 +538,58 @@ export const SURFACES: Record<string, Surface> = {
   //      exercised) and `user-growth` still emits six labelled zero buckets (the Spanish month labels —
   //      THE known ICU divergence — are exercised on every run). Only `recent-activity` degenerates to
   //      `[]` and compares nothing; check `organizations`/`users` have rows before believing its green.
+  //
+  // FOUR MORE CAVEATS ARRIVED WITH PR 2 (2026-08-14), all on the six endpoints added below:
+  //
+  //   4. `attention-items` CAN FLAKE ON ROW SELECTION, not just ordering. Two of its five sources —
+  //      past-due subscriptions and suspended organizations — have NO `orderBy` in the TS query at all,
+  //      only `take: 20`. With more than 20 rows in either, WHICH twenty come back is unspecified in
+  //      both stacks and they can legitimately differ. No normalize rule can reconcile different row
+  //      SETS (the same limitation as caveat 2). Below 20 rows per source it cannot fire.
+  //
+  //   5. `customer-health` AND `upsell-opportunities` ORDER TIES BY DATABASE ROW ORDER. Both read
+  //      `organizations` with no `orderBy`, then sort by a coarse key — health band, or mrrIncrease —
+  //      with a STABLE sort in both stacks. So organizations sharing a band (or a plan) come back in
+  //      whatever order Postgres returned them, which is unspecified. In practice a seq scan over a
+  //      small table is stable across two calls seconds apart, which is why this is a caveat rather
+  //      than a blocker; on a large, recently-updated `organizations` table it is a real risk.
+  //      `sortArraysBy: 'orgId'` would fix the flake and DESTROY the check — the band ordering is the
+  //      only thing these endpoints compute that a diff can see. Re-run rather than normalize.
+  //
+  //   6. `attention-items` EMBEDS A LOCALE-FORMATTED NUMBER IN A USER-FACING STRING, and the locale is
+  //      the Node process's DEFAULT. `dashboard.helpers.ts` builds an overdue-invoice description with
+  //      `inv.amount.toLocaleString()` — no locale argument — so an invoice of 1234.5 renders
+  //      "$1,234.5 USD …" under ICU's en-US default and "$1234,5 USD …" under an `es` default. The C#
+  //      port hardcodes the en-US rule (pinned in contracts/dashboard-fixtures/dashboard-kernels.json,
+  //      with tests/parity/dashboard-fixtures.test.ts asserting the runtime default IS en-US). If this
+  //      endpoint diffs ONLY inside description strings, check the deployed Node's LANG/LC_ALL before
+  //      suspecting the port. This is the same class as the "sept" month divergence, but it is
+  //      environmental rather than versioned, so no golden can fully defend it.
+  //
+  //   7. `search` IS UNEVENLY COVERED BY THE CURRENT SEED, and the weak leg is named here rather than
+  //      discovered during a failed run. Its three result arrays fare differently under `query=parity`:
+  //        • `organizations` — STRONG. Exactly two rows (`TIMS Parity Harness (__parity_a|b)`), and
+  //          `orderBy name asc` has no tie because the names differ. Deterministic.
+  //        • `users` — WEAKEST LEG IN THE WHOLE SURFACE, but NOT for the reason first written here.
+  //          ~31 seeded users match 'parity' (their emails are all `parity+…@tims.test`), and
+  //          `orderBy firstName asc` + `take: 5` sorts them 'Comp'(2) < 'Dei'(10) < 'Enps'(10) <
+  //          'Parity'(9). So the window is deterministically the TWO 'Comp' rows plus THREE OF THE TEN
+  //          'Dei' rows — and the 'Parity'-named role users, which an earlier version of this caveat
+  //          blamed, start at rank 23 (22 rows precede them) and can never appear at all. Two distinct ties remain: WHICH three
+  //          'Dei' rows are selected (unfixable by normalization — it changes the row SET), and the
+  //          ORDER of the two 'Comp' rows, which share a first name and are compared positionally by
+  //          normalize.ts. In practice a seq-scan sort is stable between two calls seconds apart, so it
+  //          usually agrees — but a diff confined to `users[*]` should be RE-RUN before it is believed,
+  //          and it is the one leg here that could report red on a correct port. (The seeder is
+  //          `upsertPublicUser`, not `upsertUser`.)
+  //        • `pages` — VACUOUS for this term. No SEARCH_PAGES name or keyword contains "parity", so
+  //          both stacks return `[]`. The page-matching kernel (the lower-case asymmetry, the
+  //          substring-across-word-boundaries rule, the `.slice(0, 4)` cap) is covered by C# unit and
+  //          integration tests instead; this leg asserts only that neither stack invents a page.
+  //      The durable fix is a search-specific fixture: two or three users whose first names are DISTINCT
+  //      **and sort ahead of 'Comp'**, plus a page-matching term. Distinct-but-later names would change
+  //      nothing, since they would land outside the take-5 window. That belongs with the grant-fixture
+  //      work #195 tracks, not here.
   dashboard: {
     key: 'dashboard',
     flag: 'Platform__PlatformDashboardReadEnabled',
@@ -571,8 +631,92 @@ export const SURFACES: Record<string, Surface> = {
         globalScope: true,
         // No normalize, DELIBERATELY — see caveat 2. The merged DESC order and the orgs-before-users
         // tiebreak are the ported kernel; `sortArraysBy` would stop comparing them. `meta` is always
-        // present in practice (org plan / user email, both NOT NULL), and `dropNullish` would mask a
-        // C# side that started emitting `meta: null` where TS omits the key — so no dropNullish either.
+        // present in practice (org plan / user email, both NOT NULL), so a null there is unreachable;
+        // `dropNullish` is still declined, because it would also mask any FUTURE nullable this payload
+        // grows. (An earlier version of this comment said dropNullish would mask a C# `meta: null`
+        // "where TS omits the key". That mechanism is wrong: the response is serialised by superjson,
+        // whose `json` payload — the half stripTrpcJson hands to the differ — renders a written-but-
+        // undefined property as `null`, not as an absent key. The conclusion is unchanged.)
+      },
+      // ── PR 2 (2026-08-14): the six remaining FX-free reads, same flag, same platform-owner shape ──
+      {
+        name: 'attention-items',
+        csharpPath: '/platform/dashboard/attention-items',
+        tsProcedure: 'platform.getAttentionItems',
+        input: {},
+        expectedByRole: { platform_owner: 200, org_admin: 403 },
+        globalScope: true,
+        // No normalize. The (severity, daysUntil) ordering IS the kernel this endpoint exists to
+        // compare, so `sortArraysBy` would gut the diff — and `dropNullish` would hide the one place
+        // this payload legitimately carries nulls (an org-less stale invitation's orgId/orgName), which
+        // is exactly the field pair most likely to be got wrong. See caveat 4 for the flake risk this
+        // choice leaves standing.
+      },
+      {
+        name: 'mrr-trend',
+        csharpPath: '/platform/dashboard/mrr-trend',
+        tsProcedure: 'platform.getMrrTrend',
+        input: {},
+        expectedByRole: { platform_owner: 200, org_admin: 403 },
+        globalScope: true,
+        // No normalize: twelve buckets, fixed order, keys `month`/`mrr`, nothing nullable. Shares
+        // caveat 1's month-boundary exposure (the twelve buckets end at the CURRENT month).
+      },
+      {
+        name: 'mrr-forecast',
+        csharpPath: '/platform/dashboard/mrr-forecast',
+        tsProcedure: 'platform.getMrrForecast',
+        input: {},
+        expectedByRole: { platform_owner: 200, org_admin: 403 },
+        globalScope: true,
+        // No normalize. `planBreakdown` is an OBJECT whose key order is unspecified in both stacks
+        // (TS inserts in the row order of an unordered findMany), and that is FINE without a rule:
+        // normalize.ts's `diff` walks a key-set union rather than comparing serialised text, so object
+        // key order is already not compared. Also shares caveat 1.
+      },
+      {
+        name: 'customer-health',
+        csharpPath: '/platform/dashboard/customer-health',
+        tsProcedure: 'platform.getCustomerHealth',
+        input: {},
+        expectedByRole: { platform_owner: 200, org_admin: 403 },
+        globalScope: true,
+        // No normalize, and this is the one where a `sortArraysBy: 'orgId'` rule is genuinely tempting
+        // — see caveat 5. It is declined because the health BAND ordering is the kernel; sorting by
+        // orgId would stop comparing it entirely.
+      },
+      {
+        name: 'upsell-opportunities',
+        csharpPath: '/platform/dashboard/upsell-opportunities',
+        tsProcedure: 'platform.getUpsellOpportunities',
+        input: {},
+        expectedByRole: { platform_owner: 200, org_admin: 403 },
+        globalScope: true,
+        // No normalize: the mrrIncrease-descending sort is the kernel, and every field is non-null.
+        // Ties on mrrIncrease keep source order (an unordered findMany) in both stacks — caveat 5
+        // again, in a milder form, since only orgs on the SAME plan can tie.
+      },
+      {
+        name: 'search',
+        // The ONLY dashboard endpoint with an input. `csharpPath` carries its own query string (the
+        // harness substitutes only the `{id}` sentinel), and `input` is what the TS procedure receives —
+        // the two must agree or the stacks are answering different questions; surfaces.test.ts asserts
+        // they do, because nothing else in the registry cross-checks them.
+        //
+        // The term is 'parity' because that is what the harness's own seed actually contains: both
+        // organizations are named `TIMS Parity Harness (__parity_<a|b>)` with slug `__parity_<a|b>`, and
+        // every seeded user's email is `parity+<a|b>-<role>@tims.test`. Read the seed before changing
+        // it — a term that matches nothing turns this endpoint into two empty payloads comparing equal,
+        // which is a PASS that proves nothing. See caveat 7 for what this term does and does not cover.
+        csharpPath: '/platform/dashboard/search?query=parity',
+        tsProcedure: 'platform.search',
+        input: { query: 'parity' },
+        expectedByRole: { platform_owner: 200, org_admin: 403 },
+        globalScope: true,
+        // No normalize: `orderBy name/firstName asc` is a database sort, so both stacks get the same
+        // order from the same collation. `dropNullish` is declined because `avatar` and the nested
+        // `organization` are exactly the nullable fields worth comparing — an org-less platform owner
+        // must show `organization: null` on both sides.
       },
     ],
   },
