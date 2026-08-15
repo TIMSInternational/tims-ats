@@ -606,11 +606,32 @@ export const SURFACES: Record<string, Surface> = {
   //      USD-only invoices does not help (these three are platform-wide, so they read every tenant's
   //      invoices — including the two overdue COP ones the live database holds).
   //
-  // ALSO PR 3, and it CHANGES THE OTHER NINE: `seed.ts` now seeds six USD invoices across both orgs.
-  // Until now the harness seeded NONE, so caveat 3's "partly vacuous on empty tables" understated the
-  // problem for `attention-items` (its overdue-invoice leg emitted nothing) and `customer-health`
-  // (`overdueInvoices: 0` for every org, whatever the code did). Both now compare real rows. Their
-  // due dates are deliberately distinct so caveat 4's ordering has no new tie to flake on.
+  //   9. THESE THREE ARE THE ONLY REGISTERED ENDPOINTS THAT CAN LEGITIMATELY ANSWER 503, and both the
+  //      RBAC and the parity legs will call that a FAILURE. `expectedByRole` pins platform_owner: 200,
+  //      and `checks/rbac.ts` verdictForRole requires `actual === expected` exactly, so a 503 reports
+  //      `expected 200 but got 503`; `checks/parity.ts:26` likewise fails a C#-only endpoint on any
+  //      non-200. The trigger is a missing `fx_rates` pin for ANY currency appearing in ANY tenant's
+  //      invoices — not just the harness's — because these reads are platform-wide.
+  //
+  //      So BEFORE reading a red run on these three as a port defect, check the pins:
+  //        SELECT DISTINCT currency FROM invoices;
+  //        SELECT base_currency, quote_currency, as_of FROM fx_rates;
+  //      Every non-USD currency in the first result needs a row in the second. As of 2026-08-15 the
+  //      live database satisfies this (invoices are USD and COP; COP is pinned), so the trap is latent
+  //      rather than active — but the daily FxRefreshJob is not deployed, so the pin set is frozen and
+  //      the FIRST tenant invoiced in a new currency arms it.
+  //
+  // ALSO PR 3: `seed.ts` now seeds six USD invoices across both orgs. Be precise about what that fixes,
+  // because the tempting claim is false. `attention-items` and `customer-health` are PLATFORM-WIDE, so
+  // against the live database they were already reading other tenants' invoices and their invoice branches
+  // were never empty there. What the seeded rows add is (a) self-sufficiency when the harness is pointed
+  // at a locally-seeded database, which cli.ts:191 explicitly contemplates and where those branches WERE
+  // empty, and (b) invoice rows belonging to the two orgs this harness authenticates as. That narrows
+  // caveat 3's "partly vacuous on empty tables"; it is not a claim that either endpoint was untested.
+  //
+  // Their due dates are deliberately distinct so the (severity, daysUntil) sort has no new tie to flake
+  // on. NOT caveat 4, which is about the two attention sources carrying no `orderBy` AT ALL — the invoice
+  // query has one (`orderBy: { dueDate: 'asc' }`, dashboard.ts:139), so it was never in caveat 4's scope.
   dashboard: {
     key: 'dashboard',
     flag: 'Platform__PlatformDashboardReadEnabled',
@@ -743,9 +764,16 @@ export const SURFACES: Record<string, Surface> = {
       //
       // These three have NO `tsProcedure`, and that omission is the whole decision — parity prints
       // an explicit [WEAK] did-not-run for them while `checks/rbac.ts` (org_admin 403 / platform_owner
-      // 200 against the LIVE C# route) and the RLS disposition keep asserting. Same treatment as
-      // `dei.getPayEquity` and compensation's three FX reads, and the reason is stronger here than it
-      // was for either of those:
+      // 200 against the LIVE C# route) and the RLS disposition keep asserting.
+      //
+      // NOT the same treatment as `dei.getPayEquity` or compensation's three FX reads, and the difference
+      // is the point: those are NOT REGISTERED AT ALL (this file calls pay-equity "DELIBERATELY EXCLUDED"
+      // further down, and surfaces.test.ts asserts its absence), so they get no RBAC deny assertion and no
+      // liveness check either. Registered-C#-only is the STRONGER disposition — the one nine-box,
+      // audit-log, access-review and dei's two survivors ended up with — and it is what
+      // `EndpointDef.tsProcedure`'s contract at the top of this file exists to enable. Their exclusion also
+      // had a different CAUSE (a separate `Platform__FxReadsEnabled` flag plus a deleted TS side), not a
+      // provider mismatch. The reason here is its own:
       //
       //   THE TWO STACKS RESOLVE RATES FROM DIFFERENT PROVIDERS, so a numeric comparison cannot be
       //   made to agree by any amount of fixture work. TS calls LIVE Frankfurter (ECB) per request;

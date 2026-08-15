@@ -27,10 +27,22 @@ namespace Tims.Application.PlatformDashboard;
 /// grounds: writing the SAME key from both stacks would let whichever answered first serve its payload to
 /// the other, which during the dark period means a C#-shaped body reaching live TS callers and, in a parity
 /// run, a payload being compared against ITSELF; a C#-only key would reproduce the staleness while adding a
-/// stale-versus-fresh flake to every parity run; and the divergence that remains is invisible on the wire —
-/// it is freshness, not shape. Recorded in
+/// stale-versus-fresh flake to every parity run; and the divergence that remains is invisible IN THE
+/// PAYLOAD — it is freshness, not shape. Recorded in
 /// <c>docs/architecture/csharp-migration/phase-5-slice-23-pr3-dashboard-fx.md</c> §Recorded divergences and
 /// pinned by <c>PlatformDashboardFxUseCaseTests</c>.</para>
+///
+/// <para><b>"Invisible in the payload" is NOT "free", and the cost compounds with the query shape.</b>
+/// TS serves up to 45 seconds of requests — from every platform owner, globally — off ONE execution, and
+/// when it does execute it runs its nine queries inside a <c>Promise.all</c>. This port executes on every
+/// request and runs those nine SEQUENTIALLY (a DbContext is not thread-safe), over platform-wide predicates
+/// with no organization filter. So at the flip the change is not "slightly staler data": it is up to ~45×
+/// the executions, each costing ~9× the round trips, on the most expensive cross-org read in the cluster.
+/// The consumer is <c>apps/web/app/(admin)/dashboard/kpi-strip.tsx</c>, a <c>useQuery</c> on React Query
+/// defaults — so it refetches on mount and on window focus, and navigation drives the rate. Nothing here
+/// polls, which bounds it, but this paragraph exists because an earlier version of this docblock said the
+/// divergence was "invisible on the wire" full stop, and a reader could reasonably have taken that as
+/// "costless".</para>
 /// </summary>
 public sealed class PlatformDashboardFxUseCase(
     IPlatformDashboardFxRepository repository,

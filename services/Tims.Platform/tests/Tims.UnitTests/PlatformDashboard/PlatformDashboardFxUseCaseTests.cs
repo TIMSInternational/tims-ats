@@ -194,6 +194,63 @@ public sealed class PlatformDashboardFxUseCaseTests
         Assert.DoesNotContain("ratesAsOf", System.Text.Json.JsonSerializer.Serialize(org1), StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task RatesAsOf_is_the_EARLIEST_pin_date_across_the_rows_not_the_latest()
+    {
+        // Every other test in this PR — and every test in FxRatePinTests — has exactly ONE non-identity
+        // pin date, so `asOf < earliestAsOf` in FxMoneyConverter could be flipped to `>` and stay green
+        // everywhere. Two distinct dates is the only input that separates them, and this value is on a
+        // platform-wide wire contract.
+        var repository = new FakeFxRepository
+        {
+            Kpis = Inputs(overdue:
+            [
+                new DashboardMoneyRow(100, "EUR"),
+                new DashboardMoneyRow(100, "GBP"),
+                new DashboardMoneyRow(100, "USD"),
+            ]),
+        };
+        var provider = new FakeRateProvider();
+        provider.Pins["EUR"] = new FxPin(1.25, new DateOnly(2026, 7, 31), Identity: false);
+        provider.Pins["GBP"] = new FxPin(1.5, new DateOnly(2026, 6, 15), Identity: false); // EARLIER
+        var useCase = new PlatformDashboardFxUseCase(repository, provider);
+
+        var result = await useCase.GetDashboardKpisAsync(Now, CancellationToken.None);
+
+        // The earlier of the two, regardless of which row was seen first — and the identity USD row
+        // contributes no date at all rather than "today".
+        Assert.Equal("2026-06-15", result.Value!.OutstandingRatesAsOf);
+        Assert.Equal(375, result.Value.OutstandingAmount);
+    }
+
+    // ── the derived window bounds the repository receives ────────────────────────────────────────────
+
+    [Fact]
+    public async Task RevenueByCustomer_bounds_its_paid_bucket_at_thirty_days_before_the_request()
+    {
+        var repository = new FakeFxRepository();
+        var useCase = new PlatformDashboardFxUseCase(repository, new FakeRateProvider());
+
+        await useCase.GetRevenueByCustomerAsync(Now, CancellationToken.None);
+
+        Assert.Equal(Now.AddDays(-30), repository.RevenueThirtyDaysAgo);
+    }
+
+    [Fact]
+    public async Task ChurnRisk_bounds_its_recent_login_window_at_seven_days_before_the_request()
+    {
+        // This window is applied in SQL (`COUNT(*) FILTER (WHERE last_login_at >= bound)`), so no kernel
+        // test can reach it and no fixture row sits on the boundary. Asserting the ARGUMENT is what makes
+        // AddDays(-7) -> AddDays(-8) fail somewhere.
+        var repository = new FakeFxRepository();
+        var useCase = new PlatformDashboardFxUseCase(repository, new FakeRateProvider());
+
+        await useCase.GetChurnRiskAsync(Now, CancellationToken.None);
+
+        Assert.Equal(Now, repository.ChurnNow);
+        Assert.Equal(Now.AddDays(-7), repository.ChurnSevenDaysAgo);
+    }
+
     // ── the memo, and the deliberate ABSENCE of a cache ───────────────────────────────────────────────
 
     [Fact]
@@ -301,21 +358,53 @@ public sealed class PlatformDashboardFxUseCaseTests
             return Task.FromResult(Kpis);
         }
 
+        // RECORDED, not discarded. The first draft of this fake threw these bounds away while the KPI
+        // method captured all four — an asymmetry that made the -30 and -7 day windows unreachable from
+        // any unit test, and the -7 one unreachable from ANY test (it is computed in SQL, so the
+        // integration fixture is the only other place it could be caught, and no fixture row sits on it).
+        public DateTime RevenueThirtyDaysAgo { get; private set; }
+
+        public DateTime ChurnNow { get; private set; }
+
+        public DateTime ChurnSevenDaysAgo { get; private set; }
+
         public Task<IReadOnlyList<RevenueOrgRow>> GetRevenueRowsAsync(
             DateTime thirtyDaysAgoUtc,
-            CancellationToken cancellationToken) => Task.FromResult(RevenueRows);
+            CancellationToken cancellationToken)
+        {
+            RevenueThirtyDaysAgo = thirtyDaysAgoUtc;
+            return Task.FromResult(RevenueRows);
+        }
 
         public Task<IReadOnlyList<ChurnOrgRow>> GetChurnRowsAsync(
             DateTime nowUtc,
             DateTime sevenDaysAgoUtc,
-            CancellationToken cancellationToken) => Task.FromResult(ChurnRows);
+            CancellationToken cancellationToken)
+        {
+            ChurnNow = nowUtc;
+            ChurnSevenDaysAgo = sevenDaysAgoUtc;
+            return Task.FromResult(ChurnRows);
+        }
     }
 
-    /// <summary>Resolves USD identity itself (as the real provider does, before any DB touch), one
-    /// configured EUR→USD pin, and <c>null</c> for everything else — the cold-start shape.</summary>
+    /// <summary>Resolves an identity pair itself (as the real provider does, before any DB touch), any
+    /// explicitly configured pin, and <c>null</c> for everything else — the cold-start shape.</summary>
     private sealed class FakeRateProvider : IFxRateProvider
     {
-        public FxPin? EurToUsd { get; init; }
+        /// <summary>Shorthand for the common single-pin case.</summary>
+        public FxPin? EurToUsd
+        {
+            init
+            {
+                if (value is not null)
+                {
+                    Pins["EUR"] = value;
+                }
+            }
+        }
+
+        /// <summary>Source currency → pin, for the cases needing more than one.</summary>
+        public Dictionary<string, FxPin> Pins { get; } = new(StringComparer.Ordinal);
 
         public int CallCount { get; private set; }
 
@@ -329,8 +418,8 @@ public sealed class PlatformDashboardFxUseCaseTests
             }
 
             return Task.FromResult(
-                string.Equals(from, "EUR", StringComparison.Ordinal) && string.Equals(to, "USD", StringComparison.Ordinal)
-                    ? EurToUsd
+                string.Equals(to, "USD", StringComparison.Ordinal) && Pins.TryGetValue(from, out var pin)
+                    ? pin
                     : null);
         }
     }

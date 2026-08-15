@@ -10,6 +10,8 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
 using Tims.Application.Fx;
+using Tims.Application.PlatformDashboard;
+using Tims.Infrastructure.PlatformDashboard;
 
 namespace Tims.IntegrationTests.PlatformDashboard;
 
@@ -24,13 +26,19 @@ namespace Tims.IntegrationTests.PlatformDashboard;
 /// assertions are per-ROUTE because the gate is copied into each handler and deleting it from ONE handler
 /// is the realistic mistake.</para>
 ///
-/// <para><b>This class carries the ONLY cross-currency proof in the repository for these endpoints, and
-/// that is by design rather than by omission.</b> The parity harness compares against USD-only invoices,
-/// so both stacks take the identity path there and rate RESOLUTION is never compared — the two stacks read
-/// different providers (live Frankfurter versus the daily <c>fx_rates</c> pin), which is precisely why the
-/// numbers could not be compared even in principle. What parity cannot reach, the EUR assertions below do:
-/// a 2000 EUR invoice cross-rating through the USD base at <c>1/0.8 = 1.25</c> to exactly 2500, and the
-/// pin's <c>as_of</c> arriving on the wire as <c>outstandingRatesAsOf</c>.</para>
+/// <para><b>This class carries the ONLY payload proof of any kind for these three endpoints, and that is
+/// by design rather than by omission.</b> They are registered C#-ONLY in <c>scripts/parity/surfaces.ts</c>
+/// (no <c>tsProcedure</c>), so <c>checks/parity.ts:24</c> reports <c>[WEAK] … NO cross-stack comparison
+/// ran</c> and compares nothing at all — not the money fields, and not the counts either. The reason is
+/// that the two stacks resolve rates from different providers (live Frankfurter versus the daily
+/// <c>fx_rates</c> pin), so their totals cannot be made to agree; seeding USD-only invoices does not help,
+/// because these reads are platform-wide and the live database holds non-USD invoices.</para>
+///
+/// <para>So everything below is load-bearing in a way the other dashboard endpoints' tests are not: for
+/// those, a wrong value would ALSO turn a parity diff red. Here nothing else is watching. The EUR
+/// assertions are the whole cross-currency proof — a 2000 EUR invoice cross-rating through the USD base at
+/// <c>1/0.8 = 1.25</c> to exactly 2500, and the pin's <c>as_of</c> arriving as
+/// <c>outstandingRatesAsOf</c>.</para>
 /// </summary>
 [Collection("PlatformDashboardRead")]
 public sealed class PlatformDashboardFxEndpointAuthTests(PlatformDashboardReadFixture fixture)
@@ -187,21 +195,43 @@ public sealed class PlatformDashboardFxEndpointAuthTests(PlatformDashboardReadFi
         Assert.Contains("fx_unavailable", await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
     }
 
-    [Fact]
-    public async Task TheFxFailurePath_RunsAFTERTheGate()
+    [Theory]
+    [InlineData(KpisPath)]
+    [InlineData(RevenuePath)]
+    [InlineData(ChurnPath)]
+    public async Task ADeniedCaller_IsRefusedWithoutAnyDataAccess(string path)
     {
-        // Ordering matters: an ordinary org-user must not be able to distinguish "FX is down" from
-        // "you are not a platform owner". With the rate source dead, the deny is still a 403.
+        // WHAT THIS ASSERTS, and why the obvious version of it does not work.
+        //
+        // The first draft was "with the FX plane dead, an org-user still gets 403" — and it was GREEN
+        // against a mutation that moved the gate BELOW the use-case call, because the gate's failure
+        // still wins the response whenever it runs. It proved the status code, not the ordering, and a
+        // test that cannot fail for the reason it names is worth nothing.
+        //
+        // This version counts REPOSITORY calls instead. A denied caller must cost zero data access: these
+        // are unfiltered cross-tenant reads over every organization, every user and every invoice on the
+        // platform, so running them for someone who is about to be refused is both wasted work and a
+        // larger blast radius than the 403 suggests.
+        var spy = new CountingFxRepository();
         await using var factory = EnabledFactory(services =>
         {
-            services.RemoveAll<IFxRateProvider>();
-            services.AddScoped<IFxRateProvider, ColdStartFxRateProvider>();
+            services.RemoveAll<IPlatformDashboardFxRepository>();
+            services.AddScoped<IPlatformDashboardFxRepository>(sp => spy.Wrapping(
+                ActivatorUtilities.CreateInstance<PlatformDashboardFxRepository>(sp)));
         });
         using var client = factory.CreateClient();
 
-        Assert.Equal(
-            HttpStatusCode.Forbidden,
-            (await Get(client, KpisPath, Mint(PlatformDashboardReadFixture.OrgUserSub))).StatusCode);
+        var denied = await Get(client, path, Mint(PlatformDashboardReadFixture.OrgUserSub));
+
+        Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
+        Assert.Equal(0, spy.Calls);
+
+        // The other half, without which a spy that was never wired up would "prove" the same thing: the
+        // SAME spy must count on an allowed caller. This is what makes the zero above mean something.
+        var allowed = await Get(client, path, Mint(PlatformDashboardReadFixture.PlatformOwnerSub));
+
+        Assert.Equal(HttpStatusCode.OK, allowed.StatusCode);
+        Assert.True(spy.Calls > 0, "the spy repository was never consulted — the zero above proves nothing");
     }
 
     // ── getDashboardKpis payload ─────────────────────────────────────────────────────────────────────
@@ -455,5 +485,54 @@ public sealed class PlatformDashboardFxEndpointAuthTests(PlatformDashboardReadFi
             Task.FromResult(string.Equals(from, to, StringComparison.Ordinal)
                 ? new FxPin(1.0, null, Identity: true)
                 : null);
+    }
+
+    /// <summary>
+    /// Counts repository calls while DELEGATING to the real one, so the allowed-caller half of the test
+    /// still exercises production behaviour and returns a real 200. A stub returning empty data would make
+    /// the 200 meaningless and the counter self-fulfilling.
+    ///
+    /// <para>The counter lives on the outer instance rather than the DI-created one because the spy is
+    /// resolved per scope and the assertions run outside any request scope.</para>
+    /// </summary>
+    private sealed class CountingFxRepository
+    {
+        private int _calls;
+
+        public int Calls => Volatile.Read(ref _calls);
+
+        public IPlatformDashboardFxRepository Wrapping(IPlatformDashboardFxRepository inner) =>
+            new Spy(inner, () => Interlocked.Increment(ref _calls));
+
+        private sealed class Spy(IPlatformDashboardFxRepository inner, Action onCall) : IPlatformDashboardFxRepository
+        {
+            public Task<DashboardKpiInputs> GetKpiInputsAsync(
+                DateTime nowUtc,
+                DateTime monthStartUtc,
+                DateTime prevMonthEndUtc,
+                DateTime sevenDaysFromNowUtc,
+                CancellationToken cancellationToken)
+            {
+                onCall();
+                return inner.GetKpiInputsAsync(nowUtc, monthStartUtc, prevMonthEndUtc, sevenDaysFromNowUtc, cancellationToken);
+            }
+
+            public Task<IReadOnlyList<RevenueOrgRow>> GetRevenueRowsAsync(
+                DateTime thirtyDaysAgoUtc,
+                CancellationToken cancellationToken)
+            {
+                onCall();
+                return inner.GetRevenueRowsAsync(thirtyDaysAgoUtc, cancellationToken);
+            }
+
+            public Task<IReadOnlyList<ChurnOrgRow>> GetChurnRowsAsync(
+                DateTime nowUtc,
+                DateTime sevenDaysAgoUtc,
+                CancellationToken cancellationToken)
+            {
+                onCall();
+                return inner.GetChurnRowsAsync(nowUtc, sevenDaysAgoUtc, cancellationToken);
+            }
+        }
     }
 }

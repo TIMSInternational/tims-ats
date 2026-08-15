@@ -177,6 +177,117 @@ public sealed class ChurnRiskKernelTests
         Assert.Contains("No login in 999 days", row.Risks);
     }
 
+    // ── the RISK-STRING thresholds, which are separate from the SCORE bands above ────────────────────
+    //
+    // The recency SIGNAL bands (20/16/12/6/0) and the recency RISK strings (>= 14 / >= 7) are different
+    // cutoffs over the same number, and only the signal side was pinned at first. Mutating `>= 14` to
+    // `>= 15` or `>= 7` to `>= 8` left every test green, while changing which dunning ACTION a real
+    // account gets.
+
+    [Theory]
+    [InlineData(6, null)]
+    [InlineData(7, "Last login 7 days ago")]
+    [InlineData(13, "Last login 13 days ago")]
+    [InlineData(14, "No login in 14 days")]
+    [InlineData(15, "No login in 15 days")]
+    public void The_recency_RISK_thresholds_are_inclusive_at_7_and_14(int daysAgo, string? expected)
+    {
+        var row = Single(Org(lastLoginAt: Now.AddDays(-daysAgo)));
+        var loginRisk = row.Risks.FirstOrDefault(r =>
+            r.StartsWith("No login", StringComparison.Ordinal) || r.StartsWith("Last login", StringComparison.Ordinal));
+
+        Assert.Equal(expected, loginRisk);
+
+        // The ACTION is the half that reaches an operator, so pin it too: the two branches are not
+        // interchangeable descriptions of one state.
+        if (expected is null)
+        {
+            Assert.DoesNotContain("check_in", row.Actions);
+            Assert.DoesNotContain("reactivation_email", row.Actions);
+        }
+        else if (daysAgo >= 14)
+        {
+            Assert.Contains("reactivation_email", row.Actions);
+        }
+        else
+        {
+            Assert.Contains("check_in", row.Actions);
+        }
+    }
+
+    [Theory]
+    [InlineData(2, true)]
+    [InlineData(3, false)]
+    public void The_feature_adoption_RISK_fires_strictly_below_three(int featureCount, bool expected)
+    {
+        // The SIGNAL test above covers featureCount 3 (adoptionScore 8) but never reads Risks, so
+        // `< 3` -> `< 4` survived it. At exactly 3 there must be no risk and no onboarding action.
+        var row = Single(Org(featureCount: featureCount));
+
+        Assert.Equal(expected, row.Risks.Contains($"Only {featureCount} features adopted"));
+        Assert.Equal(expected, row.Actions.Contains("onboarding_session"));
+    }
+
+    [Fact]
+    public void The_trial_risk_is_LAST_so_it_never_becomes_primaryRisk_over_a_real_one()
+    {
+        // Every other trial test uses an org whose ONLY risk is the trial, and asserts with Contains —
+        // position-agnostic. Moving the trial block above the invoice block would change primaryRisk for
+        // exactly the population this console exists to surface: a trialing tenant with an overdue bill.
+        var row = Single(Org(
+            status: "trialing",
+            trialEndsAt: Now.AddDays(2),
+            overdueCount: 1,
+            overdueAmount: 500,
+            featureCount: 0,
+            lastLoginAt: Now.AddDays(-20)));
+
+        Assert.Equal(
+            [
+                "1 overdue invoice (USD 500)",
+                "No login in 20 days",
+                "Only 0 features adopted",
+                "Trial expires in 2 days",
+            ],
+            row.Risks);
+        Assert.Equal(["send_dunning", "reactivation_email", "onboarding_session", "conversion_call"], row.Actions);
+        Assert.Equal("1 overdue invoice (USD 500)", row.PrimaryRisk);
+    }
+
+    [Fact]
+    public void The_wire_loginRate_rounds_HALF_UP_not_to_even()
+    {
+        // 1/8 = 12.5 exactly — the one input that separates JS Math.round (13) from .NET banker's (12).
+        // No other fixture rate lands on a .5 boundary, so JsRound -> Math.Round at this ONE call site
+        // survived the whole suite.
+        Assert.Equal(13, Single(Org(activeUsers: 8, recentLogins: 1)).LoginRate);
+
+        // 3/8 = 37.5 — the other direction, where banker's would round to 38 and agree by accident.
+        Assert.Equal(38, Single(Org(activeUsers: 8, recentLogins: 3)).LoginRate);
+    }
+
+    [Fact]
+    public void Ties_on_healthScore_preserve_input_order()
+    {
+        // All three orgs are identical bar their id, so every score ties. A stable sort keeps input
+        // order; List.Sort (unstable) or an OrderBy on a different key would not.
+        var result = ChurnRiskKernel.Build([Org(id: "a"), Org(id: "b"), Org(id: "c")], Now);
+
+        Assert.Equal(["a", "b", "c"], result.Organizations.Select(o => o.OrgId));
+        Assert.Single(result.Organizations.Select(o => o.HealthScore).Distinct());
+    }
+
+    [Fact]
+    public void An_empty_platform_produces_an_empty_list_and_a_zeroed_summary()
+    {
+        // Reachable on a brand-new deployment, and the one input where every LINQ aggregate below could
+        // throw or produce a null rather than a zero.
+        var result = ChurnRiskKernel.Build([], Now);
+
+        Assert.Empty(result.Organizations);
+        Assert.Equal(new ChurnRiskSummary(0, 0, 0, 0, 0), result.Summary);
+    }
+
     // ── the two pluralization rules, which are deliberately different ────────────────────────────────
 
     [Fact]

@@ -10,15 +10,24 @@ namespace Tims.Application.PlatformDashboard;
 // side it resolves the DB-pinned `fx_rates` row through FxMoneyConverter. TS IS STILL THE CONTRACT: every
 // flag is dark, so these records must match the tRPC payloads key-for-key and byte-for-byte.
 //
-// WHAT PARITY DOES AND DOES NOT COVER HERE, stated once so no reader assumes more (Federico's call,
-// 2026-08-15; recorded in docs/architecture/csharp-migration/phase-5-slice-23-pr3-dashboard-fx.md):
-// the parity harness seeds USD-ONLY invoices, so BOTH stacks take the identity path (TS short-circuits
-// getFxRate on base == quote and never calls the network; FxRateProvider returns Rate 1.0 without touching
-// the DB). That compares every count, every score, every sort order and the whole round-then-sum-then-round
-// kernel at rate 1 — but it does NOT and CANNOT compare RATE RESOLUTION, because the two stacks read
-// different providers (ECB via Frankfurter live, versus exchangerate-api via the daily pin). Cross-currency
-// arithmetic is covered instead by the Testcontainers payload tests, which seed a known pin and assert the
-// exact converted wire value.
+// WHAT PARITY COVERS HERE: NOTHING. Stated first because it is the opposite of what a reader expects
+// (Federico's call, 2026-08-15; recorded in
+// docs/architecture/csharp-migration/phase-5-slice-23-pr3-dashboard-fx.md).
+//
+// All three endpoints are registered in scripts/parity/surfaces.ts WITHOUT a `tsProcedure`, and
+// scripts/parity/checks/parity.ts:24 short-circuits that case to `[WEAK] … NO cross-stack comparison ran`.
+// So parity compares no count, no score, no sort order and no total on these three. What still asserts is
+// checks/rbac.ts (org_admin 403 / platform_owner 200 against the live C# route) and the RLS disposition.
+//
+// The reason is that the two stacks resolve rates from DIFFERENT PROVIDERS — live Frankfurter (ECB) on the
+// TS side, the DB-pinned fx_rates row (exchangerate-api) on this one — so their money fields cannot be made
+// to agree. Seeding USD-only invoices does NOT fix that, and an earlier version of THIS COMMENT claimed it
+// did: these reads are PLATFORM-WIDE, summing every tenant's invoices rather than the harness's two orgs,
+// and the live database holds two overdue COP invoices. The seeded USD rows are still worth having, but
+// what they strengthen is getAttentionItems and getCustomerHealth, not these three.
+//
+// Cross-currency arithmetic is covered instead by PlatformDashboardFxEndpointAuthTests, which seeds a known
+// pin and asserts the exact converted wire value. That is the ONLY such proof in the repository.
 
 /// <summary>
 /// The whole <c>getDashboardKpis</c> payload — thirteen keys, flat, no envelope.

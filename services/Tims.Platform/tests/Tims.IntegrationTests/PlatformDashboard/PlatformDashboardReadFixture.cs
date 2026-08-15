@@ -7,9 +7,11 @@ using Tims.Infrastructure.PlatformDashboard;
 namespace Tims.IntegrationTests.PlatformDashboard;
 
 /// <summary>
-/// Phase-5 slice 23 (issue #81, PR 1 of 3) Testcontainers fixture: one real Postgres carrying the three
-/// Prisma-owned tables the FX-free dashboard reads touch (<c>subscriptions</c>, <c>organizations</c>,
-/// <c>users</c>) plus the identity plane.
+/// Phase-5 slice 23 (issue #81) Testcontainers fixture: one real Postgres carrying the Prisma-owned tables
+/// the dashboard reads touch, plus the identity plane. PR 1 mapped three (<c>subscriptions</c>,
+/// <c>organizations</c>, <c>users</c>); PR 2 added four more (<c>invoices</c>,
+/// <c>platform_invitations</c>, <c>feature_flags</c>, <c>vacancies</c>); PR 3 adds the efcore-OWNED
+/// <c>fx_rates</c> and one column, <c>invoices.paid_at</c>.
 ///
 /// <para><b>The <c>plan</c> columns are declared as the NATIVE <c>public."OrgPlan"</c> enum, exactly as
 /// prod has them</b> (<c>packages/db/baseline/prod-public-schema.sql:169</c>). TRAP 3: EFCore.PG cannot
@@ -50,12 +52,13 @@ namespace Tims.IntegrationTests.PlatformDashboard;
 /// BYPASSRLS in prod), the context is never wrapped in <c>TenantScope</c>, and <c>PlatformOwnerGate</c> is
 /// the entire authorization boundary.</para>
 ///
-/// <para><b>PR 3 adds the FX plane and it is the only place cross-currency arithmetic is proved.</b> The
-/// <c>fx_rates</c> table arrives with ONE pin (<c>USD→EUR</c>), and the EUR overdue invoice PR 2 already
-/// seeded becomes a real cross-rate: it converts back through the USD base at <c>1/0.8 = 1.25</c>. This
-/// matters because the parity harness deliberately CANNOT cover it — its invoices are USD-only, so both
-/// stacks take the identity path there and rate resolution is never compared (the two stacks read
-/// different providers). What parity cannot reach, these payload assertions do.</para>
+/// <para><b>PR 3 adds the FX plane, and this fixture is where the three FX reads are proved AT ALL.</b>
+/// The <c>fx_rates</c> table arrives with ONE pin (<c>USD→EUR</c>), and the EUR overdue invoice PR 2
+/// already seeded becomes a real cross-rate: it converts back through the USD base at <c>1/0.8 = 1.25</c>.
+/// This matters because those three endpoints are registered C#-ONLY in the parity harness (no
+/// <c>tsProcedure</c>), so parity compares NOTHING for them — not the money, not the counts. The reason is
+/// that the two stacks resolve rates from different providers and cannot be made to agree. What parity
+/// does not reach, these payload assertions do.</para>
 ///
 /// <para>Also PR 3: <c>invoices.paid_at</c>, plus four invoices that are invisible to every PR-1/PR-2
 /// endpoint (a draft, a paid row outside the thirty-day window, a paid row with a NULL <c>paid_at</c>, and
@@ -388,6 +391,13 @@ public sealed class PlatformDashboardReadFixture : IAsyncLifetime
             fetched_at timestamp with time zone NOT NULL DEFAULT now(),
             source text NOT NULL DEFAULT 'exchangerate-api'
         );
+        -- The migration's UNIQUE index, and it is load-bearing rather than decorative: FxRateProvider
+        -- resolves a leg with ORDER BY as_of DESC LIMIT 1, so without this constraint a fixture could seed
+        -- two rows for the same (base, quote, as_of) and get a NON-DETERMINISTIC pin where production would
+        -- have raised a violation. That is the "green fixture, red prod" shape this file's TRAP-3 and
+        -- TRAP-6 notes exist to prevent, so omitting it here would have been the same mistake in a new
+        -- place. (It was omitted in the first draft of this fixture.)
+        CREATE UNIQUE INDEX ux_fx_rates_base_quote_asof ON fx_rates (base_currency, quote_currency, as_of);
         GRANT SELECT ON fx_rates TO app_tenant;
         """;
 
@@ -549,8 +559,7 @@ public sealed class PlatformDashboardReadFixture : IAsyncLifetime
         -- The ONE fx pin the fixture carries: USD→EUR at 0.8, so the EUR overdue invoice cross-rates back
         -- through the USD base at exactly 1/0.8 = 1.25 (exact in IEEE-754 double, verified — the assertion
         -- is a whole number rather than an epsilon comparison). No USD row needs a pin at all: the provider
-        -- short-circuits an identity pair before touching this table, which is the whole reason the parity
-        -- fixture's USD-only invoices compare deterministically against live-Frankfurter TS.
+        -- short-circuits an identity pair before touching this table.
         INSERT INTO fx_rates (id, base_currency, quote_currency, rate, as_of, source) VALUES
           ('{FxPinUsdEur}', 'USD', 'EUR', {UsdToEurPinRate.ToString(CultureInfo.InvariantCulture)}, '{FxPinAsOf}', 'exchangerate-api');
 

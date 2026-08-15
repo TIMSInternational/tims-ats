@@ -438,12 +438,19 @@ async function seedBillingSubscription(db: Client, orgAId: string): Promise<void
 
 // ── platform-dashboard invoice fixtures (Phase-5 slice 23 / #81 PR 3) ────────
 //
-// WHY THESE EXIST, and what they deliberately do NOT buy. Until now the harness seeded NO
-// `invoices` rows at all, so every invoice-derived branch of the ALREADY-REGISTERED dashboard
-// endpoints compared two empty results: `getAttentionItems` never emitted an overdue item,
-// `getCustomerHealth` reported `overdueInvoices: 0` for both orgs, and the whole thing passed while
-// proving nothing about the code that reads invoices. These six rows fix that, and that is their
-// primary job.
+// WHY THESE EXIST, stated carefully because the obvious justification is WRONG. Until now the harness
+// seeded no `invoices` rows at all — but `getAttentionItems` and `getCustomerHealth` are PLATFORM-WIDE,
+// exactly like the three FX reads below, so against the live database they were already reading other
+// tenants' invoices (three pending-and-overdue rows, measured 2026-08-15). Their invoice branches were
+// NOT comparing two empty results there, and an earlier version of this comment said they were.
+//
+// What these six rows actually buy is narrower and still worth having:
+//   1. The fixture becomes SELF-SUFFICIENT. cli.ts:191 explicitly contemplates pointing the harness at a
+//      locally-seeded database; against one of those, the invoice branches genuinely were empty and every
+//      invoice-reading line compared nothing.
+//   2. The harness's OWN two orgs get invoices, so `getCustomerHealth`'s per-org `overdueInvoices` is
+//      non-zero for the orgs whose payloads the RBAC and RLS legs actually authenticate as.
+// Neither of those is "these endpoints were untested". They were, by someone else's data.
 //
 // They do NOT make the three FX-derived reads (`getDashboardKpis`, `getRevenueByCustomer`,
 // `getChurnRisk`) comparable, and it is worth being blunt about why, because "seed USD-only rows so

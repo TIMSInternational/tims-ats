@@ -26,7 +26,7 @@ rationale note to tables already listed.
 | Provider     | `frankfurter`                       | `exchangerate-api`                                                                     |
 | COP→USD      | direct quote, today                 | `1 / 3200.634052` (inverted cross-rate through the USD base)                           |
 | Freshness    | 6h in-process cache                 | every production pin still carries `as_of 2026-07-31` — `FxRefreshJob` is not deployed |
-| Missing rate | throws → 500                        | returns `null` → caller suppresses                                                     |
+| Missing rate | throws → 500                        | **503** (the FX plane returns `null`; these three refuse to suppress — see §(2))        |
 
 ### The plausible plan that does not work
 
@@ -76,11 +76,16 @@ and it exists because parity cannot supply one.
 
 ### What the seeded invoices DO buy
 
-`scripts/parity/seed.ts` now seeds six USD invoices across both harness orgs anyway. Until this PR it
-seeded **none at all**, so the invoice-derived branches of the already-registered endpoints compared
-two empty results — `getAttentionItems` never emitted an overdue item and `getCustomerHealth`
-reported `overdueInvoices: 0` for both orgs whatever the code did. Those two get materially stronger
-here. The three FX reads do not become comparable.
+`scripts/parity/seed.ts` now seeds six USD invoices across both harness orgs anyway — but the obvious
+justification for them is **wrong**, and it is worth recording which one. "Until this PR the harness seeded
+none, so `getAttentionItems` and `getCustomerHealth` were comparing two empty results" is false against the
+live database: those two endpoints are platform-wide for exactly the same reason the FX three are, so they
+were already reading the other tenants' three pending-and-overdue invoices.
+
+What the seeded rows actually buy is narrower: the fixture becomes self-sufficient against a
+locally-seeded database (which `cli.ts:191` explicitly contemplates, and where those branches genuinely
+were empty), and the harness's own two orgs finally carry invoices of their own. The three FX reads do not
+become comparable either way.
 
 ## Recorded divergences
 
@@ -223,3 +228,71 @@ organization's tenure band depends on how far into the month the suite runs. The
 organization is within that margin of an edge), so the summary and ordering are pinned there, and the
 exact scoring boundaries are pinned in the unit tests with an injected clock. `healthScore == Σ
 signals` is asserted at the endpoint as an assembly invariant that holds whatever the day.
+
+## Mutation results — RUN, not asserted
+
+**Wave 1, 13 of 13 RED**: gate deleted from one handler; the 503 branch returning 200; the memo removed;
+`prevMonthEnd` losing its millisecond; the outstanding bucket dropping `draft`; the paid bucket ignoring
+the thirty-day window; the `NodeIso` converter removed; TRAP 10 (raw-SQL bound as a bare `DateTime`);
+TRAP 11 (`ToNaive` passthrough); the flag guard inverted; churn swallowing an unresolvable rate; the churn
+sort reversed; and a `tsProcedure` sneaking onto an FX read.
+
+**Wave 2, 10 mutations against the tests written in RESPONSE to the panel — 9 RED, 1 GREEN.** The green one
+is the point of running wave 2 at all.
+
+## Tier-3 adversarial panel — RUN (cross-model was NOT available)
+
+`/gate` check 15 exited **2**: Codex is quota-blocked and `OMNIROUTE_MODEL` is unset. Recorded as ⚠️ NOT
+RUN, never a pass. The required substitute ran instead: a 3-lens same-model panel (security /
+tenant-isolation, claim auditor, coverage), each prompted to refute rather than confirm and to re-read
+source rather than trust a summary. **This is weaker than cross-model review — it shares the author's blind
+spots — and must not be described as cross-model verification.**
+
+One process note worth carrying: check 15 first exited **0** with "no changes vs origin/main", because the
+work was uncommitted and the script diffs against `origin/main`. An exit 0 there is a vacuous pass. Run it
+after committing.
+
+### What the panel found
+
+The security lens found **no authorization bypass, no tenant-isolation defect, no SQL injection and no
+concurrency defect**, having tried each specifically. Its two substantiated findings and every finding from
+the other two lenses were verified against source before being acted on.
+
+| Finding | Verdict | Action |
+| --- | --- | --- |
+| The models file still claimed parity payload-compares these three | **True** — it carried the reversed first-decision premise | Rewritten; the same stale premise fixed in 3 more places |
+| "Comparing two empty results" understated what the seeded invoices buy | **True** — `getAttentionItems`/`getCustomerHealth` are platform-wide too, so they already read other tenants' invoices | Justification rewritten honestly in 3 places |
+| "Three of the 39" registrations are C#-only | **False — it is 14** | Corrected, with the five surfaces enumerated |
+| "Same treatment as `dei.getPayEquity`" | **False** — those are not registered at all; registered-C#-only is the *stronger* disposition | Corrected |
+| "the cluster's twelfth and thirteenth reads" | **False** — they are the tenth, eleventh and twelfth | Corrected |
+| "two queries per non-identity pair" | **False** — one, since the `to` leg is always the USD identity leg | Corrected |
+| "Identity pairs never reach the inner provider" | **False and self-refuting** — they reach it; it short-circuits before the DB | Corrected |
+| `InnerCallCount` "exposed so a unit test can prove the memo bites" | **True** — no test read it | Property deleted; the memo is proved through the injected provider instead |
+| The doc's comparison table said C# suppresses the field | **True** — contradicted its own §(2) | Corrected to 503 |
+| Caveat 4 mis-cited for the invoice ordering | **True** — the invoice query has an `orderBy`; caveat 4 is about the two that do not | Corrected |
+| "the only writer remains the Workers FxRefreshJob" | **True** — `FxSeedOnce` is a second composition root | Corrected |
+| The "no cache" divergence described as invisible | **True of the payload, misleading overall** — up to ~45× executions at ~9× round trips | Qualified, with the consumer named |
+| `fx_rates` fixture omitted the unique index it claimed to mirror | **True** | Index added, with why it is load-bearing |
+| `docs/REMAINING-WORK.md` still said nine endpoints / four reads left | **True** | Updated to twelve / one |
+| Eight behaviours with no killing test | **True** | Tests added, each mutation-proved |
+
+### The fix that did not bite
+
+`TheFxFailurePath_RunsAFTERTheGate` asserted that an org-user still gets 403 with the FX plane dead. Wave 2
+mutated the churn handler to run the gate AFTER the use-case call — and the test stayed **GREEN**, because
+the gate's failure still wins the response whenever it runs. It proved the status code, not the ordering.
+
+Replaced by `ADeniedCaller_IsRefusedWithoutAnyDataAccess`, which counts REPOSITORY calls through a spy that
+delegates to the real repository, and asserts zero for the denied caller **and non-zero for an allowed
+one** — without that second half, a spy that was never wired would "prove" the same thing. The same
+mutation is now RED. The property it defends is real: these are unfiltered cross-tenant reads, so running
+them for someone about to be refused is both wasted work and a larger blast radius than a 403 suggests.
+
+### One operational trap the panel surfaced, now recorded as caveat 9
+
+These three are the only registered endpoints that can legitimately answer **503**, and both the RBAC leg
+(`verdictForRole` requires `actual === expected`, pinned at 200) and the parity leg
+(`checks/parity.ts:26` fails a C#-only endpoint on any non-200) will call that a FAILURE. The trigger is a
+missing `fx_rates` pin for any currency in ANY tenant's invoices. Today's database satisfies it — but the
+refresh job is not deployed, so the pin set is frozen and the first tenant invoiced in a new currency arms
+it. The check to run before believing a red run is in caveat 9.

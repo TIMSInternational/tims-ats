@@ -19,8 +19,11 @@ import { WRITE_SURFACES, type WriteResolvedBase } from '../../scripts/parity/wri
  *
  * THIS GUARD MEASURES REGISTRATION, NOT PROBE COVERAGE, and the two are not the same number, and as
  * of 2026-08-15 there is a THIRD number: registration does not imply a PAYLOAD DIFF either, since an
- * endpoint may be registered C#-only (no `tsProcedure`) and report [WEAK]. Three of the 39 are — the
- * `dashboard` surface's FX reads, see surfaces.ts caveat 8. Of the
+ * endpoint may be registered C#-only (no `tsProcedure`) and report [WEAK]. FOURTEEN of the 39 are, across
+ * five surfaces — dashboard's 3 FX reads (new, see surfaces.ts caveat 8), nine-box 4, access-review 3,
+ * audit-log 2 and dei 2, the last four groups being surfaces whose TypeScript side was deleted outright.
+ * (This line read "three" when the dashboard entries landed: a count written in prose beside a list that
+ * lives elsewhere, which is the failure mode this file's own header warns about.) Of the
  * 39 READ registrations, TWENTY-FIVE issue no cross-tenant probe at all: 24 carry `globalScope` and 1
  * carries `noTenantBoundaryForCaller`, and checks/rls.ts returns `inconclusive` for both without calling
  * anything. Those are correct dispositions — a platform-owner cross-org read has no tenant boundary
