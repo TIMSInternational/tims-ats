@@ -307,6 +307,35 @@ public sealed class PlatformDashboardReadFixture : IAsyncLifetime
             title text NOT NULL,
             status text NOT NULL DEFAULT 'draft'
         );
+
+        -- RLS ENABLED + FORCED on all four PR-2 tables, exactly as production has them
+        -- (packages/db/prisma/migrations/20260604100000_enable_rls_tenant_isolation), with the same
+        -- fail-closed policy: an unset app.current_org_id matches NOTHING.
+        --
+        -- PR 1 declared this on `subscriptions` and made the point that the cross-org read still
+        -- succeeds; PR 2's four tables initially shipped WITHOUT it, which would have made that proof
+        -- cover one table out of seven. It matters here more than it looks: this context is never
+        -- wrapped in TenantScope, so under a NOBYPASSRLS role every one of these policies matches zero
+        -- rows and the failure mode is a well-formed 200 with SILENTLY TRUNCATED data — attention-items
+        -- loses its invoice and invitation legs, customer-health reports overdueInvoices: 0 for every
+        -- org, upsell reports features: 0 / vacancies: 0 — not an error anyone would notice.
+        GRANT SELECT ON invoices, platform_invitations, feature_flags, vacancies TO app_tenant;
+        ALTER TABLE invoices ENABLE ROW LEVEL SECURITY;
+        ALTER TABLE invoices FORCE ROW LEVEL SECURITY;
+        CREATE POLICY tenant_isolation ON invoices
+            USING (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid);
+        ALTER TABLE platform_invitations ENABLE ROW LEVEL SECURITY;
+        ALTER TABLE platform_invitations FORCE ROW LEVEL SECURITY;
+        CREATE POLICY tenant_isolation ON platform_invitations
+            USING (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid);
+        ALTER TABLE feature_flags ENABLE ROW LEVEL SECURITY;
+        ALTER TABLE feature_flags FORCE ROW LEVEL SECURITY;
+        CREATE POLICY tenant_isolation ON feature_flags
+            USING (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid);
+        ALTER TABLE vacancies ENABLE ROW LEVEL SECURITY;
+        ALTER TABLE vacancies FORCE ROW LEVEL SECURITY;
+        CREATE POLICY tenant_isolation ON vacancies
+            USING (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid);
         """;
 
     private static string BuildSeedSql(DateTime m0, DateTime seedNow)

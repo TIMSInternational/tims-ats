@@ -5,7 +5,8 @@ namespace Tims.UnitTests.PlatformDashboard;
 /// <summary>
 /// Unit coverage for <c>getMrrTrend</c> and <c>getMrrForecast</c> (Phase-5 slice 23 / issue #81, PR 2 of
 /// 3) — the cumulative walk, the baseline rule (including the future-dated row TS mis-handles), the growth
-/// average and its cap, and the negative-rounding path that forced <c>JsRound</c> to change.
+/// average and its cap — including the property that makes the cap's LOWER half dead code in both
+/// stacks, which is the premise the <c>JsRound</c> discussion rests on rather than a consequence of it.
 /// </summary>
 public sealed class PlatformDashboardMrrUseCaseTests
 {

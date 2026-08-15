@@ -517,6 +517,14 @@ export const SURFACES: Record<string, Surface> = {
   //      the TS call shifts every bucket by one and diffs spuriously. No normalize rule can absorb a
   //      whole-array shift; re-run away from the boundary. (Within a month the two clocks agree on
   //      every bucket, so this is a minutes-per-month exposure, same class as monitoring's trends.)
+  //      ⚠️ THAT PARENTHETICAL DOES NOT HOLD FOR `mrr-forecast`, which shares this caveat as of PR 2.
+  //      Alone among the nine, its TS side builds buckets and labels in the HOST's timezone rather than
+  //      UTC: `dashboard-forecast.ts` uses `new Date()` + `setHours(0,0,0,0)` and a `toLocaleDateString`
+  //      with NO `timeZone` — contrast `getMrrTrend`, which passes `timeZone: 'UTC'`, so the two TS
+  //      procedures disagree with EACH OTHER off UTC. Off a UTC host the divergence is systematic, not
+  //      minutes-per-month: every bucket bound moves by the host's offset, and near a month boundary all
+  //      24 labels shift a month. Caveat 6 tells you to check LANG/LC_ALL; for this one check **TZ** on
+  //      whatever runs the TS leg before reading an `mrr-forecast` diff as a port bug.
   //   2. `recent-activity` CAN FLAKE ON A created_at TIE — and worse than the invitations list: the
   //      per-source `take: 5` runs BEFORE the merge, so a tie AT THE FIFTH ROW can select DIFFERENT row
   //      SETS in the two stacks, which no sort-normalization can reconcile. Ties between an org and a
@@ -531,7 +539,7 @@ export const SURFACES: Record<string, Surface> = {
   //      THE known ICU divergence — are exercised on every run). Only `recent-activity` degenerates to
   //      `[]` and compares nothing; check `organizations`/`users` have rows before believing its green.
   //
-  // THREE MORE CAVEATS ARRIVED WITH PR 2 (2026-08-14), all on the six endpoints added below:
+  // FOUR MORE CAVEATS ARRIVED WITH PR 2 (2026-08-14), all on the six endpoints added below:
   //
   //   4. `attention-items` CAN FLAKE ON ROW SELECTION, not just ordering. Two of its five sources —
   //      past-due subscriptions and suspended organizations — have NO `orderBy` in the TS query at all,
@@ -562,19 +570,26 @@ export const SURFACES: Record<string, Surface> = {
   //      discovered during a failed run. Its three result arrays fare differently under `query=parity`:
   //        • `organizations` — STRONG. Exactly two rows (`TIMS Parity Harness (__parity_a|b)`), and
   //          `orderBy name asc` has no tie because the names differ. Deterministic.
-  //        • `users` — WEAKEST LEG IN THE WHOLE SURFACE. `upsertUser` gives EVERY seeded role user the
-  //          literal first name 'Parity' (seed.ts, the `[authUserId, …, 'Parity', role, …]` insert), and
-  //          the DEI fixtures share 'Dei'. With `orderBy firstName asc` + `take: 5` over ~15 matching
-  //          users, the tie is TOTAL: both WHICH five come back and their ORDER are unspecified in both
-  //          stacks. In practice a seq-scan sort is stable between two calls seconds apart, so it
+  //        • `users` — WEAKEST LEG IN THE WHOLE SURFACE, but NOT for the reason first written here.
+  //          ~31 seeded users match 'parity' (their emails are all `parity+…@tims.test`), and
+  //          `orderBy firstName asc` + `take: 5` sorts them 'Comp'(2) < 'Dei'(10) < 'Enps'(10) <
+  //          'Parity'(9). So the window is deterministically the TWO 'Comp' rows plus THREE OF THE TEN
+  //          'Dei' rows — and the 'Parity'-named role users, which an earlier version of this caveat
+  //          blamed, start at rank 23 (22 rows precede them) and can never appear at all. Two distinct ties remain: WHICH three
+  //          'Dei' rows are selected (unfixable by normalization — it changes the row SET), and the
+  //          ORDER of the two 'Comp' rows, which share a first name and are compared positionally by
+  //          normalize.ts. In practice a seq-scan sort is stable between two calls seconds apart, so it
   //          usually agrees — but a diff confined to `users[*]` should be RE-RUN before it is believed,
-  //          and it is the one leg here that could report red on a correct port.
+  //          and it is the one leg here that could report red on a correct port. (The seeder is
+  //          `upsertPublicUser`, not `upsertUser`.)
   //        • `pages` — VACUOUS for this term. No SEARCH_PAGES name or keyword contains "parity", so
   //          both stacks return `[]`. The page-matching kernel (the lower-case asymmetry, the
   //          substring-across-word-boundaries rule, the `.slice(0, 4)` cap) is covered by C# unit and
   //          integration tests instead; this leg asserts only that neither stack invents a page.
-  //      The durable fix is a search-specific fixture — two or three users with DISTINCT first names,
-  //      and a page-matching term — which belongs with the grant-fixture work #195 tracks, not here.
+  //      The durable fix is a search-specific fixture: two or three users whose first names are DISTINCT
+  //      **and sort ahead of 'Comp'**, plus a page-matching term. Distinct-but-later names would change
+  //      nothing, since they would land outside the take-5 window. That belongs with the grant-fixture
+  //      work #195 tracks, not here.
   dashboard: {
     key: 'dashboard',
     flag: 'Platform__PlatformDashboardReadEnabled',

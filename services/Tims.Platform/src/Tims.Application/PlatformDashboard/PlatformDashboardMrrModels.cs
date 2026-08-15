@@ -30,8 +30,13 @@ public sealed record PlanBreakdownEntry(int Count, long Mrr);
 /// on it.</para>
 ///
 /// <para><c>MonthlyGrowthPct</c> is a <see cref="double"/> because TS emits <c>Math.round(g*100*10)/10</c>
-/// — one decimal place, and NEGATIVE whenever MRR is shrinking, which is the case that forced
-/// <c>JsRound</c> off <see cref="MidpointRounding.AwayFromZero"/>.</para>
+/// — one decimal place. It is NON-NEGATIVE in practice: the historical series it is derived from is a
+/// cumulative count over a filter that only widens, so it cannot decrease (pinned by
+/// <c>Forecast_historical_is_monotone_nonDecreasing_so_the_negative_growth_cap_is_dead_code</c>).
+/// An earlier draft of this docblock said the opposite — that it goes "NEGATIVE whenever MRR is
+/// shrinking, which is the case that forced <c>JsRound</c> off <see cref="MidpointRounding.AwayFromZero"/>"
+/// — and that causal claim was retracted in the same commit that introduced it; see
+/// <c>PlatformDashboardMrrUseCase.MinMonthlyGrowth</c>.</para>
 /// </summary>
 public sealed record MrrForecastResult(
     IReadOnlyList<MrrForecastPoint> Historical,

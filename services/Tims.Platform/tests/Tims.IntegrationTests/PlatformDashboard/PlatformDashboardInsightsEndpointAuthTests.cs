@@ -603,19 +603,76 @@ public sealed class PlatformDashboardInsightsEndpointAuthTests(PlatformDashboard
     }
 
     /// <summary>
-    /// A <c>%</c> in the query matches everything, because neither stack escapes LIKE wildcards.
+    /// A <c>%</c> in the query matches everything, because neither stack escapes LIKE wildcards — and
+    /// this is also the only case that exercises the <c>take: 5</c> TRUNCATION, so it asserts WHICH five
+    /// rows survive, not just how many.
     ///
-    /// <para>Prisma's <c>contains</c> does not escape <c>%</c> or <c>_</c>, so this is faithful rather
-    /// than a defect introduced here — and escaping it in the port would be a silent behaviour change and
-    /// a parity FAIL on any query containing one. Pinned so nobody "hardens" it without deciding to.</para>
+    /// <para>Prisma's <c>contains</c> does not escape <c>%</c> or <c>_</c>, so the wildcard behaviour is
+    /// faithful rather than a defect introduced here — escaping it in the port would be a silent
+    /// behaviour change and a parity FAIL on any query containing one. Pinned so nobody "hardens" it
+    /// without deciding to.</para>
+    ///
+    /// <para>The identity assertion was added after the panel observed that a count-only assertion says
+    /// nothing about the ORDER BY surviving to the outermost SELECT: in Postgres a <c>LIMIT</c> with no
+    /// outer <c>ORDER BY</c> returns an arbitrary set. It covers the ORGANIZATIONS leg only. The users
+    /// leg of this same query also truncates (well over five users match <c>%</c>) and is still asserted
+    /// by count alone — deliberately, because which five users come back depends on a first-name
+    /// ordering with ties, the same instability parity caveat 7 records for the harness seed.</para>
     /// </summary>
     [Fact]
-    public async Task Search_doesNotEscapeLikeWildcards()
+    public async Task Search_doesNotEscapeLikeWildcards_andTruncatesInNameOrder()
     {
         var body = await OwnerBody("/platform/dashboard/search?query=%25");
 
-        Assert.Equal(5, body.GetProperty("organizations").GetArrayLength()); // take: 5, of 8
+        // The first five of the eight seeded organizations BY NAME ascending — Stark Industries,
+        // Umbrella Corp and Wayne Enterprises sort last and are cut.
+        Assert.Equal(
+            ["Acme Corp", "Globex Inc", "Hooli", "Initech", "Pied Piper"],
+            body.GetProperty("organizations").EnumerateArray().Select(o => o.GetProperty("name").GetString()));
+
         Assert.Equal(5, body.GetProperty("users").GetArrayLength());
-        Assert.Equal(0, body.GetProperty("pages").GetArrayLength());         // no page name contains '%'
+        Assert.Equal(0, body.GetProperty("pages").GetArrayLength()); // no page name contains '%'
+    }
+
+    /// <summary>
+    /// Each of the six ILIKE legs is reachable on its own.
+    ///
+    /// <para>Added because FOUR of the six were unpinned: <c>?query=acme</c> matched the organization on
+    /// its NAME and the users on their EMAIL, so <c>slug</c>, <c>domain</c>, <c>lastName</c> AND the
+    /// organization <c>name</c> leg itself could each be deleted with the whole suite green (the name leg
+    /// because no assertion distinguished it from the slug and domain legs firing on the same row). The
+    /// parity harness cannot cover for it either — its term matches harness orgs on name AND slug and
+    /// harness users on firstName AND email, isolating no leg.</para>
+    ///
+    /// <para>Each term below isolates exactly one ORGANIZATION leg: a slug's hyphen is absent from the
+    /// display name, a domain's dot is absent from both, and a name with a space matches neither the
+    /// hyphenated slug nor the domain. Note <c>acme.test</c> still reaches four USERS through their email
+    /// addresses — this theory asserts the organizations array, which is the leg under test.</para>
+    /// </summary>
+    [Theory]
+    [InlineData("Pied Piper", "Pied Piper")]  // name only — the slug is "pied-piper" and there is no domain
+    [InlineData("globex-inc", "Globex Inc")]  // slug only — "Globex Inc" has a space, not a hyphen
+    [InlineData("acme.test", "Acme Corp")]    // domain only — neither the name nor the slug has a dot
+    public async Task Search_matchesAnOrganizationThroughEachIlikeLeg(string query, string expectedName)
+    {
+        var body = await OwnerBody($"/platform/dashboard/search?query={query}");
+
+        var organizations = body.GetProperty("organizations");
+        Assert.Equal(1, organizations.GetArrayLength());
+        Assert.Equal(expectedName, organizations[0].GetProperty("name").GetString());
+    }
+
+    [Fact]
+    public async Task Search_matchesAUser_throughTheLastNameLeg_alone()
+    {
+        // "Recruiter" is Rick Recruiter's LAST name; his email is orguser@tims.test and his first name
+        // is Rick, so neither of the other two legs can match.
+        var body = await OwnerBody("/platform/dashboard/search?query=Recruiter");
+
+        var users = body.GetProperty("users");
+        Assert.Equal(1, users.GetArrayLength());
+        Assert.Equal("Rick", users[0].GetProperty("firstName").GetString());
+        Assert.Equal("Recruiter", users[0].GetProperty("lastName").GetString());
+        Assert.Equal(0, body.GetProperty("organizations").GetArrayLength());
     }
 }

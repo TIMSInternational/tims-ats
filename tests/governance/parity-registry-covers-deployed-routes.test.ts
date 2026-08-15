@@ -10,13 +10,14 @@ import { WRITE_SURFACES, type WriteResolvedBase } from '../../scripts/parity/wri
  * The parity harness (scripts/parity/) is the only automated thing that probes the LIVE C# service
  * for cross-tenant isolation (checks/rls.ts) and permission denials (checks/rbac.ts). It can probe
  * nothing that SURFACES + WRITE_SURFACES do not register — and nothing measured how much of the
- * deployed service that is. Re-measured 2026-08-14: 57 registered endpoints against 141 deployed
+ * deployed service that is. Re-measured 2026-08-14: 63 registered endpoints against 147 deployed
  * operations, leaving a gap of 84. (The numeric PINS below were updated when slice 23 landed; update
  * both this prose and the pins, or neither is trustworthy — slice 22 updated only the pins and this
- * line read 50/135/gap-85 for a commit.)
+ * line read 50/135/gap-85 for a commit, and slice 23's SECOND PR repeated the mistake: it moved the
+ * pins to 147/63 and left every figure in this header at the pre-PR numbers.)
  *
  * THIS GUARD MEASURES REGISTRATION, NOT PROBE COVERAGE, and the two are not the same number. Of the
- * 30 READ registrations, SIXTEEN issue no cross-tenant probe at all: 15 carry `globalScope` and 1
+ * 36 READ registrations, TWENTY-TWO issue no cross-tenant probe at all: 21 carry `globalScope` and 1
  * carries `noTenantBoundaryForCaller`, and checks/rls.ts returns `inconclusive` for both without calling
  * anything. Those are correct dispositions — a platform-owner cross-org read has no tenant boundary
  * to prove — but it means a route can move from the allowlist into the "covered" set without gaining
@@ -43,9 +44,9 @@ import { WRITE_SURFACES, type WriteResolvedBase } from '../../scripts/parity/wri
  *   2. The OpenAPI document resolves all of them — it is emitted by the framework from the mapped
  *      routes themselves, so it cannot disagree with what is mapped. What IS reproducible from this
  *      repo is the arithmetic: `grep -rEo '\.Map(Get|Post|Patch|Put|Delete)\(' services/Tims.Platform
- *      /src/Tims.Api --include='*.cs' | wc -l` = 139 call sites (re-run 2026-08-14), minus the 1 inside
+ *      /src/Tims.Api --include='*.cs' | wc -l` = 145 call sites (re-run 2026-08-14), minus the 1 inside
  *      the private `MapTransition` helper (Evaluation360WriteEndpoints.cs:169, mapping at :172), plus
- *      its 3 invocations (Evaluation360WriteEndpoints.cs:78/:80/:82) = 141, which is
+ *      its 3 invocations (Evaluation360WriteEndpoints.cs:78/:80/:82) = 147, which is
  *      the operation count this file parses and pins. An earlier version of this line claimed the two
  *      sets had "ZERO symmetric difference" as measured by a one-off script; that script was never
  *      committed, so the claim was not reproducible and is not restated.
@@ -59,7 +60,7 @@ import { WRITE_SURFACES, type WriteResolvedBase } from '../../scripts/parity/wri
  *      file — exactly the trigger this guard needs.
  *
  * CAVEAT, stated rather than implied: `/health` and `/ready` (Program.cs:892, :899) are ABSENT from
- * the document — MapHealthChecks emits no endpoint metadata. So this guard covers 141 domain
+ * the document — MapHealthChecks emits no endpoint metadata. So this guard covers 147 domain
  * OPERATIONS, never "every routable path".
  */
 
@@ -116,7 +117,7 @@ const deployed = new Set<string>();
  *  distinguish "no new route" from "a new route collapsed onto an existing key": `routeKey` maps a
  *  bare UUID segment to `{*}`, so a future literal-id diagnostic (say
  *  `GET /platform/organizations/00000000-…`) would normalise onto the already-registered
- *  `GET /platform/organizations/{*}`, be counted as covered, and leave the 141 pin unmoved. Asserting
+ *  `GET /platform/organizations/{*}`, be counted as covered, and leave the 147 pin unmoved. Asserting
  *  these two are EQUAL proves the normaliser is injective over the deployed set, which is the
  *  property every count below silently assumes. */
 let deployedOperations = 0;
@@ -145,7 +146,7 @@ for (const surface of Object.values(SURFACES)) {
 }
 
 /**
- * 47% of the registry (27 of the 57 endpoints — the write side) has NO static path: `buildParity` is a function of the
+ * 43% of the registry (27 of the 63 endpoints — the write side) has NO static path: `buildParity` is a function of the
  * resolved seeded ids. Rather than add a hand-written `routeTemplate` field — 26 strings that can
  * drift from the builder they duplicate — call every builder with a recursive Proxy stub that answers
  * any property access with another stub and coerces to a fixed UUID sentinel. write-surfaces.test.ts
@@ -368,7 +369,7 @@ describe('parity registry covers every deployed route (or documents why not)', (
     ).toBeGreaterThan(0);
     expect(deployed.size, 'zero deployed route keys built — routeKey() is broken').toBeGreaterThan(0);
     // INJECTIVITY. Two OpenAPI operations that normalise to the same key would collapse into one Set
-    // entry, be silently counted as covered, and leave the 141 pin below unmoved. See
+    // entry, be silently counted as covered, and leave the 147 pin below unmoved. See
     // `deployedOperations`.
     expect(
       deployed.size,

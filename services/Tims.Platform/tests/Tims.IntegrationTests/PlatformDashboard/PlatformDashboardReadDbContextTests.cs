@@ -141,6 +141,73 @@ public sealed class PlatformDashboardReadDbContextTests(PlatformDashboardReadFix
         Assert.Contains("operator does not exist", message, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Every capped source query ACTUALLY APPLIES its <c>take</c> — against the real repository and a
+    /// real Postgres, not a stub.
+    ///
+    /// <para>Added after a review pass found that the unit-level recording test, which asserts the five
+    /// call sites PASS <c>SourceTake</c>, cannot catch the mutation it was written for: it injects a fake
+    /// repository, so deleting <c>.Take(take)</c> from all five real queries stays green. The two tests
+    /// are complementary — that one pins the call sites, this one pins the application.</para>
+    ///
+    /// <para><c>take: 0</c> is what makes this cheap. The docblock on the unit test previously claimed
+    /// asserting the argument was "the only cheap option" because exceeding a 20-row cap would need a
+    /// fixture with 20+ rows per source, colliding with PR 1's 8-organization rounding pin. That reasoning
+    /// only ruled out going ABOVE the cap; going BELOW it needs no seed change at all, since every source
+    /// has at least one row.</para>
+    /// </summary>
+    [Fact]
+    public async Task Every_capped_attention_query_applies_its_take_against_a_real_database()
+    {
+        await using var db = _fixture.NewReadContext();
+        var repository = new Tims.Infrastructure.PlatformDashboard.PlatformDashboardAttentionRepository(db);
+        var now = _fixture.SeedNowUtc;
+        var token = CancellationToken.None;
+
+        // Each of the five sources has >= 1 seeded row, so a cap of zero is observable everywhere.
+        Assert.Empty(await repository.GetOverdueInvoicesAsync(now, 0, token));
+        Assert.Empty(await repository.GetExpiringTrialsAsync(now, now.AddDays(7), 0, token));
+        Assert.Empty(await repository.GetPastDueSubscriptionsAsync(0, token));
+        Assert.Empty(await repository.GetStaleInvitationsAsync(now.AddDays(-5), 0, token));
+        Assert.Empty(await repository.GetSuspendedOrganizationsAsync(0, token));
+
+        // …and the two sources seeded with TWO rows also pin a non-degenerate cap, so a `Take(0)`
+        // hard-coded in place of the parameter would not satisfy this test either.
+        Assert.Single(await repository.GetOverdueInvoicesAsync(now, 1, token));
+        Assert.Single(await repository.GetStaleInvitationsAsync(now.AddDays(-5), 1, token));
+    }
+
+    /// <summary>
+    /// <c>getUpsellOpportunities</c> excludes INACTIVE organizations and <c>getCustomerHealth</c> does
+    /// not — the one asymmetry between the two population reads.
+    ///
+    /// <para>Added after a review pass showed the panel's original conclusion was wrong. That conclusion
+    /// was that this filter could only be recorded, not tested, because the fixture's single inactive
+    /// organization is also <c>past_due</c> and is therefore dropped by the use case's status guard
+    /// before scoring — so an endpoint-level assertion cannot see it. True at the ENDPOINT. At the
+    /// REPOSITORY the status guard does not exist yet, so the filter is directly observable, and PR 1's
+    /// 8-organization seed is untouched.</para>
+    /// </summary>
+    [Fact]
+    public async Task The_upsell_read_excludes_inactive_organizations_and_customer_health_does_not()
+    {
+        await using var db = _fixture.NewReadContext();
+        var repository = new Tims.Infrastructure.PlatformDashboard.PlatformDashboardAccountsRepository(db);
+        var now = _fixture.SeedNowUtc;
+        var token = CancellationToken.None;
+
+        var upsell = await repository.GetUpsellRowsAsync(now.AddDays(-7), token);
+        var health = await repository.GetCustomerHealthRowsAsync(now, now.AddDays(-7), token);
+
+        // Wayne Enterprises is the seed's only is_active = false organization.
+        Assert.Equal(7, upsell.Count);
+        Assert.DoesNotContain(PlatformDashboardReadFixture.OrgF.ToString(), upsell.Select(r => r.OrgId));
+
+        // The health read has NO such filter — every organization, suspended or not.
+        Assert.Equal(8, health.Count);
+        Assert.Contains(PlatformDashboardReadFixture.OrgF.ToString(), health.Select(r => r.OrgId));
+    }
+
     [Theory]
     [InlineData("subscriptions", "plan", "OrgPlan")]
     [InlineData("organizations", "plan", "OrgPlan")]

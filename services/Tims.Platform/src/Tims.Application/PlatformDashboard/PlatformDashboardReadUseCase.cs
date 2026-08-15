@@ -56,9 +56,22 @@ public sealed class PlatformDashboardReadUseCase(IPlatformDashboardReadRepositor
     /// banker's rounding (to-even) and would make <c>Math.Round(2.5) == 2</c> where JS gives 3.
     ///
     /// <para><b>Implemented as <c>floor(value + 0.5)</c> rather than
-    /// <see cref="MidpointRounding.AwayFromZero"/>.</b> The two rules agree on every non-negative input and
-    /// disagree on negative midpoints: JS <c>Math.round(-125.5)</c> is <c>-125</c>, away-from-zero gives
-    /// <c>-126</c>.</para>
+    /// <see cref="MidpointRounding.AwayFromZero"/>.</b> The two disagree on negative midpoints: JS
+    /// <c>Math.round(-125.5)</c> is <c>-125</c>, away-from-zero gives <c>-126</c>. This is also the
+    /// pre-existing repo convention (<c>Tims.Domain/Reporting/ReportingMath.cs</c>), not a new idea.</para>
+    ///
+    /// <para><b><c>floor(x + 0.5)</c> is an APPROXIMATION of the spec, not the spec.</b> ECMA-262 defines
+    /// <c>Math.round</c> as the nearest integer with ties toward +∞, and explicitly notes it is not
+    /// always <c>floor(x + 0.5)</c>. Measured, the two differ at exactly one double below 2^52:
+    /// <c>x = 0.49999999999999994</c>, where <c>x + 0.5 == 1</c> exactly, so this returns 1 and JS
+    /// returns 0. Brute force over every shape a caller here can produce — <c>(double)c / t * 100</c>
+    /// for all <c>t ≤ 20000</c>, and ~16M integer ratios bracketing the 0.5 crossing — found zero
+    /// divergences, so the gap is unreachable on this surface.</para>
+    ///
+    /// <para><b><see cref="MidpointRounding.ToPositiveInfinity"/> is NOT the fix</b>, despite its name.
+    /// It is DIRECTED rounding, applied to every value and not only to midpoints: measured on .NET
+    /// 10.0.302, <c>Math.Round(33.33333333333333, ToPositiveInfinity)</c> is <c>34</c>. Substituting it
+    /// would corrupt every percentage this method computes.</para>
     ///
     /// <para><b>No caller can currently reach a negative, and the honest reason to change it anyway is
     /// that the argument for why not is subtle.</b> <c>getMrrForecast</c> looked like the counter-example
@@ -207,11 +220,24 @@ public sealed class PlatformDashboardReadUseCase(IPlatformDashboardReadRepositor
     /// <c>start.setMonth(start.getMonth() - i, 1)</c>. All three are the same arithmetic; keeping one
     /// implementation here means a boundary bug cannot be fixed in one procedure and left in another.</para>
     ///
-    /// <para><b>UTC months.</b> <c>getUserGrowth</c> and <c>getMrrTrend</c> say so explicitly
-    /// (<c>getUTCFullYear</c>/<c>getUTCMonth</c>); <c>getMrrForecast</c> uses LOCAL month arithmetic and
-    /// therefore agrees only because the production Node process runs at UTC — the same standing
-    /// assumption slice 23's raw SQL recorded, restated in the slice doc rather than silently relied on.
-    /// </para>
+    /// <para><b>UTC months, and for <c>getMrrForecast</c> that is a real assumption about the deployed
+    /// Node process.</b> <c>getUserGrowth</c> and <c>getMrrTrend</c> say UTC explicitly
+    /// (<c>getUTCFullYear</c>/<c>getUTCMonth</c>, and <c>timeZone: 'UTC'</c> on the label).
+    /// <c>getMrrForecast</c> does NOT: it builds each bucket with <c>new Date()</c> →
+    /// <c>setMonth(...)</c> → <c>setHours(0,0,0,0)</c> and labels it with <c>toLocaleDateString</c>
+    /// carrying no <c>timeZone</c>, so both its twelve <c>createdAt &lt; end</c> bounds and all 24 of its
+    /// labels are in the HOST's zone. It agrees with this UTC arithmetic only while that host runs UTC.
+    /// Under <c>TZ=America/Bogota</c> the labels shift by a month near a month boundary and every bound
+    /// moves five hours. Mirroring TS's local arithmetic is not an option — it would import the C#
+    /// host's zone instead, which is strictly worse.</para>
+    ///
+    /// <para>This is a DIFFERENT assumption from the one slice 23's raw SQL recorded (that was the
+    /// Postgres SESSION <c>TimeZone</c> for <c>date_trunc</c>, and it was ELIMINATED rather than
+    /// accepted). It is recorded as its own divergence in
+    /// <c>docs/architecture/csharp-migration/phase-5-slice-23-pr2-dashboard-insights.md</c> §Recorded
+    /// divergences, and as an exemption to caveat 1 in <c>scripts/parity/surfaces.ts</c>. An earlier
+    /// version of this paragraph cited the slice doc before that entry existed — the citation was
+    /// circular, and this sentence was the assumption's only occurrence in the repo.</para>
     /// </summary>
     public static IReadOnlyList<string> MonthBucketKeys(int months, DateTime endNowUtc)
     {

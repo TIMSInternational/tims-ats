@@ -310,6 +310,31 @@ public sealed class PlatformDashboardAccountsUseCaseTests
         Assert.Equal(increase, opportunity.MrrIncrease);
     }
 
+    /// <summary>
+    /// The SUBSCRIPTION plan wins over the ORGANIZATION plan when the two disagree.
+    ///
+    /// <para>Added because the panel found the precedence entirely unpinned: every fixture organization
+    /// carries an <c>organizations.plan</c> equal to its own subscription's, and every unit row used the
+    /// equal defaults — so reversing the operands to <c>OrgPlan ?? SubscriptionPlan</c> was a
+    /// green-suite change. The drift is reachable in production: <c>platform/organizations.ts:269</c>
+    /// updates <c>organizations.plan</c> without touching <c>subscriptions.plan</c>.</para>
+    ///
+    /// <para>Reversed operands would score this org against the professional→enterprise rule (20 users,
+    /// 8 features) instead of starter→professional (8 users, 5 features), so it would emit NOTHING —
+    /// which is why the assertion checks both the plan AND that an opportunity exists at all.</para>
+    /// </summary>
+    [Fact]
+    public void Upsell_prefers_the_SUBSCRIPTION_plan_over_the_organization_plan_when_they_differ()
+    {
+        var result = PlatformDashboardAccountsUseCase.BuildUpsellOpportunities(
+            [Upsell(orgPlan: "professional", subPlan: "starter", totalUsers: 12, features: 7, activeRecent: 9, vacancies: 4)]);
+
+        var opportunity = Assert.Single(result.Opportunities);
+        Assert.Equal("starter", opportunity.CurrentPlan);
+        Assert.Equal("professional", opportunity.TargetPlan);
+        Assert.Equal(500, opportunity.MrrIncrease);
+    }
+
     [Fact]
     public void Upsell_falls_back_to_the_ORG_plan_when_the_subscription_carries_none()
     {

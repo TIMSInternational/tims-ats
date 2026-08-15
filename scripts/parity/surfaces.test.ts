@@ -141,7 +141,7 @@ describe('SURFACES', () => {
         expect(ep.idScopeKey, `${key}/${ep.name} is globalScope AND by-id`).toBeUndefined();
       }
     }
-    // Documented state, 15 endpoints across 6 surfaces (this sentence read "9 across 4" for two
+    // Documented state, 21 endpoints across 6 surfaces (this sentence read "9 across 4" for two
     // slices while the arithmetic below it was edited twice — the enumeration and count are the
     // record; this line just has to agree with them). The loop above is the invariant; this pins the
     // count so a NEW globalScope endpoint has to be looked at deliberately — and so that the loop
