@@ -174,6 +174,10 @@ describe('SURFACES', () => {
     //     (2026-08-14, Phase-5 slice 23 / #81 PR 1). All three read cross-org aggregates over the
     //     unscoped dashboard context (every tenant's subscriptions, users and orgs) with no
     //     organizationId predicate; org_admin 403 is the boundary proof.
+    //   dashboard attention-items + mrr-trend + mrr-forecast + customer-health + upsell-opportunities
+    //     + search — the SAME surface, six more endpoints (2026-08-14, #81 PR 2), same gate, same
+    //     unscoped context, same org_admin 403. `search` is the only one taking an input, and it is
+    //     still org-independent: the term is matched across every tenant's organizations and users.
     //
     // None of these is by-id, so the invariant above still bites for them unchanged. (This line read
     // "None of the seven" until 2026-08-11; the count was never re-derived when access-review's three
@@ -185,10 +189,10 @@ describe('SURFACES', () => {
     // assertion above — which is the proof that the guard was worked with rather than weakened.
     //
     // The count sits NEXT TO its enumeration on purpose: 2 (ninebox) + 2 (organization) + 2 (audit-log)
-    // + 3 (access-review) + 3 (invitation) + 3 (dashboard) = 15. Every past drift here was a number
-    // written in prose while the list lived elsewhere.
-    expect(seen).toBe(2 + 2 + 2 + 3 + 3 + 3);
-    expect(seen).toBe(15);
+    // + 3 (access-review) + 3 (invitation) + 9 (dashboard: 3 from PR 1, 6 from PR 2) = 21. Every past
+    // drift here was a number written in prose while the list lived elsewhere.
+    expect(seen).toBe(2 + 2 + 2 + 3 + 3 + 9);
+    expect(seen).toBe(21);
   });
 
   // ── #195 AC1: the monitoring read surface (2026-08-10) ───────────────────────────────────────
@@ -300,7 +304,7 @@ describe('SURFACES', () => {
     }
   });
 
-  it('dashboard is registered with its flag and all THREE deployed reads, each keeping a tsProcedure', () => {
+  it('dashboard is registered with its flag and all NINE deployed reads, each keeping a tsProcedure', () => {
     // Same shape and same rationale as the invitation pin above: the TS side is LIVE (flag dark), so a
     // real payload diff is available on every endpoint and dropping a `tsProcedure` would silently
     // degrade the pre-flip readiness check to [WEAK].
@@ -309,7 +313,19 @@ describe('SURFACES', () => {
     // The flag string is what `checks/preflight.ts` and `cli.ts` PRINT to say which env var to flip.
     expect(s.flag).toBe('Platform__PlatformDashboardReadEnabled');
     expect(s.probeRole).toBe('platform_owner');
-    expect(s.endpoints.map((e) => e.name)).toEqual(['plan-distribution', 'user-growth', 'recent-activity']);
+    // Counted from PlatformDashboardReadEndpoints.cs, not from the issue text. ONE flag covers all
+    // nine, so an unregistered tenth route would go live at the same flip with nothing comparing it.
+    expect(s.endpoints.map((e) => e.name)).toEqual([
+      'plan-distribution',
+      'user-growth',
+      'recent-activity',
+      'attention-items',
+      'mrr-trend',
+      'mrr-forecast',
+      'customer-health',
+      'upsell-opportunities',
+      'search',
+    ]);
 
     for (const ep of s.endpoints) {
       expect(ep.tsProcedure, ep.name).toBeTruthy();
@@ -319,11 +335,30 @@ describe('SURFACES', () => {
       expect(ep.idScopeKey, ep.name).toBeUndefined();
       expect(ep.noTenantBoundaryForCaller, ep.name).toBeUndefined();
       expect(ep.globalScope, ep.name).toBe(true);
-      // NO normalize on any endpoint, asserted because each absence is a decision (see surfaces.ts):
-      // sorting recent-activity away would stop comparing the merge kernel, and dropNullish would mask
-      // a C# `meta: null` where TS omits the key.
+      // NO normalize on ANY of the nine, asserted because each absence is a decision recorded in
+      // surfaces.ts — most sharply on customer-health and upsell-opportunities, where a
+      // `sortArraysBy: 'orgId'` rule would cure a real tie-flake by deleting the only thing those two
+      // endpoints compute that a diff can see.
       expect(ep.normalize, ep.name).toBeUndefined();
     }
+  });
+
+  it('dashboard: only `search` carries an input, and its csharpPath query string agrees with it', () => {
+    // The two halves are sent to DIFFERENT stacks — `input` to the tRPC procedure, `csharpPath` to the
+    // C# route — so a mismatch would have them answering different questions and the diff would be
+    // meaningless rather than red. Nothing else in the registry cross-checks the two.
+    const s = SURFACES.dashboard;
+
+    for (const ep of s.endpoints) {
+      if (ep.name === 'search') continue;
+      expect(ep.input, ep.name).toEqual({});
+      expect(ep.csharpPath, ep.name).not.toContain('?');
+    }
+
+    const search = s.endpoints.find((e) => e.name === 'search')!;
+    const term = (search.input as { query: string }).query;
+    expect(term).toBeTruthy();
+    expect(search.csharpPath).toBe(`/platform/dashboard/search?query=${term}`);
   });
 
   it('getOrganization is registered under the by-id platform-owner marker, NOT globalScope', () => {

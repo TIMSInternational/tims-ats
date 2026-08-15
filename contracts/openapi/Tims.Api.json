@@ -1611,6 +1611,135 @@
         }
       }
     },
+    "/platform/dashboard/attention-items": {
+      "get": {
+        "tags": [
+          "PlatformDashboard"
+        ],
+        "operationId": "GetPlatformDashboardAttentionItems",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/platform/dashboard/mrr-trend": {
+      "get": {
+        "tags": [
+          "PlatformDashboard"
+        ],
+        "operationId": "GetPlatformDashboardMrrTrend",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/platform/dashboard/mrr-forecast": {
+      "get": {
+        "tags": [
+          "PlatformDashboard"
+        ],
+        "operationId": "GetPlatformDashboardMrrForecast",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/platform/dashboard/customer-health": {
+      "get": {
+        "tags": [
+          "PlatformDashboard"
+        ],
+        "operationId": "GetPlatformDashboardCustomerHealth",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/platform/dashboard/upsell-opportunities": {
+      "get": {
+        "tags": [
+          "PlatformDashboard"
+        ],
+        "operationId": "GetPlatformDashboardUpsellOpportunities",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/platform/dashboard/search": {
+      "get": {
+        "tags": [
+          "PlatformDashboard"
+        ],
+        "operationId": "SearchPlatformDashboard",
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
     "/platform/organizations/{id}/suspend": {
       "post": {
         "tags": [
