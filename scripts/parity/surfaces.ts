@@ -590,6 +590,27 @@ export const SURFACES: Record<string, Surface> = {
   //      **and sort ahead of 'Comp'**, plus a page-matching term. Distinct-but-later names would change
   //      nothing, since they would land outside the take-5 window. That belongs with the grant-fixture
   //      work #195 tracks, not here.
+  //
+  // PR 3 (2026-08-15) ADDED THREE ENDPOINTS AND ONE CAVEAT, and the caveat is the surface's most
+  // important one because it bounds what a GREEN run on this surface means:
+  //
+  //   8. THREE OF THE TWELVE ENDPOINTS ARE NOT PAYLOAD-COMPARED AT ALL. `kpis`,
+  //      `revenue-by-customer` and `churn-risk` carry no `tsProcedure`, so parity reports [WEAK] for
+  //      them by design while RBAC and the RLS disposition still assert. They are the three that call
+  //      `sumMoney`, and the two stacks resolve rates from DIFFERENT PROVIDERS — live Frankfurter on
+  //      the TS side, the DB-pinned `fx_rates` row on the C# side — so their money fields cannot be
+  //      made to agree by fixture work. Do not read "verify dashboard: PASS" as covering them.
+  //      Their cross-currency behaviour is proven instead by
+  //      PlatformDashboardFxEndpointAuthTests, which pins a known rate and asserts the exact
+  //      converted wire value. The registry entries carry the full argument, including why seeding
+  //      USD-only invoices does not help (these three are platform-wide, so they read every tenant's
+  //      invoices — including the two overdue COP ones the live database holds).
+  //
+  // ALSO PR 3, and it CHANGES THE OTHER NINE: `seed.ts` now seeds six USD invoices across both orgs.
+  // Until now the harness seeded NONE, so caveat 3's "partly vacuous on empty tables" understated the
+  // problem for `attention-items` (its overdue-invoice leg emitted nothing) and `customer-health`
+  // (`overdueInvoices: 0` for every org, whatever the code did). Both now compare real rows. Their
+  // due dates are deliberately distinct so caveat 4's ordering has no new tie to flake on.
   dashboard: {
     key: 'dashboard',
     flag: 'Platform__PlatformDashboardReadEnabled',
@@ -717,6 +738,60 @@ export const SURFACES: Record<string, Surface> = {
         // order from the same collation. `dropNullish` is declined because `avatar` and the nested
         // `organization` are exactly the nullable fields worth comparing — an org-less platform owner
         // must show `organization: null` on both sides.
+      },
+      // ── PR 3 (2026-08-15): the three FX-DERIVED reads, C#-ONLY ON PURPOSE ─────────────────────
+      //
+      // These three have NO `tsProcedure`, and that omission is the whole decision — parity prints
+      // an explicit [WEAK] did-not-run for them while `checks/rbac.ts` (org_admin 403 / platform_owner
+      // 200 against the LIVE C# route) and the RLS disposition keep asserting. Same treatment as
+      // `dei.getPayEquity` and compensation's three FX reads, and the reason is stronger here than it
+      // was for either of those:
+      //
+      //   THE TWO STACKS RESOLVE RATES FROM DIFFERENT PROVIDERS, so a numeric comparison cannot be
+      //   made to agree by any amount of fixture work. TS calls LIVE Frankfurter (ECB) per request;
+      //   C# reads the DB-pinned `fx_rates` row (exchangerate-api, written by a refresh job that is
+      //   not currently deployed — every pin in production still carries as_of 2026-07-31).
+      //
+      // The seductive wrong answer, written down so it is not re-attempted: "seed USD-only invoices
+      // so both stacks take the identity path and never call a rate provider." That works for the
+      // HARNESS's own rows and does nothing for these endpoints, because all three are PLATFORM-WIDE
+      // — they sum every tenant's invoices, not the two orgs this harness owns. Measured against the
+      // live database on 2026-08-15: two overdue COP invoices totalling 8,250,000 COP. The pin turns
+      // those into 3826.61 USD of `outstandingAmount`; TS turns them into whatever COP has done in the
+      // fifteen days since. Registering a `tsProcedure` would produce a permanent FAIL that is not a
+      // port defect — the #166 shape, where a fixture gap read as a product bug.
+      //
+      // `scripts/parity/seed.ts` DOES now seed six USD invoices, and they are worth having anyway:
+      // until PR 3 the harness seeded none at all, so `getAttentionItems` and `getCustomerHealth`
+      // were comparing two empty invoice branches. Those two endpoints get stronger here; these three
+      // do not become comparable.
+      //
+      // What would make them comparable is unifying the rate source (or retiring non-USD billing),
+      // neither of which belongs to this slice. Until then, DELETING these three entries would be the
+      // regression — it would retire the RBAC deny assertions on three live-in-repo routes.
+      {
+        name: 'kpis',
+        csharpPath: '/platform/dashboard/kpis',
+        input: {},
+        expectedByRole: { platform_owner: 200, org_admin: 403 },
+        globalScope: true,
+        // No normalize — and here the absence is nearly moot, since no payload diff runs at all. It
+        // is still declined explicitly so that RE-adding a tsProcedure later (if the rate sources are
+        // ever unified) does not silently inherit a rule nobody argued for.
+      },
+      {
+        name: 'revenue-by-customer',
+        csharpPath: '/platform/dashboard/revenue-by-customer',
+        input: {},
+        expectedByRole: { platform_owner: 200, org_admin: 403 },
+        globalScope: true,
+      },
+      {
+        name: 'churn-risk',
+        csharpPath: '/platform/dashboard/churn-risk',
+        input: {},
+        expectedByRole: { platform_owner: 200, org_admin: 403 },
+        globalScope: true,
       },
     ],
   },

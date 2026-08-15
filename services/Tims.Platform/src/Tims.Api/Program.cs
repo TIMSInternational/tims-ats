@@ -350,6 +350,16 @@ try
     builder.Services.AddScoped<IPlatformDashboardSearchRepository, PlatformDashboardSearchRepository>();
     builder.Services.AddScoped<PlatformDashboardSearchUseCase>();
 
+    // PR 3 of 3, same flag and the SAME context/data source again: the three FX-DERIVED reads
+    // (getDashboardKpis / getRevenueByCustomer / getChurnRisk). The context gains ONE COLUMN, invoices
+    // .paid_at, and no new table — so still no ledger move and still no writer. What is new is the
+    // DEPENDENCY: this use case also consumes the Slice-11c FX plane (IFxRateProvider over the global
+    // fx_rates context, registered unconditionally further down), which is why it takes the provider
+    // rather than FxMoneyConverter — it wraps each call in a per-request MemoizingFxRateProvider so one
+    // currency pair costs one lookup per request, as the TS rate cache does.
+    builder.Services.AddScoped<IPlatformDashboardFxRepository, PlatformDashboardFxRepository>();
+    builder.Services.AddScoped<PlatformDashboardFxUseCase>();
+
     // Phase-5 slice 20 (#76): platform-owner ORGANIZATIONS WRITE (updateOrganization/suspendOrganization).
     // Its OWN context, mapping organizations AND audit_logs, because the fail-closed audit decided on #76
     // only holds if the audit INSERT shares the org UPDATE's transaction — and since every context here is
@@ -1160,15 +1170,21 @@ try
         app.MapPlatformInvitationsReadEndpoints();
     }
 
-    // Phase-5 slice 23 (#81, PRs 1 and 2 of 3): GET /platform/dashboard/{plan-distribution,user-growth,
+    // Phase-5 slice 23 (#81, PRs 1-3 of 3): GET /platform/dashboard/{plan-distribution,user-growth,
     // recent-activity,attention-items,mrr-trend,mrr-forecast,customer-health,upsell-opportunities,search}
-    // — the FX-free tier of the platform dashboard. NINE of the cluster's thirteen reads; the other four
-    // are out for two distinct reasons (three live-FX sumMoney callers → PR 3 / three unmapped ai-agent
-    // tables behind getAiCostAnomalies) — see PlatformOptions.PlatformDashboardReadEnabled. ONE flag
-    // covers all nine, so a canary flip exposes the whole FX-free tier at once. Dark unless it is on.
+    // — the FX-free tier — plus PR 3's {kpis,revenue-by-customer,churn-risk}, the three sumMoney callers.
+    // TWELVE of the cluster's thirteen reads. The one still out is getAiCostAnomalies, which needs EF maps
+    // and ledger entries for three genuinely unmapped ai-agent tables — see
+    // PlatformOptions.PlatformDashboardReadEnabled. ONE flag covers all twelve, so a canary flip exposes
+    // the whole ported cluster at once. Dark unless it is on.
+    //
+    // PR 3's three are the only dashboard routes that can answer 503: they resolve an fx_rates pin before
+    // any arithmetic, and a missing pin fails the request rather than emitting a partially-converted total
+    // (TS's getFxRate throws; see PlatformDashboardFxResultKind).
     if (externalOptions.PlatformDashboardReadEnabled || isOpenApiDocGeneration)
     {
         app.MapPlatformDashboardReadEndpoints();
+        app.MapPlatformDashboardFxReadEndpoints();
     }
 
     // Phase-5 slice 20 (#76): PATCH /platform/organizations/{id} + POST /platform/organizations/{id}/suspend.
