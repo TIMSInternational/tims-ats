@@ -259,6 +259,109 @@ public sealed class PlatformDashboardAttentionUseCaseTests
         Assert.Equal(9, json.EnumerateObject().Count());
     }
 
+    /// <summary>
+    /// All FIVE source queries receive the <c>take: 20</c> cap.
+    ///
+    /// <para>Added because the adversarial panel proved the cap was completely unprotected: deleting
+    /// every <c>.Take(take)</c> from the repository compiles clean (the orphaned parameter is only an
+    /// IDE suggestion) and passes the entire unit AND integration suite. The integration fixture tops out
+    /// at two rows per source and the whole-list assertion is a count of 7, so nothing there can reach a
+    /// 20-row boundary; the merge-cap test above builds its 40 rows in memory and never touches a
+    /// repository. The parity harness is no backstop either — <c>scripts/parity/seed.ts</c> seeds no
+    /// invoices and no platform_invitations at all.</para>
+    ///
+    /// <para><b>This test pins the five CALL SITES, not the repository's application of the cap.</b> It
+    /// injects a fake, so deleting <c>.Take(take)</c> from all five real queries would leave it green —
+    /// which is exactly the mutation quoted above. That half is pinned separately, against a real
+    /// Postgres, by <c>Every_capped_attention_query_applies_its_take_against_a_real_database</c>. An
+    /// earlier version of this paragraph claimed asserting the argument was "the only cheap option"
+    /// because a 20+-row fixture would collide with PR 1's 8-organization rounding pin; that ruled out
+    /// going ABOVE the cap and overlooked <c>take: 0</c>, which needs no seed change at all.</para>
+    /// </summary>
+    [Fact]
+    public async Task All_five_source_queries_receive_the_twenty_row_cap()
+    {
+        var repository = new RecordingAttentionRepository();
+
+        await new PlatformDashboardAttentionUseCase(repository).GetAttentionItemsAsync(Now, CancellationToken.None);
+
+        Assert.Equal(
+            [
+                ("overdue-invoices", PlatformDashboardAttentionUseCase.SourceTake),
+                ("expiring-trials", PlatformDashboardAttentionUseCase.SourceTake),
+                ("past-due-subscriptions", PlatformDashboardAttentionUseCase.SourceTake),
+                ("stale-invitations", PlatformDashboardAttentionUseCase.SourceTake),
+                ("suspended-organizations", PlatformDashboardAttentionUseCase.SourceTake),
+            ],
+            repository.Calls);
+
+        // The constant itself, so a change to 5 or 100 is a deliberate edit rather than a silent one.
+        Assert.Equal(20, PlatformDashboardAttentionUseCase.SourceTake);
+    }
+
+    /// <summary>The two derived window bounds are computed from the SINGLE captured instant, and handed
+    /// to the queries that need them — a second clock read would let an invoice be selected against one
+    /// "now" and its overdue-day count computed against another.</summary>
+    [Fact]
+    public async Task The_window_bounds_are_derived_from_one_instant()
+    {
+        var repository = new RecordingAttentionRepository();
+
+        await new PlatformDashboardAttentionUseCase(repository).GetAttentionItemsAsync(Now, CancellationToken.None);
+
+        Assert.Equal(Now, repository.OverdueNowUtc);
+        Assert.Equal(Now, repository.TrialsNowUtc);
+        Assert.Equal(Now.AddDays(7), repository.TrialsUntilUtc);
+        Assert.Equal(Now.AddDays(-5), repository.InvitationsBeforeUtc);
+    }
+
+    private sealed class RecordingAttentionRepository : IPlatformDashboardAttentionRepository
+    {
+        public List<(string Source, int Take)> Calls { get; } = [];
+
+        public DateTime OverdueNowUtc { get; private set; }
+
+        public DateTime TrialsNowUtc { get; private set; }
+
+        public DateTime TrialsUntilUtc { get; private set; }
+
+        public DateTime InvitationsBeforeUtc { get; private set; }
+
+        public Task<IReadOnlyList<OverdueInvoiceRow>> GetOverdueInvoicesAsync(DateTime nowUtc, int take, CancellationToken cancellationToken)
+        {
+            Calls.Add(("overdue-invoices", take));
+            OverdueNowUtc = nowUtc;
+            return Task.FromResult<IReadOnlyList<OverdueInvoiceRow>>([]);
+        }
+
+        public Task<IReadOnlyList<ExpiringTrialRow>> GetExpiringTrialsAsync(DateTime nowUtc, DateTime sevenDaysFromNowUtc, int take, CancellationToken cancellationToken)
+        {
+            Calls.Add(("expiring-trials", take));
+            TrialsNowUtc = nowUtc;
+            TrialsUntilUtc = sevenDaysFromNowUtc;
+            return Task.FromResult<IReadOnlyList<ExpiringTrialRow>>([]);
+        }
+
+        public Task<IReadOnlyList<PastDueSubscriptionRow>> GetPastDueSubscriptionsAsync(int take, CancellationToken cancellationToken)
+        {
+            Calls.Add(("past-due-subscriptions", take));
+            return Task.FromResult<IReadOnlyList<PastDueSubscriptionRow>>([]);
+        }
+
+        public Task<IReadOnlyList<StaleInvitationRow>> GetStaleInvitationsAsync(DateTime createdBeforeUtc, int take, CancellationToken cancellationToken)
+        {
+            Calls.Add(("stale-invitations", take));
+            InvitationsBeforeUtc = createdBeforeUtc;
+            return Task.FromResult<IReadOnlyList<StaleInvitationRow>>([]);
+        }
+
+        public Task<IReadOnlyList<SuspendedOrgRow>> GetSuspendedOrganizationsAsync(int take, CancellationToken cancellationToken)
+        {
+            Calls.Add(("suspended-organizations", take));
+            return Task.FromResult<IReadOnlyList<SuspendedOrgRow>>([]);
+        }
+    }
+
     [Fact]
     public void SuspendedOrg_emits_nine_keys_with_no_money_and_no_days()
     {
