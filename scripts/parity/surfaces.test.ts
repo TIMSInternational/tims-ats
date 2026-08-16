@@ -178,6 +178,13 @@ describe('SURFACES', () => {
     //     + search — the SAME surface, six more endpoints (2026-08-14, #81 PR 2), same gate, same
     //     unscoped context, same org_admin 403. `search` is the only one taking an input, and it is
     //     still org-independent: the term is matched across every tenant's organizations and users.
+    //   dashboard kpis + revenue-by-customer + churn-risk — the SAME surface again, three more
+    //     (2026-08-15, #81 PR 3), same gate and same unscoped context. These three are ALSO the
+    //     surface's only C#-only entries (no `tsProcedure`, see caveat 8), and the two properties are
+    //     independent: `globalScope` describes the TENANT boundary and is why RLS is N/A here, while
+    //     the missing tsProcedure describes the PAYLOAD comparison and is why parity says [WEAK].
+    //     Losing the second does not weaken the first — org_admin 403 is still asserted against the
+    //     live C# route, which on a principal-type gate is the entire authorization boundary.
     //
     // None of these is by-id, so the invariant above still bites for them unchanged. (This line read
     // "None of the seven" until 2026-08-11; the count was never re-derived when access-review's three
@@ -189,10 +196,10 @@ describe('SURFACES', () => {
     // assertion above — which is the proof that the guard was worked with rather than weakened.
     //
     // The count sits NEXT TO its enumeration on purpose: 2 (ninebox) + 2 (organization) + 2 (audit-log)
-    // + 3 (access-review) + 3 (invitation) + 9 (dashboard: 3 from PR 1, 6 from PR 2) = 21. Every past
-    // drift here was a number written in prose while the list lived elsewhere.
-    expect(seen).toBe(2 + 2 + 2 + 3 + 3 + 9);
-    expect(seen).toBe(21);
+    // + 3 (access-review) + 3 (invitation) + 12 (dashboard: 3 from PR 1, 6 from PR 2, 3 from PR 3)
+    // = 24. Every past drift here was a number written in prose while the list lived elsewhere.
+    expect(seen).toBe(2 + 2 + 2 + 3 + 3 + 12);
+    expect(seen).toBe(24);
   });
 
   // ── #195 AC1: the monitoring read surface (2026-08-10) ───────────────────────────────────────
@@ -304,17 +311,15 @@ describe('SURFACES', () => {
     }
   });
 
-  it('dashboard is registered with its flag and all NINE deployed reads, each keeping a tsProcedure', () => {
-    // Same shape and same rationale as the invitation pin above: the TS side is LIVE (flag dark), so a
-    // real payload diff is available on every endpoint and dropping a `tsProcedure` would silently
-    // degrade the pre-flip readiness check to [WEAK].
+  it('dashboard is registered with its flag and all TWELVE deployed reads', () => {
     const s = SURFACES.dashboard;
 
     // The flag string is what `checks/preflight.ts` and `cli.ts` PRINT to say which env var to flip.
     expect(s.flag).toBe('Platform__PlatformDashboardReadEnabled');
     expect(s.probeRole).toBe('platform_owner');
-    // Counted from PlatformDashboardReadEndpoints.cs, not from the issue text. ONE flag covers all
-    // nine, so an unregistered tenth route would go live at the same flip with nothing comparing it.
+    // Counted from PlatformDashboardReadEndpoints.cs + PlatformDashboardFxReadEndpoints.cs, not from
+    // the issue text. ONE flag covers all twelve, so an unregistered thirteenth route would go live at
+    // the same flip with nothing comparing it.
     expect(s.endpoints.map((e) => e.name)).toEqual([
       'plan-distribution',
       'user-growth',
@@ -325,22 +330,46 @@ describe('SURFACES', () => {
       'customer-health',
       'upsell-opportunities',
       'search',
+      'kpis',
+      'revenue-by-customer',
+      'churn-risk',
     ]);
 
     for (const ep of s.endpoints) {
-      expect(ep.tsProcedure, ep.name).toBeTruthy();
       expect(ep.expectedByRole, ep.name).toEqual({ platform_owner: 200, org_admin: 403 });
       // Platform-owner-only and deliberately cross-org: nothing here is by-id, so the RLS N/A is
       // reached via globalScope rather than idScopeKey or the by-id caller marker.
       expect(ep.idScopeKey, ep.name).toBeUndefined();
       expect(ep.noTenantBoundaryForCaller, ep.name).toBeUndefined();
       expect(ep.globalScope, ep.name).toBe(true);
-      // NO normalize on ANY of the nine, asserted because each absence is a decision recorded in
+      // NO normalize on ANY of the twelve, asserted because each absence is a decision recorded in
       // surfaces.ts — most sharply on customer-health and upsell-opportunities, where a
       // `sortArraysBy: 'orgId'` rule would cure a real tie-flake by deleting the only thing those two
       // endpoints compute that a diff can see.
       expect(ep.normalize, ep.name).toBeUndefined();
     }
+  });
+
+  it('dashboard: exactly the three FX reads are C#-only, and every other endpoint keeps its tsProcedure', () => {
+    // The SPLIT is the assertion, in both directions. Nine endpoints have a LIVE TS side (the flag is
+    // dark), so dropping a `tsProcedure` there would silently degrade a real payload diff to [WEAK] —
+    // the invitation pin's rationale. The other three have no comparable TS side at all: they call
+    // sumMoney, and the two stacks resolve rates from different providers (live Frankfurter vs the
+    // DB-pinned fx_rates row), so a `tsProcedure` would produce a PERMANENT FAIL that is not a port
+    // defect. Both mistakes are silent without this test, and they are opposite mistakes.
+    const s = SURFACES.dashboard;
+    const fxOnly = ['kpis', 'revenue-by-customer', 'churn-risk'];
+
+    for (const ep of s.endpoints) {
+      if (fxOnly.includes(ep.name)) {
+        expect(ep.tsProcedure, `${ep.name} must stay C#-only — see surfaces.ts caveat 8`).toBeUndefined();
+      } else {
+        expect(ep.tsProcedure, ep.name).toBeTruthy();
+      }
+    }
+
+    // And the count, so a FOURTH endpoint quietly joining the C#-only set has to be argued for.
+    expect(s.endpoints.filter((e) => !e.tsProcedure).map((e) => e.name)).toEqual(fxOnly);
   });
 
   it('dashboard: only `search` carries an input, and its csharpPath query string agrees with it', () => {

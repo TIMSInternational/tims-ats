@@ -436,6 +436,78 @@ async function seedBillingSubscription(db: Client, orgAId: string): Promise<void
   );
 }
 
+// ── platform-dashboard invoice fixtures (Phase-5 slice 23 / #81 PR 3) ────────
+//
+// WHY THESE EXIST, stated carefully because the obvious justification is WRONG. Until now the harness
+// seeded no `invoices` rows at all — but `getAttentionItems` and `getCustomerHealth` are PLATFORM-WIDE,
+// exactly like the three FX reads below, so against the live database they were already reading other
+// tenants' invoices (three pending-and-overdue rows, measured 2026-08-15). Their invoice branches were
+// NOT comparing two empty results there, and an earlier version of this comment said they were.
+//
+// What these six rows actually buy is narrower and still worth having:
+//   1. The fixture becomes SELF-SUFFICIENT. cli.ts:191 explicitly contemplates pointing the harness at a
+//      locally-seeded database; against one of those, the invoice branches genuinely were empty and every
+//      invoice-reading line compared nothing.
+//   2. The harness's OWN two orgs get invoices, so `getCustomerHealth`'s per-org `overdueInvoices` is
+//      non-zero for the orgs whose payloads the RBAC and RLS legs actually authenticate as.
+// Neither of those is "these endpoints were untested". They were, by someone else's data.
+//
+// They do NOT make the three FX-derived reads (`getDashboardKpis`, `getRevenueByCustomer`,
+// `getChurnRisk`) comparable, and it is worth being blunt about why, because "seed USD-only rows so
+// both stacks take the identity path" is a plausible plan that does not work. Those three are
+// PLATFORM-WIDE: they sum every tenant's invoices, not just this harness's two orgs. Any non-USD
+// invoice anywhere in the target database pulls both stacks onto the cross-rate path, where they
+// disagree by construction — TS resolves a LIVE Frankfurter rate and C# reads the DB-pinned
+// `fx_rates` row (exchangerate-api, refreshed daily by a job that is not deployed). Measured against
+// the live database on 2026-08-15: two overdue COP invoices totalling 8,250,000 COP, which the pin
+// converts to a total of 3826.61 USD while TS converts them at whatever COP has done since the pin
+// was taken. Hence those three are registered C#-only (no `tsProcedure`) — see surfaces.ts.
+//
+// All six rows are USD anyway. Not because it makes parity work, but because a non-USD row seeded
+// HERE would make the harness itself the cause of a divergence, which is a different and worse
+// problem than inheriting one.
+//
+// Shape: org A carries the whole matrix (overdue / not-yet-due / draft / paid-in-window /
+// paid-out-of-window), org B carries a single overdue row so BOTH orgs appear in the cross-org
+// aggregates. Due dates are distinct so `getAttentionItems`' (severity, daysUntil) ordering has no
+// tie to flake on.
+//
+// `invoice_number` is an INT with `@default(autoincrement())` and `@@unique([organizationId,
+// invoiceNumber])` — per-ORG uniqueness over a shared sequence. Supplying explicit values does not
+// advance that sequence, so these are placed at 9_900_00x, far above anything the sequence will
+// reach, and a collision would additionally need to land in the same org. Idempotent via that
+// constraint, matching every other fixture here. Note the model has NO `updated_at` column
+// (`created_at` alone, with a DB default) — unlike almost every other table in this schema.
+async function seedDashboardInvoices(db: Client, orgAId: string, orgBId: string): Promise<void> {
+  const rows: Array<[string, number, number, string, string, string]> = [
+    // org, invoice_number, amount, status, due_date SQL, paid_at SQL
+    [orgAId, 9_900_001, 1200.55, 'pending', "now() - interval '4 days'", 'NULL'],
+    [orgAId, 9_900_002, 300.25, 'pending', "now() + interval '10 days'", 'NULL'],
+    [orgAId, 9_900_003, 450.1, 'draft', "now() + interval '20 days'", 'NULL'],
+    [orgAId, 9_900_004, 999.99, 'paid', "now() - interval '12 days'", "now() - interval '5 days'"],
+    [orgAId, 9_900_005, 100, 'paid', "now() - interval '60 days'", "now() - interval '45 days'"],
+    [orgBId, 9_900_001, 2500.75, 'pending', "now() - interval '8 days'", 'NULL'],
+  ];
+
+  for (const [orgId, invoiceNumber, amount, status, dueDate, paidAt] of rows) {
+    // The two date expressions are LITERAL SQL from the table above, never caller input — every
+    // value that varies per row (org, number, amount, status) goes through a bound parameter.
+    await db.query(
+      `INSERT INTO invoices
+         (id, organization_id, invoice_number, amount, currency, status, due_date, paid_at)
+       VALUES
+         (gen_random_uuid(), $1, $2, $3, 'USD', $4::"InvoiceStatus", ${dueDate}, ${paidAt})
+       ON CONFLICT (organization_id, invoice_number) DO UPDATE SET
+         amount = EXCLUDED.amount,
+         currency = EXCLUDED.currency,
+         status = EXCLUDED.status,
+         due_date = EXCLUDED.due_date,
+         paid_at = EXCLUDED.paid_at`,
+      [orgId, invoiceNumber, amount, status],
+    );
+  }
+}
+
 // ── reporting (recruitmentAnalytics) fixtures ────────────────────────────────
 // RBAC: `vacancy:read` is org-scoped. hr_admin gets it @organization (a real-grant
 // 200 that clears requireOrgScope, like team-intel); hrbp gets it @unit so its 403
@@ -2480,6 +2552,10 @@ export async function seed(cfg: HarnessConfig, roles: string[]): Promise<SeedRes
     // billing-usage RLS/parity fixture: a subscription in org A only (see
     // seedBillingSubscription). Org-independent, so it runs unconditionally.
     await seedBillingSubscription(db, orgIds.a);
+
+    // platform-dashboard invoice fixture (Phase-5 slice 23 / #81 PR 3). Org-independent like the
+    // subscription above, so it runs unconditionally.
+    await seedDashboardInvoices(db, orgIds.a, orgIds.b);
 
     // reporting RLS/RBAC/parity fixtures: vacancy:read grants (hr_admin@org / hrbp@unit)
     // + a recruitment dataset in org A only. Grants only when those roles were seeded.

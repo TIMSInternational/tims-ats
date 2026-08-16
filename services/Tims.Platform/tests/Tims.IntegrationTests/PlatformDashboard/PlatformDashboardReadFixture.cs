@@ -7,9 +7,11 @@ using Tims.Infrastructure.PlatformDashboard;
 namespace Tims.IntegrationTests.PlatformDashboard;
 
 /// <summary>
-/// Phase-5 slice 23 (issue #81, PR 1 of 3) Testcontainers fixture: one real Postgres carrying the three
-/// Prisma-owned tables the FX-free dashboard reads touch (<c>subscriptions</c>, <c>organizations</c>,
-/// <c>users</c>) plus the identity plane.
+/// Phase-5 slice 23 (issue #81) Testcontainers fixture: one real Postgres carrying the Prisma-owned tables
+/// the dashboard reads touch, plus the identity plane. PR 1 mapped three (<c>subscriptions</c>,
+/// <c>organizations</c>, <c>users</c>); PR 2 added four more (<c>invoices</c>,
+/// <c>platform_invitations</c>, <c>feature_flags</c>, <c>vacancies</c>); PR 3 adds the efcore-OWNED
+/// <c>fx_rates</c> and one column, <c>invoices.paid_at</c>.
 ///
 /// <para><b>The <c>plan</c> columns are declared as the NATIVE <c>public."OrgPlan"</c> enum, exactly as
 /// prod has them</b> (<c>packages/db/baseline/prod-public-schema.sql:169</c>). TRAP 3: EFCore.PG cannot
@@ -49,6 +51,18 @@ namespace Tims.IntegrationTests.PlatformDashboard;
 /// documented property of this surface: the connection is the privileged login role (superuser here,
 /// BYPASSRLS in prod), the context is never wrapped in <c>TenantScope</c>, and <c>PlatformOwnerGate</c> is
 /// the entire authorization boundary.</para>
+///
+/// <para><b>PR 3 adds the FX plane, and this fixture is where the three FX reads are proved AT ALL.</b>
+/// The <c>fx_rates</c> table arrives with ONE pin (<c>USD→EUR</c>), and the EUR overdue invoice PR 2
+/// already seeded becomes a real cross-rate: it converts back through the USD base at <c>1/0.8 = 1.25</c>.
+/// This matters because those three endpoints are registered C#-ONLY in the parity harness (no
+/// <c>tsProcedure</c>), so parity compares NOTHING for them — not the money, not the counts. The reason is
+/// that the two stacks resolve rates from different providers and cannot be made to agree. What parity
+/// does not reach, these payload assertions do.</para>
+///
+/// <para>Also PR 3: <c>invoices.paid_at</c>, plus four invoices that are invisible to every PR-1/PR-2
+/// endpoint (a draft, a paid row outside the thirty-day window, a paid row with a NULL <c>paid_at</c>, and
+/// a void row) — none of them <c>pending</c>, so no overdue count and no attention item moves.</para>
 /// </summary>
 public sealed class PlatformDashboardReadFixture : IAsyncLifetime
 {
@@ -117,6 +131,27 @@ public sealed class PlatformDashboardReadFixture : IAsyncLifetime
 
     /// <summary>Sent, 6 days old, org-less — the only row that puts a NULL on the wire.</summary>
     public static readonly Guid InvitationStaleOrphan = Guid.Parse("f1000000-0000-0000-0000-000000000002");
+
+    // ── PR 3 invoices + the FX pin ───────────────────────────────────────────────────────────────────
+    /// <summary>OrgA, PAID 10 days ago, 750 USD — the only row inside <c>getRevenueByCustomer</c>'s
+    /// thirty-day paid window.</summary>
+    public static readonly Guid InvoicePaidRecentAcme = Guid.Parse("e0000000-0000-0000-0000-000000000004");
+
+    /// <summary>OrgA, DRAFT, 100 USD, no due date — outstanding-bucket-only, and the proof that bucket is
+    /// <c>pending OR draft</c> rather than the overdue set the other reads use.</summary>
+    public static readonly Guid InvoiceDraftAcme = Guid.Parse("e0000000-0000-0000-0000-000000000005");
+
+    /// <summary>The single <c>fx_rates</c> pin: <c>USD→EUR</c>.</summary>
+    public static readonly Guid FxPinUsdEur = Guid.Parse("fc000000-0000-0000-0000-000000000001");
+
+    /// <summary>The pinned <c>USD→EUR</c> rate. Chosen so its inverse is EXACT in double precision:
+    /// <c>1/0.8 = 1.25</c>, so the EUR invoice converts to a whole number and the wire assertion can be an
+    /// equality rather than a tolerance.</summary>
+    public const double UsdToEurPinRate = 0.8;
+
+    /// <summary>The pin's effective date, which is what <c>outstandingRatesAsOf</c> must carry — a FIXED
+    /// date, not a relative one, because it is asserted verbatim as a string on the wire.</summary>
+    public const string FxPinAsOf = "2026-07-31";
 
     /// <summary>The stale invitation's invitee address; it appears verbatim in the item TITLE.</summary>
     public const string StaleInvitationEmail = "stale-invite@acme.test";
@@ -285,6 +320,11 @@ public sealed class PlatformDashboardReadFixture : IAsyncLifetime
             currency text NOT NULL DEFAULT 'USD',
             status public."InvoiceStatus" DEFAULT 'draft'::public."InvoiceStatus" NOT NULL,
             due_date timestamp(3) without time zone NULL,
+            -- PR 3: getRevenueByCustomer's paid bucket is `status === 'paid' && paidAt && paidAt >= 30d`.
+            -- NULLABLE, and seeded null on one PAID row on purpose — the TS truthiness guard and the SQL
+            -- NULL comparison must both exclude it, and a row that is paid with no paid_at is the only
+            -- thing that distinguishes them from a plain date filter.
+            paid_at timestamp(3) without time zone NULL,
             created_at timestamp(3) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
         );
         CREATE TABLE platform_invitations (
@@ -336,6 +376,29 @@ public sealed class PlatformDashboardReadFixture : IAsyncLifetime
         ALTER TABLE vacancies FORCE ROW LEVEL SECURITY;
         CREATE POLICY tenant_isolation ON vacancies
             USING (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid);
+
+        -- PR 3: the efcore-OWNED fx_rates pin table, the source the three FX-derived reads convert
+        -- through. Shaped exactly as the Slice-11c EF migration builds it, INCLUDING the deliberate
+        -- absence of RLS: FX rates are shared reference data, not tenant data, so the migration GRANTs
+        -- SELECT and stops — a tenant_isolation policy here would hide every row from every tenant.
+        -- Declaring it with RLS in this fixture would therefore test a table production does not have.
+        CREATE TABLE fx_rates (
+            id uuid PRIMARY KEY,
+            base_currency text NOT NULL,
+            quote_currency text NOT NULL,
+            rate double precision NOT NULL,
+            as_of date NOT NULL,
+            fetched_at timestamp with time zone NOT NULL DEFAULT now(),
+            source text NOT NULL DEFAULT 'exchangerate-api'
+        );
+        -- The migration's UNIQUE index, and it is load-bearing rather than decorative: FxRateProvider
+        -- resolves a leg with ORDER BY as_of DESC LIMIT 1, so without this constraint a fixture could seed
+        -- two rows for the same (base, quote, as_of) and get a NON-DETERMINISTIC pin where production would
+        -- have raised a violation. That is the "green fixture, red prod" shape this file's TRAP-3 and
+        -- TRAP-6 notes exist to prevent, so omitting it here would have been the same mistake in a new
+        -- place. (It was omitted in the first draft of this fixture.)
+        CREATE UNIQUE INDEX ux_fx_rates_base_quote_asof ON fx_rates (base_currency, quote_currency, as_of);
+        GRANT SELECT ON fx_rates TO app_tenant;
         """;
 
     private static string BuildSeedSql(DateTime m0, DateTime seedNow)
@@ -475,11 +538,30 @@ public sealed class PlatformDashboardReadFixture : IAsyncLifetime
         -- Two overdue (pending, past due date) plus two decoys that must NOT appear: a pending invoice
         -- still in date, and a PAID one that is long past due. Globex's is both older and non-USD, so it
         -- sorts first and proves the currency is read from the row rather than assumed.
-        INSERT INTO invoices (id, organization_id, amount, currency, status, due_date) VALUES
-          ('{InvoiceOverdueAcme}',                   '{OrgA}', 1234.5, 'USD', 'pending', '{Ts(seedNow.AddDays(-3))}'),
-          ('{InvoiceOverdueGlobex}',                 '{OrgB}', 2000,   'EUR', 'pending', '{Ts(seedNow.AddDays(-10))}'),
-          ('e0000000-0000-0000-0000-000000000003',   '{OrgA}', 500,    'USD', 'pending', '{Ts(seedNow.AddDays(5))}'),
-          ('e0000000-0000-0000-0000-000000000004',   '{OrgA}', 750,    'USD', 'paid',    '{Ts(seedNow.AddDays(-20))}');
+        --
+        -- PR 3 adds PAID_AT and four rows, all shaped for getRevenueByCustomer's two buckets. Every one of
+        -- them is invisible to the PR-1/PR-2 endpoints — none is `pending`, so no overdue count, no
+        -- attention item and no customer-health signal moves:
+        --   …05 DRAFT      → outstanding bucket (pending OR draft), proving the bucket is not overdue-only
+        --   …06 PAID, 40d  → OUTSIDE the thirty-day window, so in neither bucket
+        --   …07 PAID, NULL → paid with no paid_at; the truthiness guard must exclude it
+        --   …08 VOID       → in neither bucket, the one status that belongs to no sum at all
+        INSERT INTO invoices (id, organization_id, amount, currency, status, due_date, paid_at) VALUES
+          ('{InvoiceOverdueAcme}',                   '{OrgA}', 1234.5, 'USD', 'pending', '{Ts(seedNow.AddDays(-3))}',  NULL),
+          ('{InvoiceOverdueGlobex}',                 '{OrgB}', 2000,   'EUR', 'pending', '{Ts(seedNow.AddDays(-10))}', NULL),
+          ('e0000000-0000-0000-0000-000000000003',   '{OrgA}', 500,    'USD', 'pending', '{Ts(seedNow.AddDays(5))}',   NULL),
+          ('{InvoicePaidRecentAcme}',                '{OrgA}', 750,    'USD', 'paid',    '{Ts(seedNow.AddDays(-20))}', '{Ts(seedNow.AddDays(-10))}'),
+          ('{InvoiceDraftAcme}',                     '{OrgA}', 100,    'USD', 'draft',   NULL,                         NULL),
+          ('e0000000-0000-0000-0000-000000000006',   '{OrgA}', 999,    'USD', 'paid',    '{Ts(seedNow.AddDays(-45))}', '{Ts(seedNow.AddDays(-40))}'),
+          ('e0000000-0000-0000-0000-000000000007',   '{OrgA}', 321,    'USD', 'paid',    '{Ts(seedNow.AddDays(-2))}',  NULL),
+          ('e0000000-0000-0000-0000-000000000008',   '{OrgA}', 555,    'USD', 'void',    '{Ts(seedNow.AddDays(-2))}',  NULL);
+
+        -- The ONE fx pin the fixture carries: USD→EUR at 0.8, so the EUR overdue invoice cross-rates back
+        -- through the USD base at exactly 1/0.8 = 1.25 (exact in IEEE-754 double, verified — the assertion
+        -- is a whole number rather than an epsilon comparison). No USD row needs a pin at all: the provider
+        -- short-circuits an identity pair before touching this table.
+        INSERT INTO fx_rates (id, base_currency, quote_currency, rate, as_of, source) VALUES
+          ('{FxPinUsdEur}', 'USD', 'EUR', {UsdToEurPinRate.ToString(CultureInfo.InvariantCulture)}, '{FxPinAsOf}', 'exchangerate-api');
 
         -- Two stale (pending/sent, older than 5 days) plus two decoys: one sent yesterday, one accepted.
         -- The org-less row is the ONLY source of a null on the attention-items wire.

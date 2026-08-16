@@ -109,6 +109,7 @@ public sealed class PlatformDashboardReadDbContext(DbContextOptions<PlatformDash
             entity.Property(i => i.Currency).HasColumnName("currency");
             entity.Property(i => i.Status).HasColumnName("status");
             entity.Property(i => i.DueDate).HasColumnName("due_date").HasColumnType("timestamp");
+            entity.Property(i => i.PaidAt).HasColumnName("paid_at").HasColumnType("timestamp");
         });
 
         modelBuilder.Entity<DashboardInvitationEntity>(entity =>

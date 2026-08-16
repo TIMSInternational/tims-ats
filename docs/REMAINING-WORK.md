@@ -328,13 +328,15 @@ year:'2-digit'` label format — `getMrrForecast`, `getCustomerHealth`, `getUpse
     `docs/architecture/csharp-migration/phase-5-slice-23-platform-dashboard-read.md`.
   - **Slice 23 PR 2 of 3 COMPLETED the FX-free tier** — `getAttentionItems`, `getMrrTrend`,
     `getMrrForecast`, `getCustomerHealth`, `getUpsellOpportunities` and `search`, dark under the SAME
-    `Platform:PlatformDashboardReadEnabled` flag, which now covers **NINE endpoints** (an all-or-nothing
-    flip, deliberately). Still no ledger move: `invoices`, `platform_invitations`, `feature_flags` and
+    `Platform:PlatformDashboardReadEnabled` flag, which after PR 3 covers **TWELVE endpoints** (an
+    all-or-nothing flip, deliberately). Still no ledger move: `invoices`, `platform_invitations`, `feature_flags` and
     `vacancies` are newly `ToTable`-mapped but were all already in `efcoreReadOnly[]` — note that CI would
     not have caught it either way, since the checker only fails a `ToTable` listed in NO array.
-    `SURFACES['dashboard']` grows 3 → 9 endpoints (globalScope pin 15 → 21). **#81 stays OPEN with FOUR
-    reads left**: the three `sumMoney`/live-FX callers (PR 3) and `getAiCostAnomalies`, which is now the
-    only remaining one needing NEW ledger entries. Three findings worth carrying forward: (a) the
+    `SURFACES['dashboard']` grows 3 → 9 endpoints (globalScope pin 15 → 21), then 9 → 12 in PR 3
+    (globalScope 21 → 24). **PR 3 SHIPPED 2026-08-15** — `getDashboardKpis`, `getRevenueByCustomer` and
+    `getChurnRisk`, the three `sumMoney` callers, registered C#-ONLY because the two stacks resolve FX from
+    different providers and cannot be payload-compared. **#81 stays OPEN with ONE read left**:
+    `getAiCostAnomalies`, still the only one needing NEW ledger entries. Three findings worth carrying forward: (a) the
     dashboard has a THIRD ICU/locale dependency, and it is environmental rather than versioned —
     `getAttentionItems` bakes `Number.toLocaleString()` with NO locale argument into an invoice
     description, so the deployed Node's default locale is part of the wire contract; (b) `getMrrTrend`

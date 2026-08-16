@@ -131,6 +131,16 @@ public sealed class DashboardInvoiceEntity
     /// <summary>Nullable even though both consumers filter <c>due_date &lt; now</c> — the kernel's
     /// <c>inv.dueDate ? … : 0</c> guard is reproduced rather than assumed away.</summary>
     public DateTime? DueDate { get; set; }
+
+    /// <summary>
+    /// PR 3. <c>getRevenueByCustomer</c>'s paid bucket is <c>status === 'paid' &amp;&amp; inv.paidAt
+    /// &amp;&amp; inv.paidAt &gt;= thirtyDaysAgo</c> — note the TRUTHINESS check before the comparison.
+    /// Nullable here for the same reason: a row can be <c>paid</c> with no <c>paid_at</c>, and TS excludes
+    /// it from the bucket rather than treating the null as an old date. A SQL <c>paid_at &gt;= bound</c>
+    /// yields NULL (not true) for such a row and excludes it identically, so the guard survives the
+    /// translation without being written twice.
+    /// </summary>
+    public DateTime? PaidAt { get; set; }
 }
 
 /// <summary>Backs <c>getAttentionItems</c>' stale-invitation list (PR 2). The ONLY attention source whose
@@ -198,6 +208,19 @@ public sealed class ActivePlanMonthCountRow
 {
     public string Month { get; set; } = string.Empty;
 
+    public string Plan { get; set; } = string.Empty;
+
+    public long Count { get; set; }
+}
+
+/// <summary>
+/// The unmapped result row for <c>getDashboardKpis</c>' plan aggregate (PR 3) — <c>(plan, count)</c> over
+/// ACTIVE subscriptions, optionally bounded by a creation date. Same <c>Database.SqlQuery&lt;T&gt;</c>
+/// mechanics as <see cref="ActivePlanMonthCountRow"/>: EXACT alias matching, deliberately absent from the
+/// model, and <c>"plan"::text</c> cast in the SQL so no native enum reaches the reader.
+/// </summary>
+public sealed class PlanCountRow
+{
     public string Plan { get; set; } = string.Empty;
 
     public long Count { get; set; }
