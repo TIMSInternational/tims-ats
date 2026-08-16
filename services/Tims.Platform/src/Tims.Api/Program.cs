@@ -1367,7 +1367,9 @@ try
     }
 
     // Phase-5 Slice 11c: the FX-derived reads (dei.getPayEquity + the five compensation FX reads), gated on
-    // their OWN flag (they canary AFTER the FxRefreshJob first populates fx_rates). Dark unless FxReadsEnabled.
+    // their OWN flag. (The original note here — "they canary AFTER the FxRefreshJob first populates
+    // fx_rates" — described the design; in reality FxSeedOnce populated once, the flag went live 2026-07-31,
+    // and the refresh never ran. See PlatformOptions.FxRefreshEnabled for the incident + fix.)
     if (externalOptions.FxReadsEnabled || isOpenApiDocGeneration)
     {
         app.MapDeiPayEquityEndpoint();

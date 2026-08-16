@@ -52,9 +52,12 @@ public sealed class FxRateWriteRepository(FxRateDbContext db) : IFxRateWriteRepo
             return Array.Empty<string>();
         }
 
-        // Table names are fixed constants filtered through to_regclass above — never interpolated user input.
+        // Table names are fixed constants filtered through to_regclass above — never interpolated user
+        // input. Schema-qualified so the existence probe (public.{t}) and the read provably name the SAME
+        // relation — an unqualified read resolves via search_path, and a shadowing schema earlier in the
+        // path would silently split them (not tenant-reachable, but free to close).
         var union = string.Join(
-            " UNION ", present.Select(t => $"SELECT DISTINCT currency FROM {t} WHERE currency IS NOT NULL"));
+            " UNION ", present.Select(t => $"SELECT DISTINCT currency FROM public.{t} WHERE currency IS NOT NULL"));
         await using var command = connection.CreateCommand();
         command.CommandText = union;
 

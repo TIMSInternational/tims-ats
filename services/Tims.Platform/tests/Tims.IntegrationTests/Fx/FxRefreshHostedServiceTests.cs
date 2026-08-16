@@ -64,6 +64,32 @@ public sealed class FxRefreshHostedServiceTests
     }
 
     [Fact]
+    public async Task A_provider_side_cancellation_is_not_mistaken_for_shutdown()
+    {
+        // The coverage lens's H2, and the sharpest mutation this class kills. HttpClient's own 100s
+        // timeout throws TaskCanceledException — an OperationCanceledException — on a token that is NOT
+        // the stopping token, and it fires ahead of Polly's outer timeout whenever Fx:TotalTimeoutSeconds
+        // is configured above 100. The loop's `catch (OCE) when (stoppingToken.IsCancellationRequested)`
+        // routes that into the general catch (log + retry); a plain `catch (OCE) { return; }` would read
+        // it as a shutdown and END THE LOOP with the host still alive — permanent silent staleness, the
+        // incident again. Before this test, deleting the `when` clause left every test green.
+        var gateway = new ScriptedGateway { FailFirstCalls = 1, FailWith = new TaskCanceledException("HttpClient timeout") };
+        var (service, _) = Build(gateway, tickForTest: TimeSpan.FromMilliseconds(50));
+
+        await service.StartAsync(CancellationToken.None);
+        try
+        {
+            await WaitUntilAsync(() => gateway.Calls >= 2, TimeSpan.FromSeconds(10));
+        }
+        finally
+        {
+            await service.StopAsync(CancellationToken.None);
+        }
+
+        Assert.True(gateway.Calls >= 2, $"a provider-side OCE ended the loop (calls={gateway.Calls})");
+    }
+
+    [Fact]
     public async Task Shutdown_mid_interval_completes_promptly()
     {
         var gateway = new ScriptedGateway();
@@ -115,6 +141,10 @@ public sealed class FxRefreshHostedServiceTests
 
         public int FailFirstCalls { get; init; }
 
+        /// <summary>What the failing calls throw. Defaults to the transport shape; the provider-side-OCE
+        /// test overrides it with a <see cref="TaskCanceledException"/> carrying no stopping token.</summary>
+        public Exception? FailWith { get; init; }
+
         public int Calls => Volatile.Read(ref _calls);
 
         public Task<FxGatewayRates> FetchLatestAsync(
@@ -123,7 +153,7 @@ public sealed class FxRefreshHostedServiceTests
             var call = Interlocked.Increment(ref _calls);
             if (call <= FailFirstCalls)
             {
-                throw new HttpRequestException("scripted provider outage");
+                throw FailWith ?? new HttpRequestException("scripted provider outage");
             }
 
             return Task.FromResult(new FxGatewayRates(

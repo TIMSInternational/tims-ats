@@ -85,9 +85,11 @@ public sealed class FxRefreshHostTests(FxSchemaFixture fixture)
             await Task.Delay(100);
         }
 
-        // The fixture DB has NO currency-bearing tables, so discovery contributes nothing and the quote
-        // set is exactly the use case's seed set — of which the fake serves these two. Values land
-        // verbatim, source and all, through the real ON CONFLICT upsert.
+        // The quote set is the seed set — PLUS, when TheDiscoveryUnion_IncludesInvoices has already run
+        // in this collection, the GTQ its invoices table contributes (the fixture is shared and that test
+        // does not drop it). The assertions are ORDER-INDEPENDENT anyway: the fake returns the same fixed
+        // dict whatever it is asked for, and only fetched rates are pinned. Values land verbatim, source
+        // and all, through the real ON CONFLICT upsert.
         var cop = Assert.Single(pinned, r => r.QuoteCurrency == "COP");
         Assert.Equal("USD", cop.BaseCurrency);
         Assert.Equal(4321.5, cop.Rate);
@@ -129,6 +131,51 @@ public sealed class FxRefreshHostTests(FxSchemaFixture fixture)
         var referenced = await repository.ListReferencedCurrenciesAsync(CancellationToken.None);
 
         Assert.Contains("GTQ", referenced);
+    }
+
+    [Fact]
+    public void FlagOn_WithABrokenRegistrationGraph_FailsTheHostStart()
+    {
+        // The security lens's LOW-1: with the flag on and a registration missing, the loop's catch-all
+        // would log once per tick and the pins would freeze silently — the incident, again, with a green
+        // suite. The StartAsync probe turns that into a loud deploy failure.
+        //
+        // PRODUCTION environment, deliberately. WebApplicationFactory defaults to Development, where
+        // ValidateOnBuild catches a broken graph at Build() — BEFORE the probe runs — so a Development
+        // test stays red with the probe DELETED and mutation-proves nothing. Production runs with build
+        // validation OFF (the .NET default), which is exactly the environment where the probe is the only
+        // thing standing between a lost registration and a silently dead refresh loop. This test deletes
+        // the write repo the way a refactor would (the gateway is faked here, so faking THAT away would
+        // prove nothing) and asserts the host refuses to start at all.
+        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        {
+            builder.UseEnvironment("Production");
+            builder.UseSetting("Platform:DatabaseConnectionString", _fixture.ConnectionString);
+            builder.UseSetting("Platform:FxRefreshEnabled", "true");
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<IFxRateGateway>();
+                services.AddSingleton<IFxRateGateway>(new FixedGateway());
+                services.RemoveAll<IFxRateWriteRepository>(); // the simulated lost registration
+            });
+        });
+
+        var thrown = Record.Exception(() => factory.CreateClient());
+
+        Assert.NotNull(thrown);
+        // Whatever wrapper the host puts around it, the chain must name the unresolvable dependency —
+        // that is what makes the deploy failure DIAGNOSABLE, not merely fatal.
+        var messages = new List<string>();
+        for (var e = thrown; e is not null; e = e.InnerException)
+        {
+            messages.Add(e.Message);
+            if (e is AggregateException agg)
+            {
+                messages.AddRange(agg.InnerExceptions.Select(i => i.Message));
+            }
+        }
+
+        Assert.Contains(messages, m => m.Contains(nameof(IFxRateWriteRepository), StringComparison.Ordinal));
     }
 
     private sealed class FixedGateway : IFxRateGateway
