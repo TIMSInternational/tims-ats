@@ -9,7 +9,11 @@ but has never connected to or run anything against the production database for t
 
 `NEXT_PUBLIC_COMPENSATION_FX_READ_VIA_CSHARP` cannot be flipped until `fx_rates` is populated.
 The job that normally populates it (`FxRefreshJob`) only runs inside the `Tims.Workers` App Runner
-service, which has never been deployed (blocked on BambooHR creds, unrelated timeline). This tool
+service, which has never been deployed (blocked on BambooHR creds, unrelated timeline).
+> **2026-08-15 UPDATE**: that gap froze production pins for fifteen days while the FX reads served live
+> traffic — see `fx-refresh-api-host-2026-08-15.md`. The refresh can now ALSO run inside the deployed API
+> behind `Platform__FxRefreshEnabled`; this tool remains the zero-deploy immediate catch-up (its
+> "Re-running" section already blesses re-runs). This tool
 reuses the exact same business logic (`RefreshFxRatesUseCase`) to populate `fx_rates` once,
 manually, without needing that deploy.
 

@@ -66,7 +66,7 @@ Federico execution.
   EXISTING Prisma tables (no DDL). Two EF-owned migrations exist:
   - **`20260723032952_fx_rates` — apply BEFORE the FX-reads cutover** (surface #10 in §6). It creates the
     efcore-owned `fx_rates` table — a **global, RLS-EXEMPT catalog** (like `ai_agents`/`permissions`), `GRANT SELECT
-TO app_tenant`, written only by the privileged daily `FxRefreshJob`. The API can run without it as long as
+TO app_tenant`, written only by the privileged refresh (the Workers `FxRefreshJob`, or since 2026-08-15 the API-hosted `FxRefreshHostedService` behind `Platform__FxRefreshEnabled`). The API can run without it as long as
     `FxReadsEnabled=false`; applying it + running the first frankfurter refresh is a prerequisite ONLY for flipping
     FX reads. (The refresh job runs on the Quartz scheduler — see §8; until Workers deploy, seed `fx_rates` via a
     one-off refresh or manual insert before flipping FX.)

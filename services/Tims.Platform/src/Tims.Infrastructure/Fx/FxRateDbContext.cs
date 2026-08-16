@@ -7,7 +7,8 @@ namespace Tims.Infrastructure.Fx;
 /// the DDL (migration <c>20260723032952_fx_rates</c>) and is the ONLY context that maps <c>fx_rates</c>. UNLIKE
 /// the tenant read contexts it runs on a PLAIN connection with NO <see cref="TenantScope"/> (no SET LOCAL ROLE,
 /// no org GUC): fx_rates is org-agnostic shared data with no RLS policy, so a tenant GUC would be meaningless
-/// (and would hide every row). The daily <c>FxRefreshJob</c> WRITES through this context (idempotent upsert on
+/// (and would hide every row). The refresh WRITES through this context — Workers <c>FxRefreshJob</c>, the
+/// API-hosted <c>FxRefreshHostedService</c>, or one-off <c>FxSeedOnce</c>, all the same idempotent upsert on
 /// the privileged/owner connection); <c>FxRateProvider</c> READS the latest effective-dated pin through it.
 ///
 /// The FX read is a SUB-query of a tenant-scoped comp read — the comp rows come from the RLS-tenant-scoped

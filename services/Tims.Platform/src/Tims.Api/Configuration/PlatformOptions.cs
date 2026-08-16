@@ -269,8 +269,46 @@ public sealed class PlatformOptions
     /// frankfurter path stays the sole active reader until Federico flips it AFTER the first FxRefreshJob run
     /// populates fx_rates at canary; the upstream FX data provider was swapped from Frankfurter to
     /// ExchangeRate-API 2026-07-28 — see docs/architecture/csharp-migration/fx-provider-swap-2026-07-28.md).
+    ///
+    /// <para>⚠️ CORRECTION 2026-08-15 — the parenthetical above is now HISTORY, not state. The flip
+    /// happened (measured true on the live App Runner service), the FE-consumed TS implementations were
+    /// deleted, and the populator is no longer only the FxRefreshJob: see <see cref="FxRefreshEnabled"/>
+    /// below for the staleness incident that sequence produced and the API-hosted refresh that ends it.
+    /// The original text is kept because it records what was DESIGNED; the incident is precisely the gap
+    /// between it and what was deployed.</para>
     /// </summary>
     public bool FxReadsEnabled { get; init; }
+
+    /// <summary>
+    /// When true, THIS API host runs the daily FX-rate refresh in-process (<c>FxRefreshHostedService</c>:
+    /// one run at startup as a catch-up, then every <c>Fx:RefreshIntervalHours</c>), writing pins into
+    /// <c>fx_rates</c> through the SAME <c>RefreshFxRatesUseCase</c> the Workers Quartz job drives.
+    /// DEFAULT FALSE (dark), like every other flag here.
+    ///
+    /// <para><b>Why this exists — the 2026-08-15 staleness incident.</b> The refresh was designed to run
+    /// in <c>Tims.Workers</c>, and <see cref="FxReadsEnabled"/>'s own docblock records the intended
+    /// sequence: flip the reads AFTER "the first FxRefreshJob run populates fx_rates". What actually
+    /// happened: the one-off <c>FxSeedOnce</c> tool satisfied the SUBSTANCE of that precondition on
+    /// 2026-07-31 (fx_rates populated — though not its letter, which named a FxRefreshJob run that never
+    /// happened), the reads flipped live, and the FE-consumed TS implementations were deleted —
+    /// getBandDistribution, getTotalCompBreakdown, getDashboardKpis, plus dei.getPayEquity
+    /// (compensation.getPayEquity and simulateAdjustment keep zero-consumer TS twins, so FOUR of the six
+    /// live endpoints have no fallback at all). And the Workers host was NEVER DEPLOYED
+    /// (one App Runner service exists: <c>tims-platform-api</c>). Every production pin stayed frozen at
+    /// <c>as_of 2026-07-31</c>, so the LIVE compensation FX reads and <c>dei.getPayEquity</c> served
+    /// progressively staler conversions with no fallback — measured at a 2.4% COP drift after fifteen
+    /// days. This flag lets the ALREADY-DEPLOYED host keep the pins fresh with a single env-var flip,
+    /// instead of standing up a second service.</para>
+    ///
+    /// <para>INDEPENDENT of <see cref="FxReadsEnabled"/>, in both directions — reads-on/refresh-off is
+    /// exactly the broken state above, and refresh-on/reads-off is a valid warm-up. Multiple API
+    /// instances refreshing concurrently is safe by construction: the upsert is
+    /// <c>ON CONFLICT (base_currency, quote_currency, as_of) DO UPDATE</c>, so racing writers converge on
+    /// the same row.
+    /// If the Workers host is ever deployed, BOTH schedulers may run — same idempotent write, no
+    /// coordination needed; turn this off at that point for tidiness, not correctness.</para>
+    /// </summary>
+    public bool FxRefreshEnabled { get; init; }
 
     /// <summary>
     /// Phase-5 Slice 12 (efcoreStranglerWrite): when true, the C# compensation WRITE surface is mapped and live —
