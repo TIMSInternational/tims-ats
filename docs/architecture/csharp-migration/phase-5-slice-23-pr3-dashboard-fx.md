@@ -16,6 +16,9 @@ entries**: `ai_agent_org_configs`, `ai_agent_usage_logs` and `ai_agents` are all
 so that sub-slice must touch `docs/architecture/table-ownership.md` for real rather than adding a
 rationale note to tables already listed.
 
+> **Since landed (2026-08-16)** — see `phase-5-slice-23-final-ai-cost-anomalies.md`. The flag now
+> covers all THIRTEEN reads; the "twelve" above is this document's frame, not the current state.
+
 ## The decision that took longer than the port: what parity can and cannot compare
 
 **The two stacks do not read the same FX provider, and no fixture work can change that.**
@@ -26,7 +29,7 @@ rationale note to tables already listed.
 | Provider     | `frankfurter`                       | `exchangerate-api`                                                                     |
 | COP→USD      | direct quote, today                 | `1 / 3200.634052` (inverted cross-rate through the USD base)                           |
 | Freshness    | 6h in-process cache                 | every production pin still carries `as_of 2026-07-31` — `FxRefreshJob` is not deployed |
-| Missing rate | throws → 500                        | **503** (the FX plane returns `null`; these three refuse to suppress — see §(2))        |
+| Missing rate | throws → 500                        | **503** (the FX plane returns `null`; these three refuse to suppress — see §(2))       |
 
 ### The plausible plan that does not work
 
@@ -258,23 +261,23 @@ The security lens found **no authorization bypass, no tenant-isolation defect, n
 concurrency defect**, having tried each specifically. Its two substantiated findings and every finding from
 the other two lenses were verified against source before being acted on.
 
-| Finding | Verdict | Action |
-| --- | --- | --- |
-| The models file still claimed parity payload-compares these three | **True** — it carried the reversed first-decision premise | Rewritten; the same stale premise fixed in 3 more places |
-| "Comparing two empty results" understated what the seeded invoices buy | **True** — `getAttentionItems`/`getCustomerHealth` are platform-wide too, so they already read other tenants' invoices | Justification rewritten honestly in 3 places |
-| "Three of the 39" registrations are C#-only | **False — it is 14** | Corrected, with the five surfaces enumerated |
-| "Same treatment as `dei.getPayEquity`" | **False** — those are not registered at all; registered-C#-only is the *stronger* disposition | Corrected |
-| "the cluster's twelfth and thirteenth reads" | **False** — they are the tenth, eleventh and twelfth | Corrected |
-| "two queries per non-identity pair" | **False** — one, since the `to` leg is always the USD identity leg | Corrected |
-| "Identity pairs never reach the inner provider" | **False and self-refuting** — they reach it; it short-circuits before the DB | Corrected |
-| `InnerCallCount` "exposed so a unit test can prove the memo bites" | **True** — no test read it | Property deleted; the memo is proved through the injected provider instead |
-| The doc's comparison table said C# suppresses the field | **True** — contradicted its own §(2) | Corrected to 503 |
-| Caveat 4 mis-cited for the invoice ordering | **True** — the invoice query has an `orderBy`; caveat 4 is about the two that do not | Corrected |
-| "the only writer remains the Workers FxRefreshJob" | **True** — `FxSeedOnce` is a second composition root | Corrected |
-| The "no cache" divergence described as invisible | **True of the payload, misleading overall** — up to ~45× executions at ~9× round trips | Qualified, with the consumer named |
-| `fx_rates` fixture omitted the unique index it claimed to mirror | **True** | Index added, with why it is load-bearing |
-| `docs/REMAINING-WORK.md` still said nine endpoints / four reads left | **True** | Updated to twelve / one |
-| Eight behaviours with no killing test | **True** | Tests added, each mutation-proved |
+| Finding                                                                | Verdict                                                                                                                | Action                                                                     |
+| ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| The models file still claimed parity payload-compares these three      | **True** — it carried the reversed first-decision premise                                                              | Rewritten; the same stale premise fixed in 3 more places                   |
+| "Comparing two empty results" understated what the seeded invoices buy | **True** — `getAttentionItems`/`getCustomerHealth` are platform-wide too, so they already read other tenants' invoices | Justification rewritten honestly in 3 places                               |
+| "Three of the 39" registrations are C#-only                            | **False — it is 14**                                                                                                   | Corrected, with the five surfaces enumerated                               |
+| "Same treatment as `dei.getPayEquity`"                                 | **False** — those are not registered at all; registered-C#-only is the _stronger_ disposition                          | Corrected                                                                  |
+| "the cluster's twelfth and thirteenth reads"                           | **False** — they are the tenth, eleventh and twelfth                                                                   | Corrected                                                                  |
+| "two queries per non-identity pair"                                    | **False** — one, since the `to` leg is always the USD identity leg                                                     | Corrected                                                                  |
+| "Identity pairs never reach the inner provider"                        | **False and self-refuting** — they reach it; it short-circuits before the DB                                           | Corrected                                                                  |
+| `InnerCallCount` "exposed so a unit test can prove the memo bites"     | **True** — no test read it                                                                                             | Property deleted; the memo is proved through the injected provider instead |
+| The doc's comparison table said C# suppresses the field                | **True** — contradicted its own §(2)                                                                                   | Corrected to 503                                                           |
+| Caveat 4 mis-cited for the invoice ordering                            | **True** — the invoice query has an `orderBy`; caveat 4 is about the two that do not                                   | Corrected                                                                  |
+| "the only writer remains the Workers FxRefreshJob"                     | **True** — `FxSeedOnce` is a second composition root                                                                   | Corrected                                                                  |
+| The "no cache" divergence described as invisible                       | **True of the payload, misleading overall** — up to ~45× executions at ~9× round trips                                 | Qualified, with the consumer named                                         |
+| `fx_rates` fixture omitted the unique index it claimed to mirror       | **True**                                                                                                               | Index added, with why it is load-bearing                                   |
+| `docs/REMAINING-WORK.md` still said nine endpoints / four reads left   | **True**                                                                                                               | Updated to twelve / one                                                    |
+| Eight behaviours with no killing test                                  | **True**                                                                                                               | Tests added, each mutation-proved                                          |
 
 ### The fix that did not bite
 
@@ -312,9 +315,9 @@ against the production database, with both stacks' FX arithmetic computed from t
 Every one of those is **identical on both stacks** — they are counts and `PLAN_PRICES` sums, no FX. The
 divergence is confined to two keys:
 
-| | C# | TS |
-| --- | --- | --- |
-| `outstandingAmount` | **3826.61** | **3889** |
+|                        | C#           | TS           |
+| ---------------------- | ------------ | ------------ |
+| `outstandingAmount`    | **3826.61**  | **3889**     |
 | `outstandingRatesAsOf` | `2026-07-31` | `2026-08-14` |
 
 **62.39 USD apart, 1.63% of the total.**
@@ -336,11 +339,11 @@ TS: "1 overdue invoice (USD 1,696)"
 
 There are **two independent divergences**, and they run in opposite directions:
 
-| rate for COP→USD, today | value | property |
-| --- | --- | --- |
-| C# — the pin, inverted | `0.000312438093` | precise, but **stale** (`as_of 2026-07-31`) |
-| TS — Frankfurter, quoted directly | `0.000320000000` | fresh, but **two significant figures** |
-| Frankfurter `USD→COP` inverted | `0.000320139325` | fresh **and** precise — **neither stack uses it** |
+| rate for COP→USD, today           | value            | property                                          |
+| --------------------------------- | ---------------- | ------------------------------------------------- |
+| C# — the pin, inverted            | `0.000312438093` | precise, but **stale** (`as_of 2026-07-31`)       |
+| TS — Frankfurter, quoted directly | `0.000320000000` | fresh, but **two significant figures**            |
+| Frankfurter `USD→COP` inverted    | `0.000320139325` | fresh **and** precise — **neither stack uses it** |
 
 Decomposing the 62.39 USD: **≈ 63.54 USD is the pin's staleness**, and **≈ −1.15 USD is TS being LESS
 precise**, because Frankfurter quotes a small-magnitude pair at two significant figures while the

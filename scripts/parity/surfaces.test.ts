@@ -345,7 +345,7 @@ describe('SURFACES', () => {
       expect(ep.idScopeKey, ep.name).toBeUndefined();
       expect(ep.noTenantBoundaryForCaller, ep.name).toBeUndefined();
       expect(ep.globalScope, ep.name).toBe(true);
-      // NO normalize on ANY of the twelve, asserted because each absence is a decision recorded in
+      // NO normalize on ANY of the thirteen, asserted because each absence is a decision recorded in
       // surfaces.ts — most sharply on customer-health and upsell-opportunities, where a
       // `sortArraysBy: 'orgId'` rule would cure a real tie-flake by deleting the only thing those two
       // endpoints compute that a diff can see.

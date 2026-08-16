@@ -529,7 +529,41 @@ async function seedDashboardInvoices(db: Client, orgAId: string, orgBId: string)
 // unique key, so theirs is DELETE-then-INSERT scoped to the parity agents' ids — the evaluation360
 // fixtures' disposition. `updated_at` is supplied explicitly: Prisma's @updatedAt columns carry no
 // database default, so a bare INSERT would fail NOT NULL.
+//
+// ⚠️ THIS IS THE FIRST PARITY FIXTURE THAT WRITES A GLOBAL CATALOG. `ai_agents` is one of the three
+// RLS-EXEMPT shared catalogs (every prior fixture row is org-scoped to the two parity orgs), and the
+// tier-3 panel found two consequences worth stating out loud:
+//
+//   1. THE REAL CATALOG BOOTSTRAP IS COUNT-GUARDED, and these rows trip it. `seedAiAgents`
+//      (packages/api/src/routers/platform/ai-agents.ts) seeds the production agent catalog only when
+//      `ai_agents` is EMPTY — a bare `count > 0` guard. On a freshly-created database, run the app's
+//      catalog bootstrap BEFORE this seed, or the two `__parity_ai_*` rows make it a permanent no-op.
+//      The runtime warning below exists because nothing else would say so.
+//   2. LIVE-CONSOLE NOISE, permanent by design: against the live database, the platform-owner
+//      dashboard's REAL getAiCostAnomalies panel shows these anomalies from now on (org B's
+//      null-budget config is a forever zero_usage row), and the platform console's agent counts
+//      include the two fixture agents. Platform-console-only — no tenant-facing read can see them
+//      (the tenant paths are per-org config lookups) — and the same family as the parity invoices
+//      that sit in attention-items, but a reader of that dashboard deserves the sentence.
+//
+// Also: the usage rows are seeded at now()−2d/−5d, so they age out of the 30-day window at
+// seed+25d and seed+28d — the seeded spend first shrinks (still over budget), then org A's
+// over_budget flips to zero_usage at ~28 days IN BOTH STACKS. The harness stays green while the
+// over-budget branch and the toFixed(2) detail string go dormant. Re-run the seed to re-arm them
+// (surfaces.ts caveat 10 carries the operator-facing version of this).
 async function seedDashboardAiAgents(db: Client, orgAId: string, orgBId: string): Promise<void> {
+  // Exact slugs, not a LIKE — `_` is a single-character wildcard in LIKE patterns.
+  const realAgents = await db.query(
+    `SELECT count(*)::int AS n FROM ai_agents WHERE slug NOT IN ('__parity_ai_alpha', '__parity_ai_stub')`,
+  );
+  if (realAgents.rows[0].n === 0) {
+    // Deliberately a WARNING, not a failure: a parity-only scratch database is a legitimate target.
+    console.warn(
+      '⚠️  ai_agents holds NO real agents — the app catalog bootstrap (seedAiAgents) is count-guarded ' +
+        'and will now never auto-seed. If this database is meant to run the real app, bootstrap the ' +
+        'catalog BEFORE the parity seed.',
+    );
+  }
   const agents: Array<[string, string, number, string]> = [
     // slug, name, cost_per_call, status
     ['__parity_ai_alpha', 'Parity Alpha Agent', 0.05, 'active'],

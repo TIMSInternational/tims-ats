@@ -318,7 +318,7 @@ describe-service`; only the frontend Vercel flag was missing.)
     `getDashboardKpis`/`getRevenueByCustomer`/`getChurnRisk` call
     `sumMoney` → live Frankfurter FX and port LAST (the tier-3 panel corrected this list — an earlier
     draft had `getCustomerHealth` here and `getChurnRisk` in the FX-free group; counting the call sites
-    says otherwise); `getAiCostAnomalies` needs EF maps + ledger entries for THREE unmapped tables
+    says otherwise); `getAiCostAnomalies` needed EF maps + ledger entries for THREE unmapped tables
     (`ai_agent_org_configs`, `ai_agent_usage_logs`, `ai_agents`); and six more FX-free reads
     (`getAttentionItems`, `getMrrTrend` — which needs its own golden for its `month:'short',
 year:'2-digit'` label format — `getMrrForecast`, `getCustomerHealth`, `getUpsellOpportunities`,
@@ -344,9 +344,12 @@ year:'2-digit'` label format — `getMrrForecast`, `getCustomerHealth`, `getUpse
     real `tsProcedure` (both stacks read the same tables; no rate provider), and it forced the repo's
     first JS-faithful `toFixed(2)` port — ECMAScript rounds the exact-expansion tie UP where .NET "F2"
     rounds to EVEN (`(0.125).toFixed(2)` is "0.13" vs "0.12"), pinned in
-    `PlatformDashboardAiUseCaseTests` against Node-verified values. **#81 is now CODE-COMPLETE at steps
-    1–4; what keeps it open is step 5**: `verify dashboard` has never run (#211), and the flag flip is
-    Federico's. Three findings worth carrying forward from PR 2/3: (a) the
+    `PlatformDashboardAiUseCaseTests` against Node-verified values. **What keeps #81 open, counted
+    against the issue's own step definitions** (a tier-3 panel corrected an earlier "code-complete at
+    steps 1–4" here): the BACKEND of steps 1–4 is done, but step 4's `apps/web/lib/platform-api/
+dashboard.ts` wrapper behind `NEXT_PUBLIC_…_VIA_CSHARP` exists for NONE of the thirteen reads;
+    step 5 (`verify dashboard`) has never run (#211) and the flip is Federico's; step 7 (delete the
+    TS) is open regardless. Three findings worth carrying forward from PR 2/3: (a) the
     dashboard has a THIRD ICU/locale dependency, and it is environmental rather than versioned —
     `getAttentionItems` bakes `Number.toLocaleString()` with NO locale argument into an invoice
     description, so the deployed Node's default locale is part of the wire contract; (b) `getMrrTrend`

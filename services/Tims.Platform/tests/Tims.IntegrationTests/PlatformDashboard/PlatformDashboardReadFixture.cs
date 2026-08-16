@@ -426,6 +426,13 @@ public sealed class PlatformDashboardReadFixture : IAsyncLifetime
         -- text/scalar columns — NO native enum anywhere, so unlike every other table family here these
         -- three would materialise without EnableUnmappedTypes; declaring them faithfully documents that
         -- rather than tests it.
+        --
+        -- updated_at carries NO DEFAULT, exactly as prod: Prisma's @updatedAt emits no database
+        -- default, so every INSERT must supply it — which is precisely why the parity seed sets it
+        -- explicitly. The first draft of this schema defaulted it to CURRENT_TIMESTAMP and the fixture
+        -- seed leaned on that, an INSERT prod would reject; the tier-3 panel caught the divergence.
+        -- (Grants below are SELECT-only, the read-path convention of every table in this fixture; prod
+        -- grants app_tenant full DML on these three — a write-posture probe needs a different fixture.)
         CREATE TABLE ai_agents (
             id uuid PRIMARY KEY,
             slug text NOT NULL UNIQUE,
@@ -438,7 +445,7 @@ public sealed class PlatformDashboardReadFixture : IAsyncLifetime
             cost_per_call double precision NOT NULL DEFAULT 0,
             status text NOT NULL DEFAULT 'stub',
             created_at timestamp(3) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
-            updated_at timestamp(3) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+            updated_at timestamp(3) without time zone NOT NULL
         );
         CREATE TABLE ai_agent_org_configs (
             id uuid PRIMARY KEY,
@@ -451,7 +458,7 @@ public sealed class PlatformDashboardReadFixture : IAsyncLifetime
             ai_interview_default_max_minutes integer NULL,
             ai_interview_max_minutes_by_type jsonb NULL,
             created_at timestamp(3) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
-            updated_at timestamp(3) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+            updated_at timestamp(3) without time zone NOT NULL,
             UNIQUE (agent_id, organization_id)
         );
         CREATE TABLE ai_agent_usage_logs (
@@ -676,22 +683,23 @@ public sealed class PlatformDashboardReadFixture : IAsyncLifetime
     private static string BuildAiSeedSql(DateTime seedNow)
     {
         return $"""
-        INSERT INTO ai_agents (id, slug, name, cost_per_call, status) VALUES
-          ('{AgentAlpha}', 'cv-parser',      'CV Parser',      0.05, 'active'),
-          ('{AgentStub}',  'stub-agent',     'Stub Agent',     0.30, 'stub'),
-          ('{AgentBeta}',  'job-matcher',    'Job Matcher',    0.01, 'active'),
-          ('{AgentGamma}', 'salary-advisor', 'Salary Advisor', 0.2,  'beta'),
-          ('{AgentDelta}', 'dei-analyst',    'DEI Analyst',    0.15, 'active');
+        -- updated_at supplied explicitly on both tables — no DB default exists, as in prod.
+        INSERT INTO ai_agents (id, slug, name, cost_per_call, status, updated_at) VALUES
+          ('{AgentAlpha}', 'cv-parser',      'CV Parser',      0.05, 'active', '{Ts(seedNow)}'),
+          ('{AgentStub}',  'stub-agent',     'Stub Agent',     0.30, 'stub',   '{Ts(seedNow)}'),
+          ('{AgentBeta}',  'job-matcher',    'Job Matcher',    0.01, 'active', '{Ts(seedNow)}'),
+          ('{AgentGamma}', 'salary-advisor', 'Salary Advisor', 0.2,  'beta',   '{Ts(seedNow)}'),
+          ('{AgentDelta}', 'dei-analyst',    'DEI Analyst',    0.15, 'active', '{Ts(seedNow)}');
 
         -- One config per outcome; (agent_id, organization_id) is UNIQUE so each pair appears once.
-        INSERT INTO ai_agent_org_configs (id, agent_id, organization_id, enabled, monthly_budget) VALUES
-          ('ab000000-0000-0000-0000-000000000001', '{AgentAlpha}', '{OrgA}', true,  100),   -- over_budget: 150.25 spent
-          ('ab000000-0000-0000-0000-000000000002', '{AgentAlpha}', '{OrgB}', true,  NULL),  -- zero_usage, NULL budget on the wire
-          ('ab000000-0000-0000-0000-000000000003', '{AgentStub}',  '{OrgA}', true,  50),    -- status 'stub' → skipped entirely
-          ('ab000000-0000-0000-0000-000000000004', '{AgentBeta}',  '{OrgA}', false, 1),     -- DISABLED → skipped despite 999.5 in-window spend
-          ('ab000000-0000-0000-0000-000000000005', '{AgentBeta}',  '{OrgB}', true,  500),   -- healthy: usage under budget → no anomaly
-          ('ab000000-0000-0000-0000-000000000006', '{AgentGamma}', '{OrgG}', true,  -5),    -- NEGATIVE budget + no usage → BOTH anomalies
-          ('ab000000-0000-0000-0000-000000000007', '{AgentDelta}', '{OrgD}', true,  0);     -- ZERO budget (JS-falsy) → no over_budget despite 25.5 spend
+        INSERT INTO ai_agent_org_configs (id, agent_id, organization_id, enabled, monthly_budget, updated_at) VALUES
+          ('ab000000-0000-0000-0000-000000000001', '{AgentAlpha}', '{OrgA}', true,  100,  '{Ts(seedNow)}'),  -- over_budget: 150.25 spent
+          ('ab000000-0000-0000-0000-000000000002', '{AgentAlpha}', '{OrgB}', true,  NULL, '{Ts(seedNow)}'),  -- zero_usage, NULL budget on the wire
+          ('ab000000-0000-0000-0000-000000000003', '{AgentStub}',  '{OrgA}', true,  50,   '{Ts(seedNow)}'),  -- status 'stub' → skipped entirely
+          ('ab000000-0000-0000-0000-000000000004', '{AgentBeta}',  '{OrgA}', false, 1,    '{Ts(seedNow)}'),  -- DISABLED → skipped despite 999.5 in-window spend
+          ('ab000000-0000-0000-0000-000000000005', '{AgentBeta}',  '{OrgB}', true,  500,  '{Ts(seedNow)}'),  -- healthy: usage under budget → no anomaly
+          ('ab000000-0000-0000-0000-000000000006', '{AgentGamma}', '{OrgG}', true,  -5,   '{Ts(seedNow)}'),  -- NEGATIVE budget + no usage → BOTH anomalies
+          ('ab000000-0000-0000-0000-000000000007', '{AgentDelta}', '{OrgD}', true,  0,    '{Ts(seedNow)}');  -- ZERO budget (JS-falsy) → no over_budget despite 25.5 spend
 
         INSERT INTO ai_agent_usage_logs (id, agent_id, organization_id, cost_usd, created_at) VALUES
           -- Alpha@OrgA in-window: 100.25 + 50 = 150.25 over the 100 budget…

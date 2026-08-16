@@ -125,6 +125,28 @@ public sealed class PlatformDashboardAiEndpointAuthTests(PlatformDashboardReadFi
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync(Path)).StatusCode);
     }
 
+    // ── the window bound is INCLUSIVE (gte), proven at the exact boundary ────────────────────────────
+    [Fact]
+    public async Task TheUsageWindow_IsInclusiveAtItsExactBoundary()
+    {
+        // TS is `createdAt: { gte: thirtyDaysAgo }`. The payload test cannot pin `>=` against `>` —
+        // its rows sit whole days from the request-time bound — so this drives the repository directly
+        // with `since` set to the EXACT created_at of Alpha@OrgA's newest usage row (seed −2d). `>=`
+        // keeps exactly that row (calls 1, cost 100.25, the −5d and −31d rows excluded); a `>` returns
+        // the group without it or no group at all. Deterministic: both instants are fixture constants,
+        // no wall clock involved. (The panel found this mutation survived every prior test.)
+        await using var db = _fixture.NewReadContext();
+        var repository = new Tims.Infrastructure.PlatformDashboard.PlatformDashboardAiRepository(db);
+
+        var boundary = _fixture.SeedNowUtc.AddDays(-2);
+        var rows = await repository.GetUsageSinceAsync(boundary, CancellationToken.None);
+
+        var alphaOrgA = Assert.Single(rows, r =>
+            r.AgentId == PlatformDashboardReadFixture.AgentAlpha && r.OrganizationId == PlatformDashboardReadFixture.OrgA);
+        Assert.Equal(1, alphaOrgA.Calls);
+        Assert.Equal(100.25, alphaOrgA.CostSum);
+    }
+
     // ── the whole payload, exact wire values ─────────────────────────────────────────────────────────
     [Fact]
     public async Task AiCostAnomalies_ClassifiedSortedAndSummed()

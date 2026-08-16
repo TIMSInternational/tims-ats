@@ -3,8 +3,12 @@
 > **Status**: shipped DARK, 2026-08-16. The thirteenth and last read of the platform dashboard
 > cluster — with it, **all thirteen of #81's reads are ported** and one flag
 > (`Platform:PlatformDashboardReadEnabled`) exposes the complete cluster.
-> **Steps 1–4 of the strangler recipe are done; step 5 (`verify dashboard`) has NEVER run (#211)
-> and the flip is Federico's.**
+> **What #81 still needs, counted honestly (the panel corrected an earlier "steps 1–4 done"):**
+> the BACKEND half of steps 1–4 is done, but #81's own step-4 wording also requires an
+> `apps/web/lib/platform-api/dashboard.ts` FE wrapper behind `NEXT_PUBLIC_…_VIA_CSHARP`, which does
+> not exist for ANY of the thirteen reads (no slice-23 doc waived it — this sentence is the closest
+> thing); step 5 (`verify dashboard`) has NEVER run (#211) and the flip is Federico's; and step 7
+> (delete the TS) is open regardless.
 
 ## What shipped
 
@@ -46,9 +50,11 @@ recorded. Note key: `platform_dashboard_read_slice23_ai`.
 6. **`'high_cost'` is declared and never produced** — the TS union has a third member no code path
    pushes. Reproduced as the same absence.
 7. **The stub skip is `=== 'stub'`, not `!== 'active'`** — a `'beta'` agent participates.
-8. **No datetime on the wire** — uniquely in this cluster, TRAP 6 (NodeIso converter) does not arise.
-   TRAPs 3/8 don't either: `ai_agents.status` is plain `text`, no native enum in any of the three
-   tables. TRAP 11 still does: the 30-day bound re-kinds through `PlatformDashboardTimestamps.ToNaive`.
+8. **No datetime on the wire** — TRAP 6 (NodeIso converter) does not arise on this payload. (An
+   earlier draft said "uniquely in this cluster"; the panel counted — plan-distribution, user-growth,
+   customer-health and upsell are datetime-free too.) TRAPs 3/8 don't arise either:
+   `ai_agents.status` is plain `text`, no native enum in any of the three tables. TRAP 11 still does:
+   the 30-day bound re-kinds through `PlatformDashboardTimestamps.ToNaive`.
 
 ## Parity
 
@@ -70,12 +76,15 @@ at 84.
 - **Unit** (`PlatformDashboardAiUseCaseTests`, 32 passing): kernel branches, truthiness table,
   scan-order total, stable sort, `JsToFixed2` vs Node (16 cases incl. both carry paths and NaN), the
   kernel-level tie-value detail string, and `JsToFixed2_is_not_ToStringF2` (the guard for the guard).
-- **Integration** (`PlatformDashboardAiEndpointAuthTests`, 6 passing): owner 200 / org-user 403 /
-  missing+tampered JWT 401 / flag-default 404, and one exact-wire payload test over the full
-  response — order, all nine keys per item, both detail strings, the literal `monthlyBudget: null`,
-  totals, and the five decoys asserted absent by name.
-- **Anchors on this branch**: 1288 C# unit / 1449 C# integration (1447 + 2 net new… see below) /
-  3185 vitest/319. (Integration total to be re-confirmed by the full-suite run recorded in the PR.)
+- **Integration** (`PlatformDashboardAiEndpointAuthTests`, 7 passing): owner 200 / org-user 403 /
+  missing+tampered JWT 401 / flag-default 404, the window-boundary inclusivity pin (added after the
+  panel), and one exact-wire payload test over the full response — order, all nine keys per item,
+  both detail strings, the literal `monthlyBudget: null`, totals, and the five decoys asserted
+  absent (four assertions — the `job-matcher` slug covers both of that agent's decoy configs).
+- **Anchors on this branch**: 1288 C# unit / **1453** C# integration (1447 + the 6 new endpoint
+  tests; a first draft wrote "1449 (+2)" — the claim-auditor lens measured it) / 3185 vitest/319.
+  The panel's window-boundary finding then added a seventh integration test (below), so the final
+  branch anchor is **1454**.
 
 ## Mutation proofs — run 2026-08-16, results verbatim
 
@@ -95,10 +104,48 @@ before the next. All nine went RED; the failing test is named:
 | M8  | Kernel: total recomputed as `sorted.Sum(…)`                                   | RED — `The_total_accumulates_in_CONFIG_SCAN_order…`      |
 | M9  | Program.cs: AI mapping moved OUTSIDE the flag guard                           | RED — `Route_Is404_WhenFlagDefaultsOff`                  |
 
+A tenth mutation followed from the panel's coverage lens: **M11 — window `>=` → `>`** survived every
+prior test (the payload rows sit whole days from the bound), and is now killed by
+`TheUsageWindow_IsInclusiveAtItsExactBoundary`, which drives the repository with `since` equal to the
+exact `created_at` of the newest usage row — deterministic, no wall clock. Applied → RED
+(`[FAIL] TheUsageWindow_IsInclusiveAtItsExactBoundary`) → reverted. The panel's other surviving
+mutation — `JsNow()` → raw `DateTime.UtcNow` at the endpoint — is recorded as NOT pinned: its only
+effect is sub-millisecond ticks in the window bound, unobservable on a `timestamp(3)` column.
+
 M6 and M8 are worth a sentence each: both survived the ORIGINAL test set and were only killable
 after two tests were added for exactly them (the fixture's values format identically under F2, and
 its savings sum exactly) — the mutation question asked before the mutation run, per
 [[feedback-audit-the-fixes-not-just-the-code]].
+
+## The tier-3 panel (check 15's substitute) — what it found, and what was done
+
+Codex is quota-blocked (gate check 15 = exit 2, NOT RUN), so the required substitute ran: a 3-lens
+same-model adversarial panel (security/tenant-isolation, claim auditor, coverage), each lens prompted
+to refute and re-reading source. **This is same-model review, not cross-model.** Findings and
+dispositions:
+
+- **MED (coverage)** — the parity seed is the first to write a GLOBAL catalog, and the app's own
+  `seedAiAgents` bootstrap is count-guarded, so on an empty database the parity rows make it a
+  permanent no-op; the fixture agents also join the live platform console's agent counts and its
+  real anomalies panel. **Fixed**: seed docblock states both consequences + ordering guidance, and a
+  runtime `console.warn` fires when no real agents exist.
+- **LOW (security)** — fixture `updated_at` carried a `DEFAULT CURRENT_TIMESTAMP` prod does not
+  have, and the fixture seed depended on it. **Fixed**: default removed, inserts supply the value —
+  the same constraint the parity seed already documented.
+- **LOW (security)** — fixture grants are SELECT-only vs prod's full DML. **Recorded, not changed**:
+  it is the whole fixture's read-path convention, now stated in the schema comment.
+- **LOW (coverage ×2)** — stale "twelve" in surfaces.ts caveat 8 and a surfaces.test.ts comment;
+  the dormancy of the seeded over-budget leg. **Fixed**: counts corrected; dormancy added to caveat
+  10 and the seed docblock — and the second pass then corrected the FIX itself: the panel's "~25
+  days" was imprecise (the −5d row ages out at seed+25d, shrinking the overage; the flip to
+  zero_usage happens at seed+28d when the −2d row follows).
+- **LOW (coverage)** — two mutations survived all tests. **One fixed** (M11, the window boundary —
+  new deterministic repository test), **one recorded** (JsNow → UtcNow, sub-millisecond only).
+- **3 FALSE/OVERSTATED claims (claim auditor)** — the integration anchor ("1449/+2" vs measured
+  1453/+6), "uniquely no datetime in this cluster", and "code-complete at steps 1–4" (the issue's
+  step-4 FE wrapper does not exist; step 7 is open regardless). **All three corrected in this doc
+  and REMAINING-WORK.md.** Every other audited claim — counts, pins, line refs, JS/.NET semantics —
+  verified true, mostly by execution.
 
 ## What is deliberately NOT here
 

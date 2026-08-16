@@ -594,7 +594,7 @@ export const SURFACES: Record<string, Surface> = {
   // PR 3 (2026-08-15) ADDED THREE ENDPOINTS AND ONE CAVEAT, and the caveat is the surface's most
   // important one because it bounds what a GREEN run on this surface means:
   //
-  //   8. THREE OF THE TWELVE ENDPOINTS ARE NOT PAYLOAD-COMPARED AT ALL. `kpis`,
+  //   8. THREE OF THE THIRTEEN ENDPOINTS ARE NOT PAYLOAD-COMPARED AT ALL. `kpis`,
   //      `revenue-by-customer` and `churn-risk` carry no `tsProcedure`, so parity reports [WEAK] for
   //      them by design while RBAC and the RLS disposition still assert. They are the three that call
   //      `sumMoney`, and the two stacks resolve rates from DIFFERENT PROVIDERS — live Frankfurter on
@@ -650,7 +650,13 @@ export const SURFACES: Record<string, Surface> = {
   //      any other target check `SELECT count(*) FROM ai_agent_org_configs WHERE enabled` before
   //      believing its green. Also worth knowing when reading a diff: the TS type union declares a
   //      third anomaly type, 'high_cost', that NO code path produces — neither stack can emit it, and
-  //      a diff showing one would mean the TS side changed.
+  //      a diff showing one would mean the TS side changed. Finally, THE SEEDED OVER-BUDGET LEG
+  //      DECAYS: the fixture's usage rows sit at seed-time −5d and −2d, so they age out of the
+  //      30-day window at seed+25d and seed+28d — the seeded spend drops 15.5 → 12 at ~25 days
+  //      (still over the 10 budget, smaller overage) and org A flips over_budget → zero_usage at
+  //      ~28 days, IN BOTH STACKS. The run stays green throughout while the over-budget branch and
+  //      its toFixed(2) detail string go dormant. If the last seed run is stale, re-seed before
+  //      reading this endpoint's green as covering both branches.
   dashboard: {
     key: 'dashboard',
     flag: 'Platform__PlatformDashboardReadEnabled',
