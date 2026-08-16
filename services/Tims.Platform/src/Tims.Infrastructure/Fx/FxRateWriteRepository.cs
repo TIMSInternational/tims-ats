@@ -14,7 +14,17 @@ namespace Tims.Infrastructure.Fx;
 public sealed class FxRateWriteRepository(FxRateDbContext db) : IFxRateWriteRepository
 {
     // The currency-bearing tables the reads convert FROM/INTO. Fixed constants (never user input).
-    private static readonly string[] CurrencyTables = { "employee_compensations", "salary_bands", "companies" };
+    //
+    // MAINTENANCE RULE, learned the hard way: every table whose `currency` column feeds an
+    // FxMoneyConverter consumer MUST be listed here, or that consumer's pins exist only by coincidence.
+    // `invoices` was missing until 2026-08-15 — the platform-dashboard FX reads (slice 23 PR 3) sum
+    // invoice amounts, and their COP invoices were covered ONLY because salary_bands/companies happened
+    // to reference COP too. The first tenant invoiced in a currency no compensation row shares would have
+    // had no pin: the live compensation reads fail-soft, but the dashboard reads answer 503 (their caveat
+    // 9). Discovery-at-the-source is what disarms that permanently. `salary_adjustments` is deliberately
+    // absent: no FX consumer converts its amounts (simulate-adjustment reads employee_compensations +
+    // salary_bands, both listed).
+    private static readonly string[] CurrencyTables = { "employee_compensations", "salary_bands", "companies", "invoices" };
 
     private readonly FxRateDbContext _db = db;
 

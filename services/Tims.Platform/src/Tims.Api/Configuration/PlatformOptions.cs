@@ -273,6 +273,32 @@ public sealed class PlatformOptions
     public bool FxReadsEnabled { get; init; }
 
     /// <summary>
+    /// When true, THIS API host runs the daily FX-rate refresh in-process (<c>FxRefreshHostedService</c>:
+    /// one run at startup as a catch-up, then every <c>Fx:RefreshIntervalHours</c>), writing pins into
+    /// <c>fx_rates</c> through the SAME <c>RefreshFxRatesUseCase</c> the Workers Quartz job drives.
+    /// DEFAULT FALSE (dark), like every other flag here.
+    ///
+    /// <para><b>Why this exists — the 2026-08-15 staleness incident.</b> The refresh was designed to run
+    /// in <c>Tims.Workers</c>, and <see cref="FxReadsEnabled"/>'s own docblock records the intended
+    /// sequence: flip the reads AFTER "the first FxRefreshJob run populates fx_rates". What actually
+    /// happened: the one-off <c>FxSeedOnce</c> tool satisfied that precondition on 2026-07-31, the reads
+    /// flipped live, their TS implementations were deleted — and the Workers host was NEVER DEPLOYED
+    /// (one App Runner service exists: <c>tims-platform-api</c>). Every production pin stayed frozen at
+    /// <c>as_of 2026-07-31</c>, so the LIVE compensation FX reads and <c>dei.getPayEquity</c> served
+    /// progressively staler conversions with no fallback — measured at a 2.4% COP drift after fifteen
+    /// days. This flag lets the ALREADY-DEPLOYED host keep the pins fresh with a single env-var flip,
+    /// instead of standing up a second service.</para>
+    ///
+    /// <para>INDEPENDENT of <see cref="FxReadsEnabled"/>, in both directions — reads-on/refresh-off is
+    /// exactly the broken state above, and refresh-on/reads-off is a valid warm-up. Multiple API
+    /// instances refreshing concurrently is safe by construction: the upsert is
+    /// <c>ON CONFLICT (base, quote, as_of) DO UPDATE</c>, so racing writers converge on the same row.
+    /// If the Workers host is ever deployed, BOTH schedulers may run — same idempotent write, no
+    /// coordination needed; turn this off at that point for tidiness, not correctness.</para>
+    /// </summary>
+    public bool FxRefreshEnabled { get; init; }
+
+    /// <summary>
     /// Phase-5 Slice 12 (efcoreStranglerWrite): when true, the C# compensation WRITE surface is mapped and live —
     /// <c>POST /compensation/adjustments</c> (createAdjustment) + <c>POST /compensation/adjustments/{id}/approve</c>
     /// (approveAdjustment). The FIRST WRITE port of the compensation domain. Staff-JWT + <c>compensation:create</c> /

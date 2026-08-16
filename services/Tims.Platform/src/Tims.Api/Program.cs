@@ -13,6 +13,7 @@ using Serilog;
 using Serilog.Formatting.Compact;
 using StackExchange.Redis;
 using Tims.Api.AccessReview;
+using Tims.Api.Fx;
 using Tims.Api.AlertMetrics;
 using Tims.Api.Audit;
 using Tims.Api.Authentication;
@@ -559,14 +560,40 @@ try
     builder.Services.AddScoped<IDeiReadRepository, DeiReadRepository>();
     builder.Services.AddScoped<DeiReadUseCase>();
 
-    // Phase-5 Slice 11c: the FX read plane. The global RLS-exempt FxRateDbContext reads the DB-pinned rates the
-    // Workers FxRefreshJob writes; FxRateProvider resolves the latest effective-dated pin (cross-rate via USD,
+    // Phase-5 Slice 11c: the FX read plane. The global RLS-exempt FxRateDbContext reads the DB-pinned rates
+    // the refresh writes; FxRateProvider resolves the latest effective-dated pin (cross-rate via USD,
     // FAIL-SOFT cold-start → null); FxMoneyConverter bridges the reads to the pure convertMoney/sumMoney kernels.
     // Feeds dei.getPayEquity + the five compensation FX reads. Dark unless FxReadsEnabled (deploy-gated cutover).
     builder.Services.AddDbContext<FxRateDbContext>(options => options.UseNpgsql(databaseConnectionString));
     builder.Services.AddScoped<IFxRateProvider, FxRateProvider>();
     builder.Services.AddScoped<FxMoneyConverter>();
     builder.Services.AddScoped<CompensationFxReadUseCase>();
+
+    // The FX REFRESH plane (2026-08-15) — the write half of Slice 11c, hosted HERE because the Workers
+    // host it was designed for was never deployed while FxReadsEnabled went live, freezing every
+    // production pin at as_of 2026-07-31 (see PlatformOptions.FxRefreshEnabled for the full incident).
+    // The gateway + write repo + use case register UNCONDITIONALLY (inert without a resolver, and the
+    // resilience tests drive the same registration); ONLY the hosted loop is flag-gated, mirroring how
+    // routes register DI always but map behind their flag. FxOptions has valid defaults for every knob,
+    // so ValidateOnStart cannot fail a host that never configured an Fx section.
+    builder.Services
+        .AddOptions<FxOptions>()
+        .Bind(builder.Configuration.GetSection(FxOptions.SectionName))
+        .ValidateDataAnnotations()
+        .ValidateOnStart();
+    builder.Services.AddFxRateGateway();
+    builder.Services.AddScoped<IFxRateWriteRepository, FxRateWriteRepository>();
+    builder.Services.AddScoped<RefreshFxRatesUseCase>();
+
+    // Hosted-service registration must happen BEFORE Build(), so this reads the RAW config value the way
+    // the bootstrap block reads ServiceName/OtlpEndpoint — the bound PlatformOptions is not resolvable
+    // yet. isOpenApiDocGeneration deliberately does NOT force this on: the doc-generation escape hatch
+    // exists to inventory ROUTES, and this maps none.
+    if (bool.TryParse(platformSection[nameof(PlatformOptions.FxRefreshEnabled)], out var fxRefreshEnabled)
+        && fxRefreshEnabled)
+    {
+        builder.Services.AddHostedService<FxRefreshHostedService>();
+    }
 
     // Phase-5 Slice 17 (efcoreReadOnly): the cross-org audit-log READ surface. Plain read-only context
     // over the Prisma-OWNED audit_logs (+ context-local users/organizations read entities for the
