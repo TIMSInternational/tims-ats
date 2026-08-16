@@ -546,10 +546,12 @@ async function seedDashboardInvoices(db: Client, orgAId: string, orgBId: string)
 //      (the tenant paths are per-org config lookups) — and the same family as the parity invoices
 //      that sit in attention-items, but a reader of that dashboard deserves the sentence.
 //
-// Also: the usage rows are seeded at now()−2d/−5d, so they age out of the 30-day window at
-// seed+25d and seed+28d — the seeded spend first shrinks (still over budget), then org A's
-// over_budget flips to zero_usage at ~28 days IN BOTH STACKS. The harness stays green while the
-// over-budget branch and the toFixed(2) detail string go dormant. Re-run the seed to re-arm them
+// Also: the usage rows are seeded at now()−5d and now()−2d, so they age out of the 30-day window
+// at seed+25d and seed+28d respectively — the seeded spend first shrinks (still over budget), then
+// org A's over_budget flips to zero_usage at ~28 days IN BOTH STACKS. Worse than dormancy: after
+// the flip the two remaining anomalies (org A and org B, both zero_usage) TIE at 0.5 savings, and a
+// scan-order tie is exactly what the DISTINCT-savings design above exists to avoid — the diff turns
+// order-nondeterministic and can flake RED. Re-run the seed to re-arm the fixture
 // (surfaces.ts caveat 10 carries the operator-facing version of this).
 async function seedDashboardAiAgents(db: Client, orgAId: string, orgBId: string): Promise<void> {
   // Exact slugs, not a LIKE — `_` is a single-character wildcard in LIKE patterns.

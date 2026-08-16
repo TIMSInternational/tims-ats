@@ -50,11 +50,13 @@ recorded. Note key: `platform_dashboard_read_slice23_ai`.
 6. **`'high_cost'` is declared and never produced** — the TS union has a third member no code path
    pushes. Reproduced as the same absence.
 7. **The stub skip is `=== 'stub'`, not `!== 'active'`** — a `'beta'` agent participates.
-8. **No datetime on the wire** — TRAP 6 (NodeIso converter) does not arise on this payload. (An
-   earlier draft said "uniquely in this cluster"; the panel counted — plan-distribution, user-growth,
-   customer-health and upsell are datetime-free too.) TRAPs 3/8 don't arise either:
-   `ai_agents.status` is plain `text`, no native enum in any of the three tables. TRAP 11 still does:
-   the 30-day bound re-kinds through `PlatformDashboardTimestamps.ToNaive`.
+8. **No datetime on the wire** — TRAP 6 (NodeIso converter) does not arise on this payload. Not
+   remotely unique: ELEVEN of the thirteen wires are datetime-free — only recent-activity
+   (`Timestamp`) and revenue-by-customer (`LastActiveAt`) carry one. (A first draft said "uniquely";
+   the panel's correction listed five; the second-pass audit counted all thirteen — a quantifier
+   corrected twice.) TRAPs 3/8 don't arise either: `ai_agents.status` is plain `text`, no native
+   enum in any of the three tables. TRAP 11 still does: the 30-day bound re-kinds through
+   `PlatformDashboardTimestamps.ToNaive`.
 
 ## Parity
 
@@ -103,14 +105,20 @@ before the next. All nine went RED; the failing test is named:
 | M7  | Kernel: `OrderByDescending` → `OrderBy`                                       | RED — 2 tests (tie test + negative-budget order)         |
 | M8  | Kernel: total recomputed as `sorted.Sum(…)`                                   | RED — `The_total_accumulates_in_CONFIG_SCAN_order…`      |
 | M9  | Program.cs: AI mapping moved OUTSIDE the flag guard                           | RED — `Route_Is404_WhenFlagDefaultsOff`                  |
+| M10 | Kernel: stub skip neutralized (`== "stub"` → an unreachable literal)          | RED — `A_stub_agent_is_skipped_entirely…`                |
 
-A tenth mutation followed from the panel's coverage lens: **M11 — window `>=` → `>`** survived every
-prior test (the payload rows sit whole days from the bound), and is now killed by
-`TheUsageWindow_IsInclusiveAtItsExactBoundary`, which drives the repository with `since` equal to the
-exact `created_at` of the newest usage row — deterministic, no wall clock. Applied → RED
-(`[FAIL] TheUsageWindow_IsInclusiveAtItsExactBoundary`) → reverted. The panel's other surviving
-mutation — `JsNow()` → raw `DateTime.UtcNow` at the endpoint — is recorded as NOT pinned: its only
-effect is sub-millisecond ticks in the window bound, unobservable on a `timestamp(3)` column.
+An eleventh mutation followed from the panel's coverage lens: **M11 — window `>=` → `>`** survived
+every prior test (the payload rows sit whole days from the bound), and is now killed by
+`TheUsageWindow_IsInclusiveAtItsExactBoundary`, which drives the real repository with `since` equal
+to the exact `created_at` of **Alpha@OrgA's newest usage row** (seed −2d — not the fixture's overall
+newest, which is Beta@OrgA at −1d; a first draft of this paragraph dropped the qualifier) —
+deterministic, no wall clock. Applied → RED (`[FAIL] TheUsageWindow_IsInclusiveAtItsExactBoundary`)
+→ reverted; independently re-confirmed by the second-pass audit in a clean worktree. The panel's
+other surviving mutation — `JsNow()` → raw `DateTime.UtcNow` at the endpoint — is recorded as NOT
+pinned: its only effect is sub-millisecond ticks in the window bound, unobservable on a
+`timestamp(3)` column. (An earlier version of this section listed nine table rows and called this
+"a tenth mutation" while labeling it M11 — the stub-skip mutation, M10, had silently dropped out of
+the table; the second-pass audit caught the gap and the row is restored above.)
 
 M6 and M8 are worth a sentence each: both survived the ORIGINAL test set and were only killable
 after two tests were added for exactly them (the fixture's values format identically under F2, and
@@ -146,6 +154,15 @@ dispositions:
   step-4 FE wrapper does not exist; step 7 is open regardless). **All three corrected in this doc
   and REMAINING-WORK.md.** Every other audited claim — counts, pins, line refs, JS/.NET semantics —
   verified true, mostly by execution.
+
+**And a SECOND PASS then audited the fixes themselves** (a review pass creates new unreviewed text),
+finding 2 MED + 3 LOW in them: the decay text's "stays green throughout" was FALSE — past ~28d the
+two surviving anomalies tie at 0.5 savings and the diff turns order-nondeterministic (can flake
+RED); the "corrected" datetime count was still wrong (eleven of thirteen wires are datetime-free,
+not five); the M11 paragraph misnamed its row; the mutation table had silently dropped M10; and
+seed.ts paired the decay offsets in crossed order. All five corrected in place, each leaving a
+trace. The second pass also independently re-verified the M11 kill in a clean worktree and the
+fixture/grant/guard claims against the prod baseline.
 
 ## What is deliberately NOT here
 

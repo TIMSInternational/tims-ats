@@ -6,9 +6,11 @@ namespace Tims.Application.PlatformDashboard;
 // ai_agent_usage_logs) and classifies each ENABLED agent+org pair into zero or more anomalies.
 //
 // NOTE this payload carries NO datetime at all — every field is a string, a double or a count — so
-// TRAP 6 (NodeIso DateTime serialisation) does not arise on this wire. (Not unique in the cluster:
-// plan-distribution, user-growth, customer-health and upsell are datetime-free too — the panel
-// counted; only the repository row layer here carries a DateTime, for the window bound.)
+// TRAP 6 (NodeIso DateTime serialisation) does not arise on this wire. Not remotely unique: ELEVEN
+// of the cluster's thirteen wires are datetime-free — only recent-activity (Timestamp) and
+// revenue-by-customer (LastActiveAt) carry one. (A first draft said "uniquely"; a second said five;
+// the second-pass audit counted all thirteen. Only the repository row layer here carries a
+// DateTime, for the window bound.)
 
 /// <summary>
 /// One anomaly row. <c>Type</c> is <c>"zero_usage" | "over_budget"</c> on the wire — the TS union

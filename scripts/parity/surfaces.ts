@@ -654,9 +654,12 @@ export const SURFACES: Record<string, Surface> = {
   //      DECAYS: the fixture's usage rows sit at seed-time −5d and −2d, so they age out of the
   //      30-day window at seed+25d and seed+28d — the seeded spend drops 15.5 → 12 at ~25 days
   //      (still over the 10 budget, smaller overage) and org A flips over_budget → zero_usage at
-  //      ~28 days, IN BOTH STACKS. The run stays green throughout while the over-budget branch and
-  //      its toFixed(2) detail string go dormant. If the last seed run is stale, re-seed before
-  //      reading this endpoint's green as covering both branches.
+  //      ~28 days, IN BOTH STACKS. Past that flip the harness's own two anomalies are BOTH
+  //      zero_usage at 0.5 savings — a TIE, resolved by config scan order the two stacks need not
+  //      share, with no normalize — so the run does not merely go dormant on the over-budget branch
+  //      and the toFixed(2) detail string: it can flake RED for a non-defect reason (the second-pass
+  //      audit corrected the first draft, which claimed it "stays green throughout"). Either way:
+  //      if the last seed run is stale, re-seed before reading this endpoint's result.
   dashboard: {
     key: 'dashboard',
     flag: 'Platform__PlatformDashboardReadEnabled',
