@@ -296,3 +296,60 @@ These three are the only registered endpoints that can legitimately answer **503
 missing `fx_rates` pin for any currency in ANY tenant's invoices. Today's database satisfies it — but the
 refresh job is not deployed, so the pin set is frozen and the first tenant invoiced in a new currency arms
 it. The check to run before believing a red run is in caveat 9.
+
+## Observed against production, 2026-08-15 — read-only, endpoints still dark
+
+The endpoints cannot be called (the flag is off, and flipping it is Federico's), so this is not a
+substitute for `verify dashboard`. What it IS: the exact queries the C# repository issues, run read-only
+against the production database, with both stacks' FX arithmetic computed from the same rows. It turns
+"they will diverge" into a measured number.
+
+### `getDashboardKpis`, computed from production data
+
+`totalOrgs` 15 · `totalOrgsChange` 0 · `totalUsers` 32 · `totalUsersChange` 0 · `mrr` 12990 ·
+`mrrPrevMonth` 12990 · `activeTrials` 2 · `trialsExpiringThisWeek` 0 · `overdueInvoices` 3.
+
+Every one of those is **identical on both stacks** — they are counts and `PLAN_PRICES` sums, no FX. The
+divergence is confined to two keys:
+
+| | C# | TS |
+| --- | --- | --- |
+| `outstandingAmount` | **3826.61** | **3889** |
+| `outstandingRatesAsOf` | `2026-07-31` | `2026-08-14` |
+
+**62.39 USD apart, 1.63% of the total.**
+
+### Blast radius: 2 of 15 organizations
+
+Only `Grupo Nutresa` (5,300,000 COP) and `AgroVerde S.A.` (2,950,000 COP) diverge on
+`getChurnRisk.overdueAmount` and `getRevenueByCustomer.outstandingAmount`. `Rappi`'s invoice is USD, so
+it is byte-identical on both stacks, and the other twelve organizations hold no open invoice at all.
+
+The gap surfaces as PROSE as well as a number, exactly as §"A THIRD locale dependency" predicted:
+
+```
+C#: "1 overdue invoice (USD 1,655.92)"
+TS: "1 overdue invoice (USD 1,696)"
+```
+
+### The finding that inverts the obvious fix
+
+There are **two independent divergences**, and they run in opposite directions:
+
+| rate for COP→USD, today | value | property |
+| --- | --- | --- |
+| C# — the pin, inverted | `0.000312438093` | precise, but **stale** (`as_of 2026-07-31`) |
+| TS — Frankfurter, quoted directly | `0.000320000000` | fresh, but **two significant figures** |
+| Frankfurter `USD→COP` inverted | `0.000320139325` | fresh **and** precise — **neither stack uses it** |
+
+Decomposing the 62.39 USD: **≈ 63.54 USD is the pin's staleness**, and **≈ −1.15 USD is TS being LESS
+precise**, because Frankfurter quotes a small-magnitude pair at two significant figures while the
+large-magnitude reverse quote carries ten.
+
+**So "make C# call Frankfurter live" — the obvious unification — would make it fresher and LESS accurate
+for COP.** The C# architecture is already the better one: store `base = USD`, the direction that carries
+precision, and cross-rate. What is missing is not the design but the DEPLOYMENT — `FxRefreshJob` is not
+running, which is the entire source of the 63.54.
+
+That reframes the follow-up. It is not "unify the FX source"; it is "deploy the refresh job, then decide
+whether TS should read the pin too."
