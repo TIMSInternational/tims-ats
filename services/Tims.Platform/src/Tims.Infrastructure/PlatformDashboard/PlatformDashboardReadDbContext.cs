@@ -19,15 +19,19 @@ namespace Tims.Infrastructure.PlatformDashboard;
 /// empty the platform console rather than secure it — the same disposition
 /// <see cref="Tims.Infrastructure.Audit.AuditReadDbContext"/> and the invitations context document.</para>
 ///
-/// <para><b>Ledger: NO table moves and NO array changes, in PR 1 or PR 2.</b> Every table here was
-/// already registered — <c>users</c>, <c>invoices</c>, <c>vacancies</c>, <c>feature_flags</c> and
-/// <c>platform_invitations</c> in <c>efcoreReadOnly[]</c>; <c>organizations</c> and <c>subscriptions</c>
-/// in <c>efcoreStranglerWrite[]</c> (slices 20/21 took write ownership of those two; mapping them
-/// read-only here adds no writer and moves nothing). Rationale notes keyed
-/// <c>platform_dashboard_read_slice23</c> and <c>platform_dashboard_read_slice23_pr2</c> record this,
-/// because "already listed" and "listed for this reason" are different records. Note the ledger check
-/// only fails a <c>ToTable</c> present in NO list, so these four additions would have passed silently —
-/// the notes are a record, not a gate.</para>
+/// <para><b>Ledger: NO table moves and NO array changes in PR 1 or PR 2 — but the FINAL read broke that
+/// streak.</b> Through PR 3 every table here was already registered — <c>users</c>, <c>invoices</c>,
+/// <c>vacancies</c>, <c>feature_flags</c> and <c>platform_invitations</c> in <c>efcoreReadOnly[]</c>;
+/// <c>organizations</c> and <c>subscriptions</c> in <c>efcoreStranglerWrite[]</c> (slices 20/21 took
+/// write ownership of those two; mapping them read-only here adds no writer and moves nothing).
+/// Rationale notes keyed <c>platform_dashboard_read_slice23</c> and
+/// <c>platform_dashboard_read_slice23_pr2</c> record this, because "already listed" and "listed for this
+/// reason" are different records. Note the ledger check only fails a <c>ToTable</c> present in NO list,
+/// so those four additions would have passed silently — the notes are a record, not a gate.
+/// <c>getAiCostAnomalies</c> then mapped <c>ai_agents</c>, <c>ai_agent_org_configs</c> and
+/// <c>ai_agent_usage_logs</c>, all three genuinely unmapped by any EF context until then, so all three
+/// are NEW <c>efcoreReadOnly[]</c> entries and THAT change is enforced by the check, not just recorded —
+/// see the <c>platform_dashboard_read_slice23_ai</c> note. Still SELECTs only; still no writer.</para>
 /// </summary>
 public sealed class PlatformDashboardReadDbContext(DbContextOptions<PlatformDashboardReadDbContext> options)
     : DbContext(options)
@@ -45,6 +49,12 @@ public sealed class PlatformDashboardReadDbContext(DbContextOptions<PlatformDash
     public DbSet<DashboardFeatureFlagEntity> FeatureFlags => Set<DashboardFeatureFlagEntity>();
 
     public DbSet<DashboardVacancyEntity> Vacancies => Set<DashboardVacancyEntity>();
+
+    public DbSet<DashboardAiAgentEntity> AiAgents => Set<DashboardAiAgentEntity>();
+
+    public DbSet<DashboardAiAgentOrgConfigEntity> AiAgentOrgConfigs => Set<DashboardAiAgentOrgConfigEntity>();
+
+    public DbSet<DashboardAiAgentUsageLogEntity> AiAgentUsageLogs => Set<DashboardAiAgentUsageLogEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -137,6 +147,44 @@ public sealed class PlatformDashboardReadDbContext(DbContextOptions<PlatformDash
             entity.HasKey(v => v.Id);
             entity.Property(v => v.Id).HasColumnName("id");
             entity.Property(v => v.OrganizationId).HasColumnName("organization_id");
+        });
+
+        // The three getAiCostAnomalies tables — the first (and only) NEW efcoreReadOnly[] entries this
+        // context has required. All-text/scalar columns; no native enum anywhere in the three, so this
+        // is the one corner of the context that would survive without the data source.
+        modelBuilder.Entity<DashboardAiAgentEntity>(entity =>
+        {
+            entity.ToTable("ai_agents");
+            entity.HasKey(a => a.Id);
+            entity.Property(a => a.Id).HasColumnName("id");
+            entity.Property(a => a.Slug).HasColumnName("slug");
+            entity.Property(a => a.Name).HasColumnName("name");
+            entity.Property(a => a.CostPerCall).HasColumnName("cost_per_call");
+            entity.Property(a => a.Status).HasColumnName("status");
+        });
+
+        modelBuilder.Entity<DashboardAiAgentOrgConfigEntity>(entity =>
+        {
+            entity.ToTable("ai_agent_org_configs");
+            entity.HasKey(c => c.Id);
+            entity.Property(c => c.Id).HasColumnName("id");
+            entity.Property(c => c.AgentId).HasColumnName("agent_id");
+            entity.Property(c => c.OrganizationId).HasColumnName("organization_id");
+            entity.Property(c => c.Enabled).HasColumnName("enabled");
+            entity.Property(c => c.MonthlyBudget).HasColumnName("monthly_budget");
+        });
+
+        modelBuilder.Entity<DashboardAiAgentUsageLogEntity>(entity =>
+        {
+            entity.ToTable("ai_agent_usage_logs");
+            entity.HasKey(l => l.Id);
+            entity.Property(l => l.Id).HasColumnName("id");
+            entity.Property(l => l.AgentId).HasColumnName("agent_id");
+            entity.Property(l => l.OrganizationId).HasColumnName("organization_id");
+            entity.Property(l => l.CostUsd).HasColumnName("cost_usd");
+            // `timestamp without time zone`, like every datetime this context maps — which also makes
+            // the 30-day window bound bindable at all (the ToNaive re-kind; see the organizations map).
+            entity.Property(l => l.CreatedAt).HasColumnName("created_at").HasColumnType("timestamp");
         });
 
         // UserGrowthCountRow and ActivePlanMonthCountRow are deliberately NOT in the model — they are

@@ -313,8 +313,9 @@ describe-service`; only the frontend Vercel flag was missing.)
     `getRecentActivity`, dark, no table moved (users `efcoreReadOnly`; organizations/subscriptions
     `efcoreStranglerWrite` via slices 20/21 — read-only maps here). Registered as `SURFACES['dashboard']`
     in the same PR with real `tsProcedure` refs; the #195 gap did not grow (allowlist unchanged at 84;
-    deployed operations 138 → 141, read registrations 27 → 30). **#81 stays OPEN, and 10 of its 13 reads
-    are NOT ported**, in three groups: `getDashboardKpis`/`getRevenueByCustomer`/`getChurnRisk` call
+    deployed operations 138 → 141, read registrations 27 → 30). **At PR 1, 10 of #81's 13 reads were
+    NOT yet ported** (all 13 have since shipped — see the PR-2/3/final bullet below), in three groups:
+    `getDashboardKpis`/`getRevenueByCustomer`/`getChurnRisk` call
     `sumMoney` → live Frankfurter FX and port LAST (the tier-3 panel corrected this list — an earlier
     draft had `getCustomerHealth` here and `getChurnRisk` in the FX-free group; counting the call sites
     says otherwise); `getAiCostAnomalies` needs EF maps + ledger entries for THREE unmapped tables
@@ -328,15 +329,24 @@ year:'2-digit'` label format — `getMrrForecast`, `getCustomerHealth`, `getUpse
     `docs/architecture/csharp-migration/phase-5-slice-23-platform-dashboard-read.md`.
   - **Slice 23 PR 2 of 3 COMPLETED the FX-free tier** — `getAttentionItems`, `getMrrTrend`,
     `getMrrForecast`, `getCustomerHealth`, `getUpsellOpportunities` and `search`, dark under the SAME
-    `Platform:PlatformDashboardReadEnabled` flag, which after PR 3 covers **TWELVE endpoints** (an
+    `Platform:PlatformDashboardReadEnabled` flag, which now covers **all THIRTEEN endpoints** (an
     all-or-nothing flip, deliberately). Still no ledger move: `invoices`, `platform_invitations`, `feature_flags` and
     `vacancies` are newly `ToTable`-mapped but were all already in `efcoreReadOnly[]` — note that CI would
     not have caught it either way, since the checker only fails a `ToTable` listed in NO array.
     `SURFACES['dashboard']` grows 3 → 9 endpoints (globalScope pin 15 → 21), then 9 → 12 in PR 3
     (globalScope 21 → 24). **PR 3 SHIPPED 2026-08-15** — `getDashboardKpis`, `getRevenueByCustomer` and
     `getChurnRisk`, the three `sumMoney` callers, registered C#-ONLY because the two stacks resolve FX from
-    different providers and cannot be payload-compared. **#81 stays OPEN with ONE read left**:
-    `getAiCostAnomalies`, still the only one needing NEW ledger entries. Three findings worth carrying forward: (a) the
+    different providers and cannot be payload-compared. **The FINAL read, `getAiCostAnomalies`, SHIPPED
+    2026-08-16** — all THIRTEEN of #81's reads are now dark under the one flag (thirteen endpoints,
+    `SURFACES['dashboard']` 12 → 13, globalScope pin 24 → 25), and it was the only one whose three
+    tables (`ai_agents`, `ai_agent_org_configs`, `ai_agent_usage_logs`) needed NEW `efcoreReadOnly[]`
+    entries — enforced ones, since nothing had ever `ToTable`-mapped them. Unlike the FX three it keeps a
+    real `tsProcedure` (both stacks read the same tables; no rate provider), and it forced the repo's
+    first JS-faithful `toFixed(2)` port — ECMAScript rounds the exact-expansion tie UP where .NET "F2"
+    rounds to EVEN (`(0.125).toFixed(2)` is "0.13" vs "0.12"), pinned in
+    `PlatformDashboardAiUseCaseTests` against Node-verified values. **#81 is now CODE-COMPLETE at steps
+    1–4; what keeps it open is step 5**: `verify dashboard` has never run (#211), and the flag flip is
+    Federico's. Three findings worth carrying forward from PR 2/3: (a) the
     dashboard has a THIRD ICU/locale dependency, and it is environmental rather than versioned —
     `getAttentionItems` bakes `Number.toLocaleString()` with NO locale argument into an invoice
     description, so the deployed Node's default locale is part of the wire contract; (b) `getMrrTrend`

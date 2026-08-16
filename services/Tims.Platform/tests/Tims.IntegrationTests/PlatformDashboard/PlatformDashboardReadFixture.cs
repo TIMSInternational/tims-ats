@@ -159,6 +159,27 @@ public sealed class PlatformDashboardReadFixture : IAsyncLifetime
     /// <summary>The org-less stale invitation's invitee address.</summary>
     public const string OrphanInvitationEmail = "orphan-invite@nowhere.test";
 
+    // ── getAiCostAnomalies: agents, configs, usage (the FINAL read) ──────────────────────────────────
+    // Shaped so all four kernel outcomes occur at once, with DISTINCT potentialSavings so the sort has
+    // no tie: over_budget 50.25 (Alpha@A) > over_budget 5 (Gamma@G) > zero_usage 2 (Gamma@G) >
+    // zero_usage 0.5 (Alpha@B). Gamma@G produces BOTH anomaly types from one config (no usage + a
+    // NEGATIVE budget), which is what pins the two branches as independent `if`s rather than an
+    // `else if`. Decoys that must produce NOTHING: a stub agent's config (status skip), a DISABLED
+    // config with real in-window usage (the `where enabled` filter), a budget of exactly 0 with real
+    // spend (JS falsiness — 0 is falsy, so a zero budget can never be exceeded), a healthy under-budget
+    // config, out-of-window usage rows (the 30-day bound), and an in-window usage row for a pair with
+    // NO config at all (the kernel joins config→usage, never the reverse).
+    public static readonly Guid AgentAlpha = Guid.Parse("aa000000-0000-0000-0000-000000000001"); // active, 0.05/call
+    public static readonly Guid AgentStub = Guid.Parse("aa000000-0000-0000-0000-000000000002");  // status 'stub'
+    public static readonly Guid AgentBeta = Guid.Parse("aa000000-0000-0000-0000-000000000003");  // active, 0.01/call
+    public static readonly Guid AgentGamma = Guid.Parse("aa000000-0000-0000-0000-000000000004"); // 'beta' — non-stub, participates
+    public static readonly Guid AgentDelta = Guid.Parse("aa000000-0000-0000-0000-000000000005"); // active, 0.15/call
+
+    /// <summary>Alpha@OrgA's in-window spend: 100.25 + 50 = 150.25 against a 100 budget — all three
+    /// values exactly representable in binary, so the overage (50.25) and the detail string
+    /// ("$150.25 spent vs $100.00 budget", verified against Node) are equalities, not tolerances.</summary>
+    public const double AlphaOrgASpend = 150.25;
+
     /// <summary>First instant (UTC) of the month that was current when the fixture seeded.</summary>
     public DateTime MonthStartUtc { get; private set; }
 
@@ -203,7 +224,7 @@ public sealed class PlatformDashboardReadFixture : IAsyncLifetime
             await role.ExecuteNonQueryAsync();
         }
 
-        foreach (var sql in new[] { SchemaSql, BuildSeedSql(MonthStartUtc, SeedNowUtc), BuildInsightSeedSql(MonthStartUtc, SeedNowUtc) })
+        foreach (var sql in new[] { SchemaSql, BuildSeedSql(MonthStartUtc, SeedNowUtc), BuildInsightSeedSql(MonthStartUtc, SeedNowUtc), BuildAiSeedSql(SeedNowUtc) })
         {
             await using var command = connection.CreateCommand();
             command.CommandText = sql;
@@ -399,6 +420,69 @@ public sealed class PlatformDashboardReadFixture : IAsyncLifetime
         -- place. (It was omitted in the first draft of this fixture.)
         CREATE UNIQUE INDEX ux_fx_rates_base_quote_asof ON fx_rates (base_currency, quote_currency, as_of);
         GRANT SELECT ON fx_rates TO app_tenant;
+
+        -- getAiCostAnomalies (the final read): the three ai-agent tables, full prod column sets
+        -- (packages/db/prisma/schema/ai-agent.prisma) even where the context maps a subset. All plain
+        -- text/scalar columns — NO native enum anywhere, so unlike every other table family here these
+        -- three would materialise without EnableUnmappedTypes; declaring them faithfully documents that
+        -- rather than tests it.
+        CREATE TABLE ai_agents (
+            id uuid PRIMARY KEY,
+            slug text NOT NULL UNIQUE,
+            name text NOT NULL,
+            description text NOT NULL DEFAULT '',
+            category text NOT NULL DEFAULT 'general',
+            model text NOT NULL DEFAULT 'haiku',
+            batch_eligible boolean NOT NULL DEFAULT false,
+            cache_ttl_seconds integer NOT NULL DEFAULT 0,
+            cost_per_call double precision NOT NULL DEFAULT 0,
+            status text NOT NULL DEFAULT 'stub',
+            created_at timestamp(3) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+            updated_at timestamp(3) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+        );
+        CREATE TABLE ai_agent_org_configs (
+            id uuid PRIMARY KEY,
+            agent_id uuid NOT NULL REFERENCES ai_agents (id) ON DELETE CASCADE,
+            organization_id uuid NOT NULL REFERENCES organizations (id) ON DELETE CASCADE,
+            enabled boolean NOT NULL DEFAULT true,
+            monthly_budget double precision NULL,
+            addon_monthly_fee_usd double precision NULL,
+            billable_usd_per_minute double precision NULL,
+            ai_interview_default_max_minutes integer NULL,
+            ai_interview_max_minutes_by_type jsonb NULL,
+            created_at timestamp(3) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+            updated_at timestamp(3) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+            UNIQUE (agent_id, organization_id)
+        );
+        CREATE TABLE ai_agent_usage_logs (
+            id uuid PRIMARY KEY,
+            agent_id uuid NOT NULL REFERENCES ai_agents (id) ON DELETE CASCADE,
+            organization_id uuid NOT NULL,
+            user_id uuid NULL,
+            input_tokens integer NOT NULL DEFAULT 0,
+            output_tokens integer NOT NULL DEFAULT 0,
+            cost_usd double precision NOT NULL DEFAULT 0,
+            billable_usd double precision NOT NULL DEFAULT 0,
+            latency_ms integer NOT NULL DEFAULT 0,
+            cached boolean NOT NULL DEFAULT false,
+            created_at timestamp(3) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+        );
+
+        -- RLS exactly as production splits it: ai_agents is one of the three GLOBAL RLS-EXEMPT catalogs
+        -- (with permissions and platform_owner_emails) — a tenant_isolation policy on it would hide the
+        -- shared agent definitions from every tenant, so, like fx_rates above, declaring RLS here would
+        -- test a table production does not have. The TWO ORG-SCOPED tables get the standard fail-closed
+        -- policy, and this context still reads them cross-org — same privileged-connection property the
+        -- subscriptions comment at the top of this schema establishes.
+        GRANT SELECT ON ai_agents, ai_agent_org_configs, ai_agent_usage_logs TO app_tenant;
+        ALTER TABLE ai_agent_org_configs ENABLE ROW LEVEL SECURITY;
+        ALTER TABLE ai_agent_org_configs FORCE ROW LEVEL SECURITY;
+        CREATE POLICY tenant_isolation ON ai_agent_org_configs
+            USING (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid);
+        ALTER TABLE ai_agent_usage_logs ENABLE ROW LEVEL SECURITY;
+        ALTER TABLE ai_agent_usage_logs FORCE ROW LEVEL SECURITY;
+        CREATE POLICY tenant_isolation ON ai_agent_usage_logs
+            USING (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid);
         """;
 
     private static string BuildSeedSql(DateTime m0, DateTime seedNow)
@@ -576,6 +660,57 @@ public sealed class PlatformDashboardReadFixture : IAsyncLifetime
 
         INSERT INTO vacancies (id, organization_id, title, status) VALUES
           {vacancies};
+        """;
+    }
+
+    /// <summary>
+    /// The getAiCostAnomalies rows — see the constants block for the outcome each is shaped to force.
+    /// Every usage timestamp hangs off <see cref="SeedNowUtc"/> at whole-day offsets (the 30-day window
+    /// is a rolling millisecond subtraction from the REQUEST instant, so, as with the insight rows, the
+    /// seconds between seeding and the request only push in-window rows deeper inside and out-of-window
+    /// rows further outside — nothing sits on the boundary).
+    ///
+    /// <para>NONE of these rows is visible to any other endpoint in the cluster: the three tables are
+    /// read by getAiCostAnomalies alone, so every PR-1/PR-2/PR-3 expectation is untouched.</para>
+    /// </summary>
+    private static string BuildAiSeedSql(DateTime seedNow)
+    {
+        return $"""
+        INSERT INTO ai_agents (id, slug, name, cost_per_call, status) VALUES
+          ('{AgentAlpha}', 'cv-parser',      'CV Parser',      0.05, 'active'),
+          ('{AgentStub}',  'stub-agent',     'Stub Agent',     0.30, 'stub'),
+          ('{AgentBeta}',  'job-matcher',    'Job Matcher',    0.01, 'active'),
+          ('{AgentGamma}', 'salary-advisor', 'Salary Advisor', 0.2,  'beta'),
+          ('{AgentDelta}', 'dei-analyst',    'DEI Analyst',    0.15, 'active');
+
+        -- One config per outcome; (agent_id, organization_id) is UNIQUE so each pair appears once.
+        INSERT INTO ai_agent_org_configs (id, agent_id, organization_id, enabled, monthly_budget) VALUES
+          ('ab000000-0000-0000-0000-000000000001', '{AgentAlpha}', '{OrgA}', true,  100),   -- over_budget: 150.25 spent
+          ('ab000000-0000-0000-0000-000000000002', '{AgentAlpha}', '{OrgB}', true,  NULL),  -- zero_usage, NULL budget on the wire
+          ('ab000000-0000-0000-0000-000000000003', '{AgentStub}',  '{OrgA}', true,  50),    -- status 'stub' → skipped entirely
+          ('ab000000-0000-0000-0000-000000000004', '{AgentBeta}',  '{OrgA}', false, 1),     -- DISABLED → skipped despite 999.5 in-window spend
+          ('ab000000-0000-0000-0000-000000000005', '{AgentBeta}',  '{OrgB}', true,  500),   -- healthy: usage under budget → no anomaly
+          ('ab000000-0000-0000-0000-000000000006', '{AgentGamma}', '{OrgG}', true,  -5),    -- NEGATIVE budget + no usage → BOTH anomalies
+          ('ab000000-0000-0000-0000-000000000007', '{AgentDelta}', '{OrgD}', true,  0);     -- ZERO budget (JS-falsy) → no over_budget despite 25.5 spend
+
+        INSERT INTO ai_agent_usage_logs (id, agent_id, organization_id, cost_usd, created_at) VALUES
+          -- Alpha@OrgA in-window: 100.25 + 50 = 150.25 over the 100 budget…
+          ('ac000000-0000-0000-0000-000000000001', '{AgentAlpha}', '{OrgA}', 100.25, '{Ts(seedNow.AddDays(-2))}'),
+          ('ac000000-0000-0000-0000-000000000002', '{AgentAlpha}', '{OrgA}', 50,     '{Ts(seedNow.AddDays(-5))}'),
+          -- …plus an OUT-of-window decoy: counted, the spend becomes 550.25 and the overage assertion reds.
+          ('ac000000-0000-0000-0000-000000000003', '{AgentAlpha}', '{OrgA}', 400,    '{Ts(seedNow.AddDays(-31))}'),
+          -- Alpha@OrgB's ONLY usage is out-of-window — in-window calls stay 0, so zero_usage must fire;
+          -- a broken window filter turns calls to 1 and silently deletes that anomaly.
+          ('ac000000-0000-0000-0000-000000000004', '{AgentAlpha}', '{OrgB}', 75,     '{Ts(seedNow.AddDays(-31))}'),
+          -- The DISABLED config's in-window spend — must never surface.
+          ('ac000000-0000-0000-0000-000000000005', '{AgentBeta}',  '{OrgA}', 999.5,  '{Ts(seedNow.AddDays(-1))}'),
+          -- Healthy: 10.5 against a 500 budget.
+          ('ac000000-0000-0000-0000-000000000006', '{AgentBeta}',  '{OrgB}', 10.5,   '{Ts(seedNow.AddDays(-3))}'),
+          -- The zero-budget config's spend — over nothing, because 0 is falsy.
+          ('ac000000-0000-0000-0000-000000000007', '{AgentDelta}', '{OrgD}', 25.5,   '{Ts(seedNow.AddDays(-4))}'),
+          -- In-window usage for a pair with NO config row at all — fetched by the group-by, ignored by
+          -- the kernel (config drives the scan, not usage).
+          ('ac000000-0000-0000-0000-000000000008', '{AgentGamma}', '{OrgH}', 88,     '{Ts(seedNow.AddDays(-2))}');
         """;
     }
 }

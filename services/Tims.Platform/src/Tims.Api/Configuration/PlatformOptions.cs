@@ -557,8 +557,8 @@ public sealed class PlatformOptions
     public bool PlatformInvitationsReadEnabled { get; init; }
 
     /// <summary>
-    /// Phase-5 slice 23 (issue #81, PRs 1 and 2 of 3) — the platform-owner DASHBOARD READ surface: the C#
-    /// port of the NINE FX-free procedures of <c>routers/platform/dashboard*.ts</c>.
+    /// Phase-5 slice 23 (issue #81) — the platform-owner DASHBOARD READ surface: the C# port of ALL
+    /// THIRTEEN procedures of <c>routers/platform/dashboard*.ts</c>, shipped in four steps.
     ///   • PR 1: <c>getPlanDistribution</c>, <c>getUserGrowth</c>, <c>getRecentActivity</c>.
     ///   • PR 2: <c>getAttentionItems</c>, <c>getMrrTrend</c>, <c>getMrrForecast</c>,
     ///     <c>getCustomerHealth</c>, <c>getUpsellOpportunities</c>, <c>search</c>.
@@ -568,19 +568,21 @@ public sealed class PlatformOptions
     /// BYPASSRLS regardless). Read-only over Prisma-owned tables: this slice adds no writer and moves
     /// nothing between the ownership ledger's arrays.
     ///
-    /// ONE FLAG FOR ALL NINE, deliberately: they are the same surface, the same gate and the same console
-    /// page, and a canary that lit up three of nine dashboard panels would be harder to judge than one
-    /// that lights the whole FX-free tier. The cost is that the flip is all-or-nothing across nine reads.
+    /// ONE FLAG FOR ALL THIRTEEN, deliberately: they are the same surface, the same gate and the same
+    /// console page, and a canary that lit up three of thirteen dashboard panels would be harder to judge
+    /// than one that lights the whole cluster. The cost is that the flip is all-or-nothing.
     ///
-    /// THAT LEAVES FOUR OF THE CLUSTER'S THIRTEEN READS (nine live in <c>dashboard.ts</c>, four in its
-    /// churn/forecast/upsell siblings, all merged flat into the platform router), out for two reasons:
+    /// The FOUR reads that shipped after PRs 1-2 (nine live in <c>dashboard.ts</c>, four in its
+    /// churn/forecast/upsell siblings, all merged flat into the platform router), completing the cluster:
     ///   • <c>getDashboardKpis</c> + <c>getRevenueByCustomer</c> + <c>getChurnRisk</c> — call
-    ///     <c>sumMoney</c> → LIVE Frankfurter FX rates (the churn one from <c>dashboard-churn.ts:55</c>);
-    ///     they need fx conversion machinery and a live-rate parity strategy, and port LAST in PR 3.
-    ///   • <c>getAiCostAnomalies</c> — needs EF maps and ledger entries for THREE genuinely unmapped
+    ///     <c>sumMoney</c> → FX rate resolution (the churn one from <c>dashboard-churn.ts:55</c>); they
+    ///     needed fx conversion machinery and a live-rate parity strategy, and shipped in PR 3
+    ///     (<c>PlatformDashboardFxReadEndpoints</c>).
+    ///   • <c>getAiCostAnomalies</c> — needed EF maps and NEW ledger entries for THREE genuinely unmapped
     ///     tables: <c>ai_agent_org_configs</c>, <c>ai_agent_usage_logs</c>, and <c>ai_agents</c> (its
     ///     <c>agent</c> join). An earlier version counted two and grouped <c>getUpsellOpportunities</c>
-    ///     here too; that procedure reads only already-mapped tables and shipped in PR 2.
+    ///     here too; that procedure reads only already-mapped tables and shipped in PR 2. Shipped last
+    ///     (<c>PlatformDashboardAiReadEndpoints</c>) — with it, ALL THIRTEEN reads are under this flag.
     ///
     /// THREE ICU / LOCALE HAZARDS ARE LIVE ON THIS SURFACE, all pinned in
     /// <c>contracts/dashboard-fixtures/dashboard-kernels.json</c> rather than trusted:

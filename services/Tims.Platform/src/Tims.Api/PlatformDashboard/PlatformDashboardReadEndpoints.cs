@@ -34,11 +34,11 @@ namespace Tims.Api.PlatformDashboard;
 /// they needed the fx conversion machinery plus a live-rate parity strategy, and SHIPPED IN PR 3 as
 /// <see cref="PlatformDashboardFxReadEndpoints"/> — a sibling file under this SAME flag, not a separate
 /// cutover. An earlier version of this list swapped <c>getChurnRisk</c> with <c>getCustomerHealth</c> —
-/// the panel counted the call sites. <c>getAiCostAnomalies</c> needs EF maps + ledger entries for THREE
-/// genuinely unmapped tables (<c>ai_agent_org_configs</c>, <c>ai_agent_usage_logs</c>, and
+/// the panel counted the call sites. <c>getAiCostAnomalies</c> needed EF maps + NEW ledger entries for
+/// THREE genuinely unmapped tables (<c>ai_agent_org_configs</c>, <c>ai_agent_usage_logs</c>, and
 /// <c>ai_agents</c> via its <c>agent</c> join — an earlier version said two and also grouped
-/// <c>getUpsellOpportunities</c> here, which reads only already-mapped tables) and is the one read of the
-/// thirteen still unported.</para>
+/// <c>getUpsellOpportunities</c> here, which reads only already-mapped tables) and shipped LAST, as
+/// <see cref="PlatformDashboardAiReadEndpoints"/> — with it all thirteen reads are ported.</para>
 ///
 /// <para><b>No caching, faithfully.</b> Unlike <c>getDashboardKpis</c> (45s cache), NONE of these nine TS
 /// procedures touches <c>cacheGet</c>/<c>cacheSet</c> — every call hits the database. Adding a cache here

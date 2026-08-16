@@ -196,10 +196,11 @@ describe('SURFACES', () => {
     // assertion above — which is the proof that the guard was worked with rather than weakened.
     //
     // The count sits NEXT TO its enumeration on purpose: 2 (ninebox) + 2 (organization) + 2 (audit-log)
-    // + 3 (access-review) + 3 (invitation) + 12 (dashboard: 3 from PR 1, 6 from PR 2, 3 from PR 3)
-    // = 24. Every past drift here was a number written in prose while the list lived elsewhere.
-    expect(seen).toBe(2 + 2 + 2 + 3 + 3 + 12);
-    expect(seen).toBe(24);
+    // + 3 (access-review) + 3 (invitation) + 13 (dashboard: 3 from PR 1, 6 from PR 2, 3 from PR 3,
+    // plus ai-cost-anomalies) = 25. Every past drift here was a number written in prose while the list
+    // lived elsewhere.
+    expect(seen).toBe(2 + 2 + 2 + 3 + 3 + 13);
+    expect(seen).toBe(25);
   });
 
   // ── #195 AC1: the monitoring read surface (2026-08-10) ───────────────────────────────────────
@@ -311,15 +312,16 @@ describe('SURFACES', () => {
     }
   });
 
-  it('dashboard is registered with its flag and all TWELVE deployed reads', () => {
+  it('dashboard is registered with its flag and all THIRTEEN deployed reads', () => {
     const s = SURFACES.dashboard;
 
     // The flag string is what `checks/preflight.ts` and `cli.ts` PRINT to say which env var to flip.
     expect(s.flag).toBe('Platform__PlatformDashboardReadEnabled');
     expect(s.probeRole).toBe('platform_owner');
-    // Counted from PlatformDashboardReadEndpoints.cs + PlatformDashboardFxReadEndpoints.cs, not from
-    // the issue text. ONE flag covers all twelve, so an unregistered thirteenth route would go live at
-    // the same flip with nothing comparing it.
+    // Counted from PlatformDashboardReadEndpoints.cs + PlatformDashboardFxReadEndpoints.cs +
+    // PlatformDashboardAiReadEndpoints.cs, not from the issue text. ONE flag covers all thirteen — the
+    // complete cluster — so an unregistered fourteenth route would go live at the same flip with
+    // nothing comparing it.
     expect(s.endpoints.map((e) => e.name)).toEqual([
       'plan-distribution',
       'user-growth',
@@ -333,6 +335,7 @@ describe('SURFACES', () => {
       'kpis',
       'revenue-by-customer',
       'churn-risk',
+      'ai-cost-anomalies',
     ]);
 
     for (const ep of s.endpoints) {
@@ -351,7 +354,7 @@ describe('SURFACES', () => {
   });
 
   it('dashboard: exactly the three FX reads are C#-only, and every other endpoint keeps its tsProcedure', () => {
-    // The SPLIT is the assertion, in both directions. Nine endpoints have a LIVE TS side (the flag is
+    // The SPLIT is the assertion, in both directions. Ten endpoints have a LIVE TS side (the flag is
     // dark), so dropping a `tsProcedure` there would silently degrade a real payload diff to [WEAK] —
     // the invitation pin's rationale. The other three have no comparable TS side at all: they call
     // sumMoney, and the two stacks resolve rates from different providers (live Frankfurter vs the

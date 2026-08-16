@@ -1806,6 +1806,25 @@
         }
       }
     },
+    "/platform/dashboard/ai-cost-anomalies": {
+      "get": {
+        "tags": [
+          "PlatformDashboard"
+        ],
+        "operationId": "GetPlatformDashboardAiCostAnomalies",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
     "/platform/organizations/{id}/suspend": {
       "post": {
         "tags": [

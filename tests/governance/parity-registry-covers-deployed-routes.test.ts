@@ -10,21 +10,24 @@ import { WRITE_SURFACES, type WriteResolvedBase } from '../../scripts/parity/wri
  * The parity harness (scripts/parity/) is the only automated thing that probes the LIVE C# service
  * for cross-tenant isolation (checks/rls.ts) and permission denials (checks/rbac.ts). It can probe
  * nothing that SURFACES + WRITE_SURFACES do not register — and nothing measured how much of the
- * deployed service that is. Re-measured 2026-08-15: 66 registered endpoints against 150 deployed
+ * deployed service that is. Re-measured 2026-08-16: 67 registered endpoints against 151 deployed
  * operations, leaving a gap of 84. (The numeric PINS below were updated when slice 23 landed; update
  * both this prose and the pins, or neither is trustworthy — slice 22 updated only the pins and this
  * line read 50/135/gap-85 for a commit, and slice 23's SECOND PR repeated the mistake: it moved the
  * pins to 147/63 and left every figure in this header at the pre-PR numbers. Slice 23's THIRD PR
- * updated both, which is the only reason this sentence is worth keeping.)
+ * updated both, as did its final read — ai-cost-anomalies, registered in the same PR that deployed
+ * it, so the gap held at 84.)
  *
  * THIS GUARD MEASURES REGISTRATION, NOT PROBE COVERAGE, and the two are not the same number, and as
  * of 2026-08-15 there is a THIRD number: registration does not imply a PAYLOAD DIFF either, since an
- * endpoint may be registered C#-only (no `tsProcedure`) and report [WEAK]. FOURTEEN of the 39 are, across
- * five surfaces — dashboard's 3 FX reads (new, see surfaces.ts caveat 8), nine-box 4, access-review 3,
+ * endpoint may be registered C#-only (no `tsProcedure`) and report [WEAK]. FOURTEEN of the 40 are, across
+ * five surfaces — dashboard's 3 FX reads (see surfaces.ts caveat 8), nine-box 4, access-review 3,
  * audit-log 2 and dei 2, the last four groups being surfaces whose TypeScript side was deleted outright.
  * (This line read "three" when the dashboard entries landed: a count written in prose beside a list that
- * lives elsewhere, which is the failure mode this file's own header warns about.) Of the
- * 39 READ registrations, TWENTY-FIVE issue no cross-tenant probe at all: 24 carry `globalScope` and 1
+ * lives elsewhere, which is the failure mode this file's own header warns about. Dashboard's
+ * ai-cost-anomalies read, by contrast, carries a real `tsProcedure` — no FX provider is involved — so
+ * it did NOT move this count.) Of the
+ * 40 READ registrations, TWENTY-SIX issue no cross-tenant probe at all: 25 carry `globalScope` and 1
  * carries `noTenantBoundaryForCaller`, and checks/rls.ts returns `inconclusive` for both without calling
  * anything. Those are correct dispositions — a platform-owner cross-org read has no tenant boundary
  * to prove — but it means a route can move from the allowlist into the "covered" set without gaining
@@ -51,9 +54,9 @@ import { WRITE_SURFACES, type WriteResolvedBase } from '../../scripts/parity/wri
  *   2. The OpenAPI document resolves all of them — it is emitted by the framework from the mapped
  *      routes themselves, so it cannot disagree with what is mapped. What IS reproducible from this
  *      repo is the arithmetic: `grep -rEo '\.Map(Get|Post|Patch|Put|Delete)\(' services/Tims.Platform
- *      /src/Tims.Api --include='*.cs' | wc -l` = 148 call sites (re-run 2026-08-15), minus the 1 inside
+ *      /src/Tims.Api --include='*.cs' | wc -l` = 149 call sites (re-run 2026-08-16), minus the 1 inside
  *      the private `MapTransition` helper (Evaluation360WriteEndpoints.cs:169, mapping at :172), plus
- *      its 3 invocations (Evaluation360WriteEndpoints.cs:78/:80/:82) = 150, which is
+ *      its 3 invocations (Evaluation360WriteEndpoints.cs:78/:80/:82) = 151, which is
  *      the operation count this file parses and pins. An earlier version of this line claimed the two
  *      sets had "ZERO symmetric difference" as measured by a one-off script; that script was never
  *      committed, so the claim was not reproducible and is not restated.
@@ -67,7 +70,7 @@ import { WRITE_SURFACES, type WriteResolvedBase } from '../../scripts/parity/wri
  *      file — exactly the trigger this guard needs.
  *
  * CAVEAT, stated rather than implied: `/health` and `/ready` (Program.cs:892, :899) are ABSENT from
- * the document — MapHealthChecks emits no endpoint metadata. So this guard covers 150 domain
+ * the document — MapHealthChecks emits no endpoint metadata. So this guard covers 151 domain
  * OPERATIONS, never "every routable path".
  */
 
@@ -408,19 +411,19 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //         /health + /ready are NOT in the document (MapHealthChecks emits no endpoint metadata),
     //         so this counts domain operations, not "every routable path". A new route bumps this,
     //         deliberately — that is the point.
-    expect(deployed.size).toBe(150);
-    //   66 = 39 read endpoints (surfaces.ts, 10 surfaces) + 27 write (write-surfaces.ts, 8 surfaces:
+    expect(deployed.size).toBe(151);
+    //   67 = 40 read endpoints (surfaces.ts, 10 surfaces) + 27 write (write-surfaces.ts, 8 surfaces:
     //        24 written literally + 3 produced by the shared `transitionEndpoint` helper). The READ side
-    //        went 36 → 39 on 2026-08-15: slice 23's PR 3 registered all THREE of its newly deployed
-    //        routes on the EXISTING `dashboard` surface, so the surface count stays at 10 and the
-    //        allowlist below is unchanged — the gap did not grow. (30 → 36 was the same slice's PR 2;
-    //        27 → 30 was PR 1, which created that surface; 24 → 27 was slice 22's `invitation`
-    //        surface, 2026-08-12; 26 → 27 on the write side was 2026-08-11: `organization-create`
-    //        registered POST /platform/organizations, #208.)
-    expect(registryEndpointCount).toBe(66);
-    //   ...resolving to 66 DISTINCT VERB+path keys. A drop here means two registry entries normalise
+    //        went 39 → 40 on 2026-08-16: slice 23's FINAL read (ai-cost-anomalies) registered on the
+    //        EXISTING `dashboard` surface in the same PR that deployed its route, so the surface count
+    //        stays at 10 and the allowlist below is unchanged — the gap did not grow. (36 → 39 was the
+    //        same slice's PR 3; 30 → 36 was PR 2; 27 → 30 was PR 1, which created that surface;
+    //        24 → 27 was slice 22's `invitation` surface, 2026-08-12; 26 → 27 on the write side was
+    //        2026-08-11: `organization-create` registered POST /platform/organizations, #208.)
+    expect(registryEndpointCount).toBe(67);
+    //   ...resolving to 67 DISTINCT VERB+path keys. A drop here means two registry entries normalise
     //   to the same route, which would make one of them invisible to the coverage assertion below.
-    expect(registry.size, 'two registry entries normalise to the same VERB+path key').toBe(66);
+    expect(registry.size, 'two registry entries normalise to the same VERB+path key').toBe(67);
     //   27 write paths resolved through the Proxy stub, none degenerate.
     expect(writePaths.length).toBe(27);
   });
