@@ -45,6 +45,16 @@ jobs:
       - name: Type check Web
         if: matrix.target == 'web'
         run: cd apps/web && npx tsc --noEmit
+      # schema.d.ts must not drift from the committed OpenAPI contract (#240) — the FE-side twin
+      # of dotnet-platform.yml's "OpenAPI contract is up to date". Nothing else regenerates the
+      # TS types: before this step existed they went 8 days stale (zero /platform/* paths) and a
+      # dashboard-scoped PR silently absorbed ~10 unrelated surfaces' drift. Regeneration is
+      # deterministic: openapi-typescript is exact-pinned in apps/web's devDependencies.
+      - name: platform-api schema.d.ts is up to date
+        if: matrix.target == 'web'
+        run: |
+          pnpm --filter @tims/web gen:platform-types
+          git diff --exit-code apps/web/lib/platform-api/schema.d.ts
 
   # ========================================
   # Security Tests (56 tests)
