@@ -12,7 +12,8 @@
 // has today. (NOT billing/dei: an earlier draft cited all three, but those two have since gone
 // C#-only — their TS fallbacks are deleted and dei's flag is dead. The panel counted the set.)
 // The C# side is the thirteen `/platform/dashboard/*` endpoints behind
-// Platform:PlatformDashboardReadEnabled (also dark), so a real cutover needs BOTH flags.
+// Platform:PlatformDashboardReadEnabled (also dark), so a real cutover needs all THREE env
+// conditions: the two NEXT_PUBLIC_* above at Vercel build time plus the server flag.
 //
 // TWELVE hooks for THIRTEEN ported reads, deliberately. `getUserGrowth` has ZERO consumers in
 // apps/web (no user-growth chart exists), so a `useDashboardUserGrowth` hook would ship as an
@@ -29,8 +30,10 @@
 //
 // NO invalidation helper, deliberately. This cluster is read-only: no dashboard write was ported,
 // and no `utils.platform.*.invalidate()` call in apps/web targets any of the thirteen dashboard
-// reads (35 such calls exist — all for OTHER platform procedures) — so there is no mutation whose
-// onSuccess would need to reach the ['platform-api', 'dashboard'] cache family.
+// reads — every such call (36 at last count, and this family of counts has now been wrong three
+// times, so trust the wiring test's scan over this number) is for OTHER platform procedures. So
+// there is no mutation whose onSuccess would need to reach the ['platform-api', 'dashboard']
+// cache family.
 // (Contrast monitoring.ts, which needed one because configureAlertRules stayed a tRPC write.)
 //
 // ⚠️ Null-preserving numerics — `Number(null) === 0`, and for all three of these a fabricated 0

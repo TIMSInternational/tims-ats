@@ -104,11 +104,13 @@ describe('mapChurnRiskOrg — null daysSinceLastLogin must never become "logged 
     // the coercion test nor tsc (the raw comes off an `as` cast), so a copy-paste like
     // `total: Number(raw.summary.red)` compiled and passed the whole suite. Extracted to
     // mapChurnRisk; DISTINCT values per field so a crossed wire cannot cancel out.
+    // total(17) ≠ green+yellow+red(15) on purpose: with 15 the test could not tell "read the
+    // total field" from "recompute it as the sum" — the second pass caught the coincidence.
     const out = mapChurnRisk({
       organizations: [base],
-      summary: { green: '7', yellow: '5', red: '3', total: '15', atRiskMrr: '998' },
+      summary: { green: '7', yellow: '5', red: '3', total: '17', atRiskMrr: '998' },
     });
-    expect(out.summary).toEqual({ green: 7, yellow: 5, red: 3, total: 15, atRiskMrr: 998 });
+    expect(out.summary).toEqual({ green: 7, yellow: 5, red: 3, total: 17, atRiskMrr: 998 });
     expect(out.organizations).toHaveLength(1);
     expect(out.organizations[0].daysSinceLastLogin).toBeNull();
   });

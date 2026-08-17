@@ -2,12 +2,12 @@
 # scripts/deploy/cutover.sh — per-domain "flip and verify" automation for the C# strangler-fig
 # production cutover (docs/architecture/csharp-migration/PROD-DEPLOY-RUNBOOK-gate-g3.md §6).
 #
-# SCOPE: the ~11 STANDARD domains that use the normal staff-JWT/browser-cookie auth pattern —
+# SCOPE: the STANDARD domains that use the normal staff-JWT/browser-cookie auth pattern —
 # team-intel, reporting, billing-read, billing-usage, evaluation360, succession, compensation,
-# nine-box, engagement, dei, audit-log, access-review, dashboard (13 read surfaces once the
-# read+write flags are counted separately — see --list). external-vendor, billing-webhook, and
-# billing-self-serve are OUT OF SCOPE (different auth mechanisms; separate workstream) and are
-# deliberately absent from the surface table below.
+# nine-box, engagement, dei, audit-log, access-review, dashboard. Counted as SURFACES (read and
+# write flags separately): 13 read + 6 write = 19 — see --list. external-vendor, billing-webhook,
+# and billing-self-serve are OUT OF SCOPE (different auth mechanisms; separate workstream) and
+# are deliberately absent from the surface table below.
 #
 # SAFETY MODEL (mirrors the runbook's "Federico-run" rule — nothing here touches AWS/prod unless
 # a human explicitly opts in):
