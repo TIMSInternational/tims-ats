@@ -307,8 +307,9 @@ async function seedTeamIntelGrants(db: Client, roleIds: Map<string, string>): Pr
 }
 
 // ── team-intel KPI fixtures (DIFFERENTIATED per org) ─────────────────────────
-// getDashboardKpis (packages/api/src/routers/teamIntel.ts) counts teams /
-// user_teams / team-leaders scoped to the caller's org. With BOTH orgs empty the
+// getDashboardKpis (originally packages/api/src/routers/teamIntel.ts; TS side since deleted —
+// the C# TeamIntelReadEndpoints is the only reader) counts teams / user_teams / team-leaders
+// scoped to the caller's org. With BOTH orgs empty the
 // two KPI payloads are identical all-zeros, which the RLS Mode B check can't
 // distinguish from a leak (it fails closed on "identical non-empty"). Seeding
 // DIFFERENT team data per org (A: 2 teams, 1 led, 1 member; B: 1 team, unled)
@@ -317,6 +318,13 @@ async function seedTeamIntelGrants(db: Client, roleIds: Map<string, string>): Pr
 // business_unit → company chain, so those are seeded too. All find-or-create by
 // (org, name): companies/business_units/teams have no natural unique key, so a
 // plain re-insert would duplicate and inflate the counts on every re-run.
+//
+// UPDATE 2026-08-17 (#195): seedOrgBTier2Mirrors now ALSO adds b:hr_admin as a member of
+// 'Parity Team B1' — the team-intel READ surface's by-id Mode-A positive control needs
+// GET /team-intel/teams/{B1}/members to return 200 + NON-EMPTY for org B's own probe, and an
+// empty membership list is deep-empty (checks/rls.ts isDeepEmpty), which fails that control.
+// So the per-org KPI payloads now differ via totalTeams (2 vs 1) / teamsWithLeader (1 vs 0) /
+// avgTeamSize — NOT via totalMembers, which is 1 in both orgs.
 
 async function findOrCreateByName(
   db: Client,
@@ -400,7 +408,8 @@ export async function seedTeamIntelData(
       const memberId = userIds.get('a:hr_admin');
       if (memberId) await upsertUserTeam(db, memberId, teamA1);
     } else {
-      // org B: 1 team, no leader, no members → strictly fewer than org A on every team KPI.
+      // org B: 1 team, no leader. (No member HERE — but seedOrgBTier2Mirrors adds b:hr_admin to it,
+      // so the org-B KPI payload differs from org A's via teams/leaders, not via member count.)
       await findOrCreateTeam(db, orgIds.b, buId, 'Parity Team B1', null);
     }
   }
@@ -1402,8 +1411,10 @@ async function seedDeiLeadershipGrants(db: Client, orgAId: string, roleIds: Map<
 // can tell a real isolation pass from a trivial 404 on a dead id. This seeds the
 // minimal org-B mirror for each by-id resource: an employee comp row + nine-box
 // eval for b:hr_admin, an org-B calibration session (+member/vote), the openB/pubB
-// review cycles (+assignments/response), and an org-B critical role. All idempotent
-// and swept by teardown (which deletes every one of these tables by org id, both orgs).
+// review cycles (+assignments/response), an org-B critical role, and (2026-08-17,
+// #195) a b:hr_admin membership on 'Parity Team B1' for the team-intel by-id reads.
+// All idempotent and swept by teardown (which deletes every one of these tables by
+// org id, both orgs — user_teams via the team-id sweep).
 export async function seedOrgBTier2Mirrors(db: Client, orgBId: string, userIds: Map<string, string>): Promise<void> {
   const bSuper = userIds.get('b:super_admin');
   const bHr = userIds.get('b:hr_admin');
@@ -1450,6 +1461,18 @@ export async function seedOrgBTier2Mirrors(db: Client, orgBId: string, userIds: 
   // succession critical-roles/{id}(+suggested-successors, +simulate-exit): an org-B critical role held by
   // b:super. suggested-successors is non-empty via the b:hr_admin nine-box eval seeded above.
   await findOrCreateCriticalRole(db, orgBId, 'Parity Critical Role B1', 'critical', 0.5, 'PARITY-L1', bSuper);
+
+  // team-intel teams/{teamId}/members (#195, 2026-08-17): b:hr_admin joins 'Parity Team B1' so the
+  // Mode-A positive control (org-B probe token → its own team's members) gets 200 + NON-EMPTY — an
+  // empty list is deep-empty and fails the control (checks/rls.ts). profile/balance-score need no
+  // member (their views carry non-empty scalars regardless), but the membership costs them nothing.
+  // The team is seeded unconditionally by seedTeamIntelData before this runs; the guard only covers
+  // a standalone call against an unseeded database.
+  const teamB = await db.query<IdRow>('SELECT id FROM teams WHERE organization_id = $1 AND name = $2 LIMIT 1', [
+    orgBId,
+    'Parity Team B1',
+  ]);
+  if (teamB.rows.length) await upsertUserTeam(db, bHr, teamB.rows[0].id);
 }
 
 // ── Write-verification preconditions ─────────────────────────────────────────
@@ -2540,12 +2563,17 @@ export interface SeedResources {
   'eval-cycle-staff': ResourcePair;
   'eval-cycle-self': ResourcePair;
   calibration: ResourcePair;
-  /** UNCONSUMED since 2026-08-03 (#58): the only endpoint that threaded this idScopeKey was the
-   *  succession READ surface's `critical-role` (tsProcedure succession.getCriticalRole), removed
-   *  with that surface. The seeded 'Parity Critical Role A1'/'B1' rows still exist, so resolving
-   *  it is harmless and stays for now — the succession read fixtures come out wholesale with the
-   *  ownership flip (#69), which is where removing this belongs. */
+  /** Was UNCONSUMED from 2026-08-03 (#58, the succession read surface's deletion) until 2026-08-17,
+   *  when #195 re-registered that surface C#-only — its three by-id reads
+   *  (critical-role / suggested-successors / simulate-exit) thread this key again, exactly as the
+   *  deleted registrations did. Resolves the 'Parity Critical Role A1'/'B1' rows. */
   'critical-role': ResourcePair;
+  /** NEW 2026-08-17 (#195): the team-intel by-id reads (profile / members / balance-score) thread
+   *  the 'Parity Team A1'/'B1' teams (seedTeamIntelData). Resolved by (org, name) — teams carry
+   *  gen_random_uuid ids and no natural unique key, the same natural-key resolution the
+   *  calibration/critical-role pairs use. The org-B team's membership (the members positive
+   *  control) is seeded by seedOrgBTier2Mirrors. */
+  team: ResourcePair;
   /** The parity harness's own orgs (`__parity_a` / `__parity_b`, ORG_SLUGS at :78), threaded into
    *  `/platform/organizations/{id}` by SURFACES['organization'].detail.
    *
@@ -2585,6 +2613,15 @@ async function criticalRoleIdByOrgTitle(db: Client, orgId: string, title: string
     throw new Error(`resolveResources: no seeded critical role "${title}" in org ${orgId} — run \`cli.ts seed\` first`);
   return rows[0].id;
 }
+async function teamIdByOrgName(db: Client, orgId: string, name: string): Promise<string> {
+  const { rows } = await db.query<IdRow>('SELECT id FROM teams WHERE organization_id = $1 AND name = $2 LIMIT 1', [
+    orgId,
+    name,
+  ]);
+  if (!rows.length)
+    throw new Error(`resolveResources: no seeded team "${name}" in org ${orgId} — run \`cli.ts seed\` first`);
+  return rows[0].id;
+}
 
 /** Resolves the Tier-2 by-id resource id pairs from the live seeded DB (read-only). */
 export async function resolveResources(cfg: HarnessConfig): Promise<SeedResources> {
@@ -2604,6 +2641,10 @@ export async function resolveResources(cfg: HarnessConfig): Promise<SeedResource
       'critical-role': {
         a: await criticalRoleIdByOrgTitle(db, orgA, 'Parity Critical Role A1'),
         b: await criticalRoleIdByOrgTitle(db, orgB, 'Parity Critical Role B1'),
+      },
+      team: {
+        a: await teamIdByOrgName(db, orgA, 'Parity Team A1'),
+        b: await teamIdByOrgName(db, orgB, 'Parity Team B1'),
       },
       organization: { a: orgA, b: orgB },
     };

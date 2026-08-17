@@ -346,9 +346,10 @@ export const SURFACES: Record<string, Surface> = {
       // THAN THIS ENDPOINT. `cli.ts`'s `needsResources` now fires for `organization`, which calls
       // `resolveResources` (seed.ts) — and that function resolves EVERY SeedResources key
       // unconditionally and throws on the first missing one. So `verify organization` now requires
-      // DATABASE_URL plus the seeded employee users, the 2026-Q1 calibration sessions in BOTH orgs
-      // and the "Parity Critical Role A1"/"B1" rows in both orgs. An environment whose ninebox /
-      // succession fixtures were never seeded fails with e.g. `resolveResources: no seeded critical
+      // DATABASE_URL plus the seeded employee users, the 2026-Q1 calibration sessions in BOTH orgs,
+      // the "Parity Critical Role A1"/"B1" rows in both orgs and (since 2026-08-17, #195) the
+      // "Parity Team A1"/"B1" teams in both orgs. An environment whose ninebox / succession /
+      // team-intel fixtures were never seeded fails with e.g. `resolveResources: no seeded critical
       // role "Parity Critical Role A1" in org <uuid>` — a failure with no relationship to the surface
       // under test, and one that could not occur while this surface was Tier-1 only. Run
       // `cli.ts seed` first. (The org ids themselves cost zero extra queries: `orgA`/`orgB` are
@@ -922,9 +923,10 @@ export const SURFACES: Record<string, Surface> = {
   // 2026-07-29 pass had already removed the other 7 registered reads (grid, calibrations,
   // my-calibrations, bench-strength, dashboard-kpis, employee, calibration).
   //
-  // WHY THIS IS NOT DELETED, unlike succession/team-intel/billing-usage/reporting/evaluation360.
-  // (audit-log and access-review used to be on that list; both were RE-REGISTERED C#-only on
-  // 2026-08-11 on exactly the reasoning below — see their entries.)
+  // WHY THIS IS NOT DELETED — the reasoning that, one by one, un-deleted the others. (audit-log
+  // and access-review were RE-REGISTERED C#-only on 2026-08-11 on exactly the reasoning below, and
+  // succession/team-intel/reporting/evaluation360 followed on 2026-08-17 (#195) — see their
+  // entries. Of the once-deleted read surfaces only billing-read/billing-usage remain deleted.)
   // Deleting the surface was the first instinct here and it was WRONG: only `checks/parity.ts` reads
   // `tsProcedure`. `checks/rls.ts` and `checks/rbac.ts` take `callCsharp` alone, so removing the surface
   // does not retire a stale TS comparison — it retires the RLS Mode-A cross-tenant IDOR probe and the
@@ -1004,58 +1006,401 @@ export const SURFACES: Record<string, Surface> = {
     ],
   },
   //
-  // ── succession ──────────────────────────────────────────────────────────────────────────────
-  // READ surface REMOVED (TS-deletion, 2026-08-03, #58): this surface's last remaining endpoint
-  // (`critical-role`, tsProcedure `succession.getCriticalRole`) was deleted from
-  // packages/api/src/routers/succession.ts — which is now deleted OUTRIGHT, all 4 residual
-  // procedures with it. The 2026-07-29 pass had already removed the other 8 registered reads
-  // (critical-roles, flight-risk, competency-coverage, roles-without-successor, comp-gap-alerts,
-  // dashboard-kpis, suggested-successors, simulate-exit); `getCriticalRole` was kept then ONLY
-  // because its TS implementation was still live, which is what made `verify succession` a real
-  // check. It no longer is, so this surface follows team-intel/billing-usage/reporting/
-  // evaluation360 and is removed rather than left registered-but-no-op.
+  // ── The four talent read surfaces, RE-REGISTERED C#-only (2026-08-17, #195 residual) ────────
+  // succession / team-intel / reporting / evaluation360 below were all registered in the original
+  // harness build-out (#177/#186/#187/#189), then DELETED in the 2026-07-29..08-03 TS-deletion
+  // passes on the reasoning "the TS procedures are gone, so there is nothing left to diff" —
+  // succession last, on 2026-08-03 (#58), when its router was deleted outright. That reasoning did
+  // not survive `tsProcedure` becoming OPTIONAL on 2026-08-06 (efb7553f): omitting the field keeps
+  // an endpoint registered, parity reports [WEAK] with a reason, and the RBAC deny assertions +
+  // RLS probes keep running against the live C# routes — the audit-log / access-review
+  // re-registration rationale (2026-08-11), which could not yet cover these four because each is
+  // org-scoped RBAC and needs its own seeded grant fixture (#166's false-FAIL lesson). Those
+  // fixtures have existed in seed.ts since the original registrations and are STILL WIRED into
+  // seed() — seedTeamIntelGrants+Data, seedReportingGrants+Data, seedSuccessionGrants+Data,
+  // seedEvaluation360Grants+Data, plus seedOrgBTier2Mirrors for every by-id positive control —
+  // verified against seed()'s call sites on 2026-08-17, not assumed.
   //
-  // STANDING DEBT, 2026-08-11: that reasoning is the same one that removed audit-log and
-  // access-review, and both were re-registered C#-only on 2026-08-11 because it does not survive
-  // `tsProcedure` becoming optional (efb7553f). SIX surfaces are still deleted on it — succession,
-  // team-intel, reporting, billing-read, billing-usage, evaluation360 (enumerated from
-  // `cutover.sh --list`, which shows exactly those six with parity_command NONE; counted, because an
-  // earlier draft of this comment wrote "5" and then listed six). They are deployed C# reads with no
-  // RBAC assertion in this harness. They were NOT restored in the same change because, unlike the two
-  // platform-owner surfaces, each is org-scoped RBAC and needs its own seeded grant fixture to prove
-  // anything (the #166 false-FAIL failure mode). Tracked in #195, not fixed here.
+  // Role expectations are COPIED from the deleted registrations (git 0a368681, the fullest
+  // pre-deletion registry) and re-checked against the four C# gates — not invented. Verified
+  // 2026-08-17: packages/api/src/routers contains no teamIntel / succession / evaluation360 /
+  // recruitmentAnalytics router (only team-intel-metrics.ts survives, a kernel re-export), so no
+  // endpoint below carries a `tsProcedure`, and NONE carries `normalize` — with no payload diff a
+  // rule would be dead weight now and an unargued inheritance if a TS side ever returned (the
+  // dashboard `kpis` entry's reasoning).
   //
-  // AND THAT IS THE SMALLER HALF OF THE GAP. Those six are merely the surfaces that were once
-  // registered and then removed. Counting deployed ROUTES instead of surfaces, MEASURED EXACTLY
-  // (2026-08-11) rather than estimated: `contracts/openapi/Tims.Api.json` declares 135
-  // GET/POST/PATCH/PUT/DELETE operations across 128 paths, while SURFACES + WRITE_SURFACES hold 50
-  // endpoints (24 + 26) resolving to 50 distinct VERB+path keys — leaving 85 deployed routes with no
-  // registry entry. That subtraction is now a real one, not an order-of-magnitude gesture: an earlier
-  // version of this note counted 132 `.MapGet/Post/Patch/Put/Delete(` call sites in
-  // `services/Tims.Platform/src/Tims.Api/**/*.cs` and correctly refused to subtract, because a call
-  // site is not a route (one `Evaluation360WriteEndpoints` site is invoked three times, one
-  // `AlertMetrics` site maps a `const`, and six `PlatformOrganizations*` sites put the literal on the
-  // next line). The 85 are enumerated with a reason per group in
-  // tests/governance/parity-registry-covers-deployed-routes.test.ts, which fails if a NEW deployed
-  // route appears in neither the registry nor that list.
+  // billing-read / billing-usage remain the two surfaces still deleted on the old reasoning —
+  // allowlisted in tests/governance/parity-registry-covers-deployed-routes.test.ts, tracked in
+  // #195. NOTE: scripts/deploy/cutover.sh's rows for THESE four surfaces still say
+  // parity_command=NONE and are now stale; updating that table (and README-cutover.md with it —
+  // tests/governance/cutover-table-matches-script.test.ts pins the two together) is follow-up
+  // work, deliberately not smuggled into this registry change.
   //
-  // The gap includes whole domains that were NEVER registered (external-vendor, billing
-  // self-serve/webhook writes, `/internal/alert-metrics`) plus most routes inside surfaces that ARE
-  // registered (engagement registers 2 endpoints against 14 deployed GETs; dei 2 of 11; compensation
-  // 2 of 12; ninebox 4 of 11). Do not read "the surface is registered" as "the domain is covered".
-  // #195 is the tracking issue.
+  // THE WIDER GAP NARRATIVE that used to live here (135 deployed ops / 50 registered / gap 85,
+  // measured 2026-08-11) lives with the numbers now: the route-coverage guard
+  // (tests/governance/parity-registry-covers-deployed-routes.test.ts) pins the current measurement
+  // — 151 deployed operations, 92 registered endpoints, 59 allowlisted with a reason per group as
+  // of this change — and fails if a NEW deployed route appears in neither set. The gap still
+  // includes whole domains never registered (external-vendor, billing self-serve/webhook writes,
+  // `/internal/alert-metrics`) plus most routes inside surfaces that ARE registered (engagement 2
+  // of 14 deployed GETs; dei 2 of 11; compensation 2 of 12; ninebox 4 of 11 — measured
+  // 2026-08-11). Do not read "the surface is registered" as "the domain is covered". #195 tracks.
   //
-  // `verify succession` is therefore now a NO-OP. That is a genuine reduction in this harness's
-  // coverage and is recorded as such in scripts/deploy/cutover.sh's `succession` row — do NOT
-  // read a green `verify succession` as evidence about the C# read surface. What still covers it:
-  // the C# integration tests (SuccessionReadTests.cs / SuccessionReadEndpointAuthTests.cs,
-  // including TeamScope_OutOfScopeRole_Is404_IdorProbe and
-  // TeamScope_ListCriticalRoles_DropsOutOfScopeRole).
+  // ── team-intel (READ, C#-only) ──────────────────────────────────────────────────────────────
+  // FIVE of the seven deployed routes behind Platform__TeamIntelReadEnabled
+  // (TeamIntelReadEndpoints.cs). Gate: TeamIntelStaffGate (team_intel:read via the shared
+  // PermissionService kernel) RETURNS the resolved scope and each endpoint applies its own
+  // mechanic — a ScopedProbe team IDOR probe (404-not-403, never confirms the id) on the by-id
+  // trio, scopeWhereFor('team') composed into `compare`, OrgGate on `dashboard-kpis`.
   //
-  // The WRITE surface is UNAFFECTED and stays fully valid — write-surfaces.ts's successionSurface
-  // tests the C# endpoints directly via raw SQL + HTTP with no tsProcedure field, so it never
-  // depended on any TS procedure existing. `verify-write succession` still runs a REAL check on
-  // all 5 writes.
+  // RBAC (seedTeamIntelGrants: hr_admin team_intel:read@organization; hrbp INTENTIONALLY holds no
+  // team_intel grant — its 403 is the deny proof, as the original registration designed):
+  // super_admin 200 (code-guaranteed bypass in PermissionService), hr_admin 200 (real grant),
+  // hrbp 403 on EVERY endpoint — a grant-level deny at the gate, which runs BEFORE the by-id
+  // probe, so it is deterministic on the by-id trio too.
+  //
+  // THE TWO ROUTES NOT REGISTERED — balance-alerts + recommended-hires — are DEPLOYED HONEST 501
+  // STUBS (TeamIntelReadEndpoints.cs: gate → team probe → 501, "AI agent pending"). NO role
+  // receives a 200 from them, and the harness contract cannot express that: `expectedByRole`
+  // admits only 200|403, checks/parity.ts fails a C#-only endpoint on any non-200, the
+  // probeRole-expects-200 invariant (surfaces.test.ts) covers every endpoint of a surface, and
+  // the Mode-A positive control requires the org-B caller to reach its own resource 200 +
+  // non-empty. Registering them would manufacture a permanent false-RED — the #166 shape, which
+  // that allowlist's own group-2 reason calls worse than a documented gap. They stay allowlisted
+  // (tests/governance/parity-registry-covers-deployed-routes.test.ts, their own group) and their
+  // gate→probe→501 ordering is pinned by TeamIntelReadEndpointAuthTests.cs. When the AI agents
+  // ship and they answer 200, register them HERE as by-id endpoints (idScopeKey 'team').
+  //
+  // ⚠️ TWO CAVEATS, stated rather than discovered at run time:
+  //   1. `compare`'s RLS Mode B is VACUOUS BY DESIGN. Its two teamIds are FIXED NON-EXISTENT
+  //      uuids (the access-review fixed-id precedent): scopeWhereFor silently drops unknown /
+  //      out-of-scope ids, so BOTH orgs answer `{teams: []}` — deep-empty — and Mode B reports the
+  //      documented both-empty inconclusive, never a spurious identical-payload FAIL. Real ids
+  //      cannot be expressed: the harness substitutes exactly ONE id (the `{id}` sentinel), a
+  //      compare needs 2..5, and rls.ts's buildProbePath replaces only the FIRST `{…}` token. What
+  //      this registration buys for `compare` is the RBAC matrix + liveness; the by-id trio
+  //      carries the surface's real Mode-A IDOR probes.
+  //   2. `members`' Mode-A positive control DEPENDS on the seedOrgBTier2Mirrors membership
+  //      (b:hr_admin ∈ 'Parity Team B1'): an org-B team with no members answers its own org
+  //      200-with-[], which is deep-empty and FAILS the control. Re-seed before reading a
+  //      `members` RLS FAIL as a product bug.
+  'team-intel': {
+    key: 'team-intel',
+    flag: 'Platform__TeamIntelReadEnabled',
+    roles: ['super_admin', 'hr_admin', 'hrbp'],
+    // Same probe identity the deleted registration used: org-scoped and code-guaranteed 200 in
+    // both orgs, so the Mode-A positive control (org-B token → org-B team) cannot fail on a grant.
+    probeRole: 'super_admin',
+    endpoints: [
+      {
+        name: 'dashboard-kpis',
+        csharpPath: '/team-intel/dashboard-kpis',
+        // tsProcedure omitted: teamIntel.getDashboardKpis was deleted (381f0a2b) with its router.
+        input: {},
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
+      },
+      {
+        // Fixed non-existent teamIds — see caveat 1. Query string and `input` carry the SAME two
+        // ids (callers use csharpPath verbatim; input mirrors the old Zod array shape).
+        name: 'compare',
+        csharpPath:
+          '/team-intel/compare?teamIds=e0000006-0000-4000-8000-000000000001&teamIds=e0000006-0000-4000-8000-000000000002',
+        input: { teamIds: ['e0000006-0000-4000-8000-000000000001', 'e0000006-0000-4000-8000-000000000002'] },
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
+      },
+      // Tier-2 by-id trio — the surface's real cross-tenant probes. Org-A id = 'Parity Team A1'
+      // (leader + 1 member); org-B IDOR target = 'Parity Team B1' (resolveResources 'team', by
+      // (org, name) — teams carry generated ids). Cross-tenant status is the probe's 404.
+      {
+        name: 'profile',
+        csharpPath: '/team-intel/teams/{id}/profile',
+        input: { teamId: ID_SENTINEL },
+        idScopeKey: 'team',
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
+      },
+      {
+        name: 'members',
+        csharpPath: '/team-intel/teams/{id}/members',
+        input: { teamId: ID_SENTINEL },
+        idScopeKey: 'team',
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
+      },
+      {
+        name: 'balance-score',
+        csharpPath: '/team-intel/teams/{id}/balance-score',
+        input: { teamId: ID_SENTINEL },
+        idScopeKey: 'team',
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
+      },
+    ],
+  },
+  // ── reporting (READ, C#-only) ───────────────────────────────────────────────────────────────
+  // All SIX deployed routes behind Platform__ReportingReadEnabled (ReportingReadEndpoints.cs).
+  // Gate: ReportingStaffGate = vacancy:read grant THEN requireOrgScope (OrgGate) — forced for
+  // every endpoint, because these are org-wide recruitment aggregates.
+  //
+  // RBAC (seedReportingGrants): hr_admin vacancy:read@organization → 200 (a real grant clearing
+  // OrgGate); hrbp vacancy:read@UNIT → 403 on every endpoint, and that 403 exercises the REAL
+  // requireOrgScope path (grant held, scope too narrow) rather than a bare no-grant deny;
+  // super_admin 200 (bypass). All copied from the deleted registration, whose header derived them
+  // from seed-access-matrix.ts.
+  //
+  // RLS: all six are org-scoped Mode B. seedReportingData populates org A ONLY (org B empty), so
+  // the fixed-shape reads differ A-non-zero vs B-all-zero and the array reads are A-non-empty vs
+  // B-empty — real comparisons, not inconclusive greens.
+  //
+  // ⚠️ CAVEATS:
+  //   1. TIME-RELATIVE WINDOWS (30D on kpis/source-breakdown/lost-by-delay; 6 UTC calendar months
+  //      on trend). The seed re-anchors every date to now() on each re-run and every row sits ≤20
+  //      days back — but a STALE seed lets rows age out of the 30D window, draining org A's
+  //      payloads toward org B's zeros (statuses hold; the Mode B comparison weakens toward
+  //      inconclusive). Re-seed before a run — the ai-cost-anomalies discipline.
+  //   2. The deleted registration carried a SECOND kpis probe at period=90D (to catch a port that
+  //      ignored the query param). DELIBERATELY NOT RESTORED: it normalises to the same VERB+path
+  //      key as `kpis`, which the route-coverage guard's injectivity pin forbids — and with no
+  //      tsProcedure there is no payload diff for a second window to strengthen; a second
+  //      liveness-200 on the same route proves nothing. Window handling is covered by the C#
+  //      Reporting tests instead.
+  //   3. The period is BAKED into csharpPath AND mirrored in `input` (callCsharp uses csharpPath
+  //      verbatim). Keep the two agreeing when editing either.
+  reporting: {
+    key: 'reporting',
+    flag: 'Platform__ReportingReadEnabled',
+    roles: ['super_admin', 'hr_admin', 'hrbp'],
+    probeRole: 'super_admin',
+    endpoints: [
+      {
+        name: 'kpis',
+        csharpPath: '/reporting/kpis?period=30D',
+        // tsProcedure omitted here and on all five below: the recruitmentAnalytics router was
+        // deleted (81b5e591) — C#-only, parity reports [WEAK] by design.
+        input: { period: '30D' },
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
+      },
+      {
+        name: 'funnel',
+        csharpPath: '/reporting/funnel',
+        input: {},
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
+      },
+      {
+        name: 'source-breakdown',
+        csharpPath: '/reporting/source-breakdown?period=30D',
+        input: { period: '30D' },
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
+      },
+      {
+        name: 'trend',
+        csharpPath: '/reporting/trend',
+        input: {},
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
+      },
+      {
+        name: 'lost-by-delay',
+        csharpPath: '/reporting/lost-by-delay?period=30D',
+        input: { period: '30D' },
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
+      },
+      {
+        name: 'recruiter-sla',
+        csharpPath: '/reporting/recruiter-sla',
+        input: {},
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
+      },
+    ],
+  },
+  // ── succession (READ, C#-only) ──────────────────────────────────────────────────────────────
+  // All NINE deployed reads behind Platform__SuccessionReadEnabled (SuccessionReadEndpoints.cs).
+  // This closes the standing debt recorded in this spot since 2026-08-11: the deletion note that
+  // used to stand here called `verify succession` "a NO-OP" and a genuine coverage reduction — it
+  // is a real check again (RBAC + RLS; parity is [WEAK] by design, the TS router is deleted, #58).
+  //
+  // Gate: SuccessionStaffGate (succession:read) RETURNS the scope; each endpoint applies its own
+  // mechanic — a scopeWhereFor row filter on the list, a ScopedProbe critical-role IDOR probe
+  // (404-not-403) on the by-id trio, OrgGate on the five org-rollups. comp-gap-alerts adds a
+  // SECONDARY compensation:read check plus a scoped comp row filter.
+  //
+  // RBAC (seedSuccessionGrants: hr_admin succession:read@org, hrbp @unit; hr_admin's
+  // compensation:read@org — the comp-gap secondary — comes from seedCompensationGrants):
+  //   super_admin / hr_admin → 200 everywhere. hrbp is THREE dispositions, each deliberate:
+  //   200 on the LIST (unit-scoped grant → scoped-empty rows — the faithful behaviour the deleted
+  //   entry asserted), 403 on the five ORG-ROLLUPS (the real requireOrgScope deny), and OMITTED
+  //   from the by-id trio (the ScopedProbe answers its out-of-scope probe 404, which `200|403`
+  //   cannot express and which is not an RBAC-permission signal — the deleted entry's reasoning).
+  //   org_admin — NEW relative to the deleted entry — is the surface's uniform GRANT-LEVEL deny:
+  //   absent from seed-access-matrix's MATRIX and holding no seeded grants, PermissionService
+  //   itself refuses it 403 on all nine (before the probe on the by-id trio, so deterministic).
+  //   Without it, the list and the by-id trio would carry NO denied role at all — the monitoring
+  //   precedent, applied for the same reason.
+  //
+  // RLS: six Tier-1 Mode B (org-A dataset vs org B's single mirror critical role — every read
+  // differs across orgs) + three by-id Mode A threading `critical-role` ('Parity Critical Role
+  // A1'/'B1'). The org-B suggested-successors positive control is fed by b:hr_admin's
+  // high_potential nine-box eval (seedOrgBTier2Mirrors seeds it for exactly this).
+  //
+  // ⚠️ SIDE EFFECT, the access-review precedent's shape but with inserts that LAND: comp-gap-alerts
+  // audits every EXPOSED employeeCompensation row into data_access_logs FAIL-CLOSED before
+  // responding, so every `verify succession` run writes a few data_access_logs rows attributed to
+  // the parity actors (the org exists, unlike access-review's all-zeros org, so nothing rejects
+  // them). They carry soft references only (no FK — audit rows survive user deletion, by design),
+  // so teardown neither breaks on them nor sweeps them: harmless residue in a scratch database,
+  // but a command read as non-mutating must have this written down.
+  succession: {
+    key: 'succession',
+    flag: 'Platform__SuccessionReadEnabled',
+    roles: ['super_admin', 'hr_admin', 'hrbp', 'org_admin'],
+    probeRole: 'super_admin',
+    endpoints: [
+      {
+        name: 'critical-roles',
+        csharpPath: '/succession/critical-roles',
+        // tsProcedure omitted here and on all eight below: the succession router was deleted
+        // outright on 2026-08-03 (#58) — C#-only, parity reports [WEAK] by design.
+        input: {},
+        // hrbp 200 = scoped-EMPTY rows (unit grant), the faithful disposition the deleted entry
+        // asserted; org_admin is the deny that keeps this endpoint off the no-denial list.
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 200, org_admin: 403 },
+      },
+      {
+        name: 'flight-risk',
+        csharpPath: '/succession/flight-risk',
+        input: {},
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403, org_admin: 403 },
+      },
+      {
+        name: 'competency-coverage',
+        csharpPath: '/succession/competency-coverage',
+        input: {},
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403, org_admin: 403 },
+      },
+      {
+        name: 'roles-without-successor',
+        csharpPath: '/succession/roles-without-successor',
+        input: {},
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403, org_admin: 403 },
+      },
+      {
+        name: 'comp-gap-alerts',
+        csharpPath: '/succession/comp-gap-alerts',
+        input: {},
+        // hrbp's 403 comes from the org-rollup gate BEFORE the secondary compensation check runs;
+        // org_admin's from the succession grant itself. See the surface header for the
+        // data_access_logs side effect this endpoint carries on every allowed call.
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403, org_admin: 403 },
+      },
+      {
+        name: 'dashboard-kpis',
+        csharpPath: '/succession/dashboard-kpis',
+        input: {},
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403, org_admin: 403 },
+      },
+      // Tier-2 by-id trio: assertScoped('criticalRole') probes 404-not-403 for out-of-scope, so
+      // hrbp (unit scope, empty anchors) is OMITTED — 404 is not expressible and not a permission
+      // signal. Org-A target = 'Parity Critical Role A1' (holder a:super_admin, one ready-now
+      // successor); Mode-A IDOR target = org-B 'Parity Critical Role B1'. NOTE the input param
+      // names differ per route (`id` vs `criticalRoleId`), preserved from the deleted entries.
+      {
+        name: 'critical-role',
+        csharpPath: '/succession/critical-roles/{id}',
+        input: { id: ID_SENTINEL },
+        idScopeKey: 'critical-role',
+        expectedByRole: { super_admin: 200, hr_admin: 200, org_admin: 403 },
+      },
+      {
+        name: 'suggested-successors',
+        csharpPath: '/succession/critical-roles/{id}/suggested-successors',
+        input: { criticalRoleId: ID_SENTINEL },
+        idScopeKey: 'critical-role',
+        expectedByRole: { super_admin: 200, hr_admin: 200, org_admin: 403 },
+      },
+      {
+        name: 'simulate-exit',
+        csharpPath: '/succession/critical-roles/{id}/simulate-exit',
+        input: { criticalRoleId: ID_SENTINEL },
+        idScopeKey: 'critical-role',
+        expectedByRole: { super_admin: 200, hr_admin: 200, org_admin: 403 },
+      },
+    ],
+  },
+  // ── evaluation360 (READ, C#-only) ───────────────────────────────────────────────────────────
+  // All FIVE deployed reads behind Platform__Evaluation360ReadEnabled
+  // (Evaluation360ReadEndpoints.cs). TWO AUTH PATTERNS, deliberately never crossed, and the
+  // expectations below differ accordingly:
+  //   STAFF (cycles, cycle-progress): Evaluation360StaffGate = evaluation360:read + OrgGate.
+  //     hr_admin@org (seedEvaluation360Grants) → 200; hrbp holds NO evaluation360 grant (the
+  //     matrix omits the module — admin cycle reads are org-only) → 403, a grant-level deny;
+  //     super_admin 200 (bypass).
+  //   SELF-SERVICE (my-rater-tasks, my-report-cycles, my-report): Evaluation360SelfServiceGate =
+  //     IDENTITY ONLY. Any resolved principal passes, the queries hard-filter on the caller's own
+  //     user id, and the gate HAS NO 403 PATH AT ALL (401-for-unresolvable is its only failure).
+  //     So the three self-service endpoints structurally CANNOT carry a 403 expectation — they sit
+  //     on surfaces.test.ts's documented no-denial list, and what their registration asserts is
+  //     the status matrix, liveness, and the RLS probes; the not-yours behaviour (a 404
+  //     indistinguishable from not-published, by design) is pinned by the C# Evaluation360 tests.
+  //   my-report additionally answers that 404 to ANY caller who is not a published subject, so
+  //     hr_admin/hrbp cannot appear in its map at all: only super_admin — the pubA/pubB published
+  //     self-subject the fixtures seed — is asserted. Copied from the deleted entry.
+  //
+  // probeRole super_admin is LOAD-BEARING here, not a stylistic default: seedOrgBTier2Mirrors
+  // builds the org-B positive controls around b:super_admin — the openB non-self rater assignment
+  // (progress counts exclude the CALLER's own subject-assignments, and b:super is the RATER there)
+  // and the pubB published self-subject + response (my-report). A different probe identity would
+  // fail the Mode-A controls for a fixture reason, not a product one.
+  //
+  // Min-3 note: with ONE seeded response, my-report's buckets are suppressed-by-omission in both
+  // stacks; the view still carries cycleId/cycleName, so the positive control's non-empty
+  // requirement holds regardless.
+  evaluation360: {
+    key: 'evaluation360',
+    flag: 'Platform__Evaluation360ReadEnabled',
+    roles: ['super_admin', 'hr_admin', 'hrbp'],
+    probeRole: 'super_admin',
+    endpoints: [
+      {
+        name: 'cycles',
+        csharpPath: '/evaluation360/cycles',
+        // tsProcedure omitted here and on all four below: the evaluation360 router's five read
+        // procedures were deleted with the TS-deletion passes — C#-only, parity [WEAK] by design.
+        input: {},
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
+      },
+      // Tier-2 by-id (STAFF): org-A target = the openA cycle (super is a RATER there, so the
+      // caller-excludes-own-subject-assignments rule leaves its counts non-empty); Mode-A IDOR
+      // target = openB. An unknown/cross-org cycle is 404 (null → NotFound), so isolation reads
+      // as a clean denial.
+      {
+        name: 'cycle-progress',
+        csharpPath: '/evaluation360/cycles/{id}/progress',
+        input: { cycleId: ID_SENTINEL },
+        idScopeKey: 'eval-cycle-staff',
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },
+      },
+      {
+        name: 'my-rater-tasks',
+        csharpPath: '/evaluation360/my/rater-tasks',
+        input: {},
+        // Self-service: any resolved principal → 200 (its own tasks; empty for hr_admin/hrbp).
+        // All-200 by construction — on the documented no-denial list, see the surface header.
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 200 },
+      },
+      {
+        name: 'my-report-cycles',
+        csharpPath: '/evaluation360/my/report-cycles',
+        input: {},
+        expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 200 },
+      },
+      // Tier-2 by-id (SELF-SERVICE): org-A target = pubA (super is the published self-subject);
+      // Mode-A IDOR target = pubB. hr_admin/hrbp are NOT subjects of pubA → 404, which `200|403`
+      // cannot express — so only super_admin is asserted (the deleted entry's exact shape).
+      {
+        name: 'my-report',
+        csharpPath: '/evaluation360/my/reports/{id}',
+        input: { cycleId: ID_SENTINEL },
+        idScopeKey: 'eval-cycle-self',
+        expectedByRole: { super_admin: 200 },
+      },
+    ],
+  },
   //
   // ── audit-log ────────────────────────────────────────────────────────────────────────────
   // RE-REGISTERED 2026-08-11, C#-only. Removed on 2026-07-31 (2950a06c) with the reason "no TS side
@@ -1310,8 +1655,9 @@ export const SURFACES: Record<string, Surface> = {
   // `checks/rbac.ts` (hrbp 403 / hr_admin 200 against the LIVE C# route) and `checks/rls.ts`
   // (Mode B cross-org payload comparison) keep running. Deleting the whole surface — the treatment
   // the team-intel / reporting / billing-read / billing-usage / evaluation360 / succession entries
-  // got, and that audit-log / access-review got before being re-registered C#-only on 2026-08-11 —
-  // would silently retire that RBAC + RLS coverage, which
+  // got, and that audit-log / access-review got, before all but the two billing surfaces were
+  // re-registered C#-only (2026-08-11 for those two, 2026-08-17 / #195 for the four talent
+  // surfaces) — would silently retire that RBAC + RLS coverage, which
   // for org-wide demographic rollups is a security-coverage regression, not a cleanup.
   // So: `verify dei` still runs REAL RBAC + RLS checks; only the parity diff is gone. Its parity
   // coverage now lives in services/Tims.Platform/tests/Tims.IntegrationTests/Dei/
