@@ -4,11 +4,13 @@
 > cluster — with it, **all thirteen of #81's reads are ported** and one flag
 > (`Platform:PlatformDashboardReadEnabled`) exposes the complete cluster.
 > **What #81 still needs, counted honestly (the panel corrected an earlier "steps 1–4 done"):**
-> the BACKEND half of steps 1–4 is done, but #81's own step-4 wording also requires an
-> `apps/web/lib/platform-api/dashboard.ts` FE wrapper behind `NEXT_PUBLIC_…_VIA_CSHARP`, which does
-> not exist for ANY of the thirteen reads (no slice-23 doc waived it — this sentence is the closest
-> thing); step 5 (`verify dashboard`) has NEVER run (#211) and the flip is Federico's; and step 7
-> (delete the TS) is open regardless.
+> ~~the step-4 FE wrapper does not exist for ANY of the thirteen reads~~ **RESOLVED 2026-08-17**:
+> `apps/web/lib/platform-api/dashboard.ts` shipped behind `NEXT_PUBLIC_DASHBOARD_READ_VIA_CSHARP` —
+> twelve dual-path hooks; `getUserGrowth` deliberately has no hook (zero apps/web consumers; the
+> exception is pinned by name in `tests/platform/dashboard-fe-wiring.test.ts`). What remains: step 5
+> (`verify dashboard`) has NEVER run (#211) and the flip is Federico's — a real cutover needs the
+> server flag above plus the `NEXT_PUBLIC_` pair at Vercel build time; and step 7 (delete the TS) is
+> open regardless.
 
 ## What shipped
 
@@ -151,8 +153,8 @@ dispositions:
   new deterministic repository test), **one recorded** (JsNow → UtcNow, sub-millisecond only).
 - **3 FALSE/OVERSTATED claims (claim auditor)** — the integration anchor ("1449/+2" vs measured
   1453/+6), "uniquely no datetime in this cluster", and "code-complete at steps 1–4" (the issue's
-  step-4 FE wrapper does not exist; step 7 is open regardless). **All three corrected in this doc
-  and REMAINING-WORK.md.** Every other audited claim — counts, pins, line refs, JS/.NET semantics —
+  step-4 FE wrapper did not exist then; it shipped 2026-08-17 — see the status block above — and
+  step 7 is open regardless). **All three corrected in this doc and REMAINING-WORK.md.** Every other audited claim — counts, pins, line refs, JS/.NET semantics —
   verified true, mostly by execution.
 
 **And a SECOND PASS then audited the fixes themselves** (a review pass creates new unreviewed text),

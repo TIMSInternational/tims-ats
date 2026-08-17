@@ -207,6 +207,25 @@ describe('dashboard FE wiring — the C# surface must be REACHABLE', () => {
     expect(wrapperSrc).not.toMatch(/daysUntil: Number\(/);
   });
 
+  it("useDashboardSearch composes the caller's gate into BOTH branches", () => {
+    // The panel's post-cutover failure scenario: drop `&& callerEnabled` from the C# branch and
+    // the navbar fires an empty-query cross-tenant search on every render of every admin page —
+    // and with the flag OFF that mutation is inert, which is exactly why it would survive review.
+    // The runtime kill lives in dashboard-fe-hook-path-on.test.tsx; these are the wide text pins.
+    expect(wrapperSrc).toMatch(/enabled: !enabled && callerEnabled/);
+    expect(wrapperSrc).toMatch(/enabled: enabled && callerEnabled/);
+  });
+
+  it('the 12 react-query keys are unique — a copy-pasted key cross-contaminates the cache', () => {
+    // react-query serves whichever payload is cached under the key, so two hooks sharing one key
+    // would silently hand one endpoint's data to the other's consumer. Uniqueness of PORTED_READS
+    // and of path literals is already pinned; the key set was the unpinned third leg.
+    const keys = [...wrapperSrc.matchAll(/queryKey: (\[[^\]]*\])/g)].map((m) => m[1]);
+    expect(keys).toHaveLength(12);
+    expect(new Set(keys).size).toBe(keys.length);
+    keys.forEach((k) => expect(k).toMatch(/^\['platform-api', 'dashboard', '/));
+  });
+
   it('every wrapper hook has at least one real consumer', () => {
     // The direct anti-"zero consumers" assertion. A hook nobody calls means that slice of the C#
     // surface is unreachable no matter what the env flag says.

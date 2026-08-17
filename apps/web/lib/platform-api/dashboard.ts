@@ -8,7 +8,9 @@
 //
 // The flag is UNSET everywhere today, so this file changes nothing in production: the flat
 // `trpc.platform.*` dashboard procedures remain the single active reader. It exists so the cutover
-// is a deploy env-var flip rather than a code change — the same shape as monitoring/billing/dei.
+// is a deploy env-var flip rather than a code change — the same dual-path shape monitoring still
+// has today. (NOT billing/dei: an earlier draft cited all three, but those two have since gone
+// C#-only — their TS fallbacks are deleted and dei's flag is dead. The panel counted the set.)
 // The C# side is the thirteen `/platform/dashboard/*` endpoints behind
 // Platform:PlatformDashboardReadEnabled (also dark), so a real cutover needs BOTH flags.
 //
@@ -26,8 +28,9 @@
 // wiring test cross-checks every path literal against contracts/openapi/Tims.Api.json.
 //
 // NO invalidation helper, deliberately. This cluster is read-only: no dashboard write was ported,
-// and zero `utils.platform.<read>.invalidate()` calls exist in apps/web today — there is no
-// mutation whose onSuccess would need to reach the ['platform-api', 'dashboard'] cache family.
+// and no `utils.platform.*.invalidate()` call in apps/web targets any of the thirteen dashboard
+// reads (35 such calls exist — all for OTHER platform procedures) — so there is no mutation whose
+// onSuccess would need to reach the ['platform-api', 'dashboard'] cache family.
 // (Contrast monitoring.ts, which needed one because configureAlertRules stayed a tRPC write.)
 //
 // ⚠️ Null-preserving numerics — `Number(null) === 0`, and for all three of these a fabricated 0
@@ -73,8 +76,10 @@ export function numberOrUndefined(value: number | string | null | undefined): nu
 /**
  * Date reconstruction. The C# contract emits ISO strings (NodeIsoDateTimeConverter), while the
  * tRPC path returns a real `Date` via superjson. Only TWO of the thirteen dashboard wires carry a
- * datetime — recent-activity `timestamp` and revenue-by-customer `lastActiveAt` — the other
- * eleven serve pre-formatted month labels or day counts. Shape copied from monitoring.ts:49.
+ * Date-typed field — recent-activity `timestamp` and revenue-by-customer `lastActiveAt`. (The one
+ * near-miss: kpis' `outstandingRatesAsOf` is date-VALUED but string-TYPED on both paths —
+ * `sumMoney` returns it as `string | null` — so it is deliberately passed through, never
+ * reconstructed.) Shape copied from monitoring.ts:49.
  */
 export const toDate = (v: unknown): Date => new Date(v as string);
 export const toDateOrNull = (v: unknown): Date | null => (v == null ? null : new Date(v as string));
@@ -83,6 +88,9 @@ export const toDateOrNull = (v: unknown): Date | null => (v == null ? null : new
 // Field-for-field identical to the tRPC outputs. Literal unions match the tRPC inferred types so
 // a consumer seeing the union of both paths' data types can index/narrow exactly as before.
 
+// Matches the tRPC-side Prisma `OrgPlan` enum. The C# records type `plan` as a plain string, so
+// this narrowing is a claim about the DATABASE (the column is the native "OrgPlan" enum, which
+// constrains every value both stacks can read), not about the C# wire's own type.
 type OrgPlanName = 'trial' | 'starter' | 'professional' | 'enterprise';
 
 export interface DashboardKpis {
@@ -511,6 +519,35 @@ export function mapChurnRiskOrg(raw: {
   };
 }
 
+/**
+ * Whole-payload churn mapper, extracted so the SUMMARY coercions are testable. The panel found the
+ * summary block living inline in the hook's queryFn — reachable by neither the coercion test (which
+ * imports mappers) nor tsc (the raw comes off an `as` cast) — so `total: Number(raw.summary.red)`
+ * would have compiled and passed the whole suite. "Unreachable from a unit test" is an argument for
+ * extracting the mapping, not for leaving it inline.
+ */
+export function mapChurnRisk(raw: {
+  organizations: Parameters<typeof mapChurnRiskOrg>[0][];
+  summary: {
+    green: number | string;
+    yellow: number | string;
+    red: number | string;
+    total: number | string;
+    atRiskMrr: number | string;
+  };
+}): ChurnRisk {
+  return {
+    organizations: raw.organizations.map(mapChurnRiskOrg),
+    summary: {
+      green: Number(raw.summary.green),
+      yellow: Number(raw.summary.yellow),
+      red: Number(raw.summary.red),
+      total: Number(raw.summary.total),
+      atRiskMrr: Number(raw.summary.atRiskMrr),
+    },
+  };
+}
+
 export function mapMrrForecast(raw: {
   historical: { month: string; mrr: number | string; type: 'historical' }[];
   projected: { month: string; mrr: number | string; type: 'projected' }[];
@@ -754,28 +791,8 @@ export function useDashboardChurnRisk() {
   const trpcQuery = trpc.platform.getChurnRisk.useQuery(undefined, { enabled: !enabled });
   const csharpQuery = useQuery<ChurnRisk>({
     queryKey: ['platform-api', 'dashboard', 'churn-risk'],
-    queryFn: async () => {
-      const raw = (await platformGetRaw('/platform/dashboard/churn-risk')) as {
-        organizations: Parameters<typeof mapChurnRiskOrg>[0][];
-        summary: {
-          green: number | string;
-          yellow: number | string;
-          red: number | string;
-          total: number | string;
-          atRiskMrr: number | string;
-        };
-      };
-      return {
-        organizations: raw.organizations.map(mapChurnRiskOrg),
-        summary: {
-          green: Number(raw.summary.green),
-          yellow: Number(raw.summary.yellow),
-          red: Number(raw.summary.red),
-          total: Number(raw.summary.total),
-          atRiskMrr: Number(raw.summary.atRiskMrr),
-        },
-      };
-    },
+    queryFn: async () =>
+      mapChurnRisk((await platformGetRaw('/platform/dashboard/churn-risk')) as Parameters<typeof mapChurnRisk>[0]),
     enabled,
   });
   return enabled ? csharpQuery : trpcQuery;

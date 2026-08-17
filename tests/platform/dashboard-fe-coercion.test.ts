@@ -20,6 +20,8 @@ import { describe, it, expect } from 'vitest';
 import {
   numberOrNull,
   numberOrUndefined,
+  toDate,
+  toDateOrNull,
   mapDashboardKpis,
   mapAttentionItem,
   mapRevenueByCustomerRow,
@@ -29,6 +31,7 @@ import {
   mapMrrTrendPoint,
   mapPlanDistributionRow,
   mapChurnRiskOrg,
+  mapChurnRisk,
   mapMrrForecast,
   mapUpsellOpportunities,
   mapAiCostAnomalies,
@@ -94,6 +97,29 @@ describe('mapChurnRiskOrg — null daysSinceLastLogin must never become "logged 
     expect(out.daysSinceLastLogin).toBe(3);
     expect(out.healthScore).toBe(35);
     expect(out.signals.adoptionScore).toBe(4);
+  });
+
+  it('mapChurnRisk coerces each SUMMARY counter off its OWN field', () => {
+    // The panel found the summary block living inline in the hook's queryFn — reachable by neither
+    // the coercion test nor tsc (the raw comes off an `as` cast), so a copy-paste like
+    // `total: Number(raw.summary.red)` compiled and passed the whole suite. Extracted to
+    // mapChurnRisk; DISTINCT values per field so a crossed wire cannot cancel out.
+    const out = mapChurnRisk({
+      organizations: [base],
+      summary: { green: '7', yellow: '5', red: '3', total: '15', atRiskMrr: '998' },
+    });
+    expect(out.summary).toEqual({ green: 7, yellow: 5, red: 3, total: 15, atRiskMrr: 998 });
+    expect(out.organizations).toHaveLength(1);
+    expect(out.organizations[0].daysSinceLastLogin).toBeNull();
+  });
+});
+
+describe('toDate / toDateOrNull — the exported helpers, directly', () => {
+  it('toDate parses an ISO string; toDateOrNull passes null AND undefined through as null', () => {
+    expect(toDate('2026-08-17T00:00:00.000Z').toISOString()).toBe('2026-08-17T00:00:00.000Z');
+    expect(toDateOrNull(null)).toBeNull();
+    expect(toDateOrNull(undefined)).toBeNull();
+    expect((toDateOrNull('2026-08-17T00:00:00.000Z') as Date).getTime()).toBeGreaterThan(0);
   });
 });
 

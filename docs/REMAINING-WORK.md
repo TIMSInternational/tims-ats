@@ -346,14 +346,16 @@ year:'2-digit'` label format — `getMrrForecast`, `getCustomerHealth`, `getUpse
     rounds to EVEN (`(0.125).toFixed(2)` is "0.13" vs "0.12"), pinned in
     `PlatformDashboardAiUseCaseTests` against Node-verified values. **What keeps #81 open, counted
     against the issue's own step definitions** (a tier-3 panel corrected an earlier "code-complete at
-    steps 1–4" here): steps 1–4 are now done in full — step 4's `apps/web/lib/platform-api/
+    steps 1–4" here): steps 1–4 are now done — step 4's `apps/web/lib/platform-api/
 dashboard.ts` wrapper shipped 2026-08-17 behind `NEXT_PUBLIC_DASHBOARD_READ_VIA_CSHARP` (twelve
-    dual-path hooks; `getUserGrowth` deliberately has NO hook because it has zero apps/web consumers —
-    an orphan hook is the defect class the wiring tripwire catches — pinned by name in
-    `tests/platform/dashboard-fe-wiring.test.ts`, whose raw-tRPC scan still covers all thirteen);
-    step 5 (`verify dashboard`) has never run (#211) and the flip is Federico's — note a real cutover
-    now needs BOTH flags (`Platform:PlatformDashboardReadEnabled` server-side and the NEXT_PUBLIC one
-    at Vercel build time); step 7 (delete the TS) is open regardless. Three findings worth carrying forward from PR 2/3: (a) the
+    dual-path hooks covering every read that HAS a consumer; `getUserGrowth` deliberately has NO hook
+    because it has zero apps/web consumers — an orphan hook is the defect class the wiring tripwire
+    catches — pinned by name in `tests/platform/dashboard-fe-wiring.test.ts`, whose raw-tRPC scan
+    still covers all thirteen); step 5 (`verify dashboard`) has never run (#211) and the flip is
+    Federico's — note a real cutover needs the server flag (`Platform:PlatformDashboardReadEnabled`)
+    plus `NEXT_PUBLIC_DASHBOARD_READ_VIA_CSHARP` at Vercel build time, on top of the already-set
+    `NEXT_PUBLIC_TIMS_PLATFORM_API_URL` (three env conditions in total); step 7 (delete the TS) is
+    open regardless. Three findings worth carrying forward from PR 2/3: (a) the
     dashboard has a THIRD ICU/locale dependency, and it is environmental rather than versioned —
     `getAttentionItems` bakes `Number.toLocaleString()` with NO locale argument into an invoice
     description, so the deployed Node's default locale is part of the wire contract; (b) `getMrrTrend`

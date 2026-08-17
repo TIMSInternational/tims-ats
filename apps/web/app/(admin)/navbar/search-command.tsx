@@ -82,6 +82,7 @@ export function SearchCommand({ onFocus }: { onFocus?: () => void }) {
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}
         placeholder={t.nav.search}
+        maxLength={100}
         onFocus={() => {
           setSearchFocused(true);
           onFocus?.();
