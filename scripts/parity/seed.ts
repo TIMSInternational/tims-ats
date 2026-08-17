@@ -1152,7 +1152,7 @@ export async function seedNineBoxData(db: Client, orgAId: string, userIds: Map<s
 // RBAC: succession:read hr_admin@org + hrbp@unit. hr_admin's compensation:read@org grant (for the
 // comp-gap-alerts secondary check) is already seeded by seedCompensationGrants. No native enums.
 // ⚠️ LOAD-BEARING ABSENCE (panel, 2026-08-17): this harness seeds NO `user_business_units` rows,
-// and three succession read expectations in surfaces.ts depend on exactly that: hrbp's unit scope
+// and FOUR succession read dispositions in surfaces.ts depend on exactly that: hrbp's unit scope
 // anchors to an EMPTY member list, so the critical-roles LIST answers hrbp with a scoped-empty 200
 // and the three by-id routes answer 404 (hrbp is therefore OMITTED from their expectedByRole —
 // 404 is inexpressible in the 200|403 contract). If anyone ever seeds unit membership for the
