@@ -1,14 +1,7 @@
 'use client';
 
-import {
-  PieChart,
-  Pie,
-  Cell,
-  Tooltip,
-  ResponsiveContainer,
-  Legend,
-} from 'recharts';
-import { trpc } from '../../../../lib/trpc';
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { useDashboardPlanDistribution } from '../../../../lib/platform-api/dashboard';
 import { PLAN_COLORS, PLAN_LABELS, Skeleton } from '../dashboard-utils';
 import { useI18n } from '../../../../lib/i18n';
 import { ErrorState } from '../../../../components';
@@ -44,10 +37,7 @@ function CustomLegend({ payload }: { payload?: Array<LegendEntryProps> }) {
     <div className="flex flex-col gap-1.5 ml-2">
       {payload.map((entry) => (
         <div key={entry.value} className="flex items-center gap-2">
-          <span
-            className="h-2.5 w-2.5 rounded-full shrink-0"
-            style={{ backgroundColor: entry.color }}
-          />
+          <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: entry.color }} />
           <span className="text-xs text-secondary">{PLAN_LABELS[entry.value] ?? entry.value}</span>
         </div>
       ))}
@@ -76,7 +66,7 @@ function CenterLabel({ cx, cy, total }: CenterLabelProps) {
 
 export function PlanDistributionChart() {
   const { t } = useI18n();
-  const { data, isLoading, isError, refetch } = trpc.platform.getPlanDistribution.useQuery();
+  const { data, isLoading, isError, refetch } = useDashboardPlanDistribution();
 
   const total = data?.reduce((s, d) => s + d.count, 0) ?? 0;
 
@@ -94,9 +84,7 @@ export function PlanDistributionChart() {
           <ErrorState onRetry={() => refetch()} />
         </div>
       ) : !data || total === 0 ? (
-        <div className="h-[240px] flex items-center justify-center text-sm text-muted">
-          No subscription data
-        </div>
+        <div className="h-[240px] flex items-center justify-center text-sm text-muted">No subscription data</div>
       ) : (
         <ResponsiveContainer width="100%" height={240}>
           <PieChart>
@@ -117,12 +105,7 @@ export function PlanDistributionChart() {
               <CenterLabel cx={0} cy={0} total={total} />
             </Pie>
             <Tooltip content={<PlanTooltip />} />
-            <Legend
-              content={<CustomLegend />}
-              layout="vertical"
-              align="right"
-              verticalAlign="middle"
-            />
+            <Legend content={<CustomLegend />} layout="vertical" align="right" verticalAlign="middle" />
           </PieChart>
         </ResponsiveContainer>
       )}

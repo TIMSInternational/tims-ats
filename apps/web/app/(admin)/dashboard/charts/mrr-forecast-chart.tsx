@@ -1,16 +1,7 @@
 'use client';
 
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  CartesianGrid,
-  ReferenceLine,
-} from 'recharts';
-import { trpc } from '../../../../lib/trpc';
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from 'recharts';
+import { useDashboardMrrForecast } from '../../../../lib/platform-api/dashboard';
 import { useI18n } from '../../../../lib/i18n';
 import { formatCurrency, BRAND_NAVY, Skeleton } from '../dashboard-utils';
 import { ErrorState } from '../../../../components';
@@ -30,10 +21,16 @@ function ForecastTooltip({ active, payload, label }: ForecastTooltipProps) {
     <div className="rounded-lg border border-[#EDEDED] bg-white px-3 py-2 shadow-lg">
       <p className="text-xs text-[#8B8B8B] mb-1">{label}</p>
       {historical && historical.value > 0 && (
-        <p className="text-sm font-bold text-[#1F114C]">{formatCurrency(historical.value)} <span className="text-[10px] font-normal text-[#8B8B8B]">{t.dashboard.historical}</span></p>
+        <p className="text-sm font-bold text-[#1F114C]">
+          {formatCurrency(historical.value)}{' '}
+          <span className="text-[10px] font-normal text-[#8B8B8B]">{t.dashboard.historical}</span>
+        </p>
       )}
       {projected && projected.value > 0 && (
-        <p className="text-sm font-bold text-[#DD0C15]">{formatCurrency(projected.value)} <span className="text-[10px] font-normal text-[#8B8B8B]">{t.dashboard.projected}</span></p>
+        <p className="text-sm font-bold text-[#DD0C15]">
+          {formatCurrency(projected.value)}{' '}
+          <span className="text-[10px] font-normal text-[#8B8B8B]">{t.dashboard.projected}</span>
+        </p>
       )}
     </div>
   );
@@ -41,7 +38,7 @@ function ForecastTooltip({ active, payload, label }: ForecastTooltipProps) {
 
 export function MrrForecastChart() {
   const { t } = useI18n();
-  const { data, isLoading, isError, refetch } = trpc.platform.getMrrForecast.useQuery();
+  const { data, isLoading, isError, refetch } = useDashboardMrrForecast();
 
   if (isLoading) {
     return (
@@ -93,7 +90,9 @@ export function MrrForecastChart() {
       <div className="flex items-center justify-between mb-1">
         <div>
           <h3 className="text-sm font-semibold text-[#1F114C]">{t.dashboard.mrrForecast}</h3>
-          <p className="text-xs text-[#8B8B8B]">12m {t.dashboard.historical} + 12m {t.dashboard.projected}</p>
+          <p className="text-xs text-[#8B8B8B]">
+            12m {t.dashboard.historical} + 12m {t.dashboard.projected}
+          </p>
         </div>
         <div className="text-right">
           <p className="text-lg font-bold text-[#1F114C]">{formatCurrency(data.projectedArr)}</p>
@@ -113,7 +112,10 @@ export function MrrForecastChart() {
         </div>
         <div className="flex-1 bg-[#F6F6F6] rounded-lg px-3 py-2">
           <p className="text-[10px] text-[#8B8B8B]">{t.dashboard.monthlyGrowth}</p>
-          <p className={`text-sm font-bold ${growthColor}`}>{growthSign}{data.monthlyGrowthPct}%</p>
+          <p className={`text-sm font-bold ${growthColor}`}>
+            {growthSign}
+            {data.monthlyGrowthPct}%
+          </p>
         </div>
         <div className="flex-1 bg-[#F6F6F6] rounded-lg px-3 py-2">
           <p className="text-[10px] text-[#8B8B8B]">{t.dashboard.pendingTrials}</p>
@@ -188,7 +190,10 @@ export function MrrForecastChart() {
           <span className="text-[10px] text-[#8B8B8B]">{t.dashboard.historical}</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <div className="w-4 h-0.5 bg-[#DD0C15] rounded" style={{ backgroundImage: 'repeating-linear-gradient(90deg, #DD0C15 0 6px, transparent 6px 9px)' }} />
+          <div
+            className="w-4 h-0.5 bg-[#DD0C15] rounded"
+            style={{ backgroundImage: 'repeating-linear-gradient(90deg, #DD0C15 0 6px, transparent 6px 9px)' }}
+          />
           <span className="text-[10px] text-[#8B8B8B]">{t.dashboard.projected}</span>
         </div>
       </div>

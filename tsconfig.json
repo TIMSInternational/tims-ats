@@ -25,7 +25,15 @@
       "@tims/ai": ["./packages/ai/src/index.ts"],
       "@trpc/server": ["./packages/api/node_modules/@trpc/server"],
       "@prisma/client": ["./packages/api/node_modules/@prisma/client"],
-      "exceljs": ["./packages/api/node_modules/exceljs"]
+      "exceljs": ["./packages/api/node_modules/exceljs"],
+      // The platform-api hook-path tests (tests/platform/*.test.tsx) import react and
+      // @tanstack/react-query directly, and neither is hoisted to the root node_modules —
+      // apps/web owns both. Counterparts of (not copies of) the two vitest.config.ts aliases:
+      // vitest maps `react` to the runtime package, this maps it to @types/react — each tool
+      // needs its own kind. (The portal .tsx tests never needed this: they import only
+      // @testing-library/react, whose own react resolution rides on skipLibCheck.)
+      "react": ["./apps/web/node_modules/@types/react"],
+      "@tanstack/react-query": ["./apps/web/node_modules/@tanstack/react-query"]
     }
   },
   "exclude": ["node_modules"]

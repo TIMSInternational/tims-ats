@@ -38,6 +38,15 @@ export default defineConfig({
       // Allow component tests to resolve React from apps/web
       react: resolve(__dirname, 'apps/web/node_modules/react'),
       'react/jsx-dev-runtime': resolve(__dirname, 'apps/web/node_modules/react/jsx-dev-runtime'),
+      // Same single-instance requirement as `react` above, for the platform-api hook-path tests:
+      // the wrapper under test resolves @tanstack/react-query via apps/web/node_modules, and the
+      // test's QueryClientProvider must be the SAME module instance or the context lookup fails
+      // ("No QueryClient set"). Root node_modules has no copy, so without this the test cannot
+      // resolve the import at all.
+      '@tanstack/react-query': resolve(__dirname, 'apps/web/node_modules/@tanstack/react-query'),
+      // Lets tests vi.mock('@tims/auth/client'): the wrapper's client.ts resolves that specifier
+      // via apps/web's workspace dep; the mock must resolve it to the same module id to intercept.
+      '@tims/auth/client': resolve(__dirname, 'packages/auth/src/client.ts'),
     },
   },
   test: {

@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { trpc } from '../../../../lib/trpc';
+import { useDashboardCustomerHealth } from '../../../../lib/platform-api/dashboard';
 import { useI18n } from '../../../../lib/i18n';
 import { HEALTH_CONFIG, PLAN_BG_CLASSES, PLAN_LABELS, Skeleton } from '../dashboard-utils';
 import { ErrorState } from '../../../../components';
@@ -9,7 +9,7 @@ import { ErrorState } from '../../../../components';
 export function CustomerHealthGrid() {
   const router = useRouter();
   const { t } = useI18n();
-  const { data, isLoading, isError, refetch } = trpc.platform.getCustomerHealth.useQuery();
+  const { data, isLoading, isError, refetch } = useDashboardCustomerHealth();
 
   return (
     <div className="rounded-xl border border-border bg-white p-5 flex flex-col">
@@ -46,9 +46,7 @@ export function CustomerHealthGrid() {
           <ErrorState onRetry={() => refetch()} />
         </div>
       ) : !data || data.length === 0 ? (
-        <div className="h-[200px] flex items-center justify-center text-sm text-muted">
-          No customer data
-        </div>
+        <div className="h-[200px] flex items-center justify-center text-sm text-muted">No customer data</div>
       ) : (
         <div className="grid grid-cols-3 gap-2 max-h-[240px] overflow-y-auto">
           {data.map((org) => {
@@ -72,9 +70,7 @@ export function CustomerHealthGrid() {
                 className={`text-left rounded-lg border p-3 transition-all hover:shadow-sm ${healthCfg.bg}`}
               >
                 <div className="flex items-start justify-between mb-1.5">
-                  <span className="text-xs font-semibold text-primary truncate max-w-[100px]">
-                    {org.orgName}
-                  </span>
+                  <span className="text-xs font-semibold text-primary truncate max-w-[100px]">{org.orgName}</span>
                   <span className={`h-2.5 w-2.5 rounded-full shrink-0 mt-0.5 ${healthCfg.dot}`} />
                 </div>
                 <span className={`inline-block text-[10px] font-medium px-1.5 py-0.5 rounded ${planClass} mb-1`}>

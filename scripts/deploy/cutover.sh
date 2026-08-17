@@ -2,12 +2,12 @@
 # scripts/deploy/cutover.sh — per-domain "flip and verify" automation for the C# strangler-fig
 # production cutover (docs/architecture/csharp-migration/PROD-DEPLOY-RUNBOOK-gate-g3.md §6).
 #
-# SCOPE: the ~10 STANDARD domains that use the normal staff-JWT/browser-cookie auth pattern —
+# SCOPE: the STANDARD domains that use the normal staff-JWT/browser-cookie auth pattern —
 # team-intel, reporting, billing-read, billing-usage, evaluation360, succession, compensation,
-# nine-box, engagement, dei, audit-log, access-review (12 read/write-pair domains once the
-# read+write flags are counted separately — see --list). external-vendor, billing-webhook, and
-# billing-self-serve are OUT OF SCOPE (different auth mechanisms; separate workstream) and are
-# deliberately absent from the surface table below.
+# nine-box, engagement, dei, audit-log, access-review, dashboard. Counted as SURFACES (read and
+# write flags separately): 13 read + 6 write = 19 — see --list. external-vendor, billing-webhook,
+# and billing-self-serve are OUT OF SCOPE (different auth mechanisms; separate workstream) and
+# are deliberately absent from the surface table below.
 #
 # SAFETY MODEL (mirrors the runbook's "Federico-run" rule — nothing here touches AWS/prod unless
 # a human explicitly opts in):
@@ -98,6 +98,9 @@ surface_row() {
     access-review)
       echo "read|AccessReviewReadEnabled|verify|access-review|NEXT_PUBLIC_ACCESS_REVIEW_READ_VIA_CSHARP|TS_DELETED|Phase-5 Slice-18. UPDATE 2026-07-31: flag confirmed live in prod; all 3 registered TS read procedures (getAccessReview/exportAccessReviewCsv/listAccessReviewAttestations) have been deleted — the C# read path is the sole implementation now. UPDATE 2026-08-11: scripts/parity/surfaces.ts's 'access-review' entry was removed on 2026-07-31 and that removal is REVERSED — re-registered C#-only, so --verify-only runs a REAL check again. Same reading as the audit-log row above: [WEAK] parity (no TS side), REAL RBAC platform_owner-200/org_admin-403, RLS a documented N/A (globalScope, unchanged before and after). All 3 routes pin a fixed non-existent org id in organizationId; neither expectation depends on that org existing (the 403 precedes any org lookup, and BuildReportAsync has no org-exists precondition — only AttestAsync does). UPDATE 2026-07-31 (same day, continued): the write flag (access-review-write) was ALSO confirmed live and its TS side deleted the same session — with BOTH sides gone, the whole TS router (packages/api/src/routers/platform/access-review.ts + its schemas/service/repository) was removed outright, matching the team-intel/reporting precedent, unlike this entry's original note. Read side is efcoreReadOnly over Phase-2 identity tables (users/roles/user_roles/role_permissions/permissions/organizations); access_reviews itself stays Prisma-owned (the C# write is a coexistence write, not an ownership flip — see table-ownership.md)."
       ;;
+    dashboard)
+      echo "read|PlatformDashboardReadEnabled|verify|dashboard|NEXT_PUBLIC_DASHBOARD_READ_VIA_CSHARP|BLOCKED|Phase-5 Slice 23 (issue #81; PRs #225/#233/#234/#237). All THIRTEEN platform-dashboard reads are deployed DARK behind this ONE flag; scripts/parity/surfaces.ts registers 'dashboard' with all 13 endpoints (the three FX reads — kpis/revenue-by-customer/churn-risk — are registered C#-only because the two stacks read DIFFERENT rate providers; the other ten carry real tsProcedures). FE wrapper apps/web/lib/platform-api/dashboard.ts shipped DARK 2026-08-17: twelve dual-path hooks; getUserGrowth has ZERO FE consumers so deliberately no hook (pinned by name in tests/platform/dashboard-fe-wiring.test.ts). BLOCKED on step 5: 'verify dashboard' has NEVER run against prod (#211) — run it fresh and PASS immediately before flipping, and mind the surface-header caveats in surfaces.ts (wall-clock month-boundary re-run situations; the recent-activity per-source take tie; the AI fixture's ~25-day decay). A real cutover needs THREE env conditions: Platform__PlatformDashboardReadEnabled=true on App Runner, NEXT_PUBLIC_DASHBOARD_READ_VIA_CSHARP=true at Vercel BUILD time (NEXT_PUBLIC_* is inlined — a redeploy without rebuild changes nothing), on top of the already-set NEXT_PUBLIC_TIMS_PLATFORM_API_URL."
+      ;;
     evaluation360-write)
       echo "write|Evaluation360WriteEnabled|verify-write|evaluation360|NEXT_PUBLIC_EVALUATION360_WRITE_VIA_CSHARP|FLIPPED_AHEAD_OF_FLAG|Runbook §6 Phase B #8 — FLIP-READY. UPDATE 2026-07-28: this note used to say 'once verified, drop the TS eval360 router' as a pending future step — that's now DONE (packages/api/src/routers/evaluation360.ts + its FE fallback in apps/web/lib/platform-api/evaluation360.ts were deleted outright), independent of this flag's flip state. verify-write itself is UNAFFECTED by that deletion (scripts/parity/write-surfaces.ts's 'evaluation360' entry hits the C# API directly for RBAC/IDOR checks — it never depended on the TS router). Flipping Platform:Evaluation360WriteEnabled is still the pending step to move review_cycles/rater_assignments/rater_responses to efcore table-ownership. ⚠️ UPDATE 2026-08-06 (#67, runbook §7e): THE OWNERSHIP FLIP HAS BEEN EXECUTED WHILE THIS FLAG IS STILL DARK. review_cycles/rater_assignments/rater_responses are now efcore[] in docs/architecture/table-ownership.md. This DEVIATES from runbook §8 Q8 / precondition P1, which require the write flag confirmed live in prod before the flip PR opens — all three prior flips (access_reviews, critical_roles+successors, calibration_*) had CONFIRMED_LIVE write flags. Federico authorised the deviation explicitly on 2026-08-06 after it was raised. CONSEQUENCE, stated plainly: the TS router was deleted 2026-07-28 and its orphaned repository by #54, so with this flag dark these three tables currently have NO ACTIVE WRITER ON EITHER STACK. The ledger's efcore[] entry means C# is the sole IMPLEMENTATION and sole authority for future schema changes; it does not currently mean C# is writing. Flip this flag to make the ledger operationally true, then change this status to CONFIRMED_LIVE."
       ;;
@@ -122,7 +125,7 @@ surface_row() {
   esac
 }
 
-ALL_SURFACES="team-intel reporting billing-read billing-usage evaluation360 succession compensation nine-box engagement dei audit-log access-review evaluation360-write succession-write nine-box-write compensation-write engagement-write access-review-write"
+ALL_SURFACES="team-intel reporting billing-read billing-usage evaluation360 succession compensation nine-box engagement dei audit-log access-review dashboard evaluation360-write succession-write nine-box-write compensation-write engagement-write access-review-write"
 
 field() {
   # field <pipe-delimited-row> <index 1-based>
@@ -287,9 +290,10 @@ run_verify() {
 # the ~24 Platform:<Surface>Enabled flags — external_vendor_read/write, billing_read,
 # billing_usage, billing_webhook_write, billing_self_serve, reporting_read, validation_staff_write,
 # team_intel_read. It has NO field at all for evaluation360/succession/compensation/nine-box/
-# engagement/dei/audit-log/access-review (read OR write) — 8 of our 12 read surfaces and all 6 of
-# our write surfaces would need the module extended (new optional fields in variables.tf + wiring
-# in main.tf's local.base_env) before `terraform apply -target=aws_apprunner_service.api` could
+# engagement/dei/audit-log/access-review (read OR write) or the platform dashboard — 9 of our 13
+# read surfaces and all 6 of our write surfaces would need the module extended (new optional
+# fields in variables.tf + wiring in main.tf's local.base_env) before
+# `terraform apply -target=aws_apprunner_service.api` could
 # touch them at all. Rather than have this script special-case "4 surfaces via Terraform, 8+6 via
 # AWS CLI" (exactly the kind of inconsistency the task asks to avoid), it always uses the direct
 # `aws apprunner update-service` path — the one mechanism that works uniformly for every surface

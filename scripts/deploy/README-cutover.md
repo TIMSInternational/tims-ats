@@ -29,7 +29,7 @@ executed.
 | `--rollback`     | Only with `--yes` | Same recipe, flips the flag back to `false`, plus prints the FE Vercel-revert steps.                         |
 
 Run `./scripts/deploy/cutover.sh --list` for the full surface table (flag name, parity CLI key, FE
-flag, and CONFIRMED LIVE / FLIP-READY / COEXISTENCE / TS DELETED status per
+flag, and CONFIRMED LIVE / FLIP-READY / COEXISTENCE / BLOCKED / TS DELETED status per
 [the runbook's §6 classification](../../docs/architecture/csharp-migration/PROD-DEPLOY-RUNBOOK-gate-g3.md#6-per-surface-cutover-one-flag-at-a-time-ts-stays-until-prod-verified)).
 
 ## Worked example: cutting over `engagement`
@@ -102,8 +102,8 @@ object) only models **9 of the ~24** `Platform:<Surface>Enabled` flags: `externa
 `external_vendor_write`, `billing_read`, `billing_usage`, `billing_webhook_write`,
 `billing_self_serve`, `reporting_read`, `validation_staff_write`, `team_intel_read`. It has **no
 field at all** for evaluation360, succession, compensation, nine-box, engagement, dei, audit-log,
-or access-review (read OR write) — 8 of this script's 12 read surfaces and all 6 of its write
-surfaces. Extending the module (new `optional(bool, false)` fields in `variables.tf` + wiring them
+access-review (read OR write), or the platform dashboard — 9 of this script's 13 read surfaces and
+all 6 of its write surfaces. Extending the module (new `optional(bool, false)` fields in `variables.tf` + wiring them
 into `main.tf`'s `local.base_env`) is real, deliberate infra work outside this script's scope.
 
 Rather than have the script silently behave differently per surface — Terraform for 4, raw AWS CLI
@@ -131,26 +131,27 @@ Cross-checked directly against `services/Tims.Platform/src/Tims.Api/Configuratio
 number) and independently corroborated by the `flag:` field in `scripts/parity/surfaces.ts` /
 `scripts/parity/write-surfaces.ts`.
 
-| Surface (this script) | Kind  | Backend flag                | Parity CLI invocation         | FE flag (`apps/web`)                         | Status                                                                      |
-| --------------------- | ----- | --------------------------- | ----------------------------- | -------------------------------------------- | --------------------------------------------------------------------------- |
-| `team-intel`          | read  | `TeamIntelReadEnabled`      | `NONE` (TS router deleted)    | `NEXT_PUBLIC_TEAMINTEL_READ_VIA_CSHARP`      | TS DELETED                                                                  |
-| `reporting`           | read  | `ReportingReadEnabled`      | `NONE` (TS router deleted)    | `NEXT_PUBLIC_REPORTING_READ_VIA_CSHARP`      | TS DELETED                                                                  |
-| `billing-read`        | read  | `BillingReadEnabled`        | `NONE` (TS router deleted)    | `NEXT_PUBLIC_BILLING_INVOICES_VIA_CSHARP`    | TS DELETED                                                                  |
-| `billing-usage`       | read  | `BillingUsageEnabled`       | `NONE` (TS router deleted)    | `NEXT_PUBLIC_BILLING_USAGE_VIA_CSHARP`       | TS DELETED                                                                  |
-| `evaluation360`       | read  | `Evaluation360ReadEnabled`  | `NONE` (TS router deleted)    | `NEXT_PUBLIC_EVALUATION360_READ_VIA_CSHARP`  | TS DELETED                                                                  |
-| `succession`          | read  | `SuccessionReadEnabled`     | `NONE` (surface unregistered) | `NEXT_PUBLIC_SUCCESSION_READ_VIA_CSHARP`     | TS DELETED (surface unregistered #58 — verify is a no-op)                   |
-| `compensation`        | read  | `CompensationReadEnabled`   | `verify compensation`         | `NEXT_PUBLIC_COMPENSATION_READ_VIA_CSHARP`   | CONFIRMED LIVE (partial TS deletion — 5/7 read procedures, see cutover.sh)  |
-| `nine-box`            | read  | `NineBoxReadEnabled`        | `verify ninebox`              | `NEXT_PUBLIC_NINEBOX_READ_VIA_CSHARP`        | TS DELETED (all 11 read procedures; surface kept C#-only — see cutover.sh)  |
-| `engagement`          | read  | `EngagementReadEnabled`     | `verify engagement`           | `NEXT_PUBLIC_ENGAGEMENT_READ_VIA_CSHARP`     | CONFIRMED LIVE (partial TS deletion — 8/14 read procedures, see cutover.sh) |
-| `dei`                 | read  | `DeiReadEnabled`            | `verify dei`                  | `NEXT_PUBLIC_DEI_READ_VIA_CSHARP`            | TS DELETED (all 11; surface kept C#-only — see cutover.sh)                  |
-| `audit-log`           | read  | `AuditLogReadEnabled`       | `verify audit-log`            | `NEXT_PUBLIC_AUDIT_LOG_READ_VIA_CSHARP`      | TS DELETED (surface re-registered C#-only 2026-08-11 — see below)           |
-| `access-review`       | read  | `AccessReviewReadEnabled`   | `verify access-review`        | `NEXT_PUBLIC_ACCESS_REVIEW_READ_VIA_CSHARP`  | TS DELETED (surface re-registered C#-only 2026-08-11 — see below)           |
-| `evaluation360-write` | write | `Evaluation360WriteEnabled` | `verify-write evaluation360`  | `NEXT_PUBLIC_EVALUATION360_WRITE_VIA_CSHARP` | FLIPPED_AHEAD_OF_FLAG (ownership flipped while dark — see cutover.sh)       |
-| `succession-write`    | write | `SuccessionWriteEnabled`    | `verify-write succession`     | `NEXT_PUBLIC_SUCCESSION_WRITE_VIA_CSHARP`    | CONFIRMED LIVE                                                              |
-| `nine-box-write`      | write | `NineBoxWriteEnabled`       | `verify-write ninebox`        | `NEXT_PUBLIC_NINEBOX_WRITE_VIA_CSHARP`       | CONFIRMED LIVE                                                              |
-| `compensation-write`  | write | `CompensationWriteEnabled`  | `verify-write compensation`   | `NEXT_PUBLIC_COMPENSATION_WRITE_VIA_CSHARP`  | COEXISTENCE (flag live; both TS mutations deleted — see cutover.sh)         |
-| `engagement-write`    | write | `EngagementWriteEnabled`    | `verify-write engagement`     | `NEXT_PUBLIC_ENGAGEMENT_WRITE_VIA_CSHARP`    | COEXISTENCE (flag live; 3 of 5 TS mutations deleted — see cutover.sh)       |
-| `access-review-write` | write | `AccessReviewWriteEnabled`  | `verify-write access-review`  | `NEXT_PUBLIC_ACCESS_REVIEW_WRITE_VIA_CSHARP` | CONFIRMED LIVE (TS deleted; write surface tests C# directly, no TS dep)     |
+| Surface (this script) | Kind  | Backend flag                   | Parity CLI invocation         | FE flag (`apps/web`)                         | Status                                                                      |
+| --------------------- | ----- | ------------------------------ | ----------------------------- | -------------------------------------------- | --------------------------------------------------------------------------- |
+| `team-intel`          | read  | `TeamIntelReadEnabled`         | `NONE` (TS router deleted)    | `NEXT_PUBLIC_TEAMINTEL_READ_VIA_CSHARP`      | TS DELETED                                                                  |
+| `reporting`           | read  | `ReportingReadEnabled`         | `NONE` (TS router deleted)    | `NEXT_PUBLIC_REPORTING_READ_VIA_CSHARP`      | TS DELETED                                                                  |
+| `billing-read`        | read  | `BillingReadEnabled`           | `NONE` (TS router deleted)    | `NEXT_PUBLIC_BILLING_INVOICES_VIA_CSHARP`    | TS DELETED                                                                  |
+| `billing-usage`       | read  | `BillingUsageEnabled`          | `NONE` (TS router deleted)    | `NEXT_PUBLIC_BILLING_USAGE_VIA_CSHARP`       | TS DELETED                                                                  |
+| `evaluation360`       | read  | `Evaluation360ReadEnabled`     | `NONE` (TS router deleted)    | `NEXT_PUBLIC_EVALUATION360_READ_VIA_CSHARP`  | TS DELETED                                                                  |
+| `succession`          | read  | `SuccessionReadEnabled`        | `NONE` (surface unregistered) | `NEXT_PUBLIC_SUCCESSION_READ_VIA_CSHARP`     | TS DELETED (surface unregistered #58 — verify is a no-op)                   |
+| `compensation`        | read  | `CompensationReadEnabled`      | `verify compensation`         | `NEXT_PUBLIC_COMPENSATION_READ_VIA_CSHARP`   | CONFIRMED LIVE (partial TS deletion — 5/7 read procedures, see cutover.sh)  |
+| `nine-box`            | read  | `NineBoxReadEnabled`           | `verify ninebox`              | `NEXT_PUBLIC_NINEBOX_READ_VIA_CSHARP`        | TS DELETED (all 11 read procedures; surface kept C#-only — see cutover.sh)  |
+| `engagement`          | read  | `EngagementReadEnabled`        | `verify engagement`           | `NEXT_PUBLIC_ENGAGEMENT_READ_VIA_CSHARP`     | CONFIRMED LIVE (partial TS deletion — 8/14 read procedures, see cutover.sh) |
+| `dei`                 | read  | `DeiReadEnabled`               | `verify dei`                  | `NEXT_PUBLIC_DEI_READ_VIA_CSHARP`            | TS DELETED (all 11; surface kept C#-only — see cutover.sh)                  |
+| `audit-log`           | read  | `AuditLogReadEnabled`          | `verify audit-log`            | `NEXT_PUBLIC_AUDIT_LOG_READ_VIA_CSHARP`      | TS DELETED (surface re-registered C#-only 2026-08-11 — see below)           |
+| `access-review`       | read  | `AccessReviewReadEnabled`      | `verify access-review`        | `NEXT_PUBLIC_ACCESS_REVIEW_READ_VIA_CSHARP`  | TS DELETED (surface re-registered C#-only 2026-08-11 — see below)           |
+| `dashboard`           | read  | `PlatformDashboardReadEnabled` | `verify dashboard`            | `NEXT_PUBLIC_DASHBOARD_READ_VIA_CSHARP`      | BLOCKED (step-5 `verify dashboard` never run, #211 — see cutover.sh)        |
+| `evaluation360-write` | write | `Evaluation360WriteEnabled`    | `verify-write evaluation360`  | `NEXT_PUBLIC_EVALUATION360_WRITE_VIA_CSHARP` | FLIPPED_AHEAD_OF_FLAG (ownership flipped while dark — see cutover.sh)       |
+| `succession-write`    | write | `SuccessionWriteEnabled`       | `verify-write succession`     | `NEXT_PUBLIC_SUCCESSION_WRITE_VIA_CSHARP`    | CONFIRMED LIVE                                                              |
+| `nine-box-write`      | write | `NineBoxWriteEnabled`          | `verify-write ninebox`        | `NEXT_PUBLIC_NINEBOX_WRITE_VIA_CSHARP`       | CONFIRMED LIVE                                                              |
+| `compensation-write`  | write | `CompensationWriteEnabled`     | `verify-write compensation`   | `NEXT_PUBLIC_COMPENSATION_WRITE_VIA_CSHARP`  | COEXISTENCE (flag live; both TS mutations deleted — see cutover.sh)         |
+| `engagement-write`    | write | `EngagementWriteEnabled`       | `verify-write engagement`     | `NEXT_PUBLIC_ENGAGEMENT_WRITE_VIA_CSHARP`    | COEXISTENCE (flag live; 3 of 5 TS mutations deleted — see cutover.sh)       |
+| `access-review-write` | write | `AccessReviewWriteEnabled`     | `verify-write access-review`  | `NEXT_PUBLIC_ACCESS_REVIEW_WRITE_VIA_CSHARP` | CONFIRMED LIVE (TS deleted; write surface tests C# directly, no TS dep)     |
 
 Run `./scripts/deploy/cutover.sh --list` for the per-surface long-form notes (why each is
 classified the way it is, and every naming quirk below).
