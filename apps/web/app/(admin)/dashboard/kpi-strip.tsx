@@ -1,6 +1,6 @@
 'use client';
 
-import { trpc } from '../../../lib/trpc';
+import { useDashboardKpis, useDashboardMrrTrend } from '../../../lib/platform-api/dashboard';
 import { formatCurrency, trendArrow, Skeleton } from './dashboard-utils';
 import { ErrorState } from '../../../components';
 
@@ -68,17 +68,15 @@ function KpiCard({ label, value, trendLabel, trendColor, trendUp, sparkData, spa
             {trendUp ? '\u2191' : '\u2193'} {trendLabel}
           </span>
         </div>
-        {sparkData && sparkData.length > 1 && (
-          <Sparkline data={sparkData} color={sparkColor ?? '#1F114C'} />
-        )}
+        {sparkData && sparkData.length > 1 && <Sparkline data={sparkData} color={sparkColor ?? '#1F114C'} />}
       </div>
     </div>
   );
 }
 
 export function KpiStrip() {
-  const { data: kpis, isLoading, isError, refetch } = trpc.platform.getDashboardKpis.useQuery();
-  const { data: mrrTrend, isError: mrrTrendError, refetch: refetchMrrTrend } = trpc.platform.getMrrTrend.useQuery();
+  const { data: kpis, isLoading, isError, refetch } = useDashboardKpis();
+  const { data: mrrTrend, isError: mrrTrendError, refetch: refetchMrrTrend } = useDashboardMrrTrend();
 
   if (isLoading) {
     return (
@@ -97,7 +95,12 @@ export function KpiStrip() {
   if (isError || mrrTrendError) {
     return (
       <div className="mb-5">
-        <ErrorState onRetry={() => { refetch(); refetchMrrTrend(); }} />
+        <ErrorState
+          onRetry={() => {
+            refetch();
+            refetchMrrTrend();
+          }}
+        />
       </div>
     );
   }
@@ -124,7 +127,12 @@ export function KpiStrip() {
         trendLabel={`+${kpis.totalOrgsChange} this month`}
         trendColor={kpis.totalOrgsChange > 0 ? 'text-emerald-600' : 'text-muted'}
         trendUp={kpis.totalOrgsChange > 0}
-        sparkData={mrrTrend?.map((_, i) => kpis.totalOrgs - kpis.totalOrgsChange + Math.floor(i * (kpis.totalOrgsChange / Math.max(mrrTrend.length - 1, 1))))}
+        sparkData={mrrTrend?.map(
+          (_, i) =>
+            kpis.totalOrgs -
+            kpis.totalOrgsChange +
+            Math.floor(i * (kpis.totalOrgsChange / Math.max(mrrTrend.length - 1, 1))),
+        )}
         sparkColor="#8B5CF6"
       />
       <KpiCard
@@ -135,9 +143,7 @@ export function KpiStrip() {
         trendUp={kpis.totalUsersChange > 0}
         sparkColor="#3B82F6"
         badge={
-          kpis.activeTrials > 0
-            ? { text: `${kpis.activeTrials} trials`, color: 'bg-amber-100 text-amber-700' }
-            : null
+          kpis.activeTrials > 0 ? { text: `${kpis.activeTrials} trials`, color: 'bg-amber-100 text-amber-700' } : null
         }
       />
       <KpiCard

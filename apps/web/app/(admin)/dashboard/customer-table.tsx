@@ -2,16 +2,9 @@
 
 import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { trpc } from '../../../lib/trpc';
+import { useDashboardRevenueByCustomer, useDashboardCustomerHealth } from '../../../lib/platform-api/dashboard';
 import { useI18n } from '../../../lib/i18n';
-import {
-  formatCurrency,
-  timeAgo,
-  PLAN_BG_CLASSES,
-  PLAN_LABELS,
-  HEALTH_CONFIG,
-  Skeleton,
-} from './dashboard-utils';
+import { formatCurrency, timeAgo, PLAN_BG_CLASSES, PLAN_LABELS, HEALTH_CONFIG, Skeleton } from './dashboard-utils';
 import { ErrorState } from '../../../components';
 
 type SortKey = 'orgName' | 'plan' | 'mrr' | 'userCount' | 'lastActiveAt';
@@ -28,8 +21,8 @@ const COLUMNS: { key: SortKey; label: string; className: string }[] = [
 export function CustomerTable() {
   const { t } = useI18n();
   const router = useRouter();
-  const { data, isLoading, isError, refetch } = trpc.platform.getRevenueByCustomer.useQuery();
-  const { data: healthData, isError: healthError, refetch: refetchHealth } = trpc.platform.getCustomerHealth.useQuery();
+  const { data, isLoading, isError, refetch } = useDashboardRevenueByCustomer();
+  const { data: healthData, isError: healthError, refetch: refetchHealth } = useDashboardCustomerHealth();
   const [sortKey, setSortKey] = useState<SortKey>('mrr');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
 
@@ -97,7 +90,12 @@ export function CustomerTable() {
           ))}
         </div>
       ) : isError || healthError ? (
-        <ErrorState onRetry={() => { refetch(); refetchHealth(); }} />
+        <ErrorState
+          onRetry={() => {
+            refetch();
+            refetchHealth();
+          }}
+        />
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-left">
@@ -109,15 +107,12 @@ export function CustomerTable() {
                     className={`px-5 py-2.5 text-xs font-medium text-muted uppercase tracking-wide cursor-pointer hover:text-primary select-none ${col.className}`}
                     onClick={() => handleSort(col.key)}
                   >
-                    {col.label}{sortIndicator(col.key)}
+                    {col.label}
+                    {sortIndicator(col.key)}
                   </th>
                 ))}
-                <th className="px-5 py-2.5 text-xs font-medium text-muted uppercase tracking-wide w-[10%]">
-                  Health
-                </th>
-                <th className="px-5 py-2.5 text-xs font-medium text-muted uppercase tracking-wide w-[8%]">
-                  Action
-                </th>
+                <th className="px-5 py-2.5 text-xs font-medium text-muted uppercase tracking-wide w-[10%]">Health</th>
+                <th className="px-5 py-2.5 text-xs font-medium text-muted uppercase tracking-wide w-[8%]">Action</th>
               </tr>
             </thead>
             <tbody>
@@ -145,9 +140,7 @@ export function CustomerTable() {
                         {PLAN_LABELS[org.plan] ?? org.plan}
                       </span>
                     </td>
-                    <td className="px-5 py-3 text-sm font-medium text-primary">
-                      {formatCurrency(org.mrr)}
-                    </td>
+                    <td className="px-5 py-3 text-sm font-medium text-primary">{formatCurrency(org.mrr)}</td>
                     <td className="px-5 py-3 text-sm text-secondary">{org.userCount}</td>
                     <td className="px-5 py-3 text-xs text-muted">{timeAgo(org.lastActiveAt)}</td>
                     <td className="px-5 py-3">

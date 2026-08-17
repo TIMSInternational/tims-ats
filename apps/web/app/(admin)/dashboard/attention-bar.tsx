@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { trpc } from '../../../lib/trpc';
+import { useDashboardAttentionItems } from '../../../lib/platform-api/dashboard';
 import { toast } from '../../../lib/toast';
 import { SEVERITY_CONFIG, Skeleton } from './dashboard-utils';
 import { useI18n } from '../../../lib/i18n';
@@ -11,7 +11,7 @@ import { ErrorState } from '../../../components';
 export function AttentionBar() {
   const { t } = useI18n();
   const router = useRouter();
-  const { data, isLoading, isError, refetch } = trpc.platform.getAttentionItems.useQuery();
+  const { data, isLoading, isError, refetch } = useDashboardAttentionItems();
   const [collapsed, setCollapsed] = useState(false);
 
   if (isLoading) {
@@ -43,9 +43,7 @@ export function AttentionBar() {
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3">
         <div className="flex items-center gap-2">
-          <span className="text-base">
-            {hasCritical ? '\u26A0' : '\u26A0'}
-          </span>
+          <span className="text-base">{hasCritical ? '\u26A0' : '\u26A0'}</span>
           <span className="text-sm font-semibold text-primary">
             {data.length} item{data.length !== 1 ? 's' : ''} need attention
           </span>
@@ -76,9 +74,7 @@ export function AttentionBar() {
                 <div className="flex items-center gap-3 min-w-0">
                   <span className={`h-2 w-2 rounded-full shrink-0 ${config.dot}`} />
                   <div className="min-w-0">
-                    <span className="text-sm font-medium text-primary truncate block">
-                      {item.title}
-                    </span>
+                    <span className="text-sm font-medium text-primary truncate block">{item.title}</span>
                     <span className="text-xs text-muted">{item.description}</span>
                   </div>
                 </div>
@@ -96,11 +92,7 @@ export function AttentionBar() {
               </div>
             );
           })}
-          {data.length > 8 && (
-            <p className="text-xs text-muted text-center pt-1">
-              +{data.length - 8} more items
-            </p>
-          )}
+          {data.length > 8 && <p className="text-xs text-muted text-center pt-1">+{data.length - 8} more items</p>}
         </div>
       )}
     </div>

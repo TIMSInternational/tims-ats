@@ -1,15 +1,7 @@
 'use client';
 
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  CartesianGrid,
-} from 'recharts';
-import { trpc } from '../../../../lib/trpc';
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { useDashboardMrrTrend } from '../../../../lib/platform-api/dashboard';
 import { formatCurrency, BRAND_NAVY, Skeleton } from '../dashboard-utils';
 import { useI18n } from '../../../../lib/i18n';
 import { ErrorState } from '../../../../components';
@@ -31,7 +23,7 @@ function MrrTooltip({ active, payload, label }: MrrTooltipProps) {
 }
 
 export function MrrTrendChart() {
-  const { data, isLoading, isError, refetch } = trpc.platform.getMrrTrend.useQuery();
+  const { data, isLoading, isError, refetch } = useDashboardMrrTrend();
   const { t } = useI18n();
 
   return (
@@ -42,9 +34,7 @@ export function MrrTrendChart() {
           <p className="text-xs text-muted">{t.dashboard.mrrTrendSubtitle}</p>
         </div>
         {data && data.length > 0 && (
-          <span className="text-lg font-bold text-primary">
-            {formatCurrency(data[data.length - 1].mrr)}
-          </span>
+          <span className="text-lg font-bold text-primary">{formatCurrency(data[data.length - 1].mrr)}</span>
         )}
       </div>
 
@@ -62,12 +52,7 @@ export function MrrTrendChart() {
               </linearGradient>
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="#F0F0F0" vertical={false} />
-            <XAxis
-              dataKey="month"
-              tick={{ fontSize: 11, fill: '#8B8B8B' }}
-              axisLine={false}
-              tickLine={false}
-            />
+            <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#8B8B8B' }} axisLine={false} tickLine={false} />
             <YAxis
               tickFormatter={(v: number) => formatCurrency(v, true)}
               tick={{ fontSize: 11, fill: '#8B8B8B' }}
