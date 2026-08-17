@@ -1,0 +1,230 @@
+{
+  "cases": [
+    {
+      "name": "all present, default 0.2 weights",
+      "input": {
+        "rawScores": {
+          "assessment": 80,
+          "interview": 90,
+          "experience": 70,
+          "education": 60,
+          "languages": 50
+        },
+        "weights": {
+          "assessment": 0.2,
+          "interview": 0.2,
+          "experience": 0.2,
+          "education": 0.2,
+          "languages": 0.2
+        }
+      },
+      "expected": {
+        "overallScore": 70,
+        "isPartial": false
+      }
+    },
+    {
+      "name": "one missing renormalizes over the remaining 0.8",
+      "input": {
+        "rawScores": {
+          "assessment": null,
+          "interview": 90,
+          "experience": 70,
+          "education": 60,
+          "languages": 50
+        },
+        "weights": {
+          "assessment": 0.2,
+          "interview": 0.2,
+          "experience": 0.2,
+          "education": 0.2,
+          "languages": 0.2
+        }
+      },
+      "expected": {
+        "overallScore": 68,
+        "isPartial": true
+      }
+    },
+    {
+      "name": "only one present carries full weight",
+      "input": {
+        "rawScores": {
+          "assessment": null,
+          "interview": 85,
+          "experience": null,
+          "education": null,
+          "languages": null
+        },
+        "weights": {
+          "assessment": 0.2,
+          "interview": 0.2,
+          "experience": 0.2,
+          "education": 0.2,
+          "languages": 0.2
+        }
+      },
+      "expected": {
+        "overallScore": 85,
+        "isPartial": true
+      }
+    },
+    {
+      "name": "all missing → 0 + partial",
+      "input": {
+        "rawScores": {
+          "assessment": null,
+          "interview": null,
+          "experience": null,
+          "education": null,
+          "languages": null
+        },
+        "weights": {
+          "assessment": 0.2,
+          "interview": 0.2,
+          "experience": 0.2,
+          "education": 0.2,
+          "languages": 0.2
+        }
+      },
+      "expected": {
+        "overallScore": 0,
+        "isPartial": true
+      }
+    },
+    {
+      "name": "all present under all-zero weights → 0 + partial (TS quirk)",
+      "input": {
+        "rawScores": {
+          "assessment": 80,
+          "interview": 90,
+          "experience": 70,
+          "education": 60,
+          "languages": 50
+        },
+        "weights": {
+          "assessment": 0,
+          "interview": 0,
+          "experience": 0,
+          "education": 0,
+          "languages": 0
+        }
+      },
+      "expected": {
+        "overallScore": 0,
+        "isPartial": true
+      }
+    },
+    {
+      "name": "missing weight keys weigh 0 (?? 0), not partial when raws present",
+      "input": {
+        "rawScores": {
+          "assessment": 80,
+          "interview": 90,
+          "experience": 70,
+          "education": 60,
+          "languages": 50
+        },
+        "weights": {
+          "assessment": 1
+        }
+      },
+      "expected": {
+        "overallScore": 80,
+        "isPartial": false
+      }
+    },
+    {
+      "name": "x.5 rounds half-up: (75·.2+80·.2)/.4",
+      "input": {
+        "rawScores": {
+          "assessment": 75,
+          "interview": 80,
+          "experience": null,
+          "education": null,
+          "languages": null
+        },
+        "weights": {
+          "assessment": 0.2,
+          "interview": 0.2,
+          "experience": 0.2,
+          "education": 0.2,
+          "languages": 0.2
+        }
+      },
+      "expected": {
+        "overallScore": 78,
+        "isPartial": true
+      }
+    },
+    {
+      "name": "uneven weights renormalize: (100·.5+50·.3)/.8",
+      "input": {
+        "rawScores": {
+          "assessment": 100,
+          "interview": 50,
+          "experience": null,
+          "education": null,
+          "languages": null
+        },
+        "weights": {
+          "assessment": 0.5,
+          "interview": 0.3,
+          "experience": 0.1,
+          "education": 0.05,
+          "languages": 0.05
+        }
+      },
+      "expected": {
+        "overallScore": 81,
+        "isPartial": true
+      }
+    },
+    {
+      "name": "exact 62.5 tie rounds to 63",
+      "input": {
+        "rawScores": {
+          "assessment": 50,
+          "interview": 75,
+          "experience": null,
+          "education": null,
+          "languages": null
+        },
+        "weights": {
+          "assessment": 0.5,
+          "interview": 0.5,
+          "experience": 0,
+          "education": 0,
+          "languages": 0
+        }
+      },
+      "expected": {
+        "overallScore": 63,
+        "isPartial": true
+      }
+    },
+    {
+      "name": "zero-weight dimension present contributes nothing but is not missing",
+      "input": {
+        "rawScores": {
+          "assessment": 80,
+          "interview": 0,
+          "experience": null,
+          "education": null,
+          "languages": null
+        },
+        "weights": {
+          "assessment": 0.5,
+          "interview": 0,
+          "experience": 0.2,
+          "education": 0.2,
+          "languages": 0.1
+        }
+      },
+      "expected": {
+        "overallScore": 80,
+        "isPartial": true
+      }
+    }
+  ]
+}
