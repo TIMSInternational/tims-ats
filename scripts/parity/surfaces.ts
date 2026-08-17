@@ -1022,7 +1022,12 @@ export const SURFACES: Record<string, Surface> = {
   // verified against seed()'s call sites on 2026-08-17, not assumed.
   //
   // Role expectations are COPIED from the deleted registrations (git 0a368681, the fullest
-  // pre-deletion registry) and re-checked against the four C# gates — not invented. Verified
+  // pre-deletion registry) WHERE ONE EXISTED, and re-checked against the four C# gates. The
+  // panel counted the set: 0a368681 registered team-intel with ONE endpoint (dashboard-kpis), so
+  // the other four team-intel entries below (compare / profile / members / balance-score) have NO
+  // prior registration to copy from — their expectations are SOURCE-DERIVED ONLY (gate + grant
+  // fixture), which is the weaker provenance and the first place a live `verify team-intel` run
+  // should look if it reds. Verified
   // 2026-08-17: packages/api/src/routers contains no teamIntel / succession / evaluation360 /
   // recruitmentAnalytics router (only team-intel-metrics.ts survives, a kernel re-export), so no
   // endpoint below carries a `tsProcedure`, and NONE carries `normalize` — with no payload diff a
@@ -1031,10 +1036,9 @@ export const SURFACES: Record<string, Surface> = {
   //
   // billing-read / billing-usage remain the two surfaces still deleted on the old reasoning —
   // allowlisted in tests/governance/parity-registry-covers-deployed-routes.test.ts, tracked in
-  // #195. NOTE: scripts/deploy/cutover.sh's rows for THESE four surfaces still say
-  // parity_command=NONE and are now stale; updating that table (and README-cutover.md with it —
-  // tests/governance/cutover-table-matches-script.test.ts pins the two together) is follow-up
-  // work, deliberately not smuggled into this registry change.
+  // #195. cutover.sh's rows for these four surfaces were flipped NONE→verify (and
+  // README-cutover.md with them — tests/governance/cutover-table-matches-script.test.ts pins the
+  // two together) in this same change, so --verify-only is a real gate for them again.
   //
   // THE WIDER GAP NARRATIVE that used to live here (135 deployed ops / 50 registered / gap 85,
   // measured 2026-08-11) lives with the numbers now: the route-coverage guard

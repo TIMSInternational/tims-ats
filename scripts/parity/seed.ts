@@ -1151,6 +1151,14 @@ export async function seedNineBoxData(db: Client, orgAId: string, userIds: Map<s
 // ── succession fixtures ──────────────────────────────────────────────────────
 // RBAC: succession:read hr_admin@org + hrbp@unit. hr_admin's compensation:read@org grant (for the
 // comp-gap-alerts secondary check) is already seeded by seedCompensationGrants. No native enums.
+// ⚠️ LOAD-BEARING ABSENCE (panel, 2026-08-17): this harness seeds NO `user_business_units` rows,
+// and three succession read expectations in surfaces.ts depend on exactly that: hrbp's unit scope
+// anchors to an EMPTY member list, so the critical-roles LIST answers hrbp with a scoped-empty 200
+// and the three by-id routes answer 404 (hrbp is therefore OMITTED from their expectedByRole —
+// 404 is inexpressible in the 200|403 contract). If anyone ever seeds unit membership for the
+// hrbp fixture user, the list stays green (non-empty 200 still passes) but the by-id 404
+// assumption silently flips to 200 with NOTHING asserting it — re-derive those three rows'
+// expectations in the same change.
 async function seedSuccessionGrants(db: Client, roleIds: Map<string, string>): Promise<void> {
   const readPerm = await upsertPermission(db, 'succession', 'read');
   // create/update/delete grants make hr_admin a genuine org-scoped write role (mirrors the prod

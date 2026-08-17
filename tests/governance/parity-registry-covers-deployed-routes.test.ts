@@ -246,8 +246,8 @@ const UNREGISTERED_ALLOWLIST: AllowGroup[] = [
       'and the two team-intel 501 stubs moved to their own group below). What remains is billing-read + ' +
       'billing-usage. Re-registering those two the same way is the fix and is tracked in #195 — their fixture ' +
       '(seedBillingSubscription) already exists, but their role expectations must be probed rather than guessed, ' +
-      "since a wrong one reproduces #166's false 12/43 FAIL, which is worse than a documented gap. NOTE " +
-      'cutover.sh still says parity_command=NONE for the four re-registered surfaces — stale, follow-up work.',
+      "since a wrong one reproduces #166's false 12/43 FAIL, which is worse than a documented gap. " +
+      'cutover.sh + README rows for the four re-registered surfaces were flipped NONE→verify in the same change.',
     routes: [
       'GET /billing/usage',
       'GET /billing/plan',

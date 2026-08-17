@@ -167,8 +167,8 @@ classified the way it is, and every naming quirk below).
   UPDATE 2026-07-31: `billing-read`'s TS side (`billing.listInvoices`/`billing.getInvoice`) has
   been deleted, so the parity harness's `billing-invoices` key was removed too (same treatment as
   `team-intel`/`reporting`/`billing-usage` above) — there is no longer a `billing-invoices` parity
-  key to map `billing-read` onto; `--verify-only` for this surface is now a no-op like the other
-  TS_DELETED rows.
+  key to map `billing-read` onto; `--verify-only` for this surface is a no-op — and after the 2026-08-17
+  #195 re-registrations, billing-read/billing-usage are the LAST TWO rows where that is true.
 - **`billing-read`'s FE flag (added 2026-07-28, confirmed live 2026-07-31).**
   `apps/web/lib/platform-api/billing.ts` wires a fourth, independent flag —
   `NEXT_PUBLIC_BILLING_INVOICES_VIA_CSHARP` — gating the `useBillingInvoices`/`useBillingInvoice`
@@ -204,15 +204,17 @@ classified the way it is, and every naming quirk below).
   read paths were confirmed fully live in prod — see
   `docs/plans/2026-07-28-ts-dead-code-deletion-reporting-eval360.md`. `scripts/parity/surfaces.ts`'s
   `reporting` and `evaluation360` entries were removed at the same time, so there is no TS side left
-  to diff against for either read surface: their `parity_command` is `NONE` and `--verify-only`
-  just prints a no-op notice and exits 0. **`team-intel` (read) joined this group on 2026-07-29** —
+  to diff against for either read surface. (UPDATE 2026-08-17, #195: both entries were RE-REGISTERED
+  C#-only, `parity_command` is `verify` again, and `--verify-only` is a real gate — the no-op era
+  ran 2026-07-28 → 2026-08-17.) **`team-intel` (read) joined this group on 2026-07-29** —
   but unlike `reporting`/`evaluation360`, only the `getDashboardKpis` procedure inside
   `packages/api/src/routers/teamIntel.ts` (plus its FE tRPC fallback in
   `apps/web/lib/platform-api/team-intel.ts`) was deleted, not the whole router: `teamIntel.ts` still
   serves 6 other unrelated procedures (`getTeamProfile`, `getMembers`, `getBalanceScore`,
   `getBalanceAlerts`, `getRecommendedHires`, `compareTeams`) with zero FE consumers, so the router
   file itself stays in place. `scripts/parity/surfaces.ts`'s `team-intel` entry was removed the same
-  way, so its `parity_command` is likewise `NONE` and `--verify-only` for it is the same no-op. This
+  way. (UPDATE 2026-08-17, #195: re-registered C#-only with FIVE endpoints — the two 501 stubs
+  excluded, see the surfaces.ts header — so `--verify-only` is a real gate for it too.) This
   does NOT touch the `evaluation360-write` surface —
   `scripts/parity/write-surfaces.ts` still registers `evaluation360` for `verify-write` (it tests
   the C# API's RBAC/IDOR behavior directly, not a TS diff), so that row's parity command is
