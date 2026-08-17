@@ -247,7 +247,7 @@ const UNREGISTERED_ALLOWLIST: AllowGroup[] = [
       'billing-usage. Re-registering those two the same way is the fix and is tracked in #195 — their fixture ' +
       '(seedBillingSubscription) already exists, but their role expectations must be probed rather than guessed, ' +
       "since a wrong one reproduces #166's false 12/43 FAIL, which is worse than a documented gap. " +
-      'cutover.sh + README rows for the four re-registered surfaces were flipped NONE→verify in the same change.',
+      'cutover.sh + README rows for the four re-registered surfaces were flipped NONE→verify in the same PR.',
     routes: [
       'GET /billing/usage',
       'GET /billing/plan',

@@ -209,10 +209,11 @@ classified the way it is, and every naming quirk below).
   ran 2026-07-28 → 2026-08-17.) **`team-intel` (read) joined this group on 2026-07-29** —
   but unlike `reporting`/`evaluation360`, only the `getDashboardKpis` procedure inside
   `packages/api/src/routers/teamIntel.ts` (plus its FE tRPC fallback in
-  `apps/web/lib/platform-api/team-intel.ts`) was deleted, not the whole router: `teamIntel.ts` still
-  serves 6 other unrelated procedures (`getTeamProfile`, `getMembers`, `getBalanceScore`,
-  `getBalanceAlerts`, `getRecommendedHires`, `compareTeams`) with zero FE consumers, so the router
-  file itself stays in place. `scripts/parity/surfaces.ts`'s `team-intel` entry was removed the same
+  `apps/web/lib/platform-api/team-intel.ts`) was deleted at first, not the whole router — it then
+  still served 6 other zero-FE-consumer procedures (`getTeamProfile`, `getMembers`,
+  `getBalanceScore`, `getBalanceAlerts`, `getRecommendedHires`, `compareTeams`). (UPDATE
+  2026-08-06, #55: those 6 were deleted too and `teamIntel.ts` is GONE — see cutover.sh's
+  team-intel row.) `scripts/parity/surfaces.ts`'s `team-intel` entry was removed the same
   way. (UPDATE 2026-08-17, #195: re-registered C#-only with FIVE endpoints — the two 501 stubs
   excluded, see the surfaces.ts header — so `--verify-only` is a real gate for it too.) This
   does NOT touch the `evaluation360-write` surface —

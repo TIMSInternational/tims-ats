@@ -1036,9 +1036,10 @@ export const SURFACES: Record<string, Surface> = {
   //
   // billing-read / billing-usage remain the two surfaces still deleted on the old reasoning —
   // allowlisted in tests/governance/parity-registry-covers-deployed-routes.test.ts, tracked in
-  // #195. cutover.sh's rows for these four surfaces were flipped NONE→verify (and
+  // #195. cutover.sh's rows for the four re-registered surfaces (team-intel / reporting /
+  // succession / evaluation360 read) were flipped NONE→verify (and
   // README-cutover.md with them — tests/governance/cutover-table-matches-script.test.ts pins the
-  // two together) in this same change, so --verify-only is a real gate for them again.
+  // two together) in this same PR, so --verify-only is a real gate for them again.
   //
   // THE WIDER GAP NARRATIVE that used to live here (135 deployed ops / 50 registered / gap 85,
   // measured 2026-08-11) lives with the numbers now: the route-coverage guard
