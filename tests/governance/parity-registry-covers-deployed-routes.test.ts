@@ -10,31 +10,38 @@ import { WRITE_SURFACES, type WriteResolvedBase } from '../../scripts/parity/wri
  * The parity harness (scripts/parity/) is the only automated thing that probes the LIVE C# service
  * for cross-tenant isolation (checks/rls.ts) and permission denials (checks/rbac.ts). It can probe
  * nothing that SURFACES + WRITE_SURFACES do not register — and nothing measured how much of the
- * deployed service that is. Re-measured 2026-08-16: 67 registered endpoints against 151 deployed
- * operations, leaving a gap of 84. (The numeric PINS below were updated when slice 23 landed; update
+ * deployed service that is. Re-measured 2026-08-17: 92 registered endpoints against 151 deployed
+ * operations, leaving a gap of 59. (The numeric PINS below were updated when slice 23 landed; update
  * both this prose and the pins, or neither is trustworthy — slice 22 updated only the pins and this
  * line read 50/135/gap-85 for a commit, and slice 23's SECOND PR repeated the mistake: it moved the
  * pins to 147/63 and left every figure in this header at the pre-PR numbers. Slice 23's THIRD PR
- * updated both, as did its final read — ai-cost-anomalies, registered in the same PR that deployed
- * it, so the gap held at 84.)
+ * updated both, as did its final read. The 2026-08-17 change — #195's residual, re-registering the
+ * four deleted talent read surfaces C#-only — moved 67→92 / 84→59: 27 routes left the allowlist as
+ * 25 registered endpoints plus the two team-intel 501 stubs, which moved to their OWN allowlist
+ * group rather than the registry, for the reason that group states.)
  *
  * THIS GUARD MEASURES REGISTRATION, NOT PROBE COVERAGE, and the two are not the same number, and as
  * of 2026-08-15 there is a THIRD number: registration does not imply a PAYLOAD DIFF either, since an
- * endpoint may be registered C#-only (no `tsProcedure`) and report [WEAK]. FOURTEEN of the 40 are, across
- * five surfaces — dashboard's 3 FX reads (see surfaces.ts caveat 8), nine-box 4, access-review 3,
- * audit-log 2 and dei 2, the last four groups being surfaces whose TypeScript side was deleted outright.
+ * endpoint may be registered C#-only (no `tsProcedure`) and report [WEAK]. THIRTY-NINE of the 65
+ * reads are, across nine surfaces — dashboard's 3 FX reads (see surfaces.ts caveat 8), nine-box 4,
+ * access-review 3, audit-log 2, dei 2, and the four talent surfaces re-registered on 2026-08-17
+ * (team-intel 5, reporting 6, succession 9, evaluation360 5) — all but the FX trio being surfaces
+ * whose TypeScript side was deleted outright.
  * (This line read "three" when the dashboard entries landed: a count written in prose beside a list that
  * lives elsewhere, which is the failure mode this file's own header warns about. Dashboard's
  * ai-cost-anomalies read, by contrast, carries a real `tsProcedure` — no FX provider is involved — so
  * it did NOT move this count.) Of the
- * 40 READ registrations, TWENTY-SIX issue no cross-tenant probe at all: 25 carry `globalScope` and 1
+ * 65 READ registrations, TWENTY-SIX issue no cross-tenant probe at all: 25 carry `globalScope` and 1
  * carries `noTenantBoundaryForCaller`, and checks/rls.ts returns `inconclusive` for both without calling
  * anything. Those are correct dispositions — a platform-owner cross-org read has no tenant boundary
  * to prove — but it means a route can move from the allowlist into the "covered" set without gaining
- * a Mode-A probe. This change is its own worked example: `GET /platform/organizations/{id}` left
- * allowlist group 3 and the gap pin dropped 86 → 85, which reads as progress, while that route's RLS
- * disposition went from "unprobed" to "unprobed, documented". Read the headline numbers as
- * "registered and therefore visible to the harness", never as "probed for cross-tenant isolation".
+ * a Mode-A probe. The organization/detail registration was one worked example: `GET
+ * /platform/organizations/{id}` left allowlist group 3 and the gap pin dropped 86 → 85, which reads
+ * as progress, while that route's RLS disposition went from "unprobed" to "unprobed, documented".
+ * (The 25 reads registered on 2026-08-17 are NOT of that kind: every one runs a real RLS mode — 17
+ * Mode B, 8 Mode A — though surfaces.ts's team-intel caveat 1 names one Mode B that is vacuous by
+ * fixture design.) Read the headline numbers as "registered and therefore visible to the harness",
+ * never as "probed for cross-tenant isolation".
  *
  * WHAT THIS GUARD DOES AND DOES NOT DO. It does NOT register the gap — that is out of scope and must
  * not be attempted here: each org-scoped surface needs its own SEEDED GRANT FIXTURE before it can be
@@ -85,8 +92,9 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  * allowlist), because a normalisation applied to only one side is a silent false match. Each rule has
  * a reason:
  *
- *  1. Truncate at the first `?`. Eight of the 24 read registry entries carry a query string
- *     (`/monitoring/alerts?page=1&limit=20`, the three access-review `?organizationId=…` routes, …);
+ *  1. Truncate at the first `?`. Thirteen of the 65 read registry entries carry a query string
+ *     (`/monitoring/alerts?page=1&limit=20`, the three access-review `?organizationId=…` routes,
+ *     the three `?period=30D` reporting reads, team-intel's compare, …);
  *     no OpenAPI path and no .cs route template ever does.
  *  2. Split on '/', and replace a WHOLE segment with `{*}` when it is a `{…}` placeholder or a bare
  *     UUID. Both sides need it: param NAMES differ (the registry writes `/compensation/employee/{id}`
@@ -127,7 +135,7 @@ const deployed = new Set<string>();
  *  distinguish "no new route" from "a new route collapsed onto an existing key": `routeKey` maps a
  *  bare UUID segment to `{*}`, so a future literal-id diagnostic (say
  *  `GET /platform/organizations/00000000-…`) would normalise onto the already-registered
- *  `GET /platform/organizations/{*}`, be counted as covered, and leave the 150 pin unmoved. Asserting
+ *  `GET /platform/organizations/{*}`, be counted as covered, and leave the 151 pin unmoved. Asserting
  *  these two are EQUAL proves the normaliser is injective over the deployed set, which is the
  *  property every count below silently assumes. */
 let deployedOperations = 0;
@@ -232,45 +240,34 @@ const UNREGISTERED_ALLOWLIST: AllowGroup[] = [
   {
     reason:
       'SURFACE WAS REGISTERED AND THEN DELETED, on the reasoning "the TS procedures are gone, so there is nothing ' +
-      'left to diff" — obsolete since `tsProcedure` became OPTIONAL on 2026-08-06 (efb7553f). These are exactly the ' +
-      'six `parity_command=NONE` rows in scripts/deploy/cutover.sh. Re-registering them C#-only (the audit-log / ' +
-      'access-review precedent, 2026-08-11) is the fix and is tracked separately: unlike those two platform-owner ' +
-      'surfaces, each of these is org-scoped RBAC and needs its OWN seeded grant fixture first — a missing grant ' +
-      "reproduces #166's false 12/43 FAIL, which is worse than a documented gap.",
+      'left to diff" — obsolete since `tsProcedure` became OPTIONAL on 2026-08-06 (efb7553f). This group held the ' +
+      "six `parity_command=NONE` cutover.sh surfaces until 2026-08-17, when #195's residual re-registered FOUR of " +
+      'them C#-only (succession, team-intel, reporting, evaluation360 — 27 routes left this list: 25 registered, ' +
+      'and the two team-intel 501 stubs moved to their own group below). What remains is billing-read + ' +
+      'billing-usage. Re-registering those two the same way is the fix and is tracked in #195 — their fixture ' +
+      '(seedBillingSubscription) already exists, but their role expectations must be probed rather than guessed, ' +
+      "since a wrong one reproduces #166's false 12/43 FAIL, which is worse than a documented gap. " +
+      'cutover.sh + README rows for the four re-registered surfaces were flipped NONE→verify in the same PR.',
     routes: [
-      'GET /succession/comp-gap-alerts',
-      'GET /succession/competency-coverage',
-      'GET /succession/critical-roles',
-      'GET /succession/critical-roles/{criticalRoleId}',
-      'GET /succession/critical-roles/{criticalRoleId}/simulate-exit',
-      'GET /succession/critical-roles/{criticalRoleId}/suggested-successors',
-      'GET /succession/dashboard-kpis',
-      'GET /succession/flight-risk',
-      'GET /succession/roles-without-successor',
-      'GET /team-intel/compare',
-      'GET /team-intel/dashboard-kpis',
-      'GET /team-intel/teams/{teamId}/balance-alerts',
-      'GET /team-intel/teams/{teamId}/balance-score',
-      'GET /team-intel/teams/{teamId}/members',
-      'GET /team-intel/teams/{teamId}/profile',
-      'GET /team-intel/teams/{teamId}/recommended-hires',
-      'GET /reporting/funnel',
-      'GET /reporting/kpis',
-      'GET /reporting/lost-by-delay',
-      'GET /reporting/recruiter-sla',
-      'GET /reporting/source-breakdown',
-      'GET /reporting/trend',
-      'GET /evaluation360/cycles',
-      'GET /evaluation360/cycles/{cycleId}/progress',
-      'GET /evaluation360/my/rater-tasks',
-      'GET /evaluation360/my/report-cycles',
-      'GET /evaluation360/my/reports/{cycleId}',
       'GET /billing/usage',
       'GET /billing/plan',
       'GET /billing/config',
       'GET /billing/invoices',
       'GET /billing/invoices/{id}',
     ],
+  },
+  {
+    reason:
+      'DEPLOYED HONEST 501 STUBS — the two team-intel AI reads (TeamIntelReadEndpoints.cs: gate → team IDOR ' +
+      'probe → 501 "AI agent pending"). NO role receives a 200 from them, and the harness contract cannot express ' +
+      'that: `expectedByRole` admits only 200|403, checks/parity.ts fails a C#-only endpoint on any non-200, ' +
+      "surfaces.test.ts's probeRole-expects-200 invariant covers every endpoint of a surface, and the RLS Mode-A " +
+      'positive control requires the org-B caller to reach its own resource 200 + non-empty. Registering them on ' +
+      'the team-intel surface would therefore manufacture a permanent false-RED — the #166 shape, worse than this ' +
+      'documented gap. Their gate→probe→501 ordering (auth still enforced, id never confirmed) is pinned by ' +
+      'TeamIntelReadEndpointAuthTests.cs. When the AI agents ship and these answer 200, register them as by-id ' +
+      "endpoints (idScopeKey 'team') on the team-intel surface and delete this group.",
+    routes: ['GET /team-intel/teams/{teamId}/balance-alerts', 'GET /team-intel/teams/{teamId}/recommended-hires'],
   },
   {
     reason:
@@ -379,7 +376,7 @@ describe('parity registry covers every deployed route (or documents why not)', (
     ).toBeGreaterThan(0);
     expect(deployed.size, 'zero deployed route keys built — routeKey() is broken').toBeGreaterThan(0);
     // INJECTIVITY. Two OpenAPI operations that normalise to the same key would collapse into one Set
-    // entry, be silently counted as covered, and leave the 150 pin below unmoved. See
+    // entry, be silently counted as covered, and leave the 151 pin below unmoved. See
     // `deployedOperations`.
     expect(
       deployed.size,
@@ -412,18 +409,22 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //         so this counts domain operations, not "every routable path". A new route bumps this,
     //         deliberately — that is the point.
     expect(deployed.size).toBe(151);
-    //   67 = 40 read endpoints (surfaces.ts, 10 surfaces) + 27 write (write-surfaces.ts, 8 surfaces:
+    //   92 = 65 read endpoints (surfaces.ts, 14 surfaces) + 27 write (write-surfaces.ts, 8 surfaces:
     //        24 written literally + 3 produced by the shared `transitionEndpoint` helper). The READ side
-    //        went 39 → 40 on 2026-08-16: slice 23's FINAL read (ai-cost-anomalies) registered on the
-    //        EXISTING `dashboard` surface in the same PR that deployed its route, so the surface count
-    //        stays at 10 and the allowlist below is unchanged — the gap did not grow. (36 → 39 was the
-    //        same slice's PR 3; 30 → 36 was PR 2; 27 → 30 was PR 1, which created that surface;
-    //        24 → 27 was slice 22's `invitation` surface, 2026-08-12; 26 → 27 on the write side was
-    //        2026-08-11: `organization-create` registered POST /platform/organizations, #208.)
-    expect(registryEndpointCount).toBe(67);
-    //   ...resolving to 67 DISTINCT VERB+path keys. A drop here means two registry entries normalise
+    //        went 40 → 65 on 2026-08-17 (#195 residual): the four talent surfaces deleted in the
+    //        TS-deletion passes were re-registered C#-only — team-intel 5 (of 7 deployed; the two 501
+    //        stubs stay allowlisted, see their group), reporting 6, succession 9, evaluation360 5 —
+    //        so the read-surface count went 10 → 14 and the allowlist shrank by 27 lines.
+    //        (39 → 40 was 2026-08-16, ai-cost-anomalies on the existing `dashboard` surface;
+    //        36 → 39 was slice 23 PR 3; 30 → 36 was PR 2; 27 → 30 was PR 1, which created that
+    //        surface; 24 → 27 was slice 22's `invitation` surface, 2026-08-12; 26 → 27 on the write
+    //        side was 2026-08-11: `organization-create` registered POST /platform/organizations, #208.)
+    expect(registryEndpointCount).toBe(92);
+    //   ...resolving to 92 DISTINCT VERB+path keys. A drop here means two registry entries normalise
     //   to the same route, which would make one of them invisible to the coverage assertion below.
-    expect(registry.size, 'two registry entries normalise to the same VERB+path key').toBe(67);
+    //   (This pin is WHY the deleted reporting registration's second kpis probe at period=90D was not
+    //   restored: it normalises onto `GET /reporting/kpis` and would collide here.)
+    expect(registry.size, 'two registry entries normalise to the same VERB+path key').toBe(92);
     //   27 write paths resolved through the Proxy stub, none degenerate.
     expect(writePaths.length).toBe(27);
   });
@@ -432,7 +433,8 @@ describe('parity registry covers every deployed route (or documents why not)', (
     // The INVERSE direction, which nothing in this repo checked before. A typo'd `csharpPath` is
     // caught by no test and no compiler — it would simply 404 during a live cutover, in Federico's
     // hands, and read as a C# failure rather than a registry one. (surfaces.test.ts pins the three
-    // access-review paths exactly; this generalises that to all 57.)
+    // access-review paths exactly; this generalises that to all 92 — this figure read "57" until
+    // 2026-08-17, stale since before the talent-surface re-registration that made it 92.)
     expect([...registry].filter((k) => !deployed.has(k))).toEqual([]);
   });
 
@@ -456,18 +458,22 @@ describe('parity registry covers every deployed route (or documents why not)', (
       [...allowed].filter((k) => registry.has(k)),
       'route is BOTH registered and allowlisted — remove the allowlist line, it now excuses nothing',
     ).toEqual([]);
-    //   84 = the measured gap at 87a02ef1 (86) minus GET /platform/organizations/{id}, registered the
-    //   same day as `organization/detail` under `noTenantBoundaryForCaller` (#195), minus
-    //   POST /platform/organizations, registered 2026-08-11 as `organization-create` (#208). Pinned so
-    //   SHRINKING the gap is visible as progress and GROWING it is visible as drift; neither can happen
-    //   silently.
-    expect(allowlistNormalised.length).toBe(84);
+    //   59 = the long-standing 84 minus the 27 routes of the four talent surfaces re-registered
+    //   C#-only on 2026-08-17 (#195 residual: succession 9, team-intel 7, reporting 6,
+    //   evaluation360 5), plus the two team-intel 501 stubs RE-ADDED under their own group — they
+    //   left the "deleted surface" group but cannot join the registry (no role answers 200; see the
+    //   group's reason). Net: 84 − 27 + 2 = 59. Pinned so SHRINKING the gap is visible as progress
+    //   and GROWING it is visible as drift; neither can happen silently.
+    expect(allowlistNormalised.length).toBe(59);
     // Every group must actually carry a reason and actually cover something — an empty group, or one
     // whose "reason" is a word, is a rubber stamp.
     for (const g of UNREGISTERED_ALLOWLIST) {
       expect(g.routes.length, `an allowlist group is empty: "${g.reason.slice(0, 40)}…"`).toBeGreaterThan(0);
       expect(g.reason.length, `allowlist group reason is too short to be a reason: "${g.reason}"`).toBeGreaterThan(40);
     }
-    expect(UNREGISTERED_ALLOWLIST.length, 'the five documented gap categories').toBe(5);
+    // 5 → 6 on 2026-08-17: the team-intel 501 stubs got their own group — their reason (the harness
+    // contract cannot express an endpoint no role gets 200 from) is a different KIND of gap from
+    // every other group's, and folding it into one of them would dilute both reasons.
+    expect(UNREGISTERED_ALLOWLIST.length, 'the six documented gap categories').toBe(6);
   });
 });

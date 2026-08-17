@@ -51,6 +51,9 @@ describe('SeedResources covers every idScopeKey the read registry uses', () => {
     'critical-role': true,
     // #195, 2026-08-11 — threaded into SURFACES['organization'].detail.
     organization: true,
+    // #195 residual, 2026-08-17 — the 'Parity Team A1'/'B1' pair, threaded by the re-registered
+    // team-intel surface's by-id trio (profile/members/balance-score).
+    team: true,
   };
 
   it('every by-id endpoint names a resource key resolveResources actually returns', () => {
@@ -65,9 +68,10 @@ describe('SeedResources covers every idScopeKey the read registry uses', () => {
         ).toBe(true);
       }
     }
-    // Non-vacuity: three by-id endpoints today (compensation/employee, ninebox/axis-breakdown,
-    // organization/detail — the same set surfaces.test.ts pins). If this loop goes empty the
-    // assertion above stops being a guard while still reading as one.
-    expect(seen).toBe(3);
+    // Non-vacuity: eleven by-id endpoints today — compensation/employee, ninebox/axis-breakdown,
+    // organization/detail, plus the eight added by the 2026-08-17 re-registrations (team-intel 3,
+    // succession 3, evaluation360 2) — the same set surfaces.test.ts pins. If this loop goes empty
+    // the assertion above stops being a guard while still reading as one.
+    expect(seen).toBe(11);
   });
 });

@@ -8,10 +8,11 @@ import { join } from 'node:path';
  * that script. Nothing checked it.
  *
  * On 2026-08-11 an adversarial review found FOUR rows disagreeing with the script — the worst being
- * `succession`, where the README advertised a `verify succession` command that the script sets to
- * NONE and that surfaces.ts documents as a deliberate no-op. A reader following the README would run
- * a command that silently exits 0 having verified nothing, which is precisely the class of failure
- * .claude/rules/verification.md exists to prevent.
+ * `succession`, where the README advertised a `verify succession` command that the script AT THE
+ * TIME set to NONE and that surfaces.ts then documented as a deliberate no-op (both reversed by the
+ * 2026-08-17 #195 re-registration — `verify succession` is a real command again). A reader
+ * following the README would have run a command that silently exits 0 having verified nothing,
+ * which is precisely the class of failure .claude/rules/verification.md exists to prevent.
  *
  * This asserts the two stay in sync on the fields that change behaviour: the parity command a reader
  * would copy, and the status label they would act on. It is deliberately a STRING comparison against

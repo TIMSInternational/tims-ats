@@ -4,8 +4,10 @@ import { SURFACES } from './surfaces';
 describe('SURFACES', () => {
   // 2026-08-03 (#58): was "the three read surfaces" — succession dropped out when its last
   // TS-backed endpoint (getCriticalRole) was deleted. 2026-08-05 (#57): ninebox dropped out the same
-  // way (its last 4 TS-backed endpoints deleted with the whole router). See the dedicated assertions
-  // at the bottom. compensation is now the only talent read surface with a TS side left.
+  // way (its last 4 TS-backed endpoints deleted with the whole router). Both — and the other three
+  // talent surfaces — are registered C#-only today (succession/team-intel/reporting/evaluation360
+  // re-registered 2026-08-17, #195); see the dedicated assertions below. compensation is still the
+  // only talent read surface with a TS side left.
   it('the one read surface that still has a TS side is registered with its flag + current endpoint set (Tier-1 + Tier-2 by-id)', () => {
     expect(SURFACES['compensation'].flag).toBe('Platform__CompensationReadEnabled');
     // 2026-07-29: shrunk from 7 to 2 — the other 5 TS procedures were deleted (C#-only now).
@@ -36,12 +38,20 @@ describe('SURFACES', () => {
       'dashboard',
       'dei',
       'engagement',
+      // RE-REGISTERED 2026-08-17 (#195 residual), C#-only, with 'reporting'/'succession'/'team-intel'
+      // below — the four talent read surfaces deleted in the 2026-07-29..08-03 TS-deletion passes,
+      // restored on the audit-log/access-review rationale now that their grant+data fixtures are
+      // verified wired into seed().
+      'evaluation360',
       // NEW 2026-08-12 (Phase-5 slice 22, #75) — the platform-owner invitations read surface, registered
       // in the same PR that deployed its three routes.
       'invitation',
       'monitoring',
       'ninebox',
       'organization',
+      'reporting', // re-registered 2026-08-17 (#195) — see 'evaluation360' above.
+      'succession', // re-registered 2026-08-17 (#195) — see 'evaluation360' above.
+      'team-intel', // re-registered 2026-08-17 (#195) — see 'evaluation360' above.
     ]);
   });
 
@@ -83,6 +93,15 @@ describe('SURFACES', () => {
       'ninebox/simulate', // pure kernel
       'ninebox/quadrant-plan', // pure kernel
       'engagement/surveys', // grant-only list; hrbp@unit passes deliberately (see the surface note)
+      // The three evaluation360 SELF-SERVICE reads (2026-08-17, #195). Their gate
+      // (Evaluation360SelfServiceGate) authorizes on IDENTITY alone and HAS NO 403 PATH — any
+      // resolved principal passes and the queries hard-filter on the caller's own user id — so no
+      // role CAN be denied; this is structural, not a missing fixture. my-report's not-yours
+      // behaviour is a 404 (indistinguishable from not-published, by design), asserted by the C#
+      // Evaluation360 tests rather than by an expectation `200|403` cannot express.
+      'evaluation360/my-rater-tasks',
+      'evaluation360/my-report-cycles',
+      'evaluation360/my-report', // only super_admin (the seeded published self-subject) is asserted
     ];
     const actual: string[] = [];
     for (const [key, surface] of Object.entries(SURFACES)) {
@@ -107,6 +126,17 @@ describe('SURFACES', () => {
       // sentinel/idScopeKey requirements asserted below still apply to it unchanged — it still has to
       // bind a REAL seeded org id for parity and RBAC.
       'organization/detail': 'organization',
+      // #195 residual, 2026-08-17 — the four re-registered C#-only surfaces' Mode-A probes. The
+      // 'team' pair is NEW in SeedResources ('Parity Team A1'/'B1'); 'critical-role' and the two
+      // eval-cycle pairs are the keys the DELETED registrations threaded, re-consumed unchanged.
+      'team-intel/profile': 'team',
+      'team-intel/members': 'team',
+      'team-intel/balance-score': 'team',
+      'succession/critical-role': 'critical-role',
+      'succession/suggested-successors': 'critical-role',
+      'succession/simulate-exit': 'critical-role',
+      'evaluation360/cycle-progress': 'eval-cycle-staff',
+      'evaluation360/my-report': 'eval-cycle-self',
     };
     let byIdCount = 0;
     for (const [surfaceKey, surface] of Object.entries(SURFACES)) {
@@ -122,8 +152,10 @@ describe('SURFACES', () => {
       }
     }
     // 2 → 3 on 2026-08-11 (#195): + organization/detail, the first by-id endpoint whose RLS mode is
-    // neither A nor B. Pinned so a by-id endpoint cannot appear without a line in `expected` above.
-    expect(byIdCount).toBe(3);
+    // neither A nor B. 3 → 11 on 2026-08-17 (#195 residual): + the eight Mode-A probes of the four
+    // re-registered surfaces (team-intel 3, succession 3, evaluation360 2). Pinned so a by-id
+    // endpoint cannot appear without a line in `expected` above.
+    expect(byIdCount).toBe(11);
   });
 
   // Kept surface-agnostic (rather than nine-box-specific) so it keeps applying as surfaces come and
@@ -141,9 +173,12 @@ describe('SURFACES', () => {
         expect(ep.idScopeKey, `${key}/${ep.name} is globalScope AND by-id`).toBeUndefined();
       }
     }
-    // Documented state, 21 endpoints across 6 surfaces (this sentence read "9 across 4" for two
-    // slices while the arithmetic below it was edited twice — the enumeration and count are the
-    // record; this line just has to agree with them). The loop above is the invariant; this pins the
+    // Documented state, 25 endpoints across 6 surfaces (this sentence read "9 across 4" for two
+    // slices, then "21 across 6" for three more, while the arithmetic below it was edited — the
+    // enumeration and count are the record; this line just has to agree with them. The four
+    // surfaces re-registered C#-only on 2026-08-17 carry NO globalScope endpoint: every one is an
+    // org-scoped staff read, Mode A or Mode B, so this count did not move). The loop above is the
+    // invariant; this pins the
     // count so a NEW globalScope endpoint has to be looked at deliberately — and so that the loop
     // going empty (which would make the invariant unenforced while still reading as enforced) fails
     // here.
@@ -615,14 +650,188 @@ describe('SURFACES', () => {
     expect(SURFACES['billing-invoices']).toBeUndefined();
   });
 
-  // succession's READ surface was removed 2026-08-03 (#58): its last TS-backed endpoint
-  // (getCriticalRole) was deleted along with the whole succession router, so there is no TS side
-  // left to diff against. `verify succession` is now a no-op — the WRITE surface is unaffected
-  // (write-surfaces.ts hits C# directly and never used a tsProcedure).
-  // The WRITE surface is unaffected and keeps its own assertion in write-surfaces.test.ts
-  // ('registers the 5 succession writes under the single write flag') — not duplicated here.
-  it('succession read is no longer registered (TS side deleted)', () => {
-    expect(SURFACES['succession']).toBeUndefined();
+  // ── The four talent read surfaces re-registered C#-only on 2026-08-17 (#195 residual) ────────
+  // All four were deleted in the 2026-07-29..08-03 TS-deletion passes (succession last, #58) and
+  // restored on the audit-log/access-review rationale: only checks/parity.ts reads `tsProcedure`,
+  // so the deletions had retired RBAC deny assertions and RLS probes, not a stale comparison.
+  // These pins are the same shape as the audit-log/access-review restoration pins above: a future
+  // cleanup that deletes any of them "because the TS is gone" fails here with the reason attached.
+  // Role expectations were copied from the deleted registrations (git 0a368681) and re-checked
+  // against the C# gates; the fixtures they lean on are seed.ts's
+  // seed{TeamIntel,Reporting,Succession,Evaluation360}{Grants,Data} + seedOrgBTier2Mirrors, all
+  // verified wired into seed().
+
+  it('team-intel is re-registered C#-only: 5 of 7 deployed routes, hrbp denied everywhere', () => {
+    const s = SURFACES['team-intel'];
+    expect(s, 'deleting team-intel retires 3 Mode-A IDOR probes + the RBAC denies').toBeDefined();
+    expect(s.flag).toBe('Platform__TeamIntelReadEnabled');
+    expect(s.probeRole).toBe('super_admin');
+    expect(s.endpoints.map((e) => e.name)).toEqual([
+      'dashboard-kpis',
+      'compare',
+      'profile',
+      'members',
+      'balance-score',
+    ]);
+    // The two deployed routes NOT here — balance-alerts + recommended-hires — are honest 501
+    // stubs: no role answers 200, which the harness contract cannot express (expectedByRole is
+    // 200|403; parity fails a C#-only endpoint on any non-200; the probeRole invariant above
+    // demands a 200). They are allowlisted with that reason in
+    // tests/governance/parity-registry-covers-deployed-routes.test.ts — registering them here
+    // would manufacture a permanent false-RED. When they ship real bodies, they join this list.
+    for (const name of ['balance-alerts', 'recommended-hires']) {
+      expect(
+        s.endpoints.find((e) => e.name === name),
+        `${name} is a 501 stub — must NOT be registered`,
+      ).toBeUndefined();
+    }
+    for (const ep of s.endpoints) {
+      expect(ep.tsProcedure, `${ep.name} must be C#-only — the teamIntel router is deleted`).toBeUndefined();
+      expect(ep.expectedByRole, ep.name).toEqual({ super_admin: 200, hr_admin: 200, hrbp: 403 });
+      expect(
+        ep.normalize,
+        `${ep.name}: no payload diff runs, a normalize rule would be unargued inheritance`,
+      ).toBeUndefined();
+      expect(ep.globalScope, ep.name).toBeUndefined();
+    }
+    // The by-id trio threads the NEW 'team' resource pair; compare/dashboard-kpis are Mode B.
+    for (const name of ['profile', 'members', 'balance-score']) {
+      expect(s.endpoints.find((e) => e.name === name)!.idScopeKey, name).toBe('team');
+    }
+    // compare's two teamIds are FIXED NON-EXISTENT uuids (its Mode B is vacuous by design — the
+    // surface header carries the argument); path query and input must name the same pair.
+    const compare = s.endpoints.find((e) => e.name === 'compare')!;
+    const ids = (compare.input as { teamIds: string[] }).teamIds;
+    expect(ids).toHaveLength(2);
+    for (const id of ids) expect(compare.csharpPath).toContain(`teamIds=${id}`);
+  });
+
+  it('reporting is re-registered C#-only: all 6 deployed routes, hrbp 403 via the real org-gate', () => {
+    const s = SURFACES['reporting'];
+    expect(s, 'deleting reporting retires 6 RBAC deny assertions on deployed routes').toBeDefined();
+    expect(s.flag).toBe('Platform__ReportingReadEnabled');
+    expect(s.probeRole).toBe('super_admin');
+    expect(s.endpoints.map((e) => e.name)).toEqual([
+      'kpis',
+      'funnel',
+      'source-breakdown',
+      'trend',
+      'lost-by-delay',
+      'recruiter-sla',
+    ]);
+    for (const ep of s.endpoints) {
+      expect(ep.tsProcedure, `${ep.name} must be C#-only — the recruitmentAnalytics router is deleted`).toBeUndefined();
+      // hrbp holds vacancy:read@UNIT (seedReportingGrants), so its 403 exercises the REAL
+      // requireOrgScope path — grant held, scope too narrow — on every endpoint.
+      expect(ep.expectedByRole, ep.name).toEqual({ super_admin: 200, hr_admin: 200, hrbp: 403 });
+      expect(ep.normalize, ep.name).toBeUndefined();
+      expect(ep.idScopeKey, ep.name).toBeUndefined();
+      expect(ep.globalScope, ep.name).toBeUndefined();
+    }
+    // The three windowed reads bake period=30D into the path AND mirror it in input — callCsharp
+    // uses csharpPath verbatim, so a drift between the two would probe a different window than the
+    // one the registry claims. (The old second kpis probe at 90D is deliberately NOT restored: it
+    // normalises to the same VERB+path key as kpis, which the route-coverage guard forbids.)
+    for (const name of ['kpis', 'source-breakdown', 'lost-by-delay']) {
+      const ep = s.endpoints.find((e) => e.name === name)!;
+      expect(ep.csharpPath, name).toContain('?period=30D');
+      expect(ep.input, name).toEqual({ period: '30D' });
+    }
+  });
+
+  it('succession is re-registered C#-only: all 9 deployed reads, org_admin as the uniform grant-level deny', () => {
+    const s = SURFACES['succession'];
+    expect(s, 'deleting succession retires 3 Mode-A IDOR probes + 9 RBAC denies').toBeDefined();
+    expect(s.flag).toBe('Platform__SuccessionReadEnabled');
+    expect(s.probeRole).toBe('super_admin');
+    expect(s.roles).toEqual(['super_admin', 'hr_admin', 'hrbp', 'org_admin']);
+    expect(s.endpoints.map((e) => e.name)).toEqual([
+      'critical-roles',
+      'flight-risk',
+      'competency-coverage',
+      'roles-without-successor',
+      'comp-gap-alerts',
+      'dashboard-kpis',
+      'critical-role',
+      'suggested-successors',
+      'simulate-exit',
+    ]);
+    for (const ep of s.endpoints) {
+      expect(ep.tsProcedure, `${ep.name} must be C#-only — the succession router is deleted (#58)`).toBeUndefined();
+      expect(ep.normalize, ep.name).toBeUndefined();
+      expect(ep.globalScope, ep.name).toBeUndefined();
+      // org_admin holds NO succession grant (absent from MATRIX, no seeded role_permissions), so
+      // PermissionService itself refuses it — a grant-level 403 on every endpoint, decided BEFORE
+      // the by-id probe. Without it the list + by-id trio would have no denied role at all.
+      expect(ep.expectedByRole['org_admin'], ep.name).toBe(403);
+      expect(ep.expectedByRole['super_admin'], ep.name).toBe(200);
+      expect(ep.expectedByRole['hr_admin'], ep.name).toBe(200);
+    }
+    // hrbp's three dispositions, pinned individually (the surface header carries the reasoning):
+    // 200-scoped-empty on the list, 403 via requireOrgScope on the five rollups, OMITTED on the
+    // by-id trio (the ScopedProbe answers 404, which 200|403 cannot express).
+    const hrbpOf = (n: string) => s.endpoints.find((e) => e.name === n)!.expectedByRole['hrbp'];
+    expect(hrbpOf('critical-roles')).toBe(200);
+    for (const n of [
+      'flight-risk',
+      'competency-coverage',
+      'roles-without-successor',
+      'comp-gap-alerts',
+      'dashboard-kpis',
+    ]) {
+      expect(hrbpOf(n), n).toBe(403);
+    }
+    for (const n of ['critical-role', 'suggested-successors', 'simulate-exit']) {
+      expect(hrbpOf(n), `${n}: hrbp must be OMITTED — its correct status is the probe's 404`).toBeUndefined();
+      expect(s.endpoints.find((e) => e.name === n)!.idScopeKey, n).toBe('critical-role');
+    }
+  });
+
+  it('evaluation360 is re-registered C#-only: 2 staff reads with an hrbp deny + 3 self-service reads', () => {
+    const s = SURFACES['evaluation360'];
+    expect(s, 'deleting evaluation360 retires 2 Mode-A IDOR probes + the staff-read denies').toBeDefined();
+    expect(s.flag).toBe('Platform__Evaluation360ReadEnabled');
+    // LOAD-BEARING, not stylistic: seedOrgBTier2Mirrors builds the org-B Mode-A positive controls
+    // around b:super_admin (openB rater assignment, pubB published self-subject). A different
+    // probe identity fails those controls for a fixture reason.
+    expect(s.probeRole).toBe('super_admin');
+    expect(s.endpoints.map((e) => e.name)).toEqual([
+      'cycles',
+      'cycle-progress',
+      'my-rater-tasks',
+      'my-report-cycles',
+      'my-report',
+    ]);
+    for (const ep of s.endpoints) {
+      expect(
+        ep.tsProcedure,
+        `${ep.name} must be C#-only — the evaluation360 read procedures are deleted`,
+      ).toBeUndefined();
+      expect(ep.normalize, ep.name).toBeUndefined();
+      expect(ep.globalScope, ep.name).toBeUndefined();
+    }
+    // STAFF pattern (grant + org-gate): hrbp holds no evaluation360 grant → a real 403.
+    for (const n of ['cycles', 'cycle-progress']) {
+      expect(s.endpoints.find((e) => e.name === n)!.expectedByRole, n).toEqual({
+        super_admin: 200,
+        hr_admin: 200,
+        hrbp: 403,
+      });
+    }
+    // SELF-SERVICE pattern (identity only, no 403 path): all-200 by construction — these three sit
+    // on the documented no-denial list above. my-report asserts ONLY super_admin: any non-subject
+    // caller gets the deliberate not-yours/not-published 404, which 200|403 cannot express.
+    for (const n of ['my-rater-tasks', 'my-report-cycles']) {
+      expect(s.endpoints.find((e) => e.name === n)!.expectedByRole, n).toEqual({
+        super_admin: 200,
+        hr_admin: 200,
+        hrbp: 200,
+      });
+    }
+    const myReport = s.endpoints.find((e) => e.name === 'my-report')!;
+    expect(myReport.expectedByRole).toEqual({ super_admin: 200 });
+    expect(myReport.idScopeKey).toBe('eval-cycle-self');
+    expect(s.endpoints.find((e) => e.name === 'cycle-progress')!.idScopeKey).toBe('eval-cycle-staff');
   });
 
   // nine-box's TS side was deleted 2026-08-05 (#57) — but unlike succession above, the SURFACE is
