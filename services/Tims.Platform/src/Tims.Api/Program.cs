@@ -361,6 +361,13 @@ try
     builder.Services.AddScoped<IPlatformDashboardFxRepository, PlatformDashboardFxRepository>();
     builder.Services.AddScoped<PlatformDashboardFxUseCase>();
 
+    // The FINAL dashboard read, same flag and the SAME context/data source once more: getAiCostAnomalies.
+    // The context gains THREE NEW TABLES (ai_agents / ai_agent_org_configs / ai_agent_usage_logs), and
+    // unlike every earlier PR of this slice those are NEW efcoreReadOnly[] ledger entries — nothing had
+    // ever mapped them (see the platform_dashboard_read_slice23_ai note). Still SELECTs only, no writer.
+    builder.Services.AddScoped<IPlatformDashboardAiRepository, PlatformDashboardAiRepository>();
+    builder.Services.AddScoped<PlatformDashboardAiUseCase>();
+
     // Phase-5 slice 20 (#76): platform-owner ORGANIZATIONS WRITE (updateOrganization/suspendOrganization).
     // Its OWN context, mapping organizations AND audit_logs, because the fail-closed audit decided on #76
     // only holds if the audit INSERT shares the org UPDATE's transaction — and since every context here is
@@ -1197,13 +1204,12 @@ try
         app.MapPlatformInvitationsReadEndpoints();
     }
 
-    // Phase-5 slice 23 (#81, PRs 1-3 of 3): GET /platform/dashboard/{plan-distribution,user-growth,
+    // Phase-5 slice 23 (#81): GET /platform/dashboard/{plan-distribution,user-growth,
     // recent-activity,attention-items,mrr-trend,mrr-forecast,customer-health,upsell-opportunities,search}
-    // — the FX-free tier — plus PR 3's {kpis,revenue-by-customer,churn-risk}, the three sumMoney callers.
-    // TWELVE of the cluster's thirteen reads. The one still out is getAiCostAnomalies, which needs EF maps
-    // and ledger entries for three genuinely unmapped ai-agent tables — see
-    // PlatformOptions.PlatformDashboardReadEnabled. ONE flag covers all twelve, so a canary flip exposes
-    // the whole ported cluster at once. Dark unless it is on.
+    // — the FX-free tier — plus PR 3's {kpis,revenue-by-customer,churn-risk}, the three sumMoney callers,
+    // plus ai-cost-anomalies, the thirteenth and final read. ALL THIRTEEN of the cluster's reads are now
+    // ported — see PlatformOptions.PlatformDashboardReadEnabled. ONE flag covers all thirteen, so a canary
+    // flip exposes the whole ported cluster at once. Dark unless it is on.
     //
     // PR 3's three are the only dashboard routes that can answer 503: they resolve an fx_rates pin before
     // any arithmetic, and a missing pin fails the request rather than emitting a partially-converted total
@@ -1212,6 +1218,7 @@ try
     {
         app.MapPlatformDashboardReadEndpoints();
         app.MapPlatformDashboardFxReadEndpoints();
+        app.MapPlatformDashboardAiReadEndpoints();
     }
 
     // Phase-5 slice 20 (#76): PATCH /platform/organizations/{id} + POST /platform/organizations/{id}/suspend.

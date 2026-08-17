@@ -508,6 +508,121 @@ async function seedDashboardInvoices(db: Client, orgAId: string, orgBId: string)
   }
 }
 
+// ── platform-dashboard AI-agent fixtures (Phase-5 slice 23 / #81, final read) ─
+//
+// `getAiCostAnomalies` reads ai_agents / ai_agent_org_configs / ai_agent_usage_logs — tables this seed
+// never touched. It is PLATFORM-WIDE (the caveat-10 family), so against the live database it already
+// reads real tenants' agent configs; what these rows buy is the same two things the invoice block
+// above bought: self-sufficiency on a locally-seeded database (where the read WAS two empty payloads
+// comparing equal — a vacuous green), and anomaly rows belonging to the orgs this harness
+// authenticates as. Unlike the invoice block there is no FX angle at all: both stacks read these
+// tables directly, so the endpoint carries a real `tsProcedure` and these rows feed a REAL diff.
+//
+// Shape: one ACTIVE agent producing BOTH anomaly types across the two orgs — over_budget in org A
+// (15.5 spent vs 10 budget → savings 5.5, exercising the toFixed(2) detail string in both stacks)
+// and zero_usage in org B (NULL budget → `monthlyBudget: null` on the wire, the field a wrong port
+// most plausibly drops) — plus a STUB agent whose enabled config must be skipped by both kernels.
+// The two savings values are DISTINCT (5.5 vs 0.5) because the final sort breaks ties by config row
+// order, which the two stacks need not share (surfaces.ts caveat 10).
+//
+// Idempotency: agents upsert on slug, configs on (agent_id, organization_id). Usage logs have NO
+// unique key, so theirs is DELETE-then-INSERT scoped to the parity agents' ids — the evaluation360
+// fixtures' disposition. `updated_at` is supplied explicitly: Prisma's @updatedAt columns carry no
+// database default, so a bare INSERT would fail NOT NULL.
+//
+// ⚠️ THIS IS THE FIRST PARITY FIXTURE THAT WRITES A GLOBAL CATALOG. `ai_agents` is one of the three
+// RLS-EXEMPT shared catalogs (every prior fixture row is org-scoped to the two parity orgs), and the
+// tier-3 panel found two consequences worth stating out loud:
+//
+//   1. THE REAL CATALOG BOOTSTRAP IS COUNT-GUARDED, and these rows trip it. `seedAiAgents`
+//      (packages/api/src/routers/platform/ai-agents.ts) seeds the production agent catalog only when
+//      `ai_agents` is EMPTY — a bare `count > 0` guard. On a freshly-created database, run the app's
+//      catalog bootstrap BEFORE this seed, or the two `__parity_ai_*` rows make it a permanent no-op.
+//      The runtime warning below exists because nothing else would say so.
+//   2. LIVE-CONSOLE NOISE, permanent by design: against the live database, the platform-owner
+//      dashboard's REAL getAiCostAnomalies panel shows these anomalies from now on (org B's
+//      null-budget config is a forever zero_usage row), and the platform console's agent counts
+//      include the two fixture agents. Platform-console-only — no tenant-facing read can see them
+//      (the tenant paths are per-org config lookups) — and the same family as the parity invoices
+//      that sit in attention-items, but a reader of that dashboard deserves the sentence.
+//
+// Also: the usage rows are seeded at now()−5d and now()−2d, so they age out of the 30-day window
+// at seed+25d and seed+28d respectively — the seeded spend first shrinks (still over budget), then
+// org A's over_budget flips to zero_usage at ~28 days IN BOTH STACKS. Worse than dormancy: after
+// the flip the two remaining anomalies (org A and org B, both zero_usage) TIE at 0.5 savings, and a
+// scan-order tie is exactly what the DISTINCT-savings design above exists to avoid — the diff turns
+// order-nondeterministic and can flake RED. Re-run the seed to re-arm the fixture
+// (surfaces.ts caveat 10 carries the operator-facing version of this).
+async function seedDashboardAiAgents(db: Client, orgAId: string, orgBId: string): Promise<void> {
+  // Exact slugs, not a LIKE — `_` is a single-character wildcard in LIKE patterns.
+  const realAgents = await db.query(
+    `SELECT count(*)::int AS n FROM ai_agents WHERE slug NOT IN ('__parity_ai_alpha', '__parity_ai_stub')`,
+  );
+  if (realAgents.rows[0].n === 0) {
+    // Deliberately a WARNING, not a failure: a parity-only scratch database is a legitimate target.
+    console.warn(
+      '⚠️  ai_agents holds NO real agents — the app catalog bootstrap (seedAiAgents) is count-guarded ' +
+        'and will now never auto-seed. If this database is meant to run the real app, bootstrap the ' +
+        'catalog BEFORE the parity seed.',
+    );
+  }
+  const agents: Array<[string, string, number, string]> = [
+    // slug, name, cost_per_call, status
+    ['__parity_ai_alpha', 'Parity Alpha Agent', 0.05, 'active'],
+    ['__parity_ai_stub', 'Parity Stub Agent', 0.4, 'stub'],
+  ];
+
+  for (const [slug, name, costPerCall, status] of agents) {
+    await db.query(
+      `INSERT INTO ai_agents (id, slug, name, cost_per_call, status, updated_at)
+       VALUES (gen_random_uuid(), $1, $2, $3, $4, now())
+       ON CONFLICT (slug) DO UPDATE SET
+         name = EXCLUDED.name,
+         cost_per_call = EXCLUDED.cost_per_call,
+         status = EXCLUDED.status,
+         updated_at = now()`,
+      [slug, name, costPerCall, status],
+    );
+  }
+
+  const configs: Array<[string, string, number | null]> = [
+    // agent slug, org id, monthly_budget
+    ['__parity_ai_alpha', orgAId, 10],
+    ['__parity_ai_alpha', orgBId, null],
+    ['__parity_ai_stub', orgAId, 25],
+  ];
+
+  for (const [slug, orgId, budget] of configs) {
+    await db.query(
+      `INSERT INTO ai_agent_org_configs (id, agent_id, organization_id, enabled, monthly_budget, updated_at)
+       VALUES (gen_random_uuid(), (SELECT id FROM ai_agents WHERE slug = $1), $2, true, $3, now())
+       ON CONFLICT (agent_id, organization_id) DO UPDATE SET
+         enabled = true,
+         monthly_budget = EXCLUDED.monthly_budget,
+         updated_at = now()`,
+      [slug, orgId, budget],
+    );
+  }
+
+  // Org A's alpha spend: 12 + 3.5 = 15.5 against the 10 budget. Recent enough to sit deep inside any
+  // request-time 30-day window; org B's alpha config gets NO rows, which IS its fixture.
+  await db.query(
+    `DELETE FROM ai_agent_usage_logs
+     WHERE agent_id IN (SELECT id FROM ai_agents WHERE slug IN ('__parity_ai_alpha', '__parity_ai_stub'))`,
+  );
+  for (const [cost, interval] of [
+    [12, '2 days'],
+    [3.5, '5 days'],
+  ] as Array<[number, string]>) {
+    await db.query(
+      `INSERT INTO ai_agent_usage_logs (id, agent_id, organization_id, cost_usd, created_at)
+       VALUES (gen_random_uuid(), (SELECT id FROM ai_agents WHERE slug = '__parity_ai_alpha'), $1, $2,
+               now() - $3::interval)`,
+      [orgAId, cost, interval],
+    );
+  }
+}
+
 // ── reporting (recruitmentAnalytics) fixtures ────────────────────────────────
 // RBAC: `vacancy:read` is org-scoped. hr_admin gets it @organization (a real-grant
 // 200 that clears requireOrgScope, like team-intel); hrbp gets it @unit so its 403
@@ -2556,6 +2671,10 @@ export async function seed(cfg: HarnessConfig, roles: string[]): Promise<SeedRes
     // platform-dashboard invoice fixture (Phase-5 slice 23 / #81 PR 3). Org-independent like the
     // subscription above, so it runs unconditionally.
     await seedDashboardInvoices(db, orgIds.a, orgIds.b);
+
+    // platform-dashboard AI-agent fixture (slice 23's final read, getAiCostAnomalies). Also
+    // org-independent and unconditional — see seedDashboardAiAgents for what it proves.
+    await seedDashboardAiAgents(db, orgIds.a, orgIds.b);
 
     // reporting RLS/RBAC/parity fixtures: vacancy:read grants (hr_admin@org / hrbp@unit)
     // + a recruitment dataset in org A only. Grants only when those roles were seeded.

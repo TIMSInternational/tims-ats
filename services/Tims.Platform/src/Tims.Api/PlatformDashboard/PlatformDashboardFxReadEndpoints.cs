@@ -10,9 +10,9 @@ namespace Tims.Api.PlatformDashboard;
 /// <summary>
 /// The THREE FX-DERIVED platform dashboard READ endpoints (Phase-5 slice 23, issue #81, PR 3 of 3) —
 /// <c>getDashboardKpis</c>, <c>getRevenueByCustomer</c> and <c>getChurnRisk</c>. They are the cluster's
-/// TENTH, ELEVENTH and TWELFTH reads (PR 1 ported three, PR 2 six), leaving <c>getAiCostAnomalies</c> —
-/// which needs EF maps and ledger entries for three genuinely unmapped tables — as the only one of the
-/// thirteen still unported.
+/// TENTH, ELEVENTH and TWELFTH reads (PR 1 ported three, PR 2 six). The thirteenth,
+/// <c>getAiCostAnomalies</c>, shipped after this file as <see cref="PlatformDashboardAiReadEndpoints"/>,
+/// completing the cluster.
 ///
 /// <para><b>Same flag, same gate, same darkness as the other nine.</b> They map under
 /// <see cref="PlatformOptions.PlatformDashboardReadEnabled"/> alongside PR 1's and PR 2's routes — one

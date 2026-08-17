@@ -225,3 +225,68 @@ public sealed class PlanCountRow
 
     public long Count { get; set; }
 }
+
+// ── getAiCostAnomalies (the FINAL read of the cluster) — the three ai-agent tables ──────────────────
+//
+// These are the first THREE NEW ledger entries the dashboard surface has needed: `ai_agents`,
+// `ai_agent_org_configs` and `ai_agent_usage_logs` were genuinely unmapped by any EF context before
+// this, so all three were ADDED to efcoreReadOnly[] (see the platform_dashboard_read_slice23_ai note).
+// Every prior PR of this slice could truthfully write "NO ARRAY CHANGES"; this one cannot.
+//
+// NONE of the three carries a native Postgres enum — `ai_agents.status` is a plain `text` column
+// (Prisma `String @default("stub")`), unlike every `plan`/`status` column above — so these entities do
+// not depend on PlatformDashboardDataSource's EnableUnmappedTypes and would materialise on a plain
+// connection. They still go through the shared data source because they share the context.
+
+/// <summary>Backs the <c>agent</c> half of <c>getAiCostAnomalies</c>' config select —
+/// <c>agent: { id, name, slug, costPerCall, status }</c>. `ai_agents` is one of the three GLOBAL,
+/// deliberately RLS-EXEMPT catalogs (with `permissions` and `platform_owner_emails`): agent definitions
+/// are shared reference data, not tenant data.</summary>
+public sealed class DashboardAiAgentEntity
+{
+    public Guid Id { get; set; }
+
+    public string Slug { get; set; } = string.Empty;
+
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>Prisma <c>Float</c> — <c>double precision</c>. The zero-usage anomaly's
+    /// <c>estimatedWaste</c> is this × 10.</summary>
+    public double CostPerCall { get; set; }
+
+    /// <summary>Plain <c>text</c>, NOT an enum. The kernel skips exactly <c>"stub"</c>; every other
+    /// value ('active', 'beta', …) participates.</summary>
+    public string Status { get; set; } = string.Empty;
+}
+
+/// <summary>One enabled/disabled agent activation per organization —
+/// <c>@@unique([agentId, organizationId])</c>, so the kernel's pair key is unique by construction.</summary>
+public sealed class DashboardAiAgentOrgConfigEntity
+{
+    public Guid Id { get; set; }
+
+    public Guid AgentId { get; set; }
+
+    public Guid OrganizationId { get; set; }
+
+    public bool Enabled { get; set; }
+
+    /// <summary>Nullable <c>Float</c> — and the JS TRUTHINESS of this value is load-bearing in the
+    /// kernel: null and 0 disable the over-budget check, a negative value does not.</summary>
+    public double? MonthlyBudget { get; set; }
+}
+
+/// <summary>One AI invocation. Only the three columns the group-by touches are mapped —
+/// <c>SUM(cost_usd)</c>, <c>COUNT(*)</c> and the <c>created_at &gt;= now−30d</c> window bound.</summary>
+public sealed class DashboardAiAgentUsageLogEntity
+{
+    public Guid Id { get; set; }
+
+    public Guid AgentId { get; set; }
+
+    public Guid OrganizationId { get; set; }
+
+    public double CostUsd { get; set; }
+
+    public DateTime CreatedAt { get; set; }
+}

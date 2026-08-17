@@ -594,7 +594,7 @@ export const SURFACES: Record<string, Surface> = {
   // PR 3 (2026-08-15) ADDED THREE ENDPOINTS AND ONE CAVEAT, and the caveat is the surface's most
   // important one because it bounds what a GREEN run on this surface means:
   //
-  //   8. THREE OF THE TWELVE ENDPOINTS ARE NOT PAYLOAD-COMPARED AT ALL. `kpis`,
+  //   8. THREE OF THE THIRTEEN ENDPOINTS ARE NOT PAYLOAD-COMPARED AT ALL. `kpis`,
   //      `revenue-by-customer` and `churn-risk` carry no `tsProcedure`, so parity reports [WEAK] for
   //      them by design while RBAC and the RLS disposition still assert. They are the three that call
   //      `sumMoney`, and the two stacks resolve rates from DIFFERENT PROVIDERS — live Frankfurter on
@@ -632,6 +632,34 @@ export const SURFACES: Record<string, Surface> = {
   // Their due dates are deliberately distinct so the (severity, daysUntil) sort has no new tie to flake
   // on. NOT caveat 4, which is about the two attention sources carrying no `orderBy` AT ALL — the invoice
   // query has one (`orderBy: { dueDate: 'asc' }`, dashboard.ts:139), so it was never in caveat 4's scope.
+  //
+  // THE FINAL READ (2026-08-16) ADDED `ai-cost-anomalies` — the cluster's thirteenth — AND ONE CAVEAT.
+  // Unlike the three FX reads above it IS payload-compared (a `tsProcedure` is registered): both stacks
+  // read the SAME three ai-agent tables from the same database and no rate provider is involved, so the
+  // caveat-8 argument does not apply to it.
+  //
+  //  10. `ai-cost-anomalies` IS TIME-DEPENDENT AND TIE-SENSITIVE, in the caveat 1 + caveat 5 shapes at
+  //      once, and it can be VACUOUSLY GREEN. Each stack derives its own 30-day window from its own
+  //      clock (`Date.now() − 30d`), so a usage row aging out of the window between the two calls flips
+  //      an agent+org pair between over-budget and zero-usage — a re-run situation, minutes-level
+  //      exposure. The final sort is potentialSavings DESC over the CONFIG row order of an unordered
+  //      findMany, so equal-savings anomalies can come back in different orders (the seeded fixtures
+  //      use distinct costPerCall values precisely so the harness's own rows never tie). And on a
+  //      database with no ENABLED agent configs both stacks return four empty/zero fields comparing
+  //      equal — `seedDashboardAiAgents` exists so a locally-seeded database is non-vacuous; against
+  //      any other target check `SELECT count(*) FROM ai_agent_org_configs WHERE enabled` before
+  //      believing its green. Also worth knowing when reading a diff: the TS type union declares a
+  //      third anomaly type, 'high_cost', that NO code path produces — neither stack can emit it, and
+  //      a diff showing one would mean the TS side changed. Finally, THE SEEDED OVER-BUDGET LEG
+  //      DECAYS: the fixture's usage rows sit at seed-time −5d and −2d, so they age out of the
+  //      30-day window at seed+25d and seed+28d — the seeded spend drops 15.5 → 12 at ~25 days
+  //      (still over the 10 budget, smaller overage) and org A flips over_budget → zero_usage at
+  //      ~28 days, IN BOTH STACKS. Past that flip the harness's own two anomalies are BOTH
+  //      zero_usage at 0.5 savings — a TIE, resolved by config scan order the two stacks need not
+  //      share, with no normalize — so the run does not merely go dormant on the over-budget branch
+  //      and the toFixed(2) detail string: it can flake RED for a non-defect reason (the second-pass
+  //      audit corrected the first draft, which claimed it "stays green throughout"). Either way:
+  //      if the last seed run is stale, re-seed before reading this endpoint's result.
   dashboard: {
     key: 'dashboard',
     flag: 'Platform__PlatformDashboardReadEnabled',
@@ -820,6 +848,21 @@ export const SURFACES: Record<string, Surface> = {
         input: {},
         expectedByRole: { platform_owner: 200, org_admin: 403 },
         globalScope: true,
+      },
+      // ── The FINAL read (2026-08-16): ai-cost-anomalies, the cluster's thirteenth ──────────────
+      {
+        name: 'ai-cost-anomalies',
+        csharpPath: '/platform/dashboard/ai-cost-anomalies',
+        // A REAL payload diff, unlike the three FX entries above: both stacks read the same three
+        // ai-agent tables from the same database — no rate provider, so caveat 8 does not apply.
+        tsProcedure: 'platform.getAiCostAnomalies',
+        input: {},
+        expectedByRole: { platform_owner: 200, org_admin: 403 },
+        globalScope: true,
+        // No normalize: the potentialSavings-descending sort IS the kernel (sortArraysBy would stop
+        // comparing it), and `monthlyBudget: null` — which every budget-less zero-usage anomaly
+        // carries — is exactly the field dropNullish would hide. See caveat 10 for the rolling-window
+        // and tie exposure this leaves standing.
       },
     ],
   },
