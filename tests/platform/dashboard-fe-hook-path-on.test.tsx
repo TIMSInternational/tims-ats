@@ -101,6 +101,12 @@ describe('flag ON — the C# branch is the live one', () => {
 
     // The panel's scenario: drop `&& callerEnabled` from the C# branch and the navbar fires an
     // empty-query search on every render of every admin page. This is the runtime kill for it.
+    //
+    // The flush is LOAD-BEARING: a fired queryFn awaits getAccessToken() before fetch, so a
+    // synchronous not-called assertion passes even against the mutation — proven by running that
+    // exact mutation and watching only the text pin go red. The gate-OPEN test below is this
+    // file's positive control that fetch observation works at all.
+    await new Promise((r) => setTimeout(r, 50));
     expect(fetchMock).not.toHaveBeenCalled();
     expect(trpcUseQuery).toHaveBeenLastCalledWith({ query: '' }, { enabled: false });
   });

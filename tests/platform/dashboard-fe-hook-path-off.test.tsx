@@ -66,7 +66,10 @@ describe('flag OFF — every hook must return the tRPC branch and fire zero plat
     // And the tRPC branch is the ENABLED one (the complement of the C# branch).
     expect(trpcUseQuery).toHaveBeenCalledWith(undefined, { enabled: true });
     // The C# branch must not have fired a single request: `enabled: false` on the useQuery AND
-    // the platformGetRaw disabled-throw both sit between us and the network.
+    // the platformGetRaw disabled-throw both sit between us and the network. Flushed first —
+    // a fired queryFn awaits the token before fetch, so the synchronous form is vacuous (see the
+    // ON file's gate-CLOSED test for the mutation that proved it).
+    await new Promise((r) => setTimeout(r, 50));
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -79,6 +82,7 @@ describe('flag OFF — every hook must return the tRPC branch and fire zero plat
     renderHook(() => useDashboardSearch({ query: 'ana' }, { enabled: true }), { wrapper: makeWrapper() });
     expect(trpcUseQuery).toHaveBeenLastCalledWith({ query: 'ana' }, { enabled: true });
 
+    await new Promise((r) => setTimeout(r, 50));
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
