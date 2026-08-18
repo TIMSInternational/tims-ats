@@ -328,6 +328,13 @@ public sealed class FitEngineReadEndpointAuthTests(FitEngineFixture fixture)
         var engineeringIdx = names.IndexOf("Engineering");
         Assert.True(defaultIdx >= 0 && engineeringIdx >= 0, $"seeded profiles missing from [{string.Join(", ", names)}]");
         Assert.True(defaultIdx < engineeringIdx, "name ASC: Default must precede Engineering");
+
+        // TENANT ISOLATION, and the reason it is asserted THIS way: Compute_OrgB_Bootstraps… creates a SECOND
+        // row named "Default" in OrgB on the same shared container. Without the count assertion below, dropping
+        // the org filter in ListWeightProfilesAsync would leak it and EVERY other assertion here would still
+        // hold — IndexOf finds the first, the ordering stays sorted. A leak must be counted, not just ordered.
+        Assert.Equal(1, names.Count(n => n == "Default"));
+        Assert.DoesNotContain(FitEngineFixture.OrgB.ToString(), await response.Content.ReadAsStringAsync());
         Assert.Equal(names.OrderBy(n => n, StringComparer.Ordinal).ToList(), names);
 
         var engineering = rows[engineeringIdx]!.AsObject();
@@ -392,6 +399,49 @@ public sealed class FitEngineReadEndpointAuthTests(FitEngineFixture fixture)
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         Assert.Contains("Vacante no encontrada", await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task Explain_CrossOrgCandidate_Is404_OrgFilterOnTheUnprobedId()
+    {
+        // candidateId is caller-supplied and gets NO assertScoped probe (faithful to TS). Its ONLY controls
+        // are the repository's explicit org predicate + RLS — and nothing covered either until now, so
+        // deleting the org predicate was invisible.
+        await using var factory = EnabledFactory();
+        using var client = factory.CreateClient();
+        var response = await Get(
+            client, Explain(FitEngineFixture.VacRead, FitEngineFixture.CandOrgB),
+            Mint(FitEngineFixture.OrgAdminSub));
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Contains("No hay FIT score calculado para este candidato", await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task Simulate_UnparseableWeight_NoGrant_Is403_NotABindingError()
+    {
+        // TRAP 9 regression pin. The weights bind as `string?` and parse INSIDE the handler, so an ungranted
+        // caller sending a non-numeric value gets the GATE's 403 — not minimal-API's pre-handler 400. Binding
+        // them back to `double?` makes this 400: a tRPC-parity break AND an audit-suppression vector, since
+        // SecurityDenialAuditMiddleware records only 401/403.
+        await using var factory = EnabledFactory();
+        using var client = factory.CreateClient();
+        var response = await Get(
+            client, Simulate(FitEngineFixture.VacRead, a: "abc"), Mint(FitEngineFixture.NoGrantSub));
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Simulate_UnparseableWeight_WithGrant_Is400_AfterTheGate()
+    {
+        // The other half: once the gate passes, the same unparseable value is ordinary invalid input.
+        await using var factory = EnabledFactory();
+        using var client = factory.CreateClient();
+        var response = await Get(
+            client, Simulate(FitEngineFixture.VacRead, a: "abc"), Mint(FitEngineFixture.OrgAdminSub));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     [Fact]

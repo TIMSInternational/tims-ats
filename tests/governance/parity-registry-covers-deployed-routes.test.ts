@@ -498,7 +498,7 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //   left the "deleted surface" group but cannot join the registry (no role answers 200; see the
     //   group's reason). Net: 84 − 27 + 2 = 59. Pinned so SHRINKING the gap is visible as progress
     //   and GROWING it is visible as drift; neither can happen silently.
-    //   59 → 65, 2026-08-17 (Phase-5 slice 24 / #90): the six fit-engine routes landed DARK — five
+    //   59 → 65, 2026-08-18 (Phase-5 slice 24 / #90): the six fit-engine routes landed DARK — five
     //   pending their fixture-first registration (grants + fit_scores rows do not exist in the
     //   parity seed yet; tracked on #90) and explain-fit permanently 501-inexpressible until a C#
     //   AI plane exists. This is the documented-growth case, not drift: a new dark slice adds its
@@ -513,7 +513,7 @@ describe('parity registry covers every deployed route (or documents why not)', (
     // 5 → 6 on 2026-08-17: the team-intel 501 stubs got their own group — their reason (the harness
     // contract cannot express an endpoint no role gets 200 from) is a different KIND of gap from
     // every other group's, and folding it into one of them would dilute both reasons.
-    // 6 → 8 on 2026-08-17 (slice 24 / #90): fit-engine's five registrable-dark routes and its one
+    // 6 → 8 on 2026-08-18 (slice 24 / #90): fit-engine's five registrable-dark routes and its one
     // 501-inexpressible explain-fit are DIFFERENT kinds of gap (one shrinks with fixture work, the
     // other only with a C# AI plane), so they get one group each rather than diluting either reason.
     expect(UNREGISTERED_ALLOWLIST.length, 'the eight documented gap categories').toBe(8);

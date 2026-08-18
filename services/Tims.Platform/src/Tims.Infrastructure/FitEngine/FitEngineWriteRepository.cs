@@ -11,7 +11,10 @@ namespace Tims.Infrastructure.FitEngine;
 /// <c>upsertRoleFamilyWeightProfile</c> (fit-engine.repository.ts). Reads AsNoTracking; the two upserts are raw
 /// <c>INSERT … ON CONFLICT DO UPDATE</c> (EF has no native upsert; mirrors the nine-box vote / fx-rate raw
 /// upserts — and Prisma emits the same statement for these eligible upserts, so the write is atomic in BOTH
-/// stacks). Every op runs UNDER <see cref="TenantScope"/> with explicit organizationId filters/values.
+/// stacks). Every op runs UNDER <see cref="TenantScope"/>; the DRIVING table of each query carries an
+/// explicit organizationId filter/value, while the joined <c>job_profiles</c> / <c>assessment_results</c>
+/// do not — those rest on RLS plus their unique FKs (<c>job_profiles.vacancy_id</c>,
+/// <c>assessment_results.assignment_id</c>), so only the same-org row is reachable either way.
 /// Client-set ids (<c>Guid.NewGuid()</c>) + explicit created/updated/calculated timestamps — Prisma
 /// <c>@default(uuid())</c>/<c>@default(now())</c>/<c>@updatedAt</c> are client-side. Timestamps bind as
 /// ms-truncated Unspecified-kind <c>NpgsqlDbType.Timestamp</c> (TRAP 10/11: a bare hole would bind

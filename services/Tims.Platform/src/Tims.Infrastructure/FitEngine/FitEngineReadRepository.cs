@@ -6,7 +6,11 @@ namespace Tims.Infrastructure.FitEngine;
 /// <summary>
 /// EF implementation of <see cref="IFitEngineReadRepository"/> — the three read projections of
 /// fit-engine.repository.ts. Every query AsNoTracking, under <see cref="TenantScope"/> (SET LOCAL ROLE
-/// app_tenant + org GUC → RLS) with an explicit organizationId filter (defense-in-depth). Candidate/vacancy
+/// app_tenant + org GUC → RLS). The DRIVING table (<c>fit_scores</c> / <c>role_family_weight_profiles</c>)
+/// additionally carries an explicit organizationId predicate (defense-in-depth); the JOINED
+/// <c>candidates</c>/<c>vacancies</c> do NOT — they rest on RLS plus FK/PK integrity, which is sufficient
+/// because the join key is a primary key and the driving row is already org-filtered. Said precisely because
+/// an earlier draft claimed "every query … with an explicit organizationId filter", which over-describes it. Candidate/vacancy
 /// joins are INNER (required Prisma relations — the FK guarantees the row). Timestamps re-kind to UTC at this
 /// boundary so the Node-ISO converter emits <c>…fffZ</c>.
 /// </summary>

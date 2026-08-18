@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Globalization;
 using System.Security.Claims;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -143,12 +144,14 @@ public static class FitEngineWriteEndpoints
         return weights is null ? null : (name, weights);
     }
 
-    // z.number() — a JSON-number-kind value only (a string "0.2" or a bool must NOT parse).
-    private static double? ReadNumber(JsonObject obj, string key) =>
+    // z.number() — a JSON-number-kind value only (a string "0.2" or a bool must NOT parse). Rendered back to
+    // an invariant string because TryBuildWeights now takes strings (TRAP 9 on the query side); "R" round-trips
+    // the double exactly, so the JSON body path still validates the same values it always did.
+    private static string? ReadNumber(JsonObject obj, string key) =>
         obj.TryGetPropertyValue(key, out var node)
         && node is JsonValue value
         && value.GetValueKind() == JsonValueKind.Number
-            ? value.GetValue<double>()
+            ? value.GetValue<double>().ToString("R", CultureInfo.InvariantCulture)
             : null;
 
     // Malformed/empty JSON body → 400 (ReadFromJsonAsync rejects an empty body as malformed; a duplicate-key

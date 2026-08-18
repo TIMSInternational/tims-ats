@@ -148,6 +148,36 @@ public sealed class FitEngineRepositoryTests(FitEngineFixture fixture)
     }
 
     [Fact]
+    public async Task WeightProfiles_AreOrgScoped_BothDirections()
+    {
+        await using var db = _fixture.NewReadContext();
+        var repo = new FitEngineReadRepository(db);
+
+        var orgA = await repo.ListWeightProfilesAsync(FitEngineFixture.OrgA, CancellationToken.None);
+        // OrgA's seeded profiles are present…
+        Assert.Contains(orgA, p => p.Name == "Engineering");
+        // …and exactly one "Default" — OrgB's bootstrap (created by the write suite on this shared
+        // container) must never appear here. A positive control on the same call, so a repository that
+        // returned nothing at all could not pass.
+        Assert.Equal(1, orgA.Count(p => p.Name == "Default"));
+
+        // The reverse direction: OrgB never sees OrgA's Engineering/Marketing rows.
+        var orgB = await repo.ListWeightProfilesAsync(FitEngineFixture.OrgB, CancellationToken.None);
+        Assert.DoesNotContain(orgB, p => p.Name is "Engineering" or "Marketing");
+    }
+
+    [Fact]
+    public async Task ExplainRow_CrossOrgCandidate_IsNull()
+    {
+        await using var db = _fixture.NewReadContext();
+        var repo = new FitEngineReadRepository(db);
+
+        var row = await repo.GetFitScoreForExplainAsync(
+            FitEngineFixture.OrgA, FitEngineFixture.CandOrgB, FitEngineFixture.VacOrgB, CancellationToken.None);
+        Assert.Null(row);
+    }
+
+    [Fact]
     public async Task ExplainRow_JoinsNamesAndVacancyTitle()
     {
         await using var db = _fixture.NewReadContext();

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
@@ -78,11 +79,11 @@ public static class FitEngineReadEndpoints
         //    assertScoped('vacancy') → kernel re-run over stored breakdowns, simulatedScore DESC.
         app.MapGet("/fit-engine/vacancies/{vacancyId:guid}/simulate-weights", async (
                 Guid vacancyId,
-                [FromQuery(Name = "assessment")] double? assessment,
-                [FromQuery(Name = "interview")] double? interview,
-                [FromQuery(Name = "experience")] double? experience,
-                [FromQuery(Name = "education")] double? education,
-                [FromQuery(Name = "languages")] double? languages,
+                [FromQuery(Name = "assessment")] string? assessment,
+                [FromQuery(Name = "interview")] string? interview,
+                [FromQuery(Name = "experience")] string? experience,
+                [FromQuery(Name = "education")] string? education,
+                [FromQuery(Name = "languages")] string? languages,
                 ClaimsPrincipal user,
                 HttpContext httpContext,
                 PrincipalResolver principalResolver,
@@ -233,11 +234,20 @@ public static class FitEngineReadEndpoints
 
     // Zod parity for weightsSchema: five required numbers, each z.number().min(0).max(1), then the refine
     // |a+i+e+ed+l − 1| < 0.001 in the SAME operand order (double addition is order-dependent at the boundary).
+    //
+    // TRAP 9 — the parameters are bound as `string?` and parsed HERE, never as `double?` at the signature.
+    // Minimal-API parameter binding runs INSIDE the endpoint delegate but BEFORE the handler body, so a
+    // `double?` that fails to parse short-circuits with 400 before FitEngineStaffGate ever runs. That would
+    // (a) break tRPC parity — TS's requirePermission middleware precedes the Zod parse, so an ungranted
+    // caller gets 403 — and (b) let an ungranted caller suppress every authz_denied audit row by appending
+    // `&assessment=abc`, since SecurityDenialAuditMiddleware only records 401/403. Binding as string keeps
+    // ALL input handling after the gate. Pinned by Simulate_UnparseableWeight_NoGrant_Is403_NotBindingError.
     internal static IReadOnlyDictionary<string, double>? TryBuildWeights(
-        double? assessment, double? interview, double? experience, double? education, double? languages)
+        string? assessment, string? interview, string? experience, string? education, string? languages)
     {
-        if (assessment is not { } a || interview is not { } i || experience is not { } e
-            || education is not { } ed || languages is not { } l)
+        if (!TryParseWeight(assessment, out var a) || !TryParseWeight(interview, out var i)
+            || !TryParseWeight(experience, out var e) || !TryParseWeight(education, out var ed)
+            || !TryParseWeight(languages, out var l))
         {
             return null;
         }
@@ -260,6 +270,17 @@ public static class FitEngineReadEndpoints
             ["education"] = ed,
             ["languages"] = l,
         };
+    }
+
+    // A present, numeric query value. Absent/empty/non-numeric are all "invalid input" → 400 AFTER the gate.
+    // InvariantCulture + Float|AllowThousands mirrors what the default `double?` binder would have accepted,
+    // so moving the parse here changes WHEN it runs, never WHAT it accepts.
+    private static bool TryParseWeight(string? raw, out double value)
+    {
+        value = 0;
+        return !string.IsNullOrEmpty(raw)
+            && double.TryParse(
+                raw, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out value);
     }
 
     // z.number().min(0).max(1) — NaN fails both comparisons, matching Zod's rejection.
