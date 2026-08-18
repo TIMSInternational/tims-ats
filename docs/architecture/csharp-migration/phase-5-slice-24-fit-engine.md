@@ -125,6 +125,14 @@ maps and all three are deliberately unmapped: `ai_interview_sessions.status` (`A
    isolation: OrgB's bootstrap creates a second row named `Default`, and `IndexOf`-based ordering assertions
    hold with two of them. The count assertion is what closed that.)
 
+## Contract caveat for whoever builds the FE wrapper
+
+`simulate-weights`'s five query parameters are emitted **optional** in the OpenAPI document (and therefore
+in `apps/web/lib/platform-api/schema.d.ts`) while the handler 400s if any is absent — the generator has no
+way to know the handler requires them. After the TRAP 9 fix they are also typed `string`, not
+`number | string`, because they now bind as strings and are parsed after the gate. The wrapper must send all
+five, formatted invariantly; the generated types will not enforce either.
+
 ## Ledger + contract
 
 `docs/architecture/table-ownership.md`: `job_profiles` + `ai_interview_sessions` → `efcoreReadOnly[]`;

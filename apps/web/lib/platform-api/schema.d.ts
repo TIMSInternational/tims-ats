@@ -9500,11 +9500,11 @@ export interface operations {
     FitEngineSimulateWeights: {
         parameters: {
             query?: {
-                assessment?: number | string;
-                interview?: number | string;
-                experience?: number | string;
-                education?: number | string;
-                languages?: number | string;
+                assessment?: string;
+                interview?: string;
+                experience?: string;
+                education?: string;
+                languages?: string;
             };
             header?: never;
             path: {
