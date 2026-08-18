@@ -258,6 +258,35 @@ const UNREGISTERED_ALLOWLIST: AllowGroup[] = [
   },
   {
     reason:
+      'SLICE LANDED DARK 2026-08-17 (Phase-5 slice 24 / #90, fit-engine steps 1–4) — five of the six deployed ' +
+      'routes are registrable, but registration is NOT a registry edit: fit_engine grants do not exist in the ' +
+      'parity seed yet (seedFitEngineGrants — copy scopes from seed-access-matrix.ts: hr_admin/recruiter@org, ' +
+      'hrbp@unit, leader@team), the ranking/simulate reads need seeded fit_scores rows on a parity vacancy or ' +
+      'they compare empty-vs-empty (the vacuous-PASS shape), and computeForVacancy MUTATES fit_scores, so its ' +
+      'write-surface fixture needs a dedicated vacancy that no read expectation depends on. Doing that ' +
+      'fixture-first registration is #195-pattern work, tracked on #90 (step 5 is unrunnable by anyone until ' +
+      'then). The sixth route, explain-fit, is in the 501-stub group below.',
+    routes: [
+      'GET /fit-engine/vacancies/{vacancyId}/ranking',
+      'GET /fit-engine/vacancies/{vacancyId}/simulate-weights',
+      'GET /fit-engine/weight-profiles',
+      'POST /fit-engine/weight-profiles',
+      'POST /fit-engine/vacancies/{vacancyId}/compute',
+    ],
+  },
+  {
+    reason:
+      'DEPLOYED HONEST 501 STUB — explainFit (FitEngineReadEndpoints.cs: gate → vacancy IDOR probe → score ' +
+      'fetch, null ⇒ the TS 404 → 501). The narrative half needs the TS-only invokeAgent Bedrock pipeline, so ' +
+      'NO caller receives a 200 and the harness contract cannot express it (expectedByRole admits only 200|403; ' +
+      'checks/parity.ts fails a C#-only endpoint on any non-200) — the same inexpressibility as the team-intel ' +
+      'stubs in the group below. Its gate→probe→fetch→501 ordering is pinned by FitEngineReadEndpointAuthTests. ' +
+      'If a C# AI plane ever ships and this answers 200, register it as a by-id endpoint on the fit-engine ' +
+      'surface and delete this group.',
+    routes: ['GET /fit-engine/vacancies/{vacancyId}/candidates/{candidateId}/explain-fit'],
+  },
+  {
+    reason:
       'DEPLOYED HONEST 501 STUBS — the two team-intel AI reads (TeamIntelReadEndpoints.cs: gate → team IDOR ' +
       'probe → 501 "AI agent pending"). NO role receives a 200 from them, and the harness contract cannot express ' +
       'that: `expectedByRole` admits only 200|403, checks/parity.ts fails a C#-only endpoint on any non-200, ' +
@@ -408,7 +437,9 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //         /health + /ready are NOT in the document (MapHealthChecks emits no endpoint metadata),
     //         so this counts domain operations, not "every routable path". A new route bumps this,
     //         deliberately — that is the point.
-    expect(deployed.size).toBe(151);
+    //         (151 → 157 was Phase-5 slice 24 / #90: the six fit-engine routes, landed dark and
+    //         allowlisted pending their fixture-first registration — see their two groups above.)
+    expect(deployed.size).toBe(157);
     //   92 = 65 read endpoints (surfaces.ts, 14 surfaces) + 27 write (write-surfaces.ts, 8 surfaces:
     //        24 written literally + 3 produced by the shared `transitionEndpoint` helper). The READ side
     //        went 40 → 65 on 2026-08-17 (#195 residual): the four talent surfaces deleted in the
@@ -464,7 +495,12 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //   left the "deleted surface" group but cannot join the registry (no role answers 200; see the
     //   group's reason). Net: 84 − 27 + 2 = 59. Pinned so SHRINKING the gap is visible as progress
     //   and GROWING it is visible as drift; neither can happen silently.
-    expect(allowlistNormalised.length).toBe(59);
+    //   59 → 65, 2026-08-17 (Phase-5 slice 24 / #90): the six fit-engine routes landed DARK — five
+    //   pending their fixture-first registration (grants + fit_scores rows do not exist in the
+    //   parity seed yet; tracked on #90) and explain-fit permanently 501-inexpressible until a C#
+    //   AI plane exists. This is the documented-growth case, not drift: a new dark slice adds its
+    //   routes here first and shrinks the list when its surface registers.
+    expect(allowlistNormalised.length).toBe(65);
     // Every group must actually carry a reason and actually cover something — an empty group, or one
     // whose "reason" is a word, is a rubber stamp.
     for (const g of UNREGISTERED_ALLOWLIST) {
@@ -474,6 +510,9 @@ describe('parity registry covers every deployed route (or documents why not)', (
     // 5 → 6 on 2026-08-17: the team-intel 501 stubs got their own group — their reason (the harness
     // contract cannot express an endpoint no role gets 200 from) is a different KIND of gap from
     // every other group's, and folding it into one of them would dilute both reasons.
-    expect(UNREGISTERED_ALLOWLIST.length, 'the six documented gap categories').toBe(6);
+    // 6 → 8 on 2026-08-17 (slice 24 / #90): fit-engine's five registrable-dark routes and its one
+    // 501-inexpressible explain-fit are DIFFERENT kinds of gap (one shrinks with fixture work, the
+    // other only with a C# AI plane), so they get one group each rather than diluting either reason.
+    expect(UNREGISTERED_ALLOWLIST.length, 'the eight documented gap categories').toBe(8);
   });
 });
