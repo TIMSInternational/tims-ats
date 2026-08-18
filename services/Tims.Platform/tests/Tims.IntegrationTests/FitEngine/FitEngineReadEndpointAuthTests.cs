@@ -209,6 +209,21 @@ public sealed class FitEngineReadEndpointAuthTests(FitEngineFixture fixture)
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
+    [Fact]
+    public async Task ReadFlagAlone_DoesNotMapTheWriteRoutes()
+    {
+        // Mirror of the write suite's guard: EnabledFactory() sets only the READ flag, so POST /compute must
+        // 404. If the two Program.cs guards were ever merged, flipping the READ flag at canary would
+        // silently activate the C# WRITER against fit_scores — the exact thing the write flag exists to gate.
+        await using var factory = EnabledFactory();
+        using var client = factory.CreateClient();
+        var request = new HttpRequestMessage(
+            HttpMethod.Post, $"/fit-engine/vacancies/{FitEngineFixture.VacInTeam}/compute");
+        request.Headers.Add("Authorization", $"Bearer {Mint(FitEngineFixture.OrgAdminSub)}");
+        var response = await client.SendAsync(request);
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
     // ══ simulateWeights ══
     [Fact]
     public async Task Simulate_AssessmentOnly_Is200_KernelOverStoredBreakdowns_Desc()

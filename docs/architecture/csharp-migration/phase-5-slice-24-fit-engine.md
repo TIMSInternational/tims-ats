@@ -136,11 +136,28 @@ the 501-inexpressible explain-fit). Registration is #195-pattern **fixture-first
    (per #228's manifest pattern), and the allowlist's five-route group is deleted.
 
 Steps 6 (ownership flip of `fit_scores` + `role_family_weight_profiles`) and 7 (delete the TS router/
-service/repository) follow step 5. Step 7 note: `fitEngineService.computeFitScore` and
-`fitEngineRepository.getFullFitScoreForSnapshot` have **cross-domain TS consumers**
-(`candidate-ai.service.ts` `analyzeAiInterview` — the llmJudgment path — and
-`hire-prediction.service.ts` snapshots), so the TS delete must either keep those internals or port
-their consumers first; the router alone is not the whole TS surface.
+service/repository) follow step 5.
+
+⚠️ **The write flag is NOT a complete writer switch, and step 6 must not assume it is.** It controls the
+ROUTER write path only. Three TS writers/deleters live outside the ported router and outside any flag:
+
+| TS site | What it does to the two tables |
+| ------- | ------------------------------ |
+| `candidate-ai.service.ts:112` — `candidateAiService.screenCandidate` | calls `fitEngineService.computeFitScore(…, { llmJudgment })` → **upserts `fit_scores`** and can **bootstrap the `Default` `role_family_weight_profiles` row** |
+| `candidate.repository.ts:458` — `candidateRepository.merge` | `tx.fitScore.deleteMany({ candidateId: duplicateId })` — **DELETES `fit_scores`** rows on duplicate-candidate merge |
+| `packages/db/prisma/seed-demo.ts:910` | upserts `fit_scores` (local demo seeder, not a runtime path — disclosed for the same reason the succession ledger note discloses its seeder) |
+
+`efcoreStranglerWrite` tolerates exactly this coexistence, so today's ledger entry is honest — but an
+unqualified "this flag is the one-active-writer control" is not, and an earlier draft of this doc,
+`PlatformOptions.cs` and `Program.cs` all said it. Both application writers must be ported or accounted
+for before step 6 moves either table to `efcore[]`; a `tests/governance/`-style no-TS-writers pin (cf.
+`surveys-no-ts-writers.test.ts`) is the mechanism that keeps it honest at that point.
+
+Step 7 note: `fitEngineService.computeFitScore` and `fitEngineRepository.getFullFitScoreForSnapshot`
+have **cross-domain TS consumers** (`screenCandidate` above — the llmJudgment path this port
+deliberately does not reproduce, since the router never supplies one — and `hire-prediction.service.ts`
+snapshots), so the TS delete must either keep those internals or port their consumers first; the router
+alone is not the whole TS surface.
 
 ## Test inventory + mutation proofs
 

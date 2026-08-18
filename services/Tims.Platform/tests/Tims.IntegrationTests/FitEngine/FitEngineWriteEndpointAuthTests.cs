@@ -302,15 +302,28 @@ public sealed class FitEngineWriteEndpointAuthTests(FitEngineFixture fixture)
     }
 
     [Fact]
-    public async Task UpsertProfile_OrgAdmin_UpdatePath_Is200_IdStable_WeightsReplaced()
+    public async Task UpsertProfile_OrgAdmin_UpdatePath_Is200_IdStable_WeightsReplaced_TimestampsMove()
     {
         await using var factory = EnabledFactory();
         using var client = factory.CreateClient();
+        var before = await _fixture.GetWeightProfileAsync(FitEngineFixture.OrgA, "Marketing");
+        Assert.NotNull(before);
+
         var response = await Post(
             client, Profiles, ProfileBody("Marketing", a: 0.6, i: 0.1, e: 0.1, ed: 0.1, l: 0.1),
             Mint(FitEngineFixture.OrgAdminSub));
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        // The ON-CONFLICT update must move updated_at and must NOT touch created_at. Without this the
+        // `updated_at = EXCLUDED.updated_at` clause (and a stray `created_at = …`) were both unkillable —
+        // the same gap the fit_scores upsert had until Compute_Twice got its strict `>`.
+        var afterStamps = await _fixture.GetWeightProfileAsync(FitEngineFixture.OrgA, "Marketing");
+        Assert.NotNull(afterStamps);
+        Assert.Equal(before.Value.CreatedAt, afterStamps.Value.CreatedAt);
+        Assert.True(
+            afterStamps.Value.UpdatedAt > before.Value.UpdatedAt,
+            $"updated_at must move on the update path (before {before.Value.UpdatedAt:O}, after {afterStamps.Value.UpdatedAt:O})");
         var body = JsonNode.Parse(await response.Content.ReadAsStringAsync())!.AsObject();
         // The seeded Marketing row is UPDATED, not replaced — the (org, name) upsert keeps the id.
         Assert.Equal(FitEngineFixture.WpMarketing.ToString(), body["id"]!.GetValue<string>());
@@ -381,6 +394,21 @@ public sealed class FitEngineWriteEndpointAuthTests(FitEngineFixture fixture)
         using var client = factory.CreateClient();
         var response = await Post(client, Profiles, ProfileBody(), Mint(FitEngineFixture.TeamLeadSub));
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task WriteFlagAlone_DoesNotMapTheReadRoutes()
+    {
+        // The two flags are INDEPENDENT `if` blocks in Program.cs. EnabledFactory() sets only the WRITE
+        // flag, so a read route must still 404 — otherwise merging the two guards (a plausible
+        // copy-paste) would be invisible here and would silently widen a canary flip.
+        await using var factory = EnabledFactory();
+        using var client = factory.CreateClient();
+        var request = new HttpRequestMessage(
+            HttpMethod.Get, $"/fit-engine/vacancies/{FitEngineFixture.VacRead}/ranking");
+        request.Headers.Add("Authorization", $"Bearer {Mint(FitEngineFixture.OrgAdminSub)}");
+        var response = await client.SendAsync(request);
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
     [Fact]

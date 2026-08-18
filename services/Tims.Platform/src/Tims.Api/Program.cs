@@ -1398,8 +1398,10 @@ try
     // /fit-engine/vacancies/{id}/compute (computeForVacancy: assertScoped('vacancy') → per-candidate
     // deterministic scoring + atomic fit_scores upsert; bootstraps the 'Default' weight profile when absent)
     // and POST /fit-engine/weight-profiles (upsertRoleFamilyWeightProfile, grant-only — TS parity). Staff-JWT +
-    // fit_engine:create/update. This flag IS the one-active-writer control for fit_scores +
-    // role_family_weight_profiles — with it off the routes are never mapped and TS is the sole writer.
+    // fit_engine:create/update. With the flag off these routes are never mapped. NOTE it is the
+    // one-active-writer control for the ROUTER path only: candidateAiService.screenCandidate and
+    // candidateRepository.merge still write/delete fit_scores in TS outside any flag (see
+    // PlatformOptions.FitEngineWriteEnabled) — both are step-6 preconditions.
     if (externalOptions.FitEngineWriteEnabled || isOpenApiDocGeneration)
     {
         app.MapFitEngineWriteEndpoints();

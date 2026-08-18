@@ -141,14 +141,16 @@ public sealed class FitEngineFixture : IAsyncLifetime
             reader.GetDateTime(5), reader.GetDateTime(6), reader.GetDateTime(7), reader.GetGuid(8));
     }
 
-    /// <summary>The (org, name) weight profile via superuser: (id, weights-json), or null.</summary>
-    public async Task<(Guid Id, string Weights)?> GetWeightProfileAsync(Guid organizationId, string name)
+    /// <summary>The (org, name) weight profile via superuser: id, weights-json + both timestamps, or null.</summary>
+    public async Task<(Guid Id, string Weights, DateTime CreatedAt, DateTime UpdatedAt)?> GetWeightProfileAsync(
+        Guid organizationId, string name)
     {
         await using var connection = new NpgsqlConnection(ConnectionString);
         await connection.OpenAsync();
         await using var command = connection.CreateCommand();
         command.CommandText =
-            "SELECT id, weights::text FROM role_family_weight_profiles WHERE organization_id = @o AND name = @n";
+            "SELECT id, weights::text, created_at, updated_at FROM role_family_weight_profiles "
+            + "WHERE organization_id = @o AND name = @n";
         command.Parameters.AddWithValue("o", organizationId);
         command.Parameters.AddWithValue("n", name);
         await using var reader = await command.ExecuteReaderAsync();
@@ -157,7 +159,7 @@ public sealed class FitEngineFixture : IAsyncLifetime
             return null;
         }
 
-        return (reader.GetGuid(0), reader.GetString(1));
+        return (reader.GetGuid(0), reader.GetString(1), reader.GetDateTime(2), reader.GetDateTime(3));
     }
 
     public async Task<int> CountWeightProfilesAsync(Guid organizationId)

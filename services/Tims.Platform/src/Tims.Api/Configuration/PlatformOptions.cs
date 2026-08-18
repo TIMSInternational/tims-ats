@@ -434,9 +434,16 @@ public sealed class PlatformOptions
     /// C# FIT-engine WRITE surface is mapped and live — <c>POST /fit-engine/vacancies/{id}/compute</c>
     /// (computeForVacancy: per-active-pipeline-candidate deterministic scoring + atomic fit_scores upsert; may
     /// bootstrap the 'Default' weight profile) and <c>POST /fit-engine/weight-profiles</c>
-    /// (upsertRoleFamilyWeightProfile). Staff-JWT + fit_engine:create/update. This flag IS the one-active-writer
-    /// control for both tables — DEFAULT false (dark); TS remains the single active writer until Federico flips
-    /// it at canary (deploy-gated cutover).
+    /// (upsertRoleFamilyWeightProfile). Staff-JWT + fit_engine:create/update. DEFAULT false (dark).
+    /// ⚠️ This flag is the one-active-writer control for the ROUTER write path ONLY — it is NOT a complete
+    /// writer switch for the two tables, and saying so would be false. TWO further TS writers sit outside the
+    /// ported router and outside any flag: <c>candidateAiService.screenCandidate</c>
+    /// (candidate-ai.service.ts:112) calls <c>fitEngineService.computeFitScore</c>, which upserts
+    /// <c>fit_scores</c> AND can bootstrap the <c>Default</c> <c>role_family_weight_profiles</c> row; and
+    /// <c>candidateRepository.merge</c> (candidate.repository.ts:458) DELETES <c>fit_scores</c> rows for a
+    /// merged-away duplicate. Both must be ported or accounted for BEFORE step 6 moves either table to
+    /// <c>efcore[]</c>. <c>efcoreStranglerWrite</c> tolerates exactly this coexistence, which is why the ledger
+    /// entry is honest while an unqualified one-active-writer claim would not be.
     /// </summary>
     public bool FitEngineWriteEnabled { get; init; }
 
