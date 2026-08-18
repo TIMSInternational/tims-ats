@@ -116,7 +116,7 @@ their consumers first; the router alone is not the whole TS surface.
 ## Test inventory + mutation proofs
 
 74 new C# tests (14 unit incl. 6 cross-stack fixture facts + 8 use-case pins; 60 integration:
-26 read-endpoint, 23 write-endpoint, 11 repository) + 6 TS fixture tests. Integration runs against a
+26 read-endpoint, 24 write-endpoint, 10 repository) + 6 TS fixture tests. Integration runs against a
 real Postgres (Testcontainers) with real RLS (`app_tenant`, ENABLE+FORCE, fail-closed
 `tenant_isolation`) and the real HTTP pipeline (WebApplicationFactory + locally-minted JWKS).
 
