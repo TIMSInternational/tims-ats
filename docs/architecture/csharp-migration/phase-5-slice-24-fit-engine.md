@@ -1,9 +1,17 @@
-# Phase-5 Slice 24 — FIT Engine (#90), steps 1–4, DARK
+# Phase-5 Slice 24 — FIT Engine (#90), steps 1–3 + step 4's BACKEND HALF, DARK
 
 > Shipped 2026-08-18. Port of the complete 6-procedure `fitEngine` tRPC router
 > (`packages/api/src/routers/fit-engine.ts` + `fit-engine.service.ts` + `fit-engine.repository.ts`).
 > Reads behind `Platform:FitEngineReadEnabled`, writes behind `Platform:FitEngineWriteEnabled`, both
 > **default false** — TS remains the sole active reader AND writer until Federico flips at canary.
+>
+> ⚠️ **Step 4 is HALF done, counted against #90's own acceptance criteria.** That step reads "endpoints
+> exposed in `Tims.Api` behind `Platform:<X>Enabled` (default false), **plus** the
+> `apps/web/lib/platform-api/<x>.ts` wrapper behind `NEXT_PUBLIC_<X>_VIA_CSHARP`". This slice ships the
+> first half only. The wrapper is a SEPARATE PR by repo precedent (#81's backend shipped across
+> #225/#233/#234/#237; its FE wrapper was #241) — and here it needs a design decision first, see
+> "The FE wrapper is not mechanical" below. Do not read "the port is done" as "step 4 is done"; that
+> exact conflation was corrected on #81 by a tier-3 panel and is repeated here deliberately.
 
 ## Endpoint map
 
@@ -88,6 +96,27 @@ ToTable requirement. No native enums are touched anywhere in the slice (TRAPS 3/
 `fit_scores` + `role_family_weight_profiles` → `efcoreStranglerWrite[]` (see the `fit_engine_slice24`
 note). `contracts/openapi/Tims.Api.json`: +490 lines, purely additive (routes map under
 `isOpenApiDocGeneration`).
+
+## The FE wrapper (step 4's missing half) is NOT mechanical
+
+All SIX procedures have live `apps/web` consumers, so unlike #81's `getUserGrowth` there is no
+zero-consumer exemption anywhere:
+
+| Procedure | Call sites |
+| --------- | ---------- |
+| `listRoleFamilyWeightProfiles` | `settings/fit-weights/page.tsx`, `recruitment/vacancies/[id]/role-family-card.tsx` |
+| `upsertRoleFamilyWeightProfile` | `settings/fit-weights/page.tsx` |
+| `getRankingForVacancy` | `recruitment/vacancies/[id]/candidate-fit-panel.tsx`, `…/fit-ranking.tsx` |
+| `computeForVacancy` | `recruitment/vacancies/[id]/fit-ranking.tsx` |
+| `simulateWeights` | `recruitment/vacancies/[id]/fit-ranking.tsx` |
+| `explainFit` | `recruitment/vacancies/[id]/candidate-fit-panel.tsx` |
+
+**`explainFit` cannot be given a dual-path hook.** The C# side answers 501 by design, so a wrapper that
+routed it on the flag would turn a working narrative panel into an error the moment the flag flipped.
+Five hooks are dual-path-able; `explainFit` must stay on tRPC and be pinned by name as a deliberate
+omission (the shape of #81's `getUserGrowth` pin, for the opposite reason — zero consumers there, an
+unportable dependency here). That also means the fit-engine READ flag can never fully retire the TS
+router while `explainFit` lives in it, which step 7 must account for.
 
 ## Step 5 — currently unrunnable, and what it needs
 

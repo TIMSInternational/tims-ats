@@ -10,15 +10,18 @@ import { WRITE_SURFACES, type WriteResolvedBase } from '../../scripts/parity/wri
  * The parity harness (scripts/parity/) is the only automated thing that probes the LIVE C# service
  * for cross-tenant isolation (checks/rls.ts) and permission denials (checks/rbac.ts). It can probe
  * nothing that SURFACES + WRITE_SURFACES do not register — and nothing measured how much of the
- * deployed service that is. Re-measured 2026-08-17: 92 registered endpoints against 151 deployed
- * operations, leaving a gap of 59. (The numeric PINS below were updated when slice 23 landed; update
+ * deployed service that is. Re-measured 2026-08-18: 92 registered endpoints against 157 deployed
+ * operations, leaving a gap of 65. (The numeric PINS below were updated when slice 23 landed; update
  * both this prose and the pins, or neither is trustworthy — slice 22 updated only the pins and this
  * line read 50/135/gap-85 for a commit, and slice 23's SECOND PR repeated the mistake: it moved the
  * pins to 147/63 and left every figure in this header at the pre-PR numbers. Slice 23's THIRD PR
  * updated both, as did its final read. The 2026-08-17 change — #195's residual, re-registering the
  * four deleted talent read surfaces C#-only — moved 67→92 / 84→59: 27 routes left the allowlist as
  * 25 registered endpoints plus the two team-intel 501 stubs, which moved to their OWN allowlist
- * group rather than the registry, for the reason that group states.)
+ * group rather than the registry, for the reason that group states. The 2026-08-18 change is the
+ * first to GROW these numbers rather than shrink them: slice 24 / #90 deployed six fit-engine routes
+ * DARK with no registry entry — 151→157 deployed, 59→65 allowlisted, 92 registered UNCHANGED — which
+ * is the documented-growth path a new dark slice is supposed to take, not drift.)
  *
  * THIS GUARD MEASURES REGISTRATION, NOT PROBE COVERAGE, and the two are not the same number, and as
  * of 2026-08-15 there is a THIRD number: registration does not imply a PAYLOAD DIFF either, since an
@@ -61,9 +64,9 @@ import { WRITE_SURFACES, type WriteResolvedBase } from '../../scripts/parity/wri
  *   2. The OpenAPI document resolves all of them — it is emitted by the framework from the mapped
  *      routes themselves, so it cannot disagree with what is mapped. What IS reproducible from this
  *      repo is the arithmetic: `grep -rEo '\.Map(Get|Post|Patch|Put|Delete)\(' services/Tims.Platform
- *      /src/Tims.Api --include='*.cs' | wc -l` = 149 call sites (re-run 2026-08-16), minus the 1 inside
+ *      /src/Tims.Api --include='*.cs' | wc -l` = 155 call sites (re-run 2026-08-18), minus the 1 inside
  *      the private `MapTransition` helper (Evaluation360WriteEndpoints.cs:169, mapping at :172), plus
- *      its 3 invocations (Evaluation360WriteEndpoints.cs:78/:80/:82) = 151, which is
+ *      its 3 invocations (Evaluation360WriteEndpoints.cs:78/:80/:82) = 157, which is
  *      the operation count this file parses and pins. An earlier version of this line claimed the two
  *      sets had "ZERO symmetric difference" as measured by a one-off script; that script was never
  *      committed, so the claim was not reproducible and is not restated.
@@ -77,7 +80,7 @@ import { WRITE_SURFACES, type WriteResolvedBase } from '../../scripts/parity/wri
  *      file — exactly the trigger this guard needs.
  *
  * CAVEAT, stated rather than implied: `/health` and `/ready` (Program.cs:892, :899) are ABSENT from
- * the document — MapHealthChecks emits no endpoint metadata. So this guard covers 151 domain
+ * the document — MapHealthChecks emits no endpoint metadata. So this guard covers 157 domain
  * OPERATIONS, never "every routable path".
  */
 
@@ -258,7 +261,7 @@ const UNREGISTERED_ALLOWLIST: AllowGroup[] = [
   },
   {
     reason:
-      'SLICE LANDED DARK 2026-08-17 (Phase-5 slice 24 / #90, fit-engine steps 1–4) — five of the six deployed ' +
+      'SLICE LANDED DARK 2026-08-18 (Phase-5 slice 24 / #90, fit-engine backend) — five of the six deployed ' +
       'routes are registrable, but registration is NOT a registry edit: fit_engine grants do not exist in the ' +
       'parity seed yet (seedFitEngineGrants — copy scopes from seed-access-matrix.ts: hr_admin/recruiter@org, ' +
       'hrbp@unit, leader@team), the ranking/simulate reads need seeded fit_scores rows on a parity vacancy or ' +
