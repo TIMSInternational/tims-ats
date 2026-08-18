@@ -171,17 +171,22 @@ public sealed class FitEngineWriteEndpointAuthTests(FitEngineFixture fixture)
         var before = await _fixture.GetFitScoreAsync(FitEngineFixture.CandFull, FitEngineFixture.VacInTeam);
         Assert.NotNull(before);
 
+        // Timestamps are ms-truncated; without this gap the strict > below would be timing-flaky, and
+        // with >= instead a dropped `calculated_at = EXCLUDED.calculated_at` would pass vacuously.
+        await Task.Delay(20);
+
         var second = await Post(client, Compute(FitEngineFixture.VacInTeam), null, token);
         Assert.Equal(HttpStatusCode.OK, second.StatusCode);
         var after = await _fixture.GetFitScoreAsync(FitEngineFixture.CandFull, FitEngineFixture.VacInTeam);
         Assert.NotNull(after);
 
-        // ON CONFLICT DO UPDATE: same row (id + created_at stable, org untouched), fresher stamps.
+        // ON CONFLICT DO UPDATE: same row (id + created_at stable, org untouched), STRICTLY fresher
+        // stamps (TS sets calculatedAt: new Date() + @updatedAt on the update path).
         Assert.Equal(before.Id, after.Id);
         Assert.Equal(before.CreatedAt, after.CreatedAt);
         Assert.Equal(FitEngineFixture.OrgA, after.OrganizationId);
-        Assert.True(after.CalculatedAt >= before.CalculatedAt);
-        Assert.True(after.UpdatedAt >= before.UpdatedAt);
+        Assert.True(after.CalculatedAt > before.CalculatedAt, "calculated_at must move on the update path");
+        Assert.True(after.UpdatedAt > before.UpdatedAt, "updated_at must move on the update path");
         Assert.Equal(86, after.OverallScore);
     }
 
