@@ -281,7 +281,11 @@ public sealed class FitEngineUseCaseTests
     private static readonly IReadOnlyDictionary<string, double> AllOnAssessment =
         new Dictionary<string, double>
         {
-            ["assessment"] = 1, ["interview"] = 0, ["experience"] = 0, ["education"] = 0, ["languages"] = 0,
+            ["assessment"] = 1,
+            ["interview"] = 0,
+            ["experience"] = 0,
+            ["education"] = 0,
+            ["languages"] = 0,
         };
 
     private static WeightProfileData DefaultProfile() => new(
