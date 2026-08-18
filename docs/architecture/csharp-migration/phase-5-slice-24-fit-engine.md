@@ -114,6 +114,17 @@ maps and all three are deliberately unmapped: `ai_interview_sessions.status` (`A
    the control; they now say the driving table carries it and the joins rest on RLS + FK integrity. Worth
    knowing before anyone reasons about this surface under a degraded-RLS incident (cf. #111/#112).
 
+   **What the cross-org tests do and do not prove, measured.** `Explain_CrossOrgCandidate_Is404`,
+   `ExplainRow_CrossOrgCandidate_IsNull` and `WeightProfiles_AreOrgScoped_BothDirections` prove that
+   ISOLATION HOLDS — which is the security property. They do NOT pin the explicit predicate: deleting the
+   org predicate from both read queries was applied as a mutation and **all 67 integration tests still
+   passed**, because `TenantScope` is opened with the SAME `organizationId` argument the filter uses, so RLS
+   and the predicate can never disagree at this layer. That is a real limit of this test layer, stated rather
+   than papered over — the one thing that WOULD distinguish them is asserting the generated SQL, which is not
+   worth the brittleness for a redundant control. (Before this slice the list assertion could not even prove
+   isolation: OrgB's bootstrap creates a second row named `Default`, and `IndexOf`-based ordering assertions
+   hold with two of them. The count assertion is what closed that.)
+
 ## Ledger + contract
 
 `docs/architecture/table-ownership.md`: `job_profiles` + `ai_interview_sessions` → `efcoreReadOnly[]`;
@@ -197,22 +208,37 @@ alone is not the whole TS surface.
 
 ## Test inventory + mutation proofs
 
-74 new C# tests (14 unit incl. 6 cross-stack fixture facts + 8 use-case pins; 60 integration:
-26 read-endpoint, 24 write-endpoint, 10 repository) + 6 TS fixture tests. Integration runs against a
+87 new C# tests, every count MEASURED per class rather than tallied by hand (20 unit: 6 cross-stack
+fixture facts + 14 use-case/kernel pins; 67 integration: 30 read-endpoint, 25 write-endpoint, 12
+repository) + 6 TS fixture tests. An earlier draft said 74 (14 + 60) with a wrong 23/11 integration split —
+the TOTAL was right and the split was not, which is exactly the error a careless recount preserves; the
+panel's fixes then moved every number again.
 real Postgres (Testcontainers) with real RLS (`app_tenant`, ENABLE+FORCE, fail-closed
 `tenant_isolation`) and the real HTTP pipeline (WebApplicationFactory + locally-minted JWKS).
 
-Seven mutations, each applied/built/run/reverted, **every failure count exactly matching its claim**:
+TWELVE mutations, each applied, built, run and reverted. Wave 1 covered the port; wave 2 covered the tests
+written IN RESPONSE to the panel, because those are the least-reviewed code in the change:
 
-| Mutation                                         | Killed by (count)                                                                                                      |
-| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
-| Gate deny → allow                                | 7/7 (all NoGrant 403s + ReaderOnly/TeamLead action denials)                                                            |
-| Upsert gate action `update` → `"read"`           | 2/2 (ReaderOnly + TeamLead 403 pins)                                                                                   |
-| Probe `ScopedNotFoundException` swallowed        | 6/6 (out-of-team / soft-deleted / cross-org 404s across all 4 probe consumers)                                         |
-| `JsRound` → banker's `Math.Round`                | 4/4 (js-round, weighted, experience, language fixtures; education survived as predicted — its ladder values are exact) |
-| Assessment `ORDER BY … DESC` → `ASC`             | 4/4 (both repo ordering pins + both compute oracle asserts)                                                            |
-| `calculated_at = EXCLUDED.calculated_at` dropped | 1/1 (`Compute_Twice` strict `>` — added after noticing `>=` was unkillable)                                            |
-| Both flag guards forced on                       | 3/3 (the three dark-by-default 404 pins)                                                                               |
+| #   | Mutation                                                           | Killed by                                                                       |
+| --- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------- |
+| 1   | Gate deny → allow                                                  | 7/7                                                                             |
+| 2   | Upsert gate action `update` → `"read"`                             | 2/2                                                                             |
+| 3   | Probe `ScopedNotFoundException` swallowed                          | 6/6                                                                             |
+| 4   | `JsRound` → banker's `Math.Round`                                  | 4/4 (education survived as predicted — its ladder is exactly {20,40,60,80,100}) |
+| 5   | Assessment `ORDER BY … DESC` → `ASC`                               | 4/4                                                                             |
+| 6   | `calculated_at = EXCLUDED.calculated_at` dropped                   | 1/1 (only after `Compute_Twice` got a strict `>`; `>=` was unkillable)          |
+| 7   | Both flag guards forced on                                         | 3/3                                                                             |
+| 8   | TRAP 9 remedy reverted (`string?` → `double?` binding)             | 1/1 — the no-grant 403 pin; the with-grant 400 correctly still passed           |
+| 9   | Explicit org predicate removed from both read queries              | **0 — NOT KILLED, deliberately reported, see below**                            |
+| 10  | `updated_at = EXCLUDED.updated_at` dropped from the PROFILE upsert | 1/1                                                                             |
+| 11  | `education is not JsonArray` guard deleted                         | 2/2 (the new malformed-jsonb pin + the fixture suite)                           |
+| 12  | `vacancy?.` → `vacancy!.` in `ComputeForVacancyAsync`              | 1/1                                                                             |
+
+**Mutation 9 is a non-kill, and is recorded as one.** Deleting the defense-in-depth org predicate from
+`ListWeightProfilesAsync` and `GetFitScoreForExplainAsync` left all 67 integration tests green, because
+`TenantScope` is opened with the SAME `organizationId` the predicate uses — RLS and the filter cannot
+disagree at this layer. The cross-org tests prove ISOLATION HOLDS (the security property); they do not pin
+the redundant predicate. Stated rather than dropped, and rather than claiming a kill the run did not produce.
 
 One fixture lesson recorded for the next slice: an invented role slug (`reader`) is silently dropped by
 `RoleSlugs.FilterStaffRoleSlugs` at session construction — the positive `ReaderOnly_Is200` control
