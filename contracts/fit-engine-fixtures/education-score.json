@@ -1,0 +1,225 @@
+{
+  "cases": [
+    {
+      "name": "no requirement → null",
+      "input": {
+        "education": [
+          {
+            "degree": "PhD in Physics"
+          }
+        ],
+        "requirements": {}
+      },
+      "expected": null
+    },
+    {
+      "name": "education null → null",
+      "input": {
+        "education": null,
+        "requirements": {
+          "requiredEducationLevel": "bachelor"
+        }
+      },
+      "expected": null
+    },
+    {
+      "name": "education empty → null",
+      "input": {
+        "education": [],
+        "requirements": {
+          "requiredEducationLevel": "bachelor"
+        }
+      },
+      "expected": null
+    },
+    {
+      "name": "unclassifiable degrees → null",
+      "input": {
+        "education": [
+          {
+            "degree": "Certificate of Attendance"
+          }
+        ],
+        "requirements": {
+          "requiredEducationLevel": "bachelor"
+        }
+      },
+      "expected": null
+    },
+    {
+      "name": "meets requirement → 100",
+      "input": {
+        "education": [
+          {
+            "degree": "Bachelor of Science"
+          }
+        ],
+        "requirements": {
+          "requiredEducationLevel": "bachelor"
+        }
+      },
+      "expected": 100
+    },
+    {
+      "name": "exceeds requirement → 100",
+      "input": {
+        "education": [
+          {
+            "degree": "Doctorado en Física"
+          }
+        ],
+        "requirements": {
+          "requiredEducationLevel": "bachelor"
+        }
+      },
+      "expected": 100
+    },
+    {
+      "name": "high_school vs master → 20 (full 5-level ladder)",
+      "input": {
+        "education": [
+          {
+            "degree": "High School Diploma"
+          }
+        ],
+        "requirements": {
+          "requiredEducationLevel": "master"
+        }
+      },
+      "expected": 20
+    },
+    {
+      "name": "associate vs phd → 40",
+      "input": {
+        "education": [
+          {
+            "degree": "Associate Degree in Nursing"
+          }
+        ],
+        "requirements": {
+          "requiredEducationLevel": "phd"
+        }
+      },
+      "expected": 40
+    },
+    {
+      "name": "bachelor vs master → 60",
+      "input": {
+        "education": [
+          {
+            "degree": "Licenciatura en Derecho"
+          }
+        ],
+        "requirements": {
+          "requiredEducationLevel": "master"
+        }
+      },
+      "expected": 60
+    },
+    {
+      "name": "combined label classifies highest-first: MBA & Bachelor → master → 80 vs phd",
+      "input": {
+        "education": [
+          {
+            "degree": "MBA & Bachelor of Science"
+          }
+        ],
+        "requirements": {
+          "requiredEducationLevel": "phd"
+        }
+      },
+      "expected": 80
+    },
+    {
+      "name": "accented Maestría → master → 80 vs phd",
+      "input": {
+        "education": [
+          {
+            "degree": "Maestría en Administración"
+          }
+        ],
+        "requirements": {
+          "requiredEducationLevel": "phd"
+        }
+      },
+      "expected": 80
+    },
+    {
+      "name": "técnico → associate → 40 vs bachelor... (vs phd ladder)",
+      "input": {
+        "education": [
+          {
+            "degree": "Técnico en Sistemas"
+          }
+        ],
+        "requirements": {
+          "requiredEducationLevel": "phd"
+        }
+      },
+      "expected": 40
+    },
+    {
+      "name": "non-string degree entries skipped, best string classifies",
+      "input": {
+        "education": [
+          {
+            "degree": 5
+          },
+          {},
+          {
+            "degree": "Licenciatura en Física"
+          }
+        ],
+        "requirements": {
+          "requiredEducationLevel": "master"
+        }
+      },
+      "expected": 60
+    },
+    {
+      "name": "keyword 'ba ' with trailing space matches BA in History",
+      "input": {
+        "education": [
+          {
+            "degree": "BA in History"
+          }
+        ],
+        "requirements": {
+          "requiredEducationLevel": "master"
+        }
+      },
+      "expected": 60
+    },
+    {
+      "name": "bachiller → high_school → 20 vs master",
+      "input": {
+        "education": [
+          {
+            "degree": "Bachiller Académico"
+          }
+        ],
+        "requirements": {
+          "requiredEducationLevel": "master"
+        }
+      },
+      "expected": 20
+    },
+    {
+      "name": "highest of several wins: bachiller + MSc vs phd → 80",
+      "input": {
+        "education": [
+          {
+            "degree": "Bachiller"
+          },
+          {
+            "degree": "MSc Data Science"
+          }
+        ],
+        "requirements": {
+          "requiredEducationLevel": "phd"
+        }
+      },
+      "expected": 80
+    }
+  ]
+}

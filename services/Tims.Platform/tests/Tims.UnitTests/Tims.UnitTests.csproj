@@ -63,6 +63,11 @@
       <Link>invitation-fixtures\%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <!-- Phase-5 slice 24 fit-engine kernels golden (shared with tests/fit-engine/kernels-fixtures.test.ts). -->
+    <Content Include="..\..\..\..\contracts\fit-engine-fixtures\*.json">
+      <Link>fit-engine-fixtures\%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <!-- Phase-5 Slice 1 external-vendor v1 mapper golden fixtures (shared with the TS vitest suite). -->
     <Content Include="..\..\..\..\contracts\external-fixtures\*.json">
       <Link>external-fixtures\%(Filename)%(Extension)</Link>

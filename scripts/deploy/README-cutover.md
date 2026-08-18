@@ -146,12 +146,14 @@ number) and independently corroborated by the `flag:` field in `scripts/parity/s
 | `audit-log`           | read  | `AuditLogReadEnabled`          | `verify audit-log`                                | `NEXT_PUBLIC_AUDIT_LOG_READ_VIA_CSHARP`      | TS DELETED (surface re-registered C#-only 2026-08-11 — see below)           |
 | `access-review`       | read  | `AccessReviewReadEnabled`      | `verify access-review`                            | `NEXT_PUBLIC_ACCESS_REVIEW_READ_VIA_CSHARP`  | TS DELETED (surface re-registered C#-only 2026-08-11 — see below)           |
 | `dashboard`           | read  | `PlatformDashboardReadEnabled` | `verify dashboard`                                | `NEXT_PUBLIC_DASHBOARD_READ_VIA_CSHARP`      | BLOCKED (step-5 `verify dashboard` never run, #211 — see cutover.sh)        |
+| `fit-engine`          | read  | `FitEngineReadEnabled`         | NONE — surface unregistered (#90)                 | NONE — no FE wrapper shipped (#90)           | BLOCKED (step-5 unrunnable by anyone; no parity fixture — see cutover.sh)   |
 | `evaluation360-write` | write | `Evaluation360WriteEnabled`    | `verify-write evaluation360`                      | `NEXT_PUBLIC_EVALUATION360_WRITE_VIA_CSHARP` | FLIPPED_AHEAD_OF_FLAG (ownership flipped while dark — see cutover.sh)       |
 | `succession-write`    | write | `SuccessionWriteEnabled`       | `verify-write succession`                         | `NEXT_PUBLIC_SUCCESSION_WRITE_VIA_CSHARP`    | CONFIRMED LIVE                                                              |
 | `nine-box-write`      | write | `NineBoxWriteEnabled`          | `verify-write ninebox`                            | `NEXT_PUBLIC_NINEBOX_WRITE_VIA_CSHARP`       | CONFIRMED LIVE                                                              |
 | `compensation-write`  | write | `CompensationWriteEnabled`     | `verify-write compensation`                       | `NEXT_PUBLIC_COMPENSATION_WRITE_VIA_CSHARP`  | COEXISTENCE (flag live; both TS mutations deleted — see cutover.sh)         |
 | `engagement-write`    | write | `EngagementWriteEnabled`       | `verify-write engagement`                         | `NEXT_PUBLIC_ENGAGEMENT_WRITE_VIA_CSHARP`    | COEXISTENCE (flag live; 3 of 5 TS mutations deleted — see cutover.sh)       |
 | `access-review-write` | write | `AccessReviewWriteEnabled`     | `verify-write access-review`                      | `NEXT_PUBLIC_ACCESS_REVIEW_WRITE_VIA_CSHARP` | CONFIRMED LIVE (TS deleted; write surface tests C# directly, no TS dep)     |
+| `fit-engine-write`    | write | `FitEngineWriteEnabled`        | NONE — surface unregistered (#90)                 | NONE — no FE wrapper shipped (#90)           | BLOCKED (one-active-writer control for fit_scores — see cutover.sh)        |
 
 Run `./scripts/deploy/cutover.sh --list` for the per-surface long-form notes (why each is
 classified the way it is, and every naming quirk below).

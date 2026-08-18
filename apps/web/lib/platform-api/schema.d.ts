@@ -1924,6 +1924,86 @@ export interface paths {
         patch: operations["EngagementUpdateActionPlan"];
         trace?: never;
     };
+    "/fit-engine/vacancies/{vacancyId}/ranking": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["FitEngineGetRankingForVacancy"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/fit-engine/vacancies/{vacancyId}/simulate-weights": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["FitEngineSimulateWeights"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/fit-engine/weight-profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["FitEngineListWeightProfiles"];
+        put?: never;
+        post: operations["FitEngineUpsertWeightProfile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/fit-engine/vacancies/{vacancyId}/candidates/{candidateId}/explain-fit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["FitEngineExplainFit"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/fit-engine/vacancies/{vacancyId}/compute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["FitEngineComputeForVacancy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/dei/dashboard-kpis": {
         parameters: {
             query?: never;
@@ -2774,6 +2854,10 @@ export interface components {
             results: components["schemas"]["CompPayEquityGroup"][];
             currency: string;
         };
+        ComputeForVacancyResult: {
+            /** Format: int32 */
+            computed: number | string;
+        };
         CoverageRow: {
             roleId: string;
             title: string;
@@ -3156,6 +3240,18 @@ export interface components {
             status: string;
             /** Format: date-time */
             completedAt: unknown;
+        };
+        FitRankingRow: {
+            fitScoreId: string;
+            candidateId: string;
+            firstName: string;
+            lastName: string;
+            /** Format: double */
+            overallScore: number | string;
+            breakdown: null | components["schemas"]["JsonNode"];
+            isPartial: boolean;
+            /** Format: date-time */
+            calculatedAt: unknown;
         };
         FlightRiskHolder: {
             id: string;
@@ -3685,6 +3781,14 @@ export interface components {
             /** Format: double */
             percentageChange: number | string;
         };
+        SimulatedRankingRow: {
+            candidateId: string;
+            firstName: string;
+            lastName: string;
+            /** Format: double */
+            simulatedScore: number | string;
+            isPartial: boolean;
+        };
         SimulateView: {
             userId: string;
             simulatedQuadrant: string;
@@ -4058,6 +4162,22 @@ export interface components {
             readiness: string;
             developmentPlan?: null | string;
         };
+        UpsertWeightProfileBody: {
+            name: string;
+            weights: components["schemas"]["UpsertWeightProfileWeightsBody"];
+        };
+        UpsertWeightProfileWeightsBody: {
+            /** Format: double */
+            assessment: number | string;
+            /** Format: double */
+            interview: number | string;
+            /** Format: double */
+            experience: number | string;
+            /** Format: double */
+            education: number | string;
+            /** Format: double */
+            languages: number | string;
+        };
         UsageApiCalls: {
             /** Format: int32 */
             used: null | number | string;
@@ -4091,6 +4211,11 @@ export interface components {
             received: boolean;
             type: string;
             handled: boolean;
+        };
+        WeightProfileRow: {
+            id: string;
+            name: string;
+            weights: null | components["schemas"]["JsonNode"];
         };
         WordCloudView: {
             words: components["schemas"]["WordWeight"][];
@@ -9305,6 +9430,269 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    FitEngineGetRankingForVacancy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vacancyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FitRankingRow"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    FitEngineSimulateWeights: {
+        parameters: {
+            query?: {
+                assessment?: string;
+                interview?: string;
+                experience?: string;
+                education?: string;
+                languages?: string;
+            };
+            header?: never;
+            path: {
+                vacancyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SimulatedRankingRow"][];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    FitEngineListWeightProfiles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeightProfileRow"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    FitEngineUpsertWeightProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertWeightProfileBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeightProfileRow"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    FitEngineExplainFit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vacancyId: string;
+                candidateId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Implemented */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    FitEngineComputeForVacancy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vacancyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComputeForVacancyResult"];
+                };
             };
             /** @description Unauthorized */
             401: {

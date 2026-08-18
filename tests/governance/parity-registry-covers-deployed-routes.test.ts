@@ -10,15 +10,18 @@ import { WRITE_SURFACES, type WriteResolvedBase } from '../../scripts/parity/wri
  * The parity harness (scripts/parity/) is the only automated thing that probes the LIVE C# service
  * for cross-tenant isolation (checks/rls.ts) and permission denials (checks/rbac.ts). It can probe
  * nothing that SURFACES + WRITE_SURFACES do not register — and nothing measured how much of the
- * deployed service that is. Re-measured 2026-08-17: 92 registered endpoints against 151 deployed
- * operations, leaving a gap of 59. (The numeric PINS below were updated when slice 23 landed; update
+ * deployed service that is. Re-measured 2026-08-18: 92 registered endpoints against 157 deployed
+ * operations, leaving a gap of 65. (The numeric PINS below were updated when slice 23 landed; update
  * both this prose and the pins, or neither is trustworthy — slice 22 updated only the pins and this
  * line read 50/135/gap-85 for a commit, and slice 23's SECOND PR repeated the mistake: it moved the
  * pins to 147/63 and left every figure in this header at the pre-PR numbers. Slice 23's THIRD PR
  * updated both, as did its final read. The 2026-08-17 change — #195's residual, re-registering the
  * four deleted talent read surfaces C#-only — moved 67→92 / 84→59: 27 routes left the allowlist as
  * 25 registered endpoints plus the two team-intel 501 stubs, which moved to their OWN allowlist
- * group rather than the registry, for the reason that group states.)
+ * group rather than the registry, for the reason that group states. The 2026-08-18 change is the
+ * first to GROW these numbers rather than shrink them: slice 24 / #90 deployed six fit-engine routes
+ * DARK with no registry entry — 151→157 deployed, 59→65 allowlisted, 92 registered UNCHANGED — which
+ * is the documented-growth path a new dark slice is supposed to take, not drift.)
  *
  * THIS GUARD MEASURES REGISTRATION, NOT PROBE COVERAGE, and the two are not the same number, and as
  * of 2026-08-15 there is a THIRD number: registration does not imply a PAYLOAD DIFF either, since an
@@ -61,9 +64,9 @@ import { WRITE_SURFACES, type WriteResolvedBase } from '../../scripts/parity/wri
  *   2. The OpenAPI document resolves all of them — it is emitted by the framework from the mapped
  *      routes themselves, so it cannot disagree with what is mapped. What IS reproducible from this
  *      repo is the arithmetic: `grep -rEo '\.Map(Get|Post|Patch|Put|Delete)\(' services/Tims.Platform
- *      /src/Tims.Api --include='*.cs' | wc -l` = 149 call sites (re-run 2026-08-16), minus the 1 inside
+ *      /src/Tims.Api --include='*.cs' | wc -l` = 155 call sites (re-run 2026-08-18), minus the 1 inside
  *      the private `MapTransition` helper (Evaluation360WriteEndpoints.cs:169, mapping at :172), plus
- *      its 3 invocations (Evaluation360WriteEndpoints.cs:78/:80/:82) = 151, which is
+ *      its 3 invocations (Evaluation360WriteEndpoints.cs:78/:80/:82) = 157, which is
  *      the operation count this file parses and pins. An earlier version of this line claimed the two
  *      sets had "ZERO symmetric difference" as measured by a one-off script; that script was never
  *      committed, so the claim was not reproducible and is not restated.
@@ -77,7 +80,7 @@ import { WRITE_SURFACES, type WriteResolvedBase } from '../../scripts/parity/wri
  *      file — exactly the trigger this guard needs.
  *
  * CAVEAT, stated rather than implied: `/health` and `/ready` (Program.cs:892, :899) are ABSENT from
- * the document — MapHealthChecks emits no endpoint metadata. So this guard covers 151 domain
+ * the document — MapHealthChecks emits no endpoint metadata. So this guard covers 157 domain
  * OPERATIONS, never "every routable path".
  */
 
@@ -258,6 +261,35 @@ const UNREGISTERED_ALLOWLIST: AllowGroup[] = [
   },
   {
     reason:
+      'SLICE LANDED DARK 2026-08-18 (Phase-5 slice 24 / #90, fit-engine backend) — five of the six deployed ' +
+      'routes are registrable, but registration is NOT a registry edit: fit_engine grants do not exist in the ' +
+      'parity seed yet (seedFitEngineGrants — copy scopes from seed-access-matrix.ts: hr_admin/recruiter@org, ' +
+      'hrbp@unit, leader@team), the ranking/simulate reads need seeded fit_scores rows on a parity vacancy or ' +
+      'they compare empty-vs-empty (the vacuous-PASS shape), and computeForVacancy MUTATES fit_scores, so its ' +
+      'write-surface fixture needs a dedicated vacancy that no read expectation depends on. Doing that ' +
+      'fixture-first registration is #195-pattern work, tracked on #90 (step 5 is unrunnable by anyone until ' +
+      'then). The sixth route, explain-fit, is in the 501-stub group below.',
+    routes: [
+      'GET /fit-engine/vacancies/{vacancyId}/ranking',
+      'GET /fit-engine/vacancies/{vacancyId}/simulate-weights',
+      'GET /fit-engine/weight-profiles',
+      'POST /fit-engine/weight-profiles',
+      'POST /fit-engine/vacancies/{vacancyId}/compute',
+    ],
+  },
+  {
+    reason:
+      'DEPLOYED HONEST 501 STUB — explainFit (FitEngineReadEndpoints.cs: gate → vacancy IDOR probe → score ' +
+      'fetch, null ⇒ the TS 404 → 501). The narrative half needs the TS-only invokeAgent Bedrock pipeline, so ' +
+      'NO caller receives a 200 and the harness contract cannot express it (expectedByRole admits only 200|403; ' +
+      'checks/parity.ts fails a C#-only endpoint on any non-200) — the same inexpressibility as the team-intel ' +
+      'stubs in the group below. Its gate→probe→fetch→501 ordering is pinned by FitEngineReadEndpointAuthTests. ' +
+      'If a C# AI plane ever ships and this answers 200, register it as a by-id endpoint on the fit-engine ' +
+      'surface and delete this group.',
+    routes: ['GET /fit-engine/vacancies/{vacancyId}/candidates/{candidateId}/explain-fit'],
+  },
+  {
+    reason:
       'DEPLOYED HONEST 501 STUBS — the two team-intel AI reads (TeamIntelReadEndpoints.cs: gate → team IDOR ' +
       'probe → 501 "AI agent pending"). NO role receives a 200 from them, and the harness contract cannot express ' +
       'that: `expectedByRole` admits only 200|403, checks/parity.ts fails a C#-only endpoint on any non-200, ' +
@@ -408,7 +440,9 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //         /health + /ready are NOT in the document (MapHealthChecks emits no endpoint metadata),
     //         so this counts domain operations, not "every routable path". A new route bumps this,
     //         deliberately — that is the point.
-    expect(deployed.size).toBe(151);
+    //         (151 → 157 was Phase-5 slice 24 / #90: the six fit-engine routes, landed dark and
+    //         allowlisted pending their fixture-first registration — see their two groups above.)
+    expect(deployed.size).toBe(157);
     //   92 = 65 read endpoints (surfaces.ts, 14 surfaces) + 27 write (write-surfaces.ts, 8 surfaces:
     //        24 written literally + 3 produced by the shared `transitionEndpoint` helper). The READ side
     //        went 40 → 65 on 2026-08-17 (#195 residual): the four talent surfaces deleted in the
@@ -464,7 +498,12 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //   left the "deleted surface" group but cannot join the registry (no role answers 200; see the
     //   group's reason). Net: 84 − 27 + 2 = 59. Pinned so SHRINKING the gap is visible as progress
     //   and GROWING it is visible as drift; neither can happen silently.
-    expect(allowlistNormalised.length).toBe(59);
+    //   59 → 65, 2026-08-18 (Phase-5 slice 24 / #90): the six fit-engine routes landed DARK — five
+    //   pending their fixture-first registration (grants + fit_scores rows do not exist in the
+    //   parity seed yet; tracked on #90) and explain-fit permanently 501-inexpressible until a C#
+    //   AI plane exists. This is the documented-growth case, not drift: a new dark slice adds its
+    //   routes here first and shrinks the list when its surface registers.
+    expect(allowlistNormalised.length).toBe(65);
     // Every group must actually carry a reason and actually cover something — an empty group, or one
     // whose "reason" is a word, is a rubber stamp.
     for (const g of UNREGISTERED_ALLOWLIST) {
@@ -474,6 +513,9 @@ describe('parity registry covers every deployed route (or documents why not)', (
     // 5 → 6 on 2026-08-17: the team-intel 501 stubs got their own group — their reason (the harness
     // contract cannot express an endpoint no role gets 200 from) is a different KIND of gap from
     // every other group's, and folding it into one of them would dilute both reasons.
-    expect(UNREGISTERED_ALLOWLIST.length, 'the six documented gap categories').toBe(6);
+    // 6 → 8 on 2026-08-18 (slice 24 / #90): fit-engine's five registrable-dark routes and its one
+    // 501-inexpressible explain-fit are DIFFERENT kinds of gap (one shrinks with fixture work, the
+    // other only with a C# AI plane), so they get one group each rather than diluting either reason.
+    expect(UNREGISTERED_ALLOWLIST.length, 'the eight documented gap categories').toBe(8);
   });
 });

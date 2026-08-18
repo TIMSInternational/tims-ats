@@ -417,6 +417,37 @@ public sealed class PlatformOptions
     public bool EngagementWriteEnabled { get; init; }
 
     /// <summary>
+    /// Phase-5 Slice 24 / #90 (efcoreReadOnly on candidates/vacancies/job_profiles/ai_interview_sessions/
+    /// assessment_assignments/assessment_results — reads only): when true, the C# FIT-engine READ surface is
+    /// mapped and live — <c>GET /fit-engine/vacancies/{id}/ranking</c> (getRankingForVacancy),
+    /// <c>/fit-engine/vacancies/{id}/simulate-weights</c> (simulateWeights),
+    /// <c>/fit-engine/weight-profiles</c> (listRoleFamilyWeightProfiles), and
+    /// <c>/fit-engine/vacancies/{id}/candidates/{id}/explain-fit</c> (explainFit — every pre-LLM observable
+    /// reproduced, then 501: the narrative needs the TS-only Bedrock pipeline). Staff-JWT + fit_engine:read;
+    /// the vacancy-scoped reads run the assertScoped('vacancy') by-id IDOR probe. DEFAULT false (dark) —
+    /// TS remains the single active reader until Federico flips it at canary (deploy-gated cutover).
+    /// </summary>
+    public bool FitEngineReadEnabled { get; init; }
+
+    /// <summary>
+    /// Phase-5 Slice 24 / #90 (efcoreStranglerWrite on fit_scores + role_family_weight_profiles): when true, the
+    /// C# FIT-engine WRITE surface is mapped and live — <c>POST /fit-engine/vacancies/{id}/compute</c>
+    /// (computeForVacancy: per-active-pipeline-candidate deterministic scoring + atomic fit_scores upsert; may
+    /// bootstrap the 'Default' weight profile) and <c>POST /fit-engine/weight-profiles</c>
+    /// (upsertRoleFamilyWeightProfile). Staff-JWT + fit_engine:create/update. DEFAULT false (dark).
+    /// ⚠️ This flag is the one-active-writer control for the ROUTER write path ONLY — it is NOT a complete
+    /// writer switch for the two tables, and saying so would be false. TWO further TS writers sit outside the
+    /// ported router and outside any flag: <c>candidateAiService.screenCandidate</c>
+    /// (candidate-ai.service.ts:112) calls <c>fitEngineService.computeFitScore</c>, which upserts
+    /// <c>fit_scores</c> AND can bootstrap the <c>Default</c> <c>role_family_weight_profiles</c> row; and
+    /// <c>candidateRepository.merge</c> (candidate.repository.ts:458) DELETES <c>fit_scores</c> rows for a
+    /// merged-away duplicate. Both must be ported or accounted for BEFORE step 6 moves either table to
+    /// <c>efcore[]</c>. <c>efcoreStranglerWrite</c> tolerates exactly this coexistence, which is why the ledger
+    /// entry is honest while an unqualified one-active-writer claim would not be.
+    /// </summary>
+    public bool FitEngineWriteEnabled { get; init; }
+
+    /// <summary>
     /// Phase-5 Slice 18 (efcoreReadOnly on users/roles/user_roles/role_permissions/permissions/
     /// organizations — Phase 2; access_reviews stays Prisma-owned until this flips): when true, the
     /// C# access-review READ surface is mapped and live — <c>GET /access-review</c> (the report),

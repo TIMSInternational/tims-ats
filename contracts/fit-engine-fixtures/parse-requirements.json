@@ -1,0 +1,149 @@
+{
+  "cases": [
+    {
+      "name": "null → empty",
+      "input": {
+        "raw": null
+      },
+      "expected": {}
+    },
+    {
+      "name": "number → empty",
+      "input": {
+        "raw": 5
+      },
+      "expected": {}
+    },
+    {
+      "name": "string → empty",
+      "input": {
+        "raw": "nope"
+      },
+      "expected": {}
+    },
+    {
+      "name": "array → empty (typeof object but no fields)",
+      "input": {
+        "raw": [
+          1,
+          2
+        ]
+      },
+      "expected": {}
+    },
+    {
+      "name": "full valid",
+      "input": {
+        "raw": {
+          "minYearsExperience": 3,
+          "requiredEducationLevel": "bachelor",
+          "requiredLanguages": [
+            "English",
+            "Spanish"
+          ]
+        }
+      },
+      "expected": {
+        "minYearsExperience": 3,
+        "requiredEducationLevel": "bachelor",
+        "requiredLanguages": [
+          "English",
+          "Spanish"
+        ]
+      }
+    },
+    {
+      "name": "float minYears kept",
+      "input": {
+        "raw": {
+          "minYearsExperience": 2.5
+        }
+      },
+      "expected": {
+        "minYearsExperience": 2.5
+      }
+    },
+    {
+      "name": "negative minYears kept",
+      "input": {
+        "raw": {
+          "minYearsExperience": -1
+        }
+      },
+      "expected": {
+        "minYearsExperience": -1
+      }
+    },
+    {
+      "name": "string minYears dropped",
+      "input": {
+        "raw": {
+          "minYearsExperience": "3"
+        }
+      },
+      "expected": {}
+    },
+    {
+      "name": "boolean minYears dropped",
+      "input": {
+        "raw": {
+          "minYearsExperience": true
+        }
+      },
+      "expected": {}
+    },
+    {
+      "name": "unknown education level dropped",
+      "input": {
+        "raw": {
+          "requiredEducationLevel": "diploma"
+        }
+      },
+      "expected": {}
+    },
+    {
+      "name": "non-string education level dropped",
+      "input": {
+        "raw": {
+          "requiredEducationLevel": 3
+        }
+      },
+      "expected": {}
+    },
+    {
+      "name": "languages with a non-string entry dropped entirely",
+      "input": {
+        "raw": {
+          "requiredLanguages": [
+            "English",
+            5
+          ]
+        }
+      },
+      "expected": {}
+    },
+    {
+      "name": "EMPTY languages array kept (valid, scores null downstream)",
+      "input": {
+        "raw": {
+          "requiredLanguages": []
+        }
+      },
+      "expected": {
+        "requiredLanguages": []
+      }
+    },
+    {
+      "name": "extra keys ignored",
+      "input": {
+        "raw": {
+          "minYearsExperience": 1,
+          "whatever": "x"
+        }
+      },
+      "expected": {
+        "minYearsExperience": 1
+      }
+    }
+  ]
+}

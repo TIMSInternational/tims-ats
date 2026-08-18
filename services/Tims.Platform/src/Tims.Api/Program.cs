@@ -26,6 +26,7 @@ using Tims.Api.RateLimiting;
 using Tims.Api.Evaluation360;
 using Tims.Api.ExternalVendor;
 using Tims.Api.Engagement;
+using Tims.Api.FitEngine;
 using Tims.Api.Dei;
 using Tims.Api.NineBox;
 using Tims.Api.Reporting;
@@ -47,6 +48,7 @@ using Tims.Application.ExternalVendor;
 using Tims.Application.Identity;
 using Tims.Application.Engagement;
 using Tims.Application.Dei;
+using Tims.Application.FitEngine;
 using Tims.Application.Fx;
 using Tims.Application.NineBox;
 using Tims.Application.Reporting;
@@ -71,6 +73,7 @@ using Tims.Infrastructure.ExternalVendor;
 using Tims.Infrastructure.Hris;
 using Tims.Infrastructure.Engagement;
 using Tims.Infrastructure.Dei;
+using Tims.Infrastructure.FitEngine;
 using Tims.Infrastructure.Fx;
 using Tims.Infrastructure.NineBox;
 using Tims.Infrastructure.Identity;
@@ -549,6 +552,20 @@ try
     builder.Services.AddDbContext<EngagementWriteDbContext>(options => options.UseNpgsql(databaseConnectionString));
     builder.Services.AddScoped<IEngagementWriteRepository, EngagementWriteRepository>();
     builder.Services.AddScoped<EngagementWriteUseCase>();
+
+    // Phase-5 Slice 24 / #90: the FIT-engine surface. READ context over fit_scores/candidates/vacancies/
+    // role_family_weight_profiles (subset maps); WRITE context adds the computeForVacancy read set
+    // (job_profiles, assessment_assignments/results, ai_interview_sessions, applications — all plain
+    // strings/scalars, NO native enums mapped, so no NpgsqlDataSource) while the two upserts run as raw
+    // INSERT … ON CONFLICT on the TenantScope transaction (fit_scores has no EF map at all). All ops UNDER
+    // TenantScope/RLS. The vacancy-scoped endpoints reuse ScopedProbe (registered above; vacancy is a probe
+    // root since WP2.5b). Dark unless FitEngineReadEnabled / FitEngineWriteEnabled (deploy-gated cutover).
+    builder.Services.AddDbContext<FitEngineReadDbContext>(options => options.UseNpgsql(databaseConnectionString));
+    builder.Services.AddScoped<IFitEngineReadRepository, FitEngineReadRepository>();
+    builder.Services.AddScoped<FitEngineReadUseCase>();
+    builder.Services.AddDbContext<FitEngineWriteDbContext>(options => options.UseNpgsql(databaseConnectionString));
+    builder.Services.AddScoped<IFitEngineWriteRepository, FitEngineWriteRepository>();
+    builder.Services.AddScoped<FitEngineWriteUseCase>();
 
     // Phase-5 Slice 11b (efcoreReadOnly): the DEI READ surface (people-dashboards GROUP 2). Unlike the engagement
     // read, employee_demographics carries THREE NATIVE Prisma enums the demographic reads GROUP BY (Gender /
@@ -1362,6 +1379,32 @@ try
     if (externalOptions.EngagementWriteEnabled || isOpenApiDocGeneration)
     {
         app.MapEngagementWriteEndpoints();
+    }
+
+    // Phase-5 Slice 24 / #90 (efcoreReadOnly): the FIT-engine READ surface (4 reads) — GET
+    // /fit-engine/vacancies/{id}/ranking (getRankingForVacancy), /fit-engine/vacancies/{id}/simulate-weights
+    // (simulateWeights — five [0,1] weights summing to 1 ± 0.001, validated after auth),
+    // /fit-engine/weight-profiles (listRoleFamilyWeightProfiles, grant-only), and
+    // /fit-engine/vacancies/{id}/candidates/{id}/explain-fit (explainFit — gate → probe → fetch → null ⇒ 404,
+    // then 501: the narrative needs the TS-only Bedrock pipeline; team-intel honest-stub precedent). Staff-JWT +
+    // fit_engine:read; vacancy-scoped reads run assertScoped('vacancy'). Dark unless the flag is on
+    // (deploy-gated cutover; TS stays the sole active reader until Federico flips it).
+    if (externalOptions.FitEngineReadEnabled || isOpenApiDocGeneration)
+    {
+        app.MapFitEngineReadEndpoints();
+    }
+
+    // Phase-5 Slice 24 / #90 (efcoreStranglerWrite): the FIT-engine WRITE surface (2 writes) — POST
+    // /fit-engine/vacancies/{id}/compute (computeForVacancy: assertScoped('vacancy') → per-candidate
+    // deterministic scoring + atomic fit_scores upsert; bootstraps the 'Default' weight profile when absent)
+    // and POST /fit-engine/weight-profiles (upsertRoleFamilyWeightProfile, grant-only — TS parity). Staff-JWT +
+    // fit_engine:create/update. With the flag off these routes are never mapped. NOTE it is the
+    // one-active-writer control for the ROUTER path only: candidateAiService.screenCandidate and
+    // candidateRepository.merge still write/delete fit_scores in TS outside any flag (see
+    // PlatformOptions.FitEngineWriteEnabled) — both are step-6 preconditions.
+    if (externalOptions.FitEngineWriteEnabled || isOpenApiDocGeneration)
+    {
+        app.MapFitEngineWriteEndpoints();
     }
 
     // Phase-5 Slice 11b (efcoreReadOnly): the DEI READ surface (10 reads). Staff-JWT + dei:read (GRANT-ONLY — no
