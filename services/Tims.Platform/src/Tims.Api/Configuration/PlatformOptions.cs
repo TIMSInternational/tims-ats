@@ -334,7 +334,7 @@ public sealed class PlatformOptions
     /// org-gate (<c>requireOrgScope</c>, Codex F3); the transitions are guarded conditional ExecuteUpdate (count-0 ⇒
     /// CONFLICT, draft→open→closed→published only) and assignRaters does an in-tx status re-check + org-membership
     /// validation + a skipDuplicates ON CONFLICT insert. submitRatings is IDENTITY-anchored (the Slice-7
-    /// Evaluation360SelfServiceGate — any resolved principal, NO grant, NO scope; every query/write HARD-FILTERS on
+    /// SelfServiceGate — any resolved principal, NO grant, NO scope; every query/write HARD-FILTERS on
     /// rater_user_id = caller so an org-scoped admin can never submit forged feedback for another rater → NOT_FOUND),
     /// with an atomic claim-idempotency transition + the 6 rater_responses insert. The three native Prisma enum
     /// columns are filtered/set via the Slice-7 enum-mapped data source (isolated behind Evaluation360WriteDataSourceHolder).
@@ -446,6 +446,35 @@ public sealed class PlatformOptions
     /// entry is honest while an unqualified one-active-writer claim would not be.
     /// </summary>
     public bool FitEngineWriteEnabled { get; init; }
+
+    /// <summary>
+    /// Phase-5 Slice 25 / #98 (efcoreReadOnly on notifications + notification_preferences — reads only): when
+    /// true, the C# notification READ surface is mapped and live — <c>GET /notifications</c> (list, cursor-paged),
+    /// <c>/notifications/unread-count</c> (unreadCount) and <c>/notifications/preferences</c> (getPreferences).
+    /// All three are <c>protectedProcedure</c>, so they authorize on IDENTITY via <c>SelfServiceGate</c> — no
+    /// grant, no org gate — and hard-filter on the caller's own user id.
+    /// ⚠️ <c>getPreferences</c> is a READ THAT WRITES: on a miss it INSERTs the caller's preference row, exactly
+    /// as the TS query does. So this flag alone can create <c>notification_preferences</c> rows, which is why
+    /// that table is registered under <c>efcoreStranglerWrite</c> and not <c>efcoreReadOnly</c>.
+    /// DEFAULT false (dark) — TS remains the single active reader until Federico flips it at canary.
+    /// </summary>
+    public bool NotificationReadEnabled { get; init; }
+
+    /// <summary>
+    /// Phase-5 Slice 25 / #98 (efcoreStranglerWrite on notifications + notification_preferences): when true, the
+    /// C# notification WRITE surface is mapped and live — the six self-service mutations
+    /// (<c>POST /notifications/{id}/read</c>, <c>/notifications/read-all</c>, <c>/notifications/{id}/archive</c>,
+    /// <c>/notifications/archive-read</c>, <c>DELETE /notifications/{id}</c>,
+    /// <c>PATCH /notifications/preferences</c>) plus the two grant-gated ones (<c>POST /notifications</c>,
+    /// <c>/notifications/bulk</c>, both <c>notification:create</c>). DEFAULT false (dark).
+    /// ⚠️ This flag is the one-active-writer control for the ROUTER write path ONLY, and saying otherwise would
+    /// be false. A THIRD TS writer sits outside the ported router and outside any flag:
+    /// <c>packages/api/src/lib/notify.ts</c>'s <c>notify()</c>, called from
+    /// <c>routers/platform/organizations.ts</c>:220 and :300, <c>createMany</c>s into <c>notifications</c>. It
+    /// must be ported or accounted for BEFORE step 6 moves either table to <c>efcore[]</c>.
+    /// <c>efcoreStranglerWrite</c> tolerates exactly this coexistence.
+    /// </summary>
+    public bool NotificationWriteEnabled { get; init; }
 
     /// <summary>
     /// Phase-5 Slice 18 (efcoreReadOnly on users/roles/user_roles/role_permissions/permissions/

@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Microsoft.Extensions.Options;
+using Tims.Api.Authentication;
 using Tims.Api.Configuration;
 using Tims.Application.Evaluation360;
 using Tims.Application.Identity;
@@ -14,7 +15,7 @@ namespace Tims.Api.Evaluation360;
 ///   <item><description>STAFF (<c>listCycles</c>, <c>getCycleProgress</c>): <see cref="Evaluation360StaffGate"/> —
 ///     <c>evaluation360:read</c> grant + organization/company org-gate (narrow → 403, Codex F3).</description></item>
 ///   <item><description>SELF-SERVICE (<c>myRaterTasks</c>, <c>myReport</c>, <c>myReportCycles</c>):
-///     <see cref="Evaluation360SelfServiceGate"/> — IDENTITY only (any resolved principal; NO grant, NO scope) →
+///     <see cref="SelfServiceGate"/> — IDENTITY only (any resolved principal; NO grant, NO scope) →
 ///     queries HARD-FILTER on the caller's own user id. There is no subject/rater id param — it is the caller.</description></item>
 /// </list>
 /// INTERNAL reads = raw model / kernel shape, NO <c>schemaVersion</c>. Dark-by-default behind
@@ -96,7 +97,7 @@ public static class Evaluation360ReadEndpoints
                 Evaluation360ReadUseCase useCase,
                 CancellationToken cancellationToken) =>
             {
-                var gate = await Evaluation360SelfServiceGate.AuthorizeAsync(
+                var gate = await SelfServiceGate.AuthorizeAsync(
                     user, httpContext, principalResolver, platformOptions.Value, cancellationToken);
                 if (gate.Failure is not null)
                 {
@@ -123,7 +124,7 @@ public static class Evaluation360ReadEndpoints
                 Evaluation360ReadUseCase useCase,
                 CancellationToken cancellationToken) =>
             {
-                var gate = await Evaluation360SelfServiceGate.AuthorizeAsync(
+                var gate = await SelfServiceGate.AuthorizeAsync(
                     user, httpContext, principalResolver, platformOptions.Value, cancellationToken);
                 if (gate.Failure is not null)
                 {
@@ -151,7 +152,7 @@ public static class Evaluation360ReadEndpoints
                 Evaluation360ReadUseCase useCase,
                 CancellationToken cancellationToken) =>
             {
-                var gate = await Evaluation360SelfServiceGate.AuthorizeAsync(
+                var gate = await SelfServiceGate.AuthorizeAsync(
                     user, httpContext, principalResolver, platformOptions.Value, cancellationToken);
                 if (gate.Failure is not null)
                 {
