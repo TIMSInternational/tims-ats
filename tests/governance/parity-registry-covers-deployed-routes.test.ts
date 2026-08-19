@@ -261,6 +261,31 @@ const UNREGISTERED_ALLOWLIST: AllowGroup[] = [
   },
   {
     reason:
+      'SLICE LANDED DARK 2026-08-19 (Phase-5 slice 25 / #98, notification backend) — all eleven deployed ' +
+      'routes. This gap is a DIFFERENT KIND from the fit-engine one below and does not shrink with the same ' +
+      'work: nine of the eleven procedures are bare protectedProcedure, so they authorize on IDENTITY with no ' +
+      'grant at all, and the harness compares BY ROLE against expectedByRole. Registering them therefore needs ' +
+      'per-role notification ROWS (each probe role owning its own, so a 200 means "saw my own" and not "saw ' +
+      'everyone"), not the seedXGrants fixture every prior surface needed — and with an empty fixture all ' +
+      'roles would compare empty-vs-empty, the vacuous-PASS shape. The two grant-gated routes (create, ' +
+      'bulkCreate) MUTATE notifications, so they need write-surface fixtures whose rows no read expectation ' +
+      'depends on. Tracked on #98; step 5 is unrunnable by anyone until then.',
+    routes: [
+      'GET /notifications',
+      'GET /notifications/unread-count',
+      'GET /notifications/preferences',
+      'POST /notifications/{id}/read',
+      'POST /notifications/read-all',
+      'POST /notifications/{id}/archive',
+      'POST /notifications/archive-read',
+      'DELETE /notifications/{id}',
+      'PATCH /notifications/preferences',
+      'POST /notifications',
+      'POST /notifications/bulk',
+    ],
+  },
+  {
+    reason:
       'SLICE LANDED DARK 2026-08-18 (Phase-5 slice 24 / #90, fit-engine backend) — five of the six deployed ' +
       'routes are registrable, but registration is NOT a registry edit: fit_engine grants do not exist in the ' +
       'parity seed yet (seedFitEngineGrants — copy scopes from seed-access-matrix.ts: hr_admin/recruiter@org, ' +
@@ -442,7 +467,10 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //         deliberately — that is the point.
     //         (151 → 157 was Phase-5 slice 24 / #90: the six fit-engine routes, landed dark and
     //         allowlisted pending their fixture-first registration — see their two groups above.)
-    expect(deployed.size).toBe(157);
+    //         (157 → 168 was Phase-5 slice 25 / #98: the eleven notification routes, landed dark and
+    //         allowlisted pending a per-role ROW fixture — see their group above. Measured, not
+    //         incremented by hand: the re-derivation command above prints 168.)
+    expect(deployed.size).toBe(168);
     //   92 = 65 read endpoints (surfaces.ts, 14 surfaces) + 27 write (write-surfaces.ts, 8 surfaces:
     //        24 written literally + 3 produced by the shared `transitionEndpoint` helper). The READ side
     //        went 40 → 65 on 2026-08-17 (#195 residual): the four talent surfaces deleted in the
@@ -503,7 +531,10 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //   parity seed yet; tracked on #90) and explain-fit permanently 501-inexpressible until a C#
     //   AI plane exists. This is the documented-growth case, not drift: a new dark slice adds its
     //   routes here first and shrinks the list when its surface registers.
-    expect(allowlistNormalised.length).toBe(65);
+    //   65 → 76, 2026-08-19 (Phase-5 slice 25 / #98): the eleven notification routes landed DARK, all
+    //   eleven pending a fixture whose shape differs from every prior surface's (per-role ROWS, not
+    //   grants — nine of the eleven procedures carry no grant to seed). Documented growth, not drift.
+    expect(allowlistNormalised.length).toBe(76);
     // Every group must actually carry a reason and actually cover something — an empty group, or one
     // whose "reason" is a word, is a rubber stamp.
     for (const g of UNREGISTERED_ALLOWLIST) {
@@ -516,6 +547,10 @@ describe('parity registry covers every deployed route (or documents why not)', (
     // 6 → 8 on 2026-08-18 (slice 24 / #90): fit-engine's five registrable-dark routes and its one
     // 501-inexpressible explain-fit are DIFFERENT kinds of gap (one shrinks with fixture work, the
     // other only with a C# AI plane), so they get one group each rather than diluting either reason.
-    expect(UNREGISTERED_ALLOWLIST.length, 'the eight documented gap categories').toBe(8);
+    // 8 → 9 on 2026-08-19 (slice 25 / #98): notification's eleven routes are a THIRD kind of gap —
+    // identity-authorized rather than grant-authorized, so the registry's by-role comparison needs
+    // per-role rows instead of a grant fixture. Folding it into the fit-engine group would state the
+    // wrong prerequisite for both.
+    expect(UNREGISTERED_ALLOWLIST.length, 'the nine documented gap categories').toBe(9);
   });
 });
