@@ -370,11 +370,34 @@ public sealed class NotificationReadEndpointAuthTests(NotificationFixture fixtur
         // Member does not have it. All three reads must still be 200. This is the control that catches a
         // self-service route accidentally wired to NotificationStaffGate: with that mistake every one of these
         // becomes 403 while the "denied" tests would still pass.
-        foreach (var path in new[] { List, UnreadCount })
+        // All THREE, including Preferences — an earlier version of this loop covered only two while its own
+        // comment and the test's name claimed three. A test that names a set larger than it checks is exactly
+        // the claim/quantifier defect this panel exists to catch.
+        foreach (var path in new[] { List, UnreadCount, Preferences })
         {
             var response = await Get(client, path, Mint(NotificationFixture.MemberSub));
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         }
+    }
+
+    [Fact]
+    public async Task Preferences_OrgLessPlatformOwner_Is400_NotAn500()
+    {
+        await using var factory = EnabledFactory();
+        using var client = factory.CreateClient();
+
+        // The counterpart to List_OrgLessPlatformOwner_SeesEmptyInbox_NotAnError, and the pair is the point:
+        // the READS fail closed to an empty list, but getPreferences WRITES, and notification_preferences'
+        // policy carries a WITH CHECK — so an org-less caller's lazy INSERT is REJECTED, not filtered, and the
+        // request 500'd. Measured before the fix: InternalServerError. The endpoint now refuses org-less
+        // callers with the same 400 NotificationStaffGate returns for a privileged org-less principal.
+        var response = await Get(client, Preferences, Mint(NotificationFixture.OwnerSub));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("organization_required", await response.Content.ReadAsStringAsync());
+
+        // And nothing was written on the way to that 400.
+        Assert.Null(await _fixture.GetPreferencesAsync(NotificationFixture.OwnerId));
     }
 
     // ══ auth matrix ══

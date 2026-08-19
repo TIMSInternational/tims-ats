@@ -133,6 +133,15 @@ public sealed class NotificationWriteRepository(NotificationDbContext db) : INot
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
+        // A RETURNING clause that yields no row would otherwise become IndexOutOfRangeException — a 500 with
+        // no diagnostic. RLS raises rather than filtering on this table, so this is defence in depth, but an
+        // explicit failure names the condition instead of leaving a stack trace to interpret.
+        if (rows.Count == 0)
+        {
+            throw new InvalidOperationException(
+                "notification_preferences INSERT returned no row (RLS WITH CHECK or a concurrent insert)");
+        }
+
         await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
         return NotificationReadRepository.MapPreferences(rows[0]);
     }
@@ -221,7 +230,14 @@ public sealed class NotificationWriteRepository(NotificationDbContext db) : INot
         }
 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
-        await reader.ReadAsync(cancellationToken).ConfigureAwait(false);
+        if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            // The ReadAsync result was previously DISCARDED, so a zero-row upsert became an opaque
+            // InvalidOperationException from GetBoolean rather than a named failure.
+            throw new InvalidOperationException(
+                "notification_preferences upsert returned no row (RLS WITH CHECK rejected the row)");
+        }
+
         var result = new UpdatePreferencesResult(reader.GetBoolean(0), reader.GetBoolean(1));
         await reader.CloseAsync().ConfigureAwait(false);
 
@@ -255,6 +271,12 @@ public sealed class NotificationWriteRepository(NotificationDbContext db) : INot
                  """)
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
+
+        if (rows.Count == 0)
+        {
+            throw new InvalidOperationException(
+                "notifications INSERT returned no row (RLS WITH CHECK rejected the organization stamp)");
+        }
 
         await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
         return NotificationReadRepository.MapRow(rows[0]);

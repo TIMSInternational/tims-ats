@@ -104,8 +104,18 @@ public static class NotificationReadEndpoints
                     return gate.Failure;
                 }
 
+                // An org-less platform owner CANNOT have a notification_preferences row: that table's policy is
+                // an EXISTS-through-users on the caller's organization_id and it carries a WITH CHECK, so the
+                // lazy INSERT does not silently filter — Postgres RAISES and the request 500s (measured, not
+                // reasoned). Fail closed with the same 400 NotificationStaffGate returns for a privileged
+                // org-less principal, rather than letting an RLS violation escape as an unhandled exception.
+                if (OrgIdOrNull(gate.Context!) is not { } preferencesOrgId)
+                {
+                    return Results.BadRequest(new { error = "organization_required" });
+                }
+
                 var result = await useCase.GetPreferencesAsync(
-                    OrgIdOrNull(gate.Context!), Guid.Parse(gate.Context!.UserId),
+                    preferencesOrgId, Guid.Parse(gate.Context!.UserId),
                     timeProvider.GetUtcNow().UtcDateTime, cancellationToken);
                 return Results.Ok(result);
             })
@@ -122,8 +132,17 @@ public static class NotificationReadEndpoints
     /// <c>notify()</c> call sites target platform owners). A null org makes
     /// <c>TenantScope</c> set the RLS GUC to '' and the fail-closed policy hides every row, so an org-less owner
     /// sees an empty inbox rather than an error. That is a DIVERGENCE from TS, which reads the same rows through
-    /// a BYPASSRLS connection and shows them — it is deliberate, recorded in the slice doc's divergence
-    /// register, and pinned by <c>OrgLessOwner_SeesEmptyInbox_NotAnError</c>.
+    /// a BYPASSRLS connection and shows them — it is deliberate and recorded in the slice doc's divergence
+    /// register.
+    ///
+    /// <para>⚠️ <b>The empty-inbox guarantee holds for the READS ONLY</b> (<c>list</c>, <c>unreadCount</c>), and
+    /// an earlier version of this comment overstated it as a property of the whole surface. The two PREFERENCES
+    /// endpoints WRITE, and <c>notification_preferences</c>' policy carries a <c>WITH CHECK</c>, so an org-less
+    /// caller's INSERT is REJECTED rather than filtered and the request 500s. Both of those endpoints therefore
+    /// refuse an org-less caller with 400 <c>organization_required</c> before touching the database. Pinned by
+    /// <c>List_OrgLessPlatformOwner_SeesEmptyInbox_NotAnError</c> AND
+    /// <c>Preferences_OrgLessPlatformOwner_Is400_NotAn500</c> — the pair is the point, since either alone
+    /// states a rule the surface does not follow.</para>
     /// </summary>
     internal static Guid? OrgIdOrNull(Tims.Domain.Identity.TenantContext context) =>
         Guid.TryParse(context.OrganizationId, out var organizationId) ? organizationId : null;

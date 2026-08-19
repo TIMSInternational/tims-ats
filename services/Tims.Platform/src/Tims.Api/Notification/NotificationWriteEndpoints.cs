@@ -199,8 +199,15 @@ public static class NotificationWriteEndpoints
                     return Results.BadRequest(new { error = "invalid_input" });
                 }
 
+                // Same RLS WITH CHECK as getPreferences — an org-less caller's upsert is REJECTED, not
+                // filtered. Fail closed rather than 500.
+                if (NotificationReadEndpoints.OrgIdOrNull(gate.Context!) is not { } preferencesOrgId)
+                {
+                    return Results.BadRequest(new { error = "organization_required" });
+                }
+
                 var result = await useCase.UpdatePreferencesAsync(
-                    NotificationReadEndpoints.OrgIdOrNull(gate.Context!), Guid.Parse(gate.Context!.UserId), update,
+                    preferencesOrgId, Guid.Parse(gate.Context!.UserId), update,
                     timeProvider.GetUtcNow().UtcDateTime, cancellationToken);
                 return Results.Ok(result);
             })
@@ -237,8 +244,12 @@ public static class NotificationWriteEndpoints
                     return Results.BadRequest(new { error = "invalid_input" });
                 }
 
-                // organizationId: ctx.user.organizationId || null — an org-less platform owner writes a NULL org
-                // stamp, which is precisely the row shape the RLS policy on this table cannot see back.
+                // organizationId: ctx.user.organizationId || null. NOTE the null branch is UNREACHABLE here, and
+                // an earlier comment claiming an org-less owner writes a NULL stamp was wrong: the grant gate
+                // resolves first, and AccessKernel throws TenantOrgRequiredException for a privileged org-less
+                // principal (→ 400) and denies a non-privileged one (→ 403). A caller reaching this line always
+                // has an org. The parameter stays nullable only because the repository signature is shared with
+                // the self-service paths, where a null org IS reachable.
                 var result = await useCase.CreateAsync(
                     NotificationReadEndpoints.OrgIdOrNull(gate.Context!),
                     new NotificationCreateInput(targetUserId, content), cancellationToken);
@@ -497,7 +508,18 @@ public static class NotificationWriteEndpoints
     private static async Task<(bool Ok, JsonNode? Node)> TryReadJsonAsync(
         HttpContext httpContext, CancellationToken cancellationToken)
     {
-        if (httpContext.Request.ContentLength is null or 0)
+        // Three cases, and conflating any two of them breaks a real caller:
+        //   ContentLength == 0            → the caller declared an empty body. No body.
+        //   ContentLength null, no T-E    → there is no body at all (HttpClient sends this for a bodiless
+        //                                   PATCH). No body — and updatePreferences' every key is optional,
+        //                                   so this must be 200, not 400.
+        //   ContentLength null, chunked   → there IS a body, its length is simply not declared. It must be
+        //                                   READ. An earlier version treated `null or 0` as empty, which
+        //                                   silently DISCARDED a chunked body and answered 200 having written
+        //                                   nothing.
+        var request = httpContext.Request;
+        if (request.ContentLength == 0
+            || (request.ContentLength is null && !request.Headers.ContainsKey("Transfer-Encoding")))
         {
             return (true, null);
         }

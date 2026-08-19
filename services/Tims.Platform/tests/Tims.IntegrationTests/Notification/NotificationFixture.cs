@@ -7,9 +7,13 @@ namespace Tims.IntegrationTests.Notification;
 
 /// <summary>
 /// Phase-5 Slice 25 (#98) Testcontainers fixture: one real Postgres carrying <c>notifications</c> +
-/// <c>notification_preferences</c> with their REAL constraints (the <c>user_id</c> UNIQUE that makes the
-/// preferences upsert trip a real ON CONFLICT, and the <c>timestamp(3)</c> precision that makes the ISO
-/// serialization observable), the identity/RBAC plane, and the SAME RLS mechanism as the other slice fixtures
+/// <c>notification_preferences</c> with their production constraints — the <c>user_id</c> UNIQUE that makes the
+/// preferences upsert trip a real ON CONFLICT, the <c>timestamp(3)</c> precision that makes the ISO
+/// serialization observable, and the <c>user_id → users(id) ON DELETE CASCADE</c> foreign keys that
+/// <c>notification.prisma</c>:17/:37 declare. (The FKs were MISSING from the first version of this fixture,
+/// which meant <c>create</c>/<c>bulkCreate</c> were being tested against a laxer schema than production: a
+/// well-formed but non-existent target uuid inserted happily here and would have raised 23503 in prod.)
+/// Plus the identity/RBAC plane and the SAME RLS mechanism as the other slice fixtures
 /// (NOLOGIN/NOBYPASSRLS <c>app_tenant</c>, ENABLE + FORCE, fail-closed <c>tenant_isolation</c>).
 ///
 /// <para><b>The RLS policies are copied from PRODUCTION, not invented</b> (measured 2026-08-19): on
@@ -202,7 +206,8 @@ public sealed class NotificationFixture : IAsyncLifetime
             read boolean NOT NULL DEFAULT false,
             read_at timestamp(3) NULL,
             archived boolean NOT NULL DEFAULT false,
-            created_at timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP);
+            created_at timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT notifications_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE);
 
         CREATE TABLE notification_preferences (
             id uuid PRIMARY KEY,
@@ -214,7 +219,9 @@ public sealed class NotificationFixture : IAsyncLifetime
             quiet_hours_start text NULL,
             quiet_hours_end text NULL,
             created_at timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at timestamp(3) NOT NULL);
+            updated_at timestamp(3) NOT NULL,
+            CONSTRAINT notification_preferences_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id)
+                ON DELETE CASCADE);
         """;
 
     // The two product policies are the PRODUCTION predicates, verbatim in shape: an ORG predicate on

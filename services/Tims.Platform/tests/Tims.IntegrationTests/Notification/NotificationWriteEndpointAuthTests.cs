@@ -362,6 +362,39 @@ public sealed class NotificationWriteEndpointAuthTests(NotificationFixture fixtu
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
+    [Fact]
+    public async Task UpdatePreferences_ChunkedBody_IsActuallyApplied_NotSilentlyDiscarded()
+    {
+        await using var factory = EnabledFactory();
+        using var client = factory.CreateClient();
+        try
+        {
+            // A chunked request declares no Content-Length. An earlier guard treated `ContentLength is null
+            // or 0` as "no body", so a REAL chunked body was discarded and the caller got 200 with nothing
+            // written — a silent lost write. Sending chunked explicitly is the only way to catch it:
+            // StringContent sets Content-Length, so every other test on this endpoint takes the other branch.
+            var request = new HttpRequestMessage(HttpMethod.Patch, "/notifications/preferences");
+            request.Headers.Add("Authorization", $"Bearer {Mint(NotificationFixture.AdminSub)}");
+            request.Headers.TransferEncodingChunked = true;
+            request.Content = new StringContent("""{"pushEnabled": false}""", Encoding.UTF8, "application/json");
+            request.Content.Headers.ContentLength = null;
+
+            var response = await client.SendAsync(request);
+
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+            // The assertion that matters is the STORED value, not the status: the broken version also
+            // answered 200.
+            Assert.False((await _fixture.GetPreferencesAsync(NotificationFixture.AdminId))!.Value.PushEnabled);
+        }
+        finally
+        {
+            await _fixture.ExecuteAsync(
+                "UPDATE notification_preferences SET push_enabled = true "
+                + $"WHERE user_id = '{NotificationFixture.AdminId}'");
+        }
+    }
+
     [Theory]
     [InlineData("""{"emailEnabled": "yes"}""")]
     [InlineData("""{"emailEnabled": null}""")]
