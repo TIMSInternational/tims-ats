@@ -85,7 +85,7 @@ Unscoping it would make the cursor an oracle for another user's notification tim
 
 - **`list` loses one row per page boundary.** TS pops the `(limit+1)`-th row and uses **its** id as
   `nextCursor`; the next call passes that id as a Prisma `cursor` with `skip: 1`, which starts _after_ it. The
-  popped row appears on neither page. A pre-existing TS defect, **filed separately**. Pinned by
+  popped row appears on neither page. A pre-existing TS defect, filed as **#246**. Pinned by
   `List_ExactlyLimitPlusOne_DropsTheOverflowRow_AndNamesItAsTheCursor` and
   `List_WithCursor_SkipsTheCursorRow_ReproducingTheTsRowLoss`.
 - **`markAllAsRead` has no `archived` filter**, so it marks archived-and-unread rows read while `list` and
@@ -94,8 +94,8 @@ Unscoping it would make the cursor an oracle for another user's notification tim
   `NotificationReadEnabled` alone can create `notification_preferences` rows. It also has no upsert and no
   unique-violation handling, so two concurrent first-calls race.
 - **`create`/`bulkCreate` do not validate that the target `userId` is in the caller's org**, and `bulkCreate`
-  does not de-duplicate `userIds`. Both are TS behaviour. The unvalidated target is worth narrowing later; it
-  is filed rather than fixed here so a step-5 diff stays interpretable.
+  does not de-duplicate `userIds`. Both are TS behaviour. The unvalidated target is filed as **#248**
+  rather than fixed here so a step-5 diff stays interpretable.
 
 ## Traps this slice hit
 
@@ -103,7 +103,7 @@ Unscoping it would make the cursor an oracle for another user's notification tim
   `NodeIso(Nullable)DateTimeConverter`. Its companion also bit: the generator drops `"type"` through a custom
   converter, so a schema transformer restores it. **Scope stated honestly: 109 typeless `format: date-time`
   properties across 46 schemas exist on this branch; this slice contributed 2 and fixes only those 2. The
-  remaining 107 are pre-existing and filed separately.**
+  remaining 107 (across 45 schemas, re-measured after this slice's fix) are pre-existing, filed as **#247**.**
 - **TRAP 9** — every query parameter binds as `string?` and is parsed after the gate. The real cost is audit
   suppression: `SecurityDenialAuditMiddleware` records only 401/403, so a pre-gate 400 would let an ungranted
   caller enumerate `create` with a garbage body and leave no `authz_denied` row. Both directions pinned.
