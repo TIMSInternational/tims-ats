@@ -412,6 +412,25 @@ public sealed class NotificationWriteEndpointAuthTests(NotificationFixture fixtu
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
+    [Fact]
+    public async Task UpdatePreferences_OrgLessPlatformOwner_Is400_NotAn500()
+    {
+        await using var factory = EnabledFactory();
+        using var client = factory.CreateClient();
+
+        // The write-side twin of Preferences_OrgLessPlatformOwner_Is400_NotAn500. This test exists because a
+        // mutation found it missing: deleting the org-less guard from THIS endpoint left the entire suite
+        // green, so the fix was asserted on the read side only and unproven here. Same mechanism — the
+        // notification_preferences WITH CHECK rejects an org-less caller's upsert rather than filtering it.
+        var response = await Send(
+            client, HttpMethod.Patch, "/notifications/preferences", Mint(NotificationFixture.OwnerSub),
+            """{"pushEnabled": false}""");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("organization_required", await response.Content.ReadAsStringAsync());
+        Assert.Null(await _fixture.GetPreferencesAsync(NotificationFixture.OwnerId));
+    }
+
     // ══ the self-service positive control ══
 
     [Fact]
