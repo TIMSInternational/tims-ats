@@ -121,6 +121,11 @@ public static class NotificationReadEndpoints
             })
             .RequireAuthorization()
             .Produces<NotificationPreferencesRow>(StatusCodes.Status200OK)
+            // The org-less 400 above is a real response and must be in the contract. It was missing until
+            // the 2026-08-31 cross-model review: the guard was added without its .Produces, so the generated
+            // client advertised only 200/401 for an endpoint that genuinely returns 400. A response a caller
+            // can receive but cannot see in the schema is a false contract, not an omission.
+            .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status401Unauthorized)
             .WithName("NotificationGetPreferences");
     }
