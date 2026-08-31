@@ -132,7 +132,7 @@ Unscoping it would make the cursor an oracle for another user's notification tim
 
 | Check                                          | Result                                                                                                                                                                                                                                                                                                                                                                  |
 | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `dotnet test` (full solution)                  | **1315 unit / 1594 integration**, 0 failed (1591 when this doc was first written; the panel-fix and org-less-guard commits added 3)                                                                                                                                                                                                                                     |
+| `dotnet test` (full solution)                  | **1315 unit / 1597 integration**, 0 failed (1591 when this doc was first written; +3 from the panel-fix and org-less-guard commits, +3 from the cross-model-findings commit) |
 | `npx vitest run`                               | **3240 tests / 324 files**, 0 failed                                                                                                                                                                                                                                                                                                                                    |
 | `tsc --noEmit` (api, web)                      | pass                                                                                                                                                                                                                                                                                                                                                                    |
 | `dotnet format --verify-no-changes` (check 19) | pass                                                                                                                                                                                                                                                                                                                                                                    |
@@ -142,10 +142,10 @@ Unscoping it would make the cursor an oracle for another user's notification tim
 | **Check 15 — cross-model**                     | **RAN 2026-08-31 (tier 1, Codex)** — the first genuine cross-model review since 2026-07-22; the quota block lifted early. VERDICT: BLOCKING — 3 blocking + 1 medium, every one verified against source and fixed below. (On 2026-08-19 it could not run; only the tier-3 SECURITY lens completed that day, so this review also stands in for the two lenses that died.) |
 
 Anchors before this slice: 3238 vitest / 1308 C# unit / 1521 C# integration. Deltas: +2 vitest (the `it.each`
-over cutover.sh's surface list, no new file), +7 unit, +73 integration (70 in the port, 3 from the panel-fix
-and org-less-guard commits).
+over cutover.sh's surface list, no new file), +7 unit, +76 integration (70 in the port, 3 from the panel-fix
+and org-less-guard commits, 3 from the cross-model-findings commit).
 
-### Mutation proofs — 7 applied, 7 killed
+### Mutation proofs — 9 applied, 9 killed (8–9 on the cross-model fixes)
 
 | #   | Mutation                                         | Killed by                                                        |
 | --- | ------------------------------------------------ | ---------------------------------------------------------------- |
@@ -156,6 +156,8 @@ and org-less-guard commits).
 | 5   | Stop re-kinding timestamps (TRAP 11)             | 10 tests                                                         |
 | 6   | Always write `quiet_hours_start`                 | `UpdatePreferences_PartialBody…` + `…_ExplicitNullQuietHours…`   |
 | 7   | Wire `unread-count` to the GRANT gate            | **the positive control only** — every "denied" test stayed green |
+| 8   | Restore the null-body → empty-update mapping     | `UpdatePreferences_AbsentBody_Is400…` + `…LiteralNullBody_Is400…` |
+| 9   | Remove the seeded `NNullOrgBroadcast` row        | both `Equal(7)` count guards — the `DoesNotContain`s alone are vacuous |
 
 Each mutation was compiled before being tested (a mutation that does not compile is not a mutation), and the
 tree was committed clean before the first one so no revert could wipe uncommitted work.
