@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Security.Claims;
@@ -212,7 +213,7 @@ public static class NotificationWriteEndpoints
                 return Results.Ok(result);
             })
             .RequireAuthorization()
-            .Accepts<UpdateNotificationPreferencesBody>(isOptional: true, contentType: "application/json")
+            .Accepts<UpdateNotificationPreferencesBody>(contentType: "application/json")
             .Produces<UpdatePreferencesResult>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status401Unauthorized)
@@ -303,22 +304,18 @@ public static class NotificationWriteEndpoints
     }
 
     /// <summary>
-    /// Zod parity for <c>updatePreferences</c>' input — every key <c>.optional()</c>, so an EMPTY body is
-    /// valid and writes nothing but <c>updated_at</c>. The three-state distinction is the whole point:
+    /// Zod parity for <c>updatePreferences</c>' input — every key <c>.optional()</c>, so an empty OBJECT
+    /// (<c>{}</c>) is valid and writes nothing but <c>updated_at</c>. But an ABSENT body and a literal
+    /// <c>null</c> body are both 400: <c>z.object({...}).parse(undefined)</c> and <c>.parse(null)</c> both
+    /// throw even when every key is optional (verified empirically 2026-08-31 — an earlier version of this
+    /// method treated both as <c>{}</c>, silently widening a write endpoint past the TS contract; found by
+    /// the cross-model review). The three-state distinction inside a present object is the other half:
     /// a key that is ABSENT must not be written, while <c>quietHoursStart</c>/<c>quietHoursEnd</c> sent as
     /// explicit <c>null</c> MUST write NULL (they are <c>.nullable().optional()</c>). A JSON <c>null</c> for any
     /// of the other four is a 400 — Zod's <c>.optional()</c> without <c>.nullable()</c> rejects null.
     /// </summary>
     internal static NotificationPreferencesUpdate? TryBuildPreferencesUpdate(JsonNode? node)
     {
-        // ReadFromJsonAsync yields a null node for a literal "null" body; an absent body is handled by the
-        // caller. Zod parses `{}` for an absent input, so both mean "no keys sent".
-        if (node is null)
-        {
-            return new NotificationPreferencesUpdate(
-                null, null, null, null, OptionalValue<string?>.Absent, OptionalValue<string?>.Absent);
-        }
-
         if (node is not JsonObject body)
         {
             return null;
@@ -503,31 +500,29 @@ public static class NotificationWriteEndpoints
         return OptionalValue<string?>.Present(record.ToJsonString());
     }
 
-    // Malformed/empty JSON body → handled as "no body". ReadFromJsonAsync rejects an EMPTY body as malformed,
-    // which matters here because updatePreferences' every key is optional, so an empty PATCH is legitimate.
+    // Reads the body STREAM rather than sniffing Content-Length/Transfer-Encoding. An earlier version
+    // classified `ContentLength null + no Transfer-Encoding` as "no body", which is only true over HTTP/1.1
+    // — an HTTP/2 request carries a body with NEITHER header, and would have had it silently discarded
+    // (found by the 2026-08-31 cross-model review). Reading the stream is transport-agnostic: zero bytes is
+    // absent whatever the headers said, and a chunked or HTTP/2 body is simply read.
+    //
+    // An absent body maps to a null node, same as a literal `null` body — deliberately, because Zod treats
+    // them identically: `z.object({...}).parse(undefined)` and `.parse(null)` BOTH throw, even with every
+    // key optional (verified empirically 2026-08-31; an earlier comment here claimed Zod parses `{}` for an
+    // absent input, which is false). Every caller 400s a null node, so absent == null == invalid, as in TS.
     private static async Task<(bool Ok, JsonNode? Node)> TryReadJsonAsync(
         HttpContext httpContext, CancellationToken cancellationToken)
     {
-        // Three cases, and conflating any two of them breaks a real caller:
-        //   ContentLength == 0            → the caller declared an empty body. No body.
-        //   ContentLength null, no T-E    → there is no body at all (HttpClient sends this for a bodiless
-        //                                   PATCH). No body — and updatePreferences' every key is optional,
-        //                                   so this must be 200, not 400.
-        //   ContentLength null, chunked   → there IS a body, its length is simply not declared. It must be
-        //                                   READ. An earlier version treated `null or 0` as empty, which
-        //                                   silently DISCARDED a chunked body and answered 200 having written
-        //                                   nothing.
-        var request = httpContext.Request;
-        if (request.ContentLength == 0
-            || (request.ContentLength is null && !request.Headers.ContainsKey("Transfer-Encoding")))
-        {
-            return (true, null);
-        }
-
         try
         {
-            var node = await httpContext.Request.ReadFromJsonAsync<JsonNode>(cancellationToken);
-            return (true, node);
+            using var reader = new StreamReader(httpContext.Request.Body, Encoding.UTF8);
+            var text = await reader.ReadToEndAsync(cancellationToken);
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return (true, null);
+            }
+
+            return (true, JsonNode.Parse(text));
         }
         catch (JsonException)
         {
@@ -542,8 +537,11 @@ public static class NotificationWriteEndpoints
 
 /// <summary>
 /// OpenAPI request schema for <c>updatePreferences</c> (the body is hand-parsed; this shapes the contract only).
-/// Init-only NON-nullable properties so nothing emits as <c>["null","string"]</c>, and no <c>[Required]</c>
-/// anywhere — every key is genuinely optional, and an empty body is valid (TRAP 5).
+/// No <c>[Required]</c> anywhere — every key is genuinely optional (<c>{}</c> is a valid body; an ABSENT body
+/// is not, matching Zod). The two quiet-hours keys are the only NULLABLE properties, deliberately: the
+/// endpoint accepts an explicit <c>null</c> to CLEAR them (<c>.nullable().optional()</c> in TS), and a
+/// string-only contract would leave a generated client unable to express the clear the runtime supports —
+/// found by the 2026-08-31 cross-model review. The other four stay non-nullable: Zod rejects null for them.
 /// </summary>
 public sealed record UpdateNotificationPreferencesBody
 {
@@ -559,13 +557,13 @@ public sealed record UpdateNotificationPreferencesBody
     /// <summary>Per-module opt-in map; every value must be a boolean.</summary>
     public Dictionary<string, bool> Modules { get; init; } = [];
 
-    /// <summary>Start of the quiet-hours window; may be sent as null to clear.</summary>
+    /// <summary>Start of the quiet-hours window; send null to clear.</summary>
     [MaxLength(10)]
-    public string QuietHoursStart { get; init; } = string.Empty;
+    public string? QuietHoursStart { get; init; }
 
-    /// <summary>End of the quiet-hours window; may be sent as null to clear.</summary>
+    /// <summary>End of the quiet-hours window; send null to clear.</summary>
     [MaxLength(10)]
-    public string QuietHoursEnd { get; init; } = string.Empty;
+    public string? QuietHoursEnd { get; init; }
 }
 
 /// <summary>OpenAPI request schema for <c>create</c>.</summary>

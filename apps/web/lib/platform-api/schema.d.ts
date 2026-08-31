@@ -4355,8 +4355,8 @@ export interface components {
             modules?: {
                 [key: string]: boolean;
             };
-            quietHoursStart?: string;
-            quietHoursEnd?: string;
+            quietHoursStart?: null | string;
+            quietHoursEnd?: null | string;
         };
         UpdateOrganizationBody: {
             name?: string;
@@ -10076,7 +10076,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: {
+        requestBody: {
             content: {
                 "application/json": components["schemas"]["UpdateNotificationPreferencesBody"];
             };

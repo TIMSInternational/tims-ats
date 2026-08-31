@@ -53,6 +53,13 @@ Mutation 7 below confirms (1) is not decorative: wiring `unread-count` to the gr
 (`routers/platform/organizations.ts:220`, `:300`) address **all platform owners** while stamping the
 **target org's** id.
 
+**A second producer, found by the 2026-08-31 cross-model review:** `platform.sendBulkNotification`
+(`routers/platform/system.ts:85`, live FE caller `platform/support/quick-actions.tsx`) `createMany`s to
+every active user, and its default "all orgs" path stamps `organizationId: undefined` → **NULL**. The org
+predicate can never match NULL, so under `TenantScope` those broadcast rows are hidden from _everyone,
+including addressees inside their own org_ — a wider blast than the cross-org shape. Pinned by
+`List_NullOrgBroadcastRow_FromSendBulkNotification_IsHiddenByRls_SameDivergence`.
+
 - **TS** reads via `tenantDb` as `postgres`, which is `BYPASSRLS` — so RLS never filters and owners see them.
 - **C#** runs under `TenantScope`, which does `SET LOCAL ROLE app_tenant` (non-BYPASSRLS) — so RLS engages and
   those rows are **hidden**.
@@ -123,19 +130,20 @@ Unscoping it would make the cursor an oracle for another user's notification tim
 
 ## Verification
 
-| Check                                          | Result                                                                                                                                      |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `dotnet test` (full solution)                  | **1315 unit / 1591 integration**, 0 failed                                                                                                  |
-| `npx vitest run`                               | **3240 tests / 324 files**, 0 failed                                                                                                        |
-| `tsc --noEmit` (api, web)                      | pass                                                                                                                                        |
-| `dotnet format --verify-no-changes` (check 19) | pass                                                                                                                                        |
-| `schema.d.ts` freshness (check 20)             | pass                                                                                                                                        |
-| OpenAPI contract freshness                     | pass (Release build produced no drift)                                                                                                      |
-| gitleaks                                       | clean                                                                                                                                       |
-| **Check 15 — cross-model**                     | **EXIT 2 — NOT RUN.** Codex quota-blocked until ~2026-09-09. Tier-3 same-model panel ran instead. **This is not cross-model verification.** |
+| Check                                          | Result                                                                                                                                                                                                                                                                                                                                                                  |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `dotnet test` (full solution)                  | **1315 unit / 1594 integration**, 0 failed (1591 when this doc was first written; the panel-fix and org-less-guard commits added 3)                                                                                                                                                                                                                                     |
+| `npx vitest run`                               | **3240 tests / 324 files**, 0 failed                                                                                                                                                                                                                                                                                                                                    |
+| `tsc --noEmit` (api, web)                      | pass                                                                                                                                                                                                                                                                                                                                                                    |
+| `dotnet format --verify-no-changes` (check 19) | pass                                                                                                                                                                                                                                                                                                                                                                    |
+| `schema.d.ts` freshness (check 20)             | pass                                                                                                                                                                                                                                                                                                                                                                    |
+| OpenAPI contract freshness                     | pass (Release build produced no drift)                                                                                                                                                                                                                                                                                                                                  |
+| gitleaks                                       | clean                                                                                                                                                                                                                                                                                                                                                                   |
+| **Check 15 — cross-model**                     | **RAN 2026-08-31 (tier 1, Codex)** — the first genuine cross-model review since 2026-07-22; the quota block lifted early. VERDICT: BLOCKING — 3 blocking + 1 medium, every one verified against source and fixed below. (On 2026-08-19 it could not run; only the tier-3 SECURITY lens completed that day, so this review also stands in for the two lenses that died.) |
 
 Anchors before this slice: 3238 vitest / 1308 C# unit / 1521 C# integration. Deltas: +2 vitest (the `it.each`
-over cutover.sh's surface list, no new file), +7 unit, +70 integration.
+over cutover.sh's surface list, no new file), +7 unit, +73 integration (70 in the port, 3 from the panel-fix
+and org-less-guard commits).
 
 ### Mutation proofs — 7 applied, 7 killed
 
@@ -151,6 +159,32 @@ over cutover.sh's surface list, no new file), +7 unit, +70 integration.
 
 Each mutation was compiled before being tested (a mutation that does not compile is not a mutation), and the
 tree was committed clean before the first one so no revert could wipe uncommitted work.
+
+## Cross-model review findings (2026-08-31, Codex — all verified against source before fixing)
+
+1. **BLOCKING — the outside-writer list was incomplete.** `platform.sendBulkNotification` is a third
+   live writer with an FE caller, and its all-orgs path writes NULL org stamps. Doc corrected (divergence
+   1 + step 6), pinned by a new fixture row + test. The claim-shaped error the house treats as the
+   highest-value finding class — and this one survived the 2026-08-19 security lens.
+2. **BLOCKING — `updatePreferences` accepted bodies TS rejects.** The C# parser mapped an ABSENT body and
+   a literal `null` body to an empty update on the false premise that "Zod parses `{}` for an absent
+   input" — measured: `z.object({...}).parse(undefined)` and `.parse(null)` both throw even with every key
+   optional. Both shapes are now 400; `{}` remains the valid empty update. Three tests pin the triangle.
+3. **BLOCKING — the contract said string-only where the runtime accepts null.** `quietHoursStart/End` in
+   `UpdateNotificationPreferencesBody` were deliberately non-nullable "so nothing emits as
+   `["null","string"]`" — but null-to-clear is real runtime behavior, so a generated client could never
+   express it. Now `string?`; the contract emits `["null","string"]` and the body is `required: true`.
+4. **MEDIUM — the body-presence guard was transport-specific.** `ContentLength null` + no
+   `Transfer-Encoding` meant "no body" — true on HTTP/1.1, false on HTTP/2, where a real body would have
+   been silently discarded. `TryReadJsonAsync` now reads the stream: zero bytes is absent whatever the
+   headers say. **Honestly un-pinned at this layer**: the in-proc TestServer speaks HTTP/1.1 only, so no
+   integration test can exercise the HTTP/2 shape; the chunked test still pins the read-the-stream side.
+
+The 2026-08-19 attempt at this review was itself a finding: `codex-review.sh` grepped its refusal
+signatures (`quota`, `rate limit`) over the model's own prose, so a COMPLETED review quoting this very
+doc's "quota-blocked" row was discarded as NOT-RUN — on any branch mentioning rate limiting the check
+could never pass. Fixed (completion checked first; every no-VERDICT path still exits 2) with all four
+wrapper paths tested via a stubbed CLI.
 
 ## Step 5 is UNRUNNABLE BY ANYONE, and for a new reason
 
@@ -174,7 +208,9 @@ Prerequisites for step 5:
 ## Step 6 preconditions
 
 `notifications` has writers outside this router and outside any flag: `packages/api/src/lib/notify.ts`
-(`createMany`, called from `routers/platform/organizations.ts:220` and `:300`) and the C#
-`PlatformOrganizationsWriteDbContext`/`CreateDbContext`. The write flag is the one-active-writer control for the
-**router path only** — an unqualified claim would be false. That coexistence is why both tables sit in
-`efcoreStranglerWrite` rather than `efcore`.
+(`createMany`, called from `routers/platform/organizations.ts:220` and `:300`),
+`platform.sendBulkNotification` (`routers/platform/system.ts:85` — missing from this list until the
+2026-08-31 cross-model review caught it; it has a live FE caller and its all-orgs path writes NULL org
+stamps, see divergence 1), and the C# `PlatformOrganizationsWriteDbContext`/`CreateDbContext`. The write
+flag is the one-active-writer control for the **router path only** — an unqualified claim would be false.
+That coexistence is why both tables sit in `efcoreStranglerWrite` rather than `efcore`.

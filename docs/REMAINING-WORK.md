@@ -385,6 +385,29 @@ dashboard.ts` wrapper shipped 2026-08-17 behind `NEXT_PUBLIC_DASHBOARD_READ_VIA_
     `apps/web` call sites, and `explainFit` CANNOT get a dual-path hook because the C# side answers 501
     — so the wrapper is five hooks plus a pinned deliberate omission, and is its own PR by the #241
     precedent. See `docs/architecture/csharp-migration/phase-5-slice-24-fit-engine.md`.
+  - **Slice 25 (#98) SHIPPED the notification port — steps 1–3 + step 4's BACKEND half, dark 2026-08-19** —
+    all 11 procedures of `notification.ts` behind `Platform:NotificationReadEnabled` +
+    `Platform:NotificationWriteEnabled`, both default false. Structurally unlike every prior slice: nine of
+    eleven procedures are identity-only (`SelfServiceGate`, extracted from evaluation360 — no grant, every
+    statement hard-filters `user_id = caller`), so the load-bearing test control is the POSITIVE one (an
+    ungranted user is 200 on all nine; mutation-proven) plus cross-user row isolation, not "403 for the
+    ungranted". Ledger: `notifications` MOVED `efcoreAppendOnly` → `efcoreStranglerWrite[]`;
+    `notification_preferences` added. **Step 5 is unrunnable AND carries a decided divergence**: C# runs
+    under `TenantScope` (non-BYPASSRLS) so the org-scoped RLS policy HIDES the cross-org rows `notify()`
+    addresses to platform owners AND the NULL-org broadcast rows `platform.sendBulkNotification`'s all-orgs
+    path produces (the second producer, found by the 2026-08-31 cross-model review — the first genuine tier-1
+    Codex pass since 2026-07-22, which also caught a Zod-parity widening on `updatePreferences` and a
+    string-only contract for the nullable quiet-hours keys, all fixed), which TS (BYPASSRLS `postgres`) shows
+    — Federico decided 2026-08-19 to keep RLS engaged and pin the divergence (latent today: 0 rows in prod). Resolving it needs a user-scoped RLS
+    policy + a user GUC `TenantScope` does not set — a step-5/6 blocker; flipping the read flag before that
+    would empty the platform notifications page. Parity registration also cannot be grant-fixture-only:
+    nine procedures consult no grant, so the surface needs per-role notification ROWS (empty fixtures would
+    compare vacuously). TS defects reproduced not fixed: `list` loses one row per page boundary (#246),
+    `create`/`bulkCreate` accept an un-validated target userId (#248); 107 typeless `format: date-time`
+    OpenAPI properties are pre-existing (#247). Step 4's OTHER half — the
+    `apps/web/lib/platform-api/notification.ts` wrapper (7 of 11 procedures have live FE call sites) — is
+    its own PR by the #241 precedent. See
+    `docs/architecture/csharp-migration/phase-5-slice-25-notification.md`.
   - **FE/TS dark-cutover wrapper layer (2026-07-27, PRs #197–#212) — now fully COMPLETE, both reads and
     writes** (net of the documented zero-consumer exceptions below — parity-verified backend surfaces with
     no real FE call site were intentionally left unwrapped rather than shipped as dead code). A

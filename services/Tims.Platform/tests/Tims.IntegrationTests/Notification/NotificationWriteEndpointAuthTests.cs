@@ -350,16 +350,42 @@ public sealed class NotificationWriteEndpointAuthTests(NotificationFixture fixtu
     }
 
     [Fact]
-    public async Task UpdatePreferences_EmptyBody_Is200_EveryKeyIsOptional()
+    public async Task UpdatePreferences_AbsentBody_Is400_ZodRejectsUndefinedInput()
     {
         await using var factory = EnabledFactory();
         using var client = factory.CreateClient();
         var response = await Send(
             client, HttpMethod.Patch, "/notifications/preferences", Mint(NotificationFixture.AdminSub));
 
-        // ReadFromJsonAsync rejects an EMPTY body as malformed, which would be a 400 for an input whose every
-        // key is .optional(). Zod parses `{}` here, so the endpoint must too.
+        // z.object({...}).parse(undefined) THROWS even with every key optional (verified empirically
+        // 2026-08-31) — an earlier version of this test asserted 200 here on the false claim that "Zod
+        // parses {} for an absent input", encoding a widening the cross-model review caught. Only a present
+        // `{}` is the valid empty update.
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task UpdatePreferences_EmptyObjectBody_Is200_EveryKeyIsOptional()
+    {
+        await using var factory = EnabledFactory();
+        using var client = factory.CreateClient();
+        var response = await Send(
+            client, HttpMethod.Patch, "/notifications/preferences", Mint(NotificationFixture.AdminSub), "{}");
+
+        // `{}` is the shape Zod actually accepts: every key optional, nothing written but updated_at.
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task UpdatePreferences_LiteralNullBody_Is400_ZodRejectsNullInput()
+    {
+        await using var factory = EnabledFactory();
+        using var client = factory.CreateClient();
+        var response = await Send(
+            client, HttpMethod.Patch, "/notifications/preferences", Mint(NotificationFixture.AdminSub), "null");
+
+        // z.object({...}).parse(null) throws exactly like undefined — the twin of the absent-body case.
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     [Fact]

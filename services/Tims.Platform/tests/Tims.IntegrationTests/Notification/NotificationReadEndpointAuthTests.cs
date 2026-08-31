@@ -219,14 +219,35 @@ public sealed class NotificationReadEndpointAuthTests(NotificationFixture fixtur
         // 2026-08-19 to keep RLS engaged and pin the divergence rather than reproduce TS here.
         // Measured the same day: 0 rows in production, so this is latent — but it is exactly the shape
         // lib/notify.ts produces for platform owners, so it WILL bite when rows exist.
-        // 6 = N1, N2, N3, NArchivedUnread, NArchived, NCrossOrg. Counted by the fixture query, not by
-        // hand — a first draft of this line said 4 and the assertion caught it.
-        Assert.Equal(6, await _fixture.CountNotificationsForUserAsync(NotificationFixture.MemberId));
+        // 7 = N1, N2, N3, NArchivedUnread, NArchived, NCrossOrg, NNullOrgBroadcast. Counted by the fixture
+        // query, not by hand — a first draft of this line said 4 and the assertion caught it.
+        Assert.Equal(7, await _fixture.CountNotificationsForUserAsync(NotificationFixture.MemberId));
 
         var body = await BodyOf(await Get(client, $"{List}?limit=50", Mint(NotificationFixture.MemberSub)));
         var ids = body["notifications"]!.AsArray().Select(n => n!["id"]!.GetValue<string>()).ToList();
 
         Assert.DoesNotContain(NotificationFixture.NCrossOrg.ToString(), ids);
+    }
+
+    [Fact]
+    public async Task List_NullOrgBroadcastRow_FromSendBulkNotification_IsHiddenByRls_SameDivergence()
+    {
+        await using var factory = EnabledFactory();
+        using var client = factory.CreateClient();
+
+        // The SECOND producer of the recorded divergence, found by the 2026-08-31 cross-model review:
+        // platform.sendBulkNotification's "all orgs" path (system.ts:92) INSERTs with organizationId
+        // undefined → a NULL stamp, and quick-actions.tsx's org selector defaults to that path. TS shows the
+        // row over BYPASSRLS; under TenantScope the org-predicate policy can never match NULL, so C# hides it
+        // from EVERYONE. Unlike NCrossOrg — where hiding at least resembles org isolation — this hides a
+        // broadcast from an ordinary member sitting in their own org. Same step-5/6 blocker, wider blast.
+        // The count is the vacuity guard: DoesNotContain passes trivially if the row was never seeded.
+        Assert.Equal(7, await _fixture.CountNotificationsForUserAsync(NotificationFixture.MemberId));
+
+        var body = await BodyOf(await Get(client, $"{List}?limit=50", Mint(NotificationFixture.MemberSub)));
+        var ids = body["notifications"]!.AsArray().Select(n => n!["id"]!.GetValue<string>()).ToList();
+
+        Assert.DoesNotContain(NotificationFixture.NNullOrgBroadcast.ToString(), ids);
     }
 
     [Fact]

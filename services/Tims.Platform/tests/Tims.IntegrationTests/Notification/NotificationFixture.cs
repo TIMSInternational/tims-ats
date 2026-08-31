@@ -69,6 +69,13 @@ public sealed class NotificationFixture : IAsyncLifetime
     // Addressed to the org-less platform owner, stamped OrgA — what the two notify() call sites produce.
     public static readonly Guid NOwnerStampedOrgA = Guid.Parse("d0000000-0000-0000-0000-0000000000e0");
 
+    // Addressed to Member with organization_id NULL — what platform.sendBulkNotification's "all orgs" path
+    // produces (system.ts:92 stamps `input.organizationId || undefined`; quick-actions.tsx sends "" → the
+    // whole-platform broadcast). The org-predicate RLS policy can never match NULL, so under TenantScope this
+    // row is hidden from EVERYONE, its own addressee included — the third writer the 2026-08-31 cross-model
+    // review found missing from the slice doc's outside-writer list.
+    public static readonly Guid NNullOrgBroadcast = Guid.Parse("d0000000-0000-0000-0000-0000000000f0");
+
     private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:16-alpine")
         .WithUsername(LoginRole)
         .WithPassword(Password)
@@ -295,7 +302,8 @@ public sealed class NotificationFixture : IAsyncLifetime
           ('d0000000-0000-0000-0000-000000000004', '11111111-1111-1111-1111-111111111111', 'c0000000-0000-0000-0000-000000000002', 'info',    'archived read',   NULL, NULL,       NULL,      NULL,                                   NULL,   true,  '2026-05-02 11:00:00.000', true,  '2026-05-01 10:00:00.000'),
           ('d0000000-0000-0000-0000-00000000000a', '11111111-1111-1111-1111-111111111111', 'c0000000-0000-0000-0000-000000000001', 'critical', 'admin only', 'secret', NULL,      NULL,      NULL,                                   NULL,   false, NULL, false, '2026-05-06 10:00:00.000'),
           ('d0000000-0000-0000-0000-0000000000c0', '22222222-2222-2222-2222-222222222222', 'c0000000-0000-0000-0000-000000000002', 'info',    'cross-org to member', NULL, NULL,  NULL,      NULL,                                   NULL,   false, NULL, false, '2026-05-07 10:00:00.000'),
-          ('d0000000-0000-0000-0000-0000000000e0', '11111111-1111-1111-1111-111111111111', 'c0000000-0000-0000-0000-000000000004', 'success', 'to the org-less owner', NULL, 'platform', NULL, NULL,                                 NULL,   false, NULL, false, '2026-05-08 10:00:00.000');
+          ('d0000000-0000-0000-0000-0000000000e0', '11111111-1111-1111-1111-111111111111', 'c0000000-0000-0000-0000-000000000004', 'success', 'to the org-less owner', NULL, 'platform', NULL, NULL,                                 NULL,   false, NULL, false, '2026-05-08 10:00:00.000'),
+          ('d0000000-0000-0000-0000-0000000000f0', NULL,                                   'c0000000-0000-0000-0000-000000000002', 'info',    'all-orgs broadcast to member', NULL, 'platform', NULL, NULL,                          NULL,   false, NULL, false, '2026-05-09 10:00:00.000');
 
         -- Admin HAS a preference row; Member deliberately has NONE, so getPreferences' lazy create is exercised.
         INSERT INTO notification_preferences (id, user_id, email_enabled, push_enabled, categories, modules, quiet_hours_start, quiet_hours_end, created_at, updated_at) VALUES

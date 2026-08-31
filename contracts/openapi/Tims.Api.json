@@ -5204,7 +5204,8 @@
                 "$ref": "#/components/schemas/UpdateNotificationPreferencesBody"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {
@@ -13900,11 +13901,17 @@
           },
           "quietHoursStart": {
             "maxLength": 10,
-            "type": "string"
+            "type": [
+              "null",
+              "string"
+            ]
           },
           "quietHoursEnd": {
             "maxLength": 10,
-            "type": "string"
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
