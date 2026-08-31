@@ -116,8 +116,19 @@ QUOTA_RE='hit your usage limit|rate limit|quota|Upgrade to Plus|try again at'
 AUTH_RE='not logged in|authentication|unauthorized|401|please run .?codex login'
 NET_RE='network|ECONNREFUSED|ETIMEDOUT|could not reach|dns'
 
+# The verdict must be the LAST non-empty line, not merely present somewhere. Anchoring it anywhere in
+# the output was too loose: a refusal or an aborted run that happens to echo a standalone
+# `VERDICT: CLEAN` — including one quoting this repo's own docs — would satisfy it and skip every
+# refusal check below. Found by the 2026-08-31 cross-model review of this very file, which is the
+# second defect in it today and in the opposite direction from the first: the original was too strict
+# and discarded real reviews, the fix was too lax and would have admitted fake ones. The last-line
+# anchor is what `crossmodel-review.sh` already does (see its VERDICT_LINE handling), and the prompt
+# above instructs the reviewer to end on exactly that line.
+LAST_LINE="$(grep -vE '^\s*$' <<<"$OUTPUT" | tail -1)"
+LAST_BARE="$(sed -E 's/^[[:space:]]+//; s/(\*\*|__|\*|`)//g; s/[[:space:]]*\.?[[:space:]]*$//' <<<"$LAST_LINE")"
+
 REVIEW_COMPLETED=0
-if grep -qE '^VERDICT: (BLOCKING|CLEAN)' <<<"$OUTPUT" \
+if grep -qE '^VERDICT: (BLOCKING|CLEAN)$' <<<"$LAST_BARE" \
   && [[ "$(tr -d '[:space:]' <<<"$OUTPUT" | wc -c)" -ge 200 ]]; then
   REVIEW_COMPLETED=1
 fi
@@ -163,7 +174,10 @@ say ""
 printf '%s\n' "$OUTPUT" | sed 's/^/  /'
 say ""
 
-if grep -qE '^VERDICT: BLOCKING' <<<"$OUTPUT"; then
+# Read the SAME last line the completion check read. Scanning the whole output here would let a review
+# that merely QUOTES the string "VERDICT: BLOCKING" (this file and its docs both contain it) fail a
+# clean run — the mirror image of the false-positive fixed above, and just as wrong.
+if [[ "$LAST_BARE" == "VERDICT: BLOCKING" ]]; then
   bad "Codex raised BLOCKING findings."
   exit 1
 fi

@@ -57,8 +57,21 @@ say ""
 say "Deployment freshness — is merged C# actually running?"
 say "─────────────────────────────────────────────────────"
 
+# FETCH FIRST. Comparing against a stale local `origin/main` is the exact failure this script exists to
+# catch, committed by the script itself: a clone that has not fetched since before the undeployed
+# commits landed would compute "0 behind" and report the deployment fresh. Found by the 2026-08-31
+# cross-model review. A staleness detector that trusts a possibly-stale ref is not a detector.
+if [[ "$BASE" == origin/* ]]; then
+  REMOTE="${BASE%%/*}"
+  if ! git fetch --quiet "$REMOTE" 2>/dev/null; then
+    bad "Could not fetch '$REMOTE' — the comparison ref may be stale, so freshness CANNOT be asserted."
+    warn "This exits 2 rather than comparing against a local ref of unknown age."
+    exit 2
+  fi
+fi
+
 if ! git rev-parse --verify --quiet "$BASE" >/dev/null; then
-  bad "BASE ref '$BASE' does not resolve. Run: git fetch origin"
+  bad "BASE ref '$BASE' does not resolve, even after fetching."
   exit 2
 fi
 

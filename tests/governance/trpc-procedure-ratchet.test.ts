@@ -118,15 +118,22 @@ describe('tRPC procedure ratchet — the survival rule, enforced', () => {
     ).toBeLessThanOrEqual(PROCEDURE_CEILING);
   });
 
-  it('the ceiling is not stale — re-pin it when a port lands', () => {
+  it('the ceiling is EXACT — any drift must be re-pinned, not absorbed', () => {
     const count = procedurePaths().length;
-    // A ceiling far above the real count is unenforceable, the same defect class as the stale vitest
-    // anchor that sat at 3046 through eight merged PRs. Fail once a port has bought real headroom.
+    // Exact equality, not a tolerance. An earlier version allowed the count to sit up to 9 below the
+    // ceiling before complaining, which contradicted this file's own "MAY ONLY EVER DECREASE" header:
+    // a port that removed 9 procedures left 9 slots of silent headroom for someone to add 9 back
+    // without the growth guard ever firing. The 2026-08-31 cross-model review caught the gap between
+    // the claim and the assertion — the highest-value finding class in this repo, and this file is
+    // supposed to be an instrument of it. Zero headroom is the only reading that matches the claim.
     expect(
-      PROCEDURE_CEILING - count,
-      `The surface is ${count} but the ceiling is ${PROCEDURE_CEILING}. A port has landed — lower ` +
-        `PROCEDURE_CEILING to ${count} in that PR, or the ratchet stops enforcing anything.`,
-    ).toBeLessThan(10);
+      count,
+      count < PROCEDURE_CEILING
+        ? `The surface is ${count}, below the ceiling of ${PROCEDURE_CEILING} — a port has deleted ` +
+            `TypeScript. Lower PROCEDURE_CEILING to ${count} in that same PR. Leaving it high banks ` +
+            `${PROCEDURE_CEILING - count} procedures of headroom that a later addition could occupy silently.`
+        : '',
+    ).toEqual(PROCEDURE_CEILING);
   });
 
   it('no new top-level router appears', () => {
