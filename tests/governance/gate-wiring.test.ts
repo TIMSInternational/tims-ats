@@ -69,6 +69,12 @@ const WIRED_CHECKS: ReadonlyArray<{ check: number; script: string; runner: strin
     runner: 'npx tsx',
     what: 'pre-flip dependency scan (#132)',
   },
+  {
+    check: 21,
+    script: 'scripts/deploy/check-deploy-freshness.sh',
+    runner: 'bash',
+    what: 'deployment freshness — merged C# is actually running',
+  },
 ];
 
 /** The checks that need live production database credentials — the three #124 blocks from CI. */
