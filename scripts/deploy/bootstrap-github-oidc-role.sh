@@ -30,6 +30,11 @@ POLICY="deploy-tims-platform-api"
 REPO="TIMSInternational/tims-ats"
 ECR_REPO="tims-platform-api"
 SERVICE_ARN="arn:aws:apprunner:${REGION}:${ACCOUNT}:service/tims-platform-api/fe199157979c4a53a0a4ad2ffd9935c5"
+# Read from the LIVE service (describe-service AuthenticationConfiguration), NOT from
+# services/Tims.Platform/deploy/terraform/main.tf, which names it `tims-platform-api-ecr-access`.
+# That terraform HAS NEVER BEEN APPLIED to this account: the no-suffix role does not exist, and the
+# `-role` one does. A 2026-09-01 review flagged this as a mismatch by trusting the committed IaC over
+# live state — verify against AWS, not against unapplied terraform.
 ECR_ACCESS_ROLE="arn:aws:iam::${ACCOUNT}:role/tims-platform-api-ecr-access-role"
 OIDC_ARN="arn:aws:iam::${ACCOUNT}:oidc-provider/token.actions.githubusercontent.com"
 
@@ -138,6 +143,25 @@ ok "Inline policy $POLICY attached"
 
 say ""
 say "Verifying…"
+
+# The "deliberately narrow" claim above is only true if THIS is the role's only permission. On an
+# existing role it might already carry others, and a verifier that checks just the policy it wrote
+# proves nothing about the total grant. Flagged by the 2026-09-01 cross-model review.
+EXTRA_INLINE="$(aws iam list-role-policies --profile "$PROFILE" --role-name "$ROLE" \
+                 --query "PolicyNames[?@!='$POLICY']" --output text 2>/dev/null)"
+EXTRA_MANAGED="$(aws iam list-attached-role-policies --profile "$PROFILE" --role-name "$ROLE" \
+                 --query 'AttachedPolicies[].PolicyName' --output text 2>/dev/null)"
+if [[ -n "$EXTRA_INLINE" && "$EXTRA_INLINE" != "None" ]]; then
+  bad "Role carries OTHER inline policies: $EXTRA_INLINE"
+  bad "The narrow-scope guarantee does not hold. Review them before using this role to deploy."
+  exit 1
+fi
+if [[ -n "$EXTRA_MANAGED" && "$EXTRA_MANAGED" != "None" ]]; then
+  bad "Role has managed policies attached: $EXTRA_MANAGED"
+  bad "The narrow-scope guarantee does not hold. Detach them or use a dedicated role."
+  exit 1
+fi
+ok "No other inline or managed policies — the grant really is just this one"
 SUBS="$(aws iam get-role --profile "$PROFILE" --role-name "$ROLE" \
         --query 'Role.AssumeRolePolicyDocument.Statement[0].Condition.StringLike' --output json)"
 ACTIONS="$(aws iam get-role-policy --profile "$PROFILE" --role-name "$ROLE" --policy-name "$POLICY" \

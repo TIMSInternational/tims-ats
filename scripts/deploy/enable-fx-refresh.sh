@@ -53,7 +53,8 @@ ok "Service is RUNNING"
 cp "$WORK/live.json" "$HOME/tims-apprunner-BACKUP-before-fx.json"
 ok "Config backed up to ~/tims-apprunner-BACKUP-before-fx.json"
 
-python3 - "$WORK" "$KEY" <<'PY' || exit 1
+set +e
+python3 - "$WORK" "$KEY" <<'PY'
 import json, sys, copy
 work, key = sys.argv[1], sys.argv[2]
 svc = json.load(open(f"{work}/live.json"))["Service"]
@@ -90,8 +91,12 @@ if n < 27:
 json.dump(after, open(f"{work}/payload.json", "w"), indent=2)
 PY
 rc=$?
+set -e
+# Exit 3 is the deliberate ALREADY_ON signal. An earlier version appended `|| exit 1` to the heredoc,
+# which fired on ANY non-zero status and made this branch unreachable — re-running the script errored
+# instead of no-oping. Found by the 2026-09-01 cross-model review.
 if [[ $rc -eq 3 ]]; then ok "$KEY is ALREADY true — nothing to do."; exit 0; fi
-[[ $rc -ne 0 ]] && { bad "Payload verification failed. Nothing applied."; exit 1; }
+if [[ $rc -ne 0 ]]; then bad "Payload verification failed. Nothing applied."; exit 1; fi
 ok "Payload adds exactly one key and retains every other"
 
 say ""
@@ -102,14 +107,23 @@ OP="$(aws apprunner update-service --profile "$PROFILE" --region "$REGION" \
 [[ -z "$OP" || "$OP" == *rror* ]] && { bad "update-service failed: $OP"; exit 1; }
 ok "Started — operation $OP"
 
+REACHED=0
 for i in $(seq 1 60); do
   sleep 15
   S="$(aws apprunner describe-service --profile "$PROFILE" --region "$REGION" \
         --service-arn "$ARN" --query 'Service.Status' --output text 2>/dev/null)"
   printf '\r  [%02d] %-24s' "$i" "$S"
-  [[ "$S" == "RUNNING" ]] && break
+  if [[ "$S" == "RUNNING" ]]; then REACHED=1; break; fi
+  case "$S" in CREATE_FAILED|DELETED) printf '\n'; bad "Service entered $S."; exit 1;; esac
 done
 printf '\n'
+# update-service is ASYNC. Falling through this loop without reaching RUNNING and then "verifying"
+# from config + /health would declare success over a service still mid-operation, or stuck.
+if [[ "$REACHED" -ne 1 ]]; then
+  bad "Timed out after 15 minutes without reaching RUNNING (last status: $S). NOT verified."
+  bad "Do not assume the flag took effect. Check the App Runner console before retrying."
+  exit 1
+fi
 
 N="$(aws apprunner describe-service --profile "$PROFILE" --region "$REGION" --service-arn "$ARN" \
   --query 'length(Service.SourceConfiguration.ImageRepository.ImageConfiguration.RuntimeEnvironmentVariables)' --output text)"
@@ -137,5 +151,12 @@ if [[ "$V" == "true" && "$N" == "27" && "$CODE" == "200" ]]; then
   exit 0
 fi
 
-bad "Did not verify. Roll back with: bash ~/tims-rollback.sh"
+bad "Did not verify. This flip added ONE env var; do NOT use ~/tims-rollback.sh — that restores"
+bad "the pre-deploy IMAGE config and would also revert the 2026-09-01 deploy."
+say ""
+say "  To undo just this change, re-apply the config captured before it:"
+say "      python3 -c \"import json;d=json.load(open('$HOME/tims-apprunner-BACKUP-before-fx.json'));\\"
+say "        json.dump(d['Service']['SourceConfiguration'],open('/tmp/fx-undo.json','w'))\""
+say "      aws apprunner update-service --profile $PROFILE --region $REGION \\"
+say "        --service-arn $ARN --source-configuration file:///tmp/fx-undo.json"
 exit 1
