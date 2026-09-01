@@ -1,0 +1,182 @@
+name: Deploy platform API
+
+# THE ROOT-CAUSE FIX for the 2026-08-31 incident.
+#
+# The live App Runner service was found running an image built 2026-07-28 — 242 commits and 34 days
+# behind `main`, with 45 undeployed commits touching services/Tims.Platform and seven completed slices
+# that had never executed. Nothing was broken, because every merged endpoint is dark behind a
+# default-false flag, and that is exactly why nobody noticed.
+#
+# The mechanical cause was small and total: `dotnet-platform.yml` runs `docker build` to VERIFY the
+# image and then throws it away. Nothing ever pushed it, and nothing ever deployed it. Deploys were a
+# manual ritual, so the gap opened in silence and stayed open until someone thought to compare a
+# running image tag against main by hand.
+#
+# The real cost was not an outage. Three finished domains sat stuck at step 5 with no visible cause,
+# and the FX stale-pin incident carried a recorded remedy — "run runbook A or B" — that was NOT
+# EXECUTABLE for two weeks, because both code paths post-dated the running image.
+#
+# This workflow makes that state unreachable: every merge to main that touches the C# service builds,
+# pushes and deploys it. `scripts/deploy/check-deploy-freshness.sh` (/gate check 21) remains the
+# backstop — a control that lives only inside the thing it guards is not a control.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "services/Tims.Platform/**"
+      - ".github/workflows/deploy-platform-api.yml"
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Why are you deploying by hand?"
+        required: false
+        default: "manual redeploy"
+
+# NEVER cancel a deploy in flight. `cancel-in-progress: true` — correct for CI, where a superseded run
+# is wasted work — would here abort a rolling App Runner deployment partway through and leave the
+# service in an operation state that blocks the next run.
+concurrency:
+  group: deploy-platform-api
+  cancel-in-progress: false
+
+permissions:
+  id-token: write # OIDC federation to AWS. No long-lived keys exist for this repo.
+  contents: read
+
+env:
+  AWS_REGION: us-west-2 # NOT us-east-1 — that account holds unrelated NexaDev projects.
+  SERVICE_NAME: tims-platform-api
+  ECR_REPO: tims-platform-api
+
+jobs:
+  deploy:
+    name: Build, push and deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Short SHA
+        id: sha
+        run: echo "short=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Assume the deploy role (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::747814092517:role/tims-ats-github-deploy-prod
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push the API image
+        working-directory: services/Tims.Platform
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          TAG: ${{ steps.sha.outputs.short }}
+        run: |
+          set -euo pipefail
+          # Tagged with the commit SHA on purpose, never a floating tag. check-deploy-freshness.sh
+          # maps the running image tag back to a commit to compute drift; a `:latest` or `:main` tag
+          # would make the running image unattributable and turn that gate into a no-op.
+          docker build --platform linux/amd64 \
+            -f src/Tims.Api/Dockerfile \
+            -t "$REGISTRY/$ECR_REPO:$TAG" .
+          docker push "$REGISTRY/$ECR_REPO:$TAG"
+
+      - name: Deploy, preserving the full service configuration
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          TAG: ${{ steps.sha.outputs.short }}
+        run: |
+          set -euo pipefail
+
+          ARN="$(aws apprunner list-services --region "$AWS_REGION" \
+                  --query "ServiceSummaryList[?ServiceName=='$SERVICE_NAME'].ServiceArn" --output text)"
+          test -n "$ARN" || { echo "::error::Service $SERVICE_NAME not found in $AWS_REGION"; exit 1; }
+
+          aws apprunner describe-service --region "$AWS_REGION" --service-arn "$ARN" > live.json
+
+          # `update-service` takes a FULL source-configuration map. A partial one DROPS every env key
+          # it omits — which would darken the 22 live flags and take ~13 production surfaces offline.
+          # So the payload is derived from the live config and asserted to differ in exactly one field.
+          python3 - "$REGISTRY/$ECR_REPO:$TAG" <<'PY'
+          import json, sys, copy
+          new_image = sys.argv[1]
+          svc = json.load(open("live.json"))["Service"]
+          before = svc["SourceConfiguration"]
+          after = copy.deepcopy(before)
+          after["ImageRepository"]["ImageIdentifier"] = new_image
+
+          diffs = []
+          def walk(a, b, path=""):
+              if isinstance(a, dict) and isinstance(b, dict):
+                  for k in set(a) | set(b):
+                      if k not in a: diffs.append(f"ADDED {path}/{k}")
+                      elif k not in b: diffs.append(f"REMOVED {path}/{k}")
+                      else: walk(a[k], b[k], f"{path}/{k}")
+              elif a != b:
+                  diffs.append(f"CHANGED {path}")
+          walk(before, after)
+
+          ic = after["ImageRepository"]["ImageConfiguration"]
+          n_env = len(ic.get("RuntimeEnvironmentVariables", {}))
+          n_sec = len(ic.get("RuntimeEnvironmentSecrets", {}))
+          print(f"payload: {len(diffs)} diff(s), {n_env} env vars, {n_sec} secrets")
+          for d in diffs: print("  " + d)
+
+          if diffs != ["CHANGED /ImageRepository/ImageIdentifier"]:
+              print("::error::Payload changes more than the image identifier. Refusing to deploy.")
+              sys.exit(1)
+          if n_env == 0:
+              print("::error::Payload carries zero env vars — that would darken every live surface.")
+              sys.exit(1)
+
+          json.dump(after, open("payload.json", "w"), indent=2)
+          PY
+
+          echo "ENV_BEFORE=$(python3 -c "import json;print(len(json.load(open('live.json'))['Service']['SourceConfiguration']['ImageRepository']['ImageConfiguration'].get('RuntimeEnvironmentVariables',{})))")" >> "$GITHUB_ENV"
+          echo "SERVICE_ARN=$ARN" >> "$GITHUB_ENV"
+
+          aws apprunner update-service --region "$AWS_REGION" \
+            --service-arn "$ARN" --source-configuration file://payload.json \
+            --query 'OperationId' --output text
+
+      - name: Wait for the rollout
+        run: |
+          set -uo pipefail
+          for i in $(seq 1 60); do
+            sleep 15
+            S="$(aws apprunner describe-service --region "$AWS_REGION" --service-arn "$SERVICE_ARN" \
+                  --query 'Service.Status' --output text)"
+            echo "[$i] $S"
+            [ "$S" = "RUNNING" ] && exit 0
+            case "$S" in CREATE_FAILED|DELETED) echo "::error::Service entered $S"; exit 1;; esac
+          done
+          echo "::error::Timed out waiting for RUNNING"
+          exit 1
+
+      - name: Verify the deployment
+        env:
+          TAG: ${{ steps.sha.outputs.short }}
+        run: |
+          set -euo pipefail
+          aws apprunner describe-service --region "$AWS_REGION" --service-arn "$SERVICE_ARN" > after.json
+
+          GOT_IMAGE="$(python3 -c "import json;print(json.load(open('after.json'))['Service']['SourceConfiguration']['ImageRepository']['ImageIdentifier'])")"
+          ENV_AFTER="$(python3 -c "import json;print(len(json.load(open('after.json'))['Service']['SourceConfiguration']['ImageRepository']['ImageConfiguration'].get('RuntimeEnvironmentVariables',{})))")"
+          URL="$(python3 -c "import json;print(json.load(open('after.json'))['Service']['ServiceUrl'])")"
+          CODE="$(curl -s -o /dev/null -w '%{http_code}' "https://$URL/health")"
+
+          echo "image: $GOT_IMAGE"
+          echo "env vars: $ENV_AFTER (was $ENV_BEFORE)"
+          echo "GET /health -> $CODE"
+
+          case "$GOT_IMAGE" in *:"$TAG") ;; *) echo "::error::Running image is not $TAG"; exit 1;; esac
+          [ "$ENV_AFTER" = "$ENV_BEFORE" ] || { echo "::error::env var count changed: $ENV_BEFORE -> $ENV_AFTER"; exit 1; }
+          [ "$CODE" = "200" ] || { echo "::error::/health returned $CODE"; exit 1; }
+
+          echo "Deployed $TAG. Production is running main."
