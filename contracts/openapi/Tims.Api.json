@@ -5061,6 +5061,362 @@
         }
       }
     },
+    "/notifications": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "NotificationList",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "unreadOnly",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationListResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "NotificationCreate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateNotificationBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationRow"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/notifications/unread-count": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "NotificationUnreadCount",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnreadCountResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/notifications/preferences": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "NotificationGetPreferences",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationPreferencesRow"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "NotificationUpdatePreferences",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateNotificationPreferencesBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdatePreferencesResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/notifications/{id}/read": {
+      "post": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "NotificationMarkAsRead",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchCountResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/notifications/read-all": {
+      "post": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "NotificationMarkAllAsRead",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchCountResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/notifications/{id}/archive": {
+      "post": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "NotificationArchive",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchCountResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/notifications/archive-read": {
+      "post": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "NotificationArchiveAllRead",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchCountResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/notifications/{id}": {
+      "delete": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "NotificationDelete",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchCountResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/notifications/bulk": {
+      "post": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "NotificationBulkCreate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkCreateNotificationBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchCountResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
     "/dei/dashboard-kpis": {
       "get": {
         "tags": [
@@ -6852,6 +7208,22 @@
           }
         }
       },
+      "BatchCountResult": {
+        "required": [
+          "count"
+        ],
+        "type": "object",
+        "properties": {
+          "count": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "BenchStrengthView": {
         "required": [
           "period",
@@ -6947,6 +7319,48 @@
         "properties": {
           "configured": {
             "type": "boolean"
+          }
+        }
+      },
+      "BulkCreateNotificationBody": {
+        "required": [
+          "userIds",
+          "type",
+          "title"
+        ],
+        "type": "object",
+        "properties": {
+          "userIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "type": {
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 200,
+            "type": "string"
+          },
+          "message": {
+            "maxLength": 1000,
+            "type": "string"
+          },
+          "module": {
+            "maxLength": 50,
+            "type": "string"
+          },
+          "entityType": {
+            "maxLength": 50,
+            "type": "string"
+          },
+          "entityId": {
+            "type": "string"
+          },
+          "actionUrl": {
+            "maxLength": 500,
+            "type": "string"
           }
         }
       },
@@ -8007,6 +8421,45 @@
           },
           "createdAt": {
             "format": "date-time"
+          }
+        }
+      },
+      "CreateNotificationBody": {
+        "required": [
+          "userId",
+          "type",
+          "title"
+        ],
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 200,
+            "type": "string"
+          },
+          "message": {
+            "maxLength": 1000,
+            "type": "string"
+          },
+          "module": {
+            "maxLength": 50,
+            "type": "string"
+          },
+          "entityType": {
+            "maxLength": 50,
+            "type": "string"
+          },
+          "entityId": {
+            "type": "string"
+          },
+          "actionUrl": {
+            "maxLength": 500,
+            "type": "string"
           }
         }
       },
@@ -10884,6 +11337,149 @@
           }
         }
       },
+      "NotificationListResult": {
+        "required": [
+          "notifications",
+          "nextCursor"
+        ],
+        "type": "object",
+        "properties": {
+          "notifications": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NotificationRow"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "NotificationPreferencesRow": {
+        "required": [
+          "emailEnabled",
+          "pushEnabled",
+          "categories",
+          "modules",
+          "quietHoursStart",
+          "quietHoursEnd"
+        ],
+        "type": "object",
+        "properties": {
+          "emailEnabled": {
+            "type": "boolean"
+          },
+          "pushEnabled": {
+            "type": "boolean"
+          },
+          "categories": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JsonNode"
+              }
+            ]
+          },
+          "modules": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JsonNode"
+              }
+            ]
+          },
+          "quietHoursStart": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "quietHoursEnd": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "NotificationRow": {
+        "required": [
+          "id",
+          "type",
+          "title",
+          "message",
+          "module",
+          "read",
+          "readAt",
+          "entityType",
+          "entityId",
+          "actionUrl",
+          "createdAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "message": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "module": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "read": {
+            "type": "boolean"
+          },
+          "readAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "entityType": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "entityId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "actionUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
       "PayEquityGroup": {
         "required": [
           "group",
@@ -13220,6 +13816,22 @@
           }
         }
       },
+      "UnreadCountResult": {
+        "required": [
+          "count"
+        ],
+        "type": "object",
+        "properties": {
+          "count": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "UpdateActionPlanBody": {
         "type": "object",
         "properties": {
@@ -13269,6 +13881,43 @@
           }
         }
       },
+      "UpdateNotificationPreferencesBody": {
+        "type": "object",
+        "properties": {
+          "emailEnabled": {
+            "type": "boolean"
+          },
+          "pushEnabled": {
+            "type": "boolean"
+          },
+          "categories": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "boolean"
+            }
+          },
+          "modules": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "boolean"
+            }
+          },
+          "quietHoursStart": {
+            "maxLength": 10,
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "quietHoursEnd": {
+            "maxLength": 10,
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "UpdateOrganizationBody": {
         "type": "object",
         "properties": {
@@ -13301,6 +13950,21 @@
           "currency": {
             "maxLength": 10,
             "type": "string"
+          }
+        }
+      },
+      "UpdatePreferencesResult": {
+        "required": [
+          "emailEnabled",
+          "pushEnabled"
+        ],
+        "type": "object",
+        "properties": {
+          "emailEnabled": {
+            "type": "boolean"
+          },
+          "pushEnabled": {
+            "type": "boolean"
           }
         }
       },

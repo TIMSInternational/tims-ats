@@ -53,8 +53,13 @@ on 76 production tables.
 
 ## Tier 2 — OmniRoute (still genuinely cross-model)
 
-Codex is **quota-blocked until 2026-09-09** ("Sep 9th, 2026" per the live CLI refusal — a date that
-has slipped repeatedly and is read from CLI output, not authoritative). Rather than dropping straight
+Codex quota was **UNBLOCKED as of 2026-08-31**, verified by a live full review — tier 1 is real again.
+(The block had been predicted to last until 2026-09-09; refusal dates are read from CLI output and have
+slipped in both directions, so never treat one as authoritative. Also fixed the same day: until
+2026-08-31 `codex-review.sh` misclassified a COMPLETED review as quota-blocked whenever the reviewed
+diff itself contained quota/rate-limit words — the refusal greps ran over the model's prose before the
+VERDICT check. The wrapper now checks for a completed review first; every no-VERDICT path still exits
+2, so it remains fail-closed.) If Codex is refused again, rather than dropping straight
 to same-model review,
 `scripts/verification/crossmodel-review.sh` tries a second **different-vendor** model first, via a
 locally-run [OmniRoute](https://github.com/diegosouzapw/OmniRoute) gateway (MIT, self-hosted,

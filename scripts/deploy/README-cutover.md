@@ -154,6 +154,8 @@ number) and independently corroborated by the `flag:` field in `scripts/parity/s
 | `engagement-write`    | write | `EngagementWriteEnabled`       | `verify-write engagement`                         | `NEXT_PUBLIC_ENGAGEMENT_WRITE_VIA_CSHARP`    | COEXISTENCE (flag live; 3 of 5 TS mutations deleted — see cutover.sh)       |
 | `access-review-write` | write | `AccessReviewWriteEnabled`     | `verify-write access-review`                      | `NEXT_PUBLIC_ACCESS_REVIEW_WRITE_VIA_CSHARP` | CONFIRMED LIVE (TS deleted; write surface tests C# directly, no TS dep)     |
 | `fit-engine-write`    | write | `FitEngineWriteEnabled`        | NONE — surface unregistered (#90)                 | NONE — no FE wrapper shipped (#90)           | BLOCKED (one-active-writer control for fit_scores — see cutover.sh)        |
+| `notification`        | read  | `NotificationReadEnabled`      | NONE — surface unregistered (#98)                 | NONE — no FE wrapper shipped (#98)           | BLOCKED (step-5 unrunnable; identity-authorized, needs per-role rows)      |
+| `notification-write`  | write | `NotificationWriteEnabled`     | NONE — surface unregistered (#98)                 | NONE — no FE wrapper shipped (#98)           | BLOCKED (router-path writer control only; notify() is outside — cutover.sh)|
 
 Run `./scripts/deploy/cutover.sh --list` for the per-surface long-form notes (why each is
 classified the way it is, and every naming quirk below).

@@ -104,42 +104,56 @@ CODEX_RC=$?
 OUTPUT="$(cat "$OUT_FILE")"
 
 # ── Refusal detection — the whole point of this script ───────────────────────────────────────────
+# COMPLETION IS CHECKED FIRST, refusal signatures only afterwards. The signatures are grepped over
+# the model's own prose, and a genuine review of a branch that so much as MENTIONS rate limiting or
+# quotas quotes those words back. Proven 2026-08-31: a completed review of the notification slice
+# was misclassified as quota-blocked because the reviewed diff itself contained "Codex
+# quota-blocked until ~2026-09-09" (the slice doc's own check-15 row) plus a rate-limiter comment —
+# and the mktemp trap deleted the only copy of the review. On any such branch the old order could
+# NEVER pass. Fail-closed is intact: every path without a VERDICT still exits 2; the signatures now
+# only decide the DIAGNOSIS, never override a review that demonstrably completed.
 QUOTA_RE='hit your usage limit|rate limit|quota|Upgrade to Plus|try again at'
 AUTH_RE='not logged in|authentication|unauthorized|401|please run .?codex login'
 NET_RE='network|ECONNREFUSED|ETIMEDOUT|could not reach|dns'
 
-if grep -qiE "$QUOTA_RE" <<<"$OUTPUT"; then
-  bad "Codex is QUOTA-BLOCKED — the review did not happen."
-  say ""
-  grep -iE "$QUOTA_RE" <<<"$OUTPUT" | head -2 | sed 's/^/      /'
-  say ""
-  say "  ⚠  The CLI exits 0 in this state. This is NOT a pass."
-  say ""
-  say "  Fallback (declared tier-2 in .claude/rules/verification.md): run a 3-lens same-model"
-  say "  adversarial panel instead — security/tenant-isolation, a claim-auditor that checks every"
-  say "  PR-body claim against file:line, and a coverage 'what's missing' lens. Record in the PR body"
-  say "  that cross-model verification was unavailable and which fallback ran."
-  exit 2
+REVIEW_COMPLETED=0
+if grep -qE '^VERDICT: (BLOCKING|CLEAN)' <<<"$OUTPUT" \
+  && [[ "$(tr -d '[:space:]' <<<"$OUTPUT" | wc -c)" -ge 200 ]]; then
+  REVIEW_COMPLETED=1
 fi
 
-if grep -qiE "$AUTH_RE" <<<"$OUTPUT"; then
-  bad "Codex is NOT AUTHENTICATED — the review did not happen. Run: codex login"
-  exit 2
-fi
+if [[ "$REVIEW_COMPLETED" -ne 1 ]]; then
+  if grep -qiE "$QUOTA_RE" <<<"$OUTPUT"; then
+    bad "Codex is QUOTA-BLOCKED — the review did not happen."
+    say ""
+    grep -iE "$QUOTA_RE" <<<"$OUTPUT" | head -2 | sed 's/^/      /'
+    say ""
+    say "  ⚠  The CLI exits 0 in this state. This is NOT a pass."
+    say ""
+    say "  Fallback (declared tier-2 in .claude/rules/verification.md): run a 3-lens same-model"
+    say "  adversarial panel instead — security/tenant-isolation, a claim-auditor that checks every"
+    say "  PR-body claim against file:line, and a coverage 'what's missing' lens. Record in the PR body"
+    say "  that cross-model verification was unavailable and which fallback ran."
+    exit 2
+  fi
 
-if grep -qiE "$NET_RE" <<<"$OUTPUT"; then
-  bad "Codex could not reach the service — the review did not happen."
-  exit 2
-fi
+  if grep -qiE "$AUTH_RE" <<<"$OUTPUT"; then
+    bad "Codex is NOT AUTHENTICATED — the review did not happen. Run: codex login"
+    exit 2
+  fi
 
-# An empty or near-empty response means it produced no review, whatever the exit code said.
-if [[ "$(tr -d '[:space:]' <<<"$OUTPUT" | wc -c)" -lt 200 ]]; then
-  bad "Codex returned no meaningful output (${CODEX_RC} exit) — treating as NOT RUN."
-  printf '%s\n' "$OUTPUT" | head -20 | sed 's/^/      /'
-  exit 2
-fi
+  if grep -qiE "$NET_RE" <<<"$OUTPUT"; then
+    bad "Codex could not reach the service — the review did not happen."
+    exit 2
+  fi
 
-if ! grep -qE '^VERDICT: (BLOCKING|CLEAN)' <<<"$OUTPUT"; then
+  # An empty or near-empty response means it produced no review, whatever the exit code said.
+  if [[ "$(tr -d '[:space:]' <<<"$OUTPUT" | wc -c)" -lt 200 ]]; then
+    bad "Codex returned no meaningful output (${CODEX_RC} exit) — treating as NOT RUN."
+    printf '%s\n' "$OUTPUT" | head -20 | sed 's/^/      /'
+    exit 2
+  fi
+
   bad "Codex produced output but no VERDICT line — cannot confirm a real review ran."
   printf '%s\n' "$OUTPUT" | tail -25 | sed 's/^/      /'
   exit 2

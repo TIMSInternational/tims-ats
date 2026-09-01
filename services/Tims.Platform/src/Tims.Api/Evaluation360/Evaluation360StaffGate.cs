@@ -19,7 +19,7 @@ namespace Tims.Api.Evaluation360;
 ///   unresolvable principal → 401; denied grant OR narrow scope → 403; privileged org-less → 400.
 ///
 /// This mirrors <c>ReportingStaffGate</c> exactly, differing only in the module (<c>evaluation360</c>). It is
-/// SEPARATE from <see cref="Evaluation360SelfServiceGate"/>: the self-service reads authorize on IDENTITY, not a
+/// SEPARATE from <see cref="SelfServiceGate"/>: the self-service reads authorize on IDENTITY, not a
 /// grant, and MUST NOT run this org-gate (an org-scoped admin degrades match-all and could read another user's
 /// data). Do not cross the two.
 ///

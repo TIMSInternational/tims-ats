@@ -27,6 +27,7 @@ using Tims.Api.Evaluation360;
 using Tims.Api.ExternalVendor;
 using Tims.Api.Engagement;
 using Tims.Api.FitEngine;
+using Tims.Api.Notification;
 using Tims.Api.Dei;
 using Tims.Api.NineBox;
 using Tims.Api.Reporting;
@@ -49,6 +50,7 @@ using Tims.Application.Identity;
 using Tims.Application.Engagement;
 using Tims.Application.Dei;
 using Tims.Application.FitEngine;
+using Tims.Application.Notification;
 using Tims.Application.Fx;
 using Tims.Application.NineBox;
 using Tims.Application.Reporting;
@@ -74,6 +76,7 @@ using Tims.Infrastructure.Hris;
 using Tims.Infrastructure.Engagement;
 using Tims.Infrastructure.Dei;
 using Tims.Infrastructure.FitEngine;
+using Tims.Infrastructure.Notification;
 using Tims.Infrastructure.Fx;
 using Tims.Infrastructure.NineBox;
 using Tims.Infrastructure.Identity;
@@ -567,6 +570,15 @@ try
     builder.Services.AddScoped<IFitEngineWriteRepository, FitEngineWriteRepository>();
     builder.Services.AddScoped<FitEngineWriteUseCase>();
 
+    // Phase-5 Slice 25 / #98 — notification. ONE DbContext for both sides: the read and write flags cover the
+    // SAME two tables, and getPreferences is a query that INSERTs, so the read path needs write capability.
+    // Dark unless NotificationReadEnabled / NotificationWriteEnabled (deploy-gated cutover).
+    builder.Services.AddDbContext<NotificationDbContext>(options => options.UseNpgsql(databaseConnectionString));
+    builder.Services.AddScoped<INotificationReadRepository, NotificationReadRepository>();
+    builder.Services.AddScoped<INotificationWriteRepository, NotificationWriteRepository>();
+    builder.Services.AddScoped<NotificationReadUseCase>();
+    builder.Services.AddScoped<NotificationWriteUseCase>();
+
     // Phase-5 Slice 11b (efcoreReadOnly): the DEI READ surface (people-dashboards GROUP 2). Unlike the engagement
     // read, employee_demographics carries THREE NATIVE Prisma enums the demographic reads GROUP BY (Gender /
     // Ethnicity / DisabilityStatus) — Postgres has no implicit enum=text operator — so a dedicated data source maps
@@ -869,6 +881,30 @@ try
                          {
                              ("createdAt", false), ("updatedAt", false), ("deletedAt", true),
                          })
+                {
+                    if (schema.Properties.TryGetValue(name, out var dateSchema)
+                        && dateSchema is Microsoft.OpenApi.OpenApiSchema concreteDate)
+                    {
+                        concreteDate.Type = nullable
+                            ? Microsoft.OpenApi.JsonSchemaType.String | Microsoft.OpenApi.JsonSchemaType.Null
+                            : Microsoft.OpenApi.JsonSchemaType.String;
+                    }
+                }
+            }
+
+            // NotificationRow (Phase-5 Slice 25 / #98) — same restoration, same cause: createdAt/readAt carry
+            // NodeIso(Nullable)DateTimeConverter for the trailing `Z`, and the generator drops `"type"` through
+            // a custom converter.
+            //
+            // ⚠️ This is a PER-TYPE patch of a REPO-WIDE defect, and the scope is deliberate. Measured on this
+            // branch: 109 typeless `format: date-time` properties across 46 schemas, of which this slice
+            // contributes 2 — PlatformOrganizationRow above is the ONLY type ever fixed. A general transformer
+            // would be ~10 lines and would be the right fix, but it would rewrite 45 other schemas and cascade
+            // into schema.d.ts, which does not belong in a port PR. Filed separately; this slice's job is only
+            // to avoid adding to the debt.
+            if (context.JsonTypeInfo.Type == typeof(NotificationRow) && schema.Properties is not null)
+            {
+                foreach (var (name, nullable) in new[] { ("createdAt", false), ("readAt", true) })
                 {
                     if (schema.Properties.TryGetValue(name, out var dateSchema)
                         && dateSchema is Microsoft.OpenApi.OpenApiSchema concreteDate)
@@ -1405,6 +1441,28 @@ try
     if (externalOptions.FitEngineWriteEnabled || isOpenApiDocGeneration)
     {
         app.MapFitEngineWriteEndpoints();
+    }
+
+    // Phase-5 Slice 25 / #98 (efcoreReadOnly + efcoreStranglerWrite): the notification READ surface (3 reads) —
+    // GET /notifications (list, Prisma cursor paging), /notifications/unread-count and
+    // /notifications/preferences. All three are protectedProcedure, so SelfServiceGate authorizes on IDENTITY
+    // alone and every query hard-filters on the caller's own user id — there is no grant and no subject id.
+    // NOTE getPreferences INSERTs the caller's preference row on a miss (TS parity), so this READ flag alone can
+    // write to notification_preferences. Dark unless the flag is on (deploy-gated cutover).
+    if (externalOptions.NotificationReadEnabled || isOpenApiDocGeneration)
+    {
+        app.MapNotificationReadEndpoints();
+    }
+
+    // Phase-5 Slice 25 / #98 (efcoreStranglerWrite): the notification WRITE surface (8 mutations) — six
+    // self-service (mark/archive/delete/preferences, SelfServiceGate + caller-scoped statements) and two
+    // grant-gated (create, bulkCreate — notification:create, addressing a TARGET user from the body). With the
+    // flag off these routes are never mapped. NOTE it is the one-active-writer control for the ROUTER path only:
+    // lib/notify.ts's notify() still createMany's into notifications from routers/platform/organizations.ts
+    // outside any flag (see PlatformOptions.NotificationWriteEnabled) — a step-6 precondition.
+    if (externalOptions.NotificationWriteEnabled || isOpenApiDocGeneration)
+    {
+        app.MapNotificationWriteEndpoints();
     }
 
     // Phase-5 Slice 11b (efcoreReadOnly): the DEI READ surface (10 reads). Staff-JWT + dei:read (GRANT-ONLY — no
