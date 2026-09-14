@@ -59,21 +59,13 @@ aws iam get-open-id-connect-provider --profile "$PROFILE" \
   || { bad "GitHub OIDC provider not found. Expected it to already exist."; exit 1; }
 ok "GitHub OIDC provider present"
 
-TRUST="$(cat <<JSON
-{
-  "Version": "2012-10-17",
-  "Statement": [{
-    "Effect": "Allow",
-    "Principal": { "Federated": "$OIDC_ARN" },
-    "Action": "sts:AssumeRoleWithWebIdentity",
-    "Condition": {
-      "StringEquals": { "token.actions.githubusercontent.com:aud": "sts.amazonaws.com" },
-      "StringLike": { "token.actions.githubusercontent.com:sub": "repo:${REPO}:ref:refs/heads/main" }
-    }
-  }]
-}
-JSON
-)"
+# GitHub's immutable subject includes organization/repository IDs. A name-only subject
+# failed in production on 2026-09-14. Verify the live settings before ANY IAM mutation.
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+OIDC_SETTINGS="$(gh api "repos/$REPO/actions/oidc/customization/sub")" \
+  || { bad "Cannot read GitHub OIDC settings."; exit 1; }
+TRUST="$(printf '%s' "$OIDC_SETTINGS" | python3 "$SCRIPT_DIR/github-oidc-trust.py")" \
+  || { bad "GitHub OIDC identity does not match the pinned TIMS repository."; exit 1; }
 
 PERMS="$(cat <<JSON
 {
@@ -162,18 +154,22 @@ if [[ -n "$EXTRA_MANAGED" && "$EXTRA_MANAGED" != "None" ]]; then
   exit 1
 fi
 ok "No other inline or managed policies — the grant really is just this one"
-SUBS="$(aws iam get-role --profile "$PROFILE" --role-name "$ROLE" \
-        --query 'Role.AssumeRolePolicyDocument.Statement[0].Condition.StringLike' --output json)"
+ACTUAL_TRUST="$(aws iam get-role --profile "$PROFILE" --role-name "$ROLE" \
+        --query 'Role.AssumeRolePolicyDocument' --output json)" \
+  || { bad "Cannot read back the trust policy."; exit 1; }
+python3 -c 'import json,sys; sys.exit(0 if json.loads(sys.argv[1]) == json.loads(sys.argv[2]) else 1)' \
+  "$TRUST" "$ACTUAL_TRUST" \
+  || { bad "Live trust differs from the exact verified policy."; exit 1; }
 ACTIONS="$(aws iam get-role-policy --profile "$PROFILE" --role-name "$ROLE" --policy-name "$POLICY" \
         --query 'length(PolicyDocument.Statement)' --output text)"
 ARN_OUT="$(aws iam get-role --profile "$PROFILE" --role-name "$ROLE" --query 'Role.Arn' --output text)"
 
 say "  role arn : $ARN_OUT"
-say "  trusts   : $SUBS"
+say "  trust    : exact verified immutable repository identity on main"
 say "  policy   : $ACTIONS statements"
 say ""
 
-if [[ "$SUBS" == *"refs/heads/main"* && "$ARN_OUT" == *"$ROLE" ]]; then
+if [[ "$ARN_OUT" == "arn:aws:iam::${ACCOUNT}:role/${ROLE}" ]]; then
   ok "READY. The workflow's role-to-assume already points here:"
   say "      arn:aws:iam::${ACCOUNT}:role/${ROLE}"
   say ""
