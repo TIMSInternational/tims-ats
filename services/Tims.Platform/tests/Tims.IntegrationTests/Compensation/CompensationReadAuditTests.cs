@@ -8,14 +8,16 @@ namespace Tims.IntegrationTests.Compensation;
 public sealed partial class CompensationReadEndpointAuthTests
 {
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task SalaryResponseWaitsForAuditCompletion(bool self)
+    [InlineData("employee")]
+    [InlineData("self")]
+    [InlineData("simulation")]
+    public async Task SalaryResponseWaitsForAuditCompletion(string endpoint)
     {
+        var self = endpoint == "self";
         var auditor = new ControlledAuditor();
         await using var factory = EnabledFactory(auditor);
         using var client = factory.CreateClient();
-        var responseTask = Get(client, self ? MyCompensation : Employee(CompensationReadFixture.M1Id),
+        var responseTask = Get(client, SalaryPath(endpoint),
             Mint(self ? CompensationReadFixture.EmpSub : CompensationReadFixture.OrgHrSub));
         try
         {
@@ -35,15 +37,17 @@ public sealed partial class CompensationReadEndpointAuthTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task AuditFailureDoesNotReturnSalary(bool self)
+    [InlineData("employee")]
+    [InlineData("self")]
+    [InlineData("simulation")]
+    public async Task AuditFailureDoesNotReturnSalary(string endpoint)
     {
+        var self = endpoint == "self";
         var auditor = new ControlledAuditor();
         auditor.Release.SetException(new AuditWriteFailedException(new InvalidOperationException("synthetic audit outage")));
         await using var factory = EnabledFactory(auditor);
         using var client = factory.CreateClient();
-        var responseTask = Get(client, self ? MyCompensation : Employee(CompensationReadFixture.M1Id),
+        var responseTask = Get(client, SalaryPath(endpoint),
             Mint(self ? CompensationReadFixture.EmpSub : CompensationReadFixture.OrgHrSub));
         await auditor.Entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.True(auditor.FailClosed);
@@ -58,15 +62,17 @@ public sealed partial class CompensationReadEndpointAuthTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task SalaryReadPersistsAnAuditForItsExactRecord(bool self)
+    [InlineData("employee")]
+    [InlineData("self")]
+    [InlineData("simulation")]
+    public async Task SalaryReadPersistsAnAuditForItsExactRecord(string endpoint)
     {
+        var self = endpoint == "self";
         await using var factory = EnabledFactory();
         using var client = factory.CreateClient();
         var marker = $"compensation-audit-{Guid.NewGuid():N}";
         client.DefaultRequestHeaders.UserAgent.ParseAdd(marker);
-        using var response = await Get(client, self ? MyCompensation : Employee(CompensationReadFixture.M1Id),
+        using var response = await Get(client, SalaryPath(endpoint),
             Mint(self ? CompensationReadFixture.EmpSub : CompensationReadFixture.OrgHrSub));
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         await using var connection = new NpgsqlConnection(_fixture.ConnectionString);
@@ -85,6 +91,13 @@ public sealed partial class CompensationReadEndpointAuthTests
         Assert.Equal("read", rows.GetString(4));
         Assert.False(await rows.ReadAsync());
     }
+
+    private static string SalaryPath(string endpoint) => endpoint switch
+    {
+        "self" => MyCompensation,
+        "simulation" => $"/compensation/simulate-adjustment?userId={CompensationReadFixture.M1Id}&proposedSalary=99000&currency=USD",
+        _ => Employee(CompensationReadFixture.M1Id),
+    };
 
     private sealed class ControlledAuditor : IDataAccessAuditor
     {

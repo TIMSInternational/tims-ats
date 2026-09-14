@@ -50,6 +50,7 @@ public sealed partial class CompensationReadEndpointAuthTests(CompensationReadFi
         {
             builder.UseSetting("Platform:DatabaseConnectionString", _fixture.ConnectionString);
             builder.UseSetting("Platform:CompensationReadEnabled", "true");
+            builder.UseSetting("Platform:FxReadsEnabled", "true");
             builder.UseSetting("Platform:SupabaseJwtIssuer", Issuer);
             builder.UseSetting("Platform:SupabaseJwtAudience", Audience);
 

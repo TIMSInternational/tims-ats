@@ -112,7 +112,7 @@ public static class CompensationFxReadEndpoints
                     return gate.Failure;
                 }
 
-                if (!Guid.TryParse(userId, out var subjectUserId) || proposedSalary is not { } salary || !(salary > 0)
+                if (!Guid.TryParse(userId, out var subjectUserId) || proposedSalary is not { } salary || !double.IsFinite(salary) || !(salary > 0)
                     || currency is { Length: not 3 })
                 {
                     return Results.BadRequest(new { error = "invalid_input" });
