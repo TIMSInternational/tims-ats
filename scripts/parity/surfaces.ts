@@ -872,7 +872,7 @@ export const SURFACES: Record<string, Surface> = {
   // DELETED (NEXT_PUBLIC_COMPENSATION_READ_VIA_CSHARP confirmed live in prod) — salary-bands,
   // benefits-utilization, compa-ratio-distribution, pending-adjustments and my-compensation are
   // REMOVED below (no TS side left to diff against for any of them). The 2 that survive
-  // (market-comparison, employee) map to the router's zero-FE-consumer procedures, which stay live
+  // (market-comparison, employee) mapped to the router's zero-FE-consumer procedures, which stayed live
   // — pre-existing dead code unrelated to this migration — so `verify compensation` still runs 2
   // REAL parity/RLS/RBAC checks, not a no-op. One flag Platform:CompensationReadEnabled still gates
   // the C# side for all 7 backend endpoints; only these 2 have a TS side left to compare against.
@@ -888,6 +888,17 @@ export const SURFACES: Record<string, Surface> = {
   //
   // RBAC (seed grants hr_admin compensation:read@org, hrbp @unit): market-comparison is a grant-only
   // org-catalog read → hrbp 200; employee is subject-scoped → hrbp 403 (target ∉ its subject set).
+  //
+  // UPDATE 2026-08-05 (#59): the LAST 2 TS-backed compensation procedures — getMarketComparison and
+  // getEmployeeComp — were deleted along with the whole router (all 4 survivors were zero-FE-consumer
+  // dead code). Both endpoints therefore drop `tsProcedure`; no cross-stack comparison can run.
+  //
+  // The surface is deliberately KEPT rather than removed (the billing-invoices / succession-read
+  // precedent). `rls` and `rbac` never touch the TS side — removing the surface would have thrown away
+  // a live Mode-A cross-tenant IDOR probe on /compensation/employee/{id} plus 6 RBAC assertions on two
+  // live C# routes, for no reason connected to the TS deletion. `verify compensation` still runs 2 RLS
+  // + 6 RBAC checks. The parity check exercises C# availability and reports [WEAK],
+  // explicitly stating that no cross-stack comparison ran.
   compensation: {
     key: 'compensation',
     flag: 'Platform__CompensationReadEnabled',
@@ -897,18 +908,19 @@ export const SURFACES: Record<string, Surface> = {
       {
         name: 'market-comparison',
         csharpPath: '/compensation/market-comparison',
-        tsProcedure: 'compensation.getMarketComparison',
+        // tsProcedure: DELETED 2026-08-05 (#59) — was 'compensation.getMarketComparison'.
         input: {},
         expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 200 },
         normalize: { dropNullish: true, sortArraysBy: 'level' },
       },
-      // Tier-2 by-id: getEmployeeComp = permissionProcedure('compensation','read') + assertSubjectInScope.
-      // Org-A target = a:hr_admin (has a comp row). super_admin bypass → 200; hr_admin reads its own id →
-      // 200; hrbp @unit → the target ∉ its subject set → 403. Mode-A IDOR: org-A token → org-B b:hr_admin id.
+      // Tier-2 by-id: was getEmployeeComp = permissionProcedure('compensation','read') +
+      // assertSubjectInScope. Org-A target = a:hr_admin (has a comp row). super_admin bypass → 200;
+      // hr_admin reads its own id → 200; hrbp @unit → the target ∉ its subject set → 403. Mode-A IDOR:
+      // org-A token → org-B b:hr_admin id. All of that is C#-side and still runs.
       {
         name: 'employee',
         csharpPath: '/compensation/employee/{id}',
-        tsProcedure: 'compensation.getEmployeeComp',
+        // tsProcedure: DELETED 2026-08-05 (#59) — was 'compensation.getEmployeeComp'.
         input: { userId: ID_SENTINEL },
         idScopeKey: 'employee',
         expectedByRole: { super_admin: 200, hr_admin: 200, hrbp: 403 },

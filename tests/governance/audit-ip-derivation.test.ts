@@ -184,7 +184,8 @@ describe('no runtime source may re-derive the client IP by hand', () => {
     // would silently drop the forensic field instead of fixing it. Pin that the writers still set
     // ipAddress, and that they set it from the helper.
     const writers = SOURCES.filter(({ text }) => /ipAddress:/.test(text) && /clientIpFrom\(/.test(text));
-    expect(writers.length).toBeGreaterThanOrEqual(5);
+    // PR #143 deletes the compensation audit writer; every surviving writer remains checked.
+    expect(writers.length).toBeGreaterThanOrEqual(4);
     for (const { file, text } of writers) {
       const bad = /ipAddress:\s*[^,\n]*headers\.get\(/.test(text);
       expect(bad, `${file} still builds ipAddress from a raw header read`).toBe(false);

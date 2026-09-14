@@ -42,7 +42,7 @@ import { appRouter } from '@tims/api';
  * Measured 2026-08-31 at `7d1e6a94` + PR #249, exactly, from the router.
  * MAY ONLY EVER DECREASE.
  */
-const PROCEDURE_CEILING = 359;
+const PROCEDURE_CEILING = 355;
 
 /**
  * The top-level routers registered in `packages/api/src/root.ts` on 2026-08-31.
@@ -90,7 +90,7 @@ const KNOWN_ROUTERS = new Set([
 const UNSCHEDULED_RESIDUE: Record<string, number> = {
   audit: 5, // #102: "the tenant-scoped audit.ts router has no C# port at all"
   engagement: 4, // listSurveys + getRotationRisk + writes retained at the flip
-  compensation: 4, // market-comparison + employee retained (zero FE consumers)
+  compensation: 0, // PR #143 removes the four zero-consumer procedures
   billing: 3, // self-serve writes, blocked on the declined Stripe cutover (#62)
   dei: 1, // generateReport — never ported, deliberately retained
 };

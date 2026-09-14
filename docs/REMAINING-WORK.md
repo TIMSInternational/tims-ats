@@ -156,7 +156,25 @@ wrapped in `if (options.<X>Enabled || isOpenApiDocGeneration) { ... }`, defaulti
     (`apps/web/lib/platform-api/compensation.ts`) now calls the C# service unconditionally for all
     10 of its hooks — the file is no longer split. `getPayEquity`/`simulateAdjustment`/
     `getMarketComparison`/`getEmployeeComp` remain untouched, unrelated zero-FE-consumer dead code,
-    unaffected by this change.)_
+    unaffected by this change.)_ _(UPDATE 2026-08-05 (#59): those last 4 zero-FE-consumer procedures
+    are now DELETED, and with them the whole `packages/api/src/routers/compensation.ts` router —
+    compensation has **no TS surface left at all**. `packages/api/src/services/compensation.service.ts`
+    (`getEmployeeCompForSubject`) went too: `getEmployeeComp` was its only remaining caller after
+    `myCompensation` was deleted 2026-07-29, so the helper was dead code. Its §21 field-auth
+    (`selectFor` → the Prisma select, so restricted columns never leave the DB) and fail-closed
+    FULL+AUDIT `logDataAccess` are now enforced ONLY by the C# implementation — see
+    `CompensationReadTests.cs:131,144` (employee read) and `CompensationFxReadUseCaseTests.cs:72,90`
+    (simulate-adjustment's compa/band block). **This does NOT unblock flip #66.** #59's body claims
+    "#66 is ready today"; that is true about WRITERS and wrong about the flip. Three of the five
+    Prisma `employeeCompensation` readers are now dispositioned; **two remain**, in two other
+    domains: the cross-org GDPR/Habeas-Data right-of-access export
+    (`packages/api/src/routers/platform/data-requests.ts:94` — **no open issue tracks it**) and the
+    alert-metric `salaryAdjustment.count` path (`packages/api/src/routers/monitoring.ts:22` +
+    `packages/api/src/repositories/alert-evaluation.repository.ts:115`, under Q0b's monitoring work).
+    Full set with file:line in
+    `docs/architecture/csharp-migration/ownership-flip-runbook.md` §7d. Runbook §8 **Q10 is also now
+    resolved** there — `salary_bands` has zero application writers, and is no longer read by
+    `packages/api` at all.)_
   - Nine-box — read (#164) + calibration write (#172). **Both flipped and live in prod** (2026-07-28),
     same confirmation method as evaluation360 above.
   - Engagement — read (#166) + write (#173). **Write flipped and live in prod** (2026-07-28) —

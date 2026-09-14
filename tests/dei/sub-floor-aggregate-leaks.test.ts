@@ -6,7 +6,8 @@ import { initTRPC } from '@trpc/server';
 // engagement count/sum/avg/ratio computed over a 1..4-person population without a
 // min-5 floor. Covers:
 //   HIGH 4  nationality/ethnicity sort  → order independent of hidden counts
-//   MEDIUM 5 simulateAdjustment select  → omits compaRatio/bandId for leader/employee
+//   (MEDIUM 5 simulateAdjustment select — REMOVED 2026-08-05 (#59): the whole compensation router was
+//    TS-deleted. See the in-place note further down for where that guarantee now lives.)
 //   MEDIUM 6 dei getDashboardKpis       → totalNationalities null when distribution hidden
 //   MEDIUM 7 getSurveyResults           → uniform-suppress every question summary
 //   (finding 5 getClimateHeatmap category-contributor floor, MEDIUM 8 engagement
@@ -23,26 +24,20 @@ import { initTRPC } from '@trpc/server';
 //    tests/compensation/comp-fx-shaping-fixtures.test.ts's golden-fixture parity + the C# port's
 //    own CompensationFxShapingKernelsFixtureTests.cs.)
 //
-// Compensation/engagement resolvers live inline in the router behind the full
-// middleware stack — we mock `../trpc` so permissionProcedure is a bare pass-through,
-// mock `@tims/db` (tenantDb), no-op the scope/audit helpers, and keep the REAL
-// suppressBelowMin5/selectFor so the access logic is exercised end-to-end.
+// Engagement resolvers live inline in the router behind the full middleware stack — we mock
+// `../trpc` so permissionProcedure is a bare pass-through, mock `@tims/db` (tenantDb), no-op the
+// scope/audit helpers, and keep the REAL suppressBelowMin5/selectFor so the access logic is
+// exercised end-to-end.
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Shared @tims/db + access + trpc mocks (compensation + engagement routers)
+// Shared @tims/db + access + trpc mocks (engagement router)
 // ─────────────────────────────────────────────────────────────────────────────
-const compFindFirst = vi.fn();
-const bandFindUnique = vi.fn();
 const surveyFindFirst = vi.fn();
 const surveyFindMany = vi.fn();
 const surveyCount = vi.fn();
 
 vi.mock('@tims/db', () => ({
   tenantDb: {
-    employeeCompensation: {
-      findFirst: (...a: unknown[]) => compFindFirst(...a),
-    },
-    salaryBand: { findUnique: (...a: unknown[]) => bandFindUnique(...a) },
     survey: {
       findFirst: (...a: unknown[]) => surveyFindFirst(...a),
       findMany: (...a: unknown[]) => surveyFindMany(...a),
@@ -74,7 +69,6 @@ vi.mock('../../packages/api/src/trpc', () => {
   return { router: t.router, permissionProcedure: () => t.procedure };
 });
 
-import { compensationRouter } from '../../packages/api/src/routers/compensation';
 import { engagementRouter } from '../../packages/api/src/routers/engagement';
 
 const t = initTRPC
@@ -85,17 +79,7 @@ const t = initTRPC
   }>()
   .create();
 
-const compFactory = t.createCallerFactory(compensationRouter as unknown as Parameters<typeof t.createCallerFactory>[0]);
 const engFactory = t.createCallerFactory(engagementRouter as unknown as Parameters<typeof t.createCallerFactory>[0]);
-
-const compCaller = (roles: string[] = ['super_admin']) =>
-  compFactory({
-    user: { organizationId: 'org-1', id: 'u-1' },
-    access: { roles },
-    headers: new Headers(),
-  }) as unknown as {
-    simulateAdjustment(input: { userId: string; proposedSalary: number }): Promise<Record<string, unknown>>;
-  };
 
 const engCaller = () =>
   engFactory({
@@ -173,40 +157,15 @@ describe('listSurveys responseCount floor (finding 6)', () => {
   });
 });
 
-// ── MEDIUM 5: simulateAdjustment Prisma select via selectFor ─────────────────
-describe('simulateAdjustment select field-auth (MEDIUM 5)', () => {
-  const TARGET_UUID = '11111111-1111-4111-8111-111111111111';
-
-  beforeEach(() => {
-    compFindFirst.mockResolvedValue({ id: 'comp-1', currentSalary: 5_000_000 });
-    bandFindUnique.mockResolvedValue({ minSalary: 4_000_000, midSalary: 5_000_000, maxSalary: 6_000_000 });
-  });
-
-  it('leader → the Prisma select OMITS compaRatio + bandId (never leaves the DB)', async () => {
-    await compCaller(['leader']).simulateAdjustment({ userId: TARGET_UUID, proposedSalary: 5_500_000 });
-    const sel = (compFindFirst.mock.calls[0]![0] as { select: Record<string, unknown> }).select;
-    expect(sel.currentSalary).toBe(true);
-    expect(sel.compaRatio).toBeUndefined();
-    expect(sel.bandId).toBeUndefined();
-    // the band lookup must not even run for an unentitled caller
-    expect(bandFindUnique).not.toHaveBeenCalled();
-  });
-
-  it('employee → select omits compaRatio + bandId', async () => {
-    await compCaller(['employee']).simulateAdjustment({ userId: TARGET_UUID, proposedSalary: 5_500_000 });
-    const sel = (compFindFirst.mock.calls[0]![0] as { select: Record<string, unknown> }).select;
-    expect(sel.compaRatio).toBeUndefined();
-    expect(sel.bandId).toBeUndefined();
-  });
-
-  it('super_admin → select INCLUDES compaRatio + bandId', async () => {
-    compFindFirst.mockResolvedValue({ id: 'comp-1', currentSalary: 5_000_000, compaRatio: 1.05, bandId: 'b-1' });
-    await compCaller(['super_admin']).simulateAdjustment({ userId: TARGET_UUID, proposedSalary: 5_500_000 });
-    const sel = (compFindFirst.mock.calls[0]![0] as { select: Record<string, unknown> }).select;
-    expect(sel.compaRatio).toBe(true);
-    expect(sel.bandId).toBe(true);
-  });
-});
+// MEDIUM 5 (simulateAdjustment's selectFor-derived Prisma select) REMOVED 2026-08-05 (#59): the
+// compensation router was deleted outright — getPayEquity/simulateAdjustment/getMarketComparison/
+// getEmployeeComp were all zero-FE-consumer dead code with live C# equivalents. The
+// "compaRatio/bandId never LEAVE the DB for an unentitled caller" guarantee is now asserted on the C#
+// side by services/Tims.Platform/tests/Tims.UnitTests/FxReads/CompensationFxReadUseCaseTests.cs:72
+// (`Simulate_omits_the_compaRatio_block_for_a_non_entitled_caller`) and :90 (the entitled case).
+// tests/dei/comp-field-auth.test.ts — which covered the same ground for getEmployeeComp AND
+// simulateAdjustment — was deleted in the same pass; its employee-read counterpart is
+// services/Tims.Platform/tests/Tims.IntegrationTests/Compensation/CompensationReadTests.cs:131,144.
 
 // ── MEDIUM 7 → round 9: getSurveyResults all-or-nothing on contributor + skip ──
 // Round 9 SUPERSEDES the round-6 uniform-keep-keys design: when ANY question's

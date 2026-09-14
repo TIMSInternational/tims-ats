@@ -6,13 +6,13 @@ describe('SURFACES', () => {
   // TS-backed endpoint (getCriticalRole) was deleted. 2026-08-05 (#57): ninebox dropped out the same
   // way (its last 4 TS-backed endpoints deleted with the whole router). Both — and the other three
   // talent surfaces — are registered C#-only today (succession/team-intel/reporting/evaluation360
-  // re-registered 2026-08-17, #195); see the dedicated assertions below. compensation is still the
-  // only talent read surface with a TS side left.
-  it('the one read surface that still has a TS side is registered with its flag + current endpoint set (Tier-1 + Tier-2 by-id)', () => {
+  // re-registered 2026-08-17, #195); see the dedicated assertions below. compensation also has no TS side on this branch.
+  it('compensation retains its C# endpoints and flag after TS deletion', () => {
     expect(SURFACES['compensation'].flag).toBe('Platform__CompensationReadEnabled');
     // 2026-07-29: shrunk from 7 to 2 — the other 5 TS procedures were deleted (C#-only now).
     expect(SURFACES['compensation'].endpoints.map((e) => e.name).sort()).toEqual(['employee', 'market-comparison']);
     expect(SURFACES['compensation'].probeRole).toBe('super_admin');
+    for (const endpoint of SURFACES['compensation'].endpoints) expect(endpoint.tsProcedure).toBeUndefined();
   });
 
   // ── Registry-level invariants (added 2026-08-11) ─────────────────────────────────────────────

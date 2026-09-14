@@ -145,7 +145,8 @@ describe('§21 — every row-level read of a confidential+ entity is audited', (
   });
 
   it('found a non-trivial population of readers — a clean result over zero files proves nothing', () => {
-    expect(readers.length).toBeGreaterThanOrEqual(6);
+    // PR #143 removes the compensation router and service; remaining readers stay checked.
+    expect(readers.length).toBeGreaterThanOrEqual(5);
     expect(readers.some((r) => r.rowLevel.length > 0)).toBe(true);
   });
 

@@ -1,16 +1,21 @@
-// Pure compensation shaping kernels — the SINGLE SOURCE the TS compensation router returns AND the parity
-// target for the C# port (Phase-5 compensation strangler, Slice 9, FX-FREE subset). No DB, no I/O, no clock,
-// so they are golden-fixturable from the repo-root vitest AND importable everywhere.
+// Pure compensation shaping kernels — originally the SINGLE SOURCE the TS compensation router returned,
+// and the parity target for the C# port (Phase-5 compensation strangler, Slice 9, FX-FREE subset). No DB,
+// no I/O, no clock, so they are golden-fixturable from the repo-root vitest AND importable everywhere.
 //
-// This slice extracts the two FX-FREE aggregate kernels: buildCompaRatioDistribution (read #4 — the meaty
+// This slice extracted the two FX-FREE aggregate kernels: buildCompaRatioDistribution (read #4 — the meaty
 // min-5 kernel) and buildBenefitsUtilization (read #3). The five FX-dependent reads (convertMoney/getFxRate)
-// stay in the router and are Slice 9b.
+// stayed in the router and were Slice 9b.
 //
-// NOTE (2026-07-29): the TS router no longer calls buildCompaRatioDistribution or
-// buildBenefitsUtilization — those two procedures were deleted once the C# read surface went live.
-// Both kernels are DELIBERATELY KEPT: they remain the golden-fixtured cross-stack contract
-// (contracts/compensation-fixtures/*, asserted by both this repo's vitest and the C# unit tests),
-// and apps/web/lib/platform-api/compensation.ts imports their result types.
+// NOTE (2026-07-29 → 2026-08-05): **no kernel in this file has a TS call site any more.**
+// buildCompaRatioDistribution/buildBenefitsUtilization lost theirs on 2026-07-29 and
+// buildBandDistribution/buildTotalCompBreakdown/buildCompDashboardKpis on 2026-07-31, as each procedure
+// went C#-only; buildCompPayEquity/buildSimulateAdjustment lost theirs on 2026-08-05 (#59) when
+// packages/api/src/routers/compensation.ts was deleted outright.
+// Every kernel here is DELIBERATELY KEPT: they remain the golden-fixtured cross-stack contract
+// (contracts/compensation-fixtures/*, asserted by both this repo's vitest —
+// tests/compensation/comp-fx-shaping-fixtures.test.ts — and the C# unit tests), and
+// apps/web/lib/platform-api/compensation.ts imports their result types. Deleting one silently drops the
+// only thing pinning the C# port's shaping to a reviewed definition.
 //
 // PARITY PINS (each red-if-regressed in contracts/compensation-fixtures/*):
 //  - min-5 k-anon (suppressBelowMin5 byte-identical to access/aggregate.ts): 1..4 → suppressed; 0 or ≥5 → not.
@@ -197,10 +202,7 @@ export interface BenefitUtilizationItem {
  * utilization = round((enrolled/totalUsers)*10000)/100 (JS half-up, 2-dec), 0 when there are no users.
  * Deliberately NO min-5 (benefits enrollment is not in the §21 sensitive-data matrix; see REMAINING-WORK).
  */
-export function buildBenefitsUtilization(
-  plans: BenefitPlanInput[],
-  totalUsers: number,
-): BenefitUtilizationItem[] {
+export function buildBenefitsUtilization(plans: BenefitPlanInput[], totalUsers: number): BenefitUtilizationItem[] {
   return plans.map((b) => ({
     id: b.id,
     name: b.name,
@@ -270,7 +272,15 @@ export function buildBandDistribution(
   >();
   for (const r of rows) {
     if (!byBand.has(r.bandId)) {
-      byBand.set(r.bandId, { level: r.level, title: r.title, min: r.min, mid: r.mid, max: r.max, currency: r.currency, dots: [] });
+      byBand.set(r.bandId, {
+        level: r.level,
+        title: r.title,
+        min: r.min,
+        mid: r.mid,
+        max: r.max,
+        currency: r.currency,
+        dots: [],
+      });
     }
     const span = r.max - r.min;
     const rawPos = span > 0 ? ((r.salaryInBandCurrency - r.min) / span) * 100 : 50;
@@ -311,9 +321,7 @@ export interface CompPayEquityOut {
  * mean). min-5: when the group is 1..4 the count + both salary stats are nulled (suppressed).
  */
 export function buildCompPayEquity(convertedSalaries: number[], displayCurrency: string): CompPayEquityOut {
-  const avg = convertedSalaries.length
-    ? convertedSalaries.reduce((a, b) => a + b, 0) / convertedSalaries.length
-    : 0;
+  const avg = convertedSalaries.length ? convertedSalaries.reduce((a, b) => a + b, 0) / convertedSalaries.length : 0;
   const sorted = [...convertedSalaries].sort((a, b) => a - b);
   const median = sorted[Math.floor(sorted.length / 2)] ?? 0;
   const s = suppressBelowMin5(convertedSalaries.length);
