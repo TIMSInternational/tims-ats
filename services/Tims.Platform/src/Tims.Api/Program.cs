@@ -333,6 +333,8 @@ try
     builder.Services.AddScoped<InvitationResendUseCase>();
     builder.Services.AddScoped<IOrganizationInvitationCreateRepository, OrganizationInvitationCreateRepository>();
     builder.Services.AddScoped<OrganizationInvitationCreateUseCase>();
+    builder.Services.AddScoped<IUserInvitationCreateRepository, UserInvitationCreateRepository>();
+    builder.Services.AddScoped<UserInvitationCreateUseCase>();
     builder.Services.TryAddSingleton(TimeProvider.System);
     builder.Services.AddOptions<InvitationDeliveryOptions>()
         .Bind(builder.Configuration.GetSection(InvitationDeliveryOptions.SectionName))
@@ -1273,6 +1275,10 @@ try
     if (externalOptions.PlatformInvitationsReadEnabled || isOpenApiDocGeneration)
     {
         app.MapPlatformInvitationsReadEndpoints();
+    }
+    if (externalOptions.PlatformUserInvitationCreateEnabled || isOpenApiDocGeneration)
+    {
+        app.MapUserInvitationCreateEndpoints();
     }
     if (externalOptions.PlatformOrganizationInvitationCreateEnabled || isOpenApiDocGeneration)
     {

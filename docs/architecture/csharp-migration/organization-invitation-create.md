@@ -1,5 +1,7 @@
 # C# organization invitation creation — #75 / #217
 
+> 2026-09-14 successor: [individual-user invitation creation](user-invitation-create.md) is now implemented separately, still disabled. The remaining-work list below records this organization-only slice.
+
 Implemented, default disabled. Depends on the email sender (#258) and guarded resend (#259). No production flags, IAM, schema or email deliveries changed in this slice.
 
 ## Contract and transaction

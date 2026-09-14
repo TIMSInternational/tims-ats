@@ -615,6 +615,9 @@ public sealed class PlatformOptions
     /// </summary>
     public bool PlatformInvitationsReadEnabled { get; init; }
 
+    /// <summary>Default-disabled individual-user invitation creation and initial delivery.</summary>
+    public bool PlatformUserInvitationCreateEnabled { get; init; }
+
     /// <summary>Default-disabled organization invitation creation and initial delivery.</summary>
     public bool PlatformOrganizationInvitationCreateEnabled { get; init; }
 

@@ -229,10 +229,10 @@ interface AllowGroup {
 const UNREGISTERED_ALLOWLIST: AllowGroup[] = [
   {
     reason:
-      'Invitation resend and organization invitation creation are default-disabled platform-owner writes with real PostgreSQL/HTTP authorization and transaction tests. ' +
+      'Invitation resend, org/user creation and role lookup are default-disabled platform-owner operations with real PostgreSQL/HTTP authorization and transaction tests. ' +
       'Remote parity needs isolated invitation rows and an explicitly controlled email destination/provider; the shared harness must not resend real invitations. ' +
-      'Local provider acceptance/failure is simulated, not live delivery. Tracked in #75 and #217; see invitation-resend.md.',
-    routes: ['POST /platform/invitations/{id}/resend', 'POST /platform/invitations/organizations'],
+      'Local provider acceptance/failure is simulated, not live delivery. Tracked in #75 and #217; see invitation-resend.md and user-invitation-create.md. Role lookup needs per-tenant remote role fixtures.',
+    routes: ['POST /platform/invitations/{id}/resend', 'POST /platform/invitations/organizations', 'POST /platform/invitations/users', 'GET /platform/invitations/organizations/{id}/roles'],
   },
   {
     reason:
@@ -477,8 +477,8 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //         (157 → 168 was Phase-5 slice 25 / #98: the eleven notification routes, landed dark and
     //         allowlisted pending a per-role ROW fixture — see their group above. Measured, not
     //         incremented by hand: the re-derivation command above prints 168.)
-    // 2026-09-14: resend and organization invitation creation writes added; safe remote mail fixtures pending.
-    expect(deployed.size).toBe(170);
+    // 2026-09-14: resend, org/user invitation creation and role lookup added; safe remote mail fixtures pending.
+    expect(deployed.size).toBe(172);
     //   92 = 65 read endpoints (surfaces.ts, 14 surfaces) + 27 write (write-surfaces.ts, 8 surfaces:
     //        24 written literally + 3 produced by the shared `transitionEndpoint` helper). The READ side
     //        went 40 → 65 on 2026-08-17 (#195 residual): the four talent surfaces deleted in the
@@ -542,7 +542,7 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //   65 → 76, 2026-08-19 (Phase-5 slice 25 / #98): the eleven notification routes landed DARK, all
     //   eleven pending a fixture whose shape differs from every prior surface's (per-role ROWS, not
     //   grants — nine of the eleven procedures carry no grant to seed). Documented growth, not drift.
-    expect(allowlistNormalised.length).toBe(78);
+    expect(allowlistNormalised.length).toBe(80);
     // Every group must actually carry a reason and actually cover something — an empty group, or one
     // whose "reason" is a word, is a rubber stamp.
     for (const g of UNREGISTERED_ALLOWLIST) {
