@@ -6,7 +6,7 @@ namespace Tims.Infrastructure.PlatformOrganizations;
 
 /// <summary>
 /// The create context for the platform-owner organizations surface (Phase-5 slice 21, issue #76) — the
-/// seven-table provisioning transaction of <c>createOrganization</c> plus its audit row.
+/// seven-table provisioning transaction of <c>createOrganization</c> plus its audit row. Also used by organization invitation creation so setup and its raw invitation INSERT share one transaction.
 ///
 /// <para><b>Its OWN context, for the same reason slice 20's is its own.</b> Federico's decision on #76 is
 /// that the C# audit write ships FAIL-CLOSED, diverging from the TS <c>.catch(() =&gt; {})</c>. That only

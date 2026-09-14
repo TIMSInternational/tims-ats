@@ -1554,6 +1554,48 @@
         }
       }
     },
+    "/platform/invitations/organizations": {
+      "post": {
+        "tags": [
+          "PlatformInvitations"
+        ],
+        "operationId": "CreateOrganizationInvitation",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrganizationInvitationInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationInvitationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "409": {
+            "description": "Conflict"
+          }
+        }
+      }
+    },
     "/platform/invitations/{id}/resend": {
       "post": {
         "tags": [
@@ -11549,6 +11591,50 @@
           "createdAt": {
             "type": "string",
             "format": "date-time"
+          }
+        }
+      },
+      "OrganizationInvitationInput": {
+        "required": [
+          "email",
+          "organizationName",
+          "organizationSlug"
+        ],
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "organizationName": {
+            "type": "string"
+          },
+          "organizationSlug": {
+            "type": "string"
+          },
+          "organizationPlan": {
+            "type": "string",
+            "default": "trial"
+          }
+        }
+      },
+      "OrganizationInvitationResponse": {
+        "required": [
+          "id",
+          "organizationId",
+          "delivery"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "organizationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "delivery": {
+            "type": "string"
           }
         }
       },
