@@ -1,5 +1,12 @@
 # C# deployment OIDC failure — 2026-09-14
 
+**Resolved:** the approved `bullet.amazonaws.com` condition was applied and verified.
+Workflow 34890050767 succeeded; App Runner operation `ddf7c558d555481d95fddf31c066cada`
+succeeded and the service runs image `1657b2f`. Independent `/health` and `/ready` probes
+both returned `Healthy`, HTTP 200. The rollout preserved 27 environment variables and
+three secret references. Earlier blocked/pending statements below are incident history.
+Authenticated browser/impersonation canaries remain separate acceptance work.
+
 The first deployment workflow run (34887413432) failed at AssumeRoleWithWebIdentity.
 The live API still serves image `5f083f0`; merging application code has not deployed it.
 
