@@ -619,6 +619,45 @@ public sealed class NotificationWriteEndpointAuthTests(NotificationFixture fixtu
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
+    [Theory]
+    [InlineData(false, "foreign")]
+    [InlineData(true, "foreign")]
+    [InlineData(false, "missing")]
+    [InlineData(true, "missing")]
+    [InlineData(false, "inactive")]
+    [InlineData(true, "inactive")]
+    [InlineData(false, "deleted")]
+    [InlineData(true, "deleted")]
+    public async Task Create_InvalidRecipient_RejectsEntireBatch(bool bulk, string state)
+    {
+        await using var factory = EnabledFactory();
+        using var client = factory.CreateClient();
+        var target = state == "foreign" ? NotificationFixture.OrgBAdminId
+            : state == "missing" ? Guid.NewGuid() : NotificationFixture.NoGrantId;
+        var before = await _fixture.CountNotificationsForUserAsync(NotificationFixture.MemberId);
+        try
+        {
+            if (state == "inactive")
+                await _fixture.ExecuteAsync($"UPDATE users SET is_active = false WHERE id = '{target}'");
+            if (state == "deleted")
+                await _fixture.ExecuteAsync($"UPDATE users SET deleted_at = CURRENT_TIMESTAMP WHERE id = '{target}'");
+            var json = bulk
+                ? $$"""{"userIds":["{{NotificationFixture.MemberId}}","{{target}}"],"type":"info","title":"Rejected batch"}"""
+                : $$"""{"userId":"{{target}}","type":"info","title":"Rejected batch"}""";
+            var response = await Send(client, HttpMethod.Post, bulk ? "/notifications/bulk" : "/notifications",
+                Mint(NotificationFixture.AdminSub), json);
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            var body = JsonNode.Parse(await response.Content.ReadAsStringAsync())!;
+            Assert.Equal("invalid_notification_recipients", body["error"]!.GetValue<string>());
+            Assert.Equal(before, await _fixture.CountNotificationsForUserAsync(NotificationFixture.MemberId));
+        }
+        finally
+        {
+            await _fixture.ExecuteAsync($"UPDATE users SET is_active = true, deleted_at = NULL WHERE id = '{NotificationFixture.NoGrantId}'");
+            await _fixture.ExecuteAsync("DELETE FROM notifications WHERE title = 'Rejected batch'");
+        }
+    }
+
     // ══ auth matrix ══
 
     [Fact]

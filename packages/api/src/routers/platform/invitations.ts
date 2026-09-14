@@ -6,6 +6,7 @@ import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { sendEmail } from '../../lib/ses';
 import { randomUUID } from 'crypto';
+import { bulkInviteUsers, resendInvitation } from '../../services/bulk-invitation.service';
 import { platformProcedure } from './_common';
 import { logPlatformExport } from '../../access/security-audit';
 import { provisionOrgDefaults, provisionOrgEntitlements } from '../../services/org-provisioning';
@@ -232,39 +233,13 @@ export const invitationsRouter = router({
     }),
 
   resendInvitation: platformProcedure.input(z.object({ id: z.string().uuid() })).mutation(async ({ input }) => {
-    const invitation = await db.platformInvitation.findUnique({
-      where: { id: input.id },
-      select: { id: true, email: true, token: true, status: true, organizationName: true },
-    });
-    if (!invitation) throw new TRPCError({ code: 'NOT_FOUND', message: 'Invitacion no encontrada' });
-    if (invitation.status === 'accepted' || invitation.status === 'revoked') {
+    const result = await resendInvitation(input.id);
+    if ('error' in result) {
+      if (result.error === 'not_found') throw new TRPCError({ code: 'NOT_FOUND', message: 'Invitacion no encontrada' });
+      if (result.error === 'delivery_failed') throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Email delivery unconfirmed; invitation was not marked sent' });
       throw new TRPCError({ code: 'BAD_REQUEST', message: 'Cannot resend accepted or revoked invitation' });
     }
-
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-    const appUrl = getAppUrl();
-
-    await sendEmail({
-      to: invitation.email,
-      subject: `Recordatorio: Invitacion pendiente - ${invitation.organizationName || 'TIMS ATS'}`,
-      html: `
-          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
-            <div style="text-align: center; margin-bottom: 32px;"><h1 style="color: #1F114C; font-size: 24px; margin: 0;">TIMS ATS</h1></div>
-            <div style="background: #f8f9fa; border-radius: 12px; padding: 32px; margin-bottom: 24px;">
-              <h2 style="color: #333; font-size: 18px; margin: 0 0 16px;">Recordatorio de Invitacion</h2>
-              <p style="color: #585858; line-height: 1.6; margin: 0 0 24px;">Tienes una invitacion pendiente para ${invitation.organizationName ? `<strong>${invitation.organizationName}</strong> en ` : ''}TIMS ATS.</p>
-              <div style="text-align: center;"><a href="${appUrl}/accept-invitation?token=${invitation.token}" style="background: #1F114C; color: white; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; display: inline-block;">Aceptar Invitacion</a></div>
-            </div>
-            <p style="color: #8B8B8B; font-size: 12px; text-align: center;">Esta invitacion expira en 7 dias.</p>
-          </div>
-        `,
-    });
-
-    return db.platformInvitation.update({
-      where: { id: input.id },
-      data: { sentAt: new Date(), expiresAt, status: InvitationStatus.sent },
-      select: { id: true, status: true, sentAt: true, expiresAt: true },
-    });
+    return result;
   }),
 
   revokeInvitation: platformProcedure.input(z.object({ id: z.string().uuid() })).mutation(async ({ input }) => {
@@ -422,55 +397,8 @@ export const invitationsRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const org = await db.organization.findUnique({
-        where: { id: input.organizationId },
-        select: { name: true },
-      });
-      if (!org) throw new TRPCError({ code: 'NOT_FOUND', message: 'Organization not found' });
-
-      const results: { email: string; status: 'sent' | 'duplicate' | 'error'; message?: string }[] = [];
-      const existingEmails = await db.platformInvitation.findMany({
-        where: {
-          organizationId: input.organizationId,
-          email: { in: input.users.map((u) => u.email) },
-          status: { in: [InvitationStatus.sent, InvitationStatus.pending, InvitationStatus.accepted] },
-        },
-        select: { email: true },
-      });
-      const existingSet = new Set(existingEmails.map((e) => e.email.toLowerCase()));
-
-      for (const user of input.users) {
-        if (existingSet.has(user.email.toLowerCase())) {
-          results.push({ email: user.email, status: 'duplicate', message: 'Already invited' });
-          continue;
-        }
-        try {
-          const token = randomUUID();
-          const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-          await db.platformInvitation.create({
-            data: {
-              email: user.email,
-              type: InvitationType.user,
-              organizationId: input.organizationId,
-              organizationName: org.name,
-              roleSlug: user.roleSlug,
-              token,
-              status: InvitationStatus.sent,
-              invitedById: ctx.user.id,
-              sentAt: new Date(),
-              expiresAt,
-            },
-          });
-          results.push({ email: user.email, status: 'sent' });
-        } catch {
-          results.push({ email: user.email, status: 'error', message: 'Failed to create invitation' });
-        }
-      }
-
-      const sent = results.filter((r) => r.status === 'sent').length;
-      const duplicates = results.filter((r) => r.status === 'duplicate').length;
-      const errors = results.filter((r) => r.status === 'error').length;
-
-      return { results, summary: { total: input.users.length, sent, duplicates, errors } };
+      const result = await bulkInviteUsers(input.organizationId, ctx.user.id, input.users);
+      if (!result) throw new TRPCError({ code: 'NOT_FOUND', message: 'Organization not found' });
+      return result;
     }),
 });

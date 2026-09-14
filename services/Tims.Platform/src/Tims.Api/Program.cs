@@ -1031,6 +1031,8 @@ try
         });
     });
 
+    builder.Services.AddSingleton<IRelayNonceStore, RelayNonceStore>();
+
     var app = builder.Build();
 
     // #181 — strip the client-controlled `x-real-ip` before ANYTHING can read it. This is deliberately
@@ -1046,6 +1048,8 @@ try
     app.UseCors(BrowserCorsPolicyName);
 
     app.UseAuthentication();
+    // Verify bearer before consuming relay nonces; verify attribution before principal/audit/rate-limit consumers.
+    app.UseMiddleware<RelayAttributionMiddleware>();
 
     // Principal resolution runs AFTER authentication and BEFORE rate limiting: it resolves the TIMS
     // principal ONCE (JWT `sub` → TenantContext via PrincipalResolver) and stashes it, so the limiter

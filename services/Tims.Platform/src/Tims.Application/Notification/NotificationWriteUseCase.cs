@@ -2,9 +2,9 @@ namespace Tims.Application.Notification;
 
 /// <summary>
 /// The notification WRITE use case (Phase-5 Slice 25) — the C# port of the eight mutations. Deliberately thin:
-/// each TS procedure is a single Prisma call whose result is returned verbatim, so the use case's whole job is
-/// to wrap the affected-row count in the Prisma <c>BatchPayload</c> shape and to pass the caller identity
-/// through. No business rule is invented here that the TS does not have.
+/// the use case wraps affected-row counts in the Prisma <c>BatchPayload</c> shape and passes caller identity
+/// through. Create operations validate and lock recipient membership in the repository transaction,
+/// matching the TypeScript security contract.
 /// </summary>
 public sealed class NotificationWriteUseCase(INotificationWriteRepository repository)
 {
