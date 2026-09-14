@@ -30,3 +30,28 @@ Same-model security and claim reviewers found no blocking defect; findings led t
 - Related people are independently tenant-filtered. Foreign or organizationless actor references return null identities; raw actor/user IDs remain part of the existing audit record contract.
 - Before enabling the flag, add nonempty differential fixtures and shared harness registration, exercise authenticated staging, and inventory all consumers before retiring TypeScript procedures.
 - Keep the separate platform-owner audit routes and cross-organization behavior intact.
+
+## Frontend export wiring and rollout
+
+`/settings/audit-log` now uses `useTenantAuditExport`. The build-time flag
+`NEXT_PUBLIC_TENANT_AUDIT_VIA_CSHARP=true`, together with the configured platform API URL,
+selects POST `/tenant-audit/export` through the same-origin authenticated relay. Otherwise the
+existing tRPC export remains selected. The wrapper never retries against the other backend
+following an error. It validates the response before the page downloads it and preserves the
+existing pending, error and truncation messages.
+
+The four read procedures currently have no frontend consumers. Their C# endpoints are retained
+as the tenant audit API surface for API clients and future audit views; this PR does not build
+unused UI or remove existing tRPC API contracts before acceptance.
+
+Rollout order:
+1. Merge and deploy the C# endpoint implementation before changing browser routing.
+2. Complete nonempty differential fixtures and authenticated staging checks for export/read access.
+3. Enable `Platform__TenantAuditReadEnabled=true` on the backend and verify the routes.
+4. Set `NEXT_PUBLIC_TENANT_AUDIT_VIA_CSHARP=true` for the frontend deployment and rebuild; this flag is inlined at build time.
+5. Verify CSV/JSON downloads, filter behavior, denied read-only users, and impersonated export attribution.
+6. Inventory external consumers before retiring the tRPC audit router/service/repository. Browser rollback is a rebuild with the frontend flag false while the TypeScript implementation remains available.
+
+The full JavaScript suite passed 3,276 tests across 332 files after this wiring; API and web type checks passed. No live flag changes were made as part of the frontend wiring. Seven runtime hook tests cover
+both routing branches, authenticated relay dispatch, numeric normalization, response validation,
+and failure behavior. The existing client/relay suites cover the shared cookie transport.

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
+import { useTenantAuditExport } from '../../../../lib/platform-api/tenant-audit';
 
 function downloadBlob(data: string, format: 'csv' | 'json') {
   const mime = format === 'json' ? 'application/json' : 'text/csv;charset=utf-8;';
@@ -25,7 +26,7 @@ export default function AuditLogExportPage() {
   const [actorId, setActorId] = useState('');
 
   const users = trpc.user.list.useQuery({ limit: 100 });
-  const exportMutation = trpc.audit.exportLogs.useMutation();
+  const exportMutation = useTenantAuditExport();
 
   const clearFilters = () => {
     setDateFrom('');
