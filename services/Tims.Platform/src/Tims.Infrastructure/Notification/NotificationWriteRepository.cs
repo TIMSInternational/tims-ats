@@ -251,6 +251,8 @@ public sealed class NotificationWriteRepository(NotificationDbContext db) : INot
         await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken)
             .ConfigureAwait(false);
 
+        await ValidateRecipientsAsync(organizationId, [input.UserId], cancellationToken);
+
         var content = input.Content;
 
         // read/archived take their `false` defaults and created_at its CURRENT_TIMESTAMP default, exactly as
@@ -291,6 +293,8 @@ public sealed class NotificationWriteRepository(NotificationDbContext db) : INot
         await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken)
             .ConfigureAwait(false);
 
+        await ValidateRecipientsAsync(organizationId, userIds, cancellationToken);
+
         // createMany — ONE multi-row INSERT, ids generated per row exactly as Prisma's client-side
         // @default(uuid()) does. userIds is NOT de-duplicated: createMany has no skipDuplicates here, so a
         // repeated id yields a repeated row and a count that includes it.
@@ -310,6 +314,22 @@ public sealed class NotificationWriteRepository(NotificationDbContext db) : INot
 
         await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
         return affected;
+    }
+
+    private async Task ValidateRecipientsAsync(
+        Guid? organizationId, IReadOnlyList<Guid> userIds, CancellationToken cancellationToken)
+    {
+        if (organizationId is null) throw new InvalidNotificationRecipientsException();
+        var distinctIds = userIds.Distinct().ToArray();
+        // Same TenantScope transaction as INSERT; SHARE locks prevent membership changes
+        // (including non-key updates) until commit. A batch is rejected before any writes.
+        var targets = await _db.Database.SqlQuery<Guid>($"""
+            SELECT id AS "Value" FROM users
+            WHERE organization_id = {organizationId} AND id = ANY({distinctIds})
+              AND is_active = true AND deleted_at IS NULL
+            ORDER BY id FOR SHARE
+            """).ToListAsync(cancellationToken).ConfigureAwait(false);
+        if (targets.Count != distinctIds.Length) throw new InvalidNotificationRecipientsException();
     }
 
     /// <summary>

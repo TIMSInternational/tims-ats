@@ -1,0 +1,24 @@
+# Impersonation transport and containment — issue #239
+
+Implemented 2026-09-14; not deployed by this change.
+
+## Contract
+
+All browser platform reads and writes now use `/api/platform/...` on the Next.js origin with `credentials: same-origin`. The relay requires an explicit bearer token; it never converts ambient Supabase cookies into authentication. C# verifies the bearer JWT and resolves the actual actor. The relay forwards only `tims_impersonation`, leaving it HttpOnly, and does not accept unsigned actor/tenant headers. It also signs a purpose-separated attribution envelope using the existing shared signing secret. This binds timestamp, nonce, method, raw path/query, bearer and cookie SHA-256 hashes, and bounded client IP/User-Agent. C# validates JWT authentication first, verifies the envelope, consumes a single-use Redis nonce, and only then restores trusted attribution before principal, rate-limit and audit consumers. Nonces expire after 90 seconds; metadata is accepted from 30 seconds ago through 5 seconds ahead. Redis absence/failure rejects signed relay requests in production. Development permits a bounded in-memory replay store. Cross-origin requests are rejected. The upstream comes only from configured environment, requires HTTPS (localhost HTTP allowed for development), cannot redirect, and responses are never cached. JSON mutation bodies are capped at 1 MiB while streaming; responses do not relay Set-Cookie.
+
+C# independently verifies HMAC/expiration and requires the signed impersonator ID to equal the active platform owner's database ID. The target must remain active, org-scoped and non-owner. Presented invalid/expired cookies, missing secrets, mismatched actors and invalid targets deny principal resolution; they never restore owner privileges or fall back to candidate identity. Requests without an impersonation cookie retain normal identity resolution. Stop-impersonation remains available through its existing Next route to clear stale cookies.
+
+## Validation
+
+- `npx vitest run tests/access/platform-proxy.test.ts tests/access/platform-relay-attribution.test.ts`: 9 passed across platform-proxy and platform-relay-attribution suites, including browser transport, cookie/header isolation, CSRF rejection, unsafe upstream, duplicate cookies and bounded bodies.
+- `.NET 10` unit tests filtered to `PrincipalImpersonationTests`: 3 passed, covering valid target/actor attribution, ordinary owner sessions and invalid claims/targets/secrets.
+- `apps/web` TypeScript `tsc --noEmit`: passed.
+- The combined .NET 10 run passed 1,318 unit and 1,614 integration tests, including updated PostgreSQL impersonation cases and RelayAttributionTests.
+
+## Release considerations and limits
+
+Deploy the C# resolver before the frontend relay. Ensure `Platform__ImpersonationSecret` matches the web signing secret (`NEXTAUTH_SECRET`); a missing/mismatched secret rejects ALL relayed browser platform requests, including ordinary non-impersonated sessions. Working production Redis is also required for every relay request. Before frontend rollout, verify shared secrets, Redis readiness, and both ordinary-user and owner-session canaries. Production verification must cover an owner impersonating a lower-privilege account: target data and permission constraints, denied platform-owner endpoints, real operator audit attribution, and restoring the owner only after stopping impersonation.
+
+This is application request-context containment, not owner bearer revocation: a direct API client deliberately omitting the cookie still has the real owner's permissions. Strong containment against a malicious authenticated owner would require server-side session impersonation state or scoped exchanged tokens. The relay derives IP only from Vercel's overwritten `x-real-ip` when `VERCEL=1`, matching the existing web deployment trust convention. Other deployments report unknown IP until their trusted-edge contract is configured; arbitrary custom-host XFF is never signed as evidence. Direct API callers cannot supply trusted relay attribution without a valid signature, bearer and unused nonce. User-Agent is preserved as client-reported metadata (control characters removed, max 512 UTF-16 units). The 1 MiB JSON cap should be reviewed before introducing larger payloads or file uploads through this relay.
+
+RelayAttributionTests additionally cover distinct client addresses, User-Agent preservation, tampering, bearer binding, expiry, nonce replay and direct-caller IP spoofing. These tests passed in the combined .NET run. The replay middleware tests use a nonce-store double. Six additional `RelayNonceStoreTests` passed against the actual store: real Redis validates concurrent consumption by two instances and the 90-second TTL; tests also cover missing Redis in Production/Staging, Development replay, and Redis error/timeout failures. Production configuration and replay behavior still need deployment verification.

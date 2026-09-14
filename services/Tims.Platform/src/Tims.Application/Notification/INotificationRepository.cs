@@ -41,8 +41,8 @@ public interface INotificationReadRepository
 /// (<c>markAsRead</c>, <c>markAllAsRead</c>, <c>archive</c>, <c>archiveAllRead</c>, <c>delete</c>,
 /// <c>updatePreferences</c>) hard-filter on the caller's user id exactly like the reads. The two
 /// grant-gated ones (<c>create</c>, <c>bulkCreate</c>) take a TARGET user id from the request body — that is
-/// the TS behaviour and it is reproduced deliberately; see the slice doc's divergence register for the
-/// unvalidated-target note.
+/// validated as an active, undeleted member of the caller organization inside the same locked
+/// transaction as insertion. Any invalid recipient rejects the entire batch.
 /// </summary>
 public interface INotificationWriteRepository
 {

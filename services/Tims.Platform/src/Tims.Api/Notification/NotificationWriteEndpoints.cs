@@ -251,10 +251,17 @@ public static class NotificationWriteEndpoints
                 // principal (→ 400) and denies a non-privileged one (→ 403). A caller reaching this line always
                 // has an org. The parameter stays nullable only because the repository signature is shared with
                 // the self-service paths, where a null org IS reachable.
-                var result = await useCase.CreateAsync(
-                    NotificationReadEndpoints.OrgIdOrNull(gate.Context!),
-                    new NotificationCreateInput(targetUserId, content), cancellationToken);
-                return Results.Ok(result);
+                try
+                {
+                    var result = await useCase.CreateAsync(
+                        NotificationReadEndpoints.OrgIdOrNull(gate.Context!),
+                        new NotificationCreateInput(targetUserId, content), cancellationToken);
+                    return Results.Ok(result);
+                }
+                catch (InvalidNotificationRecipientsException)
+                {
+                    return Results.BadRequest(new { error = "invalid_notification_recipients" });
+                }
             })
             .RequireAuthorization()
             .Accepts<CreateNotificationBody>("application/json")
@@ -290,9 +297,16 @@ public static class NotificationWriteEndpoints
                     return Results.BadRequest(new { error = "invalid_input" });
                 }
 
-                var result = await useCase.BulkCreateAsync(
-                    NotificationReadEndpoints.OrgIdOrNull(gate.Context!), userIds, content, cancellationToken);
-                return Results.Ok(result);
+                try
+                {
+                    var result = await useCase.BulkCreateAsync(
+                        NotificationReadEndpoints.OrgIdOrNull(gate.Context!), userIds, content, cancellationToken);
+                    return Results.Ok(result);
+                }
+                catch (InvalidNotificationRecipientsException)
+                {
+                    return Results.BadRequest(new { error = "invalid_notification_recipients" });
+                }
             })
             .RequireAuthorization()
             .Accepts<BulkCreateNotificationBody>("application/json")

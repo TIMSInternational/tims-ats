@@ -99,6 +99,9 @@ describe('clientIpFrom — the derivation itself', () => {
 const ROOT = join(__dirname, '..', '..');
 /** The one module allowed to read the raw headers — it IS the derivation. */
 const HELPER = 'packages/api/src/lib/client-ip.ts';
+// This exact module attests a platform-overwritten address at the relay trust boundary;
+// it is not an audit consumer and must never fall back to arbitrary custom-host headers.
+const RELAY_BOUNDARY = 'apps/web/lib/platform-api/relay-attribution.ts';
 const ROOTS = ['packages', 'apps', 'workers'];
 const SKIP_DIRS = new Set([
   'node_modules',
@@ -150,9 +153,30 @@ describe('no runtime source may re-derive the client IP by hand', () => {
 
   it('only the shared helper reads the forwarding headers directly', () => {
     const offenders = SOURCES.filter(
-      ({ file, text }) => file !== HELPER && /headers\.get\(\s*['"]x-(forwarded-for|real-ip)['"]\s*\)/i.test(text),
+      ({ file, text }) =>
+        file !== HELPER &&
+        file !== RELAY_BOUNDARY &&
+        /headers\.get\(\s*['"]x-(forwarded-for|real-ip)['"]\s*\)/i.test(text),
     ).map(({ file }) => file);
     expect(offenders).toEqual([]);
+  });
+
+  it('the sole relay exception signs only a validated Vercel edge address', () => {
+    expect(FILES).toContain(RELAY_BOUNDARY);
+    const text = readFileSync(join(ROOT, RELAY_BOUNDARY), 'utf8');
+    // Exact read count: the exception cannot grow another forwarding-header reader.
+    expect(text.match(/headers\.get\(\s*['"]x-(forwarded-for|real-ip)['"]\s*\)/gi)).toEqual([
+      "headers.get('x-real-ip')",
+    ]);
+    expect(text).toContain("process.env.VERCEL === '1' ? request.headers.get('x-real-ip')?.trim() : undefined");
+    expect(text).toContain('claimedIp && isIP(claimedIp) ? claimedIp : null');
+    expect(text).toContain('tims-platform-relay-attribution-v1');
+    expect(text).toContain("createHmac('sha256', secret)");
+    expect(text).toContain('.update(PURPOSE + payload)');
+    expect(text).toContain('authorizationHash: hash(authorization)');
+    expect(text).toContain('nonce: randomUUID()');
+    // Consumers still use clientIpFrom; the relay boundary never writes an audit row.
+    expect(text).not.toMatch(/ipAddress:|auditLog/);
   });
 
   it('every audit writer that records an IP goes through the helper', () => {

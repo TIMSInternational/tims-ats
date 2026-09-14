@@ -1,5 +1,11 @@
 # C# Backend Migration — Master Plan (executable roadmap)
 
+> **Scope update 2026-09-14:** Federico clarified that TIMS ATS remains independent and integrates
+> with `tims.configuration.core` through APIs. Team Suite absorption requirements below are historical
+> and are superseded by [the API integration decision](../2026-09-14-independent-ats-api-integration.md).
+> C#/.NET 10 backend convergence remains in scope.
+
+
 Date: 2026-07-15 · Status: **Authoritative execution plan.**
 Architecture reference: `docs/architecture/2026-07-15-csharp-backend-target-architecture.md` (the "what/why").
 This document is the "how/when/in-what-order/what-gates-each-step." Per-phase detailed plans live beside it

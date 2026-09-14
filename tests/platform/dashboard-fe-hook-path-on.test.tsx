@@ -8,7 +8,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
  * See dashboard-fe-hook-path-off.test.tsx's header for why this is a separate file.
  *
  * What only THIS file can prove (source-text pins cannot): with the flag on, a hook actually
- * requests the expected C# URL with the session bearer token, routes the payload through its
+ * requests the same-origin C# relay URL with the session bearer token, routes the payload through its
  * mapper (string-form numerics arrive as numbers), and the search hook's `callerEnabled` gate
  * still suppresses the request — the panel's concrete post-cutover failure scenario was an
  * empty-query search firing on every navbar render if `&& callerEnabled` were dropped from the
@@ -85,8 +85,9 @@ describe('flag ON — the C# branch is the live one', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe('https://csharp.test/platform/dashboard/kpis');
+    expect(url).toBe('/api/platform/platform/dashboard/kpis');
     expect((init?.headers as Record<string, string>).Authorization).toBe('Bearer test-token');
+    expect(init?.credentials).toBe('same-origin');
 
     const data = (result.current as { data: Record<string, unknown> }).data;
     // Coerced by the mapper: the wire sent '12' (string), the consumer must see 12 (number).
@@ -125,6 +126,8 @@ describe('flag ON — the C# branch is the live one', () => {
 
     await waitFor(() => expect((result.current as { data?: unknown }).data).toBeDefined());
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0][0]).toBe('https://csharp.test/platform/dashboard/search?query=ana');
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/platform/platform/dashboard/search?query=ana');
+    expect(fetchMock.mock.calls[0][1]?.credentials).toBe('same-origin');
+    expect((fetchMock.mock.calls[0][1]?.headers as Record<string, string>).Authorization).toBe('Bearer test-token');
   });
 });

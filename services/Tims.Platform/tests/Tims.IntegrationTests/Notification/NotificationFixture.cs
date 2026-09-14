@@ -192,7 +192,7 @@ public sealed class NotificationFixture : IAsyncLifetime
             id uuid PRIMARY KEY, organization_id uuid NULL, supabase_user_id text NOT NULL UNIQUE,
             email text NOT NULL, first_name text NOT NULL, last_name text NOT NULL, avatar text NULL,
             job_title text NULL, company_id uuid NULL, business_unit_id uuid NULL, created_at timestamp(3) NOT NULL,
-            is_platform_owner boolean NOT NULL DEFAULT false, is_active boolean NOT NULL DEFAULT true);
+            is_platform_owner boolean NOT NULL DEFAULT false, is_active boolean NOT NULL DEFAULT true, deleted_at timestamp NULL);
         CREATE TABLE roles (id uuid PRIMARY KEY, organization_id uuid NOT NULL, slug text NOT NULL, name text NOT NULL);
         CREATE TABLE user_roles (id uuid PRIMARY KEY, user_id uuid NOT NULL, role_id uuid NOT NULL);
         CREATE TABLE permissions (id uuid PRIMARY KEY, module text NOT NULL, action text NOT NULL);
@@ -235,7 +235,7 @@ public sealed class NotificationFixture : IAsyncLifetime
     // notifications (whose rows are user-addressed) and an EXISTS-through-users on notification_preferences.
     private const string RlsSql =
         """
-        GRANT SELECT ON users TO app_tenant;
+        GRANT SELECT, UPDATE ON users TO app_tenant;
         GRANT SELECT, INSERT, UPDATE, DELETE ON notifications, notification_preferences TO app_tenant;
 
         ALTER TABLE users ENABLE ROW LEVEL SECURITY;                  ALTER TABLE users FORCE ROW LEVEL SECURITY;
