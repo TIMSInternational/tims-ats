@@ -23,3 +23,15 @@ a successful public health check alone does not prove authenticated relay reques
 
 Validation: API and web typechecks passed; 3,277 Vitest tests across 331 files passed,
 including eight trust-policy cases. Bash syntax and ShellCheck passed.
+
+## Authorized rollout attempt
+
+Run 34890050767 authenticated successfully and built/pushed image `1657b2f`, but
+UpdateService was denied by the existing iam:PassRole condition. The policy incorrectly
+used `build.apprunner.amazonaws.com` (the ECR access role's trust principal).
+AWS's [managed App Runner policy](https://docs.aws.amazon.com/aws-managed-policy/latest/reference/AWSAppRunnerFullAccess.html)
+uses `apprunner.amazonaws.com` for iam:PassedToService. The proposed repair changes only
+that condition, retaining the exact existing ECR role ARN and all other statements.
+The repair is committed in the bootstrap, but the production permission update was blocked
+by automatic approval review pending explicit authorization. It has NOT been applied;
+production remains on its previous image. The OIDC trust change is applied and proven.

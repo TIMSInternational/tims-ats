@@ -108,7 +108,7 @@ PERMS="$(cat <<JSON
       "Effect": "Allow",
       "Action": "iam:PassRole",
       "Resource": "${ECR_ACCESS_ROLE}",
-      "Condition": { "StringEquals": { "iam:PassedToService": "build.apprunner.amazonaws.com" } }
+      "Condition": { "StringEquals": { "iam:PassedToService": "apprunner.amazonaws.com" } }
     }
   ]
 }

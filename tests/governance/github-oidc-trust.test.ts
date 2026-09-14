@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
+import { readFileSync } from 'node:fs';
 
 const script = resolve(__dirname, '../../scripts/deploy/github-oidc-trust.py');
 const prefix = 'repo:TIMSInternational@305569681/tims-ats@1301900745';
@@ -24,6 +25,20 @@ describe('TIMS GitHub deploy trust', () => {
           'token.actions.githubusercontent.com:sub': `${prefix}:ref:refs/heads/main`,
         } },
       }],
+    });
+  });
+
+  it('passes only the existing ECR access role to the App Runner control service', () => {
+    const bootstrap = readFileSync(resolve(__dirname, '../../scripts/deploy/bootstrap-github-oidc-role.sh'), 'utf8');
+    const template = bootstrap.match(/PERMS="\$\(cat <<JSON\n([\s\S]*?)\nJSON/);
+    expect(template).not.toBeNull();
+    const policy = JSON.parse(template![1]);
+    expect(policy.Statement).toContainEqual({
+      Sid: 'AppRunnerPullsEcrAsThisRole',
+      Effect: 'Allow',
+      Action: 'iam:PassRole',
+      Resource: '${ECR_ACCESS_ROLE}',
+      Condition: { StringEquals: { 'iam:PassedToService': 'apprunner.amazonaws.com' } },
     });
   });
 
