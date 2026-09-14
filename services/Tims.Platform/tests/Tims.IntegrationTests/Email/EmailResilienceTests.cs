@@ -38,12 +38,15 @@ public sealed class EmailResilienceTests
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var allStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var starts = 0;
-        using var client = new ControlledSes { Handler = async _ =>
+        using var client = new ControlledSes
+        {
+            Handler = async _ =>
         {
             if (Interlocked.Increment(ref starts) == 8) allStarted.SetResult();
             await release.Task; // deliberately ignore cancellation to test retained capacity
             return Accepted();
-        } };
+        }
+        };
         var sender = Create(client);
         var sends = Enumerable.Range(0, 8).Select(_ => Send(sender)).ToArray();
         try
@@ -69,12 +72,15 @@ public sealed class EmailResilienceTests
     public async Task Repeated_inflight_caller_cancellation_does_not_open_circuit()
     {
         CancellationTokenSource? cancellation = null;
-        using var client = new ControlledSes { Handler = ct =>
+        using var client = new ControlledSes
+        {
+            Handler = ct =>
         {
             cancellation?.Cancel();
             ct.ThrowIfCancellationRequested();
             return Task.FromResult(Accepted());
-        } };
+        }
+        };
         var sender = Create(client);
         for (var index = 0; index < 8; index++)
         {
@@ -99,7 +105,9 @@ public sealed class EmailResilienceTests
 
     private static IConfiguration Configuration() => new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
     {
-        ["Email:Enabled"] = "true", ["Email:Region"] = "us-east-1", ["Email:FromAddress"] = "sender@example.test",
+        ["Email:Enabled"] = "true",
+        ["Email:Region"] = "us-east-1",
+        ["Email:FromAddress"] = "sender@example.test",
     }).Build();
 
     private static SesEmailSender Create(ControlledSes client) => new(new Lazy<IAmazonSimpleEmailService>(() => client),

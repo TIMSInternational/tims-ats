@@ -18,7 +18,10 @@ public sealed class SesEmailSenderTests
     private const string Recipient = "recipient@example.test";
     private static readonly EmailOptions Enabled = new()
     {
-        Enabled = true, Region = "us-east-1", FromAddress = "sender@example.test", TimeoutSeconds = 1,
+        Enabled = true,
+        Region = "us-east-1",
+        FromAddress = "sender@example.test",
+        TimeoutSeconds = 1,
     };
 
     [Fact]
@@ -124,12 +127,15 @@ public sealed class SesEmailSenderTests
     public async Task Caller_cancellation_interrupts_an_inflight_send()
     {
         using var cancellation = new CancellationTokenSource();
-        using var client = new StubSes { Handler = async (_, ct) =>
+        using var client = new StubSes
+        {
+            Handler = async (_, ct) =>
         {
             cancellation.Cancel();
             await Task.Delay(Timeout.Infinite, ct);
             return new SendEmailResponse();
-        } };
+        }
+        };
         Assert.False(await Create(client).SendEmailAsync(Recipient, "Subject", "Body", cancellation.Token));
         Assert.Equal(1, client.Calls);
     }
@@ -179,7 +185,8 @@ public sealed class SesEmailSenderTests
         services.AddSingleton<IAmazonSimpleEmailService>(client);
         services.AddPlatformEmail(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
-            ["Email:Enabled"] = "true", ["Email:Region"] = Enabled.Region,
+            ["Email:Enabled"] = "true",
+            ["Email:Region"] = Enabled.Region,
             ["Email:FromAddress"] = Enabled.FromAddress,
         }).Build());
         using var provider = services.BuildServiceProvider();
@@ -200,8 +207,10 @@ public sealed class SesEmailSenderTests
         var services = new ServiceCollection().AddLogging();
         services.AddPlatformEmail(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
-            ["Email:Enabled"] = "true", ["Email:Region"] = region,
-            ["Email:FromAddress"] = from, ["Email:TimeoutSeconds"] = timeout.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            ["Email:Enabled"] = "true",
+            ["Email:Region"] = region,
+            ["Email:FromAddress"] = from,
+            ["Email:TimeoutSeconds"] = timeout.ToString(System.Globalization.CultureInfo.InvariantCulture),
         }).Build());
         using var provider = services.BuildServiceProvider();
         Assert.Throws<OptionsValidationException>(() => provider.GetRequiredService<IOptions<EmailOptions>>().Value);
