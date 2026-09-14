@@ -5916,6 +5916,56 @@
         }
       }
     },
+    "/tenant-audit/access-report": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "TenantAuditGetAccessReport",
+        "parameters": [
+          {
+            "name": "dateFrom",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "dateTo",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TenantAccessReportRow"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
     "/audit/logs": {
       "get": {
         "tags": [
@@ -13704,6 +13754,45 @@
           },
           "_count": {
             "$ref": "#/components/schemas/TeamCountView"
+          }
+        }
+      },
+      "TenantAccessCount": {
+        "required": [
+          "id"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "TenantAccessReportRow": {
+        "required": [
+          "actorId",
+          "entity",
+          "_count"
+        ],
+        "type": "object",
+        "properties": {
+          "actorId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "entity": {
+            "type": "string"
+          },
+          "_count": {
+            "$ref": "#/components/schemas/TenantAccessCount"
           }
         }
       },

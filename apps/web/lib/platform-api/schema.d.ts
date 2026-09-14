@@ -2404,6 +2404,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tenant-audit/access-report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["TenantAuditGetAccessReport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/audit/logs": {
         parameters: {
             query?: never;
@@ -4306,6 +4322,16 @@ export interface components {
             businessUnit: null | components["schemas"]["TeamBusinessUnitView"];
             members: components["schemas"]["TeamProfileMember"][];
             _count: components["schemas"]["TeamCountView"];
+        };
+        TenantAccessCount: {
+            /** Format: int32 */
+            id: number | string;
+        };
+        TenantAccessReportRow: {
+            /** Format: uuid */
+            actorId: null | string;
+            entity: string;
+            _count: components["schemas"]["TenantAccessCount"];
         };
         TotalCompBreakdownView: {
             /** Format: double */
@@ -10890,6 +10916,50 @@ export interface operations {
             };
             /** @description Service Unavailable */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    TenantAuditGetAccessReport: {
+        parameters: {
+            query?: {
+                dateFrom?: string;
+                dateTo?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantAccessReportRow"][];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
