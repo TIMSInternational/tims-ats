@@ -2404,6 +2404,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tenant-audit/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["TenantAuditListLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenant-audit/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["TenantAuditGetChangesByEntity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenant-audit/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["TenantAuditExportLogs"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tenant-audit/access-report": {
         parameters: {
             query?: never;
@@ -2412,6 +2460,22 @@ export interface paths {
             cookie?: never;
         };
         get: operations["TenantAuditGetAccessReport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenant-audit/logs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["TenantAuditGetLogDetail"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4332,6 +4396,115 @@ export interface components {
             actorId: null | string;
             entity: string;
             _count: components["schemas"]["TenantAccessCount"];
+        };
+        TenantAuditDetail: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            organizationId: string;
+            /** Format: uuid */
+            userId: null | string;
+            /** Format: uuid */
+            actorId: null | string;
+            action: string;
+            entity: string;
+            entityId: null | string;
+            changes: null | components["schemas"]["JsonNode"];
+            metadata: null | components["schemas"]["JsonNode"];
+            ipAddress: null | string;
+            userAgent: null | string;
+            /** Format: date-time */
+            createdAt: unknown;
+            actor: null | components["schemas"]["TenantAuditPerson"];
+            user: null | components["schemas"]["TenantAuditPerson"];
+        };
+        TenantAuditExport: {
+            data: string;
+            /** Format: int32 */
+            count: number | string;
+            truncated: boolean;
+            format: string;
+        };
+        TenantAuditExportRequest: {
+            format: string;
+            /** Format: uuid */
+            actorId?: null | string;
+            entity?: null | string;
+            action?: null | string;
+            /** Format: date-time */
+            dateFrom?: null | string;
+            /** Format: date-time */
+            dateTo?: null | string;
+        };
+        TenantAuditHistoryActor: {
+            /** Format: uuid */
+            id: string;
+            firstName: string;
+            lastName: string;
+        };
+        TenantAuditItemOfTenantAuditHistoryActor: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            organizationId: string;
+            /** Format: uuid */
+            userId: null | string;
+            /** Format: uuid */
+            actorId: null | string;
+            action: string;
+            entity: string;
+            entityId: null | string;
+            changes: null | components["schemas"]["JsonNode"];
+            metadata: null | components["schemas"]["JsonNode"];
+            ipAddress: null | string;
+            userAgent: null | string;
+            /** Format: date-time */
+            createdAt: unknown;
+            actor: null | components["schemas"]["TenantAuditHistoryActor"];
+        };
+        TenantAuditItemOfTenantAuditListActor: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            organizationId: string;
+            /** Format: uuid */
+            userId: null | string;
+            /** Format: uuid */
+            actorId: null | string;
+            action: string;
+            entity: string;
+            entityId: null | string;
+            changes: null | components["schemas"]["JsonNode"];
+            metadata: null | components["schemas"]["JsonNode"];
+            ipAddress: null | string;
+            userAgent: null | string;
+            /** Format: date-time */
+            createdAt: unknown;
+            actor: null | components["schemas"]["TenantAuditListActor"];
+        };
+        TenantAuditListActor: {
+            /** Format: uuid */
+            id: string;
+            firstName: string;
+            lastName: string;
+            avatar: null | string;
+        };
+        TenantAuditPageOfTenantAuditHistoryActor: {
+            items: components["schemas"]["TenantAuditItemOfTenantAuditHistoryActor"][];
+            /** Format: uuid */
+            nextCursor: null | string;
+        };
+        TenantAuditPageOfTenantAuditListActor: {
+            items: components["schemas"]["TenantAuditItemOfTenantAuditListActor"][];
+            /** Format: uuid */
+            nextCursor: null | string;
+        };
+        TenantAuditPerson: {
+            /** Format: uuid */
+            id: string;
+            firstName: string;
+            lastName: string;
+            email: string;
         };
         TotalCompBreakdownView: {
             /** Format: double */
@@ -10923,6 +11096,146 @@ export interface operations {
             };
         };
     };
+    TenantAuditListLogs: {
+        parameters: {
+            query?: {
+                userId?: string;
+                entity?: string;
+                action?: string;
+                dateFrom?: string;
+                dateTo?: string;
+                take?: number | string;
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantAuditPageOfTenantAuditListActor"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    TenantAuditGetChangesByEntity: {
+        parameters: {
+            query: {
+                entity: string;
+                entityId: string;
+                take?: number | string;
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantAuditPageOfTenantAuditHistoryActor"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    TenantAuditExportLogs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TenantAuditExportRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantAuditExport"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     TenantAuditGetAccessReport: {
         parameters: {
             query?: {
@@ -10960,6 +11273,49 @@ export interface operations {
             };
             /** @description Forbidden */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    TenantAuditGetLogDetail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantAuditDetail"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

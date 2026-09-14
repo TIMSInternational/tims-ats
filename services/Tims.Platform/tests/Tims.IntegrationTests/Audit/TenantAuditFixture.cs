@@ -101,9 +101,19 @@ public sealed class TenantAuditFixture : IAsyncLifetime
         INSERT INTO user_roles (id,user_id,role_id) VALUES
           ('b0000000-0000-0000-0000-000000000001','c0000000-0000-0000-0000-000000000002','a0000000-0000-0000-0000-000000000001');
         INSERT INTO permissions (id,module,action) VALUES
-          ('e0000000-0000-0000-0000-000000000001','audit','read');
+          ('e0000000-0000-0000-0000-000000000001','audit','read'),
+          ('e0000000-0000-0000-0000-000000000002','audit','export');
         INSERT INTO role_permissions (id,role_id,permission_id,scope) VALUES
-          ('f0000000-0000-0000-0000-000000000001','a0000000-0000-0000-0000-000000000001','e0000000-0000-0000-0000-000000000001','organization');
+          ('f0000000-0000-0000-0000-000000000001','a0000000-0000-0000-0000-000000000001','e0000000-0000-0000-0000-000000000001','organization'),
+          ('f0000000-0000-0000-0000-000000000002','a0000000-0000-0000-0000-000000000001','e0000000-0000-0000-0000-000000000002','organization');
+        INSERT INTO users (id, organization_id, supabase_user_id, email, first_name, last_name) VALUES
+          ('c0000000-0000-0000-0000-000000000004','11111111-1111-1111-1111-111111111111','sub-audit-read-only','reader@tims.test','Read','Only');
+        INSERT INTO roles (id, organization_id, slug) VALUES
+          ('a0000000-0000-0000-0000-000000000002','11111111-1111-1111-1111-111111111111','recruiter');
+        INSERT INTO user_roles (id,user_id,role_id) VALUES
+          ('b0000000-0000-0000-0000-000000000002','c0000000-0000-0000-0000-000000000004','a0000000-0000-0000-0000-000000000002');
+        INSERT INTO role_permissions (id,role_id,permission_id,scope) VALUES
+          ('f0000000-0000-0000-0000-000000000003','a0000000-0000-0000-0000-000000000002','e0000000-0000-0000-0000-000000000001','organization');
         """;
 
     private const string AuditSchemaSql =
@@ -122,7 +132,11 @@ public sealed class TenantAuditFixture : IAsyncLifetime
             user_agent text NULL,
             created_at timestamp NOT NULL DEFAULT now()
         );
-        GRANT SELECT ON audit_logs TO app_tenant;
+        GRANT SELECT ON audit_logs, users TO app_tenant;
+        ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+        ALTER TABLE users FORCE ROW LEVEL SECURITY;
+        CREATE POLICY tenant_isolation ON users
+            USING (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid);
         ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
         ALTER TABLE audit_logs FORCE ROW LEVEL SECURITY;
         CREATE POLICY tenant_isolation ON audit_logs
@@ -139,6 +153,22 @@ public sealed class TenantAuditFixture : IAsyncLifetime
           ('d0000000-0000-0000-0000-000000000005', '22222222-2222-2222-2222-222222222222', NULL, 'access', 'foreign-only', '2026-07-19T10:00:00Z');
         INSERT INTO audit_logs (id, organization_id, actor_id, action, entity, created_at)
           SELECT gen_random_uuid(), '22222222-2222-2222-2222-222222222222', NULL, 'access', 'group-' || n, '2026-07-19T10:00:00Z' FROM generate_series(1,60) n;
+        INSERT INTO audit_logs (id, organization_id, action, entity, changes, metadata, created_at)
+          SELECT gen_random_uuid(), '22222222-2222-2222-2222-222222222222', 'bulk', 'export-cap', '{"secret":"hidden"}', '{"secret":"hidden"}', '2026-07-01T10:00:00Z' FROM generate_series(1,10005) n;
+        INSERT INTO audit_logs (id, organization_id, action, entity) VALUES
+          ('d0000000-0000-0000-0000-000000000007','11111111-1111-1111-1111-111111111111','=SUM(1,2)','csv-probe');
+        UPDATE audit_logs SET entity_id = 'José <&>' WHERE entity = 'csv-probe';
+        INSERT INTO audit_logs (id, organization_id, action, entity, entity_id, created_at) VALUES
+          ('d0000000-0000-0000-0000-000000000010','11111111-1111-1111-1111-111111111111','page-test','history','pagination','2026-07-01'),
+          ('d0000000-0000-0000-0000-000000000011','11111111-1111-1111-1111-111111111111','page-test','history','pagination','2026-07-02'),
+          ('d0000000-0000-0000-0000-000000000012','11111111-1111-1111-1111-111111111111','page-test','history','pagination','2026-07-02');
+        UPDATE audit_logs SET user_id = actor_id, entity_id = 'record-1',
+          changes = '{"before":{"status":"old"},"after":{"status":"new"}}',
+          metadata = '{"source":"test"}', ip_address = '127.0.0.1', user_agent = 'audit-fixture'
+          WHERE id = 'd0000000-0000-0000-0000-000000000001';
+        INSERT INTO audit_logs (id, organization_id, actor_id, action, entity, created_at) VALUES
+          ('d0000000-0000-0000-0000-000000000006', '11111111-1111-1111-1111-111111111111',
+           'c0000000-0000-0000-0000-000000000001', 'test', 'foreign-reference', '2026-07-20T10:00:00Z');
         """;
 }
 

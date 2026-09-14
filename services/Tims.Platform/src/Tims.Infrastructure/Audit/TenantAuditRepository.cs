@@ -1,11 +1,49 @@
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json.Nodes;
 using Tims.Application.Audit;
 using Tims.Domain.Audit;
 
 namespace Tims.Infrastructure.Audit;
 
-public sealed class TenantAuditRepository(TenantAuditDbContext db) : ITenantAuditRepository
+public sealed partial class TenantAuditRepository(TenantAuditDbContext db) : ITenantAuditRepository
 {
+    public async Task<TenantAuditDetail?> GetDetailAsync(Guid organizationId, Guid id, CancellationToken cancellationToken)
+    {
+        await using var tenant = await TenantScope.BeginAsync(db, organizationId, cancellationToken);
+        var row = await db.AuditLogs.AsNoTracking()
+            .Where(log => log.OrganizationId == organizationId && log.Id == id)
+            .Select(log => new
+            {
+                log.Id,
+                log.OrganizationId,
+                log.UserId,
+                log.ActorId,
+                log.Action,
+                log.Entity,
+                log.EntityId,
+                log.Changes,
+                log.Metadata,
+                log.IpAddress,
+                log.UserAgent,
+                log.CreatedAt
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+        if (row is null) { await tenant.CommitAsync(cancellationToken); return null; }
+        // Both related people are independently tenant-filtered; malformed cross-tenant references
+        // cannot expose another organization's identity fields.
+        var people = await db.Users.AsNoTracking()
+            .Where(person => person.OrganizationId == organizationId && (person.Id == row.ActorId || person.Id == row.UserId))
+            .Select(person => new TenantAuditPerson(person.Id, person.FirstName, person.LastName, person.Email))
+            .ToListAsync(cancellationToken);
+        await tenant.CommitAsync(cancellationToken);
+        return new TenantAuditDetail(row.Id, row.OrganizationId, row.UserId, row.ActorId, row.Action,
+            row.Entity, row.EntityId, row.Changes is null ? null : JsonNode.Parse(row.Changes),
+            row.Metadata is null ? null : JsonNode.Parse(row.Metadata), row.IpAddress, row.UserAgent,
+            DateTime.SpecifyKind(row.CreatedAt, DateTimeKind.Utc),
+            people.SingleOrDefault(person => person.Id == row.ActorId),
+            people.SingleOrDefault(person => person.Id == row.UserId));
+    }
+
     public async Task<IReadOnlyList<TenantAccessReportRow>> GetAccessReportAsync(
         Guid organizationId, DateTimeOffset? dateFrom, DateTimeOffset? dateTo,
         CancellationToken cancellationToken)

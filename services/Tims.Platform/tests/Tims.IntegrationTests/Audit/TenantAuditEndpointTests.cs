@@ -1,4 +1,5 @@
 using System.Net;
+using Tims.Application.Audit;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -12,7 +13,7 @@ using Microsoft.IdentityModel.Tokens;
 namespace Tims.IntegrationTests.Audit;
 
 [Collection("TenantAudit")]
-public sealed class TenantAuditEndpointTests(TenantAuditFixture fixture)
+public sealed partial class TenantAuditEndpointTests(TenantAuditFixture fixture)
 {
     private const string Issuer = "https://test-project.supabase.co/auth/v1";
     private const string Audience = "authenticated";
@@ -24,22 +25,26 @@ public sealed class TenantAuditEndpointTests(TenantAuditFixture fixture)
 
     private readonly TenantAuditFixture _fixture = fixture;
 
-    private WebApplicationFactory<Program> EnabledFactory() =>
+    private WebApplicationFactory<Program> EnabledFactory(ISecurityEventWriter? audit = null, string? impersonationSecret = null) =>
         new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
             builder.UseSetting("Platform:DatabaseConnectionString", _fixture.ConnectionString);
             builder.UseSetting("Platform:TenantAuditReadEnabled", "true");
+            if (impersonationSecret is not null) builder.UseSetting("Platform:ImpersonationSecret", impersonationSecret);
             builder.UseSetting("Platform:SupabaseJwtIssuer", Issuer);
             builder.UseSetting("Platform:SupabaseJwtAudience", Audience);
 
             var publicJwk = JsonWebKeyConverter.ConvertFromRSASecurityKey(
                 new RsaSecurityKey(SigningRsa.ExportParameters(false)) { KeyId = PrivateKey.KeyId });
             builder.ConfigureTestServices(services =>
+            {
+                if (audit is not null) services.AddSingleton(audit);
                 services.PostConfigure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
                 {
                     options.RequireHttpsMetadata = false;
                     options.TokenValidationParameters.IssuerSigningKeys = [publicJwk];
-                }));
+                });
+            });
         });
 
     private static WebApplicationFactory<Program> DarkFactory() =>
