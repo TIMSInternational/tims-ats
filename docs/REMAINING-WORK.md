@@ -44,6 +44,16 @@
 
 ---
 
+## Tenant audit migration update — 2026-09-14 (PR #257, not deployed)
+
+All five tenant audit operations are implemented in C#/.NET 10: list, detail, entity history,
+access report and export. This is separate from the platform-owner audit API. The flag remains
+default-off and the TypeScript router remains active pending differential fixtures, staging
+acceptance and consumer retirement. Local checks: 69 audit integration tests (46 tenant cases),
+3,269 JavaScript tests, API/web type checks and the ownership gate passed. See
+[audit migration evidence](audits/2026-09-14-tenant-audit-migration.md) for compatibility differences
+and the exact remaining cutover requirements. This entry does not re-verify the older status below.
+
 ## ✅ DONE (verified in code + prod, not aspirational)
 
 Detail for each lives in its wave/spec doc; this is the scannable status roll-up.
