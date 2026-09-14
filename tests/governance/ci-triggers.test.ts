@@ -29,7 +29,10 @@ const WORKFLOW_DIR = join(__dirname, '../../.github/workflows');
  * indented deeper than the key itself, up to the next sibling.
  * Returns null when the key is absent, which is distinct from "present but empty".
  */
-function triggerBlock(src: string, key: 'push' | 'pull_request'): string[] | null {
+function triggerBlock(
+  src: string,
+  key: 'push' | 'pull_request' | 'pull_request_target' | 'schedule' | 'workflow_dispatch',
+): string[] | null {
   const lines = src.split('\n');
   // `on:` at column 0. (YAML 1.1 folds a bare `on` to boolean true when parsed, which is
   // another reason not to hand this to a parser casually — the key is literally `on:` here.)
@@ -43,7 +46,7 @@ function triggerBlock(src: string, key: 'push' | 'pull_request'): string[] | nul
     }
   }
   const section = lines.slice(onIdx + 1, end);
-  const keyIdx = section.findIndex((l) => new RegExp(`^(\\s+)${key}:\\s*$`).test(l));
+  const keyIdx = section.findIndex((l) => new RegExp(`^(\\s+)${key}:\\s*(?:\\{\\})?\\s*$`).test(l));
   if (keyIdx === -1) return null;
   const indent = section[keyIdx].match(/^(\s*)/)![1].length;
   const body: string[] = [];
@@ -73,6 +76,9 @@ describe('CI triggers — a stacked PR must not silently skip every check', () =
     // assertion below while reading nothing at all. `push` is deliberately still pinned
     // to main, so it is the positive control for the same parser.
     for (const w of workflows) {
+      // This production-credential workflow is intentionally schedule/dispatch only.
+      // Its exact exception is independently pinned below, not a general skip.
+      if (w.name === 'nightly-db-controls.yml') continue;
       const push = triggerBlock(w.src, 'push');
       expect(push, `${w.name}: no on.push block found`).not.toBeNull();
       expect(
@@ -80,6 +86,15 @@ describe('CI triggers — a stacked PR must not silently skip every check', () =
         `${w.name}: on.push must stay [main]`,
       ).toBe(true);
     }
+  });
+
+  it('nightly database controls remain schedule/dispatch only, never PR-triggered', () => {
+    const nightly = workflows.find((w) => w.name === 'nightly-db-controls.yml');
+    expect(nightly).toBeDefined();
+    expect(triggerBlock(nightly!.src, 'schedule')?.some((line) => /cron:/.test(line))).toBe(true);
+    expect(triggerBlock(nightly!.src, 'workflow_dispatch')).not.toBeNull();
+    // Reject inline maps/arrays too; the narrow block parser only supports empty inline objects.
+    expect(nightly!.src).not.toMatch(/^\s+(push|pull_request|pull_request_target)\s*:/m);
   });
 
   it('no workflow restricts pull_request to a base branch', () => {
