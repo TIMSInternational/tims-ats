@@ -21,6 +21,13 @@
 
 ### Current implementation wave — 2026-09-14 (unreleased)
 
+- **#217, C# email boundary (partial):** API and worker hosts now register a default-disabled SES
+  sender with bounded dispatch, provider-acceptance semantics, circuit breaking, no automatic
+  retries and PII-safe failure logging. Real SDK transport tests cover failure/no-retry behavior.
+  Invitation write ports, durable delivery/reconciliation, runtime SES permission/configuration
+  and authorized delivery verification remain open. See
+  `architecture/csharp-migration/csharp-email-delivery.md` for contract and read-only infrastructure findings.
+
 - **Scope correction from Federico:** TIMS ATS is to function independently and communicate with
   `tims.configuration.core` and other systems **through APIs**. The older Phase-6 absorption plan is
   superseded for this objective; importing Team Suite's domain/data-access code is not required.

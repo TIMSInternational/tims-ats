@@ -70,6 +70,7 @@ using Tims.Infrastructure.AccessReview;
 using Tims.Infrastructure.Audit;
 using Tims.Infrastructure.Billing;
 using Tims.Infrastructure.Compensation;
+using Tims.Infrastructure.Email;
 using Tims.Infrastructure.Evaluation360;
 using Tims.Infrastructure.ExternalVendor;
 using Tims.Infrastructure.Hris;
@@ -99,6 +100,7 @@ Log.Logger = new LoggerConfiguration()
 try
 {
     var builder = WebApplication.CreateBuilder(args);
+    builder.Services.AddPlatformEmail(builder.Configuration);
 
     // --- Structured JSON logging (Pino-parity), request/tenant correlation ids -------
     // NEVER logs request bodies / tokens / PII (rule: api-security.md §Observability).
@@ -1254,7 +1256,7 @@ try
 
     // Phase-5 slice 22 (#75): GET /platform/invitations{,/kpis,/export} — the platform-owner invitations
     // READ surface. Three of that router's ten procedures; the other seven are out for three distinct
-    // reasons (writes / unauthenticated token endpoints / no email capability in this service) — see
+    // reasons (writes / unauthenticated token endpoints / email workflow activation pending) — see
     // PlatformOptions.PlatformInvitationsReadEnabled. Dark unless the flag is on.
     if (externalOptions.PlatformInvitationsReadEnabled || isOpenApiDocGeneration)
     {

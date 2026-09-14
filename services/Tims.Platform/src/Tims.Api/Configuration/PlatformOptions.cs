@@ -607,10 +607,9 @@ public sealed class PlatformOptions
     ///     NOT ride this flag: a reviewer reading "invitations read is on" would have no reason to expect
     ///     two anonymous endpoints to come on with it.
     ///   • <c>createOrgInvitation</c> + <c>createUserInvitation</c> + <c>resendInvitation</c> — all three
-    ///     send email via <c>packages/api/src/lib/ses.ts</c>, and this service has NO email capability
-    ///     (measured: no AWS SDK, no SMTP, no MailKit, no sender abstraction anywhere in
-    ///     <c>services/Tims.Platform</c>). Porting them now would yield endpoints that write the invitation
-    ///     row and silently never deliver it — a failure that only becomes visible after a flip.
+    ///     require the C# email boundary and their own write/state-transition implementation.
+    ///     The sender now exists but defaults disabled; SES permissions, configuration and delivery
+    ///     verification remain prerequisites. This read flag does not enable mail or invitation writes.
     ///
     /// DEFAULT false (dark) — TS remains the single active reader until Federico flips it at canary.
     /// </summary>

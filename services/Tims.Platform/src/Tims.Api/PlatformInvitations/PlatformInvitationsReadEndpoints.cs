@@ -49,9 +49,9 @@ namespace Tims.Api.PlatformInvitations;
 /// <c>publicProcedure</c> — UNAUTHENTICATED, token-credentialed — which is a new auth shape for this service
 /// and gets its own slice and its own threat model. <c>createOrgInvitation</c>,
 /// <c>createUserInvitation</c> and <c>resendInvitation</c> all send email through
-/// <c>packages/api/src/lib/ses.ts</c>, and this service has NO email capability at all (no AWS SDK, no SMTP,
-/// no sender abstraction — measured, not assumed), so porting them today would produce endpoints that write
-/// the row and silently never deliver the invitation. See the slice doc for the full split.</para>
+/// <c>packages/api/src/lib/ses.ts</c>. The C# sender now exists, default disabled; consuming write flows,
+/// SES permissions/configuration and delivery verification remain separate work. This read flag does
+/// not enable those operations. See csharp-email-delivery.md for the updated boundary.</para>
 ///
 /// <para>INTERNAL staff read ⇒ RAW procedure shape, NO <c>schemaVersion</c> envelope. Dark-by-default
 /// behind <see cref="PlatformOptions.PlatformInvitationsReadEnabled"/>.</para>
