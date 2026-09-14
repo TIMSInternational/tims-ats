@@ -74,3 +74,43 @@ Latest verification: 70 audit integration tests, four C# export fixture tests, 3
 tests (333 files), and API/web type checks passed. The regression cursor is deliberately newer
 than both matching rows, so accepting it outside the active filters would produce visible rows
 and fail the test. The internal claim review identified and corrected a weaker older-cursor test.
+
+## Actual database differential acceptance — 2026-09-14
+
+`TenantAuditCrossRuntimeTests` starts isolated PostgreSQL through the existing Testcontainers
+fixture and executes both production service/repository paths against that same database:
+Prisma with `runWithTenant`/RLS, and EF with `TenantScope`. No repository mocks are used.
+Seventeen named outputs compare exactly: access report, list, foreign-entity list, excluded cursor,
+detail, redacted actor, history, first/middle/last pages of list and history, CSV, JSON, date-filtered JSON, and 10,000-row truncation.
+The test passed locally. It deliberately avoids unspecified ordering ties; tied-order behavior
+remains documented above and separately covered on the C# side.
+
+CI now runs this in `Tenant audit cross-runtime parity`, with both Node/pnpm and .NET 10.
+Ordinary .NET CI excludes `Category=CrossRuntime` and the dedicated job runs it explicitly.
+Workflow triggers include the TS audit service/repository, CSV helper, root package manifest and dependency lockfile so either implementation
+changing reruns the comparison. The Node companion refuses any database other than the isolated
+local `tims_tenant_audit` database. The parent supplies the temporary connection only through the
+environment, never command arguments or test output.
+
+Reproduce after installing workspace dependencies and generating Prisma:
+
+```sh
+dotnet test services/Tims.Platform/tests/Tims.IntegrationTests/Tims.IntegrationTests.csproj --filter Category=CrossRuntime
+```
+
+This closes local service/repository differential coverage for the listed cases. It does not
+claim HTTP authorization parity, live production acceptance or full shared remote-harness
+registration. The current AWS account exposes one production App Runner API, with no separate
+staging App Runner service discovered. No production data or deployment flags were changed.
+
+The export-cap fixture now has 10,005 distinct record IDs and timestamps. The comparison preserves
+ordering, and an independent integration assertion pins the first record to `10005` and last
+retained record to `6`. Cursor comparisons include successful first/middle/last traversal in both
+list and history, rather than only empty/single-page results. These additions address internal
+review findings; no array sorting or field dropping masks comparison differences.
+
+Validation after the expanded fixture: all 71 audit integration tests passed, including the
+cross-runtime comparison. The full existing JavaScript suite passed 3,280 tests; the two new
+CI regression guards subsequently passed with all 11 focused CI/inventory tests. API/web type
+checks passed. Internal review found no blocking harness defect; its coverage suggestions were
+implemented above.

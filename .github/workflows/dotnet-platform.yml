@@ -14,6 +14,11 @@ on:
       - "services/Tims.Platform/**"
       - "contracts/**"
       - "packages/db/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "packages/api/src/services/audit.service.ts"
+      - "packages/api/src/repositories/audit.repository.ts"
+      - "packages/shared/src/csv.ts"
       - "scripts/**"
       - ".github/workflows/dotnet-platform.yml"
   # NO `branches:` filter, deliberately. Restricting to [main] meant a PR whose BASE IS A
@@ -26,6 +31,11 @@ on:
       - "services/Tims.Platform/**"
       - "contracts/**"
       - "packages/db/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "packages/api/src/services/audit.service.ts"
+      - "packages/api/src/repositories/audit.repository.ts"
+      - "packages/shared/src/csv.ts"
       - "scripts/**"
       - ".github/workflows/dotnet-platform.yml"
 
@@ -77,9 +87,9 @@ jobs:
       # Category!=LiveNetwork excludes FxSeedRunnerTests' real open.er-api.com call — a live external
       # dependency has no place gating unrelated PRs (rate limits/network blips would redden CI for
       # everyone). Run it explicitly with --filter "Category=LiveNetwork" (or the full --filter Fx)
-      # for a local/manual verification pass.
+      # for a local/manual verification pass. CrossRuntime requires Node and runs in its dedicated job below.
       - name: Integration tests (Testcontainers)
-        run: dotnet test tests/Tims.IntegrationTests/Tims.IntegrationTests.csproj --no-build -c Release --filter "Category!=LiveNetwork"
+        run: dotnet test tests/Tims.IntegrationTests/Tims.IntegrationTests.csproj --no-build -c Release --filter "Category!=LiveNetwork&Category!=CrossRuntime"
 
   container:
     name: Container image builds
@@ -110,3 +120,22 @@ jobs:
       # post-step even though this check itself passes. Fails a cross-owner PR.
       - name: Check table ownership
         run: node scripts/table-ownership.mjs
+
+  tenant-audit-parity:
+    name: Tenant audit cross-runtime parity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @tims/db exec prisma generate --schema prisma/schema
+      - run: dotnet restore services/Tims.Platform/Tims.Platform.slnx --locked-mode
+      - name: Compare actual Prisma and EF queries under RLS
+        run: dotnet test services/Tims.Platform/tests/Tims.IntegrationTests/Tims.IntegrationTests.csproj --no-restore --filter Category=CrossRuntime

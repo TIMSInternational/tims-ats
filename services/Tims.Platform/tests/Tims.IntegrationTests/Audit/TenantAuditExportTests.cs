@@ -67,6 +67,8 @@ public sealed partial class TenantAuditEndpointTests
         Assert.Equal(10000, result.Count);
         using var records = JsonDocument.Parse(result.Data);
         Assert.Equal(10000, records.RootElement.GetArrayLength());
+        Assert.Equal("10005", records.RootElement[0].GetProperty("entityId").GetString());
+        Assert.Equal("6", records.RootElement[9999].GetProperty("entityId").GetString());
         Assert.DoesNotContain("secret", result.Data);
     }
 

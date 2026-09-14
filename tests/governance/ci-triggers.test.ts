@@ -119,3 +119,32 @@ describe('CI triggers — a stacked PR must not silently skip every check', () =
     expect(pr!.some((l) => /Tims\.Platform/.test(l))).toBe(true);
   });
 });
+
+it('tenant audit differential coverage is scheduled when either implementation or dependencies change', () => {
+  const workflow = workflows.find((w) => w.name === 'dotnet-platform.yml')!;
+  for (const event of ['push', 'pull_request'] as const) {
+    const block = triggerBlock(workflow.src, event)!.join('\n');
+    for (const path of [
+      'services/Tims.Platform/**',
+      'packages/db/**',
+      'packages/api/src/services/audit.service.ts',
+      'packages/api/src/repositories/audit.repository.ts',
+      'packages/shared/src/csv.ts',
+      'pnpm-lock.yaml',
+      'package.json',
+    ])
+      expect(block).toContain(path);
+  }
+});
+
+it('excluding cross-runtime tests from the .NET-only job retains a real dedicated test job', () => {
+  const src = workflows.find((w) => w.name === 'dotnet-platform.yml')!.src;
+  expect(src).toContain('Category!=CrossRuntime');
+  const job = src.split('\n  tenant-audit-parity:\n')[1];
+  expect(job).toBeDefined();
+  expect(job).toContain('actions/setup-dotnet@');
+  expect(job).toContain('actions/setup-node@');
+  expect(job).toContain('prisma generate');
+  expect(job).toContain('--filter Category=CrossRuntime');
+  expect(job).not.toMatch(/continue-on-error:\s*true/);
+});

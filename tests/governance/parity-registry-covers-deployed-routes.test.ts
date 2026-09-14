@@ -230,7 +230,7 @@ const UNREGISTERED_ALLOWLIST: AllowGroup[] = [
   {
     reason:
       'TENANT AUDIT LANDED DARK 2026-09-14 (PR #257). The tenant endpoints have real-PostgreSQL ' +
-      'integration coverage, but the differential harness still needs audit:read grants and distinct ' +
+      'integration and local cross-runtime coverage, but the shared remote harness still needs audit:read grants and distinct ' +
       'per-tenant audit rows with actor/user joins. Empty default fixtures would give vacuous parity. ' +
       'Register fixture-first before enabling TenantAuditReadEnabled; tracked in ' +
       'docs/audits/2026-09-14-tenant-audit-migration.md. This is an acknowledged acceptance gap, not parity proof.',
