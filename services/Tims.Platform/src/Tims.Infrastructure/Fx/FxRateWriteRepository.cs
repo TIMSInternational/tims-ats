@@ -14,7 +14,17 @@ namespace Tims.Infrastructure.Fx;
 public sealed class FxRateWriteRepository(FxRateDbContext db) : IFxRateWriteRepository
 {
     // The currency-bearing tables the reads convert FROM/INTO. Fixed constants (never user input).
-    private static readonly string[] CurrencyTables = { "employee_compensations", "salary_bands", "companies" };
+    //
+    // MAINTENANCE RULE, learned the hard way: every table whose `currency` column feeds an
+    // FxMoneyConverter consumer MUST be listed here, or that consumer's pins exist only by coincidence.
+    // `invoices` was missing until 2026-08-15 — the platform-dashboard FX reads (slice 23 PR 3) sum
+    // invoice amounts, and their COP invoices were covered ONLY because salary_bands/companies happened
+    // to reference COP too. The first tenant invoiced in a currency no compensation row shares would have
+    // had no pin: the live compensation reads fail-soft, but the dashboard reads answer 503 (their caveat
+    // 9). Discovery-at-the-source is what disarms that permanently. `salary_adjustments` is deliberately
+    // absent: no FX consumer converts its amounts (simulate-adjustment reads employee_compensations +
+    // salary_bands, both listed).
+    private static readonly string[] CurrencyTables = { "employee_compensations", "salary_bands", "companies", "invoices" };
 
     private readonly FxRateDbContext _db = db;
 
@@ -42,9 +52,12 @@ public sealed class FxRateWriteRepository(FxRateDbContext db) : IFxRateWriteRepo
             return Array.Empty<string>();
         }
 
-        // Table names are fixed constants filtered through to_regclass above — never interpolated user input.
+        // Table names are fixed constants filtered through to_regclass above — never interpolated user
+        // input. Schema-qualified so the existence probe (public.{t}) and the read provably name the SAME
+        // relation — an unqualified read resolves via search_path, and a shadowing schema earlier in the
+        // path would silently split them (not tenant-reachable, but free to close).
         var union = string.Join(
-            " UNION ", present.Select(t => $"SELECT DISTINCT currency FROM {t} WHERE currency IS NOT NULL"));
+            " UNION ", present.Select(t => $"SELECT DISTINCT currency FROM public.{t} WHERE currency IS NOT NULL"));
         await using var command = connection.CreateCommand();
         command.CommandText = union;
 

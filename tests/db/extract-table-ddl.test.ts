@@ -7,7 +7,7 @@
  * parser is tested against a hand-built dump whose shape mirrors real pg_dump output, plus against the
  * committed production baseline itself.
  */
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
@@ -288,10 +288,53 @@ describe('against the committed production baseline', () => {
    * artifact added by the next flip, which is precisely when this check matters. The table list is read
    * back out of each file's own `-- Regenerate:` line.
    */
+  /**
+   * Byte-identity is only half the guarantee. Auto-discovery means the suite iterates whatever files
+   * happen to be present, so DELETING one is a fully green change — and each of these is the repo's
+   * ONLY executable definition of tables that exist in production (§0 P8). They look like dead weight:
+   * nothing imports them, no script applies them, no CI job references them.
+   *
+   * So the required set is pinned by name. Adding a flip means adding its entry here, in the same PR.
+   *
+   * `evaluation360.sql` (flip #67) is required on a slightly WEAKER premise than the other four, and the
+   * message below is worded not to overstate it. Its three tables DO still have a `CREATE TABLE` in
+   * `packages/db/prisma/migrations/20260713150000_add_evaluation360/migration.sql:8,22,36` — §0 P8 was
+   * not live for that flip, the `access_reviews` situation rather than the `calibration_*` one. It is
+   * still required, because the premise that matters is BOOTSTRAP REACHABILITY, not mere existence:
+   * `prisma db push` is the documented post-clone step and it does not apply `migrations/` at all, so
+   * post-flip a fresh dev database gets none of the three tables from either source. Measured on a
+   * scratch cluster, not reasoned about. The extracted artifact is also the better of the two — read
+   * from the committed prod baseline rather than from migration source (#111 proved those differ), and
+   * idempotent, atomic, GRANT-complete and Supabase-guarded, none of which the migration is.
+   */
+  const REQUIRED_FLIP_DDL = [
+    'surveys.sql',
+    'compensation.sql',
+    'succession.sql',
+    'calibration.sql',
+    'evaluation360.sql',
+  ];
+
+  it.each(REQUIRED_FLIP_DDL)('flip-DDL artifact %s exists (the bootstrap definition of its tables)', (name) => {
+    const p = join('services/Tims.Platform/db/flip-ddl', name);
+    expect(
+      existsSync(p),
+      `${p} is missing. It is how a freshly bootstrapped dev database gets the tables it covers: their\n` +
+        `Prisma models were deleted by an ownership flip, and 'prisma db push' — the documented\n` +
+        `post-clone step — creates neither them nor anything in packages/db/prisma/migrations/.\n` +
+        `For four of these five it is also the repository's ONLY executable definition; evaluation360.sql\n` +
+        `is the exception (its tables retain a CREATE TABLE in migrations/20260713150000_add_evaluation360)\n` +
+        `and is required for reachability rather than uniqueness. If a flip was deliberately reverted,\n` +
+        `remove the entry from REQUIRED_FLIP_DDL in the same commit and say so.`,
+    ).toBe(true);
+  });
+
   it('keeps every committed flip-DDL artifact byte-identical to generator output', () => {
     const dir = 'services/Tims.Platform/db/flip-ddl';
     const files = readdirSync(dir).filter((f) => f.endsWith('.sql'));
-    expect(files.length).toBeGreaterThan(0);
+    // Discovery still drives the byte-check (a NEW flip is covered without editing this test), but it
+    // can no longer pass on a shrinking set.
+    expect(files.length).toBeGreaterThanOrEqual(REQUIRED_FLIP_DDL.length);
 
     const captured = /^-- Captured:\s*(.+)$/m.exec(dump)?.[1];
     const server = /^-- Server version:\s*(.+)$/m.exec(dump)?.[1];

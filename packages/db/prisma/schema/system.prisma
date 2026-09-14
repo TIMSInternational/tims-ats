@@ -34,6 +34,11 @@ model AuditLog {
 
   @@index([organizationId])
   @@index([organizationId, entity])
+  // #181: authz_denied / mfa_step_up_required rows are read BY ACTION (access review, incident
+  // triage). Mirrors the (organizationId, entity) shape — org is the leading column because every
+  // tenant-facing read of this table is org-scoped. Applied to prod by
+  // migrations/20260810000000_audit_logs_action_index (CONCURRENTLY).
+  @@index([organizationId, action])
   @@index([organizationId, userId])
   @@index([actorId])
   @@index([createdAt])

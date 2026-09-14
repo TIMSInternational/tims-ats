@@ -1,3 +1,4 @@
+using Tims.Api.Http;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
@@ -301,7 +302,7 @@ public static class SuccessionReadEndpoints
                 // §21 audit: one data_access_logs row per EXPOSED employeeCompensation record, fail-closed
                 // (restricted) BEFORE serializing the alerts — a failed audit-write aborts pre-response.
                 var actorId = AuditActor.ActorFor(gate.Context!);
-                var ipAddress = ClientIp(httpContext);
+                var ipAddress = httpContext.ClientIpFor();
                 var userAgent = httpContext.Request.Headers.UserAgent.ToString();
                 foreach (var recordId in result.AuditedCompIds)
                 {
@@ -541,19 +542,6 @@ public static class SuccessionReadEndpoints
             unit,
             string.IsNullOrEmpty(criticality) ? null : criticality,
             string.IsNullOrEmpty(search) ? null : search);
-    }
-
-    // getCompGapAlerts audit IP: x-forwarded-for || x-real-ip (matches the TS header order).
-    private static string? ClientIp(HttpContext httpContext)
-    {
-        var forwarded = httpContext.Request.Headers["x-forwarded-for"].ToString();
-        if (!string.IsNullOrEmpty(forwarded))
-        {
-            return forwarded;
-        }
-
-        var realIp = httpContext.Request.Headers["x-real-ip"].ToString();
-        return string.IsNullOrEmpty(realIp) ? null : realIp;
     }
 
     private static async Task DisposeAnchorsAsync(IAnchorLoader anchors)

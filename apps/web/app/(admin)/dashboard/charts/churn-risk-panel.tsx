@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { trpc } from '../../../../lib/trpc';
+import { useDashboardChurnRisk } from '../../../../lib/platform-api/dashboard';
 import { useI18n } from '../../../../lib/i18n';
 import { formatCurrency, PLAN_BG_CLASSES, PLAN_LABELS, Skeleton } from '../dashboard-utils';
 import { ErrorState } from '../../../../components';
@@ -27,7 +27,7 @@ function getActionLabel(action: string, t: ReturnType<typeof useI18n>['t']): str
 export function ChurnRiskPanel() {
   const { t } = useI18n();
   const router = useRouter();
-  const { data, isLoading, isError, refetch } = trpc.platform.getChurnRisk.useQuery();
+  const { data, isLoading, isError, refetch } = useDashboardChurnRisk();
 
   if (isLoading) {
     return (
@@ -35,7 +35,9 @@ export function ChurnRiskPanel() {
         <Skeleton className="h-4 w-32 mb-2" />
         <Skeleton className="h-3 w-48 mb-4" />
         <div className="space-y-2">
-          {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-12 w-full rounded-lg" />)}
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-12 w-full rounded-lg" />
+          ))}
         </div>
       </div>
     );
@@ -93,7 +95,15 @@ export function ChurnRiskPanel() {
       {/* Table */}
       {atRiskOrgs.length === 0 ? (
         <div className="py-8 text-center">
-          <svg className="w-8 h-8 text-emerald-300 mx-auto mb-2" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+          <svg
+            className="w-8 h-8 text-emerald-300 mx-auto mb-2"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            viewBox="0 0 24 24"
+          >
+            <path d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
           <p className="text-sm text-[#8B8B8B]">{t.dashboard.noOrgsAtRisk}</p>
           <p className="text-xs text-[#8B8B8B] mt-0.5">{t.dashboard.noOrgsAtRiskDesc}</p>
         </div>
@@ -117,10 +127,7 @@ export function ChurnRiskPanel() {
                       <span className={`text-sm font-bold ${tierCfg.text}`}>{org.healthScore}</span>
                     </div>
                     <div className="w-full bg-[#EDEDED] rounded-full h-1.5 mt-0.5">
-                      <div
-                        className={`h-1.5 rounded-full ${tierCfg.bg}`}
-                        style={{ width: `${org.healthScore}%` }}
-                      />
+                      <div className={`h-1.5 rounded-full ${tierCfg.bg}`} style={{ width: `${org.healthScore}%` }} />
                     </div>
                   </div>
 
@@ -131,9 +138,7 @@ export function ChurnRiskPanel() {
                       <span className={`text-[9px] font-medium px-1.5 py-0.5 rounded ${planClass}`}>
                         {PLAN_LABELS[org.plan] ?? org.plan}
                       </span>
-                      {org.mrr > 0 && (
-                        <span className="text-[10px] text-[#8B8B8B]">{formatCurrency(org.mrr)}/mo</span>
-                      )}
+                      {org.mrr > 0 && <span className="text-[10px] text-[#8B8B8B]">{formatCurrency(org.mrr)}/mo</span>}
                     </div>
                     <p className="text-[11px] text-[#585858] truncate">{org.primaryRisk}</p>
                   </div>
@@ -147,7 +152,9 @@ export function ChurnRiskPanel() {
                       <p className="text-[9px] text-[#8B8B8B]">{t.dashboard.loginRate}</p>
                     </div>
                     <div className="text-center">
-                      <p className={`text-[12px] font-medium ${org.overdueInvoices > 0 ? 'text-[#DD0C15]' : 'text-[#333]'}`}>
+                      <p
+                        className={`text-[12px] font-medium ${org.overdueInvoices > 0 ? 'text-[#DD0C15]' : 'text-[#333]'}`}
+                      >
                         {org.overdueInvoices}
                       </p>
                       <p className="text-[9px] text-[#8B8B8B]">{t.dashboard.overdue}</p>

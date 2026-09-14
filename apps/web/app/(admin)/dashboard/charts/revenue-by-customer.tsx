@@ -1,16 +1,8 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  Cell,
-} from 'recharts';
-import { trpc } from '../../../../lib/trpc';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { useDashboardRevenueByCustomer } from '../../../../lib/platform-api/dashboard';
 import { formatCurrency, PLAN_COLORS, PLAN_LABELS, Skeleton } from '../dashboard-utils';
 import { useI18n } from '../../../../lib/i18n';
 import { ErrorState } from '../../../../components';
@@ -46,7 +38,7 @@ function RevenueTooltip({ active, payload }: RevenueTooltipProps) {
 export function RevenueByCustomerChart() {
   const { t } = useI18n();
   const router = useRouter();
-  const { data, isLoading, isError, refetch } = trpc.platform.getRevenueByCustomer.useQuery();
+  const { data, isLoading, isError, refetch } = useDashboardRevenueByCustomer();
 
   // Filter to only orgs with MRR > 0 for the chart
   const chartData = (data ?? []).filter((d) => d.mrr > 0).slice(0, 10);
@@ -68,9 +60,7 @@ export function RevenueByCustomerChart() {
           <ErrorState onRetry={() => refetch()} />
         </div>
       ) : chartData.length === 0 ? (
-        <div className="h-[240px] flex items-center justify-center text-sm text-muted">
-          No revenue data yet
-        </div>
+        <div className="h-[240px] flex items-center justify-center text-sm text-muted">No revenue data yet</div>
       ) : (
         <ResponsiveContainer width="100%" height={240}>
           <BarChart

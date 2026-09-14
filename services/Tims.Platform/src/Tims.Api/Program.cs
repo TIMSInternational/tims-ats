@@ -13,23 +13,33 @@ using Serilog;
 using Serilog.Formatting.Compact;
 using StackExchange.Redis;
 using Tims.Api.AccessReview;
+using Tims.Api.Fx;
+using Tims.Api.AlertMetrics;
 using Tims.Api.Audit;
 using Tims.Api.Authentication;
 using Tims.Api.Billing;
 using Tims.Api.Compensation;
 using Tims.Api.Configuration;
 using Tims.Api.HealthChecks;
+using Tims.Api.Http;
 using Tims.Api.RateLimiting;
 using Tims.Api.Evaluation360;
 using Tims.Api.ExternalVendor;
 using Tims.Api.Engagement;
+using Tims.Api.FitEngine;
+using Tims.Api.Notification;
 using Tims.Api.Dei;
 using Tims.Api.NineBox;
 using Tims.Api.Reporting;
 using Tims.Api.Succession;
+using Tims.Api.Monitoring;
+using Tims.Api.PlatformDashboard;
+using Tims.Api.PlatformInvitations;
+using Tims.Api.PlatformOrganizations;
 using Tims.Api.TeamIntel;
 using Tims.Api.Validation;
 using Tims.Application.Access;
+using Tims.Application.AlertMetrics;
 using Tims.Application.AccessReview;
 using Tims.Application.Audit;
 using Tims.Application.Billing;
@@ -39,16 +49,23 @@ using Tims.Application.ExternalVendor;
 using Tims.Application.Identity;
 using Tims.Application.Engagement;
 using Tims.Application.Dei;
+using Tims.Application.FitEngine;
+using Tims.Application.Notification;
 using Tims.Application.Fx;
 using Tims.Application.NineBox;
 using Tims.Application.Reporting;
 using Tims.Application.Succession;
+using Tims.Application.Monitoring;
+using Tims.Application.PlatformDashboard;
+using Tims.Application.PlatformInvitations;
+using Tims.Application.PlatformOrganizations;
 using Tims.Application.TeamIntel;
 using Tims.Application.Validation;
 using Tims.Domain.Access;
 using Tims.Domain.Billing;
 using Tims.Domain.Identity;
 using Tims.Infrastructure.Access;
+using Tims.Infrastructure.AlertMetrics;
 using Tims.Infrastructure.AccessReview;
 using Tims.Infrastructure.Audit;
 using Tims.Infrastructure.Billing;
@@ -58,12 +75,18 @@ using Tims.Infrastructure.ExternalVendor;
 using Tims.Infrastructure.Hris;
 using Tims.Infrastructure.Engagement;
 using Tims.Infrastructure.Dei;
+using Tims.Infrastructure.FitEngine;
+using Tims.Infrastructure.Notification;
 using Tims.Infrastructure.Fx;
 using Tims.Infrastructure.NineBox;
 using Tims.Infrastructure.Identity;
 using Tims.Infrastructure.RateLimiting;
 using Tims.Infrastructure.Reporting;
 using Tims.Infrastructure.Succession;
+using Tims.Infrastructure.Monitoring;
+using Tims.Infrastructure.PlatformDashboard;
+using Tims.Infrastructure.PlatformInvitations;
+using Tims.Infrastructure.PlatformOrganizations;
 using Tims.Infrastructure.TeamIntel;
 using Tims.Infrastructure.Validation;
 
@@ -256,6 +279,148 @@ try
     builder.Services.AddScoped<ITeamIntelReadRepository, TeamIntelReadRepository>();
     builder.Services.AddScoped<TeamIntelReadUseCase>();
 
+    // Phase-5 Q0b slice 1 / issue #100 (efcoreReadOnly): the monitoring READ surface — the prerequisite
+    // the ownership-flip runbook §7b names as the gating item for flips #64/#66/#68. Plain read-only
+    // context over the Prisma-OWNED alerts/alert_rules/action_plans/users/vacancies/salary_adjustments/
+    // surveys/survey_responses (every status column is plain text → no NpgsqlDataSource needed). Reads
+    // run UNDER TenantScope/RLS; getActionPlanAlerts additionally composes scopeWhereFor('actionPlan').
+    // Dark unless MonitoringReadEnabled (deploy-gated cutover).
+    builder.Services.AddDbContext<MonitoringReadDbContext>(options => options.UseNpgsql(databaseConnectionString));
+    builder.Services.AddScoped<IMonitoringReadRepository, MonitoringReadRepository>();
+    builder.Services.AddScoped<MonitoringReadUseCase>();
+
+    // Phase-5 slice 19 (#76): platform-owner ORGANIZATIONS READ. Cross-org by design and NEVER wrapped
+    // in TenantScope — PlatformOwnerGate is the entire authorization boundary. Read-only over
+    // Prisma-owned tables (efcoreReadOnly): this slice adds no writer and moves nothing in the ledger.
+    // Dark unless PlatformOrganizationsReadEnabled (deploy-gated cutover).
+    // A dedicated data source with EnableUnmappedTypes, shared by the read and write contexts of this
+    // domain: organizations.plan / subscriptions.plan+status / invoices.status / platform_invitations.status
+    // are NATIVE Prisma enum columns mapped to C# strings, and EFCore.PG throws on those without it. Slice 19
+    // shipped WITHOUT this and would have 500'd on every read once flipped on — the fault is invisible to
+    // unit tests and only appears against a real Postgres (found by the slice-20 integration tests; guarded
+    // by PlatformOrganizationsReadDbContextTests). Registered as a WRAPPER, not the open NpgsqlDataSource
+    // service type, so EnableUnmappedTypes cannot bleed into every other string-based context. Built lazily,
+    // so a dark-flag boot on a placeholder DB never opens it.
+    builder.Services.AddSingleton(_ =>
+        new PlatformOrganizationsDataSourceHolder(PlatformOrganizationsDataSource.Build(databaseConnectionString ?? string.Empty)));
+    builder.Services.AddDbContext<PlatformOrganizationsReadDbContext>((sp, options) =>
+        options.UseNpgsql(sp.GetRequiredService<PlatformOrganizationsDataSourceHolder>().DataSource));
+    builder.Services.AddScoped<IPlatformOrganizationsReadRepository, PlatformOrganizationsReadRepository>();
+    builder.Services.AddScoped<PlatformOrganizationsReadUseCase>();
+
+    // Phase-5 slice 22 (#75): platform-owner INVITATIONS READ (getInvitationKpis / listInvitations /
+    // exportInvitationsCsv). Cross-org by design and NEVER wrapped in TenantScope — PlatformOwnerGate is the
+    // entire authorization boundary. Read-only over Prisma-owned tables (efcoreReadOnly): no writer added,
+    // nothing moved in the ledger. Dark unless PlatformInvitationsReadEnabled.
+    // Its OWN data-source holder rather than PlatformOrganizations', because EnableUnmappedTypes is per-domain
+    // by convention (one holder per domain, so a domain's type handling cannot bleed into another's) — and it
+    // is MANDATORY here: platform_invitations.type AND .status are native Prisma enums read as C# strings, so
+    // listInvitations and exportInvitationsCsv would both throw InvalidCastException on the first materialised
+    // row against a real Postgres, with every unit test green. Built lazily, so a dark-flag boot on a
+    // placeholder DB never opens it.
+    builder.Services.AddSingleton(_ =>
+        new PlatformInvitationsDataSourceHolder(PlatformInvitationsDataSource.Build(databaseConnectionString ?? string.Empty)));
+    builder.Services.AddDbContext<PlatformInvitationsReadDbContext>((sp, options) =>
+        options.UseNpgsql(sp.GetRequiredService<PlatformInvitationsDataSourceHolder>().DataSource));
+    builder.Services.AddScoped<IPlatformInvitationsReadRepository, PlatformInvitationsReadRepository>();
+    builder.Services.AddScoped<PlatformInvitationsReadUseCase>();
+
+    // Phase-5 slice 23 (#81, PR 1 of 3): platform-owner DASHBOARD READ, the three FX-free procedures
+    // (getPlanDistribution / getUserGrowth / getRecentActivity). Cross-org by design and NEVER wrapped in
+    // TenantScope — PlatformOwnerGate is the entire authorization boundary. Read-only over Prisma-owned
+    // tables (users efcoreReadOnly; organizations/subscriptions efcoreStranglerWrite via slices 20/21):
+    // no writer added, nothing moved in the ledger. Dark unless PlatformDashboardReadEnabled.
+    // Its OWN data-source holder (EnableUnmappedTypes is per-domain by convention), and MANDATORY here:
+    // subscriptions.plan and organizations.plan are native OrgPlan enums read as C# strings, so
+    // getPlanDistribution and getRecentActivity would both throw InvalidCastException on the first
+    // materialised row against a real Postgres, with every unit test green. getUserGrowth is raw SQL
+    // projecting text + bigint and alone would survive.
+    builder.Services.AddSingleton(_ =>
+        new PlatformDashboardDataSourceHolder(PlatformDashboardDataSource.Build(databaseConnectionString ?? string.Empty)));
+    builder.Services.AddDbContext<PlatformDashboardReadDbContext>((sp, options) =>
+        options.UseNpgsql(sp.GetRequiredService<PlatformDashboardDataSourceHolder>().DataSource));
+    builder.Services.AddScoped<IPlatformDashboardReadRepository, PlatformDashboardReadRepository>();
+    builder.Services.AddScoped<PlatformDashboardReadUseCase>();
+
+    // PR 2 of 3, same flag and the SAME context/data source: the six remaining FX-free reads
+    // (getAttentionItems / getMrrTrend / getMrrForecast / getCustomerHealth / getUpsellOpportunities /
+    // search). Split into four repository+use-case pairs rather than one of each, because the four
+    // groups share no query and merging them would put five unrelated kernels in one 600-line file.
+    // The context widens to invoices, platform_invitations, feature_flags and vacancies — all four
+    // already in efcoreReadOnly[], so still no ledger move and still no writer.
+    builder.Services.AddScoped<IPlatformDashboardAttentionRepository, PlatformDashboardAttentionRepository>();
+    builder.Services.AddScoped<PlatformDashboardAttentionUseCase>();
+    builder.Services.AddScoped<IPlatformDashboardMrrRepository, PlatformDashboardMrrRepository>();
+    builder.Services.AddScoped<PlatformDashboardMrrUseCase>();
+    builder.Services.AddScoped<IPlatformDashboardAccountsRepository, PlatformDashboardAccountsRepository>();
+    builder.Services.AddScoped<PlatformDashboardAccountsUseCase>();
+    builder.Services.AddScoped<IPlatformDashboardSearchRepository, PlatformDashboardSearchRepository>();
+    builder.Services.AddScoped<PlatformDashboardSearchUseCase>();
+
+    // PR 3 of 3, same flag and the SAME context/data source again: the three FX-DERIVED reads
+    // (getDashboardKpis / getRevenueByCustomer / getChurnRisk). The context gains ONE COLUMN, invoices
+    // .paid_at, and no new table — so still no ledger move and still no writer. What is new is the
+    // DEPENDENCY: this use case also consumes the Slice-11c FX plane (IFxRateProvider over the global
+    // fx_rates context, registered unconditionally further down), which is why it takes the provider
+    // rather than FxMoneyConverter — it wraps each call in a per-request MemoizingFxRateProvider so one
+    // currency pair costs one lookup per request, as the TS rate cache does.
+    builder.Services.AddScoped<IPlatformDashboardFxRepository, PlatformDashboardFxRepository>();
+    builder.Services.AddScoped<PlatformDashboardFxUseCase>();
+
+    // The FINAL dashboard read, same flag and the SAME context/data source once more: getAiCostAnomalies.
+    // The context gains THREE NEW TABLES (ai_agents / ai_agent_org_configs / ai_agent_usage_logs), and
+    // unlike every earlier PR of this slice those are NEW efcoreReadOnly[] ledger entries — nothing had
+    // ever mapped them (see the platform_dashboard_read_slice23_ai note). Still SELECTs only, no writer.
+    builder.Services.AddScoped<IPlatformDashboardAiRepository, PlatformDashboardAiRepository>();
+    builder.Services.AddScoped<PlatformDashboardAiUseCase>();
+
+    // Phase-5 slice 20 (#76): platform-owner ORGANIZATIONS WRITE (updateOrganization/suspendOrganization).
+    // Its OWN context, mapping organizations AND audit_logs, because the fail-closed audit decided on #76
+    // only holds if the audit INSERT shares the org UPDATE's transaction — and since every context here is
+    // registered with its own connection (nothing shares a DbConnection + UseTransaction), reusing
+    // AuditLogDbContext would put them in two transactions and quietly lose the guarantee. Runs UNDER TenantScope (the org id is
+    // known, so RLS stays engaged); the notification fan-out is the one unscoped part, by necessity.
+    // Dark unless PlatformOrganizationsWriteEnabled (deploy-gated cutover; TS stays the sole active writer).
+    builder.Services.AddDbContext<PlatformOrganizationsWriteDbContext>((sp, options) =>
+        options.UseNpgsql(sp.GetRequiredService<PlatformOrganizationsDataSourceHolder>().DataSource));
+    builder.Services.AddScoped<IPlatformOrganizationsWriteRepository, PlatformOrganizationsWriteRepository>();
+    builder.Services.AddScoped<PlatformOrganizationsWriteUseCase>();
+
+    // Phase-5 slice 21 (#76): platform-owner ORGANIZATION CREATE + the shared org-provisioning service.
+    // Its OWN context, mapping organizations + roles + companies + business_units + teams +
+    // org_entitlements + plan_modules (read-only) + audit_logs + users/notifications (the fan-out),
+    // for the same reason slice 20's does: the fail-closed audit only holds if the audit INSERT shares the
+    // creation transaction, and every context here is registered with its own connection (nothing shares a
+    // DbConnection + UseTransaction), so reusing AuditLogDbContext would split them. Reuses the SAME
+    // PlatformOrganizationsDataSourceHolder registered above (one per domain) — EnableUnmappedTypes is
+    // mandatory here, since the create path reads the organization row back and organizations.plan is a
+    // native PG enum. Runs UNDER TenantScope opened on the client-generated new org id.
+    // NOT mapped, deliberately: `subscriptions` is written ONLY by raw ExecuteSqlInterpolatedAsync
+    // (PlatformOrganizationsCreateRepository), because plan/status are native PG enums EF has no store
+    // mapping to write through. It is therefore INVISIBLE to scripts/table-ownership.mjs, which greps for
+    // table names in EF ToTable calls and nothing else (#199) — as is `organizations`, written the same way
+    // for the same reason. Those two are the slice's governance blind spot; every OTHER table here goes
+    // through EF precisely so its ledger entry is actually enforced.
+    //
+    // Do NOT write that grep's pattern out literally in a comment: the checker cannot tell code from prose,
+    // so an illustrative snippet registers as a real mapping and fails the governance test with a table name
+    // of "...". Which is, itself, the sharpest available demonstration of #199.
+    // Dark unless PlatformOrganizationsCreateEnabled (deploy-gated; TS stays the sole active writer, and
+    // stays a writer permanently — self-serve signup shares the same helpers).
+    builder.Services.AddDbContext<PlatformOrganizationsCreateDbContext>((sp, options) =>
+        options.UseNpgsql(sp.GetRequiredService<PlatformOrganizationsDataSourceHolder>().DataSource));
+    builder.Services.AddScoped<IPlatformOrganizationsCreateRepository, PlatformOrganizationsCreateRepository>();
+    builder.Services.AddScoped<PlatformOrganizationsCreateUseCase>();
+
+    // §8 Q0b slice 2 / issue #172: the CROSS-ORG alert-metric read for the alert-evaluation cron — the last
+    // blocker on flips #64 and #66. Deliberately REUSES MonitoringReadDbContext above rather than adding a
+    // second context over the same two tables: the identical counts already ship in
+    // MonitoringReadRepository.GetExecutiveKpiCountsAsync, and each read here still runs under TenantScope
+    // scoped to ONE explicitly-named org, so this surface bypasses no RLS. What makes it "privileged" is the
+    // right to NAME any org, enforced at the edge by CronCallerGate's secret — not a BYPASSRLS login role.
+    builder.Services.AddScoped<IAlertMetricsReadRepository, AlertMetricsReadRepository>();
+    builder.Services.AddScoped<AlertMetricsReadUseCase>();
+
     // Phase-5 Slice 7 (efcoreReadOnly): the evaluation360 READ surface. Unlike the reporting/team-intel reads,
     // the review_cycles.status / rater_assignments.relationship / rater_assignments.status columns are NATIVE
     // Prisma enums that this surface FILTERS on (status='pending', cycle.status='open', status='published',
@@ -391,6 +556,29 @@ try
     builder.Services.AddScoped<IEngagementWriteRepository, EngagementWriteRepository>();
     builder.Services.AddScoped<EngagementWriteUseCase>();
 
+    // Phase-5 Slice 24 / #90: the FIT-engine surface. READ context over fit_scores/candidates/vacancies/
+    // role_family_weight_profiles (subset maps); WRITE context adds the computeForVacancy read set
+    // (job_profiles, assessment_assignments/results, ai_interview_sessions, applications — all plain
+    // strings/scalars, NO native enums mapped, so no NpgsqlDataSource) while the two upserts run as raw
+    // INSERT … ON CONFLICT on the TenantScope transaction (fit_scores has no EF map at all). All ops UNDER
+    // TenantScope/RLS. The vacancy-scoped endpoints reuse ScopedProbe (registered above; vacancy is a probe
+    // root since WP2.5b). Dark unless FitEngineReadEnabled / FitEngineWriteEnabled (deploy-gated cutover).
+    builder.Services.AddDbContext<FitEngineReadDbContext>(options => options.UseNpgsql(databaseConnectionString));
+    builder.Services.AddScoped<IFitEngineReadRepository, FitEngineReadRepository>();
+    builder.Services.AddScoped<FitEngineReadUseCase>();
+    builder.Services.AddDbContext<FitEngineWriteDbContext>(options => options.UseNpgsql(databaseConnectionString));
+    builder.Services.AddScoped<IFitEngineWriteRepository, FitEngineWriteRepository>();
+    builder.Services.AddScoped<FitEngineWriteUseCase>();
+
+    // Phase-5 Slice 25 / #98 — notification. ONE DbContext for both sides: the read and write flags cover the
+    // SAME two tables, and getPreferences is a query that INSERTs, so the read path needs write capability.
+    // Dark unless NotificationReadEnabled / NotificationWriteEnabled (deploy-gated cutover).
+    builder.Services.AddDbContext<NotificationDbContext>(options => options.UseNpgsql(databaseConnectionString));
+    builder.Services.AddScoped<INotificationReadRepository, NotificationReadRepository>();
+    builder.Services.AddScoped<INotificationWriteRepository, NotificationWriteRepository>();
+    builder.Services.AddScoped<NotificationReadUseCase>();
+    builder.Services.AddScoped<NotificationWriteUseCase>();
+
     // Phase-5 Slice 11b (efcoreReadOnly): the DEI READ surface (people-dashboards GROUP 2). Unlike the engagement
     // read, employee_demographics carries THREE NATIVE Prisma enums the demographic reads GROUP BY (Gender /
     // Ethnicity / DisabilityStatus) — Postgres has no implicit enum=text operator — so a dedicated data source maps
@@ -408,14 +596,40 @@ try
     builder.Services.AddScoped<IDeiReadRepository, DeiReadRepository>();
     builder.Services.AddScoped<DeiReadUseCase>();
 
-    // Phase-5 Slice 11c: the FX read plane. The global RLS-exempt FxRateDbContext reads the DB-pinned rates the
-    // Workers FxRefreshJob writes; FxRateProvider resolves the latest effective-dated pin (cross-rate via USD,
+    // Phase-5 Slice 11c: the FX read plane. The global RLS-exempt FxRateDbContext reads the DB-pinned rates
+    // the refresh writes; FxRateProvider resolves the latest effective-dated pin (cross-rate via USD,
     // FAIL-SOFT cold-start → null); FxMoneyConverter bridges the reads to the pure convertMoney/sumMoney kernels.
     // Feeds dei.getPayEquity + the five compensation FX reads. Dark unless FxReadsEnabled (deploy-gated cutover).
     builder.Services.AddDbContext<FxRateDbContext>(options => options.UseNpgsql(databaseConnectionString));
     builder.Services.AddScoped<IFxRateProvider, FxRateProvider>();
     builder.Services.AddScoped<FxMoneyConverter>();
     builder.Services.AddScoped<CompensationFxReadUseCase>();
+
+    // The FX REFRESH plane (2026-08-15) — the write half of Slice 11c, hosted HERE because the Workers
+    // host it was designed for was never deployed while FxReadsEnabled went live, freezing every
+    // production pin at as_of 2026-07-31 (see PlatformOptions.FxRefreshEnabled for the full incident).
+    // The gateway + write repo + use case register UNCONDITIONALLY (inert without a resolver, and the
+    // resilience tests drive the same registration); ONLY the hosted loop is flag-gated, mirroring how
+    // routes register DI always but map behind their flag. FxOptions has valid defaults for every knob,
+    // so ValidateOnStart cannot fail a host that never configured an Fx section.
+    builder.Services
+        .AddOptions<FxOptions>()
+        .Bind(builder.Configuration.GetSection(FxOptions.SectionName))
+        .ValidateDataAnnotations()
+        .ValidateOnStart();
+    builder.Services.AddFxRateGateway();
+    builder.Services.AddScoped<IFxRateWriteRepository, FxRateWriteRepository>();
+    builder.Services.AddScoped<RefreshFxRatesUseCase>();
+
+    // Hosted-service registration must happen BEFORE Build(), so this reads the RAW config value the way
+    // the bootstrap block reads ServiceName/OtlpEndpoint — the bound PlatformOptions is not resolvable
+    // yet. isOpenApiDocGeneration deliberately does NOT force this on: the doc-generation escape hatch
+    // exists to inventory ROUTES, and this maps none.
+    if (bool.TryParse(platformSection[nameof(PlatformOptions.FxRefreshEnabled)], out var fxRefreshEnabled)
+        && fxRefreshEnabled)
+    {
+        builder.Services.AddHostedService<FxRefreshHostedService>();
+    }
 
     // Phase-5 Slice 17 (efcoreReadOnly): the cross-org audit-log READ surface. Plain read-only context
     // over the Prisma-OWNED audit_logs (+ context-local users/organizations read entities for the
@@ -651,6 +865,95 @@ try
                 }
             }
 
+            // PlatformOrganizationRow (#211, 2026-08-11) — RESTORE the `type` its date properties lost.
+            //
+            // Those three properties gained [JsonConverter(NodeIso…DateTimeConverter)] so the emitted
+            // instants actually carry the trailing `Z` that `format: date-time` (RFC 3339) promises and
+            // that the TS `Date.prototype.toISOString()` contract requires. The generator, however,
+            // cannot infer a schema type through a custom converter: it kept `format: date-time` and
+            // DROPPED `"type": "string"` (and `deletedAt`'s `["null","string"]` union). That is a
+            // contract REGRESSION — a typeless schema is weaker for a generated client than the wrong
+            // serialization was — so the fix is both halves, not one. Same shape as the two body
+            // transformers above: state the schema the wire actually carries.
+            if (context.JsonTypeInfo.Type == typeof(PlatformOrganizationRow) && schema.Properties is not null)
+            {
+                foreach (var (name, nullable) in new[]
+                         {
+                             ("createdAt", false), ("updatedAt", false), ("deletedAt", true),
+                         })
+                {
+                    if (schema.Properties.TryGetValue(name, out var dateSchema)
+                        && dateSchema is Microsoft.OpenApi.OpenApiSchema concreteDate)
+                    {
+                        concreteDate.Type = nullable
+                            ? Microsoft.OpenApi.JsonSchemaType.String | Microsoft.OpenApi.JsonSchemaType.Null
+                            : Microsoft.OpenApi.JsonSchemaType.String;
+                    }
+                }
+            }
+
+            // NotificationRow (Phase-5 Slice 25 / #98) — same restoration, same cause: createdAt/readAt carry
+            // NodeIso(Nullable)DateTimeConverter for the trailing `Z`, and the generator drops `"type"` through
+            // a custom converter.
+            //
+            // ⚠️ This is a PER-TYPE patch of a REPO-WIDE defect, and the scope is deliberate. Measured on this
+            // branch: 109 typeless `format: date-time` properties across 46 schemas, of which this slice
+            // contributes 2 — PlatformOrganizationRow above is the ONLY type ever fixed. A general transformer
+            // would be ~10 lines and would be the right fix, but it would rewrite 45 other schemas and cascade
+            // into schema.d.ts, which does not belong in a port PR. Filed separately; this slice's job is only
+            // to avoid adding to the debt.
+            if (context.JsonTypeInfo.Type == typeof(NotificationRow) && schema.Properties is not null)
+            {
+                foreach (var (name, nullable) in new[] { ("createdAt", false), ("readAt", true) })
+                {
+                    if (schema.Properties.TryGetValue(name, out var dateSchema)
+                        && dateSchema is Microsoft.OpenApi.OpenApiSchema concreteDate)
+                    {
+                        concreteDate.Type = nullable
+                            ? Microsoft.OpenApi.JsonSchemaType.String | Microsoft.OpenApi.JsonSchemaType.Null
+                            : Microsoft.OpenApi.JsonSchemaType.String;
+                    }
+                }
+            }
+
+            return Task.CompletedTask;
+        });
+
+        // GET /platform/dashboard/search (#81 PR 2) — `query` is REQUIRED, and the emitted contract said
+        // otherwise.
+        //
+        // The handler binds it as `string?` on purpose (TRAP 9: a non-nullable parameter makes minimal-API
+        // model binding 400 a missing query string BEFORE PlatformOwnerGate runs, handing an anonymous
+        // caller a 400 where tRPC gives 401). The generator reads that nullable annotation and emits the
+        // parameter without `required: true` — so the contract advertised an optional parameter that the
+        // handler answers 400 for. Same defect class as the SubmitValidationBody transformer above, in the
+        // opposite direction: state what the endpoint actually enforces, which is Zod's
+        // `z.object({ query: z.string().min(1).max(100) })`. The bounds are carried too, so a generated
+        // client sees the same limits the handler rejects on.
+        options.AddOperationTransformer((operation, context, _) =>
+        {
+            if (context.Description.RelativePath == "platform/dashboard/search"
+                && operation.Parameters is not null)
+            {
+                foreach (var parameter in operation.Parameters)
+                {
+                    // The collection is typed as the read-only IOpenApiParameter interface; the concrete
+                    // type is what carries settable members, exactly as the schema transformers above
+                    // cast to OpenApiSchema.
+                    if (parameter.Name != "query" || parameter is not Microsoft.OpenApi.OpenApiParameter concrete)
+                    {
+                        continue;
+                    }
+
+                    concrete.Required = true;
+                    if (concrete.Schema is Microsoft.OpenApi.OpenApiSchema schema)
+                    {
+                        schema.MinLength = PlatformDashboardSearchUseCase.MinQueryLength;
+                        schema.MaxLength = PlatformDashboardSearchUseCase.MaxQueryLength;
+                    }
+                }
+            }
+
             return Task.CompletedTask;
         });
 
@@ -728,13 +1031,25 @@ try
         });
     });
 
+    builder.Services.AddSingleton<IRelayNonceStore, RelayNonceStore>();
+
     var app = builder.Build();
 
-    // CORS runs FIRST — an unauthenticated preflight (OPTIONS) is answered by this
-    // middleware before it can reach authentication or the fail-closed rate limiter.
+    // #181 — strip the client-controlled `x-real-ip` before ANYTHING can read it. This is deliberately
+    // the first middleware in the pipeline: both consumers of the trusted-IP rule (the rate limiter's
+    // anonymous key and every audit writer) read the raw header, so the untrusted value has to be gone
+    // before either runs. App Runner does not set or strip this header, so on this deployment it was
+    // caller-supplied. See TrustedProxyHeaderMiddleware for why the fix is here and not in the shared
+    // ClientIp kernel, which is pinned cross-stack.
+    app.UseMiddleware<TrustedProxyHeaderMiddleware>();
+
+    // CORS runs FIRST among the request-handling middlewares — an unauthenticated preflight (OPTIONS) is
+    // answered by this middleware before it can reach authentication or the fail-closed rate limiter.
     app.UseCors(BrowserCorsPolicyName);
 
     app.UseAuthentication();
+    // Verify bearer before consuming relay nonces; verify attribution before principal/audit/rate-limit consumers.
+    app.UseMiddleware<RelayAttributionMiddleware>();
 
     // Principal resolution runs AFTER authentication and BEFORE rate limiting: it resolves the TIMS
     // principal ONCE (JWT `sub` → TenantContext via PrincipalResolver) and stashes it, so the limiter
@@ -742,10 +1057,49 @@ try
     // `sub` — matching the TS `ctx.user.id` surface, and the authz probes reuse it (dedupe).
     app.UseMiddleware<PrincipalResolutionMiddleware>();
 
+    // #173 — authz_denied observer, the port of TS's OUTERMOST `withSecurityAudit`. Registered
+    // immediately AFTER principal resolution and BEFORE everything that can deny, so on the way
+    // back out it sees both the resolved tenant (to attribute the row) and the final 401/403 from
+    // any gate below — every *StaffGate, every endpoint-written 403, and UseAuthorization's own
+    // challenges. It writes nothing on success and never alters the response.
+    //
+    // CORRECTION (#182): an earlier version of this comment claimed it also sees "the rate limiter's
+    // own rejections". It does not — RateLimitMiddleware returns 429, and this observer filters to
+    // 401/403 only. TS records throttling under a distinct `rate_limit` action; there is no C#
+    // counterpart, which is a real coverage gap rather than something this middleware already covers.
+    // #181 — the one kill switch. DISABLED-phrased, not Enabled-phrased: this middleware is already
+    // live, so a default-false `Enabled` flag would have silently switched off a live security control on
+    // the next deploy. Absent or garbled ⇒ the control stays ON.
+    // Resolved here rather than reusing the `externalOptions` local below — that one is declared further
+    // down, after the middleware pipeline is built.
+    var pipelineOptions = app.Services.GetRequiredService<IOptions<PlatformOptions>>().Value;
+    if (SecurityDenialAuditMiddleware.IsDisabled(pipelineOptions.SecurityDenialAuditDisabled))
+    {
+        app.Logger.LogWarning(
+            "SECURITY: Platform:SecurityDenialAuditDisabled is set — authz_denied audit rows are NOT being "
+            + "written. This is an incident-response escape hatch, not a steady state.");
+    }
+    else
+    {
+        app.UseMiddleware<SecurityDenialAuditMiddleware>();
+    }
+
     // Rate limiting runs AFTER principal resolution (so the resolved TIMS principal is available to
     // key the bucket) but BEFORE authorization/handlers. Infra + auth-probe paths are exempt inside
     // the middleware; the API-key per-key quota is enforced by ApiKeyRateLimitFilter post-auth.
     app.UseMiddleware<RateLimitMiddleware>();
+
+    // #173 — MFA step-up, the port of TS's `withMfaEnforcement`. Registered AFTER the denial
+    // observer so that observer sees this 403 and correctly SKIPS it: an MFA refusal is audited
+    // distinctly as `mfa_step_up_required`, never as a generic `authz_denied` (observeDenial's
+    // same carve-out). Fails OPEN on an unset/garbled Platform:MfaEnforced.
+    //
+    // #181 — moved to AFTER the rate limiter. It short-circuits on refusal, so registering it first
+    // meant a refused caller never reached the limiter at all: a stolen aal1 super_admin token — the
+    // exact thing this gate exists to neutralise — became an unmetered amplifier, one audit_logs
+    // INSERT plus a principal-resolution DB read per request, at whatever rate the caller chose.
+    // Still inside SecurityDenialAuditMiddleware, so the carve-out above is unaffected.
+    app.UseMiddleware<MfaStepUpMiddleware>();
 
     app.UseAuthorization();
 
@@ -883,6 +1237,73 @@ try
         app.MapTeamIntelReadEndpoints();
     }
 
+    // Monitoring READ surface (Phase-5 Q0b slice 1, issue #100): GET /monitoring/{executive-kpis|
+    // module-health|alerts|action-plan-alerts|cross-module-trend|alert-rules}. Staff-JWT +
+    // monitoring:read; action-plan-alerts composes scopeWhereFor('actionPlan') as a row filter, the
+    // other five are org-wide (TS parity — the live reader applies no org-gate here). Dark unless the
+    // flag is on (deploy-gated cutover; TS stays the sole active reader until Federico flips it).
+    if (externalOptions.MonitoringReadEnabled || isOpenApiDocGeneration)
+    {
+        app.MapMonitoringReadEndpoints();
+    }
+
+    if (externalOptions.PlatformOrganizationsReadEnabled || isOpenApiDocGeneration)
+    {
+        app.MapPlatformOrganizationsReadEndpoints();
+    }
+
+    // Phase-5 slice 22 (#75): GET /platform/invitations{,/kpis,/export} — the platform-owner invitations
+    // READ surface. Three of that router's ten procedures; the other seven are out for three distinct
+    // reasons (writes / unauthenticated token endpoints / no email capability in this service) — see
+    // PlatformOptions.PlatformInvitationsReadEnabled. Dark unless the flag is on.
+    if (externalOptions.PlatformInvitationsReadEnabled || isOpenApiDocGeneration)
+    {
+        app.MapPlatformInvitationsReadEndpoints();
+    }
+
+    // Phase-5 slice 23 (#81): GET /platform/dashboard/{plan-distribution,user-growth,
+    // recent-activity,attention-items,mrr-trend,mrr-forecast,customer-health,upsell-opportunities,search}
+    // — the FX-free tier — plus PR 3's {kpis,revenue-by-customer,churn-risk}, the three sumMoney callers,
+    // plus ai-cost-anomalies, the thirteenth and final read. ALL THIRTEEN of the cluster's reads are now
+    // ported — see PlatformOptions.PlatformDashboardReadEnabled. ONE flag covers all thirteen, so a canary
+    // flip exposes the whole ported cluster at once. Dark unless it is on.
+    //
+    // PR 3's three are the only dashboard routes that can answer 503: they resolve an fx_rates pin before
+    // any arithmetic, and a missing pin fails the request rather than emitting a partially-converted total
+    // (TS's getFxRate throws; see PlatformDashboardFxResultKind).
+    if (externalOptions.PlatformDashboardReadEnabled || isOpenApiDocGeneration)
+    {
+        app.MapPlatformDashboardReadEndpoints();
+        app.MapPlatformDashboardFxReadEndpoints();
+        app.MapPlatformDashboardAiReadEndpoints();
+    }
+
+    // Phase-5 slice 20 (#76): PATCH /platform/organizations/{id} + POST /platform/organizations/{id}/suspend.
+    // This flag IS the one-active-writer control for `organizations` (efcoreStranglerWrite) — with it off the
+    // routes are never mapped and TS is the sole writer.
+    if (externalOptions.PlatformOrganizationsWriteEnabled || isOpenApiDocGeneration)
+    {
+        app.MapPlatformOrganizationsWriteEndpoints();
+    }
+
+    // Phase-5 slice 21 (#76): POST /platform/organizations — the 7-table provisioning create.
+    // This flag IS the one-active-writer control for the six provisioned tables; with it off the route is
+    // never mapped and TS is the sole writer.
+    if (externalOptions.PlatformOrganizationsCreateEnabled || isOpenApiDocGeneration)
+    {
+        app.MapPlatformOrganizationsCreateEndpoints();
+    }
+
+    // §8 Q0b slice 2 / issue #172: GET /internal/alert-metrics — the cross-org metric read for the
+    // alert-evaluation cron (active_surveys → flip #64, pending_salary_adjustments → flip #66). NOT a staff
+    // surface: it is anonymous to the auth schemes and authenticated by the cron secret in the handler, so
+    // no tenant JWT reaches it. Dark unless the flag is on (deploy-gated cutover; TS stays the sole active
+    // reader until Federico flips it). With the flag off the route is never mapped and 404s.
+    if (externalOptions.AlertMetricsCronReadEnabled || isOpenApiDocGeneration)
+    {
+        app.MapAlertMetricsEndpoints();
+    }
+
     // Evaluation360 READ surface (Phase-5 Slice 7): GET /evaluation360/cycles + /cycles/{id}/progress (STAFF:
     // evaluation360:read + organization/company org-gate, Codex F3), and /evaluation360/my/rater-tasks,
     // /my/reports/{cycleId}, /my/report-cycles (SELF-SERVICE: identity-anchored — any resolved principal, NO
@@ -1000,6 +1421,54 @@ try
         app.MapEngagementWriteEndpoints();
     }
 
+    // Phase-5 Slice 24 / #90 (efcoreReadOnly): the FIT-engine READ surface (4 reads) — GET
+    // /fit-engine/vacancies/{id}/ranking (getRankingForVacancy), /fit-engine/vacancies/{id}/simulate-weights
+    // (simulateWeights — five [0,1] weights summing to 1 ± 0.001, validated after auth),
+    // /fit-engine/weight-profiles (listRoleFamilyWeightProfiles, grant-only), and
+    // /fit-engine/vacancies/{id}/candidates/{id}/explain-fit (explainFit — gate → probe → fetch → null ⇒ 404,
+    // then 501: the narrative needs the TS-only Bedrock pipeline; team-intel honest-stub precedent). Staff-JWT +
+    // fit_engine:read; vacancy-scoped reads run assertScoped('vacancy'). Dark unless the flag is on
+    // (deploy-gated cutover; TS stays the sole active reader until Federico flips it).
+    if (externalOptions.FitEngineReadEnabled || isOpenApiDocGeneration)
+    {
+        app.MapFitEngineReadEndpoints();
+    }
+
+    // Phase-5 Slice 24 / #90 (efcoreStranglerWrite): the FIT-engine WRITE surface (2 writes) — POST
+    // /fit-engine/vacancies/{id}/compute (computeForVacancy: assertScoped('vacancy') → per-candidate
+    // deterministic scoring + atomic fit_scores upsert; bootstraps the 'Default' weight profile when absent)
+    // and POST /fit-engine/weight-profiles (upsertRoleFamilyWeightProfile, grant-only — TS parity). Staff-JWT +
+    // fit_engine:create/update. With the flag off these routes are never mapped. NOTE it is the
+    // one-active-writer control for the ROUTER path only: candidateAiService.screenCandidate and
+    // candidateRepository.merge still write/delete fit_scores in TS outside any flag (see
+    // PlatformOptions.FitEngineWriteEnabled) — both are step-6 preconditions.
+    if (externalOptions.FitEngineWriteEnabled || isOpenApiDocGeneration)
+    {
+        app.MapFitEngineWriteEndpoints();
+    }
+
+    // Phase-5 Slice 25 / #98 (efcoreReadOnly + efcoreStranglerWrite): the notification READ surface (3 reads) —
+    // GET /notifications (list, Prisma cursor paging), /notifications/unread-count and
+    // /notifications/preferences. All three are protectedProcedure, so SelfServiceGate authorizes on IDENTITY
+    // alone and every query hard-filters on the caller's own user id — there is no grant and no subject id.
+    // NOTE getPreferences INSERTs the caller's preference row on a miss (TS parity), so this READ flag alone can
+    // write to notification_preferences. Dark unless the flag is on (deploy-gated cutover).
+    if (externalOptions.NotificationReadEnabled || isOpenApiDocGeneration)
+    {
+        app.MapNotificationReadEndpoints();
+    }
+
+    // Phase-5 Slice 25 / #98 (efcoreStranglerWrite): the notification WRITE surface (8 mutations) — six
+    // self-service (mark/archive/delete/preferences, SelfServiceGate + caller-scoped statements) and two
+    // grant-gated (create, bulkCreate — notification:create, addressing a TARGET user from the body). With the
+    // flag off these routes are never mapped. NOTE it is the one-active-writer control for the ROUTER path only:
+    // lib/notify.ts's notify() still createMany's into notifications from routers/platform/organizations.ts
+    // outside any flag (see PlatformOptions.NotificationWriteEnabled) — a step-6 precondition.
+    if (externalOptions.NotificationWriteEnabled || isOpenApiDocGeneration)
+    {
+        app.MapNotificationWriteEndpoints();
+    }
+
     // Phase-5 Slice 11b (efcoreReadOnly): the DEI READ surface (10 reads). Staff-JWT + dei:read (GRANT-ONLY — no
     // org-gate; k-anonymity is the disclosure control). The demographic group-bys materialize the three native
     // Prisma enums via the enum-mapped data source. Dark unless the flag is on (deploy-gated cutover; TS stays the
@@ -1010,7 +1479,9 @@ try
     }
 
     // Phase-5 Slice 11c: the FX-derived reads (dei.getPayEquity + the five compensation FX reads), gated on
-    // their OWN flag (they canary AFTER the FxRefreshJob first populates fx_rates). Dark unless FxReadsEnabled.
+    // their OWN flag. (The original note here — "they canary AFTER the FxRefreshJob first populates
+    // fx_rates" — described the design; in reality FxSeedOnce populated once, the flag went live 2026-07-31,
+    // and the refresh never ran. See PlatformOptions.FxRefreshEnabled for the incident + fix.)
     if (externalOptions.FxReadsEnabled || isOpenApiDocGeneration)
     {
         app.MapDeiPayEquityEndpoint();

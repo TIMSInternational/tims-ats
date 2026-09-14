@@ -152,7 +152,7 @@ The **fifth is new (added 2026-08-02 after a review caught two misses)** and is 
 bitten twice. A procedure with zero `useQuery` consumers can still be a live FE dependency purely through
 its **cache key**: `apps/web/app/(admin)/engagement/climate/launch-survey-modal.tsx:58` calls
 `utils.engagement.listSurveys.invalidate()` and
-`apps/web/app/(admin)/monitoring/alert-rules-modal.tsx:82` calls
+`apps/web/app/(admin)/monitoring/alert-rules-modal.tsx:98` calls
 `utils.monitoring.getExecutiveKpis.invalidate()`. Neither is a `useQuery` and neither appears in any of
 the first four greps — yet deleting the procedure breaks `Type Check (web)` (the property vanishes from
 the typed utils object) **and** a static tripwire (`tests/tier1/s2-engagement-wiring.test.ts:33`).
@@ -167,14 +167,27 @@ Each reader gets exactly one disposition, decided before the PR:
 - **Repoint** — the whole procedure moves to the C# read endpoint through the
   `apps/web/lib/platform-api/*` wrapper pattern.
 - **Extract** — the read site sits **inside a procedure that must survive**. Neither "Delete" nor
-  "Repoint" applies: the surrounding procedure stays on tRPC and the one read must be served
-  server-to-server from the C# read surface. Worked counterexample the taxonomy previously had no slot
+  "Repoint" applies: the surrounding procedure stays on tRPC and the one read must be served from the
+  C# read surface.
+
+  > ⚠️ **Corrected 2026-08-07.** This bullet used to say "server-to-server". **No such credential path
+  > is wired**, so every Extract taught from it would be mis-designed. `packages/api/src/lib/platform-api-client.ts:9-11`
+  > forwards the CALLER's own `Authorization` header verbatim and never holds or issues a credential of
+  > its own — it works for the external-vendor surface only because a third-party server calls tRPC
+  > directly with its own `Bearer tims_...` key. A staff/platform-owner tRPC request carries no such
+  > header: the tRPC link (`apps/web/lib/trpc-provider.tsx:38-43`) sends none. The mechanism that
+  > **does** work is **browser-direct** via `apps/web/lib/platform-api/client.ts:73-80`, which reads the
+  > live Supabase session client-side — the pattern audit-log and access-review already use. Do not
+  > record this as "Extract is unimplementable"; that is equally wrong.
+
+  Worked counterexample the taxonomy previously had no slot
   for: `packages/api/src/routers/platform/data-requests.ts:93-97` reads
   `db.employeeCompensation.findMany({ … })` inside `exportSubjectData`, the GDPR / Ley 1581/2012
   right-of-access bundle (`:8-16`). The procedure has a live FE consumer
   (`apps/web/app/(admin)/platform/support/data-requests.tsx:20`) so it is not deletable, and it uses the
   privileged cross-org `db`, not `tenantDb`, so it is not repointable through a tenant-scoped read.
   Deleting just the read site yields a **200 export silently missing a legally mandated section**.
+
 - **Blocked** — no C# read surface exists yet ⇒ the flip does not start.
 
 **Field-authorization / audit parity is part of the disposition, not a follow-up.** For any table
@@ -187,25 +200,12 @@ a source-**count** tripwire (e.g. `tests/access/scope-wiring-sensitive-data.test
 `entity: 'employeeCompensation'` occurrences `>= 2`), so removing readers removes the guarantee _and_ its
 alarm with a green suite.
 
-> **UPDATE 2026-08-05 (#59) — three of the four `employee_compensations` read sites are gone, and the
-> count tripwire has been re-anchored.** The list used to read: `routers/compensation.ts:30`,
-> `routers/compensation.ts:80`, `services/compensation.service.ts:62`, and
-> `routers/platform/data-requests.ts:94`. The first three were deleted with the whole compensation
-> router + service (all 4 surviving procedures were zero-FE-consumer dead code with live C#
-> equivalents). **`routers/platform/data-requests.ts:94` is the ONLY Prisma reader left.**
->
-> This is exactly the failure this paragraph predicts, so it was handled the way this paragraph
-> demands. The `>= 2` occurrence count could not survive (there is no longer a second occurrence to
-> count) and was NOT quietly lowered to `>= 0`, nor rewritten to read the deleted files with a
-> `?? ''` fallback — either would have been a tick against an empty input. It was replaced with the
-> **era-independent** form of the same §21 rule, in the same file: _every_ `packages/api/src` file
-> that reads `employeeCompensation` must also write an audit record in that same file
-> (`logDataAccess(` or `db.auditLog.create(`), and the reader count must be `>= 1` so a zero-reader
-> repo FAILS instead of passing vacuously. That invariant keeps working no matter which file the
-> next reader lives in — including a C#-era reader that has not been written yet.
->
-> `data-requests.ts:94` audits via `db.auditLog.create` with `action: 'data_subject_export'`, not via
-> `logDataAccess`, which is why the invariant accepts both forms.
+> **PR #143 (unreleased):** the compensation router and service are deleted on this branch.
+> `routers/platform/data-requests.ts` and the delegate thunk in `access/scoped-probe.ts`
+> still read `employeeCompensation`; the sibling thunk reads `salaryAdjustment`.
+> The replacement file-scoped audit test is insufficient to prove fail-closed audit coverage.
+> PR #143 remains WIP pending its documented review findings; do not treat this deletion as
+> transferring all audit guarantees to C# or clearing the ownership-flip prerequisites.
 
 **Do not** convert a Prisma read to `$queryRaw` to make `tsc` pass. `scripts/table-ownership.mjs` is
 blind to raw SQL (§1, discovery), so this silently reintroduces a second reader of an EF-owned table
@@ -311,12 +311,20 @@ reason it was the better pilot; see §7.)_
 **column predicate** (`organization_id = …`) or a **subquery** (`EXISTS (SELECT 1 FROM parent …)`).
 `services/Tims.Platform/src/Tims.Domain/Rls/TenantRls.cs:18,31-32` hardcodes
 `OrgColumn = "organization_id"` and can only emit the column-predicate form, so
-**`EnableTenantRls()` structurally cannot serve a subquery-policy table.** Two tables in
-`efcoreStranglerWrite[]` are exactly that: `calibration_members` and `calibration_votes` have **no
-`organization_id` column at all** (`packages/db/prisma/schema/ninebox.prisma:41-77`) and their live
-policies are parent subqueries (`…/20260604100000_enable_rls_tenant_isolation/migration.sql:326,330`).
+**`EnableTenantRls()` structurally cannot serve a subquery-policy table.** `calibration_members` and
+`calibration_votes` are exactly that: they have **no `organization_id` column at all** and their live
+policies are parent subqueries over `calibration_sessions`
+(`packages/db/baseline/prod-public-schema.sql:7480-7499`; also
+`…/20260604100000_enable_rls_tenant_isolation/migration.sql:326,330`).
 See §3(e) for what goes wrong if the ledger's standing "ships its RLS block via `EnableTenantRls()`" rule
 is followed literally on those two.
+
+> **Updated 2026-08-06 by flip #3 (§7d).** These two were `efcoreStranglerWrite[]` when this paragraph
+> was written; they are now **`efcore[]`**, so the ledger rule applies to them for real rather than
+> prospectively. The carve-out has been written into `table-ownership.md` "The rule". The Prisma models
+> cited by the original text (`ninebox.prisma:41-77`) are deleted — the shape is now read from the
+> baseline or from `services/Tims.Platform/db/flip-ddl/calibration.sql`. `TenantRls.cs:10-13`'s docstring
+> still needs the same carve-out and did not get it (flip #3 touched no C# file).
 
 **P10 — EF write-value column-type compatibility, verified against `information_schema`.** For the table
 being flipped, **every** EF property must either pin `HasColumnType(...)` matching the live column type or
@@ -459,8 +467,9 @@ reader. It fails on a surviving **back-relation** (`P1012`) — a distinct conce
      test file is the enforcement layer for the file this step already tells you to edit, and
      `vitest.config.ts:50` includes `'scripts/**/*.test.ts'` in the node project, so `npx vitest run`
      executes it. Editing `surfaces.ts` without it is a guaranteed red `Security Audit`. See §7 item 4
-     for the two legal edits (`tsProcedure` is a **required** field — `surfaces.ts:7` — so "just remove
-     the `tsProcedure` side" is not one of them);
+     for the legal edits — and note that as of 2026-08-05 (#57) `tsProcedure` **is optional**, so
+     "remove the `tsProcedure` side, keep the endpoint" IS now one of them, and is usually the RIGHT
+     one;
    - the seed files;
    - `docs/REMAINING-WORK.md`;
    - **`README.md:80,96-97` and `CLAUDE.md:32`** if the flip ships the §2 `db push` guard — both document
@@ -658,14 +667,21 @@ nothing trivially passes; and it is exercised against exactly one hardcoded file
 (`HrisMigrationRlsTests.cs:79-82` pins `20260716000000_hris_domain.cs`). The §5 live-DB assertion is the
 only real check the flip gets.
 
-**(e) `EnableTenantRls()` structurally cannot serve two of the sixteen `efcoreStranglerWrite[]` tables,
-and the ledger's standing rule tells you to use it anyway.** `docs/architecture/table-ownership.md:18`
+**(e) `EnableTenantRls()` structurally cannot serve two of the EF-owned tables, and the ledger's standing
+rule tells you to use it anyway.** `docs/architecture/table-ownership.md`
 ("The rule") says every EF-owned table "ships its RLS block via `EnableTenantRls()` (org-scoped tables
 only)" — and `TenantRls.cs`'s own docstring (`:10-13`) asserts "The emitted block matches the live Prisma
 policy (migration 20260604100000…)". **Both are untrue for `calibration_members` and `calibration_votes`:**
 
-- Neither table has an `organization_id` column at all — `packages/db/prisma/schema/ninebox.prisma:41-77`
-  gives them only `sessionId`/`userId`.
+> **HALF-CLOSED 2026-08-06 by flip #3 (§7d).** Both tables were `efcoreStranglerWrite[]` when this was
+> written; they are now `efcore[]`, so this stopped being prospective. `table-ownership.md`'s rule now
+> carries an explicit subquery-policy carve-out. **`TenantRls.cs:10-13` still does not** — flip #3
+> touched no C# file, so that half of side-quest 6 remains open. The reasoning below is unchanged.
+
+- Neither table has an `organization_id` column at all — read it from
+  `packages/db/baseline/prod-public-schema.sql` or `services/Tims.Platform/db/flip-ddl/calibration.sql`;
+  their Prisma models (formerly `packages/db/prisma/schema/ninebox.prisma:41-77`, which gave them only
+  `sessionId`/`userId`) were deleted by flip #3.
 - Their live policies are parent subqueries, not column predicates:
   `…/20260604100000_enable_rls_tenant_isolation/migration.sql:326` and `:330` —
   `USING (EXISTS (SELECT 1 FROM "calibration_sessions" par WHERE par.id = …session_id AND par.organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid))`.
@@ -682,11 +698,18 @@ the carve-out (side-quest list).
 **(f) A `REVOKE` decision must consider policies that _reference_ the flipped table, not only policies
 _on_ it.** Postgres evaluates an RLS policy expression **as the querying role**, and
 `packages/db/src/tenant-client.ts:41,74` drops every tenant operation to `SET LOCAL ROLE app_tenant`. So
-if `calibration_sessions` (also in `efcoreStranglerWrite[]`, and a plausible flip candidate **ahead of its
-children**) were flipped and then had `app_tenant`'s privileges revoked, the subquery policies on the
-still-Prisma-owned `calibration_members`/`calibration_votes` (`migration.sql:326,330`) could no longer
-evaluate — **breaking every Prisma read and write of those two tables**, neither of which is a reader of
-the flipped table.
+if `calibration_sessions` had `app_tenant`'s privileges revoked, the subquery policies on
+`calibration_members`/`calibration_votes` (`migration.sql:326,330`) could no longer
+evaluate — **breaking every read and write of those two tables**, neither of which is a reader of
+the parent.
+
+> **Still live after flip #3 (2026-08-06, §7d), and the reason its GRANTs were left alone.** This
+> paragraph was written as a hypothetical about flipping the parent ahead of its children. All three
+> flipped **together**, which removes the _Prisma-owned children_ half of the hazard but **not** the
+> hazard itself: the children's policies still subquery the parent, Postgres still evaluates them as the
+> querying role, and the C# strangler still queries as `app_tenant` via `TenantScope`'s
+> `SET LOCAL ROLE`. A `REVOKE` on `calibration_sessions` would therefore still break the children — now
+> for the C# stack instead of the TS one. §8 Q7 stays open for this trio deliberately.
 
 Standing rules, therefore:
 
@@ -848,23 +871,53 @@ Run all of these. Step 0 and steps 6-9 need a real DB (0, 6, 7 and 9 against pro
     Verified 2026-08-02 against the current repo: `ghost efcore[] entries: []` (all six pass). A typo in
     step 4 of §1 shows up here and nowhere else.
     _(Consider promoting this to a real rule in `checkOwnership()` — it is a ~3-line addition.)_
-    5b. **Database-side dependency scan — SCRIPTED as of #132.** Run this BEFORE deleting the model, not after:
+    5b. **Pre-flip dependency scan — SCRIPTED as of #132, and WIRED as `/gate` check 18.** Run this
+    BEFORE deleting the model, not after:
 
         ```bash
-        npx tsx scripts/db/pre-flip-scan.ts <table>...     # 0 = no blocker, 1 = blocker or could-not-run
+        npx tsx scripts/db/pre-flip-scan.ts <table>...   # 0 = no blocker · 1 = blocker · 2 = DID NOT RUN
+        npx tsx scripts/db/pre-flip-scan.ts --flip-diff  # same, tables derived from the ledger diff
         ```
 
-        It replaces four separate hand-run queries and covers what no repo grep can see: **views/matviews**
-        and **functions** referencing the table (both BLOCKERS — they keep working after the Prisma model is
-        deleted, and keep bypassing whatever scoping the TS stack applied), plus the §3(f) policy scan,
-        inbound FKs (flagging any from *outside* the flip set), `app_tenant` grants (#126), and RLS state.
+        **Exit 2 is not a pass** — same contract as checks 14, 16 and 17. `--flip-diff` is the form
+        `/gate` runs: it takes the tables from the ownership ledger's `efcore[]` diff against
+        `origin/main`, so nobody has to remember to type the names, and on a branch that flips nothing it
+        scans nothing and says what it compared.
 
-        Flip #2 ran these by hand and came back clean; the script exists so the next flip cannot forget one.
-        Its blocker paths were exercised against a throwaway PG17 cluster carrying a deliberate view
-        and function over a target table (both correctly reported, exit 1). That run is not
-        committable — vitest has no database — so `tests/db/pre-flip-scan.test.ts` pins the
-        exit-code contract and the query-correctness properties offline instead, the same split as
-        `tests/db/schema-baseline-failure-paths.test.ts`.
+        It replaces four separate hand-run queries and covers what no repo grep can see:
+
+        - **views/matviews** referencing the table, found BOTH by text over `pg_get_viewdef` AND through
+          `pg_depend`. Neither method subsumes the other — measured on PG 17.10, a `plpgsql` function body
+          (and equally a dollar-quoted `LANGUAGE sql` body) produces **no `pg_depend` row at all**, so
+          those can only ever be a text match, while `pg_depend` catches relations the text arm cannot see.
+          **The converse also holds, and it bit us:** a SQL-standard body (`BEGIN ATOMIC … END` or the
+          `RETURN` form, PG14+) is stored PARSED in `pg_proc.prosqlbody` with `prosrc = ''`, so it is
+          invisible to the text arm and visible ONLY through `pg_depend`. The text arm therefore searches
+          `prosrc || pg_get_function_sqlbody(oid)`, not `prosrc` alone. Do not "simplify" that back.
+        - **functions**, **triggers**, and any other `pg_depend` dependent (`deptype = 'n'`) — a default
+          expression or a generated column can depend on a table too. All BLOCKERS: they keep working
+          after the Prisma model is deleted, and keep bypassing whatever scoping the TS stack applied.
+        - the §3(f) policy scan, inbound FKs (flagging any from *outside* the flip set, resolved by OID so
+          a same-named constraint in another schema cannot become a phantom), `app_tenant` grants (#126),
+          and RLS state.
+        - **data-file readers** — the class flip #2 actually hit. `contracts/access-fixtures/scope-where.json`
+          named `'successor'` / `'criticalRole'`, `tsc` stayed green, and all six P2 greps are `.ts`-scoped.
+          Hits there and in `packages/db/prisma/seed*.ts` are BLOCKERS; DDL and parity references are INFO.
+
+        **Every arm reports the population it searched, and a hit count without one is not a result.**
+        Flip #3's hand-run queries came back empty for the calibration tables, and the view arm had in fact
+        examined nothing worth the name — 0 across a `public` schema that contains 119 tables and **zero**
+        views. Each text arm now re-runs its own query against a row it MUST match before its result is
+        believed (exit 2 if that fails), and the whole run is fingerprinted against the Prisma schema, so
+        an empty or wrong database exits 2 rather than printing a tick. An arm reported **NOT EXERCISED**
+        is a statement about the database — copy it into the PR body rather than writing "clean scan".
+
+        Coverage split, stated plainly: the could-not-run paths are EXECUTED in
+        `tests/db/pre-flip-scan.test.ts` and the data-file arm is unit-tested for real in
+        `tests/db/pre-flip-repo-scan.test.ts`. Exit 0 and exit 1 need a database, so they were proved on a
+        throwaway PostgreSQL 17.10 cluster (transcript in the test header, including the mutation that
+        turns the functions arm blind and the exit 2 that catches it) and are pinned offline as properties
+        — the same split, and the same reason, as `tests/db/schema-baseline-failure-paths.test.ts`.
 
 6.  **Live DB assertion — the table survived, unchanged.** Run against prod (read-only) before and after
     the PR merges, and diff. `pre-flip-scan.ts` above already reports existence, RLS, policies, grants and
@@ -964,9 +1017,11 @@ Run all of these. Step 0 and steps 6-9 need a real DB (0, 6, 7 and 9 against pro
 ### What a revert does and does not cover
 
 `git revert` restores **the repository**. It does not restore **production**, and it addresses exactly
-one failure class. P1 requires zero TS writers _before_ the flip PR opens (for `surveys`, §7 records the
-writers were deleted 2026-07-29, weeks earlier), so at flip time no TS write path exists to restore — a
-revert restores **reads only**.
+one failure class. P1 requires zero TS writers _before_ the flip PR opens (for `surveys`, the
+application writers went 2026-07-29 but two **seed** writers survived until they were ported to raw SQL
+on 2026-08-10 — see the "Zero TS writers" CORRECTION in §7b; this sentence previously cited only the 2026-07-29 date and was
+wrong for the seed path), so at flip time no TS write path exists to restore — a revert restores
+**reads only**.
 
 | Failure class                                           | Does `git revert` help?                          | Actual response                                                                                                         |
 | ------------------------------------------------------- | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
@@ -1315,6 +1370,471 @@ open and still untouched; both flips deliberately avoided it.
 
 ---
 
+## 7d. Flip #3 — **EXECUTED**: `calibration_sessions` + `calibration_members` + `calibration_votes` (#70)
+
+> Executed 2026-08-06 on `feat/flip-calibration-ownership`, off `main` `efb7553f`. Code-only, no DDL.
+> This is a transcript, not a procedure. **Read the "not verified here" list at the end before treating
+> it as a completed flip** — four of §5's steps need a live database and did not run.
+
+### Why calibration, and what was different about it
+
+#57 (PR #144, merged minutes before this flip started) deleted `packages/api/src/routers/ninebox.ts`
+outright, taking `submitCalibrationVote` and `finalizeCalibration` — the last two TS writers — with it.
+That is the merge that unblocked #70, and it is the same shape as flip #2: the flip becomes possible the
+moment a _separate_ TS-deletion PR lands, not because anything in the flip itself removes a writer.
+
+Re-grepped at flip time rather than trusted from the issue (§0 preamble), and **all zero**:
+
+| Coupling category                                         | Count                                                  |
+| --------------------------------------------------------- | ------------------------------------------------------ |
+| Prisma delegate use (`.calibrationSession\|Member\|Vote`) | **0** (only the governance test's own quoted patterns) |
+| `Prisma.Calibration*` generated types                     | **0**                                                  |
+| access registry (`entity-policies` / `scoped-probe`)      | **0**                                                  |
+| `contracts/access-fixtures/scope-where.json`              | **0**                                                  |
+| `packages/db/src` enum re-exports                         | **0**                                                  |
+| `vi.mock('@tims/db')` delegate mocks                      | **0**                                                  |
+| `packages/db/prisma/seed-demo.ts`                         | **0**                                                  |
+
+**The single biggest difference from flip #2: calibration was never a `ScopedEntity`.** There is no
+`calibration` anywhere in `packages/api/src/access/` or `contracts/access-fixtures/`, so the
+`FlippedEntity` / `ProbeableEntity` / `DELEGATES` / `scope-where.json` machinery that dominated §7c
+**did not apply at all** and was deliberately not touched. A flip is not automatically the previous
+flip; re-derive the coupling table rather than porting it.
+
+`scripts/parity/seed.ts` and `scripts/parity/write-surfaces.ts` write and read all three tables, but via
+raw `pg` SQL, so they survive model deletion mechanically — the same disposition §7c gave them.
+`seed-demo.ts` needed **no** port because it never referenced calibration (contrast §7c, where it did):
+§8 **Q9's post-flip seed hazard simply does not arise for this domain.**
+
+### The non-standard tenancy, which is the real hazard here
+
+`calibration_members` and `calibration_votes` have **no `organization_id` column**. Their live
+`tenant_isolation` policy is a parent subquery over `calibration_sessions` on **both** `USING` and
+`WITH CHECK` (baseline `packages/db/baseline/prod-public-schema.sql:7480-7499`), and the C# write
+entities deliberately carry no `OrganizationId`. **That `WITH CHECK` on the session linkage IS the
+tenant guard.** Normalising these tables — adding `organization_id` to "fix" the asymmetry — would
+silently replace a working guard with an unenforced column. It was not done.
+
+This is the case §0 P9 and §3(e) were written for, and this flip is the one that makes them live:
+two `efcore[]` tables now exist that `EnableTenantRls()` **structurally cannot serve**. The ledger's
+standing rule (`table-ownership.md` "The rule") has been amended with an explicit carve-out in this PR —
+side-quest 6, closed for the ledger half. **Still open:** the same carve-out in `TenantRls.cs:10-13`'s
+docstring, which still claims "the emitted block matches the live Prisma policy". Not done here because
+this flip deliberately touched no C# file.
+
+### GRANTs — deliberately untouched, and why that is not laziness
+
+§8 **Q7 stays OPEN.** `app_tenant` keeps `SELECT,INSERT,UPDATE,DELETE` on all three tables. Revoking is
+**not** the safe default here, for two independent reasons:
+
+1. **The discriminator for `app_tenant` DML is RLS, not ownership.** The C# strangler writes _as_
+   `app_tenant` (`TenantScope.cs` → `SET LOCAL ROLE app_tenant`), so revoking DML on an RLS-protected
+   EF-owned table breaks production writes. That mistake was made once already (#126).
+2. **§3(f) applies literally and by name here.** `calibration_sessions` is _referenced by_ the subquery
+   policies on `calibration_members` and `calibration_votes`, and Postgres evaluates a policy expression
+   **as the querying role**. Revoking `app_tenant`'s `SELECT` on the parent breaks the children's
+   policies — the exact scenario §3(f) uses this table trio to illustrate.
+
+So the standing post-flip "expect dead privilege, consider a REVOKE" advice from §7/§7c **does not
+generalise to this trio**, and the ledger note says so.
+
+### DDL home + P8
+
+§4 option (c), same as flips #1 and #2: all three stay on the hand-applied SQL path; EF holds no
+migration and no snapshot. **P8 was live**, as it was for flip #2:
+`grep -rniE 'create table[^;]*calibration_' packages/db/prisma/migrations/ packages/db/prisma/manual/ services/Tims.Platform/db/`
+returned **nothing** — the only `CREATE TABLE`s were C# integration-test fixtures
+(`NineBoxReadFixture.cs`, `NineBoxWriteFixture.cs`), which no bootstrap path applies. So
+`services/Tims.Platform/db/flip-ddl/calibration.sql` was generated from the committed baseline
+**before** the models were deleted, and appears before them in the diff.
+
+**P10 (EF write-value compatibility), read from source:** `NineBoxWriteDbContext.cs:39-43,54` pins
+`HasColumnType("timestamp")` on `scheduled_at`, `completed_at`, `created_at`, `updated_at` and members'
+`created_at`, against prod's `timestamp(3) without time zone`. `calibration_votes` has **no EF write
+mapping at all** — `NineBoxWriteRepository.cs:187` upserts it with a parameterised raw
+`INSERT … ON CONFLICT`, binding `ToTimestamp()` (`:382-386`), which returns
+`DateTimeKind.Unspecified` truncated to whole milliseconds, so Npgsql sends `timestamp` at matching
+precision. Note this means the §5-step-5 ghost check resolves `calibration_votes` through
+`NineBoxReadDbContext.cs:116`, not through a write context.
+
+### The §2 warning, verbatim, for these three tables
+
+> **After this PR, `pnpm db:push` / `npx prisma db push` / `pnpm db:migrate` will DROP
+> `calibration_sessions`, `calibration_members` and `calibration_votes`, and
+> `prisma migrate diff --from-schema-datasource` will EMIT a `DROP TABLE` for each of them into every
+> migration script authored against a live DB.** Do not run any of them against a database that holds
+> real data — including preview and staging — and do not commit a generated migration script without
+> grepping it for `DROP`/`ALTER` on a flipped table, until these tables' Prisma models are restored or
+> the commands are guarded.
+
+`pnpm db:push` / `pnpm db:migrate` route through `scripts/db/guard-prod-ddl.sh`, which refuses a
+non-local host — but that guard covers neither the raw `npx prisma db push` form documented in
+`CLAUDE.md:32` nor the `migrate diff --from-schema-datasource` path at all. **Side-quests 8 and 9 are
+still open after three flips**: `docs/superpowers/plans/2026-07-08-company-entitlements-slice-1.md:130-137`
+still prescribes the unqualified `migrate diff --from-schema-datasource` recipe with no `--exclude-tables`
+and no mandatory `DROP` grep, and it now endangers **six** flipped tables instead of one.
+
+### Verification actually run
+
+| Check                                                  | Result                                                                   |
+| ------------------------------------------------------ | ------------------------------------------------------------------------ |
+| §5 step 1 — `node scripts/table-ownership.mjs`         | ✅ `table-ownership check passed.`                                       |
+| §5 step 1 — `tests/governance/table-ownership.test.ts` | ✅                                                                       |
+| §5 step 2 — `prisma validate` + `generate`             | ✅ no `P1012`; all three delegates absent from the generated client      |
+| §5 step 3 — `tsc` api + web                            | ✅ both exit 0                                                           |
+| §5 step 4 — `npx vitest run`                           | ✅ 291 files / 2746 tests, unchanged from `main`                         |
+| §5 step 5 — ghost `efcore[]` entries                   | ✅ `[]`; all three resolve to real EF `ToTable`s                         |
+| Mutation: restore one `user.prisma` back-relation      | ✅ observed `P1012` exit 1, then reverted                                |
+| Mutation: drop `calibration_votes` from `efcore[]`     | ✅ observed the inverted ledger assertion go red, then reverted          |
+| Mutation: hand-edit `calibration.sql`                  | ✅ observed `extract-table-ddl.test.ts` "stale or hand-edited", reverted |
+| Rollback — real `git revert`                           | ✅ see below                                                             |
+
+### Rollback — TESTED
+
+Real `git revert` of the flip commit, then the full set on the reverted tree: `prisma validate` clean
+(**all four `user.prisma` back-relations return with no `P1012`**), all three delegates reappear in the
+regenerated client, ledger check passed, api + web `tsc` clean, full vitest green. Then unwound with a
+second revert and the client regenerated. Pure revert is complete **because no DDL moved**.
+
+### §5 step 8 — RUN AND PASSED on a throwaway cluster
+
+**Correcting this section's own first draft**, which listed step 8 alongside the prod-credentialed steps
+and called all four "Federico-only". Step 8 is a _clean-checkout bootstrap_: it needs a scratch database,
+not production. Filing it as Federico-only would have burned a prod session on a check that never needed
+one — and left the artifact that is now the repo's ONLY executable definition of three production tables
+unexecuted. It was run instead (PostgreSQL 17.10, scratch cluster on TCP 55432-range, torn down after):
+
+| Step                                         | Result                                                                                                 |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `prisma db push` on an empty DB              | **0** `calibration_*` tables created — §0 P8 was live, confirmed empirically rather than by grep alone |
+| `psql -v ON_ERROR_STOP=1 -f calibration.sql` | exit **0**                                                                                             |
+| Re-apply (idempotency)                       | exit **0**, catalog state unchanged                                                                    |
+| Structure                                    | all 3 tables, `relrowsecurity = true`, exactly 1 policy each                                           |
+| Policy text                                  | `USING` and `WITH CHECK` match `prod-public-schema.sql:7480-7499`                                      |
+
+A **functional** isolation probe was then run as a `NOBYPASSRLS` `app_tenant` role over two seeded orgs —
+and made non-vacuous first by confirming 2 sessions and 2 members actually existed, because "0 rows
+because isolation works" and "0 rows because the seed failed" are indistinguishable (the seed DID fail
+twice, on `users.supabase_user_id` and `calibration_members.status`, and the first probe run passed
+vacuously as a result):
+
+| Probe                                     | Result                                                             |
+| ----------------------------------------- | ------------------------------------------------------------------ |
+| OrgA GUC set                              | sees exactly **1** session + **1** member of the 2 that exist      |
+| **GUC unset**                             | **0** rows — fails closed; the #111 fail-open shape is not present |
+| OrgA inserts a member into OrgB's session | **REFUSED** — `new row violates row-level security policy`         |
+
+That last row is the direct evidence for this flip's central claim: for `calibration_members` and
+`calibration_votes`, which have no `organization_id`, the session-linkage `WITH CHECK` **is** the tenant
+guard. Previously that was reasoning from the policy text; now it has been observed.
+
+> A caveat that survives: this proves the DDL reproduces prod's isolation **on a fresh database**. It says
+> nothing about whether prod's live shape still matches the baseline — that is §5 step 0, below.
+
+### NOT verified here — three §5 steps need the LIVE PRODUCTION database
+
+This environment has no prod credentials (local Prisma has been P1000 for weeks), so these remain
+Federico-only:
+
+- **§5 step 0 / `/gate` check 16** — schema-baseline drift, before and after. Every other check compares
+  the flip against an expected schema; this is the one that proves the expected schema is still real.
+  Flips #1 and #2 both ran it in both directions. **This flip did not.**
+- **§5 step 5b — `pre-flip-scan.ts`.** The important gap: **views, matviews and functions** referencing
+  the three tables are raw-SQL readers that survive model deletion and are invisible to `tsc`, to the
+  ownership check and to every P2 grep. Flip #2 found zero; that is not evidence about these tables.
+  > **Since #132 this step is `/gate` check 18** (`npx tsx scripts/db/pre-flip-scan.ts --flip-diff`), and
+  > the note above understates what running it would have to show. The hand-run version of these queries
+  > returned empty for the calibration tables, but the view/matview arm searched a `public` schema
+  > containing **zero** views — a correct answer that no control had established. The script now reports
+  > every arm's population, proves each text matcher against a row it must match, and exits **2** rather
+  > than 0 when it cannot. Re-running it for these three tables is therefore still outstanding, and a
+  > result that says an arm was NOT EXERCISED must be recorded as such, not as "clean".
+- **§5 step 6 — the live before/after shape diff** (RLS flags, policy set, grants, indexes, `n_tup_del`).
+  The DROP-TABLE tripwire.
+  Run all three before merging. Steps 0 and 5b are the two that could still turn up a blocker.
+
+**Also not covered, and not fixable by any of the above:** §6 prescribes a pre-flip
+`pg_class.relfilenode` / `pg_indexes` / row-count snapshot as the only way to _detect_ that a table was
+rebuilt under the §2 `db push` hazard during the watch window. No such snapshot was taken for these three
+tables, so this flip's "pure `git revert` is complete" claim rests on the premise that no DDL runs against
+them before the revert — a premise that is currently **assumed, not detectable**. Take the snapshot if the
+branch sits unmerged for any length of time.
+
+### What flip #3 adds over flips #1 and #2
+
+- The first flip whose tables' **RLS is a parent subquery**, which is what turns §3(e)/§3(f) and §0 P9
+  from warnings into the ledger's carve-out and the Q7 decision recorded above.
+- The first flip where a **test that pinned the pre-flip era had to be inverted** rather than left alone:
+  `tests/governance/calibration-no-ts-writers.test.ts`'s last case asserted the tables were _still_
+  `efcoreStranglerWrite`. Inverted, not deleted — post-flip it is the thing that catches a Prisma model
+  being quietly re-added, which nothing else does on its own. **Generalise this:** every flip should
+  expect to find at least one test written as "not yet" and should invert it, because deleting it
+  removes a guard exactly when the guard starts being useful.
+- The first flip to run with **none of §5's live-DB steps**, which is a gap, not a simplification.
+
+---
+
+## 7e. Flip #4 — **EXECUTED**: `review_cycles` + `rater_assignments` + `rater_responses` (#67)
+
+> Executed 2026-08-06 on `feat/flip-evaluation360-ownership`, branched off `chore/delete-orphaned-evaluation360-ts`
+> (#54, head `14a642d6`, **unmerged** — three commits ahead of `origin/main` `ff735f3f`). Code-only, no DDL.
+> This is a transcript, not a procedure. **Read the "not verified here" list at the end before treating
+> it as a completed flip** — three of §5's steps need a live database and did not run.
+
+### Why this one, and the one precondition that was NOT met by `main`
+
+Same shape as flips #2 and #3: the flip becomes possible the moment a _separate_ TS-deletion lands.
+Here that deletion is **#54, and it is not on `main` yet** — this branch is stacked on it. Branching
+from `origin/main` instead would have made the flip's precondition simply false, because
+`packages/api/src/repositories/evaluation360.repository.ts` held **every** TS Prisma writer of the
+three tables (`reviewCycle.create`, three guarded `reviewCycle.updateMany`, `raterAssignment.createMany`,
+`raterAssignment.updateMany`, `raterResponse.createMany`). Verified before starting:
+`git log --oneline origin/main..HEAD` shows the three #54 commits.
+
+Re-grepped at flip time rather than trusted from the issue (§0 preamble), and **all zero**:
+
+| Coupling category                                                    | Count                                                  |
+| -------------------------------------------------------------------- | ------------------------------------------------------ |
+| Prisma delegate use (`.reviewCycle\|raterAssignment\|raterResponse`) | **0** (only the governance test's own quoted patterns) |
+| `Prisma.ReviewCycle*` / `RaterAssignment*` / `RaterResponse*` types  | **0**                                                  |
+| access registry (`packages/api/src/access/`)                         | **0**                                                  |
+| `contracts/access-fixtures/`                                         | **0**                                                  |
+| `vi.mock('@tims/db')` delegate mocks                                 | **0**                                                  |
+| `packages/db/prisma/seed.ts` / `seed-users.ts` / `seed-demo.ts`      | **0**                                                  |
+
+**evaluation360 was never a `ScopedEntity`** — same as calibration (§7d), unlike succession (§7c). The
+`FlippedEntity` / `ProbeableEntity` / `DELEGATES` / `scope-where.json` machinery **did not apply and was
+not touched**. `tests/evaluation360/evaluation360-router-self-service.test.ts:81` asserts
+`raterAssignment` is _deliberately_ not registered, because identity-anchoring
+(`raterUserId`/`subjectUserId === ctx.user.id`) is its only guard by design. That test passes unchanged.
+
+`scripts/parity/seed.ts` and `scripts/parity/write-surfaces.ts` write and read all three tables via raw
+`pg` SQL, so they survive model deletion mechanically — same disposition as §7c and §7d.
+
+### The enums were KEPT, and that is the decision this flip adds
+
+`evaluation360.prisma` is now an **enums-only** schema file: `ReviewCycleStatus`, `RaterRelationship`
+and `RaterAssignmentStatus` stay, the three models are gone. Reasons, recorded in the file itself and in
+the ledger note: `packages/db/src/index.ts:16-18` re-exports all three from `@tims/db`;
+`scripts/parity/seed.ts:799,817,1388` casts to the Postgres types by name; and keeping them narrows the
+§2 hazard (`migrate diff` emits `DROP TABLE` but no `DROP TYPE`).
+
+The **cost is real and is stated rather than discovered later**: `prisma db push` still creates those
+three types on a fresh database, i.e. Prisma still emits a little DDL for an EF-owned domain. Measured
+on the scratch cluster — after `db push`, all three `CREATE TYPE`s had run and **zero** of the three
+tables existed. Both orders are safe because `evaluation360.sql` guards every `CREATE TYPE` on `pg_type`;
+both were exercised. Changing an enum **value** is a genuine schema change to an EF-owned domain and must
+go through `ddl-governance.md`.
+
+### §0 P8 was **NOT live** — the first flip since #1 where that is true
+
+`grep -rniE 'create table[^;]*(review_cycles|rater_assignments|rater_responses)' packages/db/prisma/migrations/ packages/db/prisma/manual/ services/Tims.Platform/db/`
+returns **`packages/db/prisma/migrations/20260713150000_add_evaluation360/migration.sql:8,22,36`** — a
+real migration with all three `CREATE TABLE`s plus enums, indexes, FKs and RLS. That is the
+`access_reviews` situation (§7), not the `calibration_*` one, and by the letter of P8 no artifact was
+required.
+
+**`services/Tims.Platform/db/flip-ddl/evaluation360.sql` was generated anyway, before the models were
+deleted.** The justification is not P8-as-written but the thing P8 is _for_, and it was measured rather
+than argued:
+
+> `prisma db push` — the bootstrap step `CLAUDE.md:32` and `README.md` document — **does not apply
+> `packages/db/prisma/migrations/` at all**. On an empty PostgreSQL 17.10 database from this branch it
+> created **0 of the 3** tables while creating 93 others. So post-flip the migration file is an
+> executable definition that nothing executes, and a freshly bootstrapped dev database has no
+> evaluation360 tables from either source.
+
+The extracted artifact is also the better of the two: read from the committed prod baseline rather than
+from migration source (§0 P0/P4 — #111 proved those differ), and idempotent, atomic, GRANT-complete and
+Supabase-guarded, none of which the migration is.
+
+**Consequence for `REQUIRED_FLIP_DDL` in `tests/db/extract-table-ddl.test.ts`:** `evaluation360.sql` is
+added, but the assertion's message was **corrected in the same commit**, because it claimed every listed
+artifact is "the repository's ONLY executable definition … they have no CREATE TABLE in any migration".
+That is true of the other four and **false of this one**. The message now distinguishes _uniqueness_
+(four files) from _bootstrap reachability_ (all five). Do not let the list's premise drift back.
+
+### Tenancy — STANDARD, unlike flip #3
+
+All three tables **have** an `organization_id`, and their live `tenant_isolation` policy is a plain
+**column predicate** on both `USING` and `WITH CHECK` (baseline `prod-public-schema.sql:7837,7843,7861`).
+So §0 P9's subquery hazard, the §3(e) `EnableTenantRls()` carve-out and the §3(f) parent-policy hazard
+**do not apply here** — checked, not assumed: grepped across every `CREATE POLICY` in the baseline, no
+other table's policy references any of the three.
+
+Also checked and clean: **none of the three carries the fail-open `org_isolation` policy** of §3(a)/#111.
+The committed baseline (captured `2026-08-04T17:30:30Z`) contains **zero** occurrences of `org_isolation`
+repo-wide, and these three have exactly one policy each. Worth flagging for whoever owns §3(a): that
+paragraph still describes 67 tables carrying it, and the current baseline does not support that. Not
+investigated here — it is not this flip's question, and the baseline is not the live database.
+
+### GRANTs — deliberately untouched
+
+§8 **Q7 stays OPEN.** `app_tenant` keeps `SELECT,INSERT,UPDATE,DELETE` on all three (baseline
+`:8618,:8624,:8642`). The discriminator for `app_tenant` DML is **RLS, not ownership** — the C# strangler
+writes as `app_tenant` via `TenantScope`'s `SET LOCAL ROLE`, so revoking DML on an RLS-protected EF-owned
+table breaks production writes (#126). The §3(f) half of §7d's reasoning does **not** apply here (no
+parent-subquery policies), but reason 1 alone is sufficient.
+
+### DDL home
+
+§4 option (c), same as flips #1–#3: all three stay on the hand-applied SQL path; EF holds no migration
+and no snapshot, and none was created. **No DDL ran in this flip.**
+
+**P10 (EF write-value compatibility), read from source:** `Evaluation360WriteDbContext` pins
+`HasColumnType("timestamp")` on the datetime properties it maps, against prod's
+`timestamp(3) without time zone`. `Evaluation360ReadDbContext` maps all three tables
+(`:41`, `:55`, `:72`), so the §5-step-5 ghost check resolves all three.
+
+### The §2 warning, verbatim, for these three tables
+
+> **After this PR, `pnpm db:push` / `npx prisma db push` / `pnpm db:migrate` will DROP `review_cycles`,
+> `rater_assignments` and `rater_responses`, and `prisma migrate diff --from-schema-datasource` will
+> EMIT a `DROP TABLE` for each of them into every migration script authored against a live DB.** Do not
+> run any of them against a database that holds real data — including preview and staging — and do not
+> commit a generated migration script without grepping it for `DROP`/`ALTER` on a flipped table, until
+> these tables' Prisma models are restored or the commands are guarded.
+
+**Side-quests 8 and 9 are still open after four flips.**
+`docs/superpowers/plans/2026-07-08-company-entitlements-slice-1.md:130-137` still prescribes the
+unqualified `migrate diff --from-schema-datasource` recipe, and it now endangers **nine** flipped tables.
+
+### Tests that pinned the pre-flip era — INVERTED, not deleted
+
+Two files did, and the second was **not** named in this flip's brief. Finding it was the point of the
+P6 sweep:
+
+1. **`tests/governance/evaluation360-no-ts-writers.test.ts`** (the #54 tripwire). Its ledger case
+   asserted `efcoreStranglerWrite`, and its schema case asserted the three Prisma models **still exist**.
+   Both inverted per their own docblocks' instructions. Three further "un-flip" cases were **added**,
+   because the file's original scans walk `.ts` only and are blind to step one of an un-flip: the
+   generated client carrying a delegate again, a `.prisma` file re-declaring a model (scanned across
+   **all** schema files, not just this domain's), and `user.prisma` re-declaring a deleted back-relation.
+2. **`tests/db/evaluation360-schema.test.ts`** — six cases asserting the three models' shape against
+   `Prisma.dmmf`. Every one became false. Inverted rather than deleted: the model cases now assert
+   **absence** from the generated client, and the column/constraint/RLS guarantees they encoded are
+   re-pointed at `flip-ddl/evaluation360.sql`, which is a strictly better oracle (the model described
+   what Prisma intended; the artifact describes what production has). The enum case survives unchanged
+   and is now the guard on the keep-the-enums decision.
+
+**Generalising §7d's lesson:** it said "every flip should expect to find at least one test written as
+'not yet'". Make that **at least one, found by sweep**. This flip's brief named one file; the sweep
+found two, and the unnamed one carried six failing assertions.
+
+### Verification actually run
+
+| Check                                                          | Result                                                                                                                                                                                                              |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| §5 step 1 — `node scripts/table-ownership.mjs`                 | ✅ `table-ownership check passed.`                                                                                                                                                                                  |
+| §5 step 1 — `tests/governance/table-ownership.test.ts`         | ✅                                                                                                                                                                                                                  |
+| §5 step 2 — `prisma validate` + `generate`                     | ✅ no `P1012`; all three delegates absent from the generated client, all three enums present                                                                                                                        |
+| §5 step 3 — `tsc` api + web                                    | ✅ both exit 0                                                                                                                                                                                                      |
+| §5 step 4 — `npx vitest run`                                   | ✅ 290 files / **2728** tests, exit 0. Measured baseline on this branch BEFORE the flip: 2723 / 290 — so **+5 net**, all from the inverted/added assertions. `/gate` check 3's anchor bumped to the measured value. |
+| §5 step 5 — ghost `efcore[]` entries                           | ✅ `[]`; all three resolve to real EF `ToTable`s                                                                                                                                                                    |
+| Mutation: restore `raterAssignmentsAsRater` in user.prisma     | ✅ observed `P1012` exit 1 at `user.prisma:129`, then reverted                                                                                                                                                      |
+| Mutation: drop `review_cycles` from `efcore[]`                 | ✅ observed the inverted ledger assertion go red, then reverted                                                                                                                                                     |
+| Mutation: re-add `model RaterResponse` to **ninebox**.prisma   | ✅ observed the new re-declaration case go red (proving the scan is repo-wide, not domain-scoped) **and** `table-ownership.mjs` report a cross-owner collision; reverted                                            |
+| Mutation: restore `reviewCyclesCreated` in user.prisma         | ✅ observed the new back-relation case go red, then reverted                                                                                                                                                        |
+| Mutation: delete `enum RaterAssignmentStatus`                  | ✅ observed both enum guards go red after `prisma generate`, then reverted                                                                                                                                          |
+| Mutation: hand-edit `evaluation360.sql` (`comment … NOT NULL`) | ✅ observed `extract-table-ddl.test.ts` "stale or hand-edited" **and** the re-pointed nullable-`comment` assertion go red; reverted byte-identical                                                                  |
+| Mutation: delete `evaluation360.sql`                           | ✅ observed `REQUIRED_FLIP_DDL` go red — deletion is no longer a green change                                                                                                                                       |
+| Rollback — real `git revert`                                   | ✅ see below                                                                                                                                                                                                        |
+
+### §5 step 8 — RUN AND PASSED on a throwaway cluster
+
+PostgreSQL 17.10, scratch cluster on TCP 55437 (TCP not a unix socket — the scratchpad path exceeds the
+103-byte socket limit), torn down afterwards.
+
+| Step                                           | Result                                                                                                                        |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `prisma db push` on an empty DB                | **0** of the three tables created, **93** other tables created (so the run was not a no-op); all three `CREATE TYPE`s DID run |
+| `psql -v ON_ERROR_STOP=1 -f evaluation360.sql` | exit **0**                                                                                                                    |
+| Re-apply (idempotency)                         | exit **0**, catalog state unchanged                                                                                           |
+| Structure                                      | all 3 tables, `relrowsecurity = t`, `relforcerowsecurity = t`, exactly **1** policy each                                      |
+| Policy text vs `prod-public-schema.sql`        | `diff` exit **0** — byte-identical to production on both `USING` and `WITH CHECK`                                             |
+| Indexes vs baseline                            | **9/9** identical; plus 3/3 PKs and **8/8** FKs                                                                               |
+
+A **functional** isolation probe was then run as a `NOBYPASSRLS` `app_tenant` role over two seeded orgs.
+Non-vacuity was established **first** — 2 rows confirmed in each table as owner, and `pg_roles` confirmed
+`rolbypassrls = f` — because "0 rows because isolation works" and "0 rows because the seed failed" are
+indistinguishable, which is exactly how flip #3's first probe passed vacuously:
+
+| Probe                                               | Result                                                                                                               |
+| --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Org A GUC set                                       | sees exactly **1** cycle, **1** assignment, **1** response of the 2 that exist — and it is the right one (`Cycle A`) |
+| **GUC unset**                                       | **0** rows on all three — fails closed; the #111 fail-open shape is not present                                      |
+| Org A inserts a response onto Org B's assignment    | **REFUSED** — `new row violates row-level security policy`                                                           |
+| Org A inserts a cycle labelled Org B (`WITH CHECK`) | **REFUSED** — same                                                                                                   |
+| Org A updates Org B's cycle                         | `UPDATE 0`; Org B's row verified unchanged                                                                           |
+| **Control:** Org A inserts a cycle labelled Org A   | **SUCCEEDS** (`INSERT 0 1`) — so the refusals above are the policy discriminating, not a blanket denial              |
+
+That control row is the half flip #3's transcript did not have. Without it, a policy that denied
+_everything_ would produce an identical-looking pass.
+
+> A caveat that survives: this proves the DDL reproduces prod's isolation **on a fresh database**. It
+> says nothing about whether prod's live shape still matches the baseline — that is §5 step 0, below.
+
+### Rollback — TESTED
+
+Real `git revert` of the flip commit `a8d29b99`, then the full set on the reverted tree:
+
+| Check on the reverted tree         | Result                                                                   |
+| ---------------------------------- | ------------------------------------------------------------------------ |
+| `prisma validate`                  | ✅ clean — **all three `user.prisma` back-relations return, no `P1012`** |
+| `prisma generate`                  | ✅ all three delegates reappear in the client                            |
+| `node scripts/table-ownership.mjs` | ✅ passed                                                                |
+| `tsc` api + web                    | ✅ both exit 0                                                           |
+| `npx vitest run`                   | ✅ 290 files / **2724** tests, exit 0                                    |
+
+2724, not 2723, is correct and worth stating: the revert targets **only** the flip commit, leaving the
+preceding `evaluation360.sql` commit in place, and that commit's one extra `REQUIRED_FLIP_DDL` case is
+the difference. The artifact surviving a rollback is the desired behaviour — it describes tables that
+exist in production either way.
+
+**One honest note on how that run was read.** The first full-suite run on the reverted tree came back
+`3 failed | 2721 passed`: `tests/security/verify-tenant-grants-failure-paths.test.ts`,
+`tests/vacancy/update-fit-requirements.test.ts` and `tests/vacancy/update-role-family.test.ts`, at
+5025 ms / 5111 ms / 7345 ms — timeouts, none of them touching evaluation360. Re-run in isolation: 3
+files / 10 tests, exit 0. Re-run as a full suite on the **identical commit**: 290 / 2724, exit 0. That
+is the known concurrent-vitest contention on this machine, not a rollback defect — recorded rather than
+quietly re-run until green.
+
+The revert and its reapply were then collapsed (`git reset --hard` back to the flip commit) after
+confirming the reapplied tree hash was **byte-identical** to the flip commit's
+(`648ec6a4…` both sides), so the branch carries no cancelling no-op commits. Pure revert is complete
+**because no DDL moved**.
+
+### NOT verified here — three §5 steps need the LIVE PRODUCTION database
+
+This environment has no prod credentials, so these remain Federico-only and **must be run before merge**:
+
+- **§5 step 0 / `/gate` check 16** — schema-baseline drift, before and after. Every other check compares
+  the flip against an expected schema; this is the one that proves the expected schema is still real.
+  Flips #1 and #2 ran it in both directions; flips #3 and #4 did not.
+- **§5 step 5b — `pre-flip-scan.ts`.** The important gap: **views, matviews and functions** referencing
+  the three tables are raw-SQL readers that survive model deletion and are invisible to `tsc`, to the
+  ownership check and to every P2 grep. The committed baseline contains only two functions
+  (`current_org_id`, `tims_append_only_guard`) and no views at all, neither referencing these tables —
+  suggestive, but that is the baseline, not the live scan.
+- **§5 step 6 — the live before/after shape diff** (RLS flags, policy set, grants, indexes, `n_tup_del`).
+  The DROP-TABLE tripwire.
+
+**Also not covered:** §6's pre-flip `pg_class.relfilenode` / `pg_indexes` / row-count snapshot, the only
+way to _detect_ that a table was rebuilt under the §2 `db push` hazard during the watch window. None was
+taken, so this flip's "pure `git revert` is complete" claim rests on the premise that no DDL runs against
+these three before a revert — **assumed, not detectable**. Take the snapshot if the branch sits unmerged.
+
+### What flip #4 adds over #1–#3
+
+- The first flip where **§0 P8 was not live** but an artifact was generated anyway, on a _measured_
+  bootstrap-reachability argument rather than the letter of the precondition — and the first to correct
+  `REQUIRED_FLIP_DDL`'s premise instead of quietly widening a list whose message no longer fit.
+- The first flip to **keep a domain's enums** after deleting its models, with the cost stated.
+- The first whose era-pinning test was found **by sweep rather than by brief** — and the first to add a
+  functional-probe **control row**, without which a deny-everything policy looks like a pass.
+
+---
+
 ## 7b. The second flip — `surveys` + `survey_responses` (#64), still BLOCKED
 
 > Retained from the pre-execution draft. This is analysis for a _future_ flip, not a transcript.
@@ -1327,11 +1847,35 @@ Both tables are org-scoped with ordinary `organization_id` columns and standard 
 policies — no session-subquery RLS (unlike `calibration_*`), no cross-domain writers (unlike
 `subscriptions`), no external traffic (unlike `preemployment_validations`).
 
-**Zero TS writers — confirmed 2026-08-02.** `createSurvey`/`activateSurvey`/`submitSurveyResponse` were
-deleted 2026-07-29; `EngagementWriteRepository` is the sole writer (`EngagementWriteDbContext.cs:33,52`
-map `surveys`/`survey_responses`). The only write-shaped hits left are
-`packages/db/prisma/seed-demo.ts:1207,1226` (seed) and a comment at
-`apps/web/lib/platform-api/engagement.ts:426`.
+**Zero TS writers — TRUE ONLY SINCE 2026-08-10.** `createSurvey`/`activateSurvey`/`submitSurveyResponse`
+were deleted 2026-07-29; `EngagementWriteRepository` is the sole _application_ writer
+(`EngagementWriteDbContext.cs:33,52` map `surveys`/`survey_responses`).
+
+> **CORRECTION 2026-08-10.** This paragraph previously read "Zero TS writers — confirmed 2026-08-02"
+> while, two sentences later in the same paragraph, listing `packages/db/prisma/seed-demo.ts:1207,1226` as "the only
+> write-shaped hits left". Those two hits were `db.survey.create` and `db.surveyResponse.create` —
+> **TS Prisma writers**, which §0 P1 of this very runbook makes blocking ("Seeds count… they must be
+> ported to raw SQL, ported to a C# seeder, or the flip is blocked"). The heading and the evidence
+> contradicted each other, and the heading is what propagated: into issue #64's "Grep-verified on
+> 2026-08-01: **zero TS writers**" and into this file's own §"What a revert does and does not cover".
+> The seed block dates to `3ce2ce1b` (2026-06-02), so it predated every one of those verifications.
+>
+> Both writers were **ported to raw SQL on 2026-08-10** (`seed-demo.ts`, same disposition and shape as
+> the `critical_roles`/`successors` port from #69). P1 for `surveys`/`survey_responses` is clear as of
+> that port and not before. The port was proved against a throwaway PostgreSQL 17 cluster — inserts,
+> jsonb, the `timestamp(3)` casts and `ON CONFLICT (survey_id, user_id) DO NOTHING` idempotency — with
+> the `ON CONFLICT` clause mutation-proved (removing it reproduces `23505`) — though note that proof
+> used a SYNTHETIC double-insert: on the seed's own path the clause is unreachable, because the
+> response loop only runs for a just-inserted survey. It is defence-in-depth, not the source of the
+> block's idempotency, which is the `existing.length === 0` guard.
+
+**What §0 P1's two greps return now.** The DELEGATE grep returns nothing outside a comment at
+`apps/web/lib/platform-api/engagement.ts:433` and a synthetic fixture string in
+`tests/db/pre-flip-repo-scan.test.ts:170`. The RAW-SQL grep still returns
+`packages/db/prisma/seed-demo.ts:2234` (`INSERT INTO surveys`) and `:2260`
+(`INSERT INTO survey_responses`) — that is the ported seed, and it is the SANCTIONED disposition,
+not a residual blocker. Do not read those two hits as P1 failing; do not delete this paragraph and
+leave a future re-verification to rediscover them with no explanation.
 
 **Correction to issue #64:** it lists `dei.ts` as a surviving reader. It is not — the DEI survey reads
 were deleted in the 2026-07-31 pass; `grep -rn survey packages/api/src/{routers/dei.ts,services/dei*.ts,repositories/dei*.ts}`
@@ -1344,12 +1888,59 @@ as a parenthetical recommendation. **That contradicted this runbook's own P2 pre
 P2: "**Blocked** — no C# read surface exists yet ⇒ the flip does not start." Two of the readers below are
 labelled **Blocker** by this very section, and monitoring "has no C# counterpart at all — no
 `apps/web/lib/platform-api/monitoring.ts`, no `Platform:Monitoring*` flag" (both confirmed). There is no
-CI-green path: once `model Survey` is deleted, keeping `monitoring.ts:23` fails `Type Check (api)`, and
+CI-green path: once `model Survey` is deleted, keeping `monitoring.ts:25` fails `Type Check (api)`, and
 deleting the procedure fails `Type Check (web)` at five call sites (four `useQuery` + one `.invalidate()`)
 and reddens `tests/monitoring/executive-kpis-vacancy-status.test.ts`.
 
 > **#64 is BLOCKED under P2** until (a) a C# monitoring read surface exists and (b) a **privileged
 > cross-org** C# read exists for the alert cron. Both are prerequisite slices — see §8 Q0b, ranked above Q1.
+
+> **UPDATE 2026-08-09 (#100 / PR #140) — exactly ONE of the two prerequisites has landed.**
+> Condition **(a) is DONE**: a C# monitoring read surface now exists
+> (`services/Tims.Platform/src/Tims.Api/Monitoring/MonitoringReadEndpoints.cs`, six reads), so does
+> `apps/web/lib/platform-api/monitoring.ts`, and both `Platform:MonitoringReadEnabled` and
+> `NEXT_PUBLIC_MONITORING_READ_VIA_CSHARP` are wired. **The "has no C# counterpart at all" sentence
+> above is superseded**, as is the same claim where it recurs below and in §8 Q0b.
+> Condition **(b) is NOT done**: the alert cron still needs its privileged cross-org read (Q0b slice
+> 2 — now tracked as **#172**; WIP in PR #141), and `alert-evaluation.repository.ts:120` is still a
+> **Blocker** row in the inventory below. **#64 therefore stays BLOCKED under P2.**
+
+> **UPDATE 2026-08-10 (#172) — condition (b) has now landed too; PR #141 was abandoned, not merged.**
+> `GET /internal/alert-metrics` serves `active_surveys` and `pending_salary_adjustments` cross-org,
+> authenticated by a cron secret (`CronCallerGate`), with each read `TenantScope`-scoped to the org it
+> names — see the CORRECTION below for why that differs from #141's approach and why it matters. The
+> §21 min-5 floor is applied server-side AND re-applied by the caller, pinned across both stacks by
+> `contracts/alert-metrics-fixtures/cases.json`. Cross-org reads write an `audit_logs` row
+> (`alert_metric_cron_read`) on success, suppression AND failure — the write is fail-SOFT, so a lost row
+> does not block the read and completeness is not guaranteed.
+>
+> **Same two caveats as (a).** It ships **DARK** — `Platform:AlertMetricsCronReadEnabled` and
+> `ALERT_METRICS_READ_VIA_CSHARP` are both unset, so Prisma is still the only active reader and runtime
+> behaviour is unchanged. And a C# read existing is still not "`model Survey` can be deleted": the TS
+> `monitoring.*` procedures at `monitoring.ts:25`/`:217` remain, and the Prisma branch in
+> `computeRawMetric` is deliberately retained as the flag's OFF path.
+>
+> **SCOPE CORRECTION — do NOT read this as "#64 and #66 are unblocked."** An earlier draft of this note
+> said they were "blocked only on the flip mechanics themselves". A claim-auditor review pass falsified
+> that, and the falsification is worth keeping on the record because it is the same overstatement this
+> backlog keeps producing. **#66's own blocker table lists ELEVEN sites; this slice closes exactly ONE
+> (row 10).** Still open there: `access/scoped-probe.ts:76,77` (row 2 tracked by nothing),
+> `seed-demo.ts:1908,:1971,:1968` (two of them WRITERS, which §0 P1 makes blocking),
+> `routers/compensation.ts:30,:80` + `services/compensation.service.ts:62` (#59, branch not merged),
+> `routers/monitoring.ts:24` (still live Prisma), and `routers/platform/data-requests.ts:94` (#146, the
+> longest pole). For #64, this file's own inventory still carries `routers/monitoring.ts:25` as a
+> Blocker for two independent reasons, one of them a frontend `.invalidate()` coupling.
+>
+> The defensible claim is narrow: **the alert cron is no longer a missing C# reader for these two
+> metrics.** That is one row of one table.
+>
+> Two caveats that keep this from being read as more than it is. The surface ships **DARK** — the
+> flag is unset in every environment, so the TS `monitoring.*` procedures are still the only active
+> reader and runtime behaviour is unchanged. And "a C# read exists" is not the same as "`model Survey`
+> can be deleted": the TS procedures at `monitoring.ts:25`/`:217` still call `survey.count` /
+> `surveyResponse.count`, because the wrapper keeps the tRPC path as its fallback branch by design.
+> Deleting the Prisma models still fails `Type Check (api)` today. What changed is that the repointing
+> work is now _possible_, not that it is _done_.
 
 **`access_reviews` is flip #1.** It has **zero** TS Prisma readers (`grep -rn accessReview packages/api/src`
 → one comment in `packages/api/src/access/access-review-kernel.ts:4`), no seed writes, one prod row, only
@@ -1364,18 +1955,18 @@ It is believed safe only because its two datetime columns are `ValueGeneratedOnA
 
 ### Cross-reader inventory (must all be dispositioned before the PR)
 
-| Site                                                                 | Read                                                                                                                          | FE consumer                                                                                                                                                                                                                        | Disposition                                                                                    |
-| -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `packages/api/src/routers/engagement.ts:36`                          | `survey.findMany` (`listSurveys`)                                                                                             | **1 invalidate-only call** (`engagement/climate/launch-survey-modal.tsx:58`) **+ 1 static tripwire** (`tests/tier1/s2-engagement-wiring.test.ts:33`)                                                                               | Delete procedure — **but see edits 1b/3/4**; it is not consumer-free                           |
-| `…/engagement.ts:53`                                                 | `survey.count`                                                                                                                | none                                                                                                                                                                                                                               | Delete with the same procedure                                                                 |
-| `…/engagement.ts:74` + `:83`                                         | `survey.findFirst` with nested `responses: { select: { answers: true } }` (`getSurveyResults`)                                | none                                                                                                                                                                                                                               | Delete, **or** repoint — needs a C# by-id read (see below)                                     |
-| `…/engagement.ts:122` + `:126`                                       | `survey.findFirst` with nested `responses: { select: { answers, user: { companyId, businessUnitId } } }` (`getResultsByArea`) | none                                                                                                                                                                                                                               | Same; **note the join into `users`** (Prisma-owned)                                            |
-| `packages/api/src/routers/monitoring.ts:23`                          | `survey.count` (`getExecutiveKpis`)                                                                                           | **5**: 4 `useQuery` (`dashboard/hr-exec-dashboard.tsx:34`, `dashboard/org-command-center.tsx:28`, `monitoring/monitoring-bottom.tsx:41`, `monitoring/page.tsx:16`) **+ 1 `.invalidate()`** (`monitoring/alert-rules-modal.tsx:82`) | **Blocker** — must be repointed                                                                |
-| `packages/api/src/routers/monitoring.ts:232`                         | `surveyResponse.count` (`getCrossModuleTrend`, `metric==='engagement'` branch only)                                           | reachable by any `monitoring:read` holder; the only FE caller hardcodes `metric:'headcount'`                                                                                                                                       | **Repoint, or drop the metric from the Zod enum — NEVER "just delete the branch"** (see below) |
-| `packages/api/src/repositories/alert-evaluation.repository.ts:120`   | `survey.count`, metric `active_surveys`                                                                                       | cron                                                                                                                                                                                                                               | **Blocker** — privileged cross-org, see below                                                  |
-| `packages/api/src/access/select-for.ts:13` · `classification.ts:120` | `surveyResponse` registry entries                                                                                             | —                                                                                                                                                                                                                                  | Hand-clean — `Record<string, …>`, will **not** fail `tsc` (§1 step 6)                          |
-| `packages/db/prisma/seed-demo.ts:1202,1207,1226`                     | `survey.findFirst` / `.create` / `surveyResponse.create`                                                                      | —                                                                                                                                                                                                                                  | Port to raw SQL or drop from the demo seed                                                     |
-| `scripts/parity/seed.ts:1111,1118,1127,1766,1773,1790,1896`          | raw SQL via `pg`                                                                                                              | —                                                                                                                                                                                                                                  | Survives mechanically; no change needed                                                        |
+| Site                                                                            | Read                                                                                                                          | FE consumer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Disposition                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/api/src/routers/engagement.ts:80`                                     | `survey.findMany` (`listSurveys`)                                                                                             | **1 invalidate-only call** (`engagement/climate/launch-survey-modal.tsx:58`) **+ 1 static tripwire** (`tests/tier1/s2-engagement-wiring.test.ts:33`)                                                                                                                                                                                                                                                                                                                                            | Delete procedure — **but see edits 1b/3/4**; it is not consumer-free                                                                                                                                                                                                                                                                                                                                                                                       |
+| `…/engagement.ts:97`                                                            | `survey.count`                                                                                                                | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | Delete with the same procedure                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `…/engagement.ts:118` + `:127`                                                  | `survey.findFirst` with nested `responses: { select: { answers: true } }` (`getSurveyResults`)                                | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | Delete, **or** repoint — needs a C# by-id read (see below)                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `…/engagement.ts:167` + `:171`                                                  | `survey.findFirst` with nested `responses: { select: { answers, user: { companyId, businessUnitId } } }` (`getResultsByArea`) | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | Same; **note the join into `users`** (Prisma-owned)                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `packages/api/src/routers/monitoring.ts:25`                                     | `survey.count` (`getExecutiveKpis`)                                                                                           | **5**: 4 `useQuery` (`dashboard/hr-exec-dashboard.tsx:35`, `dashboard/org-command-center.tsx:29`, `monitoring/monitoring-bottom.tsx:44`, `monitoring/page.tsx:16`) — **these four now go through `lib/platform-api/monitoring.ts`**; **+ 1 `.invalidate()`** (`monitoring/alert-rules-modal.tsx:98`) which is **UNCHANGED and still `utils.monitoring.getExecutiveKpis.invalidate()`** (a 6th call, `invalidateMonitoringPlatformReads`, was ADDED beside it at `:100`, not substituted for it) | **Blocker — 4 of 5 REPOINTED 2026-08-09 (#100 / PR #140). STILL NOT DELETABLE, for two independent reasons:** (a) the wrapper keeps tRPC as its fallback branch, so `monitoring.ts:25` still calls `survey.count`; (b) the surviving `.invalidate()` is exactly the cache-key coupling §7's fifth grep strategy exists to catch (`:152-156`) — deleting the procedure would redden `Type Check (web)` as the property vanishes from the typed utils object |
+| `packages/api/src/routers/monitoring.ts:217`                                    | `surveyResponse.count` (`getCrossModuleTrend`, `metric==='engagement'` branch only)                                           | reachable by any `monitoring:read` holder; the only FE caller hardcodes `metric:'headcount'`                                                                                                                                                                                                                                                                                                                                                                                                    | **Repoint, or drop the metric from the Zod enum — NEVER "just delete the branch"** (see below)                                                                                                                                                                                                                                                                                                                                                             |
+| `packages/api/src/repositories/alert-evaluation.repository.ts:223` (was `:120`) | `survey.count`, metric `active_surveys`                                                                                       | cron                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | **REPOINTED 2026-08-10 (#172)** — behind `ALERT_METRICS_READ_VIA_CSHARP`, C# serves it; the Prisma branch remains as the flag's OFF path. See the UPDATE below                                                                                                                                                                                                                                                                                             |
+| `packages/api/src/access/select-for.ts:13` · `classification.ts:147`            | `surveyResponse` registry entries                                                                                             | —                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Hand-clean — `Record<string, …>`, will **not** fail `tsc` (§1 step 6)                                                                                                                                                                                                                                                                                                                                                                                      |
+| `packages/db/prisma/seed-demo.ts:2228,2234,2260` (was `:2207,2212,2231` on main) | `survey.findFirst` / `.create` / `surveyResponse.create`                                                                      | —                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | **DONE 2026-08-10 — ported to raw SQL.** These two `.create`s were the whole of #64's §0 P1 blocker set; see the "Zero TS writers" CORRECTION in §7b. Statements now at `:2228` (SELECT), `:2234` (INSERT surveys), `:2260` (INSERT survey_responses)                                                                                                                                                                                                                                                                                |
+| `scripts/parity/seed.ts:1111,1118,1127,1766,1773,1790,1896`                     | raw SQL via `pg`                                                                                                              | —                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Survives mechanically; no change needed                                                                                                                                                                                                                                                                                                                                                                                                                    |
 
 Two of these are genuinely hard:
 
@@ -1383,16 +1974,36 @@ Two of these are genuinely hard:
   all** — no `apps/web/lib/platform-api/monitoring.ts`, no `Platform:Monitoring*` flag. Repointing it
   means either building a C# read (a slice of its own) or having monitoring call the engagement C# read
   surface. **This is the true gating item for #64.**
+  **RESOLVED 2026-08-09 (#100 / PR #140).** The first option was taken: a C# read surface of its own
+  (six reads), a `lib/platform-api/monitoring.ts` wrapper, and `Platform:MonitoringReadEnabled` +
+  `NEXT_PUBLIC_MONITORING_READ_VIA_CSHARP`. All five consumers repointed. Still DARK. This bullet is
+  no longer the gating item — the one below is.
 - **The alert-evaluation cron** uses the privileged `db` client, not `tenantDb`, and iterates every org
-  (`alert-evaluation.repository.ts:1`, header `:5-7`; driven by `alert-evaluation.service.ts:59-71`;
+  (`alert-evaluation.repository.ts:1`, header `:6-9`; driven by `alert-evaluation.service.ts:59-71`;
   entrypoint `apps/web/app/api/cron/evaluate-alerts/route.ts:23`, daily 06:00 per `apps/web/vercel.json`).
   It cannot be served by a `TenantScope`/RLS-scoped EF read — it needs a privileged cross-org C# read
   surface, or the cron ports to C# wholesale.
 
+  > **CORRECTION 2026-08-10 (#172). The sentence immediately above is WRONG, and it shaped the design
+  > of the abandoned PR #141.** It conflates _the caller is cross-org_ with _the query must be
+  > cross-org_. The cron already iterates one `(org, metric)` pair at a time
+  > (`alert-evaluation.service.ts:63-70` loops rules, each carrying its own `organizationId`), so every
+  > individual read CAN be `TenantScope`-scoped to one explicitly named org — and that is how #172
+  > implements it (`AlertMetricsReadRepository`). What the cron actually needs is the authority to NAME
+  > any org, which is an API-edge authorization question (`CronCallerGate`'s shared secret), not a
+  > database-privilege one.
+  >
+  > This matters because the "must be cross-org" reading led PR #141 to run the query unscoped and
+  > depend on the deployed login role being `BYPASSRLS` — a property asserted nowhere. Had that
+  > assumption been false, `surveys` and `salary_adjustments` both carry `FORCE ROW LEVEL SECURITY`
+  > with a fail-closed policy, so every metric would have returned **0 for every org, forever**, and a
+  > metric pinned at 0 is indistinguishable from "no breach". The scoped design has no such dependency
+  > and its RLS test is a real proof rather than a demonstration that superusers bypass RLS.
+
   **Its failure mode is worse than "degrades with no error" (corrected 2026-08-02).** An earlier draft
   said "the service catches per-rule failures and counts them `skipped`." **The `skipped` counter never
   moves.** Removing the `case 'active_surveys'` from the switch at
-  `alert-evaluation.repository.ts:119-130` does not throw — it falls to `default: return null`; then
+  `alert-evaluation.repository.ts:203-233` does not throw — it falls to `default: return null`; then
   `alert-evaluation.service.ts:12` (`if (value === null) return false;`) and `:71`
   (`if (!evaluateCondition(...)) continue;`) skip the rule with a **plain `continue`, outside** the
   `catch` that increments `skipped` at `:84-89`. So: **no exception, no `skipped` increment, no log
@@ -1493,11 +2104,31 @@ Retire or re-anchor each, exactly as the file's existing `UPDATE 2026-07-29/2026
 §0 P6 warns that tripwires are literal source greps; under-enumerating them is the failure this list has
 already suffered once.
 
-**4. Parity surfaces — the previously prescribed edit is not legal.** An earlier draft said "remove the
-`tsProcedure` side, or the CLI 404s," framing this purely as a runtime concern. `tsProcedure` is a
-**required** field (`scripts/parity/surfaces.ts:7` declares `tsProcedure: string;`, non-optional), and
-`scripts/**` **is** type-checked in CI (§1, the tsconfig finding), so deleting the property from the
-`surveys` endpoint at `:279-281` is a type error → `Type Check (api)` red. Deleting the whole endpoint
+**4. Parity surfaces — CORRECTED 2026-08-05 (#57): dropping `tsProcedure` is now the PREFERRED edit.**
+
+> **This item has been wrong twice, in opposite directions. Read the whole thing before acting.**
+>
+> An early draft said "remove the `tsProcedure` side, or the CLI 404s" — right conclusion, wrong reason.
+> A later draft then declared the property **required** and the edit illegal, which was true of the type
+> at the time and produced a worse outcome: on the nine-box surface it was read as licence to delete the
+> whole surface, which silently retired that surface's RLS Mode-A cross-tenant IDOR probe and its RBAC
+> deny assertions against endpoints that were still deployed. A parity surface is not only a TS-vs-C#
+> diff; it is also where the cross-tenant and permission probes are registered, and those take
+> `callCsharp` alone (`checks/rls.ts`, `checks/rbac.ts` — neither reads `tsProcedure`).
+>
+> **`tsProcedure` is now optional** (`scripts/parity/surfaces.ts`, `tsProcedure?: string`). So when a
+> domain's TS side is deleted:
+>
+> - **Do** drop the `tsProcedure` property and KEEP the endpoint registered. Parity then reports
+>   `[WEAK]` with a stated reason and is counted in a separate `weak` bucket in the summary; RLS and
+>   RBAC keep running for real and still fail the command.
+> - **Do not** delete the endpoint or the surface merely because the TS side is gone. That is a
+>   security-coverage regression, and it will not show up as a failing test — it shows up as one fewer
+>   test.
+> - Deleting is right only when the C# endpoints themselves are gone.
+
+`scripts/**` **is** type-checked in CI (§1, the tsconfig finding), so historically deleting the property from the
+`surveys` endpoint at `:279-281` was a type error → `Type Check (api)` red. That is no longer so. Deleting the whole endpoint
 instead reddens `Security Audit (56 tests)`, because `scripts/parity/surfaces.test.ts:53-58` asserts
 `expect(s.endpoints.map((e) => e.name).sort()).toEqual(['rotation-risk','surveys'])` and `:64-66` asserts
 the `surveys` endpoint's `expectedByRole['hrbp']` is `200` — and `vitest.config.ts:50` includes
@@ -1540,7 +2171,10 @@ SELECT max(submitted_at) FROM survey_responses;   -- must advance, never regress
 Then, functionally:
 
 - **Smoke-test the five `getExecutiveKpis` consumers** — the four dashboards **and** the alert-rules modal
-  whose `.invalidate()` (`monitoring/alert-rules-modal.tsx:82`) refreshes them after a rule change.
+  whose `.invalidate()` (`monitoring/alert-rules-modal.tsx:98`) refreshes them after a rule change.
+  Since #100 that modal ALSO calls `invalidateMonitoringPlatformReads(queryClient)` (`:100`), which is
+  the half that matters once `NEXT_PUBLIC_MONITORING_READ_VIA_CSHARP` is on — the two cache families
+  are disjoint, so smoke-test the refresh with the flag in whichever state you are cutting over to.
 - **Verify the alert cron with an observable check, not "the same numbers."** An earlier draft asked the
   operator to "confirm the 06:00 alert cron's next run produces the same `active_surveys` numbers." **The
   cron emits no metric values anywhere** — it only writes dedup'd `alerts` rows, and
@@ -1626,6 +2260,15 @@ their own slices, or accept `access_reviews` as flip #1 and defer #64 behind the
 > unbuilt. Both prerequisite slices remain open work: there is still no C# monitoring read surface and no
 > privileged cross-org read for the alert cron. This question stays OPEN — only its urgency changed.
 
+> **HALF-RESOLVED 2026-08-09 (#100 / PR #140).** "Still entirely unbuilt" and "there is still no C#
+> monitoring read surface" are both **superseded**. Slice 1 is built: six C# reads, the
+> `lib/platform-api/monitoring.ts` wrapper, `Platform:MonitoringReadEnabled` +
+> `NEXT_PUBLIC_MONITORING_READ_VIA_CSHARP`, and all nine FE read call sites repointed onto it. It ships
+> DARK. **Slice 2 — the privileged cross-org read for the alert cron — is still open (#172; WIP in PR
+> #141)**, so this question stays OPEN and both #64 and #66 stay blocked on it. Do not read slice 1
+> landing as Q0b being resolved; it is one of two. Slice 2 had no tracking issue at all until
+> 2026-08-09 — it was a prerequisite for two flips carried solely by a conflicting, do-not-merge PR.
+
 **Q1 — What does `prisma migrate dev` do against a DB with no `_prisma_migrations` and heavy drift?**
 Still unverified — it may offer a full reset rather than a targeted `DROP`. _Resolve:_ the throwaway-DB
 procedure in §2.
@@ -1702,9 +2345,19 @@ No decision exists anywhere in the repo. Keeping it means "one writer" stays cod
 hardens the flip but breaks any residual Prisma read path and needs its own verification.
 **Scope correction (2026-08-02):** an earlier draft scoped the blast radius to direct **readers of** the
 flipped table. It must also cover tables whose **RLS policy references** the flipped table in a subquery —
-revoking `app_tenant`'s SELECT on a flipped `calibration_sessions` would break every Prisma read _and_
-write of the still-Prisma-owned `calibration_members`/`calibration_votes` (§3f). _Resolve:_ explicit
+revoking `app_tenant`'s SELECT on a flipped `calibration_sessions` would break every read _and_
+write of `calibration_members`/`calibration_votes` (§3f). _Resolve:_ explicit
 decision, recorded in the ledger, before flip #2 — preceded by the `pg_policy` reference scan in §3(f).
+
+> **Answered for ONE trio, still open in general — flip #3, 2026-08-06 (§7d).** For
+> `calibration_sessions` / `calibration_members` / `calibration_votes` the decision is recorded in the
+> ledger as **KEEP the grant**, and it is not a deferral: (1) the C# strangler writes _as_ `app_tenant`
+> (`TenantScope` → `SET LOCAL ROLE`), so ownership is not the discriminator for DML — RLS is, and
+> revoking here breaks production writes exactly as #126 did; (2) §3(f) applies by name, since the
+> children's policies subquery the parent and are evaluated as the querying role. **Do not generalise
+> §7/§7c's "expect dead privilege, consider a REVOKE" to this trio.** The general question — for tables
+> whose C# owner uses the _privileged_ connection, like `access_reviews` — is unchanged and still open
+> as #126.
 
 **Q8 — Is the `efcoreStranglerWrite` → `efcore` move supposed to be gated on a runtime flag being live
 first?** Every ledger list change is a pure text edit with no link to `Platform:*Enabled` config, and no
@@ -1715,6 +2368,12 @@ the flip PR opens**, which is exactly the P1 precondition.
 **Q9 — Is `packages/db/prisma/seed-demo.ts` ever run against a live environment?** Its writes to four
 strangler tables are a post-flip hazard only if so. Invocation wiring not found. _Resolve:_ grep CI/ops
 scripts; ask Federico.
+
+> **Not applicable to flip #3 (2026-08-06, §7d) — checked, not assumed.** `seed-demo.ts` has **zero**
+> occurrences of `calibration`, so none of the three flipped tables was ever seeded there and nothing
+> needed porting. Contrast flip #2, where `seed-demo.ts:913-945` did write the flipped tables and was
+> ported to raw SQL. The question itself stays open for `surveys`/`survey_responses` and the
+> compensation pair.
 
 **Q10 — ~~Is `salary_bands` writer-free?~~ → RESOLVED: YES, in application code (#59, 2026-08-05).**
 The P1 grep was run over `packages apps tests scripts workers services` for both the Prisma delegate
@@ -1773,12 +2432,14 @@ Cheap, in-scope, and each one prevents a future reader from being misled:
    "grep-confirmed nothing outside `packages/api/src/routers/succession.ts` touches
    critical_roles/successors", but `packages/db/prisma/seed-demo.ts:914,919,932` also uses those
    delegates.
-6. **Carve out the subquery-policy tables from the `EnableTenantRls()` rule.**
-   `docs/architecture/table-ownership.md:18` ("ships its RLS block via `EnableTenantRls()`") and
-   `services/Tims.Platform/src/Tims.Domain/Rls/TenantRls.cs:10-13` ("The emitted block matches the live
-   Prisma policy") are both **false for `calibration_members` / `calibration_votes`**, which have no
-   `organization_id` column (§3e). Amend both, and state that following the rule literally on those two
-   leaves a FORCE-RLS table with zero policies.
+6. **Carve out the subquery-policy tables from the `EnableTenantRls()` rule.** — **HALF DONE 2026-08-06
+   (flip #3, §7d).** `docs/architecture/table-ownership.md` ("ships its RLS block via
+   `EnableTenantRls()`") now carries the carve-out, with the FORCE-RLS-with-zero-policies failure mode
+   spelled out. **Still open:** `services/Tims.Platform/src/Tims.Domain/Rls/TenantRls.cs:10-13` ("The
+   emitted block matches the live Prisma policy") is still false for `calibration_members` /
+   `calibration_votes`, which have no `organization_id` column (§3e). Flip #3 touched no C# file, so it
+   was left. This is now more urgent than when it was written, because both tables are `efcore[]` and
+   the rule applies to them for real.
 7. **Guard `cutover.sh --rollback`.** Make it refuse for surfaces whose status is TS_DELETED or flipped
    — on those it unmaps endpoints the FE calls unconditionally, i.e. it is an outage button, not a rewind
    (§6). Surface that status in `--list` too.

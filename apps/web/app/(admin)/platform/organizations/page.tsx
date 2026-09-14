@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { csvRow } from '@tims/shared';
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
@@ -56,17 +57,22 @@ export default function OrganizationsPage() {
   };
 
   const handleExport = () => {
-    const header = 'Nombre,Slug,Plan,Estado,Usuarios,Facturas,Creada,MRR';
+    // Every cell through csvRow (packages/shared/src/csv.ts) — the same helper the server-side platform
+    // exports use. This builder previously wrapped `org.name` in quotes WITHOUT escaping embedded ones, so
+    // an organization named `Acme "The" Corp` broke the row outright, and no field had formula-injection
+    // defence (CWE-1236). Client-side construction is why this one was missed when the server exports were
+    // audited. Tracked as GHSA-w6h5-g5gv-7g95.
+    const header = csvRow(['Nombre', 'Slug', 'Plan', 'Estado', 'Usuarios', 'Facturas', 'Creada', 'MRR']);
     const rows = organizations.map((org) => {
       const plan = org.plan || org.subscription?.plan || 'trial';
-      return [
-        `"${org.name}"`, org.slug, plan,
+      return csvRow([
+        org.name, org.slug, plan,
         org.isActive ? 'active' : 'suspended',
         org._count?.users ?? 0,
         (org._count as Record<string, number>)?.invoices ?? 0,
         new Date(org.createdAt).toISOString().slice(0, 10),
         PLAN_MRR[plan] || 0,
-      ].join(',');
+      ]);
     });
     const csv = [header, ...rows].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });

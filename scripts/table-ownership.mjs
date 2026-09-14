@@ -36,8 +36,10 @@ export function parseLedger(markdown) {
   if (ledger.efcoreAppendOnly !== undefined && !Array.isArray(ledger.efcoreAppendOnly)) {
     throw new Error('ledger.efcoreAppendOnly must be an array when present');
   }
-  // efcoreStranglerWrite (optional): Prisma-OWNED tables that EF UPDATEs for a specific documented vendor
-  // write during an in-progress Phase-5 strangler (Slice 2 preemployment_validations). Prisma still owns
+  // efcoreStranglerWrite (optional): Prisma-OWNED tables that EF INSERTs and/or UPDATEs for a specific
+  // documented write during an in-progress Phase-5 strangler (Slice 2 preemployment_validations was an
+  // UPDATE; slice 21 / #76's seven-table organization create is INSERT-only, which is why this reads
+  // "INSERT and/or UPDATE" rather than the original "UPDATEs"). Prisma still owns
   // the DDL/migrations AND another (staff) write path to the same table, so a deploy flag keeps exactly
   // one ACTIVE runtime writer — NOT yet an ownership transfer. Like efcoreReadOnly/efcoreAppendOnly they
   // MUST appear in the Prisma schema (Prisma owns the schema), so it is NOT a cross-owner collision.

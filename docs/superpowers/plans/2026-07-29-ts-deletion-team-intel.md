@@ -1,5 +1,66 @@
 # TS Deletion: team-intel `getDashboardKpis` Implementation Plan
 
+> ## ⚠️ SUPERSEDED IN PART — 2026-08-06 (#55). READ THIS BEFORE THE PLAN BELOW.
+>
+> This plan EXECUTED as written (commit `381f0a2b`, 2026-07-28) and its outcome stands. What is now
+> stale is its **scope fence**, stated twice below and reproduced here so it is not followed by
+> mistake:
+>
+> - _"Do NOT delete `packages/api/src/routers/teamIntel.ts` itself (6 other procedures still live there)"_
+> - _"Do NOT touch `getTeamProfile`, `getMembers`, `getBalanceScore`, `getBalanceAlerts`,
+>   `getRecommendedHires`, `compareTeams`"_
+>
+> **Both are obsolete.** Issue #55 deleted all six and removed `teamIntel.ts` outright (unregistered
+> from `root.ts`). The router named throughout this document no longer exists.
+>
+> ### What #55 verified before deleting, per procedure
+>
+> Zero FE consumers for all six — `grep -rnE "getTeamProfile|getMembers|getBalanceScore|getBalanceAlerts|getRecommendedHires|compareTeams"`
+> over `apps/web` returned exactly one hit, a stale TODO comment in `team-intel-kpis`' sibling
+> `team-members-table.tsx:6` (since retargeted at the C# route). `apps/web/lib/platform-api/team-intel.ts`
+> exposes only `useTeamIntelDashboardKpis`, and `talent/team-intelligence/page.tsx:16` is its only caller.
+>
+> C# replacement guard confirmed at `file:line` BEFORE each deletion, all in
+> `services/Tims.Platform/src/Tims.Api/TeamIntel/TeamIntelReadEndpoints.cs`:
+>
+> | Procedure             | C# route                                       | Gate | Scope guard                     |
+> | --------------------- | ---------------------------------------------- | ---- | ------------------------------- |
+> | `getTeamProfile`      | `/team-intel/teams/{teamId}/profile`           | :53  | :60 → `AssertTeamScopeAsync` :314 |
+> | `getMembers`          | `/team-intel/teams/{teamId}/members`           | :89  | :96 → same helper                |
+> | `getBalanceScore`     | `/team-intel/teams/{teamId}/balance-score`     | :125 | :132 → same helper               |
+> | `getBalanceAlerts`    | `/team-intel/teams/{teamId}/balance-alerts`    | :296 | :303, then 501 at :309           |
+> | `getRecommendedHires` | `/team-intel/teams/{teamId}/recommended-hires` | :296 | :303, then 501 at :309           |
+> | `compareTeams`        | `/team-intel/compare`                          | :204 | `ScopeWhereFor.BuildAsync` :222   |
+>
+> Each is covered by a REAL HTTP integration test, not a source grep:
+> `TeamIntelReadEndpointAuthTests.cs:126-142` (`TeamScope_OutOfScopeTeam_Is404_IdorProbe`, a `[Theory]`
+> over all five id-keyed leaves), `:183` (`OrgScope_Stubs_Are501`), `:193`/`:207`
+> (`OrgScope_Compare_ReturnsBothTeams` / `TeamScope_Compare_DropsOutOfScopeTeam`), with `:145`
+> (`OrgScope_OutOfTeamProfile_Is200`) as the control proving the 404 is scope and not RLS.
+>
+> ### What this plan got RIGHT and #55 upheld
+>
+> Its instruction to keep `team-intel-metrics.ts` and the `@tims/shared` helpers was correct and was
+> NOT reversed. Those are not dead code: `packages/shared/src/team-intel.ts` is the executable
+> specification the C# port is asserted against via `contracts/team-intel-fixtures/*`, and
+> `team-intel-metrics.ts` is still imported by `tests/tier2/s-c-team-intel.test.ts`. Deleting either
+> "because nothing calls it" would silently retire the C# port's only oracle. Both files now say so
+> in their own headers.
+>
+> ### One claim in issue #55 that did NOT survive verification
+>
+> #55 asserted the six each had a "live, parity-verified C# equivalent". **"Parity-verified" is wrong.**
+> The `team-intel` parity surface — removed by THIS plan, Step 4 — registered exactly one endpoint,
+> `dashboard-kpis`. The other six were never TS-vs-C# diffed by the harness. `scripts/deploy/cutover.sh`'s
+> note ("were never part of the C# cutover") was the accurate record; the issue was the wrong one.
+>
+> ### Gap #55 opened nothing new on, but did not close
+>
+> Because Step 4 removed the surface before `EndpointDef.tsProcedure` became optional (#57), those six
+> deployed C# endpoints get no RLS Mode-A IDOR probe and no RBAC deny assertion from the parity harness.
+> `checks/rls.ts` and `checks/rbac.ts` need only `callCsharp`, so a C#-only surface would restore them.
+> Not done in #55; tracked separately.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Delete the now-dead TS fallback for team-intel's `getDashboardKpis` read (its C# cutover flag, `NEXT_PUBLIC_TEAMINTEL_READ_VIA_CSHARP`, is confirmed live in prod), and truth-up the parity/cutover tooling that still references the TS side.

@@ -1,6 +1,6 @@
 'use client';
 
-import { trpc } from '../../../lib/trpc';
+import { useMonitoringActionPlanAlerts } from '../../../lib/platform-api/monitoring';
 import { useI18n } from '../../../lib/i18n';
 
 function daysUntil(d: string | Date): number {
@@ -10,19 +10,33 @@ function daysUntil(d: string | Date): number {
 
 export function ActionPlanAlerts() {
   const { t } = useI18n();
-  const q = trpc.monitoring.getActionPlanAlerts.useQuery();
+  const q = useMonitoringActionPlanAlerts();
   const items = q.data?.items ?? [];
 
   return (
     <div className="w-full md:w-[310px] shrink-0 bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] flex flex-col">
       <div className="flex items-center justify-between px-4 py-3 border-b border-[#EDEDED]">
         <div className="flex items-center gap-2">
-          <svg className="w-4 h-4 text-[#DD0C15]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+          <svg
+            className="w-4 h-4 text-[#DD0C15]"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"
+            />
           </svg>
           <span className="text-[13px] font-semibold text-[#333]">{t.monitoring.actionPlanAlerts}</span>
         </div>
-        {q.data && q.data.total > 0 && <span className="text-[10px] bg-[#DD0C15] text-white px-1.5 py-0.5 rounded-full font-bold">{q.data.total}</span>}
+        {q.data && q.data.total > 0 && (
+          <span className="text-[10px] bg-[#DD0C15] text-white px-1.5 py-0.5 rounded-full font-bold">
+            {q.data.total}
+          </span>
+        )}
       </div>
       <div className="flex-1 overflow-y-auto p-2 space-y-2">
         {q.isLoading ? (

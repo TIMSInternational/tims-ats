@@ -41,7 +41,17 @@ public sealed class PrincipalResolutionMiddleware(RequestDelegate next)
     // deliberately does NOT exempt /require-permission or /require-org-scope: those are resolved here
     // so their handlers reuse the stashed context (dedupe). /whoami IS exempt — it echoes the JWT
     // `sub` directly and is booted against a placeholder DB in the WP2.1 tests.
-    private static readonly string[] ExemptExactPaths = ["/", "/health", "/ready", "/whoami", "/external-whoami"];
+    // #172: the cron alert-metric surface is exempt too. It authorizes on a shared secret and NEVER reads
+    // a principal, so resolving one is pure cost — and because the route is also rate-limit exempt, that
+    // cost is unmetered: a caller holding any valid tenant JWT could drive an identity-DB round trip per
+    // request AND (via SecurityDenialAuditMiddleware, which writes only when a principal resolved) an
+    // audit_logs INSERT per request, through a path with no throttle. Exempting here removes both, and
+    // makes the 401 that surface returns genuinely identity-free. Found by a review panel.
+    private static readonly string[] ExemptExactPaths =
+    [
+        "/", "/health", "/ready", "/whoami", "/external-whoami",
+        Tims.Api.AlertMetrics.AlertMetricsEndpoints.RoutePath,
+    ];
     private static readonly string[] ExemptPrefixes = ["/openapi"];
 
     public async Task InvokeAsync(

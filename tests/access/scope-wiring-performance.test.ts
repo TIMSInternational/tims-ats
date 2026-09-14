@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { blockAt } from '../helpers/source-blocks';
 
 // Wave 2.5 slice 4 — static tripwires for the performance module. Every
 // row-level read composes the scope fragment via AND; by-id mutations probe via
@@ -47,11 +48,11 @@ describe('performance module scope wiring', () => {
 describe('commitment child-path (codex)', () => {
   const src = () => readFileSync(join(ROOT, 'packages/api/src/routers/performance/coaching.ts'), 'utf8');
   it('listCommitments composes the commitment fragment', () => {
-    const block = src().slice(src().indexOf('listCommitments'));
+    const block = blockAt(src(), 'listCommitments:');
     expect(block).toMatch(/scopeWhereFor\('commitment'/);
   });
   it('createCommitment subject-checks the employee, probes the optional session, and binds session↔employee', () => {
-    const block = src().slice(src().indexOf('createCommitment'), src().indexOf('updateCommitment'));
+    const block = blockAt(src(), 'createCommitment:');
     expect(block).toMatch(/assertSubjectInScope/);
     expect(block).toMatch(/assertScoped\('coachingSession'/);
     // codex round-2: the parent session must belong to the same employee
@@ -59,7 +60,7 @@ describe('commitment child-path (codex)', () => {
     expect(block).toMatch(/La sesion no corresponde a este empleado/);
   });
   it('updateCommitment probes the commitment (was a bare update-by-id)', () => {
-    const block = src().slice(src().indexOf('updateCommitment'));
+    const block = blockAt(src(), 'updateCommitment:');
     expect(block).toMatch(/assertScoped\('commitment'/);
   });
 });

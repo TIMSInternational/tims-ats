@@ -1,0 +1,102 @@
+{
+  "cases": [
+    {
+      "name": "Math.round(0.5)",
+      "input": {
+        "value": 0.5
+      },
+      "expected": 1
+    },
+    {
+      "name": "Math.round(1.5)",
+      "input": {
+        "value": 1.5
+      },
+      "expected": 2
+    },
+    {
+      "name": "Math.round(2.5)",
+      "input": {
+        "value": 2.5
+      },
+      "expected": 3
+    },
+    {
+      "name": "Math.round(3.5)",
+      "input": {
+        "value": 3.5
+      },
+      "expected": 4
+    },
+    {
+      "name": "Math.round(12.5)",
+      "input": {
+        "value": 12.5
+      },
+      "expected": 13
+    },
+    {
+      "name": "Math.round(62.5)",
+      "input": {
+        "value": 62.5
+      },
+      "expected": 63
+    },
+    {
+      "name": "Math.round(77.5)",
+      "input": {
+        "value": 77.5
+      },
+      "expected": 78
+    },
+    {
+      "name": "Math.round(-0.5)",
+      "input": {
+        "value": -0.5
+      },
+      "expected": 0
+    },
+    {
+      "name": "Math.round(-12.5)",
+      "input": {
+        "value": -12.5
+      },
+      "expected": -12
+    },
+    {
+      "name": "Math.round(0.49999999999999994)",
+      "input": {
+        "value": 0.49999999999999994
+      },
+      "expected": 0
+    },
+    {
+      "name": "Math.round(0.4999)",
+      "input": {
+        "value": 0.4999
+      },
+      "expected": 0
+    },
+    {
+      "name": "Math.round(33.333333333333336)",
+      "input": {
+        "value": 33.333333333333336
+      },
+      "expected": 33
+    },
+    {
+      "name": "Math.round(66.66666666666666)",
+      "input": {
+        "value": 66.66666666666666
+      },
+      "expected": 67
+    },
+    {
+      "name": "Math.round(99.99999999999999)",
+      "input": {
+        "value": 99.99999999999999
+      },
+      "expected": 100
+    }
+  ]
+}

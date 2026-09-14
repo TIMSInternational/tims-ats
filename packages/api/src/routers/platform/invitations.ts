@@ -1,17 +1,23 @@
 import { z } from 'zod';
-import { getAppUrl } from '@tims/shared';
+import { csvRow, getAppUrl } from '@tims/shared';
 import { router, publicProcedure } from '../../trpc';
 import { db, InvitationType, InvitationStatus } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { sendEmail } from '../../lib/ses';
 import { randomUUID } from 'crypto';
+import { bulkInviteUsers, resendInvitation } from '../../services/bulk-invitation.service';
 import { platformProcedure } from './_common';
 import { logPlatformExport } from '../../access/security-audit';
 import { provisionOrgDefaults, provisionOrgEntitlements } from '../../services/org-provisioning';
 
 const INVITATION_TYPE = z.enum(['org_admin', 'user']);
 const INVITATION_STATUS = z.enum(['pending', 'sent', 'accepted', 'expired', 'revoked']);
+
+// The CSV export row cap, matching audit.service.ts:13 so the two platform exports bound egress the
+// same way. exportInvitationsCsv was unbounded until 2026-08-13 (GHSA-6759-h69h-m739): one call
+// returned every invitation across every tenant, and the whole set was materialised into a string.
+const EXPORT_LIMIT = 10_000;
 
 const invitationListSelect = {
   id: true,
@@ -41,13 +47,15 @@ export const invitationsRouter = router({
   }),
 
   listInvitations: platformProcedure
-    .input(z.object({
-      page: z.number().int().min(0).default(0),
-      limit: z.number().int().min(1).max(50).default(20),
-      type: INVITATION_TYPE.optional(),
-      status: INVITATION_STATUS.optional(),
-      search: z.string().max(100).optional(),
-    }))
+    .input(
+      z.object({
+        page: z.number().int().min(0).default(0),
+        limit: z.number().int().min(1).max(50).default(20),
+        type: INVITATION_TYPE.optional(),
+        status: INVITATION_STATUS.optional(),
+        search: z.string().max(100).optional(),
+      }),
+    )
     .query(async ({ input }) => {
       const { page, limit, type, status, search } = input;
       const where: Prisma.PlatformInvitationWhereInput = {};
@@ -70,12 +78,31 @@ export const invitationsRouter = router({
     }),
 
   createOrgInvitation: platformProcedure
-    .input(z.object({
-      email: z.string().email().max(255),
-      organizationName: z.string().min(2).max(100),
-      organizationSlug: z.string().min(2).max(63).regex(/^[a-z0-9-]+$/),
-      organizationPlan: z.enum(['trial', 'starter', 'professional', 'enterprise']).default('trial'),
-    }))
+    .input(
+      z.object({
+        // 254, not 255 (#207): RFC 5321 §4.5.3.1.3 caps the Path at 256 octets INCLUDING the angle
+        // brackets, so the address itself is <= 254. This procedure writes `input.email` straight into
+        // `organizations.billing_email` (below) — the same column `platform.createOrganization` writes.
+        // Leaving 255 here would let a 255-octet address in through one platform-owner writer and be
+        // rejected by the other. The other two `.max(255)` emails in this file write
+        // `platform_invitations.email`, a different column, and are deliberately untouched.
+        //
+        // NOT "the only other writer" — corrected 2026-08-11. `organizations.billing_email` has FOUR
+        // writers and TWO are still unbounded: `routers/organization.ts` update (via
+        // `updateOrganizationSchema`, at the lower `organization:update` privilege bar) and the
+        // self-serve signup in `apps/web/app/auth/callback/route.ts`. See the corresponding comment on
+        // `platform.createOrganization` for the full list, and #213 for the fix. #207 bounded the
+        // platform-owner paths only.
+        email: z.string().email().max(254),
+        organizationName: z.string().min(2).max(100),
+        organizationSlug: z
+          .string()
+          .min(2)
+          .max(63)
+          .regex(/^[a-z0-9-]+$/),
+        organizationPlan: z.enum(['trial', 'starter', 'professional', 'enterprise']).default('trial'),
+      }),
+    )
     .mutation(async ({ ctx, input }) => {
       const token = randomUUID();
       const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
@@ -153,11 +180,13 @@ export const invitationsRouter = router({
     }),
 
   createUserInvitation: platformProcedure
-    .input(z.object({
-      email: z.string().email().max(255),
-      organizationId: z.string().uuid(),
-      roleSlug: z.string().max(50).optional(),
-    }))
+    .input(
+      z.object({
+        email: z.string().email().max(255),
+        organizationId: z.string().uuid(),
+        roleSlug: z.string().max(50).optional(),
+      }),
+    )
     .mutation(async ({ ctx, input }) => {
       const org = await db.organization.findUnique({ where: { id: input.organizationId }, select: { name: true } });
       if (!org) throw new TRPCError({ code: 'NOT_FOUND', message: 'Organization not found' });
@@ -203,74 +232,53 @@ export const invitationsRouter = router({
       return invitation;
     }),
 
-  resendInvitation: platformProcedure
-    .input(z.object({ id: z.string().uuid() }))
-    .mutation(async ({ input }) => {
-      const invitation = await db.platformInvitation.findUnique({
-        where: { id: input.id },
-        select: { id: true, email: true, token: true, status: true, organizationName: true },
-      });
-      if (!invitation) throw new TRPCError({ code: 'NOT_FOUND', message: 'Invitacion no encontrada' });
-      if (invitation.status === 'accepted' || invitation.status === 'revoked') {
-        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Cannot resend accepted or revoked invitation' });
-      }
+  resendInvitation: platformProcedure.input(z.object({ id: z.string().uuid() })).mutation(async ({ input }) => {
+    const result = await resendInvitation(input.id);
+    if ('error' in result) {
+      if (result.error === 'not_found') throw new TRPCError({ code: 'NOT_FOUND', message: 'Invitacion no encontrada' });
+      if (result.error === 'delivery_failed') throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Email delivery unconfirmed; invitation was not marked sent' });
+      throw new TRPCError({ code: 'BAD_REQUEST', message: 'Cannot resend accepted or revoked invitation' });
+    }
+    return result;
+  }),
 
-      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-      const appUrl = getAppUrl();
+  revokeInvitation: platformProcedure.input(z.object({ id: z.string().uuid() })).mutation(async ({ input }) => {
+    const existing = await db.platformInvitation.findUnique({
+      where: { id: input.id },
+      select: { id: true, status: true },
+    });
+    if (!existing) throw new TRPCError({ code: 'NOT_FOUND', message: 'Invitacion no encontrada' });
+    if (existing.status === 'accepted')
+      throw new TRPCError({ code: 'BAD_REQUEST', message: 'No se puede revocar una invitacion aceptada' });
 
-      await sendEmail({
-        to: invitation.email,
-        subject: `Recordatorio: Invitacion pendiente - ${invitation.organizationName || 'TIMS ATS'}`,
-        html: `
-          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
-            <div style="text-align: center; margin-bottom: 32px;"><h1 style="color: #1F114C; font-size: 24px; margin: 0;">TIMS ATS</h1></div>
-            <div style="background: #f8f9fa; border-radius: 12px; padding: 32px; margin-bottom: 24px;">
-              <h2 style="color: #333; font-size: 18px; margin: 0 0 16px;">Recordatorio de Invitacion</h2>
-              <p style="color: #585858; line-height: 1.6; margin: 0 0 24px;">Tienes una invitacion pendiente para ${invitation.organizationName ? `<strong>${invitation.organizationName}</strong> en ` : ''}TIMS ATS.</p>
-              <div style="text-align: center;"><a href="${appUrl}/accept-invitation?token=${invitation.token}" style="background: #1F114C; color: white; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; display: inline-block;">Aceptar Invitacion</a></div>
-            </div>
-            <p style="color: #8B8B8B; font-size: 12px; text-align: center;">Esta invitacion expira en 7 dias.</p>
-          </div>
-        `,
-      });
-
-      return db.platformInvitation.update({
-        where: { id: input.id },
-        data: { sentAt: new Date(), expiresAt, status: InvitationStatus.sent },
-        select: { id: true, status: true, sentAt: true, expiresAt: true },
-      });
-    }),
-
-  revokeInvitation: platformProcedure
-    .input(z.object({ id: z.string().uuid() }))
-    .mutation(async ({ input }) => {
-      const existing = await db.platformInvitation.findUnique({
-        where: { id: input.id },
-        select: { id: true, status: true },
-      });
-      if (!existing) throw new TRPCError({ code: 'NOT_FOUND', message: 'Invitacion no encontrada' });
-      if (existing.status === 'accepted') throw new TRPCError({ code: 'BAD_REQUEST', message: 'No se puede revocar una invitacion aceptada' });
-
-      return db.platformInvitation.update({
-        where: { id: input.id },
-        data: { status: InvitationStatus.revoked },
-        select: { id: true, status: true },
-      });
-    }),
+    return db.platformInvitation.update({
+      where: { id: input.id },
+      data: { status: InvitationStatus.revoked },
+      select: { id: true, status: true },
+    });
+  }),
 
   exportInvitationsCsv: platformProcedure
-    .input(z.object({
-      type: INVITATION_TYPE.optional(),
-      status: INVITATION_STATUS.optional(),
-    }))
+    .input(
+      z.object({
+        type: INVITATION_TYPE.optional(),
+        status: INVITATION_STATUS.optional(),
+      }),
+    )
     .query(async ({ ctx, input }) => {
       const where: Prisma.PlatformInvitationWhereInput = {};
       if (input.type) where.type = input.type as InvitationType;
       if (input.status) where.status = input.status as InvitationStatus;
 
-      const invitations = await db.platformInvitation.findMany({
+      // Capped, mirroring audit.service.ts (EXPORT_LIMIT / take LIMIT+1 / truncated). Before this, the
+      // export was unbounded: one platform-owner call returned EVERY invitation across EVERY tenant in a
+      // single response (GHSA-6759-h69h-m739). Fetch one MORE than the cap so `truncated` can be reported
+      // without a second count query, then trim to the cap. The C# port applies the identical cap in the
+      // same change — a one-sided cap would fail `verify invitation`.
+      const rawInvitations = await db.platformInvitation.findMany({
         where,
         orderBy: { createdAt: 'desc' },
+        take: EXPORT_LIMIT + 1,
         select: {
           email: true,
           type: true,
@@ -282,140 +290,115 @@ export const invitationsRouter = router({
           acceptedAt: true,
         },
       });
+      const truncated = rawInvitations.length > EXPORT_LIMIT;
+      const invitations = truncated ? rawInvitations.slice(0, EXPORT_LIMIT) : rawInvitations;
 
-      const header = 'Email,Tipo,Organizacion,Rol,Estado,Enviada,Expira,Aceptada';
-      const fmt = (d: Date | null | undefined) => d ? d.toISOString().split('T')[0] : '-';
-      const rows = invitations.map(inv => [
-        inv.email,
-        inv.type,
-        `"${(inv.organizationName || '').replace(/"/g, '""')}"`,
-        inv.roleSlug || '-',
-        inv.status,
-        fmt(inv.sentAt),
-        fmt(inv.expiresAt),
-        fmt(inv.acceptedAt),
-      ].join(','));
+      // Every cell goes through csvRow (packages/shared/src/csv.ts), matching audit.service.ts.
+      // This export previously hand-rolled its CSV and quoted ONLY organizationName, so it had no
+      // formula-injection defence (CWE-1236) and a comma in any other field shifted the row's later
+      // columns. organizationName is z.string().min(2).max(100) with no character restriction, so a
+      // leading =/+/-/@ was reachable through the ordinary invite flow. The C# port
+      // (PlatformInvitationsReadUseCase.BuildCsv) is changed in the SAME commit to keep the two
+      // stacks byte-identical — a one-sided fix would fail `verify invitation` on every row.
+      const header = csvRow(['Email', 'Tipo', 'Organizacion', 'Rol', 'Estado', 'Enviada', 'Expira', 'Aceptada']);
+      const fmt = (d: Date | null | undefined) => (d ? d.toISOString().split('T')[0] : '-');
+      const rows = invitations.map((inv) =>
+        csvRow([
+          inv.email,
+          inv.type,
+          inv.organizationName,
+          inv.roleSlug || '-',
+          inv.status,
+          fmt(inv.sentAt),
+          fmt(inv.expiresAt),
+          fmt(inv.acceptedAt),
+        ]),
+      );
 
-      logPlatformExport(ctx, { resource: 'invitations', count: invitations.length, format: 'csv' });
-      return { csv: [header, ...rows].join('\n'), count: invitations.length };
+      logPlatformExport(ctx, { resource: 'invitations', count: invitations.length, format: 'csv', truncated });
+      return { csv: [header, ...rows].join('\n'), count: invitations.length, truncated };
     }),
 
   // ============ PUBLIC INVITATION ENDPOINTS ============
 
-  getInvitationByToken: publicProcedure
-    .input(z.object({ token: z.string().uuid() }))
-    .query(async ({ input }) => {
-      const invitation = await db.platformInvitation.findUnique({
-        where: { token: input.token },
-        select: {
-          id: true, email: true, type: true, organizationName: true,
-          organizationSlug: true, roleSlug: true, status: true, expiresAt: true,
-          organization: { select: { id: true, name: true, slug: true } },
-        },
-      });
-      if (!invitation) throw new TRPCError({ code: 'NOT_FOUND', message: 'Invitacion no encontrada' });
+  getInvitationByToken: publicProcedure.input(z.object({ token: z.string().uuid() })).query(async ({ input }) => {
+    const invitation = await db.platformInvitation.findUnique({
+      where: { token: input.token },
+      select: {
+        id: true,
+        email: true,
+        type: true,
+        organizationName: true,
+        organizationSlug: true,
+        roleSlug: true,
+        status: true,
+        expiresAt: true,
+        organization: { select: { id: true, name: true, slug: true } },
+      },
+    });
+    if (!invitation) throw new TRPCError({ code: 'NOT_FOUND', message: 'Invitacion no encontrada' });
 
-      const isExpired = invitation.expiresAt < new Date();
-      if (isExpired && invitation.status !== InvitationStatus.expired) {
-        await db.platformInvitation.update({ where: { id: invitation.id }, data: { status: InvitationStatus.expired } });
-        invitation.status = InvitationStatus.expired;
-      }
+    const isExpired = invitation.expiresAt < new Date();
+    if (isExpired && invitation.status !== InvitationStatus.expired) {
+      await db.platformInvitation.update({ where: { id: invitation.id }, data: { status: InvitationStatus.expired } });
+      invitation.status = InvitationStatus.expired;
+    }
 
-      return {
-        id: invitation.id,
-        email: invitation.email,
-        type: invitation.type,
-        organizationName: invitation.organization?.name || invitation.organizationName,
-        organizationSlug: invitation.organizationSlug,
-        roleSlug: invitation.roleSlug,
-        status: invitation.status,
-        expiresAt: invitation.expiresAt,
-      };
-    }),
+    return {
+      id: invitation.id,
+      email: invitation.email,
+      type: invitation.type,
+      organizationName: invitation.organization?.name || invitation.organizationName,
+      organizationSlug: invitation.organizationSlug,
+      roleSlug: invitation.roleSlug,
+      status: invitation.status,
+      expiresAt: invitation.expiresAt,
+    };
+  }),
 
-  acceptInvitation: publicProcedure
-    .input(z.object({ token: z.string().uuid() }))
-    .mutation(async ({ input }) => {
-      const invitation = await db.platformInvitation.findUnique({
-        where: { token: input.token },
-        select: { id: true, status: true, expiresAt: true, organizationId: true, type: true },
-      });
-      if (!invitation) throw new TRPCError({ code: 'NOT_FOUND', message: 'Invitacion no encontrada' });
-      if (invitation.status === InvitationStatus.accepted) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Esta invitacion ya fue aceptada' });
-      if (invitation.status === InvitationStatus.revoked) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Esta invitacion fue revocada' });
-      if (invitation.expiresAt < new Date()) {
-        await db.platformInvitation.update({ where: { id: invitation.id }, data: { status: InvitationStatus.expired } });
-        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Esta invitacion ha expirado' });
-      }
+  acceptInvitation: publicProcedure.input(z.object({ token: z.string().uuid() })).mutation(async ({ input }) => {
+    const invitation = await db.platformInvitation.findUnique({
+      where: { token: input.token },
+      select: { id: true, status: true, expiresAt: true, organizationId: true, type: true },
+    });
+    if (!invitation) throw new TRPCError({ code: 'NOT_FOUND', message: 'Invitacion no encontrada' });
+    if (invitation.status === InvitationStatus.accepted)
+      throw new TRPCError({ code: 'BAD_REQUEST', message: 'Esta invitacion ya fue aceptada' });
+    if (invitation.status === InvitationStatus.revoked)
+      throw new TRPCError({ code: 'BAD_REQUEST', message: 'Esta invitacion fue revocada' });
+    if (invitation.expiresAt < new Date()) {
+      await db.platformInvitation.update({ where: { id: invitation.id }, data: { status: InvitationStatus.expired } });
+      throw new TRPCError({ code: 'BAD_REQUEST', message: 'Esta invitacion ha expirado' });
+    }
 
-      await db.platformInvitation.update({
-        where: { id: invitation.id },
-        data: { status: InvitationStatus.accepted, acceptedAt: new Date() },
-      });
+    await db.platformInvitation.update({
+      where: { id: invitation.id },
+      data: { status: InvitationStatus.accepted, acceptedAt: new Date() },
+    });
 
-      return { accepted: true, organizationId: invitation.organizationId, type: invitation.type };
-    }),
+    return { accepted: true, organizationId: invitation.organizationId, type: invitation.type };
+  }),
 
   bulkInviteUsers: platformProcedure
-    .input(z.object({
-      organizationId: z.string().uuid(),
-      users: z.array(z.object({
-        email: z.string().email().max(255),
-        firstName: z.string().max(100).optional(),
-        lastName: z.string().max(100).optional(),
-        roleSlug: z.string().max(50).optional(),
-      })).min(1).max(200),
-    }))
+    .input(
+      z.object({
+        organizationId: z.string().uuid(),
+        users: z
+          .array(
+            z.object({
+              email: z.string().email().max(255),
+              firstName: z.string().max(100).optional(),
+              lastName: z.string().max(100).optional(),
+              roleSlug: z.string().max(50).optional(),
+            }),
+          )
+          .min(1)
+          .max(200),
+      }),
+    )
     .mutation(async ({ ctx, input }) => {
-      const org = await db.organization.findUnique({
-        where: { id: input.organizationId },
-        select: { name: true },
-      });
-      if (!org) throw new TRPCError({ code: 'NOT_FOUND', message: 'Organization not found' });
-
-      const results: { email: string; status: 'sent' | 'duplicate' | 'error'; message?: string }[] = [];
-      const existingEmails = await db.platformInvitation.findMany({
-        where: {
-          organizationId: input.organizationId,
-          email: { in: input.users.map(u => u.email) },
-          status: { in: [InvitationStatus.sent, InvitationStatus.pending, InvitationStatus.accepted] },
-        },
-        select: { email: true },
-      });
-      const existingSet = new Set(existingEmails.map(e => e.email.toLowerCase()));
-
-      for (const user of input.users) {
-        if (existingSet.has(user.email.toLowerCase())) {
-          results.push({ email: user.email, status: 'duplicate', message: 'Already invited' });
-          continue;
-        }
-        try {
-          const token = randomUUID();
-          const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-          await db.platformInvitation.create({
-            data: {
-              email: user.email,
-              type: InvitationType.user,
-              organizationId: input.organizationId,
-              organizationName: org.name,
-              roleSlug: user.roleSlug,
-              token,
-              status: InvitationStatus.sent,
-              invitedById: ctx.user.id,
-              sentAt: new Date(),
-              expiresAt,
-            },
-          });
-          results.push({ email: user.email, status: 'sent' });
-        } catch {
-          results.push({ email: user.email, status: 'error', message: 'Failed to create invitation' });
-        }
-      }
-
-      const sent = results.filter(r => r.status === 'sent').length;
-      const duplicates = results.filter(r => r.status === 'duplicate').length;
-      const errors = results.filter(r => r.status === 'error').length;
-
-      return { results, summary: { total: input.users.length, sent, duplicates, errors } };
+      const result = await bulkInviteUsers(input.organizationId, ctx.user.id, input.users);
+      if (!result) throw new TRPCError({ code: 'NOT_FOUND', message: 'Organization not found' });
+      return result;
     }),
 });

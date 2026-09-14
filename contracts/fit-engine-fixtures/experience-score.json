@@ -1,0 +1,112 @@
+{
+  "cases": [
+    {
+      "name": "no minYears requirement → null",
+      "input": {
+        "yearsExperience": 5,
+        "requirements": {}
+      },
+      "expected": null
+    },
+    {
+      "name": "years null → null",
+      "input": {
+        "yearsExperience": null,
+        "requirements": {
+          "minYearsExperience": 3
+        }
+      },
+      "expected": null
+    },
+    {
+      "name": "min 0 → 100",
+      "input": {
+        "yearsExperience": 1,
+        "requirements": {
+          "minYearsExperience": 0
+        }
+      },
+      "expected": 100
+    },
+    {
+      "name": "min negative → 100",
+      "input": {
+        "yearsExperience": 1,
+        "requirements": {
+          "minYearsExperience": -2
+        }
+      },
+      "expected": 100
+    },
+    {
+      "name": "overqualified capped at 100",
+      "input": {
+        "yearsExperience": 10,
+        "requirements": {
+          "minYearsExperience": 2
+        }
+      },
+      "expected": 100
+    },
+    {
+      "name": "exact match → 100",
+      "input": {
+        "yearsExperience": 3,
+        "requirements": {
+          "minYearsExperience": 3
+        }
+      },
+      "expected": 100
+    },
+    {
+      "name": "1 of 3 → 33",
+      "input": {
+        "yearsExperience": 1,
+        "requirements": {
+          "minYearsExperience": 3
+        }
+      },
+      "expected": 33
+    },
+    {
+      "name": "2 of 3 → 67",
+      "input": {
+        "yearsExperience": 2,
+        "requirements": {
+          "minYearsExperience": 3
+        }
+      },
+      "expected": 67
+    },
+    {
+      "name": "1 of 8 = 12.5 rounds half-up to 13",
+      "input": {
+        "yearsExperience": 1,
+        "requirements": {
+          "minYearsExperience": 8
+        }
+      },
+      "expected": 13
+    },
+    {
+      "name": "fractional min 2.5, years 1 → 40",
+      "input": {
+        "yearsExperience": 1,
+        "requirements": {
+          "minYearsExperience": 2.5
+        }
+      },
+      "expected": 40
+    },
+    {
+      "name": "zero years → 0",
+      "input": {
+        "yearsExperience": 0,
+        "requirements": {
+          "minYearsExperience": 5
+        }
+      },
+      "expected": 0
+    }
+  ]
+}

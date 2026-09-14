@@ -6,16 +6,23 @@ namespace Tims.Infrastructure.Audit;
 /// <summary>
 /// See <see cref="ISecurityEventWriter"/>'s doc comment for the full rationale (new sibling to
 /// <see cref="BillingAuditWriter"/>'s implementation, not a replacement). NO <see cref="TenantScope"/>
-/// — the caller is always a resolved platform owner, never a tenant context. Reuses
+/// — the current implementation requires a privileged connection for INSERT under forced RLS.
+/// Callers include resolved staff, platform owners and API keys. Reuses
 /// <see cref="AuditLogEntity"/>/<see cref="AuditLogDbContext"/> verbatim.
 /// </summary>
 public sealed class SecurityEventWriter(AuditLogDbContext db, ILogger<SecurityEventWriter>? logger = null) : ISecurityEventWriter
 {
+    private static readonly TimeSpan WriteTimeout = TimeSpan.FromSeconds(5);
+
     private readonly AuditLogDbContext _db = db;
     private readonly ILogger<SecurityEventWriter>? _logger = logger;
 
     public async Task WriteAsync(SecurityEvent securityEvent, CancellationToken cancellationToken)
     {
+        // Bound database failures independently of a disconnected HTTP caller. Denial
+        // middleware supplies CancellationToken.None so the request cannot erase its audit.
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(WriteTimeout);
         try
         {
             _db.AuditLogs.Add(new AuditLogEntity
@@ -31,7 +38,7 @@ public sealed class SecurityEventWriter(AuditLogDbContext db, ILogger<SecurityEv
                 UserAgent = securityEvent.UserAgent,
             });
 
-            await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+            await _db.SaveChangesAsync(timeout.Token).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

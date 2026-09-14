@@ -1,3 +1,4 @@
+using Tims.Api.Http;
 using System.Security.Claims;
 using Tims.Api.Authentication;
 using Tims.Api.RateLimiting;
@@ -132,8 +133,7 @@ public static class ExternalAssessmentEndpoints
             organizationId,
             apiKeyId,
             resolvedScope,
-            httpContext.Request.Headers["x-forwarded-for"].FirstOrDefault()
-                ?? httpContext.Request.Headers["x-real-ip"].FirstOrDefault(),
+            httpContext.ClientIpFor(),
             httpContext.Request.Headers.UserAgent.FirstOrDefault());
         return GateResult.Ok(principal);
     }

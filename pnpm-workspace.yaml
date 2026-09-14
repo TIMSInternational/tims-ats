@@ -23,3 +23,19 @@ allowBuilds:
   protobufjs: true
   sharp: true
   unrs-resolver: true
+
+# Security patches scoped to affected dependency release lines.
+overrides:
+  "@opentelemetry/api": "1.9.1"
+  "vite@>=8.0.0 <8.0.16": "8.0.16"
+  "brace-expansion@>=1 <2": "1.1.18"
+  "brace-expansion@>=2 <3": "2.1.4"
+  "brace-expansion@>=5 <5.0.9": "5.0.9"
+  "js-yaml@>=4 <4.3.2": "4.3.2"
+  "fast-uri@>=3 <3.1.6": "3.1.6"
+  "postcss@>=8 <8.5.18": "8.5.18"
+  "nanoid@>=3 <3.3.18": "3.3.18"
+  "browserslist@>=4 <4.28.7": "4.28.7"
+  "@xmldom/xmldom@>=0.8 <0.8.15": "0.8.15"
+  "next@15.5.24>sharp": "0.35.4"
+  "ai@4.3.19>jsondiffpatch": "0.7.6"

@@ -23,7 +23,7 @@ import {
   upsertBillingProfileInput,
 } from './invoices.schemas';
 import { sumMoney } from '../../lib/currency';
-import { PLATFORM_BILLING_CURRENCY } from '@tims/shared';
+import { csvRow, PLATFORM_BILLING_CURRENCY } from '@tims/shared';
 
 export const invoicesRouter = router({
   getInvoiceKpis: platformProcedure.query(async () => {
@@ -297,20 +297,25 @@ export const invoicesRouter = router({
 
       logPlatformExport(ctx, { resource: 'invoices', count: invoices.length, format: 'csv', targetOrgId: input.organizationId });
 
-      const header = 'Numero,Organizacion,Monto,Moneda,Estado,Descripcion,Emision,Vencimiento,Pagada';
+      // Every cell through csvRow. Previously only `organization.name` and `description` were quoted
+      // (2 of 9), so a comma in any other field shifted that row's later columns, and no field had
+      // formula-injection defence (CWE-1236). Tracked as GHSA-w6h5-g5gv-7g95.
+      const header = csvRow([
+        'Numero', 'Organizacion', 'Monto', 'Moneda', 'Estado', 'Descripcion', 'Emision', 'Vencimiento', 'Pagada',
+      ]);
       const rows = invoices.map((inv) => {
         const fmt = (d: Date | null | undefined) => d ? new Intl.DateTimeFormat('es', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(d) : '';
-        return [
+        return csvRow([
           `INV-${inv.invoiceNumber}`,
-          `"${inv.organization.name.replace(/"/g, '""')}"`,
-          inv.amount,
+          inv.organization.name,
+          String(inv.amount),
           inv.currency,
           inv.status,
-          `"${(inv.description || '').replace(/"/g, '""')}"`,
+          inv.description || '',
           fmt(inv.createdAt),
           fmt(inv.dueDate),
           fmt(inv.paidAt),
-        ].join(',');
+        ]);
       });
 
       return [header, ...rows].join('\n');

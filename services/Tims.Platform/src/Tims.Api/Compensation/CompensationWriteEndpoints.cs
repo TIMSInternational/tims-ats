@@ -1,3 +1,4 @@
+using Tims.Api.Http;
 using System.ComponentModel.DataAnnotations;
 using System.Globalization;
 using System.Security.Claims;
@@ -160,9 +161,7 @@ public static class CompensationWriteEndpoints
                     await DisposeAnchorsAsync(anchors);
                 }
 
-                var forwarded = httpContext.Request.Headers["x-forwarded-for"].ToString();
-                var realIp = httpContext.Request.Headers["x-real-ip"].ToString();
-                var ipAddress = !string.IsNullOrEmpty(forwarded) ? forwarded : string.IsNullOrEmpty(realIp) ? null : realIp;
+                var ipAddress = httpContext.ClientIpFor();
                 var userAgent = httpContext.Request.Headers.UserAgent.ToString();
 
                 var result = await useCase.ApproveAsync(

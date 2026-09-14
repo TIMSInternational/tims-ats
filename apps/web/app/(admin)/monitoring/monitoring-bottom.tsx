@@ -1,12 +1,12 @@
 'use client';
 
-import { trpc } from '../../../lib/trpc';
+import { useMonitoringCrossModuleTrend, useMonitoringExecutiveKpis } from '../../../lib/platform-api/monitoring';
 import { useI18n } from '../../../lib/i18n';
 import { toast } from '../../../lib/toast';
 
 export function CrossModuleTrend() {
   const { t } = useI18n();
-  const q = trpc.monitoring.getCrossModuleTrend.useQuery({ metric: 'headcount', period: '6m' });
+  const q = useMonitoringCrossModuleTrend({ metric: 'headcount', period: '6m' });
   const data = q.data?.data ?? [];
   // value is null for k-anonymity-suppressed points (sub-floor engagement months);
   // treat null as 0 for the bar height and show a mask glyph instead of the count.
@@ -26,7 +26,10 @@ export function CrossModuleTrend() {
           {data.map((d) => (
             <div key={d.month} className="flex-1 flex flex-col items-center gap-1 justify-end h-full">
               <span className="text-[9px] text-[#585858] font-medium">{d.value === null ? '—' : d.value}</span>
-              <div className="w-full rounded-t bg-[#1F114C]" style={{ height: `${Math.max(((d.value ?? 0) / max) * 100, 4)}%` }} />
+              <div
+                className="w-full rounded-t bg-[#1F114C]"
+                style={{ height: `${Math.max(((d.value ?? 0) / max) * 100, 4)}%` }}
+              />
               <span className="text-[9px] text-[#8B8B8B]">{d.month.slice(5)}</span>
             </div>
           ))}
@@ -38,11 +41,19 @@ export function CrossModuleTrend() {
 
 export function QuickActions() {
   const { t } = useI18n();
-  const q = trpc.monitoring.getExecutiveKpis.useQuery();
+  const q = useMonitoringExecutiveKpis();
 
   const actions = [
-    { title: t.monitoring.qaReviewAlerts, sub: `${q.data?.openAlerts ?? 0} ${t.monitoring.qaReviewAlertsSuffix}`, bg: 'bg-amber-50' },
-    { title: t.monitoring.qaViewVacancies, sub: `${q.data?.activeVacancies ?? 0} ${t.monitoring.qaViewVacanciesSuffix}`, bg: 'bg-red-50' },
+    {
+      title: t.monitoring.qaReviewAlerts,
+      sub: `${q.data?.openAlerts ?? 0} ${t.monitoring.qaReviewAlertsSuffix}`,
+      bg: 'bg-amber-50',
+    },
+    {
+      title: t.monitoring.qaViewVacancies,
+      sub: `${q.data?.activeVacancies ?? 0} ${t.monitoring.qaViewVacanciesSuffix}`,
+      bg: 'bg-red-50',
+    },
     { title: t.monitoring.qaExportReport, sub: t.monitoring.qaExportReportSub, bg: 'bg-[#1F114C]/5' },
   ];
 
@@ -57,7 +68,15 @@ export function QuickActions() {
             className="flex items-center gap-2.5 w-full px-3 py-2 rounded-lg border border-[#EDEDED] hover:bg-[#F6F6F6] transition text-left"
           >
             <div className={`w-7 h-7 rounded-lg ${a.bg} flex items-center justify-center shrink-0`}>
-              <svg className="w-3.5 h-3.5 text-[#1F114C]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
+              <svg
+                className="w-3.5 h-3.5 text-[#1F114C]"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                viewBox="0 0 24 24"
+              >
+                <path d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+              </svg>
             </div>
             <div>
               <p className="text-[11px] font-medium text-[#333]">{a.title}</p>

@@ -1,6 +1,7 @@
 import { db } from '@tims/db';
 import type { AlertMetricKey } from '@tims/shared';
 import { suppressBelowMin5 } from '../access';
+import { platformGetWithHeaders } from '../lib/platform-api-client';
 
 // Data access for the cron alert-evaluation engine. Runs in a cron context (no
 // per-request tenant), so it uses the privileged `db` and scopes EVERY query by
@@ -27,9 +28,103 @@ const SIXTY_DAYS_MS = 60 * 24 * MS_PER_HOUR;
 // (not surveyResponse), `headcount`/`active_alerts`/`vacancies_open_60d`/
 // `sla_active_breaches` are non-sensitive. The set is keyed off the metric, so any
 // future metric added over one of the four models must be listed here.
-const SENSITIVE_ALERT_METRICS: ReadonlySet<AlertMetricKey> = new Set<AlertMetricKey>([
-  'pending_salary_adjustments',
-]);
+const SENSITIVE_ALERT_METRICS: ReadonlySet<AlertMetricKey> = new Set<AlertMetricKey>(['pending_salary_adjustments']);
+
+/**
+ * Is this metric computed over one of the four §21-restricted models? Exported so the cross-stack
+ * golden (contracts/alert-metrics-fixtures/cases.json) asserts THIS predicate — the one the live path
+ * below actually calls — rather than a copy of the set that could drift from it.
+ */
+export function isSensitiveAlertMetric(metric: AlertMetricKey): boolean {
+  return SENSITIVE_ALERT_METRICS.has(metric);
+}
+
+/**
+ * The §21 min-5 floor for one metric value. Extracted from `computeMetric` so it is directly testable,
+ * and so the C# port (`Tims.Domain.AlertMetrics.AlertMetricKeys` + `KAnonymity.SuppressBelowMin5`) can
+ * be pinned to the SAME golden. 1..4 over a restricted model becomes null — `evaluateCondition(null, …)`
+ * returns false, so the rule cannot fire as an oracle AND no sub-floor value is persisted into the
+ * alert's metadata. 0 and >=5 pass through; NON-sensitive metrics are never floored.
+ *
+ * Idempotent by construction, which is what makes it safe to apply on top of the identical floor the C#
+ * surface already applied server-side: a null never re-enters it, and 0/>=5 map to themselves.
+ */
+export function applyAlertMetricFloor(metric: AlertMetricKey, value: number | null): number | null {
+  if (value === null || !isSensitiveAlertMetric(metric)) return value;
+  return suppressBelowMin5(value).count;
+}
+
+// ── The C#-served subset (§8 Q0b slice 2, issue #172) ────────────────────────
+// The two metrics whose tables move to EF Core ownership: `surveys` (flip #64) and
+// `salary_adjustments` (flip #66). Once those flips land the Prisma models STOP EXISTING, so these two
+// reads must come from the C# platform service. Every other metric counts a table that does not flip
+// and stays on the Prisma path permanently.
+export const ALERT_METRICS_VIA_CSHARP: readonly AlertMetricKey[] = ['active_surveys', 'pending_salary_adjustments'];
+
+/**
+ * Route the two flip-blocked metrics to the C# surface? Server-only (the cron runs on the server) and
+ * deliberately NOT `NEXT_PUBLIC_*` — this credential-bearing path must never be inlined into a client
+ * bundle. Exact "true" only, mirroring RLS_ENFORCED / MFA_ENFORCED.
+ *
+ * OFF is today's behaviour, unchanged: Prisma serves everything. That IS the reversibility mechanism —
+ * set the env var back and the Prisma path below resumes, with no code change.
+ */
+function isAlertMetricsViaCSharp(): boolean {
+  return process.env.ALERT_METRICS_READ_VIA_CSHARP === 'true';
+}
+
+interface AlertMetricWireResponse {
+  status: unknown;
+  value: unknown;
+}
+
+/**
+ * Fetch one metric for one org from the C# cross-org surface.
+ *
+ * FAILS LOUD. Every error path throws rather than returning a number, because the caller
+ * (`evaluateAlertRules`) treats a thrown rule as `skipped` and logs it, whereas a returned `0` is
+ * indistinguishable from "no breach". A metric silently pinned at 0 means alerts stop firing for every
+ * org with nobody noticing — so a fallback that looks helpful here is the bug, not the safety net.
+ *
+ * The response is validated field by field rather than cast: `value` is `number | null` on the wire, and
+ * TypeScript will not catch a bare coercion collapsing that into 0.
+ */
+async function fetchMetricFromCSharp(orgId: string, metric: AlertMetricKey): Promise<number | null> {
+  const secret = process.env.ALERT_METRICS_CRON_SECRET;
+  if (!secret) {
+    throw new Error(`alert-metrics: ALERT_METRICS_CRON_SECRET is unset (metric=${metric})`);
+  }
+
+  const { status, body } = await platformGetWithHeaders(
+    '/internal/alert-metrics',
+    { 'X-Tims-Cron-Secret': secret },
+    { organizationId: orgId, metric },
+  );
+
+  if (status !== 200) {
+    throw new Error(`alert-metrics: platform service returned ${status} (metric=${metric})`);
+  }
+
+  if (body === null || typeof body !== 'object') {
+    throw new Error(`alert-metrics: unparseable body (metric=${metric})`);
+  }
+
+  const wire = body as AlertMetricWireResponse;
+  switch (wire.status) {
+    case 'value':
+      if (typeof wire.value !== 'number' || !Number.isInteger(wire.value)) {
+        throw new Error(`alert-metrics: status=value with a non-integer value (metric=${metric})`);
+      }
+      return wire.value;
+    case 'suppressed':
+      // The §21 floor already fired server-side. null is the correct, non-firing value — NOT an error.
+      return null;
+    case 'unavailable':
+      throw new Error(`alert-metrics: platform reported unavailable (metric=${metric})`);
+    default:
+      throw new Error(`alert-metrics: unknown status ${String(wire.status)} (metric=${metric})`);
+  }
+}
 
 export const alertEvaluationRepository = {
   // All active rules across all orgs (the cron evaluates the whole platform).
@@ -89,14 +184,22 @@ export const alertEvaluationRepository = {
   // SENSITIVE_ALERT_METRICS above): a null value never fires and is never persisted.
   async computeMetric(orgId: string, metric: AlertMetricKey): Promise<number | null> {
     const value = await this.computeRawMetric(orgId, metric);
-    if (value !== null && SENSITIVE_ALERT_METRICS.has(metric)) {
-      // 1..4 → null (no oracle, nothing persisted); 0 and >=5 pass through.
-      return suppressBelowMin5(value).count;
-    }
-    return value;
+    // 1..4 over a restricted model → null (no oracle, nothing persisted); 0 and >=5 pass through.
+    // Applied unconditionally, including to values the C# surface already floored: the floor is
+    // idempotent, and keeping it here means the guard survives even if the remote side ever stops
+    // applying it. The oracle guard must not be something a remote service can switch off.
+    return applyAlertMetricFloor(metric, value);
   },
 
   async computeRawMetric(orgId: string, metric: AlertMetricKey): Promise<number | null> {
+    // §8 Q0b slice 2 (#172): the two flip-blocked metrics route to C# when the flag is on. This is
+    // BEFORE the switch so the Prisma cases below stay untouched and remain the exact fallback the
+    // flag reverts to — and so that after flips #64/#66 delete those Prisma models, the only live
+    // path for these two is the one that still has tables behind it.
+    if (isAlertMetricsViaCSharp() && ALERT_METRICS_VIA_CSHARP.includes(metric)) {
+      return fetchMetricFromCSharp(orgId, metric);
+    }
+
     switch (metric) {
       case 'vacancies_open_60d':
         return db.vacancy.count({

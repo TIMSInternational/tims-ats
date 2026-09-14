@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { trpc } from '../../../../lib/trpc';
+import { useDashboardUpsellOpportunities } from '../../../../lib/platform-api/dashboard';
 import { useI18n } from '../../../../lib/i18n';
 import { formatCurrency, PLAN_BG_CLASSES, PLAN_LABELS, Skeleton } from '../dashboard-utils';
 import { ErrorState } from '../../../../components';
@@ -15,7 +15,7 @@ const CONFIDENCE_CONFIG = {
 export function UpsellPanel() {
   const { t } = useI18n();
   const router = useRouter();
-  const { data, isLoading, isError, refetch } = trpc.platform.getUpsellOpportunities.useQuery();
+  const { data, isLoading, isError, refetch } = useDashboardUpsellOpportunities();
 
   if (isLoading) {
     return (
@@ -23,7 +23,9 @@ export function UpsellPanel() {
         <Skeleton className="h-4 w-40 mb-2" />
         <Skeleton className="h-3 w-56 mb-4" />
         <div className="space-y-2">
-          {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-14 w-full rounded-lg" />)}
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-14 w-full rounded-lg" />
+          ))}
         </div>
       </div>
     );
@@ -40,9 +42,19 @@ export function UpsellPanel() {
   if (!data || data.opportunities.length === 0) {
     return (
       <div className="rounded-xl border border-[#EDEDED] bg-white p-5">
-        <h3 className="text-sm font-semibold text-[#1F114C] mb-1">{t.dashboard.upsellTitle ?? 'Upsell Opportunities'}</h3>
+        <h3 className="text-sm font-semibold text-[#1F114C] mb-1">
+          {t.dashboard.upsellTitle ?? 'Upsell Opportunities'}
+        </h3>
         <div className="py-6 text-center">
-          <svg className="w-8 h-8 text-[#EDEDED] mx-auto mb-2" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22m0 0l-5.94-2.28m5.94 2.28l-2.28 5.941" /></svg>
+          <svg
+            className="w-8 h-8 text-[#EDEDED] mx-auto mb-2"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            viewBox="0 0 24 24"
+          >
+            <path d="M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22m0 0l-5.94-2.28m5.94 2.28l-2.28 5.941" />
+          </svg>
           <p className="text-sm text-[#8B8B8B]">{t.dashboard.noUpsells ?? 'No upsell opportunities right now'}</p>
         </div>
       </div>
@@ -100,7 +112,15 @@ export function UpsellPanel() {
                     <span className={`text-[9px] font-medium px-1.5 py-0.5 rounded ${planClass}`}>
                       {PLAN_LABELS[opp.currentPlan] ?? opp.currentPlan}
                     </span>
-                    <svg className="w-3 h-3 text-[#8B8B8B] shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
+                    <svg
+                      className="w-3 h-3 text-[#8B8B8B] shrink-0"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      viewBox="0 0 24 24"
+                    >
+                      <path d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                    </svg>
                     <span className={`text-[9px] font-medium px-1.5 py-0.5 rounded ${targetPlanClass}`}>
                       {PLAN_LABELS[opp.targetPlan] ?? opp.targetPlan}
                     </span>
@@ -110,13 +130,13 @@ export function UpsellPanel() {
 
                 <div className="flex items-center gap-3 shrink-0">
                   <div className="text-center">
-                    <p className="text-[12px] font-medium text-[#333]">{opp.signals.activeUsers}/{opp.signals.totalUsers}</p>
+                    <p className="text-[12px] font-medium text-[#333]">
+                      {opp.signals.activeUsers}/{opp.signals.totalUsers}
+                    </p>
                     <p className="text-[9px] text-[#8B8B8B]">{t.dashboard.users ?? 'users'}</p>
                   </div>
                   <span className="text-sm font-bold text-emerald-600">+{formatCurrency(opp.mrrIncrease)}</span>
-                  <span className={`text-[9px] font-medium px-1.5 py-0.5 rounded ${conf.badge}`}>
-                    {opp.confidence}
-                  </span>
+                  <span className={`text-[9px] font-medium px-1.5 py-0.5 rounded ${conf.badge}`}>{opp.confidence}</span>
                 </div>
               </div>
             </button>

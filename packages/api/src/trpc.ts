@@ -2,6 +2,7 @@ import { initTRPC, TRPCError } from '@trpc/server';
 import superjson from 'superjson';
 import type { Context } from './context';
 import { db, runWithTenant } from '@tims/db';
+import { clientIpFrom } from './lib/client-ip';
 import { checkRateLimit, getRateLimitCategory } from './middleware/rate-limit';
 import { buildAccessForUser, createAnchorLoader, type AccessContext } from './access';
 import { resolveApiKeyPrincipal, buildExternalAccessUser } from './access/external-auth';
@@ -29,17 +30,8 @@ export const createCallerFactory = t.createCallerFactory;
 // platform edge, not client-spoofable); otherwise use the LAST hop of
 // `x-forwarded-for` (the entry appended by the trusted proxy), never the first.
 function anonymousIdentifier(headers: Headers): string {
-  const realIp = headers.get('x-real-ip')?.trim();
-  if (realIp) return `ip:${realIp}`;
-  const xff = headers.get('x-forwarded-for');
-  if (xff) {
-    const hops = xff
-      .split(',')
-      .map((p) => p.trim())
-      .filter(Boolean);
-    if (hops.length > 0) return `ip:${hops[hops.length - 1]}`;
-  }
-  return 'anonymous';
+  const ip = clientIpFrom(headers);
+  return ip ? `ip:${ip}` : 'anonymous';
 }
 
 // Rate limiting middleware
@@ -173,7 +165,7 @@ const withAudit = t.middleware(async ({ ctx, next, path }) => {
           action: 'access',
           entity: path,
           ...(ctx.user.impersonatorId ? { metadata: { impersonatedUserId: ctx.user.id } } : {}),
-          ipAddress: ctx.headers.get('x-forwarded-for') || ctx.headers.get('x-real-ip'),
+          ipAddress: clientIpFrom(ctx.headers),
           userAgent: ctx.headers.get('user-agent'),
         },
       })
@@ -231,7 +223,7 @@ const withMfaEnforcement = t.middleware(({ ctx, next }) => {
       action: 'mfa_step_up_required',
       entity: 'mfa',
       metadata: { currentLevel: ctx.aal ?? null },
-      ipAddress: ctx.headers.get('x-forwarded-for') || ctx.headers.get('x-real-ip'),
+      ipAddress: clientIpFrom(ctx.headers),
       userAgent: ctx.headers.get('user-agent'),
     });
     throw new TRPCError({ code: 'FORBIDDEN', message: MFA_REQUIRED });

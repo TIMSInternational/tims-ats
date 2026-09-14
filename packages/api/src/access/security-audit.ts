@@ -1,6 +1,7 @@
 import { TRPCError } from '@trpc/server';
 import { db, Prisma } from '@tims/db';
 import { MFA_REQUIRED } from '@tims/shared';
+import { clientIpFrom } from '../lib/client-ip';
 
 /**
  * CB-1c — security-event audit coverage.
@@ -80,7 +81,7 @@ export interface SecurityAuditCtx {
 }
 
 function ipOf(headers: Headers): string | null {
-  return headers.get('x-forwarded-for') || headers.get('x-real-ip');
+  return clientIpFrom(headers);
 }
 
 /**

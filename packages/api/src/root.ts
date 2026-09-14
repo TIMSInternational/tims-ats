@@ -11,12 +11,26 @@ import { offerRouter } from './routers/offer';
 import { onboardingRouter } from './routers/onboarding';
 import { performanceRouter } from './routers/performance';
 import { learningRouter } from './routers/learning';
-import { nineboxRouter } from './routers/ninebox';
+// TS-deletion 2026-08-05 (#57): the ninebox router is GONE (ninebox.ts + .schemas.ts + .helpers.ts).
+// Its last 6 procedures (getAxisBreakdown, getMovementHistory, simulate, getQuadrantPlan,
+// submitCalibrationVote, finalizeCalibration) all had zero FE consumers and live C# equivalents
+// behind Platform__NineBox{Read,Write}Enabled — see NineBoxRead/WriteEndpoints.cs. Deleting the two
+// writes left calibration_sessions/_members/_votes with zero TS writers, which is what #70 needed —
+// flip #70 EXECUTED 2026-08-06, so those three tables are now efcore-owned with no Prisma model.
 // TS-deletion 2026-08-03 (#58): the succession router is GONE. Its last 4 procedures
 // (getCriticalRole, addCriticalRole, removeSuccessor, updateSuccessorReadiness) all had
 // zero FE consumers and live C# equivalents behind Platform__Succession{Read,Write}Enabled
 // (both confirmed live in prod) — see SuccessionRead/WriteEndpoints.cs.
-import { teamIntelRouter } from './routers/teamIntel';
+// TS-deletion 2026-08-06 (#55): the teamIntel router is GONE. Its last 6 procedures
+// (getTeamProfile, getMembers, getBalanceScore, getBalanceAlerts, getRecommendedHires,
+// compareTeams) all had zero FE consumers and live C# equivalents behind
+// Platform__TeamIntelReadEnabled (confirmed live in prod 2026-07-27) — see
+// TeamIntelReadEndpoints.cs, where all 7 Slice-6 reads are mapped. getDashboardKpis, the
+// 7th, was deleted on 2026-07-28 (381f0a2b); it was the only one the parity harness ever
+// registered. NOTE: `assertScoped('team')`/`scopeWhereFor('team')` lose their last PRODUCTION
+// caller here, but the 'team' entry in access/entity-policies.ts:43 STAYS — it is a
+// cross-stack contract pinned by contracts/access-fixtures/scope-where.json (3 cases) and
+// Tims.UnitTests/Fixtures/ScopeWhereForFixtureTests.cs.
 import { engagementRouter } from './routers/engagement';
 import { deiRouter } from './routers/dei';
 // TS-deletion 2026-08-05 (#59): the compensation router is GONE. Its last 4 procedures
@@ -75,8 +89,6 @@ export const appRouter = router({
   onboarding: onboardingRouter,
   performance: performanceRouter,
   learning: learningRouter,
-  ninebox: nineboxRouter,
-  teamIntel: teamIntelRouter,
   engagement: engagementRouter,
   dei: deiRouter,
   monitoring: monitoringRouter,

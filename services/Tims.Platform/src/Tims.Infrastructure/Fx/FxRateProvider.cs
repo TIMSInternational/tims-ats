@@ -6,7 +6,8 @@ namespace Tims.Infrastructure.Fx;
 
 /// <summary>
 /// <see cref="IFxRateProvider"/> over the GLOBAL, RLS-exempt <see cref="FxRateDbContext"/> — reads the LATEST
-/// effective-dated pin (as_of desc) the daily <c>FxRefreshJob</c> wrote. All pins are stored base = USD
+/// effective-dated pin (as_of desc) the refresh wrote — any of its three composition roots (the Workers
+/// <c>FxRefreshJob</c>, the API-hosted <c>FxRefreshHostedService</c>, the one-off <c>FxSeedOnce</c>). All pins are stored base = USD
 /// (PLATFORM_BILLING_CURRENCY), so any pair cross-rates through USD:
 /// <c>rate(from→to) = rate(USD→to) / rate(USD→from)</c> (1 from = 1/rf USD = rt/rf to). FAIL-SOFT (Federico's
 /// DB-pin decision): identity → 1.0 (no DB touch); a missing pin on EITHER leg (cold start / a currency the job

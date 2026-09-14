@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
-import { getAppUrl, ASSIGNABLE_STAFF_ROLES } from '@tims/shared';
+import { csvRow, getAppUrl, ASSIGNABLE_STAFF_ROLES } from '@tims/shared';
 import { router } from '../../trpc';
 import { db } from '@tims/db';
 import type { Prisma } from '@tims/db';
@@ -367,13 +367,29 @@ export const usersRouter = router({
 
       logPlatformExport(ctx, { resource: 'users', count: users.length, format: 'csv', targetOrgId: input.organizationId });
 
-      const header = 'Nombre,Email,Organizacion,Rol,Estado,Ultimo Login,Creado';
+      // Every cell through csvRow (packages/shared/src/csv.ts). This export previously emitted EVERY
+      // field raw — no quoting anywhere, not even on `email` or `role` — with a comma-stripping regex
+      // replace on name and org as the only concession to delimiters. That is data MUTATION, not
+      // escaping: a user
+      // named "Doe, Jane" was silently exported as "Doe  Jane". Quoting handles the comma correctly, so
+      // the strip is removed rather than kept alongside it. It also had no formula-injection defence
+      // (CWE-1236) on any field. Tracked as GHSA-w6h5-g5gv-7g95.
+      const header = csvRow(['Nombre', 'Email', 'Organizacion', 'Rol', 'Estado', 'Ultimo Login', 'Creado']);
       const rows = users.map((u) => {
-        const name = `${u.firstName || ''} ${u.lastName || ''}`.trim().replace(/,/g, ' ');
-        const org = u.isPlatformOwner ? 'Plataforma' : u.organization?.name?.replace(/,/g, ' ') || '-';
+        const name = `${u.firstName || ''} ${u.lastName || ''}`.trim();
+        // `|| '-'` stays FALSY, not `??`: an empty-string organization name must still become "-".
+        const org = u.isPlatformOwner ? 'Plataforma' : u.organization?.name || '-';
         const role = u.isPlatformOwner ? 'platform_owner' : u.userRoles[0]?.role?.slug || 'employee';
         const fmt = (d: Date | null | undefined) => d ? d.toISOString().split('T')[0] : '-';
-        return `${name},${u.email},${org},${role},${u.isActive ? 'active' : 'inactive'},${fmt(u.lastLoginAt)},${fmt(u.createdAt)}`;
+        return csvRow([
+          name,
+          u.email,
+          org,
+          role,
+          u.isActive ? 'active' : 'inactive',
+          fmt(u.lastLoginAt),
+          fmt(u.createdAt),
+        ]);
       });
 
       return { csv: [header, ...rows].join('\n'), count: users.length };

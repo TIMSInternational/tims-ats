@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
+import { blockAt } from '../helpers/source-blocks';
 
 const root = resolve(__dirname, '../..');
 const read = (p: string) => readFileSync(resolve(root, p), 'utf8');
@@ -138,7 +139,7 @@ describe('codex fixes (slice 5)', () => {
     expect(src()).not.toMatch(/readable\.has/);
   });
   it('guard resolves the path BEFORE waiting on sessionInfo (ungated routes never skeleton)', () => {
-    const guard = src().slice(src().indexOf('function RouteAccessGuard'));
+    const guard = blockAt(src(), 'function RouteAccessGuard');
     expect(guard.indexOf('moduleForPath(pathname)')).toBeLessThan(guard.indexOf('GuardSkeleton'));
   });
 });

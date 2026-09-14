@@ -31,6 +31,12 @@ import {
   resolveNineBoxWriteResources,
   ensureAccessReviewWritePreconditions,
   resolveAccessReviewWriteResources,
+  ensurePlatformOrganizationsWritePreconditions,
+  resolvePlatformOrganizationsWriteResources,
+  ensurePlatformOrganizationsCreatePreconditions,
+  resolvePlatformOrganizationsCreateResources,
+  WRITE_ORG_CREATE_SLUG,
+  WRITE_ORG_CREATE_NAME,
   WRITE_EVAL_CYCLES,
   WRITE_CYCLE_MARKER,
   WRITE_SUCCESSION_ROLES,
@@ -54,6 +60,8 @@ export {
   WRITE_ENGAGEMENT_PLAN_MARKER,
   WRITE_NINEBOX,
   WRITE_NINEBOX_CAL_MARKER,
+  WRITE_ORG_CREATE_SLUG,
+  WRITE_ORG_CREATE_NAME,
 };
 
 /** A deterministic Z-anchored effective date for create bodies (the C# validator
@@ -901,8 +909,13 @@ const surveyBody = () => ({
 // readbacks below are now the ONLY automated assertion of provenance stamping (created_by_id = caller),
 // identity anchoring (user_id = caller, never an input) and the duplicate-response 409 CONFLICT, outside
 // the C# integration tests. Treat them as security-load-bearing; do not weaken them.
-// createActionPlan / updateActionPlan still have live TS twins (zero-FE-consumer dead code, deliberately
-// retained), so those two rows continue to describe a genuine two-stack surface.
+// UPDATE 2026-08-05 (#56): this note used to end "createActionPlan / updateActionPlan still have live TS
+// twins (zero-FE-consumer dead code, deliberately retained), so those two rows continue to describe a
+// genuine two-stack surface." Both TS twins are now DELETED — `action_plans` has ZERO TS writers — so the
+// action-plan rows below describe a SINGLE-stack surface like the other three. The rows themselves need no
+// change (they always drove the C# endpoints and asserted with raw SQL), but they are now the only
+// automated assertion of the H1 cross-org `responsibleId` denial and the assertScoped by-id 404 outside
+// the C# integration tests. Same warning as above: security-load-bearing, do not weaken.
 const engagementSurface: WriteSurface<EngagementWriteResolved> = {
   key: 'engagement',
   flag: 'Platform__EngagementWriteEnabled',
@@ -1410,8 +1423,11 @@ export interface AccessReviewWriteResolved extends WriteResolvedBase {
 const ACCESS_REVIEW_NOTES_MARKER = 'parity';
 
 // Coverage-audit addition (2026-07-27): 1 write under Platform__AccessReviewWriteEnabled.
-// `attest` = PlatformOwnerGate (the SAME gate as the access-review READ surface in surfaces.ts —
-// see that entry's comment) + an unconditional insert into `access_reviews`. UNLIKE every other
+// `attest` = PlatformOwnerGate + an unconditional insert into `access_reviews`. (This comment used to
+// point at "the access-review READ surface in surfaces.ts" for the gate rationale; that surface was
+// REMOVED on 2026-07-31 (18282f96) and the pointer dangled until #195, which repointed it at the
+// `organization` read surface. As of 2026-08-11 the access-review READ surface is back, C#-only, so
+// the original pointer is valid again — see SURFACES['access-review'] in surfaces.ts.) UNLIKE every other
 // write surface here, this one has NO cross-org IDOR concept: a platform owner is INTENTIONALLY
 // cross-org (they attest ANY org's access review by design — the same reason the read surface's
 // RLS check is `globalScope` rather than a leak signal), so `buildIdor` is correctly omitted —
@@ -1476,6 +1492,309 @@ const accessReviewSurface: WriteSurface<AccessReviewWriteResolved> = {
   ],
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// platform organizations — Platform__PlatformOrganizationsWriteEnabled (2 writes)
+// ─────────────────────────────────────────────────────────────────────────────
+/** Concrete ids for the platform-organizations write surface (seed.ts). */
+export interface PlatformOrganizationsWriteResolved extends WriteResolvedBase {
+  /** org-A id — the update/suspend target. */
+  orgA: string;
+  /** org-A `org_admin` user id — the denied role, for the no-mutation read-back. */
+  orgAdminUserId: string;
+  /** the seeded platform owner — the actor every ALLOWED write must be attributed to. */
+  platformOwnerUserId: string;
+}
+
+const ORG_WRITE_NAME_MARKER = 'Parity Org Write Marker';
+
+// Registered 2026-08-10 (#195) for Phase-5 slice 20 (PR #202). Like access-review above, this surface
+// has NO cross-org IDOR concept — a platform owner updates ANY org by design — so `buildIdor` is
+// correctly omitted. `org_admin` is refused by PlatformOwnerGate BEFORE any body parse, so its 403 is
+// gate-level.
+//
+// TWO DELIBERATE SAFETY CHOICES, because this surface mutates the org every OTHER surface runs on:
+//
+//  1. `suspend` sends `{ suspend: false }` (ACTIVATE), never `true`. Suspending org A would set
+//     is_active=false on the tenant that every other parity surface authenticates into, turning one
+//     surface's write check into a cross-surface outage. Activating an already-active org still
+//     exercises the whole path — gate, TenantScope transaction, the fail-closed audit INSERT, the
+//     response shape — and still writes an `org_activated` audit row, which is what the read-back
+//     asserts. The only thing it does not cover is the notify fan-out, which fires solely on
+//     suspend=true (organizations.ts:299); that stays uncovered here on purpose.
+//  2. `update` writes only `name`, never `slug`. Every other surface resolves org A BY SLUG
+//     (seed.ts orgIdBySlug), so renaming is inert for them while still being a real, readable-back
+//     column write.
+//
+// Both writes are idempotent, so re-running `verify-write organization` needs no teardown.
+const platformOrganizationsSurface: WriteSurface<PlatformOrganizationsWriteResolved> = {
+  key: 'organization',
+  flag: 'Platform__PlatformOrganizationsWriteEnabled',
+  probeRole: 'platform_owner',
+  roles: ['platform_owner', 'org_admin'],
+  ensurePreconditions: ensurePlatformOrganizationsWritePreconditions,
+  resolveResources: resolvePlatformOrganizationsWriteResources,
+  endpoints: [
+    {
+      name: 'update',
+      method: 'PATCH',
+      buildParity: (r) => ({ path: `/platform/organizations/${r.orgA}`, body: { name: ORG_WRITE_NAME_MARKER } }),
+      // no buildIdor: platform-owner update has no cross-tenant boundary to probe (see above).
+      expectedByRole: { platform_owner: 'allow', org_admin: 'deny' },
+      rbacDenyStatus: 403,
+      expectResponse: (b) => {
+        const o = asObj(b);
+        if (!o) return 'response is not an object';
+        if (typeof o.id !== 'string' || !UUID_RE.test(o.id)) return `expected a uuid id, got ${JSON.stringify(o.id)}`;
+        if (o.name !== ORG_WRITE_NAME_MARKER)
+          return `expected name ${ORG_WRITE_NAME_MARKER}, got ${JSON.stringify(o.name)}`;
+        return null;
+      },
+      // The column write AND the fail-closed audit row, together — the audit is the half a
+      // response-shape assertion cannot see, and #76's whole divergence lives in it.
+      readbackMutated: (r) => ({
+        sql: `SELECT o.name,
+                     (SELECT count(*)::int FROM audit_logs a
+                       WHERE a.organization_id = o.id AND a.action = 'org_updated' AND a.actor_id = $2) AS audits
+                FROM organizations o WHERE o.id = $1`,
+        params: [r.orgA, r.platformOwnerUserId],
+        expect: (rows) => {
+          const row = rows[0];
+          if (!row) return 'org A not found on read-back';
+          if (row.name !== ORG_WRITE_NAME_MARKER) return `name is ${JSON.stringify(row.name)}, expected the marker`;
+          if (Number(row.audits) < 1) return 'no org_updated audit row attributed to the platform owner';
+          return null;
+        },
+      }),
+      // rbac-deny (org_admin): the gate must refuse BEFORE the transaction, so no audit row may carry
+      // the denied user as actor. Asserting on the audit rather than the name is deliberate — the name
+      // is already the marker from the allow case, so it could not distinguish a leak.
+      readbackNoMutation: (r) => ({
+        sql: `SELECT count(*)::int AS n FROM audit_logs WHERE organization_id = $1 AND actor_id = $2`,
+        params: [r.orgA, r.orgAdminUserId],
+        expect: (rows) =>
+          Number(rows[0]?.n) === 0 ? null : `a forbidden update by org_admin still wrote ${rows[0]?.n} audit row(s)`,
+      }),
+    },
+    {
+      name: 'suspend',
+      method: 'POST',
+      // `suspend: false` — ACTIVATE. See the surface comment: suspending org A would break every
+      // other surface's authentication.
+      buildParity: (r) => ({ path: `/platform/organizations/${r.orgA}/suspend`, body: { suspend: false } }),
+      expectedByRole: { platform_owner: 'allow', org_admin: 'deny' },
+      rbacDenyStatus: 403,
+      expectResponse: (b) => {
+        const o = asObj(b);
+        if (!o) return 'response is not an object';
+        if (typeof o.id !== 'string' || !UUID_RE.test(o.id)) return `expected a uuid id, got ${JSON.stringify(o.id)}`;
+        if (o.isActive !== true) return `expected isActive true after activate, got ${JSON.stringify(o.isActive)}`;
+        return null;
+      },
+      readbackMutated: (r) => ({
+        sql: `SELECT o.is_active,
+                     (SELECT count(*)::int FROM audit_logs a
+                       WHERE a.organization_id = o.id AND a.action = 'org_activated' AND a.actor_id = $2) AS audits
+                FROM organizations o WHERE o.id = $1`,
+        params: [r.orgA, r.platformOwnerUserId],
+        expect: (rows) => {
+          const row = rows[0];
+          if (!row) return 'org A not found on read-back';
+          if (row.is_active !== true) return `is_active is ${JSON.stringify(row.is_active)}, expected true`;
+          // The action name is the ONLY thing distinguishing activate from suspend — TS picks it from
+          // the flag (organizations.ts:313) and so must C#.
+          if (Number(row.audits) < 1) return 'no org_activated audit row attributed to the platform owner';
+          return null;
+        },
+      }),
+      readbackNoMutation: (r) => ({
+        sql: `SELECT count(*)::int AS n FROM audit_logs
+               WHERE organization_id = $1 AND actor_id = $2 AND action IN ('org_suspended', 'org_activated')`,
+        params: [r.orgA, r.orgAdminUserId],
+        expect: (rows) =>
+          Number(rows[0]?.n) === 0 ? null : `a forbidden suspend by org_admin still wrote ${rows[0]?.n} audit row(s)`,
+      }),
+    },
+  ],
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// platform organizations CREATE — Platform__PlatformOrganizationsCreateEnabled (1 write)
+// ─────────────────────────────────────────────────────────────────────────────
+/** Concrete ids for the platform-organizations CREATE surface (seed.ts). No `orgA`: the org this
+ *  surface writes is manufactured by the call, not addressed by it. */
+export interface PlatformOrganizationsCreateResolved extends WriteResolvedBase {
+  /** org-A `org_admin` user id — the denied role. */
+  orgAdminUserId: string;
+  /** the seeded platform owner — the actor the `org_created` audit row must be attributed to. */
+  platformOwnerUserId: string;
+}
+
+// Registered 2026-08-11, resolving #208. A SEPARATE surface key from `organization` above, for two
+// independently sufficient reasons — appending a third endpoint there would be wrong on both counts:
+//
+//  1. `WriteSurface.flag` is a single string, and create ships behind its OWN flag
+//     `Platform__PlatformOrganizationsCreateEnabled`, deliberately not the write flag: "riding the
+//     update flag would make one canary decision cover two wildly different blast radii"
+//     (PlatformOptions.cs:469-472). One surface cannot declare two flags.
+//  2. The mounted-route preflight probes `surface.endpoints[0]` ONLY (cli.ts:452-459). Appended here,
+//     the preflight would keep probing `update` and never check Create's flag at all — the exact
+//     false-green that preflight exists to prevent.
+//
+// WHY REGISTERING IT IS SAFE ENOUGH TO DO (#208 was filed asking precisely this):
+//
+//  - BLAST RADIUS IS ONE CREATE PER RUN. The probe is the only 'allow' role and `allowRolesLiveTestable`
+//    is unset, so runWriteRbac (checks/writes.ts:145) skips every non-probe allow. Per run: 1
+//    organizations, 1 companies, 1 business_units, 1 teams, 7 org_entitlements (ATS_BASE_MODULES),
+//    1 roles, 1 subscriptions, 1 audit_logs, and 1 notifications per real platform owner.
+//  - IT IS A DIFFERENCE OF DEGREE, NOT KIND, ON ROWS. `compensation` already inserts 2
+//    salary_adjustments per run with no start-of-run cleanup, and `access-review` inserts an
+//    access_reviews row per run behind an explicitly no-op ensurePreconditions. Registered writes
+//    already leave rows behind; this one leaves more of them.
+//  - IT IS A DIFFERENCE OF KIND ON SCOPE, and that part is closed. `teardown` resolves everything it
+//    deletes from `organizations WHERE slug = ANY(...)`, so a NEW TENANT would be outside every
+//    existing sweep. `WRITE_ORG_CREATE_SLUG` is now in that slug list, and
+//    `ensurePlatformOrganizationsCreatePreconditions` deletes the prior run's org before each run.
+//  - WITHOUT REGISTRATION SLICE 21 HAS NO STEP-5 VERIFICATION PATH AT ALL — the same argument
+//    surfaces.ts:206-210 already makes for the read side ("not Federico-gated but UNRUNNABLE BY ANYONE").
+//
+// THE ONE RESIDUAL FEDERICO SHOULD KNOW ABOUT, because it cannot be engineered away: the platform-owner
+// notify fan-out is UNCONDITIONAL in both stacks (organizations.ts:220 has no branch and no catch;
+// PlatformOwnerNotifier queries an unfiltered `WHERE is_platform_owner`). Every run therefore puts one
+// "Nueva organizacion creada: …" notification in every REAL platform owner's bell. The cleanup deletes
+// them on the next run; it cannot prevent them. This is the same cost the `organization` surface above
+// deliberately AVOIDED by sending `{ suspend: false }` — create has no equivalent lever. Judged worth it
+// against a domain that is otherwise unverifiable by anyone; veto by deleting this surface and replacing
+// it with the omission comment #208 describes.
+//
+// Second, smaller residual: the LAST run's org persists until the next run's ensurePreconditions or an
+// explicit `seed --teardown` — one marker org at the top of /platform/organizations (listOrganizations
+// applies no exclusion filter and orders createdAt desc) and +1 on the KPI tile. Bounded at exactly one;
+// it never accumulates.
+//
+// A NOTE ON THAT ESCAPE HATCH, because the argument above leans on it. When this surface was first
+// registered, `seed --teardown` was BROKEN in the common case: it never deleted `access_reviews`, whose
+// `reviewer_id` FK is ON DELETE RESTRICT and points at `parity+a-platform_owner@tims.test`, so after any
+// `verify-write access-review` run the users delete threw and teardown aborted BEFORE the organizations
+// delete — leaving a half-swept database and the marker org intact. Fixed in the same change that this
+// note ships with (seed.ts's teardown now deletes `access_reviews` before the users delete). Stated here
+// rather than only in the issue, because "run `seed --teardown`" is the mitigation this surface's
+// registration was approved on, and a mitigation that throws is not one.
+const platformOrganizationsCreateSurface: WriteSurface<PlatformOrganizationsCreateResolved> = {
+  key: 'organization-create',
+  // NOT PlatformOrganizationsWriteEnabled — see reason 1 above (PlatformOptions.cs:463-490).
+  flag: 'Platform__PlatformOrganizationsCreateEnabled',
+  probeRole: 'platform_owner',
+  roles: ['platform_owner', 'org_admin'],
+  ensurePreconditions: ensurePlatformOrganizationsCreatePreconditions,
+  resolveResources: resolvePlatformOrganizationsCreateResources,
+  endpoints: [
+    {
+      name: 'create',
+      method: 'POST',
+      // Fixed body: the slug is `@unique`, so it must be the marker the cleanup keys on. `plan: 'trial'`
+      // is the cheapest branch (subscriptions.status = 'trialing', trial_ends_at set) and exercises the
+      // same seven-table transaction as any other plan.
+      buildParity: () => ({
+        path: '/platform/organizations',
+        body: {
+          name: WRITE_ORG_CREATE_NAME,
+          slug: WRITE_ORG_CREATE_SLUG,
+          plan: 'trial',
+          adminEmail: 'parity+create@tims.test',
+        },
+      }),
+      // no buildIdor: a plain create has no cross-org target — the org is MANUFACTURED by the call, not
+      // addressed by it, so there is no org-B resource to aim at. Reported N/A per the documented rule
+      // at :97-99 (same disposition as createCycle and access-review attest).
+      expectedByRole: { platform_owner: 'allow', org_admin: 'deny' },
+      // PlatformOwnerGate refuses org_admin BEFORE any body parse, so this 403 is gate-level.
+      rbacDenyStatus: 403,
+      expectResponse: (b) => {
+        const o = asObj(b);
+        if (!o) return 'response is not an object';
+        if (typeof o.id !== 'string' || !UUID_RE.test(o.id)) return `expected a uuid id, got ${JSON.stringify(o.id)}`;
+        if (o.name !== WRITE_ORG_CREATE_NAME)
+          return `expected name ${WRITE_ORG_CREATE_NAME}, got ${JSON.stringify(o.name)}`;
+        if (o.slug !== WRITE_ORG_CREATE_SLUG)
+          return `expected slug ${WRITE_ORG_CREATE_SLUG}, got ${JSON.stringify(o.slug)}`;
+        return null;
+      },
+      // THE SEVEN-TABLE TRANSACTION, not just the organizations row. The entitlement bundle, the default
+      // Company/BusinessUnit/Team chain and the fail-closed audit row are the half a response-shape
+      // assertion cannot see — and they are where a provisioning port actually diverges.
+      readbackMutated: (r) => ({
+        sql: `SELECT o.id, o.is_active,
+                     (SELECT count(*)::int FROM companies       c WHERE c.organization_id = o.id) AS companies,
+                     (SELECT count(*)::int FROM business_units  b WHERE b.organization_id = o.id) AS units,
+                     (SELECT count(*)::int FROM teams           t WHERE t.organization_id = o.id) AS teams,
+                     (SELECT count(*)::int FROM org_entitlements e WHERE e.organization_id = o.id) AS entitlements,
+                     (SELECT count(*)::int FROM roles           rl WHERE rl.organization_id = o.id) AS roles,
+                     (SELECT count(*)::int FROM subscriptions   s WHERE s.organization_id = o.id) AS subs,
+                     (SELECT count(*)::int FROM audit_logs      a
+                       WHERE a.organization_id = o.id AND a.action = 'org_created' AND a.actor_id = $2) AS audits,
+                     (SELECT count(*)::int FROM plan_modules   pm WHERE pm.plan_code = 'ats-base') AS ats_base_modules
+                FROM organizations o WHERE o.slug = $1`,
+        params: [WRITE_ORG_CREATE_SLUG, r.platformOwnerUserId],
+        expect: (rows) => {
+          const row = rows[0];
+          if (!row) return `no organization with slug '${WRITE_ORG_CREATE_SLUG}' after a 200 create`;
+          if (row.is_active !== true)
+            return `is_active is ${JSON.stringify(row.is_active)}, expected the DB default true`;
+          // ENTITLEMENTS ARE DB-DERIVED, NOT CODE-DERIVED. `provisionOrgEntitlements`
+          // (org-provisioning.ts) does `planModule.findMany({ where: { planCode: 'ats-base' } })` and
+          // inserts ONE row per result; the C# counterpart runs the same query, and
+          // PlatformOrganizationsCreateRepository.cs documents that N = 0 is a valid outcome that
+          // commits. So the expected count is whatever `plan_modules` holds for `ats-base` in the
+          // TARGET database — 7 on a seeded one (ATS_BASE_MODULES, seed-entitlements.ts), but that
+          // constant is read only by the SEED, never by either create path.
+          //
+          // This was hard-coded `entitlements: 7` with a comment attributing it to a constant no
+          // runtime path reads. Against an unseeded or edited catalogue, the C# create would succeed
+          // exactly as designed and the harness would print a red write-parity line saying "expected 7
+          // entitlements" — a fixture failure a reader would attribute to a port divergence. Deriving
+          // it in the same query makes the assertion mean what its comment claims: one entitlement row
+          // per ats-base plan module, no more and no fewer.
+          const atsBaseModules = Number(row.ats_base_modules);
+          // NON-VACUITY. A derived expectation of 0 would make the entitlement assertion pass against a
+          // create that granted nothing, which is exactly the silence this read-back exists to break.
+          // An unseeded catalogue is an ENVIRONMENT fault, so say that rather than tick green.
+          if (atsBaseModules === 0)
+            return "plan_modules has no 'ats-base' rows, so the entitlement read-back would prove nothing — seed the entitlement catalogue (packages/db/prisma/seed-entitlements.ts) before running this surface";
+          const want: Record<string, number> = {
+            companies: 1,
+            units: 1,
+            teams: 1,
+            entitlements: atsBaseModules,
+            roles: 1,
+            subs: 1,
+          };
+          for (const [k, n] of Object.entries(want)) {
+            if (Number(row[k]) !== n)
+              return `expected ${n} ${k} row(s) for the created org, got ${JSON.stringify(row[k])}`;
+          }
+          // Fail-closed in C# (inside the transaction), best-effort in TS — either way a committed org
+          // with no audit row is the divergence #76 cares about.
+          if (Number(row.audits) < 1) return 'no org_created audit row attributed to the platform owner';
+          return null;
+        },
+      }),
+      // `organizations` has no caller-stamped column, so the deny proof keys on the row's ABSENCE.
+      // ORDERING DEPENDENCY: cmdVerifyWrite runs idor → extraProbes → rbac → parity (cli.ts:470-477),
+      // so the deny runs BEFORE the allow-path create and "0 rows" is correct. If that order ever
+      // changes, this assertion inverts — the allow-path row would then already exist and a genuine
+      // leak would be indistinguishable from it.
+      readbackNoMutation: () => ({
+        sql: `SELECT count(*)::int AS n FROM organizations WHERE slug = $1`,
+        params: [WRITE_ORG_CREATE_SLUG],
+        expect: (rows) =>
+          Number(rows[0]?.n) === 0
+            ? null
+            : `a forbidden create by org_admin still produced ${rows[0]?.n} organization row(s)`,
+      }),
+    },
+  ],
+};
+
 export const WRITE_SURFACES: Record<string, AnyWriteSurface> = {
   compensation: defineWriteSurface(compensationSurface),
   evaluation360: defineWriteSurface(evaluation360Surface),
@@ -1483,4 +1802,6 @@ export const WRITE_SURFACES: Record<string, AnyWriteSurface> = {
   engagement: defineWriteSurface(engagementSurface),
   ninebox: defineWriteSurface(nineboxSurface),
   'access-review': defineWriteSurface(accessReviewSurface),
+  organization: defineWriteSurface(platformOrganizationsSurface),
+  'organization-create': defineWriteSurface(platformOrganizationsCreateSurface),
 };

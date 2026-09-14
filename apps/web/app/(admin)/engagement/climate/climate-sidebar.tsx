@@ -12,8 +12,14 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
   );
 }
 
-// Word cloud + sentiment require an NLP service (getWordCloud/getSentiment are
-// stubs). Render explicit unavailable states rather than fabricated data (rule #4).
+// Word cloud + sentiment require an NLP service that does not exist yet. Render explicit
+// unavailable states rather than fabricated data (rule #4).
+// UPDATE 2026-08-05 (#56): the TS `engagement.getWordCloud` / `getSentiment` procedures these two
+// panels once referred to have been DELETED. They returned HTTP 200 with an empty payload — which
+// a caller cannot tell apart from a survey that genuinely has no text answers — so the honest
+// unavailable state was always THIS static placeholder, not the procedure. C# still maps both
+// routes with the same stub (EngagementReadEndpoints.cs:277,:297) for whenever the NLP service
+// lands; nothing here calls them.
 export function WordCloud() {
   const { t } = useI18n();
   return (

@@ -35,12 +35,14 @@ Also wired as **/gate check 15**.
 >
 > ```
 > $ echo "Reply OK" | codex exec --sandbox read-only -
-> ERROR: You've hit your usage limit ... try again at Aug 15th, 2026 11:44 PM.
+> ERROR: You've hit your usage limit ... try again at Sep 9th, 2026 ...
 > $ echo $?
 > 0
 > ```
 
-Verified 2026-08-02. Any wrapper that trusts the exit code reads a refusal as a pass. The script
+Exit-0-on-refusal behavior verified 2026-08-02 (the refusal then said "Aug 15th, 2026"; the live CLI
+now says "Sep 9th, 2026" — this date has slipped repeatedly and is read from live CLI output, not
+authoritative). Any wrapper that trusts the exit code reads a refusal as a pass. The script
 therefore inspects output for refusal signatures — quota, auth, network, empty response, missing
 `VERDICT:` line — and fails closed on every one.
 
@@ -51,7 +53,14 @@ on 76 production tables.
 
 ## Tier 2 — OmniRoute (still genuinely cross-model)
 
-Codex is **quota-blocked until 2026-08-15**. Rather than dropping straight to same-model review,
+Codex quota was **UNBLOCKED as of 2026-08-31**, verified by a live full review — tier 1 is real again.
+(The block had been predicted to last until 2026-09-09; refusal dates are read from CLI output and have
+slipped in both directions, so never treat one as authoritative. Also fixed the same day: until
+2026-08-31 `codex-review.sh` misclassified a COMPLETED review as quota-blocked whenever the reviewed
+diff itself contained quota/rate-limit words — the refusal greps ran over the model's prose before the
+VERDICT check. The wrapper now checks for a completed review first; every no-VERDICT path still exits
+2, so it remains fail-closed.) If Codex is refused again, rather than dropping straight
+to same-model review,
 `scripts/verification/crossmodel-review.sh` tries a second **different-vendor** model first, via a
 locally-run [OmniRoute](https://github.com/diegosouzapw/OmniRoute) gateway (MIT, self-hosted,
 `localhost:20128`, no cloud hop).

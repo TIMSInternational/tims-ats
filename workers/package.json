@@ -10,8 +10,9 @@
   "dependencies": {
     "@tims/db": "workspace:*",
     "@tims/ai": "workspace:*",
-    "@tims/shared": "workspace:*",
-    "@trigger.dev/sdk": "^4.4.0"
+    "@tims/shared": "workspace:*"
   },
-  "devDependencies": { "typescript": "^5.8.0" }
+  "devDependencies": {
+    "typescript": "^5.8.0"
+  }
 }

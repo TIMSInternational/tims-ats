@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { csvRow } from '@tims/shared';
 import { router } from '../../trpc';
 import { db, db as systemDb, Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
@@ -274,9 +275,14 @@ export const aiAgentsRouter = router({
         _count: { select: { orgConfigs: true, usageLogs: true } },
       },
     });
-    const header = 'Name,Slug,Category,Model,Status,Batch,Cache TTL,Cost/Call,Org Configs,Usage Logs';
+    const header = csvRow([
+      'Name', 'Slug', 'Category', 'Model', 'Status', 'Batch', 'Cache TTL', 'Cost/Call', 'Org Configs', 'Usage Logs',
+    ]);
+    // Every cell through csvRow — previously a bare `.join(',')` with no quoting and no
+    // formula-injection defence on any field, including the tenant-visible `name`.
+    // Tracked as GHSA-w6h5-g5gv-7g95.
     const rows = agents.map((a) =>
-      [
+      csvRow([
         a.name,
         a.slug,
         a.category,
@@ -287,7 +293,7 @@ export const aiAgentsRouter = router({
         `$${a.costPerCall.toFixed(3)}`,
         a._count.orgConfigs,
         a._count.usageLogs,
-      ].join(','),
+      ]),
     );
     logPlatformExport(ctx, { resource: 'ai_agents', count: agents.length, format: 'csv' });
     return { csv: [header, ...rows].join('\n'), count: agents.length };

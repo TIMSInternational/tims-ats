@@ -12,9 +12,10 @@ interface SendEmailParams {
   to: string | string[];
   subject: string;
   html: string;
+  abortSignal?: AbortSignal;
 }
 
-export async function sendEmail({ to, subject, html }: SendEmailParams): Promise<boolean> {
+export async function sendEmail({ to, subject, html, abortSignal }: SendEmailParams): Promise<boolean> {
   const destinations = Array.isArray(to) ? to : [to];
 
   try {
@@ -27,7 +28,8 @@ export async function sendEmail({ to, subject, html }: SendEmailParams): Promise
             Subject: { Data: subject, Charset: 'UTF-8' },
             Body: { Html: { Data: html, Charset: 'UTF-8' } },
           },
-        })
+        }),
+        { abortSignal },
       );
       return true;
     }, () => {

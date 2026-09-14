@@ -1,3 +1,4 @@
+using Tims.Api.Http;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
@@ -189,9 +190,7 @@ public static class CompensationFxReadEndpoints
         IDataAccessAuditor auditor, TenantContext context, HttpContext httpContext, string recordId,
         CancellationToken cancellationToken)
     {
-        var forwarded = httpContext.Request.Headers["x-forwarded-for"].ToString();
-        var realIp = httpContext.Request.Headers["x-real-ip"].ToString();
-        var ipAddress = !string.IsNullOrEmpty(forwarded) ? forwarded : string.IsNullOrEmpty(realIp) ? null : realIp;
+        var ipAddress = httpContext.ClientIpFor();
         var userAgent = httpContext.Request.Headers.UserAgent.ToString();
         await auditor.LogAsync(
             new DataAccessEvent(

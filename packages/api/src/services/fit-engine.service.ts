@@ -34,7 +34,11 @@ export interface FitBreakdown {
 
 const DEFAULT_PROFILE_NAME = 'Default';
 const DEFAULT_WEIGHTS: Record<FitDimension, number> = {
-  assessment: 0.2, interview: 0.2, experience: 0.2, education: 0.2, languages: 0.2,
+  assessment: 0.2,
+  interview: 0.2,
+  experience: 0.2,
+  education: 0.2,
+  languages: 0.2,
 };
 
 export const EDUCATION_LEVELS = ['high_school', 'associate', 'bachelor', 'master', 'phd'] as const;
@@ -65,12 +69,17 @@ export interface Requirements {
   requiredLanguages?: string[];
 }
 
-function parseRequirements(raw: unknown): Requirements {
+// Exported for the cross-stack golden fixtures (contracts/fit-engine-fixtures/) — the C# port's
+// FitEngineKernels.ParseRequirements asserts the same cases. Pure; no behavior change.
+export function parseRequirements(raw: unknown): Requirements {
   if (!raw || typeof raw !== 'object') return {};
   const r = raw as Record<string, unknown>;
   const result: Requirements = {};
   if (typeof r.minYearsExperience === 'number') result.minYearsExperience = r.minYearsExperience;
-  if (typeof r.requiredEducationLevel === 'string' && (EDUCATION_LEVELS as readonly string[]).includes(r.requiredEducationLevel)) {
+  if (
+    typeof r.requiredEducationLevel === 'string' &&
+    (EDUCATION_LEVELS as readonly string[]).includes(r.requiredEducationLevel)
+  ) {
     result.requiredEducationLevel = r.requiredEducationLevel as EducationLevel;
   }
   if (Array.isArray(r.requiredLanguages) && r.requiredLanguages.every((l) => typeof l === 'string')) {
@@ -151,7 +160,9 @@ export function deriveLanguageScore(languages: string[] | null, requirements: Re
   if (!languages || languages.length === 0) return null;
 
   const candidateSet = new Set(languages.map((l) => normalizeLanguage(l).toLowerCase()));
-  const matched = requirements.requiredLanguages.filter((l) => candidateSet.has(normalizeLanguage(l).toLowerCase())).length;
+  const matched = requirements.requiredLanguages.filter((l) =>
+    candidateSet.has(normalizeLanguage(l).toLowerCase()),
+  ).length;
   return Math.round((matched / requirements.requiredLanguages.length) * 100);
 }
 
@@ -168,12 +179,7 @@ async function resolveWeightProfile(orgId: string, roleFamily: string | null): P
 }
 
 export const fitEngineService = {
-  async computeFitScore(
-    orgId: string,
-    candidateId: string,
-    vacancyId: string,
-    opts?: { llmJudgment?: LlmJudgment },
-  ) {
+  async computeFitScore(orgId: string, candidateId: string, vacancyId: string, opts?: { llmJudgment?: LlmJudgment }) {
     const [candidate, vacancy, assessmentScore, interviewScore] = await Promise.all([
       fitEngineRepository.getCandidateForFit(orgId, candidateId),
       fitEngineRepository.getVacancyForFit(orgId, vacancyId),
@@ -186,7 +192,10 @@ export const fitEngineService = {
       assessment: assessmentScore,
       interview: interviewScore,
       experience: deriveExperienceScore(candidate?.yearsExperience ?? null, requirements),
-      education: deriveEducationScore((candidate?.education as Array<{ degree?: unknown }> | null) ?? null, requirements),
+      education: deriveEducationScore(
+        (candidate?.education as Array<{ degree?: unknown }> | null) ?? null,
+        requirements,
+      ),
       languages: deriveLanguageScore((candidate?.languages as string[] | null) ?? null, requirements),
     };
 
@@ -196,7 +205,13 @@ export const fitEngineService = {
     const breakdown: FitBreakdown = { ...rawScores, llmJudgment: opts?.llmJudgment ?? null };
 
     const saved = await fitEngineRepository.upsertFitScore(
-      orgId, candidateId, vacancyId, overallScore, breakdown as unknown as Prisma.InputJsonValue, weights, isPartial,
+      orgId,
+      candidateId,
+      vacancyId,
+      overallScore,
+      breakdown as unknown as Prisma.InputJsonValue,
+      weights,
+      isPartial,
     );
 
     return { fitScoreId: saved.id, overallScore, breakdown, weights, isPartial };
@@ -222,13 +237,19 @@ export const fitEngineService = {
       .map((r) => {
         const breakdown = r.breakdown as unknown as FitBreakdown;
         const rawScores: Record<FitDimension, number | null> = {
-          assessment: breakdown.assessment, interview: breakdown.interview, experience: breakdown.experience,
-          education: breakdown.education, languages: breakdown.languages,
+          assessment: breakdown.assessment,
+          interview: breakdown.interview,
+          experience: breakdown.experience,
+          education: breakdown.education,
+          languages: breakdown.languages,
         };
         const { overallScore, isPartial } = computeWeightedScore(rawScores, hypotheticalWeights);
         return {
-          candidateId: r.candidate.id, firstName: r.candidate.firstName, lastName: r.candidate.lastName,
-          simulatedScore: overallScore, isPartial,
+          candidateId: r.candidate.id,
+          firstName: r.candidate.firstName,
+          lastName: r.candidate.lastName,
+          simulatedScore: overallScore,
+          isPartial,
         };
       })
       .sort((a, b) => b.simulatedScore - a.simulatedScore);

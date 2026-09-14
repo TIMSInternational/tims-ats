@@ -38,9 +38,38 @@ export default defineConfig({
       // Allow component tests to resolve React from apps/web
       react: resolve(__dirname, 'apps/web/node_modules/react'),
       'react/jsx-dev-runtime': resolve(__dirname, 'apps/web/node_modules/react/jsx-dev-runtime'),
+      // Same single-instance requirement as `react` above, for the platform-api hook-path tests:
+      // the wrapper under test resolves @tanstack/react-query via apps/web/node_modules, and the
+      // test's QueryClientProvider must be the SAME module instance or the context lookup fails
+      // ("No QueryClient set"). Root node_modules has no copy, so without this the test cannot
+      // resolve the import at all.
+      '@tanstack/react-query': resolve(__dirname, 'apps/web/node_modules/@tanstack/react-query'),
+      // Lets tests vi.mock('@tims/auth/client'): the wrapper's client.ts resolves that specifier
+      // via apps/web's workspace dep; the mock must resolve it to the same module id to intercept.
+      '@tims/auth/client': resolve(__dirname, 'packages/auth/src/client.ts'),
     },
   },
   test: {
+    // Vitest's default is 5 000 ms. That is too tight for THIS suite on a developer machine,
+    // and the failure mode is corrosive rather than obvious: a slow-but-correct run reports
+    // the same red as a real regression, so every local result becomes untrustworthy exactly
+    // when you most need to trust it.
+    //
+    // Two independent reasons the default does not fit here:
+    //   - several suites SPAWN subprocesses (tsx/bash) — ~1.5 s of interpreter startup each,
+    //     and `verify-tenant-grants-failure-paths` spawns three in one `it`, so it is
+    //     marginal by construction before any load at all;
+    //   - the machine is routinely shared. Measured 2026-08-07 with an unrelated desktop app
+    //     at 479 % CPU: the same tree that CI passes green went red locally on 5 000 ms
+    //     timeouts, in DIFFERENT tests run to run — first `verify-tenant-grants`, then
+    //     `update-role-family` and `update-fit-requirements`, which spawn nothing.
+    //
+    // Raised, not removed: a genuinely hung test still fails, just not a slow correct one.
+    // If you are tempted to lower this, read the "never claim a result from a stale run"
+    // history first — phantom failures from contention have repeatedly cost more than the
+    // extra seconds this buys.
+    testTimeout: 30_000,
+    hookTimeout: 30_000,
     projects: [
       {
         extends: true,
