@@ -55,6 +55,7 @@ public sealed partial class TenantAuditEndpointTests
     [Theory]
     [InlineData("/tenant-audit/logs?entity=candidate&action=access", 2)]
     [InlineData("/tenant-audit/logs?entity=foreign-only", 0)]
+    [InlineData("/tenant-audit/logs?action=access&cursor=d0000000-0000-0000-0000-000000000007", 0)]
     [InlineData("/tenant-audit/logs?cursor=d0000000-0000-0000-0000-000000000003", 0)]
     [InlineData("/tenant-audit/history?entity=auth&entityId=record-1", 1)]
     [InlineData("/tenant-audit/history?entity=wrong&entityId=record-1", 0)]

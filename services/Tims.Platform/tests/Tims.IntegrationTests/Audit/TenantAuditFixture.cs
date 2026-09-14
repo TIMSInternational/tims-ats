@@ -157,7 +157,7 @@ public sealed class TenantAuditFixture : IAsyncLifetime
           SELECT gen_random_uuid(), '22222222-2222-2222-2222-222222222222', 'bulk', 'export-cap', '{"secret":"hidden"}', '{"secret":"hidden"}', '2026-07-01T10:00:00Z' FROM generate_series(1,10005) n;
         INSERT INTO audit_logs (id, organization_id, action, entity) VALUES
           ('d0000000-0000-0000-0000-000000000007','11111111-1111-1111-1111-111111111111','=SUM(1,2)','csv-probe');
-        UPDATE audit_logs SET entity_id = 'José <&>' WHERE entity = 'csv-probe';
+        UPDATE audit_logs SET entity_id = 'José <&>', created_at = '2026-08-01' WHERE entity = 'csv-probe';
         INSERT INTO audit_logs (id, organization_id, action, entity, entity_id, created_at) VALUES
           ('d0000000-0000-0000-0000-000000000010','11111111-1111-1111-1111-111111111111','page-test','history','pagination','2026-07-01'),
           ('d0000000-0000-0000-0000-000000000011','11111111-1111-1111-1111-111111111111','page-test','history','pagination','2026-07-02'),

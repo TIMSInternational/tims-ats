@@ -26,7 +26,7 @@ Same-model security and claim reviewers found no blocking defect; findings led t
 
 - These are integration tests against an isolated SQL fixture, not differential execution of TS and C#.
 - C# adds deterministic actor/entity ties for grouped counts and timestamp/ID ties for pages/exports. TypeScript leaves ties unspecified, so tied bounded-result membership can differ.
-- C# requires a cursor to belong to the active tenant and filters. Callers must reset pagination when filters change; TypeScript can locate an ID cursor independently of the filters.
+- C# requires a cursor to belong to the active tenant and filters. A direct Prisma/PostgreSQL probe confirmed the same behavior: an existing cursor excluded by the action filter returns an empty page. The earlier claim that Prisma would continue from that cursor was incorrect. Callers should reset pagination when filters change.
 - Related people are independently tenant-filtered. Foreign or organizationless actor references return null identities; raw actor/user IDs remain part of the existing audit record contract.
 - Before enabling the flag, add nonempty differential fixtures and shared harness registration, exercise authenticated staging, and inventory all consumers before retiring TypeScript procedures.
 - Keep the separate platform-owner audit routes and cross-organization behavior intact.
@@ -55,3 +55,22 @@ Rollout order:
 The full JavaScript suite passed 3,276 tests across 332 files after this wiring; API and web type checks passed. No live flag changes were made as part of the frontend wiring. Seven runtime hook tests cover
 both routing branches, authenticated relay dispatch, numeric normalization, response validation,
 and failure behavior. The existing client/relay suites cover the shared cookie transport.
+
+## Shared export fixtures and Prisma cursor probe
+
+`contracts/audit-fixtures/tenant-export.json` is consumed by the real TypeScript `auditService.exportLogs`
+and C# `TenantAuditReadUseCase.ExportAsync` tests. All four cases agree byte-for-byte: populated and
+empty CSV/JSON, including Unicode/HTML-sensitive characters, formulas, embedded commas/quotes/newlines,
+and null actor/optional fields. Repository responses are substituted here; this proves service-level
+serialization compatibility, not SQL, HTTP authorization or staging parity.
+
+A separate local Prisma probe used an isolated PostgreSQL 16 database with three synthetic audit rows:
+Jan 3 `other`, Jan 2 `access`, Jan 1 `access`. Querying `action=access`, createdAt descending,
+`cursor=Jan 3 row`, `skip=1`, `take=2` returned `[]`. Using the Jan 2 access cursor returned only Jan 1.
+This removes the previously reported cursor/filter difference. The C# integration suite now pins the
+excluded-cursor empty-page case. No production database was queried or changed for this probe.
+
+Latest verification: 70 audit integration tests, four C# export fixture tests, 3,280 JavaScript
+tests (333 files), and API/web type checks passed. The regression cursor is deliberately newer
+than both matching rows, so accepting it outside the active filters would produce visible rows
+and fail the test. The internal claim review identified and corrected a weaker older-cursor test.
