@@ -21,6 +21,11 @@
 
 ### Current implementation wave — 2026-09-14 (unreleased)
 
+- **#75 / #217, invitation resend port:** a default-disabled C# resend endpoint and console hook
+  now handle provider acceptance, unchanged state on delivery failure, and guarded updates against
+  concurrent acceptance/revocation. Creation/bulk/acceptance ports, runtime activation, live delivery
+  and TS retirement remain open. See `architecture/csharp-migration/invitation-resend.md`.
+
 - **#217, C# email boundary (partial):** API and worker hosts now register a default-disabled SES
   sender with bounded dispatch, provider-acceptance semantics, circuit breaking, no automatic
   retries and PII-safe failure logging. Real SDK transport tests cover failure/no-retry behavior.

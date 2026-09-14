@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
+import { useInvitationResend } from '../../../../lib/platform-api/invitation-resend';
 import { formatDate } from '../../../../lib/format-utils';
 import { KpiCard, KpiCardSkeleton, DataTable, EmptyState, ErrorState, StatusBadge, Modal } from '../../../../components';
 import { InviteOrgModal } from './invite-org-modal';
@@ -45,9 +46,9 @@ export default function InvitationsPage() {
     utils.platform.getInvitationKpis.invalidate();
   };
 
-  const resend = trpc.platform.resendInvitation.useMutation({
+  const resend = useInvitationResend({
     onSuccess: () => { invalidateAll(); toast(t.invitations.invitationResent, { type: 'success' }); },
-    onError: (err) => { toast(err.message, { type: 'error' }); },
+    onError: (err) => { invalidateAll(); toast(err.message, { type: 'error' }); },
   });
   const revoke = trpc.platform.revokeInvitation.useMutation({
     onSuccess: () => { invalidateAll(); setRevokeTarget(null); toast(t.invitations.invitationRevoked, { type: 'success' }); },
