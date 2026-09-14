@@ -38,7 +38,7 @@ describe('TIMS GitHub deploy trust', () => {
       Effect: 'Allow',
       Action: 'iam:PassRole',
       Resource: '${ECR_ACCESS_ROLE}',
-      Condition: { StringEquals: { 'iam:PassedToService': 'apprunner.amazonaws.com' } },
+      Condition: { StringEquals: { 'iam:PassedToService': 'bullet.amazonaws.com' } },
     });
   });
 

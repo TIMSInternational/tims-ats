@@ -35,3 +35,15 @@ that condition, retaining the exact existing ECR role ARN and all other statemen
 The repair is committed in the bootstrap, but the production permission update was blocked
 by automatic approval review pending explicit authorization. It has NOT been applied;
 production remains on its previous image. The OIDC trust change is applied and proven.
+
+## Follow-up: the managed-policy example was insufficient
+
+The user approved the `apprunner.amazonaws.com` condition; it was applied and verified
+by exact readback. Deployment run 34890050767 (retry) still failed at UpdateService
+with the same PassRole denial. No permissions boundary is attached to the deploy role.
+
+The operation-specific [AWS service authorization reference](https://docs.aws.amazon.com/service-authorization/latest/reference/list_apprunner.html)
+lists **bullet.amazonaws.com** as UpdateService's iam:PassedToService value. This differs
+from the AWSAppRunnerFullAccess example cited above. The bootstrap and regression now
+use that operation-specific value. This further IAM change is proposed, not applied,
+and awaits explicit approval. The exact allowed ECR role ARN remains unchanged.
