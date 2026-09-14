@@ -25,7 +25,10 @@ const SRC = 'services/Tims.Platform/src';
  * `RateLimitMiddleware` also reads them, but it hands both raw values straight to
  * `RateLimitIdentity`, which delegates to the same primitive — so it re-derives nothing.
  */
+// Exact authenticated writer exception; dedicated assertions below pin its verification order.
+const RELAY_BOUNDARY = `${SRC}/Tims.Api/Http/RelayAttributionMiddleware.cs`;
 const ALLOWED = new Set([
+  RELAY_BOUNDARY,
   `${SRC}/Tims.Domain/Http/ClientIp.cs`,
   `${SRC}/Tims.Api/Http/HttpContextClientIp.cs`,
   `${SRC}/Tims.Api/RateLimiting/RateLimitMiddleware.cs`,
@@ -72,6 +75,33 @@ describe('C# audit writers must not re-derive the client IP by hand', () => {
       ({ file, text }) => !ALLOWED.has(file) && /Headers\[\s*"x-(forwarded-for|real-ip)"\s*\]/i.test(text),
     ).map(({ file }) => file);
     expect(offenders).toEqual([]);
+  });
+
+  it('the relay boundary writes trusted attribution only after authentication and single-use verification', () => {
+    expect(FILES).toContain(RELAY_BOUNDARY);
+    const text = readFileSync(join(ROOT, RELAY_BOUNDARY), 'utf8');
+    // It may WRITE the verified address, never read a raw forwarding header as evidence.
+    expect(text.match(/Headers\[\s*"x-(forwarded-for|real-ip)"\s*\]/gi)).toEqual(['Headers["x-real-ip"]']);
+    expect(text).toContain('context.Request.Headers["x-real-ip"] = metadata.Ip;');
+    const write = text.indexOf('context.Request.Headers["x-real-ip"] = metadata.Ip;');
+    for (const gate of [
+      'context.User.Identity?.IsAuthenticated != true',
+      'Verify(envelope, context, options.Value.ImpersonationSecret)',
+      'metadata is null || !await nonces.TryUseAsync(metadata.Nonce)',
+    ]) {
+      expect(text.indexOf(gate), gate).toBeGreaterThanOrEqual(0);
+      expect(text.indexOf(gate), gate).toBeLessThan(write);
+    }
+    expect(text).toContain('CryptographicOperations.FixedTimeEquals(expected, signature)');
+    expect(text).toContain('tims-platform-relay-attribution-v1');
+    expect(text).toContain('context.Request.Headers.Remove("x-forwarded-for")');
+    expect(text).toContain('metadata.AuthorizationHash != Hash(context.Request.Headers.Authorization.ToString())');
+    const program = readFileSync(join(ROOT, SRC, 'Tims.Api/Program.cs'), 'utf8');
+    const relay = program.indexOf('app.UseMiddleware<RelayAttributionMiddleware>()');
+    expect(relay).toBeGreaterThan(program.indexOf('app.UseAuthentication()'));
+    expect(relay).toBeGreaterThan(program.indexOf('app.UseMiddleware<TrustedProxyHeaderMiddleware>()'));
+    expect(relay).toBeLessThan(program.indexOf('app.UseMiddleware<PrincipalResolutionMiddleware>()'));
+    expect(relay).toBeLessThan(program.indexOf('app.UseMiddleware<RateLimitMiddleware>()'));
   });
 
   it('no endpoint reintroduces the private ClientIp helper that #174 deleted', () => {

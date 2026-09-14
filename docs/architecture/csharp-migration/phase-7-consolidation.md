@@ -1,5 +1,11 @@
 # Phase 7 — Retire the TS backend + platform consolidation
 
+> **Scope update 2026-09-14:** Federico clarified that TIMS ATS remains independent and integrates
+> with `tims.configuration.core` through APIs. Team Suite absorption requirements below are historical
+> and are superseded by [the API integration decision](../2026-09-14-independent-ats-api-integration.md).
+> C#/.NET 10 backend convergence remains in scope.
+
+
 Date: 2026-07-15 · Status: **Outline; detail last (after Phase 5 completes).**
 Parent: `00-master-plan.md` · Starts once every targeted domain (Phase 5) is migrated + TS logic deleted.
 

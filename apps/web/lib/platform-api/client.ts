@@ -5,6 +5,8 @@
 // when NEXT_PUBLIC_TIMS_PLATFORM_API_URL is unset the client is DISABLED and callers
 // fall back to the existing tRPC path (see lib/platform-api/dei.ts).
 //
+// All browser requests use the same-origin /api/platform relay so the HttpOnly
+// signed impersonation cookie accompanies the bearer to C#.
 // Auth reuses the SAME Supabase browser session helper the rest of apps/web uses
 // (`createSupabaseBrowserClient` from '@tims/auth/client') — no new auth path. No
 // secrets, no privileged server keys, no token/PII logging.
@@ -130,12 +132,12 @@ export async function platformGet<P extends GetPaths>(
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  const base = PLATFORM_API_URL!.replace(/\/+$/, '');
+  const base = '/api/platform';
   const resolvedPath = applyPathParams(path, pathParams);
   const response = await fetch(`${base}${resolvedPath}${buildQueryString(query)}`, {
     method: 'GET',
     headers,
-    credentials: 'omit',
+    credentials: 'same-origin',
   });
 
   if (!response.ok) {
@@ -164,12 +166,12 @@ export async function platformGetRaw(path: string, query?: QueryParams, pathPara
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  const base = PLATFORM_API_URL!.replace(/\/+$/, '');
+  const base = '/api/platform';
   const resolvedPath = applyPathParams(path, pathParams);
   const response = await fetch(`${base}${resolvedPath}${buildQueryString(query)}`, {
     method: 'GET',
     headers,
-    credentials: 'omit',
+    credentials: 'same-origin',
   });
 
   if (!response.ok) {
@@ -260,12 +262,12 @@ async function mutate(
   if (token) headers.Authorization = `Bearer ${token}`;
   if (body !== undefined) headers['Content-Type'] = 'application/json';
 
-  const base = PLATFORM_API_URL!.replace(/\/+$/, '');
+  const base = '/api/platform';
   const resolvedPath = applyPathParams(path, pathParams);
   const response = await fetch(`${base}${resolvedPath}`, {
     method,
     headers,
-    credentials: 'omit',
+    credentials: 'same-origin',
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 

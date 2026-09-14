@@ -37,7 +37,7 @@ public sealed class PrincipalResolver(IIdentityRepository identities, CandidateR
     /// cookie. Impersonation is attempted ONLY when the real user is a platform owner AND a secret is
     /// configured AND the cookie carries a valid, unexpired HMAC token; the fetched target is then
     /// handed to <see cref="StaffContextResolver"/>, which enforces the owner-only + valid-target
-    /// rule (active, org-scoped, non-owner). Anything else falls through to the owner's own context.
+    /// rule (active, org-scoped, non-owner). Invalid presented cookies deny resolution.
     /// </summary>
     public async Task<StaffResolution> ResolveStaffAsync(
         string supabaseUserId,
@@ -49,15 +49,20 @@ public sealed class PrincipalResolver(IIdentityRepository identities, CandidateR
         var appUser = await _identities.FindBySupabaseUserIdAsync(supabaseUserId, ct);
 
         AppUserRow? target = null;
-        if (appUser is { IsPlatformOwner: true } && !string.IsNullOrEmpty(impersonationSecret))
+        var token = ImpersonationCookie.ReadImpersonationCookie(cookieHeader);
+        if (token is not null)
         {
-            var token = ImpersonationCookie.ReadImpersonationCookie(cookieHeader);
+            // A presented but invalid impersonation must never restore owner privileges.
             var nowUnixMs = new DateTimeOffset(now.ToUniversalTime()).ToUnixTimeMilliseconds();
             var payload = ImpersonationCookie.VerifyImpersonationToken(token, impersonationSecret, nowUnixMs);
-            if (payload is not null)
-            {
-                target = await _identities.FindByIdAsync(payload.TargetUserId, ct);
-            }
+            if (appUser is not { IsPlatformOwner: true, IsActive: true }
+                || payload is null || payload.ImpersonatorId != appUser.Id)
+                return StaffResolution.NeedsFallback;
+
+            target = await _identities.FindByIdAsync(payload.TargetUserId, ct);
+            if (target is not { IsActive: true, IsPlatformOwner: false }
+                || string.IsNullOrEmpty(target.OrganizationId))
+                return StaffResolution.NeedsFallback;
         }
 
         return StaffContextResolver.ResolveStaffContext(appUser, target);
@@ -93,7 +98,8 @@ public sealed class PrincipalResolver(IIdentityRepository identities, CandidateR
             return context;
         }
 
-        if (_candidates is not null && !string.IsNullOrEmpty(organizationId))
+        if (ImpersonationCookie.ReadImpersonationCookie(cookieHeader) is null
+            && _candidates is not null && !string.IsNullOrEmpty(organizationId))
         {
             return await _candidates.ResolveAsync(email, organizationId, ct);
         }

@@ -18,6 +18,30 @@
 > `docs/architecture/csharp-migration/00-master-plan.md`, `phase-5-strangler.md`, and
 > `docs/architecture/table-ownership.md` (the authoritative per-table/per-domain ledger).
 
+
+### Current implementation wave — 2026-09-14 (unreleased)
+
+- **Scope correction from Federico:** TIMS ATS is to function independently and communicate with
+  `tims.configuration.core` and other systems **through APIs**. The older Phase-6 absorption plan is
+  superseded for this objective; importing Team Suite's domain/data-access code is not required.
+  Source-level API discovery is recorded below; live contract verification remains pending.
+- **#248:** notification recipient membership validation implemented in both TS and .NET 10;
+  local review and integration tests passed; deployment pending. See
+  `audits/2026-09-14-notification-security.md`.
+- **#239:** same-origin C# relay, signed impersonator binding and authenticated client attribution implemented locally; real Redis replay-store tests passed; rollout gates pending.
+- **#181:** remaining audit amplification paths are rate-limited; audit writes bounded. This is a
+  partial hardening, not closure of all audit follow-ups; see `audits/2026-09-14-audit-security.md`.
+- **#218:** bulk invitations now attempt delivery, retain pending state on provider failure, and
+  mark sent only after provider acceptance. Focused tests use a mocked sender; no real email sent.
+- **Dependency release gate:** Next.js 15.5.24 and targeted dependency patches reduce npm audit
+  from 49 high / 2 critical to **0 high / 0 critical**. Five moderate and two low remain; see
+  `audits/2026-09-14-dependency-remediation.md`. Production build and 3,277 JavaScript tests passed. NuGet reports no vulnerable packages.
+- **Legacy integration discovery:** existing source/API clients identify companies, people,
+  survey attempts and PCA reports. `PcaCod` is an assessment-attempt identifier. See
+  `plans/2026-09-14-external-api-slice.md`; no legacy imports or provider mutations performed.
+- Execution plan: `plans/2026-09-14-completion-plan.md`; initial acceptance inventory:
+  `plans/2026-09-14-acceptance-register.md`. Neither is a claim of production completion.
+
 ---
 
 ## ✅ DONE (verified in code + prod, not aspirational)
