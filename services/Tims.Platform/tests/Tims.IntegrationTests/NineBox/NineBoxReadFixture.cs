@@ -146,7 +146,9 @@ public sealed class NineBoxReadFixture : IAsyncLifetime
             id uuid PRIMARY KEY, organization_id uuid NOT NULL, user_id uuid NOT NULL, period text NOT NULL,
             potential_score double precision NOT NULL, performance_score double precision NOT NULL,
             quadrant text NOT NULL, confidence double precision NOT NULL, axis_breakdown jsonb NOT NULL,
-            evaluated_at timestamp(3) NOT NULL, created_at timestamp(3) NOT NULL);
+            evaluated_at timestamp(3) NOT NULL, created_at timestamp(3) NOT NULL,
+            -- adopted 2026-08-09 (#120): prod carries this NOT NULL DEFAULT now(); the fixture omitted it
+            updated_at timestamp(3) NOT NULL DEFAULT now());
         CREATE TABLE calibration_sessions (
             id uuid PRIMARY KEY, organization_id uuid NOT NULL, period text NOT NULL, status text NOT NULL,
             scheduled_at timestamp(3) NULL, completed_at timestamp(3) NULL, created_by_id uuid NOT NULL,

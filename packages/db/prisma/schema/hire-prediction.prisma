@@ -31,6 +31,24 @@ model HirePrediction {
   createdAt  DateTime @default(now())   @map("created_at")
   updatedAt  DateTime @updatedAt        @map("updated_at")
 
+  // Relations declared to MATCH PRODUCTION, which already carries all seven FKs —
+  // created by 20260713120000_add_hire_predictions/migration.sql:35-48 and never
+  // reconciled back into this model. Until now the model declared the scalar ids and
+  // ZERO @relation blocks, so `prisma db push` / `migrate dev` would DROP all seven,
+  // silently removing referential integrity from the table holding hiring decisions
+  // (#118, #115 drift class 1). No production DDL: prod is correct; this agrees with it.
+  //
+  // onDelete mirrors prod EXACTLY — read from pg_constraint, not inferred: SetNull on
+  // the two nullable columns, Cascade on the five required ones. onUpdate is Cascade
+  // throughout, which is Prisma's default for a required relation, so it stays implicit.
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation("HirePredictionSubject", fields: [userId], references: [id], onDelete: Cascade)
+  candidate    Candidate    @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  vacancy      Vacancy      @relation(fields: [vacancyId], references: [id], onDelete: Cascade)
+  offer        Offer        @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  application  Application? @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+  hiredBy      User?        @relation("HirePredictionHiredBy", fields: [hiredById], references: [id], onDelete: SetNull)
+
   @@index([organizationId])
   @@index([userId])
   @@index([candidateId])

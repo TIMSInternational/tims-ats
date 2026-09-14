@@ -13,25 +13,40 @@ namespace Tims.Api.RateLimiting;
 /// <c>TOO_MANY_REQUESTS</c>, the Spanish retry message (byte-identical to the TS <c>TRPCError</c>),
 /// and a <c>Retry-After</c> header.
 ///
-/// Infra + auth-probe endpoints are exempt (they are not product surfaces — the current host maps
-/// only health/readiness/OpenAPI + the WP2.1-2.5 auth probes). Real product endpoints added later
-/// are limited by default (denylist, not allowlist).
+/// Infrastructure endpoints are exempt for unresolved callers. Resolved principals and
+/// authorization probes are always limited because they can trigger security audit writes.
+/// Product endpoints added later are limited by default (denylist, not allowlist).
 /// </summary>
 public sealed class RateLimitMiddleware(RequestDelegate next)
 {
     private readonly RequestDelegate _next = next;
 
-    // Infra + non-product auth-probe paths that must never be throttled.
+    // Infrastructure paths exempt for callers without a resolved TIMS principal.
     // /billing/webhooks/stripe is ANONYMOUS + authenticated by the Stripe signature; Stripe delivers from a
     // small shared-IP pool, so the anonymous IP-keyed limiter could 429 a delivery burst (a divergence from
     // the un-throttled TS/Vercel route). Exempt it — the apply is idempotent, but a 429 forces needless retries.
+    //
+    // AlertMetricsEndpoints.RoutePath (#172) is exempt for the same reason, and more sharply: it is an
+    // ANONYMOUS route (the cron secret is its credential), so the limiter would key it by IP — and its ONLY
+    // intended caller is a single machine issuing one request per (org, metric) across the whole platform in
+    // one nightly run. Under the anonymous quota that caller throttles ITSELF partway through, and a metric
+    // that 429s is a metric that never evaluates: alerts silently stop firing for every org after the cutoff.
+    // The TS/Vercel route it replaces is un-throttled, so exempting it is parity, not a relaxation. Referenced
+    // as a constant, never re-typed — a literal here could drift from the route registration silently.
     private static readonly string[] ExemptExactPaths =
-        ["/", "/health", "/ready", "/whoami", "/external-whoami", "/billing/webhooks/stripe"];
-    private static readonly string[] ExemptPrefixes = ["/openapi", "/require-permission", "/require-org-scope"];
+    [
+        "/", "/health", "/ready", "/whoami", "/external-whoami", "/billing/webhooks/stripe",
+        Tims.Api.AlertMetrics.AlertMetricsEndpoints.RoutePath,
+    ];
+    private static readonly string[] ExemptPrefixes = ["/openapi"];
 
     public async Task InvokeAsync(HttpContext context, RateLimitGuard guard)
     {
-        if (IsExempt(context.Request.Path))
+        // Even infrastructure URLs can reach MFA enforcement for resolved staff.
+        // Keep health checks exempt, but never provide an audit amplification bypass
+        // to a privileged caller by choosing an otherwise exempt path (#181).
+        if (IsExempt(context.Request.Path)
+            && context.Items[ResolvedPrincipal.HttpContextKey] is not ResolvedPrincipal { Context: not null })
         {
             await _next(context).ConfigureAwait(false);
             return;

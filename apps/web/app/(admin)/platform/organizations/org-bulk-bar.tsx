@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { csvRow } from '@tims/shared';
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
@@ -45,17 +46,21 @@ export function OrgBulkBar({ selectedIds, organizations, onDeselectAll }: OrgBul
 
   const handleExportSelected = () => {
     const selected = organizations.filter((o) => selectedIds.includes(o.id));
-    const header = 'Nombre,Slug,Plan,Estado,Usuarios,Facturas,MRR,Creada';
+    // Every cell through csvRow — same defect and same fix as organizations/page.tsx. NOTE the column
+    // order differs from that file (MRR before Creada here, after it there); that inconsistency is
+    // pre-existing and deliberately left alone, since changing it would alter a second thing under cover
+    // of a security fix. Tracked as GHSA-w6h5-g5gv-7g95.
+    const header = csvRow(['Nombre', 'Slug', 'Plan', 'Estado', 'Usuarios', 'Facturas', 'MRR', 'Creada']);
     const rows = selected.map((org) => {
       const plan = org.plan || org.subscription?.plan || 'trial';
-      return [
-        `"${org.name}"`, org.slug, plan,
+      return csvRow([
+        org.name, org.slug, plan,
         org.isActive ? 'active' : 'suspended',
         org._count?.users ?? 0,
         org._count?.invoices ?? 0,
         PLAN_MRR[plan] || 0,
         new Date(org.createdAt).toISOString().slice(0, 10),
-      ].join(',');
+      ]);
     });
     const csv = [header, ...rows].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });

@@ -1,5 +1,11 @@
 # Phase 6 — Team Suite Integration
 
+> **Scope update 2026-09-14:** Federico clarified that TIMS ATS remains independent and integrates
+> with `tims.configuration.core` through APIs. Team Suite absorption requirements below are historical
+> and are superseded by [the API integration decision](../2026-09-14-independent-ats-api-integration.md).
+> C#/.NET 10 backend convergence remains in scope.
+
+
 Date: 2026-07-15 · Status: **Blocked on the intake study; template + security gate defined now.**
 Parent: `00-master-plan.md` · Can start after Phase 2; lands into the Phase-5 strangler stream.
 

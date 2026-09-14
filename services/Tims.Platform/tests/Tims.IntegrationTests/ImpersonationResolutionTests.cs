@@ -9,7 +9,7 @@ namespace Tims.IntegrationTests;
 /// resolves — via <see cref="PrincipalResolver"/> + the EF <see cref="IdentityRepository"/> +
 /// <see cref="ImpersonationCookie"/> + the pure <see cref="StaffContextResolver"/> — to the TARGET's
 /// org and (filtered) roles with <c>ImpersonatedBy</c> set, while every fail-closed path
-/// (forged/expired cookie, non-owner caller, owner-target) yields the caller's OWN context.
+/// (forged/expired cookie, non-owner caller, owner-target) denies resolution instead of restoring owner privileges.
 ///
 /// Reuses <see cref="IdentityFixture"/>: PlatformOwner is the impersonator, ActiveStaff is the valid
 /// target (active, org, non-owner), and OrglessOwner is "another owner" (a rejected target).
@@ -47,9 +47,9 @@ public sealed class ImpersonationResolutionTests(IdentitySchemaFixture fixture)
         Assert.Equal(IdentityFixture.PlatformOwnerUserId.ToString(), ctx.ImpersonatedBy);
     }
 
-    // ---- Assertion 2a: owner + FORGED cookie → owner's own PlatformOwner context -----
+    // ---- Assertion 2a: owner + FORGED cookie → denied -----
     [Fact]
-    public async Task Owner_WithForgedCookie_ResolvesToOwnOwnerContext()
+    public async Task Owner_WithForgedCookie_DeniesResolution()
     {
         await using var db = new IdentityDbContext(IdentityFixture.BuildOptions(fixture.IdentityConnectionString));
         var resolver = NewResolver(db);
@@ -61,12 +61,12 @@ public sealed class ImpersonationResolutionTests(IdentitySchemaFixture fixture)
         var result = await resolver.ResolveStaffAsync(
             IdentityFixture.PlatformOwnerSub, Cookie(forged), Secret, Now, CancellationToken.None);
 
-        AssertOwnerOwnContext(result);
+        Assert.False(result.Resolved);
     }
 
-    // ---- Assertion 2b: owner + EXPIRED cookie → owner's own PlatformOwner context ----
+    // ---- Assertion 2b: owner + EXPIRED cookie → denied ----
     [Fact]
-    public async Task Owner_WithExpiredCookie_ResolvesToOwnOwnerContext()
+    public async Task Owner_WithExpiredCookie_DeniesResolution()
     {
         await using var db = new IdentityDbContext(IdentityFixture.BuildOptions(fixture.IdentityConnectionString));
         var resolver = NewResolver(db);
@@ -79,12 +79,12 @@ public sealed class ImpersonationResolutionTests(IdentitySchemaFixture fixture)
         var result = await resolver.ResolveStaffAsync(
             IdentityFixture.PlatformOwnerSub, Cookie(token), Secret, Now, CancellationToken.None);
 
-        AssertOwnerOwnContext(result);
+        Assert.False(result.Resolved);
     }
 
-    // ---- Assertion 2c: owner, secret UNSET → impersonation unavailable, own context --
+    // ---- Assertion 2c: owner, secret UNSET → denied --
     [Fact]
-    public async Task Owner_WithValidCookieButNoSecret_ResolvesToOwnOwnerContext()
+    public async Task Owner_WithValidCookieButNoSecret_DeniesResolution()
     {
         await using var db = new IdentityDbContext(IdentityFixture.BuildOptions(fixture.IdentityConnectionString));
         var resolver = NewResolver(db);
@@ -95,12 +95,12 @@ public sealed class ImpersonationResolutionTests(IdentitySchemaFixture fixture)
         var result = await resolver.ResolveStaffAsync(
             IdentityFixture.PlatformOwnerSub, Cookie(token), impersonationSecret: null, Now, CancellationToken.None);
 
-        AssertOwnerOwnContext(result);
+        Assert.False(result.Resolved);
     }
 
-    // ---- Assertion 3: NON-owner + valid cookie → that user's own context (target ignored) ----
+    // ---- Assertion 3: NON-owner + valid cookie → denied ----
     [Fact]
-    public async Task NonOwner_WithValidCookie_ResolvesToOwnContext_TargetIgnored()
+    public async Task NonOwner_WithValidCookie_DeniesResolution()
     {
         await using var db = new IdentityDbContext(IdentityFixture.BuildOptions(fixture.IdentityConnectionString));
         var resolver = NewResolver(db);
@@ -112,17 +112,12 @@ public sealed class ImpersonationResolutionTests(IdentitySchemaFixture fixture)
         var result = await resolver.ResolveStaffAsync(
             IdentityFixture.ActiveStaffSub, Cookie(token), Secret, Now, CancellationToken.None);
 
-        Assert.True(result.Resolved);
-        var ctx = Assert.IsType<TenantContext>(result.Context);
-        Assert.Equal(PrincipalType.OrgUser, ctx.PrincipalType);
-        Assert.Equal(IdentityFixture.ActiveStaffUserId.ToString(), ctx.UserId);
-        Assert.Equal(new[] { "recruiter" }, ctx.Roles);
-        Assert.Null(ctx.ImpersonatedBy);
+        Assert.False(result.Resolved);
     }
 
-    // ---- Assertion 4: owner impersonating ANOTHER OWNER → rejected, owner's own context ----
+    // ---- Assertion 4: owner impersonating ANOTHER OWNER → denied ----
     [Fact]
-    public async Task Owner_ImpersonatingAnotherOwner_ResolvesToOwnOwnerContext()
+    public async Task Owner_ImpersonatingAnotherOwner_DeniesResolution()
     {
         await using var db = new IdentityDbContext(IdentityFixture.BuildOptions(fixture.IdentityConnectionString));
         var resolver = NewResolver(db);
@@ -134,7 +129,7 @@ public sealed class ImpersonationResolutionTests(IdentitySchemaFixture fixture)
         var result = await resolver.ResolveStaffAsync(
             IdentityFixture.PlatformOwnerSub, Cookie(token), Secret, Now, CancellationToken.None);
 
-        AssertOwnerOwnContext(result);
+        Assert.False(result.Resolved);
     }
 
     // ---- No-cookie overload still resolves the owner's own context -------------------

@@ -17,7 +17,9 @@ export function CreateOrgModal({ onClose, onSuccess }: { onClose: () => void; on
       toast(t.organizations.created, { type: 'success' });
       onSuccess();
     },
-    onError: (err) => { toast(err.message || 'Error al crear organizacion', { type: 'error' }); },
+    onError: (err) => {
+      toast(err.message || 'Error al crear organizacion', { type: 'error' });
+    },
   });
 
   const handleCreate = (e: React.FormEvent) => {
@@ -36,8 +38,19 @@ export function CreateOrgModal({ onClose, onSuccess }: { onClose: () => void; on
       <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-base font-semibold text-[#333]">{t.organizations.newOrg}</h2>
-          <button onClick={onClose} className="w-8 h-8 rounded-lg hover:bg-[#F6F6F6] flex items-center justify-center transition">
-            <svg className="w-4 h-4 text-[#8B8B8B]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12" /></svg>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-lg hover:bg-[#F6F6F6] flex items-center justify-center transition"
+          >
+            <svg
+              className="w-4 h-4 text-[#8B8B8B]"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              viewBox="0 0 24 24"
+            >
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
           </button>
         </div>
         <form onSubmit={handleCreate} className="space-y-4">
@@ -49,7 +62,12 @@ export function CreateOrgModal({ onClose, onSuccess }: { onClose: () => void; on
               value={formName}
               onChange={(e) => {
                 setFormName(e.target.value);
-                setFormSlug(e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''));
+                setFormSlug(
+                  e.target.value
+                    .toLowerCase()
+                    .replace(/[^a-z0-9]+/g, '-')
+                    .replace(/(^-|-$)/g, ''),
+                );
               }}
               placeholder={t.organizations.orgNamePlaceholder}
               className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm focus:outline-none focus:border-[#1F114C]"
@@ -84,6 +102,7 @@ export function CreateOrgModal({ onClose, onSuccess }: { onClose: () => void; on
             <input
               type="email"
               required
+              maxLength={254}
               value={formEmail}
               onChange={(e) => setFormEmail(e.target.value)}
               placeholder="admin@empresa.com"

@@ -2,8 +2,9 @@ namespace Tims.Infrastructure.Fx;
 
 /// <summary>
 /// EF entity for the efcore-OWNED <c>fx_rates</c> table (Phase-5 Slice 11c). A GLOBAL, org-agnostic FX-rate
-/// pin: one row per (base_currency, quote_currency, as_of) — the ECB rate pinned by the daily
-/// <c>FxRefreshJob</c>. UNLIKE every other efcore-owned table it is RLS-EXEMPT (FX rates are shared, not tenant
+/// pin: one row per (base_currency, quote_currency, as_of) — the ExchangeRate-API rate (originally ECB/
+/// Frankfurter, swapped 2026-07-28) pinned by the refresh (Workers <c>FxRefreshJob</c> or the API-hosted
+/// <c>FxRefreshHostedService</c>, 2026-08-15). UNLIKE every other efcore-owned table it is RLS-EXEMPT (FX rates are shared, not tenant
 /// data; a tenant GUC would hide every row), so its migration does NOT call <c>EnableTenantRls</c> — it only
 /// GRANTs SELECT to <c>app_tenant</c>. Reads/writes go through the plain (non-tenant) <see cref="FxRateDbContext"/>.
 /// </summary>

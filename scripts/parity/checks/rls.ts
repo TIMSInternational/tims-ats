@@ -6,9 +6,13 @@ export interface CheckResult {
   ok: boolean;
   detail?: string;
   /** Set when an `ok:true` RLS verdict is NOT a strong cross-tenant proof, in
-   *  one of two cases: (1) Mode B's both-orgs-200-and-empty case (no cross-tenant
-   *  data existed to compare); or (2) a `globalScope` endpoint, where the payload
-   *  is deliberately org-independent so there is no tenant isolation to prove.
+   *  one of THREE cases: (1) Mode B's both-orgs-200-and-empty case (no cross-tenant
+   *  data existed to compare); (2) a `globalScope` endpoint, where the payload
+   *  is deliberately org-independent so there is no tenant isolation to prove; or
+   *  (3) a `noTenantBoundaryForCaller` by-id endpoint, where the caller crosses no
+   *  tenant boundary because its gate is principal TYPE rather than tenancy (#195,
+   *  2026-08-11). Cases 2 and 3 carry DISTINCT detail strings on purpose — they are
+   *  different dispositions and a report reader must be able to tell them apart.
    *  Never set alongside `ok:false`. `report.ts` renders this distinctly (`[WEAK]`)
    *  so report-green doesn't silently imply a real comparison happened. */
   inconclusive?: boolean;
@@ -142,7 +146,19 @@ function buildProbePath(csharpPath: string, orgBResourceId: string): string {
  * Live RLS check: makes a cross-tenant probe call via C# through the real
  * `callCsharp(base, path, token)` caller (scripts/parity/callers.ts).
  *
- * Two modes, chosen by `ep.idScopeKey`:
+ * THREE modes. `globalScope` and `noTenantBoundaryForCaller` short-circuit first
+ * (in that order); otherwise the mode is chosen by `ep.idScopeKey`:
+ *
+ * Mode C — no tenant boundary FOR THIS CALLER (`ep.noTenantBoundaryForCaller`):
+ * a by-id endpoint served by a platform-owner gate (TS `platformProcedure` / C#
+ * `PlatformOwnerGate`) over the UNSCOPED client. Reaching org B's row is the
+ * FEATURE, so Mode A would assert the opposite of the requirement — and could
+ * not run anyway, since `mintTokens` mints no org-B token for an org-less
+ * platform owner (cli.ts), which would fail Mode A's positive control closed.
+ * Reported as a documented N/A (`inconclusive` → `[WEAK]`) with its OWN reason
+ * string, distinct from the globalScope one: that flag claims the PAYLOAD is
+ * org-independent, which is false here. Parity and RBAC still run unchanged, and
+ * on such a surface the RBAC denied-role 403 is the ENTIRE boundary proof.
  *
  * Mode A — by-id IDOR probe (`ep.idScopeKey` set): org-A's token attempts to
  * reach org-B's resource id on `ep.csharpPath`. Two calls:
@@ -193,6 +209,26 @@ export async function runRlsEndpoint(ep: EndpointDef, ctx: RlsContext, callCshar
       ok: true,
       inconclusive: true,
       detail: 'N/A: globalScope (non-tenant) endpoint — no cross-tenant isolation to prove',
+    };
+  }
+
+  // noTenantBoundaryForCaller — Mode C. A BY-ID endpoint behind a PRINCIPAL-TYPE gate: reaching
+  // another org's row is the product requirement, not a breach, so Mode A below would assert the
+  // exact opposite of it (org-A's platform-owner token SHOULD get a 200 carrying org-B's body,
+  // which `assertIsolated` correctly reads as a leak). Report a documented N/A with a reason of its
+  // OWN — deliberately NOT the globalScope wording above, because this endpoint's payload IS
+  // org-specific, and a report reader must not conflate "there is no per-org data here" with "there
+  // is per-org data here and this caller may see all of it". Placed AFTER the globalScope branch so
+  // that flag keeps its precedence (rls.test.ts pins that ordering), and BEFORE `idScopeKey` so the
+  // Mode-A probe never runs.
+  if (ep.noTenantBoundaryForCaller) {
+    return {
+      check: 'rls',
+      endpoint: ep.name,
+      ok: true,
+      inconclusive: true,
+      detail:
+        'N/A: principal-type gate, not a tenant boundary — this caller reads any org by design, so a Mode-A IDOR probe would assert the opposite of the requirement. The payload IS org-specific (org-independence is NOT claimed). The boundary here is proved by the RBAC denied-role 403, not by RLS.',
     };
   }
 

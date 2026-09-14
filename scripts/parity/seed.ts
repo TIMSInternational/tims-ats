@@ -85,8 +85,28 @@ const ORG_KEYS: readonly ('a' | 'b')[] = ['a', 'b'];
  * not by any per-org role/RLS), so seeding one per org would fabricate a nonexistent second
  * identity. It's seeded exactly ONCE, under orgKey 'a', purely because the harness's
  * per-(org,role) token-cache keying needs *some* orgKey to hang the cached token off of —
- * `organizationId` is otherwise irrelevant to this identity (see the `audit-log` surface in
- * surfaces.ts, the only surface that uses this role). */
+ * `organizationId` is otherwise irrelevant to this identity.
+ *
+ * (This used to point at "the `audit-log` surface in surfaces.ts, the only surface that uses this
+ * role", then — after audit-log and access-review were REMOVED from surfaces.ts on 2026-07-31
+ * (2950a06c / 18282f96) — at "`organization`, which probes with org_admin, so no read surface uses
+ * platform_owner as its probeRole". Both statements are now stale: audit-log and access-review were
+ * RE-REGISTERED C#-only on 2026-08-11 and both DO use platform_owner as probeRole, which is exactly
+ * the case the `orgKey === 'b'` skip below has to keep supporting — as does `organization`, whose
+ * probeRole was corrected to platform_owner the same day.
+ *
+ * CENSUS, re-derived 2026-08-11 with `grep -rn 'planSeed(' scripts/` because the previous version of
+ * this comment — itself written to correct a stale census — got BOTH halves wrong. It said THREE
+ * call sites and named `cmdAuth` as "the only one that passes `allRoles()`". There are FOUR
+ * production call sites, named by SYMBOL rather than line because every previous line citation in
+ * this comment went stale within a commit or two:
+ *   - cli.ts `mintTokens`      — the read-check path: one surface's `roles`.
+ *   - cli.ts `cmdAuth`         — `allRoles()`.
+ *   - cli.ts `cmdVerifyWrite`  — the write path: one surface's `roles`.
+ *   - seed.ts `seed()` itself  — which cli.ts `cmdSeed` calls with `allRoles()`.
+ * So TWO of the four receive `allRoles()`, not one — `cmdAuth` and `seed()` — and between them they
+ * cover every role in the registry: three READ surfaces (audit-log, access-review, organization) and
+ * two WRITE surfaces (write-surfaces.ts's access-review and organization) list platform_owner.) */
 export function planSeed(roles: string[]): SeedPlan {
   const users: SeededUser[] = [];
   for (const orgKey of ORG_KEYS)
@@ -287,8 +307,9 @@ async function seedTeamIntelGrants(db: Client, roleIds: Map<string, string>): Pr
 }
 
 // ── team-intel KPI fixtures (DIFFERENTIATED per org) ─────────────────────────
-// getDashboardKpis (packages/api/src/routers/teamIntel.ts) counts teams /
-// user_teams / team-leaders scoped to the caller's org. With BOTH orgs empty the
+// getDashboardKpis (originally packages/api/src/routers/teamIntel.ts; TS side since deleted —
+// the C# TeamIntelReadEndpoints is the only reader) counts teams / user_teams / team-leaders
+// scoped to the caller's org. With BOTH orgs empty the
 // two KPI payloads are identical all-zeros, which the RLS Mode B check can't
 // distinguish from a leak (it fails closed on "identical non-empty"). Seeding
 // DIFFERENT team data per org (A: 2 teams, 1 led, 1 member; B: 1 team, unled)
@@ -297,6 +318,13 @@ async function seedTeamIntelGrants(db: Client, roleIds: Map<string, string>): Pr
 // business_unit → company chain, so those are seeded too. All find-or-create by
 // (org, name): companies/business_units/teams have no natural unique key, so a
 // plain re-insert would duplicate and inflate the counts on every re-run.
+//
+// UPDATE 2026-08-17 (#195): seedOrgBTier2Mirrors now ALSO adds b:hr_admin as a member of
+// 'Parity Team B1' — the team-intel READ surface's by-id Mode-A positive control needs
+// GET /team-intel/teams/{B1}/members to return 200 + NON-EMPTY for org B's own probe, and an
+// empty membership list is deep-empty (checks/rls.ts isDeepEmpty), which fails that control.
+// So the per-org KPI payloads now differ via totalTeams (2 vs 1) / teamsWithLeader (1 vs 0) /
+// avgTeamSize — NOT via totalMembers, which is 1 in both orgs.
 
 async function findOrCreateByName(
   db: Client,
@@ -380,7 +408,8 @@ export async function seedTeamIntelData(
       const memberId = userIds.get('a:hr_admin');
       if (memberId) await upsertUserTeam(db, memberId, teamA1);
     } else {
-      // org B: 1 team, no leader, no members → strictly fewer than org A on every team KPI.
+      // org B: 1 team, no leader. (No member HERE — but seedOrgBTier2Mirrors adds b:hr_admin to it,
+      // so the org-B KPI payload differs from org A's via teams/leaders, not via member count.)
       await findOrCreateTeam(db, orgIds.b, buId, 'Parity Team B1', null);
     }
   }
@@ -414,6 +443,193 @@ async function seedBillingSubscription(db: Client, orgAId: string): Promise<void
        updated_at = now()`,
     [orgAId],
   );
+}
+
+// ── platform-dashboard invoice fixtures (Phase-5 slice 23 / #81 PR 3) ────────
+//
+// WHY THESE EXIST, stated carefully because the obvious justification is WRONG. Until now the harness
+// seeded no `invoices` rows at all — but `getAttentionItems` and `getCustomerHealth` are PLATFORM-WIDE,
+// exactly like the three FX reads below, so against the live database they were already reading other
+// tenants' invoices (three pending-and-overdue rows, measured 2026-08-15). Their invoice branches were
+// NOT comparing two empty results there, and an earlier version of this comment said they were.
+//
+// What these six rows actually buy is narrower and still worth having:
+//   1. The fixture becomes SELF-SUFFICIENT. cli.ts:191 explicitly contemplates pointing the harness at a
+//      locally-seeded database; against one of those, the invoice branches genuinely were empty and every
+//      invoice-reading line compared nothing.
+//   2. The harness's OWN two orgs get invoices, so `getCustomerHealth`'s per-org `overdueInvoices` is
+//      non-zero for the orgs whose payloads the RBAC and RLS legs actually authenticate as.
+// Neither of those is "these endpoints were untested". They were, by someone else's data.
+//
+// They do NOT make the three FX-derived reads (`getDashboardKpis`, `getRevenueByCustomer`,
+// `getChurnRisk`) comparable, and it is worth being blunt about why, because "seed USD-only rows so
+// both stacks take the identity path" is a plausible plan that does not work. Those three are
+// PLATFORM-WIDE: they sum every tenant's invoices, not just this harness's two orgs. Any non-USD
+// invoice anywhere in the target database pulls both stacks onto the cross-rate path, where they
+// disagree by construction — TS resolves a LIVE Frankfurter rate and C# reads the DB-pinned
+// `fx_rates` row (exchangerate-api, refreshed daily by a job that is not deployed). Measured against
+// the live database on 2026-08-15: two overdue COP invoices totalling 8,250,000 COP, which the pin
+// converts to a total of 3826.61 USD while TS converts them at whatever COP has done since the pin
+// was taken. Hence those three are registered C#-only (no `tsProcedure`) — see surfaces.ts.
+//
+// All six rows are USD anyway. Not because it makes parity work, but because a non-USD row seeded
+// HERE would make the harness itself the cause of a divergence, which is a different and worse
+// problem than inheriting one.
+//
+// Shape: org A carries the whole matrix (overdue / not-yet-due / draft / paid-in-window /
+// paid-out-of-window), org B carries a single overdue row so BOTH orgs appear in the cross-org
+// aggregates. Due dates are distinct so `getAttentionItems`' (severity, daysUntil) ordering has no
+// tie to flake on.
+//
+// `invoice_number` is an INT with `@default(autoincrement())` and `@@unique([organizationId,
+// invoiceNumber])` — per-ORG uniqueness over a shared sequence. Supplying explicit values does not
+// advance that sequence, so these are placed at 9_900_00x, far above anything the sequence will
+// reach, and a collision would additionally need to land in the same org. Idempotent via that
+// constraint, matching every other fixture here. Note the model has NO `updated_at` column
+// (`created_at` alone, with a DB default) — unlike almost every other table in this schema.
+async function seedDashboardInvoices(db: Client, orgAId: string, orgBId: string): Promise<void> {
+  const rows: Array<[string, number, number, string, string, string]> = [
+    // org, invoice_number, amount, status, due_date SQL, paid_at SQL
+    [orgAId, 9_900_001, 1200.55, 'pending', "now() - interval '4 days'", 'NULL'],
+    [orgAId, 9_900_002, 300.25, 'pending', "now() + interval '10 days'", 'NULL'],
+    [orgAId, 9_900_003, 450.1, 'draft', "now() + interval '20 days'", 'NULL'],
+    [orgAId, 9_900_004, 999.99, 'paid', "now() - interval '12 days'", "now() - interval '5 days'"],
+    [orgAId, 9_900_005, 100, 'paid', "now() - interval '60 days'", "now() - interval '45 days'"],
+    [orgBId, 9_900_001, 2500.75, 'pending', "now() - interval '8 days'", 'NULL'],
+  ];
+
+  for (const [orgId, invoiceNumber, amount, status, dueDate, paidAt] of rows) {
+    // The two date expressions are LITERAL SQL from the table above, never caller input — every
+    // value that varies per row (org, number, amount, status) goes through a bound parameter.
+    await db.query(
+      `INSERT INTO invoices
+         (id, organization_id, invoice_number, amount, currency, status, due_date, paid_at)
+       VALUES
+         (gen_random_uuid(), $1, $2, $3, 'USD', $4::"InvoiceStatus", ${dueDate}, ${paidAt})
+       ON CONFLICT (organization_id, invoice_number) DO UPDATE SET
+         amount = EXCLUDED.amount,
+         currency = EXCLUDED.currency,
+         status = EXCLUDED.status,
+         due_date = EXCLUDED.due_date,
+         paid_at = EXCLUDED.paid_at`,
+      [orgId, invoiceNumber, amount, status],
+    );
+  }
+}
+
+// ── platform-dashboard AI-agent fixtures (Phase-5 slice 23 / #81, final read) ─
+//
+// `getAiCostAnomalies` reads ai_agents / ai_agent_org_configs / ai_agent_usage_logs — tables this seed
+// never touched. It is PLATFORM-WIDE (the caveat-10 family), so against the live database it already
+// reads real tenants' agent configs; what these rows buy is the same two things the invoice block
+// above bought: self-sufficiency on a locally-seeded database (where the read WAS two empty payloads
+// comparing equal — a vacuous green), and anomaly rows belonging to the orgs this harness
+// authenticates as. Unlike the invoice block there is no FX angle at all: both stacks read these
+// tables directly, so the endpoint carries a real `tsProcedure` and these rows feed a REAL diff.
+//
+// Shape: one ACTIVE agent producing BOTH anomaly types across the two orgs — over_budget in org A
+// (15.5 spent vs 10 budget → savings 5.5, exercising the toFixed(2) detail string in both stacks)
+// and zero_usage in org B (NULL budget → `monthlyBudget: null` on the wire, the field a wrong port
+// most plausibly drops) — plus a STUB agent whose enabled config must be skipped by both kernels.
+// The two savings values are DISTINCT (5.5 vs 0.5) because the final sort breaks ties by config row
+// order, which the two stacks need not share (surfaces.ts caveat 10).
+//
+// Idempotency: agents upsert on slug, configs on (agent_id, organization_id). Usage logs have NO
+// unique key, so theirs is DELETE-then-INSERT scoped to the parity agents' ids — the evaluation360
+// fixtures' disposition. `updated_at` is supplied explicitly: Prisma's @updatedAt columns carry no
+// database default, so a bare INSERT would fail NOT NULL.
+//
+// ⚠️ THIS IS THE FIRST PARITY FIXTURE THAT WRITES A GLOBAL CATALOG. `ai_agents` is one of the three
+// RLS-EXEMPT shared catalogs (every prior fixture row is org-scoped to the two parity orgs), and the
+// tier-3 panel found two consequences worth stating out loud:
+//
+//   1. THE REAL CATALOG BOOTSTRAP IS COUNT-GUARDED, and these rows trip it. `seedAiAgents`
+//      (packages/api/src/routers/platform/ai-agents.ts) seeds the production agent catalog only when
+//      `ai_agents` is EMPTY — a bare `count > 0` guard. On a freshly-created database, run the app's
+//      catalog bootstrap BEFORE this seed, or the two `__parity_ai_*` rows make it a permanent no-op.
+//      The runtime warning below exists because nothing else would say so.
+//   2. LIVE-CONSOLE NOISE, permanent by design: against the live database, the platform-owner
+//      dashboard's REAL getAiCostAnomalies panel shows these anomalies from now on (org B's
+//      null-budget config is a forever zero_usage row), and the platform console's agent counts
+//      include the two fixture agents. Platform-console-only — no tenant-facing read can see them
+//      (the tenant paths are per-org config lookups) — and the same family as the parity invoices
+//      that sit in attention-items, but a reader of that dashboard deserves the sentence.
+//
+// Also: the usage rows are seeded at now()−5d and now()−2d, so they age out of the 30-day window
+// at seed+25d and seed+28d respectively — the seeded spend first shrinks (still over budget), then
+// org A's over_budget flips to zero_usage at ~28 days IN BOTH STACKS. Worse than dormancy: after
+// the flip the two remaining anomalies (org A and org B, both zero_usage) TIE at 0.5 savings, and a
+// scan-order tie is exactly what the DISTINCT-savings design above exists to avoid — the diff turns
+// order-nondeterministic and can flake RED. Re-run the seed to re-arm the fixture
+// (surfaces.ts caveat 10 carries the operator-facing version of this).
+async function seedDashboardAiAgents(db: Client, orgAId: string, orgBId: string): Promise<void> {
+  // Exact slugs, not a LIKE — `_` is a single-character wildcard in LIKE patterns.
+  const realAgents = await db.query(
+    `SELECT count(*)::int AS n FROM ai_agents WHERE slug NOT IN ('__parity_ai_alpha', '__parity_ai_stub')`,
+  );
+  if (realAgents.rows[0].n === 0) {
+    // Deliberately a WARNING, not a failure: a parity-only scratch database is a legitimate target.
+    console.warn(
+      '⚠️  ai_agents holds NO real agents — the app catalog bootstrap (seedAiAgents) is count-guarded ' +
+        'and will now never auto-seed. If this database is meant to run the real app, bootstrap the ' +
+        'catalog BEFORE the parity seed.',
+    );
+  }
+  const agents: Array<[string, string, number, string]> = [
+    // slug, name, cost_per_call, status
+    ['__parity_ai_alpha', 'Parity Alpha Agent', 0.05, 'active'],
+    ['__parity_ai_stub', 'Parity Stub Agent', 0.4, 'stub'],
+  ];
+
+  for (const [slug, name, costPerCall, status] of agents) {
+    await db.query(
+      `INSERT INTO ai_agents (id, slug, name, cost_per_call, status, updated_at)
+       VALUES (gen_random_uuid(), $1, $2, $3, $4, now())
+       ON CONFLICT (slug) DO UPDATE SET
+         name = EXCLUDED.name,
+         cost_per_call = EXCLUDED.cost_per_call,
+         status = EXCLUDED.status,
+         updated_at = now()`,
+      [slug, name, costPerCall, status],
+    );
+  }
+
+  const configs: Array<[string, string, number | null]> = [
+    // agent slug, org id, monthly_budget
+    ['__parity_ai_alpha', orgAId, 10],
+    ['__parity_ai_alpha', orgBId, null],
+    ['__parity_ai_stub', orgAId, 25],
+  ];
+
+  for (const [slug, orgId, budget] of configs) {
+    await db.query(
+      `INSERT INTO ai_agent_org_configs (id, agent_id, organization_id, enabled, monthly_budget, updated_at)
+       VALUES (gen_random_uuid(), (SELECT id FROM ai_agents WHERE slug = $1), $2, true, $3, now())
+       ON CONFLICT (agent_id, organization_id) DO UPDATE SET
+         enabled = true,
+         monthly_budget = EXCLUDED.monthly_budget,
+         updated_at = now()`,
+      [slug, orgId, budget],
+    );
+  }
+
+  // Org A's alpha spend: 12 + 3.5 = 15.5 against the 10 budget. Recent enough to sit deep inside any
+  // request-time 30-day window; org B's alpha config gets NO rows, which IS its fixture.
+  await db.query(
+    `DELETE FROM ai_agent_usage_logs
+     WHERE agent_id IN (SELECT id FROM ai_agents WHERE slug IN ('__parity_ai_alpha', '__parity_ai_stub'))`,
+  );
+  for (const [cost, interval] of [
+    [12, '2 days'],
+    [3.5, '5 days'],
+  ] as Array<[number, string]>) {
+    await db.query(
+      `INSERT INTO ai_agent_usage_logs (id, agent_id, organization_id, cost_usd, created_at)
+       VALUES (gen_random_uuid(), (SELECT id FROM ai_agents WHERE slug = '__parity_ai_alpha'), $1, $2,
+               now() - $3::interval)`,
+      [orgAId, cost, interval],
+    );
+  }
 }
 
 // ── reporting (recruitmentAnalytics) fixtures ────────────────────────────────
@@ -935,6 +1151,14 @@ export async function seedNineBoxData(db: Client, orgAId: string, userIds: Map<s
 // ── succession fixtures ──────────────────────────────────────────────────────
 // RBAC: succession:read hr_admin@org + hrbp@unit. hr_admin's compensation:read@org grant (for the
 // comp-gap-alerts secondary check) is already seeded by seedCompensationGrants. No native enums.
+// ⚠️ LOAD-BEARING ABSENCE (panel, 2026-08-17): this harness seeds NO `user_business_units` rows.
+// FOUR succession read dispositions in surfaces.ts trace to that absence — hrbp's unit scope
+// anchors to an EMPTY member list, so the critical-roles LIST answers hrbp with a scoped-empty 200
+// and the three by-id routes answer 404 (hrbp is therefore OMITTED from their expectedByRole —
+// 404 is inexpressible in the 200|403 contract) — but only the THREE by-id omissions DEPEND on it:
+// if anyone ever seeds unit membership for the hrbp fixture user, the list stays green (a
+// non-empty 200 still passes) while the by-id 404 assumption silently flips to 200 with NOTHING
+// asserting it. Re-derive those three rows' expectations in the same change.
 async function seedSuccessionGrants(db: Client, roleIds: Map<string, string>): Promise<void> {
   const readPerm = await upsertPermission(db, 'succession', 'read');
   // create/update/delete grants make hr_admin a genuine org-scoped write role (mirrors the prod
@@ -1195,8 +1419,10 @@ async function seedDeiLeadershipGrants(db: Client, orgAId: string, roleIds: Map<
 // can tell a real isolation pass from a trivial 404 on a dead id. This seeds the
 // minimal org-B mirror for each by-id resource: an employee comp row + nine-box
 // eval for b:hr_admin, an org-B calibration session (+member/vote), the openB/pubB
-// review cycles (+assignments/response), and an org-B critical role. All idempotent
-// and swept by teardown (which deletes every one of these tables by org id, both orgs).
+// review cycles (+assignments/response), an org-B critical role, and (2026-08-17,
+// #195) a b:hr_admin membership on 'Parity Team B1' for the team-intel by-id reads.
+// All idempotent and swept by teardown (which deletes every one of these tables by
+// org id, both orgs — user_teams via the team-id sweep).
 export async function seedOrgBTier2Mirrors(db: Client, orgBId: string, userIds: Map<string, string>): Promise<void> {
   const bSuper = userIds.get('b:super_admin');
   const bHr = userIds.get('b:hr_admin');
@@ -1243,6 +1469,18 @@ export async function seedOrgBTier2Mirrors(db: Client, orgBId: string, userIds: 
   // succession critical-roles/{id}(+suggested-successors, +simulate-exit): an org-B critical role held by
   // b:super. suggested-successors is non-empty via the b:hr_admin nine-box eval seeded above.
   await findOrCreateCriticalRole(db, orgBId, 'Parity Critical Role B1', 'critical', 0.5, 'PARITY-L1', bSuper);
+
+  // team-intel teams/{teamId}/members (#195, 2026-08-17): b:hr_admin joins 'Parity Team B1' so the
+  // Mode-A positive control (org-B probe token → its own team's members) gets 200 + NON-EMPTY — an
+  // empty list is deep-empty and fails the control (checks/rls.ts). profile/balance-score need no
+  // member (their views carry non-empty scalars regardless), but the membership costs them nothing.
+  // The team is seeded unconditionally by seedTeamIntelData before this runs; the guard only covers
+  // a standalone call against an unseeded database.
+  const teamB = await db.query<IdRow>('SELECT id FROM teams WHERE organization_id = $1 AND name = $2 LIMIT 1', [
+    orgBId,
+    'Parity Team B1',
+  ]);
+  if (teamB.rows.length) await upsertUserTeam(db, bHr, teamB.rows[0].id);
 }
 
 // ── Write-verification preconditions ─────────────────────────────────────────
@@ -1863,6 +2101,32 @@ async function seedEngagementGrants(db: Client, roleIds: Map<string, string>): P
   }
 }
 
+/** Grants the `monitoring:read` permission the six monitoring READ endpoints check (#195).
+ *
+ *  Scopes come from `packages/db/prisma/seed-access-matrix.ts` and are NOT invented here:
+ *  hr_admin holds `monitoring` read+update @organization (:54), hrbp holds read @unit (:70).
+ *  Only `read` is seeded — the two monitoring WRITES (dismissAlert / configureAlertRules) have no C#
+ *  port yet, so an update grant would assert nothing.
+ *
+ *  WITHOUT THIS, EVERY MONITORING READ 403s AND IT LOOKS LIKE A C# BUG. `MonitoringStaffGate` runs the
+ *  same `PermissionService` kernel as TS, which legitimately finds zero `role_permissions` rows on a
+ *  freshly-seeded org. That is exactly what happened on the engagement read flip (#166): 12/43 FAIL,
+ *  root-caused to this same missing-grant fixture gap rather than to the product.
+ *
+ *  `org_admin` is DELIBERATELY left ungranted — it is absent from MATRIX entirely, so it holds no
+ *  grants at all, which makes it the surface's deny role. Its 403 is therefore a GRANT-level denial
+ *  (PermissionService says no) rather than a gate-level one, which is the stronger assertion: it
+ *  proves the permission check runs, not merely that some gate rejected an unknown principal. */
+async function seedMonitoringGrants(db: Client, roleIds: Map<string, string>): Promise<void> {
+  const readPerm = await upsertPermission(db, 'monitoring', 'read');
+  for (const key of ORG_KEYS) {
+    const hrAdmin = roleIds.get(`${key}:hr_admin`);
+    if (hrAdmin) await upsertRolePermission(db, hrAdmin, readPerm, 'organization');
+    const hrbp = roleIds.get(`${key}:hrbp`);
+    if (hrbp) await upsertRolePermission(db, hrbp, readPerm, 'unit');
+  }
+}
+
 /** Write-verify-only survey + action-plan fixtures (fixed UUIDs). */
 export const WRITE_ENGAGEMENT = {
   activateSurveyA: 'e0000364-0000-4000-8000-000000000001', // activateSurvey from-state (draft, org A)
@@ -2169,6 +2433,112 @@ export async function ensureAccessReviewWritePreconditions(_cfg: HarnessConfig):
   // Intentionally a no-op — see the block comment above.
 }
 
+/** The platform-organizations write surface's ids (#195). */
+export interface PlatformOrganizationsWriteResources {
+  orgA: string;
+  orgAdminUserId: string;
+  platformOwnerUserId: string;
+}
+
+/** No-op, like access-review: both writes are unconditional updates on an org that the base seed
+ *  already creates, so there is no fixture to build and nothing to reset between runs. */
+export async function ensurePlatformOrganizationsWritePreconditions(_cfg: HarnessConfig): Promise<void> {
+  // Intentionally a no-op — see the doc comment above.
+}
+
+/** Read-only resolution of the platform-organizations write surface's ids from the seeded DB. */
+export async function resolvePlatformOrganizationsWriteResources(
+  cfg: HarnessConfig,
+): Promise<PlatformOrganizationsWriteResources> {
+  const db = makeDbClient(cfg);
+  await db.connect();
+  try {
+    return {
+      orgA: await orgIdBySlug(db, ORG_SLUGS.a),
+      orgAdminUserId: await userIdByEmail(db, 'parity+a-org_admin@tims.test'),
+      platformOwnerUserId: await userIdByEmail(db, 'parity+a-platform_owner@tims.test'),
+    };
+  } finally {
+    await db.end();
+  }
+}
+
+// ── platform organizations CREATE (#208) ─────────────────────────────────────
+/**
+ * The create-surface marker slug. FIXED, not random, and that is load-bearing rather than cosmetic:
+ * `organizations.slug` is `@unique` (packages/db/prisma/schema/organization.prisma:33), so without a
+ * deterministic slug the cleanup below could not find last run's org, and run N+1 would be a
+ * `409 slug_taken` instead of a create. The cleanup is what makes this surface RE-RUNNABLE AT ALL.
+ *
+ * Prefixed `__parity` so `teardown`'s sweep finds it under the same convention as ORG_SLUGS (:78).
+ */
+export const WRITE_ORG_CREATE_SLUG = '__parity_create';
+/** The created org's name — asserted in both the response check and the DB read-back. */
+export const WRITE_ORG_CREATE_NAME = 'Parity Write Org Create';
+
+/** The create surface's resolved ids. No `orgA`: the organization this surface writes is
+ *  MANUFACTURED by the call, not addressed by it, so there is no pre-existing target to resolve. */
+export interface PlatformOrganizationsCreateResources {
+  /** org-A `org_admin` — the denied role (kept for symmetry with the other platform-owner surfaces
+   *  and so a future deny read-back can key on it without re-plumbing the resolver). */
+  orgAdminUserId: string;
+  /** the seeded platform owner — the actor the `org_created` audit row must be attributed to. */
+  platformOwnerUserId: string;
+}
+
+/**
+ * PRIOR-RUN CLEANUP — the whole reason #208 could be answered "register it" rather than "too risky".
+ *
+ * `createOrganization` is the only registered write that provisions a NEW TENANT: one run inserts into
+ * NINE tables (organizations, companies, business_units, teams, org_entitlements ×7, roles,
+ * subscriptions, audit_logs, notifications). Unlike every other write surface's artefacts, those rows
+ * land OUTSIDE the two orgs `teardown` resolves by slug, so nothing pre-existing would ever remove
+ * them. Deleting last run's org here (the 4-precedent marker pattern — WRITE_CYCLE_MARKER :1439,
+ * succession :1604, engagement :1987, ninebox :2128) plus adding the slug to `teardown`'s sweep is
+ * what bounds the residue at exactly one organization.
+ *
+ * Deliberately BEFORE the run, not after: a post-run hook would delete the very rows a human needs to
+ * inspect when a run goes red. The harness also has no post-run hook today (cli.ts cmdVerifyWrite ends
+ * at `close()`), so cleanup-before is both the supported shape and the better one.
+ */
+export async function ensurePlatformOrganizationsCreatePreconditions(cfg: HarnessConfig): Promise<void> {
+  const db = makeDbClient(cfg);
+  await db.connect();
+  try {
+    // notifications FIRST. `notifications.organization_id` carries an INDEX but NO FK CONSTRAINT
+    // (baseline/prod-public-schema.sql:4739 index, :6201 declares user_id as the ONLY FK), so unlike
+    // every other child it does NOT cascade with the organization delete below. The fan-out targets
+    // every REAL platform owner (PlatformOwnerNotifier: unfiltered `WHERE is_platform_owner`), whose
+    // rows no user-scoped cascade in `teardown` reaches either.
+    await db.query(
+      `DELETE FROM notifications WHERE organization_id IN (SELECT id FROM organizations WHERE slug = $1)`,
+      [WRITE_ORG_CREATE_SLUG],
+    );
+    // One statement cascades the other eight tables: companies, org_entitlements, roles,
+    // subscriptions and audit_logs are `organization_id ... ON DELETE CASCADE`; business_units and
+    // teams follow transitively via company_id/business_unit_id.
+    await db.query('DELETE FROM organizations WHERE slug = $1', [WRITE_ORG_CREATE_SLUG]);
+  } finally {
+    await db.end();
+  }
+}
+
+/** Read-only resolution of the create surface's ids from the seeded DB. */
+export async function resolvePlatformOrganizationsCreateResources(
+  cfg: HarnessConfig,
+): Promise<PlatformOrganizationsCreateResources> {
+  const db = makeDbClient(cfg);
+  await db.connect();
+  try {
+    return {
+      orgAdminUserId: await userIdByEmail(db, 'parity+a-org_admin@tims.test'),
+      platformOwnerUserId: await userIdByEmail(db, 'parity+a-platform_owner@tims.test'),
+    };
+  } finally {
+    await db.end();
+  }
+}
+
 /** Read-only resolution of the access-review write surface's ids from the seeded DB. */
 export async function resolveAccessReviewWriteResources(cfg: HarnessConfig): Promise<AccessReviewWriteResources> {
   const db = makeDbClient(cfg);
@@ -2201,12 +2571,26 @@ export interface SeedResources {
   'eval-cycle-staff': ResourcePair;
   'eval-cycle-self': ResourcePair;
   calibration: ResourcePair;
-  /** UNCONSUMED since 2026-08-03 (#58): the only endpoint that threaded this idScopeKey was the
-   *  succession READ surface's `critical-role` (tsProcedure succession.getCriticalRole), removed
-   *  with that surface. The seeded 'Parity Critical Role A1'/'B1' rows still exist, so resolving
-   *  it is harmless and stays for now — the succession read fixtures come out wholesale with the
-   *  ownership flip (#69), which is where removing this belongs. */
+  /** Was UNCONSUMED from 2026-08-03 (#58, the succession read surface's deletion) until 2026-08-17,
+   *  when #195 re-registered that surface C#-only — its three by-id reads
+   *  (critical-role / suggested-successors / simulate-exit) thread this key again, exactly as the
+   *  deleted registrations did. Resolves the 'Parity Critical Role A1'/'B1' rows. */
   'critical-role': ResourcePair;
+  /** NEW 2026-08-17 (#195): the team-intel by-id reads (profile / members / balance-score) thread
+   *  the 'Parity Team A1'/'B1' teams (seedTeamIntelData). Resolved by (org, name) — teams carry
+   *  gen_random_uuid ids and no natural unique key, the same natural-key resolution the
+   *  calibration/critical-role pairs use. The org-B team's membership (the members positive
+   *  control) is seeded by seedOrgBTier2Mirrors. */
+  team: ResourcePair;
+  /** The parity harness's own orgs (`__parity_a` / `__parity_b`, ORG_SLUGS at :78), threaded into
+   *  `/platform/organizations/{id}` by SURFACES['organization'].detail.
+   *
+   *  The `b` id is RESOLVED BUT NEVER PROBED: that endpoint carries `noTenantBoundaryForCaller`, so
+   *  checks/rls.ts short-circuits (:224) before Mode A ever reads `orgBResourceId`. It is kept so the
+   *  ResourcePair shape stays uniform across every key — a one-sided variant would be a second shape
+   *  for `pairFor` (cli.ts) to handle for no gain. Costs zero extra queries: `orgA`/`orgB` are already
+   *  resolved below for the calibration and critical-role lookups. */
+  organization: ResourcePair;
 }
 
 async function orgIdBySlug(db: Client, slug: string): Promise<string> {
@@ -2237,6 +2621,15 @@ async function criticalRoleIdByOrgTitle(db: Client, orgId: string, title: string
     throw new Error(`resolveResources: no seeded critical role "${title}" in org ${orgId} — run \`cli.ts seed\` first`);
   return rows[0].id;
 }
+async function teamIdByOrgName(db: Client, orgId: string, name: string): Promise<string> {
+  const { rows } = await db.query<IdRow>('SELECT id FROM teams WHERE organization_id = $1 AND name = $2 LIMIT 1', [
+    orgId,
+    name,
+  ]);
+  if (!rows.length)
+    throw new Error(`resolveResources: no seeded team "${name}" in org ${orgId} — run \`cli.ts seed\` first`);
+  return rows[0].id;
+}
 
 /** Resolves the Tier-2 by-id resource id pairs from the live seeded DB (read-only). */
 export async function resolveResources(cfg: HarnessConfig): Promise<SeedResources> {
@@ -2257,6 +2650,11 @@ export async function resolveResources(cfg: HarnessConfig): Promise<SeedResource
         a: await criticalRoleIdByOrgTitle(db, orgA, 'Parity Critical Role A1'),
         b: await criticalRoleIdByOrgTitle(db, orgB, 'Parity Critical Role B1'),
       },
+      team: {
+        a: await teamIdByOrgName(db, orgA, 'Parity Team A1'),
+        b: await teamIdByOrgName(db, orgB, 'Parity Team B1'),
+      },
+      organization: { a: orgA, b: orgB },
     };
   } finally {
     await db.end();
@@ -2319,6 +2717,14 @@ export async function seed(cfg: HarnessConfig, roles: string[]): Promise<SeedRes
     // seedBillingSubscription). Org-independent, so it runs unconditionally.
     await seedBillingSubscription(db, orgIds.a);
 
+    // platform-dashboard invoice fixture (Phase-5 slice 23 / #81 PR 3). Org-independent like the
+    // subscription above, so it runs unconditionally.
+    await seedDashboardInvoices(db, orgIds.a, orgIds.b);
+
+    // platform-dashboard AI-agent fixture (slice 23's final read, getAiCostAnomalies). Also
+    // org-independent and unconditional — see seedDashboardAiAgents for what it proves.
+    await seedDashboardAiAgents(db, orgIds.a, orgIds.b);
+
     // reporting RLS/RBAC/parity fixtures: vacancy:read grants (hr_admin@org / hrbp@unit)
     // + a recruitment dataset in org A only. Grants only when those roles were seeded.
     if (roles.includes('hr_admin') || roles.includes('hrbp')) await seedReportingGrants(db, roleIds);
@@ -2348,6 +2754,7 @@ export async function seed(cfg: HarnessConfig, roles: string[]): Promise<SeedRes
     // data seed here — write fixtures are seeded in ensureEngagementWritePreconditions (write path
     // only); read fixtures (surveys/survey_responses for enps etc.) are seeded separately below.
     if (roles.includes('hr_admin') || roles.includes('hrbp')) await seedEngagementGrants(db, roleIds);
+    if (roles.includes('hr_admin') || roles.includes('hrbp')) await seedMonitoringGrants(db, roleIds);
     // eNPS read data (both orgs, DIFFERENTIATED — see the fixture-rationale comment above
     // seedEngagementEnpsData). Org-independent of `roles`; only needs each org's super_admin id.
     await seedEngagementEnpsData(db, orgIds.a, orgIds.b, userIds);
@@ -2389,7 +2796,12 @@ export async function seed(cfg: HarnessConfig, roles: string[]): Promise<SeedRes
 export async function teardown(cfg: HarnessConfig): Promise<void> {
   const admin = makeAdminClient(cfg);
   const db = makeDbClient(cfg);
-  const slugs = ORG_KEYS.map((k) => ORG_SLUGS[k]);
+  // The two seeded orgs PLUS the create surface's marker org (#208). Every DELETE below is keyed
+  // `organization_id = ANY(orgIds)`, so an org outside this list is unreachable by teardown — which is
+  // precisely how `createOrganization` differs IN KIND from the other write surfaces, whose artefacts
+  // all land inside a tenant this list already owns. Including the marker slug closes that gap; without
+  // it a created org and its eight child tables would survive every teardown forever.
+  const slugs = [...ORG_KEYS.map((k) => ORG_SLUGS[k]), WRITE_ORG_CREATE_SLUG];
 
   await db.connect();
   try {
@@ -2413,6 +2825,12 @@ export async function teardown(cfg: HarnessConfig): Promise<void> {
     //    team chain MUST go before the users delete (step 4) or that delete could hit a
     //    leader FK. role_permissions → roles (Cascade), swept here explicitly for clarity.
     if (orgIds.length) {
+      // notifications — swept EXPLICITLY because nothing else here reaches them. `organization_id`
+      // has an index but NO FK (baseline:4739 / :6201), so it neither cascades on the organizations
+      // delete at step 5 nor is covered by the users delete at step 3 for the rows belonging to REAL
+      // platform owners (the create surface's notify fan-out targets every `is_platform_owner` user,
+      // not just the seeded parity one). Must precede step 5 regardless of ordering elsewhere.
+      await db.query('DELETE FROM notifications WHERE organization_id = ANY($1)', [orgIds]);
       const teamRows = await db.query<IdRow>('SELECT id FROM teams WHERE organization_id = ANY($1)', [orgIds]);
       const teamIds = teamRows.rows.map((r) => r.id);
       if (teamIds.length) await db.query('DELETE FROM user_teams WHERE team_id = ANY($1)', [teamIds]);
@@ -2475,6 +2893,17 @@ export async function teardown(cfg: HarnessConfig): Promise<void> {
       // dei fixture (org A). user_id FK is ON DELETE CASCADE (would be swept by the users delete
       // below regardless), but swept explicitly here for clarity, matching this file's convention.
       await db.query('DELETE FROM employee_demographics WHERE organization_id = ANY($1)', [orgIds]);
+      // access-review write fixture (org A). ADDED 2026-08-11: teardown NEVER deleted these, and
+      // `access_reviews_reviewer_id_fkey` is ON DELETE **RESTRICT**
+      // (baseline/prod-public-schema.sql:5571), not CASCADE like almost everything else here. The
+      // reviewer of every row `verify-write access-review` inserts is
+      // `parity+a-platform_owner@tims.test`, which is in `userIds` — so the users delete below threw an
+      // FK violation and teardown aborted BEFORE the organizations delete, having already swept the
+      // team/business-unit/company rows. That left a half-swept database and, since #208 registered the
+      // create surface, a surviving marker org that `seed --teardown` is documented as the escape hatch
+      // for. The organization_id FK IS cascade, so this is belt-and-braces for that path and load-bearing
+      // for the users path.
+      await db.query('DELETE FROM access_reviews WHERE organization_id = ANY($1)', [orgIds]);
     }
     // role_permissions grant rows (permissions themselves are a global catalog — never deleted).
     if (roleIds.length) await db.query('DELETE FROM role_permissions WHERE role_id = ANY($1)', [roleIds]);

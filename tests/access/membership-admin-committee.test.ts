@@ -1,21 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { blockAt } from '../helpers/source-blocks';
 
 const ROOT = join(__dirname, '..', '..');
 const crud = () => readFileSync(join(ROOT, 'packages/api/src/routers/interview/crud.ts'), 'utf8');
-
-// Slice a single endpoint body out of a router source so multiline regexes
-// can't bleed across endpoint boundaries. Captures from the endpoint key up to
-// (but not including) the next top-level endpoint key (or EOF).
-function endpointBody(src: string, name: string): string {
-  const start = src.indexOf(`${name}:`);
-  if (start === -1) return '';
-  // The next endpoint key sits at 2-space indent: `\n  someName:`.
-  const rest = src.slice(start + name.length);
-  const next = rest.search(/\n {2}[a-zA-Z]\w*:\s*permissionProcedure/);
-  return next === -1 ? rest : rest.slice(0, next);
-}
 
 describe('interview evaluator management', () => {
   it('addEvaluator gated by interview:update', () => {
@@ -25,7 +14,7 @@ describe('interview evaluator management', () => {
     expect(crud()).toMatch(/removeEvaluator:\s*permissionProcedure\('interview',\s*'update'\)/);
   });
   it('addEvaluator org-verifies the evaluator user (IDOR)', () => {
-    const body = endpointBody(crud(), 'addEvaluator');
+    const body = blockAt(crud(), 'addEvaluator:');
     expect(body).toMatch(/user\.(findFirst|count)/);
   });
   it('addEvaluator maps duplicate to CONFLICT', () => {
@@ -38,13 +27,13 @@ describe('interview evaluator management', () => {
   // by id and self-add → both endpoints must SCOPE-probe the interview parent
   // (assertScoped), not just org-check it.
   it('addEvaluator scope-probes the interview parent (no bare org-only findFirst)', () => {
-    const body = endpointBody(crud(), 'addEvaluator');
+    const body = blockAt(crud(), 'addEvaluator:');
     expect(body).toMatch(/assertScoped\('interview'/);
     // The escalation hole was the bare org-only parent check — it must be gone.
     expect(body).not.toMatch(/interview\.findFirst/);
   });
   it('removeEvaluator scope-probes the interview parent', () => {
-    const body = endpointBody(crud(), 'removeEvaluator');
+    const body = blockAt(crud(), 'removeEvaluator:');
     expect(body).toMatch(/assertScoped\('interview'/);
     expect(body).not.toMatch(/interview\.findFirst/);
   });

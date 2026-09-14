@@ -11,6 +11,17 @@
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.10" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <!-- TRANSITIVE PIN, not a new dependency. Testcontainers 4.13.0 (the latest published) resolves
+         SSH.NET 2025.1.0, which GHSA-q939-rpr3-3284 rates HIGH: ScpClient recursive download allows an
+         arbitrary file write via server-controlled SCP filenames. Affected <= 2025.1.0, first patched
+         2026.0.0. `dotnet restore` runs with NuGetAudit warnings-as-errors, so this fails the build for
+         EVERY project in the repo, on main as well — it is not specific to this branch.
+         We never touch the vulnerable API (no ScpClient reference anywhere in src/ or tests/), and this is
+         a TEST-ONLY dependency that ships in nothing, so real exposure is nil — but suppressing NU1903 to
+         get green would be silently weakening a security control, which is the exact failure
+         .claude/rules/verification.md exists to prevent. Pinning forward is the honest fix.
+         REMOVE THIS PIN once a Testcontainers release resolves 2026.0.0 or later on its own. -->
+    <PackageReference Include="SSH.NET" Version="2026.0.0" />
     <PackageReference Include="Testcontainers.PostgreSql" Version="4.13.0" />
     <!-- WP2.6: a real Redis to prove the C# limiter writes the exact Upstash-shared keys. Same
          Testcontainers family version already used for Postgres. -->

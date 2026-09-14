@@ -1,3 +1,4 @@
+using Tims.Api.Http;
 using System.Security.Claims;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Options;
@@ -89,7 +90,7 @@ public static class AccessReviewEndpoints
 
                 await securityEventWriter.WriteAsync(
                     new SecurityEvent(organizationId, Guid.Parse(gate.Context!.UserId), "platform_export", "export:access_review", null,
-                        metadata, IpAddress: ClientIp(httpContext), UserAgent: UserAgentOf(httpContext)),
+                        metadata, IpAddress: httpContext.ClientIpFor(), UserAgent: UserAgentOf(httpContext)),
                     cancellationToken);
 
                 return Results.Ok(new { format = "csv", data = BuildCsv(report), count = report.Rows.Count, truncated = report.Truncated });
@@ -213,20 +214,6 @@ public static class AccessReviewEndpoints
         }
 
         return string.Join('\n', new[] { header }.Concat(lines));
-    }
-
-    // Audit IP: x-forwarded-for || x-real-ip (matches TS `ipOf`'s header order — CompensationReadEndpoints
-    // carries the same precedent).
-    private static string? ClientIp(HttpContext httpContext)
-    {
-        var forwarded = httpContext.Request.Headers["x-forwarded-for"].ToString();
-        if (!string.IsNullOrEmpty(forwarded))
-        {
-            return forwarded;
-        }
-
-        var realIp = httpContext.Request.Headers["x-real-ip"].ToString();
-        return string.IsNullOrEmpty(realIp) ? null : realIp;
     }
 
     private static string? UserAgentOf(HttpContext httpContext)

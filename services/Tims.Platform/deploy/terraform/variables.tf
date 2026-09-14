@@ -92,32 +92,40 @@ variable "otlp_endpoint" {
 variable "feature_flags" {
   description = "Platform:<Surface>Enabled flags. Keep all false on first deploy; flip per-surface at canary. EXCEPTION: team_intel_read — see DRIFT WARNING comment above; it is already live out-of-band."
   type = object({
-    external_vendor_read   = optional(bool, false)
-    external_vendor_write  = optional(bool, false)
-    billing_read           = optional(bool, false)
-    billing_usage          = optional(bool, false)
-    billing_webhook_write  = optional(bool, false)
-    billing_self_serve     = optional(bool, false)
-    reporting_read         = optional(bool, false)
-    validation_staff_write = optional(bool, false)
-    team_intel_read        = optional(bool, false) # DRIFT: live in prod out-of-band; tfvars.example overrides to true — do not remove that override.
-    evaluation360_read     = optional(bool, false)
-    succession_read        = optional(bool, false)
-    compensation_read      = optional(bool, false)
-    nine_box_read          = optional(bool, false)
-    engagement_read        = optional(bool, false)
-    dei_read               = optional(bool, false)
-    audit_log_read         = optional(bool, false)
-    fx_reads               = optional(bool, false)
-    compensation_write     = optional(bool, false)
-    evaluation360_write    = optional(bool, false)
-    succession_write       = optional(bool, false)
-    nine_box_write         = optional(bool, false)
-    engagement_write       = optional(bool, false)
-    access_review_read     = optional(bool, false)
-    access_review_write    = optional(bool, false)
+    external_vendor_read    = optional(bool, false)
+    external_vendor_write   = optional(bool, false)
+    billing_read            = optional(bool, false)
+    billing_usage           = optional(bool, false)
+    billing_webhook_write   = optional(bool, false)
+    billing_self_serve      = optional(bool, false)
+    reporting_read          = optional(bool, false)
+    validation_staff_write  = optional(bool, false)
+    team_intel_read         = optional(bool, false) # DRIFT: live in prod out-of-band; tfvars.example overrides to true — do not remove that override.
+    evaluation360_read      = optional(bool, false)
+    succession_read         = optional(bool, false)
+    compensation_read       = optional(bool, false)
+    nine_box_read           = optional(bool, false)
+    engagement_read         = optional(bool, false)
+    dei_read                = optional(bool, false)
+    audit_log_read          = optional(bool, false)
+    fx_reads                = optional(bool, false)
+    compensation_write      = optional(bool, false)
+    evaluation360_write     = optional(bool, false)
+    succession_write        = optional(bool, false)
+    nine_box_write          = optional(bool, false)
+    engagement_write        = optional(bool, false)
+    access_review_read      = optional(bool, false)
+    access_review_write     = optional(bool, false)
+    monitoring_read         = optional(bool, false) # Q0b slice 1 (#100) — gates flips #64/#66/#68
+    alert_metrics_cron_read = optional(bool, false) # Q0b slice 2 (#172) — the last blocker on #64/#66
   })
   default = {}
+}
+
+variable "mfa_enforced" {
+  description = "Platform:MfaEnforced (#173). ONLY the exact string \"true\" enables MFA step-up; anything else fails OPEN by design, so an empty default ships the gate inert. Set it to the SAME value as the web app's MFA_ENFORCED — a session refused by one stack and served by the other is the hole #173 closes."
+  type        = string
+  default     = ""
 }
 
 variable "manage_stripe_secrets" {

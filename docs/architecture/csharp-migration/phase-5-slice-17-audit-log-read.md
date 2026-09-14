@@ -7,11 +7,34 @@ cutover deferred, TS untouched except behavior-preserving pure-kernel extraction
 
 ## Scope decision (read this first)
 
+> **Corrected 2026-08-10 (#102 / #61 AC3) — the first bullet below is out of date.** `exportLogs` is **not**
+> a stub and `routers/audit.ts` is **not** dead code: the tenant-scoped CSV/JSON export shipped 2026-07-31 in
+> `863b62f4`, six days after this document was written, and is reachable today at
+> `apps/web/app/(admin)/settings/audit-log/page.tsx:28` → `packages/api/src/routers/audit.ts:28`
+> (`permissionProcedure('audit','export')`) → `services/audit.service.ts:50` →
+> `repositories/audit.repository.ts:46`. The other four procedures do still have zero frontend consumers.
+> Anyone planning the port should read
+> `docs/architecture/csharp-migration/audit-compliance-domain.md` §2.3, not this bullet.
+>
+> **And the distinction this document conflates (#61 AC3).** "Audit" here is _two_ surfaces with two
+> different authorization models, and they must not be merged in the port:
+>
+> - **Tenant-scoped** — `packages/api/src/routers/audit.ts`, read through `tenantDb`
+>   (`repositories/audit.repository.ts:1`), org-bounded, gated by the `audit` permission grant, which the
+>   access matrix gives to **`super_admin` only** (`packages/db/prisma/seed-access-matrix.ts:35,40`). A C#
+>   port of this surface needs `TenantScope` **and** the grant check.
+> - **Platform-scoped** — the surface this slice actually ports, read through the privileged `db` client,
+>   deliberately cross-org, gated by `PlatformOwnerGate` with **no** grant check and **no** `TenantScope`
+>   (`Program.cs:446-450` — "NEVER wrapped in TenantScope" is stated at `:448`).
+>
+> `PlatformOwnerGate` is a wider and different authorization model than `audit:read`. Reusing this slice's
+> gate for the tenant surface would silently widen it.
+
 Three surfaces touch "audit" in this codebase; only two are live:
 
 - `packages/api/src/routers/audit.ts` (org-scoped `listLogs`/`getLogDetail`/`exportLogs`[stub]/`getAccessReport`/
   `getChangesByEntity`) — registered in `root.ts`, **zero frontend consumers**. Dead code. **Out of scope** —
-  not ported, not deleted, in this slice.
+  not ported, not deleted, in this slice. _(Superseded — see the correction above.)_
 - `platform.getCrossOrgAuditLogs` + `platform.exportAuditLogsCsv` (`routers/platform/system.ts:257-354`) —
   backs `apps/web/app/(admin)/platform/audit/page.tsx`. **In scope.**
 - `routers/platform/access-review.ts` (CB-2b — `getAccessReview`/`exportAccessReviewCsv`/`attestAccessReview`/

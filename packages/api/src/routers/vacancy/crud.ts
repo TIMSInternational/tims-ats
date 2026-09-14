@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { router, permissionProcedure } from '../../trpc';
-import { tenantDb as db } from '@tims/db';
+import { tenantDb as db, runTenantTransaction } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { scopeWhereFor, assertScoped, buildAccessForUser } from '../../access';
@@ -105,19 +105,23 @@ const vacancyMutationSelect = {
 // Shared Zod schemas
 // ---------------------------------------------------------------------------
 
-const salarySchema = z.object({
-  min: z.number().min(0).optional(),
-  max: z.number().min(0).optional(),
-  currency: z.string().max(10).default('COP'),
-  period: z.enum(['monthly', 'yearly']).default('monthly'),
-}).optional();
+const salarySchema = z
+  .object({
+    min: z.number().min(0).optional(),
+    max: z.number().min(0).optional(),
+    currency: z.string().max(10).default('COP'),
+    period: z.enum(['monthly', 'yearly']).default('monthly'),
+  })
+  .optional();
 
-const settingsSchema = z.object({
-  slaTargetDays: z.number().int().min(1).max(365).optional(),
-  autoPublish: z.boolean().optional(),
-  requireApproval: z.boolean().optional(),
-  notifyOnApply: z.boolean().optional(),
-}).optional();
+const settingsSchema = z
+  .object({
+    slaTargetDays: z.number().int().min(1).max(365).optional(),
+    autoPublish: z.boolean().optional(),
+    requireApproval: z.boolean().optional(),
+    notifyOnApply: z.boolean().optional(),
+  })
+  .optional();
 
 const createVacancyInput = z.object({
   title: z.string().min(1).max(200),
@@ -294,7 +298,9 @@ export const vacancyCrudRouter = router({
           });
         }
 
-        return db.$transaction(async (tx) => {
+        // runTenantTransaction, not db.$transaction (#45 / prisma#17948) — create +
+        // channel + publish must not be able to half-apply.
+        return runTenantTransaction(ctx.user.organizationId, async (tx) => {
           const vacancy = await tx.vacancy.create({
             data: baseData,
             select: vacancyMutationSelect,
@@ -344,10 +350,12 @@ export const vacancyCrudRouter = router({
     }),
 
   close: permissionProcedure('vacancy', 'update')
-    .input(z.object({
-      id: z.string().uuid(),
-      reason: z.string().min(1).max(1000),
-    }))
+    .input(
+      z.object({
+        id: z.string().uuid(),
+        reason: z.string().min(1).max(1000),
+      }),
+    )
     .mutation(async ({ ctx, input }) => {
       await assertScoped('vacancy', input.id, ctx.access, ctx.user.id, ctx.user.organizationId);
 
@@ -428,7 +436,9 @@ export const vacancyCrudRouter = router({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Vacante no encontrada' });
       }
 
-      return db.$transaction(async (tx) => {
+      // runTenantTransaction, not db.$transaction (#45 / prisma#17948) — a duplicate
+      // must not half-copy (vacancy without its job profile / stages).
+      return runTenantTransaction(ctx.user.organizationId, async (tx) => {
         const newVacancy = await tx.vacancy.create({
           data: {
             title: `${original.title} (copia)`,

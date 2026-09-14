@@ -55,7 +55,30 @@ feature_flags = {
   engagement_write    = false
   access_review_read  = false
   access_review_write = false
+
+  # --- Q0b: the two surfaces that gate ownership flips #64/#66/#68 ---
+  # ⚠️ BOTH of these env vars were previously ABSENT from main.tf entirely, so terraform never managed
+  # them and an apply left whatever was set out-of-band untouched. They are managed now, which means an
+  # apply WILL write these values. If either surface has been enabled out-of-band, set it true HERE
+  # first or the apply silently darkens it — the same drift class as team_intel_read above.
+  monitoring_read         = false # #100, Q0b slice 1 — the six monitoring READ endpoints
+  alert_metrics_cron_read = false # #172, Q0b slice 2 — GET /internal/alert-metrics (cron cross-org read)
 }
+
+# #173 MFA step-up on the platform service. ⚠️ Also previously absent from main.tf, so the same
+# apply-will-now-write warning applies. ONLY the exact string "true" enables it; anything else fails
+# OPEN by design, so "" ships the gate inert. Set it to the SAME value as the web app's MFA_ENFORCED —
+# a session refused by one stack and served by the other is the hole #173 exists to close.
+mfa_enforced = ""
+
+# ⚠️ Enabling alert_metrics_cron_read requires the secret to be populated FIRST:
+#   aws secretsmanager put-secret-value \
+#     --secret-id tims-platform-api/Platform__AlertMetricsCronSecret \
+#     --secret-string "$(openssl rand -base64 48)"
+# Terraform seeds every managed secret with the literal REPLACE_ME_OUT_OF_BAND so the ARN resolves.
+# CronCallerGate REJECTS that literal (and anything under 32 chars) as unconfigured, so the surface
+# stays 401 rather than accepting a credential that is committed to this repository. The same value
+# must be set as ALERT_METRICS_CRON_SECRET in Vercel.
 
 # Set true only before the billing WRITE cutover (creates + wires Stripe secret containers).
 manage_stripe_secrets = false

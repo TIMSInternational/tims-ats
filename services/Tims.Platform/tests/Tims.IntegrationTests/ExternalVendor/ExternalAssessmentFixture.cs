@@ -62,6 +62,11 @@ public sealed class ExternalAssessmentFixture : IAsyncLifetime
     public const string ExpiredToken = "tims_ext_read_expired_00000000000000000000000000000006";
     public const string SuspendedOrgToken = "tims_ext_read_suspended_org_00000000000000000000000007";
 
+    // #180: the denial-audit rows record which KEY was denied, so revocation has a target when an
+    // org holds several. Exposed here rather than re-typed in the test — a literal could drift from
+    // the seed silently, and the assertion would then pass against the wrong key.
+    public static readonly Guid ScopeExcludesKeyId = Guid.Parse("ca000000-0000-0000-0000-000000000003");
+
     private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:16-alpine")
         .WithUsername(LoginRole)
         .WithPassword(Password)
@@ -259,6 +264,24 @@ public sealed class ExternalAssessmentFixture : IAsyncLifetime
             revoked_at timestamptz NULL,
             expires_at timestamptz NULL
         );
+        -- #180: SecurityEventWriter's target. Without this table the writer's fail-SOFT catch swallows
+        -- every insert and a denial-audit test passes while writing nothing — the exact blindness that
+        -- let the API-key gap ship unnoticed. No users FK on actor_id/user_id: this fixture has no
+        -- `users` table, and an API-key denial is attributed with a NULL actor by design (the principal
+        -- is a key, not a person), so there is nothing to point at.
+        CREATE TABLE audit_logs (
+            id uuid PRIMARY KEY,
+            organization_id uuid NOT NULL REFERENCES organizations (id) ON DELETE CASCADE,
+            user_id uuid NULL,
+            actor_id uuid NULL,
+            action text NOT NULL,
+            entity text NOT NULL,
+            entity_id text NULL,
+            changes jsonb NULL,
+            metadata jsonb NULL,
+            ip_address text NULL,
+            user_agent text NULL,
+            created_at timestamp NOT NULL DEFAULT now());
         """;
 
     // OrgA active + `external`→assessment:read@organization; OrgB active but NO grant; a suspended org.

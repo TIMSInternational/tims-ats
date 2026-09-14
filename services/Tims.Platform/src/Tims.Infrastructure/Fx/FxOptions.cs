@@ -52,6 +52,15 @@ public sealed class FxOptions
     [Range(1, 3600)]
     public int CircuitBreakDurationSeconds { get; init; } = 15;
 
+    /// <summary>
+    /// Hours between FX-refresh runs when the refresh is hosted IN-PROCESS by the API
+    /// (<c>Platform:FxRefreshEnabled</c> — see <c>FxRefreshHostedService</c>). The provider publishes
+    /// daily, so the default is 24; the floor of 1 exists for tests, which shrink it rather than mock
+    /// time. Irrelevant to the Quartz-scheduled Workers host, which owns its own cron.
+    /// </summary>
+    [Range(1, 168)]
+    public int RefreshIntervalHours { get; init; } = 24;
+
     /// <summary>The base URL guaranteed to end with '/' so relative fetches resolve correctly.</summary>
     public string ResolvedExchangeRateApiBaseUrl() =>
         ExchangeRateApiBaseUrl.EndsWith('/') ? ExchangeRateApiBaseUrl : ExchangeRateApiBaseUrl + "/";

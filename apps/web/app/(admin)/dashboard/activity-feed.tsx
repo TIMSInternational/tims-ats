@@ -1,6 +1,7 @@
 'use client';
 
 import { trpc } from '../../../lib/trpc';
+import { useDashboardRecentActivity } from '../../../lib/platform-api/dashboard';
 import { timeAgo, Skeleton } from './dashboard-utils';
 import { useI18n } from '../../../lib/i18n';
 import { ErrorState } from '../../../components';
@@ -39,8 +40,18 @@ function ServiceDot({ status, label, latency }: { status: string; label: string;
 
 export function ActivityFeed() {
   const { t } = useI18n();
-  const { data: activity, isLoading: actLoading, isError: actError, refetch: refetchActivity } = trpc.platform.getRecentActivity.useQuery();
-  const { data: health, isLoading: healthLoading, isError: healthError, refetch: refetchHealth } = trpc.platform.getSystemHealth.useQuery();
+  const {
+    data: activity,
+    isLoading: actLoading,
+    isError: actError,
+    refetch: refetchActivity,
+  } = useDashboardRecentActivity();
+  const {
+    data: health,
+    isLoading: healthLoading,
+    isError: healthError,
+    refetch: refetchHealth,
+  } = trpc.platform.getSystemHealth.useQuery();
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -73,9 +84,7 @@ export function ActivityFeed() {
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-medium text-primary truncate">{item.title}</p>
                   <div className="flex items-center gap-2 mt-0.5">
-                    {item.meta && (
-                      <span className="text-[10px] text-muted truncate max-w-[120px]">{item.meta}</span>
-                    )}
+                    {item.meta && <span className="text-[10px] text-muted truncate max-w-[120px]">{item.meta}</span>}
                     <span className="text-[10px] text-muted">{timeAgo(item.timestamp)}</span>
                   </div>
                 </div>
@@ -98,9 +107,7 @@ export function ActivityFeed() {
           {health && (
             <span
               className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
-                health.overall === 'operational'
-                  ? 'bg-emerald-100 text-emerald-700'
-                  : 'bg-amber-100 text-amber-700'
+                health.overall === 'operational' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
               }`}
             >
               {health.overall === 'operational' ? 'All Systems Go' : 'Degraded'}
@@ -120,16 +127,9 @@ export function ActivityFeed() {
           <div className="space-y-0 overflow-y-auto max-h-[260px]">
             {(health?.services ?? []).slice(0, 8).map((svc) => {
               const latencyMetric = svc.metrics?.find(
-                (m) => m.label.toLowerCase().includes('latencia') || m.label.toLowerCase().includes('query')
+                (m) => m.label.toLowerCase().includes('latencia') || m.label.toLowerCase().includes('query'),
               );
-              return (
-                <ServiceDot
-                  key={svc.name}
-                  status={svc.status}
-                  label={svc.name}
-                  latency={latencyMetric?.value}
-                />
-              );
+              return <ServiceDot key={svc.name} status={svc.status} label={svc.name} latency={latencyMetric?.value} />;
             })}
             {health?.services.length === 0 && (
               <p className="text-xs text-muted py-6 text-center">{t.dashboard.noServicesFound}</p>

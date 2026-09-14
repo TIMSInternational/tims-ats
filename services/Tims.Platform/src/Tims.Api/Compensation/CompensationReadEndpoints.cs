@@ -1,3 +1,4 @@
+using Tims.Api.Http;
 using System.Security.Claims;
 using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Mvc;
@@ -387,7 +388,7 @@ public static class CompensationReadEndpoints
         CancellationToken cancellationToken)
     {
         var actorId = AuditActor.ActorFor(context);
-        var ipAddress = ClientIp(httpContext);
+        var ipAddress = httpContext.ClientIpFor();
         var userAgent = httpContext.Request.Headers.UserAgent.ToString();
         foreach (var recordId in recordIds)
         {
@@ -408,19 +409,6 @@ public static class CompensationReadEndpoints
     // Optional-uuid Zod parity: absent/empty is valid; a present non-uuid is a bad input (→ 400).
     private static bool IsOptionalUuidValid(string? value) =>
         string.IsNullOrEmpty(value) || Guid.TryParse(value, out _);
-
-    // Audit IP: x-forwarded-for || x-real-ip (matches the TS header order).
-    private static string? ClientIp(HttpContext httpContext)
-    {
-        var forwarded = httpContext.Request.Headers["x-forwarded-for"].ToString();
-        if (!string.IsNullOrEmpty(forwarded))
-        {
-            return forwarded;
-        }
-
-        var realIp = httpContext.Request.Headers["x-real-ip"].ToString();
-        return string.IsNullOrEmpty(realIp) ? null : realIp;
-    }
 
     private static async Task DisposeAnchorsAsync(IAnchorLoader anchors)
     {

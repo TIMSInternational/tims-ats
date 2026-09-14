@@ -25,10 +25,16 @@ vi.mock('@tims/db', () => ({
     offer: { findFirst: vi.fn().mockResolvedValue(mockOffer), update: vi.fn() },
     user: { findFirst: vi.fn().mockResolvedValue(null) },
     $transaction: vi.fn(async (arg: unknown) =>
-      typeof arg === 'function' ? (arg as (tx: unknown) => Promise<unknown>)(mockTx) : Promise.all(arg as Promise<unknown>[]),
+      typeof arg === 'function'
+        ? (arg as (tx: unknown) => Promise<unknown>)(mockTx)
+        : Promise.all(arg as Promise<unknown>[]),
     ),
   },
   runWithTenant: (_o: string, f: () => unknown) => f(),
+  // #45: convertToEmployee's multi-write hire flow now uses runTenantTransaction —
+  // tenantDb.$transaction never composed (prisma/prisma#17948). The FIT snapshot
+  // below must share that one transaction with the user/plan/offer writes.
+  runTenantTransaction: vi.fn(async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) => fn(mockTx)),
 }));
 
 const readFitForHire = vi.fn().mockResolvedValue(null);
@@ -58,8 +64,18 @@ async function makeCaller() {
   const testRouter = router({ offer: offerLifecycleRouter });
   const callerFactory = createCallerFactory(testRouter);
   return callerFactory({
-    user: { id: 'hr-1', organizationId: ORG_ID, roles: ['hr_admin'], isPlatformOwner: false, impersonatorId: null, email: 'hr@tims.co', isActive: true },
-    headers: new Headers(), supabaseAuth: null, externalAuth: null,
+    user: {
+      id: 'hr-1',
+      organizationId: ORG_ID,
+      roles: ['hr_admin'],
+      isPlatformOwner: false,
+      impersonatorId: null,
+      email: 'hr@tims.co',
+      isActive: true,
+    },
+    headers: new Headers(),
+    supabaseAuth: null,
+    externalAuth: null,
   } as never);
 }
 

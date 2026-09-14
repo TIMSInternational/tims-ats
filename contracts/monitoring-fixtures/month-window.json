@@ -1,0 +1,67 @@
+{
+  "description": "Golden parity for monitoring.getCrossModuleTrend's rolling window: buildMonthWindow(nowMs, months) in packages/api/src/services/monitoring.service.ts. Asserted IDENTICALLY by the REAL TS export (tests/monitoring/monitoring-fixtures.test.ts, which builds the anchor with `new Date(y, m-1, d, h)` LOCAL) and the C# Tims.Domain.Monitoring.MonitoringKernels.BuildMonthWindow (Tims.UnitTests, which builds it as an Unspecified-kind DateTime). Both bounds are MIDNIGHT, so the goldens are wall-clock DATES only (YYYY-MM-DD) and are therefore timezone-independent on either runner. Pins: (1) oldest -> newest ordering; (2) the label comes from the SHIFTED date; (3) `end` is `new Date(y, m+1, 0)` = midnight on the LAST DAY of the month, NOT end-of-day, so rows timestamped later that day fall in NO bucket — a live quirk of the production reader, pinned rather than fixed; (4) JS setMonth DAY-OVERFLOW is preserved: the anchor keeps its day-of-month, so from the 31st a short target month rolls FORWARD and the window can carry the same label twice. Fixing any of these changes production dashboard numbers and must be done on BOTH stacks in one change.",
+  "cases": [
+    {
+      "name": "6-month window from 2026-08-05",
+      "input": { "anchor": { "year": 2026, "month": 8, "day": 5, "hour": 12 }, "months": 6 },
+      "expected": [
+        { "label": "2026-03", "start": "2026-03-01", "end": "2026-03-31" },
+        { "label": "2026-04", "start": "2026-04-01", "end": "2026-04-30" },
+        { "label": "2026-05", "start": "2026-05-01", "end": "2026-05-31" },
+        { "label": "2026-06", "start": "2026-06-01", "end": "2026-06-30" },
+        { "label": "2026-07", "start": "2026-07-01", "end": "2026-07-31" },
+        { "label": "2026-08", "start": "2026-08-01", "end": "2026-08-31" }
+      ]
+    },
+    {
+      "name": "borrows a year when the shift crosses January",
+      "input": { "anchor": { "year": 2026, "month": 2, "day": 10, "hour": 0 }, "months": 4 },
+      "expected": [
+        { "label": "2025-11", "start": "2025-11-01", "end": "2025-11-30" },
+        { "label": "2025-12", "start": "2025-12-01", "end": "2025-12-31" },
+        { "label": "2026-01", "start": "2026-01-01", "end": "2026-01-31" },
+        { "label": "2026-02", "start": "2026-02-01", "end": "2026-02-28" }
+      ]
+    },
+    {
+      "name": "February end-bound in a LEAP year is the 29th",
+      "input": { "anchor": { "year": 2028, "month": 2, "day": 15, "hour": 9 }, "months": 1 },
+      "expected": [{ "label": "2028-02", "start": "2028-02-01", "end": "2028-02-29" }]
+    },
+    {
+      "name": "setMonth day-overflow: 31 March back 1 month is Feb 31 -> 3 March, so BOTH points label 2026-03",
+      "input": { "anchor": { "year": 2026, "month": 3, "day": 31, "hour": 6 }, "months": 2 },
+      "expected": [
+        { "label": "2026-03", "start": "2026-03-01", "end": "2026-03-31" },
+        { "label": "2026-03", "start": "2026-03-01", "end": "2026-03-31" }
+      ]
+    },
+    {
+      "name": "setMonth day-overflow, 1-day roll: 31 May back 1 month is Apr 31 -> 1 May, so BOTH points label 2026-05",
+      "input": { "anchor": { "year": 2026, "month": 5, "day": 31, "hour": 23 }, "months": 2 },
+      "expected": [
+        { "label": "2026-05", "start": "2026-05-01", "end": "2026-05-31" },
+        { "label": "2026-05", "start": "2026-05-01", "end": "2026-05-31" }
+      ]
+    },
+    {
+      "name": "13-month window crosses the year boundary and ends on the anchor month",
+      "input": { "anchor": { "year": 2026, "month": 8, "day": 5, "hour": 12 }, "months": 13 },
+      "expected": [
+        { "label": "2025-08", "start": "2025-08-01", "end": "2025-08-31" },
+        { "label": "2025-09", "start": "2025-09-01", "end": "2025-09-30" },
+        { "label": "2025-10", "start": "2025-10-01", "end": "2025-10-31" },
+        { "label": "2025-11", "start": "2025-11-01", "end": "2025-11-30" },
+        { "label": "2025-12", "start": "2025-12-01", "end": "2025-12-31" },
+        { "label": "2026-01", "start": "2026-01-01", "end": "2026-01-31" },
+        { "label": "2026-02", "start": "2026-02-01", "end": "2026-02-28" },
+        { "label": "2026-03", "start": "2026-03-01", "end": "2026-03-31" },
+        { "label": "2026-04", "start": "2026-04-01", "end": "2026-04-30" },
+        { "label": "2026-05", "start": "2026-05-01", "end": "2026-05-31" },
+        { "label": "2026-06", "start": "2026-06-01", "end": "2026-06-30" },
+        { "label": "2026-07", "start": "2026-07-01", "end": "2026-07-31" },
+        { "label": "2026-08", "start": "2026-08-01", "end": "2026-08-31" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,208 @@
+{
+  "cases": [
+    {
+      "name": "no requirement → null",
+      "input": {
+        "languages": [
+          "English"
+        ],
+        "requirements": {}
+      },
+      "expected": null
+    },
+    {
+      "name": "empty required array → null",
+      "input": {
+        "languages": [
+          "English"
+        ],
+        "requirements": {
+          "requiredLanguages": []
+        }
+      },
+      "expected": null
+    },
+    {
+      "name": "languages null → null",
+      "input": {
+        "languages": null,
+        "requirements": {
+          "requiredLanguages": [
+            "English"
+          ]
+        }
+      },
+      "expected": null
+    },
+    {
+      "name": "languages empty → null",
+      "input": {
+        "languages": [],
+        "requirements": {
+          "requiredLanguages": [
+            "English"
+          ]
+        }
+      },
+      "expected": null
+    },
+    {
+      "name": "full match, case-insensitive → 100",
+      "input": {
+        "languages": [
+          "english",
+          "SPANISH"
+        ],
+        "requirements": {
+          "requiredLanguages": [
+            "English",
+            "Spanish"
+          ]
+        }
+      },
+      "expected": 100
+    },
+    {
+      "name": "half match → 50",
+      "input": {
+        "languages": [
+          "English"
+        ],
+        "requirements": {
+          "requiredLanguages": [
+            "English",
+            "French"
+          ]
+        }
+      },
+      "expected": 50
+    },
+    {
+      "name": "candidate proficiency suffix stripped: English (B2)",
+      "input": {
+        "languages": [
+          "English (B2)"
+        ],
+        "requirements": {
+          "requiredLanguages": [
+            "English"
+          ]
+        }
+      },
+      "expected": 100
+    },
+    {
+      "name": "required-side parenthetical stripped too",
+      "input": {
+        "languages": [
+          "English"
+        ],
+        "requirements": {
+          "requiredLanguages": [
+            "English (native)"
+          ]
+        }
+      },
+      "expected": 100
+    },
+    {
+      "name": "1 of 3 → 33",
+      "input": {
+        "languages": [
+          "English"
+        ],
+        "requirements": {
+          "requiredLanguages": [
+            "English",
+            "French",
+            "German"
+          ]
+        }
+      },
+      "expected": 33
+    },
+    {
+      "name": "2 of 3 → 67",
+      "input": {
+        "languages": [
+          "English",
+          "French"
+        ],
+        "requirements": {
+          "requiredLanguages": [
+            "English",
+            "French",
+            "German"
+          ]
+        }
+      },
+      "expected": 67
+    },
+    {
+      "name": "duplicate required counts twice → 100",
+      "input": {
+        "languages": [
+          "English"
+        ],
+        "requirements": {
+          "requiredLanguages": [
+            "English",
+            "English"
+          ]
+        }
+      },
+      "expected": 100
+    },
+    {
+      "name": "duplicate required, one miss → 67",
+      "input": {
+        "languages": [
+          "English"
+        ],
+        "requirements": {
+          "requiredLanguages": [
+            "English",
+            "English",
+            "French"
+          ]
+        }
+      },
+      "expected": 67
+    },
+    {
+      "name": "1 of 8 = 12.5 rounds half-up to 13",
+      "input": {
+        "languages": [
+          "English"
+        ],
+        "requirements": {
+          "requiredLanguages": [
+            "English",
+            "A",
+            "B",
+            "C",
+            "D",
+            "E",
+            "F",
+            "G"
+          ]
+        }
+      },
+      "expected": 13
+    },
+    {
+      "name": "whitespace before parenthetical trimmed",
+      "input": {
+        "languages": [
+          "  Portuguese   (fluent)  "
+        ],
+        "requirements": {
+          "requiredLanguages": [
+            "Portuguese"
+          ]
+        }
+      },
+      "expected": 100
+    }
+  ]
+}

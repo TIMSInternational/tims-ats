@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { router, permissionProcedure } from '../../trpc';
-import { tenantDb as db } from '@tims/db';
+import { tenantDb as db, runTenantTransaction } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { resolveStaffSupabaseUserId } from '../../services/staff-provisioning.service';
@@ -25,7 +25,7 @@ export const offerLifecycleRouter = router({
         companyId: z.string().uuid().optional(),
         businessUnitId: z.string().uuid().optional(),
         teamId: z.string().uuid().optional(),
-      })
+      }),
     )
     .mutation(async ({ ctx, input }) => {
       const scopeWhere = await scopeWhereFor('offer', ctx.access, ctx.user.id);
@@ -35,10 +35,7 @@ export const offerLifecycleRouter = router({
       // Cannot use assertScoped alone as those fields would be lost.
       const offer = await db.offer.findFirst({
         where: {
-          AND: [
-            { id: input.offerId, organizationId: ctx.user.organizationId },
-            scopeWhere as Prisma.OfferWhereInput,
-          ],
+          AND: [{ id: input.offerId, organizationId: ctx.user.organizationId }, scopeWhere as Prisma.OfferWhereInput],
         },
         include: {
           candidate: true,
@@ -89,7 +86,10 @@ export const offerLifecycleRouter = router({
         offer.vacancyId,
       );
 
-      return db.$transaction(async (tx) => {
+      // runTenantTransaction, not db.$transaction (#45 / prisma#17948): `db` is
+      // `tenantDb`, so the outer wrapper never composed and this multi-write hire
+      // flow (user + onboarding plan + tasks + offer status) was not atomic.
+      return runTenantTransaction(ctx.user.organizationId, async (tx) => {
         // Create the user record, linked to its Supabase identity from birth.
         const newUser = await tx.user.create({
           data: {

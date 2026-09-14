@@ -2,19 +2,16 @@ import { z } from 'zod';
 import { router, protectedProcedure, permissionProcedure } from '../trpc';
 import { tenantDb as db } from '@tims/db';
 
-const notificationSelect = {
-  id: true,
-  type: true,
-  title: true,
-  message: true,
-  module: true,
-  read: true,
-  readAt: true,
-  entityType: true,
-  entityId: true,
-  actionUrl: true,
-  createdAt: true,
-} as const;
+import { TRPCError } from '@trpc/server';
+import { notificationSelect } from '../repositories/notification.repository';
+import { notificationService, InvalidNotificationRecipientsError } from '../services/notification.service';
+
+function recipientError(error: unknown): never {
+  if (error instanceof InvalidNotificationRecipientsError) {
+    throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid notification recipients' });
+  }
+  throw error;
+}
 
 export const notificationRouter = router({
   list: protectedProcedure
@@ -160,10 +157,8 @@ export const notificationRouter = router({
       actionUrl: z.string().max(500).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      return db.notification.create({
-        data: { ...input, organizationId: ctx.user.organizationId || null },
-        select: notificationSelect,
-      });
+      const { userId, ...content } = input;
+      return notificationService.create(ctx.user.organizationId, userId, content).catch(recipientError);
     }),
 
   bulkCreate: permissionProcedure('notification', 'create')
@@ -179,12 +174,6 @@ export const notificationRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       const { userIds, ...data } = input;
-      return db.notification.createMany({
-        data: userIds.map((userId) => ({
-          ...data,
-          userId,
-          organizationId: ctx.user.organizationId || null,
-        })),
-      });
+      return notificationService.bulkCreate(ctx.user.organizationId, userIds, data).catch(recipientError);
     }),
 });

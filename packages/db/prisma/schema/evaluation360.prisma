@@ -1,9 +1,5 @@
-/// Sprint 1.7 — 360 Evaluation greenfield foundation. A ReviewCycle groups
-/// RaterAssignments (subject × rater × relationship); each assignment collects
-/// RaterResponses (one per competency, from the FRESH packages/shared
-/// EVAL360_COMPETENCIES set — no DB Competency table). Anonymity rules
-/// (self shown, manager attributed, peer/direct_report suppressed below 3
-/// raters) are enforced in the service layer in a later slice, not here.
+/// Sprint 1.7 — 360 Evaluation. This file now declares ENUMS ONLY. The three models it used to hold
+/// were removed by ownership flip #67; see the block below before adding anything here.
 enum ReviewCycleStatus {
   draft
   open
@@ -23,64 +19,37 @@ enum RaterAssignmentStatus {
   submitted
 }
 
-model ReviewCycle {
-  id             String            @id @default(uuid()) @db.Uuid
-  organizationId String            @map("organization_id") @db.Uuid
-  name           String
-  status         ReviewCycleStatus @default(draft)
-  opensAt        DateTime?         @map("opens_at")
-  closesAt       DateTime?         @map("closes_at")
-  publishedAt    DateTime?         @map("published_at")
-  createdById    String            @map("created_by_id") @db.Uuid
-  createdAt      DateTime          @default(now()) @map("created_at")
-  updatedAt      DateTime          @updatedAt @map("updated_at")
 
-  createdBy   User               @relation("ReviewCycleCreatedBy", fields: [createdById], references: [id])
-  assignments RaterAssignment[]
-
-  @@index([organizationId])
-  @@map("review_cycles")
-}
-
-model RaterAssignment {
-  id             String                 @id @default(uuid()) @db.Uuid
-  organizationId String                 @map("organization_id") @db.Uuid
-  cycleId        String                 @map("cycle_id") @db.Uuid
-  subjectUserId  String                 @map("subject_user_id") @db.Uuid
-  raterUserId    String                 @map("rater_user_id") @db.Uuid
-  relationship   RaterRelationship
-  status         RaterAssignmentStatus  @default(pending)
-  submittedAt    DateTime?              @map("submitted_at")
-  createdAt      DateTime               @default(now()) @map("created_at")
-  updatedAt      DateTime               @updatedAt @map("updated_at")
-
-  cycle     ReviewCycle      @relation(fields: [cycleId], references: [id], onDelete: Cascade)
-  subject   User             @relation("RaterAssignmentSubject", fields: [subjectUserId], references: [id])
-  rater     User             @relation("RaterAssignmentRater", fields: [raterUserId], references: [id])
-  responses RaterResponse[]
-
-  @@unique([cycleId, subjectUserId, raterUserId])
-  @@index([organizationId])
-  @@index([cycleId])
-  @@index([raterUserId])
-  @@index([subjectUserId])
-  @@map("rater_assignments")
-}
-
-model RaterResponse {
-  id             String   @id @default(uuid()) @db.Uuid
-  organizationId String   @map("organization_id") @db.Uuid
-  assignmentId   String   @map("assignment_id") @db.Uuid
-  competencyKey  String   @map("competency_key")
-  rating         Int
-  comment        String?  @db.VarChar(5000)
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
-
-  assignment RaterAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
-
-  @@unique([assignmentId, competencyKey])
-  @@index([organizationId])
-  @@index([assignmentId])
-  @@map("rater_responses")
-}
+// ── OWNERSHIP FLIP #67 (2026-08-06) — DO NOT RE-ADD THESE MODELS ───────────────────────────────
+//
+// `ReviewCycle` / `RaterAssignment` / `RaterResponse` used to live here. The tables `review_cycles`,
+// `rater_assignments` and `rater_responses` STILL EXIST IN PRODUCTION and still hold data — they are
+// now owned by EF Core (`Evaluation360WriteDbContext` / `Evaluation360ReadDbContext` in
+// services/Tims.Platform/src/Tims.Infrastructure/Evaluation360/), which is the sole writer, sole
+// reader and sole schema authority. See `efcore[]` in docs/architecture/table-ownership.md and the
+// §7e transcript in docs/architecture/csharp-migration/ownership-flip-runbook.md.
+//
+// Re-adding a model here is a `cross-owner collision` in `scripts/table-ownership.mjs` (red build),
+// and it re-arms the §2 DROP TABLE hazard from the other direction.
+//
+// The repo's bootstrap definition of the three tables is
+// services/Tims.Platform/db/flip-ddl/evaluation360.sql — apply it after `prisma db push` when
+// bootstrapping a dev database. (Unlike flips #2 and #3, an original `CREATE TABLE` also survives at
+// packages/db/prisma/migrations/20260713150000_add_evaluation360/migration.sql, so runbook §0 P8 was
+// NOT live here. The flip-ddl file is preferred anyway: it is extracted from the committed prod
+// baseline rather than from migration source, and it is idempotent, atomic and GRANT-complete.)
+//
+// THE ENUMS ABOVE ARE DELIBERATELY KEPT, and that is a decision, not leftovers:
+//   - `packages/db/src/index.ts:16-18` re-exports all three from `@tims/db`; deleting them is a
+//     public-API change to that package for no functional gain.
+//   - The Postgres types are a cross-stack contract. `scripts/parity/seed.ts:799,817,1388` casts to
+//     `"ReviewCycleStatus"` / `"RaterRelationship"` / `"RaterAssignmentStatus"` in raw SQL, and the
+//     EF entities read the same columns. `tests/db/evaluation360-schema.test.ts` pins their exact
+//     value lists, which stays a live guarantee about production after the flip.
+//   - Keeping them narrows the §2 hazard: `prisma migrate diff --from-schema-datasource` will emit a
+//     `DROP TABLE` for the three tables, but no `DROP TYPE` for these.
+// The cost, stated so it is not discovered later: `prisma db push` still CREATEs these three types on
+// a fresh database, i.e. Prisma still emits a little DDL for an EF-owned domain. Both orders are safe
+// — evaluation360.sql guards every `CREATE TYPE` on `pg_type` — and both were exercised on a scratch
+// cluster (runbook §7e). Changing an enum VALUE here would be a real schema change to an EF-owned
+// domain and must go through docs/architecture/ddl-governance.md instead.

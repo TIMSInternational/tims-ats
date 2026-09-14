@@ -4,6 +4,7 @@ import { tenantDb as db } from '@tims/db';
 import { assertSubjectInScope, requireOrgScope, logDataAccess, selectFor } from '../access';
 import { getEmployeeCompForSubject } from '../services/compensation.service';
 import { convertMoney } from '../lib/currency';
+import { clientIpFrom } from '../lib/client-ip';
 import { normalizeCurrencyCode, buildCompPayEquity, buildSimulateAdjustment } from '@tims/shared';
 
 export const compensationRouter = router({
@@ -99,7 +100,7 @@ export const compensationRouter = router({
         entity: 'employeeCompensation',
         recordId: compensation.id,
         action: 'read',
-        ipAddress: ctx.headers.get('x-forwarded-for') || ctx.headers.get('x-real-ip'),
+        ipAddress: clientIpFrom(ctx.headers),
         userAgent: ctx.headers.get('user-agent'),
       });
 
@@ -205,7 +206,7 @@ export const compensationRouter = router({
         input.userId,
         {
           actorId: ctx.user.impersonatorId ?? ctx.user.id,
-          ipAddress: ctx.headers.get('x-forwarded-for') || ctx.headers.get('x-real-ip'),
+          ipAddress: clientIpFrom(ctx.headers),
           userAgent: ctx.headers.get('user-agent'),
         },
         'No puedes ver la compensacion de este usuario',

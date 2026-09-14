@@ -1,3 +1,4 @@
+using Tims.Api.Http;
 using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
 using System.Text.Json.Nodes;
@@ -128,8 +129,7 @@ public static class ExternalValidationEndpoints
         var principal = new ExternalValidationSubmitPrincipal(
             organizationId,
             apiKeyId,
-            httpContext.Request.Headers["x-forwarded-for"].FirstOrDefault()
-                ?? httpContext.Request.Headers["x-real-ip"].FirstOrDefault(),
+            httpContext.ClientIpFor(),
             httpContext.Request.Headers.UserAgent.FirstOrDefault());
         return GateResult.Ok(principal);
     }

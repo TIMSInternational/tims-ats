@@ -1,6 +1,17 @@
-// Pure team-intel shaping kernels — the SINGLE SOURCE the TS teamIntel router returns AND the
-// parity target for the C# port (Phase-5 team-intel strangler, Slice 6). No DB, no I/O, so they are
-// golden-fixturable from the repo-root vitest AND importable everywhere.
+// Pure team-intel shaping kernels — the parity target for the C# port (Phase-5 team-intel
+// strangler, Slice 6). No DB, no I/O, so they are golden-fixturable from the repo-root vitest AND
+// importable everywhere.
+//
+// NOT DEAD CODE, despite having no runtime caller (checked before you delete it). This header used
+// to read "the SINGLE SOURCE the TS teamIntel router returns"; that router is DELETED as of
+// 2026-08-06 (#55), so the importers today are:
+//   - buildBalanceScore / buildTeamComparison → tests/team-intel/{balance-score,team-comparison}-fixtures.test.ts
+//   - computeAvgTenureYears / computeRoleDiversity → tests/tier2/s-c-team-intel.test.ts, via the
+//     re-export shim packages/api/src/routers/team-intel-metrics.ts
+// That is the whole point of the arrangement: these functions and
+// Tims.Domain.TeamIntel.{BalanceScoreBuilder,TeamComparisonBuilder,TeamIntelMetrics} are asserted
+// against the SAME goldens in contracts/team-intel-fixtures/. Deleting the TS side because "nothing
+// calls it" would silently retire the C# port's only executable specification.
 //
 // PARITY PINS (each red-if-regressed in contracts/team-intel-fixtures/*):
 //  - Two DIFFERENT roleDiversity formulas — `computeRoleDiversity` is a 2-DECIMAL ratio (round(x*100)/100)
@@ -10,19 +21,20 @@
 //  - All `Math.round` are JS half-UP (toward +Infinity); the C# port uses `Math.Floor(x + 0.5)`, NOT
 //    banker's rounding.
 //  - `uniqueRoles`/diversity count DISTINCT NON-EMPTY jobTitles (`.filter(Boolean)` drops null/empty).
-//  - `nowMs` is INJECTED (the router passes `Date.now()`), never read inside the kernel.
+//  - `nowMs` is INJECTED (callers pass `Date.now()`; the goldens pass a fixed instant), never read
+//    inside the kernel. The TS caller that used to inject it was the router, now deleted (#55).
 
 const YEAR_MS = 1000 * 60 * 60 * 24 * 365;
 const MONTH_MS = 1000 * 60 * 60 * 24 * 30;
 
 /**
  * Mean tenure in YEARS (365-day years), rounded to one decimal (JS half-up). Empty → 0.
- * Ported verbatim from the former team-intel-metrics.ts; the router's getDashboardKpis returns this.
+ * Ported verbatim from the former team-intel-metrics.ts. Its TS consumer used to be the router's
+ * getDashboardKpis (deleted 2026-07-28); the C# owner is TeamIntelMetrics.AvgTenureYears.
  */
 export function computeAvgTenureYears(members: { createdAt: Date }[], nowMs: number): number {
   if (members.length === 0) return 0;
-  const years =
-    members.reduce((s, m) => s + (nowMs - m.createdAt.getTime()) / YEAR_MS, 0) / members.length;
+  const years = members.reduce((s, m) => s + (nowMs - m.createdAt.getTime()) / YEAR_MS, 0) / members.length;
   return Math.round(years * 10) / 10;
 }
 
@@ -53,8 +65,8 @@ export interface BalanceScoreView {
 }
 
 /**
- * The team balance score — a faithful extraction of the TS getBalanceScore body (the router wraps this
- * with the `teamId`). tenure uses 30-DAY months (≠ the 365-day years above); `roleDiversity` is an
+ * The team balance score — a faithful extraction of the (now-deleted, #55) TS getBalanceScore body,
+ * which wrapped this with the `teamId`, exactly as C# GetBalanceScoreAsync does today. tenure uses 30-DAY months (≠ the 365-day years above); `roleDiversity` is an
  * INTEGER percent; `sizeScore` is 100 for a 3..10-member team else `max(0, 100 - abs(count - 7) * 10)`;
  * `balanceScore` = `round((sizeScore + roleDiversity) / 2)`. All rounds are JS half-up.
  */
@@ -62,14 +74,12 @@ export function buildBalanceScore(members: BalanceScoreMember[], nowMs: number):
   const memberCount = members.length;
 
   const tenureMonths = members.map((m) => (nowMs - m.createdAt.getTime()) / MONTH_MS);
-  const avgTenure =
-    tenureMonths.length > 0 ? tenureMonths.reduce((a, b) => a + b, 0) / tenureMonths.length : 0;
+  const avgTenure = tenureMonths.length > 0 ? tenureMonths.reduce((a, b) => a + b, 0) / tenureMonths.length : 0;
 
   const uniqueRoles = new Set(members.map((m) => m.jobTitle).filter(Boolean)).size;
   const roleDiversity = memberCount > 0 ? Math.round((uniqueRoles / memberCount) * 100) : 0;
 
-  const sizeScore =
-    memberCount >= 3 && memberCount <= 10 ? 100 : Math.max(0, 100 - Math.abs(memberCount - 7) * 10);
+  const sizeScore = memberCount >= 3 && memberCount <= 10 ? 100 : Math.max(0, 100 - Math.abs(memberCount - 7) * 10);
   const balanceScore = Math.round((sizeScore + roleDiversity) / 2);
 
   return {
@@ -120,8 +130,7 @@ export function buildTeamComparison(teams: TeamComparisonInput[], nowMs: number)
     const memberCount = team.members.length;
     const uniqueRoles = new Set(team.members.map((m) => m.jobTitle).filter(Boolean)).size;
     const tenureMonths = team.members.map((m) => (nowMs - m.createdAt.getTime()) / MONTH_MS);
-    const avgTenure =
-      tenureMonths.length > 0 ? tenureMonths.reduce((a, b) => a + b, 0) / tenureMonths.length : 0;
+    const avgTenure = tenureMonths.length > 0 ? tenureMonths.reduce((a, b) => a + b, 0) / tenureMonths.length : 0;
 
     return {
       teamId: team.id,

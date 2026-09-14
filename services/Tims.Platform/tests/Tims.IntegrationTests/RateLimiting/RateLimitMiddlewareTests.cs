@@ -4,6 +4,7 @@ using Microsoft.Extensions.Hosting;
 using Tims.Api.Authentication;
 using Tims.Api.RateLimiting;
 using Tims.Domain.RateLimiting;
+using Tims.Domain.Identity;
 using Tims.Infrastructure.RateLimiting;
 
 namespace Tims.IntegrationTests.RateLimiting;
@@ -74,8 +75,6 @@ public sealed class RateLimitMiddlewareTests
     [InlineData("/whoami")]
     [InlineData("/external-whoami")]
     [InlineData("/openapi/v1.json")]
-    [InlineData("/require-permission/candidate/read")]
-    [InlineData("/require-org-scope/candidate/read")]
     public async Task Exempts_infra_and_probe_paths(string path)
     {
         var guard = InMemoryGuard();
@@ -95,6 +94,38 @@ public sealed class RateLimitMiddlewareTests
         }
 
         Assert.Equal(200, nextCalls);
+    }
+
+    [Theory]
+    [InlineData("/require-permission/candidate/read", false)]
+    [InlineData("/require-org-scope/candidate/read", false)]
+    [InlineData("/whoami", true)]
+    [InlineData("/health", true)]
+    [InlineData("/openapi/v1.json", true)]
+    public async Task Denial_capable_paths_cannot_bypass_the_audit_budget(string path, bool resolvedStaff)
+    {
+        var guard = InMemoryGuard();
+        var writes = 0;
+        var middleware = new RateLimitMiddleware(context =>
+        {
+            writes++;
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            return Task.CompletedTask;
+        });
+        var budget = RateLimits.Tokens(RateLimitCategory.Query);
+        for (var i = 0; i <= budget; i++)
+        {
+            var context = Request(HttpMethods.Get, path, ctx =>
+            {
+                if (resolvedStaff)
+                    ctx.Items[ResolvedPrincipal.HttpContextKey] = new ResolvedPrincipal(
+                        new TenantContext(PrincipalType.OrgUser, "org", "user", ["super_admin"]));
+            });
+            await middleware.InvokeAsync(context, guard);
+            Assert.Equal(i < budget ? StatusCodes.Status403Forbidden : StatusCodes.Status429TooManyRequests,
+                context.Response.StatusCode);
+        }
+        Assert.Equal(budget, writes);
     }
 
     [Fact]

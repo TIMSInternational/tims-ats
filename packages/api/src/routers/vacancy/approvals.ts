@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { router, permissionProcedure } from '../../trpc';
-import { tenantDb as db } from '@tims/db';
+import { tenantDb as db, runTenantTransaction } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { scopeWhereFor, assertScoped, buildAccessForUser, createAnchorLoader } from '../../access';
@@ -32,10 +32,12 @@ const vacancyWithApprovalsSelect = {
 
 export const vacancyApprovalsRouter = router({
   submitForApproval: permissionProcedure('vacancy', 'update')
-    .input(z.object({
-      id: z.string().uuid(),
-      approverIds: z.array(z.string().uuid()).min(1).max(10),
-    }))
+    .input(
+      z.object({
+        id: z.string().uuid(),
+        approverIds: z.array(z.string().uuid()).min(1).max(10),
+      }),
+    )
     .mutation(async ({ ctx, input }) => {
       await assertScoped('vacancy', input.id, ctx.access, ctx.user.id, ctx.user.organizationId);
 
@@ -110,7 +112,15 @@ export const vacancyApprovalsRouter = router({
         }
       }
 
-      return db.$transaction(async (tx) => {
+      // runTenantTransaction, NOT db.$transaction: `db` here is `tenantDb`, whose
+      // $allOperations extension gives every op its OWN mini-transaction on the base
+      // client (tenant-client.ts:40). An outer tenantDb.$transaction therefore does
+      // NOT compose — each write commits independently (prisma/prisma#17948), so a
+      // mid-way failure left the vacancy in pending_approval with no approval rows.
+      // Reproduced on a local PG17 cluster 2026-08-06 (#45): after a deliberate
+      // failure the old code left status=pending_approval + 1 approval row COMMITTED;
+      // runTenantTransaction left status=draft + 0 rows.
+      return runTenantTransaction(ctx.user.organizationId, async (tx) => {
         await tx.vacancy.update({
           where: { id: input.id },
           data: { status: 'pending_approval' },
@@ -134,10 +144,12 @@ export const vacancyApprovalsRouter = router({
     }),
 
   approve: permissionProcedure('vacancy', 'approve')
-    .input(z.object({
-      id: z.string().uuid(),
-      comment: z.string().max(1000).optional(),
-    }))
+    .input(
+      z.object({
+        id: z.string().uuid(),
+        comment: z.string().max(1000).optional(),
+      }),
+    )
     .mutation(async ({ ctx, input }) => {
       await assertScoped('vacancy', input.id, ctx.access, ctx.user.id, ctx.user.organizationId);
 
@@ -158,7 +170,10 @@ export const vacancyApprovalsRouter = router({
       // between them could leave the vacancy's status inconsistent with its
       // approvals. Wrap in one transaction; the final read stays outside (it's a
       // read, and reflects whatever the transaction committed).
-      await db.$transaction(async (tx) => {
+      // NOTE (#45): that wrapping was `db.$transaction` = `tenantDb.$transaction`,
+      // which does NOT compose (prisma/prisma#17948) -- the finding above was
+      // therefore still open. runTenantTransaction is the construct that closes it.
+      await runTenantTransaction(ctx.user.organizationId, async (tx) => {
         await tx.vacancyApproval.update({
           where: { id: approval.id },
           data: { status: 'approved', comment: input.comment, decidedAt: new Date() },
@@ -183,10 +198,12 @@ export const vacancyApprovalsRouter = router({
     }),
 
   reject: permissionProcedure('vacancy', 'approve')
-    .input(z.object({
-      id: z.string().uuid(),
-      comment: z.string().min(1).max(1000),
-    }))
+    .input(
+      z.object({
+        id: z.string().uuid(),
+        comment: z.string().min(1).max(1000),
+      }),
+    )
     .mutation(async ({ ctx, input }) => {
       await assertScoped('vacancy', input.id, ctx.access, ctx.user.id, ctx.user.organizationId);
 
@@ -202,7 +219,11 @@ export const vacancyApprovalsRouter = router({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'No hay aprobacion pendiente para este usuario' });
       }
 
-      return db.$transaction(async (tx) => {
+      // runTenantTransaction per #45 — see submitForApproval above. This block is the
+      // worst of the three under the old code: reject did status->draft, then
+      // cancelled the remaining pending approvals. A failure between those two left
+      // the vacancy in `draft` with live `pending` approvals attached.
+      return runTenantTransaction(ctx.user.organizationId, async (tx) => {
         await tx.vacancyApproval.update({
           where: { id: approval.id },
           data: { status: 'rejected', comment: input.comment, decidedAt: new Date() },

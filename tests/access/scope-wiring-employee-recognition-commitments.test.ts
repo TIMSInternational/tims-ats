@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { blockAt } from '../helpers/source-blocks';
 
 // Wave (role rebuild) Slice 5C — static tripwires for the two OWN-scoped
 // employee surfaces: recognition RECEIVED and the employee's own coaching
@@ -22,25 +23,13 @@ import { join } from 'path';
 //                                the own-scoped caller). Explicit select + bounded.
 
 const ROOT = join(__dirname, '..', '..');
-const readFeedback = () =>
-  readFileSync(join(ROOT, 'packages/api/src/routers/performance/feedback.ts'), 'utf8');
-const readCoaching = () =>
-  readFileSync(join(ROOT, 'packages/api/src/routers/performance/coaching.ts'), 'utf8');
+const readFeedback = () => readFileSync(join(ROOT, 'packages/api/src/routers/performance/feedback.ts'), 'utf8');
+const readCoaching = () => readFileSync(join(ROOT, 'packages/api/src/routers/performance/coaching.ts'), 'utf8');
 
 // Isolate the body of a named procedure (`name: ...` up to the next top-level
 // `procedure,`/`router` boundary) so assertions target THAT endpoint.
-function procedureBody(src: string, name: string): string {
-  const start = src.indexOf(`${name}:`);
-  expect(start, `procedure ${name} not found`).toBeGreaterThanOrEqual(0);
-  const rest = src.slice(start + name.length);
-  const next = rest.search(
-    /\n {2}[a-zA-Z]+:\s*(permissionProcedure|protectedProcedure|router)/,
-  );
-  return next >= 0 ? rest.slice(0, next) : rest;
-}
-
 describe('performance.myRecognitions — own-scoped recognition RECEIVED', () => {
-  const body = () => procedureBody(readFeedback(), 'myRecognitions');
+  const body = () => blockAt(readFeedback(), 'myRecognitions:');
 
   it('exists', () => {
     expect(readFeedback()).toMatch(/myRecognitions:/);
@@ -83,13 +72,13 @@ describe('performance.myRecognitions — own-scoped recognition RECEIVED', () =>
 });
 
 describe('performance.myCommitments — own-scoped employee commitments', () => {
-  const body = () => procedureBody(readCoaching(), 'myCommitments');
+  const body = () => blockAt(readCoaching(), 'myCommitments:');
 
   it('exists', () => {
     expect(readCoaching()).toMatch(/myCommitments:/);
   });
 
-  it('uses permissionProcedure(\'performance\', \'read\') (employee has this grant)', () => {
+  it("uses permissionProcedure('performance', 'read') (employee has this grant)", () => {
     expect(body()).toMatch(/permissionProcedure\('performance',\s*'read'\)/);
   });
 
@@ -104,10 +93,8 @@ describe('performance.myCommitments — own-scoped employee commitments', () => 
     expect(b).not.toMatch(/input\.employeeId/);
   });
 
-  it('resolves the subject via scopeWhereFor(\'commitment\', ctx.access, ctx.user.id)', () => {
-    expect(body()).toMatch(
-      /scopeWhereFor\(\s*'commitment',\s*ctx\.access,\s*ctx\.user\.id\s*\)/,
-    );
+  it("resolves the subject via scopeWhereFor('commitment', ctx.access, ctx.user.id)", () => {
+    expect(body()).toMatch(/scopeWhereFor\(\s*'commitment',\s*ctx\.access,\s*ctx\.user\.id\s*\)/);
   });
 
   it('AND-composes the scope fragment with organizationId (never spreads it)', () => {

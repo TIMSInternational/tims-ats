@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { blockAt } from '../helpers/source-blocks';
 
 const ROOT = join(__dirname, '..', '..');
 const read = (p: string) => readFileSync(join(ROOT, 'packages/api/src/routers/offer', p), 'utf8');
@@ -20,12 +21,19 @@ describe('offer module scope wiring', () => {
 
   it('signing.ts: generateSigningLink is scope-guarded; PUBLIC token flows untouched', () => {
     const src = read('signing.ts');
-    const staffBlock = src.slice(src.indexOf('generateSigningLink'), src.indexOf('getBySigningToken'));
+    const staffBlock = blockAt(src, 'generateSigningLink:');
     expect(staffBlock).toMatch(/assertScoped\('offer'|scopeWhereFor\('offer'/);
-    // the three public token procedures stay publicProcedure and probe-free
-    const publicBlock = src.slice(src.indexOf('getBySigningToken'));
+    // the three public token procedures stay publicProcedure and probe-free.
+    // Asserted over EACH of the three by name, not over one block: bounding
+    // `getBySigningToken` at its next sibling drops acceptByToken (:129) and
+    // declineByToken (:230), and nothing else in the suite covers them. A negative
+    // assertion is only as strong as the region it spans, so narrowing one silently
+    // removes coverage — the inverse of the hollow-slice defect, and the reason this
+    // conversion is not a mechanical `blockAt` swap.
     expect(src).toMatch(/getBySigningToken:\s*publicProcedure/);
-    expect(publicBlock).not.toMatch(/assertScoped|scopeWhereFor/);
+    for (const proc of ['getBySigningToken:', 'acceptByToken:', 'declineByToken:']) {
+      expect(blockAt(src, proc, { minLines: 5 })).not.toMatch(/assertScoped|scopeWhereFor/);
+    }
   });
 
   it('no scope-fragment spreads', () => {

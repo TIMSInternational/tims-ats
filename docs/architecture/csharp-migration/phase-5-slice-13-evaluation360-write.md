@@ -7,6 +7,22 @@ the domain becomes **FLIP-READY** (eval360-OWNED — no non-eval360 reader/write
 flip itself is a deploy-gated cutover, deferred — TS stays the sole active writer until Federico flips the flag per
 surface at canary (dark → canary → full).
 
+> **SUPERSEDED 2026-08-06 by ownership flip #67 (runbook §7e). Both halves of the sentence above are now false.**
+>
+> "TS stays the sole active writer" stopped being true on 2026-07-28, when the TS `evaluation360` router was deleted
+> outright; its orphaned service + repository — which still held every TS Prisma writer of the three tables — were
+> deleted by #54 on 2026-08-06. And "deferred" no longer describes the flip: it has been EXECUTED, and
+> `review_cycles` / `rater_assignments` / `rater_responses` are `efcore[]` in
+> [`table-ownership.md`](../table-ownership.md).
+>
+> **The flip ran while `Platform:Evaluation360WriteEnabled` is still dark**, which deviates from runbook §8 Q8 /
+> precondition P1 — the write flag confirmed live in prod is normally required before a flip PR opens, and all three
+> prior flips had it. Federico authorised the deviation explicitly after it was raised.
+>
+> The practical consequence, stated plainly so nobody has to infer it: **these three tables currently have no active
+> writer on either stack.** `efcore[]` records that C# is the sole implementation and sole authority for future schema
+> changes; it does not currently mean C# is writing. Flipping the flag is what makes the ledger operationally true.
+
 Ports the 6 mutation bodies of `packages/api/src/routers/evaluation360.ts` still on TS (the real write logic lives in
 `repositories/evaluation360.repository.ts`; the service maps repo results → error codes):
 - STAFF (`permissionProcedure` + **`requireOrgScope`**): `createCycle`, `openCycle`, `closeCycle`, `publishCycle`,

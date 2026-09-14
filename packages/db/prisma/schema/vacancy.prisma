@@ -41,6 +41,7 @@ model Vacancy {
   fitScores             FitScore[]             @relation("VacancyFitScores")
   offers                Offer[]                @relation("VacancyOffers")
   referrals             Referral[]
+  hirePredictions       HirePrediction[]
 
   @@index([organizationId])
   @@index([organizationId, status])
@@ -80,7 +81,11 @@ model RoleFamilyWeightProfile {
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // onUpdate: NoAction is NOT a style choice — it matches production. Prisma's default
+  // for a required relation is Cascade, but 20260710140000_add_fit_engine_schema/
+  // migration.sql:26 omitted ON UPDATE, so Postgres applied its own default (NO ACTION).
+  // Verified against pg_constraint: confupdtype = 'a' here, 'c' on every sibling FK.
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([organizationId, name])
   @@index([organizationId])

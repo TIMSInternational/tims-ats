@@ -1,0 +1,549 @@
+import { describe, it, expect } from 'vitest';
+import { readFileSync, readdirSync, statSync, existsSync } from 'fs';
+import { join } from 'path';
+import { Prisma } from '@tims/db';
+
+// #54 / #67 — the evaluation360 TS-writer tripwire.
+//
+// WHY THIS EXISTS. The TS evaluation360 ROUTER was deleted during the S5 item-4 sequence
+// (2026-07-28), and the record then claimed the sequence left "ZERO live surfaces with undeleted
+// TS fallback code". For this domain that was false: the deletion stopped at the router and left
+// `packages/api/src/services/evaluation360.service.ts` (199 LOC) and
+// `packages/api/src/repositories/evaluation360.repository.ts` (314 LOC) behind, orphaned, with zero
+// importers outside the test suite — and the repository still held EVERY TS Prisma writer of
+// review_cycles / rater_assignments / rater_responses. #54 deleted both. This test pins that.
+//
+// It is the PRECONDITION for ownership flip #67, and a precondition nobody can see is a
+// precondition nobody defends. Modelled deliberately on tests/governance/calibration-no-ts-writers.test.ts
+// (flips #57/#70), whose scanning strategy and drive-tests are the reviewed shape for this class of
+// tripwire — this is not a fresh design and should not diverge from it without a reason.
+//
+// ── UPDATED 2026-08-06: OWNERSHIP FLIP #67 HAS NOW EXECUTED ─────────────────────────────────────
+// This file was written while the flip was still pending, and two of its cases pinned that era: the
+// ledger assertion ("still efcoreStranglerWrite") and the schema assertion ("the three Prisma models
+// still exist"). The flip makes both false. Per their own docblocks they were INVERTED, not deleted —
+// see runbook §7e. What they defend now is that the flip STAYS flipped, which nothing else checks:
+// `scripts/table-ownership.mjs` only greps `@@map`, so a re-added Prisma model reads as a legitimate
+// `efcoreStranglerWrite` table to it.
+//
+// The consequence for the scans below is that `tenantDb.reviewCycle` no longer COMPILES — the models
+// are gone from the generated client, so `tsc` now backstops the delegate scans. They are kept at full
+// strength anyway: `tsc` says nothing about raw DML, and the three "un-flip" cases at the bottom of
+// this file (generated-client delegates, `.prisma` re-declaration, user.prisma back-relations) catch
+// the FIRST step of an un-flip, before any call site exists for `tsc` to reject.
+//
+// ── SCANNING STRATEGY: DENY-LIST, NOT ALLOW-LIST ────────────────────────────────────────────────
+// Walk the WHOLE repository and prune what cannot contain first-party source, per the calibration
+// tripwire's docblock: an allow-list of roots there was demonstrably unsound (packages/ai/src was
+// never scanned yet calls Prisma delegates). A package added tomorrow is scanned automatically.
+//
+// WHAT IT DELIBERATELY DOES NOT FORBID. scripts/parity/seed.ts INSERTs into and DELETEs from all
+// three tables (:798, :815, :838, :1237, :1387, :1414-1418, :2451-2453) and scripts/parity/write-surfaces.ts
+// SELECTs them for read-back assertions. That is the write-verification fixture harness running on a
+// `pg` client against the parity project's own DATABASE_URL and its own privileged login role — not
+// a Prisma delegate, not a runtime application path, and unaffected by an app_tenant GRANT change.
+// It survives model deletion mechanically and does not block #67. This is the SAME exemption the
+// calibration tripwire grants for the same files and the same reason. Raw DML in a RUNTIME package
+// is a different matter and IS forbidden below.
+
+const ROOT = join(__dirname, '..', '..');
+
+/**
+ * Directory names pruned anywhere in the tree. `.claude` is load-bearing: workflow worktrees are
+ * checked out under `.claude/worktrees/`, so without it this test scans several complete copies of
+ * the repo — including branches mid-flip — and reports their hits as this branch's.
+ */
+const SKIP_DIRS = new Set([
+  'node_modules',
+  '.git',
+  '.claude',
+  '.next',
+  '.turbo',
+  '.vercel',
+  'dist',
+  'build',
+  'out',
+  'coverage',
+  'generated',
+  'bin',
+  'obj',
+]);
+
+/** This file itself quotes the forbidden patterns, so it must never scan itself. */
+const SELF = 'tests/governance/evaluation360-no-ts-writers.test.ts';
+
+/**
+ * Paths that are NOT compiled into anything that runs against a real database. Everything else the
+ * walker finds is treated as runtime — derived, so a new package is runtime by default rather than
+ * by remembering to list it.
+ */
+const NON_RUNTIME_PREFIXES = ['tests/', 'scripts/', 'tools/', 'contracts/'];
+
+function isRuntime(file: string): boolean {
+  if (NON_RUNTIME_PREFIXES.some((p) => file.startsWith(p))) return false;
+  return !/\.(test|spec)\.(ts|tsx|mts|cts)$/.test(file);
+}
+
+function walk(rel: string, out: string[]): void {
+  let entries: string[];
+  try {
+    entries = readdirSync(join(ROOT, rel) || ROOT);
+  } catch {
+    return;
+  }
+  for (const name of entries) {
+    if (SKIP_DIRS.has(name)) continue;
+    const childRel = rel ? `${rel}/${name}` : name;
+    let st;
+    try {
+      st = statSync(join(ROOT, childRel));
+    } catch {
+      continue; // broken symlink
+    }
+    if (st.isDirectory()) {
+      walk(childRel, out);
+    } else if (/\.(ts|tsx|mts|cts)$/.test(name) && childRel !== SELF) {
+      out.push(childRel);
+    }
+  }
+}
+
+const ALL_FILES: string[] = [];
+walk('', ALL_FILES);
+const SOURCES = ALL_FILES.map((file) => ({ file, text: readFileSync(join(ROOT, file), 'utf8') }));
+const RUNTIME_SOURCES = SOURCES.filter((s) => isRuntime(s.file));
+
+const MODELS = 'reviewCycle|raterAssignment|raterResponse';
+
+/**
+ * Any receiver, not a fixed list. `prismaClient.raterResponse` and `_db.reviewCycle` both reach the
+ * model and neither matches a `\b(?:db|tenantDb|prisma|tx)\.` form.
+ *
+ * No method call is required after the model name, deliberately — and #54's acceptance criteria
+ * called this out specifically. `packages/api/src/access/scoped-probe.ts` registers Prisma delegates
+ * as BARE thunks (`employeeCompensation: () => tenantDb.employeeCompensation` :76). There is no
+ * evaluation360 entry there today — tests/evaluation360/evaluation360-router-self-service.test.ts
+ * asserts raterAssignment is deliberately NOT a ScopedEntity, because identity-anchoring is its only
+ * guard by design — but a `.model.method(` grep cannot see that form at all, and it is exactly the
+ * form that was missed when the blocker sets for flips #66 and #68 were first assembled.
+ *
+ * SINGULAR ONLY, and that is load-bearing (the calibration tripwire regressed on precisely this): a
+ * Prisma delegate is always the singular camelCase model name, while the plural spellings are User
+ * back-relation fields or C# response-DTO fields read off JSON. Nested relation WRITES are covered by
+ * RELATION_WRITE below, which is the precise construct that actually reaches the tables.
+ *
+ * NO WHITESPACE AFTER THE DOT, and this is a fix rather than a preference. The calibration tripwire
+ * spells this `\\.\\s*`, which also matches ENGLISH PROSE: a comment ending a sentence with "…not an
+ * RBAC grant. raterAssignment must stay…" parses as receiver `grant`, dot, model. That is a real line
+ * (tests/evaluation360/evaluation360-router-self-service.test.ts:77) and it failed this test on
+ * correct code. Whitespace BEFORE the dot is still tolerated, because `db\n  .reviewCycle` is a real
+ * formatting of a real delegate chain; whitespace AFTER it never is.
+ */
+const PRISMA_DELEGATE = new RegExp(`[A-Za-z_$][\\w$]*\\s*\\.(?:${MODELS})\\b`);
+/** `db['raterResponse']` — the same reach, spelled to defeat a dotted-access grep. */
+const BRACKET_DELEGATE = new RegExp(`\\[\\s*['"\`](?:${MODELS})['"\`]\\s*\\]`);
+
+/**
+ * Nested relation writes through the User back-relations. The ownership-flip runbook is explicit
+ * that a `.model.method` grep cannot see these: `db.user.update({ data: { reviewCyclesCreated:
+ * { create: … } } })` is a compile-valid write to review_cycles containing no `db.reviewCycle` token.
+ *
+ * The three names came from packages/db/prisma/schema/user.prisma:129-131, which flip #67 DELETED.
+ * They are kept verbatim on purpose: this list is now the record of the exact spellings that must
+ * never come back, and a re-added back-relation would use them. Do not "clean up" a list that no
+ * longer matches the schema — the mismatch IS the guard. (Same disposition as the calibration
+ * tripwire's four names after flip #70.)
+ */
+const RELATION_FIELDS = ['reviewCyclesCreated', 'raterAssignmentsAsSubject', 'raterAssignmentsAsRater'];
+const NESTED_WRITE_OPS =
+  'create|createMany|connectOrCreate|update|updateMany|upsert|delete|deleteMany|set|disconnect|connect';
+const RELATION_WRITE = new RegExp(`(?:${RELATION_FIELDS.join('|')})\\s*:\\s*\\{\\s*(?:${NESTED_WRITE_OPS})\\b`);
+
+/**
+ * Raw DML against the three tables. Matched against WHITESPACE-NORMALISED file text, not per line:
+ * a template literal that wraps after `INSERT INTO` is invisible to a line-by-line scan, and quoted
+ * identifiers (`INSERT INTO "rater_responses"`) are the more idiomatic Prisma `$executeRaw` form.
+ */
+const RAW_DML = new RegExp(
+  `\\b(?:insert\\s+into|update|delete\\s+from)\\s+(?:["'\`]?public["'\`]?\\s*\\.\\s*)?["'\`]?(review_cycles|rater_assignments|rater_responses)\\b`,
+  'i',
+);
+
+type Source = { file: string; text: string };
+
+/** Line-anchored scan — keeps a precise file:line for the report. */
+function hits(sources: Source[], re: RegExp): string[] {
+  const found: string[] = [];
+  for (const { file, text } of sources) {
+    text.split('\n').forEach((line, i) => {
+      if (re.test(line)) found.push(`${file}:${i + 1}: ${line.trim()}`);
+    });
+  }
+  return found;
+}
+
+/**
+ * Whole-file scan on collapsed whitespace — catches constructs split across lines. This is the
+ * DEFAULT for any pattern spanning more than one token, because Prettier (printWidth 120) breaks
+ * nested object literals across lines: every nested relation write in this repo is formatted
+ * `<relation>: {` on one line and `create:` on the next, with zero single-line instances.
+ */
+function hitsAcrossLines(sources: Source[], re: RegExp): string[] {
+  const found: string[] = [];
+  const g = new RegExp(re.source, re.flags.includes('g') ? re.flags : `${re.flags}g`);
+  for (const { file, text } of sources) {
+    const flat = text.replace(/\s+/g, ' ');
+    for (const m of flat.matchAll(g)) found.push(`${file}: …${m[0]}…`);
+  }
+  return found;
+}
+
+describe('evaluation360 tables have zero TypeScript writers (ownership flip #67 precondition)', () => {
+  // An empty or partial scan would make every assertion below pass vacuously — the exact failure
+  // mode that made /gate checks 14 and 17 tick against a database with no rows.
+  describe('the scan is not vacuous', () => {
+    // Per-directory existence + floors, NOT an aggregate count: apps/web alone contributes ~447
+    // files, so an aggregate floor lets the whole of packages/api/src go blind while still passing.
+    // Floors sit just under the real count. Measured on this branch 2026-08-06, after #54's four
+    // deletions (actual → floor): api/src 182→170, api/src/routers 84→75, apps/web 447→400,
+    // workers 1→1, db/prisma 8→5, shared/src 24→20, ai/src 21→15, tests 276→250, scripts 35→30.
+    const MUST_SCAN: [string, number][] = [
+      ['packages/api/src', 170],
+      ['packages/api/src/routers', 75],
+      ['apps/web', 400],
+      ['workers', 1],
+      ['packages/db/prisma', 5],
+      ['packages/shared/src', 20],
+      ['packages/ai/src', 15],
+      ['tests', 250],
+      ['scripts', 30],
+    ];
+
+    it.each(MUST_SCAN)('scanned %s (at least %i files)', (dir, floor) => {
+      expect(
+        existsSync(join(ROOT, dir)),
+        `${dir} does not exist — it was renamed or moved. Update MUST_SCAN; do NOT delete the entry, or this tripwire goes blind to it.`,
+      ).toBe(true);
+      const n = ALL_FILES.filter((f) => f.startsWith(`${dir}/`)).length;
+      expect(n, `${dir} contributed ${n} files to the scan, expected >= ${floor}`).toBeGreaterThanOrEqual(floor);
+    });
+
+    // The RAW_DML check runs over RUNTIME_SOURCES specifically, so an AGGREGATE floor on that set
+    // would reproduce exactly the defect the per-directory floors above exist to fix.
+    it.each([
+      ['packages/api/src', 170],
+      ['apps/web', 400],
+      ['workers', 1],
+    ])('classifies %s as RUNTIME (at least %i files)', (dir, floor) => {
+      const n = RUNTIME_SOURCES.filter((s) => s.file.startsWith(`${dir}/`)).length;
+      expect(n, `${dir} contributed ${n} files to the RUNTIME set, expected >= ${floor}`).toBeGreaterThanOrEqual(floor);
+    });
+
+    it('classifies runtime vs non-runtime without emptying either side', () => {
+      expect(RUNTIME_SOURCES.length).toBeGreaterThan(300);
+      expect(SOURCES.length - RUNTIME_SOURCES.length).toBeGreaterThan(100);
+    });
+
+    // Prove every pattern still matches what it is supposed to match, on synthetic input. Without
+    // this, a typo'd regex is indistinguishable from a clean repo. Every literal below is copied
+    // from the shape the DELETED repository actually used (see git history for
+    // packages/api/src/repositories/evaluation360.repository.ts at HEAD~1).
+    it('the patterns match the constructs they claim to', () => {
+      expect(PRISMA_DELEGATE.test('    return db.reviewCycle.create({')).toBe(true);
+      expect(PRISMA_DELEGATE.test('    return db.reviewCycle.updateMany({')).toBe(true);
+      expect(PRISMA_DELEGATE.test('      const result = await tx.raterAssignment.createMany({')).toBe(true);
+      expect(PRISMA_DELEGATE.test('      await tx.raterResponse.createMany({')).toBe(true);
+      // Receivers a fixed five-name alternation would miss:
+      expect(PRISMA_DELEGATE.test('await prismaClient.raterResponse.create({')).toBe(true);
+      expect(PRISMA_DELEGATE.test('await _db.reviewCycle.delete({')).toBe(true);
+      // The BARE delegate reference — no method call. The scoped-probe.ts DELEGATES form, and the
+      // one a `.model.method(` grep cannot see. #54's acceptance criteria demanded this case.
+      expect(PRISMA_DELEGATE.test('  raterAssignment: () => tenantDb.raterAssignment,')).toBe(true);
+      expect(BRACKET_DELEGATE.test("await db['raterResponse'].createMany({")).toBe(true);
+      // Nested relation write — no `db.reviewCycle` token anywhere in it:
+      expect(RELATION_WRITE.test('data: { reviewCyclesCreated: { create: { organizationId, name } } }')).toBe(true);
+      expect(RELATION_WRITE.test('raterAssignmentsAsRater: { createMany: { data } }')).toBe(true);
+      // Raw DML, including the quoted, schema-qualified and line-wrapped forms:
+      expect(RAW_DML.test("await db.query('INSERT INTO rater_responses (id) VALUES ($1)')")).toBe(true);
+      expect(RAW_DML.test('UPDATE public.review_cycles SET status =')).toBe(true);
+      expect(RAW_DML.test('INSERT INTO "rater_assignments" (id) VALUES ($1)')).toBe(true);
+      expect(RAW_DML.test('INSERT INTO "public"."rater_responses" (id) VALUES ($1)')).toBe(true);
+      expect(RAW_DML.test('INSERT INTO\n  "rater_assignments" (id)')).toBe(true);
+    });
+
+    // The regex controls above prove the PATTERNS work. They say nothing about the SCANNERS: with
+    // `hits()` and `hitsAcrossLines()` both stubbed to `return []`, every assertion in this file
+    // still passes. So drive each scanner over synthetic sources that must be found, and one that
+    // must not — otherwise the whole tripwire is one `return []` away from certifying nothing.
+    it('the scanners actually scan (a stubbed hits()/hitsAcrossLines() must not pass)', () => {
+      const planted: Source[] = [
+        { file: 'synthetic/writer.ts', text: 'const x = 1;\nawait db.raterResponse.createMany({ data });\n' },
+        {
+          file: 'synthetic/relation.ts',
+          // Formatted the way Prettier formats it — across lines — deliberately.
+          text: 'await db.user.update({\n  data: {\n    reviewCyclesCreated: {\n      create: { name },\n    },\n  },\n});\n',
+        },
+        {
+          file: 'synthetic/raw.ts',
+          text: 'await db.$executeRaw`INSERT INTO\n  "public"."rater_assignments" (id)\n  VALUES ($1)`;\n',
+        },
+        {
+          // A delegate chain broken across lines the way Prettier breaks it. This is the case the
+          // old line-anchored scan could NOT see, and whose "proof" tested the regex directly on a
+          // JS string with an embedded \n instead of driving the scanner.
+          file: 'synthetic/wrapped.ts',
+          text: 'const rows = await tenantDb\n  .reviewCycle.findMany({ where: { organizationId } });\n',
+        },
+        { file: 'synthetic/clean.ts', text: 'const total = counts.raterAssignments ?? 0;\n' },
+        {
+          // Prose that parses as receiver-dot-model if whitespace AFTER the dot is tolerated. Live at
+          // tests/evaluation360/evaluation360-router-self-service.test.ts:77.
+          file: 'synthetic/prose.ts',
+          text: '// not an RBAC grant. raterAssignment must stay OUT of scope\n',
+        },
+      ];
+
+      expect(hitsAcrossLines(planted, PRISMA_DELEGATE).map((h) => h.split(':')[0])).toContain('synthetic/writer.ts');
+      expect(
+        hitsAcrossLines(planted, PRISMA_DELEGATE).map((h) => h.split(':')[0]),
+        'a Prettier-wrapped delegate chain must be caught by the SCAN PATH, not merely by the regex',
+      ).toContain('synthetic/wrapped.ts');
+      expect(hitsAcrossLines(planted, RELATION_WRITE).map((h) => h.split(':')[0])).toContain('synthetic/relation.ts');
+      expect(hitsAcrossLines(planted, RAW_DML).map((h) => h.split(':')[0])).toContain('synthetic/raw.ts');
+
+      // ...and the clean file is in none of them (the scanners discriminate, they do not just return
+      // everything, which would be the other way to fake a pass).
+      for (const h of [
+        ...hitsAcrossLines(planted, PRISMA_DELEGATE),
+        ...hitsAcrossLines(planted, RELATION_WRITE),
+        ...hitsAcrossLines(planted, RAW_DML),
+      ]) {
+        expect(h).not.toContain('synthetic/clean.ts');
+        // Prose must not trip it even under whitespace collapsing — that is what the
+        // no-whitespace-after-the-dot rule in PRISMA_DELEGATE buys, and it is why moving to a
+        // whole-file scan is safe here.
+        expect(h).not.toContain('synthetic/prose.ts');
+      }
+    });
+
+    it('the patterns do NOT match legitimate neighbouring constructs', () => {
+      expect(PRISMA_DELEGATE.test('db.nineBoxEvaluation.findMany({')).toBe(false);
+      expect(RAW_DML.test('SELECT status FROM review_cycles WHERE id = $1')).toBe(false);
+      // A PLURAL field read off a C# JSON response is not a Prisma delegate — the exact false
+      // positive that broke the calibration tripwire against correct code.
+      expect(PRISMA_DELEGATE.test('    raterAssignments: num(raw.raterAssignments),')).toBe(false);
+      // English prose is not a delegate. This exact line is live at
+      // tests/evaluation360/evaluation360-router-self-service.test.ts:77 and the `\.\s*` spelling
+      // inherited from the calibration tripwire failed on it — receiver `grant`, dot, model.
+      expect(PRISMA_DELEGATE.test('  // not an RBAC grant. raterAssignment must stay OUT of scope')).toBe(false);
+      // ...but a genuine chain broken across lines by Prettier still matches (whitespace BEFORE the
+      // dot is tolerated, only whitespace AFTER it is not).
+      expect(PRISMA_DELEGATE.test('  const rows = await tenantDb\n    .raterResponse.findMany({')).toBe(true);
+      // A read-shaped relation include is not a write:
+      expect(RELATION_WRITE.test('include: { reviewCyclesCreated: true }')).toBe(false);
+      expect(RELATION_WRITE.test('select: { raterAssignmentsAsRater: { select: { id: true } } }')).toBe(false);
+    });
+  });
+
+  it('no TypeScript file reaches the three evaluation360 models through a Prisma delegate', () => {
+    // hitsAcrossLines, NOT hits. The docblock on PRISMA_DELEGATE says a chain broken across lines
+    // (`tenantDb\n  .reviewCycle`) is a real formatting of a real delegate and must be caught — but
+    // `hits()` splits the file into lines BEFORE matching, so that form can never reach the regex
+    // intact. The control assertion "proving" it worked fed the regex a single JS string containing
+    // an embedded \n, which the scan path never produces: it certified a capability the tripwire did
+    // not have. Same defect, same week, as the calibration tripwire's relation-write scan.
+    //
+    // Safe under whitespace collapsing precisely because of this regex's design: it tolerates
+    // whitespace BEFORE the dot and never after, so collapsing `tenantDb\n  .reviewCycle` to
+    // `tenantDb .reviewCycle` still matches, while prose ("…RBAC grant. raterAssignment must…")
+    // still does not.
+    const found = [...hitsAcrossLines(SOURCES, PRISMA_DELEGATE), ...hitsAcrossLines(SOURCES, BRACKET_DELEGATE)];
+    expect(
+      found,
+      `A TypeScript Prisma delegate touches an evaluation360 model. #54 deleted the orphaned TS\n` +
+        `service + repository that held every such writer, and ownership flip #67 depends on that\n` +
+        `staying true. Since flip #67 the Prisma models are gone, so a delegate like this should not\n` +
+        `compile either — if it reached this test, something re-added the model. Check the un-flip\n` +
+        `cases at the bottom of this file first, then port the caller to the C# endpoints in\n` +
+        `services/Tims.Platform/src/Tims.Api/Evaluation360/ instead:\n${found.join('\n')}`,
+    ).toEqual([]);
+  });
+
+  it('no TypeScript file writes the evaluation360 tables through a User back-relation', () => {
+    // hitsAcrossLines, NOT hits: Prettier splits every nested relation write in this repo across
+    // lines, so a line-anchored scan is blind to the only spelling the codebase actually produces.
+    const found = hitsAcrossLines(SOURCES, RELATION_WRITE);
+    expect(
+      found,
+      `A nested Prisma relation write reaches an evaluation360 table without naming its delegate.\n` +
+        `\`db.user.update({ data: { reviewCyclesCreated: { create: … } } })\` is a compile-valid write\n` +
+        `to review_cycles that a \`.model.method\` grep cannot see — the ownership-flip runbook calls\n` +
+        `this out explicitly:\n${found.join('\n')}`,
+    ).toEqual([]);
+  });
+
+  it('no RUNTIME package issues raw DML against the three evaluation360 tables', () => {
+    const found = hitsAcrossLines(RUNTIME_SOURCES, RAW_DML);
+    expect(
+      found,
+      `A runtime source issues raw INSERT/UPDATE/DELETE against an evaluation360 table. C# is the\n` +
+        `sole application writer of these tables; a second writer breaks the one-active-writer\n` +
+        `guarantee the ownership ledger records. (scripts/parity/* is deliberately exempt — fixture\n` +
+        `SQL against the parity database, not a runtime path.):\n${found.join('\n')}`,
+    ).toEqual([]);
+  });
+
+  /**
+   * INVERTED 2026-08-06 when flip #67 executed. It previously asserted the three tables were still
+   * `efcoreStranglerWrite`, with the rider "moving them is flip #67, not #54". That was correct while
+   * it was written and the flip makes it false — the classic case of a test that pinned an ERA
+   * starting to defend it. Its own docblock predicted this and instructed inversion; that instruction
+   * is being followed here, and the same thing happened to the calibration tripwire under flip #70.
+   *
+   * The direction it now points is the one that matters: the ledger is the only place recording that
+   * C# is sole owner, and `scripts/table-ownership.mjs` cannot catch a move BACK on its own
+   * (`efcoreStranglerWrite` merely requires the table be `@@map`'d, which is exactly the state a
+   * re-added Prisma model would restore).
+   *
+   * `not.toContain('efcoreStranglerWrite')` is asserted explicitly, not implied: a table listed in BOTH
+   * lists is a `cross-owner collision` in the ledger script only while the Prisma model exists, so the
+   * two halves genuinely check different things.
+   */
+  it('the ledger classifies all three tables as efcore — flip #67 executed, and must stay executed', () => {
+    const doc = readFileSync(join(ROOT, 'docs/architecture/table-ownership.md'), 'utf8');
+    const ledger = JSON.parse(doc.match(/```json\n([\s\S]*?)\n```/)![1]) as Record<string, string[]>;
+    for (const t of ['review_cycles', 'rater_assignments', 'rater_responses']) {
+      expect(
+        ledger['efcore'],
+        `${t} is not in efcore[]. Ownership flip #67 moved all three evaluation360 tables to EF Core on\n` +
+          `2026-08-06 (runbook §7e). Moving one back means restoring its Prisma model, which re-creates a\n` +
+          `second writer of a table C# solely owns — and reverting a flip is a deliberate, reviewed act\n` +
+          `(runbook §6), never a side effect of editing this ledger.`,
+      ).toContain(t);
+      expect(ledger['efcoreStranglerWrite'], t).not.toContain(t);
+    }
+  });
+
+  /**
+   * INVERTED 2026-08-06 by flip #67, and turned from a schema-TEXT check into a GENERATED-CLIENT one.
+   *
+   * It previously asserted the three models still EXISTED in evaluation360.prisma, so that a model
+   * deletion could not ride along on a #54-shaped PR. The flip deletes them deliberately, so the
+   * assertion is inverted rather than removed — and the text-level half of it is now covered more
+   * thoroughly by the "no Prisma schema file re-declares" case below, which scans EVERY `.prisma`
+   * file instead of just this domain's.
+   *
+   * What is asserted here instead is the thing the text scan cannot see: that the generated Prisma
+   * client carries no delegate for these models. `prisma generate` is what turns a re-added model into
+   * a callable `db.reviewCycle`, and flip #3 checked this by hand from a transcript. Automating it
+   * means a re-added model fails here even before anyone writes a call site.
+   *
+   * The ENUMS are asserted to SURVIVE, in the same case, on purpose: keeping them is a decision
+   * (see the block in evaluation360.prisma), `packages/db/src/index.ts:16-18` re-exports all three,
+   * and a silent enum deletion would break that re-export and the parity seed's `::"ReviewCycleStatus"`
+   * casts without any other test noticing.
+   */
+  it('the generated client has no evaluation360 model delegates, but keeps the three enums', () => {
+    const models = Prisma.dmmf.datamodel.models.map((m) => m.name);
+    for (const model of ['ReviewCycle', 'RaterAssignment', 'RaterResponse']) {
+      expect(
+        models,
+        `model ${model} is back in the generated Prisma client. Ownership flip #67 gave its table to\n` +
+          `EF Core; a delegate here is a second writer of a table C# solely owns.`,
+      ).not.toContain(model);
+    }
+    const enums = Prisma.dmmf.datamodel.enums.map((e) => e.name);
+    for (const e of ['ReviewCycleStatus', 'RaterRelationship', 'RaterAssignmentStatus']) {
+      expect(
+        enums,
+        `enum ${e} was removed from the Prisma schema. Flip #67 KEPT the evaluation360 enums\n` +
+          `deliberately — packages/db/src/index.ts:16-18 re-exports them from @tims/db and\n` +
+          `scripts/parity/seed.ts casts to the Postgres types by name. Removing one is a breaking\n` +
+          `change to @tims/db, not a cleanup.`,
+      ).toContain(e);
+    }
+  });
+
+  /**
+   * Added 2026-08-06 by flip #67, mirroring the calibration tripwire's equivalent case.
+   *
+   * The scans above walk `.ts/.tsx/.mts/.cts` ONLY — they never open a `.prisma` file. So a bare
+   * `model ReviewCycle { … @@map("review_cycles") }` re-added to the schema, with no TypeScript
+   * touching it, passes every other case in this file. The re-added model is the FIRST step of
+   * un-flipping: `prisma generate` then re-creates the delegate, `prisma db push` on a local DB
+   * re-adopts the table, and only THEN would a delegate call appear for the other scans to catch.
+   * Catch it at step one.
+   */
+  it('no Prisma schema file re-declares the three flipped models', () => {
+    const schemaDir = join(ROOT, 'packages/db/prisma/schema');
+    const schemaFiles = readdirSync(schemaDir).filter((f) => f.endsWith('.prisma'));
+    expect(schemaFiles.length, 'no .prisma files found — the scan would pass vacuously').toBeGreaterThan(5);
+
+    const offenders: string[] = [];
+    for (const f of schemaFiles) {
+      const text = readFileSync(join(schemaDir, f), 'utf8');
+      text.split('\n').forEach((line, i) => {
+        // `model ReviewCycle {` — and the @@map form, so a renamed model mapping the same table is
+        // caught too. Comments naming them (there are deliberate ones) must NOT trip it.
+        if (/^\s*model\s+(ReviewCycle|RaterAssignment|RaterResponse)\b/.test(line)) {
+          offenders.push(`${f}:${i + 1}: ${line.trim()}`);
+        }
+        if (/^\s*@@map\(\s*["'](review_cycles|rater_assignments|rater_responses)["']\s*\)/.test(line)) {
+          offenders.push(`${f}:${i + 1}: ${line.trim()}`);
+        }
+      });
+    }
+
+    expect(
+      offenders,
+      `A Prisma model re-declares a table that ownership flip #67 gave to EF Core. This is step ONE of\n` +
+        `un-flipping: \`prisma generate\` re-creates the delegate and \`prisma db push\` re-adopts the table,\n` +
+        `restoring a second writer of a table C# solely owns. Reverting a flip is a deliberate, reviewed\n` +
+        `act (runbook §6), never a side effect of editing a schema file:\n${offenders.join('\n')}`,
+    ).toEqual([]);
+  });
+
+  /**
+   * The three back-relations this flip deleted from user.prisma must not come back either. A
+   * back-reference to a deleted model is a hard `P1012` that `prisma validate` catches — but only if
+   * someone runs it, and `scripts/table-ownership.mjs` does not (it greps `@@map` alone). This is the
+   * cheap always-on half of that guard, and it is the schema-side twin of the RELATION_WRITE scan
+   * above, which covers the call sites.
+   */
+  it('user.prisma re-declares none of the three deleted back-relations', () => {
+    const user = readFileSync(join(ROOT, 'packages/db/prisma/schema/user.prisma'), 'utf8');
+    const offenders: string[] = [];
+    user.split('\n').forEach((line, i) => {
+      // A FIELD declaration, not the comment that records the names: `<name> <Type>[]`.
+      if (/^\s*(reviewCyclesCreated|raterAssignmentsAsSubject|raterAssignmentsAsRater)\s+\w+\[\]/.test(line)) {
+        offenders.push(`user.prisma:${i + 1}: ${line.trim()}`);
+      }
+    });
+    expect(
+      offenders,
+      `A User back-relation to a flipped evaluation360 model is back in user.prisma. It is a hard\n` +
+        `P1012 on the next \`prisma validate\`, and it re-opens the nested-relation write path the\n` +
+        `RELATION_WRITE scan above exists to close:\n${offenders.join('\n')}`,
+    ).toEqual([]);
+  });
+
+  /**
+   * The pure min-3 anonymity kernel is KEPT, pinned BY NAME. Auto-discovery alone would make its
+   * deletion a GREEN change — the scans above would simply find one fewer file. It follows the
+   * access-review-kernel precedent: when that domain was fully deleted, the pure kernel and its
+   * pinned-fixture suites were retained as the contract spec the C# port is golden-tested against.
+   */
+  it('the pure min-3 anonymity kernel and its cross-stack fixture are KEPT', () => {
+    expect(existsSync(join(ROOT, 'packages/api/src/services/evaluation360-aggregate.ts'))).toBe(true);
+    expect(existsSync(join(ROOT, 'contracts/access-fixtures/eval360-min3.json'))).toBe(true);
+    expect(
+      existsSync(join(ROOT, 'services/Tims.Platform/src/Tims.Domain/Access/Eval360Aggregate.cs')),
+      'the C# side of the golden fixture is gone — the TS kernel is a contract spec for nothing',
+    ).toBe(true);
+  });
+
+  it('the orphaned TS service and repository stay deleted', () => {
+    expect(existsSync(join(ROOT, 'packages/api/src/services/evaluation360.service.ts'))).toBe(false);
+    expect(existsSync(join(ROOT, 'packages/api/src/repositories/evaluation360.repository.ts'))).toBe(false);
+  });
+});

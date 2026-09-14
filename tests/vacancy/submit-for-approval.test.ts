@@ -66,9 +66,14 @@ const mockDb = vi.hoisted(() => ({
   $transaction: vi.fn(),
 }));
 
+// #45: submitForApproval's write block now goes through runTenantTransaction, not
+// tenantDb.$transaction (which does not compose — prisma/prisma#17948).
+const runTenantTransactionMock = vi.hoisted(() => vi.fn());
+
 vi.mock('@tims/db', () => ({
   tenantDb: mockDb,
   runWithTenant: (_o: string, f: () => unknown) => f(),
+  runTenantTransaction: runTenantTransactionMock,
 }));
 
 vi.mock('@tims/shared', async (importOriginal) => ({
@@ -76,7 +81,9 @@ vi.mock('@tims/shared', async (importOriginal) => ({
   // types, etc.); only override filterStaffRoleSlugs for this test.
   ...(await importOriginal<typeof import('@tims/shared')>()),
   filterStaffRoleSlugs: (slugs: string[]) =>
-    slugs.filter((s) => ['super_admin', 'hr_admin', 'hrbp', 'recruiter', 'leader', 'committee', 'employee'].includes(s)),
+    slugs.filter((s) =>
+      ['super_admin', 'hr_admin', 'hrbp', 'recruiter', 'leader', 'committee', 'employee'].includes(s),
+    ),
 }));
 
 vi.mock('../../packages/api/src/access', () => ({
@@ -94,7 +101,10 @@ beforeEach(() => {
 
   mockDb.vacancy.findFirst.mockResolvedValue({ id: '99999999-9999-4999-8999-999999999999' });
   mockDb.vacancy.findUniqueOrThrow.mockResolvedValue({
-    id: '99999999-9999-4999-8999-999999999999', title: 'Sales Rep', status: 'pending_approval', approvals: [],
+    id: '99999999-9999-4999-8999-999999999999',
+    title: 'Sales Rep',
+    status: 'pending_approval',
+    approvals: [],
   });
   mockDb.$transaction = vi.fn(async (arg: unknown) =>
     typeof arg === 'function'
@@ -103,6 +113,9 @@ beforeEach(() => {
           vacancyApproval: mockDb.vacancyApproval,
         })
       : Promise.all(arg as Promise<unknown>[]),
+  );
+  runTenantTransactionMock.mockImplementation(async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) =>
+    fn({ vacancy: mockDb.vacancy, vacancyApproval: mockDb.vacancyApproval }),
   );
 });
 
@@ -116,8 +129,13 @@ async function makeCaller() {
   const callerFactory = createCallerFactory(testRouter);
   return callerFactory({
     user: {
-      id: 'user-1', organizationId: ORG_ID, roles: ['recruiter'],
-      isPlatformOwner: false, impersonatorId: null, email: 'r@tims.co', isActive: true,
+      id: 'user-1',
+      organizationId: ORG_ID,
+      roles: ['recruiter'],
+      isPlatformOwner: false,
+      impersonatorId: null,
+      email: 'r@tims.co',
+      isActive: true,
     },
     headers: new Headers(),
     supabaseAuth: null,
@@ -127,9 +145,7 @@ async function makeCaller() {
 
 describe('vacancy.submitForApproval — approver validation', () => {
   it('submits successfully when the approver is active, same-org, and holds vacancy:approve', async () => {
-    mockDb.user.findMany.mockResolvedValue([
-      { id: APPROVER_ID, userRoles: [{ role: { slug: 'committee' } }] },
-    ]);
+    mockDb.user.findMany.mockResolvedValue([{ id: APPROVER_ID, userRoles: [{ role: { slug: 'committee' } }] }]);
     const caller = await makeCaller();
 
     await expect(
@@ -137,12 +153,13 @@ describe('vacancy.submitForApproval — approver validation', () => {
     ).resolves.toBeDefined();
 
     expect(mockDb.vacancyApproval.createMany).toHaveBeenCalledTimes(1);
+    // #45: the status flip + createMany must share ONE real transaction.
+    expect(runTenantTransactionMock).toHaveBeenCalledWith(ORG_ID, expect.any(Function));
+    expect(mockDb.$transaction).not.toHaveBeenCalled();
   });
 
   it('rejects the whole submission when an approverId lacks vacancy:approve', async () => {
-    mockDb.user.findMany.mockResolvedValue([
-      { id: APPROVER_ID, userRoles: [{ role: { slug: 'committee' } }] },
-    ]);
+    mockDb.user.findMany.mockResolvedValue([{ id: APPROVER_ID, userRoles: [{ role: { slug: 'committee' } }] }]);
     setApproverAllowed(false);
     const caller = await makeCaller();
 
@@ -169,13 +186,14 @@ describe('vacancy.submitForApproval — approver validation', () => {
   it('rejects the whole submission if ANY of multiple approverIds fails validation', async () => {
     const APPROVER_2 = '22222222-2222-2222-2222-222222222222';
     // Only APPROVER_ID comes back from the DB fetch; APPROVER_2 is missing entirely.
-    mockDb.user.findMany.mockResolvedValue([
-      { id: APPROVER_ID, userRoles: [{ role: { slug: 'committee' } }] },
-    ]);
+    mockDb.user.findMany.mockResolvedValue([{ id: APPROVER_ID, userRoles: [{ role: { slug: 'committee' } }] }]);
     const caller = await makeCaller();
 
     await expect(
-      caller.vacancy.submitForApproval({ id: '99999999-9999-4999-8999-999999999999', approverIds: [APPROVER_ID, APPROVER_2] }),
+      caller.vacancy.submitForApproval({
+        id: '99999999-9999-4999-8999-999999999999',
+        approverIds: [APPROVER_ID, APPROVER_2],
+      }),
     ).rejects.toMatchObject({ code: 'BAD_REQUEST' });
 
     expect(mockDb.vacancyApproval.createMany).not.toHaveBeenCalled();
@@ -186,9 +204,7 @@ describe('vacancy.submitForApproval — approver validation', () => {
     // (scope: 'team', not the common 'organization' default) to prove the fix
     // probes the approver's own narrower access, not a caller-shaped stub.
     const VACANCY_ID = '99999999-9999-4999-8999-999999999999';
-    mockDb.user.findMany.mockResolvedValue([
-      { id: APPROVER_ID, userRoles: [{ role: { slug: 'committee' } }] },
-    ]);
+    mockDb.user.findMany.mockResolvedValue([{ id: APPROVER_ID, userRoles: [{ role: { slug: 'committee' } }] }]);
     setApproverScope('team');
     rejectScopeForUserId(APPROVER_ID);
     const caller = await makeCaller();
@@ -210,7 +226,10 @@ describe('vacancy.submitForApproval — approver validation', () => {
     );
     // No approval rows created and no vacancy-status transaction runs — the
     // rejection is a hard stop before any write, not a partial submission.
+    // Both constructs are asserted absent: runTenantTransaction is the one the
+    // code uses now (#45), tenantDb.$transaction the one it must never go back to.
     expect(mockDb.vacancyApproval.createMany).not.toHaveBeenCalled();
+    expect(runTenantTransactionMock).not.toHaveBeenCalled();
     expect(mockDb.$transaction).not.toHaveBeenCalled();
   });
 });

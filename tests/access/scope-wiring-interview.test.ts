@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { blockAt } from '../helpers/source-blocks';
 
 const ROOT = join(__dirname, '..', '..');
 const read = (p: string) => readFileSync(join(ROOT, 'packages/api/src/routers/interview', p), 'utf8');
@@ -15,7 +16,7 @@ describe('interview module scope wiring', () => {
 
   it('scorecards.ts: submitScorecard requires the submitter to be an ASSIGNED EVALUATOR', () => {
     const src = read('scorecards.ts');
-    const block = src.slice(src.indexOf('submitScorecard'), src.indexOf('compareEvaluators'));
+    const block = blockAt(src, 'submitScorecard:');
     // slice-1 codex carry-over: org-probe alone let ANY org member upsert a scorecard
     expect(block).toMatch(/interviewEvaluator\.findFirst|evaluators:\s*\{\s*some/);
     expect(block).toMatch(/FORBIDDEN/);
@@ -29,7 +30,7 @@ describe('interview module scope wiring', () => {
 
   it('schedule scope-probes the candidate AND binds applicationId to candidate+vacancy', () => {
     const src = read('crud.ts');
-    const block = src.slice(src.indexOf('schedule:'), src.indexOf('reschedule:'));
+    const block = blockAt(src, 'schedule:');
     // codex re-review: org-only candidate check let a narrow-scoped scheduler
     // pull any org candidate into an interview + invitation email
     expect(block).toMatch(/assertScoped\('candidate'/);
@@ -38,7 +39,7 @@ describe('interview module scope wiring', () => {
 
   it('schedule binds candidate↔vacancy even when applicationId is omitted', () => {
     const src = read('crud.ts');
-    const block = src.slice(src.indexOf('schedule:'), src.indexOf('reschedule:'));
+    const block = blockAt(src, 'schedule:');
     // codex round-3: omitted applicationId must auto-resolve the binding
     // application (persisted) and fail closed for narrow scopes when none exists
     expect(block).toMatch(/data\.applicationId\s*=\s*boundApp\.id/);

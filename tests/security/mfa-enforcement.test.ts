@@ -17,13 +17,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { initTRPC, TRPCError } from '@trpc/server';
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import {
-  isMfaPrivileged,
-  isMfaEnforced,
-  isMfaSatisfied,
-  isMfaGateBlocking,
-  MFA_REQUIRED,
-} from '@tims/shared';
+import { blockAt } from '../helpers/source-blocks';
+import { isMfaPrivileged, isMfaEnforced, isMfaSatisfied, isMfaGateBlocking, MFA_REQUIRED } from '@tims/shared';
 
 const createMock = vi.fn();
 vi.mock('@tims/db', () => ({
@@ -58,7 +53,13 @@ describe('isMfaPrivileged — mirrors the (admin) page gate + trpc.ts privileged
 // ---------------------------------------------------------------------------
 describe('withMfaEnforcement — API-layer gate', () => {
   type Ctx = {
-    user: { id: string; organizationId: string; roles: string[]; isPlatformOwner: boolean; impersonatorId?: string } | null;
+    user: {
+      id: string;
+      organizationId: string;
+      roles: string[];
+      isPlatformOwner: boolean;
+      impersonatorId?: string;
+    } | null;
     aal?: string | null;
     headers: Headers;
   };
@@ -88,7 +89,9 @@ describe('withMfaEnforcement — API-layer gate', () => {
   const priv = { id: 'u1', organizationId: 'org1', roles: ['super_admin'], isPlatformOwner: false };
   const plain = { id: 'u2', organizationId: 'org1', roles: ['recruiter'], isPlatformOwner: false };
 
-  afterEach(() => { delete process.env.MFA_ENFORCED; });
+  afterEach(() => {
+    delete process.env.MFA_ENFORCED;
+  });
 
   it('BLOCKS a privileged aal1 session with MFA_REQUIRED when enforced', async () => {
     process.env.MFA_ENFORCED = 'true';
@@ -171,7 +174,7 @@ describe('wiring — MFA enforcement is composed and transported end to end', ()
     expect(src).toMatch(/\.use\(withMfaEnforcement\)/);
     expect(src).toMatch(/isMfaPrivileged/);
     expect(src).toMatch(/isMfaEnforced\(process\.env\.MFA_ENFORCED\)/);
-    const block = src.slice(src.indexOf('withMfaEnforcement ='));
+    const block = blockAt(src, 'withMfaEnforcement =');
     expect(block).toMatch(/MFA_REQUIRED/);
     expect(block).toMatch(/mfa_step_up_required/);
     // Impersonation is treated as privileged (real operator is always an owner).

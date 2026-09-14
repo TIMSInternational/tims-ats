@@ -53,6 +53,21 @@
       <Link>audit-fixtures\%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <!-- Phase-5 slice 23 dashboard kernels golden (shared with tests/parity/dashboard-fixtures.test.ts). -->
+    <Content Include="..\\..\\..\\..\\contracts\\dashboard-fixtures\\*.json">
+      <Link>dashboard-fixtures\\%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <!-- Phase-5 slice 22 invitations CSV golden (shared with tests/parity/invitation-fixtures.test.ts). -->
+    <Content Include="..\..\..\..\contracts\invitation-fixtures\*.json">
+      <Link>invitation-fixtures\%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <!-- Phase-5 slice 24 fit-engine kernels golden (shared with tests/fit-engine/kernels-fixtures.test.ts). -->
+    <Content Include="..\..\..\..\contracts\fit-engine-fixtures\*.json">
+      <Link>fit-engine-fixtures\%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <!-- Phase-5 Slice 1 external-vendor v1 mapper golden fixtures (shared with the TS vitest suite). -->
     <Content Include="..\..\..\..\contracts\external-fixtures\*.json">
       <Link>external-fixtures\%(Filename)%(Extension)</Link>
@@ -95,6 +110,28 @@
     <!-- Phase-5 Slice 11b DEI kernel golden fixtures (shared with the TS vitest suite). -->
     <Content Include="..\..\..\..\contracts\dei-fixtures\*.json">
       <Link>dei-fixtures\%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <!-- Phase-5 Q0b slice 1 monitoring kernel golden fixtures (shared with the TS vitest suite, issue #100). -->
+    <Content Include="..\..\..\..\contracts\monitoring-fixtures\*.json">
+      <Link>monitoring-fixtures\%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <!-- #173 MFA step-up gate parity fixtures (shared with the TS vitest suite). -->
+    <Content Include="..\..\..\..\contracts\mfa-fixtures\*.json">
+      <Link>mfa-fixtures\%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <!-- #174 trusted client-IP derivation, shared by the rate limiter and every audit writer
+         (shared with the TS vitest suite: tests/governance/audit-ip-derivation.test.ts). -->
+    <Content Include="..\..\..\..\contracts\client-ip-fixtures\*.json">
+      <Link>client-ip-fixtures\%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <!-- #172 cross-org alert-metric floor + served-key parity fixtures (shared with the TS vitest suite:
+         tests/monitoring/alert-metrics-fixtures.test.ts). -->
+    <Content Include="..\..\..\..\contracts\alert-metrics-fixtures\*.json">
+      <Link>alert-metrics-fixtures\%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <!-- WP3.6-map HRIS mapper golden fixtures (C#-only characterization; greenfield, no TS counterpart). -->

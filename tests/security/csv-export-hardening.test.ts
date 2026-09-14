@@ -10,11 +10,15 @@
  * Both original callers are now gone (TS-deletion, 2026-07-31): access-review's
  * exportAccessReviewCsv and audit-log's exportAuditLogsCsv were both deleted once their
  * respective NEXT_PUBLIC_*_VIA_CSHARP flags were confirmed live in prod — the C# endpoints
- * (`/access-review/export`, `/audit/logs/export`) are the sole implementations now. There is no
- * TS platform CSV export left to wire-test. The `csvCell`/`csvRow` unit tests below remain the
- * pin for the shared helper's neutralization behavior — still load-bearing for any future TS
- * CSV export (e.g. the untouched DSAR/data-requests export, which uses its own logic, not this
- * one).
+ * (`/access-review/export`, `/audit/logs/export`) are the sole implementations now.
+ *
+ * CORRECTED 2026-08-13. This header used to claim "there is no TS platform CSV export left to
+ * wire-test", and that sentence is why the TS half of the slice-22 hardening shipped with no test
+ * at all. It was false in both directions: `platform/invitations.ts` IS a TS platform CSV export
+ * and is now wired through `csvRow` (wire-tested in `tests/parity/invitation-fixtures.test.ts`),
+ * and `users.ts`, `invoices.ts`, `subscriptions.ts` and `ai-agents.ts` still hand-roll theirs, as
+ * do two frontend builders under `apps/web/app/(admin)/platform/organizations/`. The `csvCell`/
+ * `csvRow` unit tests below remain the pin for the shared helper's neutralization behavior.
  */
 import { describe, it, expect } from 'vitest';
 import { csvCell, csvRow } from '../../packages/shared/src/csv';

@@ -360,20 +360,40 @@ Scopes: `own` | `team` | `unit` | `company` | `organization`
 > Nine Box grid, calibration, talent review, auto-plans.
 > Screens: #13 Nine Box Predictivo
 
-| #     | Procedure                       | Type     | Input                                            | Output                                                                                         | Permission     | Used By              |
-| ----- | ------------------------------- | -------- | ------------------------------------------------ | ---------------------------------------------------------------------------------------------- | -------------- | -------------------- |
-| 13.1  | `ninebox.getGrid`               | query    | `{ period, companyId?, unitId? }`                | `NineBoxCell[]` with employees, counts                                                         | ninebox:read   | Nine Box grid        |
-| 13.2  | `ninebox.getEmployeeDetail`     | query    | `{ userId, period }`                             | `{ potentialScore, performanceScore, confidence, axisBreakdown, history[] }`                   | ninebox:read   | Employee detail      |
-| 13.3  | `ninebox.getAxisBreakdown`      | query    | `{ period }`                                     | `{ potential: { mil, lnd, learning, evolution }, performance: { pca, 360, okrs, integrity } }` | ninebox:read   | Axis bars            |
-| 13.4  | `ninebox.getMovementHistory`    | query    | `{ userId }`                                     | `Movement[]` (quadrant changes over time)                                                      | ninebox:read   | Movement arrows      |
-| 13.5  | `ninebox.simulate`              | mutation | `{ userId, adjustments }`                        | `NineBoxCell` predicted                                                                        | ninebox:read   | Simulator            |
-| 13.6  | `ninebox.createCalibration`     | mutation | `{ period, committeeIds[], scheduledDate }`      | `CalibrationSession`                                                                           | ninebox:create | Start calibration    |
-| 13.7  | `ninebox.getCalibration`        | query    | `{ id }`                                         | `CalibrationSession` with members, status                                                      | ninebox:read   | Calibration panel    |
-| 13.8  | `ninebox.submitCalibrationVote` | mutation | `{ sessionId, userId, quadrant, justification }` | `Vote`                                                                                         | ninebox:update | Committee vote       |
-| 13.9  | `ninebox.finalizeCalibration`   | mutation | `{ sessionId }`                                  | `CalibrationSession`                                                                           | ninebox:update | Finalize             |
-| 13.10 | `ninebox.getQuadrantPlan`       | query    | `{ quadrant }`                                   | `{ actions[], description }`                                                                   | ninebox:read   | Auto-plan            |
-| 13.11 | `ninebox.getBenchStrength`      | query    | —                                                | `BenchStrength[]` by critical role                                                             | ninebox:read   | Bench strength table |
-| 13.12 | `ninebox.getDashboardKpis`      | query    | `{ period }`                                     | `{ totalEvaluated, highPotential, atRisk, avgConfidence }`                                     | ninebox:read   | Dashboard KPIs       |
+> **⚠️ THIS SECTION DESCRIBES A SURFACE THAT NO LONGER EXISTS IN TypeScript.**
+> As of 2026-08-05 (#57) `packages/api/src/routers/ninebox.ts` is deleted outright, along with
+> `ninebox.schemas.ts` / `ninebox.helpers.ts` and its `root.ts` registration. **None of the twelve
+> procedures below is a live tRPC endpoint.** The deletion happened in two passes — most went on
+> 2026-07-29 when `NEXT_PUBLIC_NINEBOX_READ_VIA_CSHARP` was confirmed live in prod, and the six
+> residual zero-FE-consumer procedures went with the router in #57. (No per-row split is given here
+> deliberately: the 2026-07-29 pass is recorded against _parity-surface endpoint_ names, which do not
+> map one-to-one onto the twelve tRPC procedures in this table, and an earlier version of this banner
+> asserted a 7/5 split that its own table contradicts.)
+>
+> The behaviour is served by C# — `services/Tims.Platform/src/Tims.Api/NineBox/NineBoxReadEndpoints.cs`
+> and `NineBoxWriteEndpoints.cs`, behind `Platform:NineBoxReadEnabled` / `Platform:NineBoxWriteEnabled`.
+> **13.8 `submitCalibrationVote` and 13.9 `finalizeCalibration` matter most here:** their absence from
+> TypeScript was the precondition for ownership flip #70, which **EXECUTED 2026-08-06** — the three
+> `calibration_*` tables are now `efcore`-owned and their Prisma models are deleted. Still pinned by
+> `tests/governance/calibration-no-ts-writers.test.ts`. Reading this table as evidence that a TS writer
+> of `calibration_votes` / `calibration_sessions` still exists is exactly backwards.
+>
+> The rows are retained as the historical contract the C# port was built against, not as an API.
+
+| #     | Procedure (all DELETED from TS — served by C#) | Type     | Input                                            | Output                                                                                         | Permission     | Used By              |
+| ----- | ---------------------------------------------- | -------- | ------------------------------------------------ | ---------------------------------------------------------------------------------------------- | -------------- | -------------------- |
+| 13.1  | `ninebox.getGrid`                              | query    | `{ period, companyId?, unitId? }`                | `NineBoxCell[]` with employees, counts                                                         | ninebox:read   | Nine Box grid        |
+| 13.2  | `ninebox.getEmployeeDetail`                    | query    | `{ userId, period }`                             | `{ potentialScore, performanceScore, confidence, axisBreakdown, history[] }`                   | ninebox:read   | Employee detail      |
+| 13.3  | `ninebox.getAxisBreakdown`                     | query    | `{ period }`                                     | `{ potential: { mil, lnd, learning, evolution }, performance: { pca, 360, okrs, integrity } }` | ninebox:read   | Axis bars            |
+| 13.4  | `ninebox.getMovementHistory`                   | query    | `{ userId }`                                     | `Movement[]` (quadrant changes over time)                                                      | ninebox:read   | Movement arrows      |
+| 13.5  | `ninebox.simulate`                             | mutation | `{ userId, adjustments }`                        | `NineBoxCell` predicted                                                                        | ninebox:read   | Simulator            |
+| 13.6  | `ninebox.createCalibration`                    | mutation | `{ period, committeeIds[], scheduledDate }`      | `CalibrationSession`                                                                           | ninebox:create | Start calibration    |
+| 13.7  | `ninebox.getCalibration`                       | query    | `{ id }`                                         | `CalibrationSession` with members, status                                                      | ninebox:read   | Calibration panel    |
+| 13.8  | `ninebox.submitCalibrationVote`                | mutation | `{ sessionId, userId, quadrant, justification }` | `Vote`                                                                                         | ninebox:update | Committee vote       |
+| 13.9  | `ninebox.finalizeCalibration`                  | mutation | `{ sessionId }`                                  | `CalibrationSession`                                                                           | ninebox:update | Finalize             |
+| 13.10 | `ninebox.getQuadrantPlan`                      | query    | `{ quadrant }`                                   | `{ actions[], description }`                                                                   | ninebox:read   | Auto-plan            |
+| 13.11 | `ninebox.getBenchStrength`                     | query    | —                                                | `BenchStrength[]` by critical role                                                             | ninebox:read   | Bench strength table |
+| 13.12 | `ninebox.getDashboardKpis`                     | query    | `{ period }`                                     | `{ totalEvaluated, highPotential, atRisk, avgConfidence }`                                     | ninebox:read   | Dashboard KPIs       |
 
 ---
 
@@ -413,8 +433,32 @@ Scopes: `own` | `team` | `unit` | `company` | `organization`
 > Team composition, PCA profiles, balance, recommendations.
 > Screens: #15 Team Intelligence
 
-| #    | Procedure                       | Type  | Input           | Output                                                                 | Permission | Used By              |
-| ---- | ------------------------------- | ----- | --------------- | ---------------------------------------------------------------------- | ---------- | -------------------- |
+> **⚠️ THIS SECTION DESCRIBES A SURFACE THAT NO LONGER EXISTS IN TypeScript.**
+> As of 2026-08-06 (#55) `packages/api/src/routers/teamIntel.ts` is deleted outright, along with its
+> `root.ts` registration. **None of the seven procedures below is a live tRPC endpoint.** The deletion
+> happened in two passes: 15.7 `getDashboardKpis` went on 2026-07-28 (381f0a2b) when
+> `NEXT_PUBLIC_TEAMINTEL_READ_VIA_CSHARP` was confirmed live in prod, and the six residual
+> zero-FE-consumer procedures (15.1–15.6) went with the router in #55.
+>
+> The behaviour is served by C# — `services/Tims.Platform/src/Tims.Api/TeamIntel/TeamIntelReadEndpoints.cs`
+> maps all seven behind `Platform:TeamIntelReadEnabled`, each gated by `TeamIntelStaffGate` and then by
+> the team IDOR probe (15.1–15.5), `ScopeWhereFor('team')` (15.6), or `OrgGate` (15.7).
+>
+> **Do not read the Output column as the contract.** It is the ORIGINAL Wave-1 spec, and for several
+> rows it never matched the TS implementation that was actually built — 15.1 returned a Prisma team
+> (leader / businessUnit / members / `_count`), not `{ pcaProfile, discDistribution, genderSplit,
+> seniorityDistribution }`; 15.3 returned the `buildBalanceScore` kernel shape with no `alerts[]`.
+> The executable contract is `contracts/team-intel-fixtures/*`, asserted identically by
+> `packages/shared/src/team-intel.ts` and `Tims.Domain.TeamIntel`.
+>
+> **15.4 `getBalanceAlerts` and 15.5 `getRecommendedHires` were never implemented on either stack.**
+> Both are honest 501s awaiting the Wave-3 DISC competency model (C# stubs at
+> `TeamIntelReadEndpoints.cs:150-189`, which run the scope probe *before* returning 501).
+>
+> The rows are retained as the historical contract the C# port was built against, not as an API.
+
+| #    | Procedure (all DELETED from TS — served by C#) | Type  | Input           | Output                                                                 | Permission | Used By              |
+| ---- | ---------------------------------------------- | ----- | --------------- | ---------------------------------------------------------------------- | ---------- | -------------------- |
 | 15.1 | `teamIntel.getTeamProfile`      | query | `{ teamId }`    | `{ pcaProfile, discDistribution, genderSplit, seniorityDistribution }` | team:read  | Team profile         |
 | 15.2 | `teamIntel.getMembers`          | query | `{ teamId }`    | `Member[]` with PCA type, tenure, performance                          | team:read  | Member table         |
 | 15.3 | `teamIntel.getBalanceScore`     | query | `{ teamId }`    | `{ score, alerts[] }`                                                  | team:read  | Balance analysis     |
@@ -429,6 +473,17 @@ Scopes: `own` | `team` | `unit` | `company` | `organization`
 
 > Surveys, eNPS, climate heatmap, sentiment, action plans.
 > Screens: #16 Engagement, Climate & Culture
+
+> **STALE for this domain — read `packages/api/src/routers/engagement.ts` for the live tRPC surface
+> (2026-08-05, #56).** This table describes the pre-C#-migration tRPC surface. Only **4** of the 14
+> rows below still exist as TypeScript procedures: `listSurveys` (16.1), `getSurveyResults` (16.3),
+> `getResultsByArea` (16.6) and `getRotationRisk` (16.15). The other 10 were deleted across three
+> passes — 2026-07-29 (`createSurvey`/`activateSurvey`/`submitSurveyResponse`), 2026-07-31 (the 8
+> reads with a live FE wrapper) and 2026-08-05/#56 (`getWordCloud`, `getSentiment`,
+> `createActionPlan`, `updateActionPlan`) — because C# now serves them. The C# routes are enumerated
+> in `services/Tims.Platform/src/Tims.Api/Engagement/Engagement{Read,Write}Endpoints.cs`.
+> The rest of this document has the same class of drift and has **not** been re-verified in this
+> pass; `docs/REMAINING-WORK.md` and `docs/architecture/table-ownership.md` are canonical for status.
 
 | #     | Procedure                          | Type     | Input                                              | Output                                                                | Permission          | Used By            |
 | ----- | ---------------------------------- | -------- | -------------------------------------------------- | --------------------------------------------------------------------- | ------------------- | ------------------ |

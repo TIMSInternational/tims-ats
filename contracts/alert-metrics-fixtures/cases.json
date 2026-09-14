@@ -1,0 +1,110 @@
+{
+  "description": "Cross-org alert-metric read surface (§8 Q0b slice 2, issue #172). ONE golden, TWO stacks: TS `applyAlertMetricFloor` / `isSensitiveAlertMetric` / `ALERT_METRICS_VIA_CSHARP` (packages/api/src/repositories/alert-evaluation.repository.ts, asserted by tests/monitoring/alert-metrics-fixtures.test.ts) and C# `Tims.Domain.AlertMetrics.AlertMetricKeys` + `KAnonymity.SuppressBelowMin5` (asserted by Tims.UnitTests/AlertMetrics/AlertMetricsFixtureTests.cs). The thing this pins is the §21 min-5 floor AND which metrics it applies to: an alert RULE is an exact-count oracle (a rule `metric eq 3` that fires recovers a sub-floor count over a restricted population without ever calling a read endpoint), so a sensitive 1..4 must become null/suppressed on BOTH sides. The two directions are asymmetric and both are wrong in a different way: flooring too little re-opens the oracle on salary_adjustments, flooring too much silently disables active_surveys alerting for every small org.",
+  "servedMetrics": ["active_surveys", "pending_salary_adjustments"],
+  "sensitivity": [
+    {
+      "name": "active_surveys counts survey DEFINITIONS, not responses — NOT a §21-restricted model",
+      "metric": "active_surveys",
+      "sensitive": false
+    },
+    {
+      "name": "pending_salary_adjustments counts SalaryAdjustment rows — restricted, so floored",
+      "metric": "pending_salary_adjustments",
+      "sensitive": true
+    }
+  ],
+  "floor": [
+    {
+      "name": "sensitive, 0 — an EMPTY bucket reveals no individual, so it passes through unfloored",
+      "metric": "pending_salary_adjustments",
+      "raw": 0,
+      "expectedStatus": "value",
+      "expectedValue": 0
+    },
+    {
+      "name": "sensitive, 1 — sub-floor, suppressed (a rule `eq 1` must not be able to fire)",
+      "metric": "pending_salary_adjustments",
+      "raw": 1,
+      "expectedStatus": "suppressed",
+      "expectedValue": null
+    },
+    {
+      "name": "sensitive, 4 — the LAST suppressed value; off-by-one here re-opens the oracle",
+      "metric": "pending_salary_adjustments",
+      "raw": 4,
+      "expectedStatus": "suppressed",
+      "expectedValue": null
+    },
+    {
+      "name": "sensitive, 5 — the FIRST value that passes; off-by-one here silently disables the alert",
+      "metric": "pending_salary_adjustments",
+      "raw": 5,
+      "expectedStatus": "value",
+      "expectedValue": 5
+    },
+    {
+      "name": "sensitive, 7 — well above the floor, unchanged",
+      "metric": "pending_salary_adjustments",
+      "raw": 7,
+      "expectedStatus": "value",
+      "expectedValue": 7
+    },
+    {
+      "name": "NON-sensitive, 0 — unchanged",
+      "metric": "active_surveys",
+      "raw": 0,
+      "expectedStatus": "value",
+      "expectedValue": 0
+    },
+    {
+      "name": "NON-sensitive, 1 — NOT floored. An org with one active survey must still alert; flooring everything is the plausible-looking bug this row exists to catch",
+      "metric": "active_surveys",
+      "raw": 1,
+      "expectedStatus": "value",
+      "expectedValue": 1
+    },
+    {
+      "name": "NON-sensitive, 4 — NOT floored, for the same reason",
+      "metric": "active_surveys",
+      "raw": 4,
+      "expectedStatus": "value",
+      "expectedValue": 4
+    },
+    {
+      "name": "NON-sensitive, 5 — unchanged",
+      "metric": "active_surveys",
+      "raw": 5,
+      "expectedStatus": "value",
+      "expectedValue": 5
+    }
+  ],
+  "metricKeys": [
+    { "name": "active_surveys is served", "input": "active_surveys", "valid": true },
+    { "name": "pending_salary_adjustments is served", "input": "pending_salary_adjustments", "valid": true },
+    {
+      "name": "headcount is a real ALERT_METRIC_KEY but is NOT served here — `users` does not flip, so it stays on the TS Prisma path",
+      "input": "headcount",
+      "valid": false
+    },
+    {
+      "name": "active_alerts is real but not served — `alerts` does not flip",
+      "input": "active_alerts",
+      "valid": false
+    },
+    {
+      "name": "vacancies_open_60d is real but not served — `vacancies` does not flip",
+      "input": "vacancies_open_60d",
+      "valid": false
+    },
+    {
+      "name": "sla_active_breaches is real but not served — it is computed in app code over applications",
+      "input": "sla_active_breaches",
+      "valid": false
+    },
+    { "name": "an unknown key is refused, never defaulted to a metric", "input": "not_a_metric", "valid": false },
+    { "name": "null is refused", "input": null, "valid": false },
+    { "name": "empty string is refused", "input": "", "valid": false },
+    { "name": "whitespace is refused — no trimming", "input": " active_surveys ", "valid": false },
+    { "name": "case is exact — ACTIVE_SURVEYS is refused", "input": "ACTIVE_SURVEYS", "valid": false }
+  ]
+}

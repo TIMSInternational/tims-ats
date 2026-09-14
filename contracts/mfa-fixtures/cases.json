@@ -1,0 +1,76 @@
+{
+  "description": "MFA step-up gate (#173). ONE golden, TWO stacks: TS `isMfaGateBlocking` (packages/shared/src/mfa.ts, asserted by tests/security/mfa-gate-fixtures.test.ts) and C# `Tims.Domain.Identity.MfaGate.IsBlocking` (asserted by Tims.UnitTests/Identity/MfaGateFixtureTests.cs). The two asymmetric directions are the whole point and both are pinned below: the FLAG fails OPEN (a misconfigured env must never lock privileged users out) while the LEVEL fails CLOSED (once enforcement is on, an unknown level is never good enough).",
+  "cases": [
+    {
+      "name": "enforcement off — never blocks, even for a privileged aal1 session",
+      "input": { "enforced": false, "isPrivileged": true, "currentLevel": "aal1" },
+      "expected": false
+    },
+    {
+      "name": "enforcement off — not blocking even with a null level",
+      "input": { "enforced": false, "isPrivileged": true, "currentLevel": null },
+      "expected": false
+    },
+    {
+      "name": "enforced + privileged + aal1 — BLOCKS (the whole point of the gate)",
+      "input": { "enforced": true, "isPrivileged": true, "currentLevel": "aal1" },
+      "expected": true
+    },
+    {
+      "name": "enforced + privileged + aal2 — allowed, the session stepped up",
+      "input": { "enforced": true, "isPrivileged": true, "currentLevel": "aal2" },
+      "expected": false
+    },
+    {
+      "name": "enforced + privileged + NULL level — fail-CLOSED, blocks",
+      "input": { "enforced": true, "isPrivileged": true, "currentLevel": null },
+      "expected": true
+    },
+    {
+      "name": "enforced + privileged + unknown level — fail-CLOSED, blocks",
+      "input": { "enforced": true, "isPrivileged": true, "currentLevel": "aal3" },
+      "expected": true
+    },
+    {
+      "name": "enforced + privileged + empty-string level — fail-CLOSED, blocks",
+      "input": { "enforced": true, "isPrivileged": true, "currentLevel": "" },
+      "expected": true
+    },
+    {
+      "name": "enforced but NOT privileged — ordinary staff are never gated",
+      "input": { "enforced": true, "isPrivileged": false, "currentLevel": "aal1" },
+      "expected": false
+    },
+    {
+      "name": "enforced, not privileged, null level — still not gated",
+      "input": { "enforced": true, "isPrivileged": false, "currentLevel": null },
+      "expected": false
+    }
+  ],
+  "enforcedFlag": [
+    { "name": "exactly 'true' enables", "input": "true", "expected": true },
+    { "name": "'false' does not", "input": "false", "expected": false },
+    { "name": "null does not — fail OPEN", "input": null, "expected": false },
+    { "name": "empty does not", "input": "", "expected": false },
+    { "name": "'TRUE' does NOT — exact match only, mirroring RLS_ENFORCED", "input": "TRUE", "expected": false },
+    { "name": "garbled does not — fail OPEN", "input": "yes", "expected": false }
+  ],
+  "privileged": [
+    { "name": "platform owner flag alone", "roles": [], "isPlatformOwner": true, "expected": true },
+    { "name": "super_admin role", "roles": ["super_admin"], "isPlatformOwner": false, "expected": true },
+    { "name": "platform_owner role", "roles": ["platform_owner"], "isPlatformOwner": false, "expected": true },
+    {
+      "name": "hr_admin is NOT in the privileged set",
+      "roles": ["hr_admin"],
+      "isPlatformOwner": false,
+      "expected": false
+    },
+    { "name": "no roles at all", "roles": [], "isPlatformOwner": false, "expected": false },
+    {
+      "name": "mixed roles including super_admin",
+      "roles": ["hrbp", "super_admin"],
+      "isPlatformOwner": false,
+      "expected": true
+    }
+  ]
+}

@@ -122,6 +122,35 @@ public sealed class AccessReviewFixture : IAsyncLifetime
             unit_scope uuid NULL,
             expires_at timestamp NULL
         );
+        -- audit_logs was ABSENT from this fixture until 2026-08-11, which made the whole
+        -- access-review security-audit trail untestable: `/access-review` and `/access-review/export`
+        -- each call ISecurityEventWriter (AccessReviewEndpoints.cs:50, :91), SecurityEventWriter is
+        -- fail-soft (SecurityEventWriter.cs:36), and with no table every write threw and was silently
+        -- swallowed — so the suite passed identically whether or not `access_review_viewed` /
+        -- `platform_export` were ever recorded. A compliance control with no possible test.
+        --
+        -- The FK on organization_id is DELIBERATE and mirrors production, measured 2026-08-11 against
+        -- the live DB: constraint `audit_logs_organization_id_fkey`, FOREIGN KEY (organization_id)
+        -- REFERENCES organizations(id), enforced and not deferrable. It is what makes a read against a
+        -- NON-EXISTENT org id write nothing at all rather than leave an orphan row — the property the
+        -- parity harness's fixed all-zeros org id depends on, and the one that keeps
+        -- `cutover.sh --verify-only` free of side effects. Without the FK here the fixture could not
+        -- reproduce that, and the assertion in PlatformOwner_Reads_Are200_ForNonExistentOrg would be
+        -- testing nothing.
+        CREATE TABLE audit_logs (
+            id uuid PRIMARY KEY,
+            organization_id uuid NOT NULL REFERENCES organizations (id),
+            user_id uuid NULL,
+            actor_id uuid NULL,
+            action text NOT NULL,
+            entity text NOT NULL,
+            entity_id text NULL,
+            changes jsonb NULL,
+            metadata jsonb NULL,
+            ip_address text NULL,
+            user_agent text NULL,
+            created_at timestamp NOT NULL DEFAULT now()
+        );
         CREATE TABLE permissions (id uuid PRIMARY KEY, module text NOT NULL, action text NOT NULL);
         CREATE TABLE role_permissions (
             id uuid PRIMARY KEY,

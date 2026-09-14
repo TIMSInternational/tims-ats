@@ -49,11 +49,14 @@ const EXCLUDE_PATHS = ['apps/web/app/(admin)/platform/email-preview/'];
 // now anchored to each branch's own line, but a jsx-text and a ternary vector
 // could still coincide), so the vector disambiguates them.
 const KNOWN_DEBT = new Set<string>([
-  'apps/web/app/(admin)/dashboard/activity-feed.tsx:106:ternary',
-  'apps/web/app/(admin)/dashboard/charts/customer-health.tsx:50:jsx-text',
-  'apps/web/app/(admin)/dashboard/charts/plan-distribution.tsx:98:jsx-text',
-  'apps/web/app/(admin)/dashboard/charts/revenue-by-customer.tsx:72:jsx-text',
-  'apps/web/app/(admin)/dashboard/customer-table.tsx:168:jsx-text',
+  // The five dashboard entries below were re-anchored 2026-08-17: the #81 step-4 FE-wrapper
+  // rewiring ran prettier over these files and shifted the (unchanged, still-grandfathered)
+  // strings to new lines. Same debt, same text, new anchors.
+  'apps/web/app/(admin)/dashboard/activity-feed.tsx:113:ternary',
+  'apps/web/app/(admin)/dashboard/charts/customer-health.tsx:49:jsx-text',
+  'apps/web/app/(admin)/dashboard/charts/plan-distribution.tsx:87:jsx-text',
+  'apps/web/app/(admin)/dashboard/charts/revenue-by-customer.tsx:63:jsx-text',
+  'apps/web/app/(admin)/dashboard/customer-table.tsx:161:jsx-text',
   'apps/web/app/(admin)/people/onboarding/onboarding-panels.tsx:106:ternary',
   'apps/web/app/(admin)/people/onboarding/onboarding-panels.tsx:167:jsx-text',
   'apps/web/app/(admin)/people/onboarding/onboarding-panels.tsx:185:jsx-text',
@@ -160,7 +163,9 @@ function looksLikeClassName(t: string): boolean {
   const allClassShaped = tokens.every((tok) => /^[a-zA-Z0-9:/#.\-[\]]+$/.test(tok));
   if (!allClassShaped) return false;
   return tokens.some((tok) =>
-    /^(bg-|text-|border|w-|h-|p[xytlbr]?-|m[xytlbr]?-|rounded|flex|grid|hover:|focus:|active:|disabled:|shadow|gap-|space-|items-|justify-|transition|opacity-|cursor-|absolute|relative|inline|block|font-|leading-|tracking-|z-|overflow-|max-w|min-w)/.test(tok),
+    /^(bg-|text-|border|w-|h-|p[xytlbr]?-|m[xytlbr]?-|rounded|flex|grid|hover:|focus:|active:|disabled:|shadow|gap-|space-|items-|justify-|transition|opacity-|cursor-|absolute|relative|inline|block|font-|leading-|tracking-|z-|overflow-|max-w|min-w)/.test(
+      tok,
+    ),
   );
 }
 
@@ -209,7 +214,12 @@ function looksLikeProse(s: string): boolean {
   return /\s/.test(t) || /[áéíóúñ¿¡ÁÉÍÓÚÑ]/.test(t);
 }
 
-interface Violation { file: string; line: number; vector: string; text: string }
+interface Violation {
+  file: string;
+  line: number;
+  vector: string;
+  text: string;
+}
 
 function scanFile(rel: string): Violation[] {
   const src = readFileSync(resolve(ROOT, rel), 'utf8');
@@ -254,7 +264,7 @@ function scanFile(rel: string): Violation[] {
   // per-line scan (the prior implementation) can never see. Uses `d` (indices)
   // so the reported line is where the TEXT itself starts (after skipping the
   // tag's `>` and any leading whitespace/newlines), not the tag's own line.
-  const textRe = />\s*([^<>{}][^<>{}]*?)\s*</gd;
+  const textRe = />\s*([^<>{}][^<>{}]*?)\s*</dg;
   let tm: RegExpExecArray | null;
   while ((tm = textRe.exec(src)) !== null) {
     const txt = tm[1]!.trim();
@@ -270,12 +280,14 @@ function scanFile(rel: string): Violation[] {
   // Uses `d` (indices) so each branch reports ITS OWN line, not the `?` line
   // (a multiline ternary otherwise gets both branches mis-anchored to the
   // condition's line).
-  const ternaryRe = /\?\s*(['"])((?:(?!\1)[\s\S])*?)\1\s*:\s*(['"])((?:(?!\3)[\s\S])*?)\3/gd;
+  const ternaryRe = /\?\s*(['"])((?:(?!\1)[\s\S])*?)\1\s*:\s*(['"])((?:(?!\3)[\s\S])*?)\3/dg;
   let nm: RegExpExecArray | null;
   while ((nm = ternaryRe.exec(src)) !== null) {
     const indices = (nm as unknown as { indices: Array<[number, number] | undefined> }).indices;
-    if (looksLikeProse(nm[2]!)) out.push({ file: rel, line: lineForIndex(offsets, indices[2]![0]), vector: 'ternary', text: nm[2]! });
-    if (looksLikeProse(nm[4]!)) out.push({ file: rel, line: lineForIndex(offsets, indices[4]![0]), vector: 'ternary', text: nm[4]! });
+    if (looksLikeProse(nm[2]!))
+      out.push({ file: rel, line: lineForIndex(offsets, indices[2]![0]), vector: 'ternary', text: nm[2]! });
+    if (looksLikeProse(nm[4]!))
+      out.push({ file: rel, line: lineForIndex(offsets, indices[4]![0]), vector: 'ternary', text: nm[4]! });
   }
 
   return out;
@@ -288,14 +300,17 @@ function scanFile(rel: string): Violation[] {
 // scanner newly catches, add the file:line to KNOWN_DEBT with a reason —
 // don't widen ALLOWLIST for that (it would hide the same string everywhere).
 describe('i18n: no hardcoded user-facing strings in apps/web components', () => {
-  const files = SCAN_DIRS.flatMap((d) => walk(resolve(ROOT, d)).map((f) => f.replace(ROOT + '/', '')))
-    .filter((f) => !EXCLUDE_PATHS.some((ex) => f.startsWith(ex)));
+  const files = SCAN_DIRS.flatMap((d) => walk(resolve(ROOT, d)).map((f) => f.replace(ROOT + '/', ''))).filter(
+    (f) => !EXCLUDE_PATHS.some((ex) => f.startsWith(ex)),
+  );
   const violations = files.flatMap(scanFile).filter((v) => !KNOWN_DEBT.has(`${v.file}:${v.line}:${v.vector}`));
 
   it('all user-facing text is routed through t.* (zero hardcoded literals)', () => {
     if (violations.length > 0) {
       // eslint-disable-next-line no-console
-      console.log(`\n[i18n] ${violations.length} hardcoded literal(s) — route through t.* (or allowlist if locale-invariant):`);
+      console.log(
+        `\n[i18n] ${violations.length} hardcoded literal(s) — route through t.* (or allowlist if locale-invariant):`,
+      );
       for (const v of violations.slice(0, 100)) {
         console.log(`  ${v.file}:${v.line} [${v.vector}] ${JSON.stringify(v.text)}`); // eslint-disable-line no-console
       }

@@ -17,7 +17,14 @@ export function DataRequests() {
     if (!subject || !subject.includes('@')) return;
     setExporting(true);
     try {
-      const result = await utils.platform.exportSubjectData.fetch({ email: subject });
+      // staleTime/gcTime 0 is REQUIRED, not a tuning choice. The QueryClient default
+      // is `staleTime: 300_000` (trpc-provider.tsx), and `utils.*.fetch` is
+      // `queryClient.fetchQuery` — which serves a fresh cache entry with NO server
+      // round-trip. Exporting the same subject twice inside 5 minutes would then
+      // re-download the full PII bundle (salary, DOB, demographics) while writing
+      // ZERO `data_access_logs` and ZERO `audit_logs` rows, because the procedure
+      // never runs. Every export of this bundle must reach the server and be audited.
+      const result = await utils.platform.exportSubjectData.fetch({ email: subject }, { staleTime: 0, gcTime: 0 });
       const blob = new Blob([result.json], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');

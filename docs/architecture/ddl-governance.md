@@ -306,7 +306,7 @@ been burned by the difference (#38):
 | check 14 `verify-rls-isolation.ts`               | `/gate` check 14 + **nightly CI** (#124) | ⚠️ ship-time + nightly sweep            |
 | check 16 `schema-baseline.sh check`              | `/gate` check 16 + **nightly CI** (#124) | ⚠️ ship-time + nightly sweep            |
 | **check 17 `verify-tenant-grants.ts`**           | `/gate` check 17 + **nightly CI** (#124) | ⚠️ ship-time + nightly sweep            |
-| `scripts/db/pre-flip-scan.ts` (#132)             | by hand, per flip (runbook §5)           | ❌ no — a documented step, not a gate   |
+| `scripts/db/pre-flip-scan.ts` (#132)             | `/gate` **check 18**, local              | ⚠️ ship-time only — see below           |
 
 > **The nightly job is inert until the `PROD_DIRECT_URL` secret exists**, and fails loudly rather than
 > skipping while it is absent — so "not yet configured" is visible in the Actions tab instead of silently
@@ -316,6 +316,18 @@ been burned by the difference (#38):
 
 `main` also has **no required status checks** (see the ownership-flip runbook §1), so even the ✅ rows are
 "CI goes red", not "the merge is blocked". `gh pr merge --admin` bypasses all of it.
+
+> **Check 18 (`pre-flip-scan.ts`) — wired 2026-08-06 (#132).** It was previously "by hand, per flip", which
+> in practice meant it had **never run**: flip #3 shipped with §5 step 5b unexecuted. It now derives its
+> table list from the ownership ledger's `efcore[]` diff (`--flip-diff`), so `/gate` can run it on every
+> branch without anyone typing table names, and it is a no-op that still states what it compared when the
+> branch flips nothing. Contract: **0 clean · 1 blocker · 2 could-not-run**, the same as 14/16/17.
+>
+> Its residual gap is NOT #124's. It needs a database only on a branch that actually flips a table, and a
+> nightly job (#139) is the wrong home for it — run from `main`, the ledger diff is empty by construction,
+> so it would report "nothing to scan" every night and prove nothing. What is genuinely unenforced is the
+> case where a flip PR is merged without `/gate` having been run at all, which is the same gap every ⚠️ row
+> in this table has.
 
 > **CORRECTED 2026-08-05.** The paragraph here previously said "the `/gate` skill's own check list is
 > defined outside this repository", so check 17 could not be added to it. **That was false.** The check list
@@ -359,8 +371,9 @@ Never resolve an exit 2 by re-capturing the baseline: `capture` and `check` use 
    `packages/db/prisma/{migrations,manual}/`. Every new org-scoped table carries its RLS block
    (`tenant_isolation`, fail-closed, `FORCE ROW LEVEL SECURITY`) — see `.claude/rules/db.md`.
 2. **Never hand-write EF SQL** — generate it: `dotnet ef migrations script`. Note it emits a **UTF-8
-   BOM that psql rejects**; strip it. `services/Tims.Platform/db/manual/20260723032952_fx_rates.sql`
-   still carries one.
+   BOM that psql rejects**; strip it (`tail -c +4`, or `sed -i '1s/^\xEF\xBB\xBF//'`). Every committed
+   file under `db/manual/` is BOM-free as of 2026-08-09 (#122) and
+   `tests/governance/no-bom-in-sql.test.ts` keeps it that way.
 3. **Apply via psql** on the direct connection (`:5432`, not the `:6543` transaction pooler).
 4. **Re-capture the baseline** — `bash scripts/db/schema-baseline.sh capture` — and commit it **in the
    same PR** as the DDL. The baseline diff is the reviewable record of what changed in prod.

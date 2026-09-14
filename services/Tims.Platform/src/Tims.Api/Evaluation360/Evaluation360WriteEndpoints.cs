@@ -2,6 +2,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
+using Tims.Api.Authentication;
 using Tims.Api.Configuration;
 using Tims.Application.Evaluation360;
 using Tims.Application.Identity;
@@ -16,7 +17,7 @@ namespace Tims.Api.Evaluation360;
 ///   <item><description>STAFF (createCycle/openCycle/closeCycle/publishCycle/assignRaters): the action-parameterized
 ///     <see cref="Evaluation360StaffGate"/> — <c>evaluation360:create</c> (create/assign) / <c>:update</c> (the three
 ///     transitions) + the organization/company org-gate (TS <c>requireOrgScope</c>).</description></item>
-///   <item><description>SELF-SERVICE (submitRatings): <see cref="Evaluation360SelfServiceGate"/> — IDENTITY only (any
+///   <item><description>SELF-SERVICE (submitRatings): <see cref="SelfServiceGate"/> — IDENTITY only (any
 ///     resolved principal; NO grant, NO scope) → every query/write HARD-FILTERS on the caller's own user id as the
 ///     RATER. There is no rater id param — it is ALWAYS the caller, so an org-scoped admin can NEVER submit forged
 ///     feedback for another rater (→ NOT_FOUND).</description></item>
@@ -128,7 +129,7 @@ public static class Evaluation360WriteEndpoints
                 IOptions<PlatformOptions> platformOptions,
                 Evaluation360WriteUseCase useCase, TimeProvider timeProvider, CancellationToken cancellationToken) =>
             {
-                var gate = await Evaluation360SelfServiceGate.AuthorizeAsync(
+                var gate = await SelfServiceGate.AuthorizeAsync(
                     user, httpContext, principalResolver, platformOptions.Value, cancellationToken);
                 if (gate.Failure is not null)
                 {

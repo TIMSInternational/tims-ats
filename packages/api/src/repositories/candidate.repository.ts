@@ -1,4 +1,4 @@
-import { tenantDb as db } from '@tims/db';
+import { tenantDb as db, runTenantTransaction } from '@tims/db';
 import type { Prisma } from '@tims/db';
 
 // ---------------------------------------------------------------------------
@@ -418,37 +418,51 @@ export const candidateRepository = {
   },
 
   // Merge (transaction)
-  async merge(primaryId: string, duplicateId: string) {
+  //
+  // `orgId` is required for the transaction, not for filtering: runTenantTransaction
+  // needs it to set the RLS role + `app.current_org_id` GUC once for the whole tx.
+  // The caller (candidate.service.merge) has already org-verified BOTH ids via
+  // candidateRepository.exists(orgId, …), and RLS re-scopes every write below.
+  //
+  // #45 / prisma/prisma#17948: this was `db.$transaction([...])` where `db` is
+  // `tenantDb`. The BATCH form is broken the same way the interactive form is —
+  // each element is re-wrapped by the tenantDb extension into its own
+  // mini-transaction and commits independently. Reproduced on a local PG17
+  // cluster 2026-08-06: a failing 2nd element left the 1st element COMMITTED.
+  // For a 6-step merge that meant a candidate could end up with documents and
+  // tags reparented while the duplicate stayed live and un-deleted — a
+  // half-merged pair with no way to tell which steps ran.
+  async merge(orgId: string, primaryId: string, duplicateId: string) {
     const existingPrimaryTags = await db.candidateTag.findMany({
       where: { candidateId: primaryId },
       select: { tag: true },
     });
     const primaryTagSet = new Set(existingPrimaryTags.map((t) => t.tag));
 
-    return db.$transaction([
-      db.candidateDocument.updateMany({
+    return runTenantTransaction(orgId, async (tx) => {
+      await tx.candidateDocument.updateMany({
         where: { candidateId: duplicateId },
         data: { candidateId: primaryId },
-      }),
-      db.candidateTag.deleteMany({
+      });
+      await tx.candidateTag.deleteMany({
         where: { candidateId: duplicateId, tag: { in: [...primaryTagSet] } },
-      }),
-      db.candidateTag.updateMany({
+      });
+      await tx.candidateTag.updateMany({
         where: { candidateId: duplicateId },
         data: { candidateId: primaryId },
-      }),
-      db.assessmentAssignment.updateMany({
+      });
+      await tx.assessmentAssignment.updateMany({
         where: { candidateId: duplicateId },
         data: { candidateId: primaryId },
-      }),
-      db.fitScore.deleteMany({
+      });
+      await tx.fitScore.deleteMany({
         where: { candidateId: duplicateId },
-      }),
-      db.candidate.update({
+      });
+      await tx.candidate.update({
         where: { id: duplicateId },
         data: { deletedAt: new Date(), isActive: false },
-      }),
-    ]);
+      });
+    });
   },
 
   async getAfterMerge(id: string) {

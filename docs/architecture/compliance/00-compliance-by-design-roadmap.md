@@ -25,7 +25,7 @@ with **SOC 1 Type II, SOC 2 Type II, and ISO 27001** — compliance-by-design, c
 |---|---|---|---|
 | Tenant isolation / logical access | CC6.1 | 8.3, 8.20 | **Strong** — fail-closed Postgres RLS (`app_tenant` NOBYPASSRLS, `SET LOCAL` org GUC), Testcontainers-proven |
 | Authorization | CC6.3 | 8.2 | **Strong** — RBAC module:action:scope, DB-checked grants, least-privilege, k-anon |
-| Authentication / MFA | CC6.1 | 8.5 | **Gap** — Supabase JWT solid; `MFA_ENFORCED` decision OPEN → enforce (CB-2) |
+| Authentication / MFA | CC6.1 | 8.5 | **Partial** — Supabase JWT solid; enforcement BUILT on both stacks (tRPC `withMfaEnforcement`; C# `MfaStepUpMiddleware`, #178), sharing one golden. Both flags DARK: the remaining gap is the go-live decision, and it must set `MFA_ENFORCED` **and** `Platform:MfaEnforced` together → (CB-2) |
 | Audit logging | CC7.2 | 8.15 | **Partial** — `data_access_logs` append-only; needs immutability + broader events (**CB-1**) |
 | Change management | CC8.1 | 8.32 | **Strong-ish** — PR + SDD + Codex/opus gates + dark-by-default flags + table-ownership ledger; **fix the admin-merge-past-CI bypass** (CB-4) |
 | Cryptography / secrets | CC6.1 | 8.24 | **Strong** — secrets never logged, AWS Secrets Manager, gitleaks, TLS; add rotation policy |
