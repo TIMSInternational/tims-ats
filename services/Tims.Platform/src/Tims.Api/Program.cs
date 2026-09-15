@@ -649,6 +649,9 @@ try
     // restrict this reader, see AuditReadDbContext). Dark unless AuditLogReadEnabled.
     builder.Services.AddDbContext<AuditReadDbContext>(options => options.UseNpgsql(databaseConnectionString));
     builder.Services.AddScoped<IAuditReadRepository, AuditReadRepository>();
+    builder.Services.AddDbContext<TenantAuditDbContext>(options => options.UseNpgsql(databaseConnectionString));
+    builder.Services.AddScoped<ITenantAuditRepository, TenantAuditRepository>();
+    builder.Services.AddScoped<TenantAuditReadUseCase>();
 
     // Phase-5 Slice 18 (efcoreReadOnly on users/roles/user_roles/role_permissions/permissions/
     // organizations; access_reviews stays Prisma-owned until Task 9): the access-review report +
@@ -1509,6 +1512,11 @@ try
     // (PlatformOwnerGate — NO permission grant, NO tenant scope; the reader runs OUTSIDE TenantScope/RLS
     // by design). Dark unless the flag is on (deploy-gated cutover; TS stays the sole active reader
     // until Federico flips it).
+    if (externalOptions.TenantAuditReadEnabled || isOpenApiDocGeneration)
+    {
+        app.MapTenantAuditReadEndpoints();
+    }
+
     if (externalOptions.AuditLogReadEnabled || isOpenApiDocGeneration)
     {
         app.MapAuditReadEndpoints();

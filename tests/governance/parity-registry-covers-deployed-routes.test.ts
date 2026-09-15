@@ -236,6 +236,21 @@ const UNREGISTERED_ALLOWLIST: AllowGroup[] = [
   },
   {
     reason:
+      'TENANT AUDIT LANDED DARK 2026-09-14 (PR #257). The tenant endpoints have real-PostgreSQL ' +
+      'integration and local cross-runtime coverage, but the shared remote harness still needs audit:read grants and distinct ' +
+      'per-tenant audit rows with actor/user joins. Empty default fixtures would give vacuous parity. ' +
+      'Register fixture-first before enabling TenantAuditReadEnabled; tracked in ' +
+      'docs/audits/2026-09-14-tenant-audit-migration.md. This is an acknowledged acceptance gap, not parity proof.',
+    routes: [
+      'GET /tenant-audit/access-report',
+      'GET /tenant-audit/logs/{id}',
+      'GET /tenant-audit/logs',
+      'GET /tenant-audit/history',
+      'POST /tenant-audit/export',
+    ],
+  },
+  {
+    reason:
       'INFRA / DIAGNOSTIC, not a domain surface. `/` and the two whoami routes are liveness and identity echoes; ' +
       '/require-permission and /require-org-scope (Program.cs:1225, :1265) are the permission-kernel probes the C# ' +
       'auth integration tests drive. None reads tenant data, so none carries a parity, RLS or RBAC obligation.',
@@ -477,8 +492,8 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //         (157 → 168 was Phase-5 slice 25 / #98: the eleven notification routes, landed dark and
     //         allowlisted pending a per-role ROW fixture — see their group above. Measured, not
     //         incremented by hand: the re-derivation command above prints 168.)
-    // 2026-09-14: one default-disabled invitation resend write added; safe remote mail fixtures pending.
-    expect(deployed.size).toBe(169);
+    // Main tenant-audit operations plus the default-disabled invitation resend route.
+    expect(deployed.size).toBe(174);
     //   92 = 65 read endpoints (surfaces.ts, 14 surfaces) + 27 write (write-surfaces.ts, 8 surfaces:
     //        24 written literally + 3 produced by the shared `transitionEndpoint` helper). The READ side
     //        went 40 → 65 on 2026-08-17 (#195 residual): the four talent surfaces deleted in the
@@ -542,7 +557,7 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //   65 → 76, 2026-08-19 (Phase-5 slice 25 / #98): the eleven notification routes landed DARK, all
     //   eleven pending a fixture whose shape differs from every prior surface's (per-role ROWS, not
     //   grants — nine of the eleven procedures carry no grant to seed). Documented growth, not drift.
-    expect(allowlistNormalised.length).toBe(77);
+    expect(allowlistNormalised.length).toBe(82);
     // Every group must actually carry a reason and actually cover something — an empty group, or one
     // whose "reason" is a word, is a rubber stamp.
     for (const g of UNREGISTERED_ALLOWLIST) {
@@ -559,6 +574,6 @@ describe('parity registry covers every deployed route (or documents why not)', (
     // identity-authorized rather than grant-authorized, so the registry's by-role comparison needs
     // per-role rows instead of a grant fixture. Folding it into the fit-engine group would state the
     // wrong prerequisite for both.
-    expect(UNREGISTERED_ALLOWLIST.length, 'the ten documented gap categories').toBe(10);
+    expect(UNREGISTERED_ALLOWLIST.length, 'the eleven documented gap categories').toBe(11);
   });
 });

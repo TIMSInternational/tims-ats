@@ -26,7 +26,7 @@ namespace Tims.IntegrationTests.Compensation;
 ///   auth matrix: no grant → 403; no/tampered/non-staff JWT → 401; dark-by-default (flag off) → 404.
 /// </summary>
 [Collection("CompensationRead")]
-public sealed class CompensationReadEndpointAuthTests(CompensationReadFixture fixture)
+public sealed partial class CompensationReadEndpointAuthTests(CompensationReadFixture fixture)
 {
     private const string Issuer = "https://test-project.supabase.co/auth/v1";
     private const string Audience = "authenticated";
@@ -45,22 +45,26 @@ public sealed class CompensationReadEndpointAuthTests(CompensationReadFixture fi
 
     private static string Employee(Guid id) => $"/compensation/employee/{id}";
 
-    private WebApplicationFactory<Program> EnabledFactory() =>
+    private WebApplicationFactory<Program> EnabledFactory(Tims.Application.Audit.IDataAccessAuditor? auditor = null) =>
         new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
             builder.UseSetting("Platform:DatabaseConnectionString", _fixture.ConnectionString);
             builder.UseSetting("Platform:CompensationReadEnabled", "true");
+            builder.UseSetting("Platform:FxReadsEnabled", "true");
             builder.UseSetting("Platform:SupabaseJwtIssuer", Issuer);
             builder.UseSetting("Platform:SupabaseJwtAudience", Audience);
 
             var publicJwk = JsonWebKeyConverter.ConvertFromRSASecurityKey(
                 new RsaSecurityKey(SigningRsa.ExportParameters(false)) { KeyId = PrivateKey.KeyId });
             builder.ConfigureTestServices(services =>
+            {
+                if (auditor is not null) services.AddSingleton(auditor);
                 services.PostConfigure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
                 {
                     options.RequireHttpsMetadata = false;
                     options.TokenValidationParameters.IssuerSigningKeys = [publicJwk];
-                }));
+                });
+            });
         });
 
     private static WebApplicationFactory<Program> DarkFactory() =>

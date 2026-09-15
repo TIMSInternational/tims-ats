@@ -257,6 +257,9 @@ public sealed class PlatformOptions
     /// </summary>
     public bool AuditLogReadEnabled { get; init; }
 
+    /// <summary>Tenant audit reads; disabled until acceptance and cutover.</summary>
+    public bool TenantAuditReadEnabled { get; init; }
+
     /// <summary>
     /// Phase-5 Slice 11c: when true, the C# FX-derived READ surface is mapped and live — the FIVE deferred
     /// compensation FX reads (<c>GET /compensation/band-distribution</c>, <c>/compensation/pay-equity</c>,

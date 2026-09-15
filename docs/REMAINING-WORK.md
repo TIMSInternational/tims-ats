@@ -33,6 +33,10 @@
   and authorized delivery verification remain open. See
   `architecture/csharp-migration/csharp-email-delivery.md` for contract and read-only infrastructure findings.
 
+- **Deployment blocker diagnosed:** GitHub immutable OIDC subject did not match AWS trust.
+  Trust and PassRole corrected and verified; production rollout succeeded. See
+  `audits/2026-09-14-deployment-oidc.md`. The live API runs image `1657b2f`; health and readiness both returned Healthy/200.
+
 - **Scope correction from Federico:** TIMS ATS is to function independently and communicate with
   `tims.configuration.core` and other systems **through APIs**. The older Phase-6 absorption plan is
   superseded for this objective; importing Team Suite's domain/data-access code is not required.
@@ -55,6 +59,18 @@
   `plans/2026-09-14-acceptance-register.md`. Neither is a claim of production completion.
 
 ---
+
+## Tenant audit migration update — 2026-09-14 (PR #257, not deployed)
+
+All five tenant audit operations are implemented in C#/.NET 10: list, detail, entity history,
+access report and export. The settings export page now has a default-off C# routing hook behind
+`NEXT_PUBLIC_TENANT_AUDIT_VIA_CSHARP`, with runtime routing/validation tests. This is separate from the platform-owner audit API. The flag remains
+default-off and the TypeScript router remains active pending differential fixtures, staging
+acceptance and consumer retirement. Seventeen cross-runtime cases now compare the actual Prisma and EF paths
+against the same isolated PostgreSQL database under RLS, with a dedicated CI job. Local checks: 71 audit integration tests (including the 17-case cross-runtime comparison), four shared C# export-fixture tests,
+3,280 JavaScript tests, API/web type checks and the ownership gate passed. See
+[audit migration evidence](audits/2026-09-14-tenant-audit-migration.md) for compatibility differences
+and the exact remaining cutover requirements. This entry does not re-verify the older status below.
 
 ## ✅ DONE (verified in code + prod, not aspirational)
 
