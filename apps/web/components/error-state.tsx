@@ -37,6 +37,7 @@ export function ErrorState({ onRetry, message }: ErrorStateProps) {
       <p className="text-sm text-[#8B8B8B]">{message ?? t.common.error}</p>
       {onRetry && (
         <button
+          type="button"
           onClick={onRetry}
           className="mt-4 h-9 px-4 rounded-lg bg-[#1F114C] text-white text-sm font-medium hover:bg-[#2a1866] transition"
         >
