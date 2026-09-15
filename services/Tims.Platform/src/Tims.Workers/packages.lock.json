@@ -68,6 +68,19 @@
           "Serilog": "4.0.0"
         }
       },
+      "AWSSDK.Core": {
+        "type": "Transitive",
+        "resolved": "4.0.102.4",
+        "contentHash": "cFMZnb05RV290HDdybtgR5b/ypkLekeaoHde4tiQHLmgegGLMmcEKsvThnLm1PJOeWSNFcBxzC5fomOvWiW24A=="
+      },
+      "AWSSDK.SimpleEmail": {
+        "type": "Transitive",
+        "resolved": "4.0.100.13",
+        "contentHash": "NT+kVJlgU05zaXFzqIcyVQBD3/VBS2TWyjxpr3UsLVLBD9zOSojrzrHVxDP3n/ECr3oNgjW63OEp9F6rg7IkWA==",
+        "dependencies": {
+          "AWSSDK.Core": "[4.0.102.4, 5.0.0)"
+        }
+      },
       "Microsoft.EntityFrameworkCore": {
         "type": "Transitive",
         "resolved": "10.0.4",
@@ -344,6 +357,7 @@
       "tims.infrastructure": {
         "type": "Project",
         "dependencies": {
+          "AWSSDK.SimpleEmail": "[4.0.100.13, )",
           "Microsoft.Extensions.Http.Resilience": "[10.0.0, )",
           "Npgsql.EntityFrameworkCore.PostgreSQL": "[10.0.3, )",
           "StackExchange.Redis": "[3.0.17, )",

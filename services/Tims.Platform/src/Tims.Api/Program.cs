@@ -70,6 +70,7 @@ using Tims.Infrastructure.AccessReview;
 using Tims.Infrastructure.Audit;
 using Tims.Infrastructure.Billing;
 using Tims.Infrastructure.Compensation;
+using Tims.Infrastructure.Email;
 using Tims.Infrastructure.Evaluation360;
 using Tims.Infrastructure.ExternalVendor;
 using Tims.Infrastructure.Hris;
@@ -99,6 +100,7 @@ Log.Logger = new LoggerConfiguration()
 try
 {
     var builder = WebApplication.CreateBuilder(args);
+    builder.Services.AddPlatformEmail(builder.Configuration);
 
     // --- Structured JSON logging (Pino-parity), request/tenant correlation ids -------
     // NEVER logs request bodies / tokens / PII (rule: api-security.md §Observability).
@@ -324,6 +326,22 @@ try
         options.UseNpgsql(sp.GetRequiredService<PlatformInvitationsDataSourceHolder>().DataSource));
     builder.Services.AddScoped<IPlatformInvitationsReadRepository, PlatformInvitationsReadRepository>();
     builder.Services.AddScoped<PlatformInvitationsReadUseCase>();
+    builder.Services.AddDbContext<InvitationResendDbContext>((sp, options) =>
+        options.UseNpgsql(sp.GetRequiredService<PlatformInvitationsDataSourceHolder>().DataSource,
+            npgsql => npgsql.CommandTimeout(2)));
+    builder.Services.AddScoped<IInvitationResendRepository, InvitationResendRepository>();
+    builder.Services.AddScoped<InvitationResendUseCase>();
+    builder.Services.AddScoped<IOrganizationInvitationCreateRepository, OrganizationInvitationCreateRepository>();
+    builder.Services.AddScoped<OrganizationInvitationCreateUseCase>();
+    builder.Services.AddScoped<IUserInvitationCreateRepository, UserInvitationCreateRepository>();
+    builder.Services.AddScoped<UserInvitationCreateUseCase>();
+    builder.Services.AddSingleton<IBulkInvitationWorker, BulkInvitationWorker>();
+    builder.Services.AddScoped<BulkInvitationUseCase>();
+    builder.Services.TryAddSingleton(TimeProvider.System);
+    builder.Services.AddOptions<InvitationDeliveryOptions>()
+        .Bind(builder.Configuration.GetSection(InvitationDeliveryOptions.SectionName))
+        .Validate(options => options.IsValid(), "Invitations:AppOrigin must be an HTTPS origin without credentials, path, query or fragment")
+        .ValidateOnStart();
 
     // Phase-5 slice 23 (#81, PR 1 of 3): platform-owner DASHBOARD READ, the three FX-free procedures
     // (getPlanDistribution / getUserGrowth / getRecentActivity). Cross-org by design and NEVER wrapped in
@@ -1257,11 +1275,27 @@ try
 
     // Phase-5 slice 22 (#75): GET /platform/invitations{,/kpis,/export} — the platform-owner invitations
     // READ surface. Three of that router's ten procedures; the other seven are out for three distinct
-    // reasons (writes / unauthenticated token endpoints / no email capability in this service) — see
+    // reasons (writes / unauthenticated token endpoints / email workflow activation pending) — see
     // PlatformOptions.PlatformInvitationsReadEnabled. Dark unless the flag is on.
     if (externalOptions.PlatformInvitationsReadEnabled || isOpenApiDocGeneration)
     {
         app.MapPlatformInvitationsReadEndpoints();
+    }
+    if (externalOptions.PlatformBulkInvitationEnabled || isOpenApiDocGeneration)
+    {
+        app.MapBulkInvitationEndpoints();
+    }
+    if (externalOptions.PlatformUserInvitationCreateEnabled || isOpenApiDocGeneration)
+    {
+        app.MapUserInvitationCreateEndpoints();
+    }
+    if (externalOptions.PlatformOrganizationInvitationCreateEnabled || isOpenApiDocGeneration)
+    {
+        app.MapOrganizationInvitationCreateEndpoints();
+    }
+    if (externalOptions.PlatformInvitationResendEnabled || isOpenApiDocGeneration)
+    {
+        app.MapInvitationResendEndpoints();
     }
 
     // Phase-5 slice 23 (#81): GET /platform/dashboard/{plan-distribution,user-growth,

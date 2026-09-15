@@ -1,5 +1,12 @@
 # Phase-5 Slice 22 — platform invitations READ (#75)
 
+> **2026-09-14 update:** The historical characterization below predates the default-disabled
+> C# SES sender; see [current email boundary](csharp-email-delivery.md). API/worker registration,
+> bounded dispatch and failure handling now exist. Invitation write ports, runtime SES grants/config
+> and authorized delivery verification remain open. Bulk/resend TS delivery was also corrected in
+> the September security wave; the earlier "no email capability" and discarded-result statements
+> below describe the original slice, not the current tree. This read flag still enables no writes.
+
 Ports the **three read procedures** of `packages/api/src/routers/platform/invitations.ts` to C#, dark
 behind `Platform:PlatformInvitationsReadEnabled`. Steps 1–4 of the strangler recipe; steps 5–7 are
 Federico's.

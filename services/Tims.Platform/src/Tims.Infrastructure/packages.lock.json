@@ -2,6 +2,15 @@
   "version": 1,
   "dependencies": {
     "net10.0": {
+      "AWSSDK.SimpleEmail": {
+        "type": "Direct",
+        "requested": "[4.0.100.13, )",
+        "resolved": "4.0.100.13",
+        "contentHash": "NT+kVJlgU05zaXFzqIcyVQBD3/VBS2TWyjxpr3UsLVLBD9zOSojrzrHVxDP3n/ECr3oNgjW63OEp9F6rg7IkWA==",
+        "dependencies": {
+          "AWSSDK.Core": "[4.0.102.4, 5.0.0)"
+        }
+      },
       "Microsoft.EntityFrameworkCore.Design": {
         "type": "Direct",
         "requested": "[10.0.4, )",
@@ -64,6 +73,11 @@
           "Newtonsoft.Json": "13.0.3",
           "System.Configuration.ConfigurationManager": "9.0.0"
         }
+      },
+      "AWSSDK.Core": {
+        "type": "Transitive",
+        "resolved": "4.0.102.4",
+        "contentHash": "cFMZnb05RV290HDdybtgR5b/ypkLekeaoHde4tiQHLmgegGLMmcEKsvThnLm1PJOeWSNFcBxzC5fomOvWiW24A=="
       },
       "Humanizer.Core": {
         "type": "Transitive",

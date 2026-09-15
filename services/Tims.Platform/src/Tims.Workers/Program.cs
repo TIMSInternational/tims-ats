@@ -9,6 +9,7 @@ using Serilog.Formatting.Compact;
 using Tims.Application.Audit;
 using Tims.Application.Fx;
 using Tims.Infrastructure.Audit;
+using Tims.Infrastructure.Email;
 using Tims.Infrastructure.Fx;
 using Tims.Infrastructure.Hris;
 using Tims.Workers;
@@ -27,6 +28,7 @@ Log.Logger = new LoggerConfiguration()
 try
 {
     var builder = WebApplication.CreateBuilder(args);
+    builder.Services.AddPlatformEmail(builder.Configuration);
 
     // --- Structured JSON logging (Pino-parity). NEVER logs job payloads / secrets / PII. --------
     // preserveStaticLogger: the host's DI logger is its OWN, so building it never re-freezes the shared

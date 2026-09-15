@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import { useUserInvitationRoles } from '../../../../lib/platform-api/user-invitation-roles';
+import { useUserInvitationCreate } from '../../../../lib/platform-api/user-invitation-create';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
@@ -14,9 +16,13 @@ export function InviteUserModal({ onClose, onSuccess, preselectedOrgId, preselec
   const [roleSlug, setRoleSlug] = useState('');
 
   const orgs = trpc.platform.listOrganizations.useQuery({ search: orgSearch || undefined, limit: 10, page: 0 });
-  const create = trpc.platform.createUserInvitation.useMutation({
-    onSuccess: () => { toast(t.invitations.userInvitationSent, { type: 'success' }); onSuccess(); },
-    onError: (err) => { toast(err.message || 'Error al crear invitacion', { type: 'error' }); },
+  const create = useUserInvitationCreate({
+    onSuccess: (delivery) => {
+      toast(delivery === 'accepted' || delivery === 'legacy' ? t.invitations.userInvitationSent : t.invitations.userInviteDeliveryUnconfirmed,
+        { type: delivery === 'accepted' || delivery === 'legacy' ? 'success' : 'warning' });
+      onSuccess();
+    },
+    onError: (err) => { toast(err.message || t.invitations.creationFailed, { type: 'error' }); },
   });
 
   const ROLES = [
@@ -26,6 +32,8 @@ export function InviteUserModal({ onClose, onSuccess, preselectedOrgId, preselec
     { slug: 'hiring_manager', label: 'Hiring Manager' },
     { slug: 'viewer', label: 'Solo Lectura' },
   ];
+
+  const invitationRoles = useUserInvitationRoles(orgId, ROLES);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,18 +54,18 @@ export function InviteUserModal({ onClose, onSuccess, preselectedOrgId, preselec
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.userEmail} *</label>
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="usuario@empresa.com" className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20" required />
+            <input type="email" maxLength={254} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="usuario@empresa.com" className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20" required />
           </div>
           <div>
             <label className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.organization} *</label>
-            <input type="text" value={orgSearch} onChange={(e) => { setOrgSearch(e.target.value); setOrgId(''); }} placeholder={t.organizations.searchOrg} className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20" />
+            <input type="text" value={orgSearch} onChange={(e) => { setOrgSearch(e.target.value); setOrgId(''); setRoleSlug(''); }} placeholder={t.organizations.searchOrg} className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20" />
             {orgSearch && !orgId && orgs.isError && (
               <ErrorState onRetry={() => orgs.refetch()} />
             )}
             {orgSearch && !orgId && orgs.data && (
               <div className="mt-1 bg-white border border-[#EDEDED] rounded-lg shadow-lg max-h-40 overflow-y-auto">
                 {orgs.data.organizations.map((org) => (
-                  <button key={org.id} type="button" onClick={() => { setOrgId(org.id); setOrgSearch(org.name); }} className="w-full text-left px-3 py-2 text-sm hover:bg-[#F6F6F6] transition">
+                  <button key={org.id} type="button" onClick={() => { setOrgId(org.id); setOrgSearch(org.name); setRoleSlug(''); }} className="w-full text-left px-3 py-2 text-sm hover:bg-[#F6F6F6] transition">
                     {org.name} <span className="text-[#8B8B8B] text-xs">({org.slug})</span>
                   </button>
                 ))}
@@ -66,9 +74,10 @@ export function InviteUserModal({ onClose, onSuccess, preselectedOrgId, preselec
           </div>
           <div>
             <label className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.role}</label>
+            {invitationRoles.isError && <ErrorState onRetry={() => invitationRoles.refetch()} />}
             <select value={roleSlug} onChange={(e) => setRoleSlug(e.target.value)} className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#333] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20">
               <option value="">{t.invitations.selectRole}</option>
-              {ROLES.map((r) => (
+              {invitationRoles.roles.map((r) => (
                 <option key={r.slug} value={r.slug}>{r.label}</option>
               ))}
             </select>

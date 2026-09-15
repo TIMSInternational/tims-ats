@@ -104,35 +104,3 @@ export function BulkPreviewStep({ parsedUsers, bulkOrgId, isPending, setBulkStep
     </div>
   );
 }
-
-interface BulkResultStepProps {
-  bulkResult: { sent: number; duplicates: number; errors: number };
-  onSuccess: () => void;
-}
-
-export function BulkResultStep({ bulkResult, onSuccess }: BulkResultStepProps) {
-  const { t } = useI18n();
-  return (
-    <div className="space-y-4 text-center py-4">
-      <svg className="w-14 h-14 mx-auto text-green-500" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-      <h3 className="text-lg font-semibold text-[#333]">{t.users.importComplete}</h3>
-      <div className="grid grid-cols-3 gap-3">
-        <div className="bg-green-50 rounded-lg p-3">
-          <p className="text-2xl font-bold text-green-600">{bulkResult.sent}</p>
-          <p className="text-[10px] text-green-700">Enviadas</p>
-        </div>
-        <div className="bg-amber-50 rounded-lg p-3">
-          <p className="text-2xl font-bold text-amber-600">{bulkResult.duplicates}</p>
-          <p className="text-[10px] text-amber-700">Duplicadas</p>
-        </div>
-        <div className="bg-red-50 rounded-lg p-3">
-          <p className="text-2xl font-bold text-[#DD0C15]">{bulkResult.errors}</p>
-          <p className="text-[10px] text-red-700">Errores</p>
-        </div>
-      </div>
-      <button onClick={() => { onSuccess(); }} className="h-9 px-6 rounded-lg bg-[#1F114C] text-white text-sm font-medium hover:bg-[#2a1866] transition">
-        {t.common.close}
-      </button>
-    </div>
-  );
-}

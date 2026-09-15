@@ -74,6 +74,19 @@
         "resolved": "3.1.4",
         "contentHash": "5mj99LvCqrq3CNi06xYdyIAXOEh+5b33F2nErCzI5zWiDdLHXiPXEWFSUAF8zlIv0ZWqjZNCwHTQeAPYbF3pCg=="
       },
+      "AWSSDK.Core": {
+        "type": "Transitive",
+        "resolved": "4.0.102.4",
+        "contentHash": "cFMZnb05RV290HDdybtgR5b/ypkLekeaoHde4tiQHLmgegGLMmcEKsvThnLm1PJOeWSNFcBxzC5fomOvWiW24A=="
+      },
+      "AWSSDK.SimpleEmail": {
+        "type": "Transitive",
+        "resolved": "4.0.100.13",
+        "contentHash": "NT+kVJlgU05zaXFzqIcyVQBD3/VBS2TWyjxpr3UsLVLBD9zOSojrzrHVxDP3n/ECr3oNgjW63OEp9F6rg7IkWA==",
+        "dependencies": {
+          "AWSSDK.Core": "[4.0.102.4, 5.0.0)"
+        }
+      },
       "BouncyCastle.Cryptography": {
         "type": "Transitive",
         "resolved": "2.7.0",
@@ -1050,6 +1063,7 @@
       "tims.infrastructure": {
         "type": "Project",
         "dependencies": {
+          "AWSSDK.SimpleEmail": "[4.0.100.13, )",
           "Microsoft.Extensions.Http.Resilience": "[10.0.0, )",
           "Npgsql.EntityFrameworkCore.PostgreSQL": "[10.0.3, )",
           "StackExchange.Redis": "[3.0.17, )",

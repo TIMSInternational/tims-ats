@@ -610,14 +610,25 @@ public sealed class PlatformOptions
     ///     NOT ride this flag: a reviewer reading "invitations read is on" would have no reason to expect
     ///     two anonymous endpoints to come on with it.
     ///   • <c>createOrgInvitation</c> + <c>createUserInvitation</c> + <c>resendInvitation</c> — all three
-    ///     send email via <c>packages/api/src/lib/ses.ts</c>, and this service has NO email capability
-    ///     (measured: no AWS SDK, no SMTP, no MailKit, no sender abstraction anywhere in
-    ///     <c>services/Tims.Platform</c>). Porting them now would yield endpoints that write the invitation
-    ///     row and silently never deliver it — a failure that only becomes visible after a flip.
+    ///     require the C# email boundary and their own write/state-transition implementation.
+    ///     The sender now exists but defaults disabled; SES permissions, configuration and delivery
+    ///     verification remain prerequisites. This read flag does not enable mail or invitation writes.
     ///
     /// DEFAULT false (dark) — TS remains the single active reader until Federico flips it at canary.
     /// </summary>
     public bool PlatformInvitationsReadEnabled { get; init; }
+
+    /// <summary>Default-disabled bounded bulk user invitations; independent of single creation.</summary>
+    public bool PlatformBulkInvitationEnabled { get; init; }
+
+    /// <summary>Default-disabled individual-user invitation creation and initial delivery.</summary>
+    public bool PlatformUserInvitationCreateEnabled { get; init; }
+
+    /// <summary>Default-disabled organization invitation creation and initial delivery.</summary>
+    public bool PlatformOrganizationInvitationCreateEnabled { get; init; }
+
+    /// <summary>Default-disabled resend write only; does not enable creation, acceptance or bulk invitations.</summary>
+    public bool PlatformInvitationResendEnabled { get; init; }
 
     /// <summary>
     /// Phase-5 slice 23 (issue #81) — the platform-owner DASHBOARD READ surface: the C# port of ALL
