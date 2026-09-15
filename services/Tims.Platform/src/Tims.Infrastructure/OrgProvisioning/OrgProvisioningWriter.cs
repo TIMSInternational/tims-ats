@@ -21,15 +21,8 @@ public sealed record OrgDefaultsIds(Guid CompanyId, Guid BusinessUnitId, Guid Te
 /// scope for any C# slice, and which is why these tables can never reach <c>efcore[]</c>: the TS writer
 /// cannot be retired.</para>
 ///
-/// <para><b>#75's dependency is HALF satisfied by this file, and the other half is deliberately not here
-/// yet.</b> <c>invitations.ts:83-114</c> needs FIVE things inside one transaction:
-/// <c>organization.create</c> (<c>:84-91</c>), this helper pair (<c>:100-101</c>), <c>role.create</c>
-/// (<c>:103-105</c>) and <c>subscription.create</c> (<c>:106-113</c>). Only the helper pair and the shared
-/// <see cref="RoleWriteEntity"/> map live here. The <c>organizations</c> and <c>subscriptions</c> INSERTs —
-/// and with them the two traps this slice paid for, the explicit <c>::"OrgPlan"</c>/<c>::"SubscriptionStatus"</c>
-/// enum casts and the <c>Kind=Utc</c> → <c>Unspecified</c> timestamp normalisation — are still PRIVATE to
-/// <c>PlatformOrganizationsCreateRepository</c>. #75 must either promote them here or re-derive them; it
-/// must NOT assume calling this writer alone produces a usable org.</para>
+/// <para>The complete seven-table setup is shared through <see cref="OrganizationBundleWriter"/>.
+/// Organization invitations use it in the same transaction as their pending invitation and creation audit.</para>
 ///
 /// <para><b>A static class in Infrastructure, not an Application port.</b> It operates on an EF
 /// <see cref="DbContext"/>; an Application-layer interface over a <c>DbContext</c> would leak persistence

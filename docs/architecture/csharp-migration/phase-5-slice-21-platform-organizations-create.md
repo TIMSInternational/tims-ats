@@ -1,5 +1,7 @@
 # Phase-5 Slice 21 — platform organizations CREATE (#76)
 
+> **Superseded dependency guidance, 2026-09-14:** Organization and subscription INSERTs, role creation and the helper pair are now shared by `OrganizationBundleWriter`. C# organization invitation creation reuses that writer inside its invitation/audit transaction. The half-satisfied/private-INSERT discussion below records the original slice state; see [current implementation](organization-invitation-create.md).
+
 **Status:** steps 1–4 done, shipping DARK behind `Platform:PlatformOrganizationsCreateEnabled`.
 Steps 5 (verify in prod) and 6 (flip ownership) are Federico-gated and NOT in this slice — and step 6 is
 **permanently unreachable** for these tables, see [Ownership ledger](#ownership-ledger).

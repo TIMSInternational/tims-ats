@@ -1,5 +1,11 @@
 # Known Issues & Remaining Work
 
+- **2026-09-14 — bulk invitations:** C# batch creation and CSV results are implemented behind default-off flags, with per-row outcomes, bulk-writer duplicate coordination and no automatic retry. Acceptance/revoke, live delivery, cutover and TS retirement remain open. See [contract](architecture/csharp-migration/bulk-invitation-create.md).
+
+- **2026-09-14 — individual user invitations:** C# creation and organization-specific role lookup are implemented behind a separate default-off flag. Both invitation modal and users wizard single mode are wired; initial delivery is shared with organization invitations. Bulk invites are covered by the successor slice above; acceptance/revoke and production cutover remain open. See [contract](architecture/csharp-migration/user-invitation-create.md).
+
+- **2026-09-14 — partial invitation migration:** C# organization invitation creation now shares the seven-table provisioning writer and atomically creates its pending invitation and audit before email. UI reports delivery uncertainty. Default disabled; depends on #258/#259. Bulk invitations, acceptance/revoke and production cutover remain open; individual-user creation is covered by the successor slice above. See [implementation contract](architecture/csharp-migration/organization-invitation-create.md).
+
 > Single backlog/status reference (rule #1: docs are code — update in the SAME PR as the change).
 > **Truthed-up 2026-07-25 against HEAD `main` (commit `27249b18a3f92460f5a3b0f0841e0eb70c6e183f`, the docs
 > commit immediately after PR #194)** — this truth-up covers PRs #97–#194 (2026-06-30 → 2026-07-25): the
@@ -317,9 +323,9 @@ describe-service`; only the frontend Vercel flag was missing.)
     `org-provisioning` service (`OrgProvisioningWriter`), moving `companies`/`business_units`/`teams`/
     `roles` into `efcoreStranglerWrite` and adding `org_entitlements` + read-only `plan_modules`. It can
     **never** become an ownership flip: self-serve signup writes the same seven tables and is out of scope
-    for every C# slice. **#75 depends on slice 21's service shape and is only HALF unblocked** — the
-    helper pair and the `roles` map were extracted, but the `organizations`/`subscriptions` INSERTs (and
-    with them the enum-cast and timestamp-kind traps) are still private to the create repository. Slice
+    for the original slice. **2026-09-14 update: #75 now reuses `OrganizationBundleWriter`**, including
+    organization/subscription INSERTs, hierarchy, entitlements and role. Organization invitation creation
+    is implemented with atomic setup/invitation/audit and post-commit delivery; it remains default disabled. Slice
     21's panel filed **#207** (neither email is length-bounded, in EITHER stack — an
     `api-security.md` violation ported as-is; **FIXED 2026-08-11**, both stacks bounded at 254 per
     RFC 5321 §4.5.3.1.3, a TS behaviour change) and **#208** (the missing parity surface).

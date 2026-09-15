@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
@@ -45,10 +44,6 @@ public sealed class PlatformOrganizationsCreateRepository(PlatformOrganizationsC
     /// <summary>The Prisma unique index on <c>organizations.slug</c>. Matched by NAME — see <see cref="IsSlugConflict"/>.</summary>
     private const string SlugConstraintName = "organizations_slug_key";
 
-    // organizations.ts:205 — `{ name: 'Super Administrador', slug: 'super_admin', isSystem: true }`.
-    private const string SuperAdminRoleName = "Super Administrador";
-    private const string SuperAdminRoleSlug = "super_admin";
-
     private readonly PlatformOrganizationsCreateDbContext _db = db;
 
     public async Task<CreateOrganizationResult> CreateAsync(
@@ -74,11 +69,7 @@ public sealed class PlatformOrganizationsCreateRepository(PlatformOrganizationsC
         // ExternalValidationRepository.cs:57). It changes no value, only the Kind tag.
         now = ToPostgresTimestamp(now);
 
-        var name = input.Name;
-        var slug = input.Slug;
-        var plan = input.Plan;
         var billingEmail = PlatformOrganizationsCreateUseCase.ResolveBillingEmail(input);
-        var updatedAt = ToTimestampText(now);
 
         await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
 
@@ -86,63 +77,8 @@ public sealed class PlatformOrganizationsCreateRepository(PlatformOrganizationsC
 
         try
         {
-            // 1. organizations. Raw-but-fully-parameterized: `plan` is a native Postgres enum (OrgPlan) with
-            // no EF store mapping to write back through, so the text parameter is cast explicitly — the same
-            // technique slice 20's UPDATE and BillingWebhookRepository already use on this column.
-            // EnableUnmappedTypes does NOT help here: it makes Npgsql READ an unmapped enum as text, it
-            // cannot bind text INTO an enum column.
-            //
-            // Timestamps bind as text + ::timestamp because a raw command carries no column-type hint, so
-            // Npgsql would default a DateTime to timestamptz and Postgres would reject it against
-            // `timestamp without time zone`.
-            //
-            // `settings`, `is_active`, `created_at`, `domain`, `logo`, `deleted_at` are deliberately ABSENT
-            // from the column list — the TS `organization.create` sets none of them, and the DB
-            // defaults/NULLs are the parity target.
-            await _db.Database.ExecuteSqlInterpolatedAsync(
-                $"""
-                 INSERT INTO organizations (id, name, slug, plan, billing_email, updated_at)
-                 VALUES ({organizationId}, {name}, {slug}, {plan}::"OrgPlan", {billingEmail}, {updatedAt}::timestamp)
-                 """,
-                cancellationToken).ConfigureAwait(false);
-
-            // 2-4. companies -> business_units -> teams (org-provisioning.ts:13-34).
-            await OrgProvisioningWriter.ProvisionDefaultsAsync(_db, organizationId, input.Name, now, cancellationToken)
-                .ConfigureAwait(false);
-
-            // 5-6. SELECT plan_modules where plan_code = 'ats-base', then N x org_entitlements
-            // (org-provisioning.ts:47-67). N = 0 is a valid outcome and commits — see the writer's remarks.
-            await OrgProvisioningWriter.ProvisionEntitlementsAsync(_db, organizationId, now, cancellationToken)
-                .ConfigureAwait(false);
-
-            // 7. roles (organizations.ts:204-206). `description` stays NULL and `is_active` keeps its DB
-            // default; no role_permissions and no user_roles rows are created, matching the TS exactly.
-            _db.Roles.Add(new RoleWriteEntity
-            {
-                Id = Guid.NewGuid(),
-                OrganizationId = organizationId,
-                Name = SuperAdminRoleName,
-                Slug = SuperAdminRoleSlug,
-                IsSystem = true,
-                UpdatedAt = now,
-            });
-            await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
-
-            // 8. subscriptions (organizations.ts:208-215). TWO native enums this time: OrgPlan and
-            // SubscriptionStatus. `trial_ends_at` binds as nullable text through the same ::timestamp cast.
-            // Stripe columns and the period columns are never sent.
-            var status = PlatformOrganizationsCreateUseCase.ResolveSubscriptionStatus(plan);
-            var trialEndsAt = PlatformOrganizationsCreateUseCase.ResolveTrialEndsAt(plan, now);
-            var trialEndsAtText = trialEndsAt is null ? null : ToTimestampText(trialEndsAt.Value);
-            var subscriptionId = Guid.NewGuid();
-
-            await _db.Database.ExecuteSqlInterpolatedAsync(
-                $"""
-                 INSERT INTO subscriptions (id, organization_id, plan, status, trial_ends_at, updated_at)
-                 VALUES ({subscriptionId}, {organizationId}, {plan}::"OrgPlan", {status}::"SubscriptionStatus",
-                         {trialEndsAtText}::timestamp, {updatedAt}::timestamp)
-                 """,
-                cancellationToken).ConfigureAwait(false);
+            await OrganizationBundleWriter.CreateAsync(_db, organizationId, input.Name, input.Slug,
+                input.Plan, billingEmail, now, cancellationToken).ConfigureAwait(false);
 
             // 9. The FAIL-CLOSED audit row, INSIDE the scope's transaction. TS writes this AFTER the
             // transaction with `.catch(() => {})` (organizations.ts:228-239); here a failure rolls the whole
@@ -257,10 +193,6 @@ public sealed class PlatformOrganizationsCreateRepository(PlatformOrganizationsC
     /// IS the stored content.
     /// </summary>
     private static string ToJsonStringScalar(string changesJson) => JsonSerializer.Serialize(changesJson);
-
-    // Prisma writes `timestamp(3) without time zone` holding a UTC wall-clock; bind the same text form.
-    private static string ToTimestampText(DateTime value) =>
-        value.ToString("yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture);
 
     /// <summary>
     /// Strips the <c>Kind=Utc</c> tag (and only the tag) so EF can bind the value to a
