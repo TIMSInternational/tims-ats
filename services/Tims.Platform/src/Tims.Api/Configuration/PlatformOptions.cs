@@ -615,6 +615,9 @@ public sealed class PlatformOptions
     /// </summary>
     public bool PlatformInvitationsReadEnabled { get; init; }
 
+    /// <summary>Default-disabled organization invitation creation and initial delivery.</summary>
+    public bool PlatformOrganizationInvitationCreateEnabled { get; init; }
+
     /// <summary>Default-disabled resend write only; does not enable creation, acceptance or bulk invitations.</summary>
     public bool PlatformInvitationResendEnabled { get; init; }
 

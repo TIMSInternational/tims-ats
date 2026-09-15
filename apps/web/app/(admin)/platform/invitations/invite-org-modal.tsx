@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { trpc } from '../../../../lib/trpc';
+import { useOrganizationInvitationCreate } from '../../../../lib/platform-api/organization-invitation-create';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
 
@@ -22,9 +22,13 @@ export function InviteOrgModal({ onClose, onSuccess }: { onClose: () => void; on
   const [orgSlug, setOrgSlug] = useState('');
   const [plan, setPlan] = useState<'trial' | 'starter' | 'professional' | 'enterprise'>('trial');
 
-  const create = trpc.platform.createOrgInvitation.useMutation({
-    onSuccess: () => { toast(t.invitations.orgInviteSent, { type: 'success' }); onSuccess(); },
-    onError: (err) => { toast(err.message || 'Error al crear invitacion', { type: 'error' }); },
+  const create = useOrganizationInvitationCreate({
+    onSuccess: (delivery) => {
+      toast(delivery === 'accepted' || delivery === 'legacy' ? t.invitations.orgInviteSent : t.invitations.orgInviteDeliveryUnconfirmed,
+        { type: delivery === 'accepted' || delivery === 'legacy' ? 'success' : 'warning' });
+      onSuccess();
+    },
+    onError: (err) => { toast(err.message || t.invitations.creationFailed, { type: 'error' }); },
   });
 
   const handleNameChange = (value: string) => {
@@ -53,15 +57,15 @@ export function InviteOrgModal({ onClose, onSuccess }: { onClose: () => void; on
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.adminEmail} *</label>
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="admin@empresa.com" className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20" required />
+            <input type="email" maxLength={254} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="admin@empresa.com" className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20" required />
           </div>
           <div>
             <label className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.orgName} *</label>
-            <input type="text" value={orgName} onChange={(e) => handleNameChange(e.target.value)} placeholder={t.invitations.orgNamePlaceholder} className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20" required />
+            <input type="text" minLength={2} maxLength={100} value={orgName} onChange={(e) => handleNameChange(e.target.value)} placeholder={t.invitations.orgNamePlaceholder} className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20" required />
           </div>
           <div>
             <label className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.slug} *</label>
-            <input type="text" value={orgSlug} onChange={(e) => setOrgSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))} placeholder="mi-empresa" className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm font-mono text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20" required pattern="^[a-z0-9-]+$" />
+            <input type="text" minLength={2} maxLength={63} value={orgSlug} onChange={(e) => setOrgSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))} placeholder="mi-empresa" className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm font-mono text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20" required pattern="^[a-z0-9-]+$" />
           </div>
           <div>
             <label className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.plan}</label>

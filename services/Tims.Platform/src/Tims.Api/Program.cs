@@ -331,6 +331,8 @@ try
             npgsql => npgsql.CommandTimeout(2)));
     builder.Services.AddScoped<IInvitationResendRepository, InvitationResendRepository>();
     builder.Services.AddScoped<InvitationResendUseCase>();
+    builder.Services.AddScoped<IOrganizationInvitationCreateRepository, OrganizationInvitationCreateRepository>();
+    builder.Services.AddScoped<OrganizationInvitationCreateUseCase>();
     builder.Services.TryAddSingleton(TimeProvider.System);
     builder.Services.AddOptions<InvitationDeliveryOptions>()
         .Bind(builder.Configuration.GetSection(InvitationDeliveryOptions.SectionName))
@@ -1271,6 +1273,10 @@ try
     if (externalOptions.PlatformInvitationsReadEnabled || isOpenApiDocGeneration)
     {
         app.MapPlatformInvitationsReadEndpoints();
+    }
+    if (externalOptions.PlatformOrganizationInvitationCreateEnabled || isOpenApiDocGeneration)
+    {
+        app.MapOrganizationInvitationCreateEndpoints();
     }
     if (externalOptions.PlatformInvitationResendEnabled || isOpenApiDocGeneration)
     {
