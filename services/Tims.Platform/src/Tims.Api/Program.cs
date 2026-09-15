@@ -326,6 +326,16 @@ try
         options.UseNpgsql(sp.GetRequiredService<PlatformInvitationsDataSourceHolder>().DataSource));
     builder.Services.AddScoped<IPlatformInvitationsReadRepository, PlatformInvitationsReadRepository>();
     builder.Services.AddScoped<PlatformInvitationsReadUseCase>();
+    builder.Services.AddDbContext<InvitationResendDbContext>((sp, options) =>
+        options.UseNpgsql(sp.GetRequiredService<PlatformInvitationsDataSourceHolder>().DataSource,
+            npgsql => npgsql.CommandTimeout(2)));
+    builder.Services.AddScoped<IInvitationResendRepository, InvitationResendRepository>();
+    builder.Services.AddScoped<InvitationResendUseCase>();
+    builder.Services.TryAddSingleton(TimeProvider.System);
+    builder.Services.AddOptions<InvitationDeliveryOptions>()
+        .Bind(builder.Configuration.GetSection(InvitationDeliveryOptions.SectionName))
+        .Validate(options => options.IsValid(), "Invitations:AppOrigin must be an HTTPS origin without credentials, path, query or fragment")
+        .ValidateOnStart();
 
     // Phase-5 slice 23 (#81, PR 1 of 3): platform-owner DASHBOARD READ, the three FX-free procedures
     // (getPlanDistribution / getUserGrowth / getRecentActivity). Cross-org by design and NEVER wrapped in
@@ -1261,6 +1271,10 @@ try
     if (externalOptions.PlatformInvitationsReadEnabled || isOpenApiDocGeneration)
     {
         app.MapPlatformInvitationsReadEndpoints();
+    }
+    if (externalOptions.PlatformInvitationResendEnabled || isOpenApiDocGeneration)
+    {
+        app.MapInvitationResendEndpoints();
     }
 
     // Phase-5 slice 23 (#81): GET /platform/dashboard/{plan-distribution,user-growth,

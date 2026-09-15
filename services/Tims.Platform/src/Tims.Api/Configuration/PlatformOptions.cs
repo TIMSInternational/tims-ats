@@ -615,6 +615,9 @@ public sealed class PlatformOptions
     /// </summary>
     public bool PlatformInvitationsReadEnabled { get; init; }
 
+    /// <summary>Default-disabled resend write only; does not enable creation, acceptance or bulk invitations.</summary>
+    public bool PlatformInvitationResendEnabled { get; init; }
+
     /// <summary>
     /// Phase-5 slice 23 (issue #81) — the platform-owner DASHBOARD READ surface: the C# port of ALL
     /// THIRTEEN procedures of <c>routers/platform/dashboard*.ts</c>, shipped in four steps.

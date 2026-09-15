@@ -1554,6 +1554,54 @@
         }
       }
     },
+    "/platform/invitations/{id}/resend": {
+      "post": {
+        "tags": [
+          "PlatformInvitations"
+        ],
+        "operationId": "ResendPlatformInvitation",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationResendResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "503": {
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
     "/platform/dashboard/plan-distribution": {
       "get": {
         "tags": [
@@ -10481,6 +10529,30 @@
               "string"
             ],
             "format": "int32"
+          }
+        }
+      },
+      "InvitationResendResponse": {
+        "required": [
+          "id",
+          "status",
+          "sentAt",
+          "expiresAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string"
+          },
+          "sentAt": {
+            "format": "date-time"
+          },
+          "expiresAt": {
+            "format": "date-time"
           }
         }
       },
