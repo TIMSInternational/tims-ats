@@ -59,6 +59,7 @@ public sealed class UserInvitationCreateUseCaseTests
         public int Creates { get; private set; }
         public int Updates { get; private set; }
         public Task<IReadOnlyList<InvitationRole>?> ListRolesAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
+        public Task<UserInvitationPending> CreateUniqueAsync(UserInvitationInput input, Guid actor, DateTime now, CancellationToken ct) => CreateAsync(input, actor, now, ct);
         public Task<UserInvitationPending> CreateAsync(UserInvitationInput input, Guid actor, DateTime now, CancellationToken ct)
         {
             Creates++;

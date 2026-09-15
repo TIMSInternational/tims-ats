@@ -20,7 +20,13 @@ public sealed class UserInvitationCreateRepository(PlatformOrganizationsCreateDb
         return roles;
     }
 
-    public async Task<UserInvitationPending> CreateAsync(UserInvitationInput input, Guid actor, DateTime now, CancellationToken ct)
+    public Task<UserInvitationPending> CreateAsync(UserInvitationInput input, Guid actor, DateTime now, CancellationToken ct) =>
+        CreateCoreAsync(input, actor, now, false, ct);
+
+    public Task<UserInvitationPending> CreateUniqueAsync(UserInvitationInput input, Guid actor, DateTime now, CancellationToken ct) =>
+        CreateCoreAsync(input, actor, now, true, ct);
+
+    private async Task<UserInvitationPending> CreateCoreAsync(UserInvitationInput input, Guid actor, DateTime now, bool unique, CancellationToken ct)
     {
         await using var scope = await TenantScope.BeginAsync(db, input.OrganizationId, ct);
         var org = await db.Organizations.AsNoTracking()
@@ -34,6 +40,18 @@ public sealed class UserInvitationCreateRepository(PlatformOrganizationsCreateDb
                     AND slug={input.RoleSlug} AND is_active=true) AS "Value"
                 """).SingleAsync(ct);
             if (!validRole) return new(UserInvitationCreateOutcome.RoleUnavailable);
+        }
+        if (unique)
+        {
+            // Same key and PostgreSQL hash as the TS bulk repository. Release at commit, before email.
+            await db.Database.ExecuteSqlRawAsync("SET LOCAL statement_timeout = '1500ms'", ct);
+            var key = $"{input.OrganizationId.ToString().ToLowerInvariant()}:{input.Email.ToLowerInvariant()}";
+            await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtextextended({key}, 0))", ct);
+            var exists = await db.Database.SqlQuery<bool>($"""
+                SELECT EXISTS(SELECT 1 FROM platform_invitations WHERE organization_id={input.OrganizationId}
+                    AND lower(email)=lower({input.Email}) AND status::text IN ('pending','sent','accepted')) AS "Value"
+                """).SingleAsync(ct);
+            if (exists) return new(UserInvitationCreateOutcome.Duplicate);
         }
         var id = Guid.NewGuid(); var token = Guid.NewGuid().ToString(); var expiry = now.AddDays(7);
         var timestamp = now.ToString("yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture);

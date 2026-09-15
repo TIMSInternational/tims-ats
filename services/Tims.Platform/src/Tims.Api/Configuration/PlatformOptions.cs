@@ -615,6 +615,9 @@ public sealed class PlatformOptions
     /// </summary>
     public bool PlatformInvitationsReadEnabled { get; init; }
 
+    /// <summary>Default-disabled bounded bulk user invitations; independent of single creation.</summary>
+    public bool PlatformBulkInvitationEnabled { get; init; }
+
     /// <summary>Default-disabled individual-user invitation creation and initial delivery.</summary>
     public bool PlatformUserInvitationCreateEnabled { get; init; }
 

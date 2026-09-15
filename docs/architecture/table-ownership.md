@@ -235,3 +235,7 @@ continues to treat both as Prisma-owned + EF append-only — that classification
 
 Later phases extend check #2 to parse every EF `ToTable`/migration and every Prisma migration for
 the tables they mutate; Phase 1 keeps it deterministic against the single spike table.
+
+## 2026-09-14 bulk invitation coexistence
+
+The default-disabled bulk invitation endpoint reuses the user invitation writer and existing invitation/audit tables. No table ownership or DDL changes. Prisma/TS bulk remains active until controlled cutover. Bulk writers coordinate using the shared advisory-lock protocol; individual invitation writers do not participate. See [contract](csharp-migration/bulk-invitation-create.md).
