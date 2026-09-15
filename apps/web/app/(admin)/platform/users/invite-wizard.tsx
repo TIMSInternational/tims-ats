@@ -1,12 +1,16 @@
 'use client';
 
 import { useState, useCallback } from 'react';
+import { useUserInvitationRoles } from '../../../../lib/platform-api/user-invitation-roles';
+import { useUserInvitationCreate } from '../../../../lib/platform-api/user-invitation-create';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
 import { Modal, ErrorState } from '../../../../components';
 import { ROLES, parseCSV, autoMap, type Mode, type BulkStep, type ParsedRow } from './invite-wizard.helpers';
-import { BulkMapStep, BulkPreviewStep, BulkResultStep } from './invite-wizard.steps';
+import { useBulkInvitationCreate, type BulkInvitationResponse } from '../../../../lib/platform-api/bulk-invitation-create';
+import { BulkResultStep } from './bulk-result-step';
+import { BulkMapStep, BulkPreviewStep } from './invite-wizard.steps';
 
 interface InviteWizardProps {
   onClose: () => void;
@@ -31,16 +35,22 @@ export function InviteWizard({ onClose, onSuccess }: InviteWizardProps) {
   const [parsedUsers, setParsedUsers] = useState<ParsedRow[]>([]);
   const [bulkOrgId, setBulkOrgId] = useState('');
   const [bulkOrgSearch, setBulkOrgSearch] = useState('');
-  const [bulkResult, setBulkResult] = useState<{ sent: number; duplicates: number; errors: number } | null>(null);
+  const [bulkResult, setBulkResult] = useState<BulkInvitationResponse | null>(null);
 
   const orgs = trpc.platform.listOrganizations.useQuery({ search: (mode === 'single' ? orgSearch : bulkOrgSearch) || undefined, limit: 10, page: 0 });
-  const createSingle = trpc.platform.createUserInvitation.useMutation({
-    onSuccess: () => { toast(t.invitations.invitationSent, { type: 'success' }); onSuccess(); },
+  const invitationRoles = useUserInvitationRoles(orgId, ROLES);
+
+  const createSingle = useUserInvitationCreate({
+    onSuccess: (delivery) => {
+      toast(delivery === 'accepted' || delivery === 'legacy' ? t.invitations.invitationSent : t.invitations.userInviteDeliveryUnconfirmed,
+        { type: delivery === 'accepted' || delivery === 'legacy' ? 'success' : 'warning' });
+      onSuccess();
+    },
     onError: (err) => { toast(err.message, { type: 'error' }); },
   });
-  const bulkInvite = trpc.platform.bulkInviteUsers.useMutation({
+  const bulkInvite = useBulkInvitationCreate({
     onSuccess: (data) => {
-      setBulkResult(data.summary);
+      setBulkResult(data);
       setBulkStep('result');
     },
     onError: (err) => { toast(err.message, { type: 'error' }); },
@@ -113,10 +123,10 @@ export function InviteWizard({ onClose, onSuccess }: InviteWizardProps) {
       {/* Mode tabs */}
       <div className="flex gap-1 p-1 bg-[#F6F6F6] rounded-lg mb-5">
         <button onClick={() => setMode('single')} className={`flex-1 py-2 text-xs font-medium rounded-md transition ${mode === 'single' ? 'bg-white shadow-sm text-[#1F114C]' : 'text-[#8B8B8B]'}`}>
-          Individual
+          {t.invitations.singleMode}
         </button>
         <button onClick={() => { setMode('bulk'); setBulkStep('upload'); }} className={`flex-1 py-2 text-xs font-medium rounded-md transition ${mode === 'bulk' ? 'bg-white shadow-sm text-[#1F114C]' : 'text-[#8B8B8B]'}`}>
-          CSV / Masivo
+          {t.invitations.bulkMode}
         </button>
       </div>
 
@@ -124,14 +134,14 @@ export function InviteWizard({ onClose, onSuccess }: InviteWizardProps) {
       {((mode === 'single') || (mode === 'bulk' && bulkStep === 'upload')) && (
         <div className="mb-4">
           <label className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.organizationRequired}</label>
-          <input type="text" value={activeOrgSearch} onChange={(e) => { setActiveOrgSearch(e.target.value); setActiveOrgId(''); }} placeholder={t.invitations.searchOrganization} className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20" />
+          <input type="text" value={activeOrgSearch} onChange={(e) => { setActiveOrgSearch(e.target.value); setActiveOrgId(''); setRoleSlug(''); }} placeholder={t.invitations.searchOrganization} className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20" />
           {activeOrgSearch && !activeOrgId && orgs.isError && (
             <ErrorState onRetry={() => orgs.refetch()} />
           )}
           {activeOrgSearch && !activeOrgId && orgs.data && (
             <div className="mt-1 bg-white border border-[#EDEDED] rounded-lg shadow-lg max-h-32 overflow-y-auto">
               {orgs.data.organizations.map((org) => (
-                <button key={org.id} type="button" onClick={() => { setActiveOrgId(org.id); setActiveOrgSearch(org.name); }} className="w-full text-left px-3 py-2 text-sm hover:bg-[#F6F6F6] transition">
+                <button key={org.id} type="button" onClick={() => { setActiveOrgId(org.id); setActiveOrgSearch(org.name); setRoleSlug(''); }} className="w-full text-left px-3 py-2 text-sm hover:bg-[#F6F6F6] transition">
                   {org.name} <span className="text-[#8B8B8B] text-xs">({org.slug})</span>
                 </button>
               ))}
@@ -146,13 +156,14 @@ export function InviteWizard({ onClose, onSuccess }: InviteWizardProps) {
         <form onSubmit={(e) => { e.preventDefault(); if (email && orgId) createSingle.mutate({ email, organizationId: orgId, roleSlug: roleSlug || undefined }); }} className="space-y-4">
           <div>
             <label className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.emailRequired}</label>
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="usuario@empresa.com" className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20" required />
+            <input type="email" maxLength={254} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="usuario@empresa.com" className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20" required />
           </div>
           <div>
             <label className="text-xs font-medium text-[#585858] mb-1 block">Rol</label>
+            {invitationRoles.isError && <ErrorState onRetry={() => invitationRoles.refetch()} />}
             <select value={roleSlug} onChange={(e) => setRoleSlug(e.target.value)} className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20">
               <option value="">{t.invitations.selectRole}</option>
-              {ROLES.map(r => <option key={r.slug} value={r.slug}>{r.label}</option>)}
+              {invitationRoles.roles.map(r => <option key={r.slug} value={r.slug}>{r.label}</option>)}
             </select>
           </div>
           <div className="flex justify-end gap-2 pt-2">
@@ -172,7 +183,7 @@ export function InviteWizard({ onClose, onSuccess }: InviteWizardProps) {
             <p className="text-sm text-[#585858] mb-1">{t.invitations.dragCsvHere}</p>
             <p className="text-xs text-[#8B8B8B] mb-3">{t.invitations.clickToSelect}</p>
             <label className="inline-block h-9 px-4 rounded-lg bg-[#1F114C] text-white text-sm font-medium hover:bg-[#2a1866] transition cursor-pointer leading-9">
-              Seleccionar Archivo
+              {t.invitations.selectFile}
               <input type="file" accept=".csv,.tsv,.txt,.xlsx" onChange={handleFileUpload} className="hidden" />
             </label>
           </div>
@@ -188,7 +199,7 @@ export function InviteWizard({ onClose, onSuccess }: InviteWizardProps) {
             onChange={(e) => { if (e.target.value.includes('\n')) handlePaste(e.target.value); }}
           />
           <div className="p-3 rounded-lg bg-blue-50 text-xs text-blue-700">
-            <strong>{t.invitations.expectedFormat}</strong> CSV con columnas: email (requerido), nombre, apellido, rol. La primera fila debe ser el encabezado.
+            <strong>{t.invitations.expectedFormat}</strong> {t.invitations.csvColumnsHelp}
           </div>
         </div>
       )}

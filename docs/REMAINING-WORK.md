@@ -1,6 +1,10 @@
 # Known Issues & Remaining Work
 
-- **2026-09-14 — partial invitation migration:** C# organization invitation creation now shares the seven-table provisioning writer and atomically creates its pending invitation and audit before email. UI reports delivery uncertainty. Default disabled; depends on #258/#259. User/bulk invitations, acceptance/revoke and production cutover remain open. See [implementation contract](architecture/csharp-migration/organization-invitation-create.md).
+- **2026-09-14 — bulk invitations:** C# batch creation and CSV results are implemented behind default-off flags, with per-row outcomes, bulk-writer duplicate coordination and no automatic retry. Acceptance/revoke, live delivery, cutover and TS retirement remain open. See [contract](architecture/csharp-migration/bulk-invitation-create.md).
+
+- **2026-09-14 — individual user invitations:** C# creation and organization-specific role lookup are implemented behind a separate default-off flag. Both invitation modal and users wizard single mode are wired; initial delivery is shared with organization invitations. Bulk invites are covered by the successor slice above; acceptance/revoke and production cutover remain open. See [contract](architecture/csharp-migration/user-invitation-create.md).
+
+- **2026-09-14 — partial invitation migration:** C# organization invitation creation now shares the seven-table provisioning writer and atomically creates its pending invitation and audit before email. UI reports delivery uncertainty. Default disabled; depends on #258/#259. Bulk invitations, acceptance/revoke and production cutover remain open; individual-user creation is covered by the successor slice above. See [implementation contract](architecture/csharp-migration/organization-invitation-create.md).
 
 > Single backlog/status reference (rule #1: docs are code — update in the SAME PR as the change).
 > **Truthed-up 2026-07-25 against HEAD `main` (commit `27249b18a3f92460f5a3b0f0841e0eb70c6e183f`, the docs
