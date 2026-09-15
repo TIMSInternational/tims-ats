@@ -1,4 +1,5 @@
 using System.Net;
+using Amazon.Runtime;
 using Amazon.SimpleEmail;
 using Amazon.SimpleEmail.Model;
 using Microsoft.Extensions.Logging;
@@ -38,6 +39,7 @@ public sealed class SesEmailSender(
             || subject.Any(char.IsControl) || string.IsNullOrWhiteSpace(html) || html.Length > 256_000)
             return false;
 
+        var providerInitialized = false;
         try
         {
             var settings = options.Value;
@@ -66,6 +68,7 @@ public sealed class SesEmailSender(
                     {
                         token.ThrowIfCancellationRequested();
                         var provider = client.Value;
+                        providerInitialized = true;
                         token.ThrowIfCancellationRequested();
                         var response = await provider.SendEmailAsync(request, token);
                         return response.HttpStatusCode == HttpStatusCode.OK
@@ -93,9 +96,18 @@ public sealed class SesEmailSender(
             {
                 BrokenCircuitException => "circuit_open",
                 OperationCanceledException => "cancelled_or_timed_out",
+                AmazonServiceException { ErrorCode: "AccessDenied" or "AccessDeniedException" } => "access_denied",
+                AmazonServiceException { ErrorCode: "MessageRejected" } => "message_rejected",
+                AmazonServiceException { ErrorCode: "InvalidClientTokenId" or "UnrecognizedClientException" or "ExpiredToken" or "ExpiredTokenException" or "SignatureDoesNotMatch" } => "credential_rejected",
+                AmazonServiceException { ErrorCode: "Throttling" or "ThrottlingException" } => "throttled",
+                AmazonServiceException { ErrorCode: "MailFromDomainNotVerifiedException" } => "mail_from_unverified",
+                AmazonServiceException { ErrorCode: "AccountSendingPausedException" } => "sending_paused",
+                AmazonClientException => "sdk_client_failure",
+                HttpRequestException => "transport_failure",
                 _ => "provider_failure",
             };
-            logger.LogWarning("Email provider acceptance was not confirmed: {Reason}", reason);
+            logger.LogWarning("Email provider acceptance was not confirmed: {Reason} at {Stage}",
+                reason, providerInitialized ? "provider_send" : "before_provider_dispatch");
             return false;
         }
     }
