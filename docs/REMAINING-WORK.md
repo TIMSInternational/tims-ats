@@ -21,6 +21,10 @@
 
 ### Current implementation wave — 2026-09-14 (unreleased)
 
+- **Deployment blocker diagnosed:** GitHub immutable OIDC subject did not match AWS trust.
+  Trust and PassRole corrected and verified; production rollout succeeded. See
+  `audits/2026-09-14-deployment-oidc.md`. The live API runs image `1657b2f`; health and readiness both returned Healthy/200.
+
 - **Scope correction from Federico:** TIMS ATS is to function independently and communicate with
   `tims.configuration.core` and other systems **through APIs**. The older Phase-6 absorption plan is
   superseded for this objective; importing Team Suite's domain/data-access code is not required.
