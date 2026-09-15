@@ -5,6 +5,15 @@ writer is already cross-cutting (Phase 2 WP2.7); consolidate it here"). `audit_l
 `efcoreAppendOnly` (Slice 4b's `BillingAuditWriter`) — this slice adds the matching read. Dark-by-default,
 cutover deferred, TS untouched except behavior-preserving pure-kernel extraction.
 
+## Tenant audit follow-up — 2026-09-14
+
+PR #257 implements all five **tenant** audit operations in C# under `TenantAuditReadEnabled`.
+The live settings export consumer is now wired through a default-off frontend flag,
+`NEXT_PUBLIC_TENANT_AUDIT_VIA_CSHARP`. The four unused reads survive as the tenant API contract;
+no unused UI was added. The TypeScript contract remains pending differential acceptance and
+consumer retirement. See [current implementation and rollout evidence](../../audits/2026-09-14-tenant-audit-migration.md).
+This is separate from the platform-owner cross-organization routes designed below.
+
 ## Scope decision (read this first)
 
 > **Corrected 2026-08-10 (#102 / #61 AC3) — the first bullet below is out of date.** `exportLogs` is **not**

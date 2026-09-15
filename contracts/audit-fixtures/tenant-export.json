@@ -1,0 +1,94 @@
+{
+  "cases": [
+    {
+      "name": "empty-csv",
+      "format": "csv",
+      "rows": [],
+      "expected": {
+        "data": "\"Timestamp\",\"Actor Name\",\"Actor Email\",\"Action\",\"Entity\",\"Entity ID\",\"IP Address\",\"User Agent\"",
+        "count": 0,
+        "truncated": false,
+        "format": "csv"
+      }
+    },
+    {
+      "name": "empty-json",
+      "format": "json",
+      "rows": [],
+      "expected": {
+        "data": "[]",
+        "count": 0,
+        "truncated": false,
+        "format": "json"
+      }
+    },
+    {
+      "name": "unicode-formula-null-csv",
+      "format": "csv",
+      "rows": [
+        {
+          "createdAt": "2026-09-14T10:20:30.123Z",
+          "actor": {
+            "firstName": " José",
+            "lastName": "Núñez ",
+            "email": "person@example.test"
+          },
+          "action": "=SUM(1,2)",
+          "entity": "candidate",
+          "entityId": "<record>&",
+          "ipAddress": "127.0.0.1",
+          "userAgent": "agent,\"quoted\"\nline"
+        },
+        {
+          "createdAt": "2026-09-13T00:00:00.000Z",
+          "actor": null,
+          "action": "access",
+          "entity": "person",
+          "entityId": null,
+          "ipAddress": null,
+          "userAgent": null
+        }
+      ],
+      "expected": {
+        "data": "\"Timestamp\",\"Actor Name\",\"Actor Email\",\"Action\",\"Entity\",\"Entity ID\",\"IP Address\",\"User Agent\"\n\"2026-09-14T10:20:30.123Z\",\"José Núñez\",\"person@example.test\",\"'=SUM(1,2)\",\"candidate\",\"<record>&\",\"127.0.0.1\",\"agent,\"\"quoted\"\"\nline\"\n\"2026-09-13T00:00:00.000Z\",\"\",\"\",\"access\",\"person\",\"\",\"\",\"\"",
+        "count": 2,
+        "truncated": false,
+        "format": "csv"
+      }
+    },
+    {
+      "name": "unicode-formula-null-json",
+      "format": "json",
+      "rows": [
+        {
+          "createdAt": "2026-09-14T10:20:30.123Z",
+          "actor": {
+            "firstName": " José",
+            "lastName": "Núñez ",
+            "email": "person@example.test"
+          },
+          "action": "=SUM(1,2)",
+          "entity": "candidate",
+          "entityId": "<record>&",
+          "ipAddress": "127.0.0.1",
+          "userAgent": "agent,\"quoted\"\nline"
+        },
+        {
+          "createdAt": "2026-09-13T00:00:00.000Z",
+          "actor": null,
+          "action": "access",
+          "entity": "person",
+          "entityId": null,
+          "ipAddress": null,
+          "userAgent": null
+        }
+      ],
+      "expected": {
+        "data": "[{\"timestamp\":\"2026-09-14T10:20:30.123Z\",\"actorName\":\"José Núñez\",\"actorEmail\":\"person@example.test\",\"action\":\"=SUM(1,2)\",\"entity\":\"candidate\",\"entityId\":\"<record>&\",\"ipAddress\":\"127.0.0.1\",\"userAgent\":\"agent,\\\"quoted\\\"\\nline\"},{\"timestamp\":\"2026-09-13T00:00:00.000Z\",\"actorName\":\"\",\"actorEmail\":\"\",\"action\":\"access\",\"entity\":\"person\",\"entityId\":\"\",\"ipAddress\":\"\",\"userAgent\":\"\"}]",
+        "count": 2,
+        "truncated": false,
+        "format": "json"
+      }
+    }
+  ]
+}
