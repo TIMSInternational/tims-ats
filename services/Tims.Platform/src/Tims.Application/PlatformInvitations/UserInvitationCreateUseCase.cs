@@ -5,7 +5,7 @@ using Tims.Application.PlatformOrganizations;
 namespace Tims.Application.PlatformInvitations;
 
 public sealed record UserInvitationInput(string Email, Guid OrganizationId, string? RoleSlug = null);
-public enum UserInvitationCreateOutcome { Created, OrganizationUnavailable, RoleUnavailable }
+public enum UserInvitationCreateOutcome { Created, OrganizationUnavailable, RoleUnavailable, Duplicate }
 public sealed record UserInvitationPending(UserInvitationCreateOutcome Outcome, InvitationResendSnapshot? Snapshot = null, DateTime? ExpiresAt = null);
 public sealed record UserInvitationCreateResult(UserInvitationCreateOutcome Outcome, OrganizationInvitationResponse? Response = null);
 public sealed record InvitationRole(string Slug, string Name);
@@ -13,6 +13,7 @@ public sealed record InvitationRolesResponse(IReadOnlyList<InvitationRole> Roles
 public interface IUserInvitationCreateRepository
 {
     Task<IReadOnlyList<InvitationRole>?> ListRolesAsync(Guid organizationId, CancellationToken ct);
+    Task<UserInvitationPending> CreateUniqueAsync(UserInvitationInput input, Guid actor, DateTime now, CancellationToken ct);
     Task<UserInvitationPending> CreateAsync(UserInvitationInput input, Guid actor, DateTime now, CancellationToken ct);
 }
 
@@ -26,12 +27,18 @@ public sealed class UserInvitationCreateUseCase(IUserInvitationCreateRepository 
         PlatformOrganizationsCreateUseCase.IsValidEmail(input.Email) &&
         (input.RoleSlug is null || input.RoleSlug.Length is >= 1 and <= 50 && !input.RoleSlug.Any(char.IsControl));
 
-    public async Task<UserInvitationCreateResult> ExecuteAsync(UserInvitationInput input, Guid actor, Uri appOrigin, CancellationToken ct)
+    public Task<UserInvitationCreateResult> ExecuteAsync(UserInvitationInput input, Guid actor, Uri appOrigin, CancellationToken ct) =>
+        ExecuteCoreAsync(input, actor, appOrigin, false, ct);
+
+    public Task<UserInvitationCreateResult> ExecuteUniqueAsync(UserInvitationInput input, Guid actor, Uri appOrigin, CancellationToken ct) =>
+        ExecuteCoreAsync(input, actor, appOrigin, true, ct);
+
+    private async Task<UserInvitationCreateResult> ExecuteCoreAsync(UserInvitationInput input, Guid actor, Uri appOrigin, bool unique, CancellationToken ct)
     {
         if (!IsValid(input)) throw new ArgumentException("Invalid user invitation");
         var now = clock.GetUtcNow().UtcDateTime;
         now = new DateTime(now.Ticks - now.Ticks % TimeSpan.TicksPerMillisecond, DateTimeKind.Utc);
-        var pending = await repository.CreateAsync(input, actor, now, ct);
+        var pending = unique ? await repository.CreateUniqueAsync(input, actor, now, ct) : await repository.CreateAsync(input, actor, now, ct);
         if (pending.Outcome != UserInvitationCreateOutcome.Created) return new(pending.Outcome);
         var invitation = pending.Snapshot!;
         var url = new Uri(appOrigin, "/accept-invitation").AbsoluteUri + "?token=" + Uri.EscapeDataString(invitation.Token);

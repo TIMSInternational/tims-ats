@@ -8,7 +8,9 @@ import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
 import { Modal, ErrorState } from '../../../../components';
 import { ROLES, parseCSV, autoMap, type Mode, type BulkStep, type ParsedRow } from './invite-wizard.helpers';
-import { BulkMapStep, BulkPreviewStep, BulkResultStep } from './invite-wizard.steps';
+import { useBulkInvitationCreate, type BulkInvitationResponse } from '../../../../lib/platform-api/bulk-invitation-create';
+import { BulkResultStep } from './bulk-result-step';
+import { BulkMapStep, BulkPreviewStep } from './invite-wizard.steps';
 
 interface InviteWizardProps {
   onClose: () => void;
@@ -33,7 +35,7 @@ export function InviteWizard({ onClose, onSuccess }: InviteWizardProps) {
   const [parsedUsers, setParsedUsers] = useState<ParsedRow[]>([]);
   const [bulkOrgId, setBulkOrgId] = useState('');
   const [bulkOrgSearch, setBulkOrgSearch] = useState('');
-  const [bulkResult, setBulkResult] = useState<{ sent: number; duplicates: number; errors: number } | null>(null);
+  const [bulkResult, setBulkResult] = useState<BulkInvitationResponse | null>(null);
 
   const orgs = trpc.platform.listOrganizations.useQuery({ search: (mode === 'single' ? orgSearch : bulkOrgSearch) || undefined, limit: 10, page: 0 });
   const invitationRoles = useUserInvitationRoles(orgId, ROLES);
@@ -46,9 +48,9 @@ export function InviteWizard({ onClose, onSuccess }: InviteWizardProps) {
     },
     onError: (err) => { toast(err.message, { type: 'error' }); },
   });
-  const bulkInvite = trpc.platform.bulkInviteUsers.useMutation({
+  const bulkInvite = useBulkInvitationCreate({
     onSuccess: (data) => {
-      setBulkResult(data.summary);
+      setBulkResult(data);
       setBulkStep('result');
     },
     onError: (err) => { toast(err.message, { type: 'error' }); },
