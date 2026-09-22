@@ -1,5 +1,7 @@
 # Known Issues & Remaining Work
 
+- **2026-09-22 onboarding data integrity (implemented, awaiting deploy):** the dashboard displayed preset course completion, IT access requests and a generated learning route for tenants with no onboarding plans, inferred check-in completion from elapsed days, and called pending tasks "documents". The dashboard now displays persisted check-ins and active-plan counts only; fabricated panels and the nonfunctional export control were removed. Real course/access provisioning, generated learning routes, document tracking, check-in scheduling and export still require implementation before those features can be included in beta scope.
+
 - **2026-09-15 live invitation canary:** the deployed C# individual-invitation flow exposed an authenticated-request 401; no invitation was created or sent. The shared error-state retry button also submitted its enclosing form. Explicit non-submit button semantics and a form-level regression test address the latter. Authentication diagnosis and successful live delivery remain pending.
 
 - **2026-09-14 — bulk invitations:** C# batch creation and CSV results are implemented behind default-off flags, with per-row outcomes, bulk-writer duplicate coordination and no automatic retry. Acceptance/revoke, live delivery, cutover and TS retirement remain open. See [contract](architecture/csharp-migration/bulk-invitation-create.md).

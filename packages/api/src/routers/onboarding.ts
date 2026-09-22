@@ -471,7 +471,7 @@ export const onboardingRouter = router({
 
     const orgId = ctx.user.organizationId;
 
-    const [activePlans, completedPlans, totalTasks, completedTasks, pendingCheckIns] =
+    const [activePlans, completedPlans, atRiskPlans, totalTasks, completedTasks, pendingCheckIns] =
       await Promise.all([
         db.onboardingPlan.count({
           where: { organizationId: orgId, status: 'active' },
@@ -479,15 +479,19 @@ export const onboardingRouter = router({
         db.onboardingPlan.count({
           where: { organizationId: orgId, status: 'completed' },
         }),
-        db.onboardingTask.count({
-          where: { organizationId: orgId },
+        db.onboardingPlan.count({
+          where: { organizationId: orgId, status: 'active', riskScore: { gt: 0.3 } },
         }),
         db.onboardingTask.count({
-          where: { organizationId: orgId, completed: true },
+          where: { organizationId: orgId, plan: { status: 'active' } },
+        }),
+        db.onboardingTask.count({
+          where: { organizationId: orgId, completed: true, plan: { status: 'active' } },
         }),
         db.onboardingCheckIn.count({
           where: {
             organizationId: orgId,
+            plan: { status: 'active' },
             status: 'pending',
             scheduledDate: { lt: new Date() },
           },
@@ -502,6 +506,7 @@ export const onboardingRouter = router({
     return {
       activePlans,
       completedPlans,
+      atRiskPlans,
       totalTasks,
       completedTasks,
       taskCompletionRate: totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0,

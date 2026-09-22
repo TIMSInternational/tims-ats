@@ -176,97 +176,125 @@ export function OnboardingTable({
                 const phase = PHASE_BADGE[plan.phase] ?? PHASE_BADGE.day1_30;
 
                 // Check-in milestones
-                const checkInDone = (type: string) => plan.checkIns.some((c) => c.type === type && c.status === 'completed');
+                const checkInDone = (type: string) =>
+                  plan.checkIns.some((c) => c.type === type && c.status === 'completed');
                 const checkInOverdue = (type: string) => {
                   const ci = plan.checkIns.find((c) => c.type === type);
                   if (!ci || ci.status === 'completed') return false;
                   return new Date(ci.scheduledDate) < new Date();
                 };
 
-                // Derive check-in status from day count if no typed check-ins
-                const hasTypedCheckIns = plan.checkIns.length > 0 && plan.checkIns.some((c) => c.type);
-                const day1Done = hasTypedCheckIns ? checkInDone('day1') : day >= 1 && plan.checkIns.some((c) => c.status === 'completed');
-                const day30Done = hasTypedCheckIns ? checkInDone('day30') : day >= 30 && plan.checkIns.filter((c) => c.status === 'completed').length >= 2;
-                const day30Overdue = !day30Done && day > 30;
-                const day60Done = hasTypedCheckIns ? checkInDone('day60') : day >= 60 && plan.checkIns.filter((c) => c.status === 'completed').length >= 3;
-                const day60Overdue = !day60Done && day > 60;
+                const hasCheckIn = (type: string) => plan.checkIns.some((c) => c.type === type);
 
                 return (
                   <React.Fragment key={plan.id}>
-                  <tr
-                    className={`border-b border-[#F0F0F0] hover:bg-[#FAFAFA] cursor-pointer transition ${
-                      idx % 2 === 1 ? 'bg-[#FAFAFA]' : ''
-                    } ${isAtRisk ? 'border-l-[3px] border-l-[#DD0C15]' : isWarning ? 'border-l-[3px] border-l-amber-500' : ''}`}
-                  >
-                    <td className="py-3 px-4">
-                      <div className="flex items-center gap-2.5">
-                        <CandidateAvatar firstName={plan.user.firstName} lastName={plan.user.lastName} avatar={plan.user.avatar} size="sm" />
-                        <div>
-                          <p className="text-[12px] font-medium text-[#333]">{plan.user.firstName} {plan.user.lastName}</p>
-                          {plan.buddy ? (
-                            <p className="text-[10px] text-[#8B8B8B]">Buddy: {plan.buddy.firstName} {plan.buddy.lastName.charAt(0)}.</p>
-                          ) : (
-                            <p className="text-[10px] text-[#DD0C15] font-medium">{t.onboarding.noBuddyAssigned}</p>
+                    <tr
+                      className={`border-b border-[#F0F0F0] hover:bg-[#FAFAFA] cursor-pointer transition ${
+                        idx % 2 === 1 ? 'bg-[#FAFAFA]' : ''
+                      } ${isAtRisk ? 'border-l-[3px] border-l-[#DD0C15]' : isWarning ? 'border-l-[3px] border-l-amber-500' : ''}`}
+                    >
+                      <td className="py-3 px-4">
+                        <div className="flex items-center gap-2.5">
+                          <CandidateAvatar
+                            firstName={plan.user.firstName}
+                            lastName={plan.user.lastName}
+                            avatar={plan.user.avatar}
+                            size="sm"
+                          />
+                          <div>
+                            <p className="text-[12px] font-medium text-[#333]">
+                              {plan.user.firstName} {plan.user.lastName}
+                            </p>
+                            {plan.buddy ? (
+                              <p className="text-[10px] text-[#8B8B8B]">
+                                Buddy: {plan.buddy.firstName} {plan.buddy.lastName.charAt(0)}.
+                              </p>
+                            ) : (
+                              <p className="text-[10px] text-[#DD0C15] font-medium">{t.onboarding.noBuddyAssigned}</p>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+
+                      <td className="py-3 px-3 text-[11px] text-[#333]">{plan.user.jobTitle ?? '—'}</td>
+
+                      <td className="py-3 px-3 text-[11px] text-[#585858] text-center">{formatDate(plan.startDate)}</td>
+
+                      <td className="py-3 px-3 text-center">
+                        <span
+                          className={`text-[12px] font-bold ${day > 60 ? 'text-[#5C4B99]' : day > 30 ? 'text-amber-600' : 'text-[#1F114C]'}`}
+                        >
+                          {day}
+                        </span>
+                        <span className="text-[10px] text-[#8B8B8B]">/90</span>
+                      </td>
+
+                      <td className="py-3 px-3 text-center">
+                        <span className={`text-[10px] ${phase.bg} ${phase.text} px-2 py-0.5 rounded-full font-medium`}>
+                          {phase.label}
+                        </span>
+                      </td>
+
+                      <td className="py-3 px-3 text-center">
+                        <div className="flex flex-col items-center gap-0.5">
+                          <span className={`text-[11px] ${fractionColor(doneTasks, totalTasks, risk)}`}>
+                            {doneTasks}/{totalTasks}
+                          </span>
+                          {totalTasks > 0 && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setExpanded((prev) => (prev === plan.id ? null : plan.id));
+                              }}
+                              className="text-[9px] text-[#1F114C] underline hover:text-[#DD0C15] transition"
+                            >
+                              {t.onboarding.expandTasks}
+                            </button>
                           )}
                         </div>
-                      </div>
-                    </td>
+                      </td>
 
-                    <td className="py-3 px-3 text-[11px] text-[#333]">{plan.user.jobTitle ?? '—'}</td>
-
-                    <td className="py-3 px-3 text-[11px] text-[#585858] text-center">{formatDate(plan.startDate)}</td>
-
-                    <td className="py-3 px-3 text-center">
-                      <span className={`text-[12px] font-bold ${day > 60 ? 'text-[#5C4B99]' : day > 30 ? 'text-amber-600' : 'text-[#1F114C]'}`}>{day}</span>
-                      <span className="text-[10px] text-[#8B8B8B]">/90</span>
-                    </td>
-
-                    <td className="py-3 px-3 text-center">
-                      <span className={`text-[10px] ${phase.bg} ${phase.text} px-2 py-0.5 rounded-full font-medium`}>{phase.label}</span>
-                    </td>
-
-                    <td className="py-3 px-3 text-center">
-                      <div className="flex flex-col items-center gap-0.5">
-                        <span className={`text-[11px] ${fractionColor(doneTasks, totalTasks, risk)}`}>{doneTasks}/{totalTasks}</span>
-                        {totalTasks > 0 && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setExpanded((prev) => (prev === plan.id ? null : plan.id));
-                            }}
-                            className="text-[9px] text-[#1F114C] underline hover:text-[#DD0C15] transition"
-                          >
-                            {t.onboarding.expandTasks}
-                          </button>
-                        )}
-                      </div>
-                    </td>
-
-                    <td className="py-3 px-3 text-center">
-                      <div className="flex flex-col gap-0.5 items-center">
-                        <CheckInBadge label="Dia 1" done={day1Done} overdue={false} />
-                        {day >= 25 && <CheckInBadge label="Dia 30" done={day30Done} overdue={day30Overdue} />}
-                        {day >= 55 && <CheckInBadge label="Dia 60" done={day60Done} overdue={day60Overdue} />}
-                      </div>
-                    </td>
-
-                    <td className="py-3 px-3 text-center">
-                      <span className={`w-2.5 h-2.5 rounded-full ${getRiskDot(plan.riskScore)} inline-block`} />
-                    </td>
-
-                    <td className="py-3 px-3">
-                      <div className="flex items-center gap-1.5 justify-center">
-                        <div className="w-20 bg-[#F6F6F6] rounded-full h-2">
-                          <div className={`h-2 ${colors.bar} rounded-full transition-all`} style={{ width: `${taskPct}%` }} />
+                      <td className="py-3 px-3 text-center">
+                        <div className="flex flex-col gap-0.5 items-center">
+                          {hasCheckIn('day1') && (
+                            <CheckInBadge label="Dia 1" done={checkInDone('day1')} overdue={checkInOverdue('day1')} />
+                          )}
+                          {hasCheckIn('day30') && (
+                            <CheckInBadge
+                              label="Dia 30"
+                              done={checkInDone('day30')}
+                              overdue={checkInOverdue('day30')}
+                            />
+                          )}
+                          {hasCheckIn('day60') && (
+                            <CheckInBadge
+                              label="Dia 60"
+                              done={checkInDone('day60')}
+                              overdue={checkInOverdue('day60')}
+                            />
+                          )}
+                          {plan.checkIns.length === 0 && <span className="text-[10px] text-[#8B8B8B]">—</span>}
                         </div>
-                        <span className={`text-[10px] ${colors.text}`}>{taskPct}%</span>
-                      </div>
-                    </td>
-                  </tr>
-                  {expanded === plan.id && (
-                    <OnboardingTaskList tasks={plan.tasks} />
-                  )}
+                      </td>
+
+                      <td className="py-3 px-3 text-center">
+                        <span className={`w-2.5 h-2.5 rounded-full ${getRiskDot(plan.riskScore)} inline-block`} />
+                      </td>
+
+                      <td className="py-3 px-3">
+                        <div className="flex items-center gap-1.5 justify-center">
+                          <div className="w-20 bg-[#F6F6F6] rounded-full h-2">
+                            <div
+                              className={`h-2 ${colors.bar} rounded-full transition-all`}
+                              style={{ width: `${taskPct}%` }}
+                            />
+                          </div>
+                          <span className={`text-[10px] ${colors.text}`}>{taskPct}%</span>
+                        </div>
+                      </td>
+                    </tr>
+                    {expanded === plan.id && <OnboardingTaskList tasks={plan.tasks} />}
                   </React.Fragment>
                 );
               })}
