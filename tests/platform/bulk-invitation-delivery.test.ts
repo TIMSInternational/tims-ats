@@ -60,6 +60,8 @@ describe('bulk invitation delivery', () => {
     mocks.findOrganization.mockResolvedValue({ name: '<img src=x onerror=alert(1)>' });
     await bulkInviteUsers('org', 'owner', [{ email: 'a@example.com', roleSlug: '<script>evil</script>' }]);
     const html = mocks.sendEmail.mock.calls[0][0].html;
+    expect(html).toContain('Tu próximo paso comienza aquí');
+    expect(html).toContain('name="viewport"');
     expect(html).not.toContain('<img');
     expect(html).not.toContain('<script>');
     expect(html).toContain('&lt;img');
@@ -114,5 +116,6 @@ describe('delivery request budget and resend', () => {
     mocks.markResent.mockResolvedValue({ count: 0 });
     expect(await resendInvitation('id')).toEqual({ error: 'invalid_status' });
     expect(mocks.sendEmail.mock.invocationCallOrder[0]).toBeLessThan(mocks.markResent.mock.invocationCallOrder[0]);
+    expect(mocks.sendEmail.mock.calls[0][0].html).toContain('TU INVITACIÓN');
   });
 });
