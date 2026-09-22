@@ -27,15 +27,14 @@ function ResetPasswordForm() {
   const [invalidLink, setInvalidLink] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
-  const setupStarted = useRef(false);
+  const setupPromise = useRef<Promise<boolean> | null>(null);
 
   useEffect(() => {
-    if (setupStarted.current) return;
-    setupStarted.current = true;
     let active = true;
     const supabase = createSupabaseBrowserClient();
+    setupPromise.current ??= establishPasswordSetupSession(supabase.auth);
     void (async () => {
-      const ready = await establishPasswordSetupSession(supabase.auth);
+      const ready = await setupPromise.current;
       if (!active) return;
       if (!ready) {
         setInvalidLink(true);

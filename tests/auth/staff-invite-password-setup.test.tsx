@@ -26,6 +26,7 @@ vi.mock('../../apps/web/lib/i18n', async () => {
 import ResetPasswordPage from '../../apps/web/app/(auth)/reset-password/page';
 
 beforeEach(() => {
+  window.sessionStorage.clear();
   state.getSession.mockReset();
   state.setSession.mockReset();
   state.updateUser.mockReset();
@@ -42,7 +43,11 @@ beforeEach(() => {
 
 describe('staff invitation password setup', () => {
   it('waits for the invite session before accepting and updating the password', async () => {
-    render(<ResetPasswordPage />);
+    render(
+      <React.StrictMode>
+        <ResetPasswordPage />
+      </React.StrictMode>,
+    );
 
     const submit = screen.getByRole('button', { name: 'Update password' });
     expect(submit).toBeDisabled();
@@ -98,7 +103,8 @@ describe('staff invitation password setup', () => {
     expect(state.getSession).not.toHaveBeenCalled();
     expect(window.location.hash).toBe('');
 
-    page.rerender(<ResetPasswordPage />);
+    page.unmount();
+    render(<ResetPasswordPage />);
     expect(screen.getByRole('button', { name: 'Update password' })).toBeDisabled();
     expect(state.getSession).not.toHaveBeenCalled();
   });
