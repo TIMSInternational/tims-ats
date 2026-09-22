@@ -91,11 +91,15 @@ describe('staff invitation password setup', () => {
   it('rejects provider error fragments even when another account has a session', async () => {
     window.history.replaceState(null, '', '/reset-password?setup=1#error=access_denied&error_code=otp_expired');
     state.getSession.mockResolvedValue({ data: { session: { access_token: 'unrelated-session' } }, error: null });
-    render(<ResetPasswordPage />);
+    const page = render(<ResetPasswordPage />);
 
     expect(await screen.findByText('The password setup link is invalid or has expired')).toBeVisible();
     expect(screen.getByRole('button', { name: 'Update password' })).toBeDisabled();
     expect(state.getSession).not.toHaveBeenCalled();
     expect(window.location.hash).toBe('');
+
+    page.rerender(<ResetPasswordPage />);
+    expect(screen.getByRole('button', { name: 'Update password' })).toBeDisabled();
+    expect(state.getSession).not.toHaveBeenCalled();
   });
 });

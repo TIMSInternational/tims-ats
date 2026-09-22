@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, Suspense } from 'react';
+import { useEffect, useRef, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createSupabaseBrowserClient } from '@tims/auth/client';
 import Link from 'next/link';
@@ -24,17 +24,21 @@ function ResetPasswordForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [sessionReady, setSessionReady] = useState(false);
+  const [invalidLink, setInvalidLink] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const setupStarted = useRef(false);
 
   useEffect(() => {
+    if (setupStarted.current) return;
+    setupStarted.current = true;
     let active = true;
     const supabase = createSupabaseBrowserClient();
     void (async () => {
       const ready = await establishPasswordSetupSession(supabase.auth);
       if (!active) return;
       if (!ready) {
-        setError(t.auth.invalidPasswordSetupLink);
+        setInvalidLink(true);
         return;
       }
       setSessionReady(true);
@@ -42,7 +46,7 @@ function ResetPasswordForm() {
     return () => {
       active = false;
     };
-  }, [t.auth.invalidPasswordSetupLink]);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -108,9 +112,9 @@ function ResetPasswordForm() {
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
-            {error && (
+            {(error || invalidLink) && (
               <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-[13px] text-red-700">
-                {error}
+                {invalidLink ? t.auth.invalidPasswordSetupLink : error}
               </div>
             )}
 
