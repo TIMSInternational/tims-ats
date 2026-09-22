@@ -1,10 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import {
-  isMfaEnforced,
-  isMfaSatisfied,
-  isMfaGateBlocking,
-  mfaMode,
-} from '../../apps/web/lib/mfa';
+import { isMfaEnforced, isMfaSatisfied, isMfaGateBlocking, mfaMode } from '../../apps/web/lib/mfa';
+import { safeMfaReturnTo } from '../../apps/web/app/mfa/mfa-return';
 
 describe('isMfaEnforced', () => {
   it('is true ONLY for the literal string "true"', () => {
@@ -66,5 +62,22 @@ describe('mfaMode — what the /mfa page should render', () => {
 
   it('enabled when a factor exists and the session is aal2', () => {
     expect(mfaMode({ hasVerifiedFactor: true, currentLevel: 'aal2' })).toBe('enabled');
+  });
+});
+
+describe('safeMfaReturnTo', () => {
+  it('allows invitation completion and password setup round trips', () => {
+    const token = '11111111-1111-4111-8111-111111111111';
+    expect(safeMfaReturnTo(`/accept-invitation?token=${token}`)).toBe(`/accept-invitation?token=${token}`);
+    expect(safeMfaReturnTo('/reset-password')).toBe('/reset-password');
+    expect(safeMfaReturnTo('/reset-password?setup=1')).toBe('/reset-password?setup=1');
+    expect(safeMfaReturnTo(`/reset-password?invitation=${token}`)).toBe(`/reset-password?invitation=${token}`);
+  });
+
+  it('rejects external, malformed, and privilege-escalating destinations', () => {
+    expect(safeMfaReturnTo('https://attacker.test')).toBeUndefined();
+    expect(safeMfaReturnTo('//attacker.test')).toBeUndefined();
+    expect(safeMfaReturnTo('/reset-password?setup=1&next=/platform')).toBeUndefined();
+    expect(safeMfaReturnTo('/dashboard')).toBeUndefined();
   });
 });

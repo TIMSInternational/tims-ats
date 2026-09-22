@@ -245,8 +245,29 @@ describe('staff invitation password setup', () => {
     fireEvent.change(screen.getByLabelText('Confirm password'), { target: { value: 'a-private-staff-password' } });
     fireEvent.click(submit);
 
-    expect(await screen.findByText('We could not update your password. Request a new link and try again.')).toBeVisible();
+    expect(
+      await screen.findByText('We could not update your password. Request a new link and try again.'),
+    ).toBeVisible();
     expect(submit).not.toBeDisabled();
+  });
+
+  it('steps up MFA and preserves the authorized password setup return path', async () => {
+    const assign = vi.spyOn(window.location, 'assign').mockImplementation(() => undefined);
+    render(<ResetPasswordPage />);
+    const submit = screen.getByRole('button', { name: 'Update password' });
+    await waitFor(() => expect(submit).not.toBeDisabled());
+    state.verifyProof.mockResolvedValueOnce({
+      ok: false,
+      status: 403,
+      json: async () => ({ error: 'mfa_required' }),
+    });
+
+    fireEvent.change(screen.getByLabelText('New password'), { target: { value: 'a-private-staff-password' } });
+    fireEvent.change(screen.getByLabelText('Confirm password'), { target: { value: 'a-private-staff-password' } });
+    fireEvent.click(submit);
+
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('/mfa?returnTo=%2Freset-password%3Fsetup%3D1'));
+    expect(window.sessionStorage.getItem('tims-password-setup-user:/reset-password?setup=1')).toBe(invitedUserId);
   });
 
   it('does not rebind a verified recovery to a different account after reload', async () => {

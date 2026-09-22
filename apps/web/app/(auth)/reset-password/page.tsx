@@ -79,6 +79,18 @@ function ResetPasswordForm() {
       });
 
       if (!updateResponse.ok) {
+        const responseBody: unknown = await updateResponse.json().catch(() => null);
+        if (
+          updateResponse.status === 403 &&
+          typeof responseBody === 'object' &&
+          responseBody !== null &&
+          'error' in responseBody &&
+          responseBody.error === 'mfa_required'
+        ) {
+          const returnTo = `${window.location.pathname}${window.location.search}`;
+          window.location.assign(`/mfa?returnTo=${encodeURIComponent(returnTo)}`);
+          return;
+        }
         setError(t.auth.passwordUpdateFailed);
         return;
       }

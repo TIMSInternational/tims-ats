@@ -7,9 +7,12 @@ const inputSchema = z.object({
   userId: z.string().uuid(),
 });
 const userSchema = z.object({ id: z.string().uuid() });
+const providerErrorSchema = z.object({ code: z.string().max(100) });
 
 const fail = (status: number) =>
   NextResponse.json({ error: 'password_update_unavailable' }, { status, headers: { 'cache-control': 'no-store' } });
+const requireMfa = () =>
+  NextResponse.json({ error: 'mfa_required' }, { status: 403, headers: { 'cache-control': 'no-store' } });
 
 async function boundedBody(request: Request) {
   const reader = request.body?.getReader();
@@ -86,7 +89,19 @@ export async function POST(request: Request) {
       redirect: 'error',
       signal: AbortSignal.timeout(10_000),
     });
-    if (!updateResponse.ok) return fail(updateResponse.status);
+    if (!updateResponse.ok) {
+      const providerBody = await updateResponse.text();
+      if (providerBody.length <= 65_536) {
+        try {
+          const providerError = providerErrorSchema.safeParse(JSON.parse(providerBody));
+          if (providerError.success && providerError.data.code === 'insufficient_aal') return requireMfa();
+        } catch {
+          // Provider errors stay private; only the allowlisted MFA signal crosses
+          // this same-origin boundary.
+        }
+      }
+      return fail(updateResponse.status);
+    }
     return new NextResponse(null, { status: 204, headers: { 'cache-control': 'no-store' } });
   } catch {
     return fail(503);

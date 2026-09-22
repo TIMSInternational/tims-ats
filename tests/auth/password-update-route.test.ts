@@ -56,4 +56,30 @@ describe('password update token binding', () => {
     expect(response.status).toBe(403);
     expect(state.provider).toHaveBeenCalledTimes(1);
   });
+
+  it('preserves only the allowlisted MFA step-up signal from Supabase', async () => {
+    state.provider
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: recoveredUserId }), { status: 200 }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ code: 'insufficient_aal', message: 'private provider detail' }), { status: 403 }),
+      );
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: 'mfa_required' });
+  });
+
+  it('does not expose other provider errors', async () => {
+    state.provider
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: recoveredUserId }), { status: 200 }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ code: 'provider_private', message: 'private provider detail' }), { status: 422 }),
+      );
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(422);
+    expect(await response.json()).toEqual({ error: 'password_update_unavailable' });
+  });
 });
