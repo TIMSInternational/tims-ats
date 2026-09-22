@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import en from '../../apps/web/lib/i18n/en.json';
 import { I18nProvider } from '../../apps/web/lib/i18n';
 import { LearningKpis } from '../../apps/web/app/(admin)/learning/learning-kpis';
@@ -59,5 +59,31 @@ describe('Learning dashboard data integrity', () => {
     );
     expect(screen.getByText(en.learning.noCourses)).toBeInTheDocument();
     expect(screen.getByText(en.learning.noCoursesDesc)).toBeInTheDocument();
+  });
+
+  it('distinguishes an empty catalog from filters with no matching courses', () => {
+    render(
+      <I18nProvider>
+        <CourseCatalog
+          courses={[
+            {
+              id: 'course-1',
+              title: 'Orientation',
+              category: null,
+              type: 'online',
+              duration: 2,
+              isRequired: false,
+              avgProgress: 0,
+              _count: { enrollments: 0 },
+            },
+          ]}
+          loading={false}
+          t={en.learning}
+        />
+      </I18nProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: en.learning.filterRequired }));
+    expect(screen.getByText(en.learning.noResults)).toBeInTheDocument();
+    expect(screen.queryByText(en.learning.noCourses)).not.toBeInTheDocument();
   });
 });
