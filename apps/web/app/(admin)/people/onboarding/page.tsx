@@ -6,6 +6,7 @@ import { useI18n } from '../../../../lib/i18n';
 import { KpiCard, KpiCardSkeleton, ErrorState } from '../../../../components';
 import { OnboardingTable, type OnboardingPlan } from './onboarding-table';
 import { CreatePlanModal } from './create-plan-modal';
+import { CompleteCheckInModal } from './complete-check-in-modal';
 import { TasksByResponsible, PendingTasks } from './onboarding-panels';
 
 /* ── KPI Icons ─────────────────────────────────────────────── */
@@ -64,6 +65,7 @@ export default function OnboardingPage() {
   const { t } = useI18n();
   const [phase, setPhase] = useState<string | undefined>(undefined);
   const [showCreate, setShowCreate] = useState(false);
+  const [selectedCheckIn, setSelectedCheckIn] = useState<{ id: string; label: string } | null>(null);
 
   const kpis = trpc.onboarding.getDashboardKpis.useQuery();
   const plans = trpc.onboarding.list.useQuery({
@@ -103,6 +105,7 @@ export default function OnboardingPage() {
         </div>
       </div>
       {showCreate && <CreatePlanModal onClose={() => setShowCreate(false)} />}
+      {selectedCheckIn && <CompleteCheckInModal id={selectedCheckIn.id} label={selectedCheckIn.label} onClose={() => setSelectedCheckIn(null)} />}
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-6">
@@ -202,6 +205,7 @@ export default function OnboardingPage() {
                     <th className="py-2 px-3 text-left">Check-in</th>
                     <th className="py-2 px-3 text-left">{t.onboarding.scheduledDate}</th>
                     <th className="py-2 px-3 text-left">Estado</th>
+                    <th className="py-2 px-3 text-left">{t.onboarding.checkInAction}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -214,6 +218,13 @@ export default function OnboardingPage() {
                         <td className="py-2 px-3">{checkIn.type}</td>
                         <td className="py-2 px-3">{new Date(checkIn.scheduledDate).toLocaleDateString('es')}</td>
                         <td className="py-2 px-3">{checkIn.status}</td>
+                        <td className="py-2 px-3">
+                          {checkIn.status === 'pending' && (
+                            <button type="button" onClick={() => setSelectedCheckIn({ id: checkIn.id, label: `${plan.user.firstName} ${plan.user.lastName} — ${checkIn.type}` })} className="font-medium text-[#1F114C] underline">
+                              {t.onboarding.completeCheckInTitle}
+                            </button>
+                          )}
+                        </td>
                       </tr>
                     )),
                   )}

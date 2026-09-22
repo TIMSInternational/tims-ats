@@ -7,6 +7,7 @@ import { tenantDb as db } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { TRPCError } from '@trpc/server';
 import { scopeWhereFor, assertScoped, assertSubjectInScope, requireOrgScope } from '../access';
+import { scheduledOnboardingCheckIns } from '../services/onboarding-defaults';
 
 // Verify every referenced user id belongs to the caller's org (prevents attaching
 // onboarding records to another tenant's users / leaking their names via includes).
@@ -145,6 +146,9 @@ export const onboardingRouter = router({
           ...input,
           organizationId: ctx.user.organizationId,
           createdById: ctx.user.id,
+          checkIns: {
+            create: scheduledOnboardingCheckIns(input.startDate, ctx.user.organizationId),
+          },
         },
         include: {
           user: { select: { id: true, firstName: true, lastName: true } },
