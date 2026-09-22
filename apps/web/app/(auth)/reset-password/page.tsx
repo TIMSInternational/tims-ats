@@ -68,10 +68,18 @@ function ResetPasswordForm() {
       setLoading(false);
       return;
     }
-    const { error: updateError } = await supabase.auth.updateUser({ password });
+    const updateResponse = await fetch('/api/auth/password-update', {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${current.data.session.access_token}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ password, userId: setupUserId }),
+      cache: 'no-store',
+    });
 
-    if (updateError) {
-      setError(updateError.message);
+    if (!updateResponse.ok) {
+      setError(t.auth.passwordUpdateFailed);
       setLoading(false);
       return;
     }

@@ -75,7 +75,15 @@ describe('staff invitation password setup', () => {
     fireEvent.change(screen.getByLabelText('Confirm password'), { target: { value: 'a-private-staff-password' } });
     fireEvent.click(submit);
 
-    await waitFor(() => expect(state.updateUser).toHaveBeenCalledWith({ password: 'a-private-staff-password' }));
+    await waitFor(() =>
+      expect(state.verifyProof).toHaveBeenCalledWith('/api/auth/password-update', {
+        method: 'POST',
+        headers: { authorization: 'Bearer invite-access', 'content-type': 'application/json' },
+        body: JSON.stringify({ password: 'a-private-staff-password', userId: invitedUserId }),
+        cache: 'no-store',
+      }),
+    );
+    expect(state.updateUser).not.toHaveBeenCalled();
     expect(await screen.findByText('Password updated')).toBeInTheDocument();
   });
 
@@ -197,6 +205,34 @@ describe('staff invitation password setup', () => {
 
     expect(await screen.findByText('The password setup link is invalid or has expired')).toBeVisible();
     expect(state.updateUser).not.toHaveBeenCalled();
+  });
+
+  it('binds the update request to the access token captured by validation', async () => {
+    render(<ResetPasswordPage />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Update password' })).not.toBeDisabled());
+    state.verifyProof.mockImplementation(async (url: string) => {
+      if (url === '/api/auth/password-update') {
+        state.getSession.mockResolvedValue({
+          data: {
+            session: {
+              access_token: 'switched-session',
+              user: { id: '55555555-5555-4555-8555-555555555555' },
+            },
+          },
+          error: null,
+        });
+      }
+      return { ok: true, json: async () => ({ valid: true, userId: invitedUserId }) };
+    });
+    fireEvent.change(screen.getByLabelText('New password'), { target: { value: 'a-private-staff-password' } });
+    fireEvent.change(screen.getByLabelText('Confirm password'), { target: { value: 'a-private-staff-password' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Update password' }));
+
+    await waitFor(() => expect(screen.getByText('Password updated')).toBeInTheDocument());
+    expect(state.verifyProof).toHaveBeenCalledWith(
+      '/api/auth/password-update',
+      expect.objectContaining({ headers: expect.objectContaining({ authorization: 'Bearer invite-access' }) }),
+    );
   });
 
   it('does not rebind a verified recovery to a different account after reload', async () => {

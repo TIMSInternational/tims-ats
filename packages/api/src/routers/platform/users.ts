@@ -202,8 +202,8 @@ export const usersRouter = router({
       if (!user) throw new TRPCError({ code: 'NOT_FOUND', message: 'Usuario no encontrado con ese email' });
 
       // Actually trigger a Supabase recovery email — same mechanism as the
-      // self-serve /forgot-password flow (resetPasswordForEmail → the recovery
-      // link lands on /reset-password, which calls updateUser({ password })).
+      // self-serve /forgot-password flow. The callback exchanges the PKCE code,
+      // then the password page binds its update to that recovered identity.
       // Previously this was a no-op that returned { sent: true } without
       // sending anything (rule #4: the UI claimed an email was sent).
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -220,7 +220,7 @@ export const usersRouter = router({
       });
       const appUrl = getAppUrl();
       const { error } = await admin.auth.resetPasswordForEmail(input.email, {
-        redirectTo: `${appUrl}/reset-password`,
+        redirectTo: `${appUrl}/auth/callback?recovery=1`,
       });
       if (error) {
         throw new TRPCError({
