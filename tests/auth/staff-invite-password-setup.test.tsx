@@ -108,4 +108,20 @@ describe('staff invitation password setup', () => {
     expect(screen.getByRole('button', { name: 'Update password' })).toBeDisabled();
     expect(state.getSession).not.toHaveBeenCalled();
   });
+
+  it('rejects residual PKCE codes instead of trusting an ambient account session', async () => {
+    window.history.replaceState(null, '', '/reset-password?code=expired-code');
+    state.getSession.mockResolvedValue({ data: { session: { access_token: 'unrelated-session' } }, error: null });
+    const page = render(<ResetPasswordPage />);
+
+    expect(await screen.findByText('The password setup link is invalid or has expired')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Update password' })).toBeDisabled();
+    expect(state.getSession).not.toHaveBeenCalled();
+    expect(window.location.search).toBe('');
+
+    page.unmount();
+    render(<ResetPasswordPage />);
+    expect(screen.getByRole('button', { name: 'Update password' })).toBeDisabled();
+    expect(state.getSession).not.toHaveBeenCalled();
+  });
 });

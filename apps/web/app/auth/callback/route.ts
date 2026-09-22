@@ -42,6 +42,12 @@ export async function GET(request: Request) {
     response.headers.set('cache-control', 'no-store');
     return response;
   }
+  if (searchParams.get('recovery') === '1') {
+    const response = NextResponse.redirect(`${origin}/reset-password?recovery=1`);
+    response.headers.set('referrer-policy', 'no-referrer');
+    response.headers.set('cache-control', 'no-store');
+    return response;
+  }
   // Portal (candidate) login: a safe /careers/ `next` target means this is a
   // candidate magic-link sign-in. Candidates are NOT staff — do NOT provision a
   // `User` row; the portal resolves identity by email against `Candidate` records.

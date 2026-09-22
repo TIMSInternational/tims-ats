@@ -13,10 +13,22 @@ function validToken(value: string | null, maxLength: number): value is string {
 }
 
 function rejectionKey(): string {
-  return `tims-password-setup-rejected:${window.location.pathname}${window.location.search}`;
+  const stableQuery = new URLSearchParams(window.location.search);
+  for (const transient of ['code', 'error', 'error_code', 'error_description']) stableQuery.delete(transient);
+  const suffix = stableQuery.toString();
+  return `tims-password-setup-rejected:${window.location.pathname}${suffix ? `?${suffix}` : ''}`;
 }
 
 export async function establishPasswordSetupSession(auth: PasswordSetupAuth): Promise<boolean> {
+  const query = new URLSearchParams(window.location.search);
+  if (query.has('code') || query.has('error') || query.has('error_code') || query.has('error_description')) {
+    window.sessionStorage.setItem(rejectionKey(), '1');
+    for (const transient of ['code', 'error', 'error_code', 'error_description']) query.delete(transient);
+    const suffix = query.toString();
+    window.history.replaceState(window.history.state, '', `${window.location.pathname}${suffix ? `?${suffix}` : ''}`);
+    return false;
+  }
+
   const fragment = new URLSearchParams(window.location.hash.replace(/^#/, ''));
   const hasProviderError = fragment.has('error') || fragment.has('error_code') || fragment.has('error_description');
   const hasFragmentCredentials = fragment.has('access_token') || fragment.has('refresh_token');

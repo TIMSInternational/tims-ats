@@ -18,6 +18,7 @@ const OFFER_LIFECYCLE = read('packages/api/src/routers/offer/lifecycle.ts');
 const TRPC_ROUTE = read('apps/web/app/api/trpc/[trpc]/route.ts');
 const CALLBACK = read('apps/web/app/auth/callback/route.ts');
 const RESET_PASSWORD = read('apps/web/app/(auth)/reset-password/page.tsx');
+const FORGOT_PASSWORD = read('apps/web/app/(auth)/forgot-password/page.tsx');
 const BACKFILL = read('packages/api/scripts/backfill-staff-supabase-links.ts');
 // The admin layout + dashboard page now resolve identity through this shared
 // server-only helper (impersonation-effective identity), so the staff-recognition
@@ -37,6 +38,12 @@ describe('staff provisioning service (invite-time linking)', () => {
     expect(PROVISION).not.toContain('/auth/callback?setup=1');
     expect(RESET_PASSWORD).toContain('establishPasswordSetupSession(supabase.auth)');
     expect(RESET_PASSWORD).toContain('disabled={loading || !sessionReady}');
+  });
+
+  it('exchanges password recovery PKCE codes on the server before setup', () => {
+    expect(FORGOT_PASSWORD).toContain('/auth/callback?recovery=1');
+    expect(CALLBACK).toContain('/reset-password?recovery=1');
+    expect(FORGOT_PASSWORD).not.toContain('origin}/reset-password`');
   });
 
   it('rejects an auth id already owned by a REAL staff row with a clean CONFLICT (no raw P2002)', () => {
