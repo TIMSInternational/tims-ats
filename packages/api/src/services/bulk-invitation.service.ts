@@ -2,15 +2,10 @@ import { randomUUID } from 'crypto';
 import { getAppUrl } from '@tims/shared';
 import { sendEmail } from '../lib/ses';
 import { bulkInvitationRepository } from '../repositories/bulk-invitation.repository';
+import { renderInvitationEmail } from './invitation-email';
 
 type Invitee = { email: string; roleSlug?: string };
 type InvitationResult = { email: string; status: 'sent' | 'duplicate' | 'error'; message?: string };
-
-function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (char) => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-  })[char] ?? char);
-}
 
 export async function bulkInviteUsers(organizationId: string, invitedById: string, users: Invitee[]) {
   // Best-effort synchronous delivery, not a durable job: stop starting work early
@@ -37,10 +32,11 @@ export async function bulkInviteUsers(organizationId: string, invitedById: strin
       seen.add(email);
       try {
         const token = randomUUID();
+        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
         const invitation = await bulkInvitationRepository.createPending({
           email: user.email, organizationId, organizationName: org!.name,
           roleSlug: user.roleSlug, token, invitedById,
-          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          expiresAt,
         });
         if (!invitation) {
           results[index] = { email: user.email, status: 'duplicate', message: 'Already invited' };
@@ -51,7 +47,7 @@ export async function bulkInviteUsers(organizationId: string, invitedById: strin
         const delivered = timeout > 0 && await sendEmail({
           to: user.email,
           subject: `Invitacion para unirte a ${org!.name} en TIMS ATS`,
-          html: `<h1>TIMS ATS</h1><p>Has sido invitado a unirte a <strong>${escapeHtml(org!.name)}</strong> como <strong>${escapeHtml(user.roleSlug?.replace(/_/g, ' ') || 'usuario')}</strong>.</p><p><a href="${escapeHtml(url)}">Aceptar Invitacion</a></p><p>Esta invitacion expira en 7 dias.</p>`,
+          html: renderInvitationEmail({ organization: org!.name, role: user.roleSlug, url, expiresAt }),
           abortSignal: AbortSignal.timeout(timeout),
         });
         if (!delivered) {
@@ -87,7 +83,7 @@ export async function resendInvitation(id: string) {
   const url = `${getAppUrl()}/accept-invitation?token=${encodeURIComponent(invitation.token)}`;
   const delivered = await sendEmail({
     to: invitation.email, subject: `Recordatorio: Invitacion pendiente - ${invitation.organizationName || 'TIMS ATS'}`,
-    html: `<h1>TIMS ATS</h1><p>Tienes una invitacion pendiente para <strong>${escapeHtml(invitation.organizationName || 'TIMS ATS')}</strong>.</p><a href="${escapeHtml(url)}">Aceptar Invitacion</a><p>Esta invitacion expira en 7 dias.</p>`,
+    html: renderInvitationEmail({ organization: invitation.organizationName || 'TIMS ATS', role: invitation.roleSlug, url, expiresAt, reminder: true }),
     abortSignal: AbortSignal.timeout(4_000),
   });
   if (!delivered) return { error: 'delivery_failed' } as const;
