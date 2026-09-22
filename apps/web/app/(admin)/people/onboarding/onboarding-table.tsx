@@ -86,7 +86,7 @@ function CheckInBadge({ label, done, overdue }: { label: string; done: boolean; 
   if (overdue) {
     return <span className="text-[9px] bg-[#DD0C15]/10 text-[#DD0C15] px-1 py-0.5 rounded">{label} Vencido!</span>;
   }
-  return null;
+  return <span className="text-[9px] bg-amber-50 text-amber-700 px-1 py-0.5 rounded">{label} Pendiente</span>;
 }
 
 export function OnboardingTable({

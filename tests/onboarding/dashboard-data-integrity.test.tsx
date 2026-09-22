@@ -53,6 +53,25 @@ describe('Onboarding dashboard data integrity', () => {
     const updatedCell = screen.getByText('Beta Tester').closest('tr')!.querySelectorAll('td')[6];
     expect(within(updatedCell).getByText(/Dia 30 ✓/)).toBeInTheDocument();
     expect(updatedCell).not.toHaveTextContent('Dia 1');
+
+    rerender(
+      <I18nProvider>
+        <OnboardingTable
+          plans={[
+            {
+              ...plan,
+              checkIns: [
+                { id: 'check-2', type: 'day30', status: 'pending', scheduledDate: '2099-01-31', completedAt: null },
+              ],
+            },
+          ]}
+          isLoading={false}
+          onPhaseChange={() => {}}
+        />
+      </I18nProvider>,
+    );
+    const pendingCell = screen.getByText('Beta Tester').closest('tr')!.querySelectorAll('td')[6];
+    expect(within(pendingCell).getByText('Dia 30 Pendiente')).toBeInTheDocument();
   });
 
   it('counts incomplete tasks as tasks, not documents', () => {
