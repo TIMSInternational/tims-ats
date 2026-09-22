@@ -198,4 +198,21 @@ describe('staff invitation password setup', () => {
     expect(await screen.findByText('The password setup link is invalid or has expired')).toBeVisible();
     expect(state.updateUser).not.toHaveBeenCalled();
   });
+
+  it('does not rebind a verified recovery to a different account after reload', async () => {
+    const proof = '22222222-2222-4222-8222-222222222222';
+    window.history.replaceState(null, '', `/reset-password?recovery=${proof}`);
+    const verified = render(<ResetPasswordPage />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Update password' })).not.toBeDisabled());
+    verified.unmount();
+
+    state.getSession.mockResolvedValue({
+      data: { session: { access_token: 'switched-session', user: { id: '55555555-5555-4555-8555-555555555555' } } },
+      error: null,
+    });
+    render(<ResetPasswordPage />);
+
+    expect(await screen.findByText('The password setup link is invalid or has expired')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Update password' })).toBeDisabled();
+  });
 });

@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { createSupabaseBrowserClient } from '@tims/auth/client';
 import Link from 'next/link';
 import { useI18n } from '../../../lib/i18n';
-import { establishPasswordSetupSession } from './password-setup-session';
+import { clearPasswordSetupAuthorization, establishPasswordSetupSession } from './password-setup-session';
 
 export default function ResetPasswordPage() {
   return (
@@ -76,6 +76,7 @@ function ResetPasswordForm() {
       return;
     }
 
+    clearPasswordSetupAuthorization();
     setSuccess(true);
     setLoading(false);
     setTimeout(() => {

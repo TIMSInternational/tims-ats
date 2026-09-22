@@ -22,6 +22,18 @@ function rejectionKey(): string {
   return `tims-password-setup-rejected:${window.location.pathname}${suffix ? `?${suffix}` : ''}`;
 }
 
+function authorizationKey(): string {
+  const stableQuery = new URLSearchParams(window.location.search);
+  for (const transient of ['code', 'error', 'error_code', 'error_description', 'recovery'])
+    stableQuery.delete(transient);
+  const suffix = stableQuery.toString();
+  return `tims-password-setup-user:${window.location.pathname}${suffix ? `?${suffix}` : ''}`;
+}
+
+export function clearPasswordSetupAuthorization() {
+  window.sessionStorage.removeItem(authorizationKey());
+}
+
 export async function establishPasswordSetupSession(auth: PasswordSetupAuth): Promise<string | null> {
   const query = new URLSearchParams(window.location.search);
   if (query.has('code') || query.has('error') || query.has('error_code') || query.has('error_description')) {
@@ -58,6 +70,7 @@ export async function establishPasswordSetupSession(auth: PasswordSetupAuth): Pr
       return null;
     }
     window.sessionStorage.removeItem(rejectionKey());
+    window.sessionStorage.setItem(authorizationKey(), invite.data.session.user.id);
     return invite.data.session.user.id;
   }
 
@@ -88,6 +101,7 @@ export async function establishPasswordSetupSession(auth: PasswordSetupAuth): Pr
         return null;
       }
       window.sessionStorage.removeItem(rejectionKey());
+      window.sessionStorage.setItem(authorizationKey(), recoveredUserId);
       return recoveredUserId;
     } catch {
       window.sessionStorage.setItem(rejectionKey(), '1');
@@ -96,6 +110,8 @@ export async function establishPasswordSetupSession(auth: PasswordSetupAuth): Pr
   }
 
   if (window.sessionStorage.getItem(rejectionKey()) === '1') return null;
+  const authorizedUserId = window.sessionStorage.getItem(authorizationKey());
+  if (!userIdPattern.test(authorizedUserId ?? '')) return null;
   const existing = await auth.getSession();
-  return !existing.error && existing.data.session ? existing.data.session.user.id : null;
+  return !existing.error && existing.data.session?.user.id === authorizedUserId ? authorizedUserId : null;
 }
