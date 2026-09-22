@@ -310,6 +310,7 @@
     "confirm": "Confirmar",
     "cancel": "Cancelar",
     "save": "Guardar",
+    "select": "Seleccionar...",
     "saving": "Guardando...",
     "delete": "Eliminar",
     "edit": "Editar",
@@ -2322,6 +2323,14 @@
     "modalTitle": "Agendar Entrevista"
   },
   "offers": {
+    "createOffer": "Crear borrador de oferta",
+    "currency": "Moneda",
+    "approver": "Aprobador",
+    "requestApproval": "Solicitar aprobación",
+    "reject": "Rechazar",
+    "rejectionReason": "Motivo del rechazo",
+    "viewOfferLetter": "Ver carta de oferta",
+    "generating": "Generando...",
     "title": "Centro de Ofertas y Validacion",
     "cityCountry": "Bogotá, Colombia",
     "startDateLabel": "Fecha de inicio",

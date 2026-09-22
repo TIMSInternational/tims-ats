@@ -310,6 +310,7 @@
     "confirm": "Confirm",
     "cancel": "Cancel",
     "save": "Save",
+    "select": "Select...",
     "saving": "Saving...",
     "delete": "Delete",
     "edit": "Edit",
@@ -2322,6 +2323,14 @@
     "modalTitle": "Schedule Interview"
   },
   "offers": {
+    "createOffer": "Create offer draft",
+    "currency": "Currency",
+    "approver": "Approver",
+    "requestApproval": "Request approval",
+    "reject": "Reject",
+    "rejectionReason": "Reason for rejection",
+    "viewOfferLetter": "View offer letter",
+    "generating": "Generating...",
     "title": "Offer & Validation Center",
     "cityCountry": "Bogotá, Colombia",
     "startDateLabel": "Start date",
