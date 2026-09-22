@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { RELAY_HEADER, signRelayAttribution } from '../../../../lib/platform-api/relay-attribution';
 
 const ACTIONS = new Set(['preview', 'register', 'complete']);
 const MAX_BODY_BYTES = 8192;
@@ -53,6 +54,7 @@ export async function POST(request: Request, context: { params: Promise<{ action
     headers.set('authorization', authorization);
   }
   try {
+    headers.set(RELAY_HEADER, signRelayAttribution(request, upstream, headers.get('authorization') ?? '', ''));
     const response = await fetch(upstream, {
       method: 'POST',
       headers,
@@ -61,7 +63,22 @@ export async function POST(request: Request, context: { params: Promise<{ action
       redirect: 'error',
       signal: AbortSignal.timeout(25_000),
     });
-    if (!response.ok) return fail(response.status);
+    if (!response.ok) {
+      if (response.status === 403) {
+        const body = await response.text();
+        try {
+          if ((JSON.parse(body) as { message?: unknown }).message === 'MFA_REQUIRED') {
+            return NextResponse.json(
+              { error: 'mfa_required' },
+              { status: 403, headers: { 'cache-control': 'no-store' } },
+            );
+          }
+        } catch {
+          // Keep every other upstream error private.
+        }
+      }
+      return fail(response.status);
+    }
     return new NextResponse(await response.text(), {
       status: response.status,
       headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },

@@ -28,6 +28,7 @@ vi.mock('../../apps/web/app/accept-invitation/invitation-setup-api', async (orig
 });
 
 import { InvitationSetup } from '../../apps/web/app/accept-invitation/invitation-setup';
+import { SetupRequestError } from '../../apps/web/app/accept-invitation/invitation-setup-api';
 
 const invitation = {
   id: '22222222-2222-4222-8222-222222222222',
@@ -159,5 +160,21 @@ describe('invitation account setup', () => {
     render(<InvitationSetup />);
     expect(await screen.findByRole('alert')).toHaveTextContent('no está disponible');
     expect(screen.queryByRole('button', { name: 'Crear cuenta y unirme' })).not.toBeInTheDocument();
+  });
+
+  it('sends a privileged recipient to MFA and preserves the invitation return path', async () => {
+    state.request.mockImplementation((action: string) => {
+      if (action === 'preview') return Promise.resolve({ ...invitation, accountExists: true });
+      if (action === 'complete') return Promise.reject(new SetupRequestError('mfa_required'));
+      return Promise.resolve({ outcome: 'complete' });
+    });
+    const assign = vi.spyOn(window.location, 'assign').mockImplementation(() => undefined);
+    render(<InvitationSetup />);
+    await fillProfile();
+    fireEvent.change(screen.getByLabelText('Contraseña'), { target: { value: 'current-credential' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Iniciar sesión y unirme' }));
+    await waitFor(() =>
+      expect(assign).toHaveBeenCalledWith(`/mfa?returnTo=${encodeURIComponent(`/accept-invitation?token=${token}`)}`),
+    );
   });
 });

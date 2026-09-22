@@ -11,7 +11,7 @@ import { mfaMode, type MfaMode, type Aal } from '../../lib/mfa';
 //   enroll    — no verified factor: show QR + secret, verify a code to activate
 //   challenge — verified factor but session is aal1: step up with a code
 //   enabled   — verified factor and session is aal2: manage / disable
-export function MfaSetup() {
+export function MfaSetup({ returnTo }: { returnTo?: string }) {
   const router = useRouter();
   const { t } = useI18n();
 
@@ -56,9 +56,7 @@ export function MfaSetup() {
       supabase.auth.mfa.getAuthenticatorAssuranceLevel(),
       supabase.auth.mfa.listFactors(),
     ]);
-    const verified = (factorsData?.totp ?? []).filter(
-      (f: { status: string }) => f.status === 'verified',
-    );
+    const verified = (factorsData?.totp ?? []).filter((f: { status: string }) => f.status === 'verified');
     const next = mfaMode({
       hasVerifiedFactor: verified.length > 0,
       currentLevel: aalData?.currentLevel as Aal,
@@ -89,8 +87,8 @@ export function MfaSetup() {
       return;
     }
     setCode('');
-    if (mode === 'challenge') {
-      router.push('/dashboard');
+    if (mode === 'challenge' || returnTo) {
+      router.push(returnTo ?? '/dashboard');
       router.refresh();
     } else {
       await refresh();
@@ -137,7 +135,15 @@ export function MfaSetup() {
         ) : mode === 'enabled' ? (
           <div className="text-center">
             <div className="w-12 h-12 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-4">
-              <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" /></svg>
+              <svg
+                className="w-6 h-6 text-green-600"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2}
+                viewBox="0 0 24 24"
+              >
+                <path d="M5 13l4 4L19 7" />
+              </svg>
             </div>
             <h3 className="text-[15px] font-semibold text-[#1F114C] mb-1">{t.mfa.enabledTitle}</h3>
             <p className="text-[13px] text-[#585858] mb-6">{t.mfa.enabledDesc}</p>
@@ -148,7 +154,9 @@ export function MfaSetup() {
             >
               {busy ? t.mfa.disabling : t.mfa.disable}
             </button>
-            <a href="/dashboard" className="text-[13px] text-[#1F114C] font-medium hover:underline">{t.mfa.backToDashboard}</a>
+            <a href="/dashboard" className="text-[13px] text-[#1F114C] font-medium hover:underline">
+              {t.mfa.backToDashboard}
+            </a>
           </div>
         ) : (
           <div className="space-y-4">
@@ -156,9 +164,7 @@ export function MfaSetup() {
               <h3 className="text-[15px] font-semibold text-[#1F114C] mb-1">
                 {mode === 'enroll' ? t.mfa.enrollTitle : t.mfa.challengeTitle}
               </h3>
-              <p className="text-[13px] text-[#585858]">
-                {mode === 'enroll' ? t.mfa.enrollScan : t.mfa.challengeDesc}
-              </p>
+              <p className="text-[13px] text-[#585858]">{mode === 'enroll' ? t.mfa.enrollScan : t.mfa.challengeDesc}</p>
             </div>
 
             {mode === 'enroll' && qr && (
@@ -177,7 +183,9 @@ export function MfaSetup() {
             )}
 
             {error && (
-              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-[13px] text-red-700">{error}</div>
+              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-[13px] text-red-700">
+                {error}
+              </div>
             )}
 
             <div>
@@ -187,7 +195,9 @@ export function MfaSetup() {
                 autoComplete="one-time-code"
                 value={code}
                 onChange={(e) => onCodeChange(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') void submitCode(); }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void submitCode();
+                }}
                 className="w-full h-12 px-4 rounded-xl border border-[#EDEDED] text-center text-[18px] font-mono tracking-[0.4em] text-[#333] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 focus:border-[#1F114C] transition"
                 placeholder="000000"
                 aria-label={t.mfa.codeLabel}
@@ -203,7 +213,9 @@ export function MfaSetup() {
             </button>
 
             <div className="text-center">
-              <a href="/dashboard" className="text-[13px] text-[#8B8B8B] hover:text-[#585858] hover:underline">{t.mfa.backToDashboard}</a>
+              <a href="/dashboard" className="text-[13px] text-[#8B8B8B] hover:text-[#585858] hover:underline">
+                {t.mfa.backToDashboard}
+              </a>
             </div>
           </div>
         )}

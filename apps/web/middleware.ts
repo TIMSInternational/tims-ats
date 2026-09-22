@@ -76,7 +76,7 @@ export async function middleware(request: NextRequest) {
   // Mirror the CSP onto every response we return (including redirects).
   const applyCsp = <T extends NextResponse>(res: T): T => {
     res.headers.set('content-security-policy', csp);
-    if (request.nextUrl.pathname === '/accept-invitation') {
+    if (request.nextUrl.pathname === '/accept-invitation' || request.nextUrl.pathname === '/reset-password') {
       res.headers.set('referrer-policy', 'no-referrer');
       res.headers.set('cache-control', 'no-store');
     }

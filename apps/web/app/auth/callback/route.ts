@@ -37,7 +37,10 @@ export async function GET(request: Request) {
   if (invitationToken && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(invitationToken)) {
     const destination =
       searchParams.get('recovery') === '1' ? '/reset-password?invitation=' : '/accept-invitation?token=';
-    return NextResponse.redirect(`${origin}${destination}${encodeURIComponent(invitationToken)}`);
+    const response = NextResponse.redirect(`${origin}${destination}${encodeURIComponent(invitationToken)}`);
+    response.headers.set('referrer-policy', 'no-referrer');
+    response.headers.set('cache-control', 'no-store');
+    return response;
   }
   if (searchParams.get('setup') === '1') return NextResponse.redirect(`${origin}/reset-password`);
 

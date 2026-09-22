@@ -4,6 +4,7 @@ import { POST } from '../../apps/web/app/api/invitation-setup/[action]/route';
 const fetch = vi.fn();
 beforeEach(() => {
   vi.stubEnv('NEXT_PUBLIC_TIMS_PLATFORM_API_URL', 'https://api.example.test');
+  vi.stubEnv('NEXTAUTH_SECRET', 'relay-test-secret');
   vi.stubGlobal('fetch', fetch);
   fetch.mockReset();
   fetch.mockResolvedValue(Response.json({ outcome: 'complete' }));
@@ -27,6 +28,7 @@ it('forwards only the requested capability route and never ambient cookies', asy
   expect(response.status).toBe(200);
   expect(String(fetch.mock.calls[0]?.[0])).toBe('https://api.example.test/invitations/setup/preview');
   expect(fetch.mock.calls[0]?.[1].headers.get('cookie')).toBeNull();
+  expect(fetch.mock.calls[0]?.[1].headers.get('x-tims-relay-attribution')).toMatch(/^[^.]+\.[^.]+$/);
 });
 
 it('requires an explicit bearer credential for completion', async () => {
@@ -56,4 +58,20 @@ it('does not forward provider error details to the browser', async () => {
   const response = await POST(input('preview'), { params: Promise.resolve({ action: 'preview' }) });
   expect(await response.text()).not.toContain('private');
   expect(response.headers.get('cache-control')).toBe('no-store');
+});
+
+it('preserves only the safe MFA step-up signal', async () => {
+  fetch.mockResolvedValue(Response.json({ message: 'MFA_REQUIRED', detail: 'private' }, { status: 403 }));
+  const response = await POST(
+    input('complete', {
+      headers: {
+        origin: 'https://app.example.test',
+        'content-type': 'application/json',
+        authorization: 'Bearer valid.token',
+      },
+    }),
+    { params: Promise.resolve({ action: 'complete' }) },
+  );
+  expect(response.status).toBe(403);
+  expect(await response.json()).toEqual({ error: 'mfa_required' });
 });

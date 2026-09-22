@@ -86,7 +86,7 @@ describe('C# audit writers must not re-derive the client IP by hand', () => {
     const write = text.indexOf('context.Request.Headers["x-real-ip"] = metadata.Ip;');
     for (const gate of [
       'context.User.Identity?.IsAuthenticated != true',
-      'Verify(envelope, context, options.Value.ImpersonationSecret)',
+      'Verify(envelope, context, options.Value.ImpersonationSecret, anonymousInvitationSetup)',
       'metadata is null || !await nonces.TryUseAsync(metadata.Nonce)',
     ]) {
       expect(text.indexOf(gate), gate).toBeGreaterThanOrEqual(0);

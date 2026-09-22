@@ -6,7 +6,7 @@ An invited person can follow one link, establish or authenticate a Supabase iden
 
 ## Implemented flow
 
-1. The browser previews a UUID invitation through a same-origin, capability-scoped relay. Tokens stay out of logs, referrers and caches.
+1. The browser previews a UUID invitation through a same-origin, capability-scoped relay. The emailed token remains in the setup URL, while setup, callback and recovery responses disable caching and referrer propagation.
 2. A new recipient chooses a 12–128 character password. The C#/.NET 10 API creates a confirmed Supabase identity through the server-side admin API, but grants no TIMS access yet.
 3. Existing recipients authenticate with their current password, recovery email, Google or Microsoft. Recovery and OAuth callbacks return to the original invitation.
 4. The browser sends the current Supabase access token to the completion endpoint. The API independently verifies that token with Supabase and compares its confirmed email to the invitation.
@@ -34,7 +34,7 @@ Legacy `acceptInvitation` is intentionally closed with `PRECONDITION_FAILED`; it
 ## Production rollout
 
 1. Merge only after TypeScript, .NET 10, integration, build, audit, secret and ownership gates pass.
-2. Deploy the C# service with `Invitations__SupabaseUrl`, the secret reference for `Invitations__SupabaseServiceKey`, and `Invitations__SetupEnabled=true`.
+2. Deploy the C# service with `Invitations__SupabaseUrl`, the secret reference for `Invitations__SupabaseServiceKey`, and `Invitations__SetupEnabled=true`. Keep the existing web `NEXTAUTH_SECRET` and C# `Platform__ImpersonationSecret` relay-signing values synchronized so anonymous recipients retain distinct trusted rate-limit attribution.
 3. Verify API health and a non-mutating malformed-token preview before deploying the web application.
 4. Deploy Vercel, then smoke `/login`, `/accept-invitation` without a token, and the public careers page.
 5. Send one fresh invitation to the authorized test recipient. Confirm provider acceptance, open the link, choose a private password, complete onboarding, sign out and sign back in.

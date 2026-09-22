@@ -11,8 +11,11 @@ import { InvitationSummary } from './invitation-summary';
 import { invitationField as field } from './invitation-styles';
 import {
   invitationSchema,
+  invitationRecovery,
   invitationSocialSignIn,
+  invitationUnavailable,
   resultSchema,
+  SetupRequestError,
   setupRequest,
   type Invitation,
 } from './invitation-setup-api';
@@ -109,7 +112,11 @@ export function InvitationSetup() {
         setError(
           result.outcome === 'wrong_account' ? t.wrong : result.outcome === 'access_conflict' ? t.conflict : t.error,
         );
-    } catch {
+    } catch (failure) {
+      if (failure instanceof SetupRequestError && failure.code === 'mfa_required') {
+        window.location.assign(`/mfa?returnTo=${encodeURIComponent(`/accept-invitation?token=${token}`)}`);
+        return;
+      }
       setError(t.error);
     } finally {
       setBusy(false);
@@ -121,12 +128,7 @@ export function InvitationSetup() {
     setBusy(true);
     setError('');
     try {
-      const { error: recoveryError } = await createSupabaseBrowserClient().auth.resetPasswordForEmail(
-        invitation.email,
-        {
-          redirectTo: `${window.location.origin}/auth/callback?invitation=${encodeURIComponent(token)}&recovery=1`,
-        },
-      );
+      const { error: recoveryError } = await invitationRecovery(invitation.email, token);
       if (recoveryError) {
         setError(t.error);
         return;
@@ -149,12 +151,6 @@ export function InvitationSetup() {
     }
   }
 
-  const unavailable =
-    !invitation ||
-    (!['pending', 'sent'].includes(invitation.status) &&
-      !(invitation.status === 'accepted' && invitation.setupCompleted)) ||
-    new Date(invitation.expiresAt).getTime() <= Date.now();
-
   return (
     <main className="min-h-screen bg-[#f4f3f8] px-4 py-12 text-[#241641]">
       <div className="mx-auto max-w-lg">
@@ -174,7 +170,7 @@ export function InvitationSetup() {
             >
               {t.open}
             </a>
-          ) : unavailable ? (
+          ) : !invitation || invitationUnavailable(invitation) ? (
             <div>
               <p role="alert" className="mt-8 text-sm text-red-700">
                 {t.unavailable}

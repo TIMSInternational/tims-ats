@@ -25,6 +25,8 @@ it('allows an authenticated recovery session to choose a new secret', async () =
     new NextRequest('https://app.tims.com/reset-password?invitation=test', { headers: { host: 'app.tims.com' } }),
   );
   expect(response.headers.get('location')).toBeNull();
+  expect(response.headers.get('referrer-policy')).toBe('no-referrer');
+  expect(response.headers.get('cache-control')).toBe('no-store');
 });
 
 it('still redirects anonymous users away from the private dashboard', async () => {
