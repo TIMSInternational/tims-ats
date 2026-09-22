@@ -48,4 +48,10 @@ describe('onboarding endpoints without persistence', () => {
     await expect(api.onboarding.listDocuments({ planId })).rejects.toMatchObject({ code: 'NOT_FOUND' });
     await expect(api.onboarding.getLearningRoute({ planId })).rejects.toMatchObject({ code: 'NOT_FOUND' });
   });
+
+  it('reports an unavailable learning route only after verifying the plan is in scope', async () => {
+    const result = await (await caller()).onboarding.getLearningRoute({ planId });
+    expect(assertScoped).toHaveBeenCalledWith('onboardingPlan', planId, expect.anything(), userId, orgId);
+    expect(result.modules).toEqual([]);
+  });
 });
