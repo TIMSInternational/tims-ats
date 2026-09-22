@@ -52,6 +52,12 @@ non-deleted historical vacancies that have no stages, leaves customized
 pipelines alone, and is idempotent. It was executed only against the local
 test database. Review target counts before applying it to production.
 
+## Follow-up fixes opened during this audit
+
+- [#267](https://github.com/TIMSInternational/tims-ats/pull/267) removes fabricated Learning metrics and panels and shows API-backed empty states. Its own checks passed, but it remains review-required and undeployed.
+- [#268](https://github.com/TIMSInternational/tims-ats/pull/268) removes fabricated Onboarding courses, access requests and routes, shows persisted check-ins, and corrects active-plan KPI counts. Its own checks passed, but it remains review-required and undeployed.
+- [#269](https://github.com/TIMSInternational/tims-ats/issues/269) tracks inert candidate-profile header actions found while attempting the offer journey.
+
 ## Required beta exit checks
 
 1. Merge and deploy invitation PR #265 and this recruitment fix after review;
@@ -72,8 +78,8 @@ test database. Review target counts before applying it to production.
    background jobs, monitoring, backup/restore, and a modest concurrent-user
    load test in the beta environment. The external TIMS configuration API
    exchange remains unverified.
-7. Remove or explicitly isolate fabricated learning metrics and demo records
-   before showing the Learning dashboard to beta organizations.
+7. Merge and deploy #267 and #268 after review, then confirm that empty beta
+   organizations show no fabricated Learning or Onboarding results.
 
 See `docs/plans/2026-09-14-acceptance-register.md` for the wider requirements
 inventory. Its rows are not acceptance evidence until linked to actual runs.
