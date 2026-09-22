@@ -3,6 +3,8 @@ type SessionResult = {
   error: unknown | null;
 };
 
+const proofPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export type PasswordSetupAuth = {
   getSession: () => PromiseLike<SessionResult>;
   setSession: (tokens: { access_token: string; refresh_token: string }) => PromiseLike<SessionResult>;
@@ -56,6 +58,38 @@ export async function establishPasswordSetupSession(auth: PasswordSetupAuth): Pr
     }
     window.sessionStorage.removeItem(rejectionKey());
     return true;
+  }
+
+  const recoveryProof = query.get('recovery');
+  if (recoveryProof) {
+    query.delete('recovery');
+    const suffix = query.toString();
+    window.history.replaceState(window.history.state, '', `${window.location.pathname}${suffix ? `?${suffix}` : ''}`);
+    if (!proofPattern.test(recoveryProof)) {
+      window.sessionStorage.setItem(rejectionKey(), '1');
+      return false;
+    }
+    try {
+      const response = await fetch(`/api/auth/password-setup?nonce=${encodeURIComponent(recoveryProof)}`, {
+        method: 'POST',
+        cache: 'no-store',
+      });
+      const data: unknown = await response.json().catch(() => null);
+      if (!response.ok || typeof data !== 'object' || data === null || !('valid' in data) || data.valid !== true) {
+        window.sessionStorage.setItem(rejectionKey(), '1');
+        return false;
+      }
+      const verified = await auth.getSession();
+      if (verified.error || !verified.data.session) {
+        window.sessionStorage.setItem(rejectionKey(), '1');
+        return false;
+      }
+      window.sessionStorage.removeItem(rejectionKey());
+      return true;
+    } catch {
+      window.sessionStorage.setItem(rejectionKey(), '1');
+      return false;
+    }
   }
 
   if (window.sessionStorage.getItem(rejectionKey()) === '1') return false;

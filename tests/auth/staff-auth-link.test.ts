@@ -42,7 +42,8 @@ describe('staff provisioning service (invite-time linking)', () => {
 
   it('exchanges password recovery PKCE codes on the server before setup', () => {
     expect(FORGOT_PASSWORD).toContain('/auth/callback?recovery=1');
-    expect(CALLBACK).toContain('/reset-password?recovery=1');
+    expect(CALLBACK).toContain('recoveryRedirect(origin');
+    expect(CALLBACK).toContain('PASSWORD_SETUP_PROOF_COOKIE');
     expect(FORGOT_PASSWORD).not.toContain('origin}/reset-password`');
   });
 

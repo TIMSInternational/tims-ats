@@ -7,6 +7,7 @@ const state = vi.hoisted(() => ({
   setSession: vi.fn(),
   updateUser: vi.fn(),
   push: vi.fn(),
+  verifyProof: vi.fn(),
 }));
 
 vi.mock('next/navigation', () => ({
@@ -31,6 +32,8 @@ beforeEach(() => {
   state.setSession.mockReset();
   state.updateUser.mockReset();
   state.push.mockReset();
+  state.verifyProof.mockReset();
+  vi.stubGlobal('fetch', state.verifyProof);
   window.history.replaceState(
     null,
     '',
@@ -39,6 +42,7 @@ beforeEach(() => {
   state.getSession.mockResolvedValue({ data: { session: null }, error: null });
   state.setSession.mockResolvedValue({ data: { session: { access_token: 'invite-access' } }, error: null });
   state.updateUser.mockResolvedValue({ error: null });
+  state.verifyProof.mockResolvedValue({ ok: true, json: async () => ({ valid: true }) });
 });
 
 describe('staff invitation password setup', () => {
@@ -123,5 +127,32 @@ describe('staff invitation password setup', () => {
     render(<ResetPasswordPage />);
     expect(screen.getByRole('button', { name: 'Update password' })).toBeDisabled();
     expect(state.getSession).not.toHaveBeenCalled();
+  });
+
+  it('clears an earlier rejection only after a server-bound recovery proof succeeds', async () => {
+    const invitation = '11111111-1111-4111-8111-111111111111';
+    const proof = '22222222-2222-4222-8222-222222222222';
+    window.history.replaceState(
+      null,
+      '',
+      `/reset-password?invitation=${invitation}#error=access_denied&error_code=otp_expired`,
+    );
+    const rejected = render(<ResetPasswordPage />);
+    expect(await screen.findByText('The password setup link is invalid or has expired')).toBeVisible();
+    rejected.unmount();
+
+    window.history.replaceState(null, '', `/reset-password?invitation=${invitation}&recovery=${proof}`);
+    state.getSession.mockResolvedValue({
+      data: { session: { access_token: 'server-exchanged-session' } },
+      error: null,
+    });
+    render(<ResetPasswordPage />);
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Update password' })).not.toBeDisabled());
+    expect(state.verifyProof).toHaveBeenCalledWith(`/api/auth/password-setup?nonce=${proof}`, {
+      method: 'POST',
+      cache: 'no-store',
+    });
+    expect(window.location.search).toBe(`?invitation=${invitation}`);
   });
 });

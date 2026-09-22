@@ -1,8 +1,28 @@
 import { createSupabaseServerClient } from '@tims/auth/server';
+import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { db } from '@tims/db';
 import { provisionOrgDefaults, provisionOrgEntitlements } from '@tims/api';
 import { isSafePortalNext } from '../../../lib/portal-auth';
+import { PASSWORD_SETUP_PROOF_COOKIE, PASSWORD_SETUP_PROOF_PATH } from '../../../lib/password-setup-proof';
+
+function recoveryRedirect(origin: string, invitationToken: string | null) {
+  const proof = randomUUID();
+  const destination = new URL('/reset-password', origin);
+  destination.searchParams.set('recovery', proof);
+  if (invitationToken) destination.searchParams.set('invitation', invitationToken);
+  const response = NextResponse.redirect(destination);
+  response.headers.set('referrer-policy', 'no-referrer');
+  response.headers.set('cache-control', 'no-store');
+  response.cookies.set(PASSWORD_SETUP_PROOF_COOKIE, proof, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: PASSWORD_SETUP_PROOF_PATH,
+    maxAge: 300,
+  });
+  return response;
+}
 
 async function isPlatformOwnerEmail(email: string): Promise<boolean> {
   const entry = await db.platformOwnerEmail.findUnique({ where: { email } });
@@ -35,18 +55,15 @@ export async function GET(request: Request) {
 
   const invitationToken = searchParams.get('invitation');
   if (invitationToken && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(invitationToken)) {
-    const destination =
-      searchParams.get('recovery') === '1' ? '/reset-password?invitation=' : '/accept-invitation?token=';
+    if (searchParams.get('recovery') === '1') return recoveryRedirect(origin, invitationToken);
+    const destination = '/accept-invitation?token=';
     const response = NextResponse.redirect(`${origin}${destination}${encodeURIComponent(invitationToken)}`);
     response.headers.set('referrer-policy', 'no-referrer');
     response.headers.set('cache-control', 'no-store');
     return response;
   }
   if (searchParams.get('recovery') === '1') {
-    const response = NextResponse.redirect(`${origin}/reset-password?recovery=1`);
-    response.headers.set('referrer-policy', 'no-referrer');
-    response.headers.set('cache-control', 'no-store');
-    return response;
+    return recoveryRedirect(origin, null);
   }
   // Portal (candidate) login: a safe /careers/ `next` target means this is a
   // candidate magic-link sign-in. Candidates are NOT staff — do NOT provision a
