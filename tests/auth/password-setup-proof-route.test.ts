@@ -9,12 +9,12 @@ describe('password setup recovery proof', () => {
     const response = await POST(
       new Request(`https://app.test/api/auth/password-setup?nonce=${nonce}`, {
         method: 'POST',
-        headers: { cookie: `tims-password-setup-proof=${nonce}` },
+        headers: { cookie: `tims-password-setup-proof=${nonce}.11111111-1111-4111-8111-111111111111` },
       }),
     );
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ valid: true });
+    expect(await response.json()).toEqual({ valid: true, userId: '11111111-1111-4111-8111-111111111111' });
     expect(response.headers.get('cache-control')).toBe('no-store');
     expect(response.headers.get('set-cookie')).toContain('tims-password-setup-proof=');
     expect(response.headers.get('set-cookie')).toContain('Max-Age=0');
@@ -24,12 +24,12 @@ describe('password setup recovery proof', () => {
     const response = await POST(
       new Request('https://app.test/api/auth/password-setup?nonce=33333333-3333-4333-8333-333333333333', {
         method: 'POST',
-        headers: { cookie: `tims-password-setup-proof=${nonce}` },
+        headers: { cookie: `tims-password-setup-proof=${nonce}.11111111-1111-4111-8111-111111111111` },
       }),
     );
 
     expect(response.status).toBe(401);
-    expect(await response.json()).toEqual({ valid: false });
+    expect(await response.json()).toEqual({ valid: false, userId: null });
     expect(response.headers.get('set-cookie')).toContain('Max-Age=0');
   });
 });

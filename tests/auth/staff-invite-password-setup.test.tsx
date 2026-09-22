@@ -26,6 +26,8 @@ vi.mock('../../apps/web/lib/i18n', async () => {
 
 import ResetPasswordPage from '../../apps/web/app/(auth)/reset-password/page';
 
+const invitedUserId = '44444444-4444-4444-8444-444444444444';
+
 beforeEach(() => {
   window.sessionStorage.clear();
   state.getSession.mockReset();
@@ -39,10 +41,16 @@ beforeEach(() => {
     '',
     '/reset-password?setup=1#access_token=invite-access&refresh_token=invite-refresh&type=invite',
   );
-  state.getSession.mockResolvedValue({ data: { session: null }, error: null });
-  state.setSession.mockResolvedValue({ data: { session: { access_token: 'invite-access' } }, error: null });
+  state.getSession.mockResolvedValue({
+    data: { session: { access_token: 'invite-access', user: { id: invitedUserId } } },
+    error: null,
+  });
+  state.setSession.mockResolvedValue({
+    data: { session: { access_token: 'invite-access', user: { id: invitedUserId } } },
+    error: null,
+  });
   state.updateUser.mockResolvedValue({ error: null });
-  state.verifyProof.mockResolvedValue({ ok: true, json: async () => ({ valid: true }) });
+  state.verifyProof.mockResolvedValue({ ok: true, json: async () => ({ valid: true, userId: invitedUserId }) });
 });
 
 describe('staff invitation password setup', () => {
@@ -99,7 +107,10 @@ describe('staff invitation password setup', () => {
 
   it('rejects provider error fragments even when another account has a session', async () => {
     window.history.replaceState(null, '', '/reset-password?setup=1#error=access_denied&error_code=otp_expired');
-    state.getSession.mockResolvedValue({ data: { session: { access_token: 'unrelated-session' } }, error: null });
+    state.getSession.mockResolvedValue({
+      data: { session: { access_token: 'unrelated-session', user: { id: '55555555-5555-4555-8555-555555555555' } } },
+      error: null,
+    });
     const page = render(<ResetPasswordPage />);
 
     expect(await screen.findByText('The password setup link is invalid or has expired')).toBeVisible();
@@ -115,7 +126,10 @@ describe('staff invitation password setup', () => {
 
   it('rejects residual PKCE codes instead of trusting an ambient account session', async () => {
     window.history.replaceState(null, '', '/reset-password?code=expired-code');
-    state.getSession.mockResolvedValue({ data: { session: { access_token: 'unrelated-session' } }, error: null });
+    state.getSession.mockResolvedValue({
+      data: { session: { access_token: 'unrelated-session', user: { id: '55555555-5555-4555-8555-555555555555' } } },
+      error: null,
+    });
     const page = render(<ResetPasswordPage />);
 
     expect(await screen.findByText('The password setup link is invalid or has expired')).toBeVisible();
@@ -143,7 +157,7 @@ describe('staff invitation password setup', () => {
 
     window.history.replaceState(null, '', `/reset-password?invitation=${invitation}&recovery=${proof}`);
     state.getSession.mockResolvedValue({
-      data: { session: { access_token: 'server-exchanged-session' } },
+      data: { session: { access_token: 'server-exchanged-session', user: { id: invitedUserId } } },
       error: null,
     });
     render(<ResetPasswordPage />);
@@ -154,5 +168,34 @@ describe('staff invitation password setup', () => {
       cache: 'no-store',
     });
     expect(window.location.search).toBe(`?invitation=${invitation}`);
+  });
+
+  it('rejects a recovery proof when the browser session belongs to another account', async () => {
+    const proof = '22222222-2222-4222-8222-222222222222';
+    window.history.replaceState(null, '', `/reset-password?recovery=${proof}`);
+    state.getSession.mockResolvedValue({
+      data: { session: { access_token: 'other-session', user: { id: '55555555-5555-4555-8555-555555555555' } } },
+      error: null,
+    });
+    render(<ResetPasswordPage />);
+
+    expect(await screen.findByText('The password setup link is invalid or has expired')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Update password' })).toBeDisabled();
+  });
+
+  it('rechecks the account identity immediately before changing the password', async () => {
+    render(<ResetPasswordPage />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Update password' })).not.toBeDisabled());
+
+    state.getSession.mockResolvedValue({
+      data: { session: { access_token: 'switched-session', user: { id: '55555555-5555-4555-8555-555555555555' } } },
+      error: null,
+    });
+    fireEvent.change(screen.getByLabelText('New password'), { target: { value: 'a-private-staff-password' } });
+    fireEvent.change(screen.getByLabelText('Confirm password'), { target: { value: 'a-private-staff-password' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Update password' }));
+
+    expect(await screen.findByText('The password setup link is invalid or has expired')).toBeVisible();
+    expect(state.updateUser).not.toHaveBeenCalled();
   });
 });

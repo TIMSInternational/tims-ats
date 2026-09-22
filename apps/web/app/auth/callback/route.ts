@@ -6,7 +6,7 @@ import { provisionOrgDefaults, provisionOrgEntitlements } from '@tims/api';
 import { isSafePortalNext } from '../../../lib/portal-auth';
 import { PASSWORD_SETUP_PROOF_COOKIE, PASSWORD_SETUP_PROOF_PATH } from '../../../lib/password-setup-proof';
 
-function recoveryRedirect(origin: string, invitationToken: string | null) {
+function recoveryRedirect(origin: string, invitationToken: string | null, userId: string) {
   const proof = randomUUID();
   const destination = new URL('/reset-password', origin);
   destination.searchParams.set('recovery', proof);
@@ -14,7 +14,7 @@ function recoveryRedirect(origin: string, invitationToken: string | null) {
   const response = NextResponse.redirect(destination);
   response.headers.set('referrer-policy', 'no-referrer');
   response.headers.set('cache-control', 'no-store');
-  response.cookies.set(PASSWORD_SETUP_PROOF_COOKIE, proof, {
+  response.cookies.set(PASSWORD_SETUP_PROOF_COOKIE, `${proof}.${userId}`, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
@@ -55,7 +55,7 @@ export async function GET(request: Request) {
 
   const invitationToken = searchParams.get('invitation');
   if (invitationToken && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(invitationToken)) {
-    if (searchParams.get('recovery') === '1') return recoveryRedirect(origin, invitationToken);
+    if (searchParams.get('recovery') === '1') return recoveryRedirect(origin, invitationToken, supabaseUser.id);
     const destination = '/accept-invitation?token=';
     const response = NextResponse.redirect(`${origin}${destination}${encodeURIComponent(invitationToken)}`);
     response.headers.set('referrer-policy', 'no-referrer');
@@ -63,7 +63,7 @@ export async function GET(request: Request) {
     return response;
   }
   if (searchParams.get('recovery') === '1') {
-    return recoveryRedirect(origin, null);
+    return recoveryRedirect(origin, null, supabaseUser.id);
   }
   // Portal (candidate) login: a safe /careers/ `next` target means this is a
   // candidate magic-link sign-in. Candidates are NOT staff — do NOT provision a

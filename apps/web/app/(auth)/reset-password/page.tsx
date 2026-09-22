@@ -23,24 +23,24 @@ function ResetPasswordForm() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [sessionReady, setSessionReady] = useState(false);
+  const [setupUserId, setSetupUserId] = useState<string | null>(null);
   const [invalidLink, setInvalidLink] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
-  const setupPromise = useRef<Promise<boolean> | null>(null);
+  const setupPromise = useRef<Promise<string | null> | null>(null);
 
   useEffect(() => {
     let active = true;
     const supabase = createSupabaseBrowserClient();
     setupPromise.current ??= establishPasswordSetupSession(supabase.auth);
     void (async () => {
-      const ready = await setupPromise.current;
+      const userId = await setupPromise.current;
       if (!active) return;
-      if (!ready) {
+      if (!userId) {
         setInvalidLink(true);
         return;
       }
-      setSessionReady(true);
+      setSetupUserId(userId);
     })();
     return () => {
       active = false;
@@ -62,6 +62,12 @@ function ResetPasswordForm() {
 
     setLoading(true);
     const supabase = createSupabaseBrowserClient();
+    const current = await supabase.auth.getSession();
+    if (current.error || !current.data.session || current.data.session.user.id !== setupUserId) {
+      setInvalidLink(true);
+      setLoading(false);
+      return;
+    }
     const { error: updateError } = await supabase.auth.updateUser({ password });
 
     if (updateError) {
@@ -184,7 +190,7 @@ function ResetPasswordForm() {
 
             <button
               type="submit"
-              disabled={loading || !sessionReady}
+              disabled={loading || !setupUserId}
               className="w-full h-11 rounded-xl bg-[#1F114C] text-white text-[13px] font-semibold hover:bg-[#2a1a5e] disabled:opacity-50 transition"
             >
               {loading ? t.auth.updatingPassword : t.auth.updatePassword}

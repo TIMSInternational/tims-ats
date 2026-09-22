@@ -1,9 +1,10 @@
 type SessionResult = {
-  data: { session: unknown | null };
+  data: { session: { user: { id: string } } | null };
   error: unknown | null;
 };
 
 const proofPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const userIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export type PasswordSetupAuth = {
   getSession: () => PromiseLike<SessionResult>;
@@ -21,14 +22,14 @@ function rejectionKey(): string {
   return `tims-password-setup-rejected:${window.location.pathname}${suffix ? `?${suffix}` : ''}`;
 }
 
-export async function establishPasswordSetupSession(auth: PasswordSetupAuth): Promise<boolean> {
+export async function establishPasswordSetupSession(auth: PasswordSetupAuth): Promise<string | null> {
   const query = new URLSearchParams(window.location.search);
   if (query.has('code') || query.has('error') || query.has('error_code') || query.has('error_description')) {
     window.sessionStorage.setItem(rejectionKey(), '1');
     for (const transient of ['code', 'error', 'error_code', 'error_description']) query.delete(transient);
     const suffix = query.toString();
     window.history.replaceState(window.history.state, '', `${window.location.pathname}${suffix ? `?${suffix}` : ''}`);
-    return false;
+    return null;
   }
 
   const fragment = new URLSearchParams(window.location.hash.replace(/^#/, ''));
@@ -48,16 +49,16 @@ export async function establishPasswordSetupSession(auth: PasswordSetupAuth): Pr
       !validToken(refreshToken, 8_192)
     ) {
       window.sessionStorage.setItem(rejectionKey(), '1');
-      return false;
+      return null;
     }
 
     const invite = await auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
     if (invite.error || !invite.data.session) {
       window.sessionStorage.setItem(rejectionKey(), '1');
-      return false;
+      return null;
     }
     window.sessionStorage.removeItem(rejectionKey());
-    return true;
+    return invite.data.session.user.id;
   }
 
   const recoveryProof = query.get('recovery');
@@ -67,7 +68,7 @@ export async function establishPasswordSetupSession(auth: PasswordSetupAuth): Pr
     window.history.replaceState(window.history.state, '', `${window.location.pathname}${suffix ? `?${suffix}` : ''}`);
     if (!proofPattern.test(recoveryProof)) {
       window.sessionStorage.setItem(rejectionKey(), '1');
-      return false;
+      return null;
     }
     try {
       const response = await fetch(`/api/auth/password-setup?nonce=${encodeURIComponent(recoveryProof)}`, {
@@ -77,22 +78,24 @@ export async function establishPasswordSetupSession(auth: PasswordSetupAuth): Pr
       const data: unknown = await response.json().catch(() => null);
       if (!response.ok || typeof data !== 'object' || data === null || !('valid' in data) || data.valid !== true) {
         window.sessionStorage.setItem(rejectionKey(), '1');
-        return false;
+        return null;
       }
       const verified = await auth.getSession();
-      if (verified.error || !verified.data.session) {
+      const recoveredUserId =
+        'userId' in data && typeof data.userId === 'string' && userIdPattern.test(data.userId) ? data.userId : null;
+      if (verified.error || !verified.data.session || verified.data.session.user.id !== recoveredUserId) {
         window.sessionStorage.setItem(rejectionKey(), '1');
-        return false;
+        return null;
       }
       window.sessionStorage.removeItem(rejectionKey());
-      return true;
+      return recoveredUserId;
     } catch {
       window.sessionStorage.setItem(rejectionKey(), '1');
-      return false;
+      return null;
     }
   }
 
-  if (window.sessionStorage.getItem(rejectionKey()) === '1') return false;
+  if (window.sessionStorage.getItem(rejectionKey()) === '1') return null;
   const existing = await auth.getSession();
-  return !existing.error && !!existing.data.session;
+  return !existing.error && existing.data.session ? existing.data.session.user.id : null;
 }

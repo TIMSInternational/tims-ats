@@ -37,7 +37,7 @@ describe('staff provisioning service (invite-time linking)', () => {
     expect(BACKFILL).toContain('redirectTo: `${appUrl}/reset-password?setup=1`');
     expect(PROVISION).not.toContain('/auth/callback?setup=1');
     expect(RESET_PASSWORD).toContain('establishPasswordSetupSession(supabase.auth)');
-    expect(RESET_PASSWORD).toContain('disabled={loading || !sessionReady}');
+    expect(RESET_PASSWORD).toContain('disabled={loading || !setupUserId}');
   });
 
   it('exchanges password recovery PKCE codes on the server before setup', () => {
