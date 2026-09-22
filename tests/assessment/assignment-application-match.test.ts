@@ -5,13 +5,16 @@ const findType = vi.fn();
 const findCandidate = vi.fn();
 const findApplication = vi.fn();
 const createAssignment = vi.fn();
+const countCandidates = vi.fn();
+const countApplications = vi.fn();
+const createManyAssignments = vi.fn();
 
 vi.mock('@tims/db', () => ({
   tenantDb: {
     assessmentType: { findFirst: findType },
-    candidate: { findFirst: findCandidate },
-    application: { findFirst: findApplication },
-    assessmentAssignment: { create: createAssignment },
+    candidate: { findFirst: findCandidate, count: countCandidates },
+    application: { findFirst: findApplication, count: countApplications },
+    assessmentAssignment: { create: createAssignment, createMany: createManyAssignments },
   },
   runWithTenant: (_org: string, fn: () => unknown) => fn(),
 }));
@@ -47,6 +50,9 @@ beforeEach(() => {
   findCandidate.mockResolvedValue({ id: input.candidateId });
   findApplication.mockResolvedValue(null);
   createAssignment.mockResolvedValue({ id: 'assignment-1' });
+  countCandidates.mockResolvedValue(1);
+  countApplications.mockResolvedValue(0);
+  createManyAssignments.mockResolvedValue({ count: 1 });
 });
 
 describe('assessment assignment vacancy linkage', () => {
@@ -61,5 +67,16 @@ describe('assessment assignment vacancy linkage', () => {
     expect(createAssignment).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ candidateId: input.candidateId, vacancyId: input.vacancyId, assessmentTypeId: input.assessmentTypeId, organizationId: ORG_ID }),
     }));
+  });
+
+  it('rejects bulk assignment without an active application', async () => {
+    await expect((await caller()).assessment.bulkAssign({ candidateIds: [input.candidateId], vacancyId: input.vacancyId, assessmentTypeId: input.assessmentTypeId })).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+    expect(createManyAssignments).not.toHaveBeenCalled();
+  });
+
+  it('deduplicates candidate IDs before bulk assignment', async () => {
+    countApplications.mockResolvedValue(1);
+    await (await caller()).assessment.bulkAssign({ candidateIds: [input.candidateId, input.candidateId], vacancyId: input.vacancyId, assessmentTypeId: input.assessmentTypeId });
+    expect(createManyAssignments).toHaveBeenCalledWith(expect.objectContaining({ data: [expect.objectContaining({ candidateId: input.candidateId })] }));
   });
 });
