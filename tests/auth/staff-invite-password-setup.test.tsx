@@ -71,4 +71,31 @@ describe('staff invitation password setup', () => {
     expect(screen.getByRole('button', { name: 'Update password' })).toBeDisabled();
     expect(state.updateUser).not.toHaveBeenCalled();
   });
+
+  it('accepts a valid implicit recovery fragment on the shared password page', async () => {
+    window.history.replaceState(
+      null,
+      '',
+      '/reset-password#access_token=recovery-access&refresh_token=recovery-refresh&type=recovery',
+    );
+    render(<ResetPasswordPage />);
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Update password' })).not.toBeDisabled());
+    expect(state.setSession).toHaveBeenCalledWith({
+      access_token: 'recovery-access',
+      refresh_token: 'recovery-refresh',
+    });
+    expect(window.location.hash).toBe('');
+  });
+
+  it('rejects provider error fragments even when another account has a session', async () => {
+    window.history.replaceState(null, '', '/reset-password?setup=1#error=access_denied&error_code=otp_expired');
+    state.getSession.mockResolvedValue({ data: { session: { access_token: 'unrelated-session' } }, error: null });
+    render(<ResetPasswordPage />);
+
+    expect(await screen.findByText('The password setup link is invalid or has expired')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Update password' })).toBeDisabled();
+    expect(state.getSession).not.toHaveBeenCalled();
+    expect(window.location.hash).toBe('');
+  });
 });
