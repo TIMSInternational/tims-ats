@@ -379,10 +379,13 @@ export const onboardingRouter = router({
       // plan's check-ins by check-in id.
       const checkIn = await db.onboardingCheckIn.findFirst({
         where: { id, organizationId: ctx.user.organizationId },
-        select: { id: true, planId: true },
+        select: { id: true, planId: true, status: true },
       });
       if (!checkIn) throw new TRPCError({ code: 'NOT_FOUND', message: 'Check-in de onboarding no encontrado' });
       await assertScoped('onboardingPlan', checkIn.planId, ctx.access, ctx.user.id, ctx.user.organizationId);
+      if (checkIn.status !== 'pending') {
+        throw new TRPCError({ code: 'CONFLICT', message: 'Este check-in ya fue completado' });
+      }
 
       return db.onboardingCheckIn.update({
         where: { id },
