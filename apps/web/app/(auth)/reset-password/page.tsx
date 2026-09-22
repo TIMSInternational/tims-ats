@@ -61,40 +61,43 @@ function ResetPasswordForm() {
     }
 
     setLoading(true);
-    const supabase = createSupabaseBrowserClient();
-    const current = await supabase.auth.getSession();
-    if (current.error || !current.data.session || current.data.session.user.id !== setupUserId) {
-      setInvalidLink(true);
-      setLoading(false);
-      return;
-    }
-    const updateResponse = await fetch('/api/auth/password-update', {
-      method: 'POST',
-      headers: {
-        authorization: `Bearer ${current.data.session.access_token}`,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({ password, userId: setupUserId }),
-      cache: 'no-store',
-    });
+    try {
+      const supabase = createSupabaseBrowserClient();
+      const current = await supabase.auth.getSession();
+      if (current.error || !current.data.session || current.data.session.user.id !== setupUserId) {
+        setInvalidLink(true);
+        return;
+      }
+      const updateResponse = await fetch('/api/auth/password-update', {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${current.data.session.access_token}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ password, userId: setupUserId }),
+        cache: 'no-store',
+      });
 
-    if (!updateResponse.ok) {
+      if (!updateResponse.ok) {
+        setError(t.auth.passwordUpdateFailed);
+        return;
+      }
+
+      clearPasswordSetupAuthorization();
+      setSuccess(true);
+      setTimeout(() => {
+        const invitation = searchParams.get('invitation');
+        router.push(
+          invitation && /^[0-9a-f-]{36}$/i.test(invitation)
+            ? `/accept-invitation?token=${encodeURIComponent(invitation)}`
+            : '/dashboard',
+        );
+      }, 2000);
+    } catch {
       setError(t.auth.passwordUpdateFailed);
+    } finally {
       setLoading(false);
-      return;
     }
-
-    clearPasswordSetupAuthorization();
-    setSuccess(true);
-    setLoading(false);
-    setTimeout(() => {
-      const invitation = searchParams.get('invitation');
-      router.push(
-        invitation && /^[0-9a-f-]{36}$/i.test(invitation)
-          ? `/accept-invitation?token=${encodeURIComponent(invitation)}`
-          : '/dashboard',
-      );
-    }, 2000);
   };
 
   return (

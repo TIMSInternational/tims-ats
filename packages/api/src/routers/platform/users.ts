@@ -43,17 +43,19 @@ export const usersRouter = router({
   }),
 
   listAllUsers: platformProcedure
-    .input(z.object({
-      page: z.number().int().min(0).default(0),
-      limit: z.number().int().min(1).max(50).default(20),
-      search: z.string().max(100).optional(),
-      organizationId: z.string().uuid().optional(),
-      roleSlug: z.string().max(50).optional(),
-      isPlatformOwner: z.boolean().optional(),
-      isActive: z.boolean().optional(),
-      sortBy: z.enum(['name', 'email', 'createdAt', 'lastLoginAt']).default('createdAt'),
-      sortDirection: z.enum(['asc', 'desc']).default('desc'),
-    }))
+    .input(
+      z.object({
+        page: z.number().int().min(0).default(0),
+        limit: z.number().int().min(1).max(50).default(20),
+        search: z.string().max(100).optional(),
+        organizationId: z.string().uuid().optional(),
+        roleSlug: z.string().max(50).optional(),
+        isPlatformOwner: z.boolean().optional(),
+        isActive: z.boolean().optional(),
+        sortBy: z.enum(['name', 'email', 'createdAt', 'lastLoginAt']).default('createdAt'),
+        sortDirection: z.enum(['asc', 'desc']).default('desc'),
+      }),
+    )
     .query(async ({ input }) => {
       const { page, limit, search, organizationId, roleSlug, isPlatformOwner, isActive, sortBy, sortDirection } = input;
 
@@ -70,9 +72,7 @@ export const usersRouter = router({
       if (isActive !== undefined) where.isActive = isActive;
       if (roleSlug) where.userRoles = { some: { role: { slug: roleSlug } } };
 
-      const orderBy = sortBy === 'name'
-        ? { firstName: sortDirection } as const
-        : { [sortBy]: sortDirection };
+      const orderBy = sortBy === 'name' ? ({ firstName: sortDirection } as const) : { [sortBy]: sortDirection };
 
       const [users, total] = await Promise.all([
         db.user.findMany({
@@ -89,10 +89,12 @@ export const usersRouter = router({
     }),
 
   getOrgUsers: platformProcedure
-    .input(z.object({
-      organizationId: z.string().uuid(),
-      limit: z.number().int().min(1).max(50).default(20),
-    }))
+    .input(
+      z.object({
+        organizationId: z.string().uuid(),
+        limit: z.number().int().min(1).max(50).default(20),
+      }),
+    )
     .query(async ({ input }) => {
       const [users, total] = await Promise.all([
         db.user.findMany({
@@ -147,22 +149,25 @@ export const usersRouter = router({
         select: { id: true, isPlatformOwner: true },
       });
       if (!user) throw new TRPCError({ code: 'NOT_FOUND', message: 'Usuario no encontrado' });
-      if (user.isPlatformOwner) throw new TRPCError({ code: 'FORBIDDEN', message: 'No se puede desactivar un platform owner' });
+      if (user.isPlatformOwner)
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'No se puede desactivar un platform owner' });
 
       const updated = await db.user.update({
         where: { id: input.userId },
         data: { isActive: false },
         select: { id: true, firstName: true, lastName: true, email: true, isActive: true },
       });
-      await db.auditLog.create({
-        data: {
-          organizationId: input.organizationId,
-          actorId: ctx.user.id,
-          action: 'user_deactivated',
-          entity: 'user',
-          entityId: input.userId,
-        },
-      }).catch(() => {});
+      await db.auditLog
+        .create({
+          data: {
+            organizationId: input.organizationId,
+            actorId: ctx.user.id,
+            action: 'user_deactivated',
+            entity: 'user',
+            entityId: input.userId,
+          },
+        })
+        .catch(() => {});
       return updated;
     }),
 
@@ -180,15 +185,17 @@ export const usersRouter = router({
         data: { isActive: true },
         select: { id: true, firstName: true, lastName: true, email: true, isActive: true },
       });
-      await db.auditLog.create({
-        data: {
-          organizationId: input.organizationId,
-          actorId: ctx.user.id,
-          action: 'user_activated',
-          entity: 'user',
-          entityId: input.userId,
-        },
-      }).catch(() => {});
+      await db.auditLog
+        .create({
+          data: {
+            organizationId: input.organizationId,
+            actorId: ctx.user.id,
+            action: 'user_activated',
+            entity: 'user',
+            entityId: input.userId,
+          },
+        })
+        .catch(() => {});
       return updated;
     }),
 
@@ -202,8 +209,10 @@ export const usersRouter = router({
       if (!user) throw new TRPCError({ code: 'NOT_FOUND', message: 'Usuario no encontrado con ese email' });
 
       // Actually trigger a Supabase recovery email — same mechanism as the
-      // self-serve /forgot-password flow. The callback exchanges the PKCE code,
-      // then the password page binds its update to that recovered identity.
+      // self-serve /forgot-password flow. This server-side admin client does not
+      // have a browser PKCE verifier, so Supabase returns recovery credentials in
+      // the URL fragment. The password page consumes that fragment explicitly and
+      // binds the update to the recovered identity.
       // Previously this was a no-op that returned { sent: true } without
       // sending anything (rule #4: the UI claimed an email was sent).
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -220,7 +229,7 @@ export const usersRouter = router({
       });
       const appUrl = getAppUrl();
       const { error } = await admin.auth.resetPasswordForEmail(input.email, {
-        redirectTo: `${appUrl}/auth/callback?recovery=1`,
+        redirectTo: `${appUrl}/reset-password`,
       });
       if (error) {
         throw new TRPCError({
@@ -229,16 +238,18 @@ export const usersRouter = router({
         });
       }
 
-      await db.auditLog.create({
-        data: {
-          organizationId: user.organizationId || ctx.user.organizationId,
-          actorId: ctx.user.id,
-          action: 'password_reset_requested',
-          entity: 'user',
-          entityId: user.id,
-          metadata: { email: input.email },
-        },
-      }).catch(() => {});
+      await db.auditLog
+        .create({
+          data: {
+            organizationId: user.organizationId || ctx.user.organizationId,
+            actorId: ctx.user.id,
+            action: 'password_reset_requested',
+            entity: 'user',
+            entityId: user.id,
+            metadata: { email: input.email },
+          },
+        })
+        .catch(() => {});
 
       return { sent: true, email: input.email };
     }),
@@ -278,26 +289,30 @@ export const usersRouter = router({
       // user; their refresh tokens become unusable because the session is gone.
       const revoked = await db.$executeRaw`DELETE FROM auth.sessions WHERE user_id = ${user.supabaseUserId}::uuid`;
 
-      await db.auditLog.create({
-        data: {
-          organizationId: user.organizationId || ctx.user.organizationId,
-          actorId: ctx.user.id,
-          action: 'sessions_revoked',
-          entity: 'user',
-          entityId: user.id,
-          metadata: { email: input.email, sessionsRevoked: revoked },
-        },
-      }).catch(() => {});
+      await db.auditLog
+        .create({
+          data: {
+            organizationId: user.organizationId || ctx.user.organizationId,
+            actorId: ctx.user.id,
+            action: 'sessions_revoked',
+            entity: 'user',
+            entityId: user.id,
+            metadata: { email: input.email, sessionsRevoked: revoked },
+          },
+        })
+        .catch(() => {});
 
       return { email: input.email, sessionsRevoked: revoked };
     }),
 
   changeOrgUserRole: platformProcedure
-    .input(z.object({
-      userId: z.string().uuid(),
-      organizationId: z.string().uuid(),
-      roleSlug: z.string().max(50),
-    }))
+    .input(
+      z.object({
+        userId: z.string().uuid(),
+        organizationId: z.string().uuid(),
+        roleSlug: z.string().max(50),
+      }),
+    )
     .mutation(async ({ ctx, input }) => {
       // Defense-in-depth: non-User principals (external, candidate) must never be
       // assigned to a staff User row even if their Role rows exist in the org seed.
@@ -323,26 +338,30 @@ export const usersRouter = router({
       // Role change → drop the org's cached permission decisions.
       await invalidatePermissionCache(input.organizationId);
 
-      await db.auditLog.create({
-        data: {
-          organizationId: input.organizationId,
-          actorId: ctx.user.id,
-          action: 'user_role_changed',
-          entity: 'user',
-          entityId: input.userId,
-          metadata: { newRole: input.roleSlug },
-        },
-      }).catch(() => {});
+      await db.auditLog
+        .create({
+          data: {
+            organizationId: input.organizationId,
+            actorId: ctx.user.id,
+            action: 'user_role_changed',
+            entity: 'user',
+            entityId: input.userId,
+            metadata: { newRole: input.roleSlug },
+          },
+        })
+        .catch(() => {});
 
       return { success: true };
     }),
 
   exportUsersCsv: platformProcedure
-    .input(z.object({
-      organizationId: z.string().uuid().optional(),
-      isActive: z.boolean().optional(),
-      roleSlug: z.string().max(50).optional(),
-    }))
+    .input(
+      z.object({
+        organizationId: z.string().uuid().optional(),
+        isActive: z.boolean().optional(),
+        roleSlug: z.string().max(50).optional(),
+      }),
+    )
     .query(async ({ ctx, input }) => {
       const where: Prisma.UserWhereInput = {};
       if (input.organizationId) where.organizationId = input.organizationId;
@@ -365,7 +384,12 @@ export const usersRouter = router({
         },
       });
 
-      logPlatformExport(ctx, { resource: 'users', count: users.length, format: 'csv', targetOrgId: input.organizationId });
+      logPlatformExport(ctx, {
+        resource: 'users',
+        count: users.length,
+        format: 'csv',
+        targetOrgId: input.organizationId,
+      });
 
       // Every cell through csvRow (packages/shared/src/csv.ts). This export previously emitted EVERY
       // field raw — no quoting anywhere, not even on `email` or `role` — with a comma-stripping regex
@@ -380,7 +404,7 @@ export const usersRouter = router({
         // `|| '-'` stays FALSY, not `??`: an empty-string organization name must still become "-".
         const org = u.isPlatformOwner ? 'Plataforma' : u.organization?.name || '-';
         const role = u.isPlatformOwner ? 'platform_owner' : u.userRoles[0]?.role?.slug || 'employee';
-        const fmt = (d: Date | null | undefined) => d ? d.toISOString().split('T')[0] : '-';
+        const fmt = (d: Date | null | undefined) => (d ? d.toISOString().split('T')[0] : '-');
         return csvRow([
           name,
           u.email,

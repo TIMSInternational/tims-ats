@@ -19,6 +19,7 @@ const TRPC_ROUTE = read('apps/web/app/api/trpc/[trpc]/route.ts');
 const CALLBACK = read('apps/web/app/auth/callback/route.ts');
 const RESET_PASSWORD = read('apps/web/app/(auth)/reset-password/page.tsx');
 const FORGOT_PASSWORD = read('apps/web/app/(auth)/forgot-password/page.tsx');
+const PLATFORM_USERS = read('packages/api/src/routers/platform/users.ts');
 const BACKFILL = read('packages/api/scripts/backfill-staff-supabase-links.ts');
 // The admin layout + dashboard page now resolve identity through this shared
 // server-only helper (impersonation-effective identity), so the staff-recognition
@@ -45,6 +46,11 @@ describe('staff provisioning service (invite-time linking)', () => {
     expect(CALLBACK).toContain('recoveryRedirect(origin');
     expect(CALLBACK).toContain('PASSWORD_SETUP_PROOF_COOKIE');
     expect(FORGOT_PASSWORD).not.toContain('origin}/reset-password`');
+  });
+
+  it('routes administrator-issued implicit recovery fragments to password setup', () => {
+    expect(PLATFORM_USERS).toContain('redirectTo: `${appUrl}/reset-password`');
+    expect(PLATFORM_USERS).not.toContain('redirectTo: `${appUrl}/auth/callback?recovery=1`');
   });
 
   it('rejects an auth id already owned by a REAL staff row with a clean CONFLICT (no raw P2002)', () => {

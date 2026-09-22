@@ -235,6 +235,20 @@ describe('staff invitation password setup', () => {
     );
   });
 
+  it('shows a retryable error and re-enables submission after a network failure', async () => {
+    render(<ResetPasswordPage />);
+    const submit = screen.getByRole('button', { name: 'Update password' });
+    await waitFor(() => expect(submit).not.toBeDisabled());
+    state.verifyProof.mockRejectedValueOnce(new TypeError('network unavailable'));
+
+    fireEvent.change(screen.getByLabelText('New password'), { target: { value: 'a-private-staff-password' } });
+    fireEvent.change(screen.getByLabelText('Confirm password'), { target: { value: 'a-private-staff-password' } });
+    fireEvent.click(submit);
+
+    expect(await screen.findByText('We could not update your password. Request a new link and try again.')).toBeVisible();
+    expect(submit).not.toBeDisabled();
+  });
+
   it('does not rebind a verified recovery to a different account after reload', async () => {
     const proof = '22222222-2222-4222-8222-222222222222';
     window.history.replaceState(null, '', `/reset-password?recovery=${proof}`);
