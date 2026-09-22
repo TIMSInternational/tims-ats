@@ -1397,6 +1397,16 @@
     "simulatorComingSoon": "Simulator: coming soon"
   },
   "learning": {
+    "courseTitle": "Course title",
+    "courseDescription": "Description",
+    "courseType": "Format",
+    "courseCategory": "Category",
+    "durationHours": "Duration (hours)",
+    "typeOnline": "Online",
+    "typeInPerson": "In person",
+    "typeHybrid": "Hybrid",
+    "createPath": "Create learning path",
+    "pathName": "Path name",
     "title": "Learning & Development",
     "breadcrumb": "People",
     "kpiTotalCourses": "Total Courses",

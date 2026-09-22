@@ -1397,6 +1397,16 @@
     "simulatorComingSoon": "Simulador: próximamente"
   },
   "learning": {
+    "courseTitle": "Título del curso",
+    "courseDescription": "Descripción",
+    "courseType": "Formato",
+    "courseCategory": "Categoría",
+    "durationHours": "Duración (horas)",
+    "typeOnline": "En línea",
+    "typeInPerson": "Presencial",
+    "typeHybrid": "Híbrido",
+    "createPath": "Crear ruta de aprendizaje",
+    "pathName": "Nombre de la ruta",
     "title": "Capacitacion & Desarrollo",
     "breadcrumb": "People",
     "kpiTotalCourses": "Total Cursos",
