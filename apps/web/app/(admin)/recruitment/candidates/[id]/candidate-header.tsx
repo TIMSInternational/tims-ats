@@ -1,9 +1,12 @@
 'use client';
 
+import { useState } from 'react';
 import { useI18n } from '../../../../../lib/i18n';
 import { formatDate } from '../../../../../lib/format-utils';
 import { CandidateAvatar } from '../../../../../components';
 import type { CandidateDetail } from '../../../../../lib/trpc-types';
+import { CandidateStageModal } from './candidate-stage-modal';
+import { CreateOfferModal } from './create-offer-modal';
 
 function FitScoreCircle({ score }: { score: number }) {
   const { t } = useI18n();
@@ -26,8 +29,11 @@ function FitScoreCircle({ score }: { score: number }) {
 
 export function CandidateHeader({ candidate: c }: { candidate: CandidateDetail }) {
   const { t } = useI18n();
+  const [showStageModal, setShowStageModal] = useState(false);
+  const [showOfferModal, setShowOfferModal] = useState(false);
   const fitScore = c.fitScores?.[0]?.overallScore;
-  const activeApp = c.applications?.[0];
+  const activeApplications = c.applications.filter((application) => application.status === 'active');
+  const activeApp = activeApplications[0];
   const currentStage = activeApp?.currentStage?.name;
 
   const poolLabels: Record<string, string> = {
@@ -106,20 +112,18 @@ export function CandidateHeader({ candidate: c }: { candidate: CandidateDetail }
 
         {/* Action Buttons */}
         <div className="flex flex-col gap-2 shrink-0">
-          <button className="flex items-center gap-2 bg-[#DD0C15] text-white px-4 h-9 rounded-lg text-[12px] font-medium hover:bg-[#c00b13] transition">
+          {activeApplications.length > 0 && <button type="button" onClick={() => setShowStageModal(true)} className="flex items-center gap-2 bg-[#DD0C15] text-white px-4 h-9 rounded-lg text-[12px] font-medium hover:bg-[#c00b13] transition">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M3 7.5L7.5 3m0 0L12 7.5M7.5 3v13.5m13.5-3L16.5 18m0 0L12 13.5m4.5 4.5V4.5" /></svg>
             {t.candidates.moveStage}
-          </button>
-          <button className="flex items-center gap-2 border border-[#1F114C] text-[#1F114C] px-4 h-9 rounded-lg text-[12px] font-medium hover:bg-[#1F114C]/5 transition">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" /></svg>
-            {t.candidates.message}
-          </button>
-          <button className="flex items-center gap-2 border border-[#EDEDED] text-[#585858] px-4 h-9 rounded-lg text-[12px] font-medium hover:bg-[#F6F6F6] transition">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M6.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM12.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM18.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0z" /></svg>
-            {t.candidates.more}
-          </button>
+          </button>}
+          {activeApplications.length > 0 && <button type="button" onClick={() => setShowOfferModal(true)} className="flex items-center gap-2 border border-[#1F114C] text-[#1F114C] px-4 h-9 rounded-lg text-[12px] font-medium hover:bg-[#1F114C]/5 transition">
+            {t.offers.createOffer}
+          </button>}
         </div>
       </div>
+
+      {showStageModal && <CandidateStageModal candidateId={c.id} applications={activeApplications} onClose={() => setShowStageModal(false)} />}
+      {showOfferModal && <CreateOfferModal candidateId={c.id} applications={activeApplications} onClose={() => setShowOfferModal(false)} />}
 
       {/* AI Recommendation Banner */}
       {fitScore != null && fitScore >= 70 && (
