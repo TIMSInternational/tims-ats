@@ -1,13 +1,18 @@
 'use client';
 
+import { useState } from 'react';
 import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
+import { CreateCourseModal } from './create-course-modal';
+import { CreatePathModal } from './create-path-modal';
 import { LearningKpis } from './learning-kpis';
 import { CourseCatalog } from './course-catalog';
 import { LearningPathsPanel } from './learning-paths-panel';
 
 export default function LearningPage() {
   const { t } = useI18n();
+  const [showCreateCourse, setShowCreateCourse] = useState(false);
+  const [showCreatePath, setShowCreatePath] = useState(false);
   const kpis = trpc.learning.getDashboardKpis.useQuery();
   const courses = trpc.learning.listCourses.useQuery({ pageSize: 50 });
   const paths = trpc.learning.listPaths.useQuery();
@@ -25,6 +30,10 @@ export default function LearningPage() {
             <path d="m9 18 6-6-6-6" />
           </svg>
           <span className="text-sm font-medium text-[#1F114C]">{t.learning.title}</span>
+        </div>
+        <div className="flex gap-2">
+          <button type="button" onClick={() => setShowCreatePath(true)} disabled={courseItems.length === 0} className="rounded-lg border border-[#1F114C] px-4 py-2 text-[12px] font-medium text-[#1F114C] disabled:opacity-50">{t.learning.createPath}</button>
+          <button type="button" onClick={() => setShowCreateCourse(true)} className="rounded-lg bg-[#DD0C15] px-4 py-2 text-[12px] font-medium text-white">{t.learning.newCourse}</button>
         </div>
       </div>
 
@@ -57,6 +66,8 @@ export default function LearningPage() {
           </div>
         </div>
       </div>
+      {showCreateCourse && <CreateCourseModal onClose={() => setShowCreateCourse(false)} />}
+      {showCreatePath && <CreatePathModal courses={courseItems} onClose={() => setShowCreatePath(false)} />}
     </div>
   );
 }
