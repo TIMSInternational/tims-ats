@@ -27,7 +27,6 @@
 > `docs/architecture/csharp-migration/00-master-plan.md`, `phase-5-strangler.md`, and
 > `docs/architecture/table-ownership.md` (the authoritative per-table/per-domain ledger).
 
-
 ### Current implementation wave — 2026-09-14 (unreleased)
 
 - **#75 / #217, invitation resend port:** a default-disabled C# resend endpoint and console hook
