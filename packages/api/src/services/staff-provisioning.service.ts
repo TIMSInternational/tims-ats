@@ -44,7 +44,10 @@ export async function resolveStaffSupabaseUserId(email: string): Promise<string>
     });
     const appUrl = getAppUrl();
     const { data, error } = await admin.auth.admin.inviteUserByEmail(email, {
-      redirectTo: `${appUrl}/auth/callback`,
+      // Admin invite links use an implicit-flow URL fragment rather than a PKCE
+      // code. The browser page must receive that fragment directly so Supabase can
+      // establish the invited user's session before they choose a password.
+      redirectTo: `${appUrl}/reset-password?setup=1`,
     });
     if (error || !data?.user?.id) {
       throw new TRPCError({

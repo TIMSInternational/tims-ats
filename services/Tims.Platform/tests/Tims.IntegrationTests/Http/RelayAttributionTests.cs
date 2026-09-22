@@ -14,14 +14,15 @@ public sealed class RelayAttributionTests
 {
     private const string Secret = "relay-test-secret";
     private static string Hash(string text) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(text)));
-    private static string Envelope(string ip, string? actor = null, long age = 0)
+    private static string Envelope(string ip, string? actor = null, long age = 0,
+        string method = "GET", string path = "/test?q=a")
     {
         var body = Base64Url.EncodeToString(JsonSerializer.SerializeToUtf8Bytes(new
         {
             timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - age,
             nonce = Guid.NewGuid().ToString(),
-            method = "GET",
-            path = "/test?q=a",
+            method,
+            path,
             authorizationHash = Hash(actor ?? "Bearer token"),
             cookieHash = Hash(""),
             ip,
@@ -104,6 +105,26 @@ public sealed class RelayAttributionTests
         Assert.Equal(401, unauthenticated.Response.StatusCode);
         await Run(Request(envelope), nonces, Next);
         Assert.Equal(1, calls);
+    }
+
+    [Fact]
+    public async Task SignedAnonymousInvitationSetupReceivesDistinctTrustedIp()
+    {
+        var context = Request(Envelope("203.0.113.7", actor: "", method: "POST",
+            path: "/invitations/setup/preview"));
+        context.User = new ClaimsPrincipal(new ClaimsIdentity());
+        context.Request.Method = "POST";
+        context.Request.Path = "/invitations/setup/preview";
+        context.Request.QueryString = QueryString.Empty;
+        context.Request.Headers.Authorization = "";
+        var called = false;
+        await Run(context, new Nonces(), ctx =>
+        {
+            called = true;
+            Assert.Equal("203.0.113.7", ctx.ClientIpFor());
+            return Task.CompletedTask;
+        });
+        Assert.True(called);
     }
 
     private sealed class Nonces : IRelayNonceStore

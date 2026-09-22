@@ -232,7 +232,13 @@ const UNREGISTERED_ALLOWLIST: AllowGroup[] = [
       'Invitation resend, org/user/bulk creation and role lookup are default-disabled platform-owner operations with real PostgreSQL/HTTP authorization and transaction tests. ' +
       'Remote parity needs isolated invitation rows and an explicitly controlled email destination/provider; the shared harness must not resend real invitations. ' +
       'Local provider acceptance/failure is simulated, not live delivery. Tracked in #75 and #217; see invitation-resend.md and user-invitation-create.md. Role lookup needs per-tenant remote role fixtures.',
-    routes: ['POST /platform/invitations/{id}/resend', 'POST /platform/invitations/organizations', 'POST /platform/invitations/users', 'POST /platform/invitations/bulk', 'GET /platform/invitations/organizations/{id}/roles'],
+    routes: [
+      'POST /platform/invitations/{id}/resend',
+      'POST /platform/invitations/organizations',
+      'POST /platform/invitations/users',
+      'POST /platform/invitations/bulk',
+      'GET /platform/invitations/organizations/{id}/roles',
+    ],
   },
   {
     reason:
@@ -433,6 +439,15 @@ const UNREGISTERED_ALLOWLIST: AllowGroup[] = [
       'PATCH /validations/{validationId}',
     ],
   },
+  {
+    reason:
+      'INVITATION SETUP IS CAPABILITY-SCOPED, BEFORE TENANT MEMBERSHIP EXISTS. Preview and registration use the ' +
+      'unguessable invitation token and are anonymous; completion additionally verifies the Supabase bearer identity ' +
+      'against the invited email before the first users/user_roles rows are created. The role-parity harness cannot ' +
+      'mint a tenant grant for a principal that deliberately does not exist yet, so these routes require their own ' +
+      'token, identity-provider, HTTP-boundary, and real-Postgres tests rather than a fabricated role fixture.',
+    routes: ['POST /invitations/setup/preview', 'POST /invitations/setup/register', 'POST /invitations/setup/complete'],
+  },
 ];
 
 const allowlistNormalised = UNREGISTERED_ALLOWLIST.flatMap((g) =>
@@ -492,7 +507,10 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //         (157 → 168 was Phase-5 slice 25 / #98: the eleven notification routes, landed dark and
     //         allowlisted pending a per-role ROW fixture — see their group above. Measured, not
     //         incremented by hand: the re-derivation command above prints 168.)
-    expect(deployed.size).toBe(178);
+    //         178 → 181: invitation account setup added three capability-scoped POSTs. They are documented in
+    //         the dedicated allowlist group below because tenant-role parity is structurally inapplicable before
+    //         the invited principal has a tenant user row.
+    expect(deployed.size).toBe(181);
     //   92 = 65 read endpoints (surfaces.ts, 14 surfaces) + 27 write (write-surfaces.ts, 8 surfaces:
     //        24 written literally + 3 produced by the shared `transitionEndpoint` helper). The READ side
     //        went 40 → 65 on 2026-08-17 (#195 residual): the four talent surfaces deleted in the
@@ -556,7 +574,8 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //   65 → 76, 2026-08-19 (Phase-5 slice 25 / #98): the eleven notification routes landed DARK, all
     //   eleven pending a fixture whose shape differs from every prior surface's (per-role ROWS, not
     //   grants — nine of the eleven procedures carry no grant to seed). Documented growth, not drift.
-    expect(allowlistNormalised.length).toBe(86);
+    // 86 → 89: the three invitation-setup operations are capability scoped before tenant membership.
+    expect(allowlistNormalised.length).toBe(89);
     // Every group must actually carry a reason and actually cover something — an empty group, or one
     // whose "reason" is a word, is a rubber stamp.
     for (const g of UNREGISTERED_ALLOWLIST) {
@@ -573,6 +592,6 @@ describe('parity registry covers every deployed route (or documents why not)', (
     // identity-authorized rather than grant-authorized, so the registry's by-role comparison needs
     // per-role rows instead of a grant fixture. Folding it into the fit-engine group would state the
     // wrong prerequisite for both.
-    expect(UNREGISTERED_ALLOWLIST.length, 'the eleven documented gap categories').toBe(11);
+    expect(UNREGISTERED_ALLOWLIST.length, 'the twelve documented gap categories').toBe(12);
   });
 });
