@@ -1,5 +1,7 @@
 # Known Issues & Remaining Work
 
+- **2026-09-22 learning data integrity (implemented, awaiting deploy):** a tenant with zero courses/enrollments was shown hardcoded growth, gap reduction, learning paths, pre/post-test results, team progress and AI recommendations. The dashboard now displays only API-backed course/enrollment/progress/certificate counts and real learning-path names/course counts, with an honest empty state. Nonfunctional New Course/Export controls and hardcoded panels were removed. Course authoring, exports, gap analytics, team reporting and AI recommendations still require real data contracts and implementation before a full Learning beta.
+
 - **2026-09-15 live invitation canary:** the deployed C# individual-invitation flow exposed an authenticated-request 401; no invitation was created or sent. The shared error-state retry button also submitted its enclosing form. Explicit non-submit button semantics and a form-level regression test address the latter. Authentication diagnosis and successful live delivery remain pending.
 
 - **2026-09-14 — bulk invitations:** C# batch creation and CSV results are implemented behind default-off flags, with per-row outcomes, bulk-writer duplicate coordination and no automatic retry. Acceptance/revoke, live delivery, cutover and TS retirement remain open. See [contract](architecture/csharp-migration/bulk-invitation-create.md).

@@ -29,6 +29,9 @@ interface CourseCatalogProps {
     filterGap: string;
     filterCompany: string;
     enrolled: string;
+    noCourses: string;
+    noCoursesDesc: string;
+    noResults: string;
   };
 }
 
@@ -110,9 +113,7 @@ export function CourseCatalog({ courses, loading, isError, onRetry, t }: CourseC
             key={f.key}
             onClick={() => setFilter(f.key)}
             className={`px-3 py-1 rounded-full text-[11px] font-medium transition ${
-              filter === f.key
-                ? 'bg-[#1F114C] text-white'
-                : 'bg-[#F6F6F6] text-[#585858] hover:bg-[#EDEDED]'
+              filter === f.key ? 'bg-[#1F114C] text-white' : 'bg-[#F6F6F6] text-[#585858] hover:bg-[#EDEDED]'
             }`}
           >
             {f.label}
@@ -120,48 +121,58 @@ export function CourseCatalog({ courses, loading, isError, onRetry, t }: CourseC
         ))}
       </div>
       <div className="flex-1 overflow-y-auto space-y-2">
-        {filtered.map((course) => {
-          const tag = getTag(course);
-          const pct = course.avgProgress;
-          const prog = getProgressColor(pct);
-          return (
-            <div
-              key={course.id}
-              className="border border-[#EDEDED] rounded-lg p-3 hover:border-[#1F114C]/20 cursor-pointer transition"
-            >
-              <div className="flex items-center justify-between mb-1.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-[12px] font-medium text-[#333]">{course.title}</span>
-                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${tag.bg} ${tag.text}`}>
-                    {tag.label}
-                  </span>
-                </div>
-                <span className="text-[10px] text-[#8B8B8B]">{course.duration}h</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <span className="text-[10px] text-[#8B8B8B]">
-                    {course._count.enrollments} {t.enrolled}
-                  </span>
-                  <span className="text-[10px] text-[#8B8B8B]">{course.type}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-[80px] h-1.5 bg-[#EDEDED] rounded-full">
-                    <div className={`h-full ${prog.bar} rounded-full`} style={{ width: `${pct}%` }} />
+        {filtered.length === 0 ? (
+          <div className="py-6 text-center">
+            <p className="text-[12px] font-medium text-[#585858]">{courses.length === 0 ? t.noCourses : t.noResults}</p>
+            {courses.length === 0 && <p className="mt-1 text-[11px] text-[#8B8B8B]">{t.noCoursesDesc}</p>}
+          </div>
+        ) : (
+          filtered.map((course) => {
+            const tag = getTag(course);
+            const pct = course.avgProgress;
+            const prog = getProgressColor(pct);
+            return (
+              <div
+                key={course.id}
+                className="border border-[#EDEDED] rounded-lg p-3 hover:border-[#1F114C]/20 cursor-pointer transition"
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[12px] font-medium text-[#333]">{course.title}</span>
+                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${tag.bg} ${tag.text}`}>
+                      {tag.label}
+                    </span>
                   </div>
-                  <span className={`text-[10px] font-medium ${prog.text}`}>{pct}%</span>
-                  <button
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); setEnrollCourse({ id: course.id, title: course.title }); }}
-                    className="h-6 px-2 rounded text-[10px] bg-[#1F114C] text-white hover:bg-[#1F114C]/80 transition"
-                  >
-                    {tI18n.learning.enrollAction}
-                  </button>
+                  <span className="text-[10px] text-[#8B8B8B]">{course.duration}h</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="text-[10px] text-[#8B8B8B]">
+                      {course._count.enrollments} {t.enrolled}
+                    </span>
+                    <span className="text-[10px] text-[#8B8B8B]">{course.type}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-[80px] h-1.5 bg-[#EDEDED] rounded-full">
+                      <div className={`h-full ${prog.bar} rounded-full`} style={{ width: `${pct}%` }} />
+                    </div>
+                    <span className={`text-[10px] font-medium ${prog.text}`}>{pct}%</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEnrollCourse({ id: course.id, title: course.title });
+                      }}
+                      className="h-6 px-2 rounded text-[10px] bg-[#1F114C] text-white hover:bg-[#1F114C]/80 transition"
+                    >
+                      {tI18n.learning.enrollAction}
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })
+        )}
       </div>
       {enrollCourse && (
         <EnrollModal
