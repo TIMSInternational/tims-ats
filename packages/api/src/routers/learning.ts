@@ -147,6 +147,12 @@ export const learningRouter = router({
     .mutation(async ({ ctx, input }) => {
       await assertSubjectInScope(ctx.access, ctx.user.id, input.userId, 'No puedes inscribir a este usuario');
 
+      const course = await db.course.findFirst({
+        where: { id: input.courseId, organizationId: ctx.user.organizationId, isActive: true },
+        select: { id: true },
+      });
+      if (!course) throw new TRPCError({ code: 'NOT_FOUND', message: 'Curso no encontrado en esta organizacion' });
+
       return db.enrollment.create({
         data: {
           organizationId: ctx.user.organizationId,
@@ -167,6 +173,12 @@ export const learningRouter = router({
     .mutation(async ({ ctx, input }) => {
       // Dedupe target ids first to avoid redundant checks.
       const uniqueTargets = [...new Set(input.userIds)];
+
+      const course = await db.course.findFirst({
+        where: { id: input.courseId, organizationId: ctx.user.organizationId, isActive: true },
+        select: { id: true },
+      });
+      if (!course) throw new TRPCError({ code: 'NOT_FOUND', message: 'Curso no encontrado en esta organizacion' });
 
       // At narrow scope every target must be within the caller's subject set.
       // Compute the set once (mirrors assertSubjectInScope logic) and set-diff.
@@ -258,13 +270,22 @@ export const learningRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       const { courseIds, ...pathData } = input;
+      const uniqueCourseIds = [...new Set(courseIds ?? [])];
+      if (uniqueCourseIds.length > 0) {
+        const courseCount = await db.course.count({
+          where: { id: { in: uniqueCourseIds }, organizationId: ctx.user.organizationId, isActive: true },
+        });
+        if (courseCount !== uniqueCourseIds.length) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Uno o mas cursos no pertenecen a esta organizacion' });
+        }
+      }
       return db.learningPath.create({
         data: {
           ...pathData,
           organizationId: ctx.user.organizationId,
-          ...(courseIds && {
+          ...(uniqueCourseIds.length > 0 && {
             courses: {
-              create: courseIds.map((courseId, index) => ({
+              create: uniqueCourseIds.map((courseId, index) => ({
                 courseId,
                 order: index + 1,
               })),
