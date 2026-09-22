@@ -13,3 +13,17 @@ export const DEFAULT_ONBOARDING_TASKS = [
   { title: 'Completar ruta de capacitación específica del rol', responsible: 'employee', phase: 'day61_90', order: 8 },
   { title: 'Check-in de 90 días con RRHH', responsible: 'hr', phase: 'day61_90', order: 9 },
 ] as const;
+
+const CHECK_IN_MILESTONES = [
+  { type: 'day1', daysAfterStart: 0 },
+  { type: 'day30', daysAfterStart: 30 },
+  { type: 'day60', daysAfterStart: 60 },
+] as const;
+
+export function scheduledOnboardingCheckIns(startDate: Date, organizationId: string) {
+  return CHECK_IN_MILESTONES.map(({ type, daysAfterStart }) => {
+    const scheduledDate = new Date(startDate);
+    scheduledDate.setUTCDate(scheduledDate.getUTCDate() + daysAfterStart);
+    return { organizationId, type, scheduledDate };
+  });
+}
